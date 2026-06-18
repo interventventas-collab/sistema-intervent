@@ -15,6 +15,98 @@
     .topbar-tool-btn:hover { background: #f3f4f6; }
     .topbar-tool-btn:active { transform: scale(0.95); }
 
+    /* 2026-06-17 v9: rediseno topbar moderno — paleta neutra estilo Linear/Notion.
+       Una sola altura (32px), una sola tipografia. Solo "Nueva venta" tiene fondo oscuro (accion primaria). */
+    .topbar-nav-modern {
+        background: transparent;
+        border: none;
+        padding: 0.4rem 0.7rem;
+        height: 34px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: #1f2937;
+        font-family: inherit;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        line-height: 1;
+        transition: background 0.12s ease;
+        white-space: nowrap;
+    }
+    .topbar-nav-modern:hover { background: #f3f4f6; }
+    .topbar-nav-modern.abierto { background: #f3f4f6; }
+    .topbar-nav-modern-ico {
+        font-size: 0.95rem;
+        opacity: 0.85;
+        line-height: 1;
+    }
+    .topbar-nav-modern-caret {
+        font-size: 0.7rem;
+        color: #9ca3af;
+        margin-left: 0.1rem;
+    }
+
+    .topbar-divider-modern {
+        width: 1px;
+        height: 20px;
+        background: #e5e7eb;
+        margin: 0 0.4rem;
+        align-self: center;
+    }
+
+    /* Accion primaria — fondo oscuro como Linear */
+    .topbar-action-primary {
+        background: #111827;
+        border: 1px solid #111827;
+        color: white;
+        padding: 0.45rem 0.85rem;
+        height: 34px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        line-height: 1;
+        transition: background 0.12s ease, transform 0.06s ease;
+        white-space: nowrap;
+    }
+    .topbar-action-primary:hover { background: #1f2937; }
+    .topbar-action-primary:active { transform: scale(0.97); }
+
+    /* Accion secundaria — borde fino, fondo blanco */
+    .topbar-action-secondary {
+        background: white;
+        border: 1px solid #d1d5db;
+        color: #1f2937;
+        padding: 0.45rem 0.85rem;
+        height: 34px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        line-height: 1;
+        transition: background 0.12s ease, transform 0.06s ease;
+        white-space: nowrap;
+    }
+    .topbar-action-secondary:hover { background: #f9fafb; border-color: #9ca3af; }
+    .topbar-action-secondary:active { transform: scale(0.97); }
+
+    .topbar-action-plus {
+        font-size: 1.05rem;
+        font-weight: 400;
+        line-height: 1;
+        opacity: 0.9;
+    }
+
     /* 2026-05-28: botón "Editar visibilidad" en el sidebar del admin. */
     .sidebar-edit-btn {
         margin: 8px 12px;
@@ -683,35 +775,34 @@
             @* 2026-05-30: oficina también puede cargar ventas (igual que admin con permiso cafe). *@
             @if (HasPerm("cafe") || HasPerm("oficina"))
             {
-                @* 2026-06-09: boton STOCK — atajo a la izquierda de Listas de precios *@
-                <button class="topbar-stock-btn"
+                @* 2026-06-17 v9: rediseno moderno — paleta neutra (blanco + gris) + iconos sutiles + separador visual.
+                   Quitamos los gradientes saturados y unificamos altura/tipografia. La logica (onclick, dropdowns) no cambia. *@
+                @* Bloque NAVEGACION — botones secundarios con fondo transparente *@
+                <button class="topbar-nav-modern"
                         @onclick="@(() => NavigateTo("/cafe/stock-masivo"))"
                         title="Stock masivo (todos los productos)">
-                    <span style="font-size: 1.2rem;">📦</span>
-                    <span class="topbar-stock-label">Stock</span>
+                    <span class="topbar-nav-modern-ico">📦</span>
+                    <span>Stock</span>
                 </button>
-                @* 2026-06-08: boton LISTAS DE PRECIOS — atajo a la izquierda de Preparacion *@
-                <button class="topbar-listas-btn"
+                <button class="topbar-nav-modern"
                         @onclick="@(() => NavigateTo("/cafe/listas-precios"))"
                         title="Listas de precios">
-                    <span style="font-size: 1.2rem;">💲</span>
-                    <span class="topbar-listas-label">Listas<br/>de precios</span>
+                    <span class="topbar-nav-modern-ico">💲</span>
+                    <span>Listas</span>
                 </button>
-                @* 2026-06-06: boton PREPARACION DE PEDIDOS — atajo directo a la pantalla *@
-                <button class="topbar-preparacion-btn"
+                <button class="topbar-nav-modern"
                         @onclick="@(() => NavigateTo("/cafe/preparacion"))"
                         title="Imprimir pedidos / preparación de pedidos">
-                    <span style="font-size: 1.2rem;">📦</span>
-                    <span class="topbar-preparacion-label">Preparación<br/>de pedidos</span>
+                    <span class="topbar-nav-modern-ico">📋</span>
+                    <span>Preparación</span>
                 </button>
-                @* 2026-06-06: boton EMPLEADOS con dropdown a la izquierda del grid de atajos cafe *@
                 <div class="topbar-empleados-wrap">
-                    <button class="topbar-empleados-btn @(showEmpleadosDropdown ? "abierto" : "")"
+                    <button class="topbar-nav-modern @(showEmpleadosDropdown ? "abierto" : "")"
                             @onclick="ToggleEmpleadosDropdown"
                             title="Accesos rápidos a Empleados">
-                        <span style="font-size: 1.2rem;">👥</span>
-                        <span class="topbar-empleados-label">Empleados</span>
-                        <span class="topbar-empleados-arrow">▾</span>
+                        <span class="topbar-nav-modern-ico">👥</span>
+                        <span>Empleados</span>
+                        <span class="topbar-nav-modern-caret">▾</span>
                     </button>
                     @if (showEmpleadosDropdown)
                     {
@@ -744,46 +835,59 @@
                         </div>
                     }
                 </div>
-                @* 2026-06-06: layout en GRID 2x2 — arriba "ver" (Ventas / Saldos), abajo "agregar" (+Nueva Venta / +Nueva Cobranza) *@
-                <div class="topbar-cafe-grid">
-                    @* 2026-06-08: split button — Ventas + flechita que despliega Presupuestos *@
-                    <div class="fab-cafe-split @(menuPresupuestosAbierto ? "open" : "")">
-                        <button class="fab-cafe-link fab-cafe-split-main" @onclick="@(() => NavigateTo("/cafe/ventas"))"
-                                title="Ver listado de ventas">
-                            📋 Ventas
-                        </button>
-                        <button class="fab-cafe-split-caret" @onclick="ToggleMenuPresupuestos"
-                                title="Más opciones (Presupuestos)"
-                                aria-label="Más opciones">▾</button>
-                        @if (menuPresupuestosAbierto)
-                        {
-                            <div class="fab-cafe-split-menu" @onclick:stopPropagation="true">
-                                <button @onclick="@(() => { menuPresupuestosAbierto = false; NavigateTo("/cafe/presupuestos"); })"
-                                        title="Ver listado de presupuestos (proformas — sin descontar stock)">
-                                    📋 Presupuestos
-                                </button>
-                            </div>
-                        }
-                    </div>
-                    <button class="fab-cafe-link" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; border-color: #b45309;"
-                            @onclick="@(() => NavigateTo("/cafe/clientes/panel-deudas"))"
-                            title="Ver saldos pendientes — ¿Quién me debe?">
-                        💰 Saldos
+                @* 2026-06-17 v9: Ventas + Saldos quedan como botones secundarios (estilo nav).
+                   Nueva Venta es la accion PRIMARIA (negro). Nueva Cobranza secundaria con borde. *@
+                <div class="fab-cafe-split @(menuPresupuestosAbierto ? "open" : "")" style="display: inline-flex;">
+                    <button class="topbar-nav-modern" @onclick="@(() => NavigateTo("/cafe/ventas"))"
+                            style="border-top-right-radius: 0; border-bottom-right-radius: 0; padding-right: 0.4rem;"
+                            title="Ver listado de ventas">
+                        <span class="topbar-nav-modern-ico">📊</span>
+                        <span>Ventas</span>
                     </button>
-                    <button class="fab-nueva-venta" @onclick="OpenNuevaVentaShortcut"
-                            title="Cargar una venta nueva (atajo)"
-                            aria-label="Nueva venta">
-                        <span class="fab-nueva-venta-plus">+</span>
-                        <span class="fab-nueva-venta-label">Nueva Venta</span>
+                    <button class="topbar-nav-modern" @onclick="ToggleMenuPresupuestos"
+                            style="border-top-left-radius: 0; border-bottom-left-radius: 0; padding: 0 0.5rem; border-left: 1px solid #e5e7eb;"
+                            title="Más opciones (Presupuestos)"
+                            aria-label="Más opciones">
+                        <span class="topbar-nav-modern-caret">▾</span>
                     </button>
-                    <button class="fab-nueva-venta" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);"
-                            @onclick="@(() => NavigateTo("/cafe/tesoreria/cobranzas?nueva=1"))"
-                            title="Cargar una cobranza nueva (atajo)"
-                            aria-label="Nueva cobranza">
-                        <span class="fab-nueva-venta-plus">+</span>
-                        <span class="fab-nueva-venta-label">Nueva Cobranza</span>
-                    </button>
+                    @if (menuPresupuestosAbierto)
+                    {
+                        <div class="fab-cafe-split-menu" @onclick:stopPropagation="true">
+                            <button @onclick="@(() => { menuPresupuestosAbierto = false; NavigateTo("/cafe/presupuestos"); })"
+                                    title="Ver listado de presupuestos (proformas — sin descontar stock)">
+                                📋 Presupuestos
+                            </button>
+                        </div>
+                    }
                 </div>
+                <button class="topbar-nav-modern"
+                        @onclick="@(() => NavigateTo("/cafe/clientes/panel-deudas"))"
+                        title="Ver saldos pendientes — ¿Quién me debe?">
+                    <span class="topbar-nav-modern-ico">💰</span>
+                    <span>Saldos</span>
+                </button>
+
+                @* Separador visual entre navegacion y acciones primarias *@
+                <div class="topbar-divider-modern"></div>
+
+                @* ACCIONES PRIMARIAS — Nueva Venta es la principal (oscura). Nueva Cobranza la sigue (borde fino) *@
+                <button class="topbar-action-primary"
+                        @onclick="OpenNuevaVentaShortcut"
+                        title="Cargar una venta nueva (atajo)"
+                        aria-label="Nueva venta">
+                    <span class="topbar-action-plus">+</span>
+                    <span>Nueva venta</span>
+                </button>
+                <button class="topbar-action-secondary"
+                        @onclick="@(() => NavigateTo("/cafe/tesoreria/cobranzas?nueva=1"))"
+                        title="Cargar una cobranza nueva (atajo)"
+                        aria-label="Nueva cobranza">
+                    <span class="topbar-action-plus">+</span>
+                    <span>Cobranza</span>
+                </button>
+
+                @* Separador entre acciones primarias y herramientas *@
+                <div class="topbar-divider-modern"></div>
             }
             @* 2026-05-28: botones de herramientas flotantes (calculadora + post-its propios) *@
             <button class="topbar-tool-btn" @onclick="ToggleCalc"
