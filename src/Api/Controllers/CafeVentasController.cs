@@ -1763,10 +1763,49 @@ public class CafeVentasController : ControllerBase
             CondicionPago = original.CondicionPago,
         };
 
+        // 2026-06-18 — La X / PRO ya tenia su stock descontado al crearse. Si vamos a crear una FA
+        // que va a descontar stock OTRA VEZ, terminamos con doble descuento (y peor: el cotizador
+        // interno del Create dice "no hay stock" si el inventario disponible quedo justo). Solucion:
+        // DEVOLVER el stock de la X antes de llamar a Create. Si Create falla, restauramos.
+        var stockSnapshots = new List<(int prodId, decimal gramos, int unidades)>();
+        foreach (var it in original.Items)
+        {
+            if (it.EsConceptoLibre || it.ServicioId.HasValue || it.ProductoId is null) continue;
+            var prod = await _db.CafeProductos.FindAsync(it.ProductoId.Value);
+            if (prod is null) continue;
+            if (prod.Categoria == "CAFE")
+            {
+                prod.StockGramos += it.GramosDescontados;
+                stockSnapshots.Add((prod.Id, it.GramosDescontados, 0));
+            }
+            else
+            {
+                var unidadesADevolver = UnidadesRealesStock(prod, it.Formato, it.Cantidad);
+                prod.StockUnidades += unidadesADevolver;
+                stockSnapshots.Add((prod.Id, 0m, unidadesADevolver));
+            }
+            prod.StockChangedAt = DateTime.UtcNow;
+            await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
+        }
+        await _db.SaveChangesAsync();
+
         // Reusamos la lógica de Create (más simple que duplicar el código)
-        var createResult = await Create(createReq);
+        IActionResult createResult;
+        try
+        {
+            createResult = await Create(createReq);
+        }
+        catch
+        {
+            await RevertirStockDevueltoAsync(stockSnapshots);
+            throw;
+        }
         if (createResult is not OkObjectResult ok || ok.Value is not CafeVentaDto creada)
+        {
+            // Create rebotó (ej. ARCA falla, validacion, etc.): re-descontamos lo que devolvimos.
+            await RevertirStockDevueltoAsync(stockSnapshots);
             return createResult;
+        }
 
         // Vincular: marcar la proforma como facturada y la nueva como origen=proforma
         original.FacturadaComoVentaId = creada.Id;
@@ -1780,6 +1819,22 @@ public class CafeVentasController : ControllerBase
         await _db.SaveChangesAsync();
 
         return Ok(creada);
+    }
+
+    /// <summary>2026-06-18 — Helper para ConvertirAFactura: si Create falla despues de haber
+    /// devuelto el stock de la X, restauramos el descuento para que el inventario no quede inflado.</summary>
+    private async Task RevertirStockDevueltoAsync(List<(int prodId, decimal gramos, int unidades)> snapshots)
+    {
+        foreach (var snap in snapshots)
+        {
+            var prod = await _db.CafeProductos.FindAsync(snap.prodId);
+            if (prod is null) continue;
+            prod.StockGramos -= snap.gramos;
+            prod.StockUnidades -= snap.unidades;
+            prod.StockChangedAt = DateTime.UtcNow;
+            await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
+        }
+        await _db.SaveChangesAsync();
     }
 
     public record EmitirNotaCreditoRequest(string? Motivo);
