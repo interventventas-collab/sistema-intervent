@@ -84,6 +84,12 @@ public class CafeProductoDto
     public string? Sku { get; set; }
     public string? Barcode { get; set; }
     public string Nombre { get; set; } = "";
+    /// <summary>2026-06-18: si true, este "producto" en realidad es un combo con EsCompuesto=1
+    /// (un tacho armado, set, etc.). El listado de /cafe/productos los muestra mezclados con un chip
+    /// para distinguir. Al editar/duplicar, se redirige a /cafe/combos. Default false.</summary>
+    public bool EsCompuestoFake { get; set; } = false;
+    /// <summary>2026-06-18: solo si EsCompuestoFake=true — precio de referencia del combo (PVP del armado).</summary>
+    public decimal? PrecioReferenciaCompuesto { get; set; }
     public string Categoria { get; set; } = "CAFE";
     public string? Marca { get; set; }
     public int? MarcaId { get; set; }

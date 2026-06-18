@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject NavigationManager Navigation
 
 <style>
     .cli-pick-row:hover { background: #f0f9ff; }
@@ -9,11 +10,22 @@
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-        <h3>📦 Combos <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@(combos?.Count ?? 0))</span></h3>
+        <h3>
+            🛒 Combos MeLi
+            <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@CombosVisibles.Count)</span>
+            <div style="font-size: 0.72rem; font-weight: 400; color: #6b7280; margin-top: 0.2rem;">
+                Plomería interna para que las publicaciones MeLi descuenten stock. Los <strong>productos compuestos</strong> (tachos armados, etc.) viven en <a href="/cafe/productos" style="color:#7c3aed; font-weight:600;">/cafe/productos</a>.
+            </div>
+        </h3>
         <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
             <input class="form-input" style="min-width: 240px; font-size: 0.85rem;"
                    @bind="filtroTexto" @bind:event="oninput"
                    placeholder="🔍 Buscar combo por nombre..." />
+            <select class="form-input" style="max-width: 180px; font-size: 0.85rem;" @bind="filtroTipo">
+                <option value="MELI">🟠 Solo Combos MeLi</option>
+                <option value="COMPUESTO">🟣 Solo Compuestos</option>
+                <option value="">Todos</option>
+            </select>
             <button class="btn @(modoEdicion ? "btn-warning" : "btn-secondary")"
                     @onclick="() => modoEdicion = !modoEdicion" title="Edicion rapida del nombre">
                 @(modoEdicion ? "🔓 Edicion ON" : "🔒 Edicion OFF")
@@ -51,6 +63,17 @@
                         {
                             <tr>
                                 <td>
+                                    @* 2026-06-18: chip de tipo arriba del nombre *@
+                                    <div style="margin-bottom:0.2rem;">
+                                        @if (c.EsCompuesto)
+                                        {
+                                            <span style="display:inline-block; padding:0.1rem 0.45rem; background:#EEEDFE; color:#3C3489; border:1px solid #7F77DD; border-radius:999px; font-size:0.65rem; font-weight:800; letter-spacing:0.02em;" title="Producto compuesto — se arma con varias piezas (ej: tacho = cuerpo + tapa)">🟣 COMPUESTO</span>
+                                        }
+                                        else
+                                        {
+                                            <span style="display:inline-block; padding:0.1rem 0.45rem; background:#FAEEDA; color:#633806; border:1px solid #BA7517; border-radius:999px; font-size:0.65rem; font-weight:800; letter-spacing:0.02em;" title="Combo MeLi — plomería para descuento de stock de publicaciones MercadoLibre">🟠 COMBO MELI</span>
+                                        }
+                                    </div>
                                     @if (modoEdicion)
                                     {
                                         <input class="form-input" style="font-size:0.85rem;"
@@ -342,16 +365,24 @@
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
 
+    // 2026-06-18: filtro de tipo — "MELI" (default), "COMPUESTO", "" (todos)
+    private string filtroTipo = "MELI";
+
     private List<CafeComboDto> CombosVisibles
     {
         get
         {
             if (combos is null) return new();
-            if (string.IsNullOrWhiteSpace(filtroTexto)) return combos;
-            var t = filtroTexto.Trim();
-            return combos.Where(c =>
-                c.Nombre.MatchesSearch(t) ||
-                c.Descripcion.MatchesSearch(t)).ToList();
+            IEnumerable<CafeComboDto> q = combos;
+            // Filtro por tipo (default: solo Combos MeLi)
+            if (filtroTipo == "MELI") q = q.Where(c => !c.EsCompuesto);
+            else if (filtroTipo == "COMPUESTO") q = q.Where(c => c.EsCompuesto);
+            if (!string.IsNullOrWhiteSpace(filtroTexto))
+            {
+                var t = filtroTexto.Trim();
+                q = q.Where(c => c.Nombre.MatchesSearch(t) || c.Descripcion.MatchesSearch(t));
+            }
+            return q.ToList();
         }
     }
 
@@ -385,6 +416,37 @@
         }
         catch { }
         await Load();
+
+        // 2026-06-18: si vinimos con ?edit={id} o ?clone={id} desde /cafe/productos,
+        // auto-abrir el modal correspondiente. Asi la unificacion productos+compuestos no requiere
+        // duplicar el modal de combos.
+        try
+        {
+            var uri = new Uri(Navigation.Uri);
+            var qs = (uri.Query ?? "").TrimStart('?');
+            int? editId = null, cloneId = null;
+            foreach (var kv in qs.Split('&', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var eq = kv.IndexOf('=');
+                var k = eq >= 0 ? kv.Substring(0, eq) : kv;
+                var v = eq >= 0 ? kv.Substring(eq + 1) : "";
+                if (k == "edit" && int.TryParse(v, out var e) && e > 0) editId = e;
+                else if (k == "clone" && int.TryParse(v, out var c) && c > 0) cloneId = c;
+            }
+            // Cuando viene de productos, queremos ver compuestos por default — no MeLi.
+            if (editId.HasValue || cloneId.HasValue) filtroTipo = "COMPUESTO";
+            if (editId.HasValue)
+            {
+                var combo = combos.FirstOrDefault(c => c.Id == editId.Value);
+                if (combo is not null) ShowEdit(combo);
+            }
+            else if (cloneId.HasValue)
+            {
+                var combo = combos.FirstOrDefault(c => c.Id == cloneId.Value);
+                if (combo is not null) ShowCreateSimilar(combo);
+            }
+        }
+        catch { }
     }
 
     private async Task Load()

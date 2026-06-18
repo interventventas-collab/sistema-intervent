@@ -4,6 +4,7 @@
 @inject ToastService ToastService
 @inject IJSRuntime JS
 @inject HttpClient Http
+@inject NavigationManager Navigation
 
 <style>
     .cli-pick-row:hover { background: #f0f9ff; }
@@ -20,6 +21,12 @@
                 <option value="">Todas las categorías</option>
                 <option value="CAFE">☕ Café</option>
                 <option value="OTROS">📦 Otros / insumos</option>
+            </select>
+            @* 2026-06-18: filtro tipo — Simples vs Compuestos. Default Todos. *@
+            <select class="form-input" style="max-width: 180px; font-size: 0.85rem;" @bind="filtroTipo">
+                <option value="">Todos los tipos</option>
+                <option value="SIMPLE">🟢 Simples</option>
+                <option value="COMPUESTO">🟣 Compuestos</option>
             </select>
             <select class="form-input" style="max-width: 180px; font-size: 0.85rem;" @bind="filtroMarca">
                 <option value="">Todas las marcas</option>
@@ -148,7 +155,14 @@
                                     }
                                 </td>
                                 <td>
-                                    @if (modoEdicion)
+                                    @* 2026-06-18: chip de tipo arriba del nombre — distingue Simple vs Compuesto a primera vista *@
+                                    @if (p.EsCompuestoFake)
+                                    {
+                                        <div style="margin-bottom:0.2rem;">
+                                            <span style="display:inline-block; padding:0.1rem 0.45rem; background:#EEEDFE; color:#3C3489; border:1px solid #7F77DD; border-radius:999px; font-size:0.65rem; font-weight:800; letter-spacing:0.02em;" title="Producto compuesto — se arma con varias piezas">🟣 COMPUESTO</span>
+                                        </div>
+                                    }
+                                    @if (modoEdicion && !p.EsCompuestoFake)
                                     {
                                         <input class="form-input" style="font-size:0.85rem;"
                                                value="@p.Nombre"
@@ -1278,6 +1292,8 @@
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
     private string filtroCategoria = "";
+    // 2026-06-18: filtro de tipo — "", "SIMPLE", "COMPUESTO"
+    private string filtroTipo = "";
     private string filtroMarca = "";
     private string filtroTexto = "";
     // 2026-06-15: filtro "solo con reserva" (ventas MeLi pendientes de despacho)
@@ -1444,6 +1460,11 @@
             // 2026-06-15: filtro solo con reserva (ventas MeLi pendientes de despacho)
             if (soloConReserva)
                 q = q.Where(p => reservasPorProducto.TryGetValue(p.Id, out var r) && r > 0);
+            // 2026-06-18: filtro de tipo (Simple vs Compuesto)
+            if (filtroTipo == "SIMPLE")
+                q = q.Where(p => !p.EsCompuestoFake);
+            else if (filtroTipo == "COMPUESTO")
+                q = q.Where(p => p.EsCompuestoFake);
             return q.ToList();
         }
     }
@@ -1689,7 +1710,32 @@
         try
         {
             var cat = string.IsNullOrEmpty(filtroCategoria) ? null : filtroCategoria;
-            productos = await Api.GetCafeProductosAsync(cat) ?? new();
+            // 2026-06-18: cargo productos + compuestos en paralelo. Los compuestos son combos con EsCompuesto=1
+            // (tachos armados, sets, etc.). Los muestro mezclados con un chip violeta para distinguir.
+            var productosTask = Api.GetCafeProductosAsync(cat);
+            var combosTask = Api.GetCafeCombosAsync();
+            await Task.WhenAll(productosTask, combosTask);
+            productos = (await productosTask) ?? new();
+            var todosCombos = (await combosTask) ?? new();
+            // Solo agrego los COMPUESTOS (EsCompuesto=true), no los Combos MeLi (EsCompuesto=false)
+            var compuestos = todosCombos.Where(c => c.EsCompuesto).Select(c => new CafeProductoDto
+            {
+                Id = c.Id,
+                Sku = c.Sku,
+                Nombre = c.Nombre,
+                Categoria = "COMPUESTO",
+                Marca = null,
+                IsActive = c.IsActive,
+                EsCompuestoFake = true,
+                PrecioReferenciaCompuesto = c.PreviewPrecioOtro,
+                PrecioOtro = c.PreviewPrecioOtro,
+                PrecioBar = c.PreviewPrecioBar,
+                Pvp1 = c.PreviewPrecioBar,
+                Pvp2 = c.PreviewPrecioOtro,
+                IvaPct = 21m,
+                CreatedAt = c.CreatedAt,
+            }).ToList();
+            productos.AddRange(compuestos);
         }
         catch { ToastService.Error("Error al cargar productos"); productos = new(); }
         loading = false;
@@ -1838,6 +1884,8 @@
 
     private void ShowEdit(CafeProductoDto p)
     {
+        // 2026-06-18: si es compuesto, redirigir a /cafe/combos?edit={id} (vive en otra tabla).
+        if (p.EsCompuestoFake) { Navigation.NavigateTo($"/cafe/combos?edit={p.Id}"); return; }
         isEditing = true; editingId = p.Id;
         stockDetail = null;
         _ = LoadStockDetail(p.Id); // fire-and-forget: carga el panel mientras se renderiza el modal
@@ -1908,6 +1956,8 @@
     /// NO copia linkeo MeLi: el producto nuevo arranca sin publicaciones vinculadas.</summary>
     private void ShowCreateSimilar(CafeProductoDto p)
     {
+        // 2026-06-18: si es compuesto, redirigir a /cafe/combos?clone={id} (el modal de combos sabe duplicarlo).
+        if (p.EsCompuestoFake) { Navigation.NavigateTo($"/cafe/combos?clone={p.Id}"); return; }
         // Arrancamos en modo creacion
         isEditing = false; editingId = null;
         stockDetail = null;
