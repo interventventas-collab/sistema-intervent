@@ -3596,9 +3596,12 @@
                 }
                 else // UNIT
                 {
-                    precioUnit = p.PrecioEfectivoConIva
-                                 ?? (esBar ? (p.PrecioBar ?? p.PrecioOtro ?? 0m)
-                                           : (p.PrecioOtro ?? p.PrecioBar ?? 0m));
+                    // 2026-06-18: respetar BAR/Comercial sin IVA, igual que el carrito.
+                    // Antes priorizaba PrecioEfectivoConIva que SIEMPRE usa PrecioOtro+IVA, ignorando si era BAR.
+                    // Ejemplo: ABE-MER-FRU PrecioBar=12000 / PrecioOtro=14000 mostraba 16940 (14000*1.21) en preview
+                    // pero al agregar al carrito quedaba en 12000. Discrepancia del 41% para clientes BAR.
+                    precioUnit = esBar ? (p.PrecioBar ?? p.PrecioOtro ?? 0m)
+                                       : (p.PrecioOtro ?? p.PrecioBar ?? 0m);
                 }
             }
             return precioUnit * addCantidad;
