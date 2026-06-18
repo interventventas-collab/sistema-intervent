@@ -30,6 +30,11 @@
                     @onclick="() => modoEdicion = !modoEdicion" title="Edicion rapida del nombre">
                 @(modoEdicion ? "🔓 Edicion ON" : "🔒 Edicion OFF")
             </button>
+            <button class="btn" style="background:#7c3aed; color:white; border:none;"
+                    @onclick="ConfirmarReclasificar" disabled="@reclasificando"
+                    title="Aplica una regla refinada para detectar productos compuestos reales y degrada los falsos positivos a Combos MeLi">
+                @(reclasificando ? "Reclasificando..." : "🔧 Reclasificar automático")
+            </button>
             <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo Combo</button>
         </div>
     </div>
@@ -59,7 +64,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var c in CombosVisibles)
+                        @foreach (var c in CombosVisibles.Skip((paginaActual - 1) * pageSize).Take(pageSize))
                         {
                             <tr>
                                 <td>
@@ -109,6 +114,12 @@
                                     </span>
                                 </td>
                                 <td class="actions-cell">
+                                    @* 2026-06-18: toggle rapido Compuesto <-> Combo MeLi sin abrir modal *@
+                                    <button class="btn-icon" style="color:@(c.EsCompuesto ? "#7c3aed" : "#BA7517");"
+                                            @onclick="() => ToggleEsCompuesto(c)"
+                                            title="@(c.EsCompuesto ? "Es Compuesto — click para pasarlo a Combo MeLi" : "Es Combo MeLi — click para pasarlo a Compuesto")">
+                                        @(c.EsCompuesto ? "🟣" : "🟠")
+                                    </button>
                                     <button class="btn-icon btn-edit" @onclick="() => ShowEdit(c)" title="Editar">✎</button>
                                     <button class="btn-icon" style="color:#7c3aed;" @onclick="() => ShowCreateSimilar(c)" title="Crear similar (duplica este combo y le cambiás los componentes)">📋</button>
                                     <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(c)" title="Eliminar">🗑</button>
@@ -117,10 +128,71 @@
                         }
                     </tbody>
                 </table>
+                @* 2026-06-18: paginacion client-side. Items por pagina = 100 *@
+                @if (CombosVisibles.Count > pageSize)
+                {
+                    <div style="display:flex; align-items:center; justify-content:space-between; padding: 0.7rem 1rem; border-top: 1px solid #e5e7eb; font-size: 0.85rem;">
+                        <span style="color:#6b7280;">
+                            Mostrando @((paginaActual - 1) * pageSize + 1) - @(Math.Min(paginaActual * pageSize, CombosVisibles.Count)) de @CombosVisibles.Count
+                        </span>
+                        <div style="display:flex; gap:0.4rem; align-items:center;">
+                            <button class="btn btn-secondary" disabled="@(paginaActual <= 1)" @onclick="() => paginaActual = 1" title="Primera">«</button>
+                            <button class="btn btn-secondary" disabled="@(paginaActual <= 1)" @onclick="() => paginaActual--" title="Anterior">‹</button>
+                            <span style="font-weight: 700;">Página @paginaActual / @TotalPaginas</span>
+                            <button class="btn btn-secondary" disabled="@(paginaActual >= TotalPaginas)" @onclick="() => paginaActual++" title="Siguiente">›</button>
+                            <button class="btn btn-secondary" disabled="@(paginaActual >= TotalPaginas)" @onclick="() => paginaActual = TotalPaginas" title="Última">»</button>
+                        </div>
+                    </div>
+                }
             </div>
         }
     </div>
 </div>
+
+@if (mostrarConfirmReclasif)
+{
+    <div class="modal-overlay" @onclick="() => mostrarConfirmReclasif = false">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 540px;">
+            <div class="modal-header" style="background:#7c3aed; color:white;">
+                <h3 style="margin:0;">🔧 Reclasificar automático</h3>
+                <button class="btn-close" style="color:white;" @onclick="() => mostrarConfirmReclasif = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Voy a aplicar la regla refinada sobre todos los combos marcados como <strong>Compuestos</strong>:</p>
+                <ol style="font-size:0.88rem; color:#374151; padding-left:1.2rem;">
+                    <li>Todos los componentes tienen <strong>cantidad = 1</strong></li>
+                    <li>Ningún componente es a su vez otro combo</li>
+                    <li>Los componentes son productos <strong>distintos</strong> (no es combo de variantes)</li>
+                </ol>
+                <p style="font-size:0.88rem; color:#6b7280;">
+                    Los que <strong>no cumplan</strong> pasan a Combo MeLi automáticamente. Podés revertir cualquiera individualmente con el botón 🟣/🟠 de cada fila.
+                </p>
+                @if (reclasifResult is not null)
+                {
+                    <div style="background:#f3f4f6; padding:0.8rem; border-radius:6px; margin-top:0.6rem; font-size:0.85rem;">
+                        <div style="font-weight:700; margin-bottom:0.3rem;">✅ Listo:</div>
+                        <div>Procesados: <strong>@reclasifResult.Total</strong></div>
+                        <div style="color:#7c3aed;">🟣 Quedaron compuestos: <strong>@reclasifResult.QuedaronCompuestos</strong></div>
+                        <div style="color:#BA7517;">🟠 Pasaron a Combo MeLi: <strong>@reclasifResult.PasaronACombo</strong></div>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                @if (reclasifResult is null)
+                {
+                    <button class="btn btn-secondary" @onclick="() => mostrarConfirmReclasif = false" disabled="@reclasificando">Cancelar</button>
+                    <button class="btn" style="background:#7c3aed; color:white;" @onclick="EjecutarReclasificar" disabled="@reclasificando">
+                        @(reclasificando ? "Procesando..." : "🔧 Aplicar regla")
+                    </button>
+                }
+                else
+                {
+                    <button class="btn btn-primary" @onclick="() => { mostrarConfirmReclasif = false; reclasifResult = null; }">Cerrar</button>
+                }
+            </div>
+        </div>
+    </div>
+}
 
 @if (showForm)
 {
@@ -371,6 +443,44 @@
 
     // 2026-06-18: filtro de tipo — "MELI" (default), "COMPUESTO", "" (todos)
     private string filtroTipo = "MELI";
+    // 2026-06-18: paginacion + reclasificacion
+    private int paginaActual = 1;
+    private const int pageSize = 100;
+    private int TotalPaginas => Math.Max(1, (int)Math.Ceiling(CombosVisibles.Count / (double)pageSize));
+    private bool mostrarConfirmReclasif = false;
+    private bool reclasificando = false;
+    private ApiClient.ReclasificarComboResult? reclasifResult = null;
+
+    private async Task ToggleEsCompuesto(CafeComboDto c)
+    {
+        var nuevoValor = !c.EsCompuesto;
+        var ok = await Api.SetEsCompuestoAsync(c.Id, nuevoValor);
+        if (!ok) { ToastService.Error("No se pudo cambiar el tipo"); return; }
+        c.EsCompuesto = nuevoValor;
+        ToastService.Success(nuevoValor ? $"{c.Sku} es ahora 🟣 Compuesto" : $"{c.Sku} es ahora 🟠 Combo MeLi");
+        StateHasChanged();
+    }
+
+    private void ConfirmarReclasificar()
+    {
+        mostrarConfirmReclasif = true;
+        reclasifResult = null;
+    }
+
+    private async Task EjecutarReclasificar()
+    {
+        reclasificando = true;
+        try
+        {
+            var r = await Api.ReclasificarCombosAutomaticoAsync();
+            if (r is null) { ToastService.Error("No se pudo reclasificar"); return; }
+            reclasifResult = r;
+            ToastService.Success($"✅ {r.PasaronACombo} combos degradados, {r.QuedaronCompuestos} quedaron como Compuestos");
+            await Load();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { reclasificando = false; }
+    }
 
     private List<CafeComboDto> CombosVisibles
     {

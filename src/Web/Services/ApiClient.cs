@@ -1655,6 +1655,18 @@ public class ApiClient
         return await GetAsync<List<CafeComboDto>>(url);
     }
 
+    // 2026-06-18: toggle individual de EsCompuesto (Compuesto <-> Combo MeLi) sin reenviar items.
+    public async Task<bool> SetEsCompuestoAsync(int comboId, bool esCompuesto)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PatchAsJsonAsync($"/api/cafe/combos/{comboId}/es-compuesto", new { EsCompuesto = esCompuesto });
+        return resp.IsSuccessStatusCode;
+    }
+
+    public record ReclasificarComboResult(int Total, int QuedaronCompuestos, int PasaronACombo, List<string> SkusDegradados);
+    public async Task<ReclasificarComboResult?> ReclasificarCombosAutomaticoAsync()
+        => await PostAsync<ReclasificarComboResult>("/api/cafe/combos/reclasificar-automatico", new { });
+
     public async Task<CafeComboDto?> GetCafeComboAsync(int id)
         => await GetAsync<CafeComboDto>($"/api/cafe/combos/{id}");
 

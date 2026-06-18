@@ -129,6 +129,86 @@ public class CafeCombosController : ControllerBase
         return Ok(new { id, esCompuesto = combo.EsCompuesto });
     }
 
+    /// <summary>2026-06-18 — Reclasifica TODOS los combos EsCompuesto=1 segun la regla refinada
+    /// definida con el usuario. Es Compuesto solo si:
+    ///   (a) Todos los componentes tienen cantidad = 1
+    ///   (b) Ningun componente es a su vez un combo (su SKU existe en Cafe_Combos)
+    ///   (c) Los nombres normalizados de los componentes NO son todos iguales (no es combo de variantes)
+    /// Los que no cumplen pasan a EsCompuesto=0 (combo MeLi). Devuelve el resumen con cantidades y
+    /// la lista de SKUs degradados para auditoría.</summary>
+    public record ReclasificarResult(int Total, int QuedaronCompuestos, int PasaronACombo, List<string> SkusDegradados);
+
+    [HttpPost("reclasificar-automatico")]
+    public async Task<IActionResult> ReclasificarAutomatico()
+    {
+        // 1. Cargar todos los combos EsCompuesto=1 con sus items y productos
+        var compuestosActuales = await _db.CafeCombos
+            .Include(c => c.Items).ThenInclude(i => i.ProductoNav)
+            .Where(c => c.EsCompuesto)
+            .ToListAsync();
+
+        // 2. Pre-calcular: set de SKUs que existen como combo (para condicion b)
+        var skusQueSonCombos = (await _db.CafeCombos
+            .Where(c => c.Sku != null)
+            .Select(c => c.Sku!)
+            .ToListAsync()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var degradados = new List<string>();
+        int quedan = 0;
+
+        foreach (var c in compuestosActuales)
+        {
+            var esCompuestoReal = EsCompuestoSegunRegla(c, skusQueSonCombos);
+            if (!esCompuestoReal)
+            {
+                c.EsCompuesto = false;
+                c.UpdatedAt = DateTime.UtcNow;
+                degradados.Add(c.Sku ?? $"#{c.Id}");
+            }
+            else
+            {
+                quedan++;
+            }
+        }
+        await _db.SaveChangesAsync();
+        return Ok(new ReclasificarResult(
+            Total: compuestosActuales.Count,
+            QuedaronCompuestos: quedan,
+            PasaronACombo: degradados.Count,
+            SkusDegradados: degradados));
+    }
+
+    /// <summary>2026-06-18 — Regla refinada para detectar producto compuesto.</summary>
+    private static bool EsCompuestoSegunRegla(CafeCombo c, HashSet<string> skusQueSonCombos)
+    {
+        if (c.Items.Count == 0) return false;
+        // (a) Todos cantidad = 1
+        if (c.Items.Any(i => i.Cantidad > 1)) return false;
+        // (b) Ningun componente es otro combo
+        foreach (var i in c.Items)
+        {
+            var sku = i.ProductoNav?.Sku;
+            if (!string.IsNullOrEmpty(sku) && skusQueSonCombos.Contains(sku)) return false;
+        }
+        // (c) Los nombres base de los componentes NO son todos iguales
+        if (c.Items.Count >= 2)
+        {
+            var nombresBase = c.Items
+                .Select(i => NormalizarNombreBase(i.ProductoNav?.Nombre))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (nombresBase.Count == 1) return false;  // todos comparten el mismo nombre base → combo de variantes
+        }
+        return true;
+    }
+
+    private static string NormalizarNombreBase(string? nombre)
+    {
+        if (string.IsNullOrWhiteSpace(nombre)) return "";
+        var n = nombre.Trim().ToUpperInvariant();
+        return n.Length > 20 ? n.Substring(0, 20) : n;
+    }
+
     // ============================================================
     // Helpers
     // ============================================================
