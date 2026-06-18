@@ -2605,6 +2605,16 @@ public class CafeVentasController : ControllerBase
             if (firstMeliId == null) continue;
             if (compsByMeliId.TryGetValue(firstMeliId, out var compsList) && compsList.Count > 0)
             {
+                // 2026-06-18: ignorar autoreferencias triviales — si la unica composicion es el propio
+                // producto con Cantidad=1, eso NO es un combo armable, es un producto suelto linkeado
+                // a MeLi. Crearia un loop logico ("para vender X, armarlo a partir de X").
+                // Bug detectado en prod (18/06): 2987 productos sueltos no se podian vender por este motivo.
+                if (compsList.Count == 1
+                    && compsList[0].CafeProductoId == prodGroup.Key
+                    && compsList[0].Cantidad == 1m)
+                {
+                    continue;
+                }
                 dict[prodGroup.Key] = compsList.Select(c => (c.CafeProductoId, c.Cantidad)).ToList();
             }
         }
