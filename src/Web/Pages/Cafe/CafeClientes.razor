@@ -639,6 +639,34 @@
         // Cargar provincias para el datalist (una sola vez por sesion, esta cacheado en CpService)
         provincias = await CpService.GetProvinciasAsync();
         await Load();
+
+        // 2026-06-18: si vinimos como popup desde Nueva Venta con ?edit={id} o ?new={nombre},
+        // auto-abrir el modal correspondiente. Al guardar, el postMessage avisa a la venta.
+        try
+        {
+            var uri = new Uri(Nav.Uri);
+            var qs = (uri.Query ?? "").TrimStart('?');
+            string? editStr = null, newStr = null;
+            foreach (var kv in qs.Split('&', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var eq = kv.IndexOf('=');
+                var k = eq >= 0 ? kv.Substring(0, eq) : kv;
+                var v = eq >= 0 ? Uri.UnescapeDataString(kv.Substring(eq + 1)) : "";
+                if (k == "edit") editStr = v;
+                else if (k == "new") newStr = v;
+            }
+            if (!string.IsNullOrEmpty(editStr) && int.TryParse(editStr, out var editId) && editId > 0)
+            {
+                var ci = clientes.FirstOrDefault(c => c.Id == editId);
+                if (ci is not null) await ShowEdit(ci);
+            }
+            else if (newStr is not null)
+            {
+                await ShowCreate();
+                formNombre = newStr.Trim();
+            }
+        }
+        catch { /* sin query params, comportamiento normal */ }
     }
 
     private async Task Load()
@@ -775,6 +803,7 @@
         formError = null;
         if (string.IsNullOrWhiteSpace(formNombre)) { formError = "El nombre es obligatorio"; return; }
         saving = true;
+        int? idGuardado = null;
         try
         {
             if (isEditing && editingId.HasValue)
@@ -794,6 +823,7 @@
                     ClearMapeoLink = string.IsNullOrEmpty(mapeoLinkClean)
                 });
                 if (u is null) { formError = "No se pudo actualizar"; return; }
+                idGuardado = u.Id;
                 ToastService.Success("Cliente actualizado");
             }
             else
@@ -812,6 +842,7 @@
                     CodigoInterno = formCodigoInterno
                 });
                 if (c is null) { formError = "No se pudo crear"; return; }
+                idGuardado = c.Id;
                 // 2026-05-28: si crearon con "Mini impresora" tildado, hacemos un update inmediato
                 // (no esta en el CreateRequest porque es un flag opcional).
                 if (formTieneMiniImpresora)
@@ -834,6 +865,20 @@
             }
             showForm = false;
             await Load();
+            // 2026-06-18: si vinimos como popup desde Nueva Venta, avisar al opener y cerrar la ventana.
+            if (idGuardado.HasValue)
+            {
+                try
+                {
+                    await JS.InvokeVoidAsync("eval", $@"
+                        if (window.opener && !window.opener.closed) {{
+                            window.opener.postMessage({{type:'cafe-cliente-guardado', id:{idGuardado.Value}}}, '*');
+                            setTimeout(function() {{ window.close(); }}, 200);
+                        }}
+                    ");
+                }
+                catch { }
+            }
         }
         catch (Exception ex) { formError = ex.Message; }
         finally { saving = false; }
