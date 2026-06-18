@@ -83,6 +83,7 @@
                                 </td>
                                 <td class="actions-cell">
                                     <button class="btn-icon btn-edit" @onclick="() => ShowEdit(c)" title="Editar">✎</button>
+                                    <button class="btn-icon" style="color:#7c3aed;" @onclick="() => ShowCreateSimilar(c)" title="Crear similar (duplica este combo y le cambiás los componentes)">📋</button>
                                     <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(c)" title="Eliminar">🗑</button>
                                 </td>
                             </tr>
@@ -411,6 +412,31 @@
         formNombre = c.Nombre;
         formDescripcion = c.Descripcion ?? "";
         formIsActive = c.IsActive;
+        formItems = c.Items.OrderBy(i => i.SortOrder).Select(i => new CafeComboItemRequest
+        {
+            ProductoId = i.ProductoId,
+            Formato = i.Formato,
+            Cantidad = i.Cantidad,
+            Molienda = i.Molienda,
+            EsDoyPack = i.EsDoyPack,
+            SortOrder = i.SortOrder
+        }).ToList();
+        addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
+        productoSearch = ""; productoSearchOpen = false;
+        formError = null;
+        showForm = true;
+    }
+
+    /// <summary>2026-06-18 — Abre el modal Nuevo Combo pre-cargado con los datos del combo base.
+    /// Copia: nombre (lo cambias vos), descripcion, items (componentes). NO copia: SKU (se setea aparte).
+    /// Util para crear variantes de color rapido: clickeas C926NEG → cambias 2 items → guardas C1925NEG.</summary>
+    private void ShowCreateSimilar(CafeComboDto c)
+    {
+        editing = null;  // modo CREATE
+        formNombre = c.Nombre;
+        formDescripcion = c.Descripcion ?? "";
+        formIsActive = true;
+        // Items: copiamos la composicion para que el operador solo tenga que reemplazar el color
         formItems = c.Items.OrderBy(i => i.SortOrder).Select(i => new CafeComboItemRequest
         {
             ProductoId = i.ProductoId,

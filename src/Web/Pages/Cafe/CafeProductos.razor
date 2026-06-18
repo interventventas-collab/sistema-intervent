@@ -339,6 +339,7 @@
                                 </td>
                                 <td class="actions-cell">
                                     <button class="btn-icon btn-edit" @onclick="() => ShowEdit(p)" title="Editar">@SvgIcons.Edit</button>
+                                    <button class="btn-icon" style="color:#7c3aed;" @onclick="() => ShowCreateSimilar(p)" title="Crear similar (duplica este producto con SKU+stock vacíos)">📋</button>
                                     @if (esCafe)
                                     {
                                         <button class="btn-icon" style="color:#1d4ed8;" @onclick="() => ShowMeliSync(p)" title="Sincronizar a MercadoLibre">📤</button>
@@ -1898,6 +1899,60 @@
         formStockMinimoMeli = p.StockMinimoMeLi;
         formStockKg = Math.Round(p.StockGramos / 1000m, 3, MidpointRounding.AwayFromZero);
         formNotas = p.Notas ?? ""; formIsActive = p.IsActive;
+        formError = null; showForm = true;
+    }
+
+    /// <summary>2026-06-18 — Abre el modal Nuevo Producto pre-cargado con los datos del producto base.
+    /// SKU vacio + stock 0 + reservas 0 (el resto se copia: nombre, marca, OEM, costo, PVPs, packs, etc).
+    /// Util para crear variantes de color rapido: clickeas en C7000NEG → cambias nombre/SKU → guardas C7000BEI.
+    /// NO copia linkeo MeLi: el producto nuevo arranca sin publicaciones vinculadas.</summary>
+    private void ShowCreateSimilar(CafeProductoDto p)
+    {
+        // Arrancamos en modo creacion
+        isEditing = false; editingId = null;
+        stockDetail = null;
+        // Copiamos el grueso del producto base
+        formNombre = p.Nombre;
+        formSku = "";                    // SKU vacio: lo escribe el operador
+        formBarcode = "";                // Codigo de barras vacio: cada variante tiene el suyo
+        formCategoria = p.Categoria;
+        formMarca = p.Marca ?? "";
+        formCosto = p.Costo;
+        formPvp1 = p.Pvp1; formPvp2 = p.Pvp2;
+        formIvaPctStr = p.IvaPct == 10.5m ? "10.5" : "21";
+        formBarPct = p.BarPctSobreCosto;
+        formPrecioOtro = p.PrecioOtro ?? p.Pvp2 ?? p.Pvp1;
+        formPrecioBar = p.PrecioBar;
+        formSinPrecioBar = p.SinPrecioBar;
+        formMargenBar = formPrecioBar.HasValue && p.Costo > 0
+            ? Math.Round((formPrecioBar.Value / p.Costo - 1m) * 100m, 2, MidpointRounding.AwayFromZero) : (decimal?)null;
+        formMargenOtro = formPrecioOtro.HasValue && p.Costo > 0
+            ? Math.Round((formPrecioOtro.Value / p.Costo - 1m) * 100m, 2, MidpointRounding.AwayFromZero) : (decimal?)null;
+        // Precios futuros: no se copian (cada variante puede tener su propia ramp-up)
+        mostrarPreciosFuturos = false;
+        formFechaAplicaPreciosFuturos = null;
+        formPrecioPorKgFuturo = null; formPrecioBarFuturo = null; formPrecioOtroFuturo = null;
+        formPrecioBultoFuturo = null; formPrecioBultoOtroFuturo = null;
+        formUxB = p.UxB;
+        formPrecioBulto = p.PrecioBulto;
+        formPrecioBultoOtro = p.PrecioBultoOtro;
+        // Packs: copiamos el patron (cantidad + override) pero sin Id (son packs nuevos)
+        formPacks = p.Packs?
+            .OrderBy(pk => pk.SortOrder).ThenBy(pk => pk.Cantidad)
+            .Select(pk => new PackEditor
+            {
+                Id = 0,
+                Cantidad = pk.Cantidad,
+                Nombre = pk.Nombre,
+                PrecioOverride = pk.PrecioOverride,
+                SortOrder = pk.SortOrder
+            }).ToList() ?? new();
+        formOemId = p.OemId ?? 0; oemSearch = ""; oemSearchOpen = false;
+        // Producto NUEVO: stock arranca en 0, reserva 1 (default seguro).
+        formStockGramos = 0; formStockUnidades = 0; formStockMinimoMeli = 1;
+        formStockKg = 0;
+        formNotas = p.Notas ?? "";
+        formIsActive = true;
         formError = null; showForm = true;
     }
 
