@@ -1156,7 +1156,7 @@
                         }
 
                         <div>
-                            <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600; text-transform: uppercase;">Entrega por</label>
+                            <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600; text-transform: uppercase;">Asignar a repartidor</label>
                             <select class="form-input" @bind="formEntregaPor" style="font-size: 0.85rem; padding: 0.3rem 0.5rem; margin-top: 0.25rem;">
                                 <option value="">— sin asignar —</option>
                                 @foreach (var nom in EntregaResponsables)
@@ -1853,8 +1853,9 @@
                 <div style="padding: 0.3rem 0; margin-bottom: 0.4rem;">
                     <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
                         <strong style="font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;">Notas internas de la venta</strong>
+                        <span style="font-size: 0.7rem; color: #c2410c; font-weight: 600;">⚠ esto se visualizará en el comprobante que recibirá el cliente</span>
                     </div>
-                    <textarea class="form-input" rows="2" @bind="formObservaciones" placeholder="Notas internas (opcional)"></textarea>
+                    <textarea class="form-input" rows="2" @bind="formObservaciones" placeholder="Esto se visualizará en el comprobante que recibirá el cliente"></textarea>
                 </div>
             </div>
             @* 2026-06-17: el bloque "Enviar al cliente al emitir" se movio al panel sticky derecho. *@
