@@ -1220,43 +1220,50 @@
                                     <span class="cost-price-label">Precio</span>
                                     <span class="cost-price-value">$ @itemCosts.Price.ToString("N2", argCulture)</span>
                                 </div>
+                                @{
+                                    // 2026-06-19: descomposicion identica al simulador de MeLi.
+                                    // El sale_fee_amount de la API incluye:
+                                    //   a) comision base MeLi (meli_percentage_fee × price)
+                                    //   b) cargo fijo (solo en productos baratos)
+                                    //   c) costo financiacion (financing_add_on_fee × price)
+                                    // MeLi UI separa (a)+(b) como "Cargo por vender" y (c) como "Costo por ofrecer cuotas".
+                                    // El total descontado es identico al que teniamos antes.
+                                    var financingEnPesos = Math.Round(itemCosts.Price * itemCosts.FinancingFee / 100m, 2);
+                                    var cargoPorVenderNeto = itemCosts.SaleFeeAmount - financingEnPesos;
+                                }
                                 <div class="cost-line-items">
                                     <div class="cost-line">
                                         <span class="cost-line-label">Cargo por vender</span>
-                                        <span class="cost-line-amount negative">-$ @((itemCosts.SaleFeeAmount - itemCosts.FixedFee).ToString("N2", argCulture))</span>
+                                        <span class="cost-line-amount negative">-$ @cargoPorVenderNeto.ToString("N2", argCulture)</span>
                                     </div>
-                                    <div class="cost-line">
-                                        <span class="cost-line-label">Costo fijo</span>
-                                        <span class="cost-line-amount negative">-$ @itemCosts.FixedFee.ToString("N2", argCulture)</span>
-                                    </div>
-                                    <div class="cost-line">
-                                        <div>
-                                            <span class="cost-line-label">Costo por ofrecer cuotas</span>
-                                            @if (itemCosts.FinancingFee == 0)
-                                            {
-                                                <div class="cost-line-sub">Sin cuotas agregadas</div>
-                                            }
-                                            else
-                                            {
-                                                <div class="cost-line-sub">@(itemCosts.FinancingFee.ToString("N1", argCulture))% del precio · ya incluido en "Cargo por vender"</div>
-                                            }
+                                    @if (itemCosts.FinancingFee > 0)
+                                    {
+                                        <div class="cost-line">
+                                            <div>
+                                                <span class="cost-line-label">Costo por ofrecer cuotas</span>
+                                                <div class="cost-line-sub">@GetCuotasLabel(selectedItem?.InstallmentTag) · @(itemCosts.FinancingFee.ToString("N1", argCulture))%</div>
+                                            </div>
+                                            <span class="cost-line-amount negative">-$ @financingEnPesos.ToString("N2", argCulture)</span>
                                         </div>
-                                        <span class="cost-line-amount" style="color:#6b7280;">
-                                            @{ var financingEnPesos = Math.Round(itemCosts.Price * itemCosts.FinancingFee / 100m, 2); }
-                                            $ @financingEnPesos.ToString("N2", argCulture)
-                                        </span>
-                                    </div>
+                                    }
                                     <div class="cost-line">
                                         <div>
                                             <span class="cost-line-label">Costo por envio</span>
-                                            <div class="cost-line-sub">Envios de Mercado Libre</div>
+                                            @if (itemCosts.ShippingCost == 0)
+                                            {
+                                                <div class="cost-line-sub">No ofreces envio gratis</div>
+                                            }
+                                            else
+                                            {
+                                                <div class="cost-line-sub">Envios de Mercado Libre</div>
+                                            }
                                         </div>
-                                        <span class="cost-line-amount negative">-$ @itemCosts.ShippingCost.ToString("N2", argCulture)</span>
+                                        <span class="cost-line-amount @(itemCosts.ShippingCost > 0 ? "negative" : "")">@(itemCosts.ShippingCost > 0 ? "-" : "")$ @itemCosts.ShippingCost.ToString("N2", argCulture)</span>
                                     </div>
                                     <div class="cost-line cost-line-tax">
                                         <div>
-                                            <span class="cost-line-label">Retenciones</span>
-                                            <div class="cost-line-sub">% sobre el precio</div>
+                                            <span class="cost-line-label">Impuestos estimados</span>
+                                            <div class="cost-line-sub">% sobre el precio · segun tu condicion fiscal</div>
                                         </div>
                                         <div class="cost-tax-input">
                                             <input type="text" class="cost-tax-field" value="@FormatTaxPct()" @oninput="OnTaxPercentageChanged" inputmode="decimal" />
