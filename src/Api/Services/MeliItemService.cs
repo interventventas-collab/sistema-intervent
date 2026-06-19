@@ -344,7 +344,17 @@ public class MeliItemService
             if (!costoBase.HasValue && it.CafeProductoId.HasValue
                 && prodsPrecio.TryGetValue(it.CafeProductoId.Value, out var ppDir))
             {
-                costoBase = ppDir.Costo;
+                // 2026-06-19: si la MLA es cafe fraccionado (sku F*.4 = cuarto, F*.2 = medio) y el
+                // producto destino es el kilo entero, aplicar factor proporcional. Mismo criterio que
+                // el UPDATE masivo en MeliItemComponentes. Sin esto, los MLAs legacy (sin componentes)
+                // mostraban costo del kilo entero ($17.500 en vez de $4.375 para F3.4).
+                decimal factor = 1m;
+                if (!string.IsNullOrEmpty(it.Sku))
+                {
+                    if (it.Sku.EndsWith(".4")) factor = 0.25m;
+                    else if (it.Sku.EndsWith(".2")) factor = 0.5m;
+                }
+                costoBase = Math.Round(ppDir.Costo * factor, 2);
             }
             if (precioBase.HasValue || costoBase.HasValue)
                 items[k] = it with { PrecioOtroConIvaCalc = precioBase ?? it.PrecioOtroConIvaCalc, ProductCost = costoBase };

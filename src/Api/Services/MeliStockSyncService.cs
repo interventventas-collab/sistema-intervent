@@ -175,7 +175,17 @@ public class MeliStockSyncService
                 else if (itemsLegacy.TryGetValue(ord.ItemId, out var mi) && mi.CafeProductoId.HasValue)
                 {
                     if (productos.TryGetValue(mi.CafeProductoId.Value, out var prod))
-                        toDiscount = new() { (prod, 1m, mi.CafeFormato) };
+                    {
+                        // 2026-06-19: cafe fraccionado en path legacy. Si el SKU de la MLA termina
+                        // en .4 (cuarto) o .2 (medio), descontar la fraccion proporcional del kilo.
+                        decimal cant = 1m;
+                        if (!string.IsNullOrEmpty(mi.Sku))
+                        {
+                            if (mi.Sku.EndsWith(".4")) cant = 0.25m;
+                            else if (mi.Sku.EndsWith(".2")) cant = 0.5m;
+                        }
+                        toDiscount = new() { (prod, cant, mi.CafeFormato) };
+                    }
                 }
 
                 if (toDiscount is null || toDiscount.Count == 0)
