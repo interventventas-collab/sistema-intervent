@@ -14,6 +14,13 @@
         <button class="btn btn-secondary" @onclick='() => Nav.NavigateTo("/publicaciones/auditoria")' title="Comparar lista de MLAs entre MeLi y el sistema">
             <i class="fa-solid fa-magnifying-glass"></i> Auditar vs MeLi
         </button>
+        @* 2026-06-19: Refrescar comisiones reales de MeLi via API listing_prices.
+           Tarda 10-15 min en background. Despues los netos del listado coinciden al peso con MeLi. *@
+        <button class="btn" style="background:#7c3aed; color:white; font-weight:700;"
+                @onclick="RefrescarComisionesMeLi" disabled="@refrescandoComisiones"
+                title="Trae la comision REAL que MeLi cobra por cada publicacion via su API. Reemplaza el calculo estimado (-32%) por el numero exacto. Tarda 10-15 min para 3650 publicaciones. Una vez cacheado, el listado muestra netos exactos.">
+            @if (refrescandoComisiones) { <span>⏳ Refrescando...</span> } else { <span>💰 Refrescar comisiones MeLi</span> }
+        </button>
         @* 2026-06-01: Boton de push masivo agresivo. Pushea stock a TODAS las publicaciones con SyncStock=ON.
            Confirma 2 veces antes de ejecutar. Resultado vuelve a las tablas MeliPushSnapshot_*_pre/post para cotejo. *@
         <button class="btn" style="background:#dc2626; color:white; font-weight:700; border:2px solid #991b1b;"
@@ -3071,6 +3078,8 @@
     private bool isSyncing;
     // 2026-06-01: estado del push masivo agresivo (boton rojo)
     private bool pushMasivoEnCurso;
+    // 2026-06-19: estado del refresco de comisiones MeLi
+    private bool refrescandoComisiones;
     private int totalItems;
     private List<MeliItemDto>? _cachedFiltered;
     private bool _filterDirty = true;
@@ -3445,6 +3454,34 @@
             // No volvemos a false: el background corre 30 min, el boton queda deshabilitado hasta que reload de pantalla
             // (es a proposito — evitar doble click).
         }
+    }
+
+    /// <summary>2026-06-19: dispara el refresco masivo de sale_fee real para todas las publicaciones activas.
+    /// El backend procesa en background ~10-15 min. Una vez termina, los netos del listado coinciden al peso con MeLi.</summary>
+    private async Task RefrescarComisionesMeLi()
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            "💰 ¿Refrescar las comisiones REALES de MeLi para TODAS las publicaciones activas?\n\n" +
+            "Esto va a consultar a MeLi una por una (~3650 publicaciones) y guardar la comision exacta.\n" +
+            "Tarda 10-15 minutos en segundo plano.\n\n" +
+            "Una vez terminado, los netos del listado van a coincidir al peso con lo que MeLi te muestra.");
+        if (!ok) return;
+
+        refrescandoComisiones = true;
+        StateHasChanged();
+        try
+        {
+            var success = await Api.RefreshMeliItemsSaleFeeBulkAsync();
+            if (success)
+                ToastService.Success("💰 Refresco lanzado en background. Tarda 10-15 min. Cuando termine, recargá esta pantalla y los netos van a ser exactos.");
+            else
+                ToastService.Error("Error al lanzar el refresco. Revisar logs del API.");
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error: " + ex.Message);
+        }
+        // No volvemos a false: el background corre 15 min, queda deshabilitado hasta reload.
     }
 
     private async Task SyncItems(string? status, int? accountId)
@@ -5784,6 +5821,18 @@
 
     private static decimal CalcularNetoMla(MeliItemDto v)
     {
+        // 2026-06-19: si tenemos sale_fee real de la API de MeLi (cacheado) y el precio
+        // no se movio mucho desde que se calculo, usamos eso — es la verdad oficial.
+        // Sino, fallback a la formula estimada (comision % + cargo fijo).
+        if (v.SaleFeeAmountReal.HasValue && v.SaleFeeAmountReal.Value > 0
+            && v.SaleFeePriceSnapshot.HasValue
+            && Math.Abs(v.Price - v.SaleFeePriceSnapshot.Value) / Math.Max(v.Price, 1m) < 0.05m)
+        {
+            // Aplicamos el sale_fee REAL. El shipping del vendedor (envio gratis) ya esta
+            // dentro del sale_fee en la API listing_prices, asi que NO se vuelve a restar.
+            return Math.Round(v.Price - v.SaleFeeAmountReal.Value, 0);
+        }
+        // Fallback: formula vieja (estimacion).
         var totalPct = CalcularComisionTotalPct(v.InstallmentTag);
         var comision = Math.Round(v.Price * totalPct / 100m, 2);
         var cargoFijo = GetCargoFijoMla(v.Price);

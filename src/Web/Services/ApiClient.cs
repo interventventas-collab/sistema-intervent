@@ -135,6 +135,19 @@ public class ApiClient
         return await GetAsync<MeliItemDetailsDto>($"/api/meli/items/{meliItemId}/details");
     }
 
+    // --- 2026-06-19: Refresco de sale_fee real (comision MeLi) ---
+    public async Task<bool> RefreshMeliItemSaleFeeAsync(string meliItemId)
+    {
+        var resp = await _http.PostAsync($"/api/meli/items/{meliItemId}/refresh-salefee", null);
+        return resp.IsSuccessStatusCode;
+    }
+
+    public async Task<bool> RefreshMeliItemsSaleFeeBulkAsync()
+    {
+        var resp = await _http.PostAsync("/api/meli/items/refresh-salefee-bulk", null);
+        return resp.IsSuccessStatusCode;
+    }
+
         // --- Item-Product Linking ---
     public async Task<MeliItemDto?> LinkItemToProductAsync(string meliItemId, int productId)
     {

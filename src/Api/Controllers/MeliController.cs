@@ -783,6 +783,45 @@ public class MeliController : ControllerBase
         return Ok(details);
     }
 
+    /// <summary>2026-06-19: refresca el sale_fee real (lo que MeLi cobra de comision)
+    /// para una publicacion. Llama a /sites/MLA/listing_prices y guarda en MeliItems.</summary>
+    [HttpPost("items/{meliItemId}/refresh-salefee")]
+    public async Task<IActionResult> RefreshSaleFee(string meliItemId)
+    {
+        var ok = await _itemService.RefreshSaleFeeAsync(meliItemId);
+        if (!ok) return BadRequest(new { error = "No se pudo refrescar el sale_fee. Verificá que el item exista y la cuenta MeLi tenga token valido." });
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>2026-06-19: refresca sale_fee de TODAS las publicaciones activas. Dispara
+    /// en background y devuelve inmediatamente. Llama 1 API por item — para 5000 items
+    /// puede tardar 10-15 min. Reportar progreso por logs.</summary>
+    [HttpPost("items/refresh-salefee-bulk")]
+    public IActionResult RefreshSaleFeeBulk()
+    {
+        var scope = HttpContext.RequestServices.GetRequiredService<IServiceScopeFactory>();
+        _ = Task.Run(async () =>
+        {
+            using var s = scope.CreateScope();
+            var db = s.ServiceProvider.GetRequiredService<Api.Data.AppDbContext>();
+            var svc = s.ServiceProvider.GetRequiredService<Api.Services.MeliItemService>();
+            var ids = await db.Set<Api.Models.MeliItem>()
+                .Where(i => i.Status == "active")
+                .Select(i => i.MeliItemId!)
+                .ToListAsync();
+            int ok = 0, fail = 0;
+            foreach (var id in ids)
+            {
+                try { if (await svc.RefreshSaleFeeAsync(id)) ok++; else fail++; }
+                catch { fail++; }
+                if ((ok + fail) % 50 == 0)
+                    Console.WriteLine($"[sale-fee-bulk] progreso {ok + fail}/{ids.Count} (ok={ok}, fail={fail})");
+            }
+            Console.WriteLine($"[sale-fee-bulk] FIN ok={ok} fail={fail} total={ids.Count}");
+        });
+        return Ok(new { ok = true, msg = "Refresco masivo disparado en background. Ver logs del API para progreso." });
+    }
+
         [HttpPut("items/{meliItemId}/link")]
     public async Task<IActionResult> LinkItemToProduct(string meliItemId, [FromBody] LinkItemToProductRequest request)
     {

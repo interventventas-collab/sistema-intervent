@@ -81,6 +81,14 @@ public class MeliItemDto
     /// <summary>2026-06-12: true si la publicación es de catálogo (catalog_listing en MeLi).
     /// El precio puede cambiar solo según la competencia — se resalta en amarillo en /publicaciones.</summary>
     public bool CatalogListing { get; set; }
+
+    /// <summary>2026-06-19: sale_fee real cacheado de la API de MeLi (lo que MeLi cobra
+    /// de comision). Si null, el calculo cae al estimado historico (32% + cargo fijo).
+    /// SaleFeePriceSnapshot: precio al que se hizo el calculo — si difiere del Price actual,
+    /// conviene refrescar. SaleFeeCapturedAt: timestamp del calculo.</summary>
+    public decimal? SaleFeeAmountReal { get; set; }
+    public decimal? SaleFeePriceSnapshot { get; set; }
+    public DateTime? SaleFeeCapturedAt { get; set; }
 }
 
 public class MeliItemsResponse

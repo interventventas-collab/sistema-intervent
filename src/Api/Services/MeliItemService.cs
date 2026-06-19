@@ -79,7 +79,8 @@ public class MeliItemService
                 false, null, null,  // 2026-06-11: PrecioIndependiente, PrecioFactor, PrecioBaseRef
                 null,  // PrecioOtroConIvaCalc — se completa abajo en memoria
                 null,  // 2026-06-01: ProductCost — se completa abajo en memoria
-                i.CatalogListing  // 2026-06-12: publicacion de catalogo
+                i.CatalogListing,  // 2026-06-12: publicacion de catalogo
+                i.SaleFeeAmount, i.SaleFeePriceSnapshot, i.SaleFeeCapturedAt  // 2026-06-19: comision real cacheada
                 ))
             .ToListAsync();
 
@@ -509,7 +510,8 @@ public class MeliItemService
         false, null, null, // 2026-06-11: PrecioIndependiente, PrecioFactor, PrecioBaseRef
         null, // PrecioOtroConIvaCalc
         null, // ProductCost
-        item.CatalogListing); // 2026-06-12
+        item.CatalogListing, // 2026-06-12
+        item.SaleFeeAmount, item.SaleFeePriceSnapshot, item.SaleFeeCapturedAt); // 2026-06-19
 
     public async Task<int> DeleteItemsAsync(List<int> ids)
     {
@@ -1846,7 +1848,31 @@ public class MeliItemService
         // NetAmount without taxes (taxes calculated in frontend with user percentage)
         result.NetAmount = Math.Round(price - result.SaleFeeAmount - result.ListingFeeAmount - result.ShippingCost, 2);
 
+        // 2026-06-19: cachear el sale_fee en MeliItems para que el listado /publicaciones
+        // pueda calcular el neto real sin tener que llamar a la API por item. Se sobreescribe
+        // siempre que se llama este metodo.
+        item.SaleFeeAmount = result.SaleFeeAmount;
+        item.SaleFeeFixedFee = result.FixedFee;
+        item.SaleFeePercentageFee = result.PercentageFee;
+        item.SaleFeeFinancingFee = result.FinancingFee;
+        item.SaleFeeListingFee = result.ListingFeeAmount;
+        item.SaleFeePriceSnapshot = price;
+        item.SaleFeeCapturedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
         return result;
+    }
+
+    /// <summary>2026-06-19: refresca el sale_fee de un item llamando GetListingCostsAsync
+    /// (que ya guarda en DB el resultado). Wrapper simple para usar desde controllers y jobs.</summary>
+    public async Task<bool> RefreshSaleFeeAsync(string meliItemId)
+    {
+        try
+        {
+            var dto = await GetListingCostsAsync(meliItemId);
+            return dto.SaleFeeAmount > 0;
+        }
+        catch { return false; }
     }
 
     public async Task<MeliItemDetailsDto?> GetItemDetailsAsync(string meliItemId)

@@ -63,6 +63,26 @@ public class MeliItem
     public decimal? PriceRatioOverIva { get; set; }
     public DateTime? PriceRatioCapturedAt { get; set; }
 
+    /// <summary>2026-06-19: sale_fee real (lo que MeLi cobra de comision) obtenido por API
+    /// /sites/MLA/listing_prices. Cacheado para que el listado /publicaciones calcule
+    /// el neto sin tener que consultar la API por cada item. Si null, se cae al calculo
+    /// simple (-32% en publicaciones). Refrescable manualmente o por job.
+    /// PriceSnapshot guarda el precio al que se calculo — si el precio actual difiere,
+    /// el dato esta stale y conviene refrescar.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.Column(TypeName = "decimal(18,2)")]
+    public decimal? SaleFeeAmount { get; set; }
+    [System.ComponentModel.DataAnnotations.Schema.Column(TypeName = "decimal(18,2)")]
+    public decimal? SaleFeeFixedFee { get; set; }
+    [System.ComponentModel.DataAnnotations.Schema.Column(TypeName = "decimal(8,4)")]
+    public decimal? SaleFeePercentageFee { get; set; }
+    [System.ComponentModel.DataAnnotations.Schema.Column(TypeName = "decimal(8,4)")]
+    public decimal? SaleFeeFinancingFee { get; set; }
+    [System.ComponentModel.DataAnnotations.Schema.Column(TypeName = "decimal(18,2)")]
+    public decimal? SaleFeeListingFee { get; set; }
+    [System.ComponentModel.DataAnnotations.Schema.Column(TypeName = "decimal(18,2)")]
+    public decimal? SaleFeePriceSnapshot { get; set; }
+    public DateTime? SaleFeeCapturedAt { get; set; }
+
     public int? CafeComboId { get; set; }   // Promo de cafe fraccionado (Cafe_Combos)
     public int? CafeKitId { get; set; }     // Kit compuesto / BOM (Cafe_Kits)
     public CafeKit? CafeKit { get; set; }

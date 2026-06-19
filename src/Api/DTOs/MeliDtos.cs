@@ -178,7 +178,11 @@ public record MeliItemDto(
     // publicaciones con bajo margen / pérdida. Null si no hay linkeo o costo cargado.
     decimal? ProductCost = null,
     // 2026-06-12: true si la publicacion es de catalogo (el precio puede cambiar solo).
-    bool CatalogListing = false
+    bool CatalogListing = false,
+    // 2026-06-19: sale_fee real cacheado (lo que MeLi cobra). Si null, el frontend usa la formula simple.
+    decimal? SaleFeeAmountReal = null,
+    decimal? SaleFeePriceSnapshot = null,
+    DateTime? SaleFeeCapturedAt = null
 );
 
 public record MeliItemsResponse(List<MeliItemDto> Items, int Total);
