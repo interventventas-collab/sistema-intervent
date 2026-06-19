@@ -3714,11 +3714,31 @@
             {
                 var precioKg = esBar ? (p.PrecioBar ?? p.PrecioOtro ?? p.Pvp1 ?? 0m)
                                      : (p.PrecioOtro ?? p.PrecioBar ?? p.Pvp2 ?? 0m);
+                // 2026-06-19 BUG FIX: el preview ahora aplica costoFraccionamiento + redondeo
+                // igual que el backend (CafePricingService). Antes mostraba precioKg/2 plano,
+                // que difiere de la lista impresa (ej F6 Bracol 1/2 kg: $19.500 vs $22.000 real).
+                bool usaFraccFuturo = (settings?.CostoFraccionamientoFuturo).HasValue
+                    && (settings?.FechaAplicaFraccionamientoFuturo).HasValue
+                    && DateTime.Today >= settings!.FechaAplicaFraccionamientoFuturo!.Value.Date;
+                decimal costoFracc = usaFraccFuturo
+                    ? settings!.CostoFraccionamientoFuturo!.Value
+                    : (settings?.CostoFraccionamiento ?? 0m);
+                decimal redondeoMult = settings?.RedondeoMultiplo ?? 0m;
+                decimal calcFrac(decimal divisor)
+                {
+                    var raw = (precioKg / divisor) + costoFracc;
+                    bool aplicarRedondeo;
+                    if (usaFraccFuturo) aplicarRedondeo = true;
+                    else aplicarRedondeo = addFormato == "MEDIO" && !esBar;
+                    if (redondeoMult > 0m && aplicarRedondeo)
+                        raw = Math.Ceiling(raw / redondeoMult) * redondeoMult;
+                    return raw;
+                }
                 precioUnit = addFormato switch
                 {
                     "1KG" => precioKg,
-                    "MEDIO" => Math.Round(precioKg / 2m, 2, MidpointRounding.AwayFromZero),
-                    "CUARTO" => Math.Round(precioKg / 4m, 2, MidpointRounding.AwayFromZero),
+                    "MEDIO" => calcFrac(2m),
+                    "CUARTO" => calcFrac(4m),
                     _ => precioKg
                 };
             }

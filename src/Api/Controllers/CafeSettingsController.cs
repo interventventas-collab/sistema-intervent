@@ -29,7 +29,9 @@ public class CafeSettingsController : ControllerBase
         s.UpdatedAt,
         s.ListaPreciosHeaderImageUrl,
         s.NegocioTelefono2,
-        s.NegocioWeb2);
+        s.NegocioWeb2,
+        s.CostoFraccionamientoFuturo,
+        s.FechaAplicaFraccionamientoFuturo);
 
     [HttpGet]
     public async Task<IActionResult> Get()

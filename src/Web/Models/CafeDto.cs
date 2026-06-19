@@ -323,6 +323,8 @@ public class CafeSettingDto
     public string? ListaPreciosHeaderImageUrl { get; set; }
     public string? NegocioTelefono2 { get; set; }
     public string? NegocioWeb2 { get; set; }
+    public decimal? CostoFraccionamientoFuturo { get; set; }
+    public DateTime? FechaAplicaFraccionamientoFuturo { get; set; }
 }
 
 public class UpdateCafeSettingRequest

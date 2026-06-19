@@ -302,7 +302,9 @@ public record CafeSettingDto(
     DateTime? UpdatedAt,
     string? ListaPreciosHeaderImageUrl = null,
     string? NegocioTelefono2 = null,
-    string? NegocioWeb2 = null);
+    string? NegocioWeb2 = null,
+    decimal? CostoFraccionamientoFuturo = null,
+    DateTime? FechaAplicaFraccionamientoFuturo = null);
 
 public class UpdateCafeSettingRequest
 {
