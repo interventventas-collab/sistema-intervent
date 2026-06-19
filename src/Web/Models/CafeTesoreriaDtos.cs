@@ -304,6 +304,10 @@ public class ExtractoMovimientoDto
     // Sugerencia
     public int? ClienteSugeridoId { get; set; }
     public string? ClienteSugeridoNombre { get; set; }
+    // 2026-06-19: si el mov esta asociado a una cobranza con imputaciones multiples,
+    // ComprobantesAsociados trae los N numeros de venta y CobranzaNumeroAsociada el de la cobranza.
+    public List<string>? ComprobantesAsociados { get; set; }
+    public string? CobranzaNumeroAsociada { get; set; }
 }
 
 public class SaldoBancoDto
@@ -466,6 +470,8 @@ public class CobranzaListDto
     public decimal Total { get; set; }
     public decimal Retenciones { get; set; }
     public string Estado { get; set; } = "";
+    // 2026-06-19: numeros de venta imputados (para chips en el listado).
+    public List<string>? Comprobantes { get; set; }
 }
 
 public class CobranzaDetalleDto

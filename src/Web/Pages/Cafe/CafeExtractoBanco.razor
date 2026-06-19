@@ -172,8 +172,29 @@
                         <td>
                             @if (m.VentaIdAsociada.HasValue)
                             {
-                                <span class="ex-asociado-badge">✓ @m.VentaNumeroAsociada</span>
-                                <button class="btn-desasociar" @onclick="() => Desasociar(m.Id)" title="Quitar asociación">×</button>
+                                @* 2026-06-19: si la cobranza imputo a varias ventas, mostramos los N comprobantes
+                                   en chips. Si solo es una, fallback al texto plano. *@
+                                @if (m.ComprobantesAsociados is { Count: > 1 })
+                                {
+                                    <div style="display:flex; flex-direction:column; gap:.15rem; max-width:260px;">
+                                        @if (!string.IsNullOrEmpty(m.CobranzaNumeroAsociada))
+                                        {
+                                            <span style="font-size:0.68rem; color:#16a34a; font-weight:700;">✓ Cobranza @m.CobranzaNumeroAsociada</span>
+                                        }
+                                        <div style="display:flex; flex-wrap:wrap; gap:.2rem;">
+                                            @foreach (var nro in m.ComprobantesAsociados)
+                                            {
+                                                <span style="font-size:0.7rem; padding:.1rem .35rem; background:#dcfce7; color:#166534; border:1px solid #86efac; border-radius:4px; font-family:monospace;">@nro</span>
+                                            }
+                                        </div>
+                                    </div>
+                                    <button class="btn-desasociar" @onclick="() => Desasociar(m.Id)" title="Quitar asociación" style="margin-left:.3rem;">×</button>
+                                }
+                                else
+                                {
+                                    <span class="ex-asociado-badge">✓ @m.VentaNumeroAsociada</span>
+                                    <button class="btn-desasociar" @onclick="() => Desasociar(m.Id)" title="Quitar asociación">×</button>
+                                }
                             }
                             else if (esIngreso)
                             {

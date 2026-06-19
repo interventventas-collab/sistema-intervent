@@ -32,7 +32,12 @@ public class CafeExtractoBancoController : ControllerBase
         string? LeyendaAdicional1, string? LeyendaAdicional2, string? TipoMovimiento,
         int? VentaIdAsociada, string? VentaNumeroAsociada, string? AsociadoPor, DateTime? AsociadoAt,
         // Sugerencia de cliente: si el CUIT del extracto coincide con un cliente
-        int? ClienteSugeridoId, string? ClienteSugeridoNombre);
+        int? ClienteSugeridoId, string? ClienteSugeridoNombre,
+        // 2026-06-19: si la venta asociada pertenece a una cobranza con imputaciones multiples,
+        // devolvemos los numeros de TODAS las ventas imputadas y el numero de la cobranza.
+        // Asi la UI muestra "✓ CAFE-2026-0073, CAFE-2026-0206" en vez de solo el primero.
+        List<string>? ComprobantesAsociados = null,
+        string? CobranzaNumeroAsociada = null);
 
     public record SaldoBancoDto(decimal Saldo, DateTime UltimaFecha, int CantidadMovimientos, DateTime? UltimoImportadoAt);
 
@@ -82,6 +87,30 @@ public class CafeExtractoBancoController : ControllerBase
             .Select(v => new { v.Id, v.Numero })
             .ToDictionaryAsync(v => v.Id, v => v.Numero);
 
+        // 2026-06-19: para cada venta asociada, buscar la cobranza que la imputo. Si esa cobranza
+        // tiene MAS imputaciones, las devolvemos todas para que la UI muestre los N comprobantes.
+        // Caso tipico: transferencia bancaria que cancela 2 facturas a la vez.
+        var imputacionesAsoc = await _db.CafeCobranzasComprobantes
+            .Where(i => i.VentaId.HasValue && ventaIds.Contains(i.VentaId.Value))
+            .Select(i => new { i.CobranzaId, VentaId = i.VentaId!.Value })
+            .ToListAsync();
+        var ventaToCobranzaId = imputacionesAsoc
+            .GroupBy(x => x.VentaId)
+            .ToDictionary(g => g.Key, g => g.First().CobranzaId);
+        var cobranzaIds = imputacionesAsoc.Select(x => x.CobranzaId).Distinct().ToList();
+        var todasImpDeCobranzas = await _db.CafeCobranzasComprobantes
+            .Where(i => cobranzaIds.Contains(i.CobranzaId) && i.VentaId.HasValue)
+            .Join(_db.CafeVentas, i => i.VentaId!.Value, v => v.Id,
+                  (i, v) => new { i.CobranzaId, v.Numero })
+            .ToListAsync();
+        var compsPorCobranza = todasImpDeCobranzas
+            .GroupBy(x => x.CobranzaId)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Numero).Distinct().OrderBy(n => n).ToList());
+        var cobranzaNumeros = await _db.CafeCobranzas
+            .Where(c => cobranzaIds.Contains(c.Id))
+            .Select(c => new { c.Id, c.Numero })
+            .ToDictionaryAsync(c => c.Id, c => c.Numero);
+
         var result = movs.Select(m =>
         {
             int? cliId = null;
@@ -94,10 +123,19 @@ public class CafeExtractoBancoController : ControllerBase
             string? ventaNumero = null;
             if (m.VentaIdAsociada.HasValue && ventasDict.TryGetValue(m.VentaIdAsociada.Value, out var nro))
                 ventaNumero = nro;
+            List<string>? comprobantes = null;
+            string? cobranzaNumero = null;
+            if (m.VentaIdAsociada.HasValue
+                && ventaToCobranzaId.TryGetValue(m.VentaIdAsociada.Value, out var cobId))
+            {
+                if (compsPorCobranza.TryGetValue(cobId, out var lista)) comprobantes = lista;
+                if (cobranzaNumeros.TryGetValue(cobId, out var cnum)) cobranzaNumero = cnum;
+            }
             return new ExtractoMovimientoDto(m.Id, m.Fecha, m.Descripcion, m.Debitos, m.Creditos, m.Saldo,
                 m.Concepto, m.ObservacionesCliente, m.LeyendaAdicional1, m.LeyendaAdicional2, m.TipoMovimiento,
                 m.VentaIdAsociada, ventaNumero, m.AsociadoPor, m.AsociadoAt,
-                cliId, cliNom);
+                cliId, cliNom,
+                comprobantes, cobranzaNumero);
         }).ToList();
         return Ok(result);
     }

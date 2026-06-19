@@ -72,7 +72,9 @@ public class CafeCobranzasController : ControllerBase
     // cuando la cobranza es de una venta "ocasional" (sin cliente del catalogo).
     public record CobranzaListDto(
         int Id, string Numero, DateTime Fecha, int? ClienteId, string ClienteNombre,
-        decimal Total, decimal Retenciones, string Estado);
+        decimal Total, decimal Retenciones, string Estado,
+        // 2026-06-19: numeros de venta imputados, para mostrar chips en el listado.
+        List<string>? Comprobantes = null);
 
     public record CobranzaDetalleDto(
         int Id, string Numero, DateTime Fecha, int? ClienteId, string ClienteNombre,
@@ -243,6 +245,11 @@ public class CafeCobranzasController : ControllerBase
                     .Where(cc => cc.Venta != null)
                     .Select(cc => cc.Venta!.ClienteNombreSnapshot)
                     .FirstOrDefault(),
+                // 2026-06-19: numeros de venta imputados (para chips en el listado).
+                NumerosImputados = c.Comprobantes
+                    .Where(cc => cc.Venta != null)
+                    .Select(cc => cc.Venta!.Numero)
+                    .ToList(),
                 c.Total, c.Retenciones, c.Estado
             })
             .ToListAsync();
@@ -250,7 +257,8 @@ public class CafeCobranzasController : ControllerBase
         var list = rows.Select(r => new CobranzaListDto(
             r.Id, r.Numero, r.Fecha, r.ClienteId,
             r.ClienteNombreReal ?? (!string.IsNullOrWhiteSpace(r.VentaSnapshot) ? r.VentaSnapshot + " (ocasional)" : "—"),
-            r.Total, r.Retenciones, r.Estado)).ToList();
+            r.Total, r.Retenciones, r.Estado,
+            r.NumerosImputados.Distinct().OrderBy(n => n).ToList())).ToList();
         return Ok(list);
     }
 

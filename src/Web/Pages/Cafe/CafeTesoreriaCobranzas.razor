@@ -105,7 +105,20 @@
                         <tr style="@(c.Estado == "ANULADA" ? "opacity:0.5; text-decoration:line-through;" : "")">
                             <td><b>@c.Numero</b></td>
                             <td>@c.Fecha.ToLocalTime().ToString("dd/MM/yyyy")</td>
-                            <td>@c.ClienteNombre</td>
+                            <td>
+                                @c.ClienteNombre
+                                @* 2026-06-19: chips con los comprobantes imputados. Permite ver de un vistazo
+                                   que ventas pagó esa cobranza, especialmente útil cuando son 2+. *@
+                                @if (c.Comprobantes is { Count: > 0 })
+                                {
+                                    <div style="display:flex; flex-wrap:wrap; gap:.2rem; margin-top:.2rem;">
+                                        @foreach (var nro in c.Comprobantes)
+                                        {
+                                            <span style="font-size:0.7rem; padding:.05rem .35rem; background:#eef2ff; color:#3730a3; border:1px solid #c7d2fe; border-radius:4px; font-family:monospace;">@nro</span>
+                                        }
+                                    </div>
+                                }
+                            </td>
                             <td style="text-align:right;">@(c.Retenciones > 0 ? $"${c.Retenciones:N2}" : "—")</td>
                             <td style="text-align:right; font-weight:600;">$@c.Total.ToString("N2")</td>
                             <td><span class="badge @(c.Estado == "VIGENTE" ? "badge-success" : "badge-danger")">@c.Estado</span></td>
