@@ -257,6 +257,12 @@ public class MeliItemService
             if (it.CafeProductoId.HasValue)
             {
                 precioBase = PrecioCIvaProducto(it.CafeProductoId.Value);
+                // 2026-06-19: cafe fraccionado — aplicar factor proporcional al precio sistema tambien.
+                if (precioBase.HasValue && !string.IsNullOrEmpty(it.Sku))
+                {
+                    if (it.Sku.EndsWith(".4")) precioBase = Math.Round(precioBase.Value * 0.25m, 2);
+                    else if (it.Sku.EndsWith(".2")) precioBase = Math.Round(precioBase.Value * 0.5m, 2);
+                }
             }
             else if (componentesByItemId.TryGetValue(it.MeliItemId, out var comps))
             {
