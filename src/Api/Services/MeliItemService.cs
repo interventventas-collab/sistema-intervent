@@ -293,12 +293,20 @@ public class MeliItemService
                 if (compsForItem.Count == 0) compsForItem = compsCost;
 
                 // 2026-06-19 FIX C: detectar linkeos rotos de VARIANTES.
-                // Si los componentes son TODOS con MeliVariationId NULL Y hay >1 producto distinto Y
-                // la publicacion tiene VariationId (estamos mirando una variante puntual), asumimos
-                // que las filas son variantes alternativas mal linkeadas (Beige, Rojo, Blanco, etc.)
-                // y NO un combo. En ese caso, el costo correcto es el PROMEDIO — sumarlos como
-                // si fuese combo seria 4× el real.
+                // Caso 1: N filas con MeliVariationId NULL apuntando al MISMO CafeProductoId
+                //   (auto-link creo una fila por variante MeLi, todas al mismo producto del sistema).
+                //   -> DEDUPLICAR.
+                // Caso 2: N filas con MeliVariationId NULL apuntando a productos DISTINTOS
+                //   (variantes color/talle mal linkeadas: Beige, Rojo, Blanco, etc.)
+                //   -> PROMEDIO en vez de suma.
                 var todosSinVariation = compsForItem.All(c => string.IsNullOrEmpty(c.MeliVariationId));
+                if (todosSinVariation && !string.IsNullOrEmpty(it.VariationId) && compsForItem.Count > 1)
+                {
+                    compsForItem = compsForItem
+                        .GroupBy(c => c.CafeProductoId)
+                        .Select(g => g.First())
+                        .ToList();
+                }
                 var distinctProds = compsForItem.Select(c => c.CafeProductoId).Distinct().Count();
                 bool tratarComoVariantes = todosSinVariation && distinctProds > 1 && !string.IsNullOrEmpty(it.VariationId);
 

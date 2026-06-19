@@ -144,7 +144,12 @@ public class MeliStockSyncService
                             else
                             {
                                 // Caso seguro: 1 solo componente sin variation_id, o multiples del mismo producto.
-                                compsAplicables = compsNull;
+                                // Si son multiples del mismo producto (caso cafe 1/4 .4 con 36 variantes de
+                                // molienda apuntando a F3), DEDUPLICAR para no descontar 36x.
+                                compsAplicables = compsNull
+                                    .GroupBy(c => c.CafeProductoId)
+                                    .Select(g => g.First())
+                                    .ToList();
                             }
                         }
                     }
