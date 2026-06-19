@@ -1,0 +1,356 @@
+@page "/sitios"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject IJSRuntime JS
+@inject ToastService Toast
+
+<PageTitle>Marcas / Sitios</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">🎨 Marcas / Sitios</h1>
+        <p class="page-subtitle">Cada marca agrupa uno o varios dominios con su logo, frase y contacto. Las landings los toman automáticamente.</p>
+    </div>
+    <button class="btn-primary" @onclick="NuevoSitio">+ Nueva marca</button>
+</div>
+
+@if (loading)
+{
+    <div class="loading">Cargando...</div>
+}
+else if (sitios is null || sitios.Count == 0)
+{
+    <div class="empty-state">
+        <p>Todavía no hay marcas cargadas.</p>
+        <button class="btn-primary" @onclick="NuevoSitio">Crear la primera</button>
+    </div>
+}
+else
+{
+    <div class="sitios-grid">
+        @foreach (var s in sitios)
+        {
+            <div class="sitio-card @(s.IsActive ? "" : "inactive")">
+                <div class="sitio-header" style="background: linear-gradient(135deg, @(string.IsNullOrEmpty(s.ColorPrimario) ? "#3b2417" : s.ColorPrimario), @(string.IsNullOrEmpty(s.ColorAcento) ? "#d4a05c" : s.ColorAcento));">
+                    @if (!string.IsNullOrEmpty(s.LogoUrl))
+                    {
+                        <img src="@s.LogoUrl" alt="@s.Nombre" class="sitio-logo" />
+                    }
+                    else
+                    {
+                        <div class="sitio-logo-placeholder">@s.Nombre.Substring(0, 1).ToUpper()</div>
+                    }
+                </div>
+                <div class="sitio-body">
+                    <h3>@s.Nombre @(s.IsActive ? "" : " (inactivo)")</h3>
+                    @if (!string.IsNullOrEmpty(s.Frase))
+                    {
+                        <p class="frase">@s.Frase</p>
+                    }
+                    @if (!string.IsNullOrEmpty(s.Dominios))
+                    {
+                        <div class="dominios">
+                            @foreach (var d in s.Dominios.Split(','))
+                            {
+                                <a href="https://@d.Trim()" target="_blank" rel="noopener" class="chip-dominio">🌐 @d.Trim()</a>
+                            }
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(s.WhatsApp))
+                    {
+                        <div class="contacto">📱 @s.WhatsApp</div>
+                    }
+                </div>
+                <div class="sitio-actions">
+                    <button class="btn-secondary" @onclick="() => EditarSitio(s)">✏️ Editar</button>
+                    <button class="btn-danger" @onclick="() => BorrarSitio(s)">🗑</button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@if (mostrarEditor)
+{
+    <div class="modal-backdrop" @onclick="CerrarEditor"></div>
+    <div class="modal-editor" @onclick:stopPropagation>
+        <div class="modal-header">
+            <h2>@(editando is null ? "Nueva marca" : $"Editar: {editando.Nombre}")</h2>
+            <button class="close" @onclick="CerrarEditor">✕</button>
+        </div>
+
+        <div class="modal-body">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Nombre *</label>
+                    <input type="text" @bind="form.Nombre" placeholder="Ej: Frikaf Coffee" />
+                </div>
+                <div class="form-group">
+                    <label>Slug (URL) *</label>
+                    <input type="text" @bind="form.Slug" placeholder="frikaf" />
+                </div>
+                <div class="form-group full">
+                    <label>Dominios (separados por coma)</label>
+                    <input type="text" @bind="form.Dominios" placeholder="frikaf.com.ar, cafefrikaf.com.ar" />
+                </div>
+                <div class="form-group full">
+                    <label>Logo</label>
+                    <div class="logo-uploader">
+                        @if (!string.IsNullOrEmpty(form.LogoUrl))
+                        {
+                            <img src="@form.LogoUrl" class="logo-preview" />
+                            <button class="btn-secondary" @onclick="() => form = form with { LogoUrl = null }">Quitar</button>
+                        }
+                        else
+                        {
+                            <div class="logo-empty">📷 sin logo</div>
+                        }
+                        <InputFile OnChange="OnLogoSelected" accept=".png,.jpg,.jpeg,.webp,.svg,.gif" />
+                        @if (subiendoLogo) { <span class="upload-status">Subiendo...</span> }
+                    </div>
+                </div>
+                <div class="form-group full">
+                    <label>Eyebrow (texto chico arriba del título)</label>
+                    <input type="text" @bind="form.Eyebrow" placeholder="Café de especialidad — Argentina" />
+                </div>
+                <div class="form-group full">
+                    <label>Frase principal (hero)</label>
+                    <input type="text" @bind="form.Frase" placeholder="Tostado a mano, servido con alma." />
+                </div>
+                <div class="form-group">
+                    <label>WhatsApp principal (sin +)</label>
+                    <input type="text" @bind="form.WhatsApp" placeholder="5491158464160" />
+                </div>
+                <div class="form-group">
+                    <label>WhatsApp secundario</label>
+                    <input type="text" @bind="form.WhatsApp2" placeholder="5491122525458" />
+                </div>
+                <div class="form-group">
+                    <label>Instagram (URL)</label>
+                    <input type="text" @bind="form.Instagram" placeholder="https://instagram.com/..." />
+                </div>
+                <div class="form-group">
+                    <label>Facebook (URL)</label>
+                    <input type="text" @bind="form.Facebook" placeholder="https://facebook.com/..." />
+                </div>
+                <div class="form-group">
+                    <label>Color primario</label>
+                    <div class="color-input">
+                        <input type="color" @bind="form.ColorPrimario" />
+                        <input type="text" @bind="form.ColorPrimario" placeholder="#3b2417" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Color acento</label>
+                    <div class="color-input">
+                        <input type="color" @bind="form.ColorAcento" />
+                        <input type="text" @bind="form.ColorAcento" placeholder="#d4a05c" />
+                    </div>
+                </div>
+                <div class="form-group full">
+                    <label class="checkbox">
+                        <input type="checkbox" @bind="form.IsActive" /> Marca activa
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <button class="btn-secondary" @onclick="CerrarEditor">Cancelar</button>
+            <button class="btn-primary" @onclick="Guardar" disabled="@guardando">@(guardando ? "Guardando..." : "💾 Guardar")</button>
+        </div>
+    </div>
+}
+
+<style>
+    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem; }
+    .page-title { font-size: 1.75rem; margin: 0 0 .25rem 0; }
+    .page-subtitle { color: var(--text-muted, #777); margin: 0; }
+
+    .sitios-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem; }
+    .sitio-card { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08); display: flex; flex-direction: column; }
+    .sitio-card.inactive { opacity: .55; }
+    .sitio-header { height: 140px; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+    .sitio-logo { max-width: 80%; max-height: 100px; object-fit: contain; }
+    .sitio-logo-placeholder { font-size: 4rem; font-weight: 800; color: white; opacity: .85; }
+    .sitio-body { padding: 1rem 1.25rem; flex: 1; }
+    .sitio-body h3 { margin: 0 0 .25rem 0; font-size: 1.1rem; }
+    .sitio-body .frase { color: #555; font-size: .9rem; margin: 0 0 .75rem; font-style: italic; }
+    .dominios { display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: .5rem; }
+    .chip-dominio { background: #f1f4f9; color: #2563eb; padding: .15rem .55rem; border-radius: 999px; font-size: .75rem; text-decoration: none; }
+    .chip-dominio:hover { background: #2563eb; color: white; }
+    .contacto { font-size: .85rem; color: #444; }
+    .sitio-actions { display: flex; gap: .5rem; padding: .75rem 1.25rem; background: #fafbfc; border-top: 1px solid #eee; }
+    .sitio-actions button { flex: 1; }
+
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 1000; }
+    .modal-editor { position: fixed; inset: 0; margin: auto; width: min(720px, 95vw); max-height: 90vh; background: white; border-radius: 12px; z-index: 1001; display: flex; flex-direction: column; box-shadow: 0 10px 50px rgba(0,0,0,.3); }
+    .modal-header { padding: 1rem 1.5rem; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+    .modal-header h2 { margin: 0; font-size: 1.25rem; }
+    .modal-header .close { background: none; border: none; font-size: 1.25rem; cursor: pointer; padding: .25rem .5rem; }
+    .modal-body { padding: 1.25rem 1.5rem; overflow-y: auto; flex: 1; }
+    .modal-footer { padding: 1rem 1.5rem; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: .5rem; }
+
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .form-group { display: flex; flex-direction: column; gap: .35rem; }
+    .form-group.full { grid-column: 1 / -1; }
+    .form-group label { font-size: .85rem; font-weight: 600; color: #444; }
+    .form-group input[type="text"] { padding: .5rem .75rem; border: 1px solid #d4d8de; border-radius: 6px; font-size: .9rem; }
+    .form-group input[type="color"] { width: 50px; height: 38px; padding: 0; border: 1px solid #d4d8de; border-radius: 6px; cursor: pointer; }
+    .color-input { display: flex; gap: .5rem; }
+    .color-input input[type="text"] { flex: 1; }
+    .checkbox { display: flex; align-items: center; gap: .5rem; cursor: pointer; }
+
+    .logo-uploader { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; padding: .75rem; background: #f8fafc; border: 1px dashed #cbd5e0; border-radius: 8px; }
+    .logo-preview { max-height: 70px; max-width: 200px; background: white; padding: .5rem; border-radius: 6px; }
+    .logo-empty { color: #999; font-size: 1.5rem; padding: 1rem 2rem; border: 1px dashed #cbd5e0; border-radius: 6px; }
+    .upload-status { color: #2563eb; font-weight: 600; }
+
+    .btn-primary { background: #2563eb; color: white; border: none; padding: .6rem 1.25rem; border-radius: 8px; font-weight: 600; cursor: pointer; }
+    .btn-secondary { background: #f1f4f9; color: #1f2937; border: 1px solid #d4d8de; padding: .55rem 1rem; border-radius: 8px; font-weight: 500; cursor: pointer; }
+    .btn-danger { background: #fee; color: #c00; border: 1px solid #fcc; padding: .55rem .75rem; border-radius: 8px; cursor: pointer; }
+
+    .loading { text-align: center; padding: 3rem; color: #777; }
+    .empty-state { text-align: center; padding: 3rem; background: white; border-radius: 12px; }
+</style>
+
+@code {
+    private List<SitioDto>? sitios;
+    private bool loading = true;
+    private bool mostrarEditor = false;
+    private SitioDto? editando = null;
+    private bool guardando = false;
+    private bool subiendoLogo = false;
+    private SitioForm form = new();
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        loading = true;
+        sitios = await Api.GetSitiosAsync();
+        loading = false;
+    }
+
+    private void NuevoSitio()
+    {
+        editando = null;
+        form = new SitioForm { IsActive = true, ColorPrimario = "#3b2417", ColorAcento = "#d4a05c" };
+        mostrarEditor = true;
+    }
+
+    private void EditarSitio(SitioDto s)
+    {
+        editando = s;
+        form = new SitioForm
+        {
+            Nombre = s.Nombre, Slug = s.Slug, Dominios = s.Dominios,
+            LogoUrl = s.LogoUrl, Eyebrow = s.Eyebrow, Frase = s.Frase,
+            WhatsApp = s.WhatsApp, WhatsApp2 = s.WhatsApp2,
+            Instagram = s.Instagram, Facebook = s.Facebook,
+            ColorPrimario = s.ColorPrimario, ColorAcento = s.ColorAcento, IsActive = s.IsActive
+        };
+        mostrarEditor = true;
+    }
+
+    private void CerrarEditor()
+    {
+        mostrarEditor = false;
+        editando = null;
+    }
+
+    private async Task OnLogoSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+        if (file.Size > 20_000_000) { Toast.Error("El archivo es muy grande (máx 20 MB)"); return; }
+
+        subiendoLogo = true;
+        StateHasChanged();
+        try
+        {
+            using var stream = file.OpenReadStream(20_000_000);
+            var slug = string.IsNullOrWhiteSpace(form.Slug) ? "logo" : form.Slug;
+            var (url, error) = await Api.SubirImagenSitioAsync(stream, file.Name, slug);
+            if (!string.IsNullOrEmpty(url))
+            {
+                form = form with { LogoUrl = url };
+                Toast.Success("Logo subido");
+            }
+            else
+            {
+                Toast.Error(error ?? "Error al subir");
+            }
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+        finally
+        {
+            subiendoLogo = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task Guardar()
+    {
+        if (string.IsNullOrWhiteSpace(form.Nombre) || string.IsNullOrWhiteSpace(form.Slug))
+        {
+            Toast.Error("Nombre y slug son obligatorios");
+            return;
+        }
+        guardando = true;
+        var req = new SitioUpsertRequest(
+            form.Nombre.Trim(), form.Slug.Trim(), form.Dominios,
+            form.LogoUrl, form.Eyebrow, form.Frase,
+            form.WhatsApp, form.WhatsApp2, form.Instagram, form.Facebook,
+            form.ColorPrimario, form.ColorAcento, form.IsActive);
+
+        if (editando is null)
+        {
+            var (sitio, err) = await Api.CrearSitioAsync(req);
+            if (sitio != null) { Toast.Success("Marca creada"); CerrarEditor(); await Cargar(); }
+            else Toast.Error(err ?? "Error");
+        }
+        else
+        {
+            var (sitio, err) = await Api.ActualizarSitioAsync(editando.Id, req);
+            if (sitio != null) { Toast.Success("Marca actualizada"); CerrarEditor(); await Cargar(); }
+            else Toast.Error(err ?? "Error");
+        }
+        guardando = false;
+    }
+
+    private async Task BorrarSitio(SitioDto s)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", $"¿Borrar la marca \"{s.Nombre}\"? Esta acción no se puede deshacer.");
+        if (!ok) return;
+        if (await Api.EliminarSitioAsync(s.Id))
+        {
+            Toast.Success("Marca borrada");
+            await Cargar();
+        }
+        else
+        {
+            Toast.Error("Error al borrar");
+        }
+    }
+
+    public class SitioForm
+    {
+        public string Nombre { get; set; } = "";
+        public string Slug { get; set; } = "";
+        public string? Dominios { get; set; }
+        public string? LogoUrl { get; set; }
+        public string? Eyebrow { get; set; }
+        public string? Frase { get; set; }
+        public string? WhatsApp { get; set; }
+        public string? WhatsApp2 { get; set; }
+        public string? Instagram { get; set; }
+        public string? Facebook { get; set; }
+        public string? ColorPrimario { get; set; }
+        public string? ColorAcento { get; set; }
+        public bool IsActive { get; set; } = true;
+    }
+}

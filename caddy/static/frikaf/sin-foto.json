@@ -1,0 +1,332 @@
+[
+  {
+    "nombre": "CAJA TÉ CACHAMAI BOLDO X100 SAQUITOS ENSOBRADOS",
+    "sku": "U010",
+    "seccion": "INFUSIONES",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "CAJA DE TE HIERBAS DIGESTIVAS CACHAMAI AMARILLO X 100 SOBRES",
+    "sku": "U020",
+    "seccion": "INFUSIONES",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "AZUCAR logo \"FRIKAF\" en sobres X 5 KG",
+    "sku": "ABEFRIK",
+    "seccion": "COMPLEMENTOS CAFE",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "AZUCAR logo \"CHANGO ABEDUL\" en sobres X 5 KG",
+    "sku": "ABEAZU",
+    "seccion": "COMPLEMENTOS CAFE",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "CAJA MAYONESA INDIVIDUAL ABEDUL X 198 UNIDADES SIN TACC",
+    "sku": "ABE-MAYO",
+    "seccion": "CONDIMENTOS",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "CAJA MOSTAZA INDIVIDUAL ABEDUL 198 UNIDADES",
+    "sku": "ABE-MOST",
+    "seccion": "CONDIMENTOS",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "CAJA KETCHUP INDIVIDUAL ABEDUL 198 UNIDADES",
+    "sku": "ABE-KET",
+    "seccion": "CONDIMENTOS",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "pack x 100 - TAPA BLANCA PARA VASO POLIPAPEL 12 ONZAS",
+    "sku": "T-VP12BL",
+    "seccion": "VASOS Y TAPAS POLIPAPEL",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "Pack x 100 - TAPA BLANCA PARA VASO POLIPAPEL 14/16 ONZAS",
+    "sku": "T-VP16BL",
+    "seccion": "VASOS Y TAPAS POLIPAPEL",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "VASO PEQUEÑO 190 CC REUT FRIKAF SINCE 1993",
+    "sku": "VAS190",
+    "seccion": "VASOS REUTILIZABLES",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "VASO REUTILIZABLE FRIKAF SINCE 1993 - 420 CC",
+    "sku": "VAS420",
+    "seccion": "VASOS REUTILIZABLES",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "FRAPPE MILKSHAKE POLVO CAPUCCINO 1.5 KG CREMUCCINO",
+    "sku": "ZCREMUCA15001",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "FRAPPE MILKSHAKE POLVO CAPUCCINO 420GR CREMUCCINO",
+    "sku": "ZCREMUCA4201",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "CREMUCCINO DULCE DE LECHE  DOY PACK 1500 GRAMOS",
+    "sku": "ZCREMUDDL15001",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "FRAPPE MILKSHAKE POLVO DULCE DE LECHE 420GR CREMUCCINO",
+    "sku": "ZCREMUDDL4201",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "FRAPPE MILKSHAKE CHOCOLATE 1.5KG CREMUCCINO LICUADO CAFE",
+    "sku": "ZCREMUCHO15001",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "FRAPPE MILKSHAKE POLVO CHOCOLATE 420GR CREMUCCINO",
+    "sku": "ZCREMUCHO4201",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "FRAPPE MILKSHAKE VAINILLA 1.5KG CREMUCCINO LICUADO CAFÉ",
+    "sku": "ZCREMUVAIN15001",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "FRAPPE MILKSHAKE POLVO VAINILLA 420GR CREMUCCINO",
+    "sku": "ZCREMUVAIN4201",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "BASE LACTEA CREMUCCINO 1,5 KG",
+    "sku": "BLP1.501",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "FRAPPE MILKSHAKE POLVO BASE LACTEA 525GR CREMUCCINO",
+    "sku": "BLP5251",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "SMOOTHIE CREMUCCINO CRISTAL S/SABOR P/PREPARAR BEBIDA 1,25KG",
+    "sku": "BCC12501",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "MEZCLA PARA SMOOTHIE 300GR 6 PORCIONES CREMUCCINO  (CRISTAL)",
+    "sku": "BCC3001",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "CHOCOLATE NEGRO 875G CREMUCCINO",
+    "sku": "CNEC875G1",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "CHOCOLATE NEGRO CALIENTE ESPESO POLVO 350GR CREMUCCINO CAFE",
+    "sku": "CNE350G1",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "CHOCOLATE BLANCO CALIENTE ESPESO POLVO 875 G CREMUCCINO CAFE",
+    "sku": "CBEC875G1",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "CHOCOLATE BLANCO CALIENTE ESPESO POLVO 350GR CREMUCCINO CAFE",
+    "sku": "CBE350G1",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "CHOCOLATE ALFAJOR X 875 GRS POLVO PARA PREPARAR. SIN TACC",
+    "sku": "CAE875G1",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "CHOCOLATE ALFAJOR X 350GRS, POLVO PARA PREPARAR. SIN TACC",
+    "sku": "CAE350G1",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "WAFFLE 1035 GR CREMUCCINO",
+    "sku": "BWBC1000G",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "MEZCLA LISTA WAFFLES 225GR PANCAKES CREMUCCINO",
+    "sku": "BWBC200G1",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "BASE TE CHAI CREMUCCIONO DOYPACK X 300 GR",
+    "sku": "BTCC300G1",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "BASE TE CHAI CREMUCCIONO DOYPACK X 120 GR",
+    "sku": "BTCC120G1",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "PURE PULPA DE FRUTILLA CREMUCCINO 1150 GRS",
+    "sku": "P0111501",
+    "seccion": "PULPAS",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "PURE PULPA DE DURAZNO / NARANJA CREMUCCINO 1150 GRS",
+    "sku": "P0411501",
+    "seccion": "PULPAS",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "PURE PULPA DE FRUTOS ROJOS CREMUCCINO 1150 GRS",
+    "sku": "P0311501",
+    "seccion": "PULPAS",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "PURE PULPA DE MARACUYA CREMUCCINO 1150 GRS",
+    "sku": "P0211501",
+    "seccion": "PULPAS",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "BOMBA DOSIFICADORA PURES (SD)",
+    "sku": "BOMBASPURE",
+    "seccion": "PULPAS",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "TOPPING JARABE SALSA DE CHOCOLATE CAFÉ POSTRE X 830 GRS CREMUCCINO",
+    "sku": "7790863008833",
+    "seccion": "JARABES Y SYRUPS",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "TOPPING JARABE SALSA DE DULCE DE LECHE CAFÉ POSTRE X 830 GRS CREMUCCINO",
+    "sku": "7790863008826",
+    "seccion": "JARABES Y SYRUPS",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "TOPPING JARABE SALSA DE PISTACHO CAFÉ POSTRE 1.115 GRS CREMUCCINO",
+    "sku": "7790863009274",
+    "seccion": "JARABES Y SYRUPS",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "DESCALCIFICADOR MÁQUINAS AUTOMATICAS Y EXPRESS DELLA TAZZA 250ML",
+    "sku": "DELLA001",
+    "seccion": "DESCALCIFICADORES DELLA TAZZA",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "POLVO DE LIMPIEZA MAQUINA ESPRESSO DE CAFÉ 450 GR DELLA TAZZA",
+    "sku": "DELLA002",
+    "seccion": "DESCALCIFICADORES DELLA TAZZA",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "DELLATAZZA LATTE 1.2 LTS",
+    "sku": "DELLA003",
+    "seccion": "DESCALCIFICADORES DELLA TAZZA",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "POLVO LIMPIA CAFETERAS GRUPPO DESCALCIFICANTE DELLA TAZZA 990 GR",
+    "sku": "DELLA004",
+    "seccion": "DESCALCIFICADORES DELLA TAZZA",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "GRINNDER LIMPIEZA NATURAL PARA MOLINILLOS DE CAFÉ DELLA TAZZA",
+    "sku": "DELLA005",
+    "seccion": "DESCALCIFICADORES DELLA TAZZA",
+    "lista": "OTROS"
+  },
+  {
+    "nombre": "Café Honey Classic",
+    "sku": "F9",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA"
+  },
+  {
+    "nombre": "Café Colombia Orgànico",
+    "sku": "F12",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA"
+  },
+  {
+    "nombre": "Café Guatemala",
+    "sku": "F24",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA"
+  },
+  {
+    "nombre": "Café Honduras",
+    "sku": "F25",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA"
+  },
+  {
+    "nombre": "Café Ilado specialty",
+    "sku": "F26",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA"
+  },
+  {
+    "nombre": "Café Colombia supremo",
+    "sku": "F27",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA"
+  },
+  {
+    "nombre": "Café Colombia Huila specialty",
+    "sku": "F28",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA"
+  },
+  {
+    "nombre": "Café Peru Geisha Oro Verde",
+    "sku": "F30",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA"
+  },
+  {
+    "nombre": "Café Mezcla Especial",
+    "sku": "F48",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA"
+  }
+]

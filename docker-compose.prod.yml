@@ -72,6 +72,7 @@ services:
       - files_prod_data:/data/files
       - backups_prod_data:/data/backups
       - preventas_fotos_prod:/data/preventas-fotos
+      - ./caddy/static/frikaf:/srv/landing-frikaf
     networks:
       - aiml-prod-net
     depends_on:

@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Editor de imágenes — Frikaf</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Inter',sans-serif; background:#f7f4ef; color:#1a1a1a; padding:20px; }
+.container { max-width: 1200px; margin: 0 auto; }
+.header { background:white; padding: 20px; border-radius:12px; margin-bottom:20px; box-shadow:0 2px 8px rgba(0,0,0,0.04); position:sticky; top:10px; z-index:10; }
+.header h1 { font-size:22px; margin-bottom:6px; }
+.header p { font-size:13px; color:#6b7280; margin-bottom:14px; }
+.stats { display:flex; gap:16px; padding:12px; background:#f9fafb; border-radius:8px; margin-bottom:14px; font-size:14px; flex-wrap:wrap; }
+.stat strong { font-size:18px; display:block; }
+.stat.green strong { color:#16a34a; }
+.stat.amber strong { color:#d97706; }
+.stat.red strong { color:#dc2626; }
+.btn-row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.btn { padding:10px 16px; border-radius:6px; border:none; font-size:14px; font-weight:600; cursor:pointer; }
+.btn-primary { background:#16a34a; color:white; }
+.btn-secondary { background:#e5e7eb; color:#374151; }
+.btn-danger { background:#dc2626; color:white; }
+.btn-small { padding:5px 10px; font-size:12px; }
+.filter { padding:8px 14px; font-size:14px; border:1px solid #d1d5db; border-radius:6px; flex:1; min-width:200px; }
+.tabs { display:flex; gap:4px; margin-bottom:10px; flex-wrap:wrap; }
+.tab { padding:6px 12px; background:#e5e7eb; border-radius:6px; font-size:12px; cursor:pointer; border:none; font-weight:600; color:#374151; }
+.tab.active { background:#16a34a; color:white; }
+.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:14px; }
+.card { background:white; border-radius:10px; padding:14px; box-shadow:0 1px 4px rgba(0,0,0,0.05); display:flex; flex-direction:column; gap:8px; border:2px solid transparent; }
+.card.meli { border-color:#fbbf24; background:#fffbeb; }
+.card.custom { border-color:#16a34a; background:#f0fdf4; }
+.card-badges { display:flex; gap:4px; flex-wrap:wrap; align-items:center; }
+.card-tag { font-size:10px; letter-spacing:1px; text-transform:uppercase; color:#6b7280; font-weight:600; }
+.card-sku { font-family:monospace; color:#1d4ed8; font-size:11px; font-weight:700; background:#dbeafe; padding:1px 6px; border-radius:3px; }
+.chip { font-size:9px; padding:2px 6px; border-radius:999px; font-weight:700; letter-spacing:0.5px; }
+.chip.meli { background:#fbbf24; color:#78350f; }
+.chip.custom { background:#16a34a; color:white; }
+.chip.none { background:#e5e7eb; color:#6b7280; }
+.card-nombre { font-size:13px; font-weight:600; line-height:1.3; min-height:34px; }
+.card-img { width:100%; aspect-ratio:1; background:#f3f4f6; border-radius:6px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+.card-img img { width:100%; height:100%; object-fit:contain; padding:8px; }
+.card-img-empty { color:#9ca3af; font-size:36px; }
+.card input { padding:6px 8px; border:1px solid #d1d5db; border-radius:5px; font-size:11px; width:100%; font-family:monospace; }
+.card input:focus { outline:2px solid #16a34a; border-color:#16a34a; }
+.toast { position:fixed; bottom:20px; right:20px; background:#16a34a; color:white; padding:14px 20px; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.2); transform:translateY(120%); transition:transform 0.3s; z-index:100; }
+.toast.show { transform:translateY(0); }
+.help { background:#fef3c7; border:1px solid #fde68a; padding:12px; border-radius:8px; font-size:13px; color:#92400e; margin-bottom:14px; }
+.help b { display:block; margin-bottom:4px; }
+.btn-restore { padding:3px 8px; font-size:10px; background:#fbbf24; color:#78350f; border:none; border-radius:4px; cursor:pointer; font-weight:700; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>☕ Editor de imágenes — Frikaf</h1>
+    <p>Editá las imágenes de los 118 productos. Las URLs se guardan solo en tu navegador. Al final exportá y pasámelo.</p>
+    <div class="stats">
+      <div class="stat"><span>Total</span><strong id="total">0</strong></div>
+      <div class="stat amber"><span>MeLi (auto)</span><strong id="meli">0</strong></div>
+      <div class="stat green"><span>Tu URL</span><strong id="custom">0</strong></div>
+      <div class="stat red"><span>Sin foto</span><strong id="sin">0</strong></div>
+    </div>
+    <div class="help">
+      <b>Cómo conseguir URLs:</b>
+      1) Andá a Google → buscá el producto → click derecho en una imagen → <b>"Copiar dirección de imagen"</b><br>
+      2) Pegala en el input del producto. Aparece preview arriba.<br>
+      3) Cuando quieras, tocá <b>"📤 Exportar"</b> y pegame el texto en el chat.<br>
+      <br>
+      <b>Colores:</b> 🟡 amarillo = foto de MeLi (auto) · 🟢 verde = vos cambiaste · ⚪ gris = sin foto.
+      Para "deshacer" tu cambio en una con MeLi, tocá <b>"↺ MeLi"</b> abajo del input.
+    </div>
+    <div class="tabs">
+      <button class="tab active" data-filter="all">Todos</button>
+      <button class="tab" data-filter="sin">Sin foto</button>
+      <button class="tab" data-filter="meli">Con foto MeLi (sin tocar)</button>
+      <button class="tab" data-filter="custom">Con foto mía</button>
+    </div>
+    <div class="btn-row">
+      <input class="filter" placeholder="🔍 Filtrar por nombre, SKU o sección..." id="filter">
+      <button class="btn btn-primary" onclick="exportar()">📤 Exportar todo</button>
+      <button class="btn btn-secondary" onclick="if(confirm('¿Borrar TUS URLs (las amarillas de MeLi quedan)?')) { localStorage.removeItem(STORE_KEY); location.reload(); }">🗑️ Limpiar mis URLs</button>
+    </div>
+  </div>
+  <div class="grid" id="grid"></div>
+</div>
+<div class="toast" id="toast">✅ Guardado</div>
+<script>
+const STORE_KEY = 'frikaf-urls';
+const API = '/api/frikaf/urls';
+let productos = [];
+let custom = {};
+let activeFilter = 'all';
+let saveTimer = null;
+
+function key(p) { return (p.sku || p.nombre).trim(); }
+
+function urlFor(p) {
+  const k = key(p);
+  if (k in custom) return custom[k];   // vacio "" significa explicitamente borrado
+  return p.urlMeli || '';
+}
+
+function source(p) {
+  const k = key(p);
+  if (k in custom) {
+    return custom[k] ? 'custom' : 'none-custom';
+  }
+  return p.urlMeli ? 'meli' : 'none';
+}
+
+function saveLocal() {
+  localStorage.setItem(STORE_KEY, JSON.stringify(custom));
+  actualizarStats();
+}
+
+function pushToServer(sku, url) {
+  fetch(API, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ sku: sku, url: url || '' })
+  }).then(r => {
+    if (r.ok) showToast('✅ Guardado en el servidor');
+    else showToast('❌ Error al guardar');
+  }).catch(() => showToast('⚠️ Sin conexión - guardado solo local'));
+}
+
+function save(sku) {
+  saveLocal();
+  if (sku) pushToServer(sku, custom[sku] || '');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+function actualizarStats() {
+  document.getElementById('total').textContent = productos.length;
+  document.getElementById('meli').textContent = productos.filter(p => source(p) === 'meli').length;
+  document.getElementById('custom').textContent = productos.filter(p => source(p) === 'custom').length;
+  document.getElementById('sin').textContent = productos.filter(p => {
+    const s = source(p);
+    return s === 'none' || s === 'none-custom';
+  }).length;
+}
+
+function render() {
+  const grid = document.getElementById('grid');
+  const filtro = document.getElementById('filter').value.toLowerCase();
+  grid.innerHTML = '';
+  productos.forEach(p => {
+    const src = source(p);
+    const url = urlFor(p);
+    const matchText = !filtro || p.nombre.toLowerCase().includes(filtro) || (p.sku && p.sku.toLowerCase().includes(filtro)) || p.seccion.toLowerCase().includes(filtro);
+    let matchTab = true;
+    if (activeFilter === 'sin') matchTab = (src === 'none' || src === 'none-custom');
+    else if (activeFilter === 'meli') matchTab = src === 'meli';
+    else if (activeFilter === 'custom') matchTab = src === 'custom';
+    if (!matchText || !matchTab) return;
+
+    let cardClass = 'card';
+    if (src === 'meli') cardClass += ' meli';
+    else if (src === 'custom') cardClass += ' custom';
+
+    let chip = '';
+    if (src === 'meli') chip = '<span class="chip meli">MELI</span>';
+    else if (src === 'custom') chip = '<span class="chip custom">MÍA</span>';
+    else chip = '<span class="chip none">SIN FOTO</span>';
+
+    const k = key(p);
+    const showRestore = (k in custom) && p.urlMeli;
+
+    const card = document.createElement('div');
+    card.className = cardClass;
+    card.innerHTML = `
+      <div class="card-badges">
+        ${chip}
+        <span class="card-tag">${p.seccion}</span>
+        ${p.sku ? `<span class="card-sku">${p.sku}</span>` : ''}
+      </div>
+      <div class="card-nombre">${p.nombre}</div>
+      <div class="card-img">${url ? `<img src="${url}" onerror="this.parentElement.innerHTML='<span class=card-img-empty>❌</span>'">` : '<span class="card-img-empty">📦</span>'}</div>
+      <input type="text" placeholder="https://..." value="${url}" data-key="${k}">
+      ${showRestore ? `<button class="btn-restore" data-restore="${k}">↺ Volver a foto MeLi</button>` : ''}
+    `;
+    grid.appendChild(card);
+  });
+
+  document.querySelectorAll('input[data-key]').forEach(inp => {
+    let inputTimer;
+    inp.addEventListener('input', e => {
+      const k = e.target.dataset.key;
+      custom[k] = e.target.value.trim();
+      saveLocal();
+      // Debounce: solo push al server 600ms despues del ultimo tipeo
+      clearTimeout(inputTimer);
+      inputTimer = setTimeout(() => pushToServer(k, custom[k]), 600);
+    });
+    inp.addEventListener('blur', render);
+  });
+  document.querySelectorAll('button[data-restore]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const k = btn.dataset.restore;
+      delete custom[k];
+      saveLocal();
+      pushToServer(k, '');
+      render();
+    });
+  });
+}
+
+function exportar() {
+  const data = productos.map(p => ({
+    sku: p.sku,
+    nombre: p.nombre,
+    url: urlFor(p)
+  })).filter(x => x.url);
+  const txt = JSON.stringify(data, null, 2);
+  navigator.clipboard.writeText(txt).then(() => {
+    const t = document.getElementById('toast');
+    t.textContent = `✅ ${data.length} URLs copiadas. Pegame el texto en el chat.`;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 4000);
+  }).catch(() => {
+    const w = window.open('', '_blank');
+    w.document.write('<pre style="font:13px monospace; padding:20px;">' + txt + '</pre>');
+  });
+}
+
+// Carga inicial: trae las URLs del servidor (se sincroniza entre dispositivos)
+Promise.all([
+  fetch('productos.json').then(r => r.json()),
+  fetch(API).then(r => r.json()).catch(() => ({}))
+]).then(([prods, serverUrls]) => {
+  productos = prods;
+  custom = serverUrls || {};
+  saveLocal(); // Guarda en localStorage para offline backup
+  render();
+  actualizarStats();
+});
+
+document.getElementById('filter').addEventListener('input', render);
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    activeFilter = tab.dataset.filter;
+    render();
+  });
+});
+</script>
+</body>
+</html>

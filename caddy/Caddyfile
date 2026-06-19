@@ -59,7 +59,62 @@
 		file_server
 	}
 
+	# 2026-06-18: preview landing Frikaf Coffee. Mismo patron que cajadeloscuidados.
+	handle_path /frikaf* {
+		root * /srv/static/frikaf
+		try_files {path} {path}/ /index.html
+		file_server
+	}
+
+	# 2026-06-19: uploads de la pantalla /sitios (logos, fotos). Los archivos se
+	# escriben desde la API al bind-mount /srv/landing-frikaf/img (que aca aparece
+	# como /srv/static/frikaf/img porque el host monta la misma carpeta a Caddy).
+	handle_path /uploads/* {
+		root * /srv/static/frikaf/img
+		file_server
+	}
+
 	reverse_proxy web-prod:80
+}
+
+# 2026-06-19: bloques para dominios Frikaf. Sirven la landing estatica de
+# /srv/static/frikaf/. Cuando los DNS propaguen (NS1/NS2 donweb -> VPS),
+# Caddy pide cert Let's Encrypt automaticamente. www -> redirect a apex.
+frikaf.com.ar, cafefrikaf.com.ar, frikaf.online {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	# 2026-06-19: uploads (logos, fotos) servidos desde la carpeta img.
+	handle_path /uploads/* {
+		root * /srv/static/frikaf/img
+		file_server
+	}
+
+	# 2026-06-19: endpoints publicos para que la landing pregunte "quien soy"
+	# (sitios/by-host) y obtenga las urls custom de imagenes (frikaf/urls).
+	# Van al API por reverse proxy.
+	handle /api/* {
+		reverse_proxy api-prod:80
+	}
+
+	# Catch-all: sirve la landing estatica.
+	handle {
+		root * /srv/static/frikaf
+		try_files {path} {path}/ /index.html
+		file_server
+	}
+}
+
+www.frikaf.com.ar {
+	redir https://frikaf.com.ar{uri} permanent
+}
+
+www.cafefrikaf.com.ar {
+	redir https://cafefrikaf.com.ar{uri} permanent
 }
 
 # Bloque para acceso por IP publica pelada (https://1.2.3.4/).

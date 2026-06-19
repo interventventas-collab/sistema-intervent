@@ -4821,3 +4821,27 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name='FK_CafeCombos_Oems')
     ALTER TABLE Cafe_Combos ADD CONSTRAINT FK_CafeCombos_Oems FOREIGN KEY (OemId) REFERENCES Cafe_Oems(Id);
 GO
+
+-- 2026-06-19: Marcas / Sitios. Permite gestionar varios dominios con su logo,
+-- frase, contacto y colores. Las landings estáticas (frikaf, etc.) consultan
+-- el endpoint público para obtener su data según el host.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='Cafe_Marcas')
+CREATE TABLE Cafe_Marcas (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    Nombre NVARCHAR(120) NOT NULL,
+    Slug NVARCHAR(60) NOT NULL UNIQUE,
+    Dominios NVARCHAR(500) NULL,
+    LogoUrl NVARCHAR(400) NULL,
+    Eyebrow NVARCHAR(120) NULL,
+    Frase NVARCHAR(200) NULL,
+    WhatsApp NVARCHAR(40) NULL,
+    WhatsApp2 NVARCHAR(40) NULL,
+    Instagram NVARCHAR(200) NULL,
+    Facebook NVARCHAR(200) NULL,
+    ColorPrimario NVARCHAR(20) NULL,
+    ColorAcento NVARCHAR(20) NULL,
+    IsActive BIT NOT NULL DEFAULT 1,
+    CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    UpdatedAt DATETIME2 NULL
+);
+GO

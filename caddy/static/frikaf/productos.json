@@ -1,0 +1,828 @@
+[
+  {
+    "nombre": "TÉ URRUTIA X100 SAQUITOS ENSOBRADOS SIN TACC",
+    "sku": "U001",
+    "seccion": "INFUSIONES",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_678477-MLA51617183033_092022-I.webp"
+  },
+  {
+    "nombre": "MATE COCIDO X 100 SAQUITOS ENSOBRADOS NATURA",
+    "sku": "U011",
+    "seccion": "INFUSIONES",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_993065-MLA99201410072_112025-I.jpg"
+  },
+  {
+    "nombre": "CAJA TÉ CACHAMAI BOLDO X100 SAQUITOS ENSOBRADOS",
+    "sku": "U010",
+    "seccion": "INFUSIONES",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "CAJA DE TE HIERBAS DIGESTIVAS CACHAMAI AMARILLO X 100 SOBRES",
+    "sku": "U020",
+    "seccion": "INFUSIONES",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "AZUCAR logo \"FRIKAF\" en sobres X 5 KG",
+    "sku": "ABEFRIK",
+    "seccion": "COMPLEMENTOS CAFE",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "AZUCAR logo \"CHANGO ABEDUL\" en sobres X 5 KG",
+    "sku": "ABEAZU",
+    "seccion": "COMPLEMENTOS CAFE",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "EDULCORANTE logo \"FRIKAF\" caja x 400 sobres Dulkre",
+    "sku": "D401",
+    "seccion": "COMPLEMENTOS CAFE",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_666040-MLA89330123319_082025-I.webp"
+  },
+  {
+    "nombre": "EDULCORANTE logo \"DULKRE\" caja x 400 sobres Dulkre",
+    "sku": "D400",
+    "seccion": "COMPLEMENTOS CAFE",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_666040-MLA89330123319_082025-O.webp"
+  },
+  {
+    "nombre": "GALLETITAS INDIVIDUALES PASTICCINO X 200 UNIDADES",
+    "sku": "PAST1",
+    "seccion": "COMPLEMENTOS CAFE",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_693996-MLA99686980083_112025-I.jpg"
+  },
+  {
+    "nombre": "CHOCOLATE SUBMARINO MAPSA SIN TACC CHOCOLATE X 50 UNIDADES",
+    "sku": "U050",
+    "seccion": "COMPLEMENTOS CAFE",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_678509-MLA47088957380_082021-I.jpg"
+  },
+  {
+    "nombre": "AZÚCAR TERRONES X 500 GRAMOS MENDEZ",
+    "sku": "MEN001",
+    "seccion": "COMPLEMENTOS CAFE",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_605349-MLA99119684493_112025-I.jpg"
+  },
+  {
+    "nombre": "CAJA MAYONESA INDIVIDUAL ABEDUL X 198 UNIDADES SIN TACC",
+    "sku": "ABE-MAYO",
+    "seccion": "CONDIMENTOS",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "CAJA MOSTAZA INDIVIDUAL ABEDUL 198 UNIDADES",
+    "sku": "ABE-MOST",
+    "seccion": "CONDIMENTOS",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "CAJA KETCHUP INDIVIDUAL ABEDUL 198 UNIDADES",
+    "sku": "ABE-KET",
+    "seccion": "CONDIMENTOS",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "CAJA SAL FINA ABEDUL / DOS ANCLAS (DORSO) SOBRES X 1000 UNIDADES",
+    "sku": "SAL1000",
+    "seccion": "CONDIMENTOS",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_652232-MLA108621196033_032026-I.webp"
+  },
+  {
+    "nombre": "Pack x 100 - VASO POLIPAPEL 4 ONZAS BLANCO",
+    "sku": "VP4BL",
+    "seccion": "VASOS Y TAPAS POLIPAPEL",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_628337-MLA92882027858_092025-I.jpg"
+  },
+  {
+    "nombre": "Pack x 100 - VASO POLIPAPEL 4 ONZAS KRAFT",
+    "sku": "VP4KRAFT",
+    "seccion": "VASOS Y TAPAS POLIPAPEL",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_628337-MLA92882027858_092025-O.jpg"
+  },
+  {
+    "nombre": "Pack x 100 - VASO POLIPAPEL 8 ONZAS",
+    "sku": "VP8",
+    "seccion": "VASOS Y TAPAS POLIPAPEL",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_629838-MLA95238279241_102025-O.webp"
+  },
+  {
+    "nombre": "Pack x 100 - VASO KRAFT MARRON POLIPAPEL 8 ONZAS",
+    "sku": "PFVC08-G/10",
+    "seccion": "VASOS Y TAPAS POLIPAPEL",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_629838-MLA95238279241_102025-I.webp"
+  },
+  {
+    "nombre": "Pack x 100 - TAPA NEGRA PARA VASO POLIPAPEL 8 ONZAS",
+    "sku": "T-VP8",
+    "seccion": "VASOS Y TAPAS POLIPAPEL",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_792438-MLA69960969627_062023-I.webp"
+  },
+  {
+    "nombre": "Pack x 100 - VASO POLIPAPEL 12 ONZAS",
+    "sku": "VP12",
+    "seccion": "VASOS Y TAPAS POLIPAPEL",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_606043-MLA90016664001_082025-O.webp"
+  },
+  {
+    "nombre": "Pack x 100 - VASO KRAFT MARRON POLIPAPEL 12 ONZAS",
+    "sku": "PFVC12-G9",
+    "seccion": "VASOS Y TAPAS POLIPAPEL",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_606043-MLA90016664001_082025-I.webp"
+  },
+  {
+    "nombre": "pack x 100 - TAPA NEGRA PARA VASO POLIPAPEL 12 ONZAS",
+    "sku": "T-VP12",
+    "seccion": "VASOS Y TAPAS POLIPAPEL",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_905545-MLA69959581931_062023-I.webp"
+  },
+  {
+    "nombre": "pack x 100 - TAPA BLANCA PARA VASO POLIPAPEL 12 ONZAS",
+    "sku": "T-VP12BL",
+    "seccion": "VASOS Y TAPAS POLIPAPEL",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "Pack x 100 - VASO POLIPAPEL 16 ONZAS",
+    "sku": "VP16",
+    "seccion": "VASOS Y TAPAS POLIPAPEL",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_604691-MLA95071935799_102025-I.jpg"
+  },
+  {
+    "nombre": "Pack x 100 - VASO KRAFT MARRON POLIPAPEL 16 ONZAS",
+    "sku": "PFVC16-6/2",
+    "seccion": "VASOS Y TAPAS POLIPAPEL",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_604691-MLA95071935799_102025-O.jpg"
+  },
+  {
+    "nombre": "PACK X 100 - TAPA NEGRA PARA VASO POLIPAPEL 14/16 ONZAS",
+    "sku": "T-VP16",
+    "seccion": "VASOS Y TAPAS POLIPAPEL",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_792438-MLA69960969627_062023-I.webp"
+  },
+  {
+    "nombre": "Pack x 100 - TAPA BLANCA PARA VASO POLIPAPEL 14/16 ONZAS",
+    "sku": "T-VP16BL",
+    "seccion": "VASOS Y TAPAS POLIPAPEL",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "PACK 100 VASO TERMICO X 120 CC - VASO TERMICO X 120 CC",
+    "sku": "VT120",
+    "seccion": "VASOS TELGOPOR Y TAPAS",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_615171-MLA92539888674_092025-I.jpg"
+  },
+  {
+    "nombre": "PACK X 100 TAPA VASO TERMICO 120 CC WC - TAPA VASO TERMICO 120 CC WC",
+    "sku": "TA/WC/4JL/BL",
+    "seccion": "VASOS TELGOPOR Y TAPAS",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_633207-MLA92545712950_092025-I.webp"
+  },
+  {
+    "nombre": "PACK X 100 VASO TERMICO X 180 CC - VASO TERMICO X 180 CC",
+    "sku": "VT180",
+    "seccion": "VASOS TELGOPOR Y TAPAS",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_742058-MLA89438352762_082025-I.jpg"
+  },
+  {
+    "nombre": "PACK X 100 TAPA VT180 CON PICO VERTEDOR NEGRA - TAPA VT180 CON PICO VERTEDOR NEGRA",
+    "sku": "TPV180DUOMO-N",
+    "seccion": "VASOS TELGOPOR Y TAPAS",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_742058-MLA89438352762_082025-I.jpg"
+  },
+  {
+    "nombre": "PACK X 100 VASO TERMICO X 240 CC - VASO TERMICO X 240 CC",
+    "sku": "VT240",
+    "seccion": "VASOS TELGOPOR Y TAPAS",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_656375-MLA95115335823_102025-I.webp"
+  },
+  {
+    "nombre": "PACK X 100 - TAPA VT240 CON PICO VERTEDOR NEGRA",
+    "sku": "TPV240DUOMO-N",
+    "seccion": "VASOS TELGOPOR Y TAPAS",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_963524-MLA89735355337_082025-I.webp"
+  },
+  {
+    "nombre": "PACK X 100 VASO TERMICO X 300 CC - VASO TERMICO X 300 CC",
+    "sku": "VT300",
+    "seccion": "VASOS TELGOPOR Y TAPAS",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_690227-MLA90263589244_082025-I.webp"
+  },
+  {
+    "nombre": "PACK X 100 - TAPA VT300 CON PICO VERTEDOR NEGRA",
+    "sku": "TPV300DUOMO-N",
+    "seccion": "VASOS TELGOPOR Y TAPAS",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_690227-MLA90263589244_082025-I.webp"
+  },
+  {
+    "nombre": "Pack x 100 - COLLARIN UNIVERSAL PARA VASOS CAFÉ 8 12 Y 16 ONZAS",
+    "sku": "P001",
+    "seccion": "PAPELERA",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_604691-MLA95071935799_102025-I.jpg"
+  },
+  {
+    "nombre": "pack x 100 PORTAVASOS ARMABLE CARTON P/2 VASOS - PORTAVASOS ARMABLE CARTON P/2 VASOS",
+    "sku": "P003",
+    "seccion": "PAPELERA",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_670440-MLA83348127572_042025-I.jpg"
+  },
+  {
+    "nombre": "AGITADORES REMOS DE MADERA X 1000 UN EMBOLSADAS DELTA",
+    "sku": "REMO1000",
+    "seccion": "PAPELERA",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_630937-MLA94879785928_102025-I.webp"
+  },
+  {
+    "nombre": "Caja x 5000 - AGITADOR 15 CM SUELTO A GRANEL",
+    "sku": "AGIX1",
+    "seccion": "PAPELERA",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_624519-MLA95711311480_102025-I.jpg"
+  },
+  {
+    "nombre": "Pack x 1000 - AGITADOR CORTO 9CM",
+    "sku": "REMITOX1",
+    "seccion": "PAPELERA",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_628337-MLA92882027858_092025-I.jpg"
+  },
+  {
+    "nombre": "Pack x 1000 - CUCHARITA 98MM X 1 A GRANEL",
+    "sku": "PALETA98MMX1",
+    "seccion": "PAPELERA",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_711260-MLA96249327729_102025-I.webp"
+  },
+  {
+    "nombre": "Pack x 1000 - CUCHARITA X 1 A GRANEL",
+    "sku": "CUCX1",
+    "seccion": "PAPELERA",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_612444-MLA69805145736_062023-I.webp"
+  },
+  {
+    "nombre": "VASO PEQUEÑO 190 CC REUT FRIKAF SINCE 1993",
+    "sku": "VAS190",
+    "seccion": "VASOS REUTILIZABLES",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "VASO REUTILIZABLE FRIKAF SINCE 1993 - 420 CC",
+    "sku": "VAS420",
+    "seccion": "VASOS REUTILIZABLES",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "YOGUR GRIEGO GRANDE 1120 CREMUCCINO",
+    "sku": "BYNC1120G1",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_665558-MLA109406216926_042026-I.webp"
+  },
+  {
+    "nombre": "YOGUR GRIEGO CHICO 280 CREMUCCINO",
+    "sku": "BYNC280G1",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_785779-MLA109405812578_042026-I.jpg"
+  },
+  {
+    "nombre": "FRAPPE MILKSHAKE POLVO CAPUCCINO 1.5 KG CREMUCCINO",
+    "sku": "ZCREMUCA15001",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "FRAPPE MILKSHAKE POLVO CAPUCCINO 420GR CREMUCCINO",
+    "sku": "ZCREMUCA4201",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "CREMUCCINO DULCE DE LECHE  DOY PACK 1500 GRAMOS",
+    "sku": "ZCREMUDDL15001",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "FRAPPE MILKSHAKE POLVO DULCE DE LECHE 420GR CREMUCCINO",
+    "sku": "ZCREMUDDL4201",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "FRAPPE MILKSHAKE CHOCOLATE 1.5KG CREMUCCINO LICUADO CAFE",
+    "sku": "ZCREMUCHO15001",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "FRAPPE MILKSHAKE POLVO CHOCOLATE 420GR CREMUCCINO",
+    "sku": "ZCREMUCHO4201",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "FRAPPE MILKSHAKE VAINILLA 1.5KG CREMUCCINO LICUADO CAFÉ",
+    "sku": "ZCREMUVAIN15001",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "FRAPPE MILKSHAKE POLVO VAINILLA 420GR CREMUCCINO",
+    "sku": "ZCREMUVAIN4201",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "BASE LACTEA CREMUCCINO 1,5 KG",
+    "sku": "BLP1.501",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "FRAPPE MILKSHAKE POLVO BASE LACTEA 525GR CREMUCCINO",
+    "sku": "BLP5251",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "SMOOTHIE CREMUCCINO CRISTAL S/SABOR P/PREPARAR BEBIDA 1,25KG",
+    "sku": "BCC12501",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "MEZCLA PARA SMOOTHIE 300GR 6 PORCIONES CREMUCCINO  (CRISTAL)",
+    "sku": "BCC3001",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "CHOCOLATE NEGRO 875G CREMUCCINO",
+    "sku": "CNEC875G1",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "CHOCOLATE NEGRO CALIENTE ESPESO POLVO 350GR CREMUCCINO CAFE",
+    "sku": "CNE350G1",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "CHOCOLATE BLANCO CALIENTE ESPESO POLVO 875 G CREMUCCINO CAFE",
+    "sku": "CBEC875G1",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "CHOCOLATE BLANCO CALIENTE ESPESO POLVO 350GR CREMUCCINO CAFE",
+    "sku": "CBE350G1",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "CHOCOLATE ALFAJOR X 875 GRS POLVO PARA PREPARAR. SIN TACC",
+    "sku": "CAE875G1",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "CHOCOLATE ALFAJOR X 350GRS, POLVO PARA PREPARAR. SIN TACC",
+    "sku": "CAE350G1",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "WAFFLE 1035 GR CREMUCCINO",
+    "sku": "BWBC1000G",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "MEZCLA LISTA WAFFLES 225GR PANCAKES CREMUCCINO",
+    "sku": "BWBC200G1",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "BASE TE CHAI CREMUCCIONO DOYPACK X 300 GR",
+    "sku": "BTCC300G1",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "BASE TE CHAI CREMUCCIONO DOYPACK X 120 GR",
+    "sku": "BTCC120G1",
+    "seccion": "CREMUCCINO",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "PURE PULPA DE FRUTILLA CREMUCCINO 1150 GRS",
+    "sku": "P0111501",
+    "seccion": "PULPAS",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "PURE PULPA DE DURAZNO / NARANJA CREMUCCINO 1150 GRS",
+    "sku": "P0411501",
+    "seccion": "PULPAS",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "PURE PULPA DE FRUTOS ROJOS CREMUCCINO 1150 GRS",
+    "sku": "P0311501",
+    "seccion": "PULPAS",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "PURE PULPA DE MARACUYA CREMUCCINO 1150 GRS",
+    "sku": "P0211501",
+    "seccion": "PULPAS",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "BOMBA DOSIFICADORA PURES (SD)",
+    "sku": "BOMBASPURE",
+    "seccion": "PULPAS",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "SYRUP VAINILLA 1 LITRO CREMUCCINO",
+    "sku": "7790863008796",
+    "seccion": "JARABES Y SYRUPS",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_600895-MLA54967956263_042023-I.jpg"
+  },
+  {
+    "nombre": "SYRUP CARAMELO 1 LITRO CREMUCCINO",
+    "sku": "7790863008802",
+    "seccion": "JARABES Y SYRUPS",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_894175-MLA54967944929_042023-I.webp"
+  },
+  {
+    "nombre": "SYRUP AVELLANA 1 LITRO CREMUCCINO",
+    "sku": "7790863008819",
+    "seccion": "JARABES Y SYRUPS",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_867209-MLA54973575174_042023-I.jpg"
+  },
+  {
+    "nombre": "SYRUP AMARETTI 1 LITRO CREMUCCINO",
+    "sku": "7790863008789",
+    "seccion": "JARABES Y SYRUPS",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_999139-MLA54967833265_042023-I.jpg"
+  },
+  {
+    "nombre": "TOPPING JARABE SALSA DE CHOCOLATE CAFÉ POSTRE X 830 GRS CREMUCCINO",
+    "sku": "7790863008833",
+    "seccion": "JARABES Y SYRUPS",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "TOPPING JARABE SALSA DE DULCE DE LECHE CAFÉ POSTRE X 830 GRS CREMUCCINO",
+    "sku": "7790863008826",
+    "seccion": "JARABES Y SYRUPS",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "TOPPING JARABE SALSA DE PISTACHO CAFÉ POSTRE 1.115 GRS CREMUCCINO",
+    "sku": "7790863009274",
+    "seccion": "JARABES Y SYRUPS",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "BOMBA DOSIFICADORA  ALMIBARES O SYRUPS (SD)",
+    "sku": "BOMBASSY",
+    "seccion": "JARABES Y SYRUPS",
+    "lista": "OTROS",
+    "urlMeli": "https://http2.mlstatic.com/D_600895-MLA54967956263_042023-I.jpg"
+  },
+  {
+    "nombre": "DESCALCIFICADOR MÁQUINAS AUTOMATICAS Y EXPRESS DELLA TAZZA 250ML",
+    "sku": "DELLA001",
+    "seccion": "DESCALCIFICADORES DELLA TAZZA",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "POLVO DE LIMPIEZA MAQUINA ESPRESSO DE CAFÉ 450 GR DELLA TAZZA",
+    "sku": "DELLA002",
+    "seccion": "DESCALCIFICADORES DELLA TAZZA",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "DELLATAZZA LATTE 1.2 LTS",
+    "sku": "DELLA003",
+    "seccion": "DESCALCIFICADORES DELLA TAZZA",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "POLVO LIMPIA CAFETERAS GRUPPO DESCALCIFICANTE DELLA TAZZA 990 GR",
+    "sku": "DELLA004",
+    "seccion": "DESCALCIFICADORES DELLA TAZZA",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "GRINNDER LIMPIEZA NATURAL PARA MOLINILLOS DE CAFÉ DELLA TAZZA",
+    "sku": "DELLA005",
+    "seccion": "DESCALCIFICADORES DELLA TAZZA",
+    "lista": "OTROS",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "Cafe Blend Premium",
+    "sku": "F1",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": "https://http2.mlstatic.com/D_728137-MLA54001772704_022023-I.webp"
+  },
+  {
+    "nombre": "Café Brasil Seleccion",
+    "sku": "F2",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": "https://http2.mlstatic.com/D_651248-MLA89353715597_082025-I.jpg"
+  },
+  {
+    "nombre": "Café Blend  Italiano",
+    "sku": "F3",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": "https://http2.mlstatic.com/D_600754-MLA89082590730_082025-O.webp"
+  },
+  {
+    "nombre": "Café Colombia Excelso",
+    "sku": "F4",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": "https://http2.mlstatic.com/D_614385-MLA70593143617_072023-O.webp"
+  },
+  {
+    "nombre": "Café Robusta Vietnam",
+    "sku": "F5",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": "https://http2.mlstatic.com/D_601629-MLA89775368997_082025-I.jpg"
+  },
+  {
+    "nombre": "Café Bracol",
+    "sku": "F6",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": "https://http2.mlstatic.com/D_605253-MLA89723511803_082025-O.webp"
+  },
+  {
+    "nombre": "Café Moka",
+    "sku": "F7",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": "https://http2.mlstatic.com/D_601320-MLA91577697099_092025-O.jpg"
+  },
+  {
+    "nombre": "Café Costa Rica",
+    "sku": "F8",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": "https://http2.mlstatic.com/D_627925-MLA70458023151_072023-O.jpg"
+  },
+  {
+    "nombre": "Café Honey Classic",
+    "sku": "F9",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "Café Bourbon specialty",
+    "sku": "F11",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": "https://http2.mlstatic.com/D_631292-MLA70729756694_072023-O.jpg"
+  },
+  {
+    "nombre": "Café Colombia Orgànico",
+    "sku": "F12",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "Café Brasil Pedra Azul",
+    "sku": "F13",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": "https://http2.mlstatic.com/D_645884-MLA70286975306_072023-O.webp"
+  },
+  {
+    "nombre": "Café Amabile natural Sorocabana",
+    "sku": "F14",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": "https://http2.mlstatic.com/D_649917-MLA70286744188_072023-O.jpg"
+  },
+  {
+    "nombre": "Café Rubi Honey",
+    "sku": "F15",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": "https://http2.mlstatic.com/D_831989-MLA89009649602_082025-O.webp"
+  },
+  {
+    "nombre": "Café Caracolillo F. rojos ed. lim specialty",
+    "sku": "F16",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": "https://http2.mlstatic.com/D_665518-MLA70038514716_062023-O.webp"
+  },
+  {
+    "nombre": "Café Colibri 85 pts ed lim specialty",
+    "sku": "F17",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": "https://http2.mlstatic.com/D_984733-MLA93380345911_092025-O.webp"
+  },
+  {
+    "nombre": "Café Esmeralda Lavado",
+    "sku": "F18",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": "https://http2.mlstatic.com/D_681531-MLA94359018905_102025-O.webp"
+  },
+  {
+    "nombre": "Café Descafeinado Sumatra",
+    "sku": "F19",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": "https://http2.mlstatic.com/D_619159-MLA71431484655_082023-O.jpg"
+  },
+  {
+    "nombre": "Café Vending",
+    "sku": "F20",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": "https://http2.mlstatic.com/D_602961-MLA89272730742_082025-I.webp"
+  },
+  {
+    "nombre": "Café Peru specialty",
+    "sku": "F21",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": "https://http2.mlstatic.com/D_701813-MLA90017891423_082025-O.webp"
+  },
+  {
+    "nombre": "Café Black Premium",
+    "sku": "F22",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": "https://http2.mlstatic.com/D_634975-MLA90667458803_082025-O.webp"
+  },
+  {
+    "nombre": "Cafe Clasico",
+    "sku": "F23",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": "https://http2.mlstatic.com/D_966988-MLA69840961659_062023-O.jpg"
+  },
+  {
+    "nombre": "Café Guatemala",
+    "sku": "F24",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "Café Honduras",
+    "sku": "F25",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "Café Ilado specialty",
+    "sku": "F26",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "Café Colombia supremo",
+    "sku": "F27",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "Café Colombia Huila specialty",
+    "sku": "F28",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "Café Peru Geisha Oro Verde",
+    "sku": "F30",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "Café Mezcla Especial",
+    "sku": "F48",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": ""
+  },
+  {
+    "nombre": "Café Torrado Brasil",
+    "sku": "F49",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": "https://http2.mlstatic.com/D_719106-MLA49492567855_032022-I.jpg"
+  },
+  {
+    "nombre": "Café Descafeinado Colombia",
+    "sku": "F0",
+    "seccion": "NUESTROS CAFÈS",
+    "lista": "MAYORISTA",
+    "urlMeli": "https://http2.mlstatic.com/D_634423-MLA89648356307_082025-O.webp"
+  }
+]

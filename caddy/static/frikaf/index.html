@@ -1,0 +1,1531 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frikaf Coffee — Café de especialidad</title>
+<meta name="description" content="Frikaf Coffee. Café tostado artesanalmente en Argentina. Pedidos por WhatsApp.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Pinyon+Script&family=Yellowtail&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #ffffff;
+  --bg-soft: #f7f4ef;
+  --ink: #1a1a1a;
+  --ink-soft: #4a4a4a;
+  --ink-mute: #8a8a8a;
+  --coffee: #3b2417;
+  --coffee-light: #6b4423;
+  --accent: #d4a05c;
+  --line: #e5e0d8;
+  --green: #25d366;
+  --green-dk: #128c7e;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-weight: 400;
+  color: var(--ink);
+  background: var(--bg);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+.container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+
+/* NAVBAR */
+.nav {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(255,255,255,0.96);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.nav-inner {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 24px; max-width: 1200px; margin: 0 auto;
+}
+.nav-logo {
+  font-family: 'Yellowtail', cursive;
+  font-weight: 400; font-size: 32px;
+  color: var(--coffee); letter-spacing: 0;
+  text-decoration: none; line-height: 1;
+  display: flex; align-items: baseline; gap: 6px;
+}
+.nav-logo small {
+  font-family: 'Inter', sans-serif; font-size: 11px;
+  letter-spacing: 4px; color: var(--ink-soft);
+  font-weight: 600; text-transform: uppercase;
+}
+.nav-links { display: flex; gap: 32px; }
+.nav-links a {
+  color: var(--ink-soft); text-decoration: none; font-size: 14px;
+  font-weight: 500; letter-spacing: 0.5px; transition: color 0.2s ease;
+}
+.nav-links a:hover { color: var(--coffee); }
+.nav-wa {
+  background: var(--green); color: white; padding: 10px 20px;
+  border-radius: 999px; font-weight: 600; font-size: 14px; text-decoration: none;
+  display: inline-flex; align-items: center; gap: 8px;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+.nav-wa:hover { background: var(--green-dk); transform: translateY(-1px); }
+
+/* HERO */
+.hero {
+  background: var(--bg-soft);
+  padding: 100px 24px 80px;
+  text-align: center;
+  border-bottom: 1px solid var(--line);
+}
+.hero-eyebrow {
+  font-size: 12px; letter-spacing: 4px; text-transform: uppercase;
+  color: var(--accent); font-weight: 600; margin-bottom: 24px;
+}
+.hero h1 {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(40px, 7vw, 84px);
+  font-weight: 700; line-height: 1.05;
+  color: var(--coffee);
+  margin-bottom: 24px;
+  letter-spacing: -1px;
+}
+.hero h1 em { font-style: italic; color: var(--accent); }
+.hero p {
+  font-size: clamp(16px, 2vw, 20px);
+  color: var(--ink-soft); max-width: 620px; margin: 0 auto 40px;
+}
+.hero-cta {
+  display: inline-flex; align-items: center; gap: 12px;
+  background: var(--green); color: white;
+  padding: 18px 36px; border-radius: 999px;
+  font-size: 17px; font-weight: 600; text-decoration: none;
+  transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 4px 20px rgba(37,211,102,0.3);
+}
+.hero-cta:hover { background: var(--green-dk); transform: translateY(-2px); box-shadow: 0 8px 30px rgba(37,211,102,0.4); }
+.hero-cta svg { width: 24px; height: 24px; }
+
+/* SECTION HEADERS */
+.section { padding: 100px 24px; }
+.section-head { text-align: center; margin-bottom: 60px; }
+.section-eyebrow {
+  font-size: 12px; letter-spacing: 4px; text-transform: uppercase;
+  color: var(--accent); font-weight: 600; margin-bottom: 16px;
+}
+.section-title {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(32px, 4vw, 48px);
+  font-weight: 700; color: var(--coffee);
+  margin-bottom: 16px; letter-spacing: -0.5px;
+}
+.section-sub { font-size: 17px; color: var(--ink-soft); max-width: 580px; margin: 0 auto; }
+
+/* PRODUCT GRID */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 32px;
+}
+.card {
+  background: white; border: 1px solid var(--line);
+  border-radius: 12px; overflow: hidden;
+  transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+}
+.card:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(59,36,23,0.12); border-color: var(--coffee-light); }
+.card-img {
+  aspect-ratio: 4/5;
+  background: linear-gradient(135deg, var(--bg-soft) 0%, #ede5d8 100%);
+  display: flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
+}
+.card-img-placeholder {
+  font-family: 'Playfair Display', serif;
+  font-style: italic; color: var(--accent);
+  font-size: 14px; letter-spacing: 2px;
+  text-align: center; padding: 20px;
+}
+.card-img-placeholder span { display: block; font-size: 56px; margin-bottom: 12px; font-style: normal; }
+.card-body { padding: 24px; }
+.card-tag {
+  display: inline-block; font-size: 11px; letter-spacing: 2px;
+  text-transform: uppercase; color: var(--accent); font-weight: 600;
+  margin-bottom: 8px;
+}
+.card-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 22px; font-weight: 700; color: var(--coffee);
+  margin-bottom: 8px; line-height: 1.3;
+}
+.card-desc { color: var(--ink-mute); font-size: 14px; margin-bottom: 20px; min-height: 42px; }
+.card-cta {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  background: var(--coffee); color: white; padding: 12px 20px;
+  border-radius: 999px; text-decoration: none; font-weight: 600; font-size: 14px;
+  transition: background 0.2s;
+}
+.card-cta:hover { background: #2a1810; }
+
+/* ABOUT */
+.about { background: var(--bg-soft); padding: 100px 24px; }
+.about-inner {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 80px; align-items: center; max-width: 1200px; margin: 0 auto;
+}
+.about-img {
+  aspect-ratio: 4/5;
+  background: linear-gradient(135deg, #6b4423 0%, #3b2417 100%);
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  color: rgba(255,255,255,0.8);
+  font-family: 'Playfair Display', serif; font-style: italic;
+}
+.about-content h2 {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(28px, 4vw, 42px); color: var(--coffee);
+  margin-bottom: 24px; font-weight: 700; letter-spacing: -0.5px;
+}
+.about-content p { color: var(--ink-soft); margin-bottom: 16px; font-size: 16px; }
+.about-content p em { font-style: italic; color: var(--coffee); }
+
+/* CONTACT CTA */
+.contact-cta {
+  background: var(--coffee); color: white; padding: 100px 24px;
+  text-align: center;
+}
+.contact-cta h2 {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(32px, 5vw, 56px); margin-bottom: 16px;
+  font-weight: 700; letter-spacing: -0.5px;
+}
+.contact-cta p { color: rgba(255,255,255,0.8); margin-bottom: 40px; font-size: 18px; }
+.contact-cta .hero-cta { box-shadow: 0 4px 30px rgba(37,211,102,0.5); }
+
+/* FOOTER */
+.footer { background: #0f0a07; color: rgba(255,255,255,0.7); padding: 60px 24px 30px; }
+.footer-inner {
+  display: grid; grid-template-columns: 2fr 1fr 1fr;
+  gap: 40px; max-width: 1200px; margin: 0 auto;
+}
+.footer h4 { color: white; font-size: 14px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 16px; font-weight: 600; }
+.footer-brand h3 { font-family: 'Playfair Display', serif; font-size: 28px; color: white; margin-bottom: 12px; }
+.footer-brand p { font-size: 14px; line-height: 1.6; max-width: 320px; }
+.footer ul { list-style: none; }
+.footer li { margin-bottom: 10px; font-size: 14px; }
+.footer a { color: rgba(255,255,255,0.7); text-decoration: none; transition: color 0.2s; }
+.footer a:hover { color: var(--accent); }
+.footer-bottom {
+  max-width: 1200px; margin: 40px auto 0; padding-top: 30px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  text-align: center; font-size: 13px; color: rgba(255,255,255,0.5);
+}
+
+/* WhatsApp floating */
+.wa-float {
+  position: fixed; bottom: 24px; right: 24px;
+  background: var(--green); color: white;
+  width: 60px; height: 60px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 8px 30px rgba(37,211,102,0.5);
+  z-index: 99; text-decoration: none;
+  transition: transform 0.2s;
+}
+.wa-float:hover { transform: scale(1.1); }
+.wa-float svg { width: 32px; height: 32px; }
+
+/* PREVIEW BANNER */
+.preview-banner {
+  background: #fef3c7; color: #92400e;
+  padding: 12px 24px; text-align: center;
+  font-size: 13px; font-weight: 600; letter-spacing: 0.5px;
+  border-bottom: 1px solid #fde68a;
+}
+
+/* RESPONSIVE */
+@media (max-width: 768px) {
+  .nav-links { display: none; }
+  .section { padding: 60px 24px; }
+  .about-inner { grid-template-columns: 1fr; gap: 40px; }
+  .footer-inner { grid-template-columns: 1fr; gap: 30px; }
+  .hero { padding: 60px 24px 50px; }
+}
+</style>
+</head>
+<body>
+
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="#top" class="nav-logo">Frikaf <small>COFFEE</small></a>
+    <div class="nav-links">
+      <a href="#cafes">Nuestros Cafés</a>
+      <a href="#productos">Productos</a>
+      <a href="#sobre-nosotros">Sobre Nosotros</a>
+      <a href="#contacto">Contacto</a>
+    </div>
+    <a href="https://wa.me/5491158464160?text=Hola%2C%20vengo%20de%20la%20web%20de%20Frikaf" class="nav-wa" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M17.498 14.382c-.301-.15-1.767-.867-2.04-.966-.273-.101-.473-.15-.673.15-.197.295-.771.964-.944 1.162-.175.195-.349.21-.646.075-.3-.15-1.263-.465-2.403-1.485-.888-.795-1.484-1.77-1.66-2.07-.174-.3-.019-.465.13-.615.136-.135.301-.345.451-.523.146-.181.194-.301.297-.496.1-.21.049-.375-.025-.524-.075-.15-.672-1.62-.922-2.206-.24-.584-.487-.51-.672-.51-.172-.015-.371-.015-.571-.015-.2 0-.523.074-.797.359-.273.3-1.045 1.02-1.045 2.475s1.07 2.865 1.219 3.075c.149.195 2.105 3.195 5.1 4.485.714.3 1.27.48 1.704.629.714.227 1.365.195 1.88.121.574-.091 1.767-.721 2.016-1.426.255-.705.255-1.29.18-1.425-.074-.135-.27-.21-.57-.345m-5.446 7.443h-.016c-1.77 0-3.524-.48-5.055-1.38l-.36-.214-3.75.975 1.005-3.645-.239-.375a9.869 9.869 0 0 1-1.516-5.26c0-5.445 4.455-9.885 9.942-9.885 2.654 0 5.145 1.035 7.021 2.91 1.875 1.875 2.909 4.371 2.909 7.026 0 5.445-4.455 9.885-9.94 9.885M20.52 3.449C18.24 1.245 15.24 0 12.045 0 5.463 0 .104 5.334.101 11.893c0 2.096.549 4.14 1.595 5.945L0 24l6.335-1.652a12.062 12.062 0 0 0 5.71 1.447h.006c6.585 0 11.946-5.336 11.949-11.896 0-3.176-1.24-6.165-3.495-8.411"/></svg>
+      WhatsApp
+    </a>
+  </div>
+</nav>
+
+<section id="top" class="hero">
+  <div style="font-family: 'Yellowtail', cursive; font-size: clamp(80px, 14vw, 160px); color: var(--coffee); line-height: 1; margin-bottom: 16px;">Frikaf</div>
+  <div class="hero-eyebrow">Café de especialidad — Argentina</div>
+  <h1>Tostado a mano,<br><em>servido con alma.</em></h1>
+  <p>Granos seleccionados, tostado artesanal y entrega a tu casa. Pedí tu café por WhatsApp y te lo llevamos.</p>
+  <a href="https://wa.me/5491158464160?text=Hola%2C%20quiero%20hacer%20un%20pedido%20de%20caf%C3%A9" class="hero-cta" target="_blank" rel="noopener">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.498 14.382c-.301-.15-1.767-.867-2.04-.966-.273-.101-.473-.15-.673.15-.197.295-.771.964-.944 1.162-.175.195-.349.21-.646.075-.3-.15-1.263-.465-2.403-1.485-.888-.795-1.484-1.77-1.66-2.07-.174-.3-.019-.465.13-.615.136-.135.301-.345.451-.523.146-.181.194-.301.297-.496.1-.21.049-.375-.025-.524-.075-.15-.672-1.62-.922-2.206-.24-.584-.487-.51-.672-.51-.172-.015-.371-.015-.571-.015-.2 0-.523.074-.797.359-.273.3-1.045 1.02-1.045 2.475s1.07 2.865 1.219 3.075c.149.195 2.105 3.195 5.1 4.485.714.3 1.27.48 1.704.629.714.227 1.365.195 1.88.121.574-.091 1.767-.721 2.016-1.426.255-.705.255-1.29.18-1.425-.074-.135-.27-.21-.57-.345m-5.446 7.443h-.016c-1.77 0-3.524-.48-5.055-1.38l-.36-.214-3.75.975 1.005-3.645-.239-.375a9.869 9.869 0 0 1-1.516-5.26c0-5.445 4.455-9.885 9.942-9.885 2.654 0 5.145 1.035 7.021 2.91 1.875 1.875 2.909 4.371 2.909 7.026 0 5.445-4.455 9.885-9.94 9.885M20.52 3.449C18.24 1.245 15.24 0 12.045 0 5.463 0 .104 5.334.101 11.893c0 2.096.549 4.14 1.595 5.945L0 24l6.335-1.652a12.062 12.062 0 0 0 5.71 1.447h.006c6.585 0 11.946-5.336 11.949-11.896 0-3.176-1.24-6.165-3.495-8.411"/></svg>
+    Pedí tu café por WhatsApp
+  </a>
+</section>
+
+<section id="cafes" style="display:none;"></section>
+<section class="section" style="background: var(--bg);">
+<div class="container">
+<div class="section-head">
+<div class="section-eyebrow">MAYORISTA</div>
+<h2 class="section-title">Nuestros Cafés</h2>
+<p class="section-sub">Cápsulas y café en grano. Tostado artesanal, distribución mayorista.</p>
+<p style="font-size:13px; color:var(--ink-mute); margin-top:8px;">Precios sin IVA. Consultá disponibilidad por WhatsApp.</p>
+</div>
+<h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">☕ NUESTROS CAFÈS</h3>
+<div class="grid">
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_728137-MLA54001772704_022023-I.webp" alt="Cafe Blend Premium" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU F1</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Cafe Blend Premium</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$36.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Cafe%20Blend%20Premium" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_651248-MLA89353715597_082025-I.jpg" alt="Café Brasil Seleccion" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU F2</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Brasil Seleccion</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$34.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Brasil%20Seleccion" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_600754-MLA89082590730_082025-O.webp" alt="Café Blend  Italiano" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU F3</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Blend  Italiano</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$36.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Blend%20%20Italiano" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_614385-MLA70593143617_072023-O.webp" alt="Café Colombia Excelso" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU F4</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Colombia Excelso</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$44.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Colombia%20Excelso" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_601629-MLA89775368997_082025-I.jpg" alt="Café Robusta Vietnam" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU F5</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Robusta Vietnam</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$38.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Robusta%20Vietnam" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_605253-MLA89723511803_082025-O.webp" alt="Café Bracol" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU F6</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Bracol</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$39.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Bracol" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_601320-MLA91577697099_092025-O.jpg" alt="Café Moka" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU F7</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Moka</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$38.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Moka" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_627925-MLA70458023151_072023-O.jpg" alt="Café Costa Rica" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU F8</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Costa Rica</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$54.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Costa%20Rica" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>☕</span>NUESTROS CAFÈS</div></div>
+<div class="card-body">
+<div class="card-tag">SKU F9</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Honey Classic</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$36.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Honey%20Classic" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_631292-MLA70729756694_072023-O.jpg" alt="Café Bourbon specialty" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU F11</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Bourbon specialty</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$43.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Bourbon%20specialty" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>☕</span>NUESTROS CAFÈS</div></div>
+<div class="card-body">
+<div class="card-tag">SKU F12</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Colombia Orgànico</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$46.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Colombia%20Org%C3%A0nico" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_645884-MLA70286975306_072023-O.webp" alt="Café Brasil Pedra Azul" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU F13</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Brasil Pedra Azul</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$43.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Brasil%20Pedra%20Azul" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_649917-MLA70286744188_072023-O.jpg" alt="Café Amabile natural Sorocabana" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU F14</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Amabile natural Sorocabana</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$44.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Amabile%20natural%20Sorocabana" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_831989-MLA89009649602_082025-O.webp" alt="Café Rubi Honey" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU F15</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Rubi Honey</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$44.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Rubi%20Honey" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_665518-MLA70038514716_062023-O.webp" alt="Café Caracolillo F. rojos ed. lim specialty" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU F16</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Caracolillo F. rojos ed. lim specialty</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$44.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Caracolillo%20F.%20rojos%20ed.%20lim%20specialty" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_984733-MLA93380345911_092025-O.webp" alt="Café Colibri 85 pts ed lim specialty" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU F17</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Colibri 85 pts ed lim specialty</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$44.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Colibri%2085%20pts%20ed%20lim%20specialty" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_681531-MLA94359018905_102025-O.webp" alt="Café Esmeralda Lavado" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU F18</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Esmeralda Lavado</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$42.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Esmeralda%20Lavado" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_619159-MLA71431484655_082023-O.jpg" alt="Café Descafeinado Sumatra" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU F19</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Descafeinado Sumatra</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$69.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Descafeinado%20Sumatra" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_602961-MLA89272730742_082025-I.webp" alt="Café Vending" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU F20</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Vending</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$32.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Vending" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_701813-MLA90017891423_082025-O.webp" alt="Café Peru specialty" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU F21</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Peru specialty</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$46.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Peru%20specialty" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_634975-MLA90667458803_082025-O.webp" alt="Café Black Premium" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU F22</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Black Premium</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$36.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Black%20Premium" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_966988-MLA69840961659_062023-O.jpg" alt="Cafe Clasico" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU F23</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Cafe Clasico</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$36.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Cafe%20Clasico" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>☕</span>NUESTROS CAFÈS</div></div>
+<div class="card-body">
+<div class="card-tag">SKU F24</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Guatemala</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$46.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Guatemala" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>☕</span>NUESTROS CAFÈS</div></div>
+<div class="card-body">
+<div class="card-tag">SKU F25</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Honduras</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$46.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Honduras" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>☕</span>NUESTROS CAFÈS</div></div>
+<div class="card-body">
+<div class="card-tag">SKU F26</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Ilado specialty</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$39.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Ilado%20specialty" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>☕</span>NUESTROS CAFÈS</div></div>
+<div class="card-body">
+<div class="card-tag">SKU F27</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Colombia supremo</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$46.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Colombia%20supremo" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>☕</span>NUESTROS CAFÈS</div></div>
+<div class="card-body">
+<div class="card-tag">SKU F28</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Colombia Huila specialty</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$52.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Colombia%20Huila%20specialty" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>☕</span>NUESTROS CAFÈS</div></div>
+<div class="card-body">
+<div class="card-tag">SKU F30</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Peru Geisha Oro Verde</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$66.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Peru%20Geisha%20Oro%20Verde" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>☕</span>NUESTROS CAFÈS</div></div>
+<div class="card-body">
+<div class="card-tag">SKU F48</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Mezcla Especial</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$31.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Mezcla%20Especial" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_719106-MLA49492567855_032022-I.jpg" alt="Café Torrado Brasil" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU F49</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Torrado Brasil</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$20.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Torrado%20Brasil" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_634423-MLA89648356307_082025-O.webp" alt="Café Descafeinado Colombia" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU F0</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Café Descafeinado Colombia</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$53.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Descafeinado%20Colombia" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<section class="section" style="background: var(--bg-soft);">
+<div class="container">
+<div class="section-head">
+<div class="section-eyebrow">OTROS</div>
+<h2 class="section-title">Productos para tu cafetería</h2>
+<p class="section-sub">Vasos, tapas, infusiones, jarabes y todo para tu cafetería.</p>
+<p style="font-size:13px; color:var(--ink-mute); margin-top:8px;">Precios sin IVA. Consultá disponibilidad por WhatsApp.</p>
+</div>
+<h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">🍵 INFUSIONES</h3>
+<div class="grid">
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_678477-MLA51617183033_092022-I.webp" alt="TÉ URRUTIA X100 SAQUITOS ENSOBRADOS SIN TACC" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU U001</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">TÉ URRUTIA X100 SAQUITOS ENSOBRADOS SIN TACC</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$7.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20T%C3%89%20URRUTIA%20X100%20SAQUITOS%20ENSOBRADOS%20SIN%20TACC" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_993065-MLA99201410072_112025-I.jpg" alt="MATE COCIDO X 100 SAQUITOS ENSOBRADOS NATURA" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU U011</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">MATE COCIDO X 100 SAQUITOS ENSOBRADOS NATURA</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$9.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20MATE%20COCIDO%20X%20100%20SAQUITOS%20ENSOBRADOS%20NATURA" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🍵</span>INFUSIONES</div></div>
+<div class="card-body">
+<div class="card-tag">SKU U010</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">CAJA TÉ CACHAMAI BOLDO X100 SAQUITOS ENSOBRADOS</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$16.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CAJA%20T%C3%89%20CACHAMAI%20BOLDO%20X100%20SAQUITOS%20ENSOBRADOS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🍵</span>INFUSIONES</div></div>
+<div class="card-body">
+<div class="card-tag">SKU U020</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">CAJA DE TE HIERBAS DIGESTIVAS CACHAMAI AMARILLO X 100 SOBRES</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$10.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CAJA%20DE%20TE%20HIERBAS%20DIGESTIVAS%20CACHAMAI%20AMARILLO%20X%20100%20SOBRES" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+</div>
+<h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">🍬 COMPLEMENTOS CAFE</h3>
+<div class="grid">
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🍬</span>COMPLEMENTOS CAFE</div></div>
+<div class="card-body">
+<div class="card-tag">SKU ABEFRIK</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">AZUCAR logo "FRIKAF" en sobres X 5 KG</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$16.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20AZUCAR%20logo%20%22FRIKAF%22%20en%20sobres%20X%205%20KG" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🍬</span>COMPLEMENTOS CAFE</div></div>
+<div class="card-body">
+<div class="card-tag">SKU ABEAZU</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">AZUCAR logo "CHANGO ABEDUL" en sobres X 5 KG</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$17.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20AZUCAR%20logo%20%22CHANGO%20ABEDUL%22%20en%20sobres%20X%205%20KG" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_666040-MLA89330123319_082025-I.webp" alt="EDULCORANTE logo "FRIKAF" caja x 400 sobres Dulkre" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU D401</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">EDULCORANTE logo "FRIKAF" caja x 400 sobres Dulkre</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$8.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20EDULCORANTE%20logo%20%22FRIKAF%22%20caja%20x%20400%20sobres%20Dulkre" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_666040-MLA89330123319_082025-O.webp" alt="EDULCORANTE logo "DULKRE" caja x 400 sobres Dulkre" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU D400</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">EDULCORANTE logo "DULKRE" caja x 400 sobres Dulkre</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$8.500</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20EDULCORANTE%20logo%20%22DULKRE%22%20caja%20x%20400%20sobres%20Dulkre" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_693996-MLA99686980083_112025-I.jpg" alt="GALLETITAS INDIVIDUALES PASTICCINO X 200 UNIDADES" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU PAST1</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">GALLETITAS INDIVIDUALES PASTICCINO X 200 UNIDADES</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$17.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20GALLETITAS%20INDIVIDUALES%20PASTICCINO%20X%20200%20UNIDADES" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_678509-MLA47088957380_082021-I.jpg" alt="CHOCOLATE SUBMARINO MAPSA SIN TACC CHOCOLATE X 50 " loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU U050</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">CHOCOLATE SUBMARINO MAPSA SIN TACC CHOCOLATE X 50 UNIDADES</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$38.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CHOCOLATE%20SUBMARINO%20MAPSA%20SIN%20TACC%20CHOCOLATE%20X%2050%20UNIDADES" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_605349-MLA99119684493_112025-I.jpg" alt="AZÚCAR TERRONES X 500 GRAMOS MENDEZ" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU MEN001</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">AZÚCAR TERRONES X 500 GRAMOS MENDEZ</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$4.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20AZ%C3%9ACAR%20TERRONES%20X%20500%20GRAMOS%20MENDEZ" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+</div>
+<h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">🍅 CONDIMENTOS</h3>
+<div class="grid">
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcSLMTDfRJ7sFh1ketPyqi14Pm-YV-kPJ64xDbKVJvKho14nRAne5Ju0DZL7xlzbD-7jA8G-IXLZIpPM6TPdb1B8_2BEU7UQKw" alt="CAJA MAYONESA INDIVIDUAL ABEDUL X 198 UNIDADES SIN" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU ABE-MAYO</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">CAJA MAYONESA INDIVIDUAL ABEDUL X 198 UNIDADES SIN TACC</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$16.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CAJA%20MAYONESA%20INDIVIDUAL%20ABEDUL%20X%20198%20UNIDADES%20SIN%20TACC" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🍅</span>CONDIMENTOS</div></div>
+<div class="card-body">
+<div class="card-tag">SKU ABE-MOST</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">CAJA MOSTAZA INDIVIDUAL ABEDUL 198 UNIDADES</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$16.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CAJA%20MOSTAZA%20INDIVIDUAL%20ABEDUL%20198%20UNIDADES" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🍅</span>CONDIMENTOS</div></div>
+<div class="card-body">
+<div class="card-tag">SKU ABE-KET</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">CAJA KETCHUP INDIVIDUAL ABEDUL 198 UNIDADES</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$16.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CAJA%20KETCHUP%20INDIVIDUAL%20ABEDUL%20198%20UNIDADES" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_652232-MLA108621196033_032026-I.webp" alt="CAJA SAL FINA ABEDUL / DOS ANCLAS (DORSO) SOBRES X" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU SAL1000</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">CAJA SAL FINA ABEDUL / DOS ANCLAS (DORSO) SOBRES X 1000 UNIDADES</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$12.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CAJA%20SAL%20FINA%20ABEDUL%20/%20DOS%20ANCLAS%20%28DORSO%29%20SOBRES%20X%201000%20UNIDADES" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+</div>
+<h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">🥤 VASOS Y TAPAS POLIPAPEL</h3>
+<div class="grid">
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_628337-MLA92882027858_092025-I.jpg" alt="Pack x 100 - VASO POLIPAPEL 4 ONZAS BLANCO" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU VP4BL</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Pack x 100 - VASO POLIPAPEL 4 ONZAS BLANCO</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$13.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%20100%20-%20VASO%20POLIPAPEL%204%20ONZAS%20BLANCO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_628337-MLA92882027858_092025-O.jpg" alt="Pack x 100 - VASO POLIPAPEL 4 ONZAS KRAFT" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU VP4KRAFT</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Pack x 100 - VASO POLIPAPEL 4 ONZAS KRAFT</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$13.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%20100%20-%20VASO%20POLIPAPEL%204%20ONZAS%20KRAFT" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_629838-MLA95238279241_102025-O.webp" alt="Pack x 100 - VASO POLIPAPEL 8 ONZAS" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU VP8</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Pack x 100 - VASO POLIPAPEL 8 ONZAS</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$14.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%20100%20-%20VASO%20POLIPAPEL%208%20ONZAS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_629838-MLA95238279241_102025-I.webp" alt="Pack x 100 - VASO KRAFT MARRON POLIPAPEL 8 ONZAS" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU PFVC08-G/10</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Pack x 100 - VASO KRAFT MARRON POLIPAPEL 8 ONZAS</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$14.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%20100%20-%20VASO%20KRAFT%20MARRON%20POLIPAPEL%208%20ONZAS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_792438-MLA69960969627_062023-I.webp" alt="Pack x 100 - TAPA NEGRA PARA VASO POLIPAPEL 8 ONZA" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU T-VP8</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Pack x 100 - TAPA NEGRA PARA VASO POLIPAPEL 8 ONZAS</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$6.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%20100%20-%20TAPA%20NEGRA%20PARA%20VASO%20POLIPAPEL%208%20ONZAS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_606043-MLA90016664001_082025-O.webp" alt="Pack x 100 - VASO POLIPAPEL 12 ONZAS" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU VP12</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Pack x 100 - VASO POLIPAPEL 12 ONZAS</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$16.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%20100%20-%20VASO%20POLIPAPEL%2012%20ONZAS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_606043-MLA90016664001_082025-I.webp" alt="Pack x 100 - VASO KRAFT MARRON POLIPAPEL 12 ONZAS" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU PFVC12-G9</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Pack x 100 - VASO KRAFT MARRON POLIPAPEL 12 ONZAS</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$16.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%20100%20-%20VASO%20KRAFT%20MARRON%20POLIPAPEL%2012%20ONZAS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_905545-MLA69959581931_062023-I.webp" alt="pack x 100 - TAPA NEGRA PARA VASO POLIPAPEL 12 ONZ" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU T-VP12</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">pack x 100 - TAPA NEGRA PARA VASO POLIPAPEL 12 ONZAS</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$6.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20pack%20x%20100%20-%20TAPA%20NEGRA%20PARA%20VASO%20POLIPAPEL%2012%20ONZAS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥤</span>VASOS Y TAPAS POLIPAPEL</div></div>
+<div class="card-body">
+<div class="card-tag">SKU T-VP12BL</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">pack x 100 - TAPA BLANCA PARA VASO POLIPAPEL 12 ONZAS</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$6.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20pack%20x%20100%20-%20TAPA%20BLANCA%20PARA%20VASO%20POLIPAPEL%2012%20ONZAS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_604691-MLA95071935799_102025-I.jpg" alt="Pack x 100 - VASO POLIPAPEL 16 ONZAS" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU VP16</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Pack x 100 - VASO POLIPAPEL 16 ONZAS</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$19.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%20100%20-%20VASO%20POLIPAPEL%2016%20ONZAS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_604691-MLA95071935799_102025-O.jpg" alt="Pack x 100 - VASO KRAFT MARRON POLIPAPEL 16 ONZAS" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU PFVC16-6/2</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Pack x 100 - VASO KRAFT MARRON POLIPAPEL 16 ONZAS</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$19.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%20100%20-%20VASO%20KRAFT%20MARRON%20POLIPAPEL%2016%20ONZAS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_792438-MLA69960969627_062023-I.webp" alt="PACK X 100 - TAPA NEGRA PARA VASO POLIPAPEL 14/16 " loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU T-VP16</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">PACK X 100 - TAPA NEGRA PARA VASO POLIPAPEL 14/16 ONZAS</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$7.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PACK%20X%20100%20-%20TAPA%20NEGRA%20PARA%20VASO%20POLIPAPEL%2014/16%20ONZAS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥤</span>VASOS Y TAPAS POLIPAPEL</div></div>
+<div class="card-body">
+<div class="card-tag">SKU T-VP16BL</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Pack x 100 - TAPA BLANCA PARA VASO POLIPAPEL 14/16 ONZAS</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$7.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%20100%20-%20TAPA%20BLANCA%20PARA%20VASO%20POLIPAPEL%2014/16%20ONZAS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+</div>
+<h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">🥤 VASOS TELGOPOR Y TAPAS</h3>
+<div class="grid">
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_615171-MLA92539888674_092025-I.jpg" alt="PACK 100 VASO TERMICO X 120 CC - VASO TERMICO X 12" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU VT120</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">PACK 100 VASO TERMICO X 120 CC - VASO TERMICO X 120 CC</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$8.500</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PACK%20100%20VASO%20TERMICO%20X%20120%20CC%20-%20VASO%20TERMICO%20X%20120%20CC" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_633207-MLA92545712950_092025-I.webp" alt="PACK X 100 TAPA VASO TERMICO 120 CC WC - TAPA VASO" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU TA/WC/4JL/BL</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">PACK X 100 TAPA VASO TERMICO 120 CC WC - TAPA VASO TERMICO 120 CC WC</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$3.500</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PACK%20X%20100%20TAPA%20VASO%20TERMICO%20120%20CC%20WC%20-%20TAPA%20VASO%20TERMICO%20120%20CC%20WC" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_742058-MLA89438352762_082025-I.jpg" alt="PACK X 100 VASO TERMICO X 180 CC - VASO TERMICO X " loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU VT180</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">PACK X 100 VASO TERMICO X 180 CC - VASO TERMICO X 180 CC</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$9.500</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PACK%20X%20100%20VASO%20TERMICO%20X%20180%20CC%20-%20VASO%20TERMICO%20X%20180%20CC" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_742058-MLA89438352762_082025-I.jpg" alt="PACK X 100 TAPA VT180 CON PICO VERTEDOR NEGRA - TA" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU TPV180DUOMO-N</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">PACK X 100 TAPA VT180 CON PICO VERTEDOR NEGRA - TAPA VT180 CON PICO VERTEDOR NEGRA</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$7.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PACK%20X%20100%20TAPA%20VT180%20CON%20PICO%20VERTEDOR%20NEGRA%20-%20TAPA%20VT180%20CON%20PICO%20VERTEDOR%20NEGRA" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_656375-MLA95115335823_102025-I.webp" alt="PACK X 100 VASO TERMICO X 240 CC - VASO TERMICO X " loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU VT240</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">PACK X 100 VASO TERMICO X 240 CC - VASO TERMICO X 240 CC</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$10.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PACK%20X%20100%20VASO%20TERMICO%20X%20240%20CC%20-%20VASO%20TERMICO%20X%20240%20CC" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_963524-MLA89735355337_082025-I.webp" alt="PACK X 100 - TAPA VT240 CON PICO VERTEDOR NEGRA" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU TPV240DUOMO-N</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">PACK X 100 - TAPA VT240 CON PICO VERTEDOR NEGRA</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$7.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PACK%20X%20100%20-%20TAPA%20VT240%20CON%20PICO%20VERTEDOR%20NEGRA" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_690227-MLA90263589244_082025-I.webp" alt="PACK X 100 VASO TERMICO X 300 CC - VASO TERMICO X " loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU VT300</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">PACK X 100 VASO TERMICO X 300 CC - VASO TERMICO X 300 CC</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$11.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PACK%20X%20100%20VASO%20TERMICO%20X%20300%20CC%20-%20VASO%20TERMICO%20X%20300%20CC" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_690227-MLA90263589244_082025-I.webp" alt="PACK X 100 - TAPA VT300 CON PICO VERTEDOR NEGRA" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU TPV300DUOMO-N</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">PACK X 100 - TAPA VT300 CON PICO VERTEDOR NEGRA</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$7.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PACK%20X%20100%20-%20TAPA%20VT300%20CON%20PICO%20VERTEDOR%20NEGRA" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+</div>
+<h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">📄 PAPELERA</h3>
+<div class="grid">
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_604691-MLA95071935799_102025-I.jpg" alt="Pack x 100 - COLLARIN UNIVERSAL PARA VASOS CAFÉ 8 " loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU P001</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Pack x 100 - COLLARIN UNIVERSAL PARA VASOS CAFÉ 8 12 Y 16 ONZAS</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$4.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%20100%20-%20COLLARIN%20UNIVERSAL%20PARA%20VASOS%20CAF%C3%89%208%2012%20Y%2016%20ONZAS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_670440-MLA83348127572_042025-I.jpg" alt="pack x 100 PORTAVASOS ARMABLE CARTON P/2 VASOS - P" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU P003</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">pack x 100 PORTAVASOS ARMABLE CARTON P/2 VASOS - PORTAVASOS ARMABLE CARTON P/2 VASOS</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$25.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20pack%20x%20100%20PORTAVASOS%20ARMABLE%20CARTON%20P/2%20VASOS%20-%20PORTAVASOS%20ARMABLE%20CARTON%20P/2%20VASOS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_630937-MLA94879785928_102025-I.webp" alt="AGITADORES REMOS DE MADERA X 1000 UN EMBOLSADAS DE" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU REMO1000</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">AGITADORES REMOS DE MADERA X 1000 UN EMBOLSADAS DELTA</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$13.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20AGITADORES%20REMOS%20DE%20MADERA%20X%201000%20UN%20EMBOLSADAS%20DELTA" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_624519-MLA95711311480_102025-I.jpg" alt="Caja x 5000 - AGITADOR 15 CM SUELTO A GRANEL" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU AGIX1</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Caja x 5000 - AGITADOR 15 CM SUELTO A GRANEL</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$55.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caja%20x%205000%20-%20AGITADOR%2015%20CM%20SUELTO%20A%20GRANEL" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_628337-MLA92882027858_092025-I.jpg" alt="Pack x 1000 - AGITADOR CORTO 9CM" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU REMITOX1</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Pack x 1000 - AGITADOR CORTO 9CM</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$11.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%201000%20-%20AGITADOR%20CORTO%209CM" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_711260-MLA96249327729_102025-I.webp" alt="Pack x 1000 - CUCHARITA 98MM X 1 A GRANEL" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU PALETA98MMX1</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Pack x 1000 - CUCHARITA 98MM X 1 A GRANEL</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$16.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%201000%20-%20CUCHARITA%2098MM%20X%201%20A%20GRANEL" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_612444-MLA69805145736_062023-I.webp" alt="Pack x 1000 - CUCHARITA X 1 A GRANEL" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU CUCX1</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">Pack x 1000 - CUCHARITA X 1 A GRANEL</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$14.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%201000%20-%20CUCHARITA%20X%201%20A%20GRANEL" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+</div>
+<h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">♻️ VASOS REUTILIZABLES</h3>
+<div class="grid">
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>♻️</span>VASOS REUTILIZABLES</div></div>
+<div class="card-body">
+<div class="card-tag">SKU VAS190</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">VASO PEQUEÑO 190 CC REUT FRIKAF SINCE 1993</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$2.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20VASO%20PEQUE%C3%91O%20190%20CC%20REUT%20FRIKAF%20SINCE%201993" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>♻️</span>VASOS REUTILIZABLES</div></div>
+<div class="card-body">
+<div class="card-tag">SKU VAS420</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">VASO REUTILIZABLE FRIKAF SINCE 1993 - 420 CC</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$3.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20VASO%20REUTILIZABLE%20FRIKAF%20SINCE%201993%20-%20420%20CC" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+</div>
+<h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">🥛 CREMUCCINO</h3>
+<div class="grid">
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_665558-MLA109406216926_042026-I.webp" alt="YOGUR GRIEGO GRANDE 1120 CREMUCCINO" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU BYNC1120G1</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">YOGUR GRIEGO GRANDE 1120 CREMUCCINO</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$72.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20YOGUR%20GRIEGO%20GRANDE%201120%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_785779-MLA109405812578_042026-I.jpg" alt="YOGUR GRIEGO CHICO 280 CREMUCCINO" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU BYNC280G1</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">YOGUR GRIEGO CHICO 280 CREMUCCINO</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$28.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20YOGUR%20GRIEGO%20CHICO%20280%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
+<div class="card-body">
+<div class="card-tag">SKU ZCREMUCA15001</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">FRAPPE MILKSHAKE POLVO CAPUCCINO 1.5 KG CREMUCCINO</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$24.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20FRAPPE%20MILKSHAKE%20POLVO%20CAPUCCINO%201.5%20KG%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
+<div class="card-body">
+<div class="card-tag">SKU ZCREMUCA4201</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">FRAPPE MILKSHAKE POLVO CAPUCCINO 420GR CREMUCCINO</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$13.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20FRAPPE%20MILKSHAKE%20POLVO%20CAPUCCINO%20420GR%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
+<div class="card-body">
+<div class="card-tag">SKU ZCREMUDDL15001</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">CREMUCCINO DULCE DE LECHE  DOY PACK 1500 GRAMOS</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$28.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CREMUCCINO%20DULCE%20DE%20LECHE%20%20DOY%20PACK%201500%20GRAMOS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
+<div class="card-body">
+<div class="card-tag">SKU ZCREMUDDL4201</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">FRAPPE MILKSHAKE POLVO DULCE DE LECHE 420GR CREMUCCINO</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$14.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20FRAPPE%20MILKSHAKE%20POLVO%20DULCE%20DE%20LECHE%20420GR%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
+<div class="card-body">
+<div class="card-tag">SKU ZCREMUCHO15001</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">FRAPPE MILKSHAKE CHOCOLATE 1.5KG CREMUCCINO LICUADO CAFE</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$29.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20FRAPPE%20MILKSHAKE%20CHOCOLATE%201.5KG%20CREMUCCINO%20LICUADO%20CAFE" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
+<div class="card-body">
+<div class="card-tag">SKU ZCREMUCHO4201</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">FRAPPE MILKSHAKE POLVO CHOCOLATE 420GR CREMUCCINO</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$13.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20FRAPPE%20MILKSHAKE%20POLVO%20CHOCOLATE%20420GR%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
+<div class="card-body">
+<div class="card-tag">SKU ZCREMUVAIN15001</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">FRAPPE MILKSHAKE VAINILLA 1.5KG CREMUCCINO LICUADO CAFÉ</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$24.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20FRAPPE%20MILKSHAKE%20VAINILLA%201.5KG%20CREMUCCINO%20LICUADO%20CAF%C3%89" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
+<div class="card-body">
+<div class="card-tag">SKU ZCREMUVAIN4201</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">FRAPPE MILKSHAKE POLVO VAINILLA 420GR CREMUCCINO</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$11.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20FRAPPE%20MILKSHAKE%20POLVO%20VAINILLA%20420GR%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
+<div class="card-body">
+<div class="card-tag">SKU BLP1.501</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">BASE LACTEA CREMUCCINO 1,5 KG</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$33.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20BASE%20LACTEA%20CREMUCCINO%201%2C5%20KG" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
+<div class="card-body">
+<div class="card-tag">SKU BLP5251</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">FRAPPE MILKSHAKE POLVO BASE LACTEA 525GR CREMUCCINO</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$16.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20FRAPPE%20MILKSHAKE%20POLVO%20BASE%20LACTEA%20525GR%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
+<div class="card-body">
+<div class="card-tag">SKU BCC12501</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">SMOOTHIE CREMUCCINO CRISTAL S/SABOR P/PREPARAR BEBIDA 1,25KG</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$16.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20SMOOTHIE%20CREMUCCINO%20CRISTAL%20S/SABOR%20P/PREPARAR%20BEBIDA%201%2C25KG" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
+<div class="card-body">
+<div class="card-tag">SKU BCC3001</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">MEZCLA PARA SMOOTHIE 300GR 6 PORCIONES CREMUCCINO  (CRISTAL)</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$9.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20MEZCLA%20PARA%20SMOOTHIE%20300GR%206%20PORCIONES%20CREMUCCINO%20%20%28CRISTAL%29" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
+<div class="card-body">
+<div class="card-tag">SKU CNEC875G1</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">CHOCOLATE NEGRO 875G CREMUCCINO</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$34.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CHOCOLATE%20NEGRO%20875G%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
+<div class="card-body">
+<div class="card-tag">SKU CNE350G1</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">CHOCOLATE NEGRO CALIENTE ESPESO POLVO 350GR CREMUCCINO CAFE</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$18.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CHOCOLATE%20NEGRO%20CALIENTE%20ESPESO%20POLVO%20350GR%20CREMUCCINO%20CAFE" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
+<div class="card-body">
+<div class="card-tag">SKU CBEC875G1</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">CHOCOLATE BLANCO CALIENTE ESPESO POLVO 875 G CREMUCCINO CAFE</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$29.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CHOCOLATE%20BLANCO%20CALIENTE%20ESPESO%20POLVO%20875%20G%20CREMUCCINO%20CAFE" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
+<div class="card-body">
+<div class="card-tag">SKU CBE350G1</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">CHOCOLATE BLANCO CALIENTE ESPESO POLVO 350GR CREMUCCINO CAFE</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$16.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CHOCOLATE%20BLANCO%20CALIENTE%20ESPESO%20POLVO%20350GR%20CREMUCCINO%20CAFE" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
+<div class="card-body">
+<div class="card-tag">SKU CAE875G1</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">CHOCOLATE ALFAJOR X 875 GRS POLVO PARA PREPARAR. SIN TACC</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$30.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CHOCOLATE%20ALFAJOR%20X%20875%20GRS%20POLVO%20PARA%20PREPARAR.%20SIN%20TACC" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
+<div class="card-body">
+<div class="card-tag">SKU CAE350G1</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">CHOCOLATE ALFAJOR X 350GRS, POLVO PARA PREPARAR. SIN TACC</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$17.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CHOCOLATE%20ALFAJOR%20X%20350GRS%2C%20POLVO%20PARA%20PREPARAR.%20SIN%20TACC" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
+<div class="card-body">
+<div class="card-tag">SKU BWBC1000G</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">WAFFLE 1035 GR CREMUCCINO</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$20.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20WAFFLE%201035%20GR%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
+<div class="card-body">
+<div class="card-tag">SKU BWBC200G1</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">MEZCLA LISTA WAFFLES 225GR PANCAKES CREMUCCINO</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$11.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20MEZCLA%20LISTA%20WAFFLES%20225GR%20PANCAKES%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
+<div class="card-body">
+<div class="card-tag">SKU BTCC300G1</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">BASE TE CHAI CREMUCCIONO DOYPACK X 300 GR</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$17.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20BASE%20TE%20CHAI%20CREMUCCIONO%20DOYPACK%20X%20300%20GR" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
+<div class="card-body">
+<div class="card-tag">SKU BTCC120G1</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">BASE TE CHAI CREMUCCIONO DOYPACK X 120 GR</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$11.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20BASE%20TE%20CHAI%20CREMUCCIONO%20DOYPACK%20X%20120%20GR" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+</div>
+<h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">🍓 PULPAS</h3>
+<div class="grid">
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🍓</span>PULPAS</div></div>
+<div class="card-body">
+<div class="card-tag">SKU P0111501</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">PURE PULPA DE FRUTILLA CREMUCCINO 1150 GRS</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$21.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PURE%20PULPA%20DE%20FRUTILLA%20CREMUCCINO%201150%20GRS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🍓</span>PULPAS</div></div>
+<div class="card-body">
+<div class="card-tag">SKU P0411501</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">PURE PULPA DE DURAZNO / NARANJA CREMUCCINO 1150 GRS</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$19.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PURE%20PULPA%20DE%20DURAZNO%20/%20NARANJA%20CREMUCCINO%201150%20GRS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🍓</span>PULPAS</div></div>
+<div class="card-body">
+<div class="card-tag">SKU P0311501</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">PURE PULPA DE FRUTOS ROJOS CREMUCCINO 1150 GRS</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$27.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PURE%20PULPA%20DE%20FRUTOS%20ROJOS%20CREMUCCINO%201150%20GRS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🍓</span>PULPAS</div></div>
+<div class="card-body">
+<div class="card-tag">SKU P0211501</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">PURE PULPA DE MARACUYA CREMUCCINO 1150 GRS</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$26.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PURE%20PULPA%20DE%20MARACUYA%20CREMUCCINO%201150%20GRS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🍓</span>PULPAS</div></div>
+<div class="card-body">
+<div class="card-tag">SKU BOMBASPURE</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">BOMBA DOSIFICADORA PURES (SD)</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$8.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20BOMBA%20DOSIFICADORA%20PURES%20%28SD%29" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+</div>
+<h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">🍯 JARABES Y SYRUPS</h3>
+<div class="grid">
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_600895-MLA54967956263_042023-I.jpg" alt="SYRUP VAINILLA 1 LITRO CREMUCCINO" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU 7790863008796</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">SYRUP VAINILLA 1 LITRO CREMUCCINO</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$16.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20SYRUP%20VAINILLA%201%20LITRO%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_894175-MLA54967944929_042023-I.webp" alt="SYRUP CARAMELO 1 LITRO CREMUCCINO" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU 7790863008802</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">SYRUP CARAMELO 1 LITRO CREMUCCINO</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$16.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20SYRUP%20CARAMELO%201%20LITRO%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_867209-MLA54973575174_042023-I.jpg" alt="SYRUP AVELLANA 1 LITRO CREMUCCINO" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU 7790863008819</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">SYRUP AVELLANA 1 LITRO CREMUCCINO</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$16.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20SYRUP%20AVELLANA%201%20LITRO%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_999139-MLA54967833265_042023-I.jpg" alt="SYRUP AMARETTI 1 LITRO CREMUCCINO" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU 7790863008789</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">SYRUP AMARETTI 1 LITRO CREMUCCINO</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$17.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20SYRUP%20AMARETTI%201%20LITRO%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🍯</span>JARABES Y SYRUPS</div></div>
+<div class="card-body">
+<div class="card-tag">SKU 7790863008833</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">TOPPING JARABE SALSA DE CHOCOLATE CAFÉ POSTRE X 830 GRS CREMUCCINO</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$21.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20TOPPING%20JARABE%20SALSA%20DE%20CHOCOLATE%20CAF%C3%89%20POSTRE%20X%20830%20GRS%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🍯</span>JARABES Y SYRUPS</div></div>
+<div class="card-body">
+<div class="card-tag">SKU 7790863008826</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">TOPPING JARABE SALSA DE DULCE DE LECHE CAFÉ POSTRE X 830 GRS CREMUCCINO</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$21.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20TOPPING%20JARABE%20SALSA%20DE%20DULCE%20DE%20LECHE%20CAF%C3%89%20POSTRE%20X%20830%20GRS%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🍯</span>JARABES Y SYRUPS</div></div>
+<div class="card-body">
+<div class="card-tag">SKU 7790863009274</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">TOPPING JARABE SALSA DE PISTACHO CAFÉ POSTRE 1.115 GRS CREMUCCINO</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$27.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20TOPPING%20JARABE%20SALSA%20DE%20PISTACHO%20CAF%C3%89%20POSTRE%201.115%20GRS%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_600895-MLA54967956263_042023-I.jpg" alt="BOMBA DOSIFICADORA  ALMIBARES O SYRUPS (SD)" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
+<div class="card-body">
+<div class="card-tag">SKU BOMBASSY</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">BOMBA DOSIFICADORA  ALMIBARES O SYRUPS (SD)</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$8.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20BOMBA%20DOSIFICADORA%20%20ALMIBARES%20O%20SYRUPS%20%28SD%29" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+</div>
+<h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">🧪 DESCALCIFICADORES DELLA TAZZA</h3>
+<div class="grid">
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🧪</span>DESCALCIFICADORES DELLA TAZZA</div></div>
+<div class="card-body">
+<div class="card-tag">SKU DELLA001</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">DESCALCIFICADOR MÁQUINAS AUTOMATICAS Y EXPRESS DELLA TAZZA 250ML</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$15.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20DESCALCIFICADOR%20M%C3%81QUINAS%20AUTOMATICAS%20Y%20EXPRESS%20DELLA%20TAZZA%20250ML" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🧪</span>DESCALCIFICADORES DELLA TAZZA</div></div>
+<div class="card-body">
+<div class="card-tag">SKU DELLA002</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">POLVO DE LIMPIEZA MAQUINA ESPRESSO DE CAFÉ 450 GR DELLA TAZZA</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$24.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20POLVO%20DE%20LIMPIEZA%20MAQUINA%20ESPRESSO%20DE%20CAF%C3%89%20450%20GR%20DELLA%20TAZZA" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🧪</span>DESCALCIFICADORES DELLA TAZZA</div></div>
+<div class="card-body">
+<div class="card-tag">SKU DELLA003</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">DELLATAZZA LATTE 1.2 LTS</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$39.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20DELLATAZZA%20LATTE%201.2%20LTS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🧪</span>DESCALCIFICADORES DELLA TAZZA</div></div>
+<div class="card-body">
+<div class="card-tag">SKU DELLA004</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">POLVO LIMPIA CAFETERAS GRUPPO DESCALCIFICANTE DELLA TAZZA 990 GR</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$58.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20POLVO%20LIMPIA%20CAFETERAS%20GRUPPO%20DESCALCIFICANTE%20DELLA%20TAZZA%20990%20GR" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+<div class="card">
+<div class="card-img"><div class="card-img-placeholder"><span>🧪</span>DESCALCIFICADORES DELLA TAZZA</div></div>
+<div class="card-body">
+<div class="card-tag">SKU DELLA005</div>
+<h3 class="card-title" style="font-size:16px; line-height:1.35;">GRINNDER LIMPIEZA NATURAL PARA MOLINILLOS DE CAFÉ DELLA TAZZA</h3>
+<div style="font-family:Playfair Display,serif; font-size:24px; font-weight:700; color:var(--coffee); margin:8px 0 4px;">$60.000</div><div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-mute); font-weight:600; margin-bottom:14px;">sin IVA</div>
+<a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20GRINNDER%20LIMPIEZA%20NATURAL%20PARA%20MOLINILLOS%20DE%20CAF%C3%89%20DELLA%20TAZZA" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
+</div>
+</div>
+</div>
+</div>
+</section>
+<section id="productos" style="display:none;"></section>
+
+<section id="sobre-nosotros" class="about">
+  <div class="about-inner">
+    <div class="about-img">Foto del local o tostadora</div>
+    <div class="about-content">
+      <div class="section-eyebrow" style="margin-bottom: 16px;">Quiénes somos</div>
+      <h2>Café argentino, hecho con <em>oficio.</em></h2>
+      <p>En <em>Frikaf</em> tostamos café de especialidad con técnicas artesanales. Trabajamos cápsulas compatibles, café en grano y todos los complementos para tu cafetería o tu casa.</p>
+      <p>Atendemos desde particulares hasta bares, oficinas y locales gastronómicos. Hacemos envíos a todo el país.</p>
+    </div>
+  </div>
+</section>
+
+<section id="contacto" class="contact-cta">
+  <h2>¿Listo para tu próximo café?</h2>
+  <p>Escribinos por WhatsApp y te respondemos al toque.</p>
+  <a href="https://wa.me/5491158464160?text=Hola%2C%20quiero%20hacer%20un%20pedido" class="hero-cta" target="_blank" rel="noopener">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.498 14.382c-.301-.15-1.767-.867-2.04-.966-.273-.101-.473-.15-.673.15-.197.295-.771.964-.944 1.162-.175.195-.349.21-.646.075-.3-.15-1.263-.465-2.403-1.485-.888-.795-1.484-1.77-1.66-2.07-.174-.3-.019-.465.13-.615.136-.135.301-.345.451-.523.146-.181.194-.301.297-.496.1-.21.049-.375-.025-.524-.075-.15-.672-1.62-.922-2.206-.24-.584-.487-.51-.672-.51-.172-.015-.371-.015-.571-.015-.2 0-.523.074-.797.359-.273.3-1.045 1.02-1.045 2.475s1.07 2.865 1.219 3.075c.149.195 2.105 3.195 5.1 4.485.714.3 1.27.48 1.704.629.714.227 1.365.195 1.88.121.574-.091 1.767-.721 2.016-1.426.255-.705.255-1.29.18-1.425-.074-.135-.27-.21-.57-.345m-5.446 7.443h-.016c-1.77 0-3.524-.48-5.055-1.38l-.36-.214-3.75.975 1.005-3.645-.239-.375a9.869 9.869 0 0 1-1.516-5.26c0-5.445 4.455-9.885 9.942-9.885 2.654 0 5.145 1.035 7.021 2.91 1.875 1.875 2.909 4.371 2.909 7.026 0 5.445-4.455 9.885-9.94 9.885M20.52 3.449C18.24 1.245 15.24 0 12.045 0 5.463 0 .104 5.334.101 11.893c0 2.096.549 4.14 1.595 5.945L0 24l6.335-1.652a12.062 12.062 0 0 0 5.71 1.447h.006c6.585 0 11.946-5.336 11.949-11.896 0-3.176-1.24-6.165-3.495-8.411"/></svg>
+    Escribinos por WhatsApp
+  </a>
+</section>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <h3 style="font-family: 'Yellowtail', cursive; font-weight: 400; font-size: 44px; color: white; line-height: 1;">Frikaf <span style="font-family: 'Inter', sans-serif; font-size: 14px; letter-spacing: 4px; color: var(--accent);">COFFEE</span></h3>
+      <p>Café de especialidad. Tostado artesanal. Distribución mayorista y minorista de productos para gastronomía.</p>
+    </div>
+    <div>
+      <h4>Contacto</h4>
+      <ul>
+        <li><a href="https://wa.me/5491158464160" target="_blank" rel="noopener">+54 9 11 5846-4160</a></li>
+        <li><a href="https://wa.me/5491122525458" target="_blank" rel="noopener">+54 9 11 2252-5458</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Seguinos</h4>
+      <ul>
+        <li><a href="https://www.instagram.com/cafefrikaf/" target="_blank" rel="noopener">Instagram @cafefrikaf</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    © 2026 Frikaf Coffee · Hecho con ☕ en Argentina
+  </div>
+</footer>
+
+<a href="https://wa.me/5491158464160?text=Hola%2C%20vengo%20de%20la%20web" class="wa-float" target="_blank" rel="noopener" aria-label="WhatsApp">
+  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.498 14.382c-.301-.15-1.767-.867-2.04-.966-.273-.101-.473-.15-.673.15-.197.295-.771.964-.944 1.162-.175.195-.349.21-.646.075-.3-.15-1.263-.465-2.403-1.485-.888-.795-1.484-1.77-1.66-2.07-.174-.3-.019-.465.13-.615.136-.135.301-.345.451-.523.146-.181.194-.301.297-.496.1-.21.049-.375-.025-.524-.075-.15-.672-1.62-.922-2.206-.24-.584-.487-.51-.672-.51-.172-.015-.371-.015-.571-.015-.2 0-.523.074-.797.359-.273.3-1.045 1.02-1.045 2.475s1.07 2.865 1.219 3.075c.149.195 2.105 3.195 5.1 4.485.714.3 1.27.48 1.704.629.714.227 1.365.195 1.88.121.574-.091 1.767-.721 2.016-1.426.255-.705.255-1.29.18-1.425-.074-.135-.27-.21-.57-.345m-5.446 7.443h-.016c-1.77 0-3.524-.48-5.055-1.38l-.36-.214-3.75.975 1.005-3.645-.239-.375a9.869 9.869 0 0 1-1.516-5.26c0-5.445 4.455-9.885 9.942-9.885 2.654 0 5.145 1.035 7.021 2.91 1.875 1.875 2.909 4.371 2.909 7.026 0 5.445-4.455 9.885-9.94 9.885M20.52 3.449C18.24 1.245 15.24 0 12.045 0 5.463 0 .104 5.334.101 11.893c0 2.096.549 4.14 1.595 5.945L0 24l6.335-1.652a12.062 12.062 0 0 0 5.71 1.447h.006c6.585 0 11.946-5.336 11.949-11.896 0-3.176-1.24-6.165-3.495-8.411"/></svg>
+</a>
+
+<script>
+// 2026-06-19: Detector de marca por host. Consulta el endpoint publico y reemplaza
+// wordmark (navbar + hero), eyebrow, frase, color, y links de WhatsApp. Si la marca
+// tiene LogoUrl, sustituye el texto "Frikaf" cursivo por el <img>.
+(function detectMarca() {
+  const host = window.location.hostname.toLowerCase().replace(/^www\./, '');
+  fetch('/api/sitios/by-host/' + host).then(r => r.ok ? r.json() : null).then(s => {
+    if (!s) return;
+    document.title = (s.frase ? s.nombre + ' — ' + s.frase : s.nombre);
+
+    // Wordmark navbar
+    const navLogo = document.querySelector('.nav-logo');
+    if (navLogo) {
+      if (s.logoUrl) {
+        navLogo.innerHTML = `<img src="${s.logoUrl}" alt="${s.nombre}" style="height:48px; max-width:200px; object-fit:contain;" />`;
+      }
+    }
+
+    // Hero: el primer DIV con Yellowtail "Frikaf"
+    const heroSection = document.querySelector('.hero');
+    if (heroSection) {
+      const wordmark = heroSection.querySelector('div[style*="Yellowtail"]');
+      if (wordmark && s.logoUrl) {
+        wordmark.outerHTML = `<img src="${s.logoUrl}" alt="${s.nombre}" style="max-height:200px; max-width:80vw; margin: 0 auto 16px; display:block;" />`;
+      }
+      const eyebrow = heroSection.querySelector('.hero-eyebrow');
+      if (eyebrow && s.eyebrow) eyebrow.textContent = s.eyebrow;
+    }
+
+    // Frase principal — busco el h1 grande del hero
+    if (s.frase) {
+      const heroH1 = document.querySelector('.hero h1, .hero .hero-title');
+      if (heroH1) {
+        const cursive = heroH1.querySelector('em, i');
+        if (cursive) cursive.textContent = s.frase;
+      }
+    }
+
+    // Colores via CSS var
+    if (s.colorPrimario) document.documentElement.style.setProperty('--coffee', s.colorPrimario);
+    if (s.colorAcento) document.documentElement.style.setProperty('--accent', s.colorAcento);
+
+    // WhatsApp principal — reemplazo en TODOS los links wa.me
+    if (s.whatsApp) {
+      document.querySelectorAll('a[href*="wa.me/"]').forEach(a => {
+        try {
+          const u = new URL(a.href);
+          u.pathname = '/' + s.whatsApp;
+          a.href = u.toString();
+        } catch (e) {}
+      });
+    }
+  }).catch(() => {});
+})();
+
+// 2026-06-19: aplicar URLs custom del editor en vivo.
+fetch('/api/frikaf/urls').then(r => r.json()).then(urls => {
+  if (!urls || Object.keys(urls).length === 0) return;
+  document.querySelectorAll('.card').forEach(card => {
+    const tag = card.querySelector('.card-tag');
+    if (!tag) return;
+    const m = tag.textContent.match(/SKU\s+(.+)/i);
+    if (!m) return;
+    const sku = m[1].trim();
+    if (!urls[sku]) return;
+    const imgDiv = card.querySelector('.card-img');
+    if (!imgDiv) return;
+    imgDiv.style.background = 'white';
+    imgDiv.innerHTML = `<img src="${urls[sku]}" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" />`;
+  });
+}).catch(() => {});
+</script>
+
+</body>
+</html>

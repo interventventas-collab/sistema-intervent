@@ -4475,4 +4475,76 @@ public class ApiClient
     public async Task<object?> SyncMeliQuestionsNowAsync()
         => await PostAsync<object>("/api/meli/questions/sync-now", new { });
 
+    // ===== Sitios (marcas / landings) =====
+    public async Task<List<SitioDto>?> GetSitiosAsync()
+        => await GetAsync<List<SitioDto>>("/api/sitios");
+
+    public async Task<(SitioDto? sitio, string? error)> CrearSitioAsync(SitioUpsertRequest req)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/sitios", req);
+            if (resp.IsSuccessStatusCode) return (await resp.Content.ReadFromJsonAsync<SitioDto>(), null);
+            string err = "Error";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                  if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; }
+            catch { }
+            return (null, err);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    public async Task<(SitioDto? sitio, string? error)> ActualizarSitioAsync(int id, SitioUpsertRequest req)
+    {
+        try
+        {
+            var resp = await _http.PutAsJsonAsync($"/api/sitios/{id}", req);
+            if (resp.IsSuccessStatusCode) return (await resp.Content.ReadFromJsonAsync<SitioDto>(), null);
+            string err = "Error";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                  if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; }
+            catch { }
+            return (null, err);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    public async Task<bool> EliminarSitioAsync(int id)
+    {
+        var resp = await _http.DeleteAsync($"/api/sitios/{id}");
+        return resp.IsSuccessStatusCode;
+    }
+
+    public async Task<List<SitioUploadDto>?> GetSitiosUploadsAsync()
+        => await GetAsync<List<SitioUploadDto>>("/api/sitios/uploads");
+
+    public async Task<(string? url, string? error)> SubirImagenSitioAsync(System.IO.Stream contenido, string filename, string? slug)
+    {
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            var streamContent = new StreamContent(contenido);
+            content.Add(streamContent, "file", filename);
+            if (!string.IsNullOrWhiteSpace(slug))
+                content.Add(new StringContent(slug), "slug");
+            var resp = await _http.PostAsync("/api/sitios/upload", content);
+            if (resp.IsSuccessStatusCode)
+            {
+                var dto = await resp.Content.ReadFromJsonAsync<SitioUploadResponse>();
+                return (dto?.Url, null);
+            }
+            string err = "Error";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                  if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; }
+            catch { }
+            return (null, err);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    public async Task<bool> BorrarUploadSitioAsync(string filename)
+    {
+        var resp = await _http.DeleteAsync($"/api/sitios/uploads/{Uri.EscapeDataString(filename)}");
+        return resp.IsSuccessStatusCode;
+    }
 }
