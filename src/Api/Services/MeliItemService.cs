@@ -291,13 +291,29 @@ public class MeliItemService
                     return string.IsNullOrEmpty(c.MeliVariationId);
                 }).ToList();
                 if (compsForItem.Count == 0) compsForItem = compsCost;
-                decimal sumC = 0m; bool anyCost = false;
+
+                // 2026-06-19 FIX C: detectar linkeos rotos de VARIANTES.
+                // Si los componentes son TODOS con MeliVariationId NULL Y hay >1 producto distinto Y
+                // la publicacion tiene VariationId (estamos mirando una variante puntual), asumimos
+                // que las filas son variantes alternativas mal linkeadas (Beige, Rojo, Blanco, etc.)
+                // y NO un combo. En ese caso, el costo correcto es el PROMEDIO — sumarlos como
+                // si fuese combo seria 4× el real.
+                var todosSinVariation = compsForItem.All(c => string.IsNullOrEmpty(c.MeliVariationId));
+                var distinctProds = compsForItem.Select(c => c.CafeProductoId).Distinct().Count();
+                bool tratarComoVariantes = todosSinVariation && distinctProds > 1 && !string.IsNullOrEmpty(it.VariationId);
+
+                decimal sumC = 0m; bool anyCost = false; int countWithCost = 0;
                 foreach (var c in compsForItem)
                 {
                     if (prodsPrecio.TryGetValue(c.CafeProductoId, out var pp))
-                    { sumC += pp.Costo * c.Cantidad; anyCost = true; }
+                    { sumC += pp.Costo * c.Cantidad; anyCost = true; countWithCost++; }
                 }
-                if (anyCost) costoBase = Math.Round(sumC, 2);
+                if (anyCost)
+                {
+                    costoBase = tratarComoVariantes
+                        ? Math.Round(sumC / Math.Max(countWithCost, 1), 2)  // promedio: linkeo de variantes roto
+                        : Math.Round(sumC, 2);                              // suma: combo real
+                }
             }
             // 2) Legacy: combo directo
             if (!costoBase.HasValue && it.ComboId.HasValue)

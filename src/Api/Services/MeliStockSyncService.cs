@@ -125,8 +125,27 @@ public class MeliStockSyncService
                         compsAplicables = comps.Where(c => c.MeliVariationId == ord.VariationId).ToList();
                         if (compsAplicables.Count == 0)
                         {
-                            // Fallback: componentes sin variation_id (compat con linkeos pre-bug)
-                            compsAplicables = comps.Where(c => string.IsNullOrEmpty(c.MeliVariationId)).ToList();
+                            // 2026-06-19 SAFE-GUARD: la orden vino con VariationId pero los linkeos no lo
+                            // tienen seteado. Antes haciamos fallback a NULL, que descontaba TODOS los
+                            // componentes — interpretando variantes como combo. Caso real C141/Batea
+                            // Colombraro: cada venta descontaba beige + blanco + gris + rojo a la vez.
+                            // Nueva logica: si hay >1 componente con SKU distinto sin variation_id,
+                            // asumimos que son VARIANTES con linkeo roto y NO descontamos. Loguear claro
+                            // para que el operador pueda re-linkear con MeliVariationId correcto.
+                            var compsNull = comps.Where(c => string.IsNullOrEmpty(c.MeliVariationId)).ToList();
+                            var distinctSkus = compsNull.Select(c => c.CafeProductoId).Distinct().Count();
+                            if (compsNull.Count > 1 && distinctSkus > 1)
+                            {
+                                _logger.LogWarning(
+                                    "⚠ Orden MeLi #{Id} (Item={ItemId}, Variation={Var}) tiene linkeos con MeliVariationId=NULL pero hay {N} productos distintos. SE OMITE el descuento para evitar restar de variantes erroneas. Re-linkear el MLA con variation_id correcto.",
+                                    ord.MeliOrderId, ord.ItemId, ord.VariationId, distinctSkus);
+                                compsAplicables = new List<MeliItemComponente>();
+                            }
+                            else
+                            {
+                                // Caso seguro: 1 solo componente sin variation_id, o multiples del mismo producto.
+                                compsAplicables = compsNull;
+                            }
                         }
                     }
                     else
