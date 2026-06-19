@@ -35,6 +35,12 @@
                     title="Aplica una regla refinada para detectar productos compuestos reales y degrada los falsos positivos a Combos MeLi">
                 @(reclasificando ? "Reclasificando..." : "🔧 Reclasificar automático")
             </button>
+            @* 2026-06-18: sugeridor masivo OEM — auto-link en bloque por similitud de SKU *@
+            <button class="btn" style="background:#16a34a; color:white; border:none;"
+                    @onclick="AbrirSugeridorOem" disabled="@sugiriendoOems"
+                    title="Detecta OEMs sugeridos para los compuestos sin OEM cargado (matchea por raíz del SKU)">
+                @(sugiriendoOems ? "Buscando..." : "🪄 Sugerir OEMs")
+            </button>
             <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo Combo</button>
         </div>
     </div>
@@ -82,30 +88,72 @@
                                         {
                                             <span style="font-family: monospace; font-weight: 700; color: #1d4ed8; font-size: 0.8rem;">@c.Sku</span>
                                         }
-                                        @* 2026-06-18: chip OEM clickeable para edicion rapida sin abrir modal grande *@
-                                        @if (c.EsCompuesto)
-                                        {
-                                            if (c.OemId.HasValue && !string.IsNullOrEmpty(c.OemCodigo))
+                                    </div>
+                                    @* 2026-06-18: edicion inline OEM — desplegable + multiplicador + ✓ siempre visibles (sin popover) *@
+                                    @if (c.EsCompuesto)
+                                    {
+                                        var st = GetInlineState(c.Id, c);
+                                        <div style="display: flex; gap: 0.3rem; align-items: center; margin: 0.25rem 0; flex-wrap: wrap; position: relative;">
+                                            @if (st.IsLinked && !st.Editing)
                                             {
-                                                var multTxt = (c.MultiplicadorOem ?? 1m);
-                                                <button type="button"
-                                                        @onclick="() => OpenQuickOem(c)"
-                                                        style="display:inline-flex; align-items:center; gap:0.25rem; padding:0.1rem 0.5rem; background:#E1F5EE; color:#085041; border:1px solid #5DCAA5; border-radius:999px; font-size:0.7rem; font-weight:700; cursor:pointer;"
-                                                        title="OEM vinculado — click para editar">
-                                                    🔗 OEM @c.OemCodigo @(multTxt != 1m ? $"×{multTxt.ToString("0.##")}" : "×1")
-                                                </button>
+                                                <span style="display:inline-flex; align-items:center; gap:0.3rem; padding:0.15rem 0.5rem; background:#E1F5EE; color:#085041; border:1px solid #5DCAA5; border-radius:6px; font-size:0.75rem; font-weight:700;">
+                                                    🔗 OEM @c.OemCodigo
+                                                </span>
+                                                <span style="font-size: 0.7rem; color: #6b7280;">×</span>
+                                                <input type="number" step="0.0001" min="0" value="@(c.MultiplicadorOem ?? 1m)"
+                                                       @onchange="@(async (e) => await UpdateMultiplicadorInline(c, e.Value?.ToString()))"
+                                                       style="width:65px; padding:0.15rem 0.35rem; font-size:0.78rem; text-align:right; border:1px solid #d1d5db; border-radius:4px;" />
+                                                <span style="font-size:0.72rem; color:#085041; font-weight:700; background:#f0fdf4; padding:0.15rem 0.4rem; border-radius:4px;">
+                                                    $@FormatMoney((c.OemPvpConIva ?? 0m) * (c.MultiplicadorOem ?? 1m))
+                                                </span>
+                                                <button type="button" class="btn-icon" style="font-size:0.85rem;" @onclick="() => DesvincularOemInline(c)" title="Desvincular OEM">×</button>
                                             }
                                             else
                                             {
-                                                <button type="button"
-                                                        @onclick="() => OpenQuickOem(c)"
-                                                        style="display:inline-flex; align-items:center; gap:0.25rem; padding:0.1rem 0.5rem; background:transparent; color:#6b7280; border:1px dashed #d1d5db; border-radius:999px; font-size:0.7rem; font-weight:600; cursor:pointer;"
-                                                        title="Click para vincular un OEM y definir el precio del fabricante">
-                                                    + vincular OEM
-                                                </button>
+                                                <input class="form-input" style="font-size:0.78rem; padding:0.2rem 0.4rem; min-width:200px; max-width:260px;"
+                                                       value="@st.SearchText"
+                                                       @oninput="@((e) => OnInlineOemSearch(c.Id, e.Value?.ToString()))"
+                                                       @onfocus="() => OnInlineOemFocus(c.Id)"
+                                                       placeholder="🔍 OEM por código, descripción..." />
+                                                <span style="font-size:0.7rem; color:#6b7280;">×</span>
+                                                <input type="number" step="0.0001" min="0" @bind="st.Mult"
+                                                       style="width:55px; padding:0.2rem 0.35rem; font-size:0.78rem; text-align:right; border:1px solid #d1d5db; border-radius:4px;" />
+                                                @if (st.SelectedOemId > 0)
+                                                {
+                                                    <button type="button" @onclick="() => SaveInlineOem(c)" disabled="@st.Saving"
+                                                            style="background:#16a34a; color:white; border:none; padding:0.2rem 0.5rem; border-radius:4px; cursor:pointer; font-size:0.78rem; font-weight:700;">
+                                                        @(st.Saving ? "..." : "✓")
+                                                    </button>
+                                                }
+                                                @if (st.Open && !string.IsNullOrWhiteSpace(st.SearchText))
+                                                {
+                                                    var matches = OemsMatching(st.SearchText).Take(10).ToList();
+                                                    <div style="position:absolute; top:100%; left:0; right:0; background:white; border:1px solid #d1d5db; border-radius:6px; max-height:240px; overflow-y:auto; z-index:50; box-shadow:0 4px 14px rgba(0,0,0,0.12); margin-top:0.15rem; max-width:520px;">
+                                                        @if (matches.Count == 0)
+                                                        {
+                                                            <div style="padding:0.5rem; color:#6b7280; font-size:0.78rem;">Sin resultados</div>
+                                                        }
+                                                        else
+                                                        {
+                                                            @foreach (var o in matches)
+                                                            {
+                                                                var oId = o.Id;
+                                                                <div class="cli-pick-row" @onclick="() => SelectInlineOem(c.Id, oId, o)"
+                                                                     style="padding:0.35rem 0.55rem; cursor:pointer; border-bottom:1px solid #f3f4f6; font-size:0.78rem;">
+                                                                    <span style="background:#16a34a; color:white; padding:0.1rem 0.4rem; border-radius:3px; font-weight:700; font-family:monospace; margin-right:0.4rem;">@o.Codigo</span>
+                                                                    <strong>@(o.Descripcion ?? "")</strong>
+                                                                    @if (o.PvpConIva.HasValue)
+                                                                    {
+                                                                        <span style="color:#15803d; font-size:0.72rem; margin-left:0.3rem;">· $@FormatMoney(o.PvpConIva.Value)</span>
+                                                                    }
+                                                                </div>
+                                                            }
+                                                        }
+                                                    </div>
+                                                }
                                             }
-                                        }
-                                    </div>
+                                        </div>
+                                    }
                                     @if (modoEdicion)
                                     {
                                         <input class="form-input" style="font-size:0.85rem;"
@@ -550,6 +598,81 @@
     </div>
 }
 
+@* 2026-06-18: Modal sugeridor masivo OEM *@
+@if (sugeridorResp is not null)
+{
+    <div class="modal-overlay" @onclick="CerrarSugeridor">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 1100px; max-height: 92vh; display: flex; flex-direction: column;">
+            <div class="modal-header" style="background: #16a34a; color: white;">
+                <h3 style="margin: 0;">🪄 Sugerencias de OEM por similitud de SKU</h3>
+                <button class="btn-close" @onclick="CerrarSugeridor" style="color:white;">&times;</button>
+            </div>
+            <div class="modal-body" style="overflow-y: auto;">
+                <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; padding: 0.6rem 0.8rem; background: #f9fafb; border-radius: 6px;">
+                    <span><strong>Total revisados:</strong> @sugeridorResp.Total</span>
+                    <span style="color: #15803d;"><strong>Con sugerencia:</strong> @sugeridorResp.ConMatch</span>
+                    <span style="color: #b91c1c;"><strong>Sin match:</strong> @sugeridorResp.SinMatch</span>
+                </div>
+                @if (sugeridorResp.Sugerencias.Count == 0)
+                {
+                    <p style="text-align: center; color: #6b7280;">No se encontraron sugerencias automáticas. Tendrás que linkear OEMs manualmente desde el listado.</p>
+                }
+                else
+                {
+                    <div style="display: flex; gap: 0.5rem; margin-bottom: 0.6rem;">
+                        <button class="btn btn-secondary" @onclick="() => ToggleTodasSugerencias(true)">Tildar todas</button>
+                        <button class="btn btn-secondary" @onclick="() => ToggleTodasSugerencias(false)">Destildar todas</button>
+                        <span style="margin-left: auto; align-self: center; font-size: 0.85rem; color: #6b7280;">
+                            Seleccionadas: <strong>@sugSeleccionadas.Count(kv => kv.Value)</strong>
+                        </span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table" style="font-size: 0.85rem;">
+                            <thead>
+                                <tr>
+                                    <th style="width: 40px;"></th>
+                                    <th>Compuesto</th>
+                                    <th>OEM sugerido</th>
+                                    <th style="text-align: right;">PVP OEM</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var s in sugeridorResp.Sugerencias)
+                                {
+                                    var sid = s.ComboId;
+                                    var tildada = sugSeleccionadas.TryGetValue(sid, out var v) && v;
+                                    <tr style="@(tildada ? "" : "opacity: 0.5;")">
+                                        <td><input type="checkbox" checked="@tildada"
+                                                   @onchange="@((e) => sugSeleccionadas[sid] = (bool)(e.Value ?? false))" /></td>
+                                        <td>
+                                            <div style="font-family: monospace; color: #1d4ed8; font-weight: 700;">@s.ComboSku</div>
+                                            <div style="font-size: 0.75rem; color: #6b7280;">@s.ComboNombre</div>
+                                        </td>
+                                        <td>
+                                            <span style="background:#16a34a; color:white; padding:0.1rem 0.4rem; border-radius:4px; font-weight:700; font-family:monospace; margin-right:0.4rem;">@s.OemCodigo</span>
+                                            <strong>@(s.OemDescripcion ?? "")</strong>
+                                        </td>
+                                        <td style="text-align: right; font-weight: 700; color: #15803d;">
+                                            @(s.OemPvpConIva.HasValue ? "$" + FormatMoney(s.OemPvpConIva.Value) : "—")
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CerrarSugeridor" disabled="@aplicandoSugerencias">Cancelar</button>
+                <button class="btn btn-primary" style="background:#16a34a; border-color:#16a34a;"
+                        @onclick="AplicarSugerenciasOem" disabled="@(aplicandoSugerencias || sugSeleccionadas.Count(kv => kv.Value) == 0)">
+                    @(aplicandoSugerencias ? "Aplicando..." : $"✅ Aplicar {sugSeleccionadas.Count(kv => kv.Value)} seleccionadas")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @* 2026-06-18: Mini-popover OEM — edicion rapida sin abrir el modal grande *@
 @if (quickOemTarget is not null)
 {
@@ -978,6 +1101,177 @@
         }
         catch (Exception ex) { formError = ex.Message; }
         finally { saving = false; }
+    }
+
+    // 2026-06-18: Edicion inline OEM por fila (sin popover)
+    private class InlineOemState
+    {
+        public bool IsLinked { get; set; }
+        public bool Editing { get; set; }
+        public string SearchText { get; set; } = "";
+        public bool Open { get; set; }
+        public int SelectedOemId { get; set; }
+        public decimal Mult { get; set; } = 1m;
+        public bool Saving { get; set; }
+    }
+    private Dictionary<int, InlineOemState> inlineStates = new();
+
+    private InlineOemState GetInlineState(int comboId, CafeComboDto c)
+    {
+        if (!inlineStates.TryGetValue(comboId, out var st))
+        {
+            st = new InlineOemState
+            {
+                IsLinked = c.OemId.HasValue,
+                Editing = !c.OemId.HasValue,
+                Mult = c.MultiplicadorOem ?? 1m
+            };
+            inlineStates[comboId] = st;
+        }
+        else
+        {
+            // sync con el DTO actualizado
+            st.IsLinked = c.OemId.HasValue;
+        }
+        return st;
+    }
+
+    private void OnInlineOemSearch(int comboId, string? text)
+    {
+        var st = inlineStates[comboId];
+        st.SearchText = text ?? "";
+        st.Open = true;
+        if (string.IsNullOrWhiteSpace(text)) st.SelectedOemId = 0;
+    }
+
+    private void OnInlineOemFocus(int comboId)
+    {
+        if (inlineStates.TryGetValue(comboId, out var st)) st.Open = true;
+    }
+
+    private void SelectInlineOem(int comboId, int oemId, CafeOemDto o)
+    {
+        var st = inlineStates[comboId];
+        st.SelectedOemId = oemId;
+        st.SearchText = $"{o.Codigo} - {o.Descripcion}";
+        st.Open = false;
+    }
+
+    private async Task SaveInlineOem(CafeComboDto c)
+    {
+        var st = inlineStates[c.Id];
+        if (st.SelectedOemId == 0) return;
+        st.Saving = true;
+        try
+        {
+            var resp = await Api.UpdateCafeComboAsync(c.Id, new UpdateCafeComboRequest
+            {
+                OemId = st.SelectedOemId,
+                MultiplicadorOem = st.Mult > 0m ? st.Mult : 1m,
+                EsCompuesto = true
+            });
+            if (resp is null) { ToastService.Error("No se pudo guardar"); return; }
+            var idx = combos?.FindIndex(x => x.Id == c.Id) ?? -1;
+            if (idx >= 0 && combos is not null) combos[idx] = resp;
+            st.IsLinked = true;
+            st.Editing = false;
+            ToastService.Success($"OEM vinculado a {c.Sku}");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { st.Saving = false; }
+    }
+
+    private async Task UpdateMultiplicadorInline(CafeComboDto c, string? valor)
+    {
+        if (!decimal.TryParse(valor, out var nuevo) || nuevo <= 0) return;
+        if (Math.Abs(nuevo - (c.MultiplicadorOem ?? 1m)) < 0.0001m) return; // sin cambio real
+        try
+        {
+            var resp = await Api.UpdateCafeComboAsync(c.Id, new UpdateCafeComboRequest
+            {
+                MultiplicadorOem = nuevo
+            });
+            if (resp is null) return;
+            var idx = combos?.FindIndex(x => x.Id == c.Id) ?? -1;
+            if (idx >= 0 && combos is not null) combos[idx] = resp;
+            ToastService.Success("Multiplicador actualizado");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task DesvincularOemInline(CafeComboDto c)
+    {
+        try
+        {
+            var resp = await Api.UpdateCafeComboAsync(c.Id, new UpdateCafeComboRequest { ClearOem = true });
+            if (resp is null) return;
+            var idx = combos?.FindIndex(x => x.Id == c.Id) ?? -1;
+            if (idx >= 0 && combos is not null) combos[idx] = resp;
+            if (inlineStates.TryGetValue(c.Id, out var st))
+            {
+                st.IsLinked = false;
+                st.Editing = true;
+                st.SelectedOemId = 0;
+                st.SearchText = "";
+                st.Mult = 1m;
+            }
+            ToastService.Info("OEM desvinculado — vuelve a sumar componentes");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    // 2026-06-18: Sugeridor masivo OEM (modal con tabla de propuestas)
+    private bool sugiriendoOems;
+    private SugerirOemsResponse? sugeridorResp;
+    private Dictionary<int, bool> sugSeleccionadas = new();
+    private bool aplicandoSugerencias;
+
+    private async Task AbrirSugeridorOem()
+    {
+        sugiriendoOems = true;
+        try
+        {
+            sugeridorResp = await Api.SugerirOemsAsync();
+            sugSeleccionadas = sugeridorResp?.Sugerencias.ToDictionary(s => s.ComboId, s => true) ?? new();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { sugiriendoOems = false; }
+    }
+
+    private void CerrarSugeridor() { if (!aplicandoSugerencias) { sugeridorResp = null; sugSeleccionadas.Clear(); } }
+
+    private void ToggleTodasSugerencias(bool valor)
+    {
+        if (sugeridorResp is null) return;
+        foreach (var s in sugeridorResp.Sugerencias) sugSeleccionadas[s.ComboId] = valor;
+    }
+
+    private async Task AplicarSugerenciasOem()
+    {
+        if (sugeridorResp is null) return;
+        var seleccionadas = sugeridorResp.Sugerencias.Where(s => sugSeleccionadas.TryGetValue(s.ComboId, out var v) && v).ToList();
+        if (seleccionadas.Count == 0) { ToastService.Error("No seleccionaste ninguna"); return; }
+        aplicandoSugerencias = true;
+        try
+        {
+            var req = new AplicarSugerenciasOemRequest
+            {
+                Items = seleccionadas.Select(s => new AplicarSugerenciaItem
+                {
+                    ComboId = s.ComboId,
+                    OemId = s.OemId,
+                    Multiplicador = 1m
+                }).ToList()
+            };
+            var resp = await Api.AplicarSugerenciasOemAsync(req);
+            if (resp is null) { ToastService.Error("No se pudo aplicar"); return; }
+            ToastService.Success($"✅ {resp.Aplicadas} OEMs vinculados" + (resp.Fallidas > 0 ? $" ({resp.Fallidas} fallaron)" : ""));
+            sugeridorResp = null;
+            sugSeleccionadas.Clear();
+            await Load();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { aplicandoSugerencias = false; }
     }
 
     // 2026-06-18: Mini-popover OEM (edicion rapida desde el listado, sin abrir el modal grande)

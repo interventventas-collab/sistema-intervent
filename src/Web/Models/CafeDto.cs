@@ -927,6 +927,44 @@ public class UpdateCafeComboRequest
     public bool? EsCompuesto { get; set; }
 }
 
+// 2026-06-18: sugeridor masivo OEM
+public class SugerenciaOemDto
+{
+    public int ComboId { get; set; }
+    public string ComboSku { get; set; } = "";
+    public string ComboNombre { get; set; } = "";
+    public int OemId { get; set; }
+    public string OemCodigo { get; set; } = "";
+    public string? OemDescripcion { get; set; }
+    public decimal? OemPvpConIva { get; set; }
+}
+
+public class SugerirOemsResponse
+{
+    public int Total { get; set; }
+    public int ConMatch { get; set; }
+    public int SinMatch { get; set; }
+    public List<SugerenciaOemDto> Sugerencias { get; set; } = new();
+}
+
+public class AplicarSugerenciaItem
+{
+    public int ComboId { get; set; }
+    public int OemId { get; set; }
+    public decimal Multiplicador { get; set; } = 1m;
+}
+
+public class AplicarSugerenciasOemRequest
+{
+    public List<AplicarSugerenciaItem> Items { get; set; } = new();
+}
+
+public class AplicarSugerenciasOemResponse
+{
+    public int Aplicadas { get; set; }
+    public int Fallidas { get; set; }
+}
+
 // ===== OEMs =====
 public class CafeOemDto
 {

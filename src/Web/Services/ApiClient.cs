@@ -1679,6 +1679,13 @@ public class ApiClient
     public async Task<bool> DeleteCafeComboAsync(int id)
         => await DeleteAsync($"/api/cafe/combos/{id}");
 
+    // 2026-06-18: sugeridor masivo OEM para compuestos
+    public async Task<SugerirOemsResponse?> SugerirOemsAsync()
+        => await GetAsync<SugerirOemsResponse>("/api/cafe/combos/sugerir-oems");
+
+    public async Task<AplicarSugerenciasOemResponse?> AplicarSugerenciasOemAsync(AplicarSugerenciasOemRequest req)
+        => await PostAsync<AplicarSugerenciasOemResponse>("/api/cafe/combos/aplicar-sugerencias-oem", req);
+
     // --- Cafe: OEMs ---
     public async Task<List<CafeOemDto>?> GetCafeOemsAsync(string? proveedor = null, string? marca = null, string? q = null)
     {

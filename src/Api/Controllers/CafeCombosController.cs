@@ -199,6 +199,125 @@ public class CafeCombosController : ControllerBase
             SkusDegradados: degradados));
     }
 
+    /// <summary>2026-06-18 — Sugiere OEMs para los compuestos sin OEM cargado, en lote.
+    /// Algoritmo: para cada compuesto, extraer la "raíz" del SKU (quitar prefijo C, sufijos de color
+    /// y multiplicadores XN) y buscar OEM con código exactamente igual a esa raíz.</summary>
+    public record SugerenciaOemDto(int ComboId, string ComboSku, string ComboNombre, int OemId, string OemCodigo, string? OemDescripcion, decimal? OemPvpConIva);
+    public record SugerenciaResult(int Total, int ConMatch, int SinMatch, List<SugerenciaOemDto> Sugerencias);
+
+    [HttpGet("sugerir-oems")]
+    public async Task<IActionResult> SugerirOems()
+    {
+        // 1. compuestos sin OEM
+        var sinOem = await _db.CafeCombos
+            .Where(c => c.EsCompuesto && c.OemId == null && c.Sku != null)
+            .Select(c => new { c.Id, c.Sku, c.Nombre })
+            .ToListAsync();
+
+        // 2. todos los OEMs indexados por código (uppercase trim)
+        var oems = await _db.CafeOems
+            .Where(o => o.Codigo != null)
+            .Select(o => new { o.Id, o.Codigo, o.Descripcion, o.PvpConIva })
+            .ToListAsync();
+        var oemPorCodigo = oems
+            .GroupBy(o => o.Codigo!.Trim().ToUpperInvariant())
+            .ToDictionary(g => g.Key, g => g.First());
+
+        var sugerencias = new List<SugerenciaOemDto>();
+        int sinMatch = 0;
+        foreach (var c in sinOem)
+        {
+            var raiz = ExtraerRaizOemDelSku(c.Sku!);
+            if (string.IsNullOrEmpty(raiz)) { sinMatch++; continue; }
+            if (oemPorCodigo.TryGetValue(raiz, out var oem))
+            {
+                sugerencias.Add(new SugerenciaOemDto(c.Id, c.Sku!, c.Nombre, oem.Id, oem.Codigo!, oem.Descripcion, oem.PvpConIva));
+            }
+            else
+            {
+                sinMatch++;
+            }
+        }
+        return Ok(new SugerenciaResult(sinOem.Count, sugerencias.Count, sinMatch, sugerencias));
+    }
+
+    /// <summary>2026-06-18 — Aplica en lote las sugerencias confirmadas por el usuario.</summary>
+    public record AplicarSugerenciaItem(int ComboId, int OemId, decimal Multiplicador);
+    public record AplicarSugerenciasRequest(List<AplicarSugerenciaItem> Items);
+    public record AplicarSugerenciasResult(int Aplicadas, int Fallidas);
+
+    [HttpPost("aplicar-sugerencias-oem")]
+    public async Task<IActionResult> AplicarSugerenciasOem([FromBody] AplicarSugerenciasRequest req)
+    {
+        if (req.Items is null || req.Items.Count == 0)
+            return BadRequest(new { error = "Lista vacia" });
+
+        int aplicadas = 0, fallidas = 0;
+        var ids = req.Items.Select(x => x.ComboId).ToList();
+        var combos = await _db.CafeCombos.Where(c => ids.Contains(c.Id)).ToListAsync();
+        var combosById = combos.ToDictionary(c => c.Id);
+
+        foreach (var item in req.Items)
+        {
+            if (!combosById.TryGetValue(item.ComboId, out var combo)) { fallidas++; continue; }
+            combo.OemId = item.OemId;
+            combo.MultiplicadorOem = item.Multiplicador > 0m ? item.Multiplicador : 1m;
+            combo.EsCompuesto = true;
+            combo.UpdatedAt = DateTime.UtcNow;
+            aplicadas++;
+        }
+        await _db.SaveChangesAsync();
+        return Ok(new AplicarSugerenciasResult(aplicadas, fallidas));
+    }
+
+    /// <summary>2026-06-18 — Extrae la "raíz" de codigo OEM del SKU del compuesto.
+    /// Estrategia: ir probando candidatos de mas largo a mas corto y devolver el primero que sea util.
+    /// Ej: C926NEG -> 926; C4300AZX10 -> 4300; X146X10 -> X146; 10KDOR -> 10KDOR (no se trimea sufijo si queda < 2 chars).
+    /// El backend luego matchea contra OEM.Codigo exacto (uppercase). Si no hay match, queda como "sin sugerencia".</summary>
+    private static string ExtraerRaizOemDelSku(string sku)
+    {
+        var s = sku.Trim().ToUpperInvariant();
+        if (string.IsNullOrEmpty(s)) return "";
+
+        // Sufijos de color/material/tipo que aparecen al final del SKU del compuesto
+        var sufijosColor = new[] {
+            "NEGRO","BLANCO","ROJO","AZUL","VERDE","AMARILLO","FUCSIA","CELESTE","VIOLETA","NARANJA","BEIGE","GRIS","ROSA","MARRON","TURQUESA","LILA","MENTA","BORDO","DORADO","PLATEADO","TRANSPARENTE","CRISTAL","NATURAL","SURTIDO","CLARO","OSCURO",
+            "NEG","BLA","ROJ","AZU","VER","AMA","FUC","CEL","VIO","NAR","BEI","GRI","ROS","MAR","TUR","LIL","MEN","BOR","DOR","PLA","TRA","TR","BL","GR","AZ","VP","FU","BE","NA","AM","RO","CL","OS","TN","VM","TX","NE","RJ","CE","GS","AS"
+        };
+        // Sufijos de multiplicador (X2, X4, X10, X100, etc.)
+        var rxMult = new System.Text.RegularExpressions.Regex(@"X\d{1,3}$");
+
+        // Quitar multiplicadores al final (puede haber mas de uno, ej C4300AZX10 = AZ + X10)
+        while (rxMult.IsMatch(s))
+        {
+            s = rxMult.Replace(s, "");
+        }
+
+        // Quitar sufijos de color al final (probando de mas largo a mas corto)
+        bool cambio = true;
+        while (cambio && s.Length > 2)
+        {
+            cambio = false;
+            foreach (var suf in sufijosColor.OrderByDescending(x => x.Length))
+            {
+                if (s.EndsWith(suf, StringComparison.OrdinalIgnoreCase) && s.Length - suf.Length >= 2)
+                {
+                    s = s.Substring(0, s.Length - suf.Length);
+                    cambio = true;
+                    break;
+                }
+            }
+        }
+
+        // Quitar prefijo C si lo que queda son solo digitos (ej C926 -> 926, pero C9419TT no toca)
+        if (s.Length > 1 && s[0] == 'C' && s.Substring(1).All(char.IsDigit))
+        {
+            s = s.Substring(1);
+        }
+
+        return s;
+    }
+
     /// <summary>2026-06-18 — Regla refinada para detectar producto compuesto.</summary>
     private static bool EsCompuestoSegunRegla(CafeCombo c, HashSet<string> skusQueSonCombos)
     {
