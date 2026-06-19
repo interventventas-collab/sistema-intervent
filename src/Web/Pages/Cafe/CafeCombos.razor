@@ -21,9 +21,10 @@
             <input class="form-input" style="min-width: 240px; font-size: 0.85rem;"
                    @bind="filtroTexto" @bind:event="oninput"
                    placeholder="🔍 Buscar por SKU o nombre..." />
-            <select class="form-input" style="max-width: 180px; font-size: 0.85rem;" @bind="filtroTipo">
+            <select class="form-input" style="max-width: 220px; font-size: 0.85rem;" @bind="filtroTipo">
                 <option value="MELI">🟠 Solo Combos MeLi</option>
                 <option value="COMPUESTO">🟣 Solo Compuestos</option>
+                <option value="COMPUESTO_SIN_OEM">🟡 Compuestos SIN OEM (pendientes)</option>
                 <option value="">Todos</option>
             </select>
             <button class="btn @(modoEdicion ? "btn-warning" : "btn-secondary")"
@@ -853,6 +854,7 @@
             // Filtro por tipo (default: solo Combos MeLi)
             if (filtroTipo == "MELI") q = q.Where(c => !c.EsCompuesto);
             else if (filtroTipo == "COMPUESTO") q = q.Where(c => c.EsCompuesto);
+            else if (filtroTipo == "COMPUESTO_SIN_OEM") q = q.Where(c => c.EsCompuesto && !c.OemId.HasValue);
             if (!string.IsNullOrWhiteSpace(filtroTexto))
             {
                 var t = filtroTexto.Trim();
