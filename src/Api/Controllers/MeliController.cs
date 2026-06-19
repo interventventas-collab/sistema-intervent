@@ -508,8 +508,25 @@ public class MeliController : ControllerBase
             if (p != null)
             {
                 source = "producto_directo";
-                comps.Add(new ProductCostDto.Comp(p.Sku ?? "", p.Nombre ?? "", p.Costo, 1, p.Costo));
+                // 2026-06-19: cafe fraccionado — sku F*.4 = 0.25 kg, F*.2 = 0.5 kg, sin sufijo = 1 kg.
+                decimal cant = 1m;
+                if (!string.IsNullOrEmpty(mi.Sku))
+                {
+                    if (mi.Sku.EndsWith(".4")) cant = 0.25m;
+                    else if (mi.Sku.EndsWith(".2")) cant = 0.5m;
+                }
+                comps.Add(new ProductCostDto.Comp(p.Sku ?? "", p.Nombre ?? "", p.Costo, cant, p.Costo * cant));
             }
+        }
+
+        // 2026-06-19: dedup + factor por SKU tambien para path componentes (mismas reglas que
+        // MeliItemService): si todos los componentes son del mismo producto, deduplicar.
+        if (source == "componentes" && comps.Count > 1)
+        {
+            comps = comps
+                .GroupBy(c => c.Sku)
+                .Select(g => g.First())
+                .ToList();
         }
 
         var total = comps.Sum(c => c.CostoTotal);
