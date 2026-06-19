@@ -236,25 +236,21 @@ public class CafeClientesController : ControllerBase
         await _db.SaveChangesAsync();
 
         // 2026-06-19: cuando se editan datos del cliente, propagamos los nuevos valores
-        // como SNAPSHOT en TODAS sus ventas historicas. La razon de fondo: el snapshot
-        // existe para preservar el PDF y el CAE de ARCA, pero el usuario operativo se
-        // confunde al ver el mismo cliente con distinto nombre en el listado segun la
-        // fecha de la venta. Acordamos que los CAE ya emitidos quedan inmutables en ARCA
-        // (no se re-emite nada), pero el snapshot interno del sistema se alinea con los
-        // datos vigentes del cliente. Si en el futuro quisieramos diferenciar entre
-        // "cambio cosmetico" vs "cambio de razon social", agregar un flag al request.
-        // Solo actualizamos las columnas que cambiaron en este update (no pisamos otras).
+        // como SNAPSHOT en TODAS sus ventas historicas. SOLO sincronizamos IDENTIDAD
+        // (Nombre, Tipo, Telefono, RazonSocial, Cuit) — son atributos del cliente entero,
+        // no cambian segun la venta.
+        // NO tocamos DOMICILIOS (Direccion, DomicilioEntrega, Localidad, Ciudad, Cp).
+        // Esos son por venta: si una sucursal cambio de direccion entre ventas viejas
+        // y la actual, perderiamos la trazabilidad de a donde se entrego cada cosa.
+        // Caso real que motivo el fix: PANADERIA LA MILAGROSA con 2 sucursales — antes
+        // era 1 cliente con domicilio editado entre ventas, ahora son 2 clientes
+        // separados, pero las ventas viejas se mantienen con su domicilio historico.
         await _db.CafeVentas.Where(v => v.ClienteId == c.Id).ExecuteUpdateAsync(setters => setters
             .SetProperty(v => v.ClienteNombreSnapshot, c.Nombre)
             .SetProperty(v => v.ClienteTipoSnapshot, c.Tipo)
             .SetProperty(v => v.ClienteTelefonoSnapshot, c.Telefono)
             .SetProperty(v => v.ClienteRazonSocialSnapshot, c.RazonSocial)
-            .SetProperty(v => v.ClienteDomicilioEntregaSnapshot, c.DomicilioEntrega)
-            .SetProperty(v => v.ClienteCuitSnapshot, c.Cuit)
-            .SetProperty(v => v.ClienteDireccionSnapshot, c.Direccion)
-            .SetProperty(v => v.ClienteLocalidadSnapshot, c.Localidad)
-            .SetProperty(v => v.ClienteCiudadSnapshot, c.Ciudad)
-            .SetProperty(v => v.ClienteCpSnapshot, c.Cp));
+            .SetProperty(v => v.ClienteCuitSnapshot, c.Cuit));
 
         return Ok(Map(c));
     }
