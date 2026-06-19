@@ -1023,8 +1023,8 @@
             });
             if (resp is null) { quickOemError = "No se pudo guardar"; return; }
             // Actualizo el item local en la lista para no refrescar todo
-            var idx = combos.FindIndex(x => x.Id == quickOemTarget.Id);
-            if (idx >= 0) combos[idx] = resp;
+            var idx = combos?.FindIndex(x => x.Id == quickOemTarget.Id) ?? -1;
+            if (idx >= 0 && combos is not null) combos[idx] = resp;
             ToastService.Success("OEM vinculado");
             quickOemTarget = null;
         }
@@ -1043,8 +1043,8 @@
                 ClearOem = true
             });
             if (resp is null) { quickOemError = "No se pudo guardar"; return; }
-            var idx = combos.FindIndex(x => x.Id == quickOemTarget.Id);
-            if (idx >= 0) combos[idx] = resp;
+            var idx = combos?.FindIndex(x => x.Id == quickOemTarget.Id) ?? -1;
+            if (idx >= 0 && combos is not null) combos[idx] = resp;
             ToastService.Success("OEM desvinculado");
             quickOemTarget = null;
         }
