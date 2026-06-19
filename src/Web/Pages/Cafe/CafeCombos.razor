@@ -82,6 +82,29 @@
                                         {
                                             <span style="font-family: monospace; font-weight: 700; color: #1d4ed8; font-size: 0.8rem;">@c.Sku</span>
                                         }
+                                        @* 2026-06-18: chip OEM clickeable para edicion rapida sin abrir modal grande *@
+                                        @if (c.EsCompuesto)
+                                        {
+                                            if (c.OemId.HasValue && !string.IsNullOrEmpty(c.OemCodigo))
+                                            {
+                                                var multTxt = (c.MultiplicadorOem ?? 1m);
+                                                <button type="button"
+                                                        @onclick="() => OpenQuickOem(c)"
+                                                        style="display:inline-flex; align-items:center; gap:0.25rem; padding:0.1rem 0.5rem; background:#E1F5EE; color:#085041; border:1px solid #5DCAA5; border-radius:999px; font-size:0.7rem; font-weight:700; cursor:pointer;"
+                                                        title="OEM vinculado — click para editar">
+                                                    🔗 OEM @c.OemCodigo @(multTxt != 1m ? $"×{multTxt.ToString("0.##")}" : "×1")
+                                                </button>
+                                            }
+                                            else
+                                            {
+                                                <button type="button"
+                                                        @onclick="() => OpenQuickOem(c)"
+                                                        style="display:inline-flex; align-items:center; gap:0.25rem; padding:0.1rem 0.5rem; background:transparent; color:#6b7280; border:1px dashed #d1d5db; border-radius:999px; font-size:0.7rem; font-weight:600; cursor:pointer;"
+                                                        title="Click para vincular un OEM y definir el precio del fabricante">
+                                                    + vincular OEM
+                                                </button>
+                                            }
+                                        }
                                     </div>
                                     @if (modoEdicion)
                                     {
@@ -99,9 +122,23 @@
                                     }
                                     @if (c.Items.Count > 0)
                                     {
-                                        <div style="font-size: 0.72rem; color: #9ca3af; margin-top: 0.2rem;">
-                                            @string.Join(" · ", c.Items.Take(4).Select(i => $"{i.Cantidad}× {i.ProductoNombre} {FormatoLabel(i.Formato)}"))
-                                            @(c.Items.Count > 4 ? $" · +{c.Items.Count - 4} más" : "")
+                                        @* 2026-06-18: mostrar SKU del componente en monospace azul (el usuario conoce los codigos mejor que los nombres) *@
+                                        <div style="font-size: 0.72rem; color: #6b7280; margin-top: 0.25rem; display: flex; flex-direction: column; gap: 1px;">
+                                            @foreach (var it in c.Items.Take(4))
+                                            {
+                                                <div>
+                                                    <span style="font-weight: 700; color: #374151;">@it.Cantidad×</span>
+                                                    @if (!string.IsNullOrEmpty(it.ProductoSku))
+                                                    {
+                                                        <span style="font-family: monospace; color: #1d4ed8; font-weight: 700;">[@it.ProductoSku]</span>
+                                                    }
+                                                    <span style="color: #9ca3af;">@it.ProductoNombre · @FormatoLabel(it.Formato)</span>
+                                                </div>
+                                            }
+                                            @if (c.Items.Count > 4)
+                                            {
+                                                <div style="color: #9ca3af; font-style: italic;">+ @(c.Items.Count - 4) más</div>
+                                            }
                                         </div>
                                     }
                                 </td>
@@ -513,6 +550,113 @@
     </div>
 }
 
+@* 2026-06-18: Mini-popover OEM — edicion rapida sin abrir el modal grande *@
+@if (quickOemTarget is not null)
+{
+    <div class="modal-overlay" @onclick="CloseQuickOem">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 520px;">
+            <div class="modal-header" style="background: #f5f3ff; color: #4c1d95;">
+                <h4 style="margin: 0;">🟣 OEM de @quickOemTarget.Sku</h4>
+                <button class="btn-close" @onclick="CloseQuickOem">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(quickOemError))
+                {
+                    <div class="form-error" style="margin-bottom: 0.6rem;">@quickOemError</div>
+                }
+                <p style="font-size: 0.78rem; color: #6b7280; margin: 0 0 0.6rem;">
+                    Vincular el OEM hace que el precio del compuesto se calcule como <strong>OEM PVP × Multiplicador</strong> (ignorando la suma de componentes).
+                </p>
+                <div class="form-group" style="position: relative; margin-bottom: 0.7rem;">
+                    <label class="form-label" style="font-size: 0.78rem;">OEM</label>
+                    @if (quickOemId > 0)
+                    {
+                        var oSel = oems?.FirstOrDefault(x => x.Id == quickOemId);
+                        <div style="display: flex; gap: 0.3rem; align-items: center;">
+                            <div class="form-input" style="flex: 1; background: #ecfdf5; border-color: #10b981; display: flex; align-items: center; gap: 0.5rem;">
+                                <span style="background:#16a34a; color:white; padding:0.15rem 0.45rem; border-radius:6px; font-weight:800; font-family:monospace;">@(oSel?.Codigo ?? "?")</span>
+                                <strong>@(oSel?.Descripcion ?? "—")</strong>
+                                @if (oSel?.PvpConIva.HasValue == true)
+                                {
+                                    <span style="font-size: 0.72rem; color: #15803d;">· PVP $@FormatMoney(oSel.PvpConIva.Value)</span>
+                                }
+                            </div>
+                            <button class="btn btn-secondary" type="button" @onclick="() => { quickOemId = 0; quickOemSearch = string.Empty; }" title="Quitar OEM">×</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <input class="form-input" @bind="quickOemSearch" @bind:event="oninput"
+                               @onfocus="() => quickOemSearchOpen = true"
+                               placeholder="🔍 Buscar por código, descripción, marca, barcode..." />
+                        @if (quickOemSearchOpen && !string.IsNullOrWhiteSpace(quickOemSearch))
+                        {
+                            var matches = OemsMatching(quickOemSearch).Take(15).ToList();
+                            <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 240px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
+                                @if (matches.Count == 0)
+                                {
+                                    <div style="padding: 0.6rem; color: #6b7280; font-size: 0.85rem;">Sin resultados.</div>
+                                }
+                                else
+                                {
+                                    @foreach (var o in matches)
+                                    {
+                                        var oId = o.Id;
+                                        <div class="cli-pick-row" @onclick="() => SelectQuickOem(oId)"
+                                             style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem;">
+                                            <span style="background:#16a34a; color:white; padding:0.1rem 0.4rem; border-radius:4px; font-weight:700; font-family:monospace; margin-right:0.4rem;">@o.Codigo</span>
+                                            <strong>@(o.Descripcion ?? "")</strong>
+                                            @if (!string.IsNullOrEmpty(o.Marca))
+                                            {
+                                                <span style="color:#6b7280; font-size:0.78rem;"> · @o.Marca</span>
+                                            }
+                                            @if (o.PvpConIva.HasValue)
+                                            {
+                                                <span style="color:#15803d; font-size:0.78rem;"> · PVP $@FormatMoney(o.PvpConIva.Value)</span>
+                                            }
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+
+                <div class="form-row" style="margin-bottom: 0.5rem;">
+                    <div class="form-group" style="flex: 0 0 130px;">
+                        <label class="form-label" style="font-size: 0.78rem;">Multiplicador</label>
+                        <input class="form-input" type="number" step="0.0001" min="0" @bind="quickMultiplicador"
+                               style="text-align: right;" />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label" style="font-size: 0.78rem;">Precio resultante</label>
+                        @{
+                            var oSel2 = oems?.FirstOrDefault(x => x.Id == quickOemId);
+                            var multUsado = quickMultiplicador > 0 ? quickMultiplicador : 1m;
+                            var pvpFinal = (oSel2?.PvpConIva ?? 0m) * multUsado;
+                        }
+                        <div class="form-input" style="background: #f3f4f6; font-weight: 700; color: #15803d;">
+                            $@FormatMoney(pvpFinal)
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseQuickOem" disabled="@quickOemSaving">Cancelar</button>
+                @if (quickOemTarget.OemId.HasValue)
+                {
+                    <button class="btn btn-danger" @onclick="DesvincularQuickOem" disabled="@quickOemSaving" title="Vuelve a calcular precio como suma de componentes">
+                        🔗 Desvincular
+                    </button>
+                }
+                <button class="btn btn-primary" @onclick="SaveQuickOem" disabled="@(quickOemSaving || quickOemId == 0)">
+                    @(quickOemSaving ? "Guardando..." : "💾 Guardar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private List<CafeComboDto>? combos;
     private List<CafeProductoDto>? productos;
@@ -834,6 +978,78 @@
         }
         catch (Exception ex) { formError = ex.Message; }
         finally { saving = false; }
+    }
+
+    // 2026-06-18: Mini-popover OEM (edicion rapida desde el listado, sin abrir el modal grande)
+    private CafeComboDto? quickOemTarget;
+    private int quickOemId;
+    private decimal quickMultiplicador = 1m;
+    private string quickOemSearch = "";
+    private bool quickOemSearchOpen;
+    private bool quickOemSaving;
+    private string? quickOemError;
+
+    private void OpenQuickOem(CafeComboDto c)
+    {
+        quickOemTarget = c;
+        quickOemId = c.OemId ?? 0;
+        quickMultiplicador = c.MultiplicadorOem ?? 1m;
+        quickOemSearch = "";
+        quickOemSearchOpen = false;
+        quickOemError = null;
+    }
+
+    private void CloseQuickOem() { if (!quickOemSaving) quickOemTarget = null; }
+
+    private void SelectQuickOem(int id)
+    {
+        quickOemId = id;
+        quickOemSearch = "";
+        quickOemSearchOpen = false;
+        if (quickMultiplicador <= 0m) quickMultiplicador = 1m;
+    }
+
+    private async Task SaveQuickOem()
+    {
+        if (quickOemTarget is null || quickOemId == 0) return;
+        quickOemSaving = true; quickOemError = null;
+        try
+        {
+            var resp = await Api.UpdateCafeComboAsync(quickOemTarget.Id, new UpdateCafeComboRequest
+            {
+                OemId = quickOemId,
+                MultiplicadorOem = quickMultiplicador > 0m ? quickMultiplicador : 1m,
+                EsCompuesto = true
+            });
+            if (resp is null) { quickOemError = "No se pudo guardar"; return; }
+            // Actualizo el item local en la lista para no refrescar todo
+            var idx = combos.FindIndex(x => x.Id == quickOemTarget.Id);
+            if (idx >= 0) combos[idx] = resp;
+            ToastService.Success("OEM vinculado");
+            quickOemTarget = null;
+        }
+        catch (Exception ex) { quickOemError = ex.Message; }
+        finally { quickOemSaving = false; }
+    }
+
+    private async Task DesvincularQuickOem()
+    {
+        if (quickOemTarget is null) return;
+        quickOemSaving = true; quickOemError = null;
+        try
+        {
+            var resp = await Api.UpdateCafeComboAsync(quickOemTarget.Id, new UpdateCafeComboRequest
+            {
+                ClearOem = true
+            });
+            if (resp is null) { quickOemError = "No se pudo guardar"; return; }
+            var idx = combos.FindIndex(x => x.Id == quickOemTarget.Id);
+            if (idx >= 0) combos[idx] = resp;
+            ToastService.Success("OEM desvinculado");
+            quickOemTarget = null;
+        }
+        catch (Exception ex) { quickOemError = ex.Message; }
+        finally { quickOemSaving = false; }
     }
 
     // 2026-06-18: helpers OEM para compuestos
