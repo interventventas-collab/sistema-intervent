@@ -1236,8 +1236,15 @@
                                             {
                                                 <div class="cost-line-sub">Sin cuotas agregadas</div>
                                             }
+                                            else
+                                            {
+                                                <div class="cost-line-sub">@(itemCosts.FinancingFee.ToString("N1", argCulture))% del precio · ya incluido en "Cargo por vender"</div>
+                                            }
                                         </div>
-                                        <span class="cost-line-amount">$ @itemCosts.FinancingFee.ToString("N2", argCulture)</span>
+                                        <span class="cost-line-amount" style="color:#6b7280;">
+                                            @{ var financingEnPesos = Math.Round(itemCosts.Price * itemCosts.FinancingFee / 100m, 2); }
+                                            $ @financingEnPesos.ToString("N2", argCulture)
+                                        </span>
                                     </div>
                                     <div class="cost-line">
                                         <div>
