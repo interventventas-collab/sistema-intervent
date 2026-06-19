@@ -401,13 +401,22 @@ public class CafeCombosController : ControllerBase
 
     private static CafeComboDto Map(CafeCombo c, CafeSetting settings)
     {
-        decimal precioBar = 0m, precioOtro = 0m;
+        decimal precioBar = 0m, precioOtro = 0m, costoTotal = 0m;
+        int? stockMinDisponible = null;
         foreach (var it in c.Items)
         {
             var prod = it.ProductoNav;
             if (prod is null) continue;
             precioBar += CafePricingService.CalcularPrecioUnitario(prod, it.Formato, "BAR", settings) * it.Cantidad;
             precioOtro += CafePricingService.CalcularPrecioUnitario(prod, it.Formato, "OTRO", settings) * it.Cantidad;
+            // 2026-06-18: costo total = suma de (Costo del componente × cantidad)
+            costoTotal += prod.Costo * it.Cantidad;
+            // 2026-06-18: stock disponible = min(stock_componente / cantidad). Cuantos compuestos puedo armar.
+            if (it.Cantidad > 0)
+            {
+                var disponible = prod.StockUnidades / it.Cantidad;
+                stockMinDisponible = stockMinDisponible.HasValue ? Math.Min(stockMinDisponible.Value, disponible) : disponible;
+            }
         }
 
         // 2026-06-18: si el compuesto tiene OEM cargado, usar el PVP del OEM × multiplicador
@@ -446,7 +455,9 @@ public class CafeCombosController : ControllerBase
             OemCodigo: c.OemNav?.Codigo,
             OemPvpConIva: c.OemNav?.PvpConIva,
             OemIvaPct: c.OemNav?.IvaPct,
-            MultiplicadorOem: c.MultiplicadorOem
+            MultiplicadorOem: c.MultiplicadorOem,
+            CostoSumaComponentes: Math.Round(costoTotal, 2),
+            StockDisponible: stockMinDisponible ?? 0
         );
     }
 }

@@ -893,6 +893,9 @@ public class CafeComboDto
     public decimal? OemPvpConIva { get; set; }
     public decimal? OemIvaPct { get; set; }
     public decimal? MultiplicadorOem { get; set; }
+    // 2026-06-18: costo y stock calculados del compuesto
+    public decimal CostoSumaComponentes { get; set; }
+    public int StockDisponible { get; set; }
 }
 
 public class CafeComboItemRequest

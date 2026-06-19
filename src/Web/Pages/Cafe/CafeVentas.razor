@@ -1487,6 +1487,8 @@
                                                         <strong>@c.Nombre</strong>
                                                         <span style="display:inline-block; padding:0.05rem 0.35rem; background:#fde68a; color:#92400e; border-radius:999px; font-size:0.65rem; font-weight:700; margin-left: 0.4rem;">🧩 COMP</span>
                                                         <span style="color: #6b7280; font-size: 0.78rem;"> · @c.ItemsCount pieza@(c.ItemsCount == 1 ? "" : "s") · $@FormatMoney(precioTxt)</span>
+                                                        @* 2026-06-18: stock disponible del compuesto (min de stock_componente / cant) *@
+                                                        <span style="color: @(c.StockDisponible > 0 ? "#15803d" : "#b91c1c"); font-size: 0.78rem; font-weight: 700; margin-left: 0.3rem;">· stock: @c.StockDisponible u.</span>
                                                     </div>
                                                 }
                                             }

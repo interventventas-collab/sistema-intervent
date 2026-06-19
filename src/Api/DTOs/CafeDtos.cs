@@ -683,7 +683,10 @@ public record CafeComboDto(
     string? OemCodigo = null,
     decimal? OemPvpConIva = null,
     decimal? OemIvaPct = null,
-    decimal? MultiplicadorOem = null);
+    decimal? MultiplicadorOem = null,
+    // 2026-06-18: costo s/IVA = suma de (componente.Costo × cantidad), y stock disponible = min(componente.Stock / cantidad)
+    decimal CostoSumaComponentes = 0m,
+    int StockDisponible = 0);
 
 public class CafeComboItemRequest
 {

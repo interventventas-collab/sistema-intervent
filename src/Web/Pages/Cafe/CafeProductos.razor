@@ -1753,6 +1753,9 @@
                     Pvp1 = c.OemId.HasValue ? null : c.PreviewPrecioBar,
                     Pvp2 = c.OemId.HasValue ? null : c.PreviewPrecioOtro,
                     IvaPct = c.OemIvaPct ?? 21m,
+                    // 2026-06-18: costo s/IVA = suma componentes, stock = min(stock_componente / cant)
+                    Costo = c.CostoSumaComponentes,
+                    StockUnidades = c.StockDisponible,
                     CreatedAt = c.CreatedAt,
                 };
             }).ToList();
