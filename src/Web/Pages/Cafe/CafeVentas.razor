@@ -5344,33 +5344,59 @@
     }
 
     /// <summary>Expande el combo en N items (uno por linea del combo, multiplicados por addComboCantidad).
-    /// Si el mismo prod+formato+molienda ya existe, suma cantidades.</summary>
+    /// 2026-06-18: si el mismo combo (mismo ComboOrigenId) ya esta cargado con sus componentes intactos,
+    /// INCREMENTO la cantidad de cada componente en vez de agregar lineas duplicadas. Asi la fila agrupada
+    /// muestra la cantidad real de packs (antes mostraba 1 aunque cargaras 3 veces el mismo compuesto).</summary>
     private async Task AddCombo()
     {
         if (addComboId <= 0 || addComboCantidad <= 0) return;
         var combo = combos?.FirstOrDefault(c => c.Id == addComboId);
         if (combo is null || combo.Items.Count == 0) return;
 
-        // 2026-06-08: NO mergear con líneas existentes — siempre crear líneas nuevas con
-        // ComboOrigenId. Esto permite que en el PDF/factura las líneas se agrupen como
-        // UNA sola fila con el nombre del combo (sin desglose para el cliente).
-        // Si se mergeara con líneas sueltas pre-existentes, se perdería el agrupamiento.
-        foreach (var ci in combo.Items)
+        // ¿El combo ya esta cargado con exactamente sus N componentes? Si si, sumo cantidades.
+        var existentes = formItems
+            .Select((it, idx) => new { it, idx })
+            .Where(x => x.it.ComboOrigenId == combo.Id)
+            .ToList();
+        bool puedeMergear = existentes.Count == combo.Items.Count;
+        if (puedeMergear)
         {
-            var qty = ci.Cantidad * addComboCantidad;
-            formItems.Add(new CafeCotizarItemRequest
+            foreach (var ci in combo.Items)
             {
-                ProductoId = ci.ProductoId,
-                Formato = ci.Formato,
-                Cantidad = qty,
-                // Si el combo no especifica molienda, default a EN GRANOS para cafe.
-                Molienda = !string.IsNullOrEmpty(ci.Molienda) ? ci.Molienda : DefaultMolienda(ci.ProductoId),
-                EsDoyPack = ci.EsDoyPack,
-                ComboOrigenId = combo.Id   // ← marca origen del combo para el PDF
-            });
+                if (!existentes.Any(x => x.it.ProductoId == ci.ProductoId && x.it.Formato == ci.Formato))
+                {
+                    puedeMergear = false;
+                    break;
+                }
+            }
         }
 
-        ToastService.Success($"Combo '{combo.Nombre}' agregado ({combo.Items.Count} producto{(combo.Items.Count == 1 ? "" : "s")})");
+        if (puedeMergear)
+        {
+            foreach (var ci in combo.Items)
+            {
+                var match = existentes.First(x => x.it.ProductoId == ci.ProductoId && x.it.Formato == ci.Formato);
+                formItems[match.idx].Cantidad += ci.Cantidad * addComboCantidad;
+            }
+            ToastService.Success($"+{addComboCantidad} de '{combo.Nombre}'");
+        }
+        else
+        {
+            foreach (var ci in combo.Items)
+            {
+                var qty = ci.Cantidad * addComboCantidad;
+                formItems.Add(new CafeCotizarItemRequest
+                {
+                    ProductoId = ci.ProductoId,
+                    Formato = ci.Formato,
+                    Cantidad = qty,
+                    Molienda = !string.IsNullOrEmpty(ci.Molienda) ? ci.Molienda : DefaultMolienda(ci.ProductoId),
+                    EsDoyPack = ci.EsDoyPack,
+                    ComboOrigenId = combo.Id
+                });
+            }
+            ToastService.Success($"Combo '{combo.Nombre}' agregado ({combo.Items.Count} producto{(combo.Items.Count == 1 ? "" : "s")})");
+        }
         addComboId = 0; addComboCantidad = 1;
         comboSearch = ""; comboSearchOpen = false;
         await Cotizar();
