@@ -99,7 +99,7 @@ else
                         @if (!string.IsNullOrEmpty(form.LogoUrl))
                         {
                             <img src="@form.LogoUrl" class="logo-preview" />
-                            <button class="btn-secondary" @onclick="() => form = form with { LogoUrl = null }">Quitar</button>
+                            <button class="btn-secondary" @onclick="QuitarLogo">Quitar</button>
                         }
                         else
                         {
@@ -274,7 +274,7 @@ else
             var (url, error) = await Api.SubirImagenSitioAsync(stream, file.Name, slug);
             if (!string.IsNullOrEmpty(url))
             {
-                form = form with { LogoUrl = url };
+                form.LogoUrl = url;
                 Toast.Success("Logo subido");
             }
             else
@@ -321,6 +321,8 @@ else
         }
         guardando = false;
     }
+
+    private void QuitarLogo() { form.LogoUrl = null; }
 
     private async Task BorrarSitio(SitioDto s)
     {
