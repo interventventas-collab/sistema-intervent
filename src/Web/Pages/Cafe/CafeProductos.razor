@@ -1718,22 +1718,43 @@
             productos = (await productosTask) ?? new();
             var todosCombos = (await combosTask) ?? new();
             // Solo agrego los COMPUESTOS (EsCompuesto=true), no los Combos MeLi (EsCompuesto=false)
-            var compuestos = todosCombos.Where(c => c.EsCompuesto).Select(c => new CafeProductoDto
+            // 2026-06-18: si el compuesto tiene OEM, propago los campos OEM al DTO y dejo PrecioOtro/Pvp2 en null
+            // para que la pantalla use la rama "OEM × Mult" en vez de PrecioOtro (que le sumaria IVA encima
+            // de un valor que ya tiene IVA). Para BARES la pantalla tambien suma IVA, asi que paso PrecioBar
+            // en valor sin IVA (oem c/IVA / 1+iva). Sin OEM se usan los preview tal cual (suma de componentes).
+            var compuestos = todosCombos.Where(c => c.EsCompuesto).Select(c =>
             {
-                Id = c.Id,
-                Sku = c.Sku,
-                Nombre = c.Nombre,
-                Categoria = "COMPUESTO",
-                Marca = null,
-                IsActive = c.IsActive,
-                EsCompuestoFake = true,
-                PrecioReferenciaCompuesto = c.PreviewPrecioOtro,
-                PrecioOtro = c.PreviewPrecioOtro,
-                PrecioBar = c.PreviewPrecioBar,
-                Pvp1 = c.PreviewPrecioBar,
-                Pvp2 = c.PreviewPrecioOtro,
-                IvaPct = 21m,
-                CreatedAt = c.CreatedAt,
+                decimal? precioBarSinIva = null;
+                if (c.OemPvpConIva.HasValue && c.OemPvpConIva.Value > 0m)
+                {
+                    var mult = c.MultiplicadorOem ?? 1m;
+                    if (mult <= 0m) mult = 1m;
+                    var oemConIva = Math.Round(c.OemPvpConIva.Value * mult, 2);
+                    var iva = c.OemIvaPct ?? 21m;
+                    precioBarSinIva = iva > 0 ? Math.Round(oemConIva / (1m + iva / 100m), 2) : oemConIva;
+                }
+                return new CafeProductoDto
+                {
+                    Id = c.Id,
+                    Sku = c.Sku,
+                    Nombre = c.Nombre,
+                    Categoria = "COMPUESTO",
+                    Marca = null,
+                    IsActive = c.IsActive,
+                    EsCompuestoFake = true,
+                    PrecioReferenciaCompuesto = c.PreviewPrecioOtro,
+                    OemId = c.OemId,
+                    OemCodigo = c.OemCodigo,
+                    OemPvpConIva = c.OemPvpConIva,
+                    OemIvaPct = c.OemIvaPct,
+                    MultiplicadorOem = c.MultiplicadorOem,
+                    PrecioOtro = c.OemId.HasValue ? null : c.PreviewPrecioOtro,
+                    PrecioBar = c.OemId.HasValue ? precioBarSinIva : c.PreviewPrecioBar,
+                    Pvp1 = c.OemId.HasValue ? null : c.PreviewPrecioBar,
+                    Pvp2 = c.OemId.HasValue ? null : c.PreviewPrecioOtro,
+                    IvaPct = c.OemIvaPct ?? 21m,
+                    CreatedAt = c.CreatedAt,
+                };
             }).ToList();
             productos.AddRange(compuestos);
         }
