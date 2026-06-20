@@ -8,6 +8,7 @@
 
 <PageTitle>WhatsApp — Chat</PageTitle>
 
+<div class="wa-page-grid @(drawerAbierto ? "with-drawer" : "")" style="@DrawerGridStyle">
 <div class="wa-outer">
 <div class="wa-root">
     <div class="wa-sidebar">
@@ -128,7 +129,11 @@
                 {
                     @foreach (var m in mensajes)
                     {
-                        <div class="wa-msg-row @(m.Direccion == "OUTGOING" ? "out" : "in")">
+                        <div class="wa-msg-row @(m.Direccion == "OUTGOING" ? "out" : "in") @(mensajesSeleccionadosIds.Contains(m.Id) ? "selected" : "")" @onclick="() => ToggleSeleccionMensaje(m.Id)">
+                            @if (mensajesSeleccionadosIds.Contains(m.Id))
+                            {
+                                <div class="wa-msg-check">✓</div>
+                            }
                             <div class="wa-bubble-wrap">
                                 <div class="wa-bubble">
                                     @if (!string.IsNullOrEmpty(m.MediaUrl))
@@ -181,6 +186,14 @@
                 }
             </div>
 
+            @if (mensajesSeleccionadosIds.Count > 0)
+            {
+                <div class="wa-selection-bar">
+                    <span style="font-size:0.85rem; font-weight:600;">✓ @mensajesSeleccionadosIds.Count seleccionado(s)</span>
+                    <button class="btn btn-success btn-sm" @onclick="AbrirDrawerVenta">📋 Crear venta con esto</button>
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="@(() => mensajesSeleccionadosIds.Clear())">× Cancelar</button>
+                </div>
+            }
             @if (respuestas.Any(r => r.Activo))
             {
                 <div class="wa-quick-replies">
@@ -204,6 +217,28 @@
         }
     </div>
 </div>
+</div>
+
+@if (drawerAbierto)
+{
+    <div class="wa-drawer">
+        <div class="wa-drawer-header">
+            <div style="flex:1;">
+                <div style="font-weight:600; font-size:0.95rem;">📋 Nueva venta</div>
+                <div style="font-size:0.7rem; color:#6b7280;">@mensajesSeleccionadosIds.Count mensaje(s) cargado(s)</div>
+            </div>
+            <div style="display:flex; gap:0.25rem; align-items:center;">
+                <span style="font-size:0.72rem; color:#6b7280;">Ancho:</span>
+                <button class="wa-drawer-w @(drawerAnchoPct==30 ? "active":"")" @onclick='() => drawerAnchoPct=30' title="30%">▮</button>
+                <button class="wa-drawer-w @(drawerAnchoPct==50 ? "active":"")" @onclick='() => drawerAnchoPct=50' title="50%">▮▮</button>
+                <button class="wa-drawer-w @(drawerAnchoPct==70 ? "active":"")" @onclick='() => drawerAnchoPct=70' title="70%">▮▮▮</button>
+                <a class="wa-drawer-btn" href="@DrawerIframeSrc" target="_blank" title="Abrir en pestaña nueva">⤢</a>
+                <button class="wa-drawer-btn" @onclick="CerrarDrawer" title="Cerrar">×</button>
+            </div>
+        </div>
+        <iframe src="@DrawerIframeSrc" class="wa-drawer-frame"></iframe>
+    </div>
+}
 </div>
 
 @if (showQuickContact)
@@ -473,6 +508,23 @@
     .wa-reaccion-chip { background: #fff; border: 1px solid #d1d5db; padding: 0.1rem 0.4rem; border-radius: 12px; font-size: 0.78rem; cursor: pointer; transition: background 0.1s; }
     .wa-reaccion-chip:hover { background: #fee2e2; }
     .wa-reaccion-chip span { color: #6b7280; font-size: 0.7rem; margin-left: 0.15rem; }
+    /* === Selección de burbujas para crear venta === */
+    .wa-msg-row { cursor: pointer; padding: 0.15rem 0.25rem; border-radius: 6px; transition: background 0.1s; align-items: flex-start; }
+    .wa-msg-row:hover { background: rgba(37, 211, 102, 0.05); }
+    .wa-msg-row.selected { background: rgba(37, 211, 102, 0.15); }
+    .wa-msg-check { width: 20px; height: 20px; background: #25d366; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; flex-shrink: 0; margin-top: 0.4rem; margin-right: 0.4rem; }
+    .wa-msg-row.in .wa-msg-check { order: -1; }
+    .wa-msg-row.out .wa-msg-check { order: 99; margin-right: 0; margin-left: 0.4rem; }
+    .wa-selection-bar { background: #d1fae5; border-top: 2px solid #25d366; padding: 0.5rem 1rem; display: flex; gap: 0.5rem; align-items: center; }
+    /* === Drawer Nueva Venta === */
+    .wa-page-grid { width: 100%; }
+    .wa-drawer { background: #fff; border-left: 1px solid #e5e7eb; display: flex; flex-direction: column; overflow: hidden; height: calc(100vh - 70px); }
+    .wa-drawer-header { padding: 0.6rem 0.8rem; border-bottom: 1px solid #e5e7eb; background: #f8fafc; display: flex; align-items: center; gap: 0.5rem; }
+    .wa-drawer-frame { flex: 1; border: none; width: 100%; height: 100%; }
+    .wa-drawer-w { background: transparent; border: 1px solid #d1d5db; color: #6b7280; padding: 0.15rem 0.35rem; border-radius: 4px; cursor: pointer; font-size: 0.7rem; }
+    .wa-drawer-w.active { background: #25d366; color: white; border-color: #25d366; }
+    .wa-drawer-btn { background: transparent; border: 1px solid #d1d5db; color: #374151; width: 26px; height: 26px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 0.9rem; text-decoration: none; }
+    .wa-drawer-btn:hover { background: #f3f4f6; }
 </style>
 
 @code {
@@ -503,6 +555,51 @@
     // Reacciones
     int? pickerOpenMsgId = null;
     static readonly string[] QuickEmojis = new[] { "👍", "❤️", "😂", "😮", "😢", "🙏", "✅", "⏳", "❗" };
+    // === Selección de mensajes + drawer Nueva Venta ===
+    HashSet<int> mensajesSeleccionadosIds = new();
+    bool drawerAbierto = false;
+    int drawerAnchoPct = 50;
+
+    string DrawerGridStyle => drawerAbierto
+        ? $"display:grid; grid-template-columns: 1fr {drawerAnchoPct}%; height:calc(100vh - 70px); gap:0;"
+        : "display:block;";
+
+    string DrawerIframeSrc
+    {
+        get
+        {
+            var seleccionados = mensajes.Where(m => mensajesSeleccionadosIds.Contains(m.Id))
+                .OrderBy(m => m.CreatedAt).ToList();
+            var conv = SelectedConv();
+            var lineas = new List<string>();
+            var nombre = conv?.NombrePerfil ?? PrettyNumero(selectedNumero ?? "");
+            lineas.Add($"📱 WhatsApp de {nombre} ({PrettyNumero(selectedNumero ?? "")})");
+            foreach (var m in seleccionados)
+                if (!string.IsNullOrWhiteSpace(m.Cuerpo)) lineas.Add(m.Cuerpo!);
+            var notas = string.Join(" · ", lineas);
+            var url = $"/cafe/ventas?fromTwilio=1&notas={Uri.EscapeDataString(notas)}";
+            if (conv?.ClienteId is int cid) url += $"&clienteIdPre={cid}";
+            return url;
+        }
+    }
+
+    void ToggleSeleccionMensaje(int id)
+    {
+        if (mensajesSeleccionadosIds.Contains(id)) mensajesSeleccionadosIds.Remove(id);
+        else mensajesSeleccionadosIds.Add(id);
+    }
+
+    void AbrirDrawerVenta()
+    {
+        if (mensajesSeleccionadosIds.Count == 0) { Toast.Warning("Seleccioná al menos un mensaje"); return; }
+        drawerAbierto = true;
+    }
+
+    void CerrarDrawer()
+    {
+        drawerAbierto = false;
+        mensajesSeleccionadosIds.Clear();
+    }
     // Quick contact modal
     bool showQuickContact = false;
     string quickContactNumero = "", quickContactNombre = "", quickContactRol = "hermano", quickContactNotas = "";

@@ -4033,6 +4033,8 @@
         await TryHandleConvertirPreventaAsync();
         // Si veníamos de /cafe/pedidos-whatsapp con ?pedidoId=X, abrir el modal con sub-ventana
         await TryHandleConvertirPedidoWAAsync();
+        // 2026-06-20: Nueva venta desde chat /whatsapp Twilio con notas + clienteId precargados
+        await TryHandleNuevaVentaTwilioAsync();
         // Cargar count de pedidos pendientes para mostrar en el botón
         await RefrescarPedidoWACount();
     }
@@ -4053,7 +4055,35 @@
             TryHandleNuevaVentaShortcut();
             await TryHandleConvertirPreventaAsync();
             await TryHandleConvertirPedidoWAAsync();
+            await TryHandleNuevaVentaTwilioAsync();
         });
+    }
+
+    /// <summary>2026-06-20: si la URL trae ?fromTwilio=1&notas=X&clienteIdPre=Y, abre el modal Nueva Venta
+    /// precargando observaciones y opcionalmente cliente. Usado por el chat /whatsapp para crear venta
+    /// rapida desde el iframe lateral.</summary>
+    private string? lastTwilioMarker;
+    private async Task TryHandleNuevaVentaTwilioAsync()
+    {
+        var uri = new Uri(Navigation.Uri);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        if (query["fromTwilio"] != "1") return;
+        var notas = query["notas"] ?? "";
+        var clienteIdStr = query["clienteIdPre"];
+        var marker = notas + "|" + (clienteIdStr ?? "");
+        if (marker == lastTwilioMarker) return;
+        lastTwilioMarker = marker;
+        if (showForm) return;
+
+        ShowCreate();
+        if (!string.IsNullOrWhiteSpace(notas)) formObservaciones = notas;
+        if (int.TryParse(clienteIdStr, out var cid) && cid > 0)
+        {
+            // Asegurar que el catalogo de clientes esté cargado antes de setear
+            if (clientes is null || clientes.Count == 0) try { clientes = await Api.GetCafeClientesAsync(); } catch { }
+            formClienteId = cid;
+        }
+        await InvokeAsync(StateHasChanged);
     }
 
     // ═══════════════════════════════════════════════════════════════════
