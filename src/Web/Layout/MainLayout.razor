@@ -100,6 +100,34 @@
     .topbar-action-secondary:hover { background: #f9fafb; border-color: #9ca3af; }
     .topbar-action-secondary:active { transform: scale(0.97); }
 
+    /* 2026-06-19: boton WhatsApp llamativo, verde estilo WhatsApp con leve glow */
+    .topbar-action-whatsapp {
+        height: 32px;
+        padding: 0 0.85rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        background: #25d366;
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.875rem;
+        font-weight: 600;
+        font-family: inherit;
+        line-height: 1;
+        transition: background 0.12s ease, transform 0.06s ease, box-shadow 0.18s ease;
+        white-space: nowrap;
+        box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.5);
+        animation: wa-pulse 2.4s ease-in-out infinite;
+    }
+    .topbar-action-whatsapp:hover { background: #20bd5a; transform: translateY(-1px); box-shadow: 0 4px 10px rgba(37, 211, 102, 0.35); }
+    .topbar-action-whatsapp:active { transform: scale(0.97); }
+    @@keyframes wa-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.45); }
+        50% { box-shadow: 0 0 0 6px rgba(37, 211, 102, 0); }
+    }
+
     .topbar-action-plus {
         font-size: 1.05rem;
         font-weight: 400;
@@ -892,6 +920,14 @@
                         aria-label="Nueva cobranza">
                     <span class="topbar-action-plus">+</span>
                     <span>Cobranza</span>
+                </button>
+                @* 2026-06-19: boton WhatsApp llamativo verde — chat Twilio para pedidos de hermanos/empleados *@
+                <button class="topbar-action-whatsapp"
+                        @onclick="@(() => NavigateTo("/whatsapp"))"
+                        title="Chat WhatsApp — pedidos de hermanos y empleados"
+                        aria-label="WhatsApp">
+                    <span style="font-size:1.05rem; line-height:1;">💬</span>
+                    <span>WhatsApp</span>
                 </button>
 
                 @* Separador entre acciones primarias y herramientas *@

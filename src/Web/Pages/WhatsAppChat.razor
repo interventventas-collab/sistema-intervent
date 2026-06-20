@@ -8,6 +8,7 @@
 
 <PageTitle>WhatsApp — Chat</PageTitle>
 
+<div class="wa-outer">
 <div class="wa-root">
     <div class="wa-sidebar">
         <div class="wa-side-header">
@@ -122,9 +123,13 @@
         }
     </div>
 </div>
+</div>
 
 <style>
-    .wa-root { display: grid; grid-template-columns: 360px 1fr; height: calc(100vh - 70px); background: #f0f2f5; gap: 0; }
+    /* 2026-06-19: container centrado estilo WhatsApp Web. Sidebar fino + thread centrado con max-width
+       para que las burbujas no queden re-estiradas en pantallas wide y no haya que girar el cuello. */
+    .wa-outer { display: flex; justify-content: center; height: calc(100vh - 70px); background: #d1d7db; padding: 0; }
+    .wa-root { display: grid; grid-template-columns: 300px 1fr; width: 100%; max-width: 1100px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08); gap: 0; overflow: hidden; }
     .wa-sidebar { background: #fff; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; overflow: hidden; }
     .wa-side-header { padding: 1rem; border-bottom: 1px solid #e5e7eb; background: #f8fafc; }
     .wa-conv-list { flex: 1; overflow-y: auto; }
@@ -146,7 +151,10 @@
     .wa-msg-row { display: flex; }
     .wa-msg-row.in { justify-content: flex-start; }
     .wa-msg-row.out { justify-content: flex-end; }
-    .wa-bubble { max-width: 65%; padding: 0.45rem 0.65rem; border-radius: 8px; box-shadow: 0 1px 0.5px rgba(0,0,0,0.13); }
+    .wa-bubble { max-width: 75%; padding: 0.45rem 0.65rem; border-radius: 8px; box-shadow: 0 1px 0.5px rgba(0,0,0,0.13); position: relative; }
+    /* Cola estilo WhatsApp Web para distinguir mejor entrante/saliente */
+    .wa-msg-row.in .wa-bubble::before { content: ''; position: absolute; left: -6px; top: 0; border: 6px solid transparent; border-top-color: white; border-left: 0; }
+    .wa-msg-row.out .wa-bubble::before { content: ''; position: absolute; right: -6px; top: 0; border: 6px solid transparent; border-top-color: #d9fdd3; border-right: 0; }
     .wa-msg-row.in .wa-bubble { background: white; }
     .wa-msg-row.out .wa-bubble { background: #d9fdd3; }
     .wa-bubble-body { font-size: 0.92rem; color: #111827; word-wrap: break-word; white-space: pre-wrap; }
