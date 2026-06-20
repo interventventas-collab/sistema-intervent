@@ -4560,4 +4560,32 @@ public class ApiClient
         var resp = await _http.DeleteAsync($"/api/sitios/uploads/{Uri.EscapeDataString(filename)}");
         return resp.IsSuccessStatusCode;
     }
+
+    // ===== WhatsApp Twilio chat =====
+    public record TwConvDto(string Numero, string? NombrePerfil, string? UltimoMensaje, string? UltimoDireccion, DateTime UltimoAt, int Total);
+    public record TwMsgDto(int Id, string Direccion, string Numero, string? NombrePerfil, string? Cuerpo, string? MediaUrl, int? NumMedia, bool Procesado, string? RespuestaEnviada, DateTime CreatedAt);
+
+    public async Task<List<TwConvDto>> GetTwConversacionesAsync()
+        => await _http.GetFromJsonAsync<List<TwConvDto>>("/api/whatsapp/twilio/conversaciones") ?? new();
+
+    public async Task<List<TwMsgDto>> GetTwMensajesAsync(string numero)
+        => await _http.GetFromJsonAsync<List<TwMsgDto>>($"/api/whatsapp/twilio/mensajes?numero={Uri.EscapeDataString(numero)}") ?? new();
+
+    public async Task<(bool ok, string? error)> SendTwMensajeAsync(string numero, string mensaje)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/send", new { Numero = numero, Mensaje = mensaje });
+            if (resp.IsSuccessStatusCode) return (true, null);
+            string err = "Error enviando";
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err;
+            }
+            catch { }
+            return (false, err);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
 }

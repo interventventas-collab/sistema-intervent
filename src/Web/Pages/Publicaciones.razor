@@ -1216,21 +1216,15 @@
                             }
                             else if (itemCosts is not null)
                             {
+                                // 2026-06-19: descomposicion identica al simulador de MeLi.
+                                // El sale_fee_amount de la API incluye comision base + cargo fijo + financiacion.
+                                // MeLi UI separa (base+fijo) como "Cargo por vender" y (financ) como "Costo por ofrecer cuotas".
+                                var financingEnPesos = Math.Round(itemCosts.Price * itemCosts.FinancingFee / 100m, 2);
+                                var cargoPorVenderNeto = itemCosts.SaleFeeAmount - financingEnPesos;
                                 <div class="cost-price-box">
                                     <span class="cost-price-label">Precio</span>
                                     <span class="cost-price-value">$ @itemCosts.Price.ToString("N2", argCulture)</span>
                                 </div>
-                                @{
-                                    // 2026-06-19: descomposicion identica al simulador de MeLi.
-                                    // El sale_fee_amount de la API incluye:
-                                    //   a) comision base MeLi (meli_percentage_fee × price)
-                                    //   b) cargo fijo (solo en productos baratos)
-                                    //   c) costo financiacion (financing_add_on_fee × price)
-                                    // MeLi UI separa (a)+(b) como "Cargo por vender" y (c) como "Costo por ofrecer cuotas".
-                                    // El total descontado es identico al que teniamos antes.
-                                    var financingEnPesos = Math.Round(itemCosts.Price * itemCosts.FinancingFee / 100m, 2);
-                                    var cargoPorVenderNeto = itemCosts.SaleFeeAmount - financingEnPesos;
-                                }
                                 <div class="cost-line-items">
                                     <div class="cost-line">
                                         <span class="cost-line-label">Cargo por vender</span>

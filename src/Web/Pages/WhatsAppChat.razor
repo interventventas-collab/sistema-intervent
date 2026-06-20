@@ -1,0 +1,256 @@
+@page "/whatsapp"
+@page "/whatsapp/chat"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject Web.Services.ApiClient Api
+@inject Web.Services.ToastService Toast
+@inject Microsoft.AspNetCore.Components.NavigationManager Nav
+@implements IDisposable
+
+<PageTitle>WhatsApp — Chat</PageTitle>
+
+<div class="wa-root">
+    <div class="wa-sidebar">
+        <div class="wa-side-header">
+            <div style="font-weight:600; font-size:1.05rem;">💬 Conversaciones</div>
+            <div style="font-size:0.75rem; color:#6b7280; margin-top:0.2rem;">@conversaciones.Count chats</div>
+        </div>
+        <div class="wa-conv-list">
+            @if (loadingConv)
+            {
+                <div style="padding:1rem; color:#9ca3af;">Cargando…</div>
+            }
+            else if (conversaciones.Count == 0)
+            {
+                <div style="padding:1rem; color:#9ca3af; text-align:center;">
+                    <p>📭 Sin conversaciones todavía.</p>
+                    <p style="font-size:0.8rem;">Pedile a tus hermanos que manden <code>join wire-failed</code> al <strong>+1 415 523 8886</strong> y después un mensaje cualquiera para que aparezcan acá.</p>
+                </div>
+            }
+            else
+            {
+                @foreach (var c in conversaciones)
+                {
+                    <div class="wa-conv-item @(selectedNumero == c.Numero ? "active" : "")" @onclick="() => SelectConv(c.Numero)">
+                        <div class="wa-avatar">@AvatarLetra(c)</div>
+                        <div class="wa-conv-body">
+                            <div class="wa-conv-row1">
+                                <span class="wa-conv-name">@(c.NombrePerfil ?? PrettyNumero(c.Numero))</span>
+                                <span class="wa-conv-hora">@FormatHora(c.UltimoAt)</span>
+                            </div>
+                            <div class="wa-conv-row2">
+                                <span class="wa-conv-last">
+                                    @(c.UltimoDireccion == "OUTGOING" ? "✓ " : "")@TruncateText(c.UltimoMensaje, 50)
+                                </span>
+                                <span class="wa-conv-count">@c.Total</span>
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+
+    <div class="wa-thread">
+        @if (selectedNumero is null)
+        {
+            <div class="wa-empty">
+                <div style="font-size:4rem; opacity:0.3;">💬</div>
+                <h3 style="color:#6b7280;">Seleccioná una conversación</h3>
+                <p style="color:#9ca3af; max-width:400px;">Acá vas a ver los mensajes de WhatsApp recibidos vía Twilio. Cuando alguien te escribe, aparece su número en la lista de la izquierda.</p>
+            </div>
+        }
+        else
+        {
+            <div class="wa-thread-header">
+                <div class="wa-avatar">@AvatarLetra(SelectedConv())</div>
+                <div style="flex:1;">
+                    <div style="font-weight:600;">@(SelectedConv()?.NombrePerfil ?? PrettyNumero(selectedNumero))</div>
+                    <div style="font-size:0.75rem; color:#6b7280;">@PrettyNumero(selectedNumero)</div>
+                </div>
+                <button class="btn btn-outline-success btn-sm" @onclick="CargarComoPedido" title="Crear venta nueva precargando el último mensaje en las notas">
+                    📋 Crear pedido
+                </button>
+            </div>
+
+            <div class="wa-messages" @ref="messagesScroll">
+                @if (loadingMsg)
+                {
+                    <div style="padding:1rem; color:#9ca3af; text-align:center;">Cargando…</div>
+                }
+                else
+                {
+                    @foreach (var m in mensajes)
+                    {
+                        <div class="wa-msg-row @(m.Direccion == "OUTGOING" ? "out" : "in")">
+                            <div class="wa-bubble">
+                                <div class="wa-bubble-body">@((MarkupString)EscapeMsg(m.Cuerpo))</div>
+                                <div class="wa-bubble-meta">@FormatHora(m.CreatedAt)</div>
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+
+            <div class="wa-composer">
+                <textarea class="form-control" placeholder="Escribir mensaje…" @bind="composerText" @onkeydown="OnComposerKey" rows="2"></textarea>
+                <button class="btn btn-success" @onclick="EnviarMensaje" disabled="@(string.IsNullOrWhiteSpace(composerText) || sending)">
+                    @(sending ? "Enviando…" : "📤 Enviar")
+                </button>
+            </div>
+            <div style="font-size:0.7rem; color:#9ca3af; padding:0 1rem 0.6rem;">
+                💡 <strong>Sandbox:</strong> Solo podés escribir a quien te haya escrito en los últimos 24 hs.
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .wa-root { display: grid; grid-template-columns: 360px 1fr; height: calc(100vh - 70px); background: #f0f2f5; gap: 0; }
+    .wa-sidebar { background: #fff; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; overflow: hidden; }
+    .wa-side-header { padding: 1rem; border-bottom: 1px solid #e5e7eb; background: #f8fafc; }
+    .wa-conv-list { flex: 1; overflow-y: auto; }
+    .wa-conv-item { display: flex; gap: 0.7rem; padding: 0.7rem 1rem; border-bottom: 1px solid #f3f4f6; cursor: pointer; transition: background 0.1s; }
+    .wa-conv-item:hover { background: #f9fafb; }
+    .wa-conv-item.active { background: #e0f2fe; }
+    .wa-avatar { width: 42px; height: 42px; border-radius: 50%; background: #25d366; color: white; display: flex; align-items: center; justify-content: center; font-weight: 600; flex-shrink: 0; }
+    .wa-conv-body { flex: 1; min-width: 0; }
+    .wa-conv-row1 { display: flex; justify-content: space-between; gap: 0.5rem; }
+    .wa-conv-name { font-weight: 600; font-size: 0.9rem; color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wa-conv-hora { font-size: 0.7rem; color: #9ca3af; flex-shrink: 0; }
+    .wa-conv-row2 { display: flex; justify-content: space-between; gap: 0.5rem; margin-top: 0.15rem; }
+    .wa-conv-last { font-size: 0.8rem; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+    .wa-conv-count { background: #25d366; color: white; font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 10px; min-width: 18px; text-align: center; }
+    .wa-thread { display: flex; flex-direction: column; background: #efeae2; overflow: hidden; }
+    .wa-thread-header { padding: 0.7rem 1rem; background: #f0f2f5; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; gap: 0.7rem; }
+    .wa-messages { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+    .wa-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; text-align: center; }
+    .wa-msg-row { display: flex; }
+    .wa-msg-row.in { justify-content: flex-start; }
+    .wa-msg-row.out { justify-content: flex-end; }
+    .wa-bubble { max-width: 65%; padding: 0.45rem 0.65rem; border-radius: 8px; box-shadow: 0 1px 0.5px rgba(0,0,0,0.13); }
+    .wa-msg-row.in .wa-bubble { background: white; }
+    .wa-msg-row.out .wa-bubble { background: #d9fdd3; }
+    .wa-bubble-body { font-size: 0.92rem; color: #111827; word-wrap: break-word; white-space: pre-wrap; }
+    .wa-bubble-meta { font-size: 0.65rem; color: #6b7280; text-align: right; margin-top: 0.2rem; }
+    .wa-composer { padding: 0.7rem 1rem 0.4rem; background: #f0f2f5; display: flex; gap: 0.5rem; align-items: flex-end; }
+    .wa-composer textarea { resize: none; border-radius: 8px; }
+    .wa-composer button { white-space: nowrap; }
+</style>
+
+@code {
+    List<ApiClient.TwConvDto> conversaciones = new();
+    List<ApiClient.TwMsgDto> mensajes = new();
+    string? selectedNumero;
+    string composerText = "";
+    bool loadingConv = true, loadingMsg = false, sending = false;
+    System.Threading.Timer? refreshTimer;
+    Microsoft.AspNetCore.Components.ElementReference messagesScroll;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadConversaciones();
+        refreshTimer = new System.Threading.Timer(async _ => await OnTick(), null, 10_000, 10_000);
+    }
+
+    async Task OnTick()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadConversaciones(silent: true);
+            if (selectedNumero != null) await LoadMensajes(silent: true);
+            StateHasChanged();
+        });
+    }
+
+    async Task LoadConversaciones(bool silent = false)
+    {
+        if (!silent) loadingConv = true;
+        try { conversaciones = await Api.GetTwConversacionesAsync(); }
+        catch { }
+        loadingConv = false;
+    }
+
+    async Task SelectConv(string numero)
+    {
+        selectedNumero = numero;
+        await LoadMensajes();
+    }
+
+    async Task LoadMensajes(bool silent = false)
+    {
+        if (selectedNumero == null) return;
+        if (!silent) loadingMsg = true;
+        try { mensajes = await Api.GetTwMensajesAsync(selectedNumero); }
+        catch { }
+        loadingMsg = false;
+    }
+
+    async Task EnviarMensaje()
+    {
+        if (selectedNumero == null || string.IsNullOrWhiteSpace(composerText)) return;
+        sending = true;
+        var (ok, err) = await Api.SendTwMensajeAsync(selectedNumero, composerText.Trim());
+        sending = false;
+        if (ok)
+        {
+            composerText = "";
+            await LoadMensajes();
+            await LoadConversaciones(silent: true);
+        }
+        else
+        {
+            Toast.Error($"Error al enviar: {err}");
+        }
+    }
+
+    async Task OnComposerKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            await EnviarMensaje();
+        }
+    }
+
+    void CargarComoPedido()
+    {
+        var conv = SelectedConv();
+        var nombre = conv?.NombrePerfil ?? PrettyNumero(selectedNumero ?? "");
+        var ultimoIn = mensajes.LastOrDefault(m => m.Direccion == "INCOMING");
+        var notas = $"📱 WhatsApp de {nombre} ({PrettyNumero(selectedNumero ?? "")})\n\n{ultimoIn?.Cuerpo ?? ""}";
+        var url = $"/cafe/ventas?notas={Uri.EscapeDataString(notas)}";
+        Nav.NavigateTo(url);
+    }
+
+    ApiClient.TwConvDto? SelectedConv() => conversaciones.FirstOrDefault(c => c.Numero == selectedNumero);
+
+    string AvatarLetra(ApiClient.TwConvDto? c)
+    {
+        if (c?.NombrePerfil is { Length: > 0 } n) return n.Substring(0, 1).ToUpper();
+        return "?";
+    }
+
+    string PrettyNumero(string numero) => numero?.Replace("whatsapp:", "").Trim() ?? "";
+
+    string FormatHora(DateTime utc)
+    {
+        var local = utc.ToLocalTime();
+        var ahora = DateTime.Now;
+        if (local.Date == ahora.Date) return local.ToString("HH:mm");
+        if (local.Date == ahora.Date.AddDays(-1)) return "Ayer";
+        return local.ToString("dd/MM");
+    }
+
+    string TruncateText(string? s, int max)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        return s.Length <= max ? s : s.Substring(0, max) + "…";
+    }
+
+    string EscapeMsg(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        return System.Net.WebUtility.HtmlEncode(s).Replace("\n", "<br/>");
+    }
+
+    public void Dispose() => refreshTimer?.Dispose();
+}

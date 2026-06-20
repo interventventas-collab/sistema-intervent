@@ -348,6 +348,8 @@
                     {
                         <NavItem Href="/cafe/pedidos-whatsapp" Label="💬 Pedidos WhatsApp" Icon="@SvgIcons.Tag"
                                  IsActive="@IsActive("/cafe/pedidos-whatsapp")" OnClick="@(() => NavigateTo("/cafe/pedidos-whatsapp"))" />
+                        <NavItem Href="/whatsapp" Label="📲 WhatsApp (Twilio)" Icon="@SvgIcons.Tag"
+                                 IsActive="@IsActive("/whatsapp")" OnClick="@(() => NavigateTo("/whatsapp"))" />
                         @* Stock unificado: entra a Stock masivo, y desde la pantalla hay boton para abrir Stock movil. *@
                         <NavItem Href="/cafe/stock-masivo" Label="📦 Stock" Icon="@SvgIcons.Package"
                                  IsActive="@(IsActive("/cafe/stock-masivo") || IsActive("/stock"))" OnClick="@(() => NavigateTo("/cafe/stock-masivo"))" />
