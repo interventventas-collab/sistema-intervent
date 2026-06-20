@@ -68,6 +68,9 @@ services:
       # Si esta vacio, CORS queda cerrado y solo funcionan los requests del mismo
       # origen (a traves del reverse proxy Caddy), que es el caso normal.
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_WHATSAPP_FROM=${TWILIO_WHATSAPP_FROM:-}
     volumes:
       - files_prod_data:/data/files
       - backups_prod_data:/data/backups
