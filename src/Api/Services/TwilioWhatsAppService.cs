@@ -46,4 +46,19 @@ public class TwilioWhatsAppService
         _logger.LogInformation("Twilio WhatsApp enviado a {To}: SID={Sid}", toWa, msg.Sid);
         return msg.Sid;
     }
+
+    /// <summary>Envía un mensaje con un adjunto (PDF/imagen/etc) via Twilio.
+    /// mediaUrl debe ser URL HTTPS publica (Twilio la descarga para enviar). Body es opcional (caption).</summary>
+    public async Task<string> SendMediaAsync(string to, string mediaUrl, string? body = null)
+    {
+        EnsureInit();
+        var toWa = to.StartsWith("whatsapp:", StringComparison.OrdinalIgnoreCase) ? to : $"whatsapp:{to}";
+        var msg = await MessageResource.CreateAsync(
+            body: body ?? "",
+            from: new PhoneNumber(FromNumber),
+            to: new PhoneNumber(toWa),
+            mediaUrl: new List<Uri> { new Uri(mediaUrl) });
+        _logger.LogInformation("Twilio WhatsApp con media enviado a {To}: SID={Sid}", toWa, msg.Sid);
+        return msg.Sid;
+    }
 }

@@ -4623,4 +4623,40 @@ public class ApiClient
 
     public async Task<bool> ToggleReaccionAsync(int mensajeId, string emoji)
         => (await _http.PostAsJsonAsync("/api/whatsapp/twilio/reacciones", new { MensajeId = mensajeId, Emoji = emoji })).IsSuccessStatusCode;
+
+    public record TwUploadResp(string Token, string Url, string OriginalFilename, long SizeBytes, string ContentType, DateTime ExpiresAt);
+    public async Task<(TwUploadResp? resp, string? error)> UploadTwArchivoAsync(System.IO.Stream stream, string filename, string contentType)
+    {
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            var file = new StreamContent(stream);
+            file.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(string.IsNullOrEmpty(contentType) ? "application/octet-stream" : contentType);
+            content.Add(file, "file", filename);
+            var resp = await _http.PostAsync("/api/whatsapp/twilio/upload", content);
+            if (resp.IsSuccessStatusCode)
+            {
+                var dto = await resp.Content.ReadFromJsonAsync<TwUploadResp>();
+                return (dto, null);
+            }
+            string err = "Error subiendo archivo";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync()); if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; } catch { }
+            return (null, err);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    public async Task<(bool ok, string? error)> SendTwMediaAsync(string numero, string mediaUrl, string? caption, string? originalFilename)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/send-media",
+                new { Numero = numero, MediaUrl = mediaUrl, Caption = caption, OriginalFilename = originalFilename });
+            if (resp.IsSuccessStatusCode) return (true, null);
+            string err = "Error";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync()); if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; } catch { }
+            return (false, err);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
 }

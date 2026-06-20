@@ -4,6 +4,7 @@ using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
 
 namespace Api.Controllers;
 
@@ -356,5 +357,111 @@ public class WhatsAppTwilioController : ControllerBase
             Reacciones = reacByMsg.TryGetValue(m.Id, out var rs) ? rs.Cast<object>().ToList() : new List<object>()
         }).ToList();
         return Ok(result);
+    }
+
+    // ===== ADJUNTOS — Fase 1: Subir desde PC =====
+    // Path donde se guardan los archivos. Existe como volume montado igual que /data/files.
+    private const string UploadsDir = "/data/whatsapp-uploads";
+
+    public record UploadResp(string Token, string Url, string OriginalFilename, long SizeBytes, string ContentType, DateTime ExpiresAt);
+
+    /// <summary>POST /api/whatsapp/twilio/upload — sube un archivo y devuelve URL publica con token de 24h.</summary>
+    [HttpPost("upload")]
+    [Authorize]
+    [RequestSizeLimit(20 * 1024 * 1024)] // 20 MB margen sobre el limite de Twilio (16 MB)
+    public async Task<IActionResult> Upload([FromForm] IFormFile? file)
+    {
+        if (file == null || file.Length == 0) return BadRequest(new { error = "No se recibio archivo" });
+        if (file.Length > 16 * 1024 * 1024) return BadRequest(new { error = "El archivo supera el limite de 16 MB que admite WhatsApp" });
+
+        Directory.CreateDirectory(UploadsDir);
+
+        var token = GenerarToken();
+        var ext = Path.GetExtension(file.FileName);
+        var stored = token + ext;
+        var path = Path.Combine(UploadsDir, stored);
+        using (var fs = System.IO.File.Create(path)) await file.CopyToAsync(fs);
+
+        var up = new WhatsAppTwilioUpload
+        {
+            Token = token,
+            OriginalFilename = file.FileName,
+            StoredFilename = stored,
+            ContentType = string.IsNullOrEmpty(file.ContentType) ? "application/octet-stream" : file.ContentType,
+            SizeBytes = file.Length,
+            CreatedAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddHours(24)
+        };
+        _db.WhatsAppTwilioUploads.Add(up);
+        await _db.SaveChangesAsync();
+
+        var url = $"{Request.Scheme}://{Request.Host}/api/whatsapp/twilio/files/{token}";
+        return Ok(new UploadResp(token, url, up.OriginalFilename, up.SizeBytes, up.ContentType, up.ExpiresAt));
+    }
+
+    /// <summary>GET /api/whatsapp/twilio/files/{token} — sirve el archivo publicamente (sin auth) para que Twilio lo descargue.</summary>
+    [HttpGet("files/{token}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ServirArchivo(string token)
+    {
+        var up = await _db.WhatsAppTwilioUploads.FirstOrDefaultAsync(u => u.Token == token);
+        if (up == null) return NotFound();
+        if (up.ExpiresAt < DateTime.UtcNow) return NotFound(new { error = "Expirado" });
+
+        var path = Path.Combine(UploadsDir, up.StoredFilename);
+        if (!System.IO.File.Exists(path)) return NotFound();
+
+        // Marcar primera descarga (cuando Twilio lo baje)
+        if (up.DownloadedAt == null)
+        {
+            up.DownloadedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+        }
+
+        return PhysicalFile(path, up.ContentType, up.OriginalFilename);
+    }
+
+    public record SendMediaRequest(string Numero, string MediaUrl, string? Caption, string? OriginalFilename);
+
+    /// <summary>POST /api/whatsapp/twilio/send-media — envia mensaje con adjunto via Twilio.</summary>
+    [HttpPost("send-media")]
+    [Authorize]
+    public async Task<IActionResult> SendMedia([FromBody] SendMediaRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Numero) || string.IsNullOrWhiteSpace(req.MediaUrl))
+            return BadRequest(new { error = "Numero y mediaUrl son obligatorios" });
+        if (!_twilio.IsConfigured)
+            return StatusCode(503, new { error = "Twilio no configurado" });
+
+        try
+        {
+            var sid = await _twilio.SendMediaAsync(req.Numero, req.MediaUrl, req.Caption);
+            var msg = new WhatsAppTwilioMensaje
+            {
+                Direccion = "OUTGOING",
+                Numero = req.Numero,
+                Cuerpo = req.Caption ?? "",
+                MediaUrl = req.MediaUrl,
+                NumMedia = 1,
+                TwilioMessageSid = sid,
+                Procesado = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            _db.WhatsAppTwilioMensajes.Add(msg);
+            await _db.SaveChangesAsync();
+            return Ok(new { ok = true, sid, id = msg.Id });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error enviando media WhatsApp Twilio");
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+    private static string GenerarToken()
+    {
+        var bytes = new byte[24];
+        RandomNumberGenerator.Fill(bytes);
+        return Convert.ToBase64String(bytes).Replace('+', '-').Replace('/', '_').Replace("=", "");
     }
 }

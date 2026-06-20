@@ -206,6 +206,11 @@
                 </div>
             }
             <div class="wa-composer">
+                @* Botón adjuntar archivo *@
+                <label class="wa-attach-btn @(uploading ? "uploading" : "")" title="Adjuntar archivo (máx 16 MB)">
+                    <InputFile OnChange="OnArchivoSeleccionado" disabled="@(uploading || sending)" style="display:none;" />
+                    @(uploading ? "⏳" : "📎")
+                </label>
                 <textarea class="form-control" placeholder="Escribir mensaje…" @bind="composerText" @onkeydown="OnComposerKey" rows="2"></textarea>
                 <button class="btn btn-success" @onclick="EnviarMensaje" disabled="@(string.IsNullOrWhiteSpace(composerText) || sending)">
                     @(sending ? "Enviando…" : "📤 Enviar")
@@ -443,8 +448,12 @@
     .wa-bubble-body { font-size: 0.92rem; color: #111827; word-wrap: break-word; white-space: pre-wrap; }
     .wa-bubble-meta { font-size: 0.65rem; color: #6b7280; text-align: right; margin-top: 0.2rem; }
     .wa-composer { padding: 0.7rem 1rem 0.4rem; background: #f0f2f5; display: flex; gap: 0.5rem; align-items: flex-end; }
-    .wa-composer textarea { resize: none; border-radius: 8px; }
+    .wa-composer textarea { resize: none; border-radius: 8px; flex: 1; }
     .wa-composer button { white-space: nowrap; }
+    .wa-attach-btn { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 50%; background: #fff; border: 1px solid #e0e0e0; cursor: pointer; font-size: 1.3rem; transition: all .15s; user-select: none; }
+    .wa-attach-btn:hover { background: #e9f5ff; border-color: #25d366; transform: translateY(-1px); }
+    .wa-attach-btn.uploading { background: #fff8e1; border-color: #ffc107; cursor: wait; animation: wa-attach-pulse 1s ease-in-out infinite; }
+    @@keyframes wa-attach-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
     .wa-quick-replies { padding: 0.4rem 1rem 0; background: #f0f2f5; display: flex; gap: 0.35rem; flex-wrap: wrap; }
     .wa-chip { background: #fff; border: 1px solid #d1d5db; color: #374151; padding: 0.25rem 0.7rem; border-radius: 14px; font-size: 0.78rem; cursor: pointer; transition: background 0.1s; white-space: nowrap; }
     .wa-chip:hover { background: #25d366; color: #fff; border-color: #25d366; }
@@ -510,7 +519,7 @@
     List<ApiClient.TwMsgDto> mensajes = new();
     string? selectedNumero;
     string composerText = "";
-    bool loadingConv = true, loadingMsg = false, sending = false;
+    bool loadingConv = true, loadingMsg = false, sending = false, uploading = false;
     System.Threading.Timer? refreshTimer;
     Microsoft.AspNetCore.Components.ElementReference messagesScroll;
 
@@ -825,6 +834,41 @@
         {
             await EnviarMensaje();
         }
+    }
+
+    // ===== Adjuntar archivo de la PC =====
+    const long MaxUploadBytes = 16L * 1024 * 1024; // 16 MB (limite WhatsApp)
+
+    async Task OnArchivoSeleccionado(InputFileChangeEventArgs e)
+    {
+        if (selectedNumero == null) { Toast.Warning("Seleccioná primero un chat"); return; }
+        var file = e.File;
+        if (file == null) return;
+        if (file.Size > MaxUploadBytes) { Toast.Error($"El archivo {file.Name} supera los 16 MB"); return; }
+
+        uploading = true;
+        StateHasChanged();
+        try
+        {
+            // Tomamos el caption del composer (si hay) para acompañar el archivo
+            var caption = composerText?.Trim();
+
+            // 1) Subir al servidor (que devuelve URL publica con token)
+            using var stream = file.OpenReadStream(MaxUploadBytes);
+            var (resp, err) = await Api.UploadTwArchivoAsync(stream, file.Name, file.ContentType);
+            if (resp == null) { Toast.Error($"Error subiendo: {err}"); return; }
+
+            // 2) Mandar el WhatsApp con la URL publica al numero seleccionado
+            var (ok, sendErr) = await Api.SendTwMediaAsync(selectedNumero, resp.Url, caption, file.Name);
+            if (!ok) { Toast.Error($"Error enviando: {sendErr}"); return; }
+
+            composerText = "";
+            Toast.Success($"📎 {file.Name} enviado");
+            await LoadMensajes();
+            await LoadConversaciones(silent: true);
+        }
+        catch (Exception ex) { Toast.Error($"Error: {ex.Message}"); }
+        finally { uploading = false; StateHasChanged(); }
     }
 
     void CargarComoPedido()

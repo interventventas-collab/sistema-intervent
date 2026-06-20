@@ -75,6 +75,7 @@ services:
       - files_prod_data:/data/files
       - backups_prod_data:/data/backups
       - preventas_fotos_prod:/data/preventas-fotos
+      - wa_uploads_prod:/data/whatsapp-uploads
       - ./caddy/static/frikaf:/srv/landing-frikaf
     networks:
       - aiml-prod-net
@@ -161,5 +162,6 @@ volumes:
   files_prod_data:
   backups_prod_data:
   preventas_fotos_prod:
+  wa_uploads_prod:
   caddy_data:
   caddy_config:

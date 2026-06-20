@@ -4845,3 +4845,43 @@ CREATE TABLE Cafe_Marcas (
     UpdatedAt DATETIME2 NULL
 );
 GO
+
+-- 2026-06-20: WhatsApp - Sectores + Operarios. Permite derivar conversaciones del chat
+-- entrante a un sector (Cafe, Ventas, Alquileres, etc) y opcionalmente a un operario
+-- especifico. Cada usuario del sistema puede pertenecer a varios sectores.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_Sectores')
+CREATE TABLE WhatsApp_Sectores (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    Nombre NVARCHAR(80) NOT NULL,
+    Emoji NVARCHAR(10) NULL,
+    Descripcion NVARCHAR(300) NULL,
+    Orden INT NOT NULL DEFAULT 0,
+    Activo BIT NOT NULL DEFAULT 1,
+    CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_SectorOperarios')
+CREATE TABLE WhatsApp_SectorOperarios (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    SectorId INT NOT NULL,
+    UsuarioId INT NOT NULL,
+    CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    CONSTRAINT FK_WaSectorOp_Sector FOREIGN KEY (SectorId) REFERENCES WhatsApp_Sectores(Id) ON DELETE CASCADE,
+    CONSTRAINT FK_WaSectorOp_Usuario FOREIGN KEY (UsuarioId) REFERENCES Users(Id) ON DELETE CASCADE,
+    CONSTRAINT UQ_WaSectorOp UNIQUE (SectorId, UsuarioId)
+);
+GO
+
+-- Seed inicial de sectores (solo si esta vacia)
+IF NOT EXISTS (SELECT 1 FROM WhatsApp_Sectores)
+BEGIN
+    INSERT INTO WhatsApp_Sectores (Nombre, Emoji, Orden, Activo) VALUES
+        (N'Cafe',       N'☕', 1, 1),
+        (N'Ventas',     N'🛒', 2, 1),
+        (N'Alquileres', N'🏠', 3, 1),
+        (N'Deposito',   N'📦', 4, 1),
+        (N'Oficina',    N'🏢', 5, 1),
+        (N'Otros',      N'❓', 99, 1);
+END
+GO
