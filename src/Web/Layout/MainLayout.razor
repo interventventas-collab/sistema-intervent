@@ -97,6 +97,8 @@
         transition: background 0.12s ease, transform 0.06s ease;
         white-space: nowrap;
     }
+    /* 2026-06-20: modo embebido (iframe en drawer del chat) — main sin margen del sidebar */
+    .main-wrapper.main-embedded { margin-left: 0 !important; padding: 0 !important; }
     .topbar-action-secondary:hover { background: #f9fafb; border-color: #9ca3af; }
     .topbar-action-secondary:active { transform: scale(0.97); }
 
@@ -228,6 +230,8 @@
 @inject CurrentCompanyService Company
 @implements IDisposable
 
+@if (!IsEmbedded)
+{
 <aside class="sidebar @(sidebarOpen ? "open" : "") @(sidebarCollapsed ? "collapsed" : "") @(IsDevEnvironment ? "sidebar-dev" : "sidebar-prod")" id="sidebar">
     @if (IsDevEnvironment)
     {
@@ -768,11 +772,14 @@
         }
     </div>
 </aside>
+}
 
 @* Botón "Nueva Venta" - vive dentro del topbar (ver más abajo) para quedar
    siempre visible arriba a la derecha sin tapar otros íconos. *@
 
-<main class="main-wrapper @(sidebarCollapsed ? "main-collapsed" : "")">
+<main class="main-wrapper @(sidebarCollapsed ? "main-collapsed" : "") @(IsEmbedded ? "main-embedded" : "")">
+@if (!IsEmbedded)
+{
     <header class="topbar">
         <div class="topbar-left">
             <button class="topbar-menu-btn" @onclick="ToggleSidebar" aria-label="Abrir menu">
@@ -1004,6 +1011,7 @@
             }
         </div>
     </header>
+}
     <div class="content">
         @Body
     </div>
@@ -1316,6 +1324,9 @@
 
     private bool sidebarOpen;
     private bool sidebarCollapsed;
+    /// <summary>2026-06-20: modo embebido — cuando la pantalla se carga dentro del drawer del chat WhatsApp
+    /// (con ?embedded=1), oculta sidebar y topbar para mostrar solo el contenido. Usado para iframes.</summary>
+    private bool IsEmbedded => Navigation.Uri.Contains("embedded=1", StringComparison.OrdinalIgnoreCase);
 
     // 2026-05-28: Modo edición de visibilidad del sidebar (solo admin).
     // Al activarlo, todos los NavItems muestran chips D/O al lado para tildar quién los ve.

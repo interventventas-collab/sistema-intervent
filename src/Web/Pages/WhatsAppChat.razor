@@ -577,7 +577,7 @@
             foreach (var m in seleccionados)
                 if (!string.IsNullOrWhiteSpace(m.Cuerpo)) lineas.Add(m.Cuerpo!);
             var notas = string.Join(" · ", lineas);
-            var url = $"/cafe/ventas?fromTwilio=1&notas={Uri.EscapeDataString(notas)}";
+            var url = $"/cafe/ventas?fromTwilio=1&embedded=1&notas={Uri.EscapeDataString(notas)}";
             if (conv?.ClienteId is int cid) url += $"&clienteIdPre={cid}";
             return url;
         }
