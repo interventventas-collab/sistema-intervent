@@ -96,7 +96,8 @@ public class WhatsAppTwilioController : ControllerBase
         }
     }
 
-    /// <summary>GET /api/whatsapp/twilio/conversaciones — lista numeros agrupados con ultimo mensaje.</summary>
+    /// <summary>GET /api/whatsapp/twilio/conversaciones — lista numeros agrupados con ultimo mensaje.
+    /// Si el numero esta en WhatsApp_TwilioContactos, devuelve NombreContacto + Rol (prevalece sobre NombrePerfil de WhatsApp).</summary>
     [HttpGet("conversaciones")]
     [Authorize]
     public async Task<IActionResult> Conversaciones()
@@ -113,9 +114,140 @@ public class WhatsAppTwilioController : ControllerBase
                 UltimoAt = g.Max(m => m.CreatedAt),
                 Total = g.Count()
             })
-            .OrderByDescending(x => x.UltimoAt)
             .ToListAsync();
-        return Ok(conv);
+        // Join in-memory con contactos (poco volumen, mas simple que LINQ join)
+        var contactos = await _db.WhatsAppTwilioContactos.AsNoTracking()
+            .Where(c => c.Activo).ToDictionaryAsync(c => c.Numero, c => c);
+        var result = conv.Select(x =>
+        {
+            contactos.TryGetValue(x.Numero, out var c);
+            return new
+            {
+                x.Numero,
+                NombrePerfil = c?.Nombre ?? x.NombrePerfil,
+                Rol = c?.Rol,
+                x.UltimoMensaje,
+                x.UltimoDireccion,
+                x.UltimoAt,
+                x.Total
+            };
+        }).OrderByDescending(x => x.UltimoAt).ToList();
+        return Ok(result);
+    }
+
+    // ===== Respuestas rapidas CRUD =====
+    public record RespuestaUpsert(string Nombre, string Texto, int Orden, bool Activo);
+
+    [HttpGet("respuestas-rapidas")]
+    [Authorize]
+    public async Task<IActionResult> ListarRespuestas()
+    {
+        var list = await _db.WhatsAppTwilioRespuestasRapidas.AsNoTracking()
+            .OrderBy(r => r.Orden).ThenBy(r => r.Id).ToListAsync();
+        return Ok(list);
+    }
+
+    [HttpPost("respuestas-rapidas")]
+    [Authorize]
+    public async Task<IActionResult> CrearRespuesta([FromBody] RespuestaUpsert req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Nombre) || string.IsNullOrWhiteSpace(req.Texto))
+            return BadRequest(new { error = "Nombre y texto son obligatorios" });
+        var r = new WhatsAppTwilioRespuestaRapida
+        {
+            Nombre = req.Nombre.Trim(),
+            Texto = req.Texto,
+            Orden = req.Orden,
+            Activo = req.Activo
+        };
+        _db.WhatsAppTwilioRespuestasRapidas.Add(r);
+        await _db.SaveChangesAsync();
+        return Ok(r);
+    }
+
+    [HttpPut("respuestas-rapidas/{id:int}")]
+    [Authorize]
+    public async Task<IActionResult> EditarRespuesta(int id, [FromBody] RespuestaUpsert req)
+    {
+        var r = await _db.WhatsAppTwilioRespuestasRapidas.FindAsync(id);
+        if (r == null) return NotFound();
+        r.Nombre = req.Nombre.Trim();
+        r.Texto = req.Texto;
+        r.Orden = req.Orden;
+        r.Activo = req.Activo;
+        await _db.SaveChangesAsync();
+        return Ok(r);
+    }
+
+    [HttpDelete("respuestas-rapidas/{id:int}")]
+    [Authorize]
+    public async Task<IActionResult> BorrarRespuesta(int id)
+    {
+        var r = await _db.WhatsAppTwilioRespuestasRapidas.FindAsync(id);
+        if (r == null) return NotFound();
+        _db.WhatsAppTwilioRespuestasRapidas.Remove(r);
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    // ===== Contactos CRUD =====
+    public record ContactoUpsert(string Numero, string Nombre, string Rol, string? Notas, bool Activo);
+
+    [HttpGet("contactos")]
+    [Authorize]
+    public async Task<IActionResult> ListarContactos()
+    {
+        var list = await _db.WhatsAppTwilioContactos.AsNoTracking()
+            .OrderBy(c => c.Nombre).ToListAsync();
+        return Ok(list);
+    }
+
+    [HttpPost("contactos")]
+    [Authorize]
+    public async Task<IActionResult> CrearContacto([FromBody] ContactoUpsert req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Numero) || string.IsNullOrWhiteSpace(req.Nombre))
+            return BadRequest(new { error = "Numero y nombre son obligatorios" });
+        var numero = req.Numero.Trim();
+        if (!numero.StartsWith("whatsapp:")) numero = "whatsapp:" + numero;
+        if (await _db.WhatsAppTwilioContactos.AnyAsync(c => c.Numero == numero))
+            return BadRequest(new { error = "Ese numero ya esta cargado" });
+        var c = new WhatsAppTwilioContacto
+        {
+            Numero = numero,
+            Nombre = req.Nombre.Trim(),
+            Rol = string.IsNullOrWhiteSpace(req.Rol) ? "otro" : req.Rol.Trim(),
+            Notas = req.Notas,
+            Activo = req.Activo
+        };
+        _db.WhatsAppTwilioContactos.Add(c);
+        await _db.SaveChangesAsync();
+        return Ok(c);
+    }
+
+    [HttpPut("contactos/{id:int}")]
+    [Authorize]
+    public async Task<IActionResult> EditarContacto(int id, [FromBody] ContactoUpsert req)
+    {
+        var c = await _db.WhatsAppTwilioContactos.FindAsync(id);
+        if (c == null) return NotFound();
+        c.Nombre = req.Nombre.Trim();
+        c.Rol = string.IsNullOrWhiteSpace(req.Rol) ? "otro" : req.Rol.Trim();
+        c.Notas = req.Notas;
+        c.Activo = req.Activo;
+        await _db.SaveChangesAsync();
+        return Ok(c);
+    }
+
+    [HttpDelete("contactos/{id:int}")]
+    [Authorize]
+    public async Task<IActionResult> BorrarContacto(int id)
+    {
+        var c = await _db.WhatsAppTwilioContactos.FindAsync(id);
+        if (c == null) return NotFound();
+        _db.WhatsAppTwilioContactos.Remove(c);
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
     }
 
     /// <summary>GET /api/whatsapp/twilio/mensajes?numero=whatsapp:+34... — devuelve el hilo de un numero.</summary>

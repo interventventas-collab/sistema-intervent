@@ -71,6 +71,9 @@
                 <button class="btn btn-outline-success btn-sm" @onclick="CargarComoPedido" title="Crear venta nueva precargando el último mensaje en las notas">
                     📋 Crear pedido
                 </button>
+                <button class="btn btn-outline-secondary btn-sm" @onclick="@(() => showConfig = true)" title="Configurar respuestas rápidas y contactos">
+                    ⚙️
+                </button>
             </div>
 
             <div class="wa-messages" @ref="messagesScroll">
@@ -111,6 +114,17 @@
                 }
             </div>
 
+            @if (respuestas.Any(r => r.Activo))
+            {
+                <div class="wa-quick-replies">
+                    @foreach (var r in respuestas.Where(x => x.Activo).OrderBy(x => x.Orden))
+                    {
+                        <button class="wa-chip" @onclick="() => InsertarRespuesta(r)" title="@r.Texto">
+                            @r.Nombre
+                        </button>
+                    }
+                </div>
+            }
             <div class="wa-composer">
                 <textarea class="form-control" placeholder="Escribir mensaje…" @bind="composerText" @onkeydown="OnComposerKey" rows="2"></textarea>
                 <button class="btn btn-success" @onclick="EnviarMensaje" disabled="@(string.IsNullOrWhiteSpace(composerText) || sending)">
@@ -124,6 +138,100 @@
     </div>
 </div>
 </div>
+
+@if (showConfig)
+{
+    <div class="wa-modal-backdrop" @onclick="@(() => showConfig = false)"></div>
+    <div class="wa-modal">
+        <div class="wa-modal-header">
+            <h3 style="margin:0; flex:1;">⚙️ Configuración WhatsApp</h3>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="@(() => showConfig = false)">×</button>
+        </div>
+        <div class="wa-modal-tabs">
+            <button class="wa-tab @(configTab=="resp" ? "active" : "")" @onclick="@(() => configTab="resp")">💬 Respuestas rápidas (@respuestas.Count)</button>
+            <button class="wa-tab @(configTab=="cont" ? "active" : "")" @onclick="@(() => configTab="cont")">👥 Contactos (@contactos.Count)</button>
+        </div>
+        <div class="wa-modal-body">
+            @if (configTab == "resp")
+            {
+                <p style="color:#6b7280; font-size:0.85rem;">Plantillas que aparecen como botones arriba del mensaje. Click → inserta el texto en el composer.</p>
+                <table class="table table-sm">
+                    <thead><tr><th style="width:120px;">Nombre</th><th>Texto</th><th style="width:60px;">Orden</th><th style="width:50px;">Act.</th><th style="width:90px;"></th></tr></thead>
+                    <tbody>
+                        @foreach (var r in respuestas.OrderBy(x => x.Orden))
+                        {
+                            <tr>
+                                <td><input class="form-control form-control-sm" @bind="editRespNombre[r.Id]" /></td>
+                                <td><textarea class="form-control form-control-sm" rows="2" @bind="editRespTexto[r.Id]"></textarea></td>
+                                <td><input type="number" class="form-control form-control-sm" @bind="editRespOrden[r.Id]" /></td>
+                                <td style="text-align:center;"><input type="checkbox" @bind="editRespActivo[r.Id]" /></td>
+                                <td>
+                                    <button class="btn btn-sm btn-success" @onclick="() => GuardarResp(r)" title="Guardar">✓</button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => BorrarResp(r)" title="Borrar">×</button>
+                                </td>
+                            </tr>
+                        }
+                        <tr style="background:#f0fdf4;">
+                            <td><input class="form-control form-control-sm" placeholder="Nombre" @bind="nuevaRespNombre" /></td>
+                            <td><textarea class="form-control form-control-sm" rows="2" placeholder="Texto del mensaje" @bind="nuevaRespTexto"></textarea></td>
+                            <td><input type="number" class="form-control form-control-sm" @bind="nuevaRespOrden" /></td>
+                            <td></td>
+                            <td><button class="btn btn-sm btn-success" @onclick="AgregarResp">+ Agregar</button></td>
+                        </tr>
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <p style="color:#6b7280; font-size:0.85rem;">Asignale un nombre y un rol a los números que te escriben. El nombre que pongas acá prevalece sobre el de WhatsApp.</p>
+                <table class="table table-sm">
+                    <thead><tr><th style="width:180px;">Número</th><th>Nombre</th><th style="width:120px;">Rol</th><th>Notas</th><th style="width:50px;">Act.</th><th style="width:90px;"></th></tr></thead>
+                    <tbody>
+                        @foreach (var c in contactos.OrderBy(x => x.Nombre))
+                        {
+                            <tr>
+                                <td style="font-family:monospace; font-size:0.78rem;">@c.Numero.Replace("whatsapp:", "")</td>
+                                <td><input class="form-control form-control-sm" @bind="editContNombre[c.Id]" /></td>
+                                <td>
+                                    <select class="form-control form-control-sm" @bind="editContRol[c.Id]">
+                                        <option value="hermano">Hermano</option>
+                                        <option value="empleado">Empleado</option>
+                                        <option value="cliente">Cliente</option>
+                                        <option value="proveedor">Proveedor</option>
+                                        <option value="otro">Otro</option>
+                                    </select>
+                                </td>
+                                <td><input class="form-control form-control-sm" @bind="editContNotas[c.Id]" /></td>
+                                <td style="text-align:center;"><input type="checkbox" @bind="editContActivo[c.Id]" /></td>
+                                <td>
+                                    <button class="btn btn-sm btn-success" @onclick="() => GuardarCont(c)">✓</button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => BorrarCont(c)">×</button>
+                                </td>
+                            </tr>
+                        }
+                        <tr style="background:#f0fdf4;">
+                            <td><input class="form-control form-control-sm" placeholder="+5491111111111" @bind="nuevoContNumero" /></td>
+                            <td><input class="form-control form-control-sm" placeholder="Nombre" @bind="nuevoContNombre" /></td>
+                            <td>
+                                <select class="form-control form-control-sm" @bind="nuevoContRol">
+                                    <option value="hermano">Hermano</option>
+                                    <option value="empleado">Empleado</option>
+                                    <option value="cliente">Cliente</option>
+                                    <option value="proveedor">Proveedor</option>
+                                    <option value="otro">Otro</option>
+                                </select>
+                            </td>
+                            <td><input class="form-control form-control-sm" placeholder="Notas" @bind="nuevoContNotas" /></td>
+                            <td></td>
+                            <td><button class="btn btn-sm btn-success" @onclick="AgregarCont">+ Agregar</button></td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p style="color:#9ca3af; font-size:0.75rem;">💡 Tip: anteponé "whatsapp:" si querés, sino se agrega solo.</p>
+            }
+        </div>
+    </div>
+}
 
 <style>
     /* 2026-06-19: container centrado estilo WhatsApp Web. Sidebar fino + thread centrado con max-width
@@ -162,6 +270,17 @@
     .wa-composer { padding: 0.7rem 1rem 0.4rem; background: #f0f2f5; display: flex; gap: 0.5rem; align-items: flex-end; }
     .wa-composer textarea { resize: none; border-radius: 8px; }
     .wa-composer button { white-space: nowrap; }
+    .wa-quick-replies { padding: 0.4rem 1rem 0; background: #f0f2f5; display: flex; gap: 0.35rem; flex-wrap: wrap; }
+    .wa-chip { background: #fff; border: 1px solid #d1d5db; color: #374151; padding: 0.25rem 0.7rem; border-radius: 14px; font-size: 0.78rem; cursor: pointer; transition: background 0.1s; white-space: nowrap; }
+    .wa-chip:hover { background: #25d366; color: #fff; border-color: #25d366; }
+    .wa-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2000; }
+    .wa-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 900px; max-height: 85vh; background: #fff; border-radius: 8px; z-index: 2001; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+    .wa-modal-header { padding: 1rem; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; gap: 0.5rem; }
+    .wa-modal-tabs { display: flex; gap: 0; border-bottom: 1px solid #e5e7eb; background: #f9fafb; }
+    .wa-tab { flex: 1; padding: 0.7rem; background: transparent; border: none; cursor: pointer; font-size: 0.9rem; color: #6b7280; border-bottom: 2px solid transparent; }
+    .wa-tab:hover { color: #25d366; }
+    .wa-tab.active { color: #25d366; border-bottom-color: #25d366; font-weight: 600; background: #fff; }
+    .wa-modal-body { padding: 1rem; overflow-y: auto; flex: 1; }
 </style>
 
 @code {
@@ -173,10 +292,106 @@
     System.Threading.Timer? refreshTimer;
     Microsoft.AspNetCore.Components.ElementReference messagesScroll;
 
+    // Respuestas rapidas + contactos
+    List<ApiClient.TwRespRapidaDto> respuestas = new();
+    List<ApiClient.TwContactoDto> contactos = new();
+    bool showConfig = false;
+    string configTab = "resp";
+    // dict para edicion inline
+    Dictionary<int, string> editRespNombre = new(), editRespTexto = new();
+    Dictionary<int, int> editRespOrden = new();
+    Dictionary<int, bool> editRespActivo = new();
+    Dictionary<int, string> editContNombre = new(), editContRol = new(), editContNotas = new();
+    Dictionary<int, bool> editContActivo = new();
+    // nuevos
+    string nuevaRespNombre = "", nuevaRespTexto = "";
+    int nuevaRespOrden = 99;
+    string nuevoContNumero = "", nuevoContNombre = "", nuevoContRol = "hermano", nuevoContNotas = "";
+
     protected override async Task OnInitializedAsync()
     {
         await LoadConversaciones();
+        await LoadRespuestas();
+        await LoadContactos();
         refreshTimer = new System.Threading.Timer(async _ => await OnTick(), null, 10_000, 10_000);
+    }
+
+    async Task LoadRespuestas()
+    {
+        try
+        {
+            respuestas = await Api.GetTwRespuestasAsync();
+            foreach (var r in respuestas)
+            {
+                editRespNombre[r.Id] = r.Nombre;
+                editRespTexto[r.Id] = r.Texto;
+                editRespOrden[r.Id] = r.Orden;
+                editRespActivo[r.Id] = r.Activo;
+            }
+        }
+        catch { }
+    }
+    async Task LoadContactos()
+    {
+        try
+        {
+            contactos = await Api.GetTwContactosAsync();
+            foreach (var c in contactos)
+            {
+                editContNombre[c.Id] = c.Nombre;
+                editContRol[c.Id] = c.Rol;
+                editContNotas[c.Id] = c.Notas ?? "";
+                editContActivo[c.Id] = c.Activo;
+            }
+        }
+        catch { }
+    }
+
+    void InsertarRespuesta(ApiClient.TwRespRapidaDto r)
+    {
+        composerText = string.IsNullOrWhiteSpace(composerText) ? r.Texto : composerText + " " + r.Texto;
+    }
+
+    async Task GuardarResp(ApiClient.TwRespRapidaDto r)
+    {
+        var ok = await Api.UpdateTwRespuestaAsync(r.Id, new ApiClient.TwRespUpsert(editRespNombre[r.Id], editRespTexto[r.Id], editRespOrden[r.Id], editRespActivo[r.Id]));
+        if (ok) { Toast.Success("Guardado"); await LoadRespuestas(); }
+        else Toast.Error("Error al guardar");
+    }
+    async Task BorrarResp(ApiClient.TwRespRapidaDto r)
+    {
+        if (await Api.DeleteTwRespuestaAsync(r.Id)) { Toast.Success("Borrado"); await LoadRespuestas(); }
+    }
+    async Task AgregarResp()
+    {
+        if (string.IsNullOrWhiteSpace(nuevaRespNombre) || string.IsNullOrWhiteSpace(nuevaRespTexto)) { Toast.Error("Nombre y texto son obligatorios"); return; }
+        if (await Api.CreateTwRespuestaAsync(new ApiClient.TwRespUpsert(nuevaRespNombre, nuevaRespTexto, nuevaRespOrden, true)))
+        {
+            Toast.Success("Agregado");
+            nuevaRespNombre = ""; nuevaRespTexto = ""; nuevaRespOrden = 99;
+            await LoadRespuestas();
+        }
+    }
+    async Task GuardarCont(ApiClient.TwContactoDto c)
+    {
+        if (await Api.UpdateTwContactoAsync(c.Id, new ApiClient.TwContactoUpsert(c.Numero, editContNombre[c.Id], editContRol[c.Id], editContNotas[c.Id], editContActivo[c.Id])))
+        { Toast.Success("Guardado"); await LoadContactos(); await LoadConversaciones(silent: true); }
+    }
+    async Task BorrarCont(ApiClient.TwContactoDto c)
+    {
+        if (await Api.DeleteTwContactoAsync(c.Id)) { Toast.Success("Borrado"); await LoadContactos(); await LoadConversaciones(silent: true); }
+    }
+    async Task AgregarCont()
+    {
+        if (string.IsNullOrWhiteSpace(nuevoContNumero) || string.IsNullOrWhiteSpace(nuevoContNombre)) { Toast.Error("Número y nombre son obligatorios"); return; }
+        var (ok, err) = await Api.CreateTwContactoAsync(new ApiClient.TwContactoUpsert(nuevoContNumero, nuevoContNombre, nuevoContRol, nuevoContNotas, true));
+        if (ok)
+        {
+            Toast.Success("Contacto agregado");
+            nuevoContNumero = ""; nuevoContNombre = ""; nuevoContNotas = "";
+            await LoadContactos(); await LoadConversaciones(silent: true);
+        }
+        else Toast.Error(err ?? "Error");
     }
 
     async Task OnTick()

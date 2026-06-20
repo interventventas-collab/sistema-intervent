@@ -156,6 +156,8 @@ public class AppDbContext : DbContext
     public DbSet<StockSnapshot> StockSnapshots => Set<StockSnapshot>();
     public DbSet<MeliWebhookLog> MeliWebhookLogs => Set<MeliWebhookLog>();
     public DbSet<WhatsAppTwilioMensaje> WhatsAppTwilioMensajes => Set<WhatsAppTwilioMensaje>();
+    public DbSet<WhatsAppTwilioRespuestaRapida> WhatsAppTwilioRespuestasRapidas => Set<WhatsAppTwilioRespuestaRapida>();
+    public DbSet<WhatsAppTwilioContacto> WhatsAppTwilioContactos => Set<WhatsAppTwilioContacto>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

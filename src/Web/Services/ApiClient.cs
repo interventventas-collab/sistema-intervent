@@ -4562,7 +4562,11 @@ public class ApiClient
     }
 
     // ===== WhatsApp Twilio chat =====
-    public record TwConvDto(string Numero, string? NombrePerfil, string? UltimoMensaje, string? UltimoDireccion, DateTime UltimoAt, int Total);
+    public record TwConvDto(string Numero, string? NombrePerfil, string? Rol, string? UltimoMensaje, string? UltimoDireccion, DateTime UltimoAt, int Total);
+    public record TwRespRapidaDto(int Id, string Nombre, string Texto, int Orden, bool Activo);
+    public record TwContactoDto(int Id, string Numero, string Nombre, string Rol, string? Notas, bool Activo);
+    public record TwRespUpsert(string Nombre, string Texto, int Orden, bool Activo);
+    public record TwContactoUpsert(string Numero, string Nombre, string Rol, string? Notas, bool Activo);
     public record TwMsgDto(int Id, string Direccion, string Numero, string? NombrePerfil, string? Cuerpo, string? MediaUrl, int? NumMedia, bool Procesado, string? RespuestaEnviada, DateTime CreatedAt);
 
     public async Task<List<TwConvDto>> GetTwConversacionesAsync()
@@ -4588,4 +4592,28 @@ public class ApiClient
         }
         catch (Exception ex) { return (false, ex.Message); }
     }
+
+    public async Task<List<TwRespRapidaDto>> GetTwRespuestasAsync()
+        => await _http.GetFromJsonAsync<List<TwRespRapidaDto>>("/api/whatsapp/twilio/respuestas-rapidas") ?? new();
+    public async Task<bool> CreateTwRespuestaAsync(TwRespUpsert r)
+        => (await _http.PostAsJsonAsync("/api/whatsapp/twilio/respuestas-rapidas", r)).IsSuccessStatusCode;
+    public async Task<bool> UpdateTwRespuestaAsync(int id, TwRespUpsert r)
+        => (await _http.PutAsJsonAsync($"/api/whatsapp/twilio/respuestas-rapidas/{id}", r)).IsSuccessStatusCode;
+    public async Task<bool> DeleteTwRespuestaAsync(int id)
+        => (await _http.DeleteAsync($"/api/whatsapp/twilio/respuestas-rapidas/{id}")).IsSuccessStatusCode;
+
+    public async Task<List<TwContactoDto>> GetTwContactosAsync()
+        => await _http.GetFromJsonAsync<List<TwContactoDto>>("/api/whatsapp/twilio/contactos") ?? new();
+    public async Task<(bool ok, string? error)> CreateTwContactoAsync(TwContactoUpsert c)
+    {
+        var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/contactos", c);
+        if (resp.IsSuccessStatusCode) return (true, null);
+        string err = "Error";
+        try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync()); if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; } catch { }
+        return (false, err);
+    }
+    public async Task<bool> UpdateTwContactoAsync(int id, TwContactoUpsert c)
+        => (await _http.PutAsJsonAsync($"/api/whatsapp/twilio/contactos/{id}", c)).IsSuccessStatusCode;
+    public async Task<bool> DeleteTwContactoAsync(int id)
+        => (await _http.DeleteAsync($"/api/whatsapp/twilio/contactos/{id}")).IsSuccessStatusCode;
 }
