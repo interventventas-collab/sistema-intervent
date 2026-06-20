@@ -83,7 +83,26 @@
                     {
                         <div class="wa-msg-row @(m.Direccion == "OUTGOING" ? "out" : "in")">
                             <div class="wa-bubble">
-                                <div class="wa-bubble-body">@((MarkupString)EscapeMsg(m.Cuerpo))</div>
+                                @if (!string.IsNullOrEmpty(m.MediaUrl))
+                                {
+                                    @if (IsImage(m.MediaUrl))
+                                    {
+                                        <a href="@m.MediaUrl" target="_blank" rel="noopener">
+                                            <img src="@m.MediaUrl" style="max-width:100%; max-height:300px; border-radius:6px; display:block;" alt="adjunto" />
+                                        </a>
+                                    }
+                                    else
+                                    {
+                                        <a href="@m.MediaUrl" target="_blank" rel="noopener" style="display:flex; align-items:center; gap:0.4rem; padding:0.5rem; background:#f3f4f6; border-radius:6px; text-decoration:none; color:#374151; margin-bottom:0.3rem;">
+                                            <span style="font-size:1.5rem;">📎</span>
+                                            <span style="font-size:0.85rem; flex:1;">Archivo adjunto<br/><span style="font-size:0.7rem; color:#6b7280;">Click para abrir</span></span>
+                                        </a>
+                                    }
+                                }
+                                @if (!string.IsNullOrEmpty(m.Cuerpo))
+                                {
+                                    <div class="wa-bubble-body">@((MarkupString)EscapeMsg(m.Cuerpo))</div>
+                                }
                                 <div class="wa-bubble-meta">@FormatHora(m.CreatedAt)</div>
                             </div>
                         </div>
@@ -250,6 +269,14 @@
     {
         if (string.IsNullOrEmpty(s)) return "";
         return System.Net.WebUtility.HtmlEncode(s).Replace("\n", "<br/>");
+    }
+
+    bool IsImage(string? url)
+    {
+        if (string.IsNullOrEmpty(url)) return false;
+        var lower = url.ToLowerInvariant();
+        return lower.Contains(".jpg") || lower.Contains(".jpeg") || lower.Contains(".png")
+            || lower.Contains(".gif") || lower.Contains(".webp") || lower.Contains("image");
     }
 
     public void Dispose() => refreshTimer?.Dispose();
