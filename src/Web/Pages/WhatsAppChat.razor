@@ -99,6 +99,18 @@
                         }
                     </div>
                 </div>
+                @if (!EstaEnContactos(selectedNumero))
+                {
+                    <button class="btn btn-outline-primary btn-sm" @onclick="AbrirAsignarContacto" title="Agregar este número como contacto">
+                        ➕ Asignar contacto
+                    </button>
+                }
+                else
+                {
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="AbrirEditarContacto" title="Editar este contacto" style="font-size:0.78rem;">
+                        ✏️ Editar contacto
+                    </button>
+                }
                 <button class="btn btn-outline-success btn-sm" @onclick="CargarComoPedido" title="Crear venta nueva precargando el último mensaje en las notas y el cliente vinculado">
                     📋 Crear pedido
                 </button>
@@ -193,6 +205,71 @@
     </div>
 </div>
 </div>
+
+@if (showQuickContact)
+{
+    <div class="wa-modal-backdrop" @onclick="@(() => showQuickContact = false)"></div>
+    <div class="wa-modal" style="max-width:520px;">
+        <div class="wa-modal-header">
+            <h3 style="margin:0; flex:1; font-size:1.05rem;">➕ Asignar contacto</h3>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="@(() => showQuickContact = false)">×</button>
+        </div>
+        <div class="wa-modal-body">
+            <div style="margin-bottom:0.7rem;">
+                <label style="font-size:0.78rem; color:#6b7280; display:block;">Número (WhatsApp)</label>
+                <input class="form-control form-control-sm" value="@quickContactNumero" readonly style="background:#f9fafb;" />
+            </div>
+            <div style="margin-bottom:0.7rem;">
+                <label style="font-size:0.78rem; color:#6b7280; display:block;">Nombre <span style="color:#dc2626;">*</span></label>
+                <input class="form-control form-control-sm" @bind="quickContactNombre" placeholder="Ej. Juan Pérez" />
+            </div>
+            <div style="margin-bottom:0.7rem;">
+                <label style="font-size:0.78rem; color:#6b7280; display:block;">Rol</label>
+                <select class="form-control form-control-sm" @bind="quickContactRol">
+                    <option value="hermano">👨‍👦 Hermano</option>
+                    <option value="empleado">👷 Empleado</option>
+                    <option value="cliente">🛍️ Cliente</option>
+                    <option value="proveedor">🚚 Proveedor</option>
+                    <option value="otro">Otro</option>
+                </select>
+            </div>
+            <div style="margin-bottom:0.7rem; position:relative;">
+                <label style="font-size:0.78rem; color:#6b7280; display:block;">Cliente del sistema <span style="font-size:0.7rem; color:#9ca3af;">(opcional)</span></label>
+                @if (quickContactClienteId.HasValue)
+                {
+                    <div style="display:flex; align-items:center; gap:0.4rem; padding:0.3rem 0.5rem; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:6px; font-size:0.85rem;">
+                        <span>🛍️ @quickContactClienteNombre</span>
+                        <button class="btn btn-sm btn-link" style="padding:0; margin-left:auto; font-size:0.85rem;" @onclick="@(() => { quickContactClienteId = null; quickContactClienteNombre = null; })">×</button>
+                    </div>
+                }
+                else
+                {
+                    <input class="form-control form-control-sm" placeholder="Buscar cliente..." @bind="quickContactClienteQuery" @bind:event="oninput" @onfocus="BuscarClientesQuick" />
+                    @if (clienteResultadosQuick.Count > 0)
+                    {
+                        <div class="wa-cliente-dropdown" style="position:absolute; top:100%; left:0; right:0;">
+                            @foreach (var cli in clienteResultadosQuick.Take(8))
+                            {
+                                <div class="wa-cliente-opt" @onclick="() => SeleccionarClienteQuick(cli)">
+                                    <strong>@cli.Nombre</strong>
+                                    @if (!string.IsNullOrEmpty(cli.CodigoInterno)) { <span style="color:#6b7280; font-size:0.7rem;"> · #@cli.CodigoInterno</span> }
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+            <div style="margin-bottom:0.7rem;">
+                <label style="font-size:0.78rem; color:#6b7280; display:block;">Notas <span style="font-size:0.7rem; color:#9ca3af;">(opcional)</span></label>
+                <input class="form-control form-control-sm" @bind="quickContactNotas" placeholder="Ej. Hermano mayor, vive en San Isidro" />
+            </div>
+            <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:1rem;">
+                <button class="btn btn-secondary btn-sm" @onclick="@(() => showQuickContact = false)">Cancelar</button>
+                <button class="btn btn-success btn-sm" @onclick="GuardarQuickContact">✓ Guardar contacto</button>
+            </div>
+        </div>
+    </div>
+}
 
 @if (showConfig)
 {
@@ -426,6 +503,69 @@
     // Reacciones
     int? pickerOpenMsgId = null;
     static readonly string[] QuickEmojis = new[] { "👍", "❤️", "😂", "😮", "😢", "🙏", "✅", "⏳", "❗" };
+    // Quick contact modal
+    bool showQuickContact = false;
+    string quickContactNumero = "", quickContactNombre = "", quickContactRol = "hermano", quickContactNotas = "";
+    int? quickContactClienteId = null;
+    string? quickContactClienteNombre = null;
+    string quickContactClienteQuery = "";
+    List<ApiClient.TwClienteBuscarDto> clienteResultadosQuick = new();
+
+    bool EstaEnContactos(string? numero)
+        => !string.IsNullOrEmpty(numero) && contactos.Any(c => c.Numero == numero);
+
+    ApiClient.TwContactoDto? GetContactoByNumero(string numero)
+        => contactos.FirstOrDefault(c => c.Numero == numero);
+
+    void AbrirAsignarContacto()
+    {
+        if (selectedNumero == null) return;
+        var conv = SelectedConv();
+        quickContactNumero = selectedNumero;
+        quickContactNombre = conv?.NombrePerfil ?? "";
+        quickContactRol = "hermano";
+        quickContactNotas = "";
+        quickContactClienteId = null;
+        quickContactClienteNombre = null;
+        quickContactClienteQuery = "";
+        clienteResultadosQuick = new();
+        showQuickContact = true;
+    }
+
+    void AbrirEditarContacto()
+    {
+        showConfig = true;
+        configTab = "cont";
+    }
+
+    async Task BuscarClientesQuick()
+    {
+        try { clienteResultadosQuick = await Api.BuscarTwClientesAsync(quickContactClienteQuery ?? ""); }
+        catch { clienteResultadosQuick = new(); }
+    }
+
+    void SeleccionarClienteQuick(ApiClient.TwClienteBuscarDto cli)
+    {
+        quickContactClienteId = cli.Id;
+        quickContactClienteNombre = cli.Nombre;
+        clienteResultadosQuick = new();
+        quickContactClienteQuery = "";
+    }
+
+    async Task GuardarQuickContact()
+    {
+        if (string.IsNullOrWhiteSpace(quickContactNombre)) { Toast.Error("El nombre es obligatorio"); return; }
+        var (ok, err) = await Api.CreateTwContactoAsync(new ApiClient.TwContactoUpsert(
+            quickContactNumero, quickContactNombre, quickContactRol, quickContactNotas, true, quickContactClienteId));
+        if (ok)
+        {
+            Toast.Success("Contacto asignado");
+            showQuickContact = false;
+            await LoadContactos();
+            await LoadConversaciones(silent: true);
+        }
+        else Toast.Error(err ?? "Error al guardar");
+    }
     // nuevos
     string nuevaRespNombre = "", nuevaRespTexto = "";
     int nuevaRespOrden = 99;
