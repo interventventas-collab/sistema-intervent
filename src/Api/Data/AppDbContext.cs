@@ -158,6 +158,7 @@ public class AppDbContext : DbContext
     public DbSet<WhatsAppTwilioMensaje> WhatsAppTwilioMensajes => Set<WhatsAppTwilioMensaje>();
     public DbSet<WhatsAppTwilioRespuestaRapida> WhatsAppTwilioRespuestasRapidas => Set<WhatsAppTwilioRespuestaRapida>();
     public DbSet<WhatsAppTwilioContacto> WhatsAppTwilioContactos => Set<WhatsAppTwilioContacto>();
+    public DbSet<WhatsAppTwilioReaccion> WhatsAppTwilioReacciones => Set<WhatsAppTwilioReaccion>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

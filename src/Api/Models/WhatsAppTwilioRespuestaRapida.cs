@@ -23,5 +23,16 @@ public class WhatsAppTwilioContacto
     [MaxLength(20)] public string Rol { get; set; } = "otro";
     public string? Notas { get; set; }
     public bool Activo { get; set; } = true;
+    public int? ClienteId { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+[Table("WhatsApp_TwilioReacciones")]
+public class WhatsAppTwilioReaccion
+{
+    public int Id { get; set; }
+    public int MensajeId { get; set; }
+    [MaxLength(20)] public string Emoji { get; set; } = "";
+    public int? UsuarioId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

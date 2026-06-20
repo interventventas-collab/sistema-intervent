@@ -4562,13 +4562,14 @@ public class ApiClient
     }
 
     // ===== WhatsApp Twilio chat =====
-    public record TwConvDto(string Numero, string? NombrePerfil, string? Rol, string? UltimoMensaje, string? UltimoDireccion, DateTime UltimoAt, int Total);
+    public record TwConvDto(string Numero, string? NombrePerfil, string? Rol, int? ClienteId, string? ClienteNombre, string? UltimoMensaje, string? UltimoDireccion, DateTime UltimoAt, int Total);
+    public record TwReaccionDto(string Emoji, int Count);
+    public record TwMsgDto(int Id, string Direccion, string Numero, string? NombrePerfil, string? Cuerpo, string? MediaUrl, int? NumMedia, bool Procesado, string? RespuestaEnviada, DateTime CreatedAt, List<TwReaccionDto>? Reacciones);
     public record TwRespRapidaDto(int Id, string Nombre, string Texto, int Orden, bool Activo);
-    public record TwContactoDto(int Id, string Numero, string Nombre, string Rol, string? Notas, bool Activo);
+    public record TwContactoDto(int Id, string Numero, string Nombre, string Rol, string? Notas, bool Activo, int? ClienteId, string? ClienteNombre, string? ClienteCodigo);
     public record TwRespUpsert(string Nombre, string Texto, int Orden, bool Activo);
-    public record TwContactoUpsert(string Numero, string Nombre, string Rol, string? Notas, bool Activo);
-    public record TwMsgDto(int Id, string Direccion, string Numero, string? NombrePerfil, string? Cuerpo, string? MediaUrl, int? NumMedia, bool Procesado, string? RespuestaEnviada, DateTime CreatedAt);
-
+    public record TwContactoUpsert(string Numero, string Nombre, string Rol, string? Notas, bool Activo, int? ClienteId);
+    public record TwClienteBuscarDto(int Id, string Nombre, string? CodigoInterno, string? Telefono);
     public async Task<List<TwConvDto>> GetTwConversacionesAsync()
         => await _http.GetFromJsonAsync<List<TwConvDto>>("/api/whatsapp/twilio/conversaciones") ?? new();
 
@@ -4616,4 +4617,10 @@ public class ApiClient
         => (await _http.PutAsJsonAsync($"/api/whatsapp/twilio/contactos/{id}", c)).IsSuccessStatusCode;
     public async Task<bool> DeleteTwContactoAsync(int id)
         => (await _http.DeleteAsync($"/api/whatsapp/twilio/contactos/{id}")).IsSuccessStatusCode;
+
+    public async Task<List<TwClienteBuscarDto>> BuscarTwClientesAsync(string q)
+        => await _http.GetFromJsonAsync<List<TwClienteBuscarDto>>($"/api/whatsapp/twilio/clientes-buscar?q={Uri.EscapeDataString(q ?? "")}") ?? new();
+
+    public async Task<bool> ToggleReaccionAsync(int mensajeId, string emoji)
+        => (await _http.PostAsJsonAsync("/api/whatsapp/twilio/reacciones", new { MensajeId = mensajeId, Emoji = emoji })).IsSuccessStatusCode;
 }

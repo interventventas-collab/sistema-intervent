@@ -118,14 +118,23 @@ public class WhatsAppTwilioController : ControllerBase
         // Join in-memory con contactos (poco volumen, mas simple que LINQ join)
         var contactos = await _db.WhatsAppTwilioContactos.AsNoTracking()
             .Where(c => c.Activo).ToDictionaryAsync(c => c.Numero, c => c);
+        var clienteIds = contactos.Values.Where(c => c.ClienteId.HasValue).Select(c => c.ClienteId!.Value).Distinct().ToList();
+        var clientes = await _db.CafeClientes.AsNoTracking()
+            .Where(x => clienteIds.Contains(x.Id))
+            .Select(x => new { x.Id, x.Nombre, x.CodigoInterno })
+            .ToDictionaryAsync(x => x.Id);
         var result = conv.Select(x =>
         {
             contactos.TryGetValue(x.Numero, out var c);
+            string? clienteNombre = null;
+            if (c?.ClienteId != null && clientes.TryGetValue(c.ClienteId.Value, out var cli)) clienteNombre = cli.Nombre;
             return new
             {
                 x.Numero,
                 NombrePerfil = c?.Nombre ?? x.NombrePerfil,
                 Rol = c?.Rol,
+                ClienteId = c?.ClienteId,
+                ClienteNombre = clienteNombre,
                 x.UltimoMensaje,
                 x.UltimoDireccion,
                 x.UltimoAt,
@@ -191,7 +200,7 @@ public class WhatsAppTwilioController : ControllerBase
     }
 
     // ===== Contactos CRUD =====
-    public record ContactoUpsert(string Numero, string Nombre, string Rol, string? Notas, bool Activo);
+    public record ContactoUpsert(string Numero, string Nombre, string Rol, string? Notas, bool Activo, int? ClienteId);
 
     [HttpGet("contactos")]
     [Authorize]
@@ -199,6 +208,40 @@ public class WhatsAppTwilioController : ControllerBase
     {
         var list = await _db.WhatsAppTwilioContactos.AsNoTracking()
             .OrderBy(c => c.Nombre).ToListAsync();
+        // Join in-memory con CafeClientes
+        var ids = list.Where(c => c.ClienteId.HasValue).Select(c => c.ClienteId!.Value).Distinct().ToList();
+        var clientes = await _db.CafeClientes.AsNoTracking()
+            .Where(x => ids.Contains(x.Id))
+            .Select(x => new { x.Id, x.Nombre, x.CodigoInterno })
+            .ToDictionaryAsync(x => x.Id);
+        var result = list.Select(c => new
+        {
+            c.Id, c.Numero, c.Nombre, c.Rol, c.Notas, c.Activo, c.ClienteId,
+            ClienteNombre = c.ClienteId.HasValue && clientes.TryGetValue(c.ClienteId.Value, out var cli) ? cli.Nombre : null,
+            ClienteCodigo = c.ClienteId.HasValue && clientes.TryGetValue(c.ClienteId.Value, out var cli2) ? (cli2.CodigoInterno?.ToString()) : null
+        }).ToList();
+        return Ok(result);
+    }
+
+    /// <summary>GET /api/whatsapp/twilio/clientes-buscar?q=texto — busqueda liviana para autocomplete.</summary>
+    [HttpGet("clientes-buscar")]
+    [Authorize]
+    public async Task<IActionResult> BuscarClientes([FromQuery] string q = "", [FromQuery] int top = 15)
+    {
+        q = (q ?? "").Trim();
+        var query = _db.CafeClientes.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            int.TryParse(q, out var qNum);
+            query = query.Where(c => c.Nombre.Contains(q)
+                || (qNum > 0 && c.CodigoInterno == qNum)
+                || (c.Telefono != null && c.Telefono.Contains(q)));
+        }
+        var list = await query
+            .OrderBy(c => c.Nombre)
+            .Take(Math.Clamp(top, 1, 50))
+            .Select(c => new { c.Id, c.Nombre, CodigoInterno = c.CodigoInterno.HasValue ? c.CodigoInterno.ToString() : null, c.Telefono })
+            .ToListAsync();
         return Ok(list);
     }
 
@@ -218,7 +261,8 @@ public class WhatsAppTwilioController : ControllerBase
             Nombre = req.Nombre.Trim(),
             Rol = string.IsNullOrWhiteSpace(req.Rol) ? "otro" : req.Rol.Trim(),
             Notas = req.Notas,
-            Activo = req.Activo
+            Activo = req.Activo,
+            ClienteId = req.ClienteId
         };
         _db.WhatsAppTwilioContactos.Add(c);
         await _db.SaveChangesAsync();
@@ -235,8 +279,36 @@ public class WhatsAppTwilioController : ControllerBase
         c.Rol = string.IsNullOrWhiteSpace(req.Rol) ? "otro" : req.Rol.Trim();
         c.Notas = req.Notas;
         c.Activo = req.Activo;
+        c.ClienteId = req.ClienteId;
         await _db.SaveChangesAsync();
         return Ok(c);
+    }
+
+    // ===== Reacciones a mensajes (etiquetas internas) =====
+    public record ReaccionRequest(int MensajeId, string Emoji);
+
+    /// <summary>POST /reacciones — toggle: si ya existe ese emoji para ese mensaje, lo borra; sino lo crea.</summary>
+    [HttpPost("reacciones")]
+    [Authorize]
+    public async Task<IActionResult> ToggleReaccion([FromBody] ReaccionRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Emoji)) return BadRequest();
+        var existing = await _db.WhatsAppTwilioReacciones
+            .FirstOrDefaultAsync(r => r.MensajeId == req.MensajeId && r.Emoji == req.Emoji);
+        if (existing != null)
+        {
+            _db.WhatsAppTwilioReacciones.Remove(existing);
+            await _db.SaveChangesAsync();
+            return Ok(new { ok = true, removed = true });
+        }
+        _db.WhatsAppTwilioReacciones.Add(new WhatsAppTwilioReaccion
+        {
+            MensajeId = req.MensajeId,
+            Emoji = req.Emoji,
+            CreatedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, removed = false });
     }
 
     [HttpDelete("contactos/{id:int}")]
@@ -250,7 +322,7 @@ public class WhatsAppTwilioController : ControllerBase
         return Ok(new { ok = true });
     }
 
-    /// <summary>GET /api/whatsapp/twilio/mensajes?numero=whatsapp:+34... — devuelve el hilo de un numero.</summary>
+    /// <summary>GET /api/whatsapp/twilio/mensajes?numero=whatsapp:+34... — devuelve el hilo de un numero con reacciones.</summary>
     [HttpGet("mensajes")]
     [Authorize]
     public async Task<IActionResult> Mensajes([FromQuery] string? numero, [FromQuery] int top = 200)
@@ -267,8 +339,22 @@ public class WhatsAppTwilioController : ControllerBase
                 m.Procesado, m.RespuestaEnviada, m.CreatedAt
             })
             .ToListAsync();
-        // Devolver orden cronológico ascendente para el chat
         msgs.Reverse();
-        return Ok(msgs);
+        // Cargar reacciones de estos mensajes
+        var ids = msgs.Select(m => m.Id).ToList();
+        var reacciones = await _db.WhatsAppTwilioReacciones.AsNoTracking()
+            .Where(r => ids.Contains(r.MensajeId))
+            .GroupBy(r => new { r.MensajeId, r.Emoji })
+            .Select(g => new { g.Key.MensajeId, g.Key.Emoji, Count = g.Count() })
+            .ToListAsync();
+        var reacByMsg = reacciones.GroupBy(r => r.MensajeId)
+            .ToDictionary(g => g.Key, g => g.Select(x => new { x.Emoji, x.Count }).ToList());
+        var result = msgs.Select(m => new
+        {
+            m.Id, m.Direccion, m.Numero, m.NombrePerfil, m.Cuerpo,
+            m.MediaUrl, m.NumMedia, m.Procesado, m.RespuestaEnviada, m.CreatedAt,
+            Reacciones = reacByMsg.TryGetValue(m.Id, out var rs) ? rs.Cast<object>().ToList() : new List<object>()
+        }).ToList();
+        return Ok(result);
     }
 }

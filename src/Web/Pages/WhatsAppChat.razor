@@ -86,12 +86,20 @@
         else
         {
             <div class="wa-thread-header">
-                <div class="wa-avatar">@AvatarLetra(SelectedConv())</div>
+                <div class="wa-avatar" style="@(AvatarColor(SelectedConv()))">@AvatarLetra(SelectedConv())</div>
                 <div style="flex:1;">
                     <div style="font-weight:600;">@(SelectedConv()?.NombrePerfil ?? PrettyNumero(selectedNumero))</div>
-                    <div style="font-size:0.75rem; color:#6b7280;">@PrettyNumero(selectedNumero)</div>
+                    <div style="font-size:0.75rem; color:#6b7280; display:flex; gap:0.5rem; align-items:center;">
+                        <span>@PrettyNumero(selectedNumero)</span>
+                        @if (SelectedConv()?.ClienteId is int cid)
+                        {
+                            <a href="/cafe/clientes/@cid" target="_blank" class="wa-cliente-badge" title="Ver ficha del cliente">
+                                🛍️ Cliente: @SelectedConv()?.ClienteNombre
+                            </a>
+                        }
+                    </div>
                 </div>
-                <button class="btn btn-outline-success btn-sm" @onclick="CargarComoPedido" title="Crear venta nueva precargando el último mensaje en las notas">
+                <button class="btn btn-outline-success btn-sm" @onclick="CargarComoPedido" title="Crear venta nueva precargando el último mensaje en las notas y el cliente vinculado">
                     📋 Crear pedido
                 </button>
                 <button class="btn btn-outline-secondary btn-sm" @onclick="@(() => showConfig = true)" title="Configurar respuestas rápidas y contactos">
@@ -109,28 +117,52 @@
                     @foreach (var m in mensajes)
                     {
                         <div class="wa-msg-row @(m.Direccion == "OUTGOING" ? "out" : "in")">
-                            <div class="wa-bubble">
-                                @if (!string.IsNullOrEmpty(m.MediaUrl))
-                                {
-                                    @if (IsImage(m.MediaUrl))
+                            <div class="wa-bubble-wrap">
+                                <div class="wa-bubble">
+                                    @if (!string.IsNullOrEmpty(m.MediaUrl))
                                     {
-                                        <a href="@m.MediaUrl" target="_blank" rel="noopener">
-                                            <img src="@m.MediaUrl" style="max-width:100%; max-height:300px; border-radius:6px; display:block;" alt="adjunto" />
-                                        </a>
+                                        @if (IsImage(m.MediaUrl))
+                                        {
+                                            <a href="@m.MediaUrl" target="_blank" rel="noopener">
+                                                <img src="@m.MediaUrl" style="max-width:100%; max-height:300px; border-radius:6px; display:block;" alt="adjunto" />
+                                            </a>
+                                        }
+                                        else
+                                        {
+                                            <a href="@m.MediaUrl" target="_blank" rel="noopener" style="display:flex; align-items:center; gap:0.4rem; padding:0.5rem; background:#f3f4f6; border-radius:6px; text-decoration:none; color:#374151; margin-bottom:0.3rem;">
+                                                <span style="font-size:1.5rem;">📎</span>
+                                                <span style="font-size:0.85rem; flex:1;">Archivo adjunto<br/><span style="font-size:0.7rem; color:#6b7280;">Click para abrir</span></span>
+                                            </a>
+                                        }
                                     }
-                                    else
+                                    @if (!string.IsNullOrEmpty(m.Cuerpo))
                                     {
-                                        <a href="@m.MediaUrl" target="_blank" rel="noopener" style="display:flex; align-items:center; gap:0.4rem; padding:0.5rem; background:#f3f4f6; border-radius:6px; text-decoration:none; color:#374151; margin-bottom:0.3rem;">
-                                            <span style="font-size:1.5rem;">📎</span>
-                                            <span style="font-size:0.85rem; flex:1;">Archivo adjunto<br/><span style="font-size:0.7rem; color:#6b7280;">Click para abrir</span></span>
-                                        </a>
+                                        <div class="wa-bubble-body">@((MarkupString)EscapeMsg(m.Cuerpo))</div>
                                     }
-                                }
-                                @if (!string.IsNullOrEmpty(m.Cuerpo))
+                                    <div class="wa-bubble-meta">@FormatHora(m.CreatedAt)</div>
+                                </div>
+                                @* Botón reaccionar — visible al hover *@
+                                <button class="wa-react-btn" @onclick="() => TogglePicker(m.Id)" title="Reaccionar">😊</button>
+                                @if (pickerOpenMsgId == m.Id)
                                 {
-                                    <div class="wa-bubble-body">@((MarkupString)EscapeMsg(m.Cuerpo))</div>
+                                    <div class="wa-emoji-picker">
+                                        @foreach (var em in QuickEmojis)
+                                        {
+                                            <button class="wa-emoji-pick" @onclick="() => ReaccionarA(m.Id, em)">@em</button>
+                                        }
+                                    </div>
                                 }
-                                <div class="wa-bubble-meta">@FormatHora(m.CreatedAt)</div>
+                                @if (m.Reacciones != null && m.Reacciones.Count > 0)
+                                {
+                                    <div class="wa-reacciones">
+                                        @foreach (var r in m.Reacciones)
+                                        {
+                                            <button class="wa-reaccion-chip" @onclick="() => ReaccionarA(m.Id, r.Emoji)" title="Click para quitar">
+                                                @r.Emoji @if (r.Count > 1) { <span>@r.Count</span> }
+                                            </button>
+                                        }
+                                    </div>
+                                }
                             </div>
                         </div>
                     }
@@ -211,7 +243,7 @@
             {
                 <p style="color:#6b7280; font-size:0.85rem;">Asignale un nombre y un rol a los números que te escriben. El nombre que pongas acá prevalece sobre el de WhatsApp.</p>
                 <table class="table table-sm">
-                    <thead><tr><th style="width:180px;">Número</th><th>Nombre</th><th style="width:120px;">Rol</th><th>Notas</th><th style="width:50px;">Act.</th><th style="width:90px;"></th></tr></thead>
+                    <thead><tr><th style="width:160px;">Número</th><th>Nombre</th><th style="width:110px;">Rol</th><th style="width:200px;">Cliente vinculado</th><th>Notas</th><th style="width:40px;">Act.</th><th style="width:80px;"></th></tr></thead>
                     <tbody>
                         @foreach (var c in contactos.OrderBy(x => x.Nombre))
                         {
@@ -226,6 +258,32 @@
                                         <option value="proveedor">Proveedor</option>
                                         <option value="otro">Otro</option>
                                     </select>
+                                </td>
+                                <td>
+                                    @if (editContClienteId.GetValueOrDefault(c.Id) is int cliId && cliId > 0)
+                                    {
+                                        <div style="display:flex; align-items:center; gap:0.3rem;">
+                                            <span style="font-size:0.78rem; color:#16a34a;">🛍️ @editContClienteNombre.GetValueOrDefault(c.Id, "Cliente #" + cliId)</span>
+                                            <button class="btn btn-sm btn-link" style="padding:0; font-size:0.7rem;" @onclick="() => { editContClienteId[c.Id] = null; editContClienteNombre[c.Id] = null; }">×</button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <input class="form-control form-control-sm" placeholder="Buscar cliente..." @bind="editContClienteQuery[c.Id]" @bind:event="oninput"
+                                               @onfocus="() => BuscarClientes(c.Id)" />
+                                        @if (clienteBusquedaActivaId == c.Id && clienteResultados.Count > 0)
+                                        {
+                                            <div class="wa-cliente-dropdown">
+                                                @foreach (var cli in clienteResultados.Take(8))
+                                                {
+                                                    <div class="wa-cliente-opt" @onclick="() => SeleccionarCliente(c.Id, cli)">
+                                                        <strong>@cli.Nombre</strong>
+                                                        @if (!string.IsNullOrEmpty(cli.CodigoInterno)) { <span style="color:#6b7280; font-size:0.7rem;"> · #@cli.CodigoInterno</span> }
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                    }
                                 </td>
                                 <td><input class="form-control form-control-sm" @bind="editContNotas[c.Id]" /></td>
                                 <td style="text-align:center;"><input type="checkbox" @bind="editContActivo[c.Id]" /></td>
@@ -247,6 +305,7 @@
                                     <option value="otro">Otro</option>
                                 </select>
                             </td>
+                            <td style="font-size:0.75rem; color:#9ca3af;">(asignás después del alta)</td>
                             <td><input class="form-control form-control-sm" placeholder="Notas" @bind="nuevoContNotas" /></td>
                             <td></td>
                             <td><button class="btn btn-sm btn-success" @onclick="AgregarCont">+ Agregar</button></td>
@@ -314,6 +373,29 @@
     .wa-filtro.active { background: #25d366; color: #fff; border-color: #25d366; font-weight: 600; }
     .wa-rol-tag { font-size: 0.7rem; margin-left: 0.2rem; }
     .wa-pedido-chip { background: #fef3c7; color: #92400e; font-size: 0.65rem; font-weight: 700; padding: 0.05rem 0.3rem; border-radius: 4px; margin-right: 0.3rem; }
+    /* Cliente vinculado */
+    .wa-cliente-badge { background: #ecfdf5; color: #047857; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.7rem; text-decoration: none; border: 1px solid #a7f3d0; }
+    .wa-cliente-badge:hover { background: #d1fae5; }
+    .wa-cliente-dropdown { position: absolute; background: #fff; border: 1px solid #d1d5db; border-radius: 6px; max-height: 220px; overflow-y: auto; min-width: 240px; z-index: 100; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    .wa-cliente-opt { padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; }
+    .wa-cliente-opt:hover { background: #f9fafb; }
+    /* Reacciones */
+    .wa-bubble-wrap { position: relative; display: flex; flex-direction: column; max-width: 75%; }
+    .wa-msg-row.in .wa-bubble-wrap { align-items: flex-start; }
+    .wa-msg-row.out .wa-bubble-wrap { align-items: flex-end; }
+    .wa-bubble-wrap .wa-bubble { max-width: 100%; }
+    .wa-react-btn { position: absolute; top: -10px; right: -28px; background: #fff; border: 1px solid #e5e7eb; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 0.15s; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.85rem; }
+    .wa-msg-row.out .wa-react-btn { right: auto; left: -28px; }
+    .wa-bubble-wrap:hover .wa-react-btn { opacity: 1; }
+    .wa-emoji-picker { position: absolute; top: -42px; background: #fff; border: 1px solid #e5e7eb; border-radius: 24px; padding: 0.25rem 0.4rem; display: flex; gap: 0.15rem; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 50; }
+    .wa-msg-row.in .wa-emoji-picker { left: 0; }
+    .wa-msg-row.out .wa-emoji-picker { right: 0; }
+    .wa-emoji-pick { background: transparent; border: none; padding: 0.2rem 0.35rem; font-size: 1.1rem; cursor: pointer; border-radius: 50%; transition: background 0.1s, transform 0.1s; }
+    .wa-emoji-pick:hover { background: #f3f4f6; transform: scale(1.2); }
+    .wa-reacciones { display: flex; gap: 0.2rem; margin-top: 0.1rem; flex-wrap: wrap; }
+    .wa-reaccion-chip { background: #fff; border: 1px solid #d1d5db; padding: 0.1rem 0.4rem; border-radius: 12px; font-size: 0.78rem; cursor: pointer; transition: background 0.1s; }
+    .wa-reaccion-chip:hover { background: #fee2e2; }
+    .wa-reaccion-chip span { color: #6b7280; font-size: 0.7rem; margin-left: 0.15rem; }
 </style>
 
 @code {
@@ -336,6 +418,14 @@
     Dictionary<int, bool> editRespActivo = new();
     Dictionary<int, string> editContNombre = new(), editContRol = new(), editContNotas = new();
     Dictionary<int, bool> editContActivo = new();
+    Dictionary<int, int?> editContClienteId = new();
+    Dictionary<int, string?> editContClienteNombre = new();
+    Dictionary<int, string> editContClienteQuery = new();
+    int? clienteBusquedaActivaId = null;
+    List<ApiClient.TwClienteBuscarDto> clienteResultados = new();
+    // Reacciones
+    int? pickerOpenMsgId = null;
+    static readonly string[] QuickEmojis = new[] { "👍", "❤️", "😂", "😮", "😢", "🙏", "✅", "⏳", "❗" };
     // nuevos
     string nuevaRespNombre = "", nuevaRespTexto = "";
     int nuevaRespOrden = 99;
@@ -375,9 +465,41 @@
                 editContRol[c.Id] = c.Rol;
                 editContNotas[c.Id] = c.Notas ?? "";
                 editContActivo[c.Id] = c.Activo;
+                editContClienteId[c.Id] = c.ClienteId;
+                editContClienteNombre[c.Id] = c.ClienteNombre;
+                editContClienteQuery[c.Id] = "";
             }
         }
         catch { }
+    }
+
+    async Task BuscarClientes(int contactoId)
+    {
+        clienteBusquedaActivaId = contactoId;
+        var q = editContClienteQuery.GetValueOrDefault(contactoId, "");
+        try { clienteResultados = await Api.BuscarTwClientesAsync(q); }
+        catch { clienteResultados = new(); }
+    }
+
+    void SeleccionarCliente(int contactoId, ApiClient.TwClienteBuscarDto cli)
+    {
+        editContClienteId[contactoId] = cli.Id;
+        editContClienteNombre[contactoId] = cli.Nombre;
+        clienteResultados = new();
+        clienteBusquedaActivaId = null;
+    }
+
+    // === Reacciones ===
+    void TogglePicker(int msgId)
+    {
+        pickerOpenMsgId = pickerOpenMsgId == msgId ? null : msgId;
+    }
+
+    async Task ReaccionarA(int msgId, string emoji)
+    {
+        pickerOpenMsgId = null;
+        var ok = await Api.ToggleReaccionAsync(msgId, emoji);
+        if (ok) await LoadMensajes(silent: true);
     }
 
     void InsertarRespuesta(ApiClient.TwRespRapidaDto r)
@@ -417,7 +539,9 @@
     }
     async Task GuardarCont(ApiClient.TwContactoDto c)
     {
-        if (await Api.UpdateTwContactoAsync(c.Id, new ApiClient.TwContactoUpsert(c.Numero, editContNombre[c.Id], editContRol[c.Id], editContNotas[c.Id], editContActivo[c.Id])))
+        if (await Api.UpdateTwContactoAsync(c.Id, new ApiClient.TwContactoUpsert(
+                c.Numero, editContNombre[c.Id], editContRol[c.Id], editContNotas[c.Id], editContActivo[c.Id],
+                editContClienteId.GetValueOrDefault(c.Id))))
         { Toast.Success("Guardado"); await LoadContactos(); await LoadConversaciones(silent: true); }
     }
     async Task BorrarCont(ApiClient.TwContactoDto c)
@@ -427,7 +551,7 @@
     async Task AgregarCont()
     {
         if (string.IsNullOrWhiteSpace(nuevoContNumero) || string.IsNullOrWhiteSpace(nuevoContNombre)) { Toast.Error("Número y nombre son obligatorios"); return; }
-        var (ok, err) = await Api.CreateTwContactoAsync(new ApiClient.TwContactoUpsert(nuevoContNumero, nuevoContNombre, nuevoContRol, nuevoContNotas, true));
+        var (ok, err) = await Api.CreateTwContactoAsync(new ApiClient.TwContactoUpsert(nuevoContNumero, nuevoContNombre, nuevoContRol, nuevoContNotas, true, null));
         if (ok)
         {
             Toast.Success("Contacto agregado");
@@ -503,6 +627,8 @@
         var ultimoIn = mensajes.LastOrDefault(m => m.Direccion == "INCOMING");
         var notas = $"📱 WhatsApp de {nombre} ({PrettyNumero(selectedNumero ?? "")})\n\n{ultimoIn?.Cuerpo ?? ""}";
         var url = $"/cafe/ventas?notas={Uri.EscapeDataString(notas)}";
+        // Si el contacto está vinculado a un cliente, precargar el id
+        if (conv?.ClienteId is int cid) url += $"&clienteId={cid}";
         Nav.NavigateTo(url);
     }
 
