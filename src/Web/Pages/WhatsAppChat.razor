@@ -115,6 +115,9 @@
                 <button class="btn btn-outline-success btn-sm" @onclick="CargarComoPedido" title="Crear venta nueva precargando el último mensaje en las notas y el cliente vinculado">
                     📋 Crear pedido
                 </button>
+                <button class="btn btn-outline-info btn-sm" @onclick="EnviarMenuRol" disabled="@enviandoMenuRol" title="Enviar a este contacto el menú '1-Cliente / 2-Proveedor / 3-Otros' para que se identifique">
+                    @(enviandoMenuRol ? "⏳" : "❓") Menú rol
+                </button>
                 <button class="btn btn-outline-secondary btn-sm" @onclick="@(() => showConfig = true)" title="Configurar respuestas rápidas y contactos">
                     ⚙️
                 </button>
@@ -519,7 +522,7 @@
     List<ApiClient.TwMsgDto> mensajes = new();
     string? selectedNumero;
     string composerText = "";
-    bool loadingConv = true, loadingMsg = false, sending = false, uploading = false;
+    bool loadingConv = true, loadingMsg = false, sending = false, uploading = false, enviandoMenuRol = false;
     System.Threading.Timer? refreshTimer;
     Microsoft.AspNetCore.Components.ElementReference messagesScroll;
 
@@ -833,6 +836,24 @@
         if (e.Key == "Enter" && !e.ShiftKey)
         {
             await EnviarMensaje();
+        }
+    }
+
+    async Task EnviarMenuRol()
+    {
+        if (string.IsNullOrEmpty(selectedNumero)) return;
+        enviandoMenuRol = true;
+        var (ok, err) = await Api.SendTwMenuRolAsync(selectedNumero);
+        enviandoMenuRol = false;
+        if (ok)
+        {
+            Toast.Success("Menú enviado");
+            await LoadMensajes();
+            await LoadConversaciones(silent: true);
+        }
+        else
+        {
+            Toast.Error($"Error al enviar: {err}");
         }
     }
 

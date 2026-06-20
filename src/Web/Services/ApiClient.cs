@@ -4594,6 +4594,24 @@ public class ApiClient
         catch (Exception ex) { return (false, ex.Message); }
     }
 
+    public async Task<(bool ok, string? error)> SendTwMenuRolAsync(string numero)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/menu-rol", new { Numero = numero });
+            if (resp.IsSuccessStatusCode) return (true, null);
+            string err = "Error enviando menú";
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err;
+            }
+            catch { }
+            return (false, err);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     public async Task<List<TwRespRapidaDto>> GetTwRespuestasAsync()
         => await _http.GetFromJsonAsync<List<TwRespRapidaDto>>("/api/whatsapp/twilio/respuestas-rapidas") ?? new();
     public async Task<bool> CreateTwRespuestaAsync(TwRespUpsert r)

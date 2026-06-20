@@ -26,6 +26,22 @@ public class WhatsAppTwilioController : ControllerBase
         _twilio = twilio;
     }
 
+    // ===== Menu de identificacion de rol (auto-respuesta a numeros nuevos) =====
+    // Marca textual unica para detectar mensajes "menu" en el historial.
+    private const string MenuRolMarca = "Respondé con un número (1, 2 o 3)";
+    private const string MenuRolTexto =
+        "¡Hola! 👋 Para atenderte mejor, contestá con un número.\n\n" +
+        "Respondé con un número (1, 2 o 3):\n\n" +
+        "1) 🛍️ Soy cliente\n" +
+        "2) 📦 Soy proveedor\n" +
+        "3) 👥 Otros";
+    private static readonly Dictionary<string, (string Rol, string Bienvenida)> RolPorOpcion = new()
+    {
+        ["1"] = ("cliente",   "¡Genial! 🛍️ Te marcamos como cliente. En breve te atendemos por acá."),
+        ["2"] = ("proveedor", "¡Genial! 📦 Te marcamos como proveedor. En breve te atendemos por acá."),
+        ["3"] = ("otro",      "¡Genial! 👍 Te anotamos. En breve te atendemos por acá.")
+    };
+
     /// <summary>POST /api/whatsapp/twilio/webhook — Twilio postea aca cada mensaje entrante.</summary>
     [HttpPost("webhook")]
     [AllowAnonymous]
@@ -56,9 +72,84 @@ public class WhatsAppTwilioController : ControllerBase
         _db.WhatsAppTwilioMensajes.Add(msg);
         await _db.SaveChangesAsync();
 
-        // No respondemos automaticamente en Fase 2 — el operador responde manual desde el chat.
-        // (Si despues queremos auto-respuesta de "te leimos", se agrega aca)
+        // ===== Flujo identificacion de rol =====
+        // Si el numero NO tiene contacto cargado: o le mandamos el menu (primera vez) o procesamos su respuesta 1/2/3.
+        var contactoExistente = await _db.WhatsAppTwilioContactos.FirstOrDefaultAsync(c => c.Numero == from);
+        if (contactoExistente == null && _twilio.IsConfigured)
+        {
+            // Detectar si ya le mandamos el menu antes (busca la marca textual en mensajes OUTGOING al numero)
+            var menuPrevio = await _db.WhatsAppTwilioMensajes
+                .Where(m => m.Numero == from && m.Direccion == "OUTGOING" && m.Cuerpo != null && m.Cuerpo.Contains(MenuRolMarca))
+                .OrderByDescending(m => m.CreatedAt)
+                .FirstOrDefaultAsync();
+
+            var respuesta = (body ?? "").Trim();
+            if (menuPrevio != null && RolPorOpcion.TryGetValue(respuesta, out var seleccion))
+            {
+                // El usuario respondio 1/2/3 al menu: crear contacto + bienvenida.
+                _db.WhatsAppTwilioContactos.Add(new WhatsAppTwilioContacto
+                {
+                    Numero = from,
+                    Nombre = string.IsNullOrWhiteSpace(profileName) ? from.Replace("whatsapp:", "") : profileName,
+                    Rol = seleccion.Rol,
+                    Activo = true
+                });
+                await _db.SaveChangesAsync();
+                await EnviarYRegistrarAsync(from, seleccion.Bienvenida);
+            }
+            else if (menuPrevio == null)
+            {
+                // Primera vez que escribe: mandar el menu.
+                await EnviarYRegistrarAsync(from, MenuRolTexto);
+            }
+            // else: ya le mandamos el menu y respondio otra cosa que no es 1/2/3 -> dejar que el operador atienda manual.
+        }
+
         return Content("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>", "text/xml");
+    }
+
+    /// <summary>Helper interno: envia texto via Twilio y registra el OUTGOING en BD. No tira excepciones (loguea).</summary>
+    private async Task<string?> EnviarYRegistrarAsync(string numero, string texto)
+    {
+        try
+        {
+            var sid = await _twilio.SendTextAsync(numero, texto);
+            _db.WhatsAppTwilioMensajes.Add(new WhatsAppTwilioMensaje
+            {
+                Direccion = "OUTGOING",
+                Numero = numero,
+                Cuerpo = texto,
+                TwilioMessageSid = sid,
+                Procesado = true,
+                CreatedAt = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync();
+            return sid;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error enviando auto-mensaje a {Numero}", numero);
+            return null;
+        }
+    }
+
+    public record MenuRolRequest(string Numero);
+
+    /// <summary>POST /api/whatsapp/twilio/menu-rol — envia manualmente el menu de identificacion a un numero.</summary>
+    [HttpPost("menu-rol")]
+    [Authorize]
+    public async Task<IActionResult> EnviarMenuRol([FromBody] MenuRolRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Numero))
+            return BadRequest(new { error = "Numero requerido" });
+        if (!_twilio.IsConfigured)
+            return StatusCode(503, new { error = "Twilio no configurado" });
+
+        var numero = req.Numero.Trim();
+        if (!numero.StartsWith("whatsapp:")) numero = "whatsapp:" + numero;
+        var sid = await EnviarYRegistrarAsync(numero, MenuRolTexto);
+        if (sid == null) return StatusCode(500, new { error = "No se pudo enviar el menú (ver logs)" });
+        return Ok(new { ok = true, sid });
     }
 
     public record SendRequest(string Numero, string Mensaje);
