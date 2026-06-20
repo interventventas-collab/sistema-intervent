@@ -4,11 +4,11 @@
 @inject Web.Services.ApiClient Api
 @inject Web.Services.ToastService Toast
 @inject Microsoft.AspNetCore.Components.NavigationManager Nav
+@inject Microsoft.JSInterop.IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>WhatsApp — Chat</PageTitle>
 
-<div class="wa-page-grid @(drawerAbierto ? "with-drawer" : "")" style="@DrawerGridStyle">
 <div class="wa-outer">
 <div class="wa-root">
     <div class="wa-sidebar">
@@ -190,7 +190,7 @@
             {
                 <div class="wa-selection-bar">
                     <span style="font-size:0.85rem; font-weight:600;">✓ @mensajesSeleccionadosIds.Count seleccionado(s)</span>
-                    <button class="btn btn-success btn-sm" @onclick="AbrirDrawerVenta">📋 Crear venta con esto</button>
+                    <button class="btn btn-success btn-sm" @onclick="AbrirVentanaVenta">📋 Crear venta (nueva ventana)</button>
                     <button class="btn btn-outline-secondary btn-sm" @onclick="@(() => mensajesSeleccionadosIds.Clear())">× Cancelar</button>
                 </div>
             }
@@ -217,28 +217,6 @@
         }
     </div>
 </div>
-</div>
-
-@if (drawerAbierto)
-{
-    <div class="wa-drawer">
-        <div class="wa-drawer-header">
-            <div style="flex:1;">
-                <div style="font-weight:600; font-size:0.95rem;">📋 Nueva venta</div>
-                <div style="font-size:0.7rem; color:#6b7280;">@mensajesSeleccionadosIds.Count mensaje(s) cargado(s)</div>
-            </div>
-            <div style="display:flex; gap:0.25rem; align-items:center;">
-                <span style="font-size:0.72rem; color:#6b7280;">Ancho:</span>
-                <button class="wa-drawer-w @(drawerAnchoPct==30 ? "active":"")" @onclick='() => drawerAnchoPct=30' title="30%">▮</button>
-                <button class="wa-drawer-w @(drawerAnchoPct==50 ? "active":"")" @onclick='() => drawerAnchoPct=50' title="50%">▮▮</button>
-                <button class="wa-drawer-w @(drawerAnchoPct==70 ? "active":"")" @onclick='() => drawerAnchoPct=70' title="70%">▮▮▮</button>
-                <a class="wa-drawer-btn" href="@DrawerIframeSrc" target="_blank" title="Abrir en pestaña nueva">⤢</a>
-                <button class="wa-drawer-btn" @onclick="CerrarDrawer" title="Cerrar">×</button>
-            </div>
-        </div>
-        <iframe src="@DrawerIframeSrc" class="wa-drawer-frame"></iframe>
-    </div>
-}
 </div>
 
 @if (showQuickContact)
@@ -555,32 +533,23 @@
     // Reacciones
     int? pickerOpenMsgId = null;
     static readonly string[] QuickEmojis = new[] { "👍", "❤️", "😂", "😮", "😢", "🙏", "✅", "⏳", "❗" };
-    // === Selección de mensajes + drawer Nueva Venta ===
+    // === Selección de mensajes + Nueva Venta en ventana popup ===
     HashSet<int> mensajesSeleccionadosIds = new();
-    bool drawerAbierto = false;
-    int drawerAnchoPct = 50;
 
-    string DrawerGridStyle => drawerAbierto
-        ? $"display:grid; grid-template-columns: 1fr {drawerAnchoPct}%; height:calc(100vh - 70px); gap:0;"
-        : "display:block;";
-
-    string DrawerIframeSrc
+    string NuevaVentaPopupUrl()
     {
-        get
-        {
-            var seleccionados = mensajes.Where(m => mensajesSeleccionadosIds.Contains(m.Id))
-                .OrderBy(m => m.CreatedAt).ToList();
-            var conv = SelectedConv();
-            var lineas = new List<string>();
-            var nombre = conv?.NombrePerfil ?? PrettyNumero(selectedNumero ?? "");
-            lineas.Add($"📱 WhatsApp de {nombre} ({PrettyNumero(selectedNumero ?? "")})");
-            foreach (var m in seleccionados)
-                if (!string.IsNullOrWhiteSpace(m.Cuerpo)) lineas.Add(m.Cuerpo!);
-            var notas = string.Join(" · ", lineas);
-            var url = $"/cafe/ventas?fromTwilio=1&embedded=1&notas={Uri.EscapeDataString(notas)}";
-            if (conv?.ClienteId is int cid) url += $"&clienteIdPre={cid}";
-            return url;
-        }
+        var seleccionados = mensajes.Where(m => mensajesSeleccionadosIds.Contains(m.Id))
+            .OrderBy(m => m.CreatedAt).ToList();
+        var conv = SelectedConv();
+        var lineas = new List<string>();
+        var nombre = conv?.NombrePerfil ?? PrettyNumero(selectedNumero ?? "");
+        lineas.Add($"📱 WhatsApp de {nombre} ({PrettyNumero(selectedNumero ?? "")})");
+        foreach (var m in seleccionados)
+            if (!string.IsNullOrWhiteSpace(m.Cuerpo)) lineas.Add(m.Cuerpo!);
+        var notas = string.Join(" · ", lineas);
+        var url = $"/cafe/ventas?fromTwilio=1&notas={Uri.EscapeDataString(notas)}";
+        if (conv?.ClienteId is int cid) url += $"&clienteIdPre={cid}";
+        return url;
     }
 
     void ToggleSeleccionMensaje(int id)
@@ -589,15 +558,16 @@
         else mensajesSeleccionadosIds.Add(id);
     }
 
-    void AbrirDrawerVenta()
+    /// <summary>2026-06-20: abre Nueva Venta en una ventana popup separada (window.open) con tamaño
+    /// específico. Se ve la pantalla normal del modal de Nueva Venta, no embebida.</summary>
+    async Task AbrirVentanaVenta()
     {
         if (mensajesSeleccionadosIds.Count == 0) { Toast.Warning("Seleccioná al menos un mensaje"); return; }
-        drawerAbierto = true;
-    }
-
-    void CerrarDrawer()
-    {
-        drawerAbierto = false;
+        var url = NuevaVentaPopupUrl();
+        // width=1300, height=850, posicionado a la derecha. Resizable + scrollbars activos.
+        var features = "width=1300,height=850,left=200,top=50,resizable=yes,scrollbars=yes,toolbar=no,menubar=no,location=no";
+        await JS.InvokeVoidAsync("open", url, "nueva-venta-wa", features);
+        // Limpiamos la seleccion para evitar abrir 2 veces el mismo set
         mensajesSeleccionadosIds.Clear();
     }
     // Quick contact modal
