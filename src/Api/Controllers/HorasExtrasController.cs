@@ -232,7 +232,7 @@ public class HorasExtrasController : ControllerBase
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .Select(x => x!.Trim())
                 .ToList();
-            ipAutorizada = !string.IsNullOrEmpty(ipCliente) && ipsPermitidas.Any(p => p == ipCliente);
+            ipAutorizada = !string.IsNullOrEmpty(ipCliente) && ipsPermitidas.Any(p => IpCoincide(p, ipCliente));
             if (ipsPermitidas.Count > 0 && !ipAutorizada)
             {
                 return BadRequest(new {
@@ -321,6 +321,48 @@ public class HorasExtrasController : ControllerBase
         var xff = Request.Headers["X-Forwarded-For"].FirstOrDefault();
         if (!string.IsNullOrEmpty(xff)) return xff.Split(',')[0].Trim();
         return Request.HttpContext.Connection.RemoteIpAddress?.ToString();
+    }
+
+    /// <summary>2026-06-20: matching IP configurada vs IP del cliente con soporte CIDR.
+    /// Acepta 3 formatos en patron:
+    ///   - IP exacta: "45.229.84.110" → matchea solo esa
+    ///   - CIDR /N: "45.229.84.0/24" → matchea cualquier IP de esa subred (la mas comun para WiFi de negocio)
+    ///   - Prefijo punto: "45.229.84." → matchea cualquier IP que empiece con eso (legacy / atajo)
+    /// El ISP suele rotar el ultimo numero de la IP publica cuando se reinicia el modem,
+    /// por eso CIDR /24 es la mejor opcion para no tener que actualizar a mano cada vez.</summary>
+    private static bool IpCoincide(string patron, string? ipCliente)
+    {
+        if (string.IsNullOrWhiteSpace(patron) || string.IsNullOrWhiteSpace(ipCliente)) return false;
+        patron = patron.Trim();
+        ipCliente = ipCliente.Trim();
+        // CIDR
+        if (patron.Contains('/'))
+        {
+            try
+            {
+                var parts = patron.Split('/');
+                if (parts.Length != 2) return false;
+                if (!System.Net.IPAddress.TryParse(parts[0], out var net)) return false;
+                if (!System.Net.IPAddress.TryParse(ipCliente, out var ip)) return false;
+                if (!int.TryParse(parts[1], out var bits)) return false;
+                if (net.AddressFamily != ip.AddressFamily) return false;
+                var netBytes = net.GetAddressBytes();
+                var ipBytes = ip.GetAddressBytes();
+                int fullBytes = bits / 8, remBits = bits % 8;
+                for (int i = 0; i < fullBytes; i++) if (netBytes[i] != ipBytes[i]) return false;
+                if (remBits > 0)
+                {
+                    int mask = 0xFF << (8 - remBits) & 0xFF;
+                    if ((netBytes[fullBytes] & mask) != (ipBytes[fullBytes] & mask)) return false;
+                }
+                return true;
+            }
+            catch { return false; }
+        }
+        // Prefijo: "X.X.X." matchea cualquier IP que empiece asi
+        if (patron.EndsWith('.')) return ipCliente.StartsWith(patron);
+        // IP exacta (legacy)
+        return patron == ipCliente;
     }
 
     /// <summary>Parsea "HH:mm" o "HH:mm:ss" a TimeSpan. Strings vacios/invalidos → null.</summary>
@@ -1077,7 +1119,7 @@ public class HorasExtrasController : ControllerBase
         {
             var ipsPermitidas = new[] { cfg?.Wifi1Ip, cfg?.Wifi2Ip }
                 .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()).ToList();
-            ipAutorizada = !string.IsNullOrEmpty(ipCliente) && ipsPermitidas.Any(p => p == ipCliente);
+            ipAutorizada = !string.IsNullOrEmpty(ipCliente) && ipsPermitidas.Any(p => IpCoincide(p, ipCliente));
             if (ipsPermitidas.Count > 0 && !ipAutorizada)
                 return Ok(new FichadorMarcarResult(false,
                     $"Tenés que estar conectado al WiFi del negocio para fichar. (IP: {ipCliente ?? "?"})",
@@ -1361,7 +1403,7 @@ public class HorasExtrasController : ControllerBase
         {
             var ipsPermitidas = new[] { cfg?.Wifi1Ip, cfg?.Wifi2Ip }
                 .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()).ToList();
-            ipAutorizada = !string.IsNullOrEmpty(ipCliente) && ipsPermitidas.Any(p => p == ipCliente);
+            ipAutorizada = !string.IsNullOrEmpty(ipCliente) && ipsPermitidas.Any(p => IpCoincide(p, ipCliente));
             if (ipsPermitidas.Count > 0 && !ipAutorizada)
                 return Ok(new FichadorMarcarResult(false,
                     $"Tenés que estar conectado al WiFi del negocio para fichar. (IP: {ipCliente ?? "?"})",
