@@ -13,7 +13,16 @@
     <div class="wa-sidebar">
         <div class="wa-side-header">
             <div style="font-weight:600; font-size:1.05rem;">💬 Conversaciones</div>
-            <div style="font-size:0.75rem; color:#6b7280; margin-top:0.2rem;">@conversaciones.Count chats</div>
+            <div style="font-size:0.75rem; color:#6b7280; margin-top:0.2rem;">@conversacionesFiltradas.Count de @conversaciones.Count chats</div>
+        </div>
+        @* 2026-06-20: filtros por rol *@
+        <div class="wa-filtros">
+            <button class="wa-filtro @(filtroRol=="" ? "active" : "")" @onclick='() => filtroRol=""'>Todos</button>
+            <button class="wa-filtro @(filtroRol=="pedido" ? "active" : "")" @onclick='() => filtroRol="pedido"' title="Conversaciones con mensaje tipo pedido">📋 Pedidos</button>
+            <button class="wa-filtro @(filtroRol=="hermano" ? "active" : "")" @onclick='() => filtroRol="hermano"'>👨‍👦 Hermanos</button>
+            <button class="wa-filtro @(filtroRol=="empleado" ? "active" : "")" @onclick='() => filtroRol="empleado"'>👷 Empleados</button>
+            <button class="wa-filtro @(filtroRol=="cliente" ? "active" : "")" @onclick='() => filtroRol="cliente"'>🛍️ Clientes</button>
+            <button class="wa-filtro @(filtroRol=="sin" ? "active" : "")" @onclick='() => filtroRol="sin"' title="Conversaciones sin contacto asignado">❓ Sin asignar</button>
         </div>
         <div class="wa-conv-list">
             @if (loadingConv)
@@ -27,20 +36,34 @@
                     <p style="font-size:0.8rem;">Pedile a tus hermanos que manden <code>join wire-failed</code> al <strong>+1 415 523 8886</strong> y después un mensaje cualquiera para que aparezcan acá.</p>
                 </div>
             }
+            else if (conversacionesFiltradas.Count == 0)
+            {
+                <div style="padding:1rem; color:#9ca3af; text-align:center; font-size:0.85rem;">Sin resultados con este filtro.</div>
+            }
             else
             {
-                @foreach (var c in conversaciones)
+                @foreach (var c in conversacionesFiltradas)
                 {
                     <div class="wa-conv-item @(selectedNumero == c.Numero ? "active" : "")" @onclick="() => SelectConv(c.Numero)">
-                        <div class="wa-avatar">@AvatarLetra(c)</div>
+                        <div class="wa-avatar" style="@(AvatarColor(c))">@AvatarLetra(c)</div>
                         <div class="wa-conv-body">
                             <div class="wa-conv-row1">
-                                <span class="wa-conv-name">@(c.NombrePerfil ?? PrettyNumero(c.Numero))</span>
+                                <span class="wa-conv-name">
+                                    @(c.NombrePerfil ?? PrettyNumero(c.Numero))
+                                    @if (!string.IsNullOrEmpty(c.Rol))
+                                    {
+                                        <span class="wa-rol-tag">@RolEmoji(c.Rol)</span>
+                                    }
+                                </span>
                                 <span class="wa-conv-hora">@FormatHora(c.UltimoAt)</span>
                             </div>
                             <div class="wa-conv-row2">
                                 <span class="wa-conv-last">
-                                    @(c.UltimoDireccion == "OUTGOING" ? "✓ " : "")@TruncateText(c.UltimoMensaje, 50)
+                                    @if (EsPedido(c.UltimoMensaje))
+                                    {
+                                        <span class="wa-pedido-chip">📋 PEDIDO</span>
+                                    }
+                                    @(c.UltimoDireccion == "OUTGOING" ? "✓ " : "")@TruncateText(c.UltimoMensaje, 45)
                                 </span>
                                 <span class="wa-conv-count">@c.Total</span>
                             </div>
@@ -155,6 +178,9 @@
             @if (configTab == "resp")
             {
                 <p style="color:#6b7280; font-size:0.85rem;">Plantillas que aparecen como botones arriba del mensaje. Click → inserta el texto en el composer.</p>
+                <div style="background:#eff6ff; border:1px solid #bfdbfe; padding:0.5rem 0.75rem; border-radius:6px; font-size:0.8rem; color:#1e40af; margin-bottom:0.6rem;">
+                    💡 <strong>Variables disponibles</strong>: usá <code>{nombre}</code> o <code>{numero}</code> en el texto y se reemplazan solos al insertar. Ej: <em>"Hola {nombre}! Recibimos tu pedido."</em>
+                </div>
                 <table class="table table-sm">
                     <thead><tr><th style="width:120px;">Nombre</th><th>Texto</th><th style="width:60px;">Orden</th><th style="width:50px;">Act.</th><th style="width:90px;"></th></tr></thead>
                     <tbody>
@@ -281,6 +307,13 @@
     .wa-tab:hover { color: #25d366; }
     .wa-tab.active { color: #25d366; border-bottom-color: #25d366; font-weight: 600; background: #fff; }
     .wa-modal-body { padding: 1rem; overflow-y: auto; flex: 1; }
+    /* Filtros sidebar */
+    .wa-filtros { display: flex; gap: 0.25rem; padding: 0.5rem 0.6rem; border-bottom: 1px solid #e5e7eb; background: #f8fafc; flex-wrap: wrap; }
+    .wa-filtro { background: #fff; border: 1px solid #d1d5db; color: #374151; padding: 0.2rem 0.55rem; border-radius: 12px; font-size: 0.72rem; cursor: pointer; white-space: nowrap; transition: all 0.1s; }
+    .wa-filtro:hover { background: #f3f4f6; }
+    .wa-filtro.active { background: #25d366; color: #fff; border-color: #25d366; font-weight: 600; }
+    .wa-rol-tag { font-size: 0.7rem; margin-left: 0.2rem; }
+    .wa-pedido-chip { background: #fef3c7; color: #92400e; font-size: 0.65rem; font-weight: 700; padding: 0.05rem 0.3rem; border-radius: 4px; margin-right: 0.3rem; }
 </style>
 
 @code {
@@ -349,7 +382,17 @@
 
     void InsertarRespuesta(ApiClient.TwRespRapidaDto r)
     {
-        composerText = string.IsNullOrWhiteSpace(composerText) ? r.Texto : composerText + " " + r.Texto;
+        var texto = ReemplazarVariables(r.Texto);
+        composerText = string.IsNullOrWhiteSpace(composerText) ? texto : composerText + " " + texto;
+    }
+
+    // 2026-06-20: reemplaza {nombre}, {numero} con datos del contacto seleccionado.
+    string ReemplazarVariables(string s)
+    {
+        var conv = SelectedConv();
+        var nombre = (conv?.NombrePerfil ?? "").Split(' ').FirstOrDefault() ?? "";
+        var num = PrettyNumero(conv?.Numero ?? "");
+        return s.Replace("{nombre}", nombre).Replace("{numero}", num).Replace("{Nombre}", nombre);
     }
 
     async Task GuardarResp(ApiClient.TwRespRapidaDto r)
@@ -500,6 +543,50 @@
         var lower = url.ToLowerInvariant();
         return lower.Contains(".jpg") || lower.Contains(".jpeg") || lower.Contains(".png")
             || lower.Contains(".gif") || lower.Contains(".webp") || lower.Contains("image");
+    }
+
+    // ===== Filtros / detección de pedido =====
+    string filtroRol = "";
+    List<ApiClient.TwConvDto> conversacionesFiltradas => conversaciones.Where(MatchFiltro).ToList();
+
+    bool MatchFiltro(ApiClient.TwConvDto c)
+    {
+        if (string.IsNullOrEmpty(filtroRol)) return true;
+        if (filtroRol == "pedido") return EsPedido(c.UltimoMensaje);
+        if (filtroRol == "sin") return string.IsNullOrEmpty(c.Rol);
+        return c.Rol == filtroRol;
+    }
+
+    // Heuristica simple: si el mensaje contiene palabras tipicas de pedido.
+    bool EsPedido(string? msg)
+    {
+        if (string.IsNullOrWhiteSpace(msg)) return false;
+        var m = msg.ToLowerInvariant();
+        return m.StartsWith("#ped") || m.StartsWith("pedido")
+            || m.Contains("necesito") || m.Contains("pasame") || m.Contains("mandame")
+            || m.Contains("traeme") || m.Contains("llevame") || m.Contains("encarg");
+    }
+
+    string RolEmoji(string? rol) => rol switch
+    {
+        "hermano" => "👨‍👦",
+        "empleado" => "👷",
+        "cliente" => "🛍️",
+        "proveedor" => "🚚",
+        _ => ""
+    };
+
+    string AvatarColor(ApiClient.TwConvDto c)
+    {
+        var bg = c.Rol switch
+        {
+            "hermano" => "#3b82f6",
+            "empleado" => "#f59e0b",
+            "cliente" => "#10b981",
+            "proveedor" => "#8b5cf6",
+            _ => "#25d366"
+        };
+        return $"background:{bg};";
     }
 
     public void Dispose() => refreshTimer?.Dispose();
