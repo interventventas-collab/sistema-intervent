@@ -549,10 +549,11 @@
             Enviar a <strong>@(SelectedConv()?.NombrePerfil ?? PrettyNumero(selectedNumero ?? ""))</strong>
         </div>
         <div class="wa-srv-tabs">
+            <button class="wa-srv-tab @(srvTab == "VENTA" ? "active" : "")" @onclick='() => CambiarTabServidor("VENTA")'>🧾 Facturas/Ventas</button>
             <button class="wa-srv-tab @(srvTab == "COBRANZA" ? "active" : "")" @onclick='() => CambiarTabServidor("COBRANZA")'>💰 Recibos cobranza</button>
             <button class="wa-srv-tab @(srvTab == "UPLOAD" ? "active" : "")" @onclick='() => CambiarTabServidor("UPLOAD")'>📁 Mis subidos</button>
         </div>
-        <input class="wa-srv-search" placeholder="@(srvTab == "COBRANZA" ? "🔍 Nº recibo, cliente o código..." : "🔍 Nombre del archivo...")"
+        <input class="wa-srv-search" placeholder="@SrvSearchPlaceholder()"
                value="@srvSearch" @oninput="OnSrvSearchInput" />
         <div class="wa-srv-list">
             @if (srvLoading)
@@ -973,11 +974,19 @@
     int? srvEnviandoId = null;
     System.Threading.Timer? srvSearchTimer;
 
+    string SrvSearchPlaceholder() => srvTab switch
+    {
+        "VENTA" => "🔍 Nº venta, cliente o código...",
+        "COBRANZA" => "🔍 Nº recibo, cliente o código...",
+        _ => "🔍 Nombre del archivo..."
+    };
+
     async Task AbrirAdjuntarServidor()
     {
         if (selectedNumero == null) { Toast.Warning("Seleccioná primero un chat"); return; }
         showAdjuntarServidor = true;
         srvSearch = "";
+        srvTab = "VENTA";
         await CargarServerFiles();
     }
 

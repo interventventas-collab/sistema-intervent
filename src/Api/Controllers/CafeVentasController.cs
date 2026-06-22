@@ -75,7 +75,8 @@ public class CafeVentasController : ControllerBase
     /// Si /integraciones tiene cargado Telefono/Telefono2/Email/Web/Web2 y el cfg no, los completa con la ficha.
     /// Asi alcanza con cargar los datos UNA SOLA VEZ (en la ficha Emisor) y aplican tanto a facturas como a
     /// cotizaciones tipo X. Si el cfg ya tiene un valor cargado, prevalece.</summary>
-    private async Task HydrateCfgFromEmisorAsync(CafeSetting? cfg)
+    [NonAction]
+    public async Task HydrateCfgFromEmisorAsync(CafeSetting? cfg)
     {
         if (cfg is null || string.IsNullOrWhiteSpace(cfg.NegocioCuit)) return;
         try
@@ -154,7 +155,8 @@ public class CafeVentasController : ControllerBase
     /// del archivo le diga de un vistazo qué es y a quién. Antes era solo "CAFE-2026-0131.pdf".
     /// Sanitiza chars inválidos para filesystem y trunca para no pasarse del límite (~200 chars).
     /// </summary>
-    private static string BuildPdfFilename(CafeVenta v)
+    [NonAction]
+    public static string BuildPdfFilename(CafeVenta v)
     {
         var tipo = v.TipoComprobante switch
         {
@@ -507,7 +509,8 @@ public class CafeVentasController : ControllerBase
 
     /// <summary>Genera los bytes del PDF de una venta (ARCA si esta autorizada, cotizacion sino).
     /// Centralizado aca para poder reusarlo desde drive-upload Y desde imprimir-pdf-combinado.</summary>
-    private async Task<byte[]> GenerarPdfBytesAsync(Models.CafeVenta v, Models.CafeSetting? cfg)
+    [NonAction]
+    public async Task<byte[]> GenerarPdfBytesAsync(Models.CafeVenta v, Models.CafeSetting? cfg)
     {
         var esFacturaArca = v.TipoComprobante is "FA" or "FB" or "FC" or "NCA" or "NCB" or "NCC";
         var autorizada = v.ArcaEstado == "autorizado"
@@ -772,7 +775,8 @@ public class CafeVentasController : ControllerBase
     /// Arma el PdfEmisor + PdfComprobante + PdfReceptor a partir de los datos de la venta
     /// del Café y los datos del negocio, y genera el PDF de factura ARCA (con CAE y QR).
     /// </summary>
-    private byte[] BuildArcaPdf(CafeVenta v, CafeSetting cfg)
+    [NonAction]
+    public byte[] BuildArcaPdf(CafeVenta v, CafeSetting cfg)
     {
         var ficha = _emisorService.GetEntityByCuitAsync(cfg?.NegocioCuit ?? "").GetAwaiter().GetResult();
         var emisor = new PdfEmisor

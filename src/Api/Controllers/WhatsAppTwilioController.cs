@@ -19,13 +19,15 @@ public class WhatsAppTwilioController : ControllerBase
     private readonly ILogger<WhatsAppTwilioController> _logger;
     private readonly TwilioWhatsAppService _twilio;
     private readonly CafeReciboCobranzaPdfService _cobranzaPdfService;
+    private readonly CafeVentasController _ventasController;
 
-    public WhatsAppTwilioController(AppDbContext db, ILogger<WhatsAppTwilioController> logger, TwilioWhatsAppService twilio, CafeReciboCobranzaPdfService cobranzaPdfService)
+    public WhatsAppTwilioController(AppDbContext db, ILogger<WhatsAppTwilioController> logger, TwilioWhatsAppService twilio, CafeReciboCobranzaPdfService cobranzaPdfService, CafeVentasController ventasController)
     {
         _db = db;
         _logger = logger;
         _twilio = twilio;
         _cobranzaPdfService = cobranzaPdfService;
+        _ventasController = ventasController;
     }
 
     // ===== Menu de identificacion de rol (auto-respuesta a numeros nuevos) =====
@@ -611,7 +613,29 @@ public class WhatsAppTwilioController : ControllerBase
                 .ToListAsync();
             return Ok(list);
         }
-        return BadRequest(new { error = "Tipo no soportado. Validos: UPLOAD, COBRANZA" });
+        if (tipo == "VENTA")
+        {
+            // 2026-06-22: ventas/facturas/cotizaciones. Excluye anuladas.
+            var q = _db.CafeVentas.Where(v => v.Estado != "anulado");
+            if (s != null)
+            {
+                int? sInt = int.TryParse(s, out var nn) ? nn : null;
+                q = q.Where(v =>
+                    v.Numero.Contains(s)
+                    || (v.ClienteNombreSnapshot != null && v.ClienteNombreSnapshot.Contains(s))
+                    || (v.ClienteRazonSocialSnapshot != null && v.ClienteRazonSocialSnapshot.Contains(s))
+                    || (sInt.HasValue && _db.CafeClientes.Any(c => c.Id == v.ClienteId && c.CodigoInterno == sInt.Value)));
+            }
+            var list = await q.OrderByDescending(v => v.Fecha).Take(take)
+                .Select(v => new ServerFileDto(
+                    "VENTA", v.Id, $"{(v.TipoComprobante ?? "X")} {v.Numero}",
+                    !string.IsNullOrWhiteSpace(v.ClienteRazonSocialSnapshot) ? v.ClienteRazonSocialSnapshot : (v.ClienteNombreSnapshot ?? "—"),
+                    $"${v.Total:N0}",
+                    v.Fecha))
+                .ToListAsync();
+            return Ok(list);
+        }
+        return BadRequest(new { error = "Tipo no soportado. Validos: UPLOAD, COBRANZA, VENTA" });
     }
 
     public record SendServerFileRequest(string Numero, string Tipo, int Id, string? Caption);
@@ -691,8 +715,43 @@ public class WhatsAppTwilioController : ControllerBase
                 mediaUrl = $"{Request.Scheme}://{Request.Host}/api/whatsapp/twilio/files/{token}";
                 break;
             }
+            case "VENTA":
+            {
+                var v = await _db.CafeVentas
+                    .Include(x => x.Items).ThenInclude(i => i.ProductoNav)
+                    .FirstOrDefaultAsync(x => x.Id == req.Id);
+                if (v == null) return NotFound(new { error = "Venta no encontrada" });
+                var cfg = await _db.CafeSettings.FindAsync(1);
+
+                // Reusa exactamente la misma logica del endpoint GET /cafe/ventas/{id}/pdf
+                // (factura ARCA si autorizada / cotizacion sino). Garantiza que el PDF que mandamos
+                // por WhatsApp == el PDF que descarga el operador desde la pantalla.
+                var bytes = await _ventasController.GenerarPdfBytesAsync(v, cfg);
+                filename = CafeVentasController.BuildPdfFilename(v);
+                if (!filename.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) filename += ".pdf";
+
+                Directory.CreateDirectory(UploadsDir);
+                var token = GenerarToken();
+                var stored = token + ".pdf";
+                await System.IO.File.WriteAllBytesAsync(Path.Combine(UploadsDir, stored), bytes);
+                var up = new WhatsAppTwilioUpload
+                {
+                    Token = token,
+                    OriginalFilename = filename,
+                    StoredFilename = stored,
+                    ContentType = "application/pdf",
+                    SizeBytes = bytes.Length,
+                    NumeroDestino = req.Numero,
+                    CreatedAt = DateTime.UtcNow,
+                    ExpiresAt = DateTime.UtcNow.AddHours(24)
+                };
+                _db.WhatsAppTwilioUploads.Add(up);
+                await _db.SaveChangesAsync();
+                mediaUrl = $"{Request.Scheme}://{Request.Host}/api/whatsapp/twilio/files/{token}";
+                break;
+            }
             default:
-                return BadRequest(new { error = "Tipo no soportado. Validos: UPLOAD, COBRANZA" });
+                return BadRequest(new { error = "Tipo no soportado. Validos: UPLOAD, COBRANZA, VENTA" });
         }
 
         try
