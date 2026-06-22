@@ -142,16 +142,15 @@ public class CafeVentasController : ControllerBase
         return File(bytes, "application/pdf", $"VIS-{DateTime.Now.Year:0000}-{v.Id:0000}.pdf");
     }
 
-    /// <summary>2026-06-22: Genera el PDF "Recibo de Entrega" para CUALQUIER venta entregada.
-    /// Incluye fecha/hora de entrega, repartidor, y si hubo firma tambien nombre y firma del receptor.
-    /// Si la venta no esta entregada todavia, devuelve 400.</summary>
+    /// <summary>2026-06-22: Genera el PDF "Recibo de Entrega" para CUALQUIER venta (entregada o no).
+    /// Si esta entregada: incluye fecha/hora + repartidor. Si tiene firma: la incluye como imagen.
+    /// Si no esta entregada o no tiene firma, esas secciones se omiten o muestran espacio en blanco
+    /// (asi el repartidor puede imprimir el recibo y firmarlo en papel a mano si hace falta).</summary>
     [HttpGet("{id:int}/recibo-entrega.pdf")]
     public async Task<IActionResult> GetReciboEntregaPdf(int id)
     {
         var v = await _db.CafeVentas.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
         if (v is null) return NotFound(new { error = "Venta no encontrada" });
-        if (!v.EntregadoAt.HasValue && !v.EntregaFirmadaAt.HasValue)
-            return BadRequest(new { error = "La venta todavia no fue entregada" });
 
         var cliente = v.ClienteId.HasValue
             ? await _db.CafeClientes.FirstOrDefaultAsync(c => c.Id == v.ClienteId.Value)

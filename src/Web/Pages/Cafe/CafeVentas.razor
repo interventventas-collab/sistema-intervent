@@ -481,8 +481,12 @@
                                         // flujo normal de cobranzas; si NO, abre modal rápido inline.
                                         var puedeCobrar = !anulada && saldoVenta > 0.01m;
                                     }
-                                    @* 3 botones siempre visibles: imprimir, cobrar, editar *@
-                                    <button class="btn-icon" style="color: #1d4ed8;" @onclick="() => ShowPrint(v)" title="Ver / imprimir / PDF">🖨</button>
+                                    @* 2026-06-22: Boton imprimir con badge "+" superpuesto. Click abre menu con 3 opciones:
+                                       Comprobante/Factura, Recibo de entrega, Recibo de visita por cobranza. *@
+                                    <button id="@($"print-btn-{v.Id}")" class="btn-icon" style="color: #1d4ed8; position: relative;"
+                                            @onclick="() => TogglePrintMenu(v.Id)" title="Imprimir / PDF (3 opciones)">
+                                        🖨<span style="position:absolute; top:-3px; right:-3px; background:#3b82f6; color:white; font-size:9px; font-weight:700; padding:1px 4px; border-radius:9px; line-height:1; min-width:14px; text-align:center;">+</span>
+                                    </button>
                                     @if (puedeCobrar)
                                     {
                                         @if (v.ClienteId.HasValue)
@@ -523,15 +527,6 @@
                                         }
                                     </button>
 
-                                    @* 2026-06-22: Boton para descargar el RECIBO DE ENTREGA (firma + nombre + fecha/hora).
-                                       Solo visible si la venta esta entregada (tiene EntregadoAt). *@
-                                    @if (v.EntregadoAt.HasValue)
-                                    {
-                                        <a class="btn-icon" style="color: #7c3aed; text-decoration: none;"
-                                           href="@($"/api/cafe/ventas/{v.Id}/recibo-entrega.pdf")" target="_blank"
-                                           title="Recibo de entrega — fecha/hora, repartidor que entregó y firma del receptor (si firmó)">📦</a>
-                                    }
-
                                     @* Boton "+" abre dropdown con el resto de las acciones *@
                                     <button id="@($"act-btn-{v.Id}")" class="btn-icon" style="color: #4b5563;"
                                             @onclick="() => ToggleActionsMenu(v.Id)" title="Más acciones">+</button>
@@ -546,6 +541,34 @@
 </div>
 
 @* ═══════════════ POPUP "+" — RESTO DE LAS ACCIONES ═══════════════ *@
+@* 2026-06-22: Menu desplegable del boton 🖨+ con las 3 opciones de impresion *@
+@if (printMenuOpenForVentaId.HasValue)
+{
+    var vPrint = VentasFiltradas.FirstOrDefault(x => x.Id == printMenuOpenForVentaId.Value);
+    if (vPrint is not null)
+    {
+        var anuladaPM = vPrint.Estado == "anulado";
+        var saldoPM = saldosPorVenta.TryGetValue(vPrint.Id, out var sPM) ? sPM : 0m;
+        <div class="actions-popup-overlay" @onclick="ClosePrintMenu"></div>
+        <div id="@($"print-menu-{vPrint.Id}")" class="actions-popup" @onclick:stopPropagation="true">
+            <div style="padding: 6px 14px; font-size: 10px; color: #6b7280; font-weight: 600; letter-spacing: 0.5px; border-bottom: 1px solid #f3f4f6;">🖨 IMPRIMIR / PDF</div>
+            <button class="actions-popup-item" @onclick="() => { ClosePrintMenu(); ShowPrint(vPrint); }">
+                <span class="ic" style="color:#1d4ed8;">🖨</span><span>Comprobante / Factura</span>
+            </button>
+            <a class="actions-popup-item" style="text-decoration:none; color:inherit;"
+               href="@($"/api/cafe/ventas/{vPrint.Id}/recibo-entrega.pdf")" target="_blank" @onclick="ClosePrintMenu">
+                <span class="ic" style="color:#7c3aed;">📦</span><span>Recibo de entrega</span>
+            </a>
+            @if (!anuladaPM && saldoPM > 0.01m)
+            {
+                <button class="actions-popup-item" @onclick="() => { ClosePrintMenu(); DescargarReciboVisita(vPrint); }">
+                    <span class="ic" style="color:#d97706;">🚪</span><span>Recibo de visita por cobranza</span>
+                </button>
+            }
+        </div>
+    }
+}
+
 @if (actionsMenuOpenForVentaId.HasValue)
 {
     var vMenu = VentasFiltradas.FirstOrDefault(x => x.Id == actionsMenuOpenForVentaId.Value);
@@ -556,12 +579,6 @@
         var saldoM = saldosPorVenta.TryGetValue(vMenu.Id, out var sM) ? sM : 0m;
         <div class="actions-popup-overlay" @onclick="CloseActionsMenu"></div>
         <div id="@($"act-menu-{vMenu.Id}")" class="actions-popup" @onclick:stopPropagation="true">
-            @if (!anuladaM && saldoM > 0.01m)
-            {
-                <button class="actions-popup-item" @onclick="() => { CloseActionsMenu(); DescargarReciboVisita(vMenu); }">
-                    <span class="ic" style="color:#d97706;">🚪</span><span>Recibo de visita por cobranza</span>
-                </button>
-            }
             @if (string.IsNullOrEmpty(vMenu.EstadoPreparacion) && !anuladaM)
             {
                 <button class="actions-popup-item" @onclick="() => { CloseActionsMenu(); EnviarAPreparacion(vMenu); }">
@@ -3991,9 +4008,19 @@
     private void ToggleActionsMenu(int ventaId)
     {
         if (actionsMenuOpenForVentaId == ventaId) actionsMenuOpenForVentaId = null;
-        else actionsMenuOpenForVentaId = ventaId;
+        else { actionsMenuOpenForVentaId = ventaId; printMenuOpenForVentaId = null; }
     }
     private void CloseActionsMenu() => actionsMenuOpenForVentaId = null;
+
+    // 2026-06-22: estado del dropdown del boton 🖨+ (3 opciones de impresion).
+    // Mutuamente excluyente con el menu "+": al abrir uno se cierra el otro.
+    private int? printMenuOpenForVentaId;
+    private void TogglePrintMenu(int ventaId)
+    {
+        if (printMenuOpenForVentaId == ventaId) printMenuOpenForVentaId = null;
+        else { printMenuOpenForVentaId = ventaId; actionsMenuOpenForVentaId = null; }
+    }
+    private void ClosePrintMenu() => printMenuOpenForVentaId = null;
 
     /// <summary>Se ejecuta cada vez que Blazor termina de renderizar. Lo usamos para enganchar
     /// el drag-and-drop al modal de Confirmar Emisión recién aparecido. El helper JS es idempotente

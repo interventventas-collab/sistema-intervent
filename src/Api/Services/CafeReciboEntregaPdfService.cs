@@ -141,40 +141,41 @@ public class CafeReciboEntregaPdfService
                         }
                     });
 
-                    // Datos de la entrega
+                    // 2026-06-22: Datos de la entrega — siempre se muestra el bloque, con campos vacios
+                    // ("____________") si la venta no esta entregada todavia. Asi el repartidor puede imprimir
+                    // y completar a mano si necesita.
                     content.Item().PaddingTop(12).PaddingBottom(6).Text("CONFIRMACION DE ENTREGA").FontSize(9).FontColor("#6b7280").Bold();
                     content.Item().Border(0.5f).BorderColor("#d1d5db").Padding(10).Column(c =>
                     {
                         var fechaEntrega = v.EntregaFirmadaAt ?? v.EntregadoAt;
-                        c.Item().Text($"Fecha y hora de entrega: {(fechaEntrega.HasValue ? fechaEntrega.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm") : "—")}").FontSize(10);
-                        c.Item().Text($"Entregado por: {(repartidor?.Nombre ?? "—")}").FontSize(10);
-                        if (!string.IsNullOrWhiteSpace(v.NombreReceptor))
-                        {
-                            c.Item().PaddingTop(4).Text($"Recibido por: {v.NombreReceptor}").FontSize(10).Bold();
-                        }
-                        if (!string.IsNullOrWhiteSpace(v.DniReceptor))
-                        {
-                            c.Item().Text($"DNI: {v.DniReceptor}").FontSize(10);
-                        }
+                        var fechaTxt = fechaEntrega.HasValue ? fechaEntrega.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm") : "___________________";
+                        c.Item().Text($"Fecha y hora de entrega: {fechaTxt}").FontSize(10);
+                        var repTxt = repartidor?.Nombre ?? "___________________";
+                        c.Item().Text($"Entregado por: {repTxt}").FontSize(10);
+                        var recTxt = !string.IsNullOrWhiteSpace(v.NombreReceptor) ? v.NombreReceptor : "___________________";
+                        c.Item().PaddingTop(4).Text($"Recibido por: {recTxt}").FontSize(10).Bold();
+                        var dniTxt = !string.IsNullOrWhiteSpace(v.DniReceptor) ? v.DniReceptor : "___________________";
+                        c.Item().Text($"DNI: {dniTxt}").FontSize(10);
                         if (!string.IsNullOrWhiteSpace(v.MotivoSinFirma))
                         {
                             c.Item().PaddingTop(6).Background("#fef3c7").Padding(6).Text($"⚠ Sin firma — Motivo: {v.MotivoSinFirma}").FontSize(10);
                         }
                     });
 
-                    // Firma (si la hay)
-                    if (firmaBytes != null && firmaBytes.Length > 0)
+                    // 2026-06-22: Firma — SIEMPRE se muestra el recuadro. Si hay imagen, se renderiza.
+                    // Si no, queda vacio para que el receptor firme a mano cuando se imprime.
+                    content.Item().PaddingTop(14).Text("FIRMA DEL RECEPTOR").FontSize(9).FontColor("#6b7280").Bold();
+                    content.Item().PaddingTop(4).Border(0.5f).BorderColor("#d1d5db").Padding(6).Column(c =>
                     {
-                        content.Item().PaddingTop(14).Text("FIRMA DEL RECEPTOR").FontSize(9).FontColor("#6b7280").Bold();
-                        content.Item().PaddingTop(4).Border(0.5f).BorderColor("#d1d5db").Padding(6).Column(c =>
+                        if (firmaBytes != null && firmaBytes.Length > 0)
                         {
                             c.Item().Height(80).AlignCenter().Image(firmaBytes).FitArea();
-                            if (!string.IsNullOrWhiteSpace(v.NombreReceptor))
-                            {
-                                c.Item().PaddingTop(4).AlignCenter().Text(v.NombreReceptor).FontSize(9);
-                            }
-                        });
-                    }
+                        }
+                        else
+                        {
+                            c.Item().Height(80).AlignCenter().AlignMiddle().Text("(Firme aqui)").FontSize(9).FontColor("#d1d5db");
+                        }
+                    });
                 });
 
                 page.Footer().AlignCenter().Text(t =>
