@@ -472,6 +472,12 @@ public class CobranzaListDto
     public string Estado { get; set; } = "";
     // 2026-06-19: numeros de venta imputados (para chips en el listado).
     public List<string>? Comprobantes { get; set; }
+    // 2026-06-22: datos enriquecidos para el listado tipo "ficha".
+    public int? ClienteCodigo { get; set; }
+    public string? ClienteFantasia { get; set; }
+    public string? ClienteEntrega { get; set; }
+    public string? FormaPago { get; set; }
+    public string? FormaPagoDetalle { get; set; }
 }
 
 public class CobranzaDetalleDto

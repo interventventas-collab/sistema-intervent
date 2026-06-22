@@ -74,7 +74,16 @@ public class CafeCobranzasController : ControllerBase
         int Id, string Numero, DateTime Fecha, int? ClienteId, string ClienteNombre,
         decimal Total, decimal Retenciones, string Estado,
         // 2026-06-19: numeros de venta imputados, para mostrar chips en el listado.
-        List<string>? Comprobantes = null);
+        List<string>? Comprobantes = null,
+        // 2026-06-22: datos enriquecidos del cliente para el listado tipo "ficha".
+        int? ClienteCodigo = null,
+        string? ClienteFantasia = null,
+        string? ClienteEntrega = null,
+        // 2026-06-22: forma de pago resumida. Si hay 1 sola caja, el tipo de esa caja.
+        // Si hay varias cajas distintas → "MIXTO". Si no hay medios → null.
+        string? FormaPago = null,
+        // Detalle textual para el tooltip cuando es MIXTO (ej: "Efectivo $50.000 · Transferencia $238.000").
+        string? FormaPagoDetalle = null);
 
     public record CobranzaDetalleDto(
         int Id, string Numero, DateTime Fecha, int? ClienteId, string ClienteNombre,
@@ -105,6 +114,18 @@ public class CafeCobranzasController : ControllerBase
     public record CrearChequeItem(
         string Numero, string Banco, string? Emisor, decimal Importe,
         DateTime? FechaCobro, DateTime? FechaVencimiento, string? Observaciones);
+
+    // 2026-06-22: traduccion del Tipo de caja a label corto para el chip.
+    private static string TipoToLabel(string tipo) => tipo?.ToUpperInvariant() switch
+    {
+        "EFECTIVO" => "Efectivo",
+        "TRANSFERENCIA" => "Transfer.",
+        "MERCADO_PAGO" or "MERCADOPAGO" or "MP" => "MercadoPago",
+        "CHEQUES_CARTERA" or "CHEQUES" or "CHEQUE" => "Cheque",
+        "TARJETA" or "TARJETA_CREDITO" or "DEBITO" or "CREDITO" => "Tarjeta",
+        "BANCO" => "Banco",
+        _ => string.IsNullOrWhiteSpace(tipo) ? "Otro" : char.ToUpper(tipo[0]) + tipo[1..].ToLower()
+    };
 
     /// <summary>
     /// Devuelve los comprobantes (ventas) del cliente con saldo pendiente.
@@ -218,6 +239,7 @@ public class CafeCobranzasController : ControllerBase
         var q = _db.CafeCobranzas
             .Include(c => c.Cliente)
             .Include(c => c.Comprobantes).ThenInclude(cc => cc.Venta)
+            .Include(c => c.Medios).ThenInclude(m => m.Caja)
             .AsQueryable();
         if (clienteId.HasValue) q = q.Where(c => c.ClienteId == clienteId.Value);
         if (desde.HasValue) q = q.Where(c => c.Fecha >= desde.Value);
@@ -240,6 +262,9 @@ public class CafeCobranzasController : ControllerBase
             {
                 c.Id, c.Numero, c.Fecha, c.ClienteId,
                 ClienteNombreReal = c.Cliente != null ? c.Cliente.Nombre : null,
+                ClienteCodigo = c.Cliente != null ? c.Cliente.CodigoInterno : null,
+                ClienteFantasia = c.Cliente != null ? c.Cliente.RazonSocial : null,
+                ClienteEntrega = c.Cliente != null ? c.Cliente.DomicilioEntrega : null,
                 // 2026-06-06: si no hay cliente, tomamos el snapshot de la venta del primer comprobante.
                 VentaSnapshot = c.Comprobantes
                     .Where(cc => cc.Venta != null)
@@ -250,15 +275,46 @@ public class CafeCobranzasController : ControllerBase
                     .Where(cc => cc.Venta != null)
                     .Select(cc => cc.Venta!.Numero)
                     .ToList(),
+                // 2026-06-22: medios para calcular forma de pago resumida.
+                Medios = c.Medios.Select(m => new {
+                    Tipo = m.Caja != null ? m.Caja.Tipo : "OTRO",
+                    CajaNombre = m.Caja != null ? m.Caja.Nombre : "—",
+                    m.Importe
+                }).ToList(),
                 c.Total, c.Retenciones, c.Estado
             })
             .ToListAsync();
 
-        var list = rows.Select(r => new CobranzaListDto(
-            r.Id, r.Numero, r.Fecha, r.ClienteId,
-            r.ClienteNombreReal ?? (!string.IsNullOrWhiteSpace(r.VentaSnapshot) ? r.VentaSnapshot + " (ocasional)" : "—"),
-            r.Total, r.Retenciones, r.Estado,
-            r.NumerosImputados.Distinct().OrderBy(n => n).ToList())).ToList();
+        var list = rows.Select(r =>
+        {
+            // Calcular forma de pago resumida: 1 tipo → ese tipo, varios → MIXTO.
+            string? formaPago = null;
+            string? formaDetalle = null;
+            if (r.Medios.Count > 0)
+            {
+                var tiposDistintos = r.Medios.Select(m => m.Tipo).Distinct().ToList();
+                if (tiposDistintos.Count == 1)
+                {
+                    formaPago = TipoToLabel(tiposDistintos[0]);
+                }
+                else
+                {
+                    formaPago = "MIXTO";
+                    formaDetalle = string.Join(" · ", r.Medios.Select(m =>
+                        $"{TipoToLabel(m.Tipo)} ${m.Importe:N0}"));
+                }
+            }
+            return new CobranzaListDto(
+                r.Id, r.Numero, r.Fecha, r.ClienteId,
+                r.ClienteNombreReal ?? (!string.IsNullOrWhiteSpace(r.VentaSnapshot) ? r.VentaSnapshot + " (ocasional)" : "—"),
+                r.Total, r.Retenciones, r.Estado,
+                r.NumerosImputados.Distinct().OrderBy(n => n).ToList(),
+                r.ClienteCodigo,
+                string.IsNullOrWhiteSpace(r.ClienteFantasia) ? null : r.ClienteFantasia,
+                string.IsNullOrWhiteSpace(r.ClienteEntrega) ? null : r.ClienteEntrega,
+                formaPago,
+                formaDetalle);
+        }).ToList();
         return Ok(list);
     }
 
