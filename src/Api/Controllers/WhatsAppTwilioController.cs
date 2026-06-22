@@ -18,12 +18,14 @@ public class WhatsAppTwilioController : ControllerBase
     private readonly AppDbContext _db;
     private readonly ILogger<WhatsAppTwilioController> _logger;
     private readonly TwilioWhatsAppService _twilio;
+    private readonly CafeReciboCobranzaPdfService _cobranzaPdfService;
 
-    public WhatsAppTwilioController(AppDbContext db, ILogger<WhatsAppTwilioController> logger, TwilioWhatsAppService twilio)
+    public WhatsAppTwilioController(AppDbContext db, ILogger<WhatsAppTwilioController> logger, TwilioWhatsAppService twilio, CafeReciboCobranzaPdfService cobranzaPdfService)
     {
         _db = db;
         _logger = logger;
         _twilio = twilio;
+        _cobranzaPdfService = cobranzaPdfService;
     }
 
     // ===== Menu de identificacion de rol (auto-respuesta a numeros nuevos) =====
@@ -554,5 +556,174 @@ public class WhatsAppTwilioController : ControllerBase
         var bytes = new byte[24];
         RandomNumberGenerator.Fill(bytes);
         return Convert.ToBase64String(bytes).Replace('+', '-').Replace('/', '_').Replace("=", "");
+    }
+
+    // ===== ADJUNTOS — Fase 2: Archivos del servidor =====
+    // Busca/lista archivos que ya viven en el sistema (uploads previos, cobranzas, etc).
+    // El operador los puede elegir sin tener que descargarlos a su PC y resubirlos.
+
+    public record ServerFileDto(string Tipo, int Id, string Label, string? SubLabel, string? Info, DateTime Fecha);
+
+    /// <summary>GET /api/whatsapp/twilio/server-files?tipo=UPLOAD|COBRANZA&amp;search=&amp;take=20
+    /// Lista archivos disponibles en el servidor para adjuntar al chat.</summary>
+    [HttpGet("server-files")]
+    [Authorize]
+    public async Task<IActionResult> ServerFiles([FromQuery] string tipo, [FromQuery] string? search = null, [FromQuery] int take = 30)
+    {
+        if (take < 1 || take > 100) take = 30;
+        var s = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
+
+        if (tipo == "UPLOAD")
+        {
+            var q = _db.WhatsAppTwilioUploads.Where(u => u.ExpiresAt > DateTime.UtcNow);
+            if (s != null)
+            {
+                q = q.Where(u => u.OriginalFilename.Contains(s));
+            }
+            var list = await q.OrderByDescending(u => u.CreatedAt).Take(take)
+                .Select(u => new ServerFileDto(
+                    "UPLOAD", u.Id, u.OriginalFilename,
+                    $"{FormatSize(u.SizeBytes)} · {u.ContentType}",
+                    u.NumeroDestino != null ? $"Mandado antes a {u.NumeroDestino}" : null,
+                    u.CreatedAt))
+                .ToListAsync();
+            return Ok(list);
+        }
+        if (tipo == "COBRANZA")
+        {
+            var q = _db.CafeCobranzas.Include(c => c.Cliente).Where(c => c.Estado == "VIGENTE");
+            if (s != null)
+            {
+                int? sInt = int.TryParse(s, out var nn) ? nn : null;
+                q = q.Where(c =>
+                    c.Numero.Contains(s)
+                    || (c.Cliente != null && (
+                        c.Cliente.Nombre.Contains(s)
+                        || (c.Cliente.RazonSocial != null && c.Cliente.RazonSocial.Contains(s))
+                        || (sInt.HasValue && c.Cliente.CodigoInterno == sInt.Value))));
+            }
+            var list = await q.OrderByDescending(c => c.Fecha).Take(take)
+                .Select(c => new ServerFileDto(
+                    "COBRANZA", c.Id, $"Recibo {c.Numero}",
+                    c.Cliente != null ? c.Cliente.Nombre : "—",
+                    $"${c.Total:N0}",
+                    c.Fecha))
+                .ToListAsync();
+            return Ok(list);
+        }
+        return BadRequest(new { error = "Tipo no soportado. Validos: UPLOAD, COBRANZA" });
+    }
+
+    public record SendServerFileRequest(string Numero, string Tipo, int Id, string? Caption);
+
+    /// <summary>POST /api/whatsapp/twilio/send-server-file
+    /// Envía un archivo del servidor al WhatsApp del numero indicado.</summary>
+    [HttpPost("send-server-file")]
+    [Authorize]
+    public async Task<IActionResult> SendServerFile([FromBody] SendServerFileRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Numero)) return BadRequest(new { error = "Numero obligatorio" });
+        if (!_twilio.IsConfigured) return StatusCode(503, new { error = "Twilio no configurado" });
+
+        string mediaUrl;
+        string filename;
+
+        switch (req.Tipo)
+        {
+            case "UPLOAD":
+            {
+                // Reusa el upload existente — extiende su expiracion 24h mas asi Twilio alcanza a descargarlo.
+                var up = await _db.WhatsAppTwilioUploads.FirstOrDefaultAsync(u => u.Id == req.Id);
+                if (up == null) return NotFound(new { error = "Upload no encontrado" });
+                if (up.ExpiresAt < DateTime.UtcNow.AddHours(1))
+                {
+                    up.ExpiresAt = DateTime.UtcNow.AddHours(24);
+                    await _db.SaveChangesAsync();
+                }
+                mediaUrl = $"{Request.Scheme}://{Request.Host}/api/whatsapp/twilio/files/{up.Token}";
+                filename = up.OriginalFilename;
+                break;
+            }
+            case "COBRANZA":
+            {
+                var c = await _db.CafeCobranzas
+                    .Include(x => x.Cliente)
+                    .Include(x => x.Comprobantes).ThenInclude(cc => cc.Venta)
+                    .Include(x => x.Medios).ThenInclude(m => m.Caja)
+                    .Include(x => x.Medios).ThenInclude(m => m.Cheque)
+                    .FirstOrDefaultAsync(x => x.Id == req.Id);
+                if (c == null) return NotFound(new { error = "Cobranza no encontrada" });
+                if (c.Cliente == null) return BadRequest(new { error = "Cobranza sin cliente, no se puede generar PDF" });
+
+                var settings = await _db.CafeSettings.FindAsync(1);
+                var comps = c.Comprobantes.Select(x => (
+                    numero: x.Venta?.Numero ?? "",
+                    importe: x.Importe,
+                    aCuenta: x.VentaId is null
+                )).ToList();
+                var medios = c.Medios.Select(m => (
+                    cajaNombre: m.Caja?.Nombre ?? "—",
+                    importe: m.Importe,
+                    referencia: m.Referencia,
+                    chequeInfo: m.Cheque is null ? null : $"Cheque {m.Cheque.Banco} N° {m.Cheque.Numero}"
+                )).ToList();
+                var bytes = _cobranzaPdfService.GenerarPdfBytes(c, c.Cliente, comps, medios, settings);
+                filename = $"Recibo-{c.Numero}.pdf";
+
+                // Guardar como upload nuevo con token, asi Twilio lo descarga via URL publica.
+                Directory.CreateDirectory(UploadsDir);
+                var token = GenerarToken();
+                var stored = token + ".pdf";
+                await System.IO.File.WriteAllBytesAsync(Path.Combine(UploadsDir, stored), bytes);
+                var up = new WhatsAppTwilioUpload
+                {
+                    Token = token,
+                    OriginalFilename = filename,
+                    StoredFilename = stored,
+                    ContentType = "application/pdf",
+                    SizeBytes = bytes.Length,
+                    NumeroDestino = req.Numero,
+                    CreatedAt = DateTime.UtcNow,
+                    ExpiresAt = DateTime.UtcNow.AddHours(24)
+                };
+                _db.WhatsAppTwilioUploads.Add(up);
+                await _db.SaveChangesAsync();
+                mediaUrl = $"{Request.Scheme}://{Request.Host}/api/whatsapp/twilio/files/{token}";
+                break;
+            }
+            default:
+                return BadRequest(new { error = "Tipo no soportado. Validos: UPLOAD, COBRANZA" });
+        }
+
+        try
+        {
+            var sid = await _twilio.SendMediaAsync(req.Numero, mediaUrl, req.Caption);
+            var msg = new WhatsAppTwilioMensaje
+            {
+                Direccion = "OUTGOING",
+                Numero = req.Numero,
+                Cuerpo = req.Caption ?? "",
+                MediaUrl = mediaUrl,
+                NumMedia = 1,
+                TwilioMessageSid = sid,
+                Procesado = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            _db.WhatsAppTwilioMensajes.Add(msg);
+            await _db.SaveChangesAsync();
+            return Ok(new { ok = true, sid, id = msg.Id, filename });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error enviando server-file WhatsApp Twilio");
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / 1024.0 / 1024.0:F1} MB";
     }
 }

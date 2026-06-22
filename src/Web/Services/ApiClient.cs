@@ -4664,6 +4664,34 @@ public class ApiClient
         catch (Exception ex) { return (null, ex.Message); }
     }
 
+    public record TwServerFileDto(string Tipo, int Id, string Label, string? SubLabel, string? Info, DateTime Fecha);
+    public async Task<List<TwServerFileDto>> GetTwServerFilesAsync(string tipo, string? search = null)
+    {
+        try
+        {
+            var url = $"/api/whatsapp/twilio/server-files?tipo={Uri.EscapeDataString(tipo)}";
+            if (!string.IsNullOrWhiteSpace(search)) url += $"&search={Uri.EscapeDataString(search)}";
+            var resp = await _http.GetAsync(url);
+            if (!resp.IsSuccessStatusCode) return new();
+            return await resp.Content.ReadFromJsonAsync<List<TwServerFileDto>>() ?? new();
+        }
+        catch { return new(); }
+    }
+
+    public async Task<(bool ok, string? error)> SendTwServerFileAsync(string numero, string tipo, int id, string? caption)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/send-server-file",
+                new { Numero = numero, Tipo = tipo, Id = id, Caption = caption });
+            if (resp.IsSuccessStatusCode) return (true, null);
+            string err = "Error";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync()); if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; } catch { }
+            return (false, err);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     public async Task<(bool ok, string? error)> SendTwMediaAsync(string numero, string mediaUrl, string? caption, string? originalFilename)
     {
         try

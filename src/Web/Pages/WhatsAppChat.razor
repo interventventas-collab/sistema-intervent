@@ -209,11 +209,13 @@
                 </div>
             }
             <div class="wa-composer">
-                @* Botón adjuntar archivo *@
-                <label class="wa-attach-btn @(uploading ? "uploading" : "")" title="Adjuntar archivo (máx 16 MB)">
+                @* Botón adjuntar archivo de la PC *@
+                <label class="wa-attach-btn @(uploading ? "uploading" : "")" title="Adjuntar archivo de tu PC (máx 16 MB)">
                     <InputFile OnChange="OnArchivoSeleccionado" disabled="@(uploading || sending)" style="display:none;" />
                     @(uploading ? "⏳" : "📎")
                 </label>
+                @* Botón adjuntar desde el servidor *@
+                <button class="wa-attach-btn" title="Adjuntar del servidor (cobranzas, uploads previos)" @onclick="AbrirAdjuntarServidor" disabled="@(uploading || sending)">🗂️</button>
                 <textarea class="form-control" placeholder="Escribir mensaje…" @bind="composerText" @onkeydown="OnComposerKey" rows="2"></textarea>
                 <button class="btn btn-success" @onclick="EnviarMensaje" disabled="@(string.IsNullOrWhiteSpace(composerText) || sending)">
                     @(sending ? "Enviando…" : "📤 Enviar")
@@ -515,7 +517,77 @@
     .wa-drawer-w.active { background: #25d366; color: white; border-color: #25d366; }
     .wa-drawer-btn { background: transparent; border: 1px solid #d1d5db; color: #374151; width: 26px; height: 26px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 0.9rem; text-decoration: none; }
     .wa-drawer-btn:hover { background: #f3f4f6; }
+
+    /* Modal Adjuntar del Servidor */
+    .wa-srv-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 12px; padding: 1.25rem; box-shadow: 0 20px 60px rgba(0,0,0,0.25); z-index: 1100; min-width: 580px; max-width: 700px; max-height: 80vh; display: flex; flex-direction: column; }
+    .wa-srv-tabs { display: flex; gap: 0.25rem; margin: 0.5rem 0 0.75rem; border-bottom: 1px solid #e5e7eb; }
+    .wa-srv-tab { background: transparent; border: none; padding: 0.5rem 1rem; cursor: pointer; font-size: 0.85rem; color: #6b7280; border-bottom: 2px solid transparent; transition: all .15s; }
+    .wa-srv-tab.active { color: #25d366; border-bottom-color: #25d366; font-weight: 600; }
+    .wa-srv-search { width: 100%; padding: 0.5rem 0.75rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; margin-bottom: 0.5rem; }
+    .wa-srv-list { overflow-y: auto; flex: 1; min-height: 200px; max-height: 50vh; }
+    .wa-srv-item { padding: 0.6rem 0.8rem; border-bottom: 1px solid #f3f4f6; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; }
+    .wa-srv-item:hover { background: #f9fafb; }
+    .wa-srv-item-main { flex: 1; min-width: 0; }
+    .wa-srv-item-label { font-weight: 500; font-size: 0.9rem; }
+    .wa-srv-item-sub { font-size: 0.75rem; color: #6b7280; }
+    .wa-srv-item-info { font-size: 0.7rem; color: #9ca3af; margin-top: 0.15rem; }
+    .wa-srv-send-btn { background: #25d366; color: white; border: none; padding: 0.35rem 0.8rem; border-radius: 6px; cursor: pointer; font-size: 0.8rem; white-space: nowrap; }
+    .wa-srv-send-btn:hover { background: #1ea953; }
+    .wa-srv-send-btn:disabled { background: #9ca3af; cursor: wait; }
+    .wa-srv-empty { padding: 2rem; text-align: center; color: #9ca3af; font-size: 0.85rem; }
 </style>
+
+@if (showAdjuntarServidor)
+{
+    <div class="wa-modal-backdrop" @onclick="CerrarAdjuntarServidor" style="z-index:1099;"></div>
+    <div class="wa-srv-modal" @onclick:stopPropagation="true">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h5 style="margin:0;">🗂️ Adjuntar del servidor</h5>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="CerrarAdjuntarServidor">×</button>
+        </div>
+        <div style="font-size:0.75rem; color:#6b7280; margin-top:0.25rem;">
+            Enviar a <strong>@(SelectedConv()?.NombrePerfil ?? PrettyNumero(selectedNumero ?? ""))</strong>
+        </div>
+        <div class="wa-srv-tabs">
+            <button class="wa-srv-tab @(srvTab == "COBRANZA" ? "active" : "")" @onclick='() => CambiarTabServidor("COBRANZA")'>💰 Recibos cobranza</button>
+            <button class="wa-srv-tab @(srvTab == "UPLOAD" ? "active" : "")" @onclick='() => CambiarTabServidor("UPLOAD")'>📁 Mis subidos</button>
+        </div>
+        <input class="wa-srv-search" placeholder="@(srvTab == "COBRANZA" ? "🔍 Nº recibo, cliente o código..." : "🔍 Nombre del archivo...")"
+               value="@srvSearch" @oninput="OnSrvSearchInput" />
+        <div class="wa-srv-list">
+            @if (srvLoading)
+            {
+                <div class="wa-srv-empty">Cargando…</div>
+            }
+            else if (srvResultados.Count == 0)
+            {
+                <div class="wa-srv-empty">@(string.IsNullOrWhiteSpace(srvSearch) ? "Sin resultados. Probá buscando." : "Sin resultados con ese filtro.")</div>
+            }
+            else
+            {
+                @foreach (var f in srvResultados)
+                {
+                    <div class="wa-srv-item">
+                        <div class="wa-srv-item-main">
+                            <div class="wa-srv-item-label">@f.Label</div>
+                            @if (!string.IsNullOrWhiteSpace(f.SubLabel))
+                            {
+                                <div class="wa-srv-item-sub">@f.SubLabel</div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(f.Info))
+                            {
+                                <div class="wa-srv-item-info">@f.Info · @f.Fecha.ToLocalTime().ToString("dd/MM/yyyy")</div>
+                            }
+                        </div>
+                        <button class="wa-srv-send-btn" @onclick="() => EnviarServerFile(f)" disabled="@(srvEnviandoId == f.Id)">
+                            @(srvEnviandoId == f.Id ? "Enviando…" : "📤 Enviar")
+                        </button>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+}
 
 @code {
     List<ApiClient.TwConvDto> conversaciones = new();
@@ -890,6 +962,81 @@
         }
         catch (Exception ex) { Toast.Error($"Error: {ex.Message}"); }
         finally { uploading = false; StateHasChanged(); }
+    }
+
+    // ===== Adjuntar archivos del servidor (Fase 2) =====
+    bool showAdjuntarServidor = false;
+    string srvTab = "COBRANZA";
+    string srvSearch = "";
+    bool srvLoading = false;
+    List<ApiClient.TwServerFileDto> srvResultados = new();
+    int? srvEnviandoId = null;
+    System.Threading.Timer? srvSearchTimer;
+
+    async Task AbrirAdjuntarServidor()
+    {
+        if (selectedNumero == null) { Toast.Warning("Seleccioná primero un chat"); return; }
+        showAdjuntarServidor = true;
+        srvSearch = "";
+        await CargarServerFiles();
+    }
+
+    void CerrarAdjuntarServidor()
+    {
+        showAdjuntarServidor = false;
+        srvResultados.Clear();
+        srvEnviandoId = null;
+        srvSearchTimer?.Dispose();
+        srvSearchTimer = null;
+    }
+
+    async Task CambiarTabServidor(string tab)
+    {
+        srvTab = tab;
+        srvSearch = "";
+        await CargarServerFiles();
+    }
+
+    void OnSrvSearchInput(ChangeEventArgs e)
+    {
+        srvSearch = e.Value?.ToString() ?? "";
+        srvSearchTimer?.Dispose();
+        srvSearchTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () => { await CargarServerFiles(); StateHasChanged(); });
+        }, null, 250, System.Threading.Timeout.Infinite);
+    }
+
+    async Task CargarServerFiles()
+    {
+        srvLoading = true;
+        StateHasChanged();
+        srvResultados = await Api.GetTwServerFilesAsync(srvTab, string.IsNullOrWhiteSpace(srvSearch) ? null : srvSearch);
+        srvLoading = false;
+        StateHasChanged();
+    }
+
+    async Task EnviarServerFile(ApiClient.TwServerFileDto f)
+    {
+        if (selectedNumero == null) return;
+        srvEnviandoId = f.Id;
+        StateHasChanged();
+        var caption = composerText?.Trim();
+        var (ok, err) = await Api.SendTwServerFileAsync(selectedNumero, f.Tipo, f.Id, caption);
+        srvEnviandoId = null;
+        if (ok)
+        {
+            composerText = "";
+            Toast.Success($"📎 {f.Label} enviado");
+            CerrarAdjuntarServidor();
+            await LoadMensajes();
+            await LoadConversaciones(silent: true);
+        }
+        else
+        {
+            Toast.Error($"Error: {err}");
+            StateHasChanged();
+        }
     }
 
     void CargarComoPedido()
