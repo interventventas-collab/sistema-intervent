@@ -34,7 +34,8 @@ public class CafeClientesController : ControllerBase
         c.IsActive, c.CreatedAt, c.UpdatedAt,
         c.CodigoInterno, c.MapeoLink,
         c.MapeoLat, c.MapeoLng,
-        c.TieneMiniImpresora);
+        c.TieneMiniImpresora,
+        c.SolicitarFirmaEntrega);
 
     [HttpGet]
     public async Task<IActionResult> GetAll()
@@ -216,6 +217,7 @@ public class CafeClientesController : ControllerBase
         if (req.ComentariosComprobante is not null) c.ComentariosComprobante = Norm(req.ComentariosComprobante);
         if (req.IsActive.HasValue) c.IsActive = req.IsActive.Value;
         if (req.TieneMiniImpresora.HasValue) c.TieneMiniImpresora = req.TieneMiniImpresora.Value;
+        if (req.SolicitarFirmaEntrega.HasValue) c.SolicitarFirmaEntrega = req.SolicitarFirmaEntrega.Value;
         // MapeoLink: si vino, actualizo. Si vino ClearMapeoLink, lo vacío.
         // Si el link cambió (o se agregó por primera vez), intentamos extraer coords del link de Google Maps.
         var linkPrevio = c.MapeoLink;

@@ -11,7 +11,9 @@ public record CafeClienteDto(
     bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt,
     int? CodigoInterno = null, string? MapeoLink = null,
     decimal? MapeoLat = null, decimal? MapeoLng = null,
-    bool TieneMiniImpresora = false);
+    bool TieneMiniImpresora = false,
+    // 2026-06-22: si true, todas las ventas para este cliente piden firma al entregar.
+    bool SolicitarFirmaEntrega = false);
 
 public class CreateCafeClienteRequest
 {
@@ -58,6 +60,8 @@ public class UpdateCafeClienteRequest
     public bool ClearMapeoLink { get; set; }
     /// <summary>Si true, en /cafe/preparacion las cards de este cliente muestran botón mini impresora.</summary>
     public bool? TieneMiniImpresora { get; set; }
+    /// <summary>2026-06-22: si true, todas las ventas nuevas de este cliente piden firma al entregar.</summary>
+    public bool? SolicitarFirmaEntrega { get; set; }
 }
 
 // ===== Productos =====
@@ -508,6 +512,9 @@ public class CreateCafeVentaRequest
     public string? EntregaPor { get; set; }
     /// <summary>2026-06-02: Nota interna para armado (post-it en /cafe/preparacion). NO sale en PDF.</summary>
     public string? ComentarioArmado { get; set; }
+    /// <summary>2026-06-22: override del flag del cliente. Si es null se hereda del cliente; si viene true/false el operador
+    /// decidio manualmente para esta venta puntual.</summary>
+    public bool? SolicitarFirmaEntrega { get; set; }
 }
 
 public class UpdateCafeVentaFlagsRequest

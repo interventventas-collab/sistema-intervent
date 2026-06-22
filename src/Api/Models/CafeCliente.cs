@@ -88,6 +88,11 @@ public class CafeCliente
     [Column(TypeName = "decimal(10,7)")]
     public decimal? MapeoLng { get; set; }
 
+    /// <summary>2026-06-22: si esta en true, cada venta que se cree para este cliente automaticamente
+    /// se marca con SolicitarFirmaEntrega=true, asi cuando el repartidor entrega le pide firma y nombre.
+    /// El operador puede destildarlo manualmente en cada venta si en ese caso particular no se necesita.</summary>
+    public bool SolicitarFirmaEntrega { get; set; } = false;
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

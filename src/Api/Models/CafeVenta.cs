@@ -246,6 +246,37 @@ public class CafeVenta
     /// para avisar al armador. Se resetea a false cuando se marca como LISTO de nuevo (rearmado).</summary>
     public bool ModificadoDespuesDeArmar { get; set; }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    //  ENTREGA CON FIRMA Y RECIBO (2026-06-22)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// <summary>Se hereda de Cafe_Clientes.SolicitarFirmaEntrega al crear la venta. El operador puede
+    /// destildarlo manualmente. Si true, cuando el repartidor confirma entrega le sale modal con firma + nombre.</summary>
+    public bool SolicitarFirmaEntrega { get; set; } = false;
+
+    /// <summary>Imagen de la firma del receptor en base64 (data URL). Se llena cuando el repartidor confirma con firma.</summary>
+    [Column(TypeName = "nvarchar(max)")]
+    public string? FirmaBase64 { get; set; }
+
+    /// <summary>Nombre completo de quien recibe el pedido (lo que escribe el repartidor en el modal).</summary>
+    [MaxLength(200)]
+    public string? NombreReceptor { get; set; }
+
+    /// <summary>DNI del receptor — campo preparado para usar a futuro, hoy no se pide pero queda en DB.</summary>
+    [MaxLength(50)]
+    public string? DniReceptor { get; set; }
+
+    /// <summary>Momento exacto en que se confirmo la entrega con firma. Distinto a EntregadoAt (que es solo cambio de estado).</summary>
+    public DateTime? EntregaFirmadaAt { get; set; }
+
+    /// <summary>Si el repartidor salto la firma (cliente no estaba / no quiso firmar), aca queda el motivo escrito.</summary>
+    [MaxLength(300)]
+    public string? MotivoSinFirma { get; set; }
+
+    /// <summary>Si el cliente tiene email cargado, se le manda automaticamente el recibo PDF al confirmar entrega.
+    /// Esta columna marca cuando se envio (o null si no se envio aun).</summary>
+    public DateTime? ReciboEntregaEnviadoAt { get; set; }
+
     public ICollection<CafeVentaItem> Items { get; set; } = new List<CafeVentaItem>();
 }
 

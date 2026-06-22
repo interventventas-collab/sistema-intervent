@@ -23,6 +23,7 @@ public class CafeVentasController : ControllerBase
     private readonly WhatsAppService _whatsAppService;
     private readonly QrRepartidorService _qrRepartidorService;
     private readonly CafeReciboVisitaCobranzaPdfService _reciboVisitaPdfService;
+    private readonly CafeReciboEntregaPdfService _reciboEntregaPdfService;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly CafeStockLogger _stockLogger;
     private static readonly string[] FormatosValidos = { "1KG", "MEDIO", "CUARTO", "UNIT", "BULTO" };
@@ -55,6 +56,7 @@ public class CafeVentasController : ControllerBase
         WhatsAppService whatsAppService,
         QrRepartidorService qrRepartidorService,
         CafeReciboVisitaCobranzaPdfService reciboVisitaPdfService,
+        CafeReciboEntregaPdfService reciboEntregaPdfService,
         IServiceScopeFactory scopeFactory,
         CafeStockLogger stockLogger)
     {
@@ -67,6 +69,7 @@ public class CafeVentasController : ControllerBase
         _whatsAppService = whatsAppService;
         _qrRepartidorService = qrRepartidorService;
         _reciboVisitaPdfService = reciboVisitaPdfService;
+        _reciboEntregaPdfService = reciboEntregaPdfService;
         _scopeFactory = scopeFactory;
         _stockLogger = stockLogger;
     }
@@ -137,6 +140,31 @@ public class CafeVentasController : ControllerBase
         var qr = await _qrRepartidorService.GenerarQrAsync(v.PublicToken);
         var bytes = _reciboVisitaPdfService.GenerarPdf(v, saldo, cfg, qr);
         return File(bytes, "application/pdf", $"VIS-{DateTime.Now.Year:0000}-{v.Id:0000}.pdf");
+    }
+
+    /// <summary>2026-06-22: Genera el PDF "Recibo de Entrega" para CUALQUIER venta entregada.
+    /// Incluye fecha/hora de entrega, repartidor, y si hubo firma tambien nombre y firma del receptor.
+    /// Si la venta no esta entregada todavia, devuelve 400.</summary>
+    [HttpGet("{id:int}/recibo-entrega.pdf")]
+    public async Task<IActionResult> GetReciboEntregaPdf(int id)
+    {
+        var v = await _db.CafeVentas.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+        if (!v.EntregadoAt.HasValue && !v.EntregaFirmadaAt.HasValue)
+            return BadRequest(new { error = "La venta todavia no fue entregada" });
+
+        var cliente = v.ClienteId.HasValue
+            ? await _db.CafeClientes.FirstOrDefaultAsync(c => c.Id == v.ClienteId.Value)
+            : null;
+        var repartidor = v.EntregadoPorRepartidorId.HasValue
+            ? await _db.CafeRepartidores.FirstOrDefaultAsync(r => r.Id == v.EntregadoPorRepartidorId.Value)
+            : null;
+        var cfg = await _db.CafeSettings.FindAsync(1);
+        await HydrateCfgFromEmisorAsync(cfg);
+
+        var bytes = _reciboEntregaPdfService.GenerarPdfBytes(v, cliente, repartidor, cfg);
+        var filename = $"RecEntrega-{v.Numero}.pdf";
+        return File(bytes, "application/pdf", filename);
     }
 
     /// <summary>
@@ -1249,6 +1277,8 @@ public class CafeVentasController : ControllerBase
         string? clienteNombre = null;
         string? clienteTelefono = null;
         string? clienteRazonSocial = null;
+        // 2026-06-22: flag heredado del cliente para pedir firma al entregar.
+        bool clienteSolicitarFirmaEntrega = false;
         string? clienteDomicilioEntrega = null;
         string? clienteComentariosComprobante = null;
         string? clienteCuit = null;
@@ -1270,6 +1300,7 @@ public class CafeVentasController : ControllerBase
             clienteLocalidad = cli.Localidad;
             clienteCiudad = cli.Ciudad;
             clienteCp = cli.Cp;
+            clienteSolicitarFirmaEntrega = cli.SolicitarFirmaEntrega;
             tipo = CafePricingService.ResolverTipo(cli.Tipo);
         }
         else
@@ -1311,6 +1342,8 @@ public class CafeVentasController : ControllerBase
             CostoTotal = cot.CostoTotal,
             Margen = cot.Margen,
             Observaciones = string.IsNullOrWhiteSpace(req.Observaciones) ? null : req.Observaciones.Trim(),
+            // 2026-06-22: si el request explicita el flag, usa eso; sino hereda del cliente.
+            SolicitarFirmaEntrega = req.SolicitarFirmaEntrega ?? clienteSolicitarFirmaEntrega,
             Estado = "emitido",
             WeekDays = NormWeekDays(req.WeekDays),
             EnRadar = req.EnRadar,

@@ -153,6 +153,8 @@ builder.Services.AddScoped<CafePreciosFuturosService>();
 builder.Services.AddHostedService<CafePreciosFuturosBackgroundService>();
 builder.Services.AddScoped<QrRepartidorService>();
 builder.Services.AddScoped<CafeReciboCobranzaPdfService>();
+// 2026-06-22: Recibo de entrega PDF (cuando el repartidor confirma entrega)
+builder.Services.AddScoped<CafeReciboEntregaPdfService>();
 // 2026-06-22: CafeVentasController registrado en DI para poder reusar GenerarPdfBytesAsync/BuildPdfFilename
 // desde WhatsAppTwilioController (Fase 2.5 adjuntos: mandar factura/cotizacion por WhatsApp).
 // Solo los metodos publicos GenerarPdfBytesAsync/BuildArcaPdf/HydrateCfgFromEmisorAsync se llaman como service.

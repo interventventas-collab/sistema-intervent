@@ -552,7 +552,16 @@ public class CafeRepartidorPublicController : ControllerBase
     }
 
     /// <summary>2026-06-08: Comentario opcional al marcar entrega ("dejé con el casero").</summary>
-    public record EntregarRequest(string? Pin, string? Comentario = null);
+    // 2026-06-22: extender EntregarRequest con datos de firma + receptor. Todos opcionales para
+    // compatibilidad con clientes viejos que no manden esos campos. Cuando v.SolicitarFirmaEntrega=true
+    // el frontend deberia enviar FirmaBase64 + NombreReceptor, o MotivoSinFirma si se salto.
+    public record EntregarRequest(
+        string? Pin,
+        string? Comentario = null,
+        string? FirmaBase64 = null,
+        string? NombreReceptor = null,
+        string? DniReceptor = null,
+        string? MotivoSinFirma = null);
 
     /// <summary>Marca como entregada una venta de la lista del repartidor.
     /// 2026-06-08: ya NO valida PIN — el publicToken (URL única del repartidor) basta como auth.
@@ -579,6 +588,27 @@ public class CafeRepartidorPublicController : ControllerBase
         if (!string.IsNullOrWhiteSpace(comentario))
         {
             v.ComentarioEntrega = comentario.Length > 500 ? comentario.Substring(0, 500) : comentario;
+        }
+        // 2026-06-22: datos de firma + receptor (opcionales). Si vienen, los persistimos en la venta.
+        var firma = req?.FirmaBase64?.Trim();
+        var nombreReceptor = req?.NombreReceptor?.Trim();
+        var motivoSin = req?.MotivoSinFirma?.Trim();
+        if (!string.IsNullOrEmpty(firma))
+        {
+            v.FirmaBase64 = firma;
+            v.EntregaFirmadaAt = DateTime.UtcNow;
+        }
+        if (!string.IsNullOrEmpty(nombreReceptor))
+        {
+            v.NombreReceptor = nombreReceptor.Length > 200 ? nombreReceptor.Substring(0, 200) : nombreReceptor;
+        }
+        if (!string.IsNullOrEmpty(req?.DniReceptor))
+        {
+            v.DniReceptor = req.DniReceptor.Length > 50 ? req.DniReceptor.Substring(0, 50) : req.DniReceptor;
+        }
+        if (!string.IsNullOrEmpty(motivoSin))
+        {
+            v.MotivoSinFirma = motivoSin.Length > 300 ? motivoSin.Substring(0, 300) : motivoSin;
         }
         if (v.EstadoPreparacion != null)
         {
@@ -635,7 +665,16 @@ public class CafeRepartidorPublicController : ControllerBase
 
     // 2026-06-10: SoloCobrar=true → carga la cobranza pero NO marca esta venta como entregada
     // (sirve para "cobranza suelta" que el admin imputa a otra venta del cliente)
-    public record CobrarRequestV2(string? Pin, decimal Importe, string? Notas, bool SoloCobrar = false);
+    // 2026-06-22: extender con datos de firma + receptor (opcional). Solo se persisten si NO es SoloCobrar.
+    public record CobrarRequestV2(
+        string? Pin,
+        decimal Importe,
+        string? Notas,
+        bool SoloCobrar = false,
+        string? FirmaBase64 = null,
+        string? NombreReceptor = null,
+        string? DniReceptor = null,
+        string? MotivoSinFirma = null);
 
     /// <summary>Carga un cobro pendiente para esta venta.
     /// 2026-06-08: ya NO valida PIN — el cobro queda como PRE-CARGA pendiente de aprobación del admin
@@ -691,6 +730,27 @@ public class CafeRepartidorPublicController : ControllerBase
                     Notas = $"Cobro precargado desde /mis-pedidos — importe ${importe:N2}",
                     CreatedAt = DateTime.UtcNow
                 });
+            }
+            // 2026-06-22: datos de firma + receptor (igual que en MisPedidosEntregar)
+            var firma2 = req.FirmaBase64?.Trim();
+            var nombreRec2 = req.NombreReceptor?.Trim();
+            var motivoSin2 = req.MotivoSinFirma?.Trim();
+            if (!string.IsNullOrEmpty(firma2))
+            {
+                v.FirmaBase64 = firma2;
+                v.EntregaFirmadaAt = DateTime.UtcNow;
+            }
+            if (!string.IsNullOrEmpty(nombreRec2))
+            {
+                v.NombreReceptor = nombreRec2.Length > 200 ? nombreRec2.Substring(0, 200) : nombreRec2;
+            }
+            if (!string.IsNullOrEmpty(req.DniReceptor))
+            {
+                v.DniReceptor = req.DniReceptor.Length > 50 ? req.DniReceptor.Substring(0, 50) : req.DniReceptor;
+            }
+            if (!string.IsNullOrEmpty(motivoSin2))
+            {
+                v.MotivoSinFirma = motivoSin2.Length > 300 ? motivoSin2.Substring(0, 300) : motivoSin2;
             }
         }
 
