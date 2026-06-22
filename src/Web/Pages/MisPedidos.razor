@@ -448,6 +448,39 @@
                           rows="2" style="resize:vertical; font-size:0.95rem;"></textarea>
             }
 
+            @* 2026-06-22: Bloque firma — aparece cuando el cliente tiene SolicitarFirmaEntrega=true *@
+            @if (modal.Tipo == "entregar" && modal.Pedido.SolicitarFirmaEntrega)
+            {
+                <div style="margin-top:0.8rem; padding:0.6rem; background:#eff6ff; border-left:3px solid #2563eb; border-radius:4px; font-size:0.82rem; color:#1e3a8a;">
+                    📝 <strong>Este cliente pide firma al entregar.</strong> Pasá el dispositivo al receptor para que firme, o saltá con motivo.
+                </div>
+                <label style="font-size:0.8rem; font-weight:600; color:#374151; margin-top:0.6rem; display:block;">
+                    Nombre de quien recibe *
+                </label>
+                <input type="text" class="mp-input" @bind="nombreReceptor" placeholder="Ej: Juan Pérez" style="font-size:0.95rem;" />
+
+                <label style="font-size:0.8rem; font-weight:600; color:#374151; margin-top:0.6rem; display:block;">
+                    Firma del receptor
+                </label>
+                <div style="border:2px dashed #93c5fd; border-radius:6px; background:#fff;">
+                    <canvas id="firmaCanvas" style="width:100%; height:150px; touch-action:none; display:block; cursor:crosshair; border-radius:4px;"></canvas>
+                </div>
+                <div style="display:flex; gap:0.4rem; margin-top:0.3rem; font-size:0.75rem;">
+                    <button type="button" @onclick="LimpiarFirma" style="background:#fff; border:1px solid #d1d5db; padding:0.25rem 0.6rem; border-radius:4px; cursor:pointer;">🧹 Borrar firma</button>
+                    <span style="color:#6b7280; padding:0.25rem 0;">Firmá con el dedo / mouse</span>
+                </div>
+
+                <details style="margin-top:0.7rem;">
+                    <summary style="cursor:pointer; font-size:0.82rem; color:#6b7280;">⏭ No puedo conseguir firma...</summary>
+                    <label style="font-size:0.8rem; font-weight:600; color:#374151; margin-top:0.4rem; display:block;">
+                        Motivo (en lugar de firma)
+                    </label>
+                    <input type="text" class="mp-input" @bind="motivoSinFirma"
+                           placeholder="Ej: Cliente no estaba, se negó a firmar, etc."
+                           style="font-size:0.95rem;" />
+                </details>
+            }
+
             @if (!string.IsNullOrEmpty(errorModal))
             {
                 <div class="mp-modal-err">⚠ @errorModal</div>
@@ -621,7 +654,9 @@
         int? ClienteId, string? ClienteTelefono, decimal? ClienteLat, decimal? ClienteLng,
         // 2026-06-11: MapeoLink manual (pegado en ficha del cliente). Si existe y no hay lat/lng, gana
         // sobre la búsqueda por dirección (es más preciso porque vos lo cargaste a mano).
-        string? ClienteMapeoLink);
+        string? ClienteMapeoLink,
+        // 2026-06-22: si true, al confirmar entrega aparece modal pidiendo firma + nombre del receptor.
+        bool SolicitarFirmaEntrega = false);
     // 2026-06-09: cobros del repartidor (siempre efectivo) — para el arqueo
     public record CobroDto(int VentaId, decimal Importe, string Estado, DateTime FechaCobro);
     public record MisPedidosResp(int RepartidorId, string Nombre, List<PedidoDto> Pedidos, List<CobroDto>? Cobros);
@@ -665,6 +700,10 @@
     private string notasCobro = "";
     // 2026-06-08: comentario opcional al marcar entrega ("dejé con el casero")
     private string comentarioEntrega = "";
+    // 2026-06-22: firma + nombre del receptor (solo si la venta tiene SolicitarFirmaEntrega)
+    private string nombreReceptor = "";
+    private string motivoSinFirma = "";
+    private string? firmaDataUrl;
     private string? errorModal;
     private bool procesando;
 
@@ -802,6 +841,27 @@
         modal = new ModalState("entregar", p);
         pin = ""; errorModal = null;
         comentarioEntrega = "";   // 2026-06-08: reset cada vez que se abre el modal
+        // 2026-06-22: reset campos firma + setup canvas si la venta lo requiere
+        nombreReceptor = "";
+        motivoSinFirma = "";
+        firmaDataUrl = null;
+        if (p.SolicitarFirmaEntrega)
+        {
+            // El canvas se inicializa tras el render del modal (siguiente tick)
+            _ = InvokeAsync(async () =>
+            {
+                await Task.Delay(80);
+                try { await JS.InvokeVoidAsync("firmaCanvas.setup", "firmaCanvas"); }
+                catch { }
+            });
+        }
+    }
+
+    private async Task LimpiarFirma()
+    {
+        try { await JS.InvokeVoidAsync("firmaCanvas.clear", "firmaCanvas"); }
+        catch { }
+        firmaDataUrl = null;
     }
 
     /// <summary>2026-06-08: abre el PDF de la venta en una pestaña nueva (visor de Drive).
@@ -863,11 +923,35 @@
         importeCobrado = p.Saldo > 0.01m ? p.Saldo : 0m;
         notasCobro = "";
     }
-    private void CerrarModal() { modal = null; pin = ""; errorModal = null; }
+    private void CerrarModal()
+    {
+        modal = null; pin = ""; errorModal = null;
+        // 2026-06-22: reset firma
+        nombreReceptor = ""; motivoSinFirma = ""; firmaDataUrl = null;
+    }
 
     private async Task ConfirmarModal()
     {
         if (modal is null) return;
+        // 2026-06-22: si la venta exige firma, valido que haya firma O motivo + nombre antes de mandar.
+        if (modal.Pedido.SolicitarFirmaEntrega)
+        {
+            // Recuperar firma del canvas (puede ser null si no firmó)
+            try { firmaDataUrl = await JS.InvokeAsync<string?>("firmaCanvas.get", "firmaCanvas"); }
+            catch { firmaDataUrl = null; }
+            var tieneFirma = !string.IsNullOrEmpty(firmaDataUrl);
+            var tieneNombre = !string.IsNullOrWhiteSpace(nombreReceptor);
+            if (!tieneFirma && string.IsNullOrWhiteSpace(motivoSinFirma))
+            {
+                errorModal = "Tenés que firmar o escribir el motivo por el cual no se firmó.";
+                return;
+            }
+            if (tieneFirma && !tieneNombre)
+            {
+                errorModal = "Ingresá el nombre de quien recibió.";
+                return;
+            }
+        }
         procesando = true; errorModal = null;
         try
         {
@@ -876,16 +960,29 @@
             {
                 // 2026-06-08: ya no manda PIN — el backend acepta sin PIN para entregar.
                 // Manda comentario opcional ("dejé con el casero") si el repartidor escribió algo.
+                // 2026-06-22: si la venta requiere firma, manda los datos extra.
                 resp = await Http.PostAsJsonAsync(
                     $"api/cafe/repartidor-public/mis-pedidos/{Token}/entregar/{modal.Pedido.Id}",
-                    new { Comentario = string.IsNullOrWhiteSpace(comentarioEntrega) ? null : comentarioEntrega.Trim() });
+                    new
+                    {
+                        Comentario = string.IsNullOrWhiteSpace(comentarioEntrega) ? null : comentarioEntrega.Trim(),
+                        FirmaBase64 = string.IsNullOrEmpty(firmaDataUrl) ? null : firmaDataUrl,
+                        NombreReceptor = string.IsNullOrWhiteSpace(nombreReceptor) ? null : nombreReceptor.Trim(),
+                        MotivoSinFirma = string.IsNullOrWhiteSpace(motivoSinFirma) ? null : motivoSinFirma.Trim()
+                    });
             }
             else
             {
                 // 2026-06-08: ya no manda PIN — el cobro queda precargado para admin
                 resp = await Http.PostAsJsonAsync(
                     $"api/cafe/repartidor-public/mis-pedidos/{Token}/cobrar/{modal.Pedido.Id}",
-                    new { Importe = importeCobrado, Notas = notasCobro });
+                    new
+                    {
+                        Importe = importeCobrado, Notas = notasCobro,
+                        FirmaBase64 = string.IsNullOrEmpty(firmaDataUrl) ? null : firmaDataUrl,
+                        NombreReceptor = string.IsNullOrWhiteSpace(nombreReceptor) ? null : nombreReceptor.Trim(),
+                        MotivoSinFirma = string.IsNullOrWhiteSpace(motivoSinFirma) ? null : motivoSinFirma.Trim()
+                    });
             }
             if (!resp.IsSuccessStatusCode)
             {

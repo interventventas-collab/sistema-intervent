@@ -347,7 +347,10 @@ public class CafeRepartidorPublicController : ControllerBase
         decimal? ClienteLng,
         // 2026-06-11: link de Maps que vos pegaste manual en la ficha del cliente — si existe
         // se prioriza sobre la búsqueda por dirección (más exacto). Lat/Lng siempre gana si están.
-        string? ClienteMapeoLink);
+        string? ClienteMapeoLink,
+        // 2026-06-22: si true, el repartidor tiene que pedir firma + nombre al receptor al entregar.
+        // El modal de confirmacion se enriquece con canvas de firma + input nombre + opcion "Saltar con motivo".
+        bool SolicitarFirmaEntrega = false);
 
     /// <summary>2026-06-09: cobros hechos por el repartidor (siempre en efectivo) — para el arqueo.</summary>
     public record MisPedidosCobroDto(int VentaId, decimal Importe, string Estado, DateTime FechaCobro);
@@ -403,7 +406,9 @@ public class CafeRepartidorPublicController : ControllerBase
                 ClienteTelefono = (x.c != null ? x.c.Telefono : null) ?? x.v.ClienteTelefonoSnapshot,
                 ClienteLat = x.c != null ? x.c.MapeoLat : null,
                 ClienteLng = x.c != null ? x.c.MapeoLng : null,
-                ClienteMapeoLink = x.c != null ? x.c.MapeoLink : null
+                ClienteMapeoLink = x.c != null ? x.c.MapeoLink : null,
+                // 2026-06-22: flag para mostrar modal de firma al confirmar entrega
+                x.v.SolicitarFirmaEntrega
             })
             .ToListAsync();
 
@@ -444,7 +449,8 @@ public class CafeRepartidorPublicController : ControllerBase
             x.CargadoAt,
             x.ComentarioEntrega,
             x.TienePdf,
-            x.ClienteId, x.ClienteTelefono, x.ClienteLat, x.ClienteLng, x.ClienteMapeoLink
+            x.ClienteId, x.ClienteTelefono, x.ClienteLat, x.ClienteLng, x.ClienteMapeoLink,
+            x.SolicitarFirmaEntrega
         )).ToList();
 
         // 2026-06-09: cobros del repartidor (siempre en efectivo, viven en Cafe_CobranzasPendientes).

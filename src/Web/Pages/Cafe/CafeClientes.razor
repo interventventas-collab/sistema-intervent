@@ -394,6 +394,16 @@
                         </select>
                     </div>
                 }
+                @* 2026-06-22: si se activa, todas las ventas nuevas para este cliente piden firma al entregar *@
+                <div class="form-group" style="grid-column: 1 / -1; padding: 0.6rem; background: #eff6ff; border-left: 3px solid #2563eb; border-radius: 4px;">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-weight: 600;">
+                        <input type="checkbox" @bind="formSolicitarFirmaEntrega" style="width: 18px; height: 18px;" />
+                        <span>📝 Pedir firma al receptor en cada entrega</span>
+                    </label>
+                    <div style="font-size: 0.78rem; color: #4b5563; margin-top: 0.3rem; margin-left: 1.7rem;">
+                        Las ventas para este cliente van a heredar este flag. Al entregar, el repartidor verá un modal con canvas para firma + nombre del receptor. Permite generar un recibo de entrega para administración del cliente.
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
@@ -631,6 +641,7 @@
 
     private bool formIsActive = true;
     private bool formTieneMiniImpresora = false;
+    private bool formSolicitarFirmaEntrega = false;
     private bool showDeleteConfirm;
     private CafeClienteDto? toDelete;
 
@@ -686,7 +697,7 @@
         formCodigoInterno = null; formMapeoLink = "";
         formMapeoLat = null; formMapeoLng = null;
         localidadesSugeridas = new();
-        formIsActive = true; formTieneMiniImpresora = false; formError = null; showForm = true;
+        formIsActive = true; formTieneMiniImpresora = false; formSolicitarFirmaEntrega = false; formError = null; showForm = true;
         await Task.CompletedTask;
     }
 
@@ -707,7 +718,7 @@
         formMapeoLng = c.MapeoLng;
         // Pre-cargar localidades sugeridas segun la provincia del cliente
         localidadesSugeridas = await CpService.GetLocalidadesAsync(formCiudad);
-        formIsActive = c.IsActive; formTieneMiniImpresora = c.TieneMiniImpresora; formError = null; showForm = true;
+        formIsActive = c.IsActive; formTieneMiniImpresora = c.TieneMiniImpresora; formSolicitarFirmaEntrega = c.SolicitarFirmaEntrega; formError = null; showForm = true;
     }
 
     private async Task ReExtraerCoords()
@@ -819,6 +830,7 @@
                     Notas = formNotas, ComentariosComprobante = formComentariosComprobante,
                     IsActive = formIsActive,
                     TieneMiniImpresora = formTieneMiniImpresora,
+                    SolicitarFirmaEntrega = formSolicitarFirmaEntrega,
                     MapeoLink = string.IsNullOrEmpty(mapeoLinkClean) ? null : mapeoLinkClean,
                     ClearMapeoLink = string.IsNullOrEmpty(mapeoLinkClean)
                 });

@@ -29,6 +29,8 @@ public class CafeClienteDto
     public decimal? MapeoLng { get; set; }
     /// <summary>Si true, en /cafe/preparacion las cards de este cliente muestran botón mini impresora.</summary>
     public bool TieneMiniImpresora { get; set; }
+    /// <summary>2026-06-22: si true, todas las ventas nuevas piden firma al entregar.</summary>
+    public bool SolicitarFirmaEntrega { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }
@@ -76,6 +78,8 @@ public class UpdateCafeClienteRequest
     public bool ClearMapeoLink { get; set; }
     /// <summary>Si true, en /cafe/preparacion las cards de este cliente muestran botón mini impresora.</summary>
     public bool? TieneMiniImpresora { get; set; }
+    /// <summary>2026-06-22: si true, todas las ventas nuevas piden firma al entregar.</summary>
+    public bool? SolicitarFirmaEntrega { get; set; }
 }
 
 public class CafeProductoDto
