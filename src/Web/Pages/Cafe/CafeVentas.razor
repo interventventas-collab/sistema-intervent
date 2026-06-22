@@ -523,6 +523,15 @@
                                         }
                                     </button>
 
+                                    @* 2026-06-22: Boton para descargar el RECIBO DE ENTREGA (firma + nombre + fecha/hora).
+                                       Solo visible si la venta esta entregada (tiene EntregadoAt). *@
+                                    @if (v.EntregadoAt.HasValue)
+                                    {
+                                        <a class="btn-icon" style="color: #7c3aed; text-decoration: none;"
+                                           href="@($"/api/cafe/ventas/{v.Id}/recibo-entrega.pdf")" target="_blank"
+                                           title="Recibo de entrega — fecha/hora, repartidor que entregó y firma del receptor (si firmó)">📦</a>
+                                    }
+
                                     @* Boton "+" abre dropdown con el resto de las acciones *@
                                     <button id="@($"act-btn-{v.Id}")" class="btn-icon" style="color: #4b5563;"
                                             @onclick="() => ToggleActionsMenu(v.Id)" title="Más acciones">+</button>
