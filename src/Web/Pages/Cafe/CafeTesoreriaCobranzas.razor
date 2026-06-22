@@ -37,7 +37,7 @@
                 <input class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.85rem;"
                        value="@filtroBuscar"
                        @oninput="OnFiltroBuscarInput"
-                       placeholder="🔍 N° de recibo, cliente (busca en TODA la base)..." />
+                       placeholder="🔍 N° recibo, cliente, razón social, dirección, #código, CUIT, tel..." />
             </div>
             <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 130px;">
                 <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Estado</label>
@@ -810,13 +810,19 @@
         if (filtroFechaDesde.HasValue) q = q.Where(c => c.Fecha.Date >= filtroFechaDesde.Value.Date);
         if (filtroFechaHasta.HasValue) q = q.Where(c => c.Fecha.Date <= filtroFechaHasta.Value.Date);
 
-        // Buscar texto (número o cliente)
+        // Buscar texto (número, cliente, razón social, entrega, código, o comprobante imputado)
+        // 2026-06-22: hay que matchear los mismos campos que el server, sino el filtro client-side
+        // descarta lo que el server ya filtró.
         if (!string.IsNullOrWhiteSpace(filtroBuscar))
         {
             var t = filtroBuscar.Trim().ToUpperInvariant();
             q = q.Where(c =>
                 (c.Numero ?? "").ToUpperInvariant().Contains(t)
-                || (c.ClienteNombre ?? "").ToUpperInvariant().Contains(t));
+                || (c.ClienteNombre ?? "").ToUpperInvariant().Contains(t)
+                || (c.ClienteFantasia ?? "").ToUpperInvariant().Contains(t)
+                || (c.ClienteEntrega ?? "").ToUpperInvariant().Contains(t)
+                || (c.ClienteCodigo.HasValue && c.ClienteCodigo.Value.ToString().Contains(t))
+                || (c.Comprobantes != null && c.Comprobantes.Any(nro => (nro ?? "").ToUpperInvariant().Contains(t))));
         }
 
         // Retenciones

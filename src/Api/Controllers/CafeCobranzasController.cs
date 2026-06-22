@@ -246,13 +246,26 @@ public class CafeCobranzasController : ControllerBase
         if (hasta.HasValue) q = q.Where(c => c.Fecha <= hasta.Value);
         // 2026-06-06: búsqueda libre por texto — busca en nombre cliente del catálogo,
         // snapshot del nombre en la venta del primer comprobante, o número de recibo.
+        // 2026-06-22: tambien busca en razon social, domicilio de entrega, codigo interno,
+        // direccion (fiscal), CUIT, telefono y numeros de las ventas imputadas.
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim();
+            // Si es un numero puro, lo comparamos tambien contra CodigoInterno (int).
+            int? sAsInt = int.TryParse(s, out var n) ? n : null;
             q = q.Where(c =>
-                (c.Cliente != null && c.Cliente.Nombre.Contains(s))
-                || c.Numero.Contains(s)
-                || c.Comprobantes.Any(cc => cc.Venta != null && cc.Venta.ClienteNombreSnapshot != null && cc.Venta.ClienteNombreSnapshot.Contains(s)));
+                c.Numero.Contains(s)
+                || (c.Cliente != null && (
+                    c.Cliente.Nombre.Contains(s)
+                    || (c.Cliente.RazonSocial != null && c.Cliente.RazonSocial.Contains(s))
+                    || (c.Cliente.DomicilioEntrega != null && c.Cliente.DomicilioEntrega.Contains(s))
+                    || (c.Cliente.Direccion != null && c.Cliente.Direccion.Contains(s))
+                    || (c.Cliente.Cuit != null && c.Cliente.Cuit.Contains(s))
+                    || (c.Cliente.Telefono != null && c.Cliente.Telefono.Contains(s))
+                    || (sAsInt.HasValue && c.Cliente.CodigoInterno == sAsInt.Value)))
+                || c.Comprobantes.Any(cc => cc.Venta != null && (
+                    (cc.Venta.ClienteNombreSnapshot != null && cc.Venta.ClienteNombreSnapshot.Contains(s))
+                    || cc.Venta.Numero.Contains(s))));
             // Cuando hay búsqueda, abrimos el corte para que cobranzas viejas no se pierdan.
             if (take < 2000) take = 2000;
         }
