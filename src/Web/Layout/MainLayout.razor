@@ -862,9 +862,9 @@
                     position: sticky; top: 0; z-index: 9000; animation: wa-banner-shake 0.5s ease-out;">
             <span style="font-size: 1.05rem;">⚠️</span>
             <span><strong>WhatsApp desvinculado.</strong> El número del hermano no está conectado. Hay que rescanear el QR para volver a recibir/mandar mensajes.</span>
-            <button @onclick="@(() => NavigateTo("/integraciones"))"
+            <button @onclick="ClickBotonWhatsApp"
                     style="background: white; color: #b91c1c; border: 0; padding: 0.3rem 0.8rem; border-radius: 6px; font-weight: 700; font-size: 0.8rem; cursor: pointer;">
-                Ir a rescanear
+                📷 Escanear QR ahora
             </button>
         </div>
     }
@@ -1017,11 +1017,11 @@
                     <span>Cobranza</span>
                 </button>
                 @* 2026-06-19: boton WhatsApp llamativo verde — chat Twilio para pedidos de hermanos/empleados *@
-                @* 2026-06-23: si la sesion Playwright esta caida, el boton se pone gris y aparece dot rojo *@
+                @* 2026-06-23: si Playwright esta linked -> va al chat. Si NO -> abre modal QR directo. *@
                 <button class="topbar-action-whatsapp"
                         style="@(waDesvinculado ? "background:#9ca3af !important; box-shadow:none !important; position:relative;" : "position:relative;")"
-                        @onclick="@(() => NavigateTo("/whatsapp"))"
-                        title="@(waDesvinculado ? "⚠️ WhatsApp DESVINCULADO — entrá a Integraciones y rescaneá el QR" : "Chat WhatsApp — pedidos de hermanos y empleados")"
+                        @onclick="ClickBotonWhatsApp"
+                        title="@(waDesvinculado ? "⚠️ WhatsApp DESVINCULADO — click para rescanear el QR aca mismo" : "Chat WhatsApp — pedidos de hermanos y empleados")"
                         aria-label="WhatsApp">
                     @SvgIcons.MessageCircle
                     <span>WhatsApp</span>
@@ -1363,6 +1363,43 @@
 <CalculadoraFlotante @ref="calcRef" />
 <PostitsFlotantes @ref="postitsRef" Username="@username" />
 
+@* 2026-06-23: modal global de vinculacion WhatsApp. Se abre desde cualquier pantalla apretando
+   el boton verde de WhatsApp en la topbar (cuando no esta linked) o el boton del banner rojo. *@
+@if (showWaQrModal)
+{
+    <div class="modal-overlay" style="z-index: 9500;" @onclick="CerrarWaQrModal">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 420px; width: 95vw;">
+            <div class="modal-header" style="background: #25d366; color: white;">
+                <h3 style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">📲 Vincular WhatsApp Web</h3>
+                <button class="btn-close" style="color: white;" @onclick="CerrarWaQrModal">&times;</button>
+            </div>
+            <div class="modal-body" style="text-align: center; padding: 1.5rem;">
+                @if (waPreparingQr)
+                {
+                    <div style="padding: 2rem 1rem;">
+                        <div style="width: 48px; height: 48px; border: 4px solid #e5e7eb; border-top-color: #25d366; border-radius: 50%; animation: wa-spin 1s linear infinite; margin: 0 auto 1rem;"></div>
+                        <p style="color: #6b7280;">Generando QR... esperá unos segundos</p>
+                    </div>
+                }
+                else if (!string.IsNullOrEmpty(waQrUrl))
+                {
+                    <p style="margin: 0 0 1rem; font-size: 0.9rem; color: #374151;">
+                        Abrí WhatsApp en el celu → <strong>Configuración → Dispositivos vinculados → Vincular un dispositivo</strong> y escaneá:
+                    </p>
+                    <img src="@waQrUrl" alt="QR WhatsApp" style="max-width: 280px; width: 100%; border: 2px solid #25d366; border-radius: 12px; box-shadow: 0 4px 14px rgba(37, 211, 102, 0.25);" />
+                    <p style="margin: 1rem 0 0; font-size: 0.78rem; color: #9ca3af;">El QR se refresca solo. Cuando escanees, este modal se cierra automático.</p>
+                }
+            </div>
+        </div>
+    </div>
+    <style>
+        @@keyframes wa-spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    </style>
+}
+
 @code {
     // 2026-06-23: estado del WhatsApp Web vía Playwright. Polling cada 60s.
     // Si la sesión se cae mostramos banner rojo y el botón verde se pone gris.
@@ -1370,6 +1407,13 @@
     private System.Threading.Timer? _waStatusTimer;
     private bool waLinked => waStatus?.Linked == true;
     private bool waDesvinculado => waStatus is not null && !waStatus.Linked && !waStatus.IsLinking;
+
+    // 2026-06-23: modal de vinculacion (QR) accesible desde el boton WhatsApp y el banner rojo,
+    // sin tener que entrar a /integraciones.
+    private bool showWaQrModal;
+    private bool waPreparingQr;
+    private string waQrUrl = "";
+    private System.Threading.CancellationTokenSource? _waLinkPollCts;
 
     // 2026-06-15: pantalla bloqueante de PIN
     private System.Threading.Timer? _pinLockTimer;
@@ -1904,6 +1948,81 @@
             }
             catch { /* navegador viejo o JS bloqueado */ }
         }
+    }
+
+    /// <summary>2026-06-23: handler unico del boton WhatsApp y del banner rojo.
+    /// Si esta linked -> va al chat. Si no -> abre modal con QR sin pasar por /integraciones.</summary>
+    private async Task ClickBotonWhatsApp()
+    {
+        if (waLinked)
+        {
+            NavigateTo("/whatsapp");
+            return;
+        }
+        // No vinculado: abro el modal con QR directo
+        showWaQrModal = true;
+        waPreparingQr = true;
+        waQrUrl = "";
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var ok = await Api.StartWhatsAppLinkAsync();
+            if (!ok)
+            {
+                showWaQrModal = false;
+                ToastService.Error("No se pudo iniciar la vinculacion de WhatsApp");
+                return;
+            }
+            await Task.Delay(4000);
+            waQrUrl = $"/api/whatsapp/qr?t={DateTimeOffset.Now.ToUnixTimeMilliseconds()}";
+            waPreparingQr = false;
+            await InvokeAsync(StateHasChanged);
+            StartWaLinkPolling();
+        }
+        catch (Exception ex)
+        {
+            showWaQrModal = false;
+            ToastService.Error("Error: " + ex.Message);
+        }
+    }
+
+    /// <summary>Polling del QR mientras el modal esta abierto. Refresca la imagen cada 3s
+    /// (el QR de WhatsApp Web rota solo) y chequea si ya escaneo. Cuando se vincula, cierra el modal.</summary>
+    private void StartWaLinkPolling()
+    {
+        _waLinkPollCts?.Cancel();
+        _waLinkPollCts = new System.Threading.CancellationTokenSource();
+        var token = _waLinkPollCts.Token;
+        _ = Task.Run(async () =>
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(3000, token);
+                    if (token.IsCancellationRequested) break;
+                    waQrUrl = $"/api/whatsapp/qr?t={DateTimeOffset.Now.ToUnixTimeMilliseconds()}";
+                    var linked = await Api.CheckWhatsAppLinkedAsync();
+                    await InvokeAsync(StateHasChanged);
+                    if (linked)
+                    {
+                        showWaQrModal = false;
+                        waStatus = await Api.GetWhatsAppStatusAsync();
+                        ToastService.Success("✅ WhatsApp vinculado correctamente");
+                        await InvokeAsync(StateHasChanged);
+                        break;
+                    }
+                }
+                catch (TaskCanceledException) { break; }
+                catch { }
+            }
+        }, token);
+    }
+
+    private void CerrarWaQrModal()
+    {
+        _waLinkPollCts?.Cancel();
+        showWaQrModal = false;
     }
 
     /// <summary>2026-06-23: chequea el estado del WhatsApp Web cada 60s.
