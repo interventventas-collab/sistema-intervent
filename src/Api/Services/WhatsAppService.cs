@@ -95,6 +95,45 @@ public class WhatsAppService
         public List<WhatsAppChatDto>? Chats { get; set; }
     }
 
+    /// <summary>2026-06-23: Abre un chat por nombre (clickeando el sidebar) y devuelve los mensajes.
+    /// Usar cuando NO tenemos el telefono, solo el nombre del contacto guardado.</summary>
+    public async Task<WhatsAppChatMessagesDto> OpenChatByNameAsync(string name)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/whatsapp/chat/open-by-name", new { name });
+            if (!resp.IsSuccessStatusCode)
+            {
+                var errorTxt = await resp.Content.ReadAsStringAsync();
+                _logger.LogWarning("open-by-name fallo: {Status} {Body}", resp.StatusCode, errorTxt);
+                return new WhatsAppChatMessagesDto { Name = name, Messages = new() };
+            }
+            var dto = await resp.Content.ReadFromJsonAsync<WhatsAppChatMessagesDto>();
+            return dto ?? new WhatsAppChatMessagesDto { Name = name };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error abriendo chat por nombre {Name}", name);
+            return new WhatsAppChatMessagesDto { Name = name };
+        }
+    }
+
+    /// <summary>2026-06-23: Manda un mensaje al chat actualmente abierto en WhatsApp Web.
+    /// Asume que se llamo OpenChatByNameAsync antes (o el chat ya estaba abierto).</summary>
+    public async Task<bool> SendToCurrentChatAsync(string text)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/whatsapp/chat/send-to-current", new { text });
+            return resp.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error mandando mensaje al chat actual");
+            return false;
+        }
+    }
+
     public async Task<bool> CheckLinkedAsync()
     {
         try
@@ -298,6 +337,19 @@ public class WhatsAppStatusDto
 public class WhatsAppLinkedDto
 {
     public bool Linked { get; set; }
+}
+
+public class WhatsAppMessageDto
+{
+    public string Id { get; set; } = "";
+    public string Text { get; set; } = "";
+    public bool FromMe { get; set; }
+}
+
+public class WhatsAppChatMessagesDto
+{
+    public string Name { get; set; } = "";
+    public List<WhatsAppMessageDto> Messages { get; set; } = new();
 }
 
 /// <summary>2026-06-23: Cada chat del sidebar de WhatsApp Web. No incluye el ID del chat

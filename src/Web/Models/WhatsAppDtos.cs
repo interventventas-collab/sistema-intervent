@@ -9,6 +9,19 @@ public class WhatsAppChatDto
     public int Unread { get; set; }
 }
 
+public class WhatsAppMessageDto
+{
+    public string Id { get; set; } = "";
+    public string Text { get; set; } = "";
+    public bool FromMe { get; set; }
+}
+
+public class WhatsAppChatMessagesDto
+{
+    public string Name { get; set; } = "";
+    public List<WhatsAppMessageDto> Messages { get; set; } = new();
+}
+
 public class WhatsAppStatusDto
 {
     public bool Linked { get; set; }

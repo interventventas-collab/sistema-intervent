@@ -3320,6 +3320,32 @@ public class ApiClient
     }
     private class ChatsResponse { public List<WhatsAppChatDto>? Chats { get; set; } }
 
+    /// <summary>2026-06-23: Abre un chat por nombre (click en el sidebar) y devuelve los mensajes.</summary>
+    public async Task<WhatsAppChatMessagesDto> OpenWhatsAppChatByNameAsync(string name)
+    {
+        await SetAuthHeaderAsync();
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/whatsapp/chats/open", new { name });
+            if (!resp.IsSuccessStatusCode) return new WhatsAppChatMessagesDto { Name = name };
+            var dto = await resp.Content.ReadFromJsonAsync<WhatsAppChatMessagesDto>();
+            return dto ?? new WhatsAppChatMessagesDto { Name = name };
+        }
+        catch { return new WhatsAppChatMessagesDto { Name = name }; }
+    }
+
+    /// <summary>2026-06-23: Manda mensaje al chat actualmente abierto.</summary>
+    public async Task<bool> SendToWhatsAppOpenChatAsync(string text)
+    {
+        await SetAuthHeaderAsync();
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/whatsapp/chats/send", new { text });
+            return resp.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
+
     public async Task<bool> StartWhatsAppLinkAsync()
     {
         await SetAuthHeaderAsync();

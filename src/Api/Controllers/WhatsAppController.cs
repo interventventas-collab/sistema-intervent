@@ -57,6 +57,27 @@ public class WhatsAppController : ControllerBase
         return Ok(new { chats });
     }
 
+    /// <summary>2026-06-23: Abre un chat por nombre (click en el sidebar) y devuelve mensajes.</summary>
+    [HttpPost("chats/open")]
+    public async Task<IActionResult> OpenChat([FromBody] OpenChatRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req?.Name)) return BadRequest(new { error = "name requerido" });
+        var dto = await _wa.OpenChatByNameAsync(req.Name);
+        return Ok(dto);
+    }
+
+    /// <summary>2026-06-23: Manda un mensaje al chat actualmente abierto en el WA Web.</summary>
+    [HttpPost("chats/send")]
+    public async Task<IActionResult> SendToOpenChat([FromBody] SendToChatRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req?.Text)) return BadRequest(new { error = "text requerido" });
+        var ok = await _wa.SendToCurrentChatAsync(req.Text);
+        return ok ? Ok(new { ok = true }) : StatusCode(500, new { error = "No se pudo mandar" });
+    }
+
+    public class OpenChatRequest { public string Name { get; set; } = ""; }
+    public class SendToChatRequest { public string Text { get; set; } = ""; }
+
     [HttpPost("link")]
     public async Task<IActionResult> StartLinking()
     {

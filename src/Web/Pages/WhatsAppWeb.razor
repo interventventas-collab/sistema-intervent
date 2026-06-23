@@ -26,10 +26,39 @@
     .ww-conv-time { font-size: 0.7rem; color: #9ca3af; white-space: nowrap; }
     .ww-conv-unread { display: inline-block; background: #25d366; color: white; font-size: 0.68rem; font-weight: 700;
                        border-radius: 999px; padding: 0.05rem 0.4rem; margin-top: 0.2rem; min-width: 18px; text-align: center; }
+
+    .ww-chat-pane { display: flex; flex-direction: column; background: #efeae2; height: 100%; }
+    .ww-chat-header { background: #f0f2f5; padding: 0.8rem 1.2rem; border-bottom: 1px solid #e5e7eb;
+                       display: flex; align-items: center; gap: 0.7rem; flex-shrink: 0; }
+    .ww-chat-header-name { font-weight: 600; font-size: 1rem; color: #111827; }
+    .ww-chat-body { flex: 1; overflow-y: auto; padding: 1rem 1.5rem;
+                     background: #efeae2 url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80' opacity='.05'><circle cx='40' cy='40' r='30' fill='%23000'/></svg>") repeat; }
+    .ww-bubble { max-width: 65%; padding: 0.5rem 0.7rem; margin: 0.2rem 0; border-radius: 7px;
+                  font-size: 0.92rem; line-height: 1.35; word-wrap: break-word; white-space: pre-wrap;
+                  box-shadow: 0 1px 0.5px rgba(0,0,0,0.13); }
+    .ww-bubble-in { background: white; align-self: flex-start; border-top-left-radius: 0; }
+    .ww-bubble-out { background: #d9fdd3; align-self: flex-end; border-top-right-radius: 0; }
+    .ww-bubble-row { display: flex; flex-direction: column; }
+    .ww-chat-footer { background: #f0f2f5; padding: 0.6rem 1rem; border-top: 1px solid #e5e7eb;
+                       display: flex; gap: 0.5rem; align-items: center; flex-shrink: 0; }
+    .ww-textarea { flex: 1; border: 0; border-radius: 8px; padding: 0.55rem 0.9rem; resize: none;
+                    font-size: 0.92rem; background: white; outline: none; min-height: 38px; max-height: 100px;
+                    font-family: inherit; }
+    .ww-send-btn { background: #25d366; color: white; border: 0; border-radius: 50%; width: 40px; height: 40px;
+                    cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+                    transition: background 120ms; }
+    .ww-send-btn:hover { background: #20bd5a; }
+    .ww-send-btn:disabled { background: #9ca3af; cursor: not-allowed; }
+
     .ww-empty-pane { display: flex; flex-direction: column; align-items: center; justify-content: center;
-                     background: #e5ddd5; color: #6b7280; text-align: center; padding: 2rem; }
+                     background: #e5ddd5; color: #6b7280; text-align: center; padding: 2rem; height: 100%; }
     .ww-banner-warn { background: #fef3c7; border-bottom: 1px solid #fcd34d; color: #92400e; padding: 0.5rem 1rem;
                        font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem; }
+    .ww-loading { display: flex; align-items: center; justify-content: center; padding: 2rem;
+                   color: #6b7280; gap: 0.5rem; }
+    .ww-spinner { width: 18px; height: 18px; border: 2px solid #e5e7eb; border-top-color: #25d366;
+                    border-radius: 50%; animation: ww-spin 0.8s linear infinite; }
+    @@keyframes ww-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 </style>
 
 <div class="ww-outer">
@@ -40,27 +69,21 @@
                 <div style="font-size:0.75rem; color:#6b7280; margin-top:0.2rem;">
                     @if (loadingChats) { <span>Cargando chats…</span> }
                     else { <span>@chats.Count chats</span> }
-                    <button @onclick="RecargarChats" style="float:right; background:transparent; border:0; color:#2563eb; font-size:0.75rem; cursor:pointer;">
-                        🔄 Refrescar
-                    </button>
+                    <button @onclick="@(async () => await RecargarChats(false))" style="float:right; background:transparent; border:0; color:#2563eb; font-size:0.75rem; cursor:pointer;">🔄 Refrescar</button>
                 </div>
             </div>
             @if (!linkedDetected && !loadingChats)
             {
-                <div class="ww-banner-warn">
-                    ⚠️ <span>WhatsApp no vinculado. Tocá el botón verde de arriba para escanear el QR.</span>
-                </div>
+                <div class="ww-banner-warn">⚠️ <span>WhatsApp no vinculado.</span></div>
             }
             <div class="ww-conv-list">
                 @if (loadingChats && chats.Count == 0)
                 {
-                    <div style="padding:1rem; color:#9ca3af; text-align:center;">Cargando lista de chats del WhatsApp Web…</div>
+                    <div class="ww-loading"><span class="ww-spinner"></span> Cargando…</div>
                 }
                 else if (chats.Count == 0)
                 {
-                    <div style="padding:1.5rem 1rem; color:#9ca3af; text-align:center; font-size:0.85rem;">
-                        Sin chats para mostrar. Si recién te vinculaste, esperá unos segundos y tocá Refrescar.
-                    </div>
+                    <div style="padding:1.5rem 1rem; color:#9ca3af; text-align:center; font-size:0.85rem;">Sin chats. Refrescá en unos segundos.</div>
                 }
                 else
                 {
@@ -87,26 +110,64 @@
                 }
             </div>
         </div>
-        <div class="ww-empty-pane">
-            @if (string.IsNullOrEmpty(selectedName))
-            {
+
+        @* Panel derecho: si no hay chat seleccionado, placeholder. Si hay, mensajes + footer. *@
+        @if (string.IsNullOrEmpty(selectedName))
+        {
+            <div class="ww-empty-pane">
                 <div style="font-size:3rem; margin-bottom:0.5rem;">💬</div>
                 <div style="font-size:1.1rem; font-weight:600; color:#374151;">Seleccioná una conversación</div>
                 <div style="font-size:0.85rem; max-width:380px; margin-top:0.5rem;">
-                    Vas a ver los chats reales de tu WhatsApp Web vinculado. Por ahora la lista es read-only —
-                    para ver mensajes individuales o responder vamos a usar la Fase 2 (siguiente paso).
+                    Tocá un chat de la izquierda. Tarda 3-5 segundos en abrirse (Playwright tiene que navegar).
                 </div>
-            }
-            else
-            {
-                <div style="font-size:3rem; margin-bottom:0.5rem;">📩</div>
-                <div style="font-size:1.1rem; font-weight:600; color:#374151;">@selectedName</div>
-                <div style="font-size:0.85rem; max-width:380px; margin-top:0.5rem;">
-                    Para ver los mensajes de este chat hay que cargar el endpoint <code>/whatsapp/messages/list</code> con el teléfono.
-                    Eso va en la <strong>Fase 2</strong> (que armamos en la próxima sesión).
+            </div>
+        }
+        else
+        {
+            <div class="ww-chat-pane">
+                <div class="ww-chat-header">
+                    <div class="ww-avatar" style="background:@AvatarColor(selectedName); width:40px; height:40px; font-size:0.95rem;">@(selectedName.Substring(0,1).ToUpperInvariant())</div>
+                    <div>
+                        <div class="ww-chat-header-name">@selectedName</div>
+                        <div style="font-size:0.72rem; color:#6b7280;">
+                            @if (loadingMessages) { <span>cargando mensajes…</span> }
+                            else { <span>@chatMessages.Count mensajes</span> }
+                        </div>
+                    </div>
+                    <button @onclick="CerrarChat" style="margin-left:auto; background:transparent; border:0; font-size:1.3rem; cursor:pointer; color:#6b7280;">×</button>
                 </div>
-            }
-        </div>
+                <div class="ww-chat-body" id="ww-chat-body">
+                    @if (loadingMessages && chatMessages.Count == 0)
+                    {
+                        <div class="ww-loading"><span class="ww-spinner"></span> Abriendo chat… esperá 3-5 segundos.</div>
+                    }
+                    else if (chatMessages.Count == 0)
+                    {
+                        <div style="text-align:center; color:#9ca3af; font-size:0.85rem; padding:1.5rem;">
+                            Sin mensajes en este chat (o no se pudieron leer).
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="ww-bubble-row">
+                            @foreach (var m in chatMessages)
+                            {
+                                <div class="ww-bubble @(m.FromMe ? "ww-bubble-out" : "ww-bubble-in")">@m.Text</div>
+                            }
+                        </div>
+                    }
+                </div>
+                <div class="ww-chat-footer">
+                    <textarea class="ww-textarea" @bind="newMessageText" @bind:event="oninput"
+                              placeholder="Escribí un mensaje…" rows="1"
+                              @onkeydown="HandleTextareaKey" disabled="@(sending || loadingMessages)"></textarea>
+                    <button class="ww-send-btn" @onclick="EnviarMensaje" disabled="@(sending || string.IsNullOrWhiteSpace(newMessageText))" title="Enviar">
+                        @if (sending) { <span class="ww-spinner" style="border-color:rgba(255,255,255,0.4); border-top-color:white;"></span> }
+                        else { <span style="font-size:1.1rem;">➤</span> }
+                    </button>
+                </div>
+            </div>
+        }
     </div>
 </div>
 
@@ -114,47 +175,116 @@
     private List<Web.Models.WhatsAppChatDto> chats = new();
     private bool loadingChats = true;
     private bool linkedDetected = false;
+
     private string selectedName = "";
-    private System.Threading.Timer? _refreshTimer;
+    private List<Web.Models.WhatsAppMessageDto> chatMessages = new();
+    private bool loadingMessages = false;
+    private string newMessageText = "";
+    private bool sending = false;
+
+    private System.Threading.Timer? _refreshChatsTimer;
+    private System.Threading.Timer? _refreshOpenChatTimer;
 
     protected override async Task OnInitializedAsync()
     {
-        await Recargar(silent: false);
-        // Refresco cada 30 segundos para que aparezcan nuevos mensajes.
-        _refreshTimer = new System.Threading.Timer(_ => _ = InvokeAsync(async () => await Recargar(silent: true)),
+        await RecargarChats();
+        _refreshChatsTimer = new System.Threading.Timer(_ => _ = InvokeAsync(async () => await RecargarChats(silent: true)),
             null, 30000, 30000);
+        // Refresco del chat abierto cada 8 segundos.
+        _refreshOpenChatTimer = new System.Threading.Timer(_ => _ = InvokeAsync(async () => await RefrescarChatAbierto()),
+            null, 8000, 8000);
     }
 
-    private async Task RecargarChats() => await Recargar(silent: false);
-
-    private async Task Recargar(bool silent)
+    private async Task RecargarChats(bool silent = false)
     {
         if (!silent) loadingChats = true;
         try
         {
-            // Verificar primero que esté vinculado
             var st = await Api.GetWhatsAppStatusAsync();
             linkedDetected = st?.Linked == true;
-            if (!linkedDetected)
-            {
-                chats = new();
-            }
-            else
-            {
-                chats = await Api.GetWhatsAppChatsAsync(80);
-            }
+            if (!linkedDetected) chats = new();
+            else chats = await Api.GetWhatsAppChatsAsync(80);
         }
-        catch { /* puede fallar si Playwright esta ocupado */ }
+        catch { }
         loadingChats = false;
         await InvokeAsync(StateHasChanged);
     }
 
-    private void Seleccionar(string name)
+    private async Task Seleccionar(string name)
     {
-        selectedName = (selectedName == name) ? "" : name;
+        if (selectedName == name) return;
+        selectedName = name;
+        chatMessages = new();
+        newMessageText = "";
+        loadingMessages = true;
+        await InvokeAsync(StateHasChanged);
+
+        var dto = await Api.OpenWhatsAppChatByNameAsync(name);
+        // Solo aplicar si el usuario sigue en el mismo chat (puede haber clickeado otro mientras tanto)
+        if (selectedName == name)
+        {
+            chatMessages = dto.Messages ?? new();
+            loadingMessages = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
-    // Color de avatar pseudoaleatorio pero estable por nombre.
+    private void CerrarChat()
+    {
+        selectedName = "";
+        chatMessages = new();
+        newMessageText = "";
+    }
+
+    private async Task RefrescarChatAbierto()
+    {
+        if (string.IsNullOrEmpty(selectedName) || sending || loadingMessages) return;
+        try
+        {
+            var dto = await Api.OpenWhatsAppChatByNameAsync(selectedName);
+            if (selectedName == dto.Name && dto.Messages.Count > 0)
+            {
+                chatMessages = dto.Messages;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch { }
+    }
+
+    private async Task EnviarMensaje()
+    {
+        if (string.IsNullOrWhiteSpace(newMessageText) || sending) return;
+        var txt = newMessageText.Trim();
+        sending = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var ok = await Api.SendToWhatsAppOpenChatAsync(txt);
+            if (ok)
+            {
+                // Optimista: agrego el mensaje a la lista para feedback instantáneo
+                chatMessages.Add(new Web.Models.WhatsAppMessageDto { Text = txt, FromMe = true, Id = "tmp_" + Guid.NewGuid().ToString("N").Substring(0, 8) });
+                newMessageText = "";
+                Toast.Success("Mensaje enviado");
+            }
+            else
+            {
+                Toast.Error("No se pudo enviar");
+            }
+        }
+        catch (Exception ex) { Toast.Error("Error: " + ex.Message); }
+        sending = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleTextareaKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            await EnviarMensaje();
+        }
+    }
+
     private static readonly string[] AvatarColors = {
         "#ef4444", "#f97316", "#f59e0b", "#84cc16", "#22c55e", "#10b981", "#06b6d4",
         "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899"
@@ -169,6 +299,7 @@
 
     public void Dispose()
     {
-        try { _refreshTimer?.Dispose(); } catch { }
+        try { _refreshChatsTimer?.Dispose(); } catch { }
+        try { _refreshOpenChatTimer?.Dispose(); } catch { }
     }
 }

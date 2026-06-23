@@ -920,6 +920,170 @@ app.post('/whatsapp/messages/list', async (req, res) => {
 });
 
 // ============================================================
+// POST /whatsapp/chat/open-by-name  body: { name: "Juan Perez" }
+// Abre un chat haciendo click en el sidebar (no via URL ?phone=). Sirve para chats con nombre
+// guardado donde no tenemos el telefono. Despues de abrir, devuelve los mensajes y el header.
+// ============================================================
+let openByNameBusy = false;
+app.post('/whatsapp/chat/open-by-name', async (req, res) => {
+  const name = (req.body && req.body.name) || '';
+  if (!name) return res.status(400).json({ error: 'name requerido' });
+
+  if (openByNameBusy || messagesListBusy) return res.status(429).json({ error: 'busy' });
+  openByNameBusy = true;
+
+  try {
+    const alive = await ensureSessionAlive();
+    if (!alive) {
+      try { await startSession({ useStorageState: true }); } catch {}
+      if (!state.page || state.page.isClosed()) {
+        openByNameBusy = false;
+        return res.status(503).json({ error: 'WhatsApp no vinculado' });
+      }
+    }
+
+    // Asegurar que estamos en la home (sidebar visible)
+    try {
+      if (!state.page.url().startsWith('https://web.whatsapp.com')) {
+        await state.page.goto('https://web.whatsapp.com/', { waitUntil: 'load', timeout: 30000 });
+      }
+    } catch {}
+
+    // Esperar sidebar
+    const sidebarDeadline = Date.now() + 15000;
+    while (Date.now() < sidebarDeadline) {
+      const found = await state.page.$('#pane-side').catch(() => null);
+      if (found) break;
+      await sleep(400);
+    }
+
+    // Buscar el span[title="<name>"] y clickear el contenedor del chat
+    const clicked = await state.page.evaluate((targetName) => {
+      const spans = document.querySelectorAll('#pane-side span[title]');
+      for (const s of spans) {
+        if ((s.getAttribute('title') || '').trim() === targetName.trim()) {
+          // Buscar el cell-frame ancestor para clickearlo
+          let el = s;
+          for (let i = 0; i < 8 && el; i++) {
+            if (el.getAttribute && (el.getAttribute('role') === 'listitem' ||
+                (el.getAttribute('data-testid') || '').includes('cell-frame'))) {
+              el.click();
+              return true;
+            }
+            el = el.parentElement;
+          }
+          // Fallback: click directo
+          s.click();
+          return true;
+        }
+      }
+      return false;
+    }, name);
+
+    if (!clicked) {
+      openByNameBusy = false;
+      return res.status(404).json({ error: 'Chat no encontrado en el sidebar', name });
+    }
+
+    // Esperar a que aparezca el footer (chat abierto)
+    let composeBox = null;
+    const footerDeadline = Date.now() + 20000;
+    while (Date.now() < footerDeadline) {
+      composeBox = await state.page.$('footer div[contenteditable="true"]').catch(() => null);
+      if (composeBox) break;
+      await sleep(500);
+    }
+    if (!composeBox) {
+      openByNameBusy = false;
+      return res.status(504).json({ error: 'Timeout abriendo chat (footer no encontrado)' });
+    }
+
+    await sleep(1500);
+
+    // Scroll al final
+    try {
+      await state.page.evaluate(() => {
+        const main = document.querySelector('[role="application"] [role="main"]');
+        if (main) main.scrollTop = main.scrollHeight;
+      });
+    } catch {}
+    await sleep(400);
+
+    // Extraer mensajes (mismo patron que /messages/list)
+    const messages = await state.page.evaluate(() => {
+      const items = [];
+      const nodes = document.querySelectorAll('div[data-id]');
+      const extractText = (node) => {
+        const sel = node.querySelector('span.selectable-text, .selectable-text');
+        if (sel) {
+          const t = (sel.innerText || sel.textContent || '').trim();
+          if (t) return t;
+        }
+        const copy = node.querySelector('.copyable-text');
+        if (copy) {
+          const t = (copy.innerText || copy.textContent || '').trim();
+          if (t) return t;
+        }
+        return '';
+      };
+      nodes.forEach(node => {
+        const id = node.getAttribute('data-id') || '';
+        if (!id) return;
+        const looksLikeMessage = node.querySelector('.copyable-text, span.selectable-text, [data-pre-plain-text]') !== null
+                              || node.classList.contains('message-in')
+                              || node.classList.contains('message-out');
+        if (!looksLikeMessage) return;
+        const fromMe = node.classList.contains('message-out') || id.startsWith('true_') || /^[A-F0-9]+_true/i.test(id);
+        const text = extractText(node);
+        if (!text) return;
+        items.push({ id, text, fromMe });
+      });
+      return items;
+    });
+
+    openByNameBusy = false;
+    return res.json({ messages, total: messages.length, name });
+  } catch (err) {
+    openByNameBusy = false;
+    console.error('[wa] open-by-name error:', err.message || err);
+    return res.status(500).json({ error: err.message || 'error' });
+  }
+});
+
+// ============================================================
+// POST /whatsapp/chat/send-to-current  body: { text: "..." }
+// Manda un mensaje al chat ACTUALMENTE ABIERTO en WhatsApp Web. Asume que open-by-name ya
+// fue invocado antes. No abre chat por phone — escribe directo en el footer existente.
+// ============================================================
+app.post('/whatsapp/chat/send-to-current', async (req, res) => {
+  const text = (req.body && req.body.text) || '';
+  if (!text || !text.trim()) return res.status(400).json({ error: 'text requerido' });
+
+  try {
+    if (!state.page || state.page.isClosed()) {
+      return res.status(503).json({ error: 'WhatsApp no vinculado' });
+    }
+    const composeBox = await state.page.$('footer div[contenteditable="true"]').catch(() => null);
+    if (!composeBox) return res.status(400).json({ error: 'No hay chat abierto' });
+
+    await composeBox.click();
+    await composeBox.fill(''); // limpiar
+    // Si tiene saltos de linea, usar Shift+Enter para no enviar antes de tiempo
+    const lines = text.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      if (i > 0) await state.page.keyboard.press('Shift+Enter');
+      await composeBox.type(lines[i], { delay: 8 });
+    }
+    await state.page.keyboard.press('Enter');
+    await sleep(600);
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('[wa] send-to-current error:', err.message || err);
+    return res.status(500).json({ error: err.message || 'error' });
+  }
+});
+
+// ============================================================
 // POST /whatsapp/chats/list  body: { limit?: 50 }
 // Devuelve la lista de chats del sidebar de WhatsApp Web, ordenada como aparece (mas recientes arriba).
 // Cada chat: { name, phone?, lastMsg, lastMsgAt, unread }
