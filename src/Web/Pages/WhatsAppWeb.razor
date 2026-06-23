@@ -1,0 +1,174 @@
+@page "/whatsapp-web"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject Web.Services.ApiClient Api
+@inject Web.Services.ToastService Toast
+@inject Microsoft.AspNetCore.Components.NavigationManager Nav
+@implements IDisposable
+
+<PageTitle>WhatsApp Web — Chat</PageTitle>
+
+<style>
+    .ww-outer { background: #f0f2f5; min-height: calc(100vh - 60px); padding: 0; }
+    .ww-root { display: grid; grid-template-columns: 380px 1fr; gap: 0; height: calc(100vh - 60px); background: white;
+                box-shadow: 0 0 0 1px #e5e7eb; }
+    .ww-sidebar { display: flex; flex-direction: column; border-right: 1px solid #e5e7eb; background: white; overflow: hidden; }
+    .ww-side-header { padding: 0.9rem 1rem; border-bottom: 1px solid #e5e7eb; background: #f6f6f6; }
+    .ww-conv-list { flex: 1; overflow-y: auto; }
+    .ww-conv-item { display: flex; gap: 0.65rem; padding: 0.65rem 1rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; transition: background 120ms; }
+    .ww-conv-item:hover { background: #f9fafb; }
+    .ww-conv-item.active { background: #f0fdf4; }
+    .ww-avatar { width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+                  color: white; font-weight: 700; font-size: 1.05rem; flex: 0 0 46px; }
+    .ww-conv-body { flex: 1; min-width: 0; }
+    .ww-conv-name { font-weight: 600; font-size: 0.93rem; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ww-conv-preview { font-size: 0.8rem; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 0.15rem; }
+    .ww-conv-meta { text-align: right; flex-shrink: 0; }
+    .ww-conv-time { font-size: 0.7rem; color: #9ca3af; white-space: nowrap; }
+    .ww-conv-unread { display: inline-block; background: #25d366; color: white; font-size: 0.68rem; font-weight: 700;
+                       border-radius: 999px; padding: 0.05rem 0.4rem; margin-top: 0.2rem; min-width: 18px; text-align: center; }
+    .ww-empty-pane { display: flex; flex-direction: column; align-items: center; justify-content: center;
+                     background: #e5ddd5; color: #6b7280; text-align: center; padding: 2rem; }
+    .ww-banner-warn { background: #fef3c7; border-bottom: 1px solid #fcd34d; color: #92400e; padding: 0.5rem 1rem;
+                       font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem; }
+</style>
+
+<div class="ww-outer">
+    <div class="ww-root">
+        <div class="ww-sidebar">
+            <div class="ww-side-header">
+                <div style="font-weight:600; font-size:1.05rem;">📱 WhatsApp Web</div>
+                <div style="font-size:0.75rem; color:#6b7280; margin-top:0.2rem;">
+                    @if (loadingChats) { <span>Cargando chats…</span> }
+                    else { <span>@chats.Count chats</span> }
+                    <button @onclick="RecargarChats" style="float:right; background:transparent; border:0; color:#2563eb; font-size:0.75rem; cursor:pointer;">
+                        🔄 Refrescar
+                    </button>
+                </div>
+            </div>
+            @if (!linkedDetected && !loadingChats)
+            {
+                <div class="ww-banner-warn">
+                    ⚠️ <span>WhatsApp no vinculado. Tocá el botón verde de arriba para escanear el QR.</span>
+                </div>
+            }
+            <div class="ww-conv-list">
+                @if (loadingChats && chats.Count == 0)
+                {
+                    <div style="padding:1rem; color:#9ca3af; text-align:center;">Cargando lista de chats del WhatsApp Web…</div>
+                }
+                else if (chats.Count == 0)
+                {
+                    <div style="padding:1.5rem 1rem; color:#9ca3af; text-align:center; font-size:0.85rem;">
+                        Sin chats para mostrar. Si recién te vinculaste, esperá unos segundos y tocá Refrescar.
+                    </div>
+                }
+                else
+                {
+                    @foreach (var c in chats)
+                    {
+                        var name = c.Name;
+                        var ini = string.IsNullOrEmpty(name) ? "?" : name.Substring(0, 1).ToUpperInvariant();
+                        var color = AvatarColor(name);
+                        <div class="ww-conv-item @(selectedName == name ? "active" : "")" @onclick="() => Seleccionar(name)">
+                            <div class="ww-avatar" style="background:@color;">@ini</div>
+                            <div class="ww-conv-body">
+                                <div class="ww-conv-name">@name</div>
+                                <div class="ww-conv-preview">@c.LastMsg</div>
+                            </div>
+                            <div class="ww-conv-meta">
+                                <div class="ww-conv-time">@c.LastMsgAt</div>
+                                @if (c.Unread > 0)
+                                {
+                                    <div class="ww-conv-unread">@c.Unread</div>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+        <div class="ww-empty-pane">
+            @if (string.IsNullOrEmpty(selectedName))
+            {
+                <div style="font-size:3rem; margin-bottom:0.5rem;">💬</div>
+                <div style="font-size:1.1rem; font-weight:600; color:#374151;">Seleccioná una conversación</div>
+                <div style="font-size:0.85rem; max-width:380px; margin-top:0.5rem;">
+                    Vas a ver los chats reales de tu WhatsApp Web vinculado. Por ahora la lista es read-only —
+                    para ver mensajes individuales o responder vamos a usar la Fase 2 (siguiente paso).
+                </div>
+            }
+            else
+            {
+                <div style="font-size:3rem; margin-bottom:0.5rem;">📩</div>
+                <div style="font-size:1.1rem; font-weight:600; color:#374151;">@selectedName</div>
+                <div style="font-size:0.85rem; max-width:380px; margin-top:0.5rem;">
+                    Para ver los mensajes de este chat hay que cargar el endpoint <code>/whatsapp/messages/list</code> con el teléfono.
+                    Eso va en la <strong>Fase 2</strong> (que armamos en la próxima sesión).
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<Web.Models.WhatsAppChatDto> chats = new();
+    private bool loadingChats = true;
+    private bool linkedDetected = false;
+    private string selectedName = "";
+    private System.Threading.Timer? _refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Recargar(silent: false);
+        // Refresco cada 30 segundos para que aparezcan nuevos mensajes.
+        _refreshTimer = new System.Threading.Timer(_ => _ = InvokeAsync(async () => await Recargar(silent: true)),
+            null, 30000, 30000);
+    }
+
+    private async Task RecargarChats() => await Recargar(silent: false);
+
+    private async Task Recargar(bool silent)
+    {
+        if (!silent) loadingChats = true;
+        try
+        {
+            // Verificar primero que esté vinculado
+            var st = await Api.GetWhatsAppStatusAsync();
+            linkedDetected = st?.Linked == true;
+            if (!linkedDetected)
+            {
+                chats = new();
+            }
+            else
+            {
+                chats = await Api.GetWhatsAppChatsAsync(80);
+            }
+        }
+        catch { /* puede fallar si Playwright esta ocupado */ }
+        loadingChats = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void Seleccionar(string name)
+    {
+        selectedName = (selectedName == name) ? "" : name;
+    }
+
+    // Color de avatar pseudoaleatorio pero estable por nombre.
+    private static readonly string[] AvatarColors = {
+        "#ef4444", "#f97316", "#f59e0b", "#84cc16", "#22c55e", "#10b981", "#06b6d4",
+        "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899"
+    };
+    private static string AvatarColor(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return "#9ca3af";
+        var sum = 0;
+        foreach (var c in name) sum += c;
+        return AvatarColors[sum % AvatarColors.Length];
+    }
+
+    public void Dispose()
+    {
+        try { _refreshTimer?.Dispose(); } catch { }
+    }
+}

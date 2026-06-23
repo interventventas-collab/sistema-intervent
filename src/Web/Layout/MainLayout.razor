@@ -1951,12 +1951,14 @@
     }
 
     /// <summary>2026-06-23: handler unico del boton WhatsApp y del banner rojo.
-    /// Si esta linked -> va al chat. Si no -> abre modal con QR sin pasar por /integraciones.</summary>
+    /// Si esta linked -> va a /whatsapp-web (chats reales del WA Web via Playwright).
+    /// Si NO esta linked -> abre modal con QR sin pasar por /integraciones.
+    /// La pantalla /whatsapp original (Twilio sandbox) sigue accesible por URL directa.</summary>
     private async Task ClickBotonWhatsApp()
     {
         if (waLinked)
         {
-            NavigateTo("/whatsapp");
+            NavigateTo("/whatsapp-web");
             return;
         }
         // No vinculado: abro el modal con QR directo
