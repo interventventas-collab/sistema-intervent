@@ -1554,9 +1554,10 @@
                             }
                             else
                             {
-                                <input id="nv-producto" class="form-input" @bind="productoSearch" @bind:event="oninput"
+                                <input id="nv-producto" class="form-input" @bind="productoSearch" @bind:event="oninput" @bind:after="() => productoHighlight = 0"
                                        @onfocus="() => productoSearchOpen = true"
                                        @onkeydown="OnKeyDownProducto"
+                                       autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
                                        placeholder="🔍 SKU, código de barras, nombre, marca... (Enter para seguir)" />
                                 @if (productoSearchOpen && !string.IsNullOrWhiteSpace(productoSearch))
                                 {
@@ -1569,9 +1570,11 @@
                                         }
                                         else
                                         {
-                                            @foreach (var p in pmatches)
+                                            @for (int idx = 0; idx < pmatches.Count; idx++)
                                             {
+                                                var p = pmatches[idx];
                                                 var pId = p.Id;
+                                                var isHl = idx == productoHighlight;
                                                 // 2026-06-01: para productos "shell" (con StockArmable) mostrar el armable en lugar del 0 propio.
                                                 var stockTxt = p.Categoria == "CAFE"
                                                     ? FormatGramos(p.StockGramos)
@@ -1579,7 +1582,7 @@
                                                         ? $"{p.StockArmable.Value} u. 🧩"
                                                         : $"{p.StockUnidades} u.");
                                                 <div class="cli-pick-row" @onclick="() => SelectProducto(pId)"
-                                                     style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem;">
+                                                     style="@($"padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; background: {(isHl ? "#dbeafe" : "transparent")};")">
                                                     <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; margin-right: 0.5rem;">@(p.Sku ?? "—")</span>
                                                     <strong>@p.Nombre</strong>
                                                     @if (p.Categoria == "CAFE")
@@ -1603,12 +1606,14 @@
                                                 <div style="background:#fef3c7; padding:0.25rem 0.6rem; font-size:0.7rem; color:#92400e; font-weight:700; border-top:1px solid #fcd34d; border-bottom:1px solid #fcd34d;">
                                                     🧩 Productos compuestos (se arman de varias piezas)
                                                 </div>
-                                                @foreach (var c in cmpMatches)
+                                                @for (int cIdx = 0; cIdx < cmpMatches.Count; cIdx++)
                                                 {
+                                                    var c = cmpMatches[cIdx];
                                                     var cId = c.Id;
+                                                    var isHlC = (pmatches.Count + cIdx) == productoHighlight;
                                                     var precioTxt = formClienteTipo == "BAR" ? c.PreviewPrecioBar : c.PreviewPrecioOtro;
                                                     <div class="cli-pick-row" @onclick="() => SelectCompuestoDesdeProducto(cId)"
-                                                         style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; background:#fffbeb;">
+                                                         style="@($"padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; background: {(isHlC ? "#bfdbfe" : "#fffbeb")};")">
                                                         <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; margin-right: 0.5rem;">@(c.Sku ?? "—")</span>
                                                         <strong>@c.Nombre</strong>
                                                         <span style="display:inline-block; padding:0.05rem 0.35rem; background:#fde68a; color:#92400e; border-radius:999px; font-size:0.65rem; font-weight:700; margin-left: 0.4rem;">🧩 COMP</span>
@@ -3500,6 +3505,7 @@
     private ElementReference clienteInputRef;
     private bool _focusClienteAtNextRender;
     private int clienteHighlight;
+    private int productoHighlight;
 
     // 2026-06-18 v2: Editar/Crear cliente abriendo ventana popup con la pantalla /cafe/clientes.
     // La popup detecta los query params ?edit={id} o ?new={nombre} y auto-abre el modal correspondiente.
@@ -5478,12 +5484,39 @@
 
     private async Task OnKeyDownProducto(KeyboardEventArgs e)
     {
+        var pmatches = ProductosMatching(productoSearch).Take(20).ToList();
+        var cmpMatches = CompuestosMatching(productoSearch).Take(10).ToList();
+        var total = pmatches.Count + cmpMatches.Count;
+
+        if (e.Key == "ArrowDown")
+        {
+            if (total > 0) productoHighlight = Math.Min(productoHighlight + 1, total - 1);
+            return;
+        }
+        if (e.Key == "ArrowUp")
+        {
+            productoHighlight = Math.Max(productoHighlight - 1, 0);
+            return;
+        }
         if (e.Key != "Enter") return;
         if (string.IsNullOrWhiteSpace(productoSearch)) return;
-        var first = ProductosMatching(productoSearch).FirstOrDefault();
-        if (first is null) return;
-        SelectProducto(first.Id);
-        await FocusFieldAsync("nv-formato");
+        if (total == 0) return;
+
+        // Producto normal o compuesto segun el indice resaltado
+        if (productoHighlight < pmatches.Count)
+        {
+            SelectProducto(pmatches[productoHighlight].Id);
+            await FocusFieldAsync("nv-formato");
+        }
+        else
+        {
+            var cIdx = productoHighlight - pmatches.Count;
+            if (cIdx < 0 || cIdx >= cmpMatches.Count) cIdx = 0;
+            SelectCompuestoDesdeProducto(cmpMatches[cIdx].Id);
+            // Los compuestos no usan formato/molienda — salto a cantidad.
+            await FocusFieldAsync("nv-cantidad");
+        }
+        return;
     }
 
     private async Task OnKeyDownFormato(KeyboardEventArgs e)
