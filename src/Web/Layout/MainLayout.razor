@@ -15,6 +15,68 @@
     .topbar-tool-btn:hover { background: #f3f4f6; }
     .topbar-tool-btn:active { transform: scale(0.95); }
 
+    /* 2026-06-22: Look Mac/iOS — cápsula gris glass tipo "segment control" para agrupar
+       botones-icono uniformes (tools: calc, notes, search, reload). */
+    .topbar-icon-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        background: rgba(245, 245, 247, 0.85);
+        border: 0.5px solid rgba(0, 0, 0, 0.06);
+        border-radius: 10px;
+        padding: 4px;
+        flex-shrink: 0;
+    }
+    .topbar-icon-btn {
+        width: 32px;
+        height: 32px;
+        background: transparent;
+        border: none;
+        border-radius: 7px;
+        color: #3c3c43;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background 0.12s ease, transform 0.06s ease;
+        padding: 0;
+        position: relative;
+        font-family: inherit;
+    }
+    .topbar-icon-btn:hover { background: rgba(0, 0, 0, 0.05); }
+    .topbar-icon-btn:active { transform: scale(0.92); }
+    .topbar-icon-btn svg {
+        width: 17px;
+        height: 17px;
+        display: block;
+    }
+    /* Punto rojo discreto para badge de notificación dentro de topbar-icon-btn */
+    .topbar-icon-btn .badge-dot {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        width: 7px;
+        height: 7px;
+        background: #ff3b30;
+        border-radius: 50%;
+        border: 1.5px solid #f5f5f7;
+    }
+
+    /* SVG dentro de nav-modern alineado al texto */
+    .topbar-nav-modern-ico svg {
+        width: 15px;
+        height: 15px;
+        display: block;
+    }
+    /* SVG dentro de botones de acción (Nueva venta, Cobranza, WhatsApp) */
+    .topbar-action-primary svg,
+    .topbar-action-secondary svg,
+    .topbar-action-whatsapp svg {
+        width: 16px;
+        height: 16px;
+        display: block;
+    }
+
     /* 2026-06-17 v9: rediseno topbar moderno — paleta neutra estilo Linear/Notion.
        Una sola altura (32px), una sola tipografia. Solo "Nueva venta" tiene fondo oscuro (accion primaria). */
     .topbar-nav-modern {
@@ -825,26 +887,26 @@
                 <button class="topbar-nav-modern"
                         @onclick="@(() => NavigateTo("/cafe/stock-masivo"))"
                         title="Stock masivo (todos los productos)">
-                    <span class="topbar-nav-modern-ico">📦</span>
+                    <span class="topbar-nav-modern-ico">@SvgIcons.Package</span>
                     <span>Stock</span>
                 </button>
                 <button class="topbar-nav-modern"
                         @onclick="@(() => NavigateTo("/cafe/listas-precios"))"
                         title="Listas de precios">
-                    <span class="topbar-nav-modern-ico">💲</span>
+                    <span class="topbar-nav-modern-ico">@SvgIcons.DollarSign</span>
                     <span>Listas</span>
                 </button>
                 <button class="topbar-nav-modern"
                         @onclick="@(() => NavigateTo("/cafe/preparacion"))"
                         title="Imprimir pedidos / preparación de pedidos">
-                    <span class="topbar-nav-modern-ico">📋</span>
+                    <span class="topbar-nav-modern-ico">@SvgIcons.ClipboardList</span>
                     <span>Preparación</span>
                 </button>
                 <div class="topbar-empleados-wrap">
                     <button class="topbar-nav-modern @(showEmpleadosDropdown ? "abierto" : "")"
                             @onclick="ToggleEmpleadosDropdown"
                             title="Accesos rápidos a Empleados">
-                        <span class="topbar-nav-modern-ico">👥</span>
+                        <span class="topbar-nav-modern-ico">@SvgIcons.Users</span>
                         <span>Empleados</span>
                         <span class="topbar-nav-modern-caret">▾</span>
                     </button>
@@ -885,7 +947,7 @@
                     <button class="topbar-nav-modern" @onclick="@(() => NavigateTo("/cafe/ventas"))"
                             style="border-top-right-radius: 0; border-bottom-right-radius: 0; padding-right: 0.4rem;"
                             title="Ver listado de ventas">
-                        <span class="topbar-nav-modern-ico">📊</span>
+                        <span class="topbar-nav-modern-ico">@SvgIcons.BarChart</span>
                         <span>Ventas</span>
                     </button>
                     <button class="topbar-nav-modern" @onclick="ToggleMenuPresupuestos"
@@ -907,7 +969,7 @@
                 <button class="topbar-nav-modern"
                         @onclick="@(() => NavigateTo("/cafe/clientes/panel-deudas"))"
                         title="Ver saldos pendientes — ¿Quién me debe?">
-                    <span class="topbar-nav-modern-ico">💰</span>
+                    <span class="topbar-nav-modern-ico">@SvgIcons.Wallet</span>
                     <span>Saldos</span>
                 </button>
 
@@ -923,14 +985,14 @@
                         @onclick="OpenNuevaVentaShortcut"
                         title="Cargar una venta nueva (atajo)"
                         aria-label="Nueva venta">
-                    <span class="topbar-action-plus">+</span>
+                    @SvgIcons.Plus
                     <span>Nueva venta</span>
                 </button>
                 <button class="topbar-action-secondary"
                         @onclick="@(() => NavigateTo("/cafe/tesoreria/cobranzas?nueva=1"))"
                         title="Cargar una cobranza nueva (atajo)"
                         aria-label="Nueva cobranza">
-                    <span class="topbar-action-plus">+</span>
+                    @SvgIcons.Plus
                     <span>Cobranza</span>
                 </button>
                 @* 2026-06-19: boton WhatsApp llamativo verde — chat Twilio para pedidos de hermanos/empleados *@
@@ -938,34 +1000,26 @@
                         @onclick="@(() => NavigateTo("/whatsapp"))"
                         title="Chat WhatsApp — pedidos de hermanos y empleados"
                         aria-label="WhatsApp">
-                    <span style="font-size:1.05rem; line-height:1;">💬</span>
+                    @SvgIcons.MessageCircle
                     <span>WhatsApp</span>
                 </button>
-
-                @* Separador entre acciones primarias y herramientas *@
-                <div class="topbar-divider-modern"></div>
             }
-            @* 2026-05-28: botones de herramientas flotantes (calculadora + post-its propios) *@
-            <button class="topbar-tool-btn" @onclick="ToggleCalc"
-                    title="Calculadora (se puede mover por la pantalla)"
-                    aria-label="Calculadora">🧮</button>
-            <button class="topbar-tool-btn" @onclick="TogglePostits"
-                    title="Mis post-its (solo los tuyos)"
-                    aria-label="Post-its">📝</button>
-            @* 2026-06-05: Buscador rapido Ctrl+K *@
-            <button class="topbar-tool-btn" @onclick="OpenCommandPalette"
-                    title="Buscar pantalla rápido (Ctrl + K)"
-                    aria-label="Buscar pantalla"
-                    style="font-size: 1rem;">🔍</button>
-            <button class="topbar-hard-reload" @onclick="DoHardReload"
-                    title="Forzar recarga (limpia el cache del navegador). Usalo si un cambio nuevo no aparece."
-                    aria-label="Forzar recarga">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="23 4 23 10 17 10"></polyline>
-                    <polyline points="1 20 1 14 7 14"></polyline>
-                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-                </svg>
-            </button>
+            @* 2026-06-22: Tools agrupadas en cápsula glass tipo iOS segment-control
+               (calculadora + post-its + buscador + hard-reload). Iconos SVG uniformes. *@
+            <div class="topbar-icon-group">
+                <button class="topbar-icon-btn" @onclick="ToggleCalc"
+                        title="Calculadora (se puede mover por la pantalla)"
+                        aria-label="Calculadora">@SvgIcons.Calculator</button>
+                <button class="topbar-icon-btn" @onclick="TogglePostits"
+                        title="Mis post-its (solo los tuyos)"
+                        aria-label="Post-its">@SvgIcons.Notes</button>
+                <button class="topbar-icon-btn" @onclick="OpenCommandPalette"
+                        title="Buscar pantalla rápido (Ctrl + K)"
+                        aria-label="Buscar pantalla">@SvgIcons.Search</button>
+                <button class="topbar-icon-btn" @onclick="DoHardReload"
+                        title="Forzar recarga (limpia el cache del navegador). Usalo si un cambio nuevo no aparece."
+                        aria-label="Forzar recarga">@SvgIcons.Refresh</button>
+            </div>
             @* 2026-06-08: ocultar campanas a deposito EXCEPTO Preguntas MeLi — el usuario
                quiere que deposito vea las preguntas para responderlas.
                TODO mañana: revisar por qué MeliQuestionsBell no muestra preguntas que SÍ
