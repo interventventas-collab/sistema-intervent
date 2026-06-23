@@ -998,7 +998,8 @@ app.post('/whatsapp/chat/open-by-name', async (req, res) => {
       return res.status(504).json({ error: 'Timeout abriendo chat (footer no encontrado)' });
     }
 
-    await sleep(1500);
+    // Dar tiempo a que los mensajes se rendericen. Grupos o chats grandes pueden tardar mas.
+    await sleep(2500);
 
     // Scroll al final
     try {
@@ -1007,16 +1008,21 @@ app.post('/whatsapp/chat/open-by-name', async (req, res) => {
         if (main) main.scrollTop = main.scrollHeight;
       });
     } catch {}
-    await sleep(400);
+    await sleep(600);
 
-    // Extraer mensajes (mismo patron que /messages/list)
+    // Extraer mensajes — patron IDENTICO al de /messages/list (que ya sabemos que funciona).
     const messages = await state.page.evaluate(() => {
       const items = [];
       const nodes = document.querySelectorAll('div[data-id]');
-      const extractText = (node) => {
-        const sel = node.querySelector('span.selectable-text, .selectable-text');
-        if (sel) {
-          const t = (sel.innerText || sel.textContent || '').trim();
+      const extractTextFromNode = (node) => {
+        const copyableWithMeta = node.querySelector('.copyable-text[data-pre-plain-text]');
+        if (copyableWithMeta) {
+          const sel = copyableWithMeta.querySelector('span.selectable-text, .selectable-text');
+          if (sel) {
+            const t = (sel.innerText || sel.textContent || '').trim();
+            if (t) return t;
+          }
+          const t = (copyableWithMeta.innerText || '').trim();
           if (t) return t;
         }
         const copy = node.querySelector('.copyable-text');
@@ -1024,22 +1030,37 @@ app.post('/whatsapp/chat/open-by-name', async (req, res) => {
           const t = (copy.innerText || copy.textContent || '').trim();
           if (t) return t;
         }
+        const selSpans = node.querySelectorAll('span.selectable-text, .selectable-text');
+        for (let i = selSpans.length - 1; i >= 0; i--) {
+          const t = (selSpans[i].innerText || selSpans[i].textContent || '').trim();
+          if (t) return t;
+        }
+        const raw = (node.innerText || '').trim();
+        if (raw) {
+          const lines = raw.split('\n').map(l => l.trim()).filter(l => l && !/^\d{1,2}:\d{2}/.test(l));
+          if (lines.length > 0) return lines.join(' ').trim();
+          return raw;
+        }
         return '';
       };
       nodes.forEach(node => {
         const id = node.getAttribute('data-id') || '';
         if (!id) return;
-        const looksLikeMessage = node.querySelector('.copyable-text, span.selectable-text, [data-pre-plain-text]') !== null
+        const looksLikeMessage = node.querySelector('.copyable-text') !== null
+                              || node.querySelector('span.selectable-text, .selectable-text') !== null
+                              || node.querySelector('[data-pre-plain-text]') !== null
                               || node.classList.contains('message-in')
                               || node.classList.contains('message-out');
         if (!looksLikeMessage) return;
-        const fromMe = node.classList.contains('message-out') || id.startsWith('true_') || /^[A-F0-9]+_true/i.test(id);
-        const text = extractText(node);
-        if (!text) return;
+        const fromMe = node.classList.contains('message-out')
+                    || id.startsWith('true_')
+                    || /^[A-F0-9]+_true/i.test(id);
+        const text = extractTextFromNode(node);
         items.push({ id, text, fromMe });
       });
       return items;
     });
+    try { console.log(`[wa] open-by-name "${name}": ${messages.length} mensajes leidos`); } catch {}
 
     openByNameBusy = false;
     return res.json({ messages, total: messages.length, name });

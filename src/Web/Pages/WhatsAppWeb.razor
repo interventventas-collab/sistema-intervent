@@ -152,7 +152,8 @@
                         <div class="ww-bubble-row">
                             @foreach (var m in chatMessages)
                             {
-                                <div class="ww-bubble @(m.FromMe ? "ww-bubble-out" : "ww-bubble-in")">@m.Text</div>
+                                var txt = string.IsNullOrWhiteSpace(m.Text) ? "📎 [multimedia o sin texto]" : m.Text;
+                                <div class="ww-bubble @(m.FromMe ? "ww-bubble-out" : "ww-bubble-in")">@txt</div>
                             }
                         </div>
                     }
