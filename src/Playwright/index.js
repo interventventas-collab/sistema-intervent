@@ -1006,8 +1006,27 @@ app.post('/whatsapp/chat/open-by-name', async (req, res) => {
       return res.status(504).json({ error: 'Timeout abriendo chat (footer no encontrado)' });
     }
 
-    // Dar tiempo a que los mensajes se rendericen. Grupos o chats grandes pueden tardar mas.
-    await sleep(2500);
+    // 2026-06-23 fix: esperar ACTIVAMENTE a que aparezcan mensajes (no solo el footer).
+    // Antes solo esperabamos al footer, que aparece aunque WhatsApp Web aun este cargando los mensajes.
+    // Probamos varios selectores hasta tener al menos un nodo de mensaje real.
+    const msgDeadline = Date.now() + 15000;
+    let foundMessageNode = false;
+    while (Date.now() < msgDeadline) {
+      const n = await state.page.evaluate(() => {
+        const sels = ['div[data-id]', '[role="row"]', '.copyable-text[data-pre-plain-text]', '[data-pre-plain-text]', '.message-in', '.message-out'];
+        let total = 0;
+        for (const s of sels) {
+          try { total += document.querySelectorAll(s).length; } catch {}
+        }
+        return total;
+      }).catch(() => 0);
+      if (n > 0) { foundMessageNode = true; break; }
+      await sleep(400);
+    }
+    if (!foundMessageNode) {
+      console.warn(`[wa] open-by-name "${name}": no aparecieron nodos de mensaje en 15s (chat puede estar vacio o WA cambio selectores)`);
+    }
+    await sleep(800);
 
     // Scroll al final
     try {
@@ -1179,11 +1198,14 @@ app.post('/whatsapp/chats/list', async (req, res) => {
       }
     }
 
-    // Si no estamos en la home de WhatsApp Web, navegamos. Si ya estamos, NO recargamos
-    // (asi mantenemos el scroll y el chat abierto que el usuario podria estar viendo).
+    // 2026-06-23 fix: ANTES chequeabamos solo "URL contiene web.whatsapp.com" — quedaba en
+    // /send?phone=... y el sidebar no estaba presente. Ahora forzamos navegacion a la home
+    // siempre que estemos en una URL de chat individual.
     try {
       const currentUrl = state.page.url();
-      if (!currentUrl.startsWith('https://web.whatsapp.com')) {
+      const onSendUrl = currentUrl.includes('/send?phone=') || currentUrl.includes('/send/?phone=');
+      if (onSendUrl || !currentUrl.startsWith('https://web.whatsapp.com/')) {
+        console.log('[wa] chats/list: navegando a home desde', currentUrl);
         await state.page.goto('https://web.whatsapp.com/', { waitUntil: 'load', timeout: 30000 });
       }
     } catch (gotoErr) {
