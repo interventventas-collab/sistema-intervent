@@ -226,6 +226,24 @@ button {
   box-shadow: 0 0 0 3px var(--primary-bg);
 }
 
+/* Modal Nueva Venta — campo activo MUY visible para navegacion con teclado.
+   El form-group que contenga un input/select con foco se ilumina y el label se resalta. */
+.nv-form .form-input:focus {
+  border-color: #1d4ed8 !important;
+  border-width: 2px !important;
+  box-shadow: 0 0 0 4px rgba(29, 78, 216, 0.25), 0 4px 14px rgba(29, 78, 216, 0.18) !important;
+  background: #eff6ff !important;
+}
+.nv-form .form-group:focus-within > .form-label {
+  color: #1d4ed8;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.nv-form .form-group:focus-within > .form-label::before {
+  content: "▶ ";
+  color: #2563eb;
+}
+
 .form-input::placeholder {
   color: var(--text-muted);
 }
