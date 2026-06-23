@@ -1111,6 +1111,7 @@
                                        @ref="clienteInputRef"
                                        @onfocus="() => clienteSearchOpen = true"
                                        @onkeydown="OnKeyDownCliente"
+                                       autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
                                        placeholder="🔍 Buscar por código, nombre, CUIT, tel, email, dirección, localidad, CP… (Enter para seguir)" />
                                 @if (clienteSearchOpen && !string.IsNullOrWhiteSpace(clienteSearch))
                                 {
