@@ -1108,6 +1108,7 @@
                             else
                             {
                                 <input id="nv-cliente" class="form-input" @bind="clienteSearch" @bind:event="oninput"
+                                       @ref="clienteInputRef"
                                        @onfocus="() => clienteSearchOpen = true"
                                        @onkeydown="OnKeyDownCliente"
                                        placeholder="🔍 Buscar por código, nombre, CUIT, tel, email, dirección, localidad, CP… (Enter para seguir)" />
@@ -3493,6 +3494,8 @@
     // Form state
     private bool showForm, saving, previewLoading;
     private bool showConfirmEmision; // doble-check antes de emitir contra ARCA
+    private ElementReference clienteInputRef;
+    private bool _focusClienteAtNextRender;
 
     // 2026-06-18 v2: Editar/Crear cliente abriendo ventana popup con la pantalla /cafe/clientes.
     // La popup detecta los query params ?edit={id} o ?new={nombre} y auto-abre el modal correspondiente.
@@ -4141,6 +4144,12 @@
         }
         if (!filtrosActivosAhora) _filtrosEstabanActivos = false;
 
+        if (_focusClienteAtNextRender && showForm)
+        {
+            _focusClienteAtNextRender = false;
+            try { await clienteInputRef.FocusAsync(); } catch { }
+        }
+
         if (showConfirmEmision)
         {
             try { await JS.InvokeVoidAsync("enableModalDrag", "#confirm-emision-modal"); }
@@ -4581,6 +4590,7 @@
         // 2026-05-30: solo OSMAR arranca con "Enviar a IMPRIMIR PEDIDOS" tildado.
         envioDrive = string.Equals(Operator.Current ?? "", "OSMAR", StringComparison.OrdinalIgnoreCase);
         formError = null; showForm = true;
+        _focusClienteAtNextRender = true;
 
         // Chequear si hay borrador local guardado (auto-save de sesión previa).
         // Si existe, lo cargamos en `pendingBorrador` y el banner del modal lo ofrece.
