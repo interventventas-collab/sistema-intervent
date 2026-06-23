@@ -1,0 +1,368 @@
+@page "/tesoreria/pagos-pendientes"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Nav
+@inject ToastService Toast
+
+@*
+    2026-06-22: Bandeja PC para confirmar / rechazar / editar los pagos precargados
+    desde el celu via /pagos-movil. Al confirmar, se crea el pago real en
+    Nom_Pagos (empleados) o Cafe_PagosProveedor (proveedores).
+*@
+
+<style>
+    .pp-wrap { max-width: 1200px; margin: 0 auto; padding: 1rem; }
+    .pp-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; padding-bottom: 0.7rem; border-bottom: 1px solid #e5e7eb; }
+    .pp-title { font-size: 1.4rem; font-weight: 700; margin: 0; }
+    .pp-summary { font-size: 0.9rem; color: #6b7280; }
+    .pp-summary strong { color: #b45309; font-size: 1rem; }
+    .pp-tbl { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .pp-tbl thead { background: #f9fafb; }
+    .pp-tbl th { text-align: left; padding: 0.7rem 0.6rem; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: #6b7280; font-weight: 700; }
+    .pp-tbl td { padding: 0.7rem 0.6rem; font-size: 0.92rem; border-top: 1px solid #f3f4f6; vertical-align: top; }
+    .pp-tbl tr:hover td { background: #fafafa; }
+    .pp-badge { display: inline-block; padding: 0.15rem 0.55rem; font-size: 0.72rem; font-weight: 700; border-radius: 999px; }
+    .pp-badge-emp { background: #dbeafe; color: #1e3a8a; }
+    .pp-badge-fact { background: #fef3c7; color: #92400e; }
+    .pp-action { padding: 0.3rem 0.7rem; font-size: 0.82rem; font-weight: 600; border: 1px solid transparent; border-radius: 6px; cursor: pointer; margin-right: 0.3rem; }
+    .pp-act-conf { background: #dcfce7; color: #166534; border-color: #86efac; }
+    .pp-act-conf:hover { background: #bbf7d0; }
+    .pp-act-edit { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+    .pp-act-rech { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+    .pp-empty { text-align: center; padding: 3rem 1rem; color: #6b7280; background: white; border-radius: 10px; }
+    .pp-monto { font-weight: 700; color: #1f2937; text-align: right; }
+    .pp-meta { font-size: 0.75rem; color: #9ca3af; }
+    .pp-modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 1rem; }
+    .pp-modal { background: white; border-radius: 14px; padding: 1.5rem; max-width: 480px; width: 100%; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
+    .pp-modal h3 { margin: 0 0 0.8rem; font-size: 1.15rem; }
+    .pp-mlabel { display: block; font-size: 0.85rem; font-weight: 600; color: #374151; margin: 0.7rem 0 0.3rem; }
+    .pp-minput, .pp-mselect, .pp-mtxt { width: 100%; padding: 0.65rem; border: 1.5px solid #d1d5db; border-radius: 8px; font-size: 0.92rem; box-sizing: border-box; }
+    .pp-mbtns { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; }
+    .pp-mbtn { padding: 0.55rem 1.1rem; border-radius: 8px; font-weight: 700; cursor: pointer; border: none; font-size: 0.92rem; }
+    .pp-mbtn-cancel { background: #f3f4f6; color: #374151; }
+    .pp-mbtn-ok { background: #16a34a; color: white; }
+    .pp-mbtn-rech { background: #dc2626; color: white; }
+    .pp-detail-row { background: #f9fafb; }
+    .pp-detail-row td { padding: 0.5rem 1rem; font-size: 0.85rem; color: #374151; }
+</style>
+
+<div class="pp-wrap">
+    <div class="pp-header">
+        <div>
+            <h1 class="pp-title">📋 Pagos a confirmar</h1>
+            <div class="pp-summary">
+                @if (pendientes.Count == 0) { <span>Sin pagos pendientes.</span> }
+                else
+                {
+                    <span><strong>@pendientes.Count</strong> pendiente@(pendientes.Count == 1 ? "" : "s") · Total: <strong>$ @pendientes.Sum(p => p.Monto).ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))</strong></span>
+                }
+            </div>
+        </div>
+        <button class="pp-action pp-act-conf" @onclick="CargarTodo">🔄 Refrescar</button>
+    </div>
+
+    @if (cargando) { <div class="pp-empty">Cargando…</div> }
+    else if (pendientes.Count == 0)
+    {
+        <div class="pp-empty">
+            <p style="font-size:1.1rem; color:#374151;">✨ No hay pagos pendientes.</p>
+            <p>Cuando alguien precargue un pago desde el celu en <a href="/pagos-movil">/pagos-movil</a>, va a aparecer acá.</p>
+        </div>
+    }
+    else
+    {
+        <table class="pp-tbl">
+            <thead>
+                <tr>
+                    <th>Tipo</th>
+                    <th>Destino</th>
+                    <th>Concepto</th>
+                    <th style="text-align:right;">Importe</th>
+                    <th>Medio</th>
+                    <th>Cargado por</th>
+                    <th style="text-align:right; min-width:230px;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in pendientes)
+                {
+                    <tr>
+                        <td>
+                            @if (p.Tipo == "empleado")
+                            {
+                                <span class="pp-badge pp-badge-emp">👤 Empl.</span>
+                            }
+                            else
+                            {
+                                <span class="pp-badge pp-badge-fact">🧾 Fact.</span>
+                            }
+                        </td>
+                        <td>
+                            <div style="font-weight:600;">@(p.EmpleadoNombre ?? p.ProveedorNombre ?? "—")</div>
+                            @if (p.CantidadComprobantes > 0)
+                            {
+                                <div class="pp-meta">@p.CantidadComprobantes factura@(p.CantidadComprobantes == 1 ? "" : "s")</div>
+                            }
+                        </td>
+                        <td>
+                            <div>@p.Concepto</div>
+                            @if (!string.IsNullOrWhiteSpace(p.Notas))
+                            {
+                                <div class="pp-meta" style="max-width:240px;">📝 @p.Notas</div>
+                            }
+                        </td>
+                        <td class="pp-monto">$ @p.Monto.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))</td>
+                        <td>@p.MedioPago</td>
+                        <td>
+                            <div>@p.CreadoPor</div>
+                            <div class="pp-meta">@TiempoRelativo(p.CreatedAt)</div>
+                        </td>
+                        <td style="text-align:right; white-space:nowrap;">
+                            <button class="pp-action pp-act-conf" @onclick="@(() => AbrirConfirmar(p))">✓ Confirmar</button>
+                            <button class="pp-action pp-act-edit" @onclick="@(() => AbrirEditar(p))">✏ Editar</button>
+                            <button class="pp-action pp-act-rech" @onclick="@(() => AbrirRechazar(p))">✗ Rechazar</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@* ===== Modal Confirmar (pide CajaId si es proveedor) ===== *@
+@if (modalConfirmar is not null)
+{
+    <div class="pp-modal-bg" @onclick="@(() => modalConfirmar = null)">
+        <div class="pp-modal" @onclick:stopPropagation="true">
+            <h3>Confirmar pago</h3>
+            <p style="font-size:0.92rem; color:#374151; margin:0 0 0.5rem;">
+                @if (modalConfirmar.Tipo == "empleado")
+                {
+                    <span>Vas a confirmar el pago de <strong>$ @modalConfirmar.Monto.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))</strong> a <strong>@modalConfirmar.EmpleadoNombre</strong> (@modalConfirmar.Concepto). Se va a registrar en Nóminas como pago confirmado.</span>
+                }
+                else
+                {
+                    <span>Vas a confirmar el pago de <strong>$ @modalConfirmar.Monto.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))</strong> a <strong>@modalConfirmar.ProveedorNombre</strong>. Se va a registrar como OP en Tesorería.</span>
+                }
+            </p>
+
+            @if (modalConfirmar.Tipo == "proveedor")
+            {
+                <label class="pp-mlabel">Caja desde donde sale el dinero</label>
+                <select class="pp-mselect" value="@modalCajaId" @onchange="@(e => int.TryParse(e.Value?.ToString(), out modalCajaId))">
+                    <option value="0">— Elegí caja —</option>
+                    @foreach (var c in cajas.Where(x => x.IsActive))
+                    {
+                        <option value="@c.Id">@c.Nombre (@c.Tipo · saldo: $ @c.SaldoActual.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR")))</option>
+                    }
+                </select>
+            }
+
+            <label class="pp-mlabel">Fecha del pago</label>
+            <input class="pp-minput" type="date" value="@modalFecha" @oninput="@(e => modalFecha = e.Value?.ToString() ?? "")" />
+
+            <div class="pp-mbtns">
+                <button class="pp-mbtn pp-mbtn-cancel" @onclick="@(() => modalConfirmar = null)">Cancelar</button>
+                <button class="pp-mbtn pp-mbtn-ok" disabled="@(!CanConfirmar || procesando)" @onclick="ConfirmarSubmit">
+                    @(procesando ? "Confirmando…" : "✓ Confirmar pago")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===== Modal Rechazar ===== *@
+@if (modalRechazar is not null)
+{
+    <div class="pp-modal-bg" @onclick="@(() => modalRechazar = null)">
+        <div class="pp-modal" @onclick:stopPropagation="true">
+            <h3>Rechazar pago</h3>
+            <p style="font-size:0.92rem; color:#374151; margin:0 0 0.5rem;">
+                Vas a rechazar el pago de <strong>$ @modalRechazar.Monto.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))</strong> a <strong>@(modalRechazar.EmpleadoNombre ?? modalRechazar.ProveedorNombre)</strong>. No se va a registrar nada en el sistema.
+            </p>
+            <label class="pp-mlabel">Motivo (opcional)</label>
+            <textarea class="pp-mtxt" rows="3" placeholder="Ej: monto incorrecto, ya pagado, etc."
+                      value="@modalMotivo" @oninput="@(e => modalMotivo = e.Value?.ToString() ?? "")"></textarea>
+            <div class="pp-mbtns">
+                <button class="pp-mbtn pp-mbtn-cancel" @onclick="@(() => modalRechazar = null)">Cancelar</button>
+                <button class="pp-mbtn pp-mbtn-rech" disabled="@procesando" @onclick="RechazarSubmit">
+                    @(procesando ? "Rechazando…" : "✗ Rechazar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===== Modal Editar ===== *@
+@if (modalEditar is not null)
+{
+    <div class="pp-modal-bg" @onclick="@(() => modalEditar = null)">
+        <div class="pp-modal" @onclick:stopPropagation="true">
+            <h3>Editar pago precargado</h3>
+            <label class="pp-mlabel">Concepto</label>
+            <input class="pp-minput" value="@editConcepto" @oninput="@(e => editConcepto = e.Value?.ToString() ?? "")" />
+
+            @if (modalEditar.Tipo == "empleado")
+            {
+                <label class="pp-mlabel">Importe</label>
+                <input class="pp-minput" type="number" step="0.01" value="@editMonto" @oninput="@(e => decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out editMonto))" />
+            }
+
+            <label class="pp-mlabel">Medio de pago</label>
+            <select class="pp-mselect" value="@editMedio" @onchange="@(e => editMedio = e.Value?.ToString() ?? "")">
+                <option value="efectivo">Efectivo</option>
+                <option value="transferencia">Transferencia</option>
+                <option value="mp">MercadoPago</option>
+                <option value="cheque">Cheque</option>
+            </select>
+
+            <label class="pp-mlabel">Notas</label>
+            <textarea class="pp-mtxt" rows="2" value="@editNotas" @oninput="@(e => editNotas = e.Value?.ToString() ?? "")"></textarea>
+
+            <div class="pp-mbtns">
+                <button class="pp-mbtn pp-mbtn-cancel" @onclick="@(() => modalEditar = null)">Cancelar</button>
+                <button class="pp-mbtn pp-mbtn-ok" disabled="@procesando" @onclick="EditarSubmit">
+                    @(procesando ? "Guardando…" : "Guardar cambios")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    List<PendienteListDto> pendientes = new();
+    List<CafeCajaDto> cajas = new();
+    bool cargando = false;
+    bool procesando = false;
+    System.Threading.Timer? refreshTimer;
+
+    // Modales
+    PendienteListDto? modalConfirmar;
+    PendienteListDto? modalRechazar;
+    PendienteListDto? modalEditar;
+    int modalCajaId = 0;
+    string modalFecha = DateTime.Today.ToString("yyyy-MM-dd");
+    string modalMotivo = "";
+
+    // Edit
+    string editConcepto = "";
+    decimal editMonto = 0;
+    string editMedio = "";
+    string editNotas = "";
+
+    bool CanConfirmar => modalConfirmar is not null && (modalConfirmar.Tipo == "empleado" || modalCajaId > 0);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarTodo();
+        // Auto-refresh cada 30s
+        refreshTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () => { await CargarPendientes(); });
+        }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    public void Dispose() => refreshTimer?.Dispose();
+
+    async Task CargarTodo()
+    {
+        cargando = true;
+        await CargarPendientes();
+        cajas = await Api.GetCafeCajasAsync() ?? new();
+        cargando = false;
+    }
+
+    async Task CargarPendientes()
+    {
+        pendientes = await Api.GetPagosMovilPendientesAsync() ?? new();
+        StateHasChanged();
+    }
+
+    void AbrirConfirmar(PendienteListDto p)
+    {
+        modalConfirmar = p;
+        modalCajaId = 0;
+        modalFecha = DateTime.Today.ToString("yyyy-MM-dd");
+    }
+
+    async Task ConfirmarSubmit()
+    {
+        if (modalConfirmar is null) return;
+        if (!CanConfirmar) return;
+        procesando = true;
+        try
+        {
+            DateTime? fecha = DateTime.TryParse(modalFecha, out var f) ? f : null;
+            var ok = await Api.ConfirmarPagoMovilAsync(modalConfirmar.Id, modalConfirmar.Tipo == "proveedor" ? modalCajaId : null, fecha);
+            if (ok)
+            {
+                Toast.Success("✓ Pago confirmado");
+                modalConfirmar = null;
+                await CargarPendientes();
+            }
+            else { Toast.Error("Error al confirmar"); }
+        }
+        finally { procesando = false; }
+    }
+
+    void AbrirRechazar(PendienteListDto p)
+    {
+        modalRechazar = p;
+        modalMotivo = "";
+    }
+
+    async Task RechazarSubmit()
+    {
+        if (modalRechazar is null) return;
+        procesando = true;
+        try
+        {
+            var ok = await Api.RechazarPagoMovilAsync(modalRechazar.Id, string.IsNullOrWhiteSpace(modalMotivo) ? null : modalMotivo);
+            if (ok)
+            {
+                Toast.Info("Pago rechazado");
+                modalRechazar = null;
+                await CargarPendientes();
+            }
+            else { Toast.Error("Error al rechazar"); }
+        }
+        finally { procesando = false; }
+    }
+
+    void AbrirEditar(PendienteListDto p)
+    {
+        modalEditar = p;
+        editConcepto = p.Concepto;
+        editMonto = p.Monto;
+        editMedio = p.MedioPago;
+        editNotas = p.Notas ?? "";
+    }
+
+    async Task EditarSubmit()
+    {
+        if (modalEditar is null) return;
+        procesando = true;
+        try
+        {
+            var req = new EditarPagoMovilRequest(editConcepto, editMonto, editMedio, editNotas, null);
+            var ok = await Api.EditarPagoMovilAsync(modalEditar.Id, req);
+            if (ok)
+            {
+                Toast.Success("Cambios guardados");
+                modalEditar = null;
+                await CargarPendientes();
+            }
+            else { Toast.Error("Error al editar"); }
+        }
+        finally { procesando = false; }
+    }
+
+    string TiempoRelativo(DateTime t)
+    {
+        var ts = DateTime.UtcNow - t;
+        if (ts.TotalMinutes < 1) return "hace instantes";
+        if (ts.TotalMinutes < 60) return $"hace {(int)ts.TotalMinutes} min";
+        if (ts.TotalHours < 24) return $"hace {(int)ts.TotalHours} h";
+        return $"hace {(int)ts.TotalDays} d";
+    }
+}

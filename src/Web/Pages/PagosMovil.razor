@@ -1,0 +1,390 @@
+@page "/pagos-movil"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Nav
+@inject ToastService Toast
+@layout Web.Layout.LoginLayout
+
+@*
+    2026-06-22: Pantalla movil para Osmar / German / Gabriel.
+    Precargan pagos a empleados o a proveedores desde el celu fuera de la oficina.
+    Cada pago queda en estado PENDIENTE y aparece en la bandeja PC para confirmar.
+*@
+
+<style>
+    body { background: linear-gradient(135deg, #f8fafc, #e5e7eb); min-height: 100vh; }
+    .pm-wrap { max-width: 520px; margin: 0 auto; padding: 0.8rem; }
+    .pm-header { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0 0.8rem; }
+    .pm-back { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 0.4rem 0.8rem; font-size: 0.92rem; cursor: pointer; font-weight: 600; color: #374151; }
+    .pm-title { font-size: 1.2rem; font-weight: 700; color: #1f2937; flex: 1; margin: 0; }
+    .pm-pending-chip { background: #fef3c7; color: #92400e; padding: 0.25rem 0.7rem; border-radius: 999px; font-size: 0.78rem; font-weight: 700; cursor: pointer; border: 1px solid #fde68a; }
+    .pm-big-btn { width: 100%; padding: 1.8rem 1rem; font-size: 1.15rem; font-weight: 700; border: none; border-radius: 16px; cursor: pointer; margin-bottom: 0.8rem; text-align: left; display: flex; align-items: center; gap: 0.9rem; box-shadow: 0 4px 14px rgba(0,0,0,0.07); transition: transform 0.1s; }
+    .pm-big-btn:active { transform: scale(0.98); }
+    .pm-big-emp { background: linear-gradient(135deg, #10b981, #059669); color: white; }
+    .pm-big-fact { background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; }
+    .pm-big-icon { font-size: 2.6rem; line-height: 1; }
+    .pm-big-text { display: flex; flex-direction: column; }
+    .pm-big-text small { opacity: 0.85; font-weight: 500; font-size: 0.85rem; margin-top: 0.2rem; }
+    .pm-card { background: white; border-radius: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); padding: 1rem; margin-bottom: 0.7rem; }
+    .pm-emp-item, .pm-prov-item { padding: 0.8rem; border-radius: 10px; cursor: pointer; transition: background 0.1s; border: 1px solid #e5e7eb; background: white; margin-bottom: 0.5rem; }
+    .pm-emp-item:active, .pm-prov-item:active { background: #f3f4f6; }
+    .pm-emp-nom { font-size: 1rem; font-weight: 700; color: #1f2937; }
+    .pm-emp-pue { font-size: 0.82rem; color: #6b7280; margin-top: 0.15rem; }
+    .pm-prov-flex { display: flex; justify-content: space-between; align-items: center; }
+    .pm-prov-deuda { color: #b91c1c; font-weight: 700; font-size: 1rem; }
+    .pm-prov-facts { font-size: 0.75rem; color: #6b7280; }
+    .pm-label { font-size: 0.85rem; font-weight: 600; color: #374151; display: block; margin: 0.7rem 0 0.3rem; }
+    .pm-select, .pm-input, .pm-textarea { width: 100%; padding: 0.8rem; font-size: 1rem; border: 1.5px solid #d1d5db; border-radius: 10px; box-sizing: border-box; background: white; }
+    .pm-input-monto { font-size: 1.6rem; font-weight: 700; text-align: right; color: #059669; }
+    .pm-textarea { min-height: 60px; resize: vertical; }
+    .pm-medios { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+    .pm-medio { padding: 0.7rem; text-align: center; border: 2px solid #e5e7eb; border-radius: 10px; cursor: pointer; font-weight: 600; font-size: 0.92rem; background: white; }
+    .pm-medio.active { border-color: #1d4ed8; background: #dbeafe; color: #1d4ed8; }
+    .pm-submit { width: 100%; padding: 1.1rem; font-size: 1.05rem; font-weight: 700; border: none; border-radius: 12px; cursor: pointer; margin-top: 1rem; background: #10b981; color: white; }
+    .pm-submit:disabled { background: #9ca3af; cursor: not-allowed; }
+    .pm-fact-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.7rem; background: white; border: 1px solid #e5e7eb; border-radius: 10px; margin-bottom: 0.5rem; }
+    .pm-fact-row.selected { border-color: #1d4ed8; background: #eff6ff; }
+    .pm-fact-info { flex: 1; }
+    .pm-fact-num { font-weight: 700; color: #1f2937; font-size: 0.95rem; }
+    .pm-fact-saldo { font-size: 0.85rem; color: #b91c1c; font-weight: 600; }
+    .pm-fact-fecha { font-size: 0.75rem; color: #6b7280; }
+    .pm-check { width: 26px; height: 26px; accent-color: #1d4ed8; cursor: pointer; }
+    .pm-total-row { background: #ecfdf5; border: 1px solid #6ee7b7; padding: 0.8rem; border-radius: 10px; margin: 0.7rem 0; display: flex; justify-content: space-between; align-items: center; font-weight: 700; color: #065f46; font-size: 1.1rem; }
+    .pm-concepto-otro { margin-top: 0.5rem; }
+    .pm-empty { text-align: center; padding: 2rem 1rem; color: #6b7280; }
+    .pm-loading { text-align: center; padding: 2rem; color: #6b7280; }
+</style>
+
+<div class="pm-wrap">
+
+    @* ============== HOME ============== *@
+    @if (vista == "home")
+    {
+        <div class="pm-header">
+            <h1 class="pm-title">💸 Pagos rápidos</h1>
+            @if (countPendientes > 0)
+            {
+                <span class="pm-pending-chip" @onclick="@(() => Nav.NavigateTo("/tesoreria/pagos-pendientes"))">
+                    📋 @countPendientes pendientes
+                </span>
+            }
+        </div>
+
+        <button class="pm-big-btn pm-big-emp" @onclick="@(() => GoEmpleados())">
+            <span class="pm-big-icon">👤</span>
+            <span class="pm-big-text">
+                Pago Empleados
+                <small>Sueldo / Adelanto / Aguinaldo / Bono</small>
+            </span>
+        </button>
+
+        <button class="pm-big-btn pm-big-fact" @onclick="@(() => GoProveedores())">
+            <span class="pm-big-icon">🧾</span>
+            <span class="pm-big-text">
+                Pago Facturas
+                <small>Facturas pendientes de proveedores</small>
+            </span>
+        </button>
+
+        <p style="text-align:center; font-size:0.8rem; color:#6b7280; margin-top:1.5rem;">
+            Los pagos quedan en estado <strong>PENDIENTE</strong> hasta que se confirmen desde la PC.
+        </p>
+    }
+
+    @* ============== EMPLEADOS LIST ============== *@
+    else if (vista == "empleados")
+    {
+        <div class="pm-header">
+            <button class="pm-back" @onclick="@(() => vista = "home")">← Volver</button>
+            <h1 class="pm-title">Elegí empleado</h1>
+        </div>
+
+        @if (cargando) { <div class="pm-loading">Cargando…</div> }
+        else if (empleados.Count == 0) { <div class="pm-empty">No hay empleados activos.</div> }
+        else
+        {
+            @foreach (var e in empleados)
+            {
+                <div class="pm-emp-item" @onclick="@(() => SeleccionarEmpleado(e))">
+                    <div class="pm-emp-nom">@e.Nombre</div>
+                    @if (!string.IsNullOrEmpty(e.Puesto)) { <div class="pm-emp-pue">@e.Puesto</div> }
+                </div>
+            }
+        }
+    }
+
+    @* ============== EMPLEADO FORM ============== *@
+    else if (vista == "empleado-form" && empleadoSel is not null)
+    {
+        <div class="pm-header">
+            <button class="pm-back" @onclick="@(() => vista = "empleados")">← Volver</button>
+            <h1 class="pm-title">Pago a @empleadoSel.Nombre</h1>
+        </div>
+
+        <div class="pm-card">
+            <label class="pm-label">Concepto</label>
+            <select class="pm-select" value="@conceptoSel" @onchange="@(e => conceptoSel = e.Value?.ToString() ?? "sueldo")">
+                <option value="sueldo">Sueldo</option>
+                <option value="adelanto">Adelanto</option>
+                <option value="aguinaldo">Aguinaldo</option>
+                <option value="bono">Bono</option>
+                <option value="vacaciones">Vacaciones</option>
+                <option value="premio">Premio</option>
+                <option value="reintegro">Reintegro</option>
+                <option value="otro">+ Otro…</option>
+            </select>
+            @if (conceptoSel == "otro")
+            {
+                <input class="pm-input pm-concepto-otro" placeholder="Especificá el concepto"
+                       value="@conceptoOtroTxt" @oninput="@(e => conceptoOtroTxt = e.Value?.ToString() ?? "")" />
+            }
+
+            <label class="pm-label">Importe</label>
+            <input class="pm-input pm-input-monto" type="text" inputmode="decimal" placeholder="$ 0"
+                   value="@montoTxt" @oninput="@(e => montoTxt = e.Value?.ToString() ?? "")" />
+
+            <label class="pm-label">Forma de pago</label>
+            <div class="pm-medios">
+                @foreach (var m in medios)
+                {
+                    <div class="pm-medio @(medioSel == m.Value ? "active" : "")" @onclick="@(() => medioSel = m.Value)">
+                        @m.Label
+                    </div>
+                }
+            </div>
+
+            <label class="pm-label">Nota (opcional)</label>
+            <textarea class="pm-textarea" placeholder="Detalle adicional…"
+                      value="@notasTxt" @oninput="@(e => notasTxt = e.Value?.ToString() ?? "")"></textarea>
+
+            <button class="pm-submit" disabled="@(!CanSubmitEmpleado || enviando)" @onclick="EnviarPagoEmpleado">
+                @(enviando ? "Enviando…" : "✓ Precargar pago")
+            </button>
+        </div>
+    }
+
+    @* ============== PROVEEDORES LIST ============== *@
+    else if (vista == "proveedores")
+    {
+        <div class="pm-header">
+            <button class="pm-back" @onclick="@(() => vista = "home")">← Volver</button>
+            <h1 class="pm-title">Proveedor a pagar</h1>
+        </div>
+
+        @if (cargando) { <div class="pm-loading">Cargando…</div> }
+        else if (proveedores.Count == 0) { <div class="pm-empty">No hay proveedores con deuda pendiente.</div> }
+        else
+        {
+            @foreach (var p in proveedores)
+            {
+                <div class="pm-prov-item" @onclick="@(() => SeleccionarProveedor(p))">
+                    <div class="pm-prov-flex">
+                        <div>
+                            <div class="pm-emp-nom">@p.Nombre</div>
+                            <div class="pm-prov-facts">@p.CantidadFacturas factura@(p.CantidadFacturas == 1 ? "" : "s")</div>
+                        </div>
+                        <div class="pm-prov-deuda">@p.Deuda.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))</div>
+                    </div>
+                </div>
+            }
+        }
+    }
+
+    @* ============== PROVEEDOR FACTURAS ============== *@
+    else if (vista == "proveedor-form" && proveedorSel is not null)
+    {
+        <div class="pm-header">
+            <button class="pm-back" @onclick="@(() => vista = "proveedores")">← Volver</button>
+            <h1 class="pm-title">@proveedorSel.Nombre</h1>
+        </div>
+
+        @if (cargando) { <div class="pm-loading">Cargando facturas…</div> }
+        else
+        {
+            <div class="pm-card">
+                <label class="pm-label">Tildá las facturas a pagar</label>
+                @foreach (var c in compras)
+                {
+                    var selected = facturasSel.ContainsKey(c.Id);
+                    <div class="pm-fact-row @(selected ? "selected" : "")" @onclick="@(() => ToggleFactura(c))">
+                        <input type="checkbox" class="pm-check" checked="@selected" @onclick:stopPropagation="false" />
+                        <div class="pm-fact-info">
+                            <div class="pm-fact-num">@(string.IsNullOrEmpty(c.NumeroComprobante) ? c.Numero : c.NumeroComprobante)</div>
+                            <div class="pm-fact-fecha">@c.Fecha.ToString("dd/MM/yyyy")</div>
+                            <div class="pm-fact-saldo">Saldo: $ @c.Saldo.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))</div>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            @if (facturasSel.Count > 0)
+            {
+                <div class="pm-total-row">
+                    <span>Total a pagar</span>
+                    <span>$ @TotalFacturas.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))</span>
+                </div>
+
+                <div class="pm-card">
+                    <label class="pm-label">Forma de pago</label>
+                    <div class="pm-medios">
+                        @foreach (var m in medios)
+                        {
+                            <div class="pm-medio @(medioSel == m.Value ? "active" : "")" @onclick="@(() => medioSel = m.Value)">
+                                @m.Label
+                            </div>
+                        }
+                    </div>
+
+                    <label class="pm-label">Nota (opcional)</label>
+                    <textarea class="pm-textarea" placeholder="Detalle adicional…"
+                              value="@notasTxt" @oninput="@(e => notasTxt = e.Value?.ToString() ?? "")"></textarea>
+
+                    <button class="pm-submit" disabled="@(!CanSubmitProveedor || enviando)" @onclick="EnviarPagoProveedor">
+                        @(enviando ? "Enviando…" : ("✓ Precargar $ " + TotalFacturas.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))))
+                    </button>
+                </div>
+            }
+        }
+    }
+</div>
+
+@code {
+    string vista = "home";
+    bool cargando = false;
+    bool enviando = false;
+    int countPendientes = 0;
+
+    record MedioOpcion(string Value, string Label);
+    readonly List<MedioOpcion> medios = new()
+    {
+        new("efectivo", "💵 Efectivo"),
+        new("transferencia", "🏦 Transfer."),
+        new("mp", "📱 MercadoPago"),
+        new("cheque", "📄 Cheque"),
+    };
+
+    // Empleados
+    List<EmpleadoActivoDto> empleados = new();
+    EmpleadoActivoDto? empleadoSel;
+    string conceptoSel = "sueldo";
+    string conceptoOtroTxt = "";
+    string montoTxt = "";
+    string medioSel = "efectivo";
+    string notasTxt = "";
+
+    bool CanSubmitEmpleado =>
+        empleadoSel is not null &&
+        decimal.TryParse(montoTxt.Replace(".", "").Replace(",", "."), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var m) && m > 0 &&
+        !string.IsNullOrWhiteSpace(medioSel) &&
+        (conceptoSel != "otro" || !string.IsNullOrWhiteSpace(conceptoOtroTxt));
+
+    // Proveedores
+    List<ProveedorConDeudaDto> proveedores = new();
+    ProveedorConDeudaDto? proveedorSel;
+    List<CompraPendientePagoDto> compras = new();
+    Dictionary<int, decimal> facturasSel = new();   // CompraId -> Importe
+
+    decimal TotalFacturas => facturasSel.Values.Sum();
+    bool CanSubmitProveedor =>
+        proveedorSel is not null && facturasSel.Count > 0 && !string.IsNullOrWhiteSpace(medioSel) && TotalFacturas > 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarCountPendientes();
+    }
+
+    async Task CargarCountPendientes()
+    {
+        var n = await Api.GetPagosMovilPendientesCountAsync();
+        countPendientes = n ?? 0;
+        StateHasChanged();
+    }
+
+    // -------- Empleados --------
+
+    async Task GoEmpleados()
+    {
+        vista = "empleados";
+        cargando = true;
+        empleados = await Api.GetPagosMovilEmpleadosActivosAsync() ?? new();
+        cargando = false;
+    }
+
+    void SeleccionarEmpleado(EmpleadoActivoDto e)
+    {
+        empleadoSel = e;
+        conceptoSel = "sueldo";
+        conceptoOtroTxt = "";
+        montoTxt = "";
+        medioSel = "efectivo";
+        notasTxt = "";
+        vista = "empleado-form";
+    }
+
+    async Task EnviarPagoEmpleado()
+    {
+        if (empleadoSel is null) return;
+        enviando = true;
+        try
+        {
+            decimal.TryParse(montoTxt.Replace(".", "").Replace(",", "."), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var monto);
+            var concepto = conceptoSel == "otro" ? $"otro: {conceptoOtroTxt.Trim()}" : conceptoSel;
+            var ok = await Api.PrecargarPagoEmpleadoAsync(empleadoSel.Id, concepto, monto, medioSel, string.IsNullOrWhiteSpace(notasTxt) ? null : notasTxt);
+            if (ok)
+            {
+                Toast.Success($"✓ Pago precargado a {empleadoSel.Nombre}");
+                await CargarCountPendientes();
+                vista = "home";
+            }
+            else { Toast.Error("Error al precargar el pago"); }
+        }
+        finally { enviando = false; }
+    }
+
+    // -------- Proveedores --------
+
+    async Task GoProveedores()
+    {
+        vista = "proveedores";
+        cargando = true;
+        proveedores = await Api.GetPagosMovilProveedoresConDeudaAsync() ?? new();
+        cargando = false;
+    }
+
+    async Task SeleccionarProveedor(ProveedorConDeudaDto p)
+    {
+        proveedorSel = p;
+        facturasSel.Clear();
+        medioSel = "transferencia";
+        notasTxt = "";
+        vista = "proveedor-form";
+        cargando = true;
+        compras = await Api.GetPagosMovilComprasPendientesAsync(p.Id) ?? new();
+        cargando = false;
+    }
+
+    void ToggleFactura(CompraPendientePagoDto c)
+    {
+        if (facturasSel.ContainsKey(c.Id)) facturasSel.Remove(c.Id);
+        else facturasSel[c.Id] = c.Saldo;
+    }
+
+    async Task EnviarPagoProveedor()
+    {
+        if (proveedorSel is null) return;
+        enviando = true;
+        try
+        {
+            var items = facturasSel.Select(kv => new PrecargarFacturaItem(kv.Key, kv.Value)).ToList();
+            var ok = await Api.PrecargarPagoFacturaAsync(proveedorSel.Id, items, medioSel, string.IsNullOrWhiteSpace(notasTxt) ? null : notasTxt);
+            if (ok)
+            {
+                Toast.Success($"✓ Pago precargado a {proveedorSel.Nombre}");
+                await CargarCountPendientes();
+                vista = "home";
+            }
+            else { Toast.Error("Error al precargar el pago"); }
+        }
+        finally { enviando = false; }
+    }
+}

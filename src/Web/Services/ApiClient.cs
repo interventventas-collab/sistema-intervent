@@ -4278,6 +4278,38 @@ public class ApiClient
     public async Task<EstadoCuentaProvDto?> GetEstadoCuentaProveedorAsync(int id)
         => await GetAsync<EstadoCuentaProvDto>($"/api/cafe/proveedores/{id}/estado-cuenta");
 
+    // ===== Pagos Movil (precargar desde el celu, confirmar en la PC) =====
+    public async Task<List<EmpleadoActivoDto>?> GetPagosMovilEmpleadosActivosAsync()
+        => await GetAsync<List<EmpleadoActivoDto>>("/api/pagos-movil/empleados-activos");
+    public async Task<List<ProveedorConDeudaDto>?> GetPagosMovilProveedoresConDeudaAsync()
+        => await GetAsync<List<ProveedorConDeudaDto>>("/api/pagos-movil/proveedores-con-deuda");
+    public async Task<List<CompraPendientePagoDto>?> GetPagosMovilComprasPendientesAsync(int proveedorId)
+        => await GetAsync<List<CompraPendientePagoDto>>($"/api/pagos-movil/proveedor/{proveedorId}/compras-pendientes");
+    public async Task<bool> PrecargarPagoEmpleadoAsync(int empleadoId, string concepto, decimal monto, string medioPago, string? notas)
+        => await PostAsync<object>("/api/pagos-movil/empleado",
+            new { empleadoId, concepto, monto, medioPago, notas }) is not null;
+    public async Task<bool> PrecargarPagoFacturaAsync(int proveedorId, List<PrecargarFacturaItem> comprobantes, string medioPago, string? notas)
+        => await PostAsync<object>("/api/pagos-movil/factura",
+            new { proveedorId, comprobantes, medioPago, notas }) is not null;
+    public async Task<List<PendienteListDto>?> GetPagosMovilPendientesAsync()
+        => await GetAsync<List<PendienteListDto>>("/api/pagos-movil/pendientes");
+    public async Task<int?> GetPagosMovilPendientesCountAsync()
+    {
+        var r = await GetAsync<CountResult>("/api/pagos-movil/pendientes/count");
+        return r?.Count;
+    }
+    public async Task<PendienteDetalleDto?> GetPagosMovilPendienteDetalleAsync(int id)
+        => await GetAsync<PendienteDetalleDto>($"/api/pagos-movil/pendientes/{id}");
+    public async Task<bool> ConfirmarPagoMovilAsync(int id, int? cajaId, DateTime? fechaPago)
+        => await PostAsync<object>($"/api/pagos-movil/pendientes/{id}/confirmar",
+            new { cajaId, fechaPago }) is not null;
+    public async Task<bool> RechazarPagoMovilAsync(int id, string? motivo)
+        => await PostAsync<object>($"/api/pagos-movil/pendientes/{id}/rechazar",
+            new { motivo }) is not null;
+    public async Task<bool> EditarPagoMovilAsync(int id, EditarPagoMovilRequest req)
+        => await PutAsync<object>($"/api/pagos-movil/pendientes/{id}", req) is not null;
+    private record CountResult(int Count);
+
     // ===== Cafe: Depositos =====
     public async Task<List<CafeDepositoDto>?> GetCafeDepositosAsync(bool incluirInactivos = false)
         => await GetAsync<List<CafeDepositoDto>>($"/api/cafe/depositos?incluirInactivos={(incluirInactivos ? "true" : "false")}");

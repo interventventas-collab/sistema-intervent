@@ -478,6 +478,11 @@
                                  IsActive="@IsActive("/cafe/configuracion/bancos")" OnClick="@(() => NavigateTo("/cafe/configuracion/bancos"))" />
                         <NavItem Href="/cafe/cobranzas-pendientes" Label="💰 Cobranzas a aprobar" Icon="@SvgIcons.Tag"
                                  IsActive="@IsActive("/cafe/cobranzas-pendientes")" OnClick="@(() => NavigateTo("/cafe/cobranzas-pendientes"))" />
+                        @* 2026-06-22: Pagos Movil (celu) + bandeja PC de pendientes *@
+                        <NavItem Href="/pagos-movil" Label="📱 Pagos rápidos (celu)" Icon="@SvgIcons.Tag"
+                                 IsActive="@IsActive("/pagos-movil")" OnClick="@(() => NavigateTo("/pagos-movil"))" />
+                        <NavItem Href="/tesoreria/pagos-pendientes" Label="📋 Pagos a confirmar" Icon="@SvgIcons.Tag"
+                                 IsActive="@IsActive("/tesoreria/pagos-pendientes")" OnClick="@(() => NavigateTo("/tesoreria/pagos-pendientes"))" />
                         @* 2026-06-06: Repartidores movido a grupo Empleados (mas abajo) *@
                         @* 2026-06-08: Arqueo repartidor movido al grupo Empleados (al lado de Repartidores) *@
                     </NavGroup>

@@ -74,6 +74,24 @@
     }
     else
     {
+        @* 2026-06-22: si el empleado esta vinculado a Nominas, muestra tabs "Mis horas" / "Mis cobros".
+           Si no esta vinculado, solo se ve "Mis horas" (comportamiento historico, sin tabs). *@
+        @if (cobros is not null && cobros.Vinculado)
+        {
+            <div style="display:flex; gap:0.4rem; margin-bottom:0.7rem;">
+                <button @onclick="@(() => tabActiva = "horas")"
+                        style="flex:1; padding:0.7rem; font-weight:700; border-radius:10px; cursor:pointer; border:2px solid @(tabActiva == "horas" ? "#1d4ed8" : "#e5e7eb"); background:@(tabActiva == "horas" ? "#dbeafe" : "white"); color:@(tabActiva == "horas" ? "#1d4ed8" : "#6b7280");">
+                    ⏱ Mis horas
+                </button>
+                <button @onclick="@(() => { tabActiva = "cobros"; _ = CargarCobrosAsync(); })"
+                        style="flex:1; padding:0.7rem; font-weight:700; border-radius:10px; cursor:pointer; border:2px solid @(tabActiva == "cobros" ? "#16a34a" : "#e5e7eb"); background:@(tabActiva == "cobros" ? "#dcfce7" : "white"); color:@(tabActiva == "cobros" ? "#15803d" : "#6b7280");">
+                    💰 Mis cobros
+                </button>
+            </div>
+        }
+
+        @if (tabActiva == "horas")
+        {
         <div class="he-card">
             <h1 class="he-hello">Hola @datos.Nombre 👋</h1>
             <p class="he-fecha">Hoy es @FechaLabel(datos.HoyFecha)</p>
@@ -264,6 +282,69 @@
                 }
             </div>
         </div>
+        }
+
+        @* ═══════ TAB: MIS COBROS (2026-06-22) ═══════ *@
+        @if (tabActiva == "cobros")
+        {
+            <div class="he-card">
+                <h1 class="he-hello">💰 Mis cobros</h1>
+                <p class="he-fecha" style="text-transform:none;">@(cobros?.NomEmpleadoNombre ?? datos?.Nombre)</p>
+
+                @if (cobros is null)
+                {
+                    <p style="text-align:center; color:#6b7280; padding:1rem 0;">Cargando…</p>
+                }
+                else
+                {
+                    <div class="he-resumen" style="margin-bottom:0.8rem;">
+                        <div class="he-resumen-box">
+                            <div class="he-resumen-label">Este mes</div>
+                            <div class="he-resumen-value" style="color:#059669; font-size:1.2rem;">
+                                $@cobros.TotalMes.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))
+                            </div>
+                        </div>
+                        <div class="he-resumen-box">
+                            <div class="he-resumen-label">Este año</div>
+                            <div class="he-resumen-value" style="color:#1d4ed8; font-size:1.2rem;">
+                                $@cobros.TotalAnio.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (cobros.Items.Count == 0)
+                    {
+                        <div style="text-align:center; padding:1.5rem 0; color:#6b7280;">
+                            Todavía no tenés pagos registrados.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="he-history">
+                            @foreach (var c in cobros.Items)
+                            {
+                                <div style="padding:0.7rem; background:#f9fafb; border-radius:10px; margin-bottom:0.5rem; border:1px solid #e5e7eb;">
+                                    <div style="display:flex; justify-content:space-between; align-items:baseline;">
+                                        <div style="font-size:0.78rem; color:#6b7280;">
+                                            @c.FechaPago.ToString("dd/MM/yyyy") · @c.FechaPago.ToString("HH:mm")
+                                        </div>
+                                        <div style="font-size:1.1rem; font-weight:700; color:#059669;">
+                                            $@c.Monto.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))
+                                        </div>
+                                    </div>
+                                    <div style="font-size:0.95rem; font-weight:600; color:#1f2937; margin-top:0.2rem; text-transform:capitalize;">
+                                        @(c.Detalle ?? c.Concepto)
+                                    </div>
+                                    <div style="font-size:0.78rem; color:#6b7280; margin-top:0.15rem;">
+                                        @c.Metodo
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        }
     }
 
     @if (toastVisible)
@@ -284,6 +365,9 @@
     private bool loading = true, guardando, toastVisible;
     private string? errorMsg;
     private PublicEmpleadoDto? datos;
+    // 2026-06-22: estado de los tabs (horas / cobros). Solo aparece si el empleado esta vinculado.
+    private string tabActiva = "horas";
+    private MisCobrosDto? cobros;
     private decimal formCantidad;
     private string formObservaciones = "";
     private string formHoraEntrada = "";
@@ -389,6 +473,9 @@
                     // El horario empieza VACIO si el empleado no marco nada. Los botones
                     // 'Marcar entrada ahora' / 'Marcar salida ahora' setean la hora actual con 1 toque.
                 }
+                // 2026-06-22: probamos si el empleado tiene vinculo con Nominas (para tabs "Mis cobros").
+                // Falla silencioso si el endpoint aun no esta deployado.
+                _ = CargarCobrosAsync();
             }
         }
         catch { datos = null; }
@@ -570,5 +657,23 @@
         if (id.StartsWith("ent")) formHoraEntrada = $"{eh:D2}:{em:D2}";
         else formHoraSalida = $"{sh:D2}:{sm:D2}";
         RecalcularHorasExtras();
+    }
+
+    /// <summary>2026-06-22: carga los pagos confirmados del empleado (tab "Mis cobros").
+    /// El backend valida la clave y devuelve solo si el empleado esta vinculado a Nominas.
+    /// Si no esta vinculado, devuelve Vinculado=false y el tab no se muestra.</summary>
+    private async Task CargarCobrosAsync()
+    {
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<MisCobrosDto>(
+                $"api/horas-extras/publica/{Uri.EscapeDataString(Slug)}/{Uri.EscapeDataString(Clave)}/mis-cobros");
+            cobros = resp;
+            StateHasChanged();
+        }
+        catch
+        {
+            cobros = new MisCobrosDto(false, null, 0m, 0m, new List<MisCobrosItemDto>());
+        }
     }
 }
