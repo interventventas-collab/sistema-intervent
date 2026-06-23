@@ -405,7 +405,11 @@ public record CafeVentaDto(
     string? TransporteEmpresa = null,
     string? TransporteDestino = null,
     // 2026-06-05: Quien cargo la venta (OSMAR/GERMAN/GABRIEL/etc). Null para ventas previas a la migracion.
-    string? CreadoPorOperador = null);
+    string? CreadoPorOperador = null,
+    // 2026-06-23: Concepto AFIP. 1=Productos, 2=Servicios, 3=Productos y Servicios.
+    int Concepto = 1,
+    DateTime? ConceptoServDesde = null,
+    DateTime? ConceptoServHasta = null);
 
 public class CafeCotizarItemRequest
 {
@@ -515,6 +519,12 @@ public class CreateCafeVentaRequest
     /// <summary>2026-06-22: override del flag del cliente. Si es null se hereda del cliente; si viene true/false el operador
     /// decidio manualmente para esta venta puntual.</summary>
     public bool? SolicitarFirmaEntrega { get; set; }
+    /// <summary>2026-06-23: Concepto AFIP. 1=Productos (default), 2=Servicios, 3=Productos y Servicios.</summary>
+    public int Concepto { get; set; } = 1;
+    /// <summary>Solo aplica si Concepto in (2,3). Inicio periodo de prestacion.</summary>
+    public DateTime? ConceptoServDesde { get; set; }
+    /// <summary>Solo aplica si Concepto in (2,3). Fin periodo de prestacion.</summary>
+    public DateTime? ConceptoServHasta { get; set; }
 }
 
 public class UpdateCafeVentaFlagsRequest
@@ -561,6 +571,10 @@ public class UpdateCafeVentaRequest
     public string? EntregaPor { get; set; }
     /// <summary>2026-06-02: Nota interna para armado (post-it en /cafe/preparacion). NO sale en PDF.</summary>
     public string? ComentarioArmado { get; set; }
+    /// <summary>2026-06-23: Concepto AFIP. 1=Productos, 2=Servicios, 3=Productos y Servicios.</summary>
+    public int? Concepto { get; set; }
+    public DateTime? ConceptoServDesde { get; set; }
+    public DateTime? ConceptoServHasta { get; set; }
 }
 
 public class DeleteCafeVentaRequest

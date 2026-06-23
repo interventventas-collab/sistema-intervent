@@ -136,6 +136,17 @@ public class CafeVenta
     /// <summary>1=Factura A, 6=Factura B, 11=Factura C — mapeado desde TipoComprobante.</summary>
     public int? ArcaCbteTipoNum { get; set; }
 
+    /// <summary>Concepto AFIP: 1=Productos (default), 2=Servicios, 3=Productos y Servicios.
+    /// Cuando es 2 o 3, ARCA exige las fechas de prestación (ConceptoServDesde/Hasta).</summary>
+    public int Concepto { get; set; } = 1;
+
+    /// <summary>Solo aplica si Concepto in (2,3). Fecha de inicio del período de prestación.</summary>
+    public DateTime? ConceptoServDesde { get; set; }
+
+    /// <summary>Solo aplica si Concepto in (2,3). Fecha de fin del período de prestación.
+    /// Internamente se usa también como FchVtoPago al armar el SOAP a ARCA.</summary>
+    public DateTime? ConceptoServHasta { get; set; }
+
     [MaxLength(1000)]
     public string? ArcaError { get; set; }
 

@@ -299,7 +299,11 @@ public class CafeVentasController : ControllerBase
         v.PorTransporte,
         v.TransporteEmpresa,
         v.TransporteDestino,
-        v.CreadoPorOperador);
+        v.CreadoPorOperador,
+        // 2026-06-23: Concepto AFIP
+        v.Concepto,
+        v.ConceptoServDesde,
+        v.ConceptoServHasta);
 
     [HttpGet]
     public async Task<IActionResult> GetAll(
@@ -881,7 +885,7 @@ public class CafeVentasController : ControllerBase
             CbteNro = v.ArcaCbteNro ?? 0,
             NumeroInterno = v.Numero,    // 2026-06-16: ref interna debajo del numero ARCA
             Fecha = v.Fecha.ToString("yyyyMMdd"),
-            Concepto = 1,
+            Concepto = v.Concepto,
             ImpNeto = neto,
             ImpTotal = totalConIva,
             Cae = v.ArcaCae,
@@ -1379,7 +1383,11 @@ public class CafeVentasController : ControllerBase
             // base64-url-safe (~131 bits de entropia) — imposible de adivinar.
             PublicToken = GeneratePublicToken(),
             EntregaPor = string.IsNullOrWhiteSpace(req.EntregaPor) ? null : req.EntregaPor.Trim(),
-            ComentarioArmado = string.IsNullOrWhiteSpace(req.ComentarioArmado) ? null : req.ComentarioArmado.Trim()
+            ComentarioArmado = string.IsNullOrWhiteSpace(req.ComentarioArmado) ? null : req.ComentarioArmado.Trim(),
+            // 2026-06-23: Concepto AFIP. Default 1 (Productos). Si 2 o 3, se mandan fechas a ARCA al emitir.
+            Concepto = req.Concepto is 1 or 2 or 3 ? req.Concepto : 1,
+            ConceptoServDesde = req.ConceptoServDesde,
+            ConceptoServHasta = req.ConceptoServHasta
         };
 
         // 2026-06-01 — Cargar info de productos "shell" para decremento correcto
@@ -1696,7 +1704,7 @@ public class CafeVentasController : ControllerBase
             {
                 PtoVta = 2, // PtoVta fijo para Café (configurable después si hace falta)
                 CbteTipo = cbteTipo,
-                Concepto = 1, // Productos
+                Concepto = venta.Concepto, // 2026-06-23: 1=Productos / 2=Servicios / 3=Mixto
                 DocTipo = docTipo,
                 DocNro = docNro,
                 ReceptorNombre = !string.IsNullOrWhiteSpace(venta.ClienteRazonSocialSnapshot)
@@ -1709,6 +1717,11 @@ public class CafeVentasController : ControllerBase
                 // ARCA registra el CAE con esta fecha — fix del bug donde el server UTC
                 // del contenedor estaba un dia atras y la factura salia con fecha de ayer.
                 Fecha = venta.Fecha,
+                // 2026-06-23: fechas de prestacion. Solo se mandan al SOAP cuando Concepto != 1.
+                // Si el usuario marca Servicios/Mixto y no carga fechas, usamos la fecha de la venta.
+                FchServDesde = venta.Concepto != 1 ? (venta.ConceptoServDesde ?? venta.Fecha) : null,
+                FchServHasta = venta.Concepto != 1 ? (venta.ConceptoServHasta ?? venta.Fecha) : null,
+                FchVtoPago = venta.Concepto != 1 ? (venta.ConceptoServHasta ?? venta.Fecha) : null,
             };
 
             var resultado = await _arcaInvoiceService.EmitirComprobanteAsync(arcaAccount.Id, req);
@@ -1955,6 +1968,10 @@ public class CafeVentasController : ControllerBase
             Observaciones = string.IsNullOrWhiteSpace(req?.Motivo) ? null : req!.Motivo!.Trim(),
             VentaOrigenNcId = original.Id,
             CreatedAt = DateTime.UtcNow,
+            // 2026-06-23: la NC hereda el concepto del comprobante original
+            Concepto = original.Concepto,
+            ConceptoServDesde = original.ConceptoServDesde,
+            ConceptoServHasta = original.ConceptoServHasta,
         };
         foreach (var it in original.Items)
         {
@@ -2013,7 +2030,7 @@ public class CafeVentasController : ControllerBase
         {
             PtoVta = original.ArcaPtoVta ?? 2,
             CbteTipo = cbteTipoNc,
-            Concepto = 1,
+            Concepto = nc.Concepto, // 2026-06-23: heredado del original
             DocTipo = docTipo,
             DocNro = docNro,
             ReceptorNombre = nc.ClienteRazonSocialSnapshot ?? nc.ClienteNombreSnapshot ?? "Consumidor Final",
@@ -2029,7 +2046,11 @@ public class CafeVentasController : ControllerBase
                     PtoVta = original.ArcaPtoVta ?? 0,
                     Nro = original.ArcaCbteNro ?? 0,
                 }
-            }
+            },
+            // 2026-06-23: si la NC es de servicios/mixto, mandar fechas de prestacion al SOAP.
+            FchServDesde = nc.Concepto != 1 ? (nc.ConceptoServDesde ?? nc.Fecha) : null,
+            FchServHasta = nc.Concepto != 1 ? (nc.ConceptoServHasta ?? nc.Fecha) : null,
+            FchVtoPago = nc.Concepto != 1 ? (nc.ConceptoServHasta ?? nc.Fecha) : null,
         };
 
         // ----- Emitir contra ARCA -----
@@ -2374,6 +2395,11 @@ public class CafeVentasController : ControllerBase
         if (req.IsPaid.HasValue) v.IsPaid = req.IsPaid.Value;
         if (req.EntregaPor is not null) v.EntregaPor = string.IsNullOrWhiteSpace(req.EntregaPor) ? null : req.EntregaPor.Trim();
         if (req.ComentarioArmado is not null) v.ComentarioArmado = string.IsNullOrWhiteSpace(req.ComentarioArmado) ? null : req.ComentarioArmado.Trim();
+        // 2026-06-23: Concepto AFIP. Solo aplica al editar antes de emitir (post-emision no toca esto).
+        if (req.Concepto.HasValue && (req.Concepto.Value == 1 || req.Concepto.Value == 2 || req.Concepto.Value == 3))
+            v.Concepto = req.Concepto.Value;
+        if (req.ConceptoServDesde.HasValue) v.ConceptoServDesde = req.ConceptoServDesde.Value;
+        if (req.ConceptoServHasta.HasValue) v.ConceptoServHasta = req.ConceptoServHasta.Value;
 
         // Cliente: si mandaron ClienteId valido > 0, vinculo al cliente y refresco snapshot.
         // Si mandaron 0 o null + override, dejo como manual (consumidor final / nombre libre).

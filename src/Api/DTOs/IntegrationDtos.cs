@@ -243,6 +243,14 @@ public class EmitirComprobanteRequest
     /// <summary>2026-06-09: comprobantes asociados (obligatorio para NC/ND). Apunta al comprobante
     /// original que se esta acreditando. ARCA rechaza la NC si no viene este bloque.</summary>
     public List<CbteAsocDto>? CbtesAsoc { get; set; }
+    /// <summary>2026-06-23: solo aplica si Concepto in (2,3). Inicio del periodo de prestacion.
+    /// ARCA exige FchServDesde/FchServHasta/FchVtoPago cuando Concepto != 1.</summary>
+    public DateTime? FchServDesde { get; set; }
+    /// <summary>Solo aplica si Concepto in (2,3). Fin del periodo de prestacion.</summary>
+    public DateTime? FchServHasta { get; set; }
+    /// <summary>Solo aplica si Concepto in (2,3). Vencimiento de pago. Si null cuando hace falta,
+    /// el service usa FchServHasta como fallback.</summary>
+    public DateTime? FchVtoPago { get; set; }
 }
 
 /// <summary>2026-06-09: comprobante asociado (FA original al que apunta una NC).</summary>

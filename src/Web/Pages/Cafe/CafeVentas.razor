@@ -971,6 +971,33 @@
                             <input class="form-input" type="date" @bind="formFecha" />
                         </div>
                     </div>
+                    @* 2026-06-23: Concepto AFIP. Solo se muestra cuando es factura real (FA/FB/FC).
+                       Productos = comportamiento histórico. Si elige Servicios o Mixto, aparecen 2 inputs
+                       de fecha de prestación que se mandan a ARCA junto con la factura. *@
+                    @if (formTipoComprobante is "FA" or "FB" or "FC")
+                    {
+                        <div class="form-row" style="margin-top: 0.3rem;">
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Concepto AFIP</label>
+                                <select class="form-input" @bind="formConcepto" @bind:after="OnConceptoChanged">
+                                    <option value="1">📦 Productos</option>
+                                    <option value="2">🛠️ Servicios</option>
+                                    <option value="3">📦 + 🛠️ Productos y Servicios</option>
+                                </select>
+                            </div>
+                            @if (formConcepto != 1)
+                            {
+                                <div class="form-group" style="flex: 1;">
+                                    <label class="form-label">Prestación desde</label>
+                                    <input class="form-input" type="date" @bind="formConceptoServDesde" />
+                                </div>
+                                <div class="form-group" style="flex: 1;">
+                                    <label class="form-label">Prestación hasta</label>
+                                    <input class="form-input" type="date" @bind="formConceptoServHasta" />
+                                </div>
+                            }
+                        </div>
+                    }
                 </div>
 
                 @* ── Cliente y fecha ── *@
@@ -3612,6 +3639,11 @@
     private string formTipoComprobante = "X";
     private string formCondicionIva = "CF";
     private string formCondicionPago = "EFECTIVO";
+    // 2026-06-23: Concepto AFIP. 1=Productos (default), 2=Servicios, 3=Productos y Servicios.
+    // Solo importa cuando es factura (FA/FB/FC) y va a ARCA con CAE.
+    private int formConcepto = 1;
+    private DateTime? formConceptoServDesde;
+    private DateTime? formConceptoServHasta;
     private List<CafeCotizarItemRequest> formItems = new();
     private CafeCotizadoDto? cotizacion;
     private HashSet<string> formWeekDays = new();
@@ -4583,6 +4615,7 @@
         vrNombre = vrRazonSocial = vrCuit = vrDireccion = vrLocalidad = vrCiudad = vrCp = vrTelefono = vrDomicilioEntrega = "";
         formFecha = DateTime.Today; formDescuento = 0; formObservaciones = "";
         formTipoComprobante = "X"; formCondicionIva = "CF"; formCondicionPago = "EFECTIVO";
+        formConcepto = 1; formConceptoServDesde = null; formConceptoServHasta = null;
         formItems = new(); cotizacion = null;
         addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
         addMolienda = "EN GRANOS"; addEnvase = "NEGRO";
@@ -4884,6 +4917,18 @@
             "X" or "PRO" => "CF",
             _ => formCondicionIva
         };
+    }
+
+    /// <summary>2026-06-23: cuando el usuario cambia Concepto AFIP de Productos a Servicios o Mixto,
+    /// prellenar las fechas de prestacion con la fecha del comprobante para que no tenga que escribirlas.
+    /// Si vuelve a Productos, dejamos los valores por si los necesita después (no los borramos).</summary>
+    private void OnConceptoChanged()
+    {
+        if (formConcepto == 2 || formConcepto == 3)
+        {
+            formConceptoServDesde ??= formFecha;
+            formConceptoServHasta ??= formFecha;
+        }
     }
 
     /// <summary>Marca o desmarca los 3 canales de envio al cliente. Si los 3 ya estan
@@ -6069,7 +6114,10 @@
                 TipoComprobante = formTipoComprobante,
                 CondicionIva = formCondicionIva,
                 CondicionPago = formCondicionPago,
-                ComentarioArmado = formComentarioArmado
+                ComentarioArmado = formComentarioArmado,
+                Concepto = formConcepto,
+                ConceptoServDesde = formConcepto != 1 ? formConceptoServDesde : null,
+                ConceptoServHasta = formConcepto != 1 ? formConceptoServHasta : null
             });
             if (bytes is null)
             {
@@ -6251,7 +6299,12 @@
                     CondicionIva = formCondicionIva,
                     CondicionPago = formCondicionPago,
                     EntregaPor = formEntregaPor,
-                    ComentarioArmado = formComentarioArmado
+                    ComentarioArmado = formComentarioArmado,
+                    // 2026-06-23: Concepto AFIP. Solo se aplica a facturas (FA/FB/FC).
+                    // Para X/PRO el backend lo ignora — siempre va a ser Productos en cotizaciones.
+                    Concepto = formConcepto,
+                    ConceptoServDesde = formConcepto != 1 ? formConceptoServDesde : null,
+                    ConceptoServHasta = formConcepto != 1 ? formConceptoServHasta : null
                 });
                 if (v is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success($"Venta {v.Numero} emitida — Total ${v.Total:N2}");
@@ -6744,6 +6797,9 @@
         formTipoComprobante = string.IsNullOrWhiteSpace(v.TipoComprobante) ? "X" : v.TipoComprobante;
         formCondicionIva = string.IsNullOrWhiteSpace(v.CondicionIva) ? "CF" : v.CondicionIva;
         formCondicionPago = string.IsNullOrWhiteSpace(v.CondicionPago) ? "EFECTIVO" : v.CondicionPago;
+        formConcepto = v.Concepto is 1 or 2 or 3 ? v.Concepto : 1;
+        formConceptoServDesde = v.ConceptoServDesde;
+        formConceptoServHasta = v.ConceptoServHasta;
         formWeekDays = string.IsNullOrWhiteSpace(v.WeekDays)
             ? new HashSet<string>()
             : v.WeekDays.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim().ToUpperInvariant()).ToHashSet();

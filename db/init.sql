@@ -3853,6 +3853,9 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='TieneMiniImpresora' AND Object_ID=OBJECT_ID('Cafe_Clientes'))
     ALTER TABLE Cafe_Clientes ADD TieneMiniImpresora BIT NOT NULL CONSTRAINT DF_CafeClientes_TieneMiniImpresora DEFAULT 0;
 GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='SolicitarFirmaEntrega' AND Object_ID=OBJECT_ID('Cafe_Clientes'))
+    ALTER TABLE Cafe_Clientes ADD SolicitarFirmaEntrega BIT NOT NULL CONSTRAINT DF_CafeClientes_SolicitarFirmaEntrega DEFAULT 0;
+GO
 -- 2026-05-28: Trackeo de impresiones desde el tablero de Preparacion. ImpresaAt = ultima
 -- vez impresa. ImpresaCount = cuantas veces se imprimio. Permite chip "Impreso hace X" y reimprimir.
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ImpresaAt' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
@@ -4958,4 +4961,16 @@ BEGIN
     ALTER TABLE HorasExtras_Empleados ADD NomEmpleadoId INT NULL;
     ALTER TABLE HorasExtras_Empleados ADD CONSTRAINT FK_HeEmpleado_NomEmpleado FOREIGN KEY (NomEmpleadoId) REFERENCES Nom_Empleados(Id);
 END
+GO
+
+-- 2026-06-23: Concepto AFIP en Cafe_Ventas. 1=Productos (default), 2=Servicios, 3=Productos y Servicios.
+-- Cuando es 2 o 3, ARCA exige las fechas de prestacion (desde/hasta). Internamente FchVtoPago = ConceptoServHasta.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Concepto' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD Concepto INT NOT NULL CONSTRAINT DF_CafeVentas_Concepto DEFAULT 1;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ConceptoServDesde' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD ConceptoServDesde DATE NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ConceptoServHasta' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD ConceptoServHasta DATE NULL;
 GO

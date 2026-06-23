@@ -280,6 +280,23 @@ public class ArcaInvoiceService
             cbtesAsocXml = sba.ToString();
         }
 
+        // 2026-06-23: Cuando Concepto != 1 (Servicios o Productos+Servicios), ARCA exige las 3 fechas.
+        // Si el request no las trajo, usamos la fecha del comprobante como fallback razonable
+        // (caso "factura de servicios prestados HOY, paga HOY"). FchVtoPago cae en FchServHasta.
+        // El orden de los tags importa: van entre ImpIVA y MonId (xs:sequence del WSDL).
+        string fechasServicioXml = "";
+        if (req.Concepto == 2 || req.Concepto == 3)
+        {
+            var fchSrv = req.Fecha ?? DateTime.Today;
+            var dDesde = (req.FchServDesde ?? fchSrv).ToString("yyyyMMdd");
+            var dHasta = (req.FchServHasta ?? fchSrv).ToString("yyyyMMdd");
+            var dVto   = (req.FchVtoPago   ?? req.FchServHasta ?? fchSrv).ToString("yyyyMMdd");
+            fechasServicioXml =
+                $"            <ar:FchServDesde>{dDesde}</ar:FchServDesde>\n" +
+                $"            <ar:FchServHasta>{dHasta}</ar:FchServHasta>\n" +
+                $"            <ar:FchVtoPago>{dVto}</ar:FchVtoPago>";
+        }
+
         return $@"<?xml version=""1.0"" encoding=""UTF-8""?>
 <soapenv:Envelope xmlns:soapenv=""http://schemas.xmlsoap.org/soap/envelope/"" xmlns:ar=""http://ar.gov.afip.dif.FEV1/"">
   <soapenv:Body>
@@ -309,6 +326,7 @@ public class ArcaInvoiceService
             <ar:ImpOpEx>0.00</ar:ImpOpEx>
             <ar:ImpTrib>0.00</ar:ImpTrib>
             <ar:ImpIVA>{F(impIvaOut)}</ar:ImpIVA>
+{fechasServicioXml}
             <ar:MonId>PES</ar:MonId>
             <ar:MonCotiz>1</ar:MonCotiz>
             <ar:CondicionIVAReceptorId>{req.CondicionIVAReceptorId}</ar:CondicionIVAReceptorId>

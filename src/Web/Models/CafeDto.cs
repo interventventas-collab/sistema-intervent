@@ -479,6 +479,12 @@ public class CafeVentaDto
     public string? EscaneadoPorRepartidorNombre { get; set; }
     /// <summary>Cuándo fue escaneada. Para mostrar "hace X min" en el tooltip.</summary>
     public DateTime? EscaneadoAt { get; set; }
+    /// <summary>2026-06-23: Concepto AFIP. 1=Productos (default), 2=Servicios, 3=Productos y Servicios.</summary>
+    public int Concepto { get; set; } = 1;
+    /// <summary>Solo aplica si Concepto in (2,3). Inicio del periodo de prestacion.</summary>
+    public DateTime? ConceptoServDesde { get; set; }
+    /// <summary>Solo aplica si Concepto in (2,3). Fin del periodo de prestacion.</summary>
+    public DateTime? ConceptoServHasta { get; set; }
 }
 
 /// <summary>Tarjeta de venta en el tablero /cafe/preparacion. Trae solo lo que el
@@ -667,6 +673,10 @@ public class CreateCafeVentaRequest
     public string? CondicionPago { get; set; }
     public string? EntregaPor { get; set; }
     public string? ComentarioArmado { get; set; }
+    /// <summary>2026-06-23: Concepto AFIP. 1=Productos (default), 2=Servicios, 3=Productos y Servicios.</summary>
+    public int Concepto { get; set; } = 1;
+    public DateTime? ConceptoServDesde { get; set; }
+    public DateTime? ConceptoServHasta { get; set; }
 }
 
 public class UpdateCafeVentaFlagsRequest
@@ -708,6 +718,10 @@ public class UpdateCafeVentaRequest
     public decimal? Descuento { get; set; }
     public string? EntregaPor { get; set; }
     public string? ComentarioArmado { get; set; }
+    /// <summary>2026-06-23: Concepto AFIP. 1=Productos, 2=Servicios, 3=Productos y Servicios.</summary>
+    public int? Concepto { get; set; }
+    public DateTime? ConceptoServDesde { get; set; }
+    public DateTime? ConceptoServHasta { get; set; }
 }
 
 public class DeleteCafeVentaRequest
