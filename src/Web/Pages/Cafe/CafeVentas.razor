@@ -5529,12 +5529,26 @@
     private async Task OnKeyDownMolienda(KeyboardEventArgs e)
     {
         if (e.Key != "Enter") return;
+        // El <select> con @bind no siempre sincroniza a tiempo cuando se navega con flechas;
+        // leemos el valor real del DOM para asegurar coherencia antes de saltar.
+        try
+        {
+            var v = await JS.InvokeAsync<string>("eval", "document.getElementById('nv-molienda')?.value || ''");
+            if (!string.IsNullOrEmpty(v)) addMolienda = v;
+        }
+        catch { }
         await FocusFieldAsync("nv-envase");
     }
 
     private async Task OnKeyDownEnvase(KeyboardEventArgs e)
     {
         if (e.Key != "Enter") return;
+        try
+        {
+            var v = await JS.InvokeAsync<string>("eval", "document.getElementById('nv-envase')?.value || ''");
+            if (!string.IsNullOrEmpty(v)) addEnvase = v;
+        }
+        catch { }
         await FocusFieldAsync("nv-cantidad");
     }
 
