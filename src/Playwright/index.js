@@ -31,6 +31,11 @@ const state = {
   linkingTimeout: null,
   linkingCheckInterval: null,
   lastInfo: null,
+  // 2026-06-23: contador de fallos consecutivos del detector "estas linked".
+  // Si llega a 2 con el heartbeat -> declaramos desconectado.
+  consecutiveLinkedFails: 0,
+  lastHeartbeatAt: null,
+  lastDisconnectedAt: null,
 };
 
 // --- Utilidades ---
@@ -261,34 +266,47 @@ app.get('/whatsapp/qr', async (req, res) => {
 });
 
 // GET /whatsapp/status
+// 2026-06-23 — Antes el codigo "mentia" diciendo linked=true cuando el detector real decia no
+// (mantenia el flag previo "por las dudas"). Eso causaba que la integracion apareciera conectada
+// horas despues de haberse caido, sin que nadie se entere. Ahora: si el detector dice no,
+// reportamos no. Toleramos UN unico fallo transitorio antes de declarar desconectado.
 app.get('/whatsapp/status', async (req, res) => {
   try {
-    // Re-chequear si hay pagina viva. Si el live check falla pero ya estabamos linked
-    // antes y la pagina sigue viva, mantenemos linked=true (WA Web cambia selectores
-    // y el detector puede fallar transitoriamente, pero la sesion sigue activa).
     let linked = false;
     if (state.page && !state.page.isClosed()) {
-      try {
-        const liveCheck = await isLinkedOnPage(state.page);
-        if (liveCheck) {
+      const liveCheck = await isLinkedOnPage(state.page).catch(() => null);
+      if (liveCheck === true) {
+        linked = true;
+        state.consecutiveLinkedFails = 0;
+      } else {
+        // Fallo o false. Si ya estabamos linked, toleramos 1 fallo antes de marcar como desconectado.
+        state.consecutiveLinkedFails = (state.consecutiveLinkedFails || 0) + 1;
+        if (state.linked && state.consecutiveLinkedFails < 2 && !state.isLinking) {
+          // Glitch transitorio: el detector fallo una vez, pero la pagina sigue abierta.
           linked = true;
-        } else if (state.linked) {
-          // El detector dice no, pero antes estabamos linked → confiar en el flag previo
-          // si la pagina sigue abierta y no estamos esperando QR.
-          linked = !state.isLinking;
+        } else {
+          linked = false;
         }
-      } catch {
-        linked = state.linked && !state.isLinking;
       }
     }
+    if (state.linked && !linked) {
+      console.log(`[wa] status: linked -> desconectado (fails=${state.consecutiveLinkedFails})`);
+      state.lastDisconnectedAt = new Date().toISOString();
+    }
     state.linked = linked;
-    res.json({ linked, isLinking: state.isLinking, info: state.lastInfo });
+    res.json({
+      linked,
+      isLinking: state.isLinking,
+      info: state.lastInfo,
+      lastHeartbeatAt: state.lastHeartbeatAt || null,
+      lastDisconnectedAt: state.lastDisconnectedAt || null,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /whatsapp/check-linked - versión ligera para polling
+// GET /whatsapp/check-linked - version ligera para polling
 app.get('/whatsapp/check-linked', async (req, res) => {
   try {
     let linked = false;
@@ -296,11 +314,48 @@ app.get('/whatsapp/check-linked', async (req, res) => {
       linked = await isLinkedOnPage(state.page).catch(() => false);
     }
     state.linked = linked;
+    if (!linked) state.consecutiveLinkedFails = (state.consecutiveLinkedFails || 0) + 1;
+    else state.consecutiveLinkedFails = 0;
     res.json({ linked });
   } catch {
     res.json({ linked: false });
   }
 });
+
+// 2026-06-23 — Heartbeat real cada 90s. Independiente del polling del frontend.
+// Si la sesion se cayo (cliente WhatsApp cerro, otro celu se logueo, sesion expirada),
+// nos enteramos aunque nadie tenga la pantalla de Integraciones abierta.
+const HEARTBEAT_INTERVAL_MS = 90000;
+async function whatsappHeartbeat() {
+  try {
+    if (!state.page || state.page.isClosed()) {
+      if (state.linked) {
+        console.log('[wa] heartbeat: pagina cerrada -> marcando desconectado');
+        state.linked = false;
+        state.lastDisconnectedAt = new Date().toISOString();
+      }
+      state.lastHeartbeatAt = new Date().toISOString();
+      return;
+    }
+    const ok = await isLinkedOnPage(state.page).catch(() => false);
+    if (ok) {
+      if (!state.linked) console.log('[wa] heartbeat: reconectado');
+      state.linked = true;
+      state.consecutiveLinkedFails = 0;
+    } else {
+      state.consecutiveLinkedFails = (state.consecutiveLinkedFails || 0) + 1;
+      if (state.linked && state.consecutiveLinkedFails >= 2) {
+        console.log(`[wa] heartbeat: ${state.consecutiveLinkedFails} fallas seguidas -> desconectado`);
+        state.linked = false;
+        state.lastDisconnectedAt = new Date().toISOString();
+      }
+    }
+    state.lastHeartbeatAt = new Date().toISOString();
+  } catch (err) {
+    console.warn('[wa] heartbeat error:', err.message);
+  }
+}
+setInterval(whatsappHeartbeat, HEARTBEAT_INTERVAL_MS);
 
 // POST /whatsapp/unlink - Cierra browser y borra sesión
 app.post('/whatsapp/unlink', async (req, res) => {

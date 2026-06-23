@@ -259,6 +259,12 @@ public class WhatsAppStatusDto
     public bool Linked { get; set; }
     public bool IsLinking { get; set; }
     public string? Info { get; set; }
+    /// <summary>2026-06-23: timestamp ISO del ultimo heartbeat exitoso del Playwright.
+    /// Si esta vieja (>5min) sugiere que el container esta caido aunque "linked" diga true.</summary>
+    public string? LastHeartbeatAt { get; set; }
+    /// <summary>2026-06-23: timestamp ISO de la ultima vez que paso de linked=true a linked=false.
+    /// Util para mostrar "Se desvinculo hace X" en la UI.</summary>
+    public string? LastDisconnectedAt { get; set; }
 }
 
 public class WhatsAppLinkedDto

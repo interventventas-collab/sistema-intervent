@@ -188,8 +188,13 @@
     .topbar-action-whatsapp:hover { background: #20bd5a; transform: translateY(-1px); box-shadow: 0 4px 10px rgba(37, 211, 102, 0.35); }
     .topbar-action-whatsapp:active { transform: scale(0.97); }
     @@keyframes wa-pulse {
-        0%, 100% { box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.45); }
-        50% { box-shadow: 0 0 0 6px rgba(37, 211, 102, 0); }
+        0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6), 0 0 0 2px white inset; }
+        50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0), 0 0 0 2px white inset; }
+    }
+    @@keyframes wa-banner-shake {
+        0% { transform: translateY(-3px); opacity: 0.3; }
+        50% { transform: translateY(1px); opacity: 1; }
+        100% { transform: translateY(0); opacity: 1; }
     }
 
     .topbar-action-plus {
@@ -847,6 +852,22 @@
 <main class="main-wrapper @(sidebarCollapsed ? "main-collapsed" : "") @(IsEmbedded ? "main-embedded" : "")">
 @if (!IsEmbedded)
 {
+    @* 2026-06-23: banner rojo cuando se cayo la sesion del WhatsApp Web. Sticky arriba de la topbar
+       hasta que el usuario lo cierre o se reconecte. Aparece sin importar en que pantalla estes. *@
+    @if (waDesvinculado)
+    {
+        <div style="background: linear-gradient(90deg, #dc2626 0%, #b91c1c 100%); color: white;
+                    padding: 0.55rem 1rem; display: flex; align-items: center; justify-content: center;
+                    gap: 0.6rem; font-size: 0.88rem; font-weight: 600; box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+                    position: sticky; top: 0; z-index: 9000; animation: wa-banner-shake 0.5s ease-out;">
+            <span style="font-size: 1.05rem;">⚠️</span>
+            <span><strong>WhatsApp desvinculado.</strong> El número del hermano no está conectado. Hay que rescanear el QR para volver a recibir/mandar mensajes.</span>
+            <button @onclick="@(() => NavigateTo("/integraciones"))"
+                    style="background: white; color: #b91c1c; border: 0; padding: 0.3rem 0.8rem; border-radius: 6px; font-weight: 700; font-size: 0.8rem; cursor: pointer;">
+                Ir a rescanear
+            </button>
+        </div>
+    }
     <header class="topbar">
         <div class="topbar-left">
             <button class="topbar-menu-btn" @onclick="ToggleSidebar" aria-label="Abrir menu">
@@ -996,12 +1017,18 @@
                     <span>Cobranza</span>
                 </button>
                 @* 2026-06-19: boton WhatsApp llamativo verde — chat Twilio para pedidos de hermanos/empleados *@
+                @* 2026-06-23: si la sesion Playwright esta caida, el boton se pone gris y aparece dot rojo *@
                 <button class="topbar-action-whatsapp"
+                        style="@(waDesvinculado ? "background:#9ca3af !important; box-shadow:none !important; position:relative;" : "position:relative;")"
                         @onclick="@(() => NavigateTo("/whatsapp"))"
-                        title="Chat WhatsApp — pedidos de hermanos y empleados"
+                        title="@(waDesvinculado ? "⚠️ WhatsApp DESVINCULADO — entrá a Integraciones y rescaneá el QR" : "Chat WhatsApp — pedidos de hermanos y empleados")"
                         aria-label="WhatsApp">
                     @SvgIcons.MessageCircle
                     <span>WhatsApp</span>
+                    @if (waStatus is not null)
+                    {
+                        <span style="@($"position:absolute; top:4px; right:4px; width:10px; height:10px; border-radius:50%; background:{(waLinked ? "#22c55e" : "#ef4444")}; border:2px solid white; box-shadow:0 0 0 1px rgba(0,0,0,0.1); {(waLinked ? "" : "animation: wa-pulse 1.5s ease-in-out infinite;")}")"></span>
+                    }
                 </button>
             }
             @* 2026-06-22: Tools agrupadas en cápsula glass tipo iOS segment-control
@@ -1337,6 +1364,13 @@
 <PostitsFlotantes @ref="postitsRef" Username="@username" />
 
 @code {
+    // 2026-06-23: estado del WhatsApp Web vía Playwright. Polling cada 60s.
+    // Si la sesión se cae mostramos banner rojo y el botón verde se pone gris.
+    private Web.Models.WhatsAppStatusDto? waStatus;
+    private System.Threading.Timer? _waStatusTimer;
+    private bool waLinked => waStatus?.Linked == true;
+    private bool waDesvinculado => waStatus is not null && !waStatus.Linked && !waStatus.IsLinking;
+
     // 2026-06-15: pantalla bloqueante de PIN
     private System.Threading.Timer? _pinLockTimer;
     private bool mostrarPinLock => requierePinLock && !Operator.IsValidated;
@@ -1743,6 +1777,10 @@
         catch { }
 
         BrandSettings.OnChange += OnBrandChanged;
+
+        // 2026-06-23: chequear estado WhatsApp en background. Primera vez ya, después cada 60s.
+        _ = RefrescarWaStatus();
+        _waStatusTimer = new System.Threading.Timer(_ => _ = RefrescarWaStatus(), null, 60000, 60000);
     }
 
     protected override void OnAfterRender(bool firstRender)
@@ -1868,10 +1906,30 @@
         }
     }
 
+    /// <summary>2026-06-23: chequea el estado del WhatsApp Web cada 60s.
+    /// Si Playwright dice linked=false, mostramos banner rojo en la topbar.</summary>
+    private async Task RefrescarWaStatus()
+    {
+        try
+        {
+            var s = await Api.GetWhatsAppStatusAsync();
+            var prevLinked = waStatus?.Linked == true;
+            waStatus = s;
+            // Si justo se cayó (transicion true->false), notificar UNA vez
+            if (prevLinked && s is not null && !s.Linked && !s.IsLinking)
+            {
+                ToastService.Error("⚠️ WhatsApp desvinculado — rescaneá el QR para seguir mandando mensajes");
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { /* el servicio puede estar caído; el polling vuelve a intentar en 60s */ }
+    }
+
     public void Dispose()
     {
         try { cmdPalRef?.Dispose(); } catch { }
         try { _pinLockTimer?.Dispose(); } catch { }
+        try { _waStatusTimer?.Dispose(); } catch { }
         SyncProgress.OnChange -= OnSyncProgressChanged;
         UploadProgress.OnChanged -= OnUploadProgressChanged;
         Operator.OnChange -= OnOperatorChanged;
