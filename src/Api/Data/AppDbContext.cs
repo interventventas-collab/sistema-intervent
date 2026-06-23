@@ -66,6 +66,9 @@ public class AppDbContext : DbContext
     public DbSet<NomEmpleado> NomEmpleados => Set<NomEmpleado>();
     public DbSet<NomLiquidacion> NomLiquidaciones => Set<NomLiquidacion>();
     public DbSet<NomPago> NomPagos => Set<NomPago>();
+    // Modulo Pagos Movil (bandeja precarga -> confirmar en PC)
+    public DbSet<PagosMovilPendiente> PagosMovilPendientes => Set<PagosMovilPendiente>();
+    public DbSet<PagosMovilPendienteComprobante> PagosMovilPendientesComprobantes => Set<PagosMovilPendienteComprobante>();
     // Boveda de contraseñas (independiente)
     public DbSet<VaultSetting> VaultSettings => Set<VaultSetting>();
     public DbSet<VaultEntry> VaultEntries => Set<VaultEntry>();

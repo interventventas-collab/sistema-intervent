@@ -75,6 +75,13 @@ public class HorasExtrasEmpleado
     /// Si el dia no existe en el mes (ej. 31 en febrero), se usa el ultimo dia disponible del mes.</summary>
     public int? CicloDiaFin { get; set; }
 
+    /// <summary>2026-06-22: vinculo opcional al empleado de Nominas (Nom_Empleados). Si esta
+    /// seteado, el area personal del empleado muestra la pestaña "Mis cobros" con sus pagos
+    /// confirmados (Nom_Pagos). Si esta NULL, solo ve sus horas extras (comportamiento actual).</summary>
+    public int? NomEmpleadoId { get; set; }
+    [ForeignKey(nameof(NomEmpleadoId))]
+    public NomEmpleado? NomEmpleado { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 

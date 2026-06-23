@@ -93,7 +93,14 @@
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <h3>@(ModoPresupuestos ? "📋 Presupuestos" : "🧾 Ventas")
             <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">
-                (@VentasFiltradas.Count@(HayFiltrosActivos ? $" de {ventas?.Count ?? 0}" : ""))
+                @if (traerTodoActivo)
+                {
+                    @($"({VentasFiltradas.Count}{(HayFiltrosActivos ? $" de {ventas?.Count ?? 0}" : "")})")
+                }
+                else
+                {
+                    @($"(viendo {VentasFiltradas.Count} de {totalVentas} totales)")
+                }
             </span>
             @if (ModoPresupuestos)
             {
@@ -102,9 +109,47 @@
                 </span>
             }
         </h3>
-        @* El boton "+ Nueva Venta" vive en el topbar (siempre visible). El de esta pantalla
-           se saco el 2026-05-19 porque era duplicado y solo funcionaba el del topbar. *@
+        @* 2026-06-22: paginador + boton "Ver todas". Default carga 50 por pagina. *@
+        @if (!loading && ventas is not null)
+        {
+            <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                @if (!traerTodoActivo && totalVentas > pageSize)
+                {
+                    <button class="btn-icon" style="padding: 0.3rem 0.6rem; font-size: 0.8rem; color: #4b5563;"
+                            @onclick="@(() => IrAPagina(pageOffset - pageSize))" disabled="@(pageOffset <= 0)" title="Página anterior">◀ Anterior</button>
+                    <span style="font-size: 0.8rem; color: #6b7280; font-weight: 600;">
+                        Pág. @PaginaActual de @TotalPaginas
+                    </span>
+                    <button class="btn-icon" style="padding: 0.3rem 0.6rem; font-size: 0.8rem; color: #4b5563;"
+                            @onclick="@(() => IrAPagina(pageOffset + pageSize))" disabled="@(pageOffset + pageSize >= totalVentas)" title="Página siguiente">Siguiente ▶</button>
+                    <select class="form-input" style="padding: 0.25rem 0.4rem; font-size: 0.8rem; width: auto;"
+                            value="@pageSize" @onchange="@(async e => await CambiarPageSize(int.Parse(e.Value?.ToString() ?? "50")))">
+                        <option value="50">50 por pág.</option>
+                        <option value="100">100 por pág.</option>
+                        <option value="200">200 por pág.</option>
+                    </select>
+                    <button class="btn-icon" style="padding: 0.3rem 0.7rem; font-size: 0.8rem; color: #1d4ed8; background: #eff6ff; border: 1px solid #bfdbfe;"
+                            @onclick="VerTodas" title="Traer todas para poder buscar/filtrar en el listado completo">Ver todas (@totalVentas)</button>
+                }
+                else if (traerTodoActivo)
+                {
+                    <span style="font-size: 0.8rem; color: #059669; font-weight: 600;">📋 Viendo todas (@ventas.Count)</span>
+                    <button class="btn-icon" style="padding: 0.3rem 0.7rem; font-size: 0.8rem; color: #4b5563;"
+                            @onclick="VolverAPaginado" title="Volver al modo paginado (más rápido)">Volver a paginado</button>
+                }
+            </div>
+        }
     </div>
+    @* 2026-06-22: aviso cuando hay filtros activos pero estamos paginados — el filtro solo aplica
+       a las ventas cargadas en pantalla, no al universo completo. *@
+    @if (!traerTodoActivo && HayFiltrosActivos && totalVentas > pageSize)
+    {
+        <div style="background: #fef3c7; border-bottom: 1px solid #fcd34d; padding: 0.5rem 1rem; font-size: 0.82rem; color: #78350f; display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap;">
+            <span>⚠ Filtrando solo en las @ventas?.Count ventas de esta página. Hay @totalVentas en total.</span>
+            <button class="btn-icon" style="padding: 0.25rem 0.6rem; font-size: 0.78rem; color: #92400e; background: white; border: 1px solid #fcd34d; font-weight: 600;"
+                    @onclick="VerTodas">🔍 Buscar en todas (@totalVentas)</button>
+        </div>
+    }
     @* ─── Barra de filtros ─── *@
     @if (ventas is not null && ventas.Count > 0)
     {
@@ -4346,12 +4391,30 @@
         catch { }
     }
 
+    // 2026-06-22: paginacion server-side. Por default carga 50 ultimas. El usuario puede
+    // navegar < anterior / siguiente >, cambiar tamano de pagina, o tocar "Ver todas" para
+    // traer las N ventas y filtrar con el buscador / filtros client-side.
+    private int pageSize = 50;
+    private int pageOffset = 0;
+    private int totalVentas = 0;
+    private bool traerTodoActivo = false; // cuando true, NO se aplica paginacion (trae todo)
+
     private async Task Load()
     {
         loading = true;
         try
         {
-            ventas = await Api.GetCafeVentasAsync() ?? new();
+            if (traerTodoActivo)
+            {
+                ventas = await Api.GetCafeVentasAsync() ?? new();
+                totalVentas = ventas.Count;
+            }
+            else
+            {
+                var (items, total) = await Api.GetCafeVentasPagedAsync(pageSize, pageOffset);
+                ventas = items;
+                totalVentas = total;
+            }
             // Cargar saldos pendientes por cada venta (Total - Cobranzas aplicadas)
             try
             {
@@ -4363,6 +4426,40 @@
         catch { ToastService.Error("Error al cargar ventas"); ventas = new(); }
         loading = false;
     }
+
+    /// <summary>2026-06-22: cambia de pagina. offset = (pagina - 1) * pageSize.</summary>
+    private async Task IrAPagina(int nuevoOffset)
+    {
+        if (traerTodoActivo) return;
+        pageOffset = Math.Max(0, nuevoOffset);
+        await Load();
+    }
+
+    private async Task CambiarPageSize(int nuevoSize)
+    {
+        pageSize = nuevoSize;
+        pageOffset = 0;
+        await Load();
+    }
+
+    /// <summary>2026-06-22: trae las ventas sin paginar para poder filtrar/buscar en todas.</summary>
+    private async Task VerTodas()
+    {
+        traerTodoActivo = true;
+        pageOffset = 0;
+        await Load();
+    }
+
+    /// <summary>2026-06-22: vuelve al modo paginado (caso default).</summary>
+    private async Task VolverAPaginado()
+    {
+        traerTodoActivo = false;
+        pageOffset = 0;
+        await Load();
+    }
+
+    private int PaginaActual => (pageOffset / Math.Max(1, pageSize)) + 1;
+    private int TotalPaginas => traerTodoActivo ? 1 : (int)Math.Ceiling((double)totalVentas / Math.Max(1, pageSize));
 
     private void ShowCreate()
     {

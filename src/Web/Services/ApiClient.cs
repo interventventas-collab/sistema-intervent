@@ -708,6 +708,32 @@ public class ApiClient
         return await GetAsync<List<CafeVentaDto>>(url);
     }
 
+    /// <summary>2026-06-22: variante paginada. Devuelve (lista, totalCount). totalCount viene en
+    /// el header X-Total-Count del response. Si se pasan fechas, el backend ignora la paginacion
+    /// y trae todo el rango (totalCount queda = lista.Count en ese caso).</summary>
+    public async Task<(List<CafeVentaDto> Items, int TotalCount)> GetCafeVentasPagedAsync(
+        int limit = 50, int offset = 0, DateTime? from = null, DateTime? to = null)
+    {
+        var qs = new List<string> { $"limit={limit}", $"offset={offset}" };
+        if (from.HasValue) qs.Add($"from={from.Value:yyyy-MM-dd}");
+        if (to.HasValue) qs.Add($"to={to.Value:yyyy-MM-dd}");
+        var url = "/api/cafe/ventas?" + string.Join("&", qs);
+        try
+        {
+            var resp = await _http.GetAsync(url);
+            if (!resp.IsSuccessStatusCode) return (new(), 0);
+            var items = await resp.Content.ReadFromJsonAsync<List<CafeVentaDto>>() ?? new();
+            int total = items.Count;
+            if (resp.Headers.TryGetValues("X-Total-Count", out var vals))
+            {
+                var v = vals.FirstOrDefault();
+                if (int.TryParse(v, out var n)) total = n;
+            }
+            return (items, total);
+        }
+        catch { return (new(), 0); }
+    }
+
     public async Task<CafeVentaDto?> GetCafeVentaAsync(int id)
         => await GetAsync<CafeVentaDto>($"/api/cafe/ventas/{id}");
 

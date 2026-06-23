@@ -4885,3 +4885,77 @@ BEGIN
         (N'Otros',      N'❓', 99, 1);
 END
 GO
+
+-- 2026-06-22: Modulo Pagos Movil. Bandeja de "precarga" de pagos hecha desde el celu
+-- por Osmar/German/Gabriel mientras estan fuera de la oficina. Una vez precargado,
+-- el pago queda en estado PENDIENTE hasta que alguien lo confirma desde la PC.
+-- Al confirmar -> se crea el registro real en Nom_Pagos (empleados) o en
+-- Cafe_PagosProveedor + Comprobantes + Medios (proveedores). NO duplicamos tablas.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='PagosMovil_Pendientes')
+CREATE TABLE PagosMovil_Pendientes (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    Tipo NVARCHAR(20) NOT NULL,                -- 'empleado' | 'proveedor'
+
+    -- Solo se llena si Tipo='empleado'
+    EmpleadoId INT NULL,                       -- FK Nom_Empleados
+    LiquidacionId INT NULL,                    -- FK opcional Nom_Liquidaciones (si hay una abierta del mes)
+
+    -- Solo se llena si Tipo='proveedor'
+    ProveedorId INT NULL,                      -- FK Cafe_Proveedores
+
+    -- Comunes
+    Concepto NVARCHAR(60) NOT NULL,            -- sueldo / adelanto / aguinaldo / bono / vacaciones / otro: xxx
+    Monto DECIMAL(18,2) NOT NULL,
+    MedioPago NVARCHAR(30) NOT NULL,           -- efectivo / transferencia / mp / cheque / etc
+    Notas NVARCHAR(500) NULL,
+
+    Estado NVARCHAR(20) NOT NULL DEFAULT N'PENDIENTE',  -- PENDIENTE / CONFIRMADO / RECHAZADO
+
+    CreadoPorUsuarioId INT NOT NULL,           -- FK Users (quien lo precargo desde el movil)
+    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+
+    ConfirmadoPorUsuarioId INT NULL,           -- FK Users
+    ConfirmadoAt DATETIME2 NULL,
+    MotivoRechazo NVARCHAR(300) NULL,
+
+    -- Apuntan al pago real ya creado (cuando se confirma)
+    NomPagoId INT NULL,                        -- FK Nom_Pagos (si Tipo='empleado' confirmado)
+    CafePagoProveedorId INT NULL,              -- FK Cafe_PagosProveedor (si Tipo='proveedor' confirmado)
+
+    CONSTRAINT FK_PagosMovilPend_Empleado FOREIGN KEY (EmpleadoId) REFERENCES Nom_Empleados(Id),
+    CONSTRAINT FK_PagosMovilPend_Liquidacion FOREIGN KEY (LiquidacionId) REFERENCES Nom_Liquidaciones(Id),
+    CONSTRAINT FK_PagosMovilPend_Proveedor FOREIGN KEY (ProveedorId) REFERENCES Cafe_Proveedores(Id),
+    CONSTRAINT FK_PagosMovilPend_Usuario FOREIGN KEY (CreadoPorUsuarioId) REFERENCES Users(Id),
+    CONSTRAINT FK_PagosMovilPend_UsuarioConf FOREIGN KEY (ConfirmadoPorUsuarioId) REFERENCES Users(Id),
+    CONSTRAINT FK_PagosMovilPend_NomPago FOREIGN KEY (NomPagoId) REFERENCES Nom_Pagos(Id),
+    CONSTRAINT FK_PagosMovilPend_CafePagoProv FOREIGN KEY (CafePagoProveedorId) REFERENCES Cafe_PagosProveedor(Id)
+);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_PagosMovilPend_Estado')
+CREATE INDEX IX_PagosMovilPend_Estado ON PagosMovil_Pendientes(Estado, CreatedAt DESC);
+GO
+
+-- Detalle de comprobantes (facturas) a pagar cuando Tipo='proveedor'.
+-- Cuando se confirma, se replica como Cafe_PagosProveedorComprobantes.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='PagosMovil_PendientesComprobantes')
+CREATE TABLE PagosMovil_PendientesComprobantes (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    PendienteId INT NOT NULL,
+    CompraId INT NOT NULL,                     -- FK Cafe_Compras
+    Importe DECIMAL(18,2) NOT NULL,
+    CONSTRAINT FK_PagosMovilPendComp_Pend FOREIGN KEY (PendienteId) REFERENCES PagosMovil_Pendientes(Id) ON DELETE CASCADE,
+    CONSTRAINT FK_PagosMovilPendComp_Compra FOREIGN KEY (CompraId) REFERENCES Cafe_Compras(Id)
+);
+GO
+
+-- 2026-06-22: vinculo opcional entre el empleado de HorasExtras (la pantalla publica /he/{slug}/horario)
+-- y el empleado de Nominas (Nom_Empleados). Permite que en el area personal del empleado
+-- aparezca la pestaña "Mis cobros" con sus pagos confirmados de Nom_Pagos.
+-- Si esta NULL, el empleado solo ve sus horas; si esta vinculado, ve tambien sus cobros.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='NomEmpleadoId' AND Object_ID=Object_ID('HorasExtras_Empleados'))
+BEGIN
+    ALTER TABLE HorasExtras_Empleados ADD NomEmpleadoId INT NULL;
+    ALTER TABLE HorasExtras_Empleados ADD CONSTRAINT FK_HeEmpleado_NomEmpleado FOREIGN KEY (NomEmpleadoId) REFERENCES Nom_Empleados(Id);
+END
+GO

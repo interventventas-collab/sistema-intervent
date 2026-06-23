@@ -314,6 +314,46 @@ public class HorasExtrasController : ControllerBase
         return Ok(new { ok = true, fecha = fechaCarga, cantidad = req.Cantidad });
     }
 
+    // ════════════════════════════════════════════════════════════════════════════
+    // "Mis cobros" — pestaña del area personal del empleado (2026-06-22)
+    // Lista los pagos CONFIRMADOS de Nom_Pagos del empleado vinculado.
+    // El empleado de HorasExtras debe tener NomEmpleadoId seteado por el admin.
+    // ════════════════════════════════════════════════════════════════════════════
+
+    public record MisCobrosItemDto(int Id, DateTime FechaPago, string Concepto, string? Detalle, decimal Monto, string Metodo);
+    public record MisCobrosDto(bool Vinculado, string? NomEmpleadoNombre, decimal TotalMes, decimal TotalAnio, List<MisCobrosItemDto> Items);
+
+    /// <summary>El empleado consulta sus pagos confirmados. Requiere que el admin haya
+    /// vinculado el empleado de HorasExtras con su contraparte en Nom_Empleados (NomEmpleadoId).
+    /// Si no esta vinculado, devuelve Vinculado=false (la UI esconde la pestaña).</summary>
+    [HttpGet("publica/{slug}/{clave}/mis-cobros")]
+    [AllowAnonymous]
+    public async Task<IActionResult> MisCobros(string slug, string clave)
+    {
+        var emp = await FindEmpleadoAsync(slug, clave);
+        if (emp is null) return NotFound(new { error = "Link inválido o empleado inactivo" });
+        if (emp.NomEmpleadoId is null)
+            return Ok(new MisCobrosDto(false, null, 0m, 0m, new List<MisCobrosItemDto>()));
+
+        var nomEmp = await _db.NomEmpleados.FindAsync(emp.NomEmpleadoId.Value);
+        // Traemos los pagos confirmados (con join a Liquidacion para filtrar por empleado)
+        var pagos = await _db.NomPagos
+            .Where(p => p.LiquidacionNav!.EmpleadoId == emp.NomEmpleadoId.Value)
+            .OrderByDescending(p => p.FechaPago)
+            .Take(200)
+            .Select(p => new MisCobrosItemDto(
+                p.Id, p.FechaPago, p.Concepto, p.Detalle, p.Monto, p.Metodo))
+            .ToListAsync();
+
+        var hoy = FechaArgentinaHoy();
+        var inicioMes = new DateTime(hoy.Year, hoy.Month, 1);
+        var inicioAnio = new DateTime(hoy.Year, 1, 1);
+        var totalMes = pagos.Where(p => p.FechaPago >= inicioMes).Sum(p => p.Monto);
+        var totalAnio = pagos.Where(p => p.FechaPago >= inicioAnio).Sum(p => p.Monto);
+
+        return Ok(new MisCobrosDto(true, nomEmp?.Nombre, totalMes, totalAnio, pagos));
+    }
+
     /// <summary>Resuelve la IP publica del cliente de la request. Cuando esta detras de Caddy/Nginx
     /// (prod), llega en X-Forwarded-For. Si no, toma la IP remota directa.</summary>
     private string? ResolverIpCliente()

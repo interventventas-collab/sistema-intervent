@@ -302,15 +302,32 @@ public class CafeVentasController : ControllerBase
         v.CreadoPorOperador);
 
     [HttpGet]
-    public async Task<IActionResult> GetAll([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
+    public async Task<IActionResult> GetAll(
+        [FromQuery] DateTime? from = null,
+        [FromQuery] DateTime? to = null,
+        [FromQuery] int? limit = null,
+        [FromQuery] int offset = 0)
     {
         var q = _db.CafeVentas.Include(v => v.Items).AsQueryable();
         if (from.HasValue) q = q.Where(v => v.Fecha >= from.Value.Date);
         if (to.HasValue) q = q.Where(v => v.Fecha <= to.Value.Date);
-        // Sin Take: traemos TODAS las ventas que caen dentro del rango (o todas si no hay rango).
-        // El buscador del frontend filtra contra el listado completo, asi una venta vieja
-        // (ej. migracion del sistema antiguo con fecha 01/01) se encuentra igual.
-        var list = await q.OrderByDescending(v => v.Fecha).ThenByDescending(v => v.Id).ToListAsync();
+
+        // 2026-06-22: paginacion server-side. Si limit es null, trae todo (caso historico y
+        // para usos como exportar Excel). Si limit tiene valor, aplica Skip/Take y devuelve
+        // el total count en el header X-Total-Count para que el frontend pueda mostrar el
+        // paginador. Cuando hay fechas, se ignora la paginacion (la query de rango ya filtra
+        // y el usuario espera ver todo lo que pidio para ese rango).
+        var ordered = q.OrderByDescending(v => v.Fecha).ThenByDescending(v => v.Id);
+        bool aplicarPaginacion = limit.HasValue && limit.Value > 0 && !from.HasValue && !to.HasValue;
+        if (aplicarPaginacion)
+        {
+            var totalCount = await q.CountAsync();
+            Response.Headers["X-Total-Count"] = totalCount.ToString();
+            Response.Headers["Access-Control-Expose-Headers"] = "X-Total-Count";
+        }
+        var list = aplicarPaginacion
+            ? await ordered.Skip(Math.Max(0, offset)).Take(limit!.Value).ToListAsync()
+            : await ordered.ToListAsync();
         // Set de VentaIds asociados a saldos de migracion — para marcar visualmente esas ventas
         // como "🔄 Migración" en el listado del frontend.
         var migrIds = await _db.CafeSaldosMigracion
