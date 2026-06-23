@@ -1018,10 +1018,19 @@ app.post('/whatsapp/chat/open-by-name', async (req, res) => {
     } catch {}
     await sleep(600);
 
-    // Extraer mensajes — patron IDENTICO al de /messages/list (que ya sabemos que funciona).
-    const messages = await state.page.evaluate(() => {
-      const items = [];
-      const nodes = document.querySelectorAll('div[data-id]');
+    // 2026-06-23: Extraccion robusta multi-selector. WhatsApp Web cambia selectores seguido.
+    // Probamos en cascada hasta encontrar nodos. Devolvemos debug info si nada matchea.
+    const result = await state.page.evaluate(() => {
+      // Lista de selectores a probar, en orden de preferencia. Devuelve el primero que tenga nodos.
+      const SELECTORES = [
+        'div[data-id]',                                  // patron clasico
+        'div[role="application"] div[data-id]',          // con scope
+        '[role="row"]',                                  // WA Web 2024+ (virtualizado)
+        '[aria-rowindex]',                               // alternativa lista virtual
+        '.message-in, .message-out',                     // clases legacy
+        '[data-pre-plain-text]',                         // por atributo de meta
+      ];
+
       const extractTextFromNode = (node) => {
         const copyableWithMeta = node.querySelector('.copyable-text[data-pre-plain-text]');
         if (copyableWithMeta) {
@@ -1051,26 +1060,57 @@ app.post('/whatsapp/chat/open-by-name', async (req, res) => {
         }
         return '';
       };
-      nodes.forEach(node => {
-        const id = node.getAttribute('data-id') || '';
-        if (!id) return;
-        const looksLikeMessage = node.querySelector('.copyable-text') !== null
-                              || node.querySelector('span.selectable-text, .selectable-text') !== null
-                              || node.querySelector('[data-pre-plain-text]') !== null
-                              || node.classList.contains('message-in')
-                              || node.classList.contains('message-out');
-        if (!looksLikeMessage) return;
-        const fromMe = node.classList.contains('message-out')
-                    || id.startsWith('true_')
-                    || /^[A-F0-9]+_true/i.test(id);
-        const text = extractTextFromNode(node);
-        items.push({ id, text, fromMe });
-      });
-      return items;
-    });
-    try { console.log(`[wa] open-by-name "${name}": ${messages.length} mensajes leidos`); } catch {}
 
-    return res.json({ messages, total: messages.length, name });
+      const debug = { selectorTried: [], chosenSelector: null, foundCount: 0, mainHtmlSample: '' };
+
+      // Sample del main para debug por si nada matchea
+      try {
+        const main = document.querySelector('[role="application"] [role="main"]');
+        debug.mainHtmlSample = main ? (main.innerHTML || '').substring(0, 1500) : 'no main found';
+      } catch {}
+
+      let bestNodes = [];
+      for (const sel of SELECTORES) {
+        let nodes;
+        try { nodes = document.querySelectorAll(sel); } catch { nodes = []; }
+        debug.selectorTried.push({ sel, count: nodes.length });
+        if (nodes.length > bestNodes.length) {
+          bestNodes = Array.from(nodes);
+          debug.chosenSelector = sel;
+        }
+        // Si ya encontramos varios mensajes con un selector aceptable, paramos.
+        if (bestNodes.length >= 3 && sel === 'div[data-id]') break;
+      }
+      debug.foundCount = bestNodes.length;
+
+      const items = [];
+      bestNodes.forEach(node => {
+        const id = node.getAttribute('data-id') || node.getAttribute('aria-rowindex') || `node_${items.length}`;
+        // Filtros para descartar nodos que no son mensajes (header del chat, separadores, etc.)
+        const tag = (node.tagName || '').toLowerCase();
+        if (tag === 'header' || tag === 'footer') return;
+        const hasTextContent = node.querySelector('.copyable-text, span.selectable-text, [data-pre-plain-text], .message-in, .message-out')
+                            || node.classList.contains('message-in') || node.classList.contains('message-out');
+        // Si el node es solo un row sin contenido de mensaje, intentamos extraer texto igual
+        const fromMe = node.classList.contains('message-out')
+                    || String(id).startsWith('true_')
+                    || /^[A-F0-9]+_true/i.test(String(id))
+                    || (node.querySelector('[data-pre-plain-text]') !== null && node.classList.toString().toLowerCase().includes('out'));
+        const text = extractTextFromNode(node);
+        if (!text && !hasTextContent) return; // descarta rows vacios
+        items.push({ id: String(id), text, fromMe });
+      });
+
+      return { messages: items, debug };
+    });
+    try {
+      console.log(`[wa] open-by-name "${name}": ${result.messages.length} mensajes. Selector usado: ${result.debug.chosenSelector}. Intentados: ${JSON.stringify(result.debug.selectorTried)}`);
+      if (result.messages.length === 0) {
+        console.log(`[wa] open-by-name SAMPLE HTML main: ${result.debug.mainHtmlSample.substring(0, 600)}`);
+      }
+    } catch {}
+
+    return res.json({ messages: result.messages, total: result.messages.length, name, debug: result.debug });
   } catch (err) {
     console.error('[wa] open-by-name error:', err.message || err);
     return res.status(500).json({ error: err.message || 'error' });
