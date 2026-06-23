@@ -101,10 +101,16 @@ public class PagosMovilController : ControllerBase
     [HttpGet("proveedores-con-deuda")]
     public async Task<IActionResult> ProveedoresConDeuda()
     {
-        // Para cada compra VIGENTE, calcular saldo (Total - sum(pagos VIGENTE))
+        // Para cada compra VIGENTE (no anulada) con proveedor cargado, calcular saldo
         var compras = await _db.CafeCompras
-            .Where(c => c.Estado != "ANULADA")
-            .Select(c => new { c.Id, c.ProveedorId, c.Total, ProveedorNombre = c.Proveedor!.Nombre })
+            .Where(c => c.Estado != "ANULADA" && c.ProveedorId != null)
+            .Select(c => new
+            {
+                c.Id,
+                ProveedorId = c.ProveedorId!.Value,
+                c.Total,
+                ProveedorNombre = c.ProveedorNav != null ? c.ProveedorNav.Nombre : (c.ProveedorNombreSnapshot ?? "—")
+            })
             .ToListAsync();
         if (compras.Count == 0) return Ok(new List<ProveedorConDeudaDto>());
 
