@@ -1107,7 +1107,7 @@
                             }
                             else
                             {
-                                <input id="nv-cliente" class="form-input" @bind="clienteSearch" @bind:event="oninput"
+                                <input id="nv-cliente" class="form-input" @bind="clienteSearch" @bind:event="oninput" @bind:after="() => clienteHighlight = 0"
                                        @ref="clienteInputRef"
                                        @onfocus="() => clienteSearchOpen = true"
                                        @onkeydown="OnKeyDownCliente"
@@ -1130,13 +1130,15 @@
                                         }
                                         else
                                         {
-                                            @foreach (var ci in matches)
+                                            @for (int idx = 0; idx < matches.Count; idx++)
                                             {
+                                                var ci = matches[idx];
                                                 var ciId = ci.Id;
+                                                var isHl = idx == clienteHighlight;
                                                 var dirCi = !string.IsNullOrWhiteSpace(ci.DomicilioEntrega) ? ci.DomicilioEntrega : ci.Direccion;
                                                 var locCi = string.Join(" · ", new[] { ci.Localidad, ci.Ciudad, ci.Cp }.Where(x => !string.IsNullOrWhiteSpace(x)));
                                                 <div class="cli-pick-row" @onclick="() => SelectCliente(ciId)"
-                                                     style="padding: 0.55rem 0.75rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; line-height: 1.25;">
+                                                     style="@($"padding: 0.55rem 0.75rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; line-height: 1.25; background: {(isHl ? "#dbeafe" : "transparent")};")">
                                                     <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
                                                         <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; font-size: 0.9rem;">@ci.Codigo</span>
                                                         <strong style="font-size: 0.95rem;">@ci.Nombre</strong>
@@ -3497,6 +3499,7 @@
     private bool showConfirmEmision; // doble-check antes de emitir contra ARCA
     private ElementReference clienteInputRef;
     private bool _focusClienteAtNextRender;
+    private int clienteHighlight;
 
     // 2026-06-18 v2: Editar/Crear cliente abriendo ventana popup con la pantalla /cafe/clientes.
     // La popup detecta los query params ?edit={id} o ?new={nombre} y auto-abre el modal correspondiente.
@@ -5447,11 +5450,27 @@
 
     private async Task OnKeyDownCliente(KeyboardEventArgs e)
     {
+        var matches = ClientesMatching(clienteSearch).Take(20).ToList();
+
+        if (e.Key == "ArrowDown")
+        {
+            if (matches.Count > 0)
+                clienteHighlight = Math.Min(clienteHighlight + 1, matches.Count - 1);
+            return;
+        }
+        if (e.Key == "ArrowUp")
+        {
+            clienteHighlight = Math.Max(clienteHighlight - 1, 0);
+            return;
+        }
         if (e.Key != "Enter") return;
+
         if (!string.IsNullOrWhiteSpace(clienteSearch))
         {
-            var first = ClientesMatching(clienteSearch).FirstOrDefault();
-            if (first is not null) await SelectCliente(first.Id);
+            CafeClienteDto? sel = (clienteHighlight >= 0 && clienteHighlight < matches.Count)
+                ? matches[clienteHighlight]
+                : matches.FirstOrDefault();
+            if (sel is not null) await SelectCliente(sel.Id);
         }
         // Si el buscador esta vacio = consumidor final, saltamos igual.
         await FocusFieldAsync("nv-producto");
