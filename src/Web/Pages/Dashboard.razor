@@ -19,11 +19,22 @@
    Productos, Stock). El resto sigue viendo el dashboard normal. *@
 @if (!isDepositoOnly)
 {
+@* 2026-06-22: rediseño Mac/iOS — tarjetas blancas, bordes finos, iconos SVG uniformes.
+   Las acciones y dropdowns NO cambian: misma logica, mismas rutas. *@
 @* Fila superior: HOLA + dolar + reloj AR/ES combinado + postits (responsive) *@
-<div class="dashboard-top-grid">
-    <div class="dashboard-detail-card" style="padding: 1rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5rem;">
-        <span style="font-size: 1.2rem; font-weight: 700;">👋 HOLA EQUIPO:</span>
-        <select class="form-input" style="font-size: 1rem; font-weight: 700; max-width: 240px;"
+<div class="dashboard-top-grid dashboard-modern">
+    <div class="dashboard-detail-card mac-card">
+        <div class="mac-card-header">
+            <div class="mac-card-iconbox" style="background:#e6f1fb; color:#2563eb;">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <span class="mac-card-eyebrow">Operador</span>
+        </div>
+        @if (Operator.HasOperator)
+        {
+            <div class="mac-card-bignum" style="font-size:1.35rem; margin-top:2px;">@Operator.Current</div>
+        }
+        <select class="form-input mac-card-select"
                 value="@(Operator.Current ?? "")"
                 @onchange="OnSelectOperator">
             <option value="">— Elegi tu nombre —</option>
@@ -31,12 +42,10 @@
             {
                 <option value="@op">@op</option>
             }
-            @* 2026-06-05: operadores con candado (OSMAR). Al seleccionarlos abre modal de clave. *@
             @foreach (var op in OperatorService.ProtectedForPermissions(userPermissions))
             {
                 <option value="@($"__PROTECTED__{op}")">🔒 @op (clave)</option>
             }
-            @* Si el operador actual es protegido (OSMAR ya activado), mantenerlo seleccionado *@
             @if (!string.IsNullOrEmpty(Operator.Current)
                 && OperatorService.ProtectedOperators.Contains(Operator.Current)
                 && !OperatorService.ForPermissions(userPermissions).Contains(Operator.Current))
@@ -44,60 +53,59 @@
                 <option value="@Operator.Current" selected>@Operator.Current ✓</option>
             }
         </select>
-        @if (Operator.HasOperator)
-        {
-            <div style="font-size: 0.78rem; color: #6b7280;">Estás trabajando como <strong>@Operator.Current</strong></div>
-        }
     </div>
 
     @* Widget Dolar BNA *@
-    <div class="dashboard-detail-card" style="padding: 0.85rem;">
-        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;">
-            <span style="font-size: 1.4rem;">💵</span>
-            <div>
-                <div style="font-weight: 700; font-size: 0.85rem;">Dolar Banco Nacion</div>
-                <div style="font-size: 0.7rem; color: #6b7280;">@(dolar?.Fecha ?? "Cargando...")</div>
+    <div class="dashboard-detail-card mac-card">
+        <div class="mac-card-header">
+            <div class="mac-card-iconbox" style="background:#eaf3de; color:#16a34a;">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
             </div>
+            <span class="mac-card-eyebrow">Dólar Nación</span>
+            <span class="mac-card-meta">@(dolar?.Fecha ?? "…")</span>
         </div>
         @if (dolarLoading && dolar is null)
         {
-            <div style="font-size: 0.8rem; color: #6b7280;">Consultando BNA...</div>
+            <div class="mac-card-sub" style="margin-top:8px;">Consultando BNA…</div>
         }
         else if (dolar is not null && dolar.Compra is not null && dolar.Venta is not null)
         {
-            <div style="display: flex; justify-content: space-around; align-items: center; padding-top: 0.3rem;">
-                <div style="text-align: center;">
-                    <div style="font-size: 0.7rem; color: #15803d; font-weight: 600;">COMPRA</div>
-                    <div style="font-size: 1.2rem; font-weight: 800; color: #15803d;">$@FormatMoney(dolar.Compra.Value)</div>
+            <div style="display:flex; gap:18px; margin-top:6px;">
+                <div>
+                    <div class="mac-card-sub" style="font-size:0.7rem;">Compra</div>
+                    <div style="font-size:1.05rem; font-weight:500; color:#16a34a; font-variant-numeric:tabular-nums;">$@FormatMoney(dolar.Compra.Value)</div>
                 </div>
-                <div style="text-align: center;">
-                    <div style="font-size: 0.7rem; color: #b91c1c; font-weight: 600;">VENTA</div>
-                    <div style="font-size: 1.2rem; font-weight: 800; color: #b91c1c;">$@FormatMoney(dolar.Venta.Value)</div>
+                <div>
+                    <div class="mac-card-sub" style="font-size:0.7rem;">Venta</div>
+                    <div style="font-size:1.05rem; font-weight:500; color:#dc2626; font-variant-numeric:tabular-nums;">$@FormatMoney(dolar.Venta.Value)</div>
                 </div>
             </div>
         }
         else
         {
-            <div style="font-size: 0.78rem; color: #b91c1c;">@(dolar?.Error ?? "No se pudo obtener la cotizacion")</div>
+            <div class="mac-card-sub" style="color:#dc2626; margin-top:8px;">@(dolar?.Error ?? "No se pudo obtener la cotizacion")</div>
         }
     </div>
 
     @* Reloj combinado: Argentina + España en un solo modulo *@
-    <div class="dashboard-detail-card dashboard-clock-card">
-        <div class="dashboard-clock-row">
-            <span style="font-size: 1.3rem;">🇦🇷</span>
-            <div style="flex: 1; min-width: 0;">
-                <div style="font-size: 0.72rem; color: #6b7280; font-weight: 600;">Argentina</div>
+    <div class="dashboard-detail-card mac-card dashboard-clock-card">
+        <div class="mac-card-header">
+            <div class="mac-card-iconbox" style="background:#f1efe8; color:#5f5e5a;">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <span class="mac-card-eyebrow">Hora</span>
+        </div>
+        <div class="mac-clock-row" style="margin-top:6px;">
+            <span class="mac-clock-pill">AR</span>
+            <div>
                 <div class="dashboard-clock-time">@arTime.ToString("HH:mm:ss")</div>
                 <div class="dashboard-clock-date">@arTime.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-AR"))</div>
             </div>
         </div>
-        <div style="border-top: 1px dashed #d1d5db; margin: 0.4rem 0;"></div>
-        <div class="dashboard-clock-row">
-            <span style="font-size: 1.3rem;">🇪🇸</span>
-            <div style="flex: 1; min-width: 0;">
-                <div style="font-size: 0.72rem; color: #6b7280; font-weight: 600;">España</div>
-                <div class="dashboard-clock-time">@esTime.ToString("HH:mm:ss")</div>
+        <div class="mac-clock-row" style="margin-top:6px;">
+            <span class="mac-clock-pill mac-clock-pill-muted">ES</span>
+            <div>
+                <div class="dashboard-clock-time" style="color:#5f5e5a;">@esTime.ToString("HH:mm:ss")</div>
                 <div class="dashboard-clock-date">@esTime.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-ES"))</div>
             </div>
         </div>
@@ -106,97 +114,201 @@
     @* Postits: block de notas compartido (componente reusable, scope=dashboard) *@
     <PostitsWidget Scope="dashboard" Title="Postits del equipo" CardStyle="max-height: 220px;" />
 
-    @* Balanza de café FRIKAF — circulo con imagen + labels abajo (estilo "balanza") *@
-    <div class="cafe-frikaf-balanza" @onmouseenter="MostrarHistoricoBalanza" @onmouseleave="OcultarHistoricoBalanza" style="position:relative;">
-        <div class="cafe-frikaf-circle"
-             style="background-image: linear-gradient(rgba(255,255,255,0.10), rgba(255,255,255,0.25)), url('/api/branding/cafe-frikaf-bg?v=@bgVersion');">
-            @* Boton para subir / cambiar la imagen de fondo *@
-            <label class="cafe-frikaf-upload-btn" title="Cambiar imagen de fondo">
-                📷
+    @* Balanza de café FRIKAF — tarjeta Mac compacta con icono balanza al costado.
+       2026-06-22: Sin ring porcentual (era inventado). Hover sigue mostrando histórico. *@
+    <div class="dashboard-detail-card mac-card" @onmouseenter="MostrarHistoricoBalanza" @onmouseleave="OcultarHistoricoBalanza" style="position:relative;">
+        <div class="mac-card-header">
+            <div class="mac-card-iconbox" style="background:#faeeda; color:#d97706;">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18M6 7l1.5 11a2 2 0 002 1.5h5a2 2 0 002-1.5L18 7M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2"/></svg>
+            </div>
+            <span class="mac-card-eyebrow">Balanza</span>
+            <label class="mac-card-iconbtn" title="Cambiar imagen de fondo" style="margin-left:auto;">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
                 <InputFile OnChange="OnCafeBgFilePicked" accept=".png,.jpg,.jpeg,.webp" style="display: none;" />
             </label>
-
-            <div class="cafe-frikaf-circle-content">
-                @if (coffeeKg is null)
-                {
-                    <div class="cafe-frikaf-loading">…</div>
-                }
-                else
-                {
-                    <div class="cafe-frikaf-kg-number">@FormatKg(coffeeKg.KgTotal)</div>
-                    <div class="cafe-frikaf-kg-unit">kg</div>
-                }
-            </div>
-
-            @if (cafeBgUploading)
-            {
-                <div class="cafe-frikaf-uploading">Subiendo...</div>
-            }
         </div>
-
-        @* Labels abajo del circulo: BALANZA + mes/año *@
-        <div class="cafe-frikaf-balanza-label">BALANZA</div>
-        <div class="cafe-frikaf-balanza-period">
-            @if (coffeeKg is not null)
-            {
-                @coffeeKg.PeriodStart.ToString("MMMM yyyy", new System.Globalization.CultureInfo("es-AR")).ToUpper()
-            }
-        </div>
-
-        @* 2026-06-05: Tooltip de meses anteriores al pasar el cursor *@
+        @if (coffeeKg is null)
+        {
+            <div class="mac-card-bignum" style="color:#9ca3af;">…</div>
+        }
+        else
+        {
+            <div class="mac-card-bignum">@FormatKg(coffeeKg.KgTotal)<span class="mac-card-unit">kg</span></div>
+            <div class="mac-card-sub">@coffeeKg.PeriodStart.ToString("MMMM yyyy", new System.Globalization.CultureInfo("es-AR"))</div>
+        }
+        @if (cafeBgUploading)
+        {
+            <div style="position:absolute; top:8px; right:8px; background:white; border:0.5px solid #e5e7eb; border-radius:6px; padding:2px 6px; font-size:0.7rem; color:#6b7280;">Subiendo…</div>
+        }
         @if (mostrandoHistorico && historicoMeses is not null && historicoMeses.Count > 0)
         {
-            <div style="position:absolute; top:50%; left:calc(100% + 12px); transform:translateY(-50%);
-                        background:white; border:1px solid #d1d5db; border-radius:12px; padding:0.8rem 1rem;
-                        box-shadow:0 12px 40px rgba(0,0,0,0.15); z-index:1000; min-width:240px;">
-                <div style="font-weight:800; font-size:0.78rem; color:#92400e; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.4rem; border-bottom:1px solid #fde68a; padding-bottom:0.3rem;">
-                    📊 Histórico balanza
+            <div style="position:absolute; top:calc(100% + 8px); left:0; right:0;
+                        background:white; border:0.5px solid #e5e7eb; border-radius:12px; padding:0.8rem 1rem;
+                        box-shadow:0 12px 40px rgba(0,0,0,0.08); z-index:1000; min-width:240px;">
+                <div style="font-weight:500; font-size:0.75rem; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.5rem;">
+                    Histórico balanza
                 </div>
                 @foreach (var m in historicoMeses)
                 {
                     var esActual = m.Year == DateTime.UtcNow.Year && m.Month == DateTime.UtcNow.Month;
-                    <div style="display:flex; justify-content:space-between; align-items:center; padding:0.25rem 0; font-size:0.88rem; @(esActual ? "background:#fef3c7; border-radius:4px; padding-left:0.3rem; padding-right:0.3rem;" : "")">
-                        <span style="color:@(esActual ? "#92400e" : "#6b7280"); font-weight:@(esActual ? "700" : "500"); text-transform:capitalize;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:0.3rem 0; font-size:0.85rem; @(esActual ? "background:#faeeda; border-radius:6px; padding-left:0.4rem; padding-right:0.4rem;" : "")">
+                        <span style="color:@(esActual ? "#92400e" : "#3f3f46"); font-weight:@(esActual ? "500" : "400"); text-transform:capitalize;">
                             @m.PeriodStart.ToString("MMMM yyyy", new System.Globalization.CultureInfo("es-AR"))
-                            @if (esActual) { <span style="font-size:0.7rem; color:#d97706;">(actual)</span> }
+                            @if (esActual) { <span style="font-size:0.7rem; color:#d97706;"> (actual)</span> }
                         </span>
-                        <span style="font-family:monospace; font-weight:700; color:@(esActual ? "#92400e" : "#1f2937");">@m.KgTotal.ToString("N1") kg</span>
+                        <span style="font-variant-numeric:tabular-nums; font-weight:500; color:@(esActual ? "#92400e" : "#1f2937");">@m.KgTotal.ToString("N1") kg</span>
                     </div>
                 }
             </div>
         }
     </div>
 
-    @* Stock total de cafe disponible — mismo estilo circular que la balanza *@
-    <div class="cafe-frikaf-balanza" title="Suma del stock de todos los cafés (kg-mode parents)">
-        <div class="cafe-frikaf-circle cafe-stock-circle">
-            <div class="cafe-frikaf-circle-content">
-                @if (coffeeStock is null)
-                {
-                    <div class="cafe-frikaf-loading">…</div>
-                }
-                else
-                {
-                    <div class="cafe-frikaf-kg-number">@FormatKg(coffeeStock.KgTotal)</div>
-                    <div class="cafe-frikaf-kg-unit">kg</div>
-                }
+    @* Stock total de cafe disponible — ring chart con variedades en stock vs total *@
+    <div class="dashboard-detail-card mac-card" title="Suma del stock de todos los cafés (kg-mode parents)">
+        <div class="mac-card-header">
+            <div class="mac-card-iconbox" style="background:#eaf3de; color:#16a34a;">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0022 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
             </div>
+            <span class="mac-card-eyebrow">Stock</span>
         </div>
-        <div class="cafe-frikaf-balanza-label">STOCK</div>
-        <div class="cafe-frikaf-balanza-period">
-            @if (coffeeStock is not null)
-            {
-                <span>@coffeeStock.VariedadesConStock / @coffeeStock.Variedades VARIEDADES</span>
-            }
-            else
-            {
-                <span>DISPONIBLE</span>
-            }
-        </div>
+        @if (coffeeStock is null)
+        {
+            <div class="mac-card-bignum" style="color:#9ca3af;">…</div>
+        }
+        else
+        {
+            <div style="display:flex; align-items:center; gap:14px; margin-top:4px;">
+                @{
+                    var pct = coffeeStock.Variedades > 0 ? (coffeeStock.VariedadesConStock * 201.0 / coffeeStock.Variedades) : 0;
+                }
+                <svg viewBox="0 0 80 80" width="60" height="60" style="flex-shrink:0;">
+                    <circle cx="40" cy="40" r="32" fill="none" stroke="#eaf3de" stroke-width="7"></circle>
+                    <circle cx="40" cy="40" r="32" fill="none" stroke="#16a34a" stroke-width="7" stroke-dasharray="@pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) 201" stroke-linecap="round" transform="rotate(-90 40 40)"></circle>
+                    <text x="40" y="38" text-anchor="middle" font-size="14" font-weight="500" fill="#16a34a" font-family="system-ui">@coffeeStock.VariedadesConStock</text>
+                    <text x="40" y="51" text-anchor="middle" font-size="9" fill="#9ca3af" font-family="system-ui">de @coffeeStock.Variedades</text>
+                </svg>
+                <div style="min-width:0;">
+                    <div class="mac-card-bignum" style="margin:0;">@FormatKg(coffeeStock.KgTotal)<span class="mac-card-unit">kg</span></div>
+                    <div class="mac-card-sub">variedades en stock</div>
+                </div>
+            </div>
+        }
     </div>
 </div>
 
 <style>
+    /* ═══════════════ 2026-06-22 — Look Mac/iOS para tarjetas del Dashboard ═══════════════
+       Override scoped a .dashboard-modern: blanco, borde fino, redondeo grande, iconos pareja. */
+    .dashboard-modern .dashboard-detail-card.mac-card,
+    .dashboard-cards-row .dashboard-detail-card.mac-card {
+        background: #ffffff;
+        border: 0.5px solid rgba(0,0,0,0.08);
+        border-top: 0.5px solid rgba(0,0,0,0.08); /* override del border-top: 3px primary del base */
+        border-radius: 14px;
+        box-shadow: none;
+        padding: 14px;
+        margin-top: 0;
+    }
+    .mac-card-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+    }
+    .mac-card-iconbox {
+        width: 26px;
+        height: 26px;
+        border-radius: 7px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    .mac-card-eyebrow {
+        font-size: 0.7rem;
+        color: #6b7280;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .mac-card-meta {
+        margin-left: auto;
+        font-size: 0.7rem;
+        color: #9ca3af;
+    }
+    .mac-card-bignum {
+        font-size: 1.5rem;
+        font-weight: 500;
+        color: #111827;
+        line-height: 1.1;
+        margin: 4px 0 2px;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.5px;
+    }
+    .mac-card-unit {
+        font-size: 0.78rem;
+        color: #9ca3af;
+        font-weight: 400;
+        margin-left: 4px;
+    }
+    .mac-card-sub {
+        font-size: 0.72rem;
+        color: #9ca3af;
+        margin: 0;
+    }
+    .mac-card-select {
+        margin-top: 6px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        background: rgba(245,245,247,0.9);
+        border: 0.5px solid rgba(0,0,0,0.06);
+        border-radius: 7px;
+        padding: 6px 8px;
+        width: 100%;
+    }
+    .mac-card-iconbtn {
+        width: 24px; height: 24px;
+        background: rgba(245,245,247,0.85);
+        border: 0.5px solid rgba(0,0,0,0.06);
+        border-radius: 6px;
+        display: inline-flex; align-items: center; justify-content: center;
+        cursor: pointer; color: #6b7280;
+    }
+    .mac-card-iconbtn:hover { background: rgba(0,0,0,0.05); }
+    .mac-clock-row {
+        display: flex; align-items: center; gap: 10px;
+    }
+    .mac-clock-pill {
+        background: #eef2ff;
+        color: #4338ca;
+        font-size: 0.65rem;
+        font-weight: 500;
+        padding: 2px 7px;
+        border-radius: 6px;
+        letter-spacing: 0.05em;
+    }
+    .mac-clock-pill.mac-clock-pill-muted {
+        background: #f3f4f6;
+        color: #6b7280;
+    }
+
+    /* Stat cards (Ventas/Saldos/etc): blanco con borde izquierdo de color */
+    .mac-stat-card {
+        background: #ffffff !important;
+        border: 0.5px solid rgba(0,0,0,0.08) !important;
+        border-left-width: 3px !important;
+        border-top: 0.5px solid rgba(0,0,0,0.08) !important;
+        border-radius: 12px !important;
+        box-shadow: none !important;
+        padding: 14px !important;
+        margin-top: 0 !important;
+    }
+    .mac-stat-card.accent-green { border-left-color: #16a34a !important; }
+    .mac-stat-card.accent-red   { border-left-color: #dc2626 !important; }
+    .mac-stat-card.accent-purple{ border-left-color: #7c3aed !important; }
+    .mac-stat-card.accent-amber { border-left-color: #d97706 !important; }
+    .mac-stat-card.accent-blue  { border-left-color: #2563eb !important; }
+
     /* ═══════════════ Top grid responsive ═══════════════ */
     .dashboard-top-grid {
         display: grid;
@@ -228,6 +340,19 @@
         font-size: 0.68rem;
         color: #6b7280;
         text-transform: capitalize;
+    }
+    /* 2026-06-22: dentro de mac-card el reloj es más sutil y tabular */
+    .mac-card .dashboard-clock-time {
+        font-size: 1.15rem;
+        font-weight: 500;
+        font-family: 'SF Mono','Menlo','Monaco','Courier New',monospace;
+        color: #111827;
+        letter-spacing: -0.2px;
+        font-variant-numeric: tabular-nums;
+    }
+    .mac-card .dashboard-clock-date {
+        font-size: 0.7rem;
+        color: #9ca3af;
     }
     @@media (max-width: 640px) {
         .dashboard-clock-time { font-size: 1.5rem; }
@@ -376,120 +501,102 @@
     .cafe-frikaf-upload-btn:hover { background: white; transform: scale(1.1); }
 </style>
 
-@* === Fila de KPIs financieros: Ventas del mes / Saldos clientes / Cuentas a pagar === *@
+@* === Fila de KPIs financieros: Ventas del mes / Saldos clientes / Cuentas a pagar ===
+   2026-06-22: rediseño Mac — blanco con borde izquierdo de color, icono pastel, tipografia limpia. *@
 <div class="dashboard-cards-row">
     @* Ventas del mes *@
-    <div class="dashboard-detail-card" style="padding: 0.85rem; background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); border: 1px solid #10b981;">
-        <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
-            <span style="font-size: 1.3rem;">💵</span>
-            <strong style="font-size: 0.85rem; color: #065f46;">Ventas del mes</strong>
+    <div class="dashboard-detail-card mac-stat-card accent-green">
+        <div class="mac-card-header">
+            <div class="mac-card-iconbox" style="background:#eaf3de; color:#16a34a;">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+            </div>
+            <span class="mac-card-eyebrow" style="color:#3f3f46;">Ventas del mes</span>
         </div>
         @if (salesSummary is null)
         {
-            <div style="font-size: 1rem; color: #047857;">Cargando...</div>
+            <div class="mac-card-sub">Cargando…</div>
         }
         else
         {
-            <div style="font-size: 1.5rem; font-weight: 800; color: #065f46; line-height: 1.2;">
-                $@FormatMoney(salesSummary.MonthlySalesTotal)
-            </div>
-            <div style="font-size: 0.72rem; color: #047857; margin-top: 0.15rem;">
-                @salesSummary.MonthlySalesCount comprobante@(salesSummary.MonthlySalesCount == 1 ? "" : "s") en @salesSummary.PeriodStart.ToString("MMMM", new System.Globalization.CultureInfo("es-AR"))
-            </div>
+            <div class="mac-card-bignum">$@FormatMoney(salesSummary.MonthlySalesTotal)</div>
+            <div class="mac-card-sub">@salesSummary.MonthlySalesCount comprobante@(salesSummary.MonthlySalesCount == 1 ? "" : "s") en @salesSummary.PeriodStart.ToString("MMMM", new System.Globalization.CultureInfo("es-AR"))</div>
         }
     </div>
 
     @* Saldos de clientes *@
-    <div class="dashboard-detail-card" style="padding: 0.85rem; background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border: 1px solid #ef4444;">
-        <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
-            <span style="font-size: 1.3rem;">📋</span>
-            <strong style="font-size: 0.85rem; color: #991b1b;">Saldos de clientes</strong>
+    <div class="dashboard-detail-card mac-stat-card accent-red">
+        <div class="mac-card-header">
+            <div class="mac-card-iconbox" style="background:#fceaea; color:#dc2626;">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            </div>
+            <span class="mac-card-eyebrow" style="color:#3f3f46;">Saldos de clientes</span>
         </div>
         @if (salesSummary is null)
         {
-            <div style="font-size: 1rem; color: #b91c1c;">Cargando...</div>
+            <div class="mac-card-sub">Cargando…</div>
         }
         else
         {
-            <div style="font-size: 1.5rem; font-weight: 800; color: #991b1b; line-height: 1.2;">
-                $@FormatMoney(salesSummary.ClientBalanceTotal)
-            </div>
-            <div style="font-size: 0.72rem; color: #b91c1c; margin-top: 0.15rem;">
-                @salesSummary.ClientsWithBalance cliente@(salesSummary.ClientsWithBalance == 1 ? "" : "s") · @salesSummary.ClientBalanceCount comprobante@(salesSummary.ClientBalanceCount == 1 ? "" : "s") sin pagar
-            </div>
+            <div class="mac-card-bignum">$@FormatMoney(salesSummary.ClientBalanceTotal)</div>
+            <div class="mac-card-sub">@salesSummary.ClientsWithBalance cliente@(salesSummary.ClientsWithBalance == 1 ? "" : "s") · @salesSummary.ClientBalanceCount sin pagar</div>
         }
     </div>
 
     @* Documentación importante — acceso directo + stats *@
-    <div class="dashboard-detail-card" style="padding: 0.85rem; background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%); border: 1px solid #8b5cf6; cursor: pointer;" @onclick='() => Navigation.NavigateTo("/documentacion")' title="Ir a Documentación importante">
-        <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
-            <span style="font-size: 1.3rem;">📑</span>
-            <strong style="font-size: 0.85rem; color: #5b21b6;">Documentación</strong>
+    <div class="dashboard-detail-card mac-stat-card accent-purple" style="cursor:pointer;" @onclick='() => Navigation.NavigateTo("/documentacion")' title="Ir a Documentación importante">
+        <div class="mac-card-header">
+            <div class="mac-card-iconbox" style="background:#ede9fe; color:#7c3aed;">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+            </div>
+            <span class="mac-card-eyebrow" style="color:#3f3f46;">Documentación</span>
         </div>
         @if (docStats is null)
         {
-            <div style="font-size: 0.95rem; color: #6d28d9;">Cargando...</div>
+            <div class="mac-card-sub">Cargando…</div>
         }
         else
         {
-            <div style="font-size: 1.3rem; font-weight: 800; color: #5b21b6; line-height: 1.2;">
-                📁 @docStats.Folders · 📄 @docStats.Files
-            </div>
-            <div style="font-size: 0.72rem; color: #6d28d9; margin-top: 0.15rem;">
-                @(docStats.Files == 0 ? "Subí tus primeros archivos →" : $"{docStats.Folders} carpeta{(docStats.Folders == 1 ? "" : "s")} · {docStats.Files} archivo{(docStats.Files == 1 ? "" : "s")}")
-            </div>
+            <div class="mac-card-bignum" style="font-size:1.3rem;">@docStats.Folders <span class="mac-card-unit">carpetas</span> · @docStats.Files <span class="mac-card-unit">archivos</span></div>
+            <div class="mac-card-sub">@(docStats.Files == 0 ? "Subí tus primeros archivos →" : "")</div>
             @if (docStats.LastUploadAt.HasValue)
             {
-                <div style="font-size: 0.65rem; color: #7c3aed; margin-top: 0.15rem; font-style: italic;">
-                    🔄 Última subida: @FormatearUltimaActualizacion(docStats.LastUploadAt.Value)
-                </div>
+                <div class="mac-card-sub" style="font-style:italic; margin-top:2px;">Última subida @FormatearUltimaActualizacion(docStats.LastUploadAt.Value)</div>
             }
         }
     </div>
 
     @* Shell Flota — placeholder, esperando API *@
-    <div class="dashboard-detail-card" style="padding: 0.85rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #f59e0b; position: relative; opacity: 0.85;" title="Próximamente — cuando tengamos la API de Shell, este recuadro mostrará los datos de la flota.">
-        <div style="position: absolute; top: 0.5rem; right: 0.5rem; background: #f59e0b; color: white; font-size: 0.6rem; font-weight: 800; letter-spacing: 0.05em; padding: 0.15rem 0.45rem; border-radius: 4px;">🚧 EN CONSTRUCCIÓN</div>
-        <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
-            <span style="font-size: 1.3rem;">⛽</span>
-            <strong style="font-size: 0.85rem; color: #92400e;">Shell Flota</strong>
+    <div class="dashboard-detail-card mac-stat-card accent-amber" style="position:relative;" title="Próximamente — cuando tengamos la API de Shell, este recuadro mostrará los datos de la flota.">
+        <div class="mac-card-header">
+            <div class="mac-card-iconbox" style="background:#faeeda; color:#d97706;">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+            </div>
+            <span class="mac-card-eyebrow" style="color:#3f3f46;">Shell Flota</span>
+            <span style="margin-left:auto; background:#fef3c7; color:#92400e; font-size:0.65rem; padding:1px 7px; border-radius:8px; font-weight:500; text-transform:uppercase; letter-spacing:0.04em;">En obra</span>
         </div>
-        <div style="font-size: 1.05rem; font-weight: 800; color: #92400e; line-height: 1.2;">
-            Próximamente
-        </div>
-        <div style="font-size: 0.7rem; color: #b45309; margin-top: 0.15rem; font-style: italic;">
-            Esperando API de Shell para integrar
-        </div>
+        <div class="mac-card-sub" style="margin-top:8px;">Esperando API de Shell para integrar</div>
     </div>
 
     @* Saldo banco Galicia *@
-    <div class="dashboard-detail-card" style="padding: 0.85rem; background: linear-gradient(135deg, #1e40af, #2563eb); cursor: pointer;" @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/extracto-banco")' title="Ir al extracto bancario">
-        <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
-            <span style="font-size: 1.3rem;">🏦</span>
-            <strong style="font-size: 0.85rem; color: white;">Saldo banco Galicia</strong>
+    <div class="dashboard-detail-card mac-stat-card accent-blue" style="cursor:pointer;" @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/extracto-banco")' title="Ir al extracto bancario">
+        <div class="mac-card-header">
+            <div class="mac-card-iconbox" style="background:#e6f1fb; color:#2563eb;">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>
+            </div>
+            <span class="mac-card-eyebrow" style="color:#3f3f46;">Saldo Banco Galicia</span>
         </div>
         @if (saldoBanco is null || saldoBanco.CantidadMovimientos == 0)
         {
-            <div style="font-size: 0.95rem; font-weight: 700; color: rgba(255,255,255,0.85); line-height: 1.2;">
-                Subí el extracto →
-            </div>
-            <div style="font-size: 0.7rem; color: rgba(255,255,255,0.7); margin-top: 0.15rem;">
-                Click para importar
-            </div>
+            <div class="mac-card-bignum" style="font-size:1rem;">Subí el extracto →</div>
+            <div class="mac-card-sub">Click para importar</div>
         }
         else
         {
-            <div style="font-size: 1.45rem; font-weight: 800; color: white; line-height: 1.2;">
-                $@FormatMoney(saldoBanco.Saldo)
-            </div>
-            <div style="font-size: 0.7rem; color: rgba(255,255,255,0.8); margin-top: 0.15rem;">
-                al @saldoBanco.UltimaFecha.ToString("dd/MM/yyyy")
-            </div>
+            <div class="mac-card-bignum">$@FormatMoney(saldoBanco.Saldo)</div>
+            <div class="mac-card-sub">al @saldoBanco.UltimaFecha.ToString("dd/MM/yyyy")</div>
             @if (saldoBanco.UltimoImportadoAt.HasValue)
             {
-                <div style="font-size: 0.65rem; color: rgba(255,255,255,0.65); margin-top: 0.15rem; font-style: italic;">
-                    🔄 Última actualización: @FormatearUltimaActualizacion(saldoBanco.UltimoImportadoAt.Value)
-                </div>
+                <div class="mac-card-sub" style="font-style:italic; margin-top:2px;">Última actualización @FormatearUltimaActualizacion(saldoBanco.UltimoImportadoAt.Value)</div>
             }
         }
     </div>
