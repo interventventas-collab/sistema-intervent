@@ -463,7 +463,7 @@
         if (d.TotalMinutes < 60) return $"hace {(int)d.TotalMinutes} min";
         if (d.TotalHours < 24) return $"hace {(int)d.TotalHours} h";
         if (d.TotalDays < 7) return $"hace {(int)d.TotalDays} d";
-        return utc.ToLocalTime().ToString("dd/MM/yyyy");
+        return utc.ToArTime().ToString("dd/MM/yyyy");
     }
 
     public void Dispose() => timer?.Dispose();

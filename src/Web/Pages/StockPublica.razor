@@ -134,7 +134,7 @@
             @if (ModoAuditoria && init.AuditoriaActiva is not null)
             {
                 <div style="background:#dcfce7; border:1px solid #16a34a; border-radius:8px; padding:0.6rem; margin-top:0.5rem; font-size:0.85rem;">
-                    🟢 Hay una auditoría abierta desde <strong>@init.AuditoriaActiva.IniciadaAt.ToLocalTime().ToString("dd/MM HH:mm")</strong>
+                    🟢 Hay una auditoría abierta desde <strong>@init.AuditoriaActiva.IniciadaAt.ToArTime().ToString("dd/MM HH:mm")</strong>
                     (iniciada por <strong>@(init.AuditoriaActiva.IniciadaPorNombre ?? "?")</strong>, @init.AuditoriaActiva.ItemsContados ítems contados).
                     Sumate al conteo.
                 </div>
@@ -174,7 +174,7 @@
                 <div class="sp-card" style="padding:0.7rem;">
                     <div style="font-size:0.9rem; font-weight:700;">📋 Inventario en curso</div>
                     <div style="color:#6b7280; font-size:0.78rem; margin-top:0.2rem;">
-                        Desde <strong>@auditoriaActiva.IniciadaAt.ToLocalTime().ToString("dd/MM/yyyy")</strong>
+                        Desde <strong>@auditoriaActiva.IniciadaAt.ToArTime().ToString("dd/MM/yyyy")</strong>
                         · <strong>@auditoriaActiva.ItemsContados</strong> productos stockeados
                     </div>
                 </div>
@@ -339,7 +339,7 @@
                             <span class="sp-feed-tag @m.TipoMov">@(m.TipoMov == "SUMA" ? "+" : m.TipoMov == "RESTA" ? "−" : "=")</span>
                             <div class="sp-feed-prod">
                                 <strong>@(m.Sku ?? "") @m.ProductoNombre</strong>
-                                <span style="color:#9ca3af; font-size:0.72rem;">@m.Fecha.ToLocalTime().ToString("HH:mm") · stock @m.StockAntes → @m.StockDespues</span>
+                                <span style="color:#9ca3af; font-size:0.72rem;">@m.Fecha.ToArTime().ToString("HH:mm") · stock @m.StockAntes → @m.StockDespues</span>
                             </div>
                             <span class="sp-feed-cant">@m.Cantidad</span>
                         </div>
@@ -1028,7 +1028,7 @@
 
     private string FormatFecha(DateTime utc)
     {
-        var local = utc.ToLocalTime();
+        var local = utc.ToArTime();
         var diff = DateTime.Now - local;
         if (diff.TotalMinutes < 1) return "hace instantes";
         if (diff.TotalMinutes < 60) return $"hace {(int)diff.TotalMinutes} min";
@@ -1047,7 +1047,7 @@
             <span class="sp-prod-nombre">@p.Nombre</span>
             @if (p.UltimaModifAt.HasValue)
             {
-                var local = p.UltimaModifAt.Value.ToLocalTime();
+                var local = p.UltimaModifAt.Value.ToArTime();
                 var reciente = (DateTime.Now - local).TotalHours < 6;
                 var hace = FormatHace(p.UltimaModifAt.Value);
                 if (p.YaEnAuditoriaActiva && ModoAuditoria)

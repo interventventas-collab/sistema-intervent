@@ -63,7 +63,7 @@
                         <div style="font-size:0.78rem; color:#6b7280; margin-top:0.2rem;">
                             <span style="font-family:monospace;">@p.Numero</span>
                             ·
-                            <span>@p.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")</span>
+                            <span>@p.CreatedAt.ToArTime().ToString("dd/MM HH:mm")</span>
                             ·
                             <span>@p.TotalItems item(s)</span>
                             ·
@@ -95,7 +95,7 @@
                 <div class="pv-card">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
                         <h3 style="margin:0;">@detalle.Numero <span class="estado-@detalle.Estado" style="margin-left:0.4rem;">@detalle.Estado</span></h3>
-                        <span style="font-size:0.78rem; color:#6b7280;">@detalle.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
+                        <span style="font-size:0.78rem; color:#6b7280;">@detalle.CreatedAt.ToArTime().ToString("dd/MM/yyyy HH:mm")</span>
                     </div>
                     <div style="display:grid; grid-template-columns:auto 1fr; gap:0.3rem 0.7rem; font-size:0.9rem; margin-bottom:0.6rem;">
                         <strong>Cliente:</strong>

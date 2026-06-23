@@ -55,7 +55,7 @@
     {
         lastSelected = item;
         selectedAt = DateTime.UtcNow;
-        var dt = selectedAt.Value.ToLocalTime().ToString("HH:mm:ss");
+        var dt = selectedAt.Value.ToArTime().ToString("HH:mm:ss");
         log.Add($"[{dt}] {item.Sku} · {item.Nombre.Substring(0, Math.Min(item.Nombre.Length, 30))}");
     }
 }

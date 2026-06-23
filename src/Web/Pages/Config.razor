@@ -269,7 +269,7 @@ else
                             </tr>
                             <tr>
                                 <td class="info-label">Creada</td>
-                                <td class="info-value">@(systemInfo.SqlServer.DatabaseCreated?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "-")</td>
+                                <td class="info-value">@(systemInfo.SqlServer.DatabaseCreated?.ToArTime().ToString("dd/MM/yyyy HH:mm") ?? "-")</td>
                             </tr>
                         </table>
                     }
@@ -722,7 +722,7 @@ else
     private string FormatCommitDate(string isoDate)
     {
         if (DateTime.TryParse(isoDate, out var date))
-            return date.ToLocalTime().ToString("dd/MM/yyyy HH:mm");
+            return date.ToArTime().ToString("dd/MM/yyyy HH:mm");
         return isoDate;
     }
 

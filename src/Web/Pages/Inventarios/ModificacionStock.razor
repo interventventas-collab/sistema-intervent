@@ -316,7 +316,7 @@
                         @foreach (var m in movements)
                         {
                             <tr>
-                                <td style="font-size: 0.78rem; color: #6b7280;">@m.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                <td style="font-size: 0.78rem; color: #6b7280;">@m.CreatedAt.ToArTime().ToString("dd/MM/yyyy HH:mm")</td>
                                 <td>
                                     <div style="font-weight: 600;">@(m.ProductSku ?? "—")</div>
                                     <div style="font-size: 0.78rem; color: #6b7280;">@m.ProductTitle</div>

@@ -58,7 +58,7 @@
                                 <td>
                                     @if (proc.LastRunAt.HasValue)
                                     {
-                                        <span>@proc.LastRunAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
+                                        <span>@proc.LastRunAt.Value.ToArTime().ToString("dd/MM/yyyy HH:mm")</span>
                                         @if (proc.LastRunDurationMs.HasValue)
                                         {
                                             <br /><small class="proc-desc">@FormatDuration(proc.LastRunDurationMs.Value)</small>
@@ -72,7 +72,7 @@
                                 <td>
                                     @if (proc.NextRunAt.HasValue && proc.IsEnabled)
                                     {
-                                        @proc.NextRunAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                                        @proc.NextRunAt.Value.ToArTime().ToString("dd/MM/yyyy HH:mm")
                                     }
                                     else
                                     {
@@ -216,7 +216,7 @@
                             @foreach (var log in logs)
                             {
                                 <tr>
-                                    <td>@log.StartedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                    <td>@log.StartedAt.ToArTime().ToString("dd/MM/yyyy HH:mm:ss")</td>
                                     <td>@(log.FinishedAt.HasValue ? log.FinishedAt.Value.ToString("dd/MM/yyyy HH:mm:ss") : "-")</td>
                                     <td><span class="status-badge @GetStatusBadgeClass(log.Status)">@log.Status</span></td>
                                     <td>@(log.DurationMs.HasValue ? FormatDuration(log.DurationMs.Value) : "-")</td>

@@ -568,7 +568,7 @@ else
                                 </div>
                                 @if (s.EstimatedDeliveryLimit.HasValue)
                                 {
-                                    var slaLocal = s.EstimatedDeliveryLimit.Value.ToLocalTime();
+                                    var slaLocal = s.EstimatedDeliveryLimit.Value.ToArTime();
                                     var (slaBg, slaColor, slaLabel) = SlaStyle(slaLocal);
                                     <div style="display:inline-block; margin-top:0.2rem; padding:0.1rem 0.4rem; background:@slaBg; color:@slaColor; border-radius:4px; font-size:0.7rem; font-weight:700;">
                                         @slaLabel @slaLocal.ToString("dd/MM HH:mm")
@@ -751,7 +751,7 @@ else
                         {
                             <tr>
                                 <td>
-                                    <strong>@s.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</strong>
+                                    <strong>@s.CreatedAt.ToArTime().ToString("dd/MM/yyyy HH:mm")</strong>
                                     @if (!string.IsNullOrEmpty(s.CreatedByUsername))
                                     { <div style="font-size:0.7rem; color:#6b7280;">por @s.CreatedByUsername</div> }
                                 </td>
@@ -789,7 +789,7 @@ else
             <div class="modal-body" style="overflow-y:auto;">
                 <p style="font-size:0.85rem; color:#4b5563;">
                     @snapshotDetail.StopsCount paradas · @snapshotDetail.VehiclesCount vehículos · @snapshotDetail.DriversCount choferes
-                    · @snapshotDetail.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                    · @snapshotDetail.CreatedAt.ToArTime().ToString("dd/MM/yyyy HH:mm")
                 </p>
                 <table class="data-table" style="font-size:0.78rem;">
                     <thead>

@@ -144,7 +144,7 @@
                                     @foreach (var it in arq.Items)
                                     {
                                         <tr>
-                                            <td>@it.CreatedAt.ToLocalTime().ToString("HH:mm")</td>
+                                            <td>@it.CreatedAt.ToArTime().ToString("HH:mm")</td>
                                             <td style="font-family: monospace; font-weight: 700;">@it.VentaNumero</td>
                                             <td>@(it.ClienteNombre ?? "—")</td>
                                             <td>
@@ -220,7 +220,7 @@
                 @foreach (var it in arqueo.Items)
                 {
                     <tr>
-                        <td>@it.CreatedAt.ToLocalTime().ToString("HH:mm")</td>
+                        <td>@it.CreatedAt.ToArTime().ToString("HH:mm")</td>
                         <td style="font-family: monospace; font-weight: 700;">@it.VentaNumero</td>
                         <td>@(it.ClienteNombre ?? "—")</td>
                         <td>

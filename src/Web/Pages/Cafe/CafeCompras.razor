@@ -322,15 +322,15 @@
                     <div><strong>Total:</strong> $@FormatMoney(viewing.Total)</div>
                     @if (viewing.ConfirmadaAt.HasValue)
                     {
-                        <div><strong>Confirmada:</strong> @viewing.ConfirmadaAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                        <div><strong>Confirmada:</strong> @viewing.ConfirmadaAt.Value.ToArTime().ToString("dd/MM/yyyy HH:mm")</div>
                     }
                     @if (viewing.PagadaAt.HasValue)
                     {
-                        <div><strong>Pagada:</strong> @viewing.PagadaAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                        <div><strong>Pagada:</strong> @viewing.PagadaAt.Value.ToArTime().ToString("dd/MM/yyyy HH:mm")</div>
                     }
                     @if (viewing.AnuladaAt.HasValue)
                     {
-                        <div><strong>Anulada:</strong> @viewing.AnuladaAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                        <div><strong>Anulada:</strong> @viewing.AnuladaAt.Value.ToArTime().ToString("dd/MM/yyyy HH:mm")</div>
                     }
                 </div>
                 @if (!string.IsNullOrEmpty(viewing.Observaciones))

@@ -111,9 +111,9 @@
                     {
                         <tr style="@(a.CerradaAt is null ? "background:#dcfce7;" : "")">
                             <td><strong>@a.Id</strong></td>
-                            <td>@a.IniciadaAt.ToLocalTime().ToString("dd/MM HH:mm")</td>
+                            <td>@a.IniciadaAt.ToArTime().ToString("dd/MM HH:mm")</td>
                             <td>@(a.IniciadaPorNombre ?? "-")</td>
-                            <td>@(a.CerradaAt?.ToLocalTime().ToString("dd/MM HH:mm") ?? "-")</td>
+                            <td>@(a.CerradaAt?.ToArTime().ToString("dd/MM HH:mm") ?? "-")</td>
                             <td>
                                 @if (a.CerradaAt is null) { <span class="sa-tag SUMA">🟢 ABIERTA</span> }
                                 else { <span class="sa-tag" style="background:#e5e7eb; color:#4b5563;">CERRADA</span> }
@@ -136,7 +136,7 @@
                     <button class="sa-btn-mini" @onclick="() => audDetalle = null">✕ Cerrar</button>
                 </div>
                 <p style="font-size:0.78rem; color:#6b7280; margin:0 0 0.5rem;">
-                    @audDetalle.Movimientos.Count() movimientos · Iniciada por @(audDetalle.IniciadaPorNombre ?? "-") el @audDetalle.IniciadaAt.ToLocalTime().ToString("dd/MM HH:mm")
+                    @audDetalle.Movimientos.Count() movimientos · Iniciada por @(audDetalle.IniciadaPorNombre ?? "-") el @audDetalle.IniciadaAt.ToArTime().ToString("dd/MM HH:mm")
                 </p>
                 <table class="sa-tab">
                     <thead><tr><th>Fecha</th><th>Operador</th><th>Producto</th><th>Tipo</th><th style="text-align:right;">Cant.</th><th style="text-align:right;">Stock</th><th>Coment.</th></tr></thead>
@@ -144,7 +144,7 @@
                         @foreach (var m in audDetalle.Movimientos)
                         {
                             <tr>
-                                <td>@m.Fecha.ToLocalTime().ToString("dd/MM HH:mm:ss")</td>
+                                <td>@m.Fecha.ToArTime().ToString("dd/MM HH:mm:ss")</td>
                                 <td>@m.Operador</td>
                                 <td>
                                     @if (!string.IsNullOrEmpty(m.Sku))
@@ -188,7 +188,7 @@
                     @foreach (var m in movs)
                     {
                         <tr>
-                            <td>@m.Fecha.ToLocalTime().ToString("dd/MM HH:mm")</td>
+                            <td>@m.Fecha.ToArTime().ToString("dd/MM HH:mm")</td>
                             <td><strong>@m.Operador</strong></td>
                             <td>
                                 @if (!string.IsNullOrEmpty(m.Sku))

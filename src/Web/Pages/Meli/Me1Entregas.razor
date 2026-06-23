@@ -122,7 +122,7 @@
                                     @(s.OrderTotal.HasValue ? $"${s.OrderTotal.Value:N0}" : "—")
                                 </td>
                                 <td style="font-size: 0.82rem;">
-                                    @(s.DateShipped.HasValue ? s.DateShipped.Value.ToLocalTime().ToString("dd/MM HH:mm") : "—")
+                                    @(s.DateShipped.HasValue ? s.DateShipped.Value.ToArTime().ToString("dd/MM HH:mm") : "—")
                                 </td>
                                 <td style="font-size: 0.82rem;">@(s.TrackingNumber ?? "—")</td>
                                 <td>

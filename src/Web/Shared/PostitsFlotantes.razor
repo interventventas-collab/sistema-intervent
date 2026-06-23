@@ -38,7 +38,7 @@
                     <div class="postit-item-flot" style="background: @col.Bg; border-left: 4px solid @col.Border;" @onclick="() => ShowEdit(p)">
                         <div style="font-size: 0.85rem; line-height: 1.3; white-space: pre-wrap;">@p.Texto</div>
                         <div style="font-size: 0.68rem; color: #6b7280; margin-top: 0.25rem;">
-                            @p.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")
+                            @p.CreatedAt.ToArTime().ToString("dd/MM HH:mm")
                         </div>
                     </div>
                 }

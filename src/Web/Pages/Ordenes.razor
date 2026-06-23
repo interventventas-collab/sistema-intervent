@@ -286,7 +286,7 @@
                                                   @onclick="@(() => OpenMe1Modal(packMe1Order))">🏎 ME1</span>
                                         }
                                     </td>
-                                    <td>@group.Orders.First().DateCreated.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                    <td>@group.Orders.First().DateCreated.ToArTime().ToString("dd/MM/yyyy HH:mm")</td>
                                     <td>@group.Orders.First().AccountNickname</td>
                                     <td>@group.Orders.First().BuyerNickname</td>
                                     <td></td>
@@ -351,7 +351,7 @@
                                                   @onclick="@(() => OpenMe1Modal(order))">🏎 ME1</span>
                                         }
                                     </td>
-                                    <td>@order.DateCreated.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                    <td>@order.DateCreated.ToArTime().ToString("dd/MM/yyyy HH:mm")</td>
                                     <td>@order.AccountNickname</td>
                                     <td>@order.BuyerNickname</td>
                                     <td class="td-thumbnail">
@@ -492,7 +492,7 @@
                             <div class="detail-info-grid">
                                 <div class="detail-info-item">
                                     <span class="detail-label">Fecha</span>
-                                    <span class="detail-value">@od.DateCreated.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
+                                    <span class="detail-value">@od.DateCreated.ToArTime().ToString("dd/MM/yyyy HH:mm")</span>
                                 </div>
                                 <div class="detail-info-item">
                                     <span class="detail-label">Estado</span>
@@ -618,7 +618,7 @@
                                             </div>
                                             @if (pay.DateApproved.HasValue)
                                             {
-                                                <div class="payment-date">Aprobado: @pay.DateApproved.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                                                <div class="payment-date">Aprobado: @pay.DateApproved.Value.ToArTime().ToString("dd/MM/yyyy HH:mm")</div>
                                             }
                                         </div>
                                     }

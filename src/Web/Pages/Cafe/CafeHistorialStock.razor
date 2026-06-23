@@ -46,7 +46,7 @@
                 {
                     <div class="hist-stat-card stat-ultimo">
                         <div class="hist-stat-label">Último movimiento</div>
-                        <div class="hist-stat-value" style="font-size: 0.95rem;">@stats.Ultimo.Value.ToLocalTime().ToString("dd/MM HH:mm")</div>
+                        <div class="hist-stat-value" style="font-size: 0.95rem;">@stats.Ultimo.Value.ToArTime().ToString("dd/MM HH:mm")</div>
                     </div>
                 }
             </div>
@@ -134,7 +134,7 @@
                         @foreach (var m in movimientos)
                         {
                             <tr>
-                                <td style="white-space: nowrap;">@m.Fecha.ToLocalTime().ToString("dd/MM HH:mm:ss")</td>
+                                <td style="white-space: nowrap;">@m.Fecha.ToArTime().ToString("dd/MM HH:mm:ss")</td>
                                 <td>@m.ProductoNombre</td>
                                 <td style="font-family: monospace; color: #6b7280;">@(m.Sku ?? "-")</td>
                                 <td><span class="tipo-badge @GetStatClass(m.TipoMov)">@GetTipoLabel(m.TipoMov)</span></td>

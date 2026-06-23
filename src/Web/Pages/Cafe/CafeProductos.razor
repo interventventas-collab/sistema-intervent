@@ -1023,7 +1023,7 @@
                         @foreach (var h in historial)
                         {
                             <tr>
-                                <td style="white-space:nowrap;">@h.ChangedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                <td style="white-space:nowrap;">@h.ChangedAt.ToArTime().ToString("dd/MM/yyyy HH:mm")</td>
                                 <td>@RenderDelta(h.Pvp1Anterior, h.Pvp1Nuevo)</td>
                                 <td>@RenderDelta(h.Pvp2Anterior, h.Pvp2Nuevo)</td>
                                 <td>@RenderDelta(h.CostoAnterior, h.CostoNuevo)</td>

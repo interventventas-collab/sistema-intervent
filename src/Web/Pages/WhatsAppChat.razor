@@ -577,7 +577,7 @@
                             }
                             @if (!string.IsNullOrWhiteSpace(f.Info))
                             {
-                                <div class="wa-srv-item-info">@f.Info · @f.Fecha.ToLocalTime().ToString("dd/MM/yyyy")</div>
+                                <div class="wa-srv-item-info">@f.Info · @f.Fecha.ToArTime().ToString("dd/MM/yyyy")</div>
                             }
                         </div>
                         <button class="wa-srv-send-btn" @onclick="() => EnviarServerFile(f)" disabled="@(srvEnviandoId == f.Id)">
@@ -1072,7 +1072,7 @@
 
     string FormatHora(DateTime utc)
     {
-        var local = utc.ToLocalTime();
+        var local = utc.ToArTime();
         var ahora = DateTime.Now;
         if (local.Date == ahora.Date) return local.ToString("HH:mm");
         if (local.Date == ahora.Date.AddDays(-1)) return "Ayer";

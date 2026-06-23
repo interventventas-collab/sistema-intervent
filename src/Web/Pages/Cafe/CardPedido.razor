@@ -142,7 +142,7 @@
         <div class="prep-card-body">
             @* 2026-05-30: barra superior con fecha/hora + observaciones — compacto. *@
             <div style="display:flex; flex-wrap:wrap; gap:0.6rem; align-items:center; font-size:0.72rem; color:#6b7280; margin:0 0 0.4rem 0;">
-                <span>🕒 @Venta.Fecha.ToLocalTime().ToString("dd/MM HH:mm")</span>
+                <span>🕒 @Venta.Fecha.ToArTime().ToString("dd/MM HH:mm")</span>
                 @if (!string.IsNullOrEmpty(Venta.ComentariosCliente))
                 {
                     <span title="Comentario fijo del cliente">💬 @Venta.ComentariosCliente</span>

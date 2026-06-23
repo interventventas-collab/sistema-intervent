@@ -76,7 +76,7 @@
             </div>
 
             <p style="color:#6b7280; font-size:0.85rem;">
-                Auditoría completada en @result.DurationSeconds segundos · @result.FinishedAt.ToLocalTime().ToString("dd/MM HH:mm")
+                Auditoría completada en @result.DurationSeconds segundos · @result.FinishedAt.ToArTime().ToString("dd/MM HH:mm")
             </p>
 
             @foreach (var acc in result.Accounts)

@@ -101,9 +101,9 @@
                                         @r.ShippingSubstatus
                                     </span>
                                 </td>
-                                <td style="white-space:nowrap;">@r.DateCreated.ToLocalTime().ToString("dd/MM HH:mm")</td>
+                                <td style="white-space:nowrap;">@r.DateCreated.ToArTime().ToString("dd/MM HH:mm")</td>
                                 <td style="white-space:nowrap; color:@(rojo ? "#b91c1c" : "#6b7280");" title="Hace @($"{antiguedad:0.0}") hs">
-                                    @updatedRef.ToLocalTime().ToString("dd/MM HH:mm")
+                                    @updatedRef.ToArTime().ToString("dd/MM HH:mm")
                                     @if (rojo) { <span title="Más de 24 hs sin refrescar — capaz ya está impresa en MeLi"> ⚠</span> }
                                 </td>
                             </tr>

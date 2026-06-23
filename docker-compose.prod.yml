@@ -55,6 +55,10 @@ services:
       dockerfile: Dockerfile
     container_name: aiml-api-prod
     environment:
+      # 2026-06-22: Zona horaria forzada a Argentina. El usuario opera el negocio desde
+      # España pero el negocio esta en Argentina — todas las fechas/horas generadas en el
+      # servidor (PDFs, recibos, logs) deben mostrar hora ARG, no UTC ni Europe/Madrid.
+      - TZ=America/Argentina/Buenos_Aires
       - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://+:80
       - ConnectionStrings__DefaultConnection=Server=sqlserver-prod;Database=AIml;User Id=sa;Password=${SQL_SA_PASSWORD};TrustServerCertificate=True;

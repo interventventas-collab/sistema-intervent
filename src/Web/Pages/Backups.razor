@@ -59,7 +59,7 @@
                         @foreach (var b in backups)
                         {
                             <tr>
-                                <td>@b.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                <td>@b.CreatedAt.ToArTime().ToString("dd/MM/yyyy HH:mm")</td>
                                 <td><code class="backup-filename">@b.FileName</code></td>
                                 <td>@FormatSize(b.SizeBytes)</td>
                                 <td><span class="backup-type-badge backup-type-@b.BackupType.ToLower()">@b.BackupType</span></td>
@@ -122,13 +122,13 @@
                 @if (settings.LastRunAt.HasValue)
                 {
                     <div style="margin-top: 1rem; font-size: 0.85rem; color: #6b7280;">
-                        Ultima ejecucion: @settings.LastRunAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm") (@settings.LastRunStatus)
+                        Ultima ejecucion: @settings.LastRunAt.Value.ToArTime().ToString("dd/MM/yyyy HH:mm") (@settings.LastRunStatus)
                     </div>
                 }
                 @if (settings.NextRunAt.HasValue && settings.Enabled)
                 {
                     <div style="font-size: 0.85rem; color: #6b7280;">
-                        Proxima ejecucion: @settings.NextRunAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                        Proxima ejecucion: @settings.NextRunAt.Value.ToArTime().ToString("dd/MM/yyyy HH:mm")
                     </div>
                 }
             </div>
@@ -157,7 +157,7 @@
 
                 <p style="margin-top: 1rem;">
                     Archivo a restaurar: <code class="backup-filename">@restoreTarget.FileName</code><br />
-                    Fecha del backup: <strong>@restoreTarget.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</strong>
+                    Fecha del backup: <strong>@restoreTarget.CreatedAt.ToArTime().ToString("dd/MM/yyyy HH:mm")</strong>
                 </p>
 
                 <div class="form-group" style="margin-top: 1rem;">

@@ -113,7 +113,7 @@
                                 <td style="font-family:monospace; color:#6b7280;">@c.Sku</td>
                                 <td>@c.CafeProductoSku · <span style="color:#6b7280;">@c.CafeProductoNombre.Substring(0, Math.Min(30, c.CafeProductoNombre.Length))</span></td>
                                 <td>@c.Nickname</td>
-                                <td style="white-space:nowrap;">@c.LastPushedToMeli.ToLocalTime().ToString("HH:mm:ss")</td>
+                                <td style="white-space:nowrap;">@c.LastPushedToMeli.ToArTime().ToString("HH:mm:ss")</td>
                             </tr>
                         }
                     </tbody>

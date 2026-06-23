@@ -48,7 +48,7 @@
                                 }
                             </td>
                             <td style="font-size:0.85rem; color:#6b7280;">
-                                @(op.UpdatedAt?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "—")
+                                @(op.UpdatedAt?.ToArTime().ToString("dd/MM/yyyy HH:mm") ?? "—")
                                 @if (!string.IsNullOrEmpty(op.UpdatedBy))
                                 {
                                     <span style="font-size:0.7rem; color:#9ca3af;"> · por @op.UpdatedBy</span>

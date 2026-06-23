@@ -451,7 +451,7 @@
 
     private static string FormatFechaCorta(DateTime d)
     {
-        var local = d.ToLocalTime();
+        var local = d.ToArTime();
         var hoy = DateTime.Now.Date;
         if (local.Date == hoy) return $"hoy {local:HH:mm}";
         if (local.Date == hoy.AddDays(-1)) return $"ayer {local:HH:mm}";

@@ -1198,11 +1198,11 @@
                                 </div>
                                 <div class="detail-info-item" style="grid-column: 1 / -1;">
                                     <span class="detail-label">Creada</span>
-                                    <span class="detail-value">@(selectedItem.DateCreated?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "-")</span>
+                                    <span class="detail-value">@(selectedItem.DateCreated?.ToArTime().ToString("dd/MM/yyyy HH:mm") ?? "-")</span>
                                 </div>
                                 <div class="detail-info-item" style="grid-column: 1 / -1;">
                                     <span class="detail-label">Modificada</span>
-                                    <span class="detail-value">@(selectedItem.LastUpdated?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "-")</span>
+                                    <span class="detail-value">@(selectedItem.LastUpdated?.ToArTime().ToString("dd/MM/yyyy HH:mm") ?? "-")</span>
                                 </div>
                             </div>
                         </div>
@@ -1525,7 +1525,7 @@
                             {
                                 var dias = (DateTime.UtcNow - selectedItem.LastStockPushedToMeli.Value).TotalDays;
                                 <div style="font-size:0.85rem; font-weight:700; color:@(dias <= 7 ? "#166534" : "#b45309");">
-                                    @(dias <= 7 ? "🟢" : "🟡") @selectedItem.LastStockPushedToMeli.Value.ToLocalTime().ToString("dd/MM HH:mm")
+                                    @(dias <= 7 ? "🟢" : "🟡") @selectedItem.LastStockPushedToMeli.Value.ToArTime().ToString("dd/MM HH:mm")
                                 </div>
                             }
                             else
@@ -3249,7 +3249,7 @@
         else
         {
             var ago = DateTime.UtcNow - last.Value;
-            var localDate = last.Value.ToLocalTime();
+            var localDate = last.Value.ToArTime();
             string ageStr = ago.TotalMinutes < 60 ? $"{(int)ago.TotalMinutes}m"
                 : ago.TotalHours < 24 ? $"{(int)ago.TotalHours}h"
                 : ago.TotalDays < 30 ? $"{(int)ago.TotalDays}d"

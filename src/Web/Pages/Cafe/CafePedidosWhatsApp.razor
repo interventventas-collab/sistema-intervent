@@ -101,7 +101,7 @@
                                 <td style="font-family:monospace;">@t.Telefono</td>
                                 <td>@(t.Etiqueta ?? "—")</td>
                                 <td style="color:#6b7280; font-size:0.8rem;">
-                                    @(t.LastReadAt?.ToLocalTime().ToString("dd/MM HH:mm:ss") ?? "—")
+                                    @(t.LastReadAt?.ToArTime().ToString("dd/MM HH:mm:ss") ?? "—")
                                 </td>
                                 <td style="text-align:right;">
                                     <button class="btn btn-secondary btn-sm" @onclick="() => ResetCursorTelefono(t.Id)" title="Re-leer todo el chat">🔄</button>
@@ -155,7 +155,7 @@ fact A, x flete, ctacte" style="font-family: monospace; font-size:0.85rem;"></te
                         <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
                             @if (p.SeenAt == null) { <span class="estado-badge" style="background:#fef3c7; color:#92400e;">🟡 NUEVO</span> }
                             @if (p.Estado == "VENTA_CREADA") { <span class="estado-badge" style="background:#dcfce7; color:#14532d;">✅ CARGADO</span> }
-                            <span style="color:#6b7280; font-size:0.85rem;">@p.RecibidoAt.ToLocalTime().ToString("dd/MM HH:mm:ss")</span>
+                            <span style="color:#6b7280; font-size:0.85rem;">@p.RecibidoAt.ToArTime().ToString("dd/MM HH:mm:ss")</span>
                             @if (!string.IsNullOrEmpty(p.Telefono)) { <span style="color:#6b7280; font-size:0.78rem;">📞 @p.Telefono</span> }
                             <span style="color:#6b7280; font-size:0.78rem;">vía @p.Source</span>
                             @if (p.ClienteId.HasValue && !string.IsNullOrEmpty(p.ClienteNombre))

@@ -46,7 +46,7 @@
                         @foreach (var log in logs)
                         {
                             <tr class="clickable-row" @onclick="() => OpenDetail(log)">
-                                <td>@log.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                <td>@log.CreatedAt.ToArTime().ToString("dd/MM/yyyy HH:mm")</td>
                                 <td><span class="audit-type-badge @GetTypeBadgeClass(log.EntityType)">@GetTypeLabel(log.EntityType)</span></td>
                                 <td class="audit-entity-id">@log.EntityId</td>
                                 <td><span class="audit-action-badge @GetActionBadgeClass(log.Action)">@GetActionLabel(log.Action)</span></td>
@@ -82,7 +82,7 @@
                 <div class="audit-detail-grid">
                     <div class="audit-detail-row">
                         <span class="audit-detail-label">Fecha:</span>
-                        <span>@selectedLog.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</span>
+                        <span>@selectedLog.CreatedAt.ToArTime().ToString("dd/MM/yyyy HH:mm:ss")</span>
                     </div>
                     <div class="audit-detail-row">
                         <span class="audit-detail-label">Tipo:</span>

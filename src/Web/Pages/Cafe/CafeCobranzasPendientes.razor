@@ -132,7 +132,7 @@
                             <span style="display: inline-block; padding: 0.15rem 0.5rem; background: #fed7aa; color: #9a3412; border-radius: 4px; font-size: 0.7rem; font-weight: 700; margin-left: 0.3rem;" title="La venta ya estaba 100% cobrada. Imputá esta cobranza a otra venta del cliente o a saldo anterior.">⚠ VENTA YA COBRADA — ASIGNAR A OTRA</span>
                         }
                         <div class="meta">
-                            🚚 @c.RepartidorNombre · 🕒 @c.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")
+                            🚚 @c.RepartidorNombre · 🕒 @c.CreatedAt.ToArTime().ToString("dd/MM HH:mm")
                             @if (!string.IsNullOrEmpty(c.Notas))
                             {
                                 <span> · 📝 @c.Notas</span>

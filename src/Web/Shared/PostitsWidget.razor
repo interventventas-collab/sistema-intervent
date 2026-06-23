@@ -29,7 +29,7 @@
                     <div class="postit-text">@p.Texto</div>
                     <div class="postit-meta">
                         @(string.IsNullOrEmpty(p.CreadoPor) ? "Anónimo" : p.CreadoPor)
-                        · @p.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")
+                        · @p.CreatedAt.ToArTime().ToString("dd/MM HH:mm")
                     </div>
                 </div>
             }

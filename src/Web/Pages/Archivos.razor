@@ -117,7 +117,7 @@
                                 <span class="files-icon" style="color: @typeInfo.Color"><i class="@typeInfo.Icon"></i></span>
                                 <button class="files-name-btn" @onclick="() => OnNameClick(entry)" @onclick:stopPropagation="true">@entry.Name</button>
                             </div>
-                            <div class="fg-col-modified" title="@entry.ModifiedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")">
+                            <div class="fg-col-modified" title="@entry.ModifiedAt.ToArTime().ToString("dd/MM/yyyy HH:mm:ss")">
                                 @FormatRelative(entry.ModifiedAt)
                             </div>
                             <div class="fg-col-size">@(entry.IsFolder ? "—" : FormatSize(entry.Size))</div>
@@ -854,7 +854,7 @@
 
     private static string FormatRelative(DateTime dt)
     {
-        var local = dt.ToLocalTime();
+        var local = dt.ToArTime();
         var diff = DateTime.Now - local;
         if (diff.TotalMinutes < 1) return "Hace instantes";
         if (diff.TotalMinutes < 60) return $"Hace {(int)diff.TotalMinutes} min";

@@ -130,7 +130,7 @@
                         <div class="vj-totals-box">Saldo mes: <span class="vj-totals-num" style="color: @(e.SaldoMes >= 0 ? "#16a34a" : "#b91c1c");">$@e.SaldoMes.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</span></div>
                         @if (e.UltimaCargaAt.HasValue)
                         {
-                            <div class="vj-totals-box" style="color:#9ca3af;">Última carga: @e.UltimaCargaAt.Value.ToLocalTime().ToString("dd/MM HH:mm")</div>
+                            <div class="vj-totals-box" style="color:#9ca3af;">Última carga: @e.UltimaCargaAt.Value.ToArTime().ToString("dd/MM HH:mm")</div>
                         }
                     </div>
                     <div class="vj-btn-row">

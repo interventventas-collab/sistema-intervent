@@ -115,7 +115,7 @@
             @if (cfg.UpdatedAt.HasValue)
             {
                 <small style="color: #6b7280; margin-left: auto;">
-                    Última modificación: @cfg.UpdatedAt.Value.ToLocalTime().ToString("dd/MM HH:mm")
+                    Última modificación: @cfg.UpdatedAt.Value.ToArTime().ToString("dd/MM HH:mm")
                     @if (!string.IsNullOrEmpty(cfg.UpdatedBy)) { <span> por @cfg.UpdatedBy</span> }
                 </small>
             }

@@ -80,7 +80,7 @@
                         @foreach (var c in items)
                         {
                             <tr style="@(c.SeenAt is null ? "background: #fef3c7;" : "")">
-                                <td style="white-space:nowrap;">@c.DetectedAt.ToLocalTime().ToString("dd/MM HH:mm:ss")</td>
+                                <td style="white-space:nowrap;">@c.DetectedAt.ToArTime().ToString("dd/MM HH:mm:ss")</td>
                                 <td style="font-family:monospace; font-size:0.78rem;">
                                     <a href="https://www.mercadolibre.com.ar/p/@c.MeliItemId" target="_blank">@c.MeliItemId</a>
                                 </td>

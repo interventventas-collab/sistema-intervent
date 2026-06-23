@@ -784,7 +784,7 @@
 
     private static string FechaCorta(DateTime utc)
     {
-        var local = utc.ToLocalTime();
+        var local = utc.ToArTime();
         var dias = (int)Math.Floor((DateTime.Now - local).TotalDays);
         if (dias == 0) return "hoy";
         if (dias == 1) return "ayer";

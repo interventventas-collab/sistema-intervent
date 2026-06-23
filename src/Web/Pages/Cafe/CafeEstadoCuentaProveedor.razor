@@ -32,7 +32,7 @@
                     @foreach (var m in estado.Movimientos)
                     {
                         <tr>
-                            <td>@m.Fecha.ToLocalTime().ToString("dd/MM/yyyy")</td>
+                            <td>@m.Fecha.ToArTime().ToString("dd/MM/yyyy")</td>
                             <td><span class="badge @(m.Tipo == "Compra" ? "badge-danger" : "badge-success")">@m.Tipo</span></td>
                             <td><b>@m.Numero</b></td>
                             <td style="text-align:right; color:#059669;">@(m.Debe > 0 ? $"${m.Debe:N2}" : "")</td>

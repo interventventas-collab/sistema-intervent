@@ -232,7 +232,7 @@
                     <div style="flex:1; font-size:0.78rem; color:#6b7280;">
                         @if (e.UltimaCargaAt.HasValue)
                         {
-                            <div>Última carga: @e.UltimaCargaAt.Value.ToLocalTime().ToString("dd/MM HH:mm")</div>
+                            <div>Última carga: @e.UltimaCargaAt.Value.ToArTime().ToString("dd/MM HH:mm")</div>
                             @if (!string.IsNullOrEmpty(e.UltimaHoraEntrada) || !string.IsNullOrEmpty(e.UltimaHoraSalida))
                             {
                                 <div style="color:#1d4ed8; font-family:monospace; font-weight:700;">🕒 @(e.UltimaHoraEntrada ?? "—") → @(e.UltimaHoraSalida ?? "—")</div>

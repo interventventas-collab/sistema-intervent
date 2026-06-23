@@ -95,7 +95,7 @@
                         <div style="font-size:0.78rem; color:#6b7280; display:flex; gap:0.5rem; align-items:center;">
                             <span>@p.Numero</span>
                             <span>·</span>
-                            <span>@p.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")</span>
+                            <span>@p.CreatedAt.ToArTime().ToString("dd/MM HH:mm")</span>
                             <span>·</span>
                             <span>@p.TotalItems item(s)</span>
                             @if (!string.IsNullOrEmpty(p.FotoUrl))
@@ -286,7 +286,7 @@
                 <h1 class="pv-h1">@pedidoDetalle.Numero</h1>
                 <button class="pv-btn pv-btn-secondary" style="width:auto; padding:0.4rem 0.7rem; font-size:0.8rem;" @onclick="@(() => IrA("lista"))">← Volver</button>
             </div>
-            <p class="pv-sub"><span class="pv-@pedidoDetalle.Estado">@pedidoDetalle.Estado</span> · @pedidoDetalle.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</p>
+            <p class="pv-sub"><span class="pv-@pedidoDetalle.Estado">@pedidoDetalle.Estado</span> · @pedidoDetalle.CreatedAt.ToArTime().ToString("dd/MM/yyyy HH:mm")</p>
             <p style="margin: 0.4rem 0;"><strong>Cliente:</strong> @(pedidoDetalle.ClienteNombreCatalogo ?? pedidoDetalle.ClienteNombreLibre)</p>
             @if (!string.IsNullOrEmpty(pedidoDetalle.Notas))
             {

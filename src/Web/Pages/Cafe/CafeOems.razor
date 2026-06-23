@@ -242,7 +242,7 @@
                             @if (editing.ScrapedAt.HasValue)
                             {
                                 <span style="font-size: 0.75rem; color: #6b7280;">
-                                    Última actualización: @editing.ScrapedAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                                    Última actualización: @editing.ScrapedAt.Value.ToArTime().ToString("dd/MM/yyyy HH:mm")
                                 </span>
                             }
                         </div>

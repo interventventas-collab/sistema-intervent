@@ -436,9 +436,9 @@
                                     @if (!string.IsNullOrEmpty(v.EntregadoPorRepartidorNombre))
                                     {
                                         @* 2026-06-08: mostrar hora exacta de entrega al lado del nombre *@
-                                        var horaEntrega = v.EntregadoAt?.ToLocalTime().ToString("HH:mm");
+                                        var horaEntrega = v.EntregadoAt?.ToArTime().ToString("HH:mm");
                                         <span style="display:inline-block; padding:0.15rem 0.5rem; background:#dcfce7; color:#166534; border-radius:999px; font-size:0.7rem; font-weight:700; margin-left:0.2rem; cursor:pointer;"
-                                              title="Entregado el @(v.EntregadoAt?.ToLocalTime().ToString("dd/MM/yyyy HH:mm")). Tocá para desmarcar (admin)."
+                                              title="Entregado el @(v.EntregadoAt?.ToArTime().ToString("dd/MM/yyyy HH:mm")). Tocá para desmarcar (admin)."
                                               @onclick="@(() => PedirDesmarcarEntrega(v))">
                                             ✅ Entregó @v.EntregadoPorRepartidorNombre@(horaEntrega is null ? "" : $" a las {horaEntrega} hs") ▼
                                         </span>
@@ -670,7 +670,7 @@
                              @onclick="() => SeleccionarPedidoWA(p)">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.3rem;">
                                 <strong style="font-size:0.88rem;">📞 @p.Telefono</strong>
-                                <span style="color:#6b7280; font-size:0.78rem;">@p.RecibidoAt.ToLocalTime().ToString("dd/MM HH:mm")</span>
+                                <span style="color:#6b7280; font-size:0.78rem;">@p.RecibidoAt.ToArTime().ToString("dd/MM HH:mm")</span>
                             </div>
                             <pre style="background:#f9fafb; padding:0.5rem; border-radius:4px; font-size:0.82rem; margin:0; max-height:300px; overflow:auto; white-space:pre-wrap; word-wrap:break-word; font-family:'Menlo','Monaco',monospace;">@p.TextoCrudo</pre>
                         </div>

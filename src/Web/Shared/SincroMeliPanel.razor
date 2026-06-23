@@ -142,7 +142,7 @@
                                 <span style="@(stockDistinto ? "color:#dc2626; font-weight:600;" : "")">MeLi: <strong>@p.StockMeli</strong></span>
                                 @if (p.Config.LastSyncAt.HasValue)
                                 {
-                                    <span>Última sync: @p.Config.LastSyncAt.Value.ToLocalTime().ToString("dd/MM HH:mm")</span>
+                                    <span>Última sync: @p.Config.LastSyncAt.Value.ToArTime().ToString("dd/MM HH:mm")</span>
                                 }
                                 <span style="margin-left:auto; display:flex; gap:0.3rem; align-items:center;">
                                     <label style="display:flex; gap:0.2rem; align-items:center; cursor:pointer;">
