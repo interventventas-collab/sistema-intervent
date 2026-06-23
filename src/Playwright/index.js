@@ -920,6 +920,113 @@ app.post('/whatsapp/messages/list', async (req, res) => {
 });
 
 // ============================================================
+// POST /whatsapp/chats/list  body: { limit?: 50 }
+// Devuelve la lista de chats del sidebar de WhatsApp Web, ordenada como aparece (mas recientes arriba).
+// Cada chat: { name, phone?, lastMsg, lastMsgAt, unread }
+//
+// Estrategia: navegar a https://web.whatsapp.com/ (sin chat especifico) para asegurar que el sidebar
+// este cargado, esperar al pane-side y scrapear cada celda. WhatsApp Web cambia clases seguido, asi
+// que usamos roles ARIA y data-testid con fallbacks.
+// ============================================================
+let chatsListBusy = false;
+app.post('/whatsapp/chats/list', async (req, res) => {
+  const limit = Math.min(parseInt((req.body && req.body.limit) || 50, 10) || 50, 200);
+
+  if (chatsListBusy) return res.status(429).json({ error: 'busy', message: 'Otro listado en curso' });
+  chatsListBusy = true;
+
+  try {
+    const alive = await ensureSessionAlive();
+    if (!alive) {
+      try { await startSession({ useStorageState: true }); } catch {}
+      if (!state.page || state.page.isClosed()) {
+        chatsListBusy = false;
+        return res.status(503).json({ error: 'WhatsApp no vinculado' });
+      }
+    }
+
+    // Si no estamos en la home de WhatsApp Web, navegamos. Si ya estamos, NO recargamos
+    // (asi mantenemos el scroll y el chat abierto que el usuario podria estar viendo).
+    try {
+      const currentUrl = state.page.url();
+      if (!currentUrl.startsWith('https://web.whatsapp.com')) {
+        await state.page.goto('https://web.whatsapp.com/', { waitUntil: 'load', timeout: 30000 });
+      }
+    } catch (gotoErr) {
+      console.warn('[wa] chats goto warning:', gotoErr.message);
+    }
+
+    // Esperar el pane-side (panel izquierdo con la lista)
+    const deadline = Date.now() + 20000;
+    let paneOk = false;
+    while (Date.now() < deadline) {
+      const found = await state.page.$('#pane-side, [aria-label="Lista de chats"], [aria-label="Chat list"], div[data-tab="4"]').catch(() => null);
+      if (found) { paneOk = true; break; }
+      await sleep(600);
+    }
+    if (!paneOk) {
+      chatsListBusy = false;
+      return res.status(504).json({ error: 'Timeout cargando lista de chats' });
+    }
+
+    await sleep(700);
+
+    // Extraer los chats del DOM. Multi-fallback por cambios en clases de WhatsApp.
+    const chats = await state.page.evaluate((max) => {
+      const out = [];
+      // Cada celda de chat es un div con role=listitem dentro del pane-side
+      let cells = Array.from(document.querySelectorAll('#pane-side div[role="listitem"]'));
+      if (cells.length === 0) {
+        // Fallback: data-testid antiguo
+        cells = Array.from(document.querySelectorAll('[data-testid="cell-frame-container"]'));
+      }
+      for (let i = 0; i < cells.length && out.length < max; i++) {
+        const cell = cells[i];
+        // Nombre: el primer span con title
+        const nameNode = cell.querySelector('span[title]');
+        const name = (nameNode && nameNode.getAttribute('title')) || '';
+        // Hora del ultimo mensaje
+        const timeNodes = cell.querySelectorAll('div._ak8i, span._ak8i, div[class*="time"]');
+        let lastMsgAt = '';
+        if (timeNodes.length > 0) {
+          lastMsgAt = (timeNodes[0].innerText || timeNodes[0].textContent || '').trim();
+        }
+        // Ultimo mensaje (preview)
+        let lastMsg = '';
+        const previewNode = cell.querySelector('span[dir="ltr"][class*="last-msg"], span._ak8k, span[dir="ltr"] span');
+        if (previewNode) {
+          lastMsg = (previewNode.innerText || previewNode.textContent || '').trim();
+        } else {
+          // Fallback: el texto que no es nombre ni hora
+          const allSpans = cell.querySelectorAll('span[dir="ltr"]');
+          for (const s of allSpans) {
+            const t = (s.innerText || s.textContent || '').trim();
+            if (t && t !== name && t !== lastMsgAt && t.length < 200) { lastMsg = t; break; }
+          }
+        }
+        // Unread count (badge verde)
+        let unread = 0;
+        const badge = cell.querySelector('span[aria-label*="no le"], span[aria-label*="unread"], div[class*="unread-count"]');
+        if (badge) {
+          const m = (badge.innerText || badge.textContent || '').trim().match(/\d+/);
+          if (m) unread = parseInt(m[0], 10);
+        }
+        if (!name) continue;
+        out.push({ name, lastMsg, lastMsgAt, unread });
+      }
+      return out;
+    }, limit);
+
+    chatsListBusy = false;
+    return res.json({ chats, count: chats.length, total: chats.length });
+  } catch (err) {
+    chatsListBusy = false;
+    console.error('[wa] chats/list error:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
 // ARCA (ex AFIP) — Test de login + scraping del Registro Único Tributario.
 // Usa un browser ISOLADO (no comparte contexto con WhatsApp). Single-test
 // concurrente: si hay uno corriendo, el segundo recibe 409.

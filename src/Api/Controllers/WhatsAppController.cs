@@ -48,6 +48,15 @@ public class WhatsAppController : ControllerBase
         return Ok(status);
     }
 
+    /// <summary>2026-06-23: Lista los chats del sidebar del WhatsApp Web vinculado.
+    /// limit (query) por defecto 50. Hace scraping en el container Playwright en cada llamada.</summary>
+    [HttpGet("chats")]
+    public async Task<IActionResult> GetChats([FromQuery] int limit = 50)
+    {
+        var chats = await _wa.ListChatsAsync(limit);
+        return Ok(new { chats });
+    }
+
     [HttpPost("link")]
     public async Task<IActionResult> StartLinking()
     {

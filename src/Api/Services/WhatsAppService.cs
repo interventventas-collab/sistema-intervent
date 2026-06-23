@@ -67,6 +67,34 @@ public class WhatsAppService
         }
     }
 
+    /// <summary>2026-06-23: Lista los chats del sidebar de WhatsApp Web del numero vinculado.
+    /// Hace scraping en el container Playwright. Hasta `limit` chats ordenados como aparecen
+    /// en la app (mas recientes arriba).</summary>
+    public async Task<List<WhatsAppChatDto>> ListChatsAsync(int limit = 50)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/whatsapp/chats/list", new { limit });
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Playwright /whatsapp/chats/list devolvio {Status}", resp.StatusCode);
+                return new List<WhatsAppChatDto>();
+            }
+            var wrap = await resp.Content.ReadFromJsonAsync<ChatsListResponse>();
+            return wrap?.Chats ?? new List<WhatsAppChatDto>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "No se pudo listar chats del WhatsApp");
+            return new List<WhatsAppChatDto>();
+        }
+    }
+
+    private class ChatsListResponse
+    {
+        public List<WhatsAppChatDto>? Chats { get; set; }
+    }
+
     public async Task<bool> CheckLinkedAsync()
     {
         try
@@ -270,6 +298,20 @@ public class WhatsAppStatusDto
 public class WhatsAppLinkedDto
 {
     public bool Linked { get; set; }
+}
+
+/// <summary>2026-06-23: Cada chat del sidebar de WhatsApp Web. No incluye el ID del chat
+/// porque WhatsApp Web no lo expone publicamente — se identifica por el nombre que el dueño le tiene guardado.</summary>
+public class WhatsAppChatDto
+{
+    /// <summary>Nombre que figura en la lista (contacto guardado o numero crudo si no lo tiene en agenda).</summary>
+    public string Name { get; set; } = "";
+    /// <summary>Texto preview del ultimo mensaje (puede tener emojis o "Foto", "Audio", etc.).</summary>
+    public string LastMsg { get; set; } = "";
+    /// <summary>Hora del ultimo mensaje tal como la muestra WhatsApp Web ("12:34", "ayer", "lun.", etc.).</summary>
+    public string LastMsgAt { get; set; } = "";
+    /// <summary>Cantidad de mensajes sin leer (badge verde). 0 si no hay.</summary>
+    public int Unread { get; set; }
 }
 
 public class WhatsAppRecipient

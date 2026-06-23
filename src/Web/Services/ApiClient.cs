@@ -3307,6 +3307,19 @@ public class ApiClient
         return await GetAsync<WhatsAppStatusDto>("/api/whatsapp/status");
     }
 
+    /// <summary>2026-06-23: Lista los chats del WhatsApp Web vinculado (scraping del sidebar).
+    /// Si no hay sesion activa o falla, devuelve lista vacia.</summary>
+    public async Task<List<WhatsAppChatDto>> GetWhatsAppChatsAsync(int limit = 50)
+    {
+        try
+        {
+            var dto = await GetAsync<ChatsResponse>($"/api/whatsapp/chats?limit={limit}");
+            return dto?.Chats ?? new List<WhatsAppChatDto>();
+        }
+        catch { return new List<WhatsAppChatDto>(); }
+    }
+    private class ChatsResponse { public List<WhatsAppChatDto>? Chats { get; set; } }
+
     public async Task<bool> StartWhatsAppLinkAsync()
     {
         await SetAuthHeaderAsync();

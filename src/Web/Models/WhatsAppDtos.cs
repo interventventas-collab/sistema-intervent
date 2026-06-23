@@ -1,5 +1,14 @@
 namespace Web.Models;
 
+/// <summary>2026-06-23: chat del sidebar del WhatsApp Web vinculado via Playwright.</summary>
+public class WhatsAppChatDto
+{
+    public string Name { get; set; } = "";
+    public string LastMsg { get; set; } = "";
+    public string LastMsgAt { get; set; } = "";
+    public int Unread { get; set; }
+}
+
 public class WhatsAppStatusDto
 {
     public bool Linked { get; set; }
