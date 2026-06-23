@@ -4237,7 +4237,11 @@
         catch { deleteSettings = new DeleteCafeVentaSettingsDto(); }
         // Si la URL es /cafe/presupuestos, pre-filtrar por PRO
         if (ModoPresupuestos) { filtroTipo = "PRO"; }
-        await LoadCatalogos();
+        // 2026-06-23: catalogos (clientes/productos/combos = 5-9 MB) en background — antes
+        // bloqueaban la pantalla 5s al entrar. Ahora el listado de Ventas aparece en seguida y los
+        // catalogos se cargan atras. Si el usuario abre "Nueva venta" antes de que terminen, el modal
+        // se re-renderiza solo cuando llegan gracias a StateHasChanged.
+        _ = LoadCatalogosBackgroundAsync();
         await Load();
         // Si veníamos del FAB con ?nueva=..., abrir el modal automáticamente
         TryHandleNuevaVentaShortcut();
@@ -4509,6 +4513,15 @@
             settings = await Api.GetCafeSettingsAsync();
         }
         catch { }
+    }
+
+    /// <summary>2026-06-23: wrapper para cargar catalogos en background sin bloquear OnInitializedAsync.
+    /// Cuando terminan los 3 fetchs grandes (clientes/productos/combos), llamamos StateHasChanged via InvokeAsync
+    /// para que si el modal Nueva Venta ya esta abierto, los buscadores se rellenen solos.</summary>
+    private async Task LoadCatalogosBackgroundAsync()
+    {
+        await LoadCatalogos();
+        try { await InvokeAsync(StateHasChanged); } catch { }
     }
 
     // 2026-06-22: paginacion server-side. Por default carga 50 ultimas. El usuario puede
