@@ -4049,6 +4049,17 @@
             }
             catch { }
         }
+        // 2026-06-22: idem para el dropdown del boton 🖨+ (sin esto el popup queda en posicion default y no se ve).
+        if (printMenuOpenForVentaId.HasValue)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("positionActionsMenu",
+                    $"print-btn-{printMenuOpenForVentaId.Value}",
+                    $"print-menu-{printMenuOpenForVentaId.Value}");
+            }
+            catch { }
+        }
     }
 
     protected override async Task OnInitializedAsync()
