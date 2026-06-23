@@ -85,6 +85,50 @@
     }
     /* Mostrar el post-it al hacer hover sobre la celda (el TD contenedor) */
     td:hover > .pin-postit { display: block; }
+
+    /* 2026-06-22: chips de rango para el banner azul del listado de ventas */
+    .rango-chip {
+        padding: 0.32rem 0.85rem;
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: #1e40af;
+        background: white;
+        border: 1px solid #bfdbfe;
+        border-radius: 999px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        line-height: 1;
+    }
+    .rango-chip:hover {
+        background: #dbeafe;
+        border-color: #93c5fd;
+    }
+    .rango-chip-active {
+        background: #2563eb;
+        color: white;
+        border-color: #1d4ed8;
+        font-weight: 600;
+    }
+    .rango-chip-active:hover {
+        background: #1d4ed8;
+    }
+    .rango-chip-volver {
+        padding: 0.32rem 0.85rem;
+        font-size: 0.78rem;
+        font-weight: 500;
+        color: #6b7280;
+        background: transparent;
+        border: 1px dashed #9ca3af;
+        border-radius: 999px;
+        cursor: pointer;
+        margin-left: auto;
+        transition: all 0.15s ease;
+        line-height: 1;
+    }
+    .rango-chip-volver:hover {
+        background: #f3f4f6;
+        color: #374151;
+    }
 </style>
 
 @* overflow:visible para que el tooltip de la celda Cliente no quede recortado por el wrapper .card
@@ -140,34 +184,29 @@
             </div>
         }
     </div>
-    @* 2026-06-22: aviso cuando hay filtros activos pero estamos paginados — el filtro solo aplica
-       a las ventas cargadas en pantalla, no al universo completo. Ofrecemos botones de rango rapido
-       que cargan mas ventas (mas alla de las 50 de esta pagina) para poder filtrar/buscar a fondo
-       sin tener que traer todo el historico de una. *@
-    @if (!traerTodoActivo && HayFiltrosActivos && totalVentas > pageSize)
+    @* 2026-06-22: banner unificado para gestionar el RANGO de ventas cargadas. Solo aparece
+       cuando NO estamos en paginado por default (es decir, hay filtros + rango activo, o el
+       usuario eligio ver todas). Ofrece chips para cambiar de rango facil. *@
+    @if (rangoUltimosDias.HasValue || traerTodoActivo)
     {
-        <div style="background: #fef3c7; border-bottom: 1px solid #fcd34d; padding: 0.55rem 1rem; font-size: 0.82rem; color: #78350f; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
-            <span><strong>⚠ Estás buscando solo en las @ventas?.Count de esta página.</strong> Ampliar a:</span>
-            <button class="btn-icon" style="padding: 0.25rem 0.6rem; font-size: 0.78rem; color: #92400e; background: white; border: 1px solid #fcd34d; font-weight: 600;"
-                    @onclick="@(() => CargarUltimosDias(30))">📅 30 días</button>
-            <button class="btn-icon" style="padding: 0.25rem 0.6rem; font-size: 0.78rem; color: #92400e; background: white; border: 1px solid #fcd34d; font-weight: 600;"
-                    @onclick="@(() => CargarUltimosDias(60))">📅 60 días</button>
-            <button class="btn-icon" style="padding: 0.25rem 0.6rem; font-size: 0.78rem; color: #92400e; background: white; border: 1px solid #fcd34d; font-weight: 600;"
-                    @onclick="@(() => CargarUltimosDias(180))">📅 6 meses</button>
-            <button class="btn-icon" style="padding: 0.25rem 0.6rem; font-size: 0.78rem; color: #92400e; background: white; border: 1px solid #fcd34d; font-weight: 600;"
-                    @onclick="@(() => CargarUltimosDias(365))">📅 1 año</button>
-            <button class="btn-icon" style="padding: 0.25rem 0.6rem; font-size: 0.78rem; color: #92400e; background: white; border: 1px solid #fcd34d; font-weight: 700;"
-                    @onclick="VerTodas">📋 Todas (@totalVentas)</button>
-        </div>
-    }
-    @* 2026-06-22: cuando hay un rango cargado por los botones de "ampliar", mostrar un banner azul
-       con la opcion de volver al modo paginado. *@
-    @if (rangoUltimosDias.HasValue)
-    {
-        <div style="background: #eff6ff; border-bottom: 1px solid #bfdbfe; padding: 0.5rem 1rem; font-size: 0.82rem; color: #1e40af; display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap;">
-            <span>📅 Viendo ventas de los últimos <strong>@rangoUltimosDias días</strong> (@(ventas?.Count ?? 0) ventas).</span>
-            <button class="btn-icon" style="padding: 0.25rem 0.6rem; font-size: 0.78rem; color: #1e40af; background: white; border: 1px solid #bfdbfe; font-weight: 600;"
-                    @onclick="VolverAPaginado">Volver a paginado (50)</button>
+        <div style="background: #eff6ff; border-bottom: 1px solid #bfdbfe; padding: 0.65rem 1rem; display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap;">
+            <span style="font-size: 0.85rem; color: #1e40af; font-weight: 500;">
+                @if (rangoUltimosDias.HasValue)
+                {
+                    @($"📅 Viendo últimos {rangoUltimosDias} días ({ventas?.Count ?? 0} ventas).")
+                }
+                else
+                {
+                    @($"📋 Viendo TODAS las ventas ({ventas?.Count ?? 0}).")
+                }
+            </span>
+            <span style="font-size: 0.78rem; color: #6b7280; margin-left: 0.3rem;">Cambiar rango:</span>
+            <button class="rango-chip @(rangoUltimosDias == 30 ? "rango-chip-active" : "")" @onclick="@(() => CargarUltimosDias(30))">30 días</button>
+            <button class="rango-chip @(rangoUltimosDias == 60 ? "rango-chip-active" : "")" @onclick="@(() => CargarUltimosDias(60))">60 días</button>
+            <button class="rango-chip @(rangoUltimosDias == 180 ? "rango-chip-active" : "")" @onclick="@(() => CargarUltimosDias(180))">6 meses</button>
+            <button class="rango-chip @(rangoUltimosDias == 365 ? "rango-chip-active" : "")" @onclick="@(() => CargarUltimosDias(365))">1 año</button>
+            <button class="rango-chip @(traerTodoActivo ? "rango-chip-active" : "")" @onclick="VerTodas">Todas (@totalVentas)</button>
+            <button class="rango-chip-volver" @onclick="VolverAPaginado" title="Volver al listado paginado por defecto (más rápido)">↶ Volver a paginado</button>
         </div>
     }
     @* ─── Barra de filtros ─── *@
@@ -4090,8 +4129,26 @@
     /// <summary>Se ejecuta cada vez que Blazor termina de renderizar. Lo usamos para enganchar
     /// el drag-and-drop al modal de Confirmar Emisión recién aparecido. El helper JS es idempotente
     /// (si ya está enganchado, no engancha de nuevo).</summary>
+    // 2026-06-22: track del estado previo de HayFiltrosActivos para detectar transicion
+    // false→true y disparar la auto-ampliacion a 30 dias. Sin esto, OnAfterRenderAsync
+    // entraria en loop infinito cada render.
+    private bool _filtrosEstabanActivos = false;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // 2026-06-22: cuando el usuario activa un filtro (escribe en el buscador, selecciona
+        // un tipo, etc.) y estamos en modo paginado, automaticamente cargamos los ultimos 30
+        // dias para que el filtro busque en un rango razonable y no solo en las 50 de la pagina.
+        // Si los 30 dias no alcanzan, el banner ofrece ampliar a 60/180/365/todas.
+        var filtrosActivosAhora = HayFiltrosActivos;
+        if (filtrosActivosAhora && !_filtrosEstabanActivos && !traerTodoActivo && !rangoUltimosDias.HasValue && totalVentas > pageSize)
+        {
+            _filtrosEstabanActivos = true;
+            await CargarUltimosDias(30);
+            return;
+        }
+        if (!filtrosActivosAhora) _filtrosEstabanActivos = false;
+
         if (showConfirmEmision)
         {
             try { await JS.InvokeVoidAsync("enableModalDrag", "#confirm-emision-modal"); }
