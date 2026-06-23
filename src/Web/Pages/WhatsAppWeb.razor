@@ -191,9 +191,10 @@
         await RecargarChats();
         _refreshChatsTimer = new System.Threading.Timer(_ => _ = InvokeAsync(async () => await RecargarChats(silent: true)),
             null, 30000, 30000);
-        // Refresco del chat abierto cada 8 segundos.
+        // Refresco del chat abierto cada 20 segundos (era 8 — congestionaba el container Playwright
+        // porque el scrape tarda ~6s y se acumulaban requests).
         _refreshOpenChatTimer = new System.Threading.Timer(_ => _ = InvokeAsync(async () => await RefrescarChatAbierto()),
-            null, 8000, 8000);
+            null, 20000, 20000);
     }
 
     private async Task RecargarChats(bool silent = false)

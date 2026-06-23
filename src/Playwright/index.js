@@ -925,12 +925,20 @@ app.post('/whatsapp/messages/list', async (req, res) => {
 // guardado donde no tenemos el telefono. Despues de abrir, devuelve los mensajes y el header.
 // ============================================================
 let openByNameBusy = false;
+let openByNameBusyAt = 0;
 app.post('/whatsapp/chat/open-by-name', async (req, res) => {
   const name = (req.body && req.body.name) || '';
   if (!name) return res.status(400).json({ error: 'name requerido' });
 
+  // 2026-06-23 fix: si el flag esta trabado hace mas de 60s asumimos cuelgue del request anterior
+  // y lo liberamos. Antes el flag quedaba pegado para siempre si el evaluate() colgaba.
+  if (openByNameBusy && (Date.now() - openByNameBusyAt) > 60000) {
+    console.warn('[wa] open-by-name: flag busy mas de 60s, liberando');
+    openByNameBusy = false;
+  }
   if (openByNameBusy || messagesListBusy) return res.status(429).json({ error: 'busy' });
   openByNameBusy = true;
+  openByNameBusyAt = Date.now();
 
   try {
     const alive = await ensureSessionAlive();
@@ -1062,12 +1070,13 @@ app.post('/whatsapp/chat/open-by-name', async (req, res) => {
     });
     try { console.log(`[wa] open-by-name "${name}": ${messages.length} mensajes leidos`); } catch {}
 
-    openByNameBusy = false;
     return res.json({ messages, total: messages.length, name });
   } catch (err) {
-    openByNameBusy = false;
     console.error('[wa] open-by-name error:', err.message || err);
     return res.status(500).json({ error: err.message || 'error' });
+  } finally {
+    // 2026-06-23: garantiza liberar el flag aunque haya error o cuelgue (try/finally vs try/catch).
+    openByNameBusy = false;
   }
 });
 
