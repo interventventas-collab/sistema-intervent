@@ -141,13 +141,33 @@
         }
     </div>
     @* 2026-06-22: aviso cuando hay filtros activos pero estamos paginados — el filtro solo aplica
-       a las ventas cargadas en pantalla, no al universo completo. *@
+       a las ventas cargadas en pantalla, no al universo completo. Ofrecemos botones de rango rapido
+       que cargan mas ventas (mas alla de las 50 de esta pagina) para poder filtrar/buscar a fondo
+       sin tener que traer todo el historico de una. *@
     @if (!traerTodoActivo && HayFiltrosActivos && totalVentas > pageSize)
     {
-        <div style="background: #fef3c7; border-bottom: 1px solid #fcd34d; padding: 0.5rem 1rem; font-size: 0.82rem; color: #78350f; display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap;">
-            <span>⚠ Filtrando solo en las @ventas?.Count ventas de esta página. Hay @totalVentas en total.</span>
+        <div style="background: #fef3c7; border-bottom: 1px solid #fcd34d; padding: 0.55rem 1rem; font-size: 0.82rem; color: #78350f; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
+            <span><strong>⚠ Estás buscando solo en las @ventas?.Count de esta página.</strong> Ampliar a:</span>
             <button class="btn-icon" style="padding: 0.25rem 0.6rem; font-size: 0.78rem; color: #92400e; background: white; border: 1px solid #fcd34d; font-weight: 600;"
-                    @onclick="VerTodas">🔍 Buscar en todas (@totalVentas)</button>
+                    @onclick="@(() => CargarUltimosDias(30))">📅 30 días</button>
+            <button class="btn-icon" style="padding: 0.25rem 0.6rem; font-size: 0.78rem; color: #92400e; background: white; border: 1px solid #fcd34d; font-weight: 600;"
+                    @onclick="@(() => CargarUltimosDias(60))">📅 60 días</button>
+            <button class="btn-icon" style="padding: 0.25rem 0.6rem; font-size: 0.78rem; color: #92400e; background: white; border: 1px solid #fcd34d; font-weight: 600;"
+                    @onclick="@(() => CargarUltimosDias(180))">📅 6 meses</button>
+            <button class="btn-icon" style="padding: 0.25rem 0.6rem; font-size: 0.78rem; color: #92400e; background: white; border: 1px solid #fcd34d; font-weight: 600;"
+                    @onclick="@(() => CargarUltimosDias(365))">📅 1 año</button>
+            <button class="btn-icon" style="padding: 0.25rem 0.6rem; font-size: 0.78rem; color: #92400e; background: white; border: 1px solid #fcd34d; font-weight: 700;"
+                    @onclick="VerTodas">📋 Todas (@totalVentas)</button>
+        </div>
+    }
+    @* 2026-06-22: cuando hay un rango cargado por los botones de "ampliar", mostrar un banner azul
+       con la opcion de volver al modo paginado. *@
+    @if (rangoUltimosDias.HasValue)
+    {
+        <div style="background: #eff6ff; border-bottom: 1px solid #bfdbfe; padding: 0.5rem 1rem; font-size: 0.82rem; color: #1e40af; display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap;">
+            <span>📅 Viendo ventas de los últimos <strong>@rangoUltimosDias días</strong> (@(ventas?.Count ?? 0) ventas).</span>
+            <button class="btn-icon" style="padding: 0.25rem 0.6rem; font-size: 0.78rem; color: #1e40af; background: white; border: 1px solid #bfdbfe; font-weight: 600;"
+                    @onclick="VolverAPaginado">Volver a paginado (50)</button>
         </div>
     }
     @* ─── Barra de filtros ─── *@
@@ -4398,6 +4418,9 @@
     private int pageOffset = 0;
     private int totalVentas = 0;
     private bool traerTodoActivo = false; // cuando true, NO se aplica paginacion (trae todo)
+    // 2026-06-22: cuando se activa un rango rapido ("ultimos 30/60/180/365 dias") guardamos los
+    // dias para mostrar en el banner azul + recargar correctamente. null = no hay rango activo.
+    private int? rangoUltimosDias = null;
 
     private async Task Load()
     {
@@ -4407,6 +4430,13 @@
             if (traerTodoActivo)
             {
                 ventas = await Api.GetCafeVentasAsync() ?? new();
+                totalVentas = ventas.Count;
+            }
+            else if (rangoUltimosDias.HasValue)
+            {
+                // Backend ignora paginacion cuando hay 'from'/'to'. Pedimos desde hace N dias hasta hoy.
+                var fromDate = DateTime.UtcNow.ToArTime().Date.AddDays(-rangoUltimosDias.Value);
+                ventas = await Api.GetCafeVentasAsync(from: fromDate) ?? new();
                 totalVentas = ventas.Count;
             }
             else
@@ -4425,6 +4455,17 @@
         }
         catch { ToastService.Error("Error al cargar ventas"); ventas = new(); }
         loading = false;
+    }
+
+    /// <summary>2026-06-22: ampliar la carga a los ultimos N dias para poder buscar/filtrar
+    /// en ese rango sin tener que traer todo el historico. Usado por los botones rapidos
+    /// del banner amarillo cuando hay filtros activos y la pagina actual no alcanza.</summary>
+    private async Task CargarUltimosDias(int dias)
+    {
+        traerTodoActivo = false;
+        rangoUltimosDias = dias;
+        pageOffset = 0;
+        await Load();
     }
 
     /// <summary>2026-06-22: cambia de pagina. offset = (pagina - 1) * pageSize.</summary>
@@ -4446,6 +4487,7 @@
     private async Task VerTodas()
     {
         traerTodoActivo = true;
+        rangoUltimosDias = null;
         pageOffset = 0;
         await Load();
     }
@@ -4454,6 +4496,7 @@
     private async Task VolverAPaginado()
     {
         traerTodoActivo = false;
+        rangoUltimosDias = null;
         pageOffset = 0;
         await Load();
     }
