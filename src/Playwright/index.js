@@ -1220,10 +1220,14 @@ app.post('/whatsapp/chat/open-by-index', async (req, res) => {
     }
 
     // Click directo en el nth listitem. Hace scrollIntoView por si esta fuera del viewport.
+    // 2026-06-24: usar selector descendiente desde document (igual que chats/list) porque
+    // pane.querySelectorAll devolvia 0 mientras document.querySelectorAll('#pane-side div[...]')
+    // devolvia 67 en el mismo DOM. Posiblemente shadow DOM o ancestry rara de WhatsApp Web 2024+.
     const clickResult = await state.page.evaluate(({ idx, expected }) => {
-      const pane = document.querySelector('#pane-side');
-      if (!pane) return { ok: false, reason: 'no pane-side' };
-      const items = pane.querySelectorAll('div[role="listitem"]');
+      const items = document.querySelectorAll('#pane-side div[role="listitem"]');
+      if (items.length === 0) {
+        return { ok: false, reason: 'no items', total: 0 };
+      }
       if (idx >= items.length) {
         return { ok: false, reason: 'index out of range', total: items.length };
       }
