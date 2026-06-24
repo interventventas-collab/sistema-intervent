@@ -388,28 +388,25 @@ app.post('/whatsapp/cancel-link', async (req, res) => {
 
 // POST /whatsapp/send-bulk - Body: { recipients: [{phone, name, message?}], message: string }
 app.post('/whatsapp/send-bulk', async (req, res) => {
-  // Esperar a que cualquier messages/list en curso termine. Sin esto, las dos
-  // operaciones llaman page.goto(...) al mismo tiempo y se pisan → Execution
-  // context destroyed.
+  // Esperar a que cualquier accion WA en curso termine (mutex global).
   const waitDeadline = Date.now() + 60000;
-  while (messagesListBusy && Date.now() < waitDeadline) {
+  while (waBusy && Date.now() < waitDeadline) {
     await sleep(250);
   }
-  if (messagesListBusy) {
+  if (!acquireWaLock('send-bulk')) {
     return res.status(429).json({ error: 'busy', message: 'Otra operacion de WhatsApp en curso' });
   }
-  messagesListBusy = true;
   try {
     const { recipients, message } = req.body || {};
     if (!Array.isArray(recipients) || recipients.length === 0) {
-      messagesListBusy = false;
+      releaseWaLock();
       return res.status(400).json({ error: 'recipients vacío' });
     }
 
     // Restaurar sesión desde storage si no hay browser
     if (!state.page || state.page.isClosed()) {
       if (!fs.existsSync(STORAGE_STATE_PATH)) {
-        messagesListBusy = false;
+        releaseWaLock();
         return res.status(400).json({ error: 'WhatsApp no esta vinculado' });
       }
       await startSession({ useStorageState: true });
@@ -417,7 +414,7 @@ app.post('/whatsapp/send-bulk', async (req, res) => {
       await sleep(5000);
       const linked = await isLinkedOnPage(state.page);
       if (!linked) {
-        messagesListBusy = false;
+        releaseWaLock();
         return res.status(400).json({ error: 'WhatsApp no esta vinculado' });
       }
       state.linked = true;
@@ -450,10 +447,10 @@ app.post('/whatsapp/send-bulk', async (req, res) => {
       try { await saveStorageState(); } catch {}
     }
 
-    messagesListBusy = false;
+    releaseWaLock();
     res.json(results);
   } catch (err) {
-    messagesListBusy = false;
+    releaseWaLock();
     console.error('[wa] error en /send-bulk:', err);
     res.status(500).json({ error: err.message });
   }
@@ -756,8 +753,25 @@ async function sendWhatsAppMessage(phone, text) {
 // El caller (C# background service) guarda el último id leído y lo usa como cursor.
 // ============================================================
 
-// Mutex simple para evitar múltiples lecturas simultáneas (cambios de chat se pisan)
-let messagesListBusy = false;
+// 2026-06-23: MUTEX GLOBAL para TODA accion que toque la pagina de WhatsApp Web
+// (messages/list, send-bulk, open-by-name, send-to-current, chats/list).
+// Antes habia 3 flags separados que NO se respetaban entre si — el poller de pedidos y
+// las acciones manuales del usuario peleaban por el mismo browser, navegando uno encima
+// del otro → spam de "Execution context was destroyed" y timeouts del lado del usuario.
+// Auto-release a 90s por si una request anterior colgo (Playwright a veces se traba).
+let waBusy = false;
+let waBusyAt = 0;
+function acquireWaLock(opName) {
+  if (waBusy && (Date.now() - waBusyAt) > 90000) {
+    console.warn(`[wa] lock: ocupado >90s, liberando para ${opName}`);
+    waBusy = false;
+  }
+  if (waBusy) return false;
+  waBusy = true;
+  waBusyAt = Date.now();
+  return true;
+}
+function releaseWaLock() { waBusy = false; }
 
 app.post('/whatsapp/messages/list', async (req, res) => {
   const phoneInput = (req.body && req.body.phone) || '';
@@ -767,8 +781,7 @@ app.post('/whatsapp/messages/list', async (req, res) => {
   const phone = normalizePhone(phoneInput);
   if (phone.length < 8) return res.status(400).json({ error: 'phone invalido' });
 
-  if (messagesListBusy) return res.status(429).json({ error: 'busy', message: 'Otro listado en curso' });
-  messagesListBusy = true;
+  if (!acquireWaLock('messages/list')) return res.status(429).json({ error: 'busy', message: 'Otro listado en curso' });
 
   try {
     // Asegurar sesión
@@ -776,7 +789,7 @@ app.post('/whatsapp/messages/list', async (req, res) => {
     if (!alive) {
       try { await startSession({ useStorageState: true }); } catch {}
       if (!state.page || state.page.isClosed()) {
-        messagesListBusy = false;
+        releaseWaLock();
         return res.status(503).json({ error: 'WhatsApp no vinculado' });
       }
     }
@@ -812,11 +825,11 @@ app.post('/whatsapp/messages/list', async (req, res) => {
       await sleep(700);
     }
     if (invalidPopup) {
-      messagesListBusy = false;
+      releaseWaLock();
       return res.status(400).json({ error: 'Numero invalido o sin WhatsApp' });
     }
     if (!composeBox) {
-      messagesListBusy = false;
+      releaseWaLock();
       return res.status(504).json({ error: 'Timeout abriendo chat (footer no encontrado)' });
     }
 
@@ -910,10 +923,10 @@ app.post('/whatsapp/messages/list', async (req, res) => {
       try { await saveStorageState(); } catch {}
     }
 
-    messagesListBusy = false;
+    releaseWaLock();
     return res.json({ messages: filtered, total: messages.length, phone });
   } catch (err) {
-    messagesListBusy = false;
+    releaseWaLock();
     console.error('[wa] messages/list error:', err.message || err);
     return res.status(500).json({ error: err.message || 'error' });
   }
@@ -924,28 +937,18 @@ app.post('/whatsapp/messages/list', async (req, res) => {
 // Abre un chat haciendo click en el sidebar (no via URL ?phone=). Sirve para chats con nombre
 // guardado donde no tenemos el telefono. Despues de abrir, devuelve los mensajes y el header.
 // ============================================================
-let openByNameBusy = false;
-let openByNameBusyAt = 0;
 app.post('/whatsapp/chat/open-by-name', async (req, res) => {
   const name = (req.body && req.body.name) || '';
   if (!name) return res.status(400).json({ error: 'name requerido' });
 
-  // 2026-06-23 fix: si el flag esta trabado hace mas de 60s asumimos cuelgue del request anterior
-  // y lo liberamos. Antes el flag quedaba pegado para siempre si el evaluate() colgaba.
-  if (openByNameBusy && (Date.now() - openByNameBusyAt) > 60000) {
-    console.warn('[wa] open-by-name: flag busy mas de 60s, liberando');
-    openByNameBusy = false;
-  }
-  if (openByNameBusy || messagesListBusy) return res.status(429).json({ error: 'busy' });
-  openByNameBusy = true;
-  openByNameBusyAt = Date.now();
+  if (!acquireWaLock('open-by-name')) return res.status(429).json({ error: 'busy' });
 
   try {
     const alive = await ensureSessionAlive();
     if (!alive) {
       try { await startSession({ useStorageState: true }); } catch {}
       if (!state.page || state.page.isClosed()) {
-        openByNameBusy = false;
+        releaseWaLock();
         return res.status(503).json({ error: 'WhatsApp no vinculado' });
       }
     }
@@ -965,31 +968,55 @@ app.post('/whatsapp/chat/open-by-name', async (req, res) => {
       await sleep(400);
     }
 
-    // Buscar el span[title="<name>"] y clickear el contenedor del chat
-    const clicked = await state.page.evaluate((targetName) => {
-      const spans = document.querySelectorAll('#pane-side span[title]');
-      for (const s of spans) {
-        if ((s.getAttribute('title') || '').trim() === targetName.trim()) {
-          // Buscar el cell-frame ancestor para clickearlo
-          let el = s;
-          for (let i = 0; i < 8 && el; i++) {
-            if (el.getAttribute && (el.getAttribute('role') === 'listitem' ||
-                (el.getAttribute('data-testid') || '').includes('cell-frame'))) {
-              el.click();
-              return true;
+    // 2026-06-23 fix Plan C: match flexible (case-insensitive, sin acentos, espacios colapsados).
+    // Si no encuentra en primera pasada, scrollea el sidebar hacia abajo (WhatsApp virtualiza la
+    // lista — los chats fuera de viewport no estan en el DOM). Hasta 12 scrolls = ~24 chats mas.
+    const tryClickByName = async () => {
+      return await state.page.evaluate((targetName) => {
+        const norm = (s) => (s || '')
+          .normalize('NFD').replace(/[̀-ͯ]/g, '')
+          .toLowerCase().replace(/\s+/g, ' ').trim();
+        const want = norm(targetName);
+        const spans = document.querySelectorAll('#pane-side span[title]');
+        for (const s of spans) {
+          if (norm(s.getAttribute('title')) === want) {
+            // Buscar el ancestor listitem (data-testid="cell-frame" ya no existe en WA Web 2024+).
+            let el = s;
+            for (let i = 0; i < 8 && el; i++) {
+              if (el.getAttribute && el.getAttribute('role') === 'listitem') {
+                el.click();
+                return true;
+              }
+              el = el.parentElement;
             }
-            el = el.parentElement;
+            s.click();
+            return true;
           }
-          // Fallback: click directo
-          s.click();
-          return true;
         }
+        return false;
+      }, name);
+    };
+
+    let clicked = await tryClickByName();
+    if (!clicked) {
+      // No esta visible — scrollear el sidebar buscandolo. WhatsApp virtualiza la lista,
+      // los chats fuera del viewport no estan en el DOM hasta que scrolleas.
+      for (let scrollStep = 0; scrollStep < 12 && !clicked; scrollStep++) {
+        const reachedBottom = await state.page.evaluate(() => {
+          const pane = document.querySelector('#pane-side');
+          if (!pane) return true;
+          const before = pane.scrollTop;
+          pane.scrollTop = Math.min(pane.scrollHeight, pane.scrollTop + pane.clientHeight * 0.9);
+          return pane.scrollTop === before; // no se movio = fondo
+        }).catch(() => true);
+        await sleep(350);
+        clicked = await tryClickByName();
+        if (reachedBottom) break;
       }
-      return false;
-    }, name);
+    }
 
     if (!clicked) {
-      openByNameBusy = false;
+      releaseWaLock();
       return res.status(404).json({ error: 'Chat no encontrado en el sidebar', name });
     }
 
@@ -1002,7 +1029,7 @@ app.post('/whatsapp/chat/open-by-name', async (req, res) => {
       await sleep(500);
     }
     if (!composeBox) {
-      openByNameBusy = false;
+      releaseWaLock();
       return res.status(504).json({ error: 'Timeout abriendo chat (footer no encontrado)' });
     }
 
@@ -1134,8 +1161,8 @@ app.post('/whatsapp/chat/open-by-name', async (req, res) => {
     console.error('[wa] open-by-name error:', err.message || err);
     return res.status(500).json({ error: err.message || 'error' });
   } finally {
-    // 2026-06-23: garantiza liberar el flag aunque haya error o cuelgue (try/finally vs try/catch).
-    openByNameBusy = false;
+    // garantiza liberar el lock aunque haya error o cuelgue
+    releaseWaLock();
   }
 });
 
@@ -1147,6 +1174,8 @@ app.post('/whatsapp/chat/open-by-name', async (req, res) => {
 app.post('/whatsapp/chat/send-to-current', async (req, res) => {
   const text = (req.body && req.body.text) || '';
   if (!text || !text.trim()) return res.status(400).json({ error: 'text requerido' });
+
+  if (!acquireWaLock('send-to-current')) return res.status(429).json({ error: 'busy' });
 
   try {
     if (!state.page || state.page.isClosed()) {
@@ -1169,6 +1198,8 @@ app.post('/whatsapp/chat/send-to-current', async (req, res) => {
   } catch (err) {
     console.error('[wa] send-to-current error:', err.message || err);
     return res.status(500).json({ error: err.message || 'error' });
+  } finally {
+    releaseWaLock();
   }
 });
 
@@ -1181,19 +1212,17 @@ app.post('/whatsapp/chat/send-to-current', async (req, res) => {
 // este cargado, esperar al pane-side y scrapear cada celda. WhatsApp Web cambia clases seguido, asi
 // que usamos roles ARIA y data-testid con fallbacks.
 // ============================================================
-let chatsListBusy = false;
 app.post('/whatsapp/chats/list', async (req, res) => {
   const limit = Math.min(parseInt((req.body && req.body.limit) || 50, 10) || 50, 200);
 
-  if (chatsListBusy) return res.status(429).json({ error: 'busy', message: 'Otro listado en curso' });
-  chatsListBusy = true;
+  if (!acquireWaLock('chats/list')) return res.status(429).json({ error: 'busy', message: 'Otro listado en curso' });
 
   try {
     const alive = await ensureSessionAlive();
     if (!alive) {
       try { await startSession({ useStorageState: true }); } catch {}
       if (!state.page || state.page.isClosed()) {
-        chatsListBusy = false;
+        releaseWaLock();
         return res.status(503).json({ error: 'WhatsApp no vinculado' });
       }
     }
@@ -1221,7 +1250,7 @@ app.post('/whatsapp/chats/list', async (req, res) => {
       await sleep(600);
     }
     if (!paneOk) {
-      chatsListBusy = false;
+      releaseWaLock();
       return res.status(504).json({ error: 'Timeout cargando lista de chats' });
     }
 
@@ -1273,10 +1302,10 @@ app.post('/whatsapp/chats/list', async (req, res) => {
       return out;
     }, limit);
 
-    chatsListBusy = false;
+    releaseWaLock();
     return res.json({ chats, count: chats.length, total: chats.length });
   } catch (err) {
-    chatsListBusy = false;
+    releaseWaLock();
     console.error('[wa] chats/list error:', err);
     return res.status(500).json({ error: err.message });
   }
