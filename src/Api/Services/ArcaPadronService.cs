@@ -212,11 +212,6 @@ public class ArcaPadronService
                 {
                     condicionIva = condFromA5;
                 }
-                // LOG TEMPORAL para diagnosticar misclassifications: registramos TODA respuesta A5
-                // junto con la condición resuelta, así podemos verificar si el parser acertó.
-                _logger.LogWarning(
-                    "PadronArca DEBUG CUIT {Cuit}: A5 resolvio IVA={Cond}. XML crudo:\n{Xml}",
-                    clean, condFromA5 ?? "(null)", rawXml ?? "(null)");
             }
             catch (Exception ex)
             {
@@ -312,16 +307,21 @@ public class ArcaPadronService
     }
 
     /// <summary>
-    /// Aplica la tabla de prioridad del spec personaServiceA5/getPersona_v2 sobre los
-    /// impuestos ACTIVOS (estadoImpuesto = AC) + datos de monotributo.
-    /// Orden: Exento > Monotrib > RI > null (NO default a CF para no clasificar mal
-    /// monotributistas cuyo IVA no esté expuesto).
+    /// Aplica la tabla de prioridad sobre los impuestos ACTIVOS (estadoImpuesto = AC)
+    /// + datos de monotributo del endpoint personaServiceA5/getPersona_v2.
+    ///
+    /// Orden: Monotrib > Exento > RI > CF.
+    ///
+    /// IMPORTANTE: el spec original tenía Exento antes que Monotrib, pero un monotributista
+    /// argentino normalmente aparece simultáneamente con "MONOTRIBUTO" activo Y un impuesto
+    /// "IVA EXENTO" activo (el IVA Exento es CONSECUENCIA del régimen monotributo, no su
+    /// condición principal). Si ponemos Exento primero terminamos clasificando como "Exento"
+    /// a todos los monotributistas — eso pasó con el caso German Palanica (Monotrib Cat A).
+    /// Por eso Monotrib gana: si hay <datosMonotributo>/<categoriaMonotributo>/idImpuesto 20-21,
+    /// la persona ES Monotributista y eso es lo que importa, independiente de qué más diga.
     /// </summary>
     private static string? ResolverCondicionIvaA5(XElement root)
     {
-        // Filtramos solo impuestos activos. ARCA usa "AC" en este endpoint
-        // (mientras que wsconscompuesta usa "ACTIVO"). Si no viene el campo,
-        // asumimos activo (mejor que descartar).
         var impuestos = root.Descendants().Where(e => e.Name.LocalName == "impuesto").ToList();
         var activos = impuestos.Where(imp =>
         {
@@ -331,24 +331,25 @@ public class ArcaPadronService
                 || string.Equals(estado, "ACTIVO", StringComparison.OrdinalIgnoreCase);
         }).ToList();
 
-        // Prioridad 1: Exento (id 32 o descripción contiene "EXENTO").
-        // Esta gana sobre RI porque "IVA EXENTO" contiene "IVA" y podría confundirse.
-        foreach (var imp in activos)
-        {
-            var id = El(imp, "idImpuesto");
-            var desc = (El(imp, "descripcionImpuesto") ?? "").ToUpperInvariant();
-            if (id == "32" || desc.Contains("EXENTO")) return "EX";
-        }
-
-        // Prioridad 2: Monotributista — categoriaMonotributo presente
-        // o impuesto con id 20/21 o descripción contiene "MONOTRIB".
-        if (root.Descendants().Any(e => e.Name.LocalName == "categoriaMonotributo"))
-            return "MO";
+        // Prioridad 1: Monotributista — gana cuando coexiste con IVA EXENTO (caso común).
+        // Señales: bloque <datosMonotributo> con cualquier dato, <categoriaMonotributo>,
+        // o impuesto con id 20/21 o descripción que contiene "MONOTRIB".
+        if (root.Descendants().Any(e =>
+            e.Name.LocalName == "datosMonotributo" ||
+            e.Name.LocalName == "categoriaMonotributo")) return "MO";
         foreach (var imp in activos)
         {
             var id = El(imp, "idImpuesto");
             var desc = (El(imp, "descripcionImpuesto") ?? "").ToUpperInvariant();
             if (id == "20" || id == "21" || desc.Contains("MONOTRIB")) return "MO";
+        }
+
+        // Prioridad 2: Exento — solo si NO es monotributista. id 32 o desc con "EXENTO".
+        foreach (var imp in activos)
+        {
+            var id = El(imp, "idImpuesto");
+            var desc = (El(imp, "descripcionImpuesto") ?? "").ToUpperInvariant();
+            if (id == "32" || desc.Contains("EXENTO")) return "EX";
         }
 
         // Prioridad 3: Responsable Inscripto (id 30 o descripción exacta "IVA").
@@ -359,9 +360,7 @@ public class ArcaPadronService
             if (id == "30" || desc == "IVA") return "RI";
         }
 
-        // Default: Consumidor Final. ARCA respondió con datos válidos pero sin impuestos
-        // activos relevantes — la persona no tiene inscripción tributaria expuesta,
-        // típicamente es CF (consumidor final). Tabla del spec: default si nada matcheó.
+        // Default: Consumidor Final.
         return "CF";
     }
 
