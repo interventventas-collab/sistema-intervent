@@ -33,6 +33,11 @@ public class ArcaPadronService
     private const string CONSTANCIA_URL = "https://aws.afip.gov.ar/sr-padron/webservices/wsconscompuesta";
     private const string CONSTANCIA_SERVICE_NAME = "ws_sr_constancia_inscripcion";
 
+    // Endpoint A5 oficial de Constancia. Mismo servicio adherido (ws_sr_constancia_inscripcion)
+    // pero distinta operación (getPersona_v2) y distinto namespace. Devuelve los datos de
+    // régimen general con <estadoImpuesto>AC</estadoImpuesto> en el formato exacto del spec.
+    private const string CONSTANCIA_A5_URL = "https://aws.afip.gov.ar/sr-padron/webservices/personaServiceA5";
+
     public ArcaPadronService(AppDbContext db, ArcaWsService ws,
         IHttpClientFactory httpFactory, ILogger<ArcaPadronService> logger)
     {
@@ -175,11 +180,13 @@ public class ArcaPadronService
         // ---- Complemento: si la Condición IVA quedó nula, consultar ws_sr_constancia_inscripcion ----
         // El padrón A13 a veces no devuelve impuestos. La Constancia sí. Si el certificado tiene
         // ese servicio autorizado, lo aprovechamos; si no, simplemente seguimos sin Condición IVA.
+        string? wsconscompuestaXml = null;
         if (string.IsNullOrEmpty(condicionIva))
         {
             try
             {
-                var condFromConstancia = await TryResolverCondicionIvaConstanciaAsync(account, clean);
+                var (condFromConstancia, rawXml) = await TryResolverCondicionIvaConstanciaAsync(account, clean);
+                wsconscompuestaXml = rawXml;
                 if (!string.IsNullOrEmpty(condFromConstancia))
                 {
                     condicionIva = condFromConstancia;
@@ -187,8 +194,42 @@ public class ArcaPadronService
             }
             catch (Exception ex)
             {
-                _logger.LogInformation("Constancia de inscripción no disponible (capaz no autorizada): {Msg}", ex.Message);
+                _logger.LogInformation("Constancia de inscripción (wsconscompuesta) no disponible: {Msg}", ex.Message);
             }
+        }
+
+        // ---- Tercer intento: personaServiceA5/getPersona_v2 (operación oficial Constancia A5) ----
+        // Mismo servicio adherido en ARCA (ws_sr_constancia_inscripcion) pero distinto endpoint.
+        // Devuelve los impuestos en el formato spec con <estadoImpuesto>AC</estadoImpuesto>.
+        string? a5Xml = null;
+        if (string.IsNullOrEmpty(condicionIva))
+        {
+            try
+            {
+                var (condFromA5, rawXml) = await TryResolverCondicionIvaConstanciaA5Async(account, clean);
+                a5Xml = rawXml;
+                if (!string.IsNullOrEmpty(condFromA5))
+                {
+                    condicionIva = condFromA5;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogInformation("Constancia A5 (personaServiceA5) no disponible: {Msg}", ex.Message);
+            }
+        }
+
+        // Si seguimos sin poder resolver la Condición IVA, loguear las respuestas crudas
+        // de cada endpoint para diagnóstico. El XML crudo nos dice si ARCA realmente no
+        // expone el dato o si es un problema de parseo nuestro.
+        if (string.IsNullOrEmpty(condicionIva))
+        {
+            _logger.LogWarning(
+                "PadronArca: Condición IVA NO resuelta para CUIT {Cuit}. " +
+                "Respuesta wsconscompuesta:\n{WscXml}\n\nRespuesta personaServiceA5:\n{A5Xml}",
+                clean,
+                wsconscompuestaXml ?? "(no se llamó o falló antes de obtener respuesta)",
+                a5Xml ?? "(no se llamó o falló antes de obtener respuesta)");
         }
 
         return new ArcaPadronResult
@@ -208,10 +249,11 @@ public class ArcaPadronService
     }
 
     /// <summary>
-    /// Consulta el servicio ws_sr_constancia_inscripcion para obtener la Condición IVA real
-    /// (con impuestos + datos de monotributo). Devuelve null si no se puede determinar.
+    /// Consulta el servicio ws_sr_constancia_inscripcion (endpoint wsconscompuesta) para
+    /// obtener la Condición IVA real. Devuelve (condición, XML crudo) — el XML se usa para
+    /// diagnóstico si ningún endpoint logra resolver el IVA.
     /// </summary>
-    private async Task<string?> TryResolverCondicionIvaConstanciaAsync(Models.ArcaWebserviceAccount account, string cuitConsulta)
+    private async Task<(string? condicion, string? rawXml)> TryResolverCondicionIvaConstanciaAsync(Models.ArcaWebserviceAccount account, string cuitConsulta)
     {
         // Autenticar contra WSAA para el servicio de constancia (TA distinto al de A13).
         ArcaWsTokenCache.CachedTa ta;
@@ -223,11 +265,98 @@ public class ArcaPadronService
         // Llamar al endpoint de Constancia. Usa el mismo formato SOAP que el padrón.
         var soap = BuildConstanciaSoap(ta.Token, ta.Sign, account.Cuit, cuitConsulta);
         var doc = await CallConstanciaAsync(soap);
+        var rawXml = doc.ToString();
 
         var persona = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "persona");
-        if (persona is null) return null;
+        if (persona is null) return (null, rawXml);
 
-        return ResolverCondicionIva(persona);
+        return (ResolverCondicionIva(persona), rawXml);
+    }
+
+    /// <summary>
+    /// Consulta el endpoint personaServiceA5/getPersona_v2 (operación oficial Constancia A5).
+    /// Mismo servicio adherido (ws_sr_constancia_inscripcion) pero distinto endpoint y
+    /// estructura de respuesta. Aplica la tabla de prioridad del spec:
+    /// Exento (id 32 o "EXENTO") > Monotributo (id 20/21 o "MONOTRIB" o categoriaMonotributo)
+    /// > RI (id 30 o desc "IVA").
+    /// </summary>
+    private async Task<(string? condicion, string? rawXml)> TryResolverCondicionIvaConstanciaA5Async(Models.ArcaWebserviceAccount account, string cuitConsulta)
+    {
+        // Reusa el mismo TA del servicio de constancia (el cache lo evita re-pedir).
+        ArcaWsTokenCache.CachedTa ta;
+        using (var cert = _ws.LoadCertificate(account))
+        {
+            ta = await _ws.GetTaInternalAsync(account, cert, CONSTANCIA_SERVICE_NAME);
+        }
+
+        var soap = BuildConstanciaA5Soap(ta.Token, ta.Sign, account.Cuit, cuitConsulta);
+        var doc = await CallConstanciaA5Async(soap);
+        var rawXml = doc.ToString();
+
+        // Si vino errorConstancia, devolvemos null (el CUIT no está en padrón Constancia).
+        var errEl = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "errorConstancia");
+        if (errEl is not null) return (null, rawXml);
+
+        // El elemento que envuelve los datos puede llamarse personaReturn o persona,
+        // según versión de la respuesta. Buscamos el primero que matchee.
+        var root = doc.Descendants().FirstOrDefault(e =>
+            e.Name.LocalName == "personaReturn" || e.Name.LocalName == "persona");
+        if (root is null) return (null, rawXml);
+
+        return (ResolverCondicionIvaA5(root), rawXml);
+    }
+
+    /// <summary>
+    /// Aplica la tabla de prioridad del spec personaServiceA5/getPersona_v2 sobre los
+    /// impuestos ACTIVOS (estadoImpuesto = AC) + datos de monotributo.
+    /// Orden: Exento > Monotrib > RI > null (NO default a CF para no clasificar mal
+    /// monotributistas cuyo IVA no esté expuesto).
+    /// </summary>
+    private static string? ResolverCondicionIvaA5(XElement root)
+    {
+        // Filtramos solo impuestos activos. ARCA usa "AC" en este endpoint
+        // (mientras que wsconscompuesta usa "ACTIVO"). Si no viene el campo,
+        // asumimos activo (mejor que descartar).
+        var impuestos = root.Descendants().Where(e => e.Name.LocalName == "impuesto").ToList();
+        var activos = impuestos.Where(imp =>
+        {
+            var estado = El(imp, "estadoImpuesto") ?? El(imp, "estado");
+            return string.IsNullOrEmpty(estado)
+                || string.Equals(estado, "AC", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(estado, "ACTIVO", StringComparison.OrdinalIgnoreCase);
+        }).ToList();
+
+        // Prioridad 1: Exento (id 32 o descripción contiene "EXENTO").
+        // Esta gana sobre RI porque "IVA EXENTO" contiene "IVA" y podría confundirse.
+        foreach (var imp in activos)
+        {
+            var id = El(imp, "idImpuesto");
+            var desc = (El(imp, "descripcionImpuesto") ?? "").ToUpperInvariant();
+            if (id == "32" || desc.Contains("EXENTO")) return "EX";
+        }
+
+        // Prioridad 2: Monotributista — categoriaMonotributo presente
+        // o impuesto con id 20/21 o descripción contiene "MONOTRIB".
+        if (root.Descendants().Any(e => e.Name.LocalName == "categoriaMonotributo"))
+            return "MO";
+        foreach (var imp in activos)
+        {
+            var id = El(imp, "idImpuesto");
+            var desc = (El(imp, "descripcionImpuesto") ?? "").ToUpperInvariant();
+            if (id == "20" || id == "21" || desc.Contains("MONOTRIB")) return "MO";
+        }
+
+        // Prioridad 3: Responsable Inscripto (id 30 o descripción exacta "IVA").
+        foreach (var imp in activos)
+        {
+            var id = El(imp, "idImpuesto");
+            var desc = (El(imp, "descripcionImpuesto") ?? "").Trim().ToUpperInvariant();
+            if (id == "30" || desc == "IVA") return "RI";
+        }
+
+        // Default: null. Decisión histórica de no devolver "CF" para no facturar
+        // mal a monotributistas cuyo IVA no esté expuesto en la respuesta.
+        return null;
     }
 
     private static string BuildConstanciaSoap(string token, string sign, string cuitRepresentado, string cuitConsulta)
@@ -254,6 +383,38 @@ public class ArcaPadronService
         using var content = new StringContent(soap, System.Text.Encoding.UTF8, "text/xml");
         content.Headers.ContentType!.CharSet = "utf-8";
         var req = new HttpRequestMessage(HttpMethod.Post, CONSTANCIA_URL) { Content = content };
+        req.Headers.Add("SOAPAction", "\"\"");
+        var resp = await http.SendAsync(req);
+        var body = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode)
+            throw new Exception($"HTTP {(int)resp.StatusCode} de ARCA: {body}");
+        return XDocument.Parse(body);
+    }
+
+    private static string BuildConstanciaA5Soap(string token, string sign, string cuitRepresentado, string cuitConsulta)
+    {
+        // Operación getPersona_v2 contra personaServiceA5. Namespace propio.
+        return $@"<?xml version=""1.0"" encoding=""UTF-8""?>
+<soapenv:Envelope xmlns:soapenv=""http://schemas.xmlsoap.org/soap/envelope/"" xmlns:a5=""http://a5.soap.ws.server.puc.sr/"">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <a5:getPersona_v2>
+      <token>{System.Security.SecurityElement.Escape(token)}</token>
+      <sign>{System.Security.SecurityElement.Escape(sign)}</sign>
+      <cuitRepresentada>{cuitRepresentado}</cuitRepresentada>
+      <idPersona>{cuitConsulta}</idPersona>
+    </a5:getPersona_v2>
+  </soapenv:Body>
+</soapenv:Envelope>";
+    }
+
+    private async Task<XDocument> CallConstanciaA5Async(string soap)
+    {
+        var http = _httpFactory.CreateClient();
+        http.Timeout = TimeSpan.FromSeconds(30);
+        using var content = new StringContent(soap, System.Text.Encoding.UTF8, "text/xml");
+        content.Headers.ContentType!.CharSet = "utf-8";
+        var req = new HttpRequestMessage(HttpMethod.Post, CONSTANCIA_A5_URL) { Content = content };
         req.Headers.Add("SOAPAction", "\"\"");
         var resp = await http.SendAsync(req);
         var body = await resp.Content.ReadAsStringAsync();
