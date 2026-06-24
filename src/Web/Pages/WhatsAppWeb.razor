@@ -90,9 +90,10 @@
                     @foreach (var c in chats)
                     {
                         var name = c.Name;
+                        var idx = c.Index;
                         var ini = string.IsNullOrEmpty(name) ? "?" : name.Substring(0, 1).ToUpperInvariant();
                         var color = AvatarColor(name);
-                        <div class="ww-conv-item @(selectedName == name ? "active" : "")" @onclick="() => Seleccionar(name)">
+                        <div class="ww-conv-item @(selectedIndex == idx ? "active" : "")" @onclick="() => Seleccionar(idx, name)">
                             <div class="ww-avatar" style="background:@color;">@ini</div>
                             <div class="ww-conv-body">
                                 <div class="ww-conv-name">@name</div>
@@ -178,6 +179,7 @@
     private bool linkedDetected = false;
 
     private string selectedName = "";
+    private int selectedIndex = -1;
     private List<Web.Models.WhatsAppMessageDto> chatMessages = new();
     private bool loadingMessages = false;
     private string newMessageText = "";
@@ -212,18 +214,21 @@
         await InvokeAsync(StateHasChanged);
     }
 
-    private async Task Seleccionar(string name)
+    private async Task Seleccionar(int index, string name)
     {
-        if (selectedName == name) return;
+        if (selectedIndex == index) return;
+        selectedIndex = index;
         selectedName = name;
         chatMessages = new();
         newMessageText = "";
         loadingMessages = true;
         await InvokeAsync(StateHasChanged);
 
-        var dto = await Api.OpenWhatsAppChatByNameAsync(name);
+        // 2026-06-23: abrir por INDICE (mucho mas robusto que por nombre — no falla con contactos
+        // sin sincronizar, formatos exoticos, ni chats con nombre largo).
+        var dto = await Api.OpenWhatsAppChatByIndexAsync(index, name);
         // Solo aplicar si el usuario sigue en el mismo chat (puede haber clickeado otro mientras tanto)
-        if (selectedName == name)
+        if (selectedIndex == index)
         {
             chatMessages = dto.Messages ?? new();
             loadingMessages = false;
@@ -234,17 +239,18 @@
     private void CerrarChat()
     {
         selectedName = "";
+        selectedIndex = -1;
         chatMessages = new();
         newMessageText = "";
     }
 
     private async Task RefrescarChatAbierto()
     {
-        if (string.IsNullOrEmpty(selectedName) || sending || loadingMessages) return;
+        if (selectedIndex < 0 || sending || loadingMessages) return;
         try
         {
-            var dto = await Api.OpenWhatsAppChatByNameAsync(selectedName);
-            if (selectedName == dto.Name && dto.Messages.Count > 0)
+            var dto = await Api.OpenWhatsAppChatByIndexAsync(selectedIndex, selectedName);
+            if (selectedIndex >= 0 && dto.Messages.Count > 0)
             {
                 chatMessages = dto.Messages;
                 await InvokeAsync(StateHasChanged);

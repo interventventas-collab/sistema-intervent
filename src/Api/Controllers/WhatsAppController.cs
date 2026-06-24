@@ -66,6 +66,17 @@ public class WhatsAppController : ControllerBase
         return Ok(dto);
     }
 
+    /// <summary>2026-06-23: Abre un chat por INDICE del sidebar (la posicion que devolvio el ultimo
+    /// /chats/list). Mucho mas robusto que open-by-name — no depende del matching de texto.
+    /// Si el sidebar se reordeno (entro mensaje nuevo), devuelve 409 y el frontend refresca.</summary>
+    [HttpPost("chats/open-by-index")]
+    public async Task<IActionResult> OpenChatByIndex([FromBody] OpenChatByIndexRequest req)
+    {
+        if (req is null || req.Index < 0) return BadRequest(new { error = "index requerido (>=0)" });
+        var dto = await _wa.OpenChatByIndexAsync(req.Index, req.Name ?? "");
+        return Ok(dto);
+    }
+
     /// <summary>2026-06-23: Manda un mensaje al chat actualmente abierto en el WA Web.</summary>
     [HttpPost("chats/send")]
     public async Task<IActionResult> SendToOpenChat([FromBody] SendToChatRequest req)
@@ -76,6 +87,7 @@ public class WhatsAppController : ControllerBase
     }
 
     public class OpenChatRequest { public string Name { get; set; } = ""; }
+    public class OpenChatByIndexRequest { public int Index { get; set; } public string? Name { get; set; } }
     public class SendToChatRequest { public string Text { get; set; } = ""; }
 
     [HttpPost("link")]

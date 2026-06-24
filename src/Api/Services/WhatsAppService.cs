@@ -118,6 +118,29 @@ public class WhatsAppService
         }
     }
 
+    /// <summary>2026-06-23: Abre un chat por su INDICE en el sidebar (posicion de /chats/list).
+    /// Mucho mas robusto que por nombre — no falla por contactos sin sincronizar ni cambios de formato.</summary>
+    public async Task<WhatsAppChatMessagesDto> OpenChatByIndexAsync(int index, string name)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/whatsapp/chat/open-by-index", new { index, name });
+            if (!resp.IsSuccessStatusCode)
+            {
+                var errorTxt = await resp.Content.ReadAsStringAsync();
+                _logger.LogWarning("open-by-index fallo: {Status} {Body}", resp.StatusCode, errorTxt);
+                return new WhatsAppChatMessagesDto { Name = name, Messages = new() };
+            }
+            var dto = await resp.Content.ReadFromJsonAsync<WhatsAppChatMessagesDto>();
+            return dto ?? new WhatsAppChatMessagesDto { Name = name };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error abriendo chat por index {Index} ({Name})", index, name);
+            return new WhatsAppChatMessagesDto { Name = name };
+        }
+    }
+
     /// <summary>2026-06-23: Manda un mensaje al chat actualmente abierto en WhatsApp Web.
     /// Asume que se llamo OpenChatByNameAsync antes (o el chat ya estaba abierto).</summary>
     public async Task<bool> SendToCurrentChatAsync(string text)
@@ -356,6 +379,10 @@ public class WhatsAppChatMessagesDto
 /// porque WhatsApp Web no lo expone publicamente — se identifica por el nombre que el dueño le tiene guardado.</summary>
 public class WhatsAppChatDto
 {
+    /// <summary>2026-06-23: Posicion (0-based) en la lista del sidebar tal como vino del DOM.
+    /// El frontend la pasa de vuelta a /chats/open-by-index para clickear este chat sin depender
+    /// del matching de texto (que falla cuando el contacto se muestra como numero o tiene formato raro).</summary>
+    public int Index { get; set; }
     /// <summary>Nombre que figura en la lista (contacto guardado o numero crudo si no lo tiene en agenda).</summary>
     public string Name { get; set; } = "";
     /// <summary>Texto preview del ultimo mensaje (puede tener emojis o "Foto", "Audio", etc.).</summary>

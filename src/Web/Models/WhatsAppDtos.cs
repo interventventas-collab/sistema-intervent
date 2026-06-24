@@ -3,6 +3,8 @@ namespace Web.Models;
 /// <summary>2026-06-23: chat del sidebar del WhatsApp Web vinculado via Playwright.</summary>
 public class WhatsAppChatDto
 {
+    /// <summary>2026-06-23: posicion en la lista (0-based). Se manda a /chats/open-by-index para clickear.</summary>
+    public int Index { get; set; }
     public string Name { get; set; } = "";
     public string LastMsg { get; set; } = "";
     public string LastMsgAt { get; set; } = "";

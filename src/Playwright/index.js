@@ -783,6 +783,140 @@ async function acquireWaLockWait(opName, maxWaitMs = 30000) {
   return false;
 }
 
+// Despues de clickear un chat en el sidebar, esperar el footer + esperar nodos de mensaje +
+// scrollear al final + extraer mensajes del DOM. Devuelve { ok, messages, debug, error? }.
+// Compartido entre open-by-name y open-by-index para no duplicar la logica de extraccion.
+async function waitAndExtractMessagesFromPanel(page, label) {
+  // 1) Esperar footer (chat abierto)
+  let composeBox = null;
+  const footerDeadline = Date.now() + 20000;
+  while (Date.now() < footerDeadline) {
+    composeBox = await page.$('footer div[contenteditable="true"]').catch(() => null);
+    if (composeBox) break;
+    await sleep(500);
+  }
+  if (!composeBox) {
+    return { ok: false, status: 504, error: 'Timeout abriendo chat (footer no encontrado)' };
+  }
+
+  // 2) Esperar ACTIVAMENTE nodos de mensaje (no solo footer)
+  const msgDeadline = Date.now() + 15000;
+  let foundMessageNode = false;
+  while (Date.now() < msgDeadline) {
+    const n = await page.evaluate(() => {
+      const sels = ['div[data-id]', '[role="row"]', '.copyable-text[data-pre-plain-text]', '[data-pre-plain-text]', '.message-in', '.message-out'];
+      let total = 0;
+      for (const s of sels) {
+        try { total += document.querySelectorAll(s).length; } catch {}
+      }
+      return total;
+    }).catch(() => 0);
+    if (n > 0) { foundMessageNode = true; break; }
+    await sleep(400);
+  }
+  if (!foundMessageNode) {
+    console.warn(`[wa] ${label}: no aparecieron nodos de mensaje en 15s (chat puede estar vacio o WA cambio selectores)`);
+  }
+  await sleep(800);
+
+  // 3) Scroll al final por las dudas
+  try {
+    await page.evaluate(() => {
+      const main = document.querySelector('[role="application"] [role="main"]');
+      if (main) main.scrollTop = main.scrollHeight;
+    });
+  } catch {}
+  await sleep(600);
+
+  // 4) Extraccion robusta multi-selector
+  const result = await page.evaluate(() => {
+    const SELECTORES = [
+      'div[data-id]',
+      'div[role="application"] div[data-id]',
+      '[role="row"]',
+      '[aria-rowindex]',
+      '.message-in, .message-out',
+      '[data-pre-plain-text]',
+    ];
+
+    const extractTextFromNode = (node) => {
+      const copyableWithMeta = node.querySelector('.copyable-text[data-pre-plain-text]');
+      if (copyableWithMeta) {
+        const sel = copyableWithMeta.querySelector('span.selectable-text, .selectable-text');
+        if (sel) {
+          const t = (sel.innerText || sel.textContent || '').trim();
+          if (t) return t;
+        }
+        const t = (copyableWithMeta.innerText || '').trim();
+        if (t) return t;
+      }
+      const copy = node.querySelector('.copyable-text');
+      if (copy) {
+        const t = (copy.innerText || copy.textContent || '').trim();
+        if (t) return t;
+      }
+      const selSpans = node.querySelectorAll('span.selectable-text, .selectable-text');
+      for (let i = selSpans.length - 1; i >= 0; i--) {
+        const t = (selSpans[i].innerText || selSpans[i].textContent || '').trim();
+        if (t) return t;
+      }
+      const raw = (node.innerText || '').trim();
+      if (raw) {
+        const lines = raw.split('\n').map(l => l.trim()).filter(l => l && !/^\d{1,2}:\d{2}/.test(l));
+        if (lines.length > 0) return lines.join(' ').trim();
+        return raw;
+      }
+      return '';
+    };
+
+    const debug = { selectorTried: [], chosenSelector: null, foundCount: 0, mainHtmlSample: '' };
+    try {
+      const main = document.querySelector('[role="application"] [role="main"]');
+      debug.mainHtmlSample = main ? (main.innerHTML || '').substring(0, 1500) : 'no main found';
+    } catch {}
+
+    let bestNodes = [];
+    for (const sel of SELECTORES) {
+      let nodes;
+      try { nodes = document.querySelectorAll(sel); } catch { nodes = []; }
+      debug.selectorTried.push({ sel, count: nodes.length });
+      if (nodes.length > bestNodes.length) {
+        bestNodes = Array.from(nodes);
+        debug.chosenSelector = sel;
+      }
+      if (bestNodes.length >= 3 && sel === 'div[data-id]') break;
+    }
+    debug.foundCount = bestNodes.length;
+
+    const items = [];
+    bestNodes.forEach(node => {
+      const id = node.getAttribute('data-id') || node.getAttribute('aria-rowindex') || `node_${items.length}`;
+      const tag = (node.tagName || '').toLowerCase();
+      if (tag === 'header' || tag === 'footer') return;
+      const hasTextContent = node.querySelector('.copyable-text, span.selectable-text, [data-pre-plain-text], .message-in, .message-out')
+                          || node.classList.contains('message-in') || node.classList.contains('message-out');
+      const fromMe = node.classList.contains('message-out')
+                  || String(id).startsWith('true_')
+                  || /^[A-F0-9]+_true/i.test(String(id))
+                  || (node.querySelector('[data-pre-plain-text]') !== null && node.classList.toString().toLowerCase().includes('out'));
+      const text = extractTextFromNode(node);
+      if (!text && !hasTextContent) return;
+      items.push({ id: String(id), text, fromMe });
+    });
+
+    return { messages: items, debug };
+  });
+
+  try {
+    console.log(`[wa] ${label}: ${result.messages.length} mensajes. Selector usado: ${result.debug.chosenSelector}. Intentados: ${JSON.stringify(result.debug.selectorTried)}`);
+    if (result.messages.length === 0) {
+      console.log(`[wa] ${label} SAMPLE HTML main: ${result.debug.mainHtmlSample.substring(0, 600)}`);
+    }
+  } catch {}
+
+  return { ok: true, messages: result.messages, debug: result.debug };
+}
+
 app.post('/whatsapp/messages/list', async (req, res) => {
   const phoneInput = (req.body && req.body.phone) || '';
   const sinceId = (req.body && req.body.sinceId) || '';
@@ -1030,148 +1164,104 @@ app.post('/whatsapp/chat/open-by-name', async (req, res) => {
       return res.status(404).json({ error: 'Chat no encontrado en el sidebar', name });
     }
 
-    // Esperar a que aparezca el footer (chat abierto)
-    let composeBox = null;
-    const footerDeadline = Date.now() + 20000;
-    while (Date.now() < footerDeadline) {
-      composeBox = await state.page.$('footer div[contenteditable="true"]').catch(() => null);
-      if (composeBox) break;
-      await sleep(500);
+    const extracted = await waitAndExtractMessagesFromPanel(state.page, `open-by-name "${name}"`);
+    if (!extracted.ok) {
+      return res.status(extracted.status || 500).json({ error: extracted.error || 'error' });
     }
-    if (!composeBox) {
-      releaseWaLock();
-      return res.status(504).json({ error: 'Timeout abriendo chat (footer no encontrado)' });
-    }
-
-    // 2026-06-23 fix: esperar ACTIVAMENTE a que aparezcan mensajes (no solo el footer).
-    // Antes solo esperabamos al footer, que aparece aunque WhatsApp Web aun este cargando los mensajes.
-    // Probamos varios selectores hasta tener al menos un nodo de mensaje real.
-    const msgDeadline = Date.now() + 15000;
-    let foundMessageNode = false;
-    while (Date.now() < msgDeadline) {
-      const n = await state.page.evaluate(() => {
-        const sels = ['div[data-id]', '[role="row"]', '.copyable-text[data-pre-plain-text]', '[data-pre-plain-text]', '.message-in', '.message-out'];
-        let total = 0;
-        for (const s of sels) {
-          try { total += document.querySelectorAll(s).length; } catch {}
-        }
-        return total;
-      }).catch(() => 0);
-      if (n > 0) { foundMessageNode = true; break; }
-      await sleep(400);
-    }
-    if (!foundMessageNode) {
-      console.warn(`[wa] open-by-name "${name}": no aparecieron nodos de mensaje en 15s (chat puede estar vacio o WA cambio selectores)`);
-    }
-    await sleep(800);
-
-    // Scroll al final
-    try {
-      await state.page.evaluate(() => {
-        const main = document.querySelector('[role="application"] [role="main"]');
-        if (main) main.scrollTop = main.scrollHeight;
-      });
-    } catch {}
-    await sleep(600);
-
-    // 2026-06-23: Extraccion robusta multi-selector. WhatsApp Web cambia selectores seguido.
-    // Probamos en cascada hasta encontrar nodos. Devolvemos debug info si nada matchea.
-    const result = await state.page.evaluate(() => {
-      // Lista de selectores a probar, en orden de preferencia. Devuelve el primero que tenga nodos.
-      const SELECTORES = [
-        'div[data-id]',                                  // patron clasico
-        'div[role="application"] div[data-id]',          // con scope
-        '[role="row"]',                                  // WA Web 2024+ (virtualizado)
-        '[aria-rowindex]',                               // alternativa lista virtual
-        '.message-in, .message-out',                     // clases legacy
-        '[data-pre-plain-text]',                         // por atributo de meta
-      ];
-
-      const extractTextFromNode = (node) => {
-        const copyableWithMeta = node.querySelector('.copyable-text[data-pre-plain-text]');
-        if (copyableWithMeta) {
-          const sel = copyableWithMeta.querySelector('span.selectable-text, .selectable-text');
-          if (sel) {
-            const t = (sel.innerText || sel.textContent || '').trim();
-            if (t) return t;
-          }
-          const t = (copyableWithMeta.innerText || '').trim();
-          if (t) return t;
-        }
-        const copy = node.querySelector('.copyable-text');
-        if (copy) {
-          const t = (copy.innerText || copy.textContent || '').trim();
-          if (t) return t;
-        }
-        const selSpans = node.querySelectorAll('span.selectable-text, .selectable-text');
-        for (let i = selSpans.length - 1; i >= 0; i--) {
-          const t = (selSpans[i].innerText || selSpans[i].textContent || '').trim();
-          if (t) return t;
-        }
-        const raw = (node.innerText || '').trim();
-        if (raw) {
-          const lines = raw.split('\n').map(l => l.trim()).filter(l => l && !/^\d{1,2}:\d{2}/.test(l));
-          if (lines.length > 0) return lines.join(' ').trim();
-          return raw;
-        }
-        return '';
-      };
-
-      const debug = { selectorTried: [], chosenSelector: null, foundCount: 0, mainHtmlSample: '' };
-
-      // Sample del main para debug por si nada matchea
-      try {
-        const main = document.querySelector('[role="application"] [role="main"]');
-        debug.mainHtmlSample = main ? (main.innerHTML || '').substring(0, 1500) : 'no main found';
-      } catch {}
-
-      let bestNodes = [];
-      for (const sel of SELECTORES) {
-        let nodes;
-        try { nodes = document.querySelectorAll(sel); } catch { nodes = []; }
-        debug.selectorTried.push({ sel, count: nodes.length });
-        if (nodes.length > bestNodes.length) {
-          bestNodes = Array.from(nodes);
-          debug.chosenSelector = sel;
-        }
-        // Si ya encontramos varios mensajes con un selector aceptable, paramos.
-        if (bestNodes.length >= 3 && sel === 'div[data-id]') break;
-      }
-      debug.foundCount = bestNodes.length;
-
-      const items = [];
-      bestNodes.forEach(node => {
-        const id = node.getAttribute('data-id') || node.getAttribute('aria-rowindex') || `node_${items.length}`;
-        // Filtros para descartar nodos que no son mensajes (header del chat, separadores, etc.)
-        const tag = (node.tagName || '').toLowerCase();
-        if (tag === 'header' || tag === 'footer') return;
-        const hasTextContent = node.querySelector('.copyable-text, span.selectable-text, [data-pre-plain-text], .message-in, .message-out')
-                            || node.classList.contains('message-in') || node.classList.contains('message-out');
-        // Si el node es solo un row sin contenido de mensaje, intentamos extraer texto igual
-        const fromMe = node.classList.contains('message-out')
-                    || String(id).startsWith('true_')
-                    || /^[A-F0-9]+_true/i.test(String(id))
-                    || (node.querySelector('[data-pre-plain-text]') !== null && node.classList.toString().toLowerCase().includes('out'));
-        const text = extractTextFromNode(node);
-        if (!text && !hasTextContent) return; // descarta rows vacios
-        items.push({ id: String(id), text, fromMe });
-      });
-
-      return { messages: items, debug };
-    });
-    try {
-      console.log(`[wa] open-by-name "${name}": ${result.messages.length} mensajes. Selector usado: ${result.debug.chosenSelector}. Intentados: ${JSON.stringify(result.debug.selectorTried)}`);
-      if (result.messages.length === 0) {
-        console.log(`[wa] open-by-name SAMPLE HTML main: ${result.debug.mainHtmlSample.substring(0, 600)}`);
-      }
-    } catch {}
-
-    return res.json({ messages: result.messages, total: result.messages.length, name, debug: result.debug });
+    return res.json({ messages: extracted.messages, total: extracted.messages.length, name, debug: extracted.debug });
   } catch (err) {
     console.error('[wa] open-by-name error:', err.message || err);
     return res.status(500).json({ error: err.message || 'error' });
   } finally {
     // garantiza liberar el lock aunque haya error o cuelgue
+    releaseWaLock();
+  }
+});
+
+// ============================================================
+// POST /whatsapp/chat/open-by-index  body: { index: 0, name?: "..." }
+// Abre el chat ubicado en la posicion `index` de la lista del sidebar (0-based, MISMA posicion
+// que devolvio el ultimo /chats/list). Mucho mas robusto que open-by-name porque no depende
+// de matching de texto — clickea directo el nth listitem del DOM.
+// El campo `name` es opcional: si viene, se valida que el chat en esa posicion tenga ese name
+// (sin acentos, case-insensitive). Si no matchea -> 409 (el sidebar se reordeno, refrescar).
+// ============================================================
+app.post('/whatsapp/chat/open-by-index', async (req, res) => {
+  const index = parseInt((req.body && req.body.index), 10);
+  const expectedName = (req.body && req.body.name) || '';
+  if (isNaN(index) || index < 0) return res.status(400).json({ error: 'index requerido (>=0)' });
+
+  if (!await acquireWaLockWait('open-by-index', 30000)) return res.status(429).json({ error: 'busy' });
+
+  try {
+    const alive = await ensureSessionAlive();
+    if (!alive) {
+      try { await startSession({ useStorageState: true }); } catch {}
+      if (!state.page || state.page.isClosed()) {
+        releaseWaLock();
+        return res.status(503).json({ error: 'WhatsApp no vinculado' });
+      }
+    }
+
+    // Asegurar home + sidebar
+    try {
+      const u = state.page.url();
+      if (u.includes('/send?phone=') || u.includes('/send/?phone=') || !u.startsWith('https://web.whatsapp.com/')) {
+        await state.page.goto('https://web.whatsapp.com/', { waitUntil: 'load', timeout: 30000 });
+      }
+    } catch {}
+
+    // Esperar sidebar
+    const sidebarDeadline = Date.now() + 15000;
+    while (Date.now() < sidebarDeadline) {
+      const found = await state.page.$('#pane-side').catch(() => null);
+      if (found) break;
+      await sleep(400);
+    }
+
+    // Click directo en el nth listitem. Hace scrollIntoView por si esta fuera del viewport.
+    const clickResult = await state.page.evaluate(({ idx, expected }) => {
+      const pane = document.querySelector('#pane-side');
+      if (!pane) return { ok: false, reason: 'no pane-side' };
+      const items = pane.querySelectorAll('div[role="listitem"]');
+      if (idx >= items.length) {
+        return { ok: false, reason: 'index out of range', total: items.length };
+      }
+      const target = items[idx];
+      let actualName = '';
+      const titleSpan = target.querySelector('span[title]');
+      if (titleSpan) actualName = titleSpan.getAttribute('title') || '';
+      if (expected) {
+        const norm = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+        if (norm(actualName) !== norm(expected)) {
+          return { ok: false, reason: 'name mismatch', actualName, expected };
+        }
+      }
+      target.scrollIntoView({ block: 'center', behavior: 'instant' });
+      target.click();
+      return { ok: true, name: actualName };
+    }, { idx: index, expected: expectedName });
+
+    if (!clickResult.ok) {
+      releaseWaLock();
+      if (clickResult.reason === 'name mismatch') {
+        return res.status(409).json({ error: 'Chat se reordeno, refrescar lista', detail: clickResult });
+      }
+      if (clickResult.reason === 'index out of range') {
+        return res.status(404).json({ error: 'index fuera de rango', detail: clickResult });
+      }
+      return res.status(500).json({ error: 'no se pudo clickear', detail: clickResult });
+    }
+
+    const extracted = await waitAndExtractMessagesFromPanel(state.page, `open-by-index[${index}] "${clickResult.name}"`);
+    if (!extracted.ok) {
+      return res.status(extracted.status || 500).json({ error: extracted.error || 'error' });
+    }
+    return res.json({ messages: extracted.messages, total: extracted.messages.length, name: clickResult.name, index, debug: extracted.debug });
+  } catch (err) {
+    console.error('[wa] open-by-index error:', err.message || err);
+    return res.status(500).json({ error: err.message || 'error' });
+  } finally {
     releaseWaLock();
   }
 });
@@ -1307,7 +1397,9 @@ app.post('/whatsapp/chats/list', async (req, res) => {
           if (m) unread = parseInt(m[0], 10);
         }
         if (!name) continue;
-        out.push({ name, lastMsg, lastMsgAt, unread });
+        // index = posicion en el DOM de la lista (0-based). El frontend lo manda de vuelta
+        // a /chat/open-by-index para clickear este chat sin depender de matching de texto.
+        out.push({ index: i, name, lastMsg, lastMsgAt, unread });
       }
       return out;
     }, limit);

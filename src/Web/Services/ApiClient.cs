@@ -3334,6 +3334,20 @@ public class ApiClient
         catch { return new WhatsAppChatMessagesDto { Name = name }; }
     }
 
+    /// <summary>2026-06-23: Abre el chat ubicado en `index` del sidebar (mas robusto que por nombre).</summary>
+    public async Task<WhatsAppChatMessagesDto> OpenWhatsAppChatByIndexAsync(int index, string name)
+    {
+        await SetAuthHeaderAsync();
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/whatsapp/chats/open-by-index", new { index, name });
+            if (!resp.IsSuccessStatusCode) return new WhatsAppChatMessagesDto { Name = name };
+            var dto = await resp.Content.ReadFromJsonAsync<WhatsAppChatMessagesDto>();
+            return dto ?? new WhatsAppChatMessagesDto { Name = name };
+        }
+        catch { return new WhatsAppChatMessagesDto { Name = name }; }
+    }
+
     /// <summary>2026-06-23: Manda mensaje al chat actualmente abierto.</summary>
     public async Task<bool> SendToWhatsAppOpenChatAsync(string text)
     {
