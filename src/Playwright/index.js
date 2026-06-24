@@ -1211,18 +1211,22 @@ app.post('/whatsapp/chat/open-by-index', async (req, res) => {
       }
     } catch {}
 
-    // Esperar sidebar
+    // Esperar a que el sidebar tenga LISTITEMS POBLADOS (no solo que exista el div).
+    // 2026-06-24: el bug del "0 mensajes" en realidad era esto — mi codigo veia #pane-side
+    // existir pero los listitems se hidratan ms despues. chats/list tenia un sleep(700) extra
+    // como amortiguador, open-by-index no. Ahora esperamos activamente a que aparezcan items.
     const sidebarDeadline = Date.now() + 15000;
+    let sidebarItems = 0;
     while (Date.now() < sidebarDeadline) {
-      const found = await state.page.$('#pane-side').catch(() => null);
-      if (found) break;
+      sidebarItems = await state.page.evaluate(() =>
+        document.querySelectorAll('#pane-side div[role="listitem"]').length
+      ).catch(() => 0);
+      if (sidebarItems > 0) break;
       await sleep(400);
     }
+    console.log(`[wa] open-by-index: sidebar tiene ${sidebarItems} items antes de buscar idx=${index}`);
 
     // Click directo en el nth listitem. Hace scrollIntoView por si esta fuera del viewport.
-    // 2026-06-24: usar selector descendiente desde document (igual que chats/list) porque
-    // pane.querySelectorAll devolvia 0 mientras document.querySelectorAll('#pane-side div[...]')
-    // devolvia 67 en el mismo DOM. Posiblemente shadow DOM o ancestry rara de WhatsApp Web 2024+.
     const clickResult = await state.page.evaluate(({ idx, expected }) => {
       const items = document.querySelectorAll('#pane-side div[role="listitem"]');
       if (items.length === 0) {
