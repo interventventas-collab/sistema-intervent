@@ -854,22 +854,8 @@
 <main class="main-wrapper @(sidebarCollapsed ? "main-collapsed" : "") @(IsEmbedded ? "main-embedded" : "")">
 @if (!IsEmbedded)
 {
-    @* 2026-06-23: banner rojo cuando se cayo la sesion del WhatsApp Web. Sticky arriba de la topbar
-       hasta que el usuario lo cierre o se reconecte. Aparece sin importar en que pantalla estes. *@
-    @if (waDesvinculado)
-    {
-        <div style="background: linear-gradient(90deg, #dc2626 0%, #b91c1c 100%); color: white;
-                    padding: 0.55rem 1rem; display: flex; align-items: center; justify-content: center;
-                    gap: 0.6rem; font-size: 0.88rem; font-weight: 600; box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-                    position: sticky; top: 0; z-index: 9000; animation: wa-banner-shake 0.5s ease-out;">
-            <span style="font-size: 1.05rem;">⚠️</span>
-            <span><strong>WhatsApp desvinculado.</strong> El número del hermano no está conectado. Hay que rescanear el QR para volver a recibir/mandar mensajes.</span>
-            <button @onclick="ClickBotonWhatsApp"
-                    style="background: white; color: #b91c1c; border: 0; padding: 0.3rem 0.8rem; border-radius: 6px; font-weight: 700; font-size: 0.8rem; cursor: pointer;">
-                📷 Escanear QR ahora
-            </button>
-        </div>
-    }
+    @* Banner rojo de WhatsApp desvinculado removido 2026-06-24: el boton gris con punto rojo
+       en la topbar (ver waDesvinculado en linea ~1033) ya avisa el estado sin ocupar espacio. *@
     <header class="topbar">
         <div class="topbar-left">
             <button class="topbar-menu-btn" @onclick="ToggleSidebar" aria-label="Abrir menu">
