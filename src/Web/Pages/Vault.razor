@@ -18,6 +18,8 @@
         {
             <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
                 <span style="font-size: 0.78rem; color: #9ca3af;">⏰ Auto-bloqueo en @autoLockSecondsLeft s</span>
+                <button class="btn btn-secondary" @onclick="DownloadTemplate" style="font-size: 0.85rem;" title="Descargar plantilla Excel">📥 Plantilla</button>
+                <button class="btn btn-secondary" @onclick="OpenImport" style="font-size: 0.85rem;">📤 Importar Excel</button>
                 <button class="btn btn-secondary" @onclick="ShowChangeMaster" style="font-size: 0.85rem;">🔑 Cambiar maestra</button>
                 <button class="btn btn-secondary" @onclick="LockVault" style="font-size: 0.85rem;">🔒 Bloquear</button>
                 <button class="btn btn-primary" @onclick="ShowCreate">+ Nueva credencial</button>
@@ -63,75 +65,151 @@
         else
         {
             @* ═══════════════ LISTADO DE CREDENCIALES ═══════════════ *@
-            <div style="margin-bottom: 0.6rem;">
-                <input class="form-input" placeholder="🔍 Buscar por nombre del servicio..." @bind="filtro" @bind:event="oninput" style="max-width: 400px;" />
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.6rem;">
+                <input class="form-input" placeholder="🔍 Buscar (nombre, usuario, mail, enlace, comentarios...)" @bind="filtro" @bind:event="oninput" style="max-width: 460px; flex: 1; min-width: 220px;" />
+                <select class="form-input" @bind="categoriaFiltro" style="max-width: 220px;">
+                    <option value="">📂 Todas las categorías</option>
+                    @foreach (var c in CategoriasDisponibles())
+                    {
+                        <option value="@c">@c</option>
+                    }
+                    <option value="__SIN__">(sin categoría)</option>
+                </select>
             </div>
+            var visibles = Filtradas();
             @if (entries is null || entries.Count == 0)
             {
                 <p class="text-muted" style="padding: 1rem;">
-                    Todavía no guardaste ninguna credencial. Tocá <strong>"+ Nueva credencial"</strong> para empezar.
+                    Todavía no guardaste ninguna credencial. Tocá <strong>"+ Nueva credencial"</strong> o <strong>"📤 Importar Excel"</strong> para empezar.
                 </p>
+            }
+            else if (visibles.Count == 0)
+            {
+                <p class="text-muted">No hay credenciales que matcheen el filtro.</p>
             }
             else
             {
-                var visibles = string.IsNullOrWhiteSpace(filtro)
-                    ? entries
-                    : entries.Where(e => e.Servicio.Contains(filtro, StringComparison.OrdinalIgnoreCase)
-                                      || e.Usuario.Contains(filtro, StringComparison.OrdinalIgnoreCase)).ToList();
-                @if (visibles.Count == 0)
-                {
-                    <p class="text-muted">No hay credenciales que matcheen "<strong>@filtro</strong>".</p>
-                }
-                else
-                {
-                    <div class="table-responsive">
-                        <table class="data-table">
-                            <thead>
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Categoría</th>
+                                <th>Usuario</th>
+                                <th>Mail</th>
+                                <th>Contraseña</th>
+                                <th style="width: 180px;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var e in visibles)
+                            {
+                                var visible = visiblePwds.Contains(e.Id);
                                 <tr>
-                                    <th>Servicio</th>
-                                    <th>Usuario / email</th>
-                                    <th>Contraseña</th>
-                                    <th>Notas</th>
-                                    <th style="width: 130px;">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var e in visibles)
-                                {
-                                    var visible = visiblePwds.Contains(e.Id);
-                                    <tr>
-                                        <td><strong>@e.Servicio</strong></td>
-                                        <td>
-                                            <span style="font-family: monospace;">@e.Usuario</span>
+                                    <td><strong>@e.Servicio</strong></td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(e.Categoria))
+                                        {
+                                            <span class="badge" style="background: #eef2ff; color: #4338ca; padding: 0.15rem 0.5rem; border-radius: 0.6rem; font-size: 0.75rem;">@e.Categoria</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted" style="font-size: 0.75rem;">—</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(e.Usuario))
+                                        {
+                                            <span style="font-family: monospace; font-size: 0.85rem;">@e.Usuario</span>
                                             <button class="btn-icon" style="padding: 0.15rem 0.3rem; font-size: 0.78rem; color: #1d4ed8;" @onclick='() => CopyTo(e.Usuario, "Usuario")' title="Copiar">📋</button>
-                                        </td>
-                                        <td>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted" style="font-size: 0.75rem;">—</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(e.Mail))
+                                        {
+                                            <span style="font-family: monospace; font-size: 0.82rem;">@e.Mail</span>
+                                            <button class="btn-icon" style="padding: 0.15rem 0.3rem; font-size: 0.78rem; color: #1d4ed8;" @onclick='() => CopyTo(e.Mail!, "Mail")' title="Copiar">📋</button>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted" style="font-size: 0.75rem;">—</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(e.Password))
+                                        {
                                             <span style="font-family: monospace;">@(visible ? e.Password : new string('•', Math.Min(12, Math.Max(8, e.Password.Length))))</span>
                                             <button class="btn-icon" style="padding: 0.15rem 0.3rem; font-size: 0.78rem;" @onclick="() => TogglePwd(e.Id)" title='@(visible ? "Ocultar" : "Mostrar")'>@(visible ? "🙈" : "👁")</button>
                                             <button class="btn-icon" style="padding: 0.15rem 0.3rem; font-size: 0.78rem; color: #1d4ed8;" @onclick='() => CopyTo(e.Password, "Contraseña")' title="Copiar">📋</button>
-                                        </td>
-                                        <td style="font-size: 0.78rem; color: #6b7280; max-width: 250px; overflow: hidden; text-overflow: ellipsis;">
-                                            @(string.IsNullOrEmpty(e.Notas) ? "—" : e.Notas)
-                                        </td>
-                                        <td class="actions-cell">
-                                            <button class="btn-icon btn-edit" @onclick="() => ShowEdit(e)" title="Editar">@SvgIcons.Edit</button>
-                                            <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(e)" title="Eliminar">@SvgIcons.AlertCircle</button>
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                }
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted" style="font-size: 0.75rem;">—</span>
+                                        }
+                                    </td>
+                                    <td class="actions-cell">
+                                        <button class="btn-icon" @onclick="() => ShowFicha(e)" title="Ver ficha completa" style="color: #0891b2;">🔎</button>
+                                        <button class="btn-icon btn-edit" @onclick="() => ShowEdit(e)" title="Editar">@SvgIcons.Edit</button>
+                                        <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(e)" title="Eliminar">@SvgIcons.AlertCircle</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
             }
         }
     </div>
 </div>
 
+@* ═══════════════ MODAL FICHA (vista detalle, oculta vacíos) ═══════════════ *@
+@if (showFicha && fichaEntry is not null)
+{
+    var f = fichaEntry;
+    <div class="modal-overlay" @onclick="CloseFicha">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true" style="max-width: 520px;">
+            <div class="modal-header" style="background: #1e293b; color: white;">
+                <h4 style="margin: 0; display: flex; align-items: center; gap: 0.4rem;">
+                    🔎 @f.Servicio
+                    @if (!string.IsNullOrEmpty(f.Categoria))
+                    {
+                        <span style="background: rgba(255,255,255,0.18); padding: 0.1rem 0.5rem; border-radius: 0.6rem; font-size: 0.7rem;">@f.Categoria</span>
+                    }
+                </h4>
+                <button class="btn-close" @onclick="CloseFicha" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 1rem 1.2rem;">
+                @if (!string.IsNullOrEmpty(f.Usuario)) { RenderField("Usuario", f.Usuario, false); }
+                @if (!string.IsNullOrEmpty(f.Otro)) { RenderField("Otro", f.Otro!, false); }
+                @if (!string.IsNullOrEmpty(f.Password)) { RenderField("Contraseña", f.Password, true); }
+                @if (!string.IsNullOrEmpty(f.Pin)) { RenderField("PIN", f.Pin!, true); }
+                @if (!string.IsNullOrEmpty(f.Mail)) { RenderField("Mail", f.Mail!, false); }
+                @if (!string.IsNullOrEmpty(f.Enlace)) { RenderLinkField("Enlace", f.Enlace!); }
+                @if (!string.IsNullOrEmpty(f.Notas))
+                {
+                    <div style="margin: 0.7rem 0; padding-top: 0.5rem; border-top: 1px solid #e5e7eb;">
+                        <div style="font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em;">Comentarios</div>
+                        <div style="white-space: pre-wrap; margin-top: 0.2rem;">@f.Notas</div>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseFicha">Cerrar</button>
+                <button class="btn btn-primary" @onclick="() => { CloseFicha(); ShowEdit(f); }">Editar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ═══════════════ MODAL CREAR/EDITAR (todos los campos) ═══════════════ *@
 @if (showForm && token is not null)
 {
     <div class="modal-overlay" @onclick="CloseForm">
-        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 620px;">
             <div class="modal-header" style="background: whitesmoke;">
                 <h4 style="margin: 0;">@(isEditing ? "Editar credencial" : "Nueva credencial")</h4>
                 <button class="btn-close" @onclick="CloseForm">&times;</button>
@@ -142,25 +220,56 @@
                     <div class="form-error">@formError</div>
                 }
                 <div class="form-group">
-                    <label class="form-label">Servicio *</label>
-                    <input class="form-input" @bind="formServicio" placeholder="Ej: Gmail, Banco Macro, Instagram..." autofocus />
+                    <label class="form-label">Nombre *</label>
+                    <input class="form-input" @bind="formServicio" placeholder="Ej: ARCA OSMAR, Banco Macro, Gmail..." autofocus />
                 </div>
-                <div class="form-group">
-                    <label class="form-label">Usuario / email</label>
-                    <input class="form-input" @bind="formUsuario" placeholder="usuario@ejemplo.com" />
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Contraseña</label>
-                    <div style="display: flex; gap: 0.3rem;">
-                        <input class="form-input" type='@(formPwdVisible ? "text" : "password")' @bind="formPassword" style="font-family: monospace; flex: 1;" />
-                        <button class="btn btn-secondary" type="button" @onclick="() => formPwdVisible = !formPwdVisible" title='@(formPwdVisible ? "Ocultar" : "Mostrar")'>@(formPwdVisible ? "🙈" : "👁")</button>
-                        <button class="btn btn-secondary" type="button" @onclick="GenerateNew" title="Generar contraseña segura">🎲</button>
+                <div class="form-row" style="display: flex; gap: 0.6rem; flex-wrap: wrap;">
+                    <div class="form-group" style="flex: 1; min-width: 200px;">
+                        <label class="form-label">Categoría</label>
+                        <input class="form-input" @bind="formCategoria" placeholder="Ej: ARCA, Bancos, MercadoLibre..." list="vault-cats" />
+                        <datalist id="vault-cats">
+                            @foreach (var c in CategoriasDisponibles())
+                            {
+                                <option value="@c" />
+                            }
+                        </datalist>
                     </div>
-                    <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">El dado 🎲 genera una password segura aleatoria (20 caracteres con símbolos).</p>
+                    <div class="form-group" style="flex: 1; min-width: 200px;">
+                        <label class="form-label">Usuario</label>
+                        <input class="form-input" @bind="formUsuario" placeholder="usuario o CUIT" />
+                    </div>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Notas</label>
-                    <textarea class="form-input" @bind="formNotas" rows="2" placeholder="Notas opcionales (recovery, 2FA backup, etc.)"></textarea>
+                    <label class="form-label">Otro <span style="font-weight: 400; color: #6b7280; font-size: 0.75rem;">(adherente, código de cliente, número de socio...)</span></label>
+                    <input class="form-input" @bind="formOtro" />
+                </div>
+                <div class="form-row" style="display: flex; gap: 0.6rem; flex-wrap: wrap;">
+                    <div class="form-group" style="flex: 2; min-width: 220px;">
+                        <label class="form-label">Contraseña</label>
+                        <div style="display: flex; gap: 0.3rem;">
+                            <input class="form-input" type='@(formPwdVisible ? "text" : "password")' @bind="formPassword" style="font-family: monospace; flex: 1;" />
+                            <button class="btn btn-secondary" type="button" @onclick="() => formPwdVisible = !formPwdVisible" title='@(formPwdVisible ? "Ocultar" : "Mostrar")'>@(formPwdVisible ? "🙈" : "👁")</button>
+                            <button class="btn btn-secondary" type="button" @onclick="GenerateNew" title="Generar contraseña segura">🎲</button>
+                        </div>
+                    </div>
+                    <div class="form-group" style="flex: 1; min-width: 120px;">
+                        <label class="form-label">PIN</label>
+                        <input class="form-input" @bind="formPin" style="font-family: monospace;" />
+                    </div>
+                </div>
+                <div class="form-row" style="display: flex; gap: 0.6rem; flex-wrap: wrap;">
+                    <div class="form-group" style="flex: 1; min-width: 200px;">
+                        <label class="form-label">Mail</label>
+                        <input class="form-input" @bind="formMail" type="email" placeholder="ej@ejemplo.com" />
+                    </div>
+                    <div class="form-group" style="flex: 1; min-width: 200px;">
+                        <label class="form-label">Enlace</label>
+                        <input class="form-input" @bind="formEnlace" placeholder="https://..." />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Comentarios</label>
+                    <textarea class="form-input" @bind="formNotas" rows="2" placeholder="Notas, recovery, 2FA backup..."></textarea>
                 </div>
             </div>
             <div class="modal-footer">
@@ -171,6 +280,59 @@
     </div>
 }
 
+@* ═══════════════ MODAL IMPORTAR EXCEL ═══════════════ *@
+@if (showImport && token is not null)
+{
+    <div class="modal-overlay" @onclick="CloseImport">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true" style="max-width: 520px;">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h4 style="margin: 0;">📤 Importar credenciales desde Excel</h4>
+                <button class="btn-close" @onclick="CloseImport">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="color: #6b7280; font-size: 0.85rem;">
+                    Subí un archivo <strong>.xlsx</strong> con las columnas:
+                    <code>nombre, categoria, usuario, otro, clave, pin, mail, enlace, comentarios</code>.
+                    Solo <strong>nombre</strong> es obligatorio.
+                </p>
+                <p style="color: #6b7280; font-size: 0.78rem;">
+                    Si el <strong>nombre</strong> ya existe en la bóveda, esa entrada se <strong>actualiza</strong> (no se duplica).
+                </p>
+                <p>
+                    <button class="btn btn-secondary" @onclick="DownloadTemplate" style="font-size: 0.85rem;">📥 Descargar plantilla vacía</button>
+                </p>
+                @if (importResult is not null)
+                {
+                    <div class="alert alert-success" style="background: #ecfdf5; color: #047857; padding: 0.6rem; border-radius: 0.4rem; margin: 0.6rem 0;">
+                        ✅ Importadas: <strong>@importResult.Creadas</strong> nuevas, <strong>@importResult.Actualizadas</strong> actualizadas, <strong>@importResult.Saltadas</strong> saltadas.
+                    </div>
+                    @if (importResult.Errores.Count > 0)
+                    {
+                        <div class="alert alert-warning" style="background: #fef3c7; color: #92400e; padding: 0.6rem; border-radius: 0.4rem; margin: 0.6rem 0;">
+                            ⚠️ Errores:
+                            <ul style="margin: 0.3rem 0 0 1rem;">
+                                @foreach (var er in importResult.Errores) { <li>@er</li> }
+                            </ul>
+                        </div>
+                    }
+                }
+                @if (!string.IsNullOrEmpty(importError))
+                {
+                    <div class="form-error">@importError</div>
+                }
+                <div class="form-group">
+                    <label class="form-label">Archivo .xlsx</label>
+                    <InputFile OnChange="OnImportFileSelected" accept=".xlsx" class="form-input" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseImport" disabled="@working">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ═══════════════ MODAL CAMBIAR MAESTRA ═══════════════ *@
 @if (showChangeMaster && token is not null)
 {
     <div class="modal-overlay" @onclick="() => showChangeMaster = false">
@@ -208,6 +370,7 @@
     </div>
 }
 
+@* ═══════════════ MODAL ELIMINAR ═══════════════ *@
 @if (showDeleteConfirm && entryToDelete is not null)
 {
     <div class="modal-overlay" @onclick="() => showDeleteConfirm = false">
@@ -245,6 +408,7 @@
     // Lista
     private List<VaultEntryDto>? entries;
     private string filtro = "";
+    private string categoriaFiltro = "";
     private HashSet<int> visiblePwds = new();
 
     // Form (crear/editar)
@@ -252,8 +416,13 @@
     private bool isEditing;
     private int? editingId;
     private string formServicio = "";
+    private string formCategoria = "";
     private string formUsuario = "";
+    private string formOtro = "";
     private string formPassword = "";
+    private string formPin = "";
+    private string formMail = "";
+    private string formEnlace = "";
     private string formNotas = "";
     private bool formPwdVisible;
     private string? formError;
@@ -269,9 +438,17 @@
     private bool showDeleteConfirm;
     private VaultEntryDto? entryToDelete;
 
+    // Ficha
+    private bool showFicha;
+    private VaultEntryDto? fichaEntry;
+
+    // Importar
+    private bool showImport;
+    private VaultImportResultDto? importResult;
+    private string? importError;
+
     protected override async Task OnInitializedAsync()
     {
-        // Recuperar token de sessionStorage por si recargó la página estando desbloqueado
         try
         {
             var saved = await JS.InvokeAsync<string?>("sessionStorage.getItem", "vault.token");
@@ -282,13 +459,11 @@
                 StartLockTimer();
             }
         }
-        catch { /* ignore */ }
-        // Status (saber autoLockMinutes aunque no estemos desbloqueados)
+        catch { }
         try
         {
             var st = await Api.GetVaultStatusAsync(token);
             if (st is not null) autoLockMinutes = st.AutoLockMinutes;
-            // Si el server dice que el token ya no está unlocked, descartarlo
             if (token is not null && st is not null && !st.IsUnlocked)
             {
                 token = null;
@@ -299,6 +474,47 @@
         loading = false;
     }
 
+    private List<string> CategoriasDisponibles()
+    {
+        if (entries is null) return new();
+        return entries
+            .Where(e => !string.IsNullOrEmpty(e.Categoria))
+            .Select(e => e.Categoria!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(c => c)
+            .ToList();
+    }
+
+    private List<VaultEntryDto> Filtradas()
+    {
+        if (entries is null) return new();
+        IEnumerable<VaultEntryDto> q = entries;
+
+        if (categoriaFiltro == "__SIN__")
+        {
+            q = q.Where(e => string.IsNullOrEmpty(e.Categoria));
+        }
+        else if (!string.IsNullOrEmpty(categoriaFiltro))
+        {
+            q = q.Where(e => string.Equals(e.Categoria, categoriaFiltro, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(filtro))
+        {
+            var f = filtro.Trim();
+            q = q.Where(e =>
+                e.Servicio.Contains(f, StringComparison.OrdinalIgnoreCase)
+                || (e.Usuario?.Contains(f, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (e.Otro?.Contains(f, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (e.Mail?.Contains(f, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (e.Enlace?.Contains(f, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (e.Categoria?.Contains(f, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (e.Notas?.Contains(f, StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+
+        return q.ToList();
+    }
+
     private async Task DoUnlock()
     {
         unlockError = "";
@@ -307,11 +523,7 @@
         try
         {
             var resp = await Api.UnlockVaultAsync(masterInput);
-            if (resp is null)
-            {
-                unlockError = "Contraseña maestra incorrecta.";
-                return;
-            }
+            if (resp is null) { unlockError = "Contraseña maestra incorrecta."; return; }
             token = resp.Token;
             autoLockMinutes = resp.AutoLockMinutes;
             try { await JS.InvokeVoidAsync("sessionStorage.setItem", "vault.token", token); } catch { }
@@ -319,7 +531,6 @@
             await LoadEntries();
             StartLockTimer();
         }
-        catch (HttpRequestException ex) { unlockError = ex.Message; }
         catch (Exception ex) { unlockError = ex.Message; }
         finally { working = false; }
     }
@@ -337,19 +548,13 @@
             entries = await Api.ListVaultEntriesAsync(token) ?? new();
             visiblePwds.Clear();
         }
-        catch (ApiClient.VaultLockedException)
-        {
-            await ForceLock();
-        }
+        catch (ApiClient.VaultLockedException) { await ForceLock(); }
         catch (Exception ex) { ToastService.Error("Error al cargar: " + ex.Message); entries = new(); }
     }
 
     private async Task LockVault()
     {
-        if (token is not null)
-        {
-            try { await Api.LockVaultAsync(token); } catch { }
-        }
+        if (token is not null) { try { await Api.LockVaultAsync(token); } catch { } }
         await ForceLock();
         ToastService.Success("Bóveda bloqueada");
     }
@@ -382,10 +587,7 @@
                     ToastService.Info("Bóveda bloqueada por inactividad");
                 });
             }
-            else
-            {
-                await InvokeAsync(StateHasChanged);
-            }
+            else { await InvokeAsync(StateHasChanged); }
         };
         lockTimer.AutoReset = true;
         lockTimer.Start();
@@ -410,7 +612,7 @@
         try
         {
             await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
-            ToastService.Success($"{label} copiada al portapapeles");
+            ToastService.Success($"{label} copiad{(label.EndsWith("a") ? "a" : "o")} al portapapeles");
         }
         catch { ToastService.Error("No se pudo copiar"); }
     }
@@ -419,7 +621,8 @@
     {
         Touch();
         isEditing = false; editingId = null;
-        formServicio = ""; formUsuario = ""; formPassword = ""; formNotas = "";
+        formServicio = ""; formCategoria = ""; formUsuario = ""; formOtro = "";
+        formPassword = ""; formPin = ""; formMail = ""; formEnlace = ""; formNotas = "";
         formPwdVisible = false; formError = null;
         showForm = true;
     }
@@ -428,8 +631,15 @@
     {
         Touch();
         isEditing = true; editingId = e.Id;
-        formServicio = e.Servicio; formUsuario = e.Usuario;
-        formPassword = e.Password; formNotas = e.Notas ?? "";
+        formServicio = e.Servicio;
+        formCategoria = e.Categoria ?? "";
+        formUsuario = e.Usuario;
+        formOtro = e.Otro ?? "";
+        formPassword = e.Password;
+        formPin = e.Pin ?? "";
+        formMail = e.Mail ?? "";
+        formEnlace = e.Enlace ?? "";
+        formNotas = e.Notas ?? "";
         formPwdVisible = false; formError = null;
         showForm = true;
     }
@@ -440,14 +650,21 @@
     {
         Touch();
         formError = null;
-        if (string.IsNullOrWhiteSpace(formServicio)) { formError = "El servicio es obligatorio"; return; }
+        if (string.IsNullOrWhiteSpace(formServicio)) { formError = "El nombre es obligatorio"; return; }
         working = true;
         try
         {
             var req = new VaultUpsertEntryRequest
             {
-                Servicio = formServicio, Usuario = formUsuario,
-                Password = formPassword, Notas = formNotas
+                Servicio = formServicio,
+                Categoria = string.IsNullOrWhiteSpace(formCategoria) ? null : formCategoria.Trim(),
+                Usuario = formUsuario,
+                Otro = string.IsNullOrEmpty(formOtro) ? null : formOtro,
+                Password = formPassword,
+                Pin = string.IsNullOrEmpty(formPin) ? null : formPin,
+                Mail = string.IsNullOrEmpty(formMail) ? null : formMail,
+                Enlace = string.IsNullOrEmpty(formEnlace) ? null : formEnlace,
+                Notas = string.IsNullOrEmpty(formNotas) ? null : formNotas
             };
             if (isEditing && editingId.HasValue)
             {
@@ -526,6 +743,93 @@
         }
         catch (Exception ex) { cmError = ex.Message; }
         finally { working = false; }
+    }
+
+    // ═══════════════ FICHA ═══════════════
+    private void ShowFicha(VaultEntryDto e)
+    {
+        Touch();
+        fichaEntry = e;
+        showFicha = true;
+    }
+    private void CloseFicha() { showFicha = false; fichaEntry = null; }
+
+    private RenderFragment RenderField(string label, string value, bool sensitive) => __builder =>
+    {
+        var id = $"f-{label}";
+        <div style="margin: 0.55rem 0;">
+            <div style="font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em;">@label</div>
+            <div style="display: flex; align-items: center; gap: 0.4rem; margin-top: 0.15rem;">
+                <span style="font-family: @(sensitive ? "monospace" : "inherit"); flex: 1; word-break: break-all;">
+                    @(sensitive ? new string('•', Math.Min(14, Math.Max(8, value.Length))) : value)
+                </span>
+                <button class="btn-icon" style="padding: 0.15rem 0.3rem; font-size: 0.78rem; color: #1d4ed8;"
+                        @onclick="() => CopyTo(value, label)" title="Copiar">📋</button>
+            </div>
+        </div>
+    };
+
+    private RenderFragment RenderLinkField(string label, string value) => __builder =>
+    {
+        <div style="margin: 0.55rem 0;">
+            <div style="font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em;">@label</div>
+            <div style="display: flex; align-items: center; gap: 0.4rem; margin-top: 0.15rem;">
+                <a href="@value" target="_blank" rel="noopener" style="flex: 1; word-break: break-all; color: #1d4ed8;">@value</a>
+                <button class="btn-icon" style="padding: 0.15rem 0.3rem; font-size: 0.78rem; color: #1d4ed8;"
+                        @onclick="() => CopyTo(value, label)" title="Copiar">📋</button>
+            </div>
+        </div>
+    };
+
+    // ═══════════════ IMPORTAR EXCEL ═══════════════
+    private void OpenImport()
+    {
+        Touch();
+        importResult = null; importError = null;
+        showImport = true;
+    }
+    private void CloseImport()
+    {
+        showImport = false;
+        importResult = null; importError = null;
+    }
+
+    private async Task OnImportFileSelected(InputFileChangeEventArgs e)
+    {
+        Touch();
+        var file = e.File;
+        if (file is null) return;
+        if (!file.Name.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+        {
+            importError = "Solo se acepta formato .xlsx";
+            return;
+        }
+        working = true; importError = null; importResult = null;
+        try
+        {
+            using var stream = file.OpenReadStream(maxAllowedSize: 10_485_760);
+            importResult = await Api.ImportVaultExcelAsync(token!, stream, file.Name);
+            await LoadEntries();
+            if (importResult is not null)
+                ToastService.Success($"Importadas: {importResult.Creadas} nuevas, {importResult.Actualizadas} actualizadas.");
+        }
+        catch (ApiClient.VaultLockedException) { await ForceLock(); }
+        catch (Exception ex) { importError = ex.Message; }
+        finally { working = false; }
+    }
+
+    private async Task DownloadTemplate()
+    {
+        Touch();
+        try
+        {
+            var bytes = await Api.DownloadVaultTemplateAsync();
+            if (bytes is null) { ToastService.Error("No se pudo descargar la plantilla"); return; }
+            await JS.InvokeVoidAsync("downloadFile", "boveda-plantilla.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                Convert.ToBase64String(bytes));
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
 
     public void Dispose() => StopLockTimer();

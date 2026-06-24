@@ -148,4 +148,44 @@ public class VaultController : ControllerBase
             req.IncludeUppercase);
         return Ok(new VaultGenerateResponse(pwd));
     }
+
+    [HttpGet("categorias")]
+    public async Task<IActionResult> Categorias()
+    {
+        try
+        {
+            var token = GetToken() ?? "";
+            return Ok(await _vault.ListCategoriasAsync(token));
+        }
+        catch (UnauthorizedAccessException) { return Unauthorized(new { error = "Bóveda bloqueada" }); }
+        catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpGet("template-excel")]
+    public IActionResult TemplateExcel()
+    {
+        var bytes = VaultService.BuildTemplateExcel();
+        return File(bytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "boveda-plantilla.xlsx");
+    }
+
+    [HttpPost("import-excel")]
+    [RequestSizeLimit(10_485_760)] // 10 MB
+    public async Task<IActionResult> ImportExcel(IFormFile file)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new { error = "No se recibió ningún archivo." });
+        if (!file.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { error = "Solo se acepta formato .xlsx" });
+        try
+        {
+            var token = GetToken() ?? "";
+            using var stream = file.OpenReadStream();
+            var result = await _vault.ImportFromExcelAsync(token, stream);
+            return Ok(result);
+        }
+        catch (UnauthorizedAccessException) { return Unauthorized(new { error = "Bóveda bloqueada" }); }
+        catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
+    }
 }

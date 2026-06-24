@@ -167,20 +167,25 @@ public class VaultService
         {
             try
             {
-                result.Add(new VaultEntryDto(
-                    e.Id, e.Servicio,
-                    Decrypt(e.UsuarioEnc, key),
-                    Decrypt(e.PasswordEnc, key),
-                    string.IsNullOrEmpty(e.NotasEnc) ? null : Decrypt(e.NotasEnc, key),
-                    e.CreatedAt, e.UpdatedAt));
+                result.Add(ToDto(e, key));
             }
             catch (CryptographicException)
             {
-                // Si una entry no se puede desencriptar (ej. clave cambiada sin re-encriptar), saltar.
                 _logger.LogWarning("Entry {Id} no se pudo desencriptar (clave incorrecta).", e.Id);
             }
         }
         return result;
+    }
+
+    public async Task<List<string>> ListCategoriasAsync(string token)
+    {
+        _ = GetKeyForToken(token) ?? throw new UnauthorizedAccessException("Bóveda bloqueada.");
+        return await _db.VaultEntries
+            .Where(e => e.Categoria != null && e.Categoria != "")
+            .Select(e => e.Categoria!)
+            .Distinct()
+            .OrderBy(c => c)
+            .ToListAsync();
     }
 
     public async Task<VaultEntryDto> CreateEntryAsync(string token, VaultUpsertEntryRequest req)
@@ -191,14 +196,19 @@ public class VaultService
         var e = new VaultEntry
         {
             Servicio = req.Servicio.Trim(),
+            Categoria = NormCategoria(req.Categoria),
             UsuarioEnc = Encrypt(req.Usuario ?? "", key),
+            OtroEnc = EncOpt(req.Otro, key),
             PasswordEnc = Encrypt(req.Password ?? "", key),
-            NotasEnc = string.IsNullOrEmpty(req.Notas) ? null : Encrypt(req.Notas, key),
+            PinEnc = EncOpt(req.Pin, key),
+            MailEnc = EncOpt(req.Mail, key),
+            EnlaceEnc = EncOpt(req.Enlace, key),
+            NotasEnc = EncOpt(req.Notas, key),
             CreatedAt = DateTime.UtcNow
         };
         _db.VaultEntries.Add(e);
         await _db.SaveChangesAsync();
-        return new VaultEntryDto(e.Id, e.Servicio, req.Usuario ?? "", req.Password ?? "", req.Notas, e.CreatedAt, e.UpdatedAt);
+        return ToDto(e, key);
     }
 
     public async Task<VaultEntryDto?> UpdateEntryAsync(string token, int id, VaultUpsertEntryRequest req)
@@ -209,13 +219,41 @@ public class VaultService
         if (string.IsNullOrWhiteSpace(req.Servicio)) throw new ArgumentException("El servicio es obligatorio.");
 
         e.Servicio = req.Servicio.Trim();
+        e.Categoria = NormCategoria(req.Categoria);
         e.UsuarioEnc = Encrypt(req.Usuario ?? "", key);
+        e.OtroEnc = EncOpt(req.Otro, key);
         e.PasswordEnc = Encrypt(req.Password ?? "", key);
-        e.NotasEnc = string.IsNullOrEmpty(req.Notas) ? null : Encrypt(req.Notas, key);
+        e.PinEnc = EncOpt(req.Pin, key);
+        e.MailEnc = EncOpt(req.Mail, key);
+        e.EnlaceEnc = EncOpt(req.Enlace, key);
+        e.NotasEnc = EncOpt(req.Notas, key);
         e.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return new VaultEntryDto(e.Id, e.Servicio, req.Usuario ?? "", req.Password ?? "", req.Notas, e.CreatedAt, e.UpdatedAt);
+        return ToDto(e, key);
     }
+
+    private static string? EncOpt(string? plain, byte[] key)
+        => string.IsNullOrEmpty(plain) ? null : Encrypt(plain, key);
+
+    private static string? DecOpt(string? blob, byte[] key)
+        => string.IsNullOrEmpty(blob) ? null : Decrypt(blob, key);
+
+    private static string? NormCategoria(string? c)
+        => string.IsNullOrWhiteSpace(c) ? null : c.Trim();
+
+    private static VaultEntryDto ToDto(VaultEntry e, byte[] key) => new(
+        e.Id,
+        e.Servicio,
+        e.Categoria,
+        Decrypt(e.UsuarioEnc, key),
+        DecOpt(e.OtroEnc, key),
+        Decrypt(e.PasswordEnc, key),
+        DecOpt(e.PinEnc, key),
+        DecOpt(e.MailEnc, key),
+        DecOpt(e.EnlaceEnc, key),
+        DecOpt(e.NotasEnc, key),
+        e.CreatedAt,
+        e.UpdatedAt);
 
     public async Task<bool> DeleteEntryAsync(string token, int id)
     {
@@ -225,6 +263,156 @@ public class VaultService
         _db.VaultEntries.Remove(e);
         await _db.SaveChangesAsync();
         return true;
+    }
+
+    // ============================================================
+    // IMPORTACIÓN MASIVA POR EXCEL
+    // Columnas esperadas (case-insensitive, orden libre):
+    //   nombre, categoria, usuario, otro, clave, pin, mail, enlace, comentarios
+    // - "nombre" es obligatorio; el resto es opcional.
+    // - Si ya existe una entry con el MISMO nombre (case-insensitive), se ACTUALIZA.
+    // - Las categorías no se crean en una tabla aparte (es solo texto en la entry).
+    // ============================================================
+    public async Task<VaultImportResultDto> ImportFromExcelAsync(string token, Stream excelStream)
+    {
+        var key = GetKeyForToken(token) ?? throw new UnauthorizedAccessException("Bóveda bloqueada.");
+
+        using var wb = new ClosedXML.Excel.XLWorkbook(excelStream);
+        var ws = wb.Worksheets.FirstOrDefault() ?? throw new ArgumentException("El Excel no tiene hojas.");
+
+        // Detectar columnas por nombre en la fila 1
+        var lastCol = ws.LastColumnUsed()?.ColumnNumber() ?? 0;
+        var cols = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (int c = 1; c <= lastCol; c++)
+        {
+            var h = (ws.Cell(1, c).GetString() ?? "").Trim().ToLowerInvariant();
+            if (!string.IsNullOrEmpty(h)) cols[h] = c;
+        }
+
+        if (!cols.ContainsKey("nombre"))
+            throw new ArgumentException("Falta la columna obligatoria 'nombre' en el Excel.");
+
+        string? Cell(int row, string colName)
+        {
+            if (!cols.TryGetValue(colName, out var c)) return null;
+            var v = ws.Cell(row, c).GetString();
+            return string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+        }
+
+        var existentes = await _db.VaultEntries.ToListAsync();
+        var byName = existentes.ToDictionary(e => e.Servicio.ToLowerInvariant(), e => e);
+
+        var creadas = 0; var actualizadas = 0; var saltadas = 0;
+        var errores = new List<string>();
+
+        var lastRow = ws.LastRowUsed()?.RowNumber() ?? 1;
+        for (int r = 2; r <= lastRow; r++)
+        {
+            try
+            {
+                var nombre = Cell(r, "nombre");
+                if (string.IsNullOrWhiteSpace(nombre)) { saltadas++; continue; }
+
+                var categoria = Cell(r, "categoria");
+                var usuario = Cell(r, "usuario") ?? "";
+                var otro = Cell(r, "otro");
+                var clave = Cell(r, "clave") ?? "";
+                var pin = Cell(r, "pin");
+                var mail = Cell(r, "mail");
+                var enlace = Cell(r, "enlace");
+                var comentarios = Cell(r, "comentarios");
+
+                if (byName.TryGetValue(nombre.ToLowerInvariant(), out var existing))
+                {
+                    existing.Servicio = nombre;
+                    existing.Categoria = NormCategoria(categoria);
+                    existing.UsuarioEnc = Encrypt(usuario, key);
+                    existing.OtroEnc = EncOpt(otro, key);
+                    existing.PasswordEnc = Encrypt(clave, key);
+                    existing.PinEnc = EncOpt(pin, key);
+                    existing.MailEnc = EncOpt(mail, key);
+                    existing.EnlaceEnc = EncOpt(enlace, key);
+                    existing.NotasEnc = EncOpt(comentarios, key);
+                    existing.UpdatedAt = DateTime.UtcNow;
+                    actualizadas++;
+                }
+                else
+                {
+                    var nueva = new VaultEntry
+                    {
+                        Servicio = nombre,
+                        Categoria = NormCategoria(categoria),
+                        UsuarioEnc = Encrypt(usuario, key),
+                        OtroEnc = EncOpt(otro, key),
+                        PasswordEnc = Encrypt(clave, key),
+                        PinEnc = EncOpt(pin, key),
+                        MailEnc = EncOpt(mail, key),
+                        EnlaceEnc = EncOpt(enlace, key),
+                        NotasEnc = EncOpt(comentarios, key),
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _db.VaultEntries.Add(nueva);
+                    byName[nombre.ToLowerInvariant()] = nueva;
+                    creadas++;
+                }
+            }
+            catch (Exception ex)
+            {
+                errores.Add($"Fila {r}: {ex.Message}");
+            }
+        }
+
+        await _db.SaveChangesAsync();
+        return new VaultImportResultDto(creadas, actualizadas, saltadas, errores);
+    }
+
+    public static byte[] BuildTemplateExcel()
+    {
+        using var wb = new ClosedXML.Excel.XLWorkbook();
+        var ws = wb.AddWorksheet("Bóveda");
+
+        // Encabezados
+        string[] headers = { "nombre", "categoria", "usuario", "otro", "clave", "pin", "mail", "enlace", "comentarios" };
+        for (int i = 0; i < headers.Length; i++) ws.Cell(1, i + 1).Value = headers[i];
+
+        var hdr = ws.Range(1, 1, 1, headers.Length);
+        hdr.Style.Font.Bold = true;
+        hdr.Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.LightGray;
+
+        // Fila de ejemplo
+        ws.Cell(2, 1).Value = "ARCA OSMAR";
+        ws.Cell(2, 2).Value = "ARCA";
+        ws.Cell(2, 3).Value = "20123456789";
+        ws.Cell(2, 4).Value = "";
+        ws.Cell(2, 5).Value = "MiClave123!";
+        ws.Cell(2, 6).Value = "";
+        ws.Cell(2, 7).Value = "osmar@ejemplo.com";
+        ws.Cell(2, 8).Value = "https://www.afip.gob.ar";
+        ws.Cell(2, 9).Value = "Persona física, CUIT del titular";
+
+        // Hoja de instrucciones
+        var help = wb.AddWorksheet("Instrucciones");
+        help.Cell(1, 1).Value = "Cómo usar esta plantilla";
+        help.Cell(1, 1).Style.Font.Bold = true;
+        help.Cell(1, 1).Style.Font.FontSize = 14;
+        var tips = new[]
+        {
+            "1. Completá una fila por cada clave que quieras guardar.",
+            "2. La única columna OBLIGATORIA es 'nombre'. Las demás son opcionales (dejá vacío si no aplica).",
+            "3. 'categoria' agrupa las claves (ej: ARCA, Bancos, MercadoLibre). Si la categoría no existía, queda creada.",
+            "4. 'otro' es un campo libre para datos extra (ej: número de adherente, código de cliente).",
+            "5. Si subís el Excel dos veces con el mismo 'nombre', la entrada se ACTUALIZA (no se duplica).",
+            "6. Borrá la fila de ejemplo de la hoja 'Bóveda' antes de subir.",
+            "7. Los datos viajan encriptados con AES-256-GCM. La maestra no se guarda en disco."
+        };
+        for (int i = 0; i < tips.Length; i++) help.Cell(i + 3, 1).Value = tips[i];
+        help.Columns().AdjustToContents();
+
+        ws.Columns().AdjustToContents();
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        return ms.ToArray();
     }
 
     // ============================================================
@@ -256,12 +444,20 @@ public class VaultService
         foreach (var e in entries)
         {
             var usu = Decrypt(e.UsuarioEnc, key);
+            var otro = DecOpt(e.OtroEnc, key);
             var pwd = Decrypt(e.PasswordEnc, key);
-            string? not = string.IsNullOrEmpty(e.NotasEnc) ? null : Decrypt(e.NotasEnc, key);
+            var pin = DecOpt(e.PinEnc, key);
+            var mail = DecOpt(e.MailEnc, key);
+            var enlace = DecOpt(e.EnlaceEnc, key);
+            var not = DecOpt(e.NotasEnc, key);
 
             e.UsuarioEnc = Encrypt(usu, newKey);
+            e.OtroEnc = EncOpt(otro, newKey);
             e.PasswordEnc = Encrypt(pwd, newKey);
-            e.NotasEnc = not is null ? null : Encrypt(not, newKey);
+            e.PinEnc = EncOpt(pin, newKey);
+            e.MailEnc = EncOpt(mail, newKey);
+            e.EnlaceEnc = EncOpt(enlace, newKey);
+            e.NotasEnc = EncOpt(not, newKey);
             e.UpdatedAt = DateTime.UtcNow;
         }
 

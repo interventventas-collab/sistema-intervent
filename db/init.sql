@@ -1880,13 +1880,35 @@ BEGIN
     CREATE TABLE Vault_Entries (
         Id INT IDENTITY(1,1) PRIMARY KEY,
         Servicio NVARCHAR(200) NOT NULL,
+        Categoria NVARCHAR(100) NULL,
         UsuarioEnc NVARCHAR(MAX) NOT NULL,
+        OtroEnc NVARCHAR(MAX) NULL,
         PasswordEnc NVARCHAR(MAX) NOT NULL,
+        PinEnc NVARCHAR(MAX) NULL,
+        MailEnc NVARCHAR(MAX) NULL,
+        EnlaceEnc NVARCHAR(MAX) NULL,
         NotasEnc NVARCHAR(MAX) NULL,
         CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
         UpdatedAt DATETIME2 NULL
     );
     CREATE INDEX IX_VaultEntries_Servicio ON Vault_Entries (Servicio);
+    CREATE INDEX IX_VaultEntries_Categoria ON Vault_Entries (Categoria);
+END
+ELSE
+BEGIN
+    -- Migración: agregar columnas nuevas si la tabla ya existía
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='Categoria' AND Object_ID=Object_ID('Vault_Entries'))
+        ALTER TABLE Vault_Entries ADD Categoria NVARCHAR(100) NULL;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='OtroEnc' AND Object_ID=Object_ID('Vault_Entries'))
+        ALTER TABLE Vault_Entries ADD OtroEnc NVARCHAR(MAX) NULL;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='PinEnc' AND Object_ID=Object_ID('Vault_Entries'))
+        ALTER TABLE Vault_Entries ADD PinEnc NVARCHAR(MAX) NULL;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='MailEnc' AND Object_ID=Object_ID('Vault_Entries'))
+        ALTER TABLE Vault_Entries ADD MailEnc NVARCHAR(MAX) NULL;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='EnlaceEnc' AND Object_ID=Object_ID('Vault_Entries'))
+        ALTER TABLE Vault_Entries ADD EnlaceEnc NVARCHAR(MAX) NULL;
+    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE Name='IX_VaultEntries_Categoria' AND Object_ID=Object_ID('Vault_Entries'))
+        CREATE INDEX IX_VaultEntries_Categoria ON Vault_Entries (Categoria);
 END
 GO
 

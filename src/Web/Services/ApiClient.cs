@@ -527,6 +527,40 @@ public class ApiClient
     public Task<VaultGenerateResponse?> GenerateVaultPasswordAsync(string token, VaultGenerateRequest request)
         => VaultRequestAsync<VaultGenerateResponse>(HttpMethod.Post, "/api/vault/generate", request, token);
 
+    public Task<List<string>?> ListVaultCategoriasAsync(string token)
+        => VaultRequestAsync<List<string>>(HttpMethod.Get, "/api/vault/categorias", null, token);
+
+    public async Task<byte[]?> DownloadVaultTemplateAsync()
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync("/api/vault/template-excel");
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadAsByteArrayAsync();
+    }
+
+    public async Task<VaultImportResultDto?> ImportVaultExcelAsync(string token, Stream fileStream, string fileName)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        var streamContent = new StreamContent(fileStream);
+        streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        content.Add(streamContent, "file", fileName);
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, "/api/vault/import-excel");
+        req.Content = content;
+        req.Headers.Add("X-Vault-Token", token);
+
+        using var resp = await _http.SendAsync(req);
+        if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            throw new VaultLockedException("Bóveda bloqueada");
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            throw new Exception(string.IsNullOrEmpty(err) ? $"Error {(int)resp.StatusCode}" : err);
+        }
+        return await resp.Content.ReadFromJsonAsync<VaultImportResultDto>();
+    }
+
     // --- Postits ---
     public async Task<List<PostitDto>?> GetPostitsAsync(string? scope = null)
     {

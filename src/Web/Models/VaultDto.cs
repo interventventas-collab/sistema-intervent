@@ -17,8 +17,13 @@ public class VaultEntryDto
 {
     public int Id { get; set; }
     public string Servicio { get; set; } = "";
+    public string? Categoria { get; set; }
     public string Usuario { get; set; } = "";
+    public string? Otro { get; set; }
     public string Password { get; set; } = "";
+    public string? Pin { get; set; }
+    public string? Mail { get; set; }
+    public string? Enlace { get; set; }
     public string? Notas { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
@@ -27,9 +32,22 @@ public class VaultEntryDto
 public class VaultUpsertEntryRequest
 {
     public string Servicio { get; set; } = "";
+    public string? Categoria { get; set; }
     public string Usuario { get; set; } = "";
+    public string? Otro { get; set; }
     public string Password { get; set; } = "";
+    public string? Pin { get; set; }
+    public string? Mail { get; set; }
+    public string? Enlace { get; set; }
     public string? Notas { get; set; }
+}
+
+public class VaultImportResultDto
+{
+    public int Creadas { get; set; }
+    public int Actualizadas { get; set; }
+    public int Saltadas { get; set; }
+    public List<string> Errores { get; set; } = new();
 }
 
 public class VaultGenerateRequest

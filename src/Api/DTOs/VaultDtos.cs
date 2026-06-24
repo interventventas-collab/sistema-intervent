@@ -15,15 +15,34 @@ public class VaultUnlockRequest
 
 public record VaultUnlockResponse(string Token, int AutoLockMinutes);
 
-public record VaultEntryDto(int Id, string Servicio, string Usuario, string Password, string? Notas, DateTime CreatedAt, DateTime? UpdatedAt);
+public record VaultEntryDto(
+    int Id,
+    string Servicio,
+    string? Categoria,
+    string Usuario,
+    string? Otro,
+    string Password,
+    string? Pin,
+    string? Mail,
+    string? Enlace,
+    string? Notas,
+    DateTime CreatedAt,
+    DateTime? UpdatedAt);
 
 public class VaultUpsertEntryRequest
 {
     public string Servicio { get; set; } = string.Empty;
+    public string? Categoria { get; set; }
     public string Usuario { get; set; } = string.Empty;
+    public string? Otro { get; set; }
     public string Password { get; set; } = string.Empty;
+    public string? Pin { get; set; }
+    public string? Mail { get; set; }
+    public string? Enlace { get; set; }
     public string? Notas { get; set; }
 }
+
+public record VaultImportResultDto(int Creadas, int Actualizadas, int Saltadas, List<string> Errores);
 
 public class VaultGenerateRequest
 {
