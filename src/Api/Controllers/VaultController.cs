@@ -45,7 +45,9 @@ public class VaultController : ControllerBase
         try
         {
             var resp = await _vault.UnlockAsync(req.Password);
-            if (resp is null) return Unauthorized(new { error = "Contraseña maestra incorrecta" });
+            // OJO: no usar 401 aca — el cliente Blazor trata todo 401 como "sesion JWT expirada"
+            // y te manda al login. La maestra incorrecta es un error de validacion, no de auth.
+            if (resp is null) return BadRequest(new { error = "Contraseña maestra incorrecta" });
             return Ok(resp);
         }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
