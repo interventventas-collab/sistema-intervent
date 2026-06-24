@@ -772,6 +772,16 @@ function acquireWaLock(opName) {
   return true;
 }
 function releaseWaLock() { waBusy = false; }
+// Variante que ESPERA al lock antes de fallar (uso para acciones del usuario:
+// chats/list, open-by-name, send-to-current). El poller usa acquireWaLock directo.
+async function acquireWaLockWait(opName, maxWaitMs = 30000) {
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    if (acquireWaLock(opName)) return true;
+    await sleep(300);
+  }
+  return false;
+}
 
 app.post('/whatsapp/messages/list', async (req, res) => {
   const phoneInput = (req.body && req.body.phone) || '';
@@ -941,7 +951,7 @@ app.post('/whatsapp/chat/open-by-name', async (req, res) => {
   const name = (req.body && req.body.name) || '';
   if (!name) return res.status(400).json({ error: 'name requerido' });
 
-  if (!acquireWaLock('open-by-name')) return res.status(429).json({ error: 'busy' });
+  if (!await acquireWaLockWait('open-by-name', 30000)) return res.status(429).json({ error: 'busy' });
 
   try {
     const alive = await ensureSessionAlive();
@@ -1175,7 +1185,7 @@ app.post('/whatsapp/chat/send-to-current', async (req, res) => {
   const text = (req.body && req.body.text) || '';
   if (!text || !text.trim()) return res.status(400).json({ error: 'text requerido' });
 
-  if (!acquireWaLock('send-to-current')) return res.status(429).json({ error: 'busy' });
+  if (!await acquireWaLockWait('send-to-current', 30000)) return res.status(429).json({ error: 'busy' });
 
   try {
     if (!state.page || state.page.isClosed()) {
@@ -1215,7 +1225,7 @@ app.post('/whatsapp/chat/send-to-current', async (req, res) => {
 app.post('/whatsapp/chats/list', async (req, res) => {
   const limit = Math.min(parseInt((req.body && req.body.limit) || 50, 10) || 50, 200);
 
-  if (!acquireWaLock('chats/list')) return res.status(429).json({ error: 'busy', message: 'Otro listado en curso' });
+  if (!await acquireWaLockWait('chats/list', 30000)) return res.status(429).json({ error: 'busy', message: 'Otro listado en curso' });
 
   try {
     const alive = await ensureSessionAlive();
