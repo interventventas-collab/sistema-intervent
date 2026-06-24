@@ -237,171 +237,190 @@
                         </p>
                     }
                 </div>
-                <div class="form-row">
-                    <div class="form-group" style="flex: 2;">
-                        <label class="form-label">Nombre fantasía *</label>
-                        <input class="form-input" @bind="formNombre" placeholder="Ej: Bar Don Pepe" autofocus />
-                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Nombre comercial / cómo lo conocés.</p>
+
+                @* ═══════════════ Sección 1: Datos comerciales (lo que cargás vos) ═══════════════ *@
+                <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.1rem; margin-bottom: 1rem;">
+                    <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.9rem; padding-bottom: 0.6rem; border-bottom: 1px solid #e2e8f0;">
+                        <span style="background: #ede9fe; color: #6d28d9; font-size: 0.78rem; padding: 0.28rem 0.7rem; border-radius: 6px; font-weight: 700;">
+                            🧑‍💼 1 · Datos comerciales
+                        </span>
+                        <span style="font-size: 0.78rem; color: #6b7280;">los cargás vos</span>
                     </div>
-                    <div class="form-group" style="flex: 1;">
-                        <label class="form-label">Tipo *</label>
-                        <select class="form-input" @bind="formTipo">
-                            <option value="BAR">🍺 BAR</option>
-                            <option value="OTRO">🏢 Comercial</option>
-                        </select>
+
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 2;">
+                            <label class="form-label">Nombre fantasía *</label>
+                            <input class="form-input" @bind="formNombre" placeholder="Ej: Bar Don Pepe" autofocus />
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Nombre comercial / cómo lo conocés.</p>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Tipo *</label>
+                            <select class="form-input" @bind="formTipo">
+                                <option value="BAR">🍺 BAR</option>
+                                <option value="OTRO">🏢 Comercial</option>
+                            </select>
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
+                                Define qué descuento aplica según las reglas de precios.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Email</label>
+                            <input class="form-input" type="email" @bind="formEmail" placeholder="email@ejemplo.com" />
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Teléfono</label>
+                            <input class="form-input" @bind="formTelefono" placeholder="Ej: 5491141234567" />
+                            <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">
+                                💡 Para que el link de WhatsApp del comprobante funcione, cargá el número en <strong>formato internacional sin el +</strong>
+                                (ej: <code>5491141234567</code> = 54 + 9 + 11 + número). El icono 📱 que aparece en el PDF abre WhatsApp directo a este número.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Domicilio de entrega</label>
+                        <input class="form-input" @bind="formDomicilioEntrega" placeholder="Donde se entregan los pedidos (si difiere del fiscal)" />
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Si está vacío, se usa la dirección fiscal.</p>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Notas internas</label>
+                        <textarea class="form-input" @bind="formNotas" rows="2" placeholder="Notas que solo ves vos (no aparecen en comprobante)"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Comentarios para comprobante</label>
+                        <textarea class="form-input" @bind="formComentariosComprobante" rows="2"
+                                  placeholder="Ej: Entregar antes de las 11 hs · Solicitar firma del recepcionista"></textarea>
                         <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
-                            Define qué descuento aplica según las reglas de precios.
+                            Estos comentarios <strong>aparecen en TODOS los comprobantes</strong> de este cliente.
                         </p>
                     </div>
+                    @* ─── Enlace Google Maps ─── *@
+                    <div style="background: #eff6ff; border: 1px solid #3b82f6; border-radius: 6px; padding: 0.6rem 0.8rem; margin-top: 0.5rem;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label" style="font-size: 0.78rem; color: #1e40af;">🗺 Enlace Google Maps (corto)</label>
+                            <input class="form-input" @bind="formMapeoLink"
+                                   placeholder="https://maps.app.goo.gl/..." />
+                            @if (formMapeoLat.HasValue && formMapeoLng.HasValue)
+                            {
+                                <p style="font-size: 0.7rem; color: #15803d; margin: 0.2rem 0 0;">
+                                    ✓ Coordenadas extraídas: <strong>@formMapeoLat?.ToString("0.######"), @formMapeoLng?.ToString("0.######")</strong>
+                                </p>
+                            }
+                            else if (!string.IsNullOrEmpty(formMapeoLink) && isEditing)
+                            {
+                                <p style="font-size: 0.7rem; color: #d97706; margin: 0.2rem 0 0; display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+                                    ⚠ No se pudieron extraer coordenadas todavía.
+                                    <button type="button" class="btn btn-secondary"
+                                            @onclick="ReExtraerCoords" disabled="@reExtrayendo"
+                                            style="font-size: 0.7rem; padding: 0.2rem 0.4rem;">
+                                        @(reExtrayendo ? "⏳..." : "🔄 Re-extraer")
+                                    </button>
+                                </p>
+                            }
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
+                                Pegá el enlace corto que sale al compartir la ubicación desde Google Maps en el celular.
+                                Al guardar, el sistema extrae automáticamente las coordenadas para usarlas en el mapa.
+                            </p>
+                        </div>
+                    </div>
+                    @if (isEditing)
+                    {
+                        <div class="form-group" style="margin-top: 0.8rem;">
+                            <label class="form-label">Estado</label>
+                            <select class="form-input" @bind="formIsActive">
+                                <option value="@true">Activo</option>
+                                <option value="@false">Inactivo</option>
+                            </select>
+                        </div>
+                    }
+                    @* 2026-06-22: si se activa, todas las ventas nuevas para este cliente piden firma al entregar *@
+                    <div class="form-group" style="grid-column: 1 / -1; padding: 0.6rem; background: #eff6ff; border-left: 3px solid #2563eb; border-radius: 4px; margin-top: 0.8rem; margin-bottom: 0;">
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-weight: 600;">
+                            <input type="checkbox" @bind="formSolicitarFirmaEntrega" style="width: 18px; height: 18px;" />
+                            <span>📝 Pedir firma al receptor en cada entrega</span>
+                        </label>
+                        <div style="font-size: 0.78rem; color: #4b5563; margin-top: 0.3rem; margin-left: 1.7rem;">
+                            Las ventas para este cliente van a heredar este flag. Al entregar, el repartidor verá un modal con canvas para firma + nombre del receptor. Permite generar un recibo de entrega para administración del cliente.
+                        </div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">Razón social (legal)</label>
-                    <input class="form-input" @bind="formRazonSocial" placeholder="Ej: PEPITO Y CIA. S.A." />
-                    <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Si se carga, aparece en facturas y proformas. Si está vacío, se usa el nombre fantasía.</p>
-                </div>
-                <div class="form-row">
-                    <div class="form-group" style="flex: 1;">
+
+                @* ═══════════════ Sección 2: Datos fiscales (auto desde ARCA) ═══════════════ *@
+                <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.1rem;">
+                    <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.9rem; padding-bottom: 0.6rem; border-bottom: 1px solid #e2e8f0;">
+                        <span style="background: #dbeafe; color: #1e40af; font-size: 0.78rem; padding: 0.28rem 0.7rem; border-radius: 6px; font-weight: 700;">
+                            📋 2 · Datos fiscales
+                        </span>
+                        <span style="font-size: 0.78rem; color: #6b7280;">cargá el CUIT y apretá 🔍 ARCA para autocompletar</span>
+                    </div>
+
+                    <div class="form-group">
                         <label class="form-label">CUIT / DNI</label>
                         <div style="display: flex; gap: 0.4rem; align-items: stretch;">
                             <input class="form-input" @bind="formCuit" placeholder="Ej: 30123456789"
                                    style="flex: 1 1 auto; min-width: 0;" />
                             <button type="button" class="btn btn-secondary" @onclick="BuscarPorCuit" disabled="@buscandoCuit"
                                     title="Trae automáticamente Razón Social, Dirección y Condición IVA"
-                                    style="flex: 0 0 auto; white-space: nowrap; font-size: 0.8rem; padding: 0.4rem 0.7rem;">
+                                    style="flex: 0 0 auto; white-space: nowrap; font-size: 0.85rem; padding: 0.45rem 0.9rem;">
                                 @if (buscandoCuit) { <span>⏳</span> } else { <span>🔍 ARCA</span> }
                             </button>
                         </div>
                         <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
-                            Cargá el CUIT (11 dígitos) y apretá <strong>🔍 ARCA</strong> — completa Razón Social, Dirección y Condición IVA.
+                            Cargá el CUIT (11 dígitos) y apretá <strong>🔍 ARCA</strong> — completa Razón Social, Dirección, CP, Localidad, Provincia y Condición IVA.
                         </p>
                     </div>
-                    <div class="form-group" style="flex: 1;">
-                        <label class="form-label">Email</label>
-                        <input class="form-input" type="email" @bind="formEmail" placeholder="email@ejemplo.com" />
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group" style="flex: 1;">
-                        <label class="form-label">Teléfono</label>
-                        <input class="form-input" @bind="formTelefono" placeholder="Ej: 5491141234567" />
-                        <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">
-                            💡 Para que el link de WhatsApp del comprobante funcione, cargá el número en <strong>formato internacional sin el +</strong>
-                            (ej: <code>5491141234567</code> = 54 + 9 + 11 + número). El icono 📱 que aparece en el PDF abre WhatsApp directo a este número.
-                        </p>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Dirección fiscal</label>
-                    <input class="form-input" @bind="formDireccion" placeholder="Calle, número, barrio..." />
-                    <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Domicilio fiscal del cliente (la dirección legal).</p>
-                </div>
-                <div class="form-row">
-                    <div class="form-group" style="flex: 1;">
-                        <label class="form-label">CP</label>
-                        <input class="form-input" value="@formCp"
-                               @oninput="@(e => OnFormCpInput(e.Value?.ToString()))"
-                               maxlength="4" placeholder="1900" />
-                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">4 dígitos. Auto-completa.</p>
-                    </div>
-                    <div class="form-group" style="flex: 2;">
-                        <label class="form-label">Localidad</label>
-                        <input class="form-input" list="datalist-localidades" @bind="formLocalidad" @bind:event="oninput" placeholder="Ej: La Plata" />
-                        <datalist id="datalist-localidades">
-                            @foreach (var loc in localidadesSugeridas)
-                            {
-                                <option value="@loc"></option>
-                            }
-                        </datalist>
-                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Sugerencias segun la provincia. Podes tipear libre si no esta.</p>
-                    </div>
-                    <div class="form-group" style="flex: 2;">
-                        <label class="form-label">Provincia</label>
-                        <input class="form-input" list="datalist-provincias" value="@formCiudad" @oninput="@(e => OnProvinciaInput(e.Value?.ToString()))" placeholder="Ej: Buenos Aires" />
-                        <datalist id="datalist-provincias">
-                            @foreach (var p in provincias)
-                            {
-                                <option value="@p"></option>
-                            }
-                        </datalist>
-                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Elegi de la lista para unificar nombres.</p>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Condición frente al IVA</label>
-                    <select class="form-input" @bind="formCondicionIvaDefault">
-                        <option value="">— Sin especificar —</option>
-                        <option value="RI">Responsable Inscripto</option>
-                        <option value="MO">Monotributo</option>
-                        <option value="EX">Exento</option>
-                        <option value="CF">Consumidor Final</option>
-                    </select>
-                    <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Default que se sugiere al emitir comprobantes para este cliente.</p>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Domicilio de entrega</label>
-                    <input class="form-input" @bind="formDomicilioEntrega" placeholder="Donde se entregan los pedidos (si difiere del fiscal)" />
-                    <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Si está vacío, se usa la dirección fiscal.</p>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Notas internas</label>
-                    <textarea class="form-input" @bind="formNotas" rows="2" placeholder="Notas que solo ves vos (no aparecen en comprobante)"></textarea>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Comentarios para comprobante</label>
-                    <textarea class="form-input" @bind="formComentariosComprobante" rows="2"
-                              placeholder="Ej: Entregar antes de las 11 hs · Solicitar firma del recepcionista"></textarea>
-                    <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
-                        Estos comentarios <strong>aparecen en TODOS los comprobantes</strong> de este cliente.
-                    </p>
-                </div>
-                @* ─── Enlace Google Maps (el código interno se movió arriba de todo) ─── *@
-                <div style="background: #eff6ff; border: 1px solid #3b82f6; border-radius: 6px; padding: 0.6rem 0.8rem; margin-top: 0.5rem;">
-                    <div class="form-group" style="margin-bottom: 0;">
-                        <label class="form-label" style="font-size: 0.78rem; color: #1e40af;">🗺 Enlace Google Maps (corto)</label>
-                        <input class="form-input" @bind="formMapeoLink"
-                               placeholder="https://maps.app.goo.gl/..." />
-                        @if (formMapeoLat.HasValue && formMapeoLng.HasValue)
-                        {
-                            <p style="font-size: 0.7rem; color: #15803d; margin: 0.2rem 0 0;">
-                                ✓ Coordenadas extraídas: <strong>@formMapeoLat?.ToString("0.######"), @formMapeoLng?.ToString("0.######")</strong>
-                            </p>
-                        }
-                        else if (!string.IsNullOrEmpty(formMapeoLink) && isEditing)
-                        {
-                            <p style="font-size: 0.7rem; color: #d97706; margin: 0.2rem 0 0; display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
-                                ⚠ No se pudieron extraer coordenadas todavía.
-                                <button type="button" class="btn btn-secondary"
-                                        @onclick="ReExtraerCoords" disabled="@reExtrayendo"
-                                        style="font-size: 0.7rem; padding: 0.2rem 0.4rem;">
-                                    @(reExtrayendo ? "⏳..." : "🔄 Re-extraer")
-                                </button>
-                            </p>
-                        }
-                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
-                            Pegá el enlace corto que sale al compartir la ubicación desde Google Maps en el celular.
-                            Al guardar, el sistema extrae automáticamente las coordenadas para usarlas en el mapa.
-                        </p>
-                    </div>
-                </div>
-
-                @if (isEditing)
-                {
                     <div class="form-group">
-                        <label class="form-label">Estado</label>
-                        <select class="form-input" @bind="formIsActive">
-                            <option value="@true">Activo</option>
-                            <option value="@false">Inactivo</option>
-                        </select>
+                        <label class="form-label">Razón social (legal)</label>
+                        <input class="form-input" @bind="formRazonSocial" placeholder="Ej: PEPITO Y CIA. S.A." />
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Si se carga, aparece en facturas y proformas. Si está vacío, se usa el nombre fantasía.</p>
                     </div>
-                }
-                @* 2026-06-22: si se activa, todas las ventas nuevas para este cliente piden firma al entregar *@
-                <div class="form-group" style="grid-column: 1 / -1; padding: 0.6rem; background: #eff6ff; border-left: 3px solid #2563eb; border-radius: 4px;">
-                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-weight: 600;">
-                        <input type="checkbox" @bind="formSolicitarFirmaEntrega" style="width: 18px; height: 18px;" />
-                        <span>📝 Pedir firma al receptor en cada entrega</span>
-                    </label>
-                    <div style="font-size: 0.78rem; color: #4b5563; margin-top: 0.3rem; margin-left: 1.7rem;">
-                        Las ventas para este cliente van a heredar este flag. Al entregar, el repartidor verá un modal con canvas para firma + nombre del receptor. Permite generar un recibo de entrega para administración del cliente.
+                    <div class="form-group">
+                        <label class="form-label">Dirección fiscal</label>
+                        <input class="form-input" @bind="formDireccion" placeholder="Calle, número, barrio..." />
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Domicilio fiscal del cliente (la dirección legal).</p>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">CP</label>
+                            <input class="form-input" value="@formCp"
+                                   @oninput="@(e => OnFormCpInput(e.Value?.ToString()))"
+                                   maxlength="4" placeholder="1900" />
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">4 dígitos. Auto-completa.</p>
+                        </div>
+                        <div class="form-group" style="flex: 2;">
+                            <label class="form-label">Localidad</label>
+                            <input class="form-input" list="datalist-localidades" @bind="formLocalidad" @bind:event="oninput" placeholder="Ej: La Plata" />
+                            <datalist id="datalist-localidades">
+                                @foreach (var loc in localidadesSugeridas)
+                                {
+                                    <option value="@loc"></option>
+                                }
+                            </datalist>
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Sugerencias segun la provincia. Podes tipear libre si no esta.</p>
+                        </div>
+                        <div class="form-group" style="flex: 2;">
+                            <label class="form-label">Provincia</label>
+                            <input class="form-input" list="datalist-provincias" value="@formCiudad" @oninput="@(e => OnProvinciaInput(e.Value?.ToString()))" placeholder="Ej: Buenos Aires" />
+                            <datalist id="datalist-provincias">
+                                @foreach (var p in provincias)
+                                {
+                                    <option value="@p"></option>
+                                }
+                            </datalist>
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Elegi de la lista para unificar nombres.</p>
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label">Condición frente al IVA</label>
+                        <select class="form-input" @bind="formCondicionIvaDefault">
+                            <option value="">— Sin especificar —</option>
+                            <option value="RI">Responsable Inscripto</option>
+                            <option value="MO">Monotributo</option>
+                            <option value="EX">Exento</option>
+                            <option value="CF">Consumidor Final</option>
+                        </select>
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Default que se sugiere al emitir comprobantes para este cliente. Define si la factura es A o B.</p>
                     </div>
                 </div>
             </div>
