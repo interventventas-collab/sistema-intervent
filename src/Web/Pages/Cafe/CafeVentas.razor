@@ -5365,7 +5365,7 @@
                 .ToList();
             formObservaciones = string.Join("\n", partes);
         }
-        RecomputeUnpaidPrevSales();
+        await RecomputeUnpaidPrevSalesAsync();
         await LoadTopProductsForClient();
         await Cotizar();
     }
@@ -5394,23 +5394,22 @@
     }
 
     /// <summary>Recalcula los comprobantes con saldo pendiente del cliente actual.
-    /// Usa el dictionary `saldosPorVenta` (calculado desde cobranzas reales) en vez del flag legacy IsPaid.
+    /// 2026-06-24: consulta al backend (endpoint /cliente/{id}/impagas) en lugar de filtrar la lista
+    /// paginada en memoria. El cambio de paginacion del 22/06 dejaba afuera las deudas viejas que no
+    /// entraban en las ultimas 50 ventas, asi el chip "⚠ Debe $X" no aparecia aunque el cliente debiera.
     /// Excluye anulados, totalmente pagados y la venta que se esta editando.</summary>
-    private void RecomputeUnpaidPrevSales()
+    private async Task RecomputeUnpaidPrevSalesAsync()
     {
-        if (ventas is null || formClienteId <= 0)
+        if (formClienteId <= 0)
         {
             unpaidPrevSales = new();
             return;
         }
-        unpaidPrevSales = ventas
-            .Where(v => v.ClienteId == formClienteId
-                        && v.Estado == "emitido"
-                        && (saldosPorVenta.TryGetValue(v.Id, out var sld) ? sld > 0.01m : !v.IsPaid)
-                        && (editingVentaId == null || v.Id != editingVentaId))
-            .OrderBy(v => v.Fecha)
-            .ThenBy(v => v.Id)
-            .ToList();
+        try
+        {
+            unpaidPrevSales = await Api.GetCafeVentasImpagasClienteAsync(formClienteId, editingVentaId) ?? new();
+        }
+        catch { unpaidPrevSales = new(); }
     }
 
     private async Task LoadTopProductsForClient()
@@ -6862,7 +6861,7 @@
         editingVentaArcaEstado = v.ArcaEstado;
         showForm = true;
         // Refrescar saldo anterior + sugerencias del cliente y cotizar precios.
-        RecomputeUnpaidPrevSales();
+        await RecomputeUnpaidPrevSalesAsync();
         await LoadTopProductsForClient();
         await Cotizar();
     }

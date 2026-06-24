@@ -427,6 +427,41 @@ public class CafeVentasController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>
+    /// 2026-06-24: Devuelve TODAS las ventas impagas (saldo > 0) de un cliente, sin paginar.
+    /// Necesario porque desde el 22/06 el listado principal pagina (50 por pagina) y el formulario
+    /// de "Nueva venta" no podia ver las deudas viejas que quedaban fuera de esa pagina.
+    /// Si se pasa excludeVentaId, se excluye esa venta del resultado (caso edicion).
+    /// </summary>
+    [HttpGet("cliente/{clienteId:int}/impagas")]
+    public async Task<IActionResult> GetImpagasCliente(int clienteId, [FromQuery] int? excludeVentaId = null)
+    {
+        var ventas = await _db.CafeVentas.Include(v => v.Items)
+            .Where(v => v.ClienteId == clienteId
+                     && v.Estado == "emitido"
+                     && (excludeVentaId == null || v.Id != excludeVentaId.Value))
+            .ToListAsync();
+        if (ventas.Count == 0) return Ok(new List<CafeVentaDto>());
+
+        var ventaIds = ventas.Select(v => v.Id).ToList();
+        var pagados = await _db.CafeCobranzasComprobantes
+            .Where(c => c.VentaId != null && ventaIds.Contains(c.VentaId!.Value)
+                && c.Cobranza!.Estado == "VIGENTE")
+            .GroupBy(c => c.VentaId!.Value)
+            .Select(g => new { VentaId = g.Key, Pagado = g.Sum(x => x.Importe) })
+            .ToListAsync();
+        var pagadosDict = pagados.ToDictionary(p => p.VentaId, p => p.Pagado);
+
+        var impagas = ventas.Where(v =>
+        {
+            var totalCobrar = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
+            var pagado = pagadosDict.TryGetValue(v.Id, out var p) ? p : 0m;
+            return totalCobrar - pagado > 0.01m;
+        }).OrderBy(v => v.Fecha).ThenBy(v => v.Id).ToList();
+
+        return Ok(impagas.Select(v => Map(v)).ToList());
+    }
+
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetById(int id)
     {

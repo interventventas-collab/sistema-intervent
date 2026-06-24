@@ -734,6 +734,16 @@ public class ApiClient
         catch { return (new(), 0); }
     }
 
+    /// <summary>2026-06-24: trae TODAS las ventas impagas (saldo > 0) de un cliente, sin paginar.
+    /// Usado por el formulario de Nueva Venta para calcular el saldo anterior sin depender de la
+    /// lista paginada (que solo tiene 50 ventas en memoria y se perdia las deudas viejas).</summary>
+    public async Task<List<CafeVentaDto>?> GetCafeVentasImpagasClienteAsync(int clienteId, int? excludeVentaId = null)
+    {
+        var url = $"/api/cafe/ventas/cliente/{clienteId}/impagas";
+        if (excludeVentaId.HasValue) url += $"?excludeVentaId={excludeVentaId.Value}";
+        return await GetAsync<List<CafeVentaDto>>(url);
+    }
+
     public async Task<CafeVentaDto?> GetCafeVentaAsync(int id)
         => await GetAsync<CafeVentaDto>($"/api/cafe/ventas/{id}");
 
