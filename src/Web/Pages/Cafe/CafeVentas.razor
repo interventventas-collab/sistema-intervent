@@ -2107,6 +2107,75 @@
                 @* 2026-06-17 v2: bloques Entrega + Comentario armado movidos a la 3a columna del header.
                    Acá en el panel sticky derecho solo quedan Más comprados + Totales. *@
 
+                @* ═══════════════ Panel: Enviar al cliente al emitir ═══════════════
+                   2026-06-24: restaurado en el panel sticky derecho (se habia perdido del HTML en commit 63a2b27).
+                   En venta NUEVA muestra los 4 canales (Email / WhatsApp Web / WhatsApp Interno / Drive).
+                   En EDIT solo muestra Drive (los otros canales no se re-envian al editar).
+                   Los inputs de destinatario solo aparecen cuando el checkbox esta tildado, para ahorrar espacio. *@
+                @if (!editingVentaId.HasValue)
+                {
+                    <div style="padding: 0.55rem 0.7rem; background: #f9fafb; border: 1px solid #d1d5db; border-radius: 8px; flex: 0 0 auto; display:flex; flex-direction:column; gap:0.4rem;">
+                        <div style="display: flex; align-items: center; justify-content: space-between;">
+                            <strong style="font-size: 0.8rem; color: #374151;">📤 Enviar al emitir</strong>
+                            <button type="button"
+                                    style="font-size: 0.68rem; padding: 0.15rem 0.45rem; background:white; border:1px solid #9ca3af; border-radius:4px; cursor:pointer; color:#374151;"
+                                    @onclick="MarcarTodosEnvios">
+                                @(envioEmail && envioWhatsappWeb && envioWhatsappInterno ? "Desmarcar" : "Marcar todos")
+                            </button>
+                        </div>
+                        <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; cursor:pointer;">
+                            <input type="checkbox" @bind="envioEmail" />
+                            <span>📧 Por Mail</span>
+                        </label>
+                        @if (envioEmail)
+                        {
+                            <input type="email" class="form-input" placeholder="email@cliente.com"
+                                   style="font-size: 0.75rem; padding: 0.25rem 0.4rem; margin-left: 1.2rem;"
+                                   @bind="envioEmailTo" />
+                        }
+                        <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; cursor:pointer;">
+                            <input type="checkbox" @bind="envioWhatsappWeb" />
+                            <span>📱 WhatsApp Web</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; cursor:pointer;">
+                            <input type="checkbox" @bind="envioWhatsappInterno" />
+                            <span>🚀 WhatsApp Interno</span>
+                        </label>
+                        @if (envioWhatsappWeb || envioWhatsappInterno)
+                        {
+                            <input type="tel" class="form-input" placeholder="11 1234 5678"
+                                   style="font-size: 0.75rem; padding: 0.25rem 0.4rem; margin-left: 1.2rem;"
+                                   @bind="envioWhatsappPhone" />
+                        }
+                        <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; cursor:pointer; padding-top:0.25rem; border-top:1px dashed #d1d5db;">
+                            <input type="checkbox" @bind="envioDrive" />
+                            <span>📁 <strong>IMPRIMIR PEDIDOS DE OSMAR</strong></span>
+                        </label>
+                        <div style="font-size: 0.66rem; color: #6b7280; margin-left: 1.2rem;">Sube el PDF a Drive y aparece en /cafe/preparacion.</div>
+                        @if (formClienteId == 0 && (envioEmail || envioWhatsappWeb || envioWhatsappInterno))
+                        {
+                            <div style="font-size: 0.68rem; color: #9a3412; background: #fef3c7; padding: 0.25rem 0.4rem; border-radius: 4px;">
+                                ⚠ Sin cliente — completá los destinatarios a mano.
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    @* EDIT: solo checkbox de Drive (re-subir PDF actualizado a IMPRIMIR PEDIDOS DE OSMAR). *@
+                    <div style="padding: 0.55rem 0.7rem; background: #f0f9ff; border: 1px solid #93c5fd; border-radius: 8px; flex: 0 0 auto;">
+                        <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; cursor:pointer;">
+                            <input type="checkbox" @bind="envioDriveEdit" />
+                            <span>📁 <strong>@(editingVentaTieneDrive ? "Re-subir a" : "Enviar a") IMPRIMIR PEDIDOS DE OSMAR</strong></span>
+                        </label>
+                        <div style="font-size: 0.66rem; color: #6b7280; margin-left: 1.2rem; margin-top: 0.2rem;">
+                            @(editingVentaTieneDrive
+                                ? "Sube el PDF actualizado y avisa con chip '⚠ PEDIDO MODIFICADO'."
+                                : "Sube el PDF a Drive y aparece en /cafe/preparacion.")
+                        </div>
+                    </div>
+                }
+
                 @* ─── TOTALES ─── *@
                 @* 2026-06-17 v4: flex 0 0 auto → siempre visible al fondo del panel sticky, no entra al scroll de Más comprados. *@
                 @if (cotizacion is not null)
