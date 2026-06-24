@@ -620,14 +620,21 @@ public class MeliMe1Controller : ControllerBase
 
     /// <summary>
     /// Genera el Excel para subir como "Tabla de Contingencia / Axado" en el panel
-    /// de MeLi. Una fila por CP cubriendo los rangos acordados con el usuario el 2026-06-09:
+    /// de MeLi. Una fila por CP cubriendo los rangos acordados con el usuario el 2026-06-24:
     ///   1001-1499 CABA $10.000
     ///   1500-1599 GBA cercano $12.000
     ///   1600-1699 GBA medio $14.000
     ///   1700-1838 GBA cercano $12.000
     ///   1839 TU ZONA $8.000
     ///   1840-1899 GBA cercano $12.000
-    ///   1900-2999 La Plata + extremos $18.000
+    ///   1900-1999 La Plata zona $18.000
+    ///   2800-2899 Zarate / Campana / San Antonio de Areco $18.000
+    /// FUERA DE COBERTURA (sacados 24/06 por venta a San Nicolas de los Arroyos que Axado no llega):
+    ///   2000-2299 Rosario y sur Santa Fe
+    ///   2300-2399 Centro Santa Fe
+    ///   2400-2699 Cordoba pampeana (San Francisco, Bell Ville, Rio Cuarto, Marcos Juarez)
+    ///   2700-2799 Pergamino, Rojas, Salto
+    ///   2900-2999 San Nicolas, San Pedro, Ramallo
     /// Peso 0-999 kg sin recargo por kg extra => tarifa FIJA por zona, no importa el peso.
     /// Plazo 1 dia habil.
     /// </summary>
@@ -643,7 +650,8 @@ public class MeliMe1Controller : ControllerBase
             (1700, 1838, 12000m),  // GBA cercano (Moron, Ituzaingo, Merlo, Moreno, La Matanza...)
             (1839, 1839,  8000m),  // TU ZONA: Esteban Echeverria
             (1840, 1899, 12000m),  // GBA cercano (Lomas, Quilmes, Banfield, Burzaco...)
-            (1900, 2999, 18000m),  // La Plata + extremos (Berisso, Ensenada, Canuelas, Zarate, Campana, Lujan...)
+            (1900, 1999, 18000m),  // La Plata zona (Berisso, Ensenada, Brandsen, Chascomus, Magdalena, Punta Indio)
+            (2800, 2899, 18000m),  // Norte BA cercano (Zarate, Campana, San Antonio de Areco)
         };
 
         using var wb = new XLWorkbook();
@@ -697,8 +705,8 @@ public class MeliMe1Controller : ControllerBase
     }
 
     /// <summary>
-    /// Devuelve la tabla de ZONAS acordadas con el usuario el 2026-06-08.
-    /// Por ahora hardcodeada. Mañana puede pasar a una tabla DB editable.
+    /// Devuelve la tabla de ZONAS acordadas con el usuario el 2026-06-24.
+    /// Por ahora hardcodeada. Pendiente: pasar a una tabla DB editable con ABM en /meli/me1/zonas.
     /// </summary>
     [HttpGet("zonas")]
     public IActionResult ListZonas()
@@ -709,7 +717,8 @@ public class MeliMe1Controller : ControllerBase
             new { id = "gba_cercano", nombre = "GBA cercano (Avellaneda, Lanús, Quilmes, La Matanza)", cpDesde = 1700, cpHasta = 1899, precio = 12000, color = "#7c3aed" },
             new { id = "gba_medio",  nombre = "GBA medio (Tigre, San Isidro, V. López, F. Varela, Morón)", cpDesde = 1600, cpHasta = 1699, precio = 14000, color = "#ea580c" },
             new { id = "gba_lejano", nombre = "GBA lejano (Pilar, Escobar, Luján, Marcos Paz, Cañuelas)", cpDesde = 1620, cpHasta = 1670, precio = 16000, color = "#dc2626" },
-            new { id = "la_plata",   nombre = "La Plata + extremos (Berisso, Ensenada, Zárate, Campana)", cpDesde = 1900, cpHasta = 2999, precio = 18000, color = "#a16207" },
+            new { id = "la_plata",   nombre = "La Plata zona (Berisso, Ensenada, Brandsen, Chascomús, Magdalena)", cpDesde = 1900, cpHasta = 1999, precio = 18000, color = "#a16207" },
+            new { id = "norte_ba",   nombre = "Norte BA cercano (Zárate, Campana, San Antonio de Areco)", cpDesde = 2800, cpHasta = 2899, precio = 18000, color = "#a16207" },
         };
         return Ok(zonas);
     }
