@@ -354,9 +354,10 @@ public class ArcaPadronService
             if (id == "30" || desc == "IVA") return "RI";
         }
 
-        // Default: null. Decisión histórica de no devolver "CF" para no facturar
-        // mal a monotributistas cuyo IVA no esté expuesto en la respuesta.
-        return null;
+        // Default: Consumidor Final. ARCA respondió con datos válidos pero sin impuestos
+        // activos relevantes — la persona no tiene inscripción tributaria expuesta,
+        // típicamente es CF (consumidor final). Tabla del spec: default si nada matcheó.
+        return "CF";
     }
 
     private static string BuildConstanciaSoap(string token, string sign, string cuitRepresentado, string cuitConsulta)
