@@ -1,0 +1,185 @@
+@page "/meli/me1/codigos-postales"
+@attribute [Authorize]
+@inject HttpClient Http
+@inject ToastService ToastService
+@using System.Text.Json
+@using System.Text.Json.Serialization
+
+@* ════════════════════════════════════════════════════════════════════════════
+   Pantalla "Códigos Postales Activos ME1" — pedido del usuario 2026-06-24.
+   Visualiza los 1099 CPs activos del sistema de tarifa Axado con su localidad,
+   zona (con color) y precio. Sin paginación, búsqueda + filtros por zona.
+   ════════════════════════════════════════════════════════════════════════════ *@
+
+<style>
+    .cp-wrap { max-width: 1300px; margin: 0 auto; padding: 0.5rem; }
+
+    .cp-header { background: white; border-radius: 10px; padding: 1rem 1.2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 0.8rem; }
+    .cp-header h3 { margin: 0 0 0.4rem; font-size: 1.1rem; color: #1f2937; }
+    .cp-header p { margin: 0; color: #6b7280; font-size: 0.85rem; }
+
+    .cp-tools { background: white; border-radius: 10px; padding: 0.8rem; box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 0.8rem; display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+    .cp-tools input { flex: 1; min-width: 220px; padding: 0.5rem 0.8rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.95rem; }
+    .cp-tools .resumen { font-size: 0.82rem; color: #6b7280; font-weight: 600; }
+
+    .filtros-zonas { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.8rem; padding: 0.5rem; background: white; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+    .filtro-zona { padding: 0.45rem 0.85rem; border-radius: 999px; font-size: 0.78rem; font-weight: 700; cursor: pointer; border: 2px solid transparent; color: white; transition: all 0.15s; user-select: none; opacity: 0.7; }
+    .filtro-zona:hover { opacity: 1; transform: translateY(-1px); }
+    .filtro-zona.activo { opacity: 1; box-shadow: 0 2px 8px rgba(0,0,0,0.18); transform: translateY(-1px); }
+    .filtro-todos { background: #4b5563; }
+    .filtro-zona .precio { font-weight: 800; margin-left: 0.4rem; opacity: 0.95; }
+    .filtro-zona .count { font-size: 0.7rem; opacity: 0.85; margin-left: 0.25rem; }
+
+    .cp-tabla-wrap { background: white; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); overflow: hidden; }
+    table.cp-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    table.cp-table thead { position: sticky; top: 64px; background: #f3f4f6; z-index: 5; }
+    table.cp-table th { padding: 0.6rem 0.8rem; text-align: left; font-weight: 700; color: #4b5563; font-size: 0.75rem; text-transform: uppercase; border-bottom: 2px solid #e5e7eb; }
+    table.cp-table td { padding: 0.55rem 0.8rem; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+    table.cp-table tr:hover { background: #fffbeb; }
+    .cp-num { font-family: monospace; font-size: 0.95rem; font-weight: 700; color: #111827; }
+    .badge-zona { display: inline-block; padding: 0.2rem 0.55rem; border-radius: 999px; color: white; font-size: 0.72rem; font-weight: 700; white-space: nowrap; }
+    .precio-cell { font-weight: 800; color: #16a34a; font-family: monospace; font-size: 0.95rem; text-align: right; }
+    .provincia-cell { font-size: 0.78rem; color: #6b7280; }
+    .localidad-cell { color: #1f2937; font-weight: 500; }
+
+    .loading { text-align: center; padding: 2rem; color: #6b7280; }
+    .empty { text-align: center; padding: 2rem; color: #9ca3af; font-style: italic; }
+</style>
+
+<div class="cp-wrap">
+    <div class="cp-header">
+        <h3>🗺 Códigos Postales Activos — Tarifa Axado</h3>
+        <p>Todos los códigos postales que están incluidos en la tabla Axado de MercadoLibre, con su localidad/barrio y el precio que paga el comprador. Buscá por CP o localidad, o filtrá por zona usando los botones de colores.</p>
+    </div>
+
+    <!-- Filtros por zona (botones colorados) -->
+    @if (zonasResumen != null && zonasResumen.Any())
+    {
+        <div class="filtros-zonas">
+            <button class="filtro-zona filtro-todos @(filtroZona == null ? "activo" : "")"
+                    @onclick="() => SetFiltroZona(null)"
+                    title="Mostrar todos">
+                TODOS <span class="count">(@(items?.Count ?? 0))</span>
+            </button>
+            @foreach (var z in zonasResumen)
+            {
+                <button class="filtro-zona @(filtroZona == z.zonaId ? "activo" : "")"
+                        style="background: @z.color;"
+                        @onclick="() => SetFiltroZona(z.zonaId)"
+                        title="Filtrar zona @z.nombre">
+                    @z.nombre <span class="precio">$@z.precio.ToString("N0")</span> <span class="count">(@z.count)</span>
+                </button>
+            }
+        </div>
+    }
+
+    <!-- Buscador -->
+    <div class="cp-tools">
+        <input type="text" placeholder="🔍 Buscar por CP (ej: 1839) o localidad (ej: La Plata)..."
+               @bind="busqueda" @bind:event="oninput" />
+        <span class="resumen">
+            @if (items != null)
+            {
+                <text>Mostrando @filtradas.Count de @items.Count CPs</text>
+            }
+        </span>
+    </div>
+
+    <!-- Tabla principal -->
+    <div class="cp-tabla-wrap">
+        @if (cargando)
+        {
+            <div class="loading">⏳ Cargando códigos postales...</div>
+        }
+        else if (items == null || items.Count == 0)
+        {
+            <div class="empty">No se encontraron códigos postales.</div>
+        }
+        else if (!filtradas.Any())
+        {
+            <div class="empty">No hay resultados para "@busqueda" en esta zona.</div>
+        }
+        else
+        {
+            <table class="cp-table">
+                <thead>
+                    <tr>
+                        <th style="width: 90px;">CP</th>
+                        <th>Localidad / Barrio</th>
+                        <th style="width: 180px;">Zona</th>
+                        <th style="width: 110px; text-align: right;">Precio</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in filtradas)
+                    {
+                        <tr>
+                            <td class="cp-num">@row.cp</td>
+                            <td>
+                                <div class="localidad-cell">@row.localidad</div>
+                                <div class="provincia-cell">@row.provincia</div>
+                            </td>
+                            <td>
+                                <span class="badge-zona" style="background: @row.zonaColor;">@row.zonaNombre</span>
+                            </td>
+                            <td class="precio-cell">$@row.precio.ToString("N0")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    private bool cargando = true;
+    private string busqueda = "";
+    private string? filtroZona = null;
+    private List<CpRow>? items;
+
+    private record CpRow(int cp, string provincia, string localidad, string zonaId, string zonaNombre, string zonaColor, decimal precio);
+    private record ZonaResumen(string zonaId, string nombre, string color, decimal precio, int count);
+
+    private List<ZonaResumen> zonasResumen = new();
+
+    private List<CpRow> filtradas => (items ?? new())
+        .Where(r => filtroZona == null || r.zonaId == filtroZona)
+        .Where(r => string.IsNullOrWhiteSpace(busqueda) ||
+                    r.cp.ToString().Contains(busqueda) ||
+                    (r.localidad?.Contains(busqueda, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (r.provincia?.Contains(busqueda, StringComparison.OrdinalIgnoreCase) ?? false))
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var data = await Http.GetFromJsonAsync<List<CpRow>>("api/meli/me1/codigos-postales-activos");
+            items = data ?? new List<CpRow>();
+            zonasResumen = items
+                .GroupBy(i => i.zonaId)
+                .Select(g => new ZonaResumen(
+                    g.Key,
+                    g.First().zonaNombre,
+                    g.First().zonaColor,
+                    g.First().precio,
+                    g.Count()))
+                .OrderBy(z => z.precio)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error cargando CPs: {ex.Message}");
+            items = new List<CpRow>();
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private void SetFiltroZona(string? zonaId)
+    {
+        filtroZona = zonaId;
+    }
+}

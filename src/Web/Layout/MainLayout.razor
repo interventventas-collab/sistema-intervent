@@ -685,11 +685,13 @@
                 @if (HasPerm("me1"))
                 {
                     <NavGroup Label="me1" Icon="@SvgIcons.Torino"
-                              HasActiveChild="@(IsActive("/meli/me1/entregas") || IsActive("/meli/me1/publicaciones"))">
+                              HasActiveChild="@(IsActive("/meli/me1/entregas") || IsActive("/meli/me1/publicaciones") || IsActive("/meli/me1/codigos-postales"))">
                         <NavItem Href="/meli/me1/entregas" Label="Entregas" Icon="@SvgIcons.Check"
                                  IsActive="@IsActive("/meli/me1/entregas")" OnClick="@(() => NavigateTo("/meli/me1/entregas"))" />
                         <NavItem Href="/meli/me1/publicaciones" Label="Publicaciones" Icon="@SvgIcons.Package"
                                  IsActive="@IsActive("/meli/me1/publicaciones")" OnClick="@(() => NavigateTo("/meli/me1/publicaciones"))" />
+                        <NavItem Href="/meli/me1/codigos-postales" Label="Códigos postales" Icon="@SvgIcons.Table"
+                                 IsActive="@IsActive("/meli/me1/codigos-postales")" OnClick="@(() => NavigateTo("/meli/me1/codigos-postales"))" />
                     </NavGroup>
                 }
                 @if (HasPerm("import-productos"))
@@ -1688,6 +1690,7 @@
         { "mapeo", "mapeo" },
         { "meli/me1/entregas", "me1" },
         { "meli/me1/publicaciones", "me1" },
+        { "meli/me1/codigos-postales", "me1" },
         { "tesoreria", "tesoreria" },
         { "empleados", "empleados" },
         { "sueldos", "sueldos" },
