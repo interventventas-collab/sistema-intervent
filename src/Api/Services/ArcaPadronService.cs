@@ -212,6 +212,11 @@ public class ArcaPadronService
                 {
                     condicionIva = condFromA5;
                 }
+                // LOG TEMPORAL para diagnosticar misclassifications: registramos TODA respuesta A5
+                // junto con la condición resuelta, así podemos verificar si el parser acertó.
+                _logger.LogWarning(
+                    "PadronArca DEBUG CUIT {Cuit}: A5 resolvio IVA={Cond}. XML crudo:\n{Xml}",
+                    clean, condFromA5 ?? "(null)", rawXml ?? "(null)");
             }
             catch (Exception ex)
             {
