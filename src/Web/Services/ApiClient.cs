@@ -14,6 +14,12 @@ public class ApiClient
     private readonly NavigationManager _navigation;
     private readonly OperatorService _operator;
 
+    // 2026-06-24: ultimo touch al timestamp de inactividad del operador. Throttle
+    // para no escribir a localStorage en cada request — basta con refrescar 1 vez
+    // por minuto para mantener la sesion viva mientras el usuario opera.
+    private DateTime _lastOperatorTouchUtc = DateTime.MinValue;
+    private const int OperatorTouchThrottleSeconds = 60;
+
     public ApiClient(HttpClient http, AuthService authService, NavigationManager navigation, OperatorService op)
     {
         _http = http;
@@ -3784,11 +3790,24 @@ public class ApiClient
     // El JWT viaja en una cookie httpOnly que el browser envia automaticamente
     // en cada request al mismo origen, asi que ya no hace falta setear Authorization.
     // Aprovechamos este hook para inyectar el header X-Operator-Name (operador
-    // actual seleccionado en la UI) en cada request.
-    private Task SetAuthHeaderAsync()
+    // actual seleccionado en la UI) en cada request, y para refrescar el timestamp
+    // de actividad del operador (asi solo se bloquea por inactividad REAL en la app).
+    private async Task SetAuthHeaderAsync()
     {
         EnsureOperatorHeader();
-        return Task.CompletedTask;
+        await MaybeTouchOperatorActivityAsync();
+    }
+
+    // 2026-06-24: cada llamada al backend cuenta como "actividad en la app" y refresca
+    // el timestamp de inactividad. Con throttle para no escribir a localStorage cada vez:
+    // basta con tocar 1 vez por minuto. Si no hay operador activo, no hace nada.
+    private async Task MaybeTouchOperatorActivityAsync()
+    {
+        if (!_operator.HasOperator) return;
+        var now = DateTime.UtcNow;
+        if ((now - _lastOperatorTouchUtc).TotalSeconds < OperatorTouchThrottleSeconds) return;
+        _lastOperatorTouchUtc = now;
+        try { await _operator.TouchAsync(); } catch { /* no romper el request si falla el touch */ }
     }
 
     public async Task<BulkPublishResponse?> BulkPublishAsync(BulkPublishRequest request)

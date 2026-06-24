@@ -896,6 +896,15 @@
                         @onclick="OnCambiarOperadorClick" title="Cambiar operador (pide PIN)">
                     👤 @Operator.Current
                 </button>
+                @* 2026-06-24: Boton para bloquear la sesion manualmente. Util cuando el operador
+                   se va un rato y quiere que el proximo que use la PC tenga que poner el PIN. *@
+                @if (requierePinLock)
+                {
+                    <button class="btn btn-secondary" style="margin-left: 0.3rem; font-size: 0.78rem; padding: 0.25rem 0.55rem;"
+                            @onclick="OnBloquearAhoraClick" title="Bloquear ahora (vuelve a pedir PIN)">
+                        🔒
+                    </button>
+                }
             }
         </div>
         <div class="topbar-actions">
@@ -1442,6 +1451,13 @@
         }
     }
 
+    /// <summary>2026-06-24: botón explícito "🔒 Bloquear ahora". Para cuando el operador
+    /// se va de la oficina y quiere que el próximo que use la PC tenga que poner el PIN.</summary>
+    private async Task OnBloquearAhoraClick()
+    {
+        await Operator.LockAsync();
+    }
+
     /// <summary>True si la app está corriendo en el entorno de DESARROLLO (puerto 3000 o
     /// el host es una IP en vez de un dominio). En ese caso se muestra un banner visible
     /// "DESARROLLO" y el sidebar tiene fondo distinto para evitar confundirlo con producción
@@ -1782,7 +1798,7 @@
         // Solo abrimos el modal viejo para depósito (que no tiene PIN bloqueante).
         if (!Operator.HasOperator && !isDepositoOnly && !requierePinLock) showOperatorModal = true;
 
-        // 2026-06-15: timer que cada 30s evalúa si pasaron 30 min de inactividad para
+        // 2026-06-15: timer que cada 30s evalúa si pasaron 60 min de inactividad para
         // re-bloquear automáticamente. Como IsValidated mira el timestamp, basta con
         // forzar un StateHasChanged periódico.
         if (requierePinLock)

@@ -8,14 +8,14 @@ namespace Web.Services;
 /// como header X-Operator-Name para auditoria.
 ///
 /// 2026-06-15: integrado con PIN por operador. Después del login admin, la app
-/// se muestra BLOQUEADA hasta que se valida un PIN. Se desbloquea por 30 min;
+/// se muestra BLOQUEADA hasta que se valida un PIN. Se desbloquea por 60 min;
 /// pasada la inactividad se vuelve a bloquear. Persiste validatedAt en localStorage.
 /// </summary>
 public class OperatorService
 {
     private const string StorageKey = "current_operator";
     private const string ValidatedAtKey = "operator_validated_at"; // 2026-06-15
-    private const int InactivityMinutes = 30; // 2026-06-15
+    private const int InactivityMinutes = 60; // 2026-06-15 (subido de 30 a 60 el 24/06)
     private readonly IJSRuntime _js;
     private string? _current;
     private DateTime? _validatedAtUtc;
@@ -80,7 +80,7 @@ public class OperatorService
     public string? Current => _current;
     public bool HasOperator => !string.IsNullOrWhiteSpace(_current);
 
-    /// <summary>2026-06-15: true si HAY operador Y el último PIN fue validado hace menos de 30 min.
+    /// <summary>2026-06-15: true si HAY operador Y el último PIN fue validado hace menos de 60 min.
     /// Mientras esto sea false, la app debe mostrarse BLOQUEADA (pantalla del PIN).</summary>
     public bool IsValidated
     {
@@ -157,7 +157,7 @@ public class OperatorService
     }
 
     /// <summary>2026-06-15: bloquea la sesión (deja el nombre pero quita el validado).
-    /// Se usa al pasar 30 min de inactividad o al cambiar de operador.</summary>
+    /// Se usa al pasar 60 min de inactividad o al cambiar de operador.</summary>
     public async Task LockAsync()
     {
         _validatedAtUtc = null;
