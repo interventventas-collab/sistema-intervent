@@ -903,6 +903,12 @@
                    Quitamos los gradientes saturados y unificamos altura/tipografia. La logica (onclick, dropdowns) no cambia. *@
                 @* Bloque NAVEGACION — botones secundarios con fondo transparente *@
                 <button class="topbar-nav-modern"
+                        @onclick="@(() => NavigateTo("/vault"))"
+                        title="Bóveda de contraseñas">
+                    <span class="topbar-nav-modern-ico">@SvgIcons.Shield</span>
+                    <span>BOVEDA CONT</span>
+                </button>
+                <button class="topbar-nav-modern"
                         @onclick="@(() => NavigateTo("/cafe/stock-masivo"))"
                         title="Stock masivo (todos los productos)">
                     <span class="topbar-nav-modern-ico">@SvgIcons.Package</span>
