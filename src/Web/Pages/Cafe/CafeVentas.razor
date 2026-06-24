@@ -648,16 +648,18 @@
         <div class="actions-popup-overlay" @onclick="ClosePrintMenu"></div>
         <div id="@($"print-menu-{vPrint.Id}")" class="actions-popup" @onclick:stopPropagation="true">
             <div style="padding: 6px 14px; font-size: 10px; color: #6b7280; font-weight: 600; letter-spacing: 0.5px; border-bottom: 1px solid #f3f4f6;">🖨 IMPRIMIR / PDF</div>
-            <button class="actions-popup-item" @onclick="() => { ClosePrintMenu(); ShowPrint(vPrint); }">
+            @* 2026-06-24: Fix doble-click. Lambdas async/await para que el Task no quede colgado
+               cuando se cierra el menú. Para el "Recibo de entrega" usamos JS.open en vez de <a>
+               porque el re-render quitaba el <a> del DOM antes de que el browser procesara el href. *@
+            <button class="actions-popup-item" @onclick="async () => { var v = vPrint; ClosePrintMenu(); await ShowPrint(v); }">
                 <span class="ic" style="color:#1d4ed8;">🖨</span><span>Comprobante / Factura</span>
             </button>
-            <a class="actions-popup-item" style="text-decoration:none; color:inherit;"
-               href="@($"/api/cafe/ventas/{vPrint.Id}/recibo-entrega.pdf")" target="_blank" @onclick="ClosePrintMenu">
+            <button class="actions-popup-item" @onclick="async () => { var v = vPrint; ClosePrintMenu(); await AbrirReciboEntregaEnNuevaPestana(v.Id); }">
                 <span class="ic" style="color:#7c3aed;">📦</span><span>Recibo de entrega</span>
-            </a>
+            </button>
             @if (!anuladaPM && saldoPM > 0.01m)
             {
-                <button class="actions-popup-item" @onclick="() => { ClosePrintMenu(); DescargarReciboVisita(vPrint); }">
+                <button class="actions-popup-item" @onclick="async () => { var v = vPrint; ClosePrintMenu(); await DescargarReciboVisita(v); }">
                     <span class="ic" style="color:#d97706;">🚪</span><span>Recibo de visita por cobranza</span>
                 </button>
             }
@@ -677,11 +679,11 @@
         <div id="@($"act-menu-{vMenu.Id}")" class="actions-popup" @onclick:stopPropagation="true">
             @if (string.IsNullOrEmpty(vMenu.EstadoPreparacion) && !anuladaM)
             {
-                <button class="actions-popup-item" @onclick="() => { CloseActionsMenu(); EnviarAPreparacion(vMenu); }">
+                <button class="actions-popup-item" @onclick="async () => { var v = vMenu; CloseActionsMenu(); await EnviarAPreparacion(v); }">
                     <span class="ic" style="color:#f59e0b;">📦</span><span>Enviar a Preparación</span>
                 </button>
             }
-            <button class="actions-popup-item" @onclick="() => { CloseActionsMenu(); DuplicarComprobante(vMenu); }">
+            <button class="actions-popup-item" @onclick="async () => { var v = vMenu; CloseActionsMenu(); await DuplicarComprobante(v); }">
                 <span class="ic" style="color:#16a34a;">📋</span><span>Duplicar comprobante</span>
             </button>
             @if ((vMenu.TipoComprobante == "PRO" || vMenu.TipoComprobante == "X") && !vMenu.FacturadaComoVentaId.HasValue && vMenu.Estado != "anulado")
@@ -710,7 +712,7 @@
                 @* 2026-06-09: Emitir NC total — solo para facturas con CAE *@
                 @if (vMenu.TipoComprobante is "FA" or "FB" or "FC")
                 {
-                    <button class="actions-popup-item" @onclick="() => { CloseActionsMenu(); EmitirNotaCredito(vMenu); }">
+                    <button class="actions-popup-item" @onclick="async () => { var v = vMenu; CloseActionsMenu(); await EmitirNotaCredito(v); }">
                         <span class="ic" style="color:#dc2626;">➖</span><span>Emitir Nota de Crédito (total)</span>
                     </button>
                 }
@@ -4231,6 +4233,14 @@
         else { printMenuOpenForVentaId = ventaId; actionsMenuOpenForVentaId = null; }
     }
     private void ClosePrintMenu() => printMenuOpenForVentaId = null;
+
+    // 2026-06-24: helper para abrir el PDF de recibo de entrega en pestaña nueva.
+    // Usamos JS.open en vez de <a target="_blank"> porque el re-render del menú
+    // quitaba el <a> del DOM antes de que el browser procesara el href.
+    private async Task AbrirReciboEntregaEnNuevaPestana(int ventaId)
+    {
+        await JS.InvokeVoidAsync("open", $"/api/cafe/ventas/{ventaId}/recibo-entrega.pdf", "_blank");
+    }
 
     /// <summary>Se ejecuta cada vez que Blazor termina de renderizar. Lo usamos para enganchar
     /// el drag-and-drop al modal de Confirmar Emisión recién aparecido. El helper JS es idempotente
