@@ -5,6 +5,65 @@
 @inject ToastService ToastService
 @inject IJSRuntime JS
 
+<style>
+    /* ═══════ Layout responsive de la bóveda ═══════ */
+    .vault-cards-wrap { display: none; }
+
+    @@media (max-width: 768px) {
+        .vault-table-wrap { display: none; }
+        .vault-cards-wrap { display: block; }
+        .vault-search-row {
+            position: sticky;
+            top: 0;
+            background: white;
+            z-index: 5;
+            padding: 0.4rem 0;
+            margin: 0 -0.5rem 0.4rem -0.5rem;
+            padding-left: 0.5rem;
+            padding-right: 0.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+    }
+
+    .vault-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 0.6rem;
+        padding: 0.7rem 0.8rem;
+        margin-bottom: 0.55rem;
+        background: white;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .vault-card-header {
+        display: flex; justify-content: space-between; align-items: flex-start;
+        gap: 0.4rem; margin-bottom: 0.5rem;
+    }
+    .vault-card-name { font-weight: 600; font-size: 0.98rem; flex: 1; word-break: break-word; line-height: 1.2; }
+    .vault-card-cat {
+        background: #eef2ff; color: #4338ca;
+        padding: 0.15rem 0.55rem; border-radius: 0.7rem;
+        font-size: 0.72rem; font-weight: 500; white-space: nowrap;
+    }
+    .vault-card-field {
+        display: flex; align-items: center; gap: 0.4rem;
+        padding: 0.3rem 0; font-size: 0.86rem;
+        border-top: 1px dashed #f1f5f9;
+    }
+    .vault-card-field:first-of-type { border-top: 0; }
+    .vault-card-label {
+        color: #6b7280; font-size: 0.7rem; text-transform: uppercase;
+        letter-spacing: 0.04em; min-width: 60px;
+    }
+    .vault-card-value { flex: 1; font-family: monospace; word-break: break-all; font-size: 0.85rem; }
+    .vault-card-actions {
+        display: flex; gap: 0.4rem; justify-content: space-around;
+        margin-top: 0.55rem; padding-top: 0.45rem; border-top: 1px solid #f3f4f6;
+    }
+    .vault-card-actions .btn-icon {
+        flex: 1; padding: 0.45rem 0.3rem; font-size: 1rem;
+        border-radius: 0.4rem; background: #f8fafc;
+    }
+</style>
+
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <h3 style="margin: 0;">
@@ -65,7 +124,7 @@
         else
         {
             @* ═══════════════ LISTADO DE CREDENCIALES ═══════════════ *@
-            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.6rem;">
+            <div class="vault-search-row" style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.6rem;">
                 <input class="form-input" placeholder="🔍 Buscar (nombre, usuario, mail, enlace, comentarios...)" @bind="filtro" @bind:event="oninput" style="max-width: 460px; flex: 1; min-width: 220px;" />
                 <select class="form-input" @bind="categoriaFiltro" style="max-width: 220px;">
                     <option value="">📂 Todas las categorías</option>
@@ -89,7 +148,8 @@
             }
             else
             {
-                <div class="table-responsive">
+                @* ═══════ Vista DESKTOP (tabla) ═══════ *@
+                <div class="vault-table-wrap table-responsive">
                     <table class="data-table">
                         <thead>
                             <tr>
@@ -160,6 +220,55 @@
                             }
                         </tbody>
                     </table>
+                </div>
+
+                @* ═══════ Vista MOBILE (tarjetas) ═══════ *@
+                <div class="vault-cards-wrap">
+                    @foreach (var e in visibles)
+                    {
+                        var visible = visiblePwds.Contains(e.Id);
+                        <div class="vault-card">
+                            <div class="vault-card-header">
+                                <div class="vault-card-name">@e.Servicio</div>
+                                @if (!string.IsNullOrEmpty(e.Categoria))
+                                {
+                                    <span class="vault-card-cat">@e.Categoria</span>
+                                }
+                            </div>
+
+                            @if (!string.IsNullOrEmpty(e.Usuario))
+                            {
+                                <div class="vault-card-field">
+                                    <span class="vault-card-label">Usuario</span>
+                                    <span class="vault-card-value">@e.Usuario</span>
+                                    <button class="btn-icon" style="color: #1d4ed8;" @onclick='() => CopyTo(e.Usuario, "Usuario")' title="Copiar">📋</button>
+                                </div>
+                            }
+                            @if (!string.IsNullOrEmpty(e.Mail))
+                            {
+                                <div class="vault-card-field">
+                                    <span class="vault-card-label">Mail</span>
+                                    <span class="vault-card-value" style="font-size: 0.82rem;">@e.Mail</span>
+                                    <button class="btn-icon" style="color: #1d4ed8;" @onclick='() => CopyTo(e.Mail!, "Mail")' title="Copiar">📋</button>
+                                </div>
+                            }
+                            @if (!string.IsNullOrEmpty(e.Password))
+                            {
+                                <div class="vault-card-field">
+                                    <span class="vault-card-label">Clave</span>
+                                    <span class="vault-card-value">@(visible ? e.Password : new string('•', Math.Min(14, Math.Max(8, e.Password.Length))))</span>
+                                    <button class="btn-icon" @onclick="() => TogglePwd(e.Id)" title='@(visible ? "Ocultar" : "Mostrar")'>@(visible ? "🙈" : "👁")</button>
+                                    <button class="btn-icon" style="color: #1d4ed8;" @onclick='() => CopyTo(e.Password, "Contraseña")' title="Copiar">📋</button>
+                                </div>
+                            }
+
+                            <div class="vault-card-actions">
+                                <button class="btn-icon" @onclick="() => ShowFicha(e)" title="Ver ficha completa" style="color: #0891b2;">🔎 Ver</button>
+                                <button class="btn-icon btn-edit" @onclick="() => ShowEdit(e)" title="Editar">✏️ Editar</button>
+                                <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(e)" title="Eliminar" style="color: #dc2626;">🗑️ Borrar</button>
+                            </div>
+                        </div>
+                    }
                 </div>
             }
         }
