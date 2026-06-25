@@ -228,6 +228,30 @@ public class DashboardController : ControllerBase
         string Estado, string? HoraEntrada, string? HoraSalida, string? Trabajado,
         decimal PorRendir, decimal Pagado, decimal LeDebo, bool TieneRepartidor);
 
+    // 2026-06-25: orden fijo pedido por Osmar — repartidores primero (alexis, walter,
+    // benjamin, gonzalo, rodrigo), después oficina (osmar, german, gabriel, miguel).
+    // Match por la primera palabra del nombre, sin acentos.
+    private static readonly string[] _ordenEquipo = new[]
+    {
+        "alexis", "walter", "benjamin", "gonzalo", "rodrigo",
+        "osmar", "german", "gabriel", "miguel"
+    };
+    private static int OrdenPersonalizado(string nombre)
+    {
+        if (string.IsNullOrWhiteSpace(nombre)) return int.MaxValue;
+        var first = nombre.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
+        // Normalize → quitar acentos → lowercase
+        var sb = new System.Text.StringBuilder();
+        foreach (var c in first.Normalize(System.Text.NormalizationForm.FormD))
+        {
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark)
+                sb.Append(c);
+        }
+        var normalized = sb.ToString().ToLowerInvariant();
+        var idx = Array.IndexOf(_ordenEquipo, normalized);
+        return idx >= 0 ? idx : int.MaxValue;
+    }
+
     /// <summary>
     /// 2026-06-25: Devuelve el estado actual del equipo cruzando las 3 tablas
     /// (nominas + fichaje + repartidores) por NomEmpleadoId. Para cada empleado activo
@@ -327,8 +351,7 @@ public class DashboardController : ControllerBase
                 estado, horaEntrada, horaSalida, trabajado,
                 porRendir, pagado, leDebo, tieneRepartidor);
         })
-        .OrderByDescending(x => x.Estado == "trabajando")
-        .ThenByDescending(x => x.Estado == "salio")
+        .OrderBy(x => OrdenPersonalizado(x.Nombre))
         .ThenBy(x => x.Nombre)
         .ToList();
 
