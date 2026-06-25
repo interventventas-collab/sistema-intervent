@@ -548,6 +548,16 @@
                                             ✅ Entregó @v.EntregadoPorRepartidorNombre@(horaEntrega is null ? "" : $" a las {horaEntrega} hs") ▼
                                         </span>
                                     }
+                                    else if (v.EntregadoAt is not null && v.Retira)
+                                    {
+                                        @* 2026-06-25: entregada sin repartidor = Retiró cliente *@
+                                        var horaRetiro = v.EntregadoAt?.ToArTime().ToString("HH:mm");
+                                        <span style="display:inline-block; padding:0.15rem 0.5rem; background:#dcfce7; color:#166534; border-radius:999px; font-size:0.7rem; font-weight:700; margin-left:0.2rem; cursor:pointer;"
+                                              title="Retirada por el cliente el @(v.EntregadoAt?.ToArTime().ToString("dd/MM/yyyy HH:mm")). Tocá para desmarcar (admin)."
+                                              @onclick="@(() => PedirDesmarcarEntrega(v))">
+                                            ✅ Retiró cliente@(horaRetiro is null ? "" : $" a las {horaRetiro} hs") ▼
+                                        </span>
+                                    }
                                     else if (!string.IsNullOrEmpty(v.EscaneadoPorRepartidorNombre))
                                     {
                                         @* 2026-06-05: chip "Lo tiene X" clickeable — click abre modal para reasignar o desvincular *@
@@ -555,6 +565,15 @@
                                               title="Tocá para cambiar de repartidor o desvincular"
                                               @onclick="@(() => AbrirReasignar(v))">
                                             🚚 Lo tiene @v.EscaneadoPorRepartidorNombre ▼
+                                        </span>
+                                    }
+                                    else if (v.Retira && !anulada)
+                                    {
+                                        @* 2026-06-25: chip Retira pendiente — el cliente la viene a buscar *@
+                                        <span style="display:inline-block; padding:0.15rem 0.5rem; background:#fef3c7; color:#92400e; border-radius:999px; font-size:0.7rem; font-weight:700; margin-left:0.2rem; cursor:pointer;"
+                                              title="Tocá para asignar repartidor o marcar como retirada"
+                                              @onclick="@(() => AbrirReasignar(v))">
+                                            🛍 Retira ▼
                                         </span>
                                     }
                                     else if (!anulada)
@@ -3212,12 +3231,37 @@
 
             <label style="font-size:0.8rem; font-weight:700; color:#374151;">¿Qué querés hacer?</label>
             <select @bind="nuevoRepartidorId" class="form-input" style="width:100%; margin-top:0.4rem; padding:0.6rem; border-radius:8px;">
-                <option value="0">— Desvincular (que nadie la tenga) —</option>
+                <option value="0">— Sin asignar (que nadie la tenga) —</option>
+                <option value="-1">🛍 Retira el cliente</option>
                 @foreach (var r in repartidoresLista.Where(x => x.IsActive))
                 {
                     <option value="@r.Id">🚚 Pasarla a @r.Nombre</option>
                 }
             </select>
+
+            @* 2026-06-25: toggle "Ya entregada" — habilitado cuando hay repartidor o Retira.
+               Si está prendido, se marca en el mismo paso y la venta no aparece en el mobile del repartidor. *@
+            @if (nuevoRepartidorId != 0)
+            {
+                <label style="display:flex; align-items:center; gap:0.5rem; margin-top:1rem; padding:0.6rem 0.7rem; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; cursor:pointer; font-size:0.9rem;">
+                    <input type="checkbox" @bind="marcarEntregadaToggle" style="width:1.1rem; height:1.1rem;" />
+                    <span style="font-weight:600; color:#166534;">✓ Ya entregada</span>
+                    <span style="color:#6b7280; font-size:0.78rem;">(no aparece en la pantalla del repartidor)</span>
+                </label>
+
+                @if (marcarEntregadaToggle)
+                {
+                    <div style="margin-top:0.7rem; padding:0.7rem; background:#f9fafb; border-radius:8px; border:1px solid #e5e7eb;">
+                        <label style="font-size:0.78rem; color:#6b7280; font-weight:600;">Hora de entrega</label>
+                        <input type="datetime-local" class="form-input" @bind="fechaEntregaInput"
+                               style="width:100%; padding:0.5rem; margin-top:0.2rem; border-radius:6px; font-size:0.85rem;" />
+                        <label style="font-size:0.78rem; color:#6b7280; font-weight:600; margin-top:0.6rem; display:block;">Comentario (opcional)</label>
+                        <input type="text" class="form-input" @bind="comentarioEntregaInput" maxlength="500"
+                               placeholder="ej: lo dejé con el casero, retiró en mano, etc."
+                               style="width:100%; padding:0.5rem; margin-top:0.2rem; border-radius:6px; font-size:0.85rem;" />
+                    </div>
+                }
+            }
 
             <div style="display:flex; gap:0.5rem; margin-top:1.2rem; justify-content:flex-end;">
                 <button class="btn btn-secondary" @onclick="@(() => mostrarReasignar = false)" disabled="@guardandoReasignar">Cancelar</button>
@@ -3367,11 +3411,18 @@
     private CafeVentaDto? ventaReasignar;
     private int nuevoRepartidorId = 0;
     private List<RepartidorDto> repartidoresLista = new();
+    // 2026-06-25: campos para marcar "Ya entregada" desde el mismo modal
+    private bool marcarEntregadaToggle;
+    private DateTime fechaEntregaInput = DateTime.Now;
+    private string comentarioEntregaInput = "";
 
     private async Task AbrirReasignar(CafeVentaDto v)
     {
         ventaReasignar = v;
         nuevoRepartidorId = 0;
+        marcarEntregadaToggle = false;
+        fechaEntregaInput = DateTime.Now;
+        comentarioEntregaInput = "";
         if (repartidoresLista.Count == 0)
         {
             try { repartidoresLista = await Api.GetRepartidoresAsync() ?? new(); } catch { }
@@ -3400,14 +3451,28 @@
     private async Task ConfirmarReasignar()
     {
         if (ventaReasignar is null) return;
+        // 2026-06-25: -1 = Retira el cliente; 0 = sin asignar; >0 = repartidor
+        bool esRetira = nuevoRepartidorId == -1;
+        int? destinoId = nuevoRepartidorId > 0 ? nuevoRepartidorId : (int?)null;
+        if (marcarEntregadaToggle && !esRetira && !destinoId.HasValue)
+        {
+            ToastService.Error("Para marcar entregada, elegí un repartidor o Retira el cliente");
+            return;
+        }
         guardandoReasignar = true;
         try
         {
-            int? destinoId = nuevoRepartidorId > 0 ? nuevoRepartidorId : (int?)null;
-            var ok = await Api.ReasignarEscaneoAsync(ventaReasignar.Id, destinoId);
+            DateTime? fechaEntrega = marcarEntregadaToggle ? fechaEntregaInput.ToUniversalTime() : (DateTime?)null;
+            string? coment = marcarEntregadaToggle && !string.IsNullOrWhiteSpace(comentarioEntregaInput)
+                ? comentarioEntregaInput.Trim() : null;
+            var ok = await Api.ReasignarEscaneoAsync(ventaReasignar.Id, destinoId,
+                esRetira, marcarEntregadaToggle, fechaEntrega, coment);
             if (ok)
             {
-                ToastService.Success(destinoId.HasValue ? "✓ Reasignado" : "✓ Desvinculado");
+                string msg = marcarEntregadaToggle
+                    ? (esRetira ? "✓ Marcada como retirada" : "✓ Asignada y entregada")
+                    : (esRetira ? "✓ Marcada como Retira" : (destinoId.HasValue ? "✓ Reasignado" : "✓ Desvinculado"));
+                ToastService.Success(msg);
                 mostrarReasignar = false;
                 await Load();
             }
