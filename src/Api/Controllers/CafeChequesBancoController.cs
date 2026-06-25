@@ -53,11 +53,17 @@ public class CafeChequesBancoController : ControllerBase
             var l = xs.ToList();
             return new ChequesResumenDto(l.Count, l.Sum(x => x.Importe));
         }
+        // Un RECIBIDO se considera "Disponible" si su Estado es Disponible Y todavía no
+        // fue asociado a una cobranza (CafeChequeId == null). El filtro del list usa la
+        // misma regla — si no, la card mostraba "1 disponible" pero la tabla salía vacía.
         return Ok(new StatsDto(
             EmitidosPorPagar: Sum(todos.Where(x => x.Tipo == "EMITIDO" && string.Equals(x.Estado, "Aceptado", StringComparison.OrdinalIgnoreCase))),
-            RecibidosDisponibles: Sum(todos.Where(x => x.Tipo == "RECIBIDO" && string.Equals(x.Estado, "Disponible", StringComparison.OrdinalIgnoreCase))),
+            RecibidosDisponibles: Sum(todos.Where(x => x.Tipo == "RECIBIDO"
+                && string.Equals(x.Estado, "Disponible", StringComparison.OrdinalIgnoreCase)
+                && x.CafeChequeId == null)),
             EmitidosPagados: Sum(todos.Where(x => x.Tipo == "EMITIDO" && string.Equals(x.Estado, "Pagado", StringComparison.OrdinalIgnoreCase))),
-            RecibidosUsados: Sum(todos.Where(x => x.Tipo != "EMITIDO" && !string.Equals(x.Estado, "Disponible", StringComparison.OrdinalIgnoreCase)))
+            RecibidosUsados: Sum(todos.Where(x => x.Tipo != "EMITIDO"
+                && (!string.Equals(x.Estado, "Disponible", StringComparison.OrdinalIgnoreCase) || x.CafeChequeId != null)))
         ));
     }
 
@@ -282,6 +288,19 @@ public class CafeChequesBancoController : ControllerBase
 
     public record ImportResultDto(string Archivo, string TipoDetectado, int Nuevos, int Actualizados, int SinCambios, List<string> Errores);
 
+    /// <summary>El banco usa "Recibido" para cheques apenas acreditados y "Disponible" para
+    /// los que ya pueden usarse. Para nuestro flujo (aplicar a cobranza) son lo mismo:
+    /// cheques en cartera. Normalizamos a "Disponible" asi engancha con los filtros del
+    /// list/stats y aparecen en la pestaña correcta.</summary>
+    private static string NormalizarEstado(string tipo, string raw)
+    {
+        var s = (raw ?? "").Trim();
+        if (string.Equals(tipo, "RECIBIDO", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(s, "Recibido", StringComparison.OrdinalIgnoreCase))
+            return "Disponible";
+        return s;
+    }
+
     [HttpPost("import")]
     [RequestSizeLimit(50 * 1024 * 1024)]
     public async Task<IActionResult> Import(IFormFileCollection files)
@@ -435,7 +454,10 @@ public class CafeChequesBancoController : ControllerBase
                     FechaEmision = GetDate("Fecha de emisión"),
                     FechaPago = GetDate("Fecha de pago"),
                     Importe = GetDecimal("Importe"),
-                    Estado = Get("Estado"),
+                    // Normalizamos: en RECIBIDOS el banco a veces pone "Recibido" (cheque
+                    // recien acreditado) y a veces "Disponible" (ya en cartera). Para
+                    // nosotros son lo mismo: un cheque que recibimos y todavia no usamos.
+                    Estado = NormalizarEstado(tipoDetectado, Get("Estado")),
                     Motivo = NullIfEmpty(Get("Motivo y descripción")),
                     CuentaLibradora = NullIfEmpty(Get("Cuenta libradora")),
                     CbuDeposito = NullIfEmpty(Get("CBU Deposito")),
