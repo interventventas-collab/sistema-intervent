@@ -21,40 +21,10 @@
 {
 @* 2026-06-22: rediseño Mac/iOS — tarjetas blancas, bordes finos, iconos SVG uniformes.
    Las acciones y dropdowns NO cambian: misma logica, mismas rutas. *@
-@* Fila superior: HOLA + dolar + reloj AR/ES combinado + postits (responsive) *@
+@* 2026-06-25: el card "Operador" se sacó (era duplicado del botón del topbar).
+   El nombre del operador sigue arriba en el topbar; para cambiar, candadito 🔒. *@
+@* Fila superior: dolar + reloj AR/ES combinado + postits (responsive) *@
 <div class="dashboard-top-grid dashboard-modern">
-    <div class="dashboard-detail-card mac-card">
-        <div class="mac-card-header">
-            <div class="mac-card-iconbox" style="background:#e6f1fb; color:#2563eb;">
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            </div>
-            <span class="mac-card-eyebrow">Operador</span>
-        </div>
-        @if (Operator.HasOperator)
-        {
-            <div class="mac-card-bignum" style="font-size:1.35rem; margin-top:2px;">@Operator.Current</div>
-        }
-        <select class="form-input mac-card-select"
-                value="@(Operator.Current ?? "")"
-                @onchange="OnSelectOperator">
-            <option value="">— Elegi tu nombre —</option>
-            @foreach (var op in OperatorService.ForPermissions(userPermissions))
-            {
-                <option value="@op">@op</option>
-            }
-            @foreach (var op in OperatorService.ProtectedForPermissions(userPermissions))
-            {
-                <option value="@($"__PROTECTED__{op}")">🔒 @op (clave)</option>
-            }
-            @if (!string.IsNullOrEmpty(Operator.Current)
-                && OperatorService.ProtectedOperators.Contains(Operator.Current)
-                && !OperatorService.ForPermissions(userPermissions).Contains(Operator.Current))
-            {
-                <option value="@Operator.Current" selected>@Operator.Current ✓</option>
-            }
-        </select>
-    </div>
-
     @* Widget Dolar BNA *@
     <div class="dashboard-detail-card mac-card">
         <div class="mac-card-header">
@@ -714,38 +684,6 @@
 </div>
 } @* fin @if (!isDepositoOnly) *@
 
-@* 2026-06-05: modal de clave para activar operador protegido (OSMAR) desde el dropdown. *@
-@if (showProtectedOperatorModal)
-{
-    <div class="modal-overlay" style="z-index: 9100;" @onclick="CancelProtectedOperator">
-        <div class="modal-card modal-small" @onclick:stopPropagation="true">
-            <div class="modal-header" style="background:#fef3c7;">
-                <h3 style="margin:0;">🔒 Confirmar clave de @pendingProtectedOperator</h3>
-                <button class="btn-close" @onclick="CancelProtectedOperator">&times;</button>
-            </div>
-            <div class="modal-body">
-                <p style="font-size: 0.85rem; color:#6b7280; margin: 0 0 0.7rem;">
-                    Para trabajar como <strong>@pendingProtectedOperator</strong> ingresá la clave (la misma que usás para eliminar comprobantes).
-                </p>
-                @if (!string.IsNullOrEmpty(protectedOperatorError))
-                {
-                    <div class="form-error" style="margin-bottom:0.5rem;">@protectedOperatorError</div>
-                }
-                <input class="form-input" type="password" @bind="protectedOperatorPassword"
-                       @bind:event="oninput" @onkeydown="OnProtectedOperatorKeyDown"
-                       placeholder="••••••••" autofocus />
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" @onclick="CancelProtectedOperator">Cancelar</button>
-                <button class="btn btn-primary" @onclick="ConfirmProtectedOperator"
-                        disabled="@(string.IsNullOrEmpty(protectedOperatorPassword) || validatingProtectedOperator)">
-                    @(validatingProtectedOperator ? "Validando..." : "Activar")
-                </button>
-            </div>
-        </div>
-    </div>
-}
-
 @code {
     private string username = "usuario";
     // 2026-05-30: hide widgets dashboard para usuarios SOLO depósito.
@@ -977,83 +915,6 @@
             sb.Append(intPart[i]);
         }
         return decPart.Length > 0 ? $"{sb},{decPart}" : sb.ToString();
-    }
-
-    private async Task OnSelectOperator(ChangeEventArgs e)
-    {
-        var name = e.Value?.ToString();
-        // 2026-06-05: si eligio un operador protegido (formato __PROTECTED__OSMAR),
-        // abrir modal para pedir clave antes de activarlo. (Legacy, hoy la lista de
-        // protegidos está vacía — esto ya no se dispara, pero lo dejamos por compat.)
-        if (!string.IsNullOrWhiteSpace(name) && name.StartsWith("__PROTECTED__"))
-        {
-            var realName = name["__PROTECTED__".Length..];
-            pendingProtectedOperator = realName;
-            protectedOperatorPassword = "";
-            protectedOperatorError = "";
-            showProtectedOperatorModal = true;
-            StateHasChanged();
-            return;
-        }
-        // 2026-06-25: cambiar de operador desde el dashboard ahora pide PIN. Antes el
-        // dropdown era un agujero: cualquiera podía pasarse a otro nombre sin validar
-        // y las ventas siguientes quedaban firmadas a nombre equivocado. Ahora seteo
-        // el nombre nuevo + LockAsync → aparece la pantalla del PIN preseleccionada.
-        var nombreLimpio = string.IsNullOrWhiteSpace(name) ? null : name;
-        if (nombreLimpio == Operator.Current)
-        {
-            return; // mismo operador: no hacer nada
-        }
-        await Operator.SetAsync(nombreLimpio);
-        if (nombreLimpio is not null)
-        {
-            await Operator.LockAsync();
-        }
-    }
-
-    // 2026-06-05: modal de clave para activar OSMAR desde el dropdown del dashboard.
-    private bool showProtectedOperatorModal = false;
-    private string pendingProtectedOperator = "";
-    private string protectedOperatorPassword = "";
-    private string protectedOperatorError = "";
-    private bool validatingProtectedOperator = false;
-
-    private void CancelProtectedOperator()
-    {
-        showProtectedOperatorModal = false;
-        pendingProtectedOperator = "";
-        protectedOperatorPassword = "";
-        protectedOperatorError = "";
-    }
-
-    private async Task OnProtectedOperatorKeyDown(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter" && !string.IsNullOrEmpty(protectedOperatorPassword))
-            await ConfirmProtectedOperator();
-    }
-
-    private async Task ConfirmProtectedOperator()
-    {
-        if (string.IsNullOrEmpty(protectedOperatorPassword)) return;
-        validatingProtectedOperator = true;
-        protectedOperatorError = "";
-        try
-        {
-            var ok = await Api.ValidateProtectedOperatorAsync(protectedOperatorPassword);
-            if (!ok)
-            {
-                protectedOperatorError = "Clave incorrecta.";
-                validatingProtectedOperator = false;
-                return;
-            }
-            await Operator.SetAsync(pendingProtectedOperator);
-            ToastService.Success($"Trabajando como {pendingProtectedOperator}");
-            showProtectedOperatorModal = false;
-            pendingProtectedOperator = "";
-            protectedOperatorPassword = "";
-        }
-        catch (Exception ex) { protectedOperatorError = ex.Message; }
-        finally { validatingProtectedOperator = false; }
     }
 
     private static string FormatMoney(decimal value)
