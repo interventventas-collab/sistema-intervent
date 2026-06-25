@@ -217,6 +217,11 @@
     <script>
         // Hard reload (equivalente a Ctrl+Shift+R): borra cache de la API Cache + desinscribe
         // service workers, despues recarga. Para usuarios no tecnicos que no recuerdan el atajo.
+        // 2026-06-25: nginx cacheaba blazor.boot.json como immutable, asi que aun limpiando
+        // el Cache API el HTTP cache devolvia el manifest viejo. Forzamos un re-fetch con
+        // cache:'reload' (bypass del HTTP cache) antes de navegar, asi al recargar la pagina
+        // toma el manifest fresco. Combinado con el fix del nginx, un click al boton 🔄
+        // garantiza ver el deploy nuevo.
         window.hardReload = async function () {
             try {
                 if ('serviceWorker' in navigator) {
@@ -227,6 +232,9 @@
                     const names = await caches.keys();
                     await Promise.all(names.map(n => caches.delete(n)));
                 }
+                // Force re-fetch del manifest Blazor bypaseando el HTTP cache del browser
+                try { await fetch('/_framework/blazor.boot.json', { cache: 'reload' }); } catch {}
+                try { await fetch('/_framework/blazor.webassembly.js', { cache: 'reload' }); } catch {}
             } catch (e) { console.warn('hardReload cleanup error', e); }
             // Cache-bust en la URL para forzar al navegador a no usar su cache HTTP
             const url = new URL(window.location.href);
