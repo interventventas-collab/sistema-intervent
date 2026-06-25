@@ -20,19 +20,21 @@ public class OperatorService
     private string? _current;
     private DateTime? _validatedAtUtc;
 
-    // 2026-06-15: MIGUEL/MAXI eliminados (ya no trabajan). Sumados BENJAMIN, FERMAN, GONZALO.
+    // 2026-06-15: MIGUEL/MAXI eliminados (ya no trabajan). Sumados BENJAMIN, GONZALO.
+    // 2026-06-25: "FERMAN" sacado — era un typo viejo, no existe esa persona.
     // Lista global = todos los que SÍ trabajan hoy.
     public static readonly string[] Operators =
     {
         "OSMAR", "GERMAN", "GABRIEL",
-        "ALEXIS", "WALTER", "RODRIGO", "BENJAMIN", "FERMAN", "GONZALO"
+        "ALEXIS", "WALTER", "RODRIGO", "BENJAMIN", "GONZALO"
     };
 
     // Operadores por rol (para mostrar solo los del equipo correspondiente en el modal).
     // OSMAR vuelve a la lista normal — el sistema de PIN unificado lo cubre.
     public static readonly string[] OperatorsOficina = { "GERMAN", "GABRIEL", "OSMAR" };
-    // 2026-06-15: depósito ahora son 6 personas (Alexis, Walter, Rodrigo, Benjamin, Ferman, Gonzalo)
-    public static readonly string[] OperatorsDeposito = { "ALEXIS", "WALTER", "RODRIGO", "BENJAMIN", "FERMAN", "GONZALO" };
+    // 2026-06-15: depósito ahora son 5 personas (Alexis, Walter, Rodrigo, Benjamin, Gonzalo)
+    // 2026-06-25: "Ferman" sacado de la lista — era un typo, no existe.
+    public static readonly string[] OperatorsDeposito = { "ALEXIS", "WALTER", "RODRIGO", "BENJAMIN", "GONZALO" };
 
     /// <summary>2026-06-15: ya no se usa la lista de "Protected" — todos los operadores
     /// se autentican con PIN individual. Se deja vacío por compat con pantallas viejas.</summary>
@@ -71,7 +73,6 @@ public class OperatorService
             "WALTER"  => "#7c3aed",   // violeta
             "RODRIGO" => "#0891b2",   // cyan
             "BENJAMIN" => "#65a30d",  // lima
-            "FERMAN"  => "#ea580c",   // naranja oscuro
             "GONZALO" => "#0d9488",   // teal
             _         => "#9ca3af"    // gris fallback
         };
