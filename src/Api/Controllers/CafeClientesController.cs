@@ -405,10 +405,15 @@ public class CafeClientesController : ControllerBase
     {
         // Traer todas las ventas emitidas (no anuladas) con cliente y total > 0
         // Incluyo TipoComprobante para separar saldo Cotizacion (X/PRO) vs Factura (FA/FB/FC).
+        // 2026-06-25: Excluir Notas de Credito (NCA/NCB/NCC). Una NC compensada con una FA via cobranza
+        // tiene imputacion negativa, lo que hace que el calculo Saldo = Total - Pagado termine sumando
+        // el doble (ej: $329120 - (-$329120) = $658240). Las NC ya van al HABER en el estado de cuenta,
+        // no deben aparecer en deudas pendientes. Mismo criterio que GetEstadoCuenta linea 87-89.
         var ventas = await _db.CafeVentas
             .Where(v => v.Estado != "anulado"
                      && v.ClienteId != null
-                     && v.Total > 0)
+                     && v.Total > 0
+                     && (v.TipoComprobante == null || !v.TipoComprobante.StartsWith("NC")))
             .Select(v => new {
                 v.Id, ClienteId = v.ClienteId!.Value, v.Total, v.ArcaImpTotal, v.Fecha, v.TipoComprobante,
                 EsSaldoMigracion = _db.CafeSaldosMigracion.Any(s => s.VentaId == v.Id)
