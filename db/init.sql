@@ -4985,6 +4985,16 @@ BEGIN
 END
 GO
 
+-- 2026-06-25: vinculo opcional entre Cafe_Repartidores y Nom_Empleados (paralelo al de HorasExtras).
+-- Permite que el dashboard cruce rendiciones del repartidor con sueldo del mismo empleado en nominas.
+-- NULL = no vinculado (solo aparece como repartidor). Vinculado = el dashboard sabe que es la misma persona.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='NomEmpleadoId' AND Object_ID=Object_ID('Cafe_Repartidores'))
+BEGIN
+    ALTER TABLE Cafe_Repartidores ADD NomEmpleadoId INT NULL;
+    ALTER TABLE Cafe_Repartidores ADD CONSTRAINT FK_CafeRepartidores_NomEmpleados FOREIGN KEY (NomEmpleadoId) REFERENCES Nom_Empleados(Id);
+END
+GO
+
 -- 2026-06-23: Concepto AFIP en Cafe_Ventas. 1=Productos (default), 2=Servicios, 3=Productos y Servicios.
 -- Cuando es 2 o 3, ARCA exige las fechas de prestacion (desde/hasta). Internamente FchVtoPago = ConceptoServHasta.
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Concepto' AND Object_ID=OBJECT_ID('Cafe_Ventas'))

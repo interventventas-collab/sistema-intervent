@@ -27,6 +27,14 @@ public class CafeRepartidor
     [MaxLength(64)]
     public string? PublicToken { get; set; }
 
+    /// <summary>2026-06-25: vinculo opcional a Nom_Empleados. Si el repartidor es tambien
+    /// empleado en nominas (Alexis, Walter/Nacho, etc.), apunta a su Id de Nom_Empleados.
+    /// NULL = repartidor sin link a empleado de nominas. Lo usa el dashboard para mostrar
+    /// fichaje + rendicion + sueldo en una sola ficha por persona.</summary>
+    public int? NomEmpleadoId { get; set; }
+    [ForeignKey(nameof(NomEmpleadoId))]
+    public NomEmpleado? NomEmpleado { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }
