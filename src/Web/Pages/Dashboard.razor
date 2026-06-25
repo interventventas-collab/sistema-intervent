@@ -983,7 +983,8 @@
     {
         var name = e.Value?.ToString();
         // 2026-06-05: si eligio un operador protegido (formato __PROTECTED__OSMAR),
-        // abrir modal para pedir clave antes de activarlo.
+        // abrir modal para pedir clave antes de activarlo. (Legacy, hoy la lista de
+        // protegidos está vacía — esto ya no se dispara, pero lo dejamos por compat.)
         if (!string.IsNullOrWhiteSpace(name) && name.StartsWith("__PROTECTED__"))
         {
             var realName = name["__PROTECTED__".Length..];
@@ -994,9 +995,20 @@
             StateHasChanged();
             return;
         }
-        await Operator.SetAsync(string.IsNullOrWhiteSpace(name) ? null : name);
-        if (!string.IsNullOrWhiteSpace(name))
-            ToastService.Success($"Trabajando como {name}");
+        // 2026-06-25: cambiar de operador desde el dashboard ahora pide PIN. Antes el
+        // dropdown era un agujero: cualquiera podía pasarse a otro nombre sin validar
+        // y las ventas siguientes quedaban firmadas a nombre equivocado. Ahora seteo
+        // el nombre nuevo + LockAsync → aparece la pantalla del PIN preseleccionada.
+        var nombreLimpio = string.IsNullOrWhiteSpace(name) ? null : name;
+        if (nombreLimpio == Operator.Current)
+        {
+            return; // mismo operador: no hacer nada
+        }
+        await Operator.SetAsync(nombreLimpio);
+        if (nombreLimpio is not null)
+        {
+            await Operator.LockAsync();
+        }
     }
 
     // 2026-06-05: modal de clave para activar OSMAR desde el dropdown del dashboard.
