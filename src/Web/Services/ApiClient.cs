@@ -893,11 +893,21 @@ public class ApiClient
         return await GetAsync<List<QrEscaneoDto>>($"/api/cafe/repartidores/qr-escaneos?{string.Join("&", qs)}");
     }
 
-    public async Task<bool> ReasignarEscaneoAsync(int ventaId, int? nuevoRepartidorId)
+    public async Task<bool> ReasignarEscaneoAsync(int ventaId, int? nuevoRepartidorId,
+        bool esRetira = false, bool marcarEntregada = false,
+        DateTime? fechaEntrega = null, string? comentarioEntrega = null)
     {
         await SetAuthHeaderAsync();
         var resp = await _http.PostAsJsonAsync("/api/cafe/repartidores/qr-escaneos/reasignar",
-            new { VentaId = ventaId, NuevoRepartidorId = nuevoRepartidorId });
+            new
+            {
+                VentaId = ventaId,
+                NuevoRepartidorId = nuevoRepartidorId,
+                EsRetira = esRetira,
+                MarcarEntregada = marcarEntregada,
+                FechaEntrega = fechaEntrega,
+                ComentarioEntrega = comentarioEntrega
+            });
         return resp.IsSuccessStatusCode;
     }
 

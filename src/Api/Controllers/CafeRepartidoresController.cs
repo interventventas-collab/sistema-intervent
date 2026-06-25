@@ -102,6 +102,18 @@ public class CafeRepartidoresController : ControllerBase
     {
         public int VentaId { get; set; }
         public int? NuevoRepartidorId { get; set; }
+        /// <summary>2026-06-25: Si true, la venta se marca tambien como "Retira el cliente"
+        /// (sin repartidor). NuevoRepartidorId se ignora cuando EsRetira=true.</summary>
+        public bool EsRetira { get; set; }
+        /// <summary>2026-06-25: Si true, ademas de asignar se marca como entregada en el mismo paso.
+        /// Si hay repartidor, se setea EntregadoPorRepartidorId=NuevoRepartidorId. Si EsRetira=true,
+        /// queda EntregadoPorRepartidorId=NULL pero con EntregadoAt seteado.</summary>
+        public bool MarcarEntregada { get; set; }
+        /// <summary>2026-06-25: Fecha/hora de la entrega cuando MarcarEntregada=true. Si es null,
+        /// se usa DateTime.UtcNow. Util para cargar entregas retroactivas.</summary>
+        public DateTime? FechaEntrega { get; set; }
+        /// <summary>2026-06-25: Comentario opcional para la entrega (max 500).</summary>
+        public string? ComentarioEntrega { get; set; }
     }
 
     /// <summary>2026-06-05: Desmarcar una entrega (admin). Limpia EntregadoPorRepartidorId,
@@ -156,11 +168,16 @@ public class CafeRepartidoresController : ControllerBase
             .ToListAsync();
         _db.CafeQrEscaneos.RemoveRange(existentes);
 
-        // Si hay nuevoRepartidorId, crear escaneo "cargado" a ese repartidor
+        CafeRepartidor? nuevoRep = null;
         string mensaje;
-        if (req.NuevoRepartidorId.HasValue)
+        if (req.EsRetira)
         {
-            var nuevoRep = await _db.CafeRepartidores.FirstOrDefaultAsync(r => r.Id == req.NuevoRepartidorId.Value && r.IsActive);
+            v.Retira = true;
+            mensaje = "Venta marcada como retira el cliente";
+        }
+        else if (req.NuevoRepartidorId.HasValue)
+        {
+            nuevoRep = await _db.CafeRepartidores.FirstOrDefaultAsync(r => r.Id == req.NuevoRepartidorId.Value && r.IsActive);
             if (nuevoRep is null) return NotFound(new { error = "Repartidor destino no encontrado" });
             _db.CafeQrEscaneos.Add(new CafeQrEscaneo
             {
@@ -176,6 +193,56 @@ public class CafeRepartidoresController : ControllerBase
         {
             mensaje = "Venta desvinculada (sin repartidor asignado)";
         }
+
+        // 2026-06-25: Marcado de entrega en el mismo paso.
+        // - Con repartidor: EntregadoPorRepartidorId = ese repartidor.
+        // - Con Retira: EntregadoPorRepartidorId queda NULL pero EntregadoAt seteado.
+        // - Sin asignar + MarcarEntregada: rechazado (no tiene sentido).
+        if (req.MarcarEntregada)
+        {
+            if (!req.EsRetira && !req.NuevoRepartidorId.HasValue)
+                return BadRequest(new { error = "Para marcar entregada, elegi un repartidor o Retira el cliente" });
+
+            var entregadoAt = req.FechaEntrega ?? DateTime.UtcNow;
+            v.EntregadoAt = entregadoAt;
+            v.EntregadoPorRepartidorId = nuevoRep?.Id;  // null si EsRetira
+            var coment = string.IsNullOrWhiteSpace(req.ComentarioEntrega) ? null : req.ComentarioEntrega.Trim();
+            if (coment is not null && coment.Length > 500) coment = coment[..500];
+            v.ComentarioEntrega = coment;
+
+            if (!string.IsNullOrEmpty(v.EstadoPreparacion))
+            {
+                var estadoAnterior = v.EstadoPreparacion;
+                v.EstadoPreparacion = "ENTREGADO";
+                v.PreparacionUpdatedAt = entregadoAt;
+                _db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
+                {
+                    VentaId = v.Id,
+                    EstadoAnterior = estadoAnterior,
+                    EstadoNuevo = "ENTREGADO",
+                    OperadorNombre = req.EsRetira ? "admin (retira+entregada)" : $"admin (asignar+entregada {nuevoRep?.Nombre})",
+                    Notas = "Marcado entregada desde modal Asignar repartidor",
+                    CreatedAt = entregadoAt
+                });
+            }
+
+            if (nuevoRep is not null)
+            {
+                _db.CafeQrEscaneos.Add(new CafeQrEscaneo
+                {
+                    VentaId = v.Id,
+                    RepartidorId = nuevoRep.Id,
+                    Accion = "entregado",
+                    CreatedAt = entregadoAt,
+                    Ip = "admin-asignar-entregada"
+                });
+            }
+
+            mensaje = req.EsRetira
+                ? "Marcada como retirada por el cliente"
+                : $"Asignada a {nuevoRep!.Nombre} y marcada entregada";
+        }
+
         await _db.SaveChangesAsync();
         return Ok(new { ok = true, mensaje, escaneosBorrados = existentes.Count });
     }
