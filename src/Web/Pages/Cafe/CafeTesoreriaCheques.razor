@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ToastService ToastService
+@using Web.Models
 
 <div class="card">
     <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
@@ -54,6 +55,14 @@
                                 <td>
                                     @if (c.Estado == "EN_CARTERA")
                                     {
+                                        @if (c.CobranzaOrigenId.HasValue)
+                                        {
+                                            <span style="color:#059669; font-size:0.72rem; font-weight:600;" title="Cheque aplicado a cobranza @c.CobranzaOrigenId">✓ Cob. #@c.CobranzaOrigenId</span>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn-icon" title="Aplicar a cobranza (asociar a venta)" @onclick="() => AbrirAplicar(c)">🔗</button>
+                                        }
                                         <button class="btn-icon" title="Depositar al banco" @onclick="() => Depositar(c)">🏦</button>
                                         <button class="btn-icon" title="Cobrar por ventanilla" @onclick="() => CobrarVent(c)">💵</button>
                                         <button class="btn-icon" title="Rechazar (rebotó)" @onclick="() => Rechazar(c)">❌</button>
@@ -138,6 +147,139 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="CerrarNuevo" disabled="@savingNuevo">Cancelar</button>
                 <button class="btn btn-primary" @onclick="GuardarNuevo" disabled="@savingNuevo">@(savingNuevo ? "Guardando..." : "Guardar cheque")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ════════════ Modal Aplicar cheque a cobranza ════════════ *@
+@if (aplicarOpen && aplicarCheque is not null)
+{
+    <div class="modal-overlay">
+        <div class="modal-card" style="max-width: 760px;">
+            <div class="modal-header">
+                <h3 style="margin:0;">🔗 Aplicar cheque a cobranza</h3>
+                <button class="btn-close" @onclick="CerrarAplicar">✕</button>
+            </div>
+            <div class="modal-body">
+                @{ var ch = aplicarCheque; }
+                <div style="background:#f3f4f6; padding:0.6rem 0.8rem; border-radius:6px; margin-bottom:0.7rem; font-size:0.85rem;">
+                    <div><strong>Cheque:</strong> @ch.Banco — N° @ch.Numero — <strong>$@ch.Importe.ToString("N2")</strong></div>
+                    <div style="font-size:0.78rem; color:#6b7280;">Vence: @(ch.FechaVencimiento?.ToString("dd/MM/yyyy") ?? "—") @(string.IsNullOrEmpty(ch.Emisor) ? "" : $" · Emisor: {ch.Emisor}")</div>
+                </div>
+
+                @* Cliente *@
+                <div class="form-group">
+                    <label class="form-label">Cliente que pagó *</label>
+                    @if (clienteAplicar is not null)
+                    {
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:#ecfdf5; border:1px solid #059669; padding:0.5rem 0.7rem; border-radius:6px;">
+                            <div>
+                                <strong>@(clienteAplicar.CodigoInterno?.ToString() ?? "—") · @clienteAplicar.Nombre</strong>
+                                @if (!string.IsNullOrEmpty(clienteAplicar.Cuit))
+                                {
+                                    <span style="font-size:0.75rem; color:#065f46;"> · CUIT @clienteAplicar.Cuit</span>
+                                }
+                            </div>
+                            <button class="btn-icon" @onclick="QuitarClienteAplicar" title="Cambiar cliente">✕</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <input class="form-input" @bind="clienteSearchAplicar" @bind:event="oninput" placeholder="Buscar por nombre, código o CUIT..." />
+                        @if (!string.IsNullOrWhiteSpace(clienteSearchAplicar) && clientesAplicar is not null)
+                        {
+                            var matches = clientesAplicar.Where(cc => cc.IsActive &&
+                                (cc.Nombre.MatchesSearch(clienteSearchAplicar) ||
+                                 (cc.RazonSocial ?? "").MatchesSearch(clienteSearchAplicar) ||
+                                 (cc.Cuit ?? "").Contains(clienteSearchAplicar, StringComparison.OrdinalIgnoreCase) ||
+                                 (cc.CodigoInterno?.ToString() ?? "").Contains(clienteSearchAplicar)))
+                                .Take(10).ToList();
+                            <div style="max-height:200px; overflow-y:auto; border:1px solid #e5e7eb; border-radius:4px; margin-top:0.3rem;">
+                                @foreach (var cc in matches)
+                                {
+                                    <div style="padding:0.4rem 0.6rem; cursor:pointer; border-bottom:1px solid #f3f4f6;" @onclick="() => ElegirClienteAplicar(new SugerenciaClienteEcheqDto { Id = cc.Id, Nombre = cc.Nombre, Cuit = cc.Cuit, CodigoInterno = cc.CodigoInterno, RazonSocial = cc.RazonSocial })">
+                                        <strong>@(cc.CodigoInterno?.ToString() ?? "—") · @cc.Nombre</strong>
+                                        @if (!string.IsNullOrEmpty(cc.Cuit)) { <span style="font-size:0.75rem; color:#6b7280;"> · CUIT @cc.Cuit</span> }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+
+                @* Comprobantes pendientes *@
+                @if (clienteAplicar is not null)
+                {
+                    @if (loadingCompAplicar)
+                    {
+                        <p class="text-muted">Cargando comprobantes pendientes...</p>
+                    }
+                    else if (compAplicar is { Count: > 0 })
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Imputar a comprobantes pendientes</label>
+                            <p style="font-size:0.72rem; color:#6b7280; margin:0 0 0.4rem;">
+                                Tildá los que cubrís con este cheque. Total a imputar: <strong>$@TotalImputarAplicar.ToString("N2")</strong> de <strong>$@ch.Importe.ToString("N2")</strong> @(retencionesAplicar > 0 ? $"(+ ${retencionesAplicar:N2} retenciones)" : "")
+                            </p>
+                            <table style="width:100%; font-size:0.85rem;">
+                                <thead>
+                                    <tr style="border-bottom:1px solid #e5e7eb;">
+                                        <th style="width:30px;"></th>
+                                        <th style="text-align:left;">Comprobante</th>
+                                        <th style="text-align:right;">Saldo</th>
+                                        <th style="width:130px; text-align:right;">A imputar</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for (int i = 0; i < compAplicar.Count; i++)
+                                    {
+                                        var idx = i;
+                                        var comp = compAplicar[idx];
+                                        var sel = compSelAplicar[idx];
+                                        <tr>
+                                            <td><input type="checkbox" checked="@sel.Tildado"
+                                                       @onchange="@(e => OnTildarCompAplicar(idx, (bool)e.Value!))" /></td>
+                                            <td><strong>@comp.Numero</strong> <span style="color:#6b7280; font-size:0.78rem;">@comp.Fecha.ToString("dd/MM/yyyy")</span></td>
+                                            <td style="text-align:right;">$@comp.Saldo.ToString("N2")</td>
+                                            <td style="text-align:right;">
+                                                <input class="form-input" type="number" step="0.01" min="0" style="text-align:right; padding:0.2rem 0.4rem; font-size:0.85rem;"
+                                                       value="@sel.Importe.ToString(System.Globalization.CultureInfo.InvariantCulture)" disabled="@(!sel.Tildado)"
+                                                       @onchange="@(e => OnImporteCompAplicar(idx, e.Value?.ToString()))" />
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p style="font-size:0.82rem; color:#6b7280;">Este cliente no tiene comprobantes con saldo. Se va a registrar como "a cuenta".</p>
+                    }
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label">Retenciones</label>
+                            <input class="form-input" type="number" step="0.01" min="0" @bind="retencionesAplicar" />
+                        </div>
+                        <div class="form-group" style="flex:2;">
+                            <label class="form-label">Observaciones (opcional)</label>
+                            <input class="form-input" @bind="observacionesAplicar" placeholder="Notas internas" />
+                        </div>
+                    </div>
+                }
+
+                @if (!string.IsNullOrEmpty(aplicarError))
+                {
+                    <div style="background:#fee2e2; color:#991b1b; padding:0.5rem 0.7rem; border-radius:4px; font-size:0.82rem; margin-top:0.5rem;">@aplicarError</div>
+                }
+                <div style="background:#dbeafe; color:#1e40af; padding:0.4rem 0.6rem; border-radius:4px; font-size:0.78rem; margin-top:0.5rem;">
+                    💡 Al confirmar: se crea una cobranza nueva por <strong>$@ch.Importe.ToString("N2")</strong> y este cheque queda vinculado a ella. El cheque sigue EN_CARTERA — después podés depositarlo, cobrarlo o rechazarlo igual que siempre.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CerrarAplicar" disabled="@aplicando">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmarAplicar" disabled="@(aplicando || clienteAplicar is null)">@(aplicando ? "Guardando..." : "Confirmar cobranza")</button>
             </div>
         </div>
     </div>
@@ -262,4 +404,149 @@
         "RECHAZADO" => "badge-danger",
         _ => "badge-secondary"
     };
+
+    // ═══════════ Aplicar cheque a cobranza ═══════════
+    private bool aplicarOpen;
+    private bool aplicando;
+    private string? aplicarError;
+    private CafeChequeDto? aplicarCheque;
+    private SugerenciaClienteEcheqDto? clienteAplicar;
+    private List<CafeClienteDto>? clientesAplicar;
+    private string clienteSearchAplicar = "";
+    private List<ComprobantePendienteDto>? compAplicar;
+    private bool loadingCompAplicar;
+    private decimal retencionesAplicar;
+    private string observacionesAplicar = "";
+
+    private class CompSelAplicarState { public bool Tildado; public decimal Importe; }
+    private List<CompSelAplicarState> compSelAplicar = new();
+
+    private decimal TotalImputarAplicar => compSelAplicar.Where(s => s.Tildado).Sum(s => s.Importe);
+
+    private async Task AbrirAplicar(CafeChequeDto c)
+    {
+        aplicarOpen = true;
+        aplicarCheque = c;
+        clienteAplicar = null;
+        clienteSearchAplicar = "";
+        compAplicar = null;
+        compSelAplicar = new();
+        retencionesAplicar = 0m;
+        observacionesAplicar = "";
+        aplicarError = null;
+
+        try
+        {
+            if (clientesAplicar is null)
+                clientesAplicar = await Api.GetCafeClientesAsync() ?? new();
+            // Si el cheque ya tenia un cliente origen (poco comun en imports Excel), preseleccionarlo
+            if (c.ClienteOrigenId.HasValue)
+            {
+                var origen = clientesAplicar.FirstOrDefault(x => x.Id == c.ClienteOrigenId.Value);
+                if (origen is not null)
+                {
+                    await ElegirClienteAplicar(new SugerenciaClienteEcheqDto
+                    {
+                        Id = origen.Id,
+                        Nombre = origen.Nombre,
+                        Cuit = origen.Cuit,
+                        CodigoInterno = origen.CodigoInterno,
+                        RazonSocial = origen.RazonSocial
+                    });
+                }
+            }
+        }
+        catch (Exception ex) { aplicarError = "Error cargando: " + ex.Message; }
+    }
+
+    private void CerrarAplicar()
+    {
+        if (aplicando) return;
+        aplicarOpen = false;
+        aplicarCheque = null;
+    }
+
+    private async Task ElegirClienteAplicar(SugerenciaClienteEcheqDto c)
+    {
+        clienteAplicar = c;
+        clienteSearchAplicar = "";
+        loadingCompAplicar = true;
+        try
+        {
+            compAplicar = await Api.GetComprobantesPendientesAsync(c.Id, true) ?? new();
+            compSelAplicar = compAplicar.Select(_ => new CompSelAplicarState()).ToList();
+            decimal restante = aplicarCheque!.Importe;
+            for (int i = 0; i < compAplicar.Count && restante > 0.01m; i++)
+            {
+                var aImputar = Math.Min(compAplicar[i].Saldo, restante);
+                compSelAplicar[i].Tildado = true;
+                compSelAplicar[i].Importe = Math.Round(aImputar, 2);
+                restante -= aImputar;
+            }
+        }
+        finally { loadingCompAplicar = false; }
+    }
+
+    private void QuitarClienteAplicar()
+    {
+        clienteAplicar = null;
+        compAplicar = null;
+        compSelAplicar = new();
+    }
+
+    private void OnTildarCompAplicar(int idx, bool tildado)
+    {
+        compSelAplicar[idx].Tildado = tildado;
+        if (tildado && compSelAplicar[idx].Importe <= 0m)
+            compSelAplicar[idx].Importe = compAplicar![idx].Saldo;
+    }
+
+    private void OnImporteCompAplicar(int idx, string? raw)
+    {
+        if (decimal.TryParse(raw, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v) && v >= 0)
+            compSelAplicar[idx].Importe = Math.Round(v, 2);
+    }
+
+    private async Task ConfirmarAplicar()
+    {
+        aplicarError = null;
+        if (aplicarCheque is null || clienteAplicar is null) { aplicarError = "Falta cliente"; return; }
+        var sumImputado = TotalImputarAplicar;
+        var diferencia = aplicarCheque.Importe + retencionesAplicar - sumImputado;
+        var items = compSelAplicar
+            .Select((s, i) => new { s, comp = compAplicar![i] })
+            .Where(x => x.s.Tildado && x.s.Importe > 0m)
+            .Select(x => new ImputarComprobanteItem { VentaId = x.comp.VentaId, Importe = x.s.Importe })
+            .ToList();
+        if (diferencia > 0.01m)
+        {
+            items.Add(new ImputarComprobanteItem { VentaId = null, Importe = Math.Round(diferencia, 2) });
+        }
+        else if (diferencia < -0.01m)
+        {
+            aplicarError = $"Imputaste ${sumImputado:N2} pero el cheque + retenciones suman ${(aplicarCheque.Importe + retencionesAplicar):N2}. Reducí algún importe.";
+            return;
+        }
+        if (items.Count == 0)
+        {
+            items.Add(new ImputarComprobanteItem { VentaId = null, Importe = aplicarCheque.Importe + retencionesAplicar });
+        }
+
+        aplicando = true;
+        try
+        {
+            var (cobId, numero, err) = await Api.AplicarChequeACobranzaAsync(aplicarCheque.Id, new AsociarECheqRequest
+            {
+                ClienteId = clienteAplicar.Id,
+                Retenciones = retencionesAplicar,
+                Observaciones = string.IsNullOrWhiteSpace(observacionesAplicar) ? null : observacionesAplicar.Trim(),
+                Comprobantes = items
+            });
+            if (err is not null) { aplicarError = err; return; }
+            ToastService.Success($"✓ Cobranza {numero} creada y cheque aplicado");
+            aplicarOpen = false;
+            await Load();
+        }
+        finally { aplicando = false; }
+    }
 }
