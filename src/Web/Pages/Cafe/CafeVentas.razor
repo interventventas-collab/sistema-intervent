@@ -462,13 +462,44 @@
                                         var hayIva = totalCobrable > v.Total + 0.01m;
                                         var saldo = saldosPorVenta.TryGetValue(v.Id, out var s) ? s : totalCobrable;
                                         var pagado = totalCobrable - saldo;
+                                        // 2026-06-25: Notas de Credito (NCA/NCB/NCC) son saldo a favor del cliente.
+                                        // Se muestran en rojo con signo negativo y badge "Nota de Credito" para distinguirlas
+                                        // visualmente de una venta normal. No usan Pendiente/Pagada/Debe.
+                                        var esNC = !string.IsNullOrEmpty(v.TipoComprobante)
+                                                   && v.TipoComprobante.StartsWith("NC", StringComparison.OrdinalIgnoreCase);
                                     }
-                                    <div style="font-size:1rem;">$@FormatMoney(totalCobrable)</div>
+                                    @if (esNC)
+                                    {
+                                        <div style="font-size:1rem; color:#b91c1c;" title="Nota de Crédito — saldo a favor del cliente">-$@FormatMoney(totalCobrable)</div>
+                                    }
+                                    else
+                                    {
+                                        <div style="font-size:1rem;">$@FormatMoney(totalCobrable)</div>
+                                    }
                                     @if (hayIva)
                                     {
                                         <div style="font-size:0.65rem; color:#6b7280; font-weight:500; margin-top:-0.1rem;" title="Neto sin IVA: $@FormatMoney(v.Total)">neto: $@FormatMoney(v.Total)</div>
                                     }
-                                    @if (!anulada)
+                                    @if (!anulada && esNC)
+                                    {
+                                        @* NC: el "pagado" suele ser negativo cuando la NC compensa una FA via cobranza.
+                                           creditoRestante = totalCobrable + pagado (pagado <= 0). 0 = aplicada, totalCobrable = libre. *@
+                                        var creditoRestante = totalCobrable + pagado;
+                                        <div style="font-size:0.7rem; color:#b91c1c; font-weight:700; margin-top:0.15rem;">💸 Nota de Crédito</div>
+                                        @if (creditoRestante <= 0.01m)
+                                        {
+                                            <div style="font-size:0.65rem; color:#15803d; font-weight:700; margin-top:0.1rem;" title="Esta NC se usó para cancelar otra factura">✓ Aplicada</div>
+                                        }
+                                        else if (creditoRestante < totalCobrable - 0.01m)
+                                        {
+                                            <div style="font-size:0.65rem; color:#b45309; font-weight:700; margin-top:0.1rem;">Saldo a favor: $@FormatMoney(creditoRestante)</div>
+                                        }
+                                        else
+                                        {
+                                            <div style="font-size:0.65rem; color:#b45309; font-weight:700; margin-top:0.1rem;">Saldo a favor: $@FormatMoney(creditoRestante)</div>
+                                        }
+                                    }
+                                    else if (!anulada)
                                     {
                                         @if (saldo <= 0.01m)
                                         {
