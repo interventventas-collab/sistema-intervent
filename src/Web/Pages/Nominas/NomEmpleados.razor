@@ -29,6 +29,7 @@
                     <thead>
                         <tr>
                             <th>Nombre</th>
+                            <th>Aparece como</th>
                             <th>Documento</th>
                             <th>Puesto</th>
                             <th>Ingreso</th>
@@ -45,6 +46,23 @@
                         {
                             <tr>
                                 <td><strong>@e.Nombre</strong></td>
+                                <td style="font-size: 0.78rem; color: #6b7280; line-height: 1.35;">
+                                    @if (e.ApodoKiosko is null && e.ApodoRepartidor is null)
+                                    {
+                                        <span>—</span>
+                                    }
+                                    else
+                                    {
+                                        @if (!string.IsNullOrEmpty(e.ApodoKiosko))
+                                        {
+                                            <div><span style="color:#9ca3af;">Kiosko:</span> <strong style="color:#374151;">@e.ApodoKiosko</strong></div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(e.ApodoRepartidor))
+                                        {
+                                            <div><span style="color:#9ca3af;">Reparto:</span> <strong style="color:#374151;">@e.ApodoRepartidor</strong></div>
+                                        }
+                                    }
+                                </td>
                                 <td style="font-family: monospace; font-size: 0.85rem;">@(e.Documento ?? "—")</td>
                                 <td style="color: #374151;">@(e.Puesto ?? "—")</td>
                                 <td style="font-size: 0.85rem;">@e.FechaIngreso.ToString("dd/MM/yyyy")</td>

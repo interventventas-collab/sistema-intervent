@@ -8,7 +8,8 @@ public record NomEmpleadoDto(
     decimal SueldoBase, decimal ValorHora, decimal? ComisionPorcentaje,
     decimal ComisionPorKg, decimal BonoFijo,
     string ModalidadSueldo, decimal JornalDiario,
-    bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
+    bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt,
+    string? ApodoKiosko = null, string? ApodoRepartidor = null);
 
 public class CreateNomEmpleadoRequest
 {

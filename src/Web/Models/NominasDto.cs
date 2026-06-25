@@ -18,6 +18,10 @@ public class NomEmpleadoDto
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
+    // 2026-06-25: cómo aparece esta misma persona en otros módulos
+    // (kiosko de fichaje + módulo de repartidores). Null si no está vinculado allá.
+    public string? ApodoKiosko { get; set; }
+    public string? ApodoRepartidor { get; set; }
 }
 
 public class CreateNomEmpleadoRequest

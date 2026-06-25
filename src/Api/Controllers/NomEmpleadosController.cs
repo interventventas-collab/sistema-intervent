@@ -33,8 +33,19 @@ public class NomEmpleadosController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
-        var list = await _db.NomEmpleados.OrderBy(e => e.Nombre).ToListAsync();
-        return Ok(list.Select(Map).ToList());
+        // 2026-06-25: sumamos los "apodos" — cómo aparece el mismo empleado en el kiosko de
+        // fichaje y en el módulo de repartidores. Sirve para que el usuario vea que p.ej.
+        // "Walter" es el mismo "NACHO" del kiosko, y no se confunda.
+        var rows = await (
+            from e in _db.NomEmpleados
+            join f in _db.HorasExtrasEmpleados on e.Id equals f.NomEmpleadoId into fj
+            from f in fj.DefaultIfEmpty()
+            join r in _db.CafeRepartidores on e.Id equals r.NomEmpleadoId into rj
+            from r in rj.DefaultIfEmpty()
+            orderby e.Nombre
+            select new { e, ApodoKiosko = f != null ? f.Nombre : null, ApodoRepartidor = r != null ? r.Nombre : null }
+        ).ToListAsync();
+        return Ok(rows.Select(x => Map(x.e) with { ApodoKiosko = x.ApodoKiosko, ApodoRepartidor = x.ApodoRepartidor }).ToList());
     }
 
     [HttpGet("{id:int}")]
