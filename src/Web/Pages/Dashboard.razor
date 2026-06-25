@@ -91,31 +91,35 @@
         <div class="dash-equipo-grid">
             @foreach (var emp in equipoResp.Items)
             {
-                <div class="dash-emp-tile">
+                <button class="dash-emp-tile dash-emp-tile-btn" @onclick="() => OpenEmpDetalle(emp)" title="Ver detalle">
                     <div class="dash-emp-head">
                         <div class="dash-emp-avatar" style="background:@OperatorService.ShortBgColor(emp.ApodoKiosko ?? emp.Nombre);">@AvatarLabel(emp)</div>
-                        <div style="min-width:0;">
+                        <div style="min-width:0; text-align:left;">
                             <div class="dash-emp-name">@ShortName(emp.Nombre)</div>
                             <div class="dash-emp-status">
                                 <span class="dash-dot" style="background:@EstadoColor(emp.Estado);"></span>@EstadoTexto(emp)
                             </div>
                         </div>
                     </div>
-                    <div class="dash-emp-money">
-                        <div class="dash-emp-col">
-                            <span class="dash-emp-col-label">Rinde</span>
-                            <span class="dash-emp-col-value @(emp.PorRendir > 0 ? "warn" : "muted")">@(emp.PorRendir > 0 ? $"${FormatMoney(emp.PorRendir)}" : "—")</span>
-                        </div>
-                        <div class="dash-emp-col">
-                            <span class="dash-emp-col-label">Le debo</span>
-                            <span class="dash-emp-col-value @(emp.LeDebo > 0 ? "danger" : "muted")">@(emp.LeDebo > 0 ? $"${FormatMoney(emp.LeDebo)}" : "—")</span>
-                        </div>
-                        <div class="dash-emp-col">
-                            <span class="dash-emp-col-label">Pagué</span>
-                            <span class="dash-emp-col-value @(emp.Pagado > 0 ? "ok" : "muted")">@(emp.Pagado > 0 ? $"${FormatMoney(emp.Pagado)}" : "—")</span>
-                        </div>
+                    <div class="dash-emp-rinde">
+                        @if (!emp.TieneRepartidor)
+                        {
+                            <span class="dash-emp-rinde-label">No reparte</span>
+                            <span class="dash-emp-rinde-value muted">—</span>
+                        }
+                        else if (emp.PorRendir > 0)
+                        {
+                            <span class="dash-emp-rinde-label">Tiene que rendir</span>
+                            <span class="dash-emp-rinde-value warn">$@FormatMoney(emp.PorRendir)</span>
+                        }
+                        else
+                        {
+                            <span class="dash-emp-rinde-label">Al día</span>
+                            <span class="dash-emp-rinde-value ok">$0</span>
+                        }
                     </div>
-                </div>
+                    <div class="dash-emp-tile-cta">Ver detalle ›</div>
+                </button>
             }
         </div>
     }
@@ -124,6 +128,101 @@
         <div class="dash-card-sub">No hay empleados activos para mostrar.</div>
     }
 </div>
+
+@* 2026-06-25: modal de detalle de un empleado del card "Equipo trabajando ahora".
+   Se abre al hacer click en cualquier tile. Muestra todo el detalle financiero
+   (rinde + sueldo + pagué + le debo) y atajos a las pantallas relevantes. *@
+@if (empDetalle is not null)
+{
+    <div class="modal-overlay" style="z-index: 9100;" @onclick="CloseEmpDetalle">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 460px;">
+            <div class="modal-header" style="background: @OperatorService.ShortBgColor(empDetalle.ApodoKiosko ?? empDetalle.Nombre); color:white;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div class="dash-emp-avatar" style="background:rgba(255,255,255,0.25); width:38px; height:38px; font-size:0.9rem;">@AvatarLabel(empDetalle)</div>
+                    <div>
+                        <h3 style="margin:0; font-size:1.05rem;">@ShortName(empDetalle.Nombre)</h3>
+                        <div style="font-size:0.78rem; opacity:0.85; font-variant-numeric:tabular-nums;">@EstadoTexto(empDetalle)</div>
+                    </div>
+                </div>
+                <button class="btn-close" style="color:white;" @onclick="CloseEmpDetalle">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 18px 20px;">
+                <div style="display:grid; grid-template-columns: 1fr; gap: 12px;">
+                    @* Rinde *@
+                    <div class="dash-detalle-block">
+                        <div class="dash-detalle-label">Cobranzas pendientes de rendir</div>
+                        @if (!empDetalle.TieneRepartidor)
+                        {
+                            <div class="dash-detalle-big muted">— No es repartidor</div>
+                        }
+                        else if (empDetalle.PorRendir > 0)
+                        {
+                            <div class="dash-detalle-big warn">$@FormatMoney(empDetalle.PorRendir)</div>
+                            <button class="btn btn-link" style="padding:0; font-size:0.8rem;"
+                                    @onclick='() => { CloseEmpDetalle(); Navigation.NavigateTo("/cafe/cobranzas-pendientes"); }'>
+                                Ir a aprobar cobranzas ›
+                            </button>
+                        }
+                        else
+                        {
+                            <div class="dash-detalle-big ok">Al día</div>
+                        }
+                    </div>
+
+                    @* Sueldo del mes *@
+                    <div class="dash-detalle-block">
+                        <div class="dash-detalle-label">Sueldo del mes (junio)</div>
+                        @if (empDetalle.LeDebo == 0 && empDetalle.Pagado == 0)
+                        {
+                            <div class="dash-detalle-big muted">Sin liquidación cargada</div>
+                            <button class="btn btn-link" style="padding:0; font-size:0.8rem;"
+                                    @onclick='() => { CloseEmpDetalle(); Navigation.NavigateTo("/nominas/liquidaciones"); }'>
+                                Ir a liquidaciones ›
+                            </button>
+                        }
+                        else
+                        {
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-top:6px;">
+                                <div>
+                                    <div class="dash-detalle-sublabel">Le debo</div>
+                                    <div class="dash-detalle-mid @(empDetalle.LeDebo > 0 ? "danger" : "muted")">@(empDetalle.LeDebo > 0 ? $"${FormatMoney(empDetalle.LeDebo)}" : "—")</div>
+                                </div>
+                                <div>
+                                    <div class="dash-detalle-sublabel">Pagué este mes</div>
+                                    <div class="dash-detalle-mid @(empDetalle.Pagado > 0 ? "ok" : "muted")">@(empDetalle.Pagado > 0 ? $"${FormatMoney(empDetalle.Pagado)}" : "—")</div>
+                                </div>
+                            </div>
+                            <button class="btn btn-link" style="padding:0; font-size:0.8rem; margin-top:8px;"
+                                    @onclick='() => { CloseEmpDetalle(); Navigation.NavigateTo("/nominas/panel"); }'>
+                                Ver liquidaciones completas ›
+                            </button>
+                        }
+                    </div>
+
+                    @* Apodos (para que sepa cómo aparece en otros lados) *@
+                    @if (!string.IsNullOrEmpty(empDetalle.ApodoKiosko) || !string.IsNullOrEmpty(empDetalle.ApodoRepartidor))
+                    {
+                        <div class="dash-detalle-block" style="background:#f9fafb;">
+                            <div class="dash-detalle-label">Aparece como</div>
+                            @if (!string.IsNullOrEmpty(empDetalle.ApodoKiosko))
+                            {
+                                <div style="font-size:0.85rem; color:#374151; margin-top:4px;">
+                                    <span style="color:#9ca3af;">En el kiosko:</span> <strong>@empDetalle.ApodoKiosko</strong>
+                                </div>
+                            }
+                            @if (!string.IsNullOrEmpty(empDetalle.ApodoRepartidor))
+                            {
+                                <div style="font-size:0.85rem; color:#374151;">
+                                    <span style="color:#9ca3af;">Como repartidor:</span> <strong>@empDetalle.ApodoRepartidor</strong>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
 
 @* ═══ Card: resumen del día (cheques + saldo Galicia + preguntas MeLi) ═══ *@
 <div class="dash-card">
@@ -326,6 +425,32 @@
     .dash-emp-col-value.warn { color: #b45309; }
     .dash-emp-col-value.danger { color: #b91c1c; }
     .dash-emp-col-value.ok { color: #047857; }
+
+    /* 2026-06-25: tile como botón clickeable (la idea: Rinde grande, detalle al click) */
+    .dash-emp-tile-btn { border: 0.5px solid rgba(0,0,0,0.08); background:#fff; cursor: pointer; text-align: left; font: inherit; width: 100%; padding: 10px 12px; transition: border-color 0.12s, box-shadow 0.12s, transform 0.05s; }
+    .dash-emp-tile-btn:hover { border-color: rgba(59,130,246,0.45); box-shadow: 0 4px 14px rgba(59,130,246,0.08); }
+    .dash-emp-tile-btn:active { transform: scale(0.985); }
+    .dash-emp-rinde { display:flex; flex-direction: column; align-items: flex-start; padding: 6px 0 4px; border-top: 0.5px dashed rgba(0,0,0,0.10); }
+    .dash-emp-rinde-label { font-size: 0.62rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.03em; line-height: 1.2; }
+    .dash-emp-rinde-value { font-size: 1.25rem; font-weight: 500; line-height: 1.2; font-variant-numeric: tabular-nums; margin-top: 2px; }
+    .dash-emp-rinde-value.warn { color: #b45309; }
+    .dash-emp-rinde-value.ok { color: #047857; }
+    .dash-emp-rinde-value.muted { color: #d1d5db; font-weight: 400; }
+    .dash-emp-tile-cta { font-size: 0.7rem; color: #6b7280; text-align: right; margin-top: 2px; }
+    .dash-emp-tile-btn:hover .dash-emp-tile-cta { color: #3b82f6; }
+
+    /* Modal detalle empleado */
+    .dash-detalle-block { background: #ffffff; border: 0.5px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 12px 14px; }
+    .dash-detalle-label { font-size: 0.68rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; }
+    .dash-detalle-big { font-size: 1.5rem; font-weight: 500; margin-top: 4px; font-variant-numeric: tabular-nums; line-height: 1.15; }
+    .dash-detalle-big.warn { color: #b45309; }
+    .dash-detalle-big.ok { color: #047857; }
+    .dash-detalle-big.muted { color: #9ca3af; font-size: 1rem; font-weight: 400; }
+    .dash-detalle-sublabel { font-size: 0.62rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.03em; }
+    .dash-detalle-mid { font-size: 1rem; font-weight: 500; font-variant-numeric: tabular-nums; margin-top: 2px; }
+    .dash-detalle-mid.danger { color: #b91c1c; }
+    .dash-detalle-mid.ok { color: #047857; }
+    .dash-detalle-mid.muted { color: #d1d5db; font-weight: 400; }
 
     .dash-resumen-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
     .dash-resumen-block { background: #f9fafb; border-radius: 10px; padding: 11px 13px; }
@@ -896,6 +1021,19 @@
     private System.Threading.Timer? equipoTimer;
     private ApiClient.DashboardResumenDiaDto? resumenDia;
     private System.Threading.Timer? resumenDiaTimer;
+    private ApiClient.DashboardEquipoItem? empDetalle;
+
+    private void OpenEmpDetalle(ApiClient.DashboardEquipoItem emp)
+    {
+        empDetalle = emp;
+        StateHasChanged();
+    }
+
+    private void CloseEmpDetalle()
+    {
+        empDetalle = null;
+        StateHasChanged();
+    }
 
 
     // Cache-buster para la imagen de fondo (cuando se reemplaza, sube este numero
