@@ -5,6 +5,7 @@
 @inject ToastService ToastService
 @inject ApiClient Api
 @inject BrandSettingsService BrandSettings
+@inject OperatorService Operator
 
 <div class="login-card" role="main">
     <div class="login-header" style="@HeaderStyle">
@@ -92,6 +93,10 @@
         try
         {
             await AuthService.LoginAsync(loginModel.Username, loginModel.Password);
+            // 2026-06-25: cada login fresco vuelve a pedir PIN, aunque el navegador
+            // tenga una marca reciente. Sin esto, si dos personas comparten la PC
+            // y la segunda entra dentro de los 60 min, queda como el operador anterior.
+            await Operator.LockAsync();
             Navigation.NavigateTo("/", forceLoad: true);
         }
         catch (Exception ex)
