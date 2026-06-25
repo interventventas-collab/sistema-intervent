@@ -892,6 +892,12 @@
                     </button>
                 }
             }
+            @* 2026-06-25: reloj chiquito en el topbar (se sacó la card grande del dashboard).
+               Muestra día + hora AR. Se refresca cada 30s via timer del MainLayout. *@
+            <span title="Hora Argentina" style="margin-left:0.7rem; display:inline-flex; flex-direction:column; align-items:flex-start; line-height:1.15; font-variant-numeric:tabular-nums;">
+                <span style="font-size:0.8rem; font-weight:500; color:#1f2937;">@_arNow.ToString("HH:mm")</span>
+                <span style="font-size:0.65rem; color:#6b7280; text-transform:capitalize;">@_arNow.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-AR"))</span>
+            </span>
         </div>
         <div class="topbar-actions">
             @* Atajos del modulo Cafe — stack vertical para que entren varios sin agrandar el topbar.
@@ -1420,6 +1426,9 @@
 
     // 2026-06-15: pantalla bloqueante de PIN
     private System.Threading.Timer? _pinLockTimer;
+    // 2026-06-25: reloj chiquito del topbar (reemplaza al card grande del dashboard).
+    private System.Threading.Timer? _clockTimer;
+    private DateTime _arNow = DateTime.UtcNow.AddHours(-3);
     private bool mostrarPinLock => requierePinLock && !Operator.IsValidated;
     /// <summary>2026-06-15: aplica a admin/oficina/cafe. Deposito-only queda exento
     /// para no romper su flujo (cargan stock, no ventas con identidad).</summary>
@@ -1836,6 +1845,15 @@
         // 2026-06-23: chequear estado WhatsApp en background. Primera vez ya, después cada 60s.
         _ = RefrescarWaStatus();
         _waStatusTimer = new System.Threading.Timer(_ => _ = RefrescarWaStatus(), null, 60000, 60000);
+
+        // 2026-06-25: reloj del topbar — refresca cada 30s (no necesitamos segundo a segundo
+        // para mostrar HH:mm, alcanza con minuto).
+        _arNow = DateTime.UtcNow.AddHours(-3);
+        _clockTimer = new System.Threading.Timer(_ => InvokeAsync(() =>
+        {
+            _arNow = DateTime.UtcNow.AddHours(-3);
+            StateHasChanged();
+        }), null, 30000, 30000);
     }
 
     protected override void OnAfterRender(bool firstRender)
@@ -2061,6 +2079,7 @@
     {
         try { cmdPalRef?.Dispose(); } catch { }
         try { _pinLockTimer?.Dispose(); } catch { }
+        try { _clockTimer?.Dispose(); } catch { }
         try { _waStatusTimer?.Dispose(); } catch { }
         SyncProgress.OnChange -= OnSyncProgressChanged;
         UploadProgress.OnChanged -= OnUploadProgressChanged;

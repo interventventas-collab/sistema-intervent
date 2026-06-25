@@ -21,66 +21,186 @@
 {
 @* 2026-06-22: rediseño Mac/iOS — tarjetas blancas, bordes finos, iconos SVG uniformes.
    Las acciones y dropdowns NO cambian: misma logica, mismas rutas. *@
-@* 2026-06-25: el card "Operador" se sacó (era duplicado del botón del topbar).
-   El nombre del operador sigue arriba en el topbar; para cambiar, candadito 🔒. *@
-@* Fila superior: dolar + reloj AR/ES combinado + postits (responsive) *@
+@* 2026-06-25: cards "Operador", "Hora" y "Dólar" grandes se sacaron del dashboard.
+   El nombre del operador y la hora viven ahora en el topbar; el dólar va en el strip mini
+   de arriba. Lo que importa al arrancar el día (equipo + cheques + Meli) sube de prioridad. *@
+
+@* ═══ Strip mini de stats: dólar + balanza + stock (compacto, ocupa 1 línea) ═══ *@
+<div class="dash-strip">
+    <div class="dash-strip-item">
+        <div class="dash-strip-ico" style="background:#eaf3de; color:#16a34a;">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+        </div>
+        <div class="dash-strip-body">
+            <span class="dash-strip-label">Dólar BNA @(dolar?.Fecha is null ? "" : "· " + dolar.Fecha)</span>
+            @if (dolar is not null && dolar.Compra is not null && dolar.Venta is not null)
+            {
+                <span class="dash-strip-value">
+                    <span style="color:#16a34a;">$@FormatMoney(dolar.Compra.Value)</span>
+                    <span style="color:#9ca3af; margin:0 4px;">/</span>
+                    <span style="color:#dc2626;">$@FormatMoney(dolar.Venta.Value)</span>
+                </span>
+            }
+            else
+            {
+                <span class="dash-strip-value" style="color:#9ca3af;">…</span>
+            }
+        </div>
+    </div>
+    <div class="dash-strip-item">
+        <div class="dash-strip-ico" style="background:#faeeda; color:#d97706;">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20h10"/><path d="M6 6l6-1l6 1"/><path d="M12 3v17"/><path d="M9 12L6 6l-3 6a3 3 0 006 0z"/><path d="M21 12l-3-6l-3 6a3 3 0 006 0z"/></svg>
+        </div>
+        <div class="dash-strip-body">
+            <span class="dash-strip-label">Balanza @(coffeeKg is not null ? coffeeKg.PeriodStart.ToString("MMM", new System.Globalization.CultureInfo("es-AR")) : "")</span>
+            <span class="dash-strip-value">@(coffeeKg is null ? "…" : $"{FormatKg(coffeeKg.KgTotal)} kg")</span>
+        </div>
+    </div>
+    <div class="dash-strip-item">
+        <div class="dash-strip-ico" style="background:#eaf3de; color:#16a34a;">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0022 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/></svg>
+        </div>
+        <div class="dash-strip-body">
+            <span class="dash-strip-label">Stock total @(coffeeStock is null ? "" : $"· {coffeeStock.VariedadesConStock}/{coffeeStock.Variedades} variedades")</span>
+            <span class="dash-strip-value">@(coffeeStock is null ? "…" : $"{FormatKg(coffeeStock.KgTotal)} kg")</span>
+        </div>
+    </div>
+</div>
+
+@* ═══ Card: equipo trabajando ahora ═══ *@
+<div class="dash-card">
+    <div class="dash-card-title">
+        <span class="dash-card-title-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></span>
+        Equipo trabajando ahora
+        <span class="dash-card-title-pill">en vivo</span>
+        @if (equipoResp?.Resumen is not null)
+        {
+            <span class="dash-equipo-summary">
+                <span><span class="dash-dot" style="background:#16a34a;"></span>@equipoResp.Resumen.Trabajando trabajando</span>
+                <span><span class="dash-dot" style="background:#3b82f6;"></span>@equipoResp.Resumen.Salio salió</span>
+                <span><span class="dash-dot" style="background:#dc2626;"></span>@equipoResp.Resumen.SinFichar sin fichar</span>
+            </span>
+        }
+    </div>
+    @if (equipoLoading && equipoResp is null)
+    {
+        <div class="dash-card-sub">Cargando equipo…</div>
+    }
+    else if (equipoResp is not null && equipoResp.Items.Count > 0)
+    {
+        <div class="dash-equipo-grid">
+            @foreach (var emp in equipoResp.Items)
+            {
+                <div class="dash-emp-tile">
+                    <div class="dash-emp-head">
+                        <div class="dash-emp-avatar" style="background:@OperatorService.ShortBgColor(emp.ApodoKiosko ?? emp.Nombre);">@AvatarLabel(emp)</div>
+                        <div style="min-width:0;">
+                            <div class="dash-emp-name">@ShortName(emp.Nombre)</div>
+                            <div class="dash-emp-status">
+                                <span class="dash-dot" style="background:@EstadoColor(emp.Estado);"></span>@EstadoTexto(emp)
+                            </div>
+                        </div>
+                    </div>
+                    <div class="dash-emp-money">
+                        <div class="dash-emp-col">
+                            <span class="dash-emp-col-label">Rinde</span>
+                            <span class="dash-emp-col-value @(emp.PorRendir > 0 ? "warn" : "muted")">@(emp.PorRendir > 0 ? $"${FormatMoney(emp.PorRendir)}" : "—")</span>
+                        </div>
+                        <div class="dash-emp-col">
+                            <span class="dash-emp-col-label">Le debo</span>
+                            <span class="dash-emp-col-value @(emp.LeDebo > 0 ? "danger" : "muted")">@(emp.LeDebo > 0 ? $"${FormatMoney(emp.LeDebo)}" : "—")</span>
+                        </div>
+                        <div class="dash-emp-col">
+                            <span class="dash-emp-col-label">Pagué</span>
+                            <span class="dash-emp-col-value @(emp.Pagado > 0 ? "ok" : "muted")">@(emp.Pagado > 0 ? $"${FormatMoney(emp.Pagado)}" : "—")</span>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="dash-card-sub">No hay empleados activos para mostrar.</div>
+    }
+</div>
+
+@* ═══ Card: resumen del día (cheques + saldo Galicia + preguntas MeLi) ═══ *@
+<div class="dash-card">
+    <div class="dash-card-title">
+        <span class="dash-card-title-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11H5a2 2 0 00-2 2v7a2 2 0 002 2h14a2 2 0 002-2v-7a2 2 0 00-2-2h-4"/><path d="M9 11V7a3 3 0 016 0v4"/></svg></span>
+        Resumen del día
+        <span class="dash-card-title-pill">@arTime.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-AR"))</span>
+    </div>
+    <div class="dash-resumen-grid">
+        @* Cheques a cubrir hoy *@
+        <div class="dash-resumen-block" style="cursor:pointer;" @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/cheques")' title="Ir a cheques">
+            <div class="dash-resumen-head">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
+                Cheques a cubrir hoy
+                @if (resumenDia?.ChequesHoyCantidad > 0)
+                {
+                    <span class="dash-badge-warn">@resumenDia.ChequesHoyCantidad</span>
+                }
+            </div>
+            <div class="dash-resumen-big">@(resumenDia is null ? "…" : (resumenDia.ChequesHoyCantidad == 0 ? "Nada hoy" : $"${FormatMoney(resumenDia.ChequesHoyImporte)}"))</div>
+            @if (resumenDia is not null && resumenDia.ChequesProxima7DiasCantidad > 0)
+            {
+                <div class="dash-resumen-line"><span>Próximos 7 días</span><span>@resumenDia.ChequesProxima7DiasCantidad cheques · $@FormatMoney(resumenDia.ChequesProxima7DiasImporte)</span></div>
+            }
+        </div>
+
+        @* Saldo Banco Galicia *@
+        <div class="dash-resumen-block" style="cursor:pointer;" @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/extracto-banco")' title="Ir al extracto">
+            <div class="dash-resumen-head">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>
+                Saldo Banco Galicia
+            </div>
+            @if (saldoBanco is null || saldoBanco.CantidadMovimientos == 0)
+            {
+                <div class="dash-resumen-big" style="font-size:14px; color:#9ca3af;">Subí el extracto →</div>
+            }
+            else
+            {
+                <div class="dash-resumen-big">$@FormatMoney(saldoBanco.Saldo)</div>
+                <div class="dash-resumen-line"><span>al @saldoBanco.UltimaFecha.ToString("dd/MM/yyyy")</span><span>@(saldoBanco.UltimoImportadoAt is null ? "" : $"act. {FormatearUltimaActualizacion(saldoBanco.UltimoImportadoAt.Value)}")</span></div>
+            }
+        </div>
+
+        @* Preguntas MeLi sin responder *@
+        <div class="dash-resumen-block" style="cursor:pointer;" @onclick='() => Navigation.NavigateTo("/meli-preguntas")' title="Ir a preguntas MeLi">
+            <div class="dash-resumen-head">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                Preguntas MeLi sin responder
+                @if (resumenDia?.PreguntasMeliPendientes > 0)
+                {
+                    <span class="dash-badge-warn">@resumenDia.PreguntasMeliPendientes</span>
+                }
+            </div>
+            <div class="dash-resumen-big">@(resumenDia is null ? "…" : (resumenDia.PreguntasMeliPendientes == 0 ? "Al día" : resumenDia.PreguntasMeliPendientes.ToString()))</div>
+            @if (resumenDia is not null && resumenDia.PreguntasMeliNoVistas > 0 && resumenDia.PreguntasMeliNoVistas != resumenDia.PreguntasMeliPendientes)
+            {
+                <div class="dash-resumen-line"><span>Sin abrir</span><span>@resumenDia.PreguntasMeliNoVistas</span></div>
+            }
+        </div>
+
+        @* Ventas del mes (un cuarto bloque útil) *@
+        <div class="dash-resumen-block" style="cursor:pointer;" @onclick='() => Navigation.NavigateTo("/cafe/ventas")' title="Ir a ventas">
+            <div class="dash-resumen-head">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                Ventas del mes
+            </div>
+            <div class="dash-resumen-big">@(salesSummary is null ? "…" : $"${FormatMoney(salesSummary.MonthlySalesTotal)}")</div>
+            @if (salesSummary is not null)
+            {
+                <div class="dash-resumen-line"><span>@salesSummary.MonthlySalesCount comprobantes</span><span>@salesSummary.PeriodStart.ToString("MMMM", new System.Globalization.CultureInfo("es-AR"))</span></div>
+            }
+        </div>
+    </div>
+</div>
+
+@* ═══ Fila vieja: solo postits + (los otros widgets se fueron al strip) ═══ *@
 <div class="dashboard-top-grid dashboard-modern">
-    @* Widget Dolar BNA *@
-    <div class="dashboard-detail-card mac-card">
-        <div class="mac-card-header">
-            <div class="mac-card-iconbox" style="background:#eaf3de; color:#16a34a;">
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
-            </div>
-            <span class="mac-card-eyebrow">Dólar Nación</span>
-            <span class="mac-card-meta">@(dolar?.Fecha ?? "…")</span>
-        </div>
-        @if (dolarLoading && dolar is null)
-        {
-            <div class="mac-card-sub" style="margin-top:8px;">Consultando BNA…</div>
-        }
-        else if (dolar is not null && dolar.Compra is not null && dolar.Venta is not null)
-        {
-            <div style="display:flex; gap:18px; margin-top:6px;">
-                <div>
-                    <div class="mac-card-sub" style="font-size:0.7rem;">Compra</div>
-                    <div style="font-size:1.05rem; font-weight:500; color:#16a34a; font-variant-numeric:tabular-nums;">$@FormatMoney(dolar.Compra.Value)</div>
-                </div>
-                <div>
-                    <div class="mac-card-sub" style="font-size:0.7rem;">Venta</div>
-                    <div style="font-size:1.05rem; font-weight:500; color:#dc2626; font-variant-numeric:tabular-nums;">$@FormatMoney(dolar.Venta.Value)</div>
-                </div>
-            </div>
-        }
-        else
-        {
-            <div class="mac-card-sub" style="color:#dc2626; margin-top:8px;">@(dolar?.Error ?? "No se pudo obtener la cotizacion")</div>
-        }
-    </div>
-
-    @* Reloj combinado: Argentina + España en un solo modulo *@
-    <div class="dashboard-detail-card mac-card dashboard-clock-card">
-        <div class="mac-card-header">
-            <div class="mac-card-iconbox" style="background:#f1efe8; color:#5f5e5a;">
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            </div>
-            <span class="mac-card-eyebrow">Hora</span>
-        </div>
-        <div class="mac-clock-row" style="margin-top:6px;">
-            <span class="mac-clock-pill">AR</span>
-            <div>
-                <div class="dashboard-clock-time">@arTime.ToString("HH:mm:ss")</div>
-                <div class="dashboard-clock-date">@arTime.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-AR"))</div>
-            </div>
-        </div>
-        <div class="mac-clock-row" style="margin-top:6px;">
-            <span class="mac-clock-pill mac-clock-pill-muted">ES</span>
-            <div>
-                <div class="dashboard-clock-time" style="color:#5f5e5a;">@esTime.ToString("HH:mm:ss")</div>
-                <div class="dashboard-clock-date">@esTime.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-ES"))</div>
-            </div>
-        </div>
-    </div>
-
     @* Postits: block de notas compartido (componente reusable, scope=dashboard) *@
     <PostitsWidget Scope="dashboard" Title="Postits del equipo" CardStyle="max-height: 220px;" />
 
@@ -175,6 +295,46 @@
 </div>
 
 <style>
+    /* ═══════════════ 2026-06-25 — Dashboard nuevo: strip mini + equipo + resumen ═══════════════ */
+    .dash-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 14px; }
+    .dash-strip-item { background: #ffffff; border: 0.5px solid rgba(0,0,0,0.08); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; }
+    .dash-strip-ico { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .dash-strip-body { display: flex; flex-direction: column; min-width: 0; }
+    .dash-strip-label { font-size: 0.68rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; }
+    .dash-strip-value { font-size: 0.95rem; font-weight: 500; color: #1f2937; font-variant-numeric: tabular-nums; }
+
+    .dash-card { background: #ffffff; border: 0.5px solid rgba(0,0,0,0.08); border-radius: 14px; padding: 14px 16px; margin-bottom: 14px; }
+    .dash-card-title { display: flex; align-items: center; gap: 8px; font-size: 0.95rem; font-weight: 500; margin: 0 0 12px; color: #1f2937; }
+    .dash-card-title-ico { color: #6b7280; display: inline-flex; }
+    .dash-card-title-pill { font-size: 0.7rem; color: #6b7280; background: #f3f4f6; padding: 2px 8px; border-radius: 8px; font-weight: 400; }
+    .dash-card-sub { color: #6b7280; font-size: 0.85rem; }
+    .dash-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+    .dash-equipo-summary { margin-left: auto; display: flex; gap: 10px; font-size: 0.7rem; color: #6b7280; }
+    .dash-equipo-summary span { display: inline-flex; align-items: center; gap: 5px; }
+
+    .dash-equipo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+    .dash-emp-tile { border: 0.5px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; background: #ffffff; }
+    .dash-emp-head { display: flex; align-items: center; gap: 9px; min-width: 0; }
+    .dash-emp-avatar { width: 32px; height: 32px; border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; font-size: 0.78rem; font-weight: 500; flex-shrink: 0; }
+    .dash-emp-name { font-size: 0.92rem; font-weight: 500; line-height: 1.1; color: #1f2937; }
+    .dash-emp-status { font-size: 0.72rem; color: #6b7280; margin-top: 2px; display: flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; }
+    .dash-emp-money { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 0.5px dashed rgba(0,0,0,0.10); padding-top: 7px; gap: 4px; }
+    .dash-emp-col { display: flex; flex-direction: column; min-width: 0; }
+    .dash-emp-col-label { font-size: 0.62rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.03em; line-height: 1.2; }
+    .dash-emp-col-value { font-size: 0.82rem; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dash-emp-col-value.muted { color: #d1d5db; font-weight: 400; }
+    .dash-emp-col-value.warn { color: #b45309; }
+    .dash-emp-col-value.danger { color: #b91c1c; }
+    .dash-emp-col-value.ok { color: #047857; }
+
+    .dash-resumen-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+    .dash-resumen-block { background: #f9fafb; border-radius: 10px; padding: 11px 13px; }
+    .dash-resumen-head { display: flex; align-items: center; gap: 7px; font-size: 0.68rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; }
+    .dash-resumen-big { font-size: 1.05rem; font-weight: 500; color: #1f2937; margin-top: 5px; font-variant-numeric: tabular-nums; }
+    .dash-resumen-line { font-size: 0.78rem; color: #1f2937; margin-top: 3px; display: flex; justify-content: space-between; }
+    .dash-resumen-line span:last-child { font-variant-numeric: tabular-nums; color: #6b7280; }
+    .dash-badge-warn { font-size: 0.68rem; padding: 2px 6px; background: #fef3c7; color: #92400e; border-radius: 6px; font-weight: 500; margin-left: auto; }
+
     /* ═══════════════ 2026-06-22 — Look Mac/iOS para tarjetas del Dashboard ═══════════════
        Override scoped a .dashboard-modern: blanco, borde fino, redondeo grande, iconos pareja. */
     .dashboard-modern .dashboard-detail-card.mac-card,
@@ -730,6 +890,13 @@
     private Web.Models.SaldoBancoDto? saldoBanco;
     private Web.Models.FilesStatsDto? docStats;
 
+    // 2026-06-25: dashboard nuevo — equipo en vivo + resumen del día
+    private ApiClient.DashboardEquipoResponse? equipoResp;
+    private bool equipoLoading = true;
+    private System.Threading.Timer? equipoTimer;
+    private ApiClient.DashboardResumenDiaDto? resumenDia;
+    private System.Threading.Timer? resumenDiaTimer;
+
 
     // Cache-buster para la imagen de fondo (cuando se reemplaza, sube este numero
     // y el navegador recarga la URL en vez de usar la version cacheada).
@@ -783,6 +950,14 @@
 
         // Stats de la carpeta de Documentacion para la card del dashboard.
         _ = LoadDocStatsAsync();
+
+        // 2026-06-25: equipo trabajando ahora (refresca cada 30s) + resumen del día (cada 60s)
+        _ = LoadEquipoAsync();
+        equipoTimer = new System.Threading.Timer(_ => InvokeAsync(LoadEquipoAsync), null,
+            TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+        _ = LoadResumenDiaAsync();
+        resumenDiaTimer = new System.Threading.Timer(_ => InvokeAsync(LoadResumenDiaAsync), null,
+            TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
 
 
         try
@@ -870,6 +1045,56 @@
         StateHasChanged();
     }
 
+    private async Task LoadEquipoAsync()
+    {
+        try
+        {
+            equipoResp = await Api.GetDashboardEquipoAsync();
+        }
+        catch { /* mantenemos lo anterior si falla */ }
+        equipoLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task LoadResumenDiaAsync()
+    {
+        try
+        {
+            resumenDia = await Api.GetDashboardResumenDiaAsync();
+        }
+        catch { /* idem */ }
+        StateHasChanged();
+    }
+
+    private static string AvatarLabel(ApiClient.DashboardEquipoItem emp)
+    {
+        var src = emp.ApodoKiosko ?? emp.Nombre;
+        return OperatorService.ShortLabel(src);
+    }
+
+    private static string ShortName(string nombre)
+    {
+        if (string.IsNullOrWhiteSpace(nombre)) return "";
+        var first = nombre.Trim().Split(' ', 2)[0];
+        return char.ToUpper(first[0]) + first.Substring(1).ToLower();
+    }
+
+    private static string EstadoColor(string estado) => estado switch
+    {
+        "trabajando" => "#16a34a",
+        "salio" => "#3b82f6",
+        "sin-fichar" => "#dc2626",
+        _ => "#9ca3af"
+    };
+
+    private static string EstadoTexto(ApiClient.DashboardEquipoItem emp) => emp.Estado switch
+    {
+        "trabajando" => $"entró {emp.HoraEntrada}" + (emp.Trabajado is null ? "" : $" · {emp.Trabajado}"),
+        "salio" => $"salió {emp.HoraSalida}",
+        "sin-fichar" => "sin fichar hoy",
+        _ => "no ficha"
+    };
+
     /// <summary>Subir la imagen elegida como fondo de la card "Café FRIKAF".</summary>
     private async Task OnCafeBgFilePicked(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
     {
@@ -954,6 +1179,8 @@
         quoteTimer?.Dispose();
         coffeeTimer?.Dispose();
         salesSummaryTimer?.Dispose();
+        equipoTimer?.Dispose();
+        resumenDiaTimer?.Dispose();
         Company.OnChange -= OnCompanyChanged;
     }
 

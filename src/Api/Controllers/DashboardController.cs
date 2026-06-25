@@ -218,4 +218,170 @@ public class DashboardController : ControllerBase
             generatedAt = DateTime.UtcNow
         });
     }
+
+    // ════════════════════════════════════════════════════════════════════════════════
+    // 2026-06-25: Dashboard NUEVO — el "Equipo trabajando ahora" y el "Resumen del día"
+    // ════════════════════════════════════════════════════════════════════════════════
+
+    public record DashboardEquipoItem(
+        int NomEmpleadoId, string Nombre, string? ApodoKiosko, string? ApodoRepartidor,
+        string Estado, string? HoraEntrada, string? HoraSalida, string? Trabajado,
+        decimal PorRendir, decimal Pagado, decimal LeDebo, bool TieneRepartidor);
+
+    /// <summary>
+    /// 2026-06-25: Devuelve el estado actual del equipo cruzando las 3 tablas
+    /// (nominas + fichaje + repartidores) por NomEmpleadoId. Para cada empleado activo
+    /// devuelve: estado de fichaje del día, hora entrada/salida, tiempo trabajado,
+    /// monto pendiente de rendir (si es repartidor), pagado del mes, y le-debo (neto
+    /// liquidado − pagado).
+    /// </summary>
+    [HttpGet("equipo-dia")]
+    public async Task<IActionResult> GetEquipoDia()
+    {
+        var arNow = DateTime.UtcNow.AddHours(-3);
+        var hoy = arNow.Date;
+        var anio = arNow.Year;
+        var mes = arNow.Month;
+
+        var emps = await _db.NomEmpleados.Where(e => e.IsActive).ToListAsync();
+        var fichas = await _db.HorasExtrasEmpleados.Where(f => f.NomEmpleadoId != null).ToListAsync();
+        var repartidores = await _db.CafeRepartidores.Where(r => r.NomEmpleadoId != null).ToListAsync();
+        var fichaIds = fichas.Select(f => f.Id).ToList();
+        var regsHoy = await _db.HorasExtrasRegistros.Where(r => r.Fecha == hoy && fichaIds.Contains(r.EmpleadoId)).ToListAsync();
+        var repIds = repartidores.Select(r => r.Id).ToList();
+        var pendientesRepartidor = await _db.CafeCobranzasPendientes
+            .Where(p => p.Estado == "PENDIENTE" && repIds.Contains(p.RepartidorId))
+            .GroupBy(p => p.RepartidorId)
+            .Select(g => new { RepartidorId = g.Key, Total = g.Sum(x => x.Importe) })
+            .ToListAsync();
+        var liqsDelMes = await _db.NomLiquidaciones.Where(l => l.Anio == anio && l.Mes == mes).ToListAsync();
+        var liqIds = liqsDelMes.Select(l => l.Id).ToList();
+        var pagosDelMes = await _db.NomPagos.Where(p => liqIds.Contains(p.LiquidacionId)).ToListAsync();
+
+        var fichaByEmp = fichas.ToDictionary(f => f.NomEmpleadoId!.Value, f => f);
+        var repByEmp = repartidores.GroupBy(r => r.NomEmpleadoId!.Value).ToDictionary(g => g.Key, g => g.First());
+        var pendByRep = pendientesRepartidor.ToDictionary(p => p.RepartidorId, p => p.Total);
+        var liqByEmp = liqsDelMes.ToDictionary(l => l.EmpleadoId, l => l);
+        var pagosByLiq = pagosDelMes.GroupBy(p => p.LiquidacionId).ToDictionary(g => g.Key, g => g.Sum(x => x.Monto));
+        var regByFicha = regsHoy.ToDictionary(r => r.EmpleadoId, r => r);
+
+        var result = emps.Select(e =>
+        {
+            string estado = "no_ficha";
+            string? horaEntrada = null;
+            string? horaSalida = null;
+            string? trabajado = null;
+            string? apodoKiosko = null;
+            string? apodoRepartidor = null;
+
+            if (fichaByEmp.TryGetValue(e.Id, out var ficha))
+            {
+                apodoKiosko = ficha.Nombre;
+                if (regByFicha.TryGetValue(ficha.Id, out var reg))
+                {
+                    if (reg.HoraEntrada.HasValue)
+                    {
+                        horaEntrada = reg.HoraEntrada.Value.ToString(@"hh\:mm");
+                        if (reg.HoraSalida.HasValue)
+                        {
+                            estado = "salio";
+                            horaSalida = reg.HoraSalida.Value.ToString(@"hh\:mm");
+                            var t = reg.HoraSalida.Value - reg.HoraEntrada.Value;
+                            trabajado = $"{(int)t.TotalHours}h {t.Minutes}m";
+                        }
+                        else
+                        {
+                            estado = "trabajando";
+                            var ahora = arNow.TimeOfDay;
+                            if (ahora > reg.HoraEntrada.Value)
+                            {
+                                var t = ahora - reg.HoraEntrada.Value;
+                                trabajado = $"{(int)t.TotalHours}h {t.Minutes}m";
+                            }
+                        }
+                    }
+                    else estado = "sin-fichar";
+                }
+                else estado = "sin-fichar";
+            }
+
+            decimal porRendir = 0m;
+            bool tieneRepartidor = repByEmp.TryGetValue(e.Id, out var rep);
+            if (tieneRepartidor && rep != null)
+            {
+                apodoRepartidor = rep.Nombre;
+                if (pendByRep.TryGetValue(rep.Id, out var monto)) porRendir = monto;
+            }
+
+            decimal neto = 0m, pagado = 0m;
+            if (liqByEmp.TryGetValue(e.Id, out var liq))
+            {
+                neto = liq.NetoAPagar;
+                pagosByLiq.TryGetValue(liq.Id, out pagado);
+            }
+            decimal leDebo = neto - pagado;
+            if (leDebo < 0) leDebo = 0;
+
+            return new DashboardEquipoItem(
+                e.Id, e.Nombre, apodoKiosko, apodoRepartidor,
+                estado, horaEntrada, horaSalida, trabajado,
+                porRendir, pagado, leDebo, tieneRepartidor);
+        })
+        .OrderByDescending(x => x.Estado == "trabajando")
+        .ThenByDescending(x => x.Estado == "salio")
+        .ThenBy(x => x.Nombre)
+        .ToList();
+
+        var resumen = new
+        {
+            trabajando = result.Count(r => r.Estado == "trabajando"),
+            salio = result.Count(r => r.Estado == "salio"),
+            sinFichar = result.Count(r => r.Estado == "sin-fichar"),
+            noFicha = result.Count(r => r.Estado == "no_ficha")
+        };
+        return Ok(new { items = result, resumen, fecha = hoy });
+    }
+
+    public record DashboardResumenDiaDto(
+        int ChequesHoyCantidad, decimal ChequesHoyImporte,
+        int ChequesProxima7DiasCantidad, decimal ChequesProxima7DiasImporte,
+        int PreguntasMeliPendientes, int PreguntasMeliNoVistas);
+
+    /// <summary>
+    /// 2026-06-25: Resumen del día para el dashboard nuevo. Cheques que tenés que cubrir
+    /// hoy + próximos 7 días + preguntas MeLi sin responder.
+    /// </summary>
+    [HttpGet("resumen-dia")]
+    public async Task<IActionResult> GetResumenDia()
+    {
+        var arNow = DateTime.UtcNow.AddHours(-3);
+        var hoy = arNow.Date;
+        var en7 = hoy.AddDays(7);
+
+        var chequesHoy = await _db.CafeChequesBanco
+            .Where(c => c.Tipo == "EMITIDO"
+                && (c.Estado == "Aceptado" || c.Estado == "Disponible")
+                && c.FechaPago.HasValue && c.FechaPago.Value.Date == hoy)
+            .GroupBy(_ => 1)
+            .Select(g => new { Cant = g.Count(), Importe = g.Sum(x => x.Importe) })
+            .FirstOrDefaultAsync();
+
+        var chequesProxima7 = await _db.CafeChequesBanco
+            .Where(c => c.Tipo == "EMITIDO"
+                && (c.Estado == "Aceptado" || c.Estado == "Disponible")
+                && c.FechaPago.HasValue
+                && c.FechaPago.Value.Date > hoy
+                && c.FechaPago.Value.Date <= en7)
+            .GroupBy(_ => 1)
+            .Select(g => new { Cant = g.Count(), Importe = g.Sum(x => x.Importe) })
+            .FirstOrDefaultAsync();
+
+        var preguntasMeli = await _db.MeliQuestions.CountAsync(q => q.Status == "UNANSWERED");
+        var preguntasMeliNoVistas = await _db.MeliQuestions.CountAsync(q => q.Status == "UNANSWERED" && q.SeenAt == null);
+
+        return Ok(new DashboardResumenDiaDto(
+            chequesHoy?.Cant ?? 0, chequesHoy?.Importe ?? 0m,
+            chequesProxima7?.Cant ?? 0, chequesProxima7?.Importe ?? 0m,
+            preguntasMeli, preguntasMeliNoVistas));
+    }
 }

@@ -2098,6 +2098,27 @@ public class ApiClient
     public async Task<SalesSummaryDto?> GetSalesSummaryAsync()
         => await GetAsync<SalesSummaryDto>("/api/dashboard/sales-summary");
 
+    // ════════════════════════════════════════════════════════════════════════════════
+    // 2026-06-25: Dashboard nuevo — equipo trabajando ahora + resumen del día
+    // ════════════════════════════════════════════════════════════════════════════════
+    public record DashboardEquipoItem(
+        int NomEmpleadoId, string Nombre, string? ApodoKiosko, string? ApodoRepartidor,
+        string Estado, string? HoraEntrada, string? HoraSalida, string? Trabajado,
+        decimal PorRendir, decimal Pagado, decimal LeDebo, bool TieneRepartidor);
+    public record DashboardEquipoResumen(int Trabajando, int Salio, int SinFichar, int NoFicha);
+    public record DashboardEquipoResponse(List<DashboardEquipoItem> Items, DashboardEquipoResumen Resumen, DateTime Fecha);
+
+    public async Task<DashboardEquipoResponse?> GetDashboardEquipoAsync()
+        => await GetAsync<DashboardEquipoResponse>("/api/dashboard/equipo-dia");
+
+    public record DashboardResumenDiaDto(
+        int ChequesHoyCantidad, decimal ChequesHoyImporte,
+        int ChequesProxima7DiasCantidad, decimal ChequesProxima7DiasImporte,
+        int PreguntasMeliPendientes, int PreguntasMeliNoVistas);
+
+    public async Task<DashboardResumenDiaDto?> GetDashboardResumenDiaAsync()
+        => await GetAsync<DashboardResumenDiaDto>("/api/dashboard/resumen-dia");
+
     /// <summary>
     /// Sube una imagen de marca (logo, fondo, etc) bajo una key. Si ya hay una con
     /// la misma key, se reemplaza. La imagen luego se sirve desde /api/branding/{key}.
