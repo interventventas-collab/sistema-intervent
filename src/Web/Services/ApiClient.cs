@@ -4379,31 +4379,6 @@ public class ApiClient
         return r is not null;
     }
 
-    /// <summary>Aplica un cheque EN_CARTERA (cargado manualmente o importado por Excel) a una cobranza nueva.
-    /// Reusa el shape de AsociarECheqRequest (ClienteId + Retenciones + Observaciones + Comprobantes).
-    /// Devuelve (cobranzaId, numero, error).</summary>
-    public async Task<(int? cobranzaId, string? numero, string? error)> AplicarChequeACobranzaAsync(int chequeId, AsociarECheqRequest req)
-    {
-        try
-        {
-            var resp = await _http.PostAsJsonAsync($"/api/cafe/cheques/{chequeId}/aplicar-a-cobranza", req);
-            if (resp.IsSuccessStatusCode)
-            {
-                using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
-                var root = doc.RootElement;
-                int? cid = root.TryGetProperty("cobranzaId", out var c) ? c.GetInt32() : null;
-                string? num = root.TryGetProperty("numero", out var n) ? n.GetString() : null;
-                return (cid, num, null);
-            }
-            string err = "Error";
-            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
-                  if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; }
-            catch { }
-            return (null, null, err);
-        }
-        catch (Exception ex) { return (null, null, ex.Message); }
-    }
-
     // ===== Estado de cuenta del cliente =====
     public async Task<EstadoCuentaDto?> GetEstadoCuentaClienteAsync(int clienteId)
         => await GetAsync<EstadoCuentaDto>($"/api/cafe/clientes/{clienteId}/estado-cuenta");
