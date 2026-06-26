@@ -21,6 +21,10 @@
                 <option value="finalizado">Finalizado</option>
                 <option value="cancelado">Cancelado</option>
             </select>
+            <button class="btn @(soloEnCalle ? "btn-primary" : "btn-secondary")" @onclick="() => soloEnCalle = !soloEnCalle"
+                    title="Mostrar solo lo entregado que falta retirar (equipos en la calle)">
+                🚚 En calle@(EnCalleCount > 0 ? $" ({EnCalleCount})" : "")
+            </button>
             <button class="btn btn-secondary" @onclick="ShowCondicionesEditor" title="Editar las condiciones que aparecen al pie del PDF">📝 Condiciones</button>
             <button class="btn btn-primary" @onclick="ShowCreate">+ Nueva Reserva</button>
         </div>
@@ -55,11 +59,21 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var r in reservas)
+                        @foreach (var r in ReservasMostradas())
                         {
                             var saldo = r.MontoTotal - r.Sena - r.MontoCobrado;
-                            <tr style="cursor: pointer;" @onclick="() => ShowEdit(r)">
-                                <td style="font-family: monospace; font-weight: 600;">@r.Numero</td>
+                            var enCalle = r.EntregadoPorRepartidorId.HasValue && !r.RetiradoPorRepartidorId.HasValue;
+                            var retiroVencido = enCalle && r.FechaRetiro.Date < DateTime.Today;
+                            <tr style="cursor: pointer; @(retiroVencido ? "background:#fef2f2;" : "")" @onclick="() => ShowEdit(r)">
+                                <td style="font-family: monospace; font-weight: 600;">
+                                    @r.Numero
+                                    @if (enCalle)
+                                    {
+                                        <div style="font-size:0.66rem; color:@(retiroVencido ? "#b91c1c" : "#9a3412"); font-weight:700; margin-top:0.15rem;">
+                                            🚚 @(retiroVencido ? "RETIRO VENCIDO" : "en calle") · retiro @r.FechaRetiro.ToString("dd/MM")
+                                        </div>
+                                    }
+                                </td>
                                 <td>
                                     <strong>@r.ClienteNombre</strong>
                                     @if (!string.IsNullOrEmpty(r.ClienteTelefono))
@@ -739,6 +753,17 @@
     private int asignarRepartidorId;
     private bool asignando;
     private string filtroEstado = "";
+    private bool soloEnCalle;
+
+    private bool EsEnCalle(AlqReservaDto r) => r.EntregadoPorRepartidorId.HasValue && !r.RetiradoPorRepartidorId.HasValue;
+    private int EnCalleCount => reservas?.Count(EsEnCalle) ?? 0;
+    private List<AlqReservaDto> ReservasMostradas()
+    {
+        if (reservas is null) return new();
+        var q = soloEnCalle ? reservas.Where(EsEnCalle) : reservas.AsEnumerable();
+        // En calle: ordenar por fecha de retiro (lo más urgente primero)
+        return soloEnCalle ? q.OrderBy(r => r.FechaRetiro).ToList() : q.ToList();
+    }
     private bool deepLinkApplied;
 
     // Form state

@@ -263,20 +263,21 @@
         }
 
 @* ─── ALQUILERES — 2026-06-26 ─── *@
-        // 2026-06-26: una vez ENTREGADO, sale de la lista de arriba del repartidor (para él ya está).
-        // Queda solo abajo en "Entregadas". El retiro será un re-escaneo aparte (otro día/momento).
-        var alqPendientes = alqReservas.Where(a => !a.Entregado).ToList();
+        // 2026-06-26: muestra los que faltan ENTREGAR + los que ya toca RETIRAR (fecha de retiro
+        // llegó o re-escaneó el QR). El resto de entregados quedan solo abajo en "Entregadas".
+        var alqPendientes = alqReservas.Where(a => !a.Entregado || a.ParaRetiro).ToList();
         @if (alqPendientes.Count > 0)
         {
             <div class="mp-section-title">📦 Alquileres <span class="badge" style="background:#7c3aed; color:white;">@alqPendientes.Count</span></div>
             @foreach (var a in alqPendientes)
             {
-                <div class="mp-card pendiente" style="background:white; border:2px solid #c4b5fd; border-left:6px solid #7c3aed; margin-bottom:0.7rem; padding:0.7rem;">
+                var esRetiro = a.Entregado && !a.Retirado;
+                <div class="mp-card pendiente" style="background:white; border:2px solid @(esRetiro ? "#fdba74" : "#c4b5fd"); border-left:6px solid @(esRetiro ? "#ea580c" : "#7c3aed"); margin-bottom:0.7rem; padding:0.7rem;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.3rem;">
                         <span style="background:#ede9fe; color:#5b21b6; font-size:0.72rem; font-weight:700; padding:0.15rem 0.5rem; border-radius:4px;">📦 Alquiler · @a.Numero</span>
-                        @if (a.Entregado && !a.Retirado)
+                        @if (esRetiro)
                         {
-                            <span style="background:#dcfce7; color:#166534; font-size:0.7rem; font-weight:800; padding:0.15rem 0.5rem; border-radius:999px;">✅ Entregado · falta retiro</span>
+                            <span style="background:#ffedd5; color:#9a3412; font-size:0.7rem; font-weight:800; padding:0.15rem 0.5rem; border-radius:999px;">🔙 PARA RETIRAR</span>
                         }
                         else
                         {
@@ -849,7 +850,7 @@
         string ClienteNombre, string? ClienteTelefono, string? Direccion,
         DateTime FechaEntrega, DateTime FechaRetiro,
         decimal MontoTotal, decimal Saldo, bool Entregado, bool Retirado, DateTime CargadoAt,
-        DateTime? EntregadoAt, DateTime? RetiradoAt, List<AlqEquipoDet>? Items);
+        DateTime? EntregadoAt, DateTime? RetiradoAt, List<AlqEquipoDet>? Items, bool ParaRetiro = false);
     public record AlqCobroItem(int ReservaId, decimal Importe, string Estado, DateTime FechaCobro);
     public record MisAlquileresResp(int RepartidorId, string Nombre, List<AlqReservaItem> Reservas, List<AlqCobroItem>? Cobros);
 
