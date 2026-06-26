@@ -837,6 +837,33 @@
         }
     </div>
 
+    @* Alquileres en calle — 2026-06-26 *@
+    <div class="dashboard-detail-card mac-stat-card accent-purple" style="cursor:pointer;" @onclick='() => Navigation.NavigateTo("/alquileres/reservas")' title="Ir a Reservas de alquileres">
+        <div class="mac-card-header">
+            <div class="mac-card-iconbox" style="background:#ede9fe; color:#7c3aed;">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+            </div>
+            <span class="mac-card-eyebrow" style="color:#3f3f46;">Alquileres en calle</span>
+        </div>
+        @if (alqResumen is null)
+        {
+            <div class="mac-card-sub">Cargando…</div>
+        }
+        else
+        {
+            <div class="mac-card-bignum">@alqResumen.EnCalle <span style="font-size:0.85rem; font-weight:400; color:#6b7280;">afuera</span></div>
+            <div class="mac-card-sub">$@FormatMoney(alqResumen.MontoEnCalle) en equipos</div>
+            <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
+                <span style="font-size:0.72rem; font-weight:700; padding:0.12rem 0.5rem; border-radius:999px; background:#ffedd5; color:#9a3412;">🔙 A retirar hoy: @alqResumen.ARetirarHoy</span>
+                @if (alqResumen.Vencidos > 0)
+                {
+                    <span style="font-size:0.72rem; font-weight:700; padding:0.12rem 0.5rem; border-radius:999px; background:#fee2e2; color:#b91c1c;">⚠ Vencidos: @alqResumen.Vencidos</span>
+                }
+                <span style="font-size:0.72rem; font-weight:600; padding:0.12rem 0.5rem; border-radius:999px; background:#f3f4f6; color:#374151;">Hoy: @alqResumen.EntregasHoy entregas</span>
+            </div>
+        }
+    </div>
+
     @* Documentación importante — acceso directo + stats *@
     <div class="dashboard-detail-card mac-stat-card accent-purple" style="cursor:pointer;" @onclick='() => Navigation.NavigateTo("/documentacion")' title="Ir a Documentación importante">
         <div class="mac-card-header">
@@ -1022,6 +1049,8 @@
     private CoffeeStockKgDto? coffeeStock;
     private System.Threading.Timer? salesSummaryTimer;
     private SalesSummaryDto? salesSummary;
+    private System.Threading.Timer? alqResumenTimer;
+    private AlqDashboardResumen? alqResumen;
     private Web.Models.SaldoBancoDto? saldoBanco;
     private Web.Models.FilesStatsDto? docStats;
 
@@ -1099,6 +1128,11 @@
         // Stats de la carpeta de Documentacion para la card del dashboard.
         _ = LoadDocStatsAsync();
 
+        // 2026-06-26: resumen de alquileres en calle para su card (refresca cada 60s)
+        _ = LoadAlqResumenAsync();
+        alqResumenTimer = new System.Threading.Timer(_ => InvokeAsync(LoadAlqResumenAsync), null,
+            TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
+
         // 2026-06-25: equipo trabajando ahora (refresca cada 30s) + resumen del día (cada 60s)
         _ = LoadEquipoAsync();
         equipoTimer = new System.Threading.Timer(_ => InvokeAsync(LoadEquipoAsync), null,
@@ -1163,6 +1197,16 @@
         }
         catch { /* idem */ }
         StateHasChanged();
+    }
+
+    private async Task LoadAlqResumenAsync()
+    {
+        try
+        {
+            alqResumen = await Api.GetAlqResumenDashboardAsync();
+            StateHasChanged();
+        }
+        catch { }
     }
 
     private async Task LoadSalesSummaryAsync()
@@ -1327,6 +1371,7 @@
         quoteTimer?.Dispose();
         coffeeTimer?.Dispose();
         salesSummaryTimer?.Dispose();
+        alqResumenTimer?.Dispose();
         equipoTimer?.Dispose();
         resumenDiaTimer?.Dispose();
         Company.OnChange -= OnCompanyChanged;

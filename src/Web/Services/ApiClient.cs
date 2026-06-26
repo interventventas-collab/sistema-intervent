@@ -305,6 +305,9 @@ public class ApiClient
         return resp is not null;
     }
 
+    public async Task<AlqDashboardResumen?> GetAlqResumenDashboardAsync()
+        => await GetAsync<AlqDashboardResumen>("/api/alquileres/reservas/resumen-dashboard");
+
     // ===== Alquileres: Repartidor / Cobranzas pendientes (2026-06-26) =====
     /// <summary>URL (relativa) del PNG del QR de la reserva, para usar directo en un &lt;img src&gt;.</summary>
     public string AlqReservaQrUrl(int reservaId) => $"/api/alquileres/reservas/{reservaId}/qr";
