@@ -173,7 +173,9 @@ public class AlqRepartidorPublicController : ControllerBase
         decimal MontoTotal, decimal Saldo,
         bool Entregado, bool Retirado, DateTime CargadoAt,
         DateTime? EntregadoAt, DateTime? RetiradoAt,
-        List<ItemDto> Items);
+        List<ItemDto> Items,
+        // true si está entregado pero falta retirar Y ya toca (fecha de retiro llegó o se re-escaneó)
+        bool ParaRetiro = false);
 
     /// <summary>Lista de reservas de alquiler asignadas al repartidor (enlace fijo por su token publico).
     /// Asignacion estilo ventas: dueño = repartidor del ultimo escaneo 'cargado'. Sin PIN para mirar.</summary>
@@ -207,16 +209,27 @@ public class AlqRepartidorPublicController : ControllerBase
             .Where(x => mias.Contains(x.Id))
             .ToListAsync();
 
+        var hoyAr = DateTime.UtcNow.AddHours(-3).Date;
         var list = reservas
-            .Select(x => new MisReservaDto(
-                x.Id, x.Numero, x.PublicToken ?? "", x.Estado,
-                x.ClienteNav?.Nombre ?? "—", x.ClienteNav?.Telefono, x.DireccionEvento,
-                x.FechaEntrega, x.FechaRetiro,
-                x.MontoTotal, Math.Max(0m, x.MontoTotal - x.Sena - x.MontoCobrado),
-                x.EntregadoPorRepartidorId.HasValue, x.RetiradoPorRepartidorId.HasValue,
-                duenioActual.TryGetValue(x.Id, out var d) ? d.CreatedAt : x.CreatedAt,
-                x.EntregadoAt, x.RetiradoAt,
-                x.Items.Select(i => new ItemDto(i.Cantidad, i.EquipoNav?.Sku ?? "—", i.EquipoNav?.Nombre ?? "—")).ToList()))
+            .Select(x =>
+            {
+                var cargadoAt = duenioActual.TryGetValue(x.Id, out var d) ? d.CreatedAt : x.CreatedAt;
+                var entregado = x.EntregadoPorRepartidorId.HasValue;
+                var retirado = x.RetiradoPorRepartidorId.HasValue;
+                // "Para retirar" = entregado, falta retiro, y ya toca: o llegó la fecha de retiro,
+                // o el repartidor re-escaneó el QR después de haber entregado.
+                var paraRetiro = entregado && !retirado &&
+                    (x.FechaRetiro.Date <= hoyAr || (x.EntregadoAt.HasValue && cargadoAt > x.EntregadoAt.Value));
+                return new MisReservaDto(
+                    x.Id, x.Numero, x.PublicToken ?? "", x.Estado,
+                    x.ClienteNav?.Nombre ?? "—", x.ClienteNav?.Telefono, x.DireccionEvento,
+                    x.FechaEntrega, x.FechaRetiro,
+                    x.MontoTotal, Math.Max(0m, x.MontoTotal - x.Sena - x.MontoCobrado),
+                    entregado, retirado, cargadoAt,
+                    x.EntregadoAt, x.RetiradoAt,
+                    x.Items.Select(i => new ItemDto(i.Cantidad, i.EquipoNav?.Sku ?? "—", i.EquipoNav?.Nombre ?? "—")).ToList(),
+                    paraRetiro);
+            })
             .OrderBy(x => x.Entregado && x.Retirado)        // pendientes arriba
             .ThenBy(x => x.FechaEntrega)
             .ToList();
