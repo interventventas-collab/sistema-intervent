@@ -66,9 +66,13 @@
                                     {
                                         <div style="font-size: 0.78rem; color: #6b7280;">@r.ClienteTelefono</div>
                                     }
-                                    @if (r.EntregadoPorRepartidorId.HasValue || r.RetiradoPorRepartidorId.HasValue)
+                                    @if (r.EntregadoPorRepartidorId.HasValue || r.RetiradoPorRepartidorId.HasValue || r.AsignadoARepartidorId.HasValue)
                                     {
                                         <div style="margin-top: 0.2rem; display: flex; gap: 0.25rem; flex-wrap: wrap;">
+                                            @if (r.AsignadoARepartidorId.HasValue && !r.EntregadoPorRepartidorId.HasValue)
+                                            {
+                                                <span style="font-size: 0.7rem; background: #ede9fe; color: #5b21b6; padding: 0.1rem 0.4rem; border-radius: 999px; font-weight: 700;">🚚 Asignado a @r.AsignadoARepartidorNombre</span>
+                                            }
                                             @if (r.EntregadoPorRepartidorId.HasValue)
                                             {
                                                 <span style="font-size: 0.7rem; background: #dcfce7; color: #166534; padding: 0.1rem 0.4rem; border-radius: 999px; font-weight: 700;">✅ Entregó @r.EntregadoPorRepartidorNombre</span>
@@ -88,6 +92,7 @@
                                 <td style="text-align: right; color: @(saldo > 0 ? "#dc2626" : "#059669"); font-weight: 600;">$@FormatMoney(saldo)</td>
                                 <td>@EstadoBadge(r.Estado)</td>
                                 <td class="actions-cell" @onclick:stopPropagation="true">
+                                    <button class="btn-icon" style="color: #7c3aed;" @onclick="() => ShowAsignar(r)" title="Asignar a repartidor">🚚</button>
                                     <button class="btn-icon" style="color: #1d4ed8;" @onclick="() => ShowPrint(r)" title="Ver / imprimir / PDF">🖨</button>
                                     <button class="btn-icon btn-edit" @onclick="() => ShowEdit(r)" title="Editar / Ver">@SvgIcons.Edit</button>
                                     <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(r)" title="Eliminar">@SvgIcons.AlertCircle</button>
@@ -648,6 +653,46 @@
     </div>
 }
 
+@* ═══════════════ MODAL: Asignar reparto ═══════════════ *@
+@if (showAsignar && reservaAsignar is not null)
+{
+    <div class="modal-overlay" @onclick="() => showAsignar = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h4 style="margin: 0;">🚚 Asignar reparto</h4>
+                <button class="btn-close" @onclick="() => showAsignar = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.9rem; color: #6b7280; margin-top: 0;">
+                    Reserva <strong>@reservaAsignar.Numero</strong>
+                    @if (reservaAsignar.AsignadoARepartidorId.HasValue)
+                    {
+                        <text>— ahora la tiene <strong>@reservaAsignar.AsignadoARepartidorNombre</strong></text>
+                    }
+                    else
+                    {
+                        <text>— todavía no tiene repartidor asignado</text>
+                    }
+                </p>
+                <label class="form-label">¿A quién se la pasás?</label>
+                <select class="form-input" @bind="asignarRepartidorId">
+                    <option value="0">— Sin asignar (que nadie la tenga) —</option>
+                    @foreach (var rep in repartidores.Where(x => x.IsActive))
+                    {
+                        <option value="@rep.Id">🚚 Pasarla a @rep.Nombre</option>
+                    }
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showAsignar = false" disabled="@asignando">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmarAsignar" disabled="@asignando">
+                    @(asignando ? "Guardando..." : "Confirmar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [SupplyParameterFromQuery(Name = "openId")] public int? OpenIdParam { get; set; }
     [SupplyParameterFromQuery(Name = "newDate")] public string? NewDateParam { get; set; }
@@ -656,7 +701,14 @@
     private List<AlqClienteDto>? clientes;
     private List<AlqEquipoDto>? equipos;
     private List<AlqDisponibilidadDto>? disponibilidad;
+    private List<RepartidorDto> repartidores = new();
     private bool isLoading = true;
+
+    // Asignar reparto
+    private bool showAsignar;
+    private AlqReservaDto? reservaAsignar;
+    private int asignarRepartidorId;
+    private bool asignando;
     private string filtroEstado = "";
     private bool deepLinkApplied;
 
@@ -758,8 +810,32 @@
         {
             clientes = await Api.GetAlqClientesAsync() ?? new();
             equipos = await Api.GetAlqEquiposAsync() ?? new();
+            repartidores = await Api.GetRepartidoresAsync() ?? new();
         }
         catch { clientes = new(); equipos = new(); }
+    }
+
+    // ===== Asignar reparto =====
+    private void ShowAsignar(AlqReservaDto r)
+    {
+        reservaAsignar = r;
+        asignarRepartidorId = r.AsignadoARepartidorId ?? 0;
+        showAsignar = true;
+    }
+
+    private async Task ConfirmarAsignar()
+    {
+        if (reservaAsignar is null) return;
+        asignando = true;
+        var ok = await Api.AsignarRepartoAlqAsync(reservaAsignar.Id, asignarRepartidorId == 0 ? (int?)null : asignarRepartidorId);
+        asignando = false;
+        if (ok)
+        {
+            ToastService.Success(asignarRepartidorId == 0 ? "Reserva sin asignar" : "Reserva asignada");
+            showAsignar = false;
+            await Load();
+        }
+        else ToastService.Error("No se pudo asignar");
     }
 
     private async Task RefreshDisponibilidad()

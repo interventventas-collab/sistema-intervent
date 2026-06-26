@@ -65,7 +65,12 @@ public class AlqReservasController : ControllerBase
             q = q.Where(r => r.FechaEntrega <= t);
         }
         var list = await q.OrderByDescending(r => r.FechaEntrega).ThenByDescending(r => r.Id).ToListAsync();
-        return Ok(list.Select(Map).ToList());
+        var asignados = await CalcularAsignadosAsync(list.Select(r => r.Id).ToList());
+        return Ok(list.Select(r =>
+        {
+            asignados.TryGetValue(r.Id, out var a);
+            return Map(r, a.Id == 0 ? (int?)null : a.Id, a.Nombre);
+        }).ToList());
     }
 
     [HttpGet("{id:int}")]
@@ -78,7 +83,48 @@ public class AlqReservasController : ControllerBase
             .Include(r => r.Items).ThenInclude(i => i.EquipoNav)
             .FirstOrDefaultAsync(r => r.Id == id);
         if (r is null) return NotFound(new { error = "Reserva no encontrada" });
-        return Ok(Map(r));
+        var asign = await CalcularAsignadosAsync(new List<int> { r.Id });
+        asign.TryGetValue(r.Id, out var aa);
+        return Ok(Map(r, aa.Id == 0 ? (int?)null : aa.Id, aa.Nombre));
+    }
+
+    public record AsignarRepartoRequest(int? NuevoRepartidorId);
+
+    /// <summary>Asignar la reserva a un repartidor desde el panel admin (sin que escanee el QR).
+    /// Reemplaza el escaneo 'cargado' actual. Si NuevoRepartidorId es null, la deja sin asignar.
+    /// Hace que la reserva aparezca en el panel "Mis pedidos" de ese repartidor. Pedido 2026-06-26.</summary>
+    [HttpPost("{id:int}/asignar-reparto")]
+    public async Task<IActionResult> AsignarReparto(int id, [FromBody] AsignarRepartoRequest req)
+    {
+        var r = await _db.AlqReservas.FirstOrDefaultAsync(x => x.Id == id);
+        if (r is null) return NotFound(new { error = "Reserva no encontrada" });
+
+        var existentes = await _db.AlqQrEscaneos
+            .Where(e => e.ReservaId == id && e.Accion == "cargado").ToListAsync();
+        _db.AlqQrEscaneos.RemoveRange(existentes);
+
+        string mensaje;
+        if (req.NuevoRepartidorId.HasValue)
+        {
+            var rep = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.Id == req.NuevoRepartidorId.Value && x.IsActive);
+            if (rep is null) return NotFound(new { error = "Repartidor no encontrado" });
+            _db.AlqQrEscaneos.Add(new AlqQrEscaneo
+            {
+                ReservaId = id,
+                RepartidorId = rep.Id,
+                Accion = "cargado",
+                CreatedAt = DateTime.UtcNow,
+                Ip = "admin-asignar"
+            });
+            mensaje = $"Reserva asignada a {rep.Nombre}";
+        }
+        else
+        {
+            mensaje = "Reserva sin asignar (que nadie la tenga)";
+        }
+
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, mensaje });
     }
 
     [HttpPost]
@@ -359,7 +405,7 @@ public class AlqReservasController : ControllerBase
         return v.Length > 8 ? v.Substring(0, 8) : v;
     }
 
-    private static AlqReservaDto Map(AlqReserva r) => new(
+    private static AlqReservaDto Map(AlqReserva r, int? asignadoId = null, string? asignadoNombre = null) => new(
         r.Id, r.Numero,
         r.ClienteId, r.ClienteNav?.Nombre ?? "—", r.ClienteNav?.Telefono,
         r.FechaEntrega, r.FechaRetiro, r.HoraInicio, r.HoraFin,
@@ -372,5 +418,28 @@ public class AlqReservasController : ControllerBase
             i.Cantidad, i.PrecioUnitario)).ToList(),
         r.PublicToken, r.MontoCobrado,
         r.EntregadoPorRepartidorId, r.EntregadoPorRepartidor?.Nombre, r.EntregadoAt, r.ComentarioEntrega,
-        r.RetiradoPorRepartidorId, r.RetiradoPorRepartidor?.Nombre, r.RetiradoAt, r.ComentarioRetiro);
+        r.RetiradoPorRepartidorId, r.RetiradoPorRepartidor?.Nombre, r.RetiradoAt, r.ComentarioRetiro,
+        asignadoId, asignadoNombre);
+
+    /// <summary>Dado un set de reservas, devuelve el repartidor "dueño" actual de cada una
+    /// (el del ultimo escaneo 'cargado' en Alq_QrEscaneos). Igual regla que ventas.</summary>
+    private async Task<Dictionary<int, (int Id, string Nombre)>> CalcularAsignadosAsync(List<int> reservaIds)
+    {
+        var res = new Dictionary<int, (int, string)>();
+        if (reservaIds.Count == 0) return res;
+        var escaneos = await _db.AlqQrEscaneos
+            .Where(e => reservaIds.Contains(e.ReservaId) && e.Accion == "cargado")
+            .Select(e => new { e.ReservaId, e.RepartidorId, e.CreatedAt, e.Id })
+            .ToListAsync();
+        var owners = escaneos
+            .GroupBy(e => e.ReservaId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.Id).First().RepartidorId);
+        if (owners.Count == 0) return res;
+        var repIds = owners.Values.Distinct().ToList();
+        var reps = await _db.CafeRepartidores.Where(r => repIds.Contains(r.Id))
+            .ToDictionaryAsync(r => r.Id, r => r.Nombre);
+        foreach (var kv in owners)
+            if (reps.TryGetValue(kv.Value, out var nombre)) res[kv.Key] = (kv.Value, nombre);
+        return res;
+    }
 }
