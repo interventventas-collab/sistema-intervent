@@ -321,6 +321,14 @@ public class ApiClient
         return resp.IsSuccessStatusCode;
     }
 
+    /// <summary>Asigna una reserva a un repartidor desde el panel admin (o la deja sin asignar si es null).</summary>
+    public async Task<bool> AsignarRepartoAlqAsync(int reservaId, int? nuevoRepartidorId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/alquileres/reservas/{reservaId}/asignar-reparto", new { nuevoRepartidorId });
+        return resp.IsSuccessStatusCode;
+    }
+
     // --- Nominas: Empleados ---
     public async Task<List<NomEmpleadoDto>?> GetNomEmpleadosAsync()
         => await GetAsync<List<NomEmpleadoDto>>("/api/nominas/empleados");

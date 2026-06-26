@@ -89,7 +89,9 @@ public record AlqReservaDto(
     int? EntregadoPorRepartidorId = null, string? EntregadoPorRepartidorNombre = null,
     DateTime? EntregadoAt = null, string? ComentarioEntrega = null,
     int? RetiradoPorRepartidorId = null, string? RetiradoPorRepartidorNombre = null,
-    DateTime? RetiradoAt = null, string? ComentarioRetiro = null);
+    DateTime? RetiradoAt = null, string? ComentarioRetiro = null,
+    // Repartidor asignado actualmente (ultimo 'cargado' en Alq_QrEscaneos), aunque no haya entregado todavia
+    int? AsignadoARepartidorId = null, string? AsignadoARepartidorNombre = null);
 
 public class CreateAlqReservaItemRequest
 {

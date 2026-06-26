@@ -134,6 +134,8 @@ public class AlqReservaDto
     public string? RetiradoPorRepartidorNombre { get; set; }
     public DateTime? RetiradoAt { get; set; }
     public string? ComentarioRetiro { get; set; }
+    public int? AsignadoARepartidorId { get; set; }
+    public string? AsignadoARepartidorNombre { get; set; }
 }
 
 public class CreateAlqReservaItemRequest
