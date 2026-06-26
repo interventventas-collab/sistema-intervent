@@ -163,6 +163,11 @@
                         <strong>Equipos a alquilar</strong>
                     </div>
 
+                    <label style="display: inline-flex; align-items: center; gap: 0.45rem; margin-bottom: 0.7rem; font-size: 0.85rem; cursor: pointer; color: #374151;">
+                        <input type="checkbox" @bind="formUsarPrecios" style="width: 16px; height: 16px; cursor: pointer;" />
+                        Usar precios de los equipos (calcular el total solo). Si lo dejás destildado, cargás solo los equipos y escribís el importe total a mano.
+                    </label>
+
                     <div class="form-row" style="align-items: end;">
                         <div class="form-group" style="flex: 0 0 90px;">
                             <label class="form-label" style="font-size: 0.75rem;">Cantidad</label>
@@ -201,8 +206,11 @@
                                         <th style="width: 80px; text-align: right;">Cant.</th>
                                         <th style="width: 110px;">SKU</th>
                                         <th>Equipo</th>
-                                        <th style="width: 130px; text-align: right;">P. Unit.</th>
-                                        <th style="width: 130px; text-align: right;">Subtotal</th>
+                                        @if (formUsarPrecios)
+                                        {
+                                            <th style="width: 130px; text-align: right;">P. Unit.</th>
+                                            <th style="width: 130px; text-align: right;">Subtotal</th>
+                                        }
                                         <th style="width: 50px;"></th>
                                     </tr>
                                 </thead>
@@ -227,10 +235,13 @@
                                                     <div style="color: #dc2626; font-size: 0.72rem; font-weight: 600;">⚠ Excede disponible (@disp.Value)</div>
                                                 }
                                             </td>
-                                            <td>
-                                                <input class="form-input" type="number" step="0.01" min="0" @bind="it.PrecioUnitario" style="text-align: right; padding: 0.25rem;" />
-                                            </td>
-                                            <td style="text-align: right; font-weight: 700;">$@FormatMoney(subtotal)</td>
+                                            @if (formUsarPrecios)
+                                            {
+                                                <td>
+                                                    <input class="form-input" type="number" step="0.01" min="0" @bind="it.PrecioUnitario" style="text-align: right; padding: 0.25rem;" />
+                                                </td>
+                                                <td style="text-align: right; font-weight: 700;">$@FormatMoney(subtotal)</td>
+                                            }
                                             <td>
                                                 <button class="btn-icon btn-delete" type="button" @onclick="() => RemoveItem(i)" title="Quitar">×</button>
                                             </td>
@@ -268,20 +279,31 @@
                     </div>
                     <div style="flex: 1;">
                         <div class="venta-totals-box" style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem;">
-                            <div class="venta-totals-row">
-                                <span>Subtotal:</span>
-                                <strong>$@FormatMoney(Subtotal)</strong>
-                            </div>
-                            <div class="venta-totals-row">
-                                <span>Descuento ($):</span>
-                                <input class="form-input" type="number" step="0.01" min="0" @bind="formDescuento"
-                                       style="text-align: right; max-width: 130px; font-weight: 700;" />
-                            </div>
-                            <hr style="margin: 0.5rem 0; border: none; border-top: 1px solid #d1d5db;" />
-                            <div class="venta-totals-row" style="font-size: 1.15rem; font-weight: 800; color: #059669;">
-                                <span>TOTAL:</span>
-                                <strong>$@FormatMoney(Total)</strong>
-                            </div>
+                            @if (formUsarPrecios)
+                            {
+                                <div class="venta-totals-row">
+                                    <span>Subtotal:</span>
+                                    <strong>$@FormatMoney(Subtotal)</strong>
+                                </div>
+                                <div class="venta-totals-row">
+                                    <span>Descuento ($):</span>
+                                    <input class="form-input" type="number" step="0.01" min="0" @bind="formDescuento"
+                                           style="text-align: right; max-width: 130px; font-weight: 700;" />
+                                </div>
+                                <hr style="margin: 0.5rem 0; border: none; border-top: 1px solid #d1d5db;" />
+                                <div class="venta-totals-row" style="font-size: 1.15rem; font-weight: 800; color: #059669;">
+                                    <span>TOTAL:</span>
+                                    <strong>$@FormatMoney(Total)</strong>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="venta-totals-row" style="font-size: 1.15rem; font-weight: 800; color: #059669;">
+                                    <span>TOTAL:</span>
+                                    <input class="form-input" type="number" step="0.01" min="0" @bind="formTotalManual"
+                                           style="text-align: right; max-width: 150px; font-weight: 800; font-size: 1.05rem; color: #059669;" />
+                                </div>
+                            }
                             <hr style="margin: 0.5rem 0; border: none; border-top: 1px dashed #d1d5db;" />
                             <div class="venta-totals-row">
                                 <span>Seña pagada:</span>
@@ -461,14 +483,18 @@
                 </div>
 
                 @* Tabla de items *@
+                @{ var printConPrecios = printReserva.Items.Any(i => i.PrecioUnitario > 0); }
                 <div style="margin-top: 0.6rem;">
                     <table class="alq-print-items" style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
                         <thead>
                             <tr style="background: #f3f4f6;">
                                 <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: center; width: 70px;">Cant.</th>
                                 <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: left;">Descripción</th>
-                                <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: right; width: 110px;">P. Unit.</th>
-                                <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: right; width: 130px;">Subtotal</th>
+                                @if (printConPrecios)
+                                {
+                                    <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: right; width: 110px;">P. Unit.</th>
+                                    <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: right; width: 130px;">Subtotal</th>
+                                }
                             </tr>
                         </thead>
                         <tbody>
@@ -480,8 +506,11 @@
                                         <div style="font-weight: 600;">@i.EquipoNombre</div>
                                         <div style="font-size: 0.75rem; color: #6b7280; font-family: monospace;">@i.EquipoSku</div>
                                     </td>
-                                    <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: right;">$@FormatMoney(i.PrecioUnitario)</td>
-                                    <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: right; font-weight: 700;">$@FormatMoney(i.Cantidad * i.PrecioUnitario)</td>
+                                    @if (printConPrecios)
+                                    {
+                                        <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: right;">$@FormatMoney(i.PrecioUnitario)</td>
+                                        <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: right; font-weight: 700;">$@FormatMoney(i.Cantidad * i.PrecioUnitario)</td>
+                                    }
                                 </tr>
                             }
                         </tbody>
@@ -495,18 +524,21 @@
                             var subtotalPrint = printReserva.Items.Sum(i => i.Cantidad * i.PrecioUnitario);
                             var saldoPrint = printReserva.MontoTotal - printReserva.Sena;
                         }
-                        <div style="display: flex; justify-content: space-between; font-size: 0.9rem;">
-                            <span>Subtotal:</span>
-                            <strong>$@FormatMoney(subtotalPrint)</strong>
-                        </div>
-                        @if (printReserva.Descuento > 0)
+                        @if (printConPrecios)
                         {
-                            <div style="display: flex; justify-content: space-between; font-size: 0.9rem; color: #dc2626;">
-                                <span>Descuento:</span>
-                                <span>− $@FormatMoney(printReserva.Descuento)</span>
+                            <div style="display: flex; justify-content: space-between; font-size: 0.9rem;">
+                                <span>Subtotal:</span>
+                                <strong>$@FormatMoney(subtotalPrint)</strong>
                             </div>
+                            @if (printReserva.Descuento > 0)
+                            {
+                                <div style="display: flex; justify-content: space-between; font-size: 0.9rem; color: #dc2626;">
+                                    <span>Descuento:</span>
+                                    <span>− $@FormatMoney(printReserva.Descuento)</span>
+                                </div>
+                            }
+                            <hr style="margin: 0.4rem 0; border: none; border-top: 1px solid #d1d5db;" />
                         }
-                        <hr style="margin: 0.4rem 0; border: none; border-top: 1px solid #d1d5db;" />
                         <div style="display: flex; justify-content: space-between; font-size: 1.1rem; font-weight: 800; color: #059669;">
                             <span>TOTAL:</span>
                             <span>$@FormatMoney(printReserva.MontoTotal)</span>
@@ -615,6 +647,8 @@
     private string formDireccionEvento = "";
     private decimal formDescuento;
     private decimal formSena;
+    private bool formUsarPrecios;
+    private decimal formTotalManual;
     private string formEstado = "reservado";
     private string formNotas = "";
     private List<CreateAlqReservaItemRequest> formItems = new();
@@ -642,7 +676,9 @@
     private bool savingCondiciones;
 
     private decimal Subtotal => formItems.Sum(i => i.Cantidad * i.PrecioUnitario);
-    private decimal Total => Math.Max(0m, Subtotal - Math.Max(0m, formDescuento));
+    private decimal Total => formUsarPrecios
+        ? Math.Max(0m, Subtotal - Math.Max(0m, formDescuento))
+        : Math.Max(0m, formTotalManual);
     private decimal Saldo => Math.Max(0m, Total - Math.Max(0m, formSena));
 
     protected override async Task OnInitializedAsync()
@@ -777,6 +813,9 @@
             Cantidad = i.Cantidad,
             PrecioUnitario = i.PrecioUnitario
         }).ToList();
+        // Si la reserva no tiene precios cargados en los items, fue hecha con importe a mano
+        formUsarPrecios = r.Items.Any(i => i.PrecioUnitario > 0);
+        formTotalManual = r.MontoTotal;
         await RefreshDisponibilidad();
         showForm = true;
     }
@@ -789,6 +828,7 @@
         formHoraInicio = ""; formHoraFin = "";
         formDireccionEvento = "";
         formDescuento = 0m; formSena = 0m;
+        formUsarPrecios = false; formTotalManual = 0m;
         formEstado = "reservado";
         formNotas = "";
         formItems = new();
@@ -816,7 +856,7 @@
             {
                 EquipoId = addEquipoId,
                 Cantidad = addCantidad,
-                PrecioUnitario = eq.PrecioDiario
+                PrecioUnitario = formUsarPrecios ? eq.PrecioDiario : 0m
             });
         }
         addCantidad = 1; addEquipoId = 0;
@@ -871,6 +911,7 @@
                     DireccionEvento = formDireccionEvento,
                     Descuento = formDescuento,
                     Sena = formSena,
+                    MontoTotalManual = formUsarPrecios ? (decimal?)null : Math.Max(0m, formTotalManual),
                     Estado = formEstado,
                     Notas = formNotas,
                     Items = formItems
@@ -890,6 +931,7 @@
                     DireccionEvento = formDireccionEvento,
                     Descuento = formDescuento,
                     Sena = formSena,
+                    MontoTotalManual = formUsarPrecios ? (decimal?)null : Math.Max(0m, formTotalManual),
                     Estado = formEstado,
                     Notas = formNotas,
                     Items = formItems

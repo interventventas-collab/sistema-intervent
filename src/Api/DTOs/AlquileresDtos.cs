@@ -101,6 +101,8 @@ public class CreateAlqReservaRequest
     public string? DireccionEvento { get; set; }
     public decimal Descuento { get; set; }
     public decimal Sena { get; set; }
+    /// <summary>Si viene con valor, se usa como total final (modo "importe a mano"). Si es null, se calcula sumando los items.</summary>
+    public decimal? MontoTotalManual { get; set; }
     public string? Estado { get; set; }
     public string? Notas { get; set; }
     public List<CreateAlqReservaItemRequest> Items { get; set; } = new();
@@ -116,6 +118,8 @@ public class UpdateAlqReservaRequest
     public string? DireccionEvento { get; set; }
     public decimal? Descuento { get; set; }
     public decimal? Sena { get; set; }
+    /// <summary>Si viene con valor, se usa como total final (modo "importe a mano"). Si es null, se calcula sumando los items.</summary>
+    public decimal? MontoTotalManual { get; set; }
     public string? Estado { get; set; }
     public string? Notas { get; set; }
     public List<CreateAlqReservaItemRequest>? Items { get; set; }
