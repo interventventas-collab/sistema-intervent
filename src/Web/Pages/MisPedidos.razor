@@ -378,7 +378,7 @@
         @* 2026-06-16: la badge ahora respeta el filtro de fecha (hoy/ayer/semana/todas).
            Antes contaba TODAS las entregadas históricas y daba la impresión de que había entregas
            "de hoy" cuando en realidad eran de días pasados. *@
-        <div class="mp-section-title">✅ Entregadas <span class="badge">@EntregadasFiltradas().Count</span></div>
+        <div class="mp-section-title">✅ Entregadas <span class="badge">@(EntregadasFiltradas().Count + EntregadasAlqFiltradas().Count)</span></div>
 
         @* Chips de filtro de fecha — siempre visibles *@
         <div class="mp-filtros">
@@ -389,6 +389,8 @@
         </div>
 
         var entregadasFiltro = EntregadasFiltradas();
+        var entregadasAlqFiltro = EntregadasAlqFiltradas();
+        var totalEntregadas = entregadasFiltro.Count + entregadasAlqFiltro.Count;
         var resumen = ResumenArqueo();
         var (_, _, labelFiltro) = RangoFiltroActual();
 
@@ -407,16 +409,16 @@
         </div>
 
         @* 2026-06-11: toggle SOLO para la lista de cards (no oculta resumen) *@
-        @if (entregadasFiltro.Count > 0)
+        @if (totalEntregadas > 0)
         {
             <div style="cursor:pointer; user-select:none; padding:0.5rem 0.6rem; font-size:0.85rem; color:#374151; font-weight:600; background:#f3f4f6; border-radius:8px; margin:0.5rem 0;"
                  @onclick="ToggleEntregadasAbiertas">
                 <span style="margin-right:0.3rem; display:inline-block; transition:transform 0.15s; @(entregadasAbiertas ? "transform:rotate(0deg);" : "transform:rotate(-90deg);")">▾</span>
-                @(entregadasAbiertas ? "Ocultar" : "Ver") detalle de las @entregadasFiltro.Count entrega(s)
+                @(entregadasAbiertas ? "Ocultar" : "Ver") detalle de las @totalEntregadas entrega(s)
             </div>
         }
 
-        @if (entregadasFiltro.Count == 0)
+        @if (totalEntregadas == 0)
         {
             <div class="mp-empty" style="background:white; border-radius:12px; padding:1.2rem;">
                 <div style="font-size:1.8rem;">📭</div>
@@ -425,6 +427,31 @@
         }
         else if (entregadasAbiertas)
         {
+            @* Alquileres entregados en el rango *@
+            foreach (var a in entregadasAlqFiltro)
+            {
+                var cobroAlq = alqCobros.FirstOrDefault(c => c.ReservaId == a.Id);
+                <div class="mp-card entregada" style="border-left:4px solid #7c3aed;">
+                    <div class="mp-card-numero">📦 @a.Numero</div>
+                    <div class="mp-card-cliente">@a.ClienteNombre</div>
+                    <div class="mp-card-total">$ @a.MontoTotal.ToString("N2")</div>
+                    <div class="mp-card-chips">
+                        <span class="mp-chip mp-chip-ok">✅ Entregado @(a.EntregadoAt?.ToArTime().ToString("dd/MM HH:mm"))</span>
+                        @if (a.Retirado)
+                        {
+                            <span class="mp-chip mp-chip-ok">🔙 Retirado @(a.RetiradoAt?.ToArTime().ToString("dd/MM HH:mm"))</span>
+                        }
+                        else
+                        {
+                            <span class="mp-chip mp-chip-pend">🔙 Falta retiro</span>
+                        }
+                        @if (cobroAlq is not null)
+                        {
+                            <span class="mp-chip @(cobroAlq.Estado == "APROBADA" ? "mp-chip-ok" : "mp-chip-pend")">💵 Cobrado $ @cobroAlq.Importe.ToString("N2") @(cobroAlq.Estado == "APROBADA" ? "✓" : "⏳")</span>
+                        }
+                    </div>
+                </div>
+            }
             foreach (var p in entregadasFiltro)
             {
                 var cobroDe = cobros.FirstOrDefault(c => c.VentaId == p.Id);
@@ -767,7 +794,8 @@
     public record AlqReservaItem(int Id, string Numero, string Token, string Estado,
         string ClienteNombre, string? ClienteTelefono, string? Direccion,
         DateTime FechaEntrega, DateTime FechaRetiro,
-        decimal MontoTotal, decimal Saldo, bool Entregado, bool Retirado, DateTime CargadoAt);
+        decimal MontoTotal, decimal Saldo, bool Entregado, bool Retirado, DateTime CargadoAt,
+        DateTime? EntregadoAt, DateTime? RetiradoAt);
     public record AlqCobroItem(int ReservaId, decimal Importe, string Estado, DateTime FechaCobro);
     public record MisAlquileresResp(int RepartidorId, string Nombre, List<AlqReservaItem> Reservas, List<AlqCobroItem>? Cobros);
 
@@ -1406,6 +1434,16 @@
             .ToList();
     }
 
+    // 2026-06-26: alquileres entregados en el rango, para mostrarlos también en "Entregadas".
+    private List<AlqReservaItem> EntregadasAlqFiltradas()
+    {
+        var (d, h, _) = RangoFiltroActual();
+        return alqReservas
+            .Where(a => a.Entregado && a.EntregadoAt.HasValue && a.EntregadoAt.Value >= d && a.EntregadoAt.Value < h)
+            .OrderByDescending(a => a.EntregadoAt!.Value)
+            .ToList();
+    }
+
     private (int cantidad, decimal facturado, decimal aRendir) ResumenArqueo()
     {
         var (d, h, _) = RangoFiltroActual();
@@ -1413,6 +1451,8 @@
                                         && p.EntregadoAt.HasValue
                                         && p.EntregadoAt.Value >= d
                                         && p.EntregadoAt.Value < h).ToList();
+        var entregasAlq = alqReservas.Count(a => a.Entregado && a.EntregadoAt.HasValue
+                                        && a.EntregadoAt.Value >= d && a.EntregadoAt.Value < h);
         // El arqueo = cobros PENDIENTES (todavía no rindió la plata a Osmar)
         // Si está APROBADA, Osmar ya recibió la plata (= rindió). Si RECHAZADA, no cuenta.
         var efectivo = cobros.Where(c => c.FechaCobro >= d && c.FechaCobro < h
@@ -1422,7 +1462,7 @@
         efectivo += alqCobros.Where(c => c.FechaCobro >= d && c.FechaCobro < h
                                           && c.Estado == "PENDIENTE")
                              .Sum(c => c.Importe);
-        return (entregas.Count, entregas.Sum(p => p.Total), efectivo);
+        return (entregas.Count + entregasAlq, entregas.Sum(p => p.Total), efectivo);
     }
 
     private void CambiarFiltro(string nuevo)
