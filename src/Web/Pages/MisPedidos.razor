@@ -263,7 +263,9 @@
         }
 
 @* ─── ALQUILERES — 2026-06-26 ─── *@
-        var alqPendientes = alqReservas.Where(a => !(a.Entregado && a.Retirado)).ToList();
+        // 2026-06-26: una vez ENTREGADO, sale de la lista de arriba del repartidor (para él ya está).
+        // Queda solo abajo en "Entregadas". El retiro será un re-escaneo aparte (otro día/momento).
+        var alqPendientes = alqReservas.Where(a => !a.Entregado).ToList();
         @if (alqPendientes.Count > 0)
         {
             <div class="mp-section-title">📦 Alquileres <span class="badge" style="background:#7c3aed; color:white;">@alqPendientes.Count</span></div>
