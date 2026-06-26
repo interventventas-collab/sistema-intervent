@@ -111,16 +111,18 @@
         </button>
         @if (mostrarComentario)
         {
-            <div style="background: #fefce8; border: 2px dashed #facc15; border-radius: 6px; padding: 0.7rem 0.9rem;
-                        margin: 0.4rem 0 0 0; font-size: 0.95rem; color: #713f12; line-height: 1.5;
+            <div style="background: #e8f7f1; border: 2px solid #1d9e75; border-left: 8px solid #1d9e75; border-radius: 8px;
+                        padding: 0.8rem 0.9rem 0.85rem 0.9rem; margin: 0.4rem 0 0 0; line-height: 1.4;
                         white-space: pre-wrap; word-break: break-word; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                        position: relative; text-align: center;">
+                        position: relative;">
                 <button @onclick="() => mostrarComentario = false"
                         style="position: absolute; top: 0.2rem; right: 0.4rem; background: transparent; border: none;
-                               font-size: 1rem; cursor: pointer; color: #92400e; padding: 0;"
+                               font-size: 1rem; cursor: pointer; color: #0f6e56; padding: 0;"
                         title="Cerrar">✕</button>
-                <div style="font-size: 0.72rem; color: #92400e; font-weight: 700; text-transform: uppercase; margin-bottom: 0.5rem; letter-spacing: 0.04em; text-align: center;">📌 Nota para el armado</div>
-                <div style="text-align: center; font-weight: 600;">@Venta.ComentarioArmado</div>
+                <div style="display: inline-flex; align-items: center; gap: 0.3rem; background: #0f6e56; color: #fff;
+                            font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+                            padding: 0.18rem 0.5rem; border-radius: 6px; margin-bottom: 0.55rem;">📌 Nota para el armado</div>
+                <div style="font-size: 1.05rem; font-weight: 700; color: #04342c;">@Venta.ComentarioArmado</div>
             </div>
         }
     }
