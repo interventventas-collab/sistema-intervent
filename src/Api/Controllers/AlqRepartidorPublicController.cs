@@ -171,7 +171,8 @@ public class AlqRepartidorPublicController : ControllerBase
         string ClienteNombre, string? ClienteTelefono, string? Direccion,
         DateTime FechaEntrega, DateTime FechaRetiro,
         decimal MontoTotal, decimal Saldo,
-        bool Entregado, bool Retirado, DateTime CargadoAt);
+        bool Entregado, bool Retirado, DateTime CargadoAt,
+        DateTime? EntregadoAt, DateTime? RetiradoAt);
 
     /// <summary>Lista de reservas de alquiler asignadas al repartidor (enlace fijo por su token publico).
     /// Asignacion estilo ventas: dueño = repartidor del ultimo escaneo 'cargado'. Sin PIN para mirar.</summary>
@@ -211,7 +212,8 @@ public class AlqRepartidorPublicController : ControllerBase
                 x.FechaEntrega, x.FechaRetiro,
                 x.MontoTotal, Math.Max(0m, x.MontoTotal - x.Sena - x.MontoCobrado),
                 x.EntregadoPorRepartidorId.HasValue, x.RetiradoPorRepartidorId.HasValue,
-                duenioActual.TryGetValue(x.Id, out var d) ? d.CreatedAt : x.CreatedAt))
+                duenioActual.TryGetValue(x.Id, out var d) ? d.CreatedAt : x.CreatedAt,
+                x.EntregadoAt, x.RetiradoAt))
             .OrderBy(x => x.Entregado && x.Retirado)        // pendientes arriba
             .ThenBy(x => x.FechaEntrega)
             .ToList();
