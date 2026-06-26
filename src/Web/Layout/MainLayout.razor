@@ -740,7 +740,7 @@
         @if (HasPerm("alquileres"))
         {
             <NavGroup Label="Alquileres" Icon="@SvgIcons.Calendar"
-                      HasActiveChild="@(IsActive("/alquileres") || IsActive("/alquileres/equipos") || IsActive("/alquileres/clientes") || IsActive("/alquileres/reservas") || IsActive("/alquileres/calendario"))">
+                      HasActiveChild="@(IsActive("/alquileres") || IsActive("/alquileres/equipos") || IsActive("/alquileres/clientes") || IsActive("/alquileres/reservas") || IsActive("/alquileres/calendario") || IsActive("/alquileres/cobranzas-pendientes"))">
                 <NavItem Href="/alquileres" Label="Inicio" Icon="@SvgIcons.Dashboard"
                          IsActive="@IsActive("/alquileres")" OnClick="@(() => NavigateTo("/alquileres"))" />
                 <NavItem Href="/alquileres/reservas" Label="Reservas" Icon="@SvgIcons.Tag"
@@ -751,6 +751,8 @@
                          IsActive="@IsActive("/alquileres/equipos")" OnClick="@(() => NavigateTo("/alquileres/equipos"))" />
                 <NavItem Href="/alquileres/clientes" Label="Clientes" Icon="@SvgIcons.Users"
                          IsActive="@IsActive("/alquileres/clientes")" OnClick="@(() => NavigateTo("/alquileres/clientes"))" />
+                <NavItem Href="/alquileres/cobranzas-pendientes" Label="Cobros repartidor" Icon="@SvgIcons.Tag"
+                         IsActive="@IsActive("/alquileres/cobranzas-pendientes")" OnClick="@(() => NavigateTo("/alquileres/cobranzas-pendientes"))" />
             </NavGroup>
         }
 
@@ -1063,6 +1065,7 @@
             @if (!IsRoleWithCustomSidebar())
             {
                 <CobranzasPendientesBell />
+                <AlqCobranzasPendientesBell />
             }
             <MeliQuestionsBell />
             @if (!IsRoleWithCustomSidebar())

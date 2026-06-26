@@ -122,6 +122,18 @@ public class AlqReservaDto
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public List<AlqReservaItemDto> Items { get; set; } = new();
+
+    // ===== QR + Repartidor (2026-06-26) =====
+    public string? PublicToken { get; set; }
+    public decimal MontoCobrado { get; set; }
+    public int? EntregadoPorRepartidorId { get; set; }
+    public string? EntregadoPorRepartidorNombre { get; set; }
+    public DateTime? EntregadoAt { get; set; }
+    public string? ComentarioEntrega { get; set; }
+    public int? RetiradoPorRepartidorId { get; set; }
+    public string? RetiradoPorRepartidorNombre { get; set; }
+    public DateTime? RetiradoAt { get; set; }
+    public string? ComentarioRetiro { get; set; }
 }
 
 public class CreateAlqReservaItemRequest
@@ -146,6 +158,14 @@ public class CreateAlqReservaRequest
     public string? Notas { get; set; }
     public List<CreateAlqReservaItemRequest> Items { get; set; } = new();
 }
+
+// ===== Repartidor / Cobranzas pendientes (2026-06-26) =====
+public record AlqCobranzaPendienteDto(
+    int Id, int ReservaId, string ReservaNumero, string ClienteNombre,
+    int RepartidorId, string RepartidorNombre,
+    decimal Importe, string Tipo, bool MarcadoEntregado, bool MarcadoRetirado,
+    string? Notas, string Estado, string? RechazadaMotivo,
+    DateTime CreatedAt, decimal ReservaSaldo);
 
 public class UpdateAlqReservaRequest
 {

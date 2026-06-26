@@ -1,0 +1,377 @@
+@page "/alquiler/{Token}"
+@layout EmptyLayout
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject HttpClient Http
+@using System.Net.Http.Json
+@using Microsoft.JSInterop
+
+@* ════════════════════════════════════════════════════════════════════════════
+   Pantalla pública mobile-first del repartidor para ALQUILERES. Escanea el QR del
+   comprobante de la reserva → elige su nombre + PIN (mismos de ventas) → marca
+   ENTREGA o RETIRO de los equipos, cobra y deja comentarios. Pedido 2026-06-26.
+   Reusa las clases rp-* de la pantalla de ventas. Sin auth del sistema.
+   ════════════════════════════════════════════════════════════════════════════ *@
+
+<style>
+    body { background: #f3f4f6 !important; }
+    .rp-shell { min-height: 100vh; display: flex; flex-direction: column; max-width: 480px; margin: 0 auto; padding: 1rem 0.8rem; }
+    .rp-top { background: white; border-radius: 12px; padding: 1rem; box-shadow: 0 2px 6px rgba(0,0,0,0.08); margin-bottom: 1rem; text-align: center; }
+    .rp-top h1 { margin: 0; font-size: 1.2rem; color: #7c3aed; }
+    .rp-top .sub { color: #6b7280; font-size: 0.85rem; margin-top: 0.3rem; }
+    .rp-card { background: white; border-radius: 12px; padding: 1rem 1.2rem; box-shadow: 0 2px 6px rgba(0,0,0,0.08); margin-bottom: 0.8rem; }
+    .rp-section-title { font-size: 0.78rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4rem; }
+    .rp-num { font-family: monospace; font-weight: 800; color: #7c3aed; font-size: 1rem; }
+    .rp-cliente { font-size: 1.1rem; font-weight: 800; margin-top: 0.3rem; }
+    .rp-dir { font-size: 0.85rem; color: #6b7280; margin-top: 0.15rem; }
+    .rp-fechas { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
+    .rp-fecha-box { flex: 1; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.5rem; text-align: center; }
+    .rp-fecha-box .lbl { font-size: 0.68rem; color: #6b7280; text-transform: uppercase; font-weight: 700; }
+    .rp-fecha-box .val { font-size: 0.95rem; font-weight: 800; color: #111827; }
+    .rp-total-row { display: flex; justify-content: space-between; align-items: center; margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px dashed #e5e7eb; }
+    .rp-total-label { font-size: 0.78rem; color: #6b7280; }
+    .rp-total-monto { font-size: 1.5rem; font-weight: 800; color: #16a34a; }
+    .rp-badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.78rem; font-weight: 700; margin-top: 0.4rem; margin-right: 0.3rem; }
+    .rp-badge.ent { background: #dcfce7; color: #166534; }
+    .rp-badge.ret { background: #e0e7ff; color: #3730a3; }
+    .rp-items { margin-top: 0.5rem; }
+    .rp-item { display: grid; grid-template-columns: 44px 1fr; gap: 0.5rem; padding: 0.35rem 0; border-bottom: 1px dashed #f3f4f6; align-items: center; }
+    .rp-item-cant { font-size: 1.2rem; font-weight: 800; color: #7c3aed; text-align: right; }
+    .rp-item-desc { font-size: 0.88rem; }
+    .rp-item-desc small { color: #6b7280; display: block; font-size: 0.7rem; }
+    .rp-rep-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+    .rp-rep-btn { padding: 1rem; background: white; border: 2px solid #d1d5db; border-radius: 10px; font-size: 1rem; font-weight: 700; cursor: pointer; text-align: center; transition: all 0.15s; }
+    .rp-rep-btn:hover, .rp-rep-btn.activo { border-color: #7c3aed; background: #f5f3ff; color: #6d28d9; }
+    .rp-pin-input { width: 100%; padding: 1.2rem; font-size: 2rem; text-align: center; border: 2px solid #d1d5db; border-radius: 10px; letter-spacing: 0.5rem; font-family: monospace; }
+    .rp-pin-input:focus { border-color: #7c3aed; outline: none; }
+    .rp-momento-tabs { display: flex; gap: 0.5rem; margin-bottom: 0.8rem; }
+    .rp-momento-tab { flex: 1; padding: 0.8rem; border: 2px solid #d1d5db; border-radius: 10px; background: white; font-weight: 800; cursor: pointer; text-align: center; font-size: 0.95rem; }
+    .rp-momento-tab.activo { border-color: #7c3aed; background: #f5f3ff; color: #6d28d9; }
+    .rp-momento-tab.hecho { border-color: #16a34a; background: #f0fdf4; color: #166534; }
+    .rp-check-row { display: flex; gap: 0.6rem; align-items: center; padding: 0.8rem; background: #f9fafb; border-radius: 8px; margin-bottom: 0.6rem; cursor: pointer; }
+    .rp-check-row.activo { background: #dcfce7; border: 1px solid #16a34a; }
+    .rp-check-row input { width: 22px; height: 22px; }
+    .rp-monto-input { width: 100%; padding: 0.9rem; font-size: 1.4rem; text-align: right; border: 2px solid #d1d5db; border-radius: 8px; font-weight: 700; }
+    .rp-textarea { width: 100%; padding: 0.6rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.95rem; resize: vertical; min-height: 60px; }
+    .rp-btn-primary { width: 100%; padding: 1rem; background: #7c3aed; color: white; border: none; border-radius: 10px; font-size: 1.1rem; font-weight: 800; cursor: pointer; margin-top: 0.5rem; }
+    .rp-btn-primary:hover { background: #6d28d9; }
+    .rp-btn-primary:disabled { background: #9ca3af; cursor: not-allowed; }
+    .rp-btn-secondary { width: 100%; padding: 0.7rem; background: white; color: #6b7280; border: 1px solid #d1d5db; border-radius: 8px; font-size: 0.9rem; cursor: pointer; margin-top: 0.5rem; }
+    .rp-error { background: #fee2e2; color: #991b1b; padding: 0.6rem 0.8rem; border-radius: 6px; font-size: 0.88rem; margin-bottom: 0.5rem; }
+    .rp-ok { background: #dcfce7; color: #166534; padding: 0.9rem; border-radius: 8px; font-size: 1rem; font-weight: 700; text-align: center; }
+    .rp-loading { text-align: center; padding: 2rem; color: #6b7280; }
+    .rp-saludo { font-size: 0.85rem; color: #6b7280; margin-bottom: 0.5rem; text-align: right; }
+    .rp-saludo b { color: #7c3aed; }
+    .rp-link-cambiar { font-size: 0.72rem; color: #6b7280; cursor: pointer; text-decoration: underline; }
+</style>
+
+<div class="rp-shell">
+    <div class="rp-top">
+        <h1>📦 Alquileres</h1>
+        <div class="sub">Marcá entrega/retiro de los equipos y cobrá</div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="rp-loading">Cargando reserva...</div>
+    }
+    else if (info is null)
+    {
+        <div class="rp-card"><div class="rp-error">⚠ @(errorCarga ?? "No se encontró la reserva. El link puede estar mal.")</div></div>
+    }
+    else
+    {
+        @* INFO de la reserva — siempre visible *@
+        <div class="rp-card">
+            <div class="rp-num">@info.Numero</div>
+            <div class="rp-cliente">@info.ClienteNombre</div>
+            @if (!string.IsNullOrEmpty(info.Direccion))
+            {
+                <div class="rp-dir">📍 @info.Direccion</div>
+            }
+            <div>
+                @if (info.Entregado) { <span class="rp-badge ent">✅ Entregó @info.EntregadoPorNombre</span> }
+                @if (info.Retirado) { <span class="rp-badge ret">🔙 Retiró @info.RetiradoPorNombre</span> }
+            </div>
+            <div class="rp-fechas">
+                <div class="rp-fecha-box"><div class="lbl">Entrega</div><div class="val">@info.FechaEntrega.ToString("dd/MM")</div></div>
+                <div class="rp-fecha-box"><div class="lbl">Retiro</div><div class="val">@info.FechaRetiro.ToString("dd/MM")</div></div>
+            </div>
+            <div class="rp-total-row">
+                <div class="rp-total-label">Saldo pendiente</div>
+                <div class="rp-total-monto">$@info.Saldo.ToString("N2")</div>
+            </div>
+            @if (info.Items.Count > 0)
+            {
+                <div class="rp-items">
+                    <div class="rp-section-title" style="margin-top:0.6rem;">📦 Equipos</div>
+                    @foreach (var it in info.Items)
+                    {
+                        <div class="rp-item">
+                            <div class="rp-item-cant">×@it.Cantidad</div>
+                            <div class="rp-item-desc"><b>@it.Nombre</b><small>@it.Sku</small></div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        @if (okMensaje is not null)
+        {
+            <div class="rp-card">
+                <div class="rp-ok">✓ @okMensaje</div>
+                <button class="rp-btn-secondary" @onclick="ResetFormulario">Cargar otra cosa</button>
+            </div>
+        }
+        else if (repartidorId is null)
+        {
+            @* Paso 1: ¿Quién sos? *@
+            <div class="rp-card">
+                <div class="rp-section-title">¿Quién sos?</div>
+                @if (errorAccion is not null) { <div class="rp-error">@errorAccion</div> }
+                @if (pasoPin)
+                {
+                    <div class="rp-saludo">Hola <b>@nombreElegido</b> · <span class="rp-link-cambiar" @onclick="() => { pasoPin = false; pin = string.Empty; }">cambiar</span></div>
+                    <input class="rp-pin-input" type="tel" inputmode="numeric" maxlength="3" placeholder="• • •"
+                           @bind="pin" @bind:event="oninput" @onkeyup="OnPinKey" />
+                    <button class="rp-btn-primary" disabled="@(string.IsNullOrWhiteSpace(pin) || verificando)" @onclick="ConfirmarPin">
+                        @(verificando ? "Verificando..." : "Entrar")
+                    </button>
+                }
+                else
+                {
+                    @if (repartidores is null) { <div class="rp-loading">Cargando...</div> }
+                    else
+                    {
+                        <div class="rp-rep-grid">
+                            @foreach (var r in repartidores)
+                            {
+                                <div class="rp-rep-btn" @onclick="() => ElegirRepartidor(r.Id, r.Nombre)">@r.Nombre</div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        }
+        else
+        {
+            @* Paso 3: acción (entrega/retiro + cobro) *@
+            <div class="rp-card">
+                <div class="rp-saludo">Sos <b>@nombreElegido</b> · <span class="rp-link-cambiar" @onclick="CerrarSesion">cambiar</span></div>
+                @if (errorAccion is not null) { <div class="rp-error">@errorAccion</div> }
+
+                <div class="rp-momento-tabs">
+                    <div class="rp-momento-tab @(momento == "entrega" ? "activo" : "") @(info.Entregado ? "hecho" : "")"
+                         @onclick="@(() => momento = "entrega")">
+                        📦 Entrega @(info.Entregado ? "✓" : "")
+                    </div>
+                    <div class="rp-momento-tab @(momento == "retiro" ? "activo" : "") @(info.Retirado ? "hecho" : "")"
+                         @onclick="@(() => momento = "retiro")">
+                        🔙 Retiro @(info.Retirado ? "✓" : "")
+                    </div>
+                </div>
+
+                <div class="rp-check-row @(marcarHecho ? "activo" : "")" @onclick="() => marcarHecho = !marcarHecho">
+                    <input type="checkbox" checked="@marcarHecho" @onclick:stopPropagation="false" readonly />
+                    <span>@(momento == "entrega" ? "✅ Entregué los equipos" : "🔙 Retiré los equipos")</span>
+                </div>
+
+                <div class="rp-section-title" style="margin-top:0.8rem;">💰 ¿Cobraste algo? (opcional)</div>
+                <input class="rp-monto-input" type="number" inputmode="decimal" min="0" step="0.01"
+                       placeholder="0,00" @bind="importe" @bind:event="oninput" />
+
+                <div class="rp-section-title" style="margin-top:0.8rem;">📝 Comentarios (opcional)</div>
+                <textarea class="rp-textarea" @bind="notas" placeholder="Ej: faltó una silla, el cliente pidió retirar el lunes..."></textarea>
+
+                <button class="rp-btn-primary" disabled="@(enviando || (!marcarHecho && (importe ?? 0) <= 0))" @onclick="Enviar">
+                    @(enviando ? "Guardando..." : "Guardar")
+                </button>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+
+    private bool loading = true;
+    private string? errorCarga;
+    private InfoReserva? info;
+
+    private List<RepItem>? repartidores;
+    private int? repartidorId;
+    private string nombreElegido = "";
+    private string pin = "";
+    private bool pasoPin;
+    private bool verificando;
+
+    private string momento = "entrega";
+    private bool marcarHecho = true;
+    private decimal? importe;
+    private string notas = "";
+    private bool enviando;
+    private string? errorAccion;
+    private string? okMensaje;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarReserva();
+        await RestaurarSesion();
+    }
+
+    private async Task CargarReserva()
+    {
+        loading = true; errorCarga = null;
+        try
+        {
+            var resp = await Http.GetAsync($"/api/alquileres/repartidor-public/reserva/{Token}");
+            if (!resp.IsSuccessStatusCode) { errorCarga = "No se encontró la reserva (QR inválido)."; info = null; }
+            else
+            {
+                info = await resp.Content.ReadFromJsonAsync<InfoReserva>();
+                momento = (info is not null && !info.Entregado) ? "entrega" : (info is not null && info.Entregado && !info.Retirado ? "retiro" : "entrega");
+            }
+        }
+        catch { errorCarga = "Error de conexión."; }
+        loading = false;
+        StateHasChanged();
+    }
+
+    private async Task RestaurarSesion()
+    {
+        try
+        {
+            var raw = await JS.InvokeAsync<string>("sessionStorage.getItem", "alq_rep");
+            if (string.IsNullOrEmpty(raw)) return;
+            var parts = raw.Split('|');
+            if (parts.Length >= 3 && long.TryParse(parts[2], out var ts))
+            {
+                // sesión válida 30 min
+                var ageMin = (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - ts) / 60000.0;
+                if (ageMin <= 30 && int.TryParse(parts[0], out var rid))
+                {
+                    repartidorId = rid;
+                    pin = parts[3];
+                    nombreElegido = parts.Length > 4 ? parts[4] : "";
+                    StateHasChanged();
+                }
+            }
+        }
+        catch { }
+    }
+
+    private async Task GuardarSesion()
+    {
+        try
+        {
+            var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            await JS.InvokeVoidAsync("sessionStorage.setItem", "alq_rep", $"{repartidorId}|x|{ts}|{pin}|{nombreElegido}");
+        }
+        catch { }
+    }
+
+    private async Task CargarRepartidores()
+    {
+        try { repartidores = await Http.GetFromJsonAsync<List<RepItem>>("/api/cafe/repartidor-public/repartidores"); }
+        catch { repartidores = new(); }
+        StateHasChanged();
+    }
+
+    private async Task ElegirRepartidor(int id, string nombre)
+    {
+        pendingId = id; nombreElegido = nombre; pasoPin = true; pin = ""; errorAccion = null;
+        await Task.CompletedTask;
+    }
+    private int pendingId;
+
+    private async Task OnPinKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(pin)) await ConfirmarPin();
+    }
+
+    private async Task ConfirmarPin()
+    {
+        verificando = true; errorAccion = null;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("/api/cafe/repartidor-public/login", new { RepartidorId = pendingId, Pin = pin });
+            if (!resp.IsSuccessStatusCode)
+            {
+                errorAccion = "PIN incorrecto. Probá de nuevo.";
+                pin = "";
+            }
+            else
+            {
+                repartidorId = pendingId;
+                await GuardarSesion();
+            }
+        }
+        catch { errorAccion = "Error de conexión."; }
+        verificando = false;
+        StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (!pasoPin && repartidorId is null && repartidores is null && info is not null)
+            await CargarRepartidores();
+    }
+
+    private async Task Enviar()
+    {
+        enviando = true; errorAccion = null;
+        try
+        {
+            var body = new
+            {
+                RepartidorId = repartidorId,
+                Pin = pin,
+                Momento = momento,
+                MarcarHecho = marcarHecho,
+                Importe = importe,
+                Notas = notas
+            };
+            var resp = await Http.PostAsJsonAsync($"/api/alquileres/repartidor-public/accion/{Token}", body);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var err = await resp.Content.ReadFromJsonAsync<ErrorResp>();
+                errorAccion = err?.Error ?? "No se pudo guardar.";
+            }
+            else
+            {
+                var r = await resp.Content.ReadFromJsonAsync<AccionResp>();
+                okMensaje = r?.Mensaje ?? "Guardado.";
+                await CargarReserva();
+            }
+        }
+        catch { errorAccion = "Error de conexión."; }
+        enviando = false;
+        StateHasChanged();
+    }
+
+    private void ResetFormulario()
+    {
+        okMensaje = null; marcarHecho = true; importe = null; notas = "";
+        errorAccion = null;
+    }
+
+    private async Task CerrarSesion()
+    {
+        repartidorId = null; pasoPin = false; pin = ""; nombreElegido = "";
+        try { await JS.InvokeVoidAsync("sessionStorage.removeItem", "alq_rep"); } catch { }
+        await CargarRepartidores();
+    }
+
+    private record RepItem(int Id, string Nombre);
+    private record ErrorResp(string Error);
+    private record AccionResp(bool Ok, string Mensaje, decimal Saldo);
+    private record ItemReserva(int Cantidad, string Sku, string Nombre);
+    private record InfoReserva(
+        int Id, string Numero, string Estado,
+        string ClienteNombre, string? ClienteTelefono, string? Direccion,
+        DateTime FechaEntrega, DateTime FechaRetiro, string? HoraInicio, string? HoraFin,
+        decimal MontoTotal, decimal Sena, decimal MontoCobrado, decimal Saldo,
+        bool Entregado, string? EntregadoPorNombre, DateTime? EntregadoAt, string? ComentarioEntrega,
+        bool Retirado, string? RetiradoPorNombre, DateTime? RetiradoAt, string? ComentarioRetiro,
+        List<ItemReserva> Items);
+}

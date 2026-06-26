@@ -1,0 +1,52 @@
+@inject ApiClient Api
+@inject NavigationManager Navigation
+@implements IDisposable
+
+@* Badge topbar: cobros de ALQUILER precargados por repartidores esperando aprobación.
+   Click → /alquileres/cobranzas-pendientes. Refresca cada 60s. Pedido 2026-06-26. *@
+
+@if (count > 0)
+{
+    <div class="acpb-badge" @onclick="@(() => Navigation.NavigateTo("/alquileres/cobranzas-pendientes"))"
+         title="@count cobros de alquiler esperando aprobación">
+        <span class="acpb-icon">📦</span>
+        <span class="acpb-num">@count</span>
+    </div>
+}
+
+<style>
+    .acpb-badge {
+        display: inline-flex; align-items: center; gap: 0.3rem;
+        padding: 0.35rem 0.7rem;
+        background: linear-gradient(135deg, #ede9fe, #ddd6fe);
+        color: #5b21b6; border: 1px solid #8b5cf6; border-radius: 999px;
+        font-weight: 800; font-size: 0.85rem; cursor: pointer; margin: 0 0.3rem;
+        animation: acpb-pulse 2s ease-in-out infinite; transition: transform 0.15s;
+    }
+    .acpb-badge:hover { transform: scale(1.08); }
+    .acpb-icon { font-size: 1.05rem; }
+    .acpb-num { font-weight: 900; }
+    @@keyframes acpb-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.45); }
+        50% { box-shadow: 0 0 0 6px rgba(139, 92, 246, 0); }
+    }
+</style>
+
+@code {
+    private int count;
+    private System.Threading.Timer? timer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Refresh();
+        timer = new System.Threading.Timer(async _ => await InvokeAsync(Refresh), null, 60000, 60000);
+    }
+
+    private async Task Refresh()
+    {
+        try { count = await Api.GetCountAlqCobranzasPendientesAsync(); StateHasChanged(); }
+        catch { }
+    }
+
+    public void Dispose() => timer?.Dispose();
+}

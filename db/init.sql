@@ -5006,3 +5006,81 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ConceptoServHasta' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
     ALTER TABLE Cafe_Ventas ADD ConceptoServHasta DATE NULL;
 GO
+
+-- ============================================================================
+-- 2026-06-26: Modulo QR + Repartidor para ALQUILERES (calcado del de Ventas).
+-- Reusa Cafe_Repartidores + Cafe_RepartidorSesiones (mismos repartidores, misma app).
+-- A la reserva se le agrega: token publico para el QR, datos de entrega y de
+-- retiro (quien/cuando/comentario) y el monto cobrado en mano por repartidores.
+-- ============================================================================
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='PublicToken' AND Object_ID=OBJECT_ID('Alq_Reservas'))
+    ALTER TABLE Alq_Reservas ADD PublicToken NVARCHAR(64) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_AlqReservas_PublicToken' AND object_id=OBJECT_ID('Alq_Reservas'))
+    CREATE UNIQUE INDEX IX_AlqReservas_PublicToken ON Alq_Reservas(PublicToken) WHERE PublicToken IS NOT NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='EntregadoPorRepartidorId' AND Object_ID=OBJECT_ID('Alq_Reservas'))
+    ALTER TABLE Alq_Reservas ADD EntregadoPorRepartidorId INT NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='EntregadoAt' AND Object_ID=OBJECT_ID('Alq_Reservas'))
+    ALTER TABLE Alq_Reservas ADD EntregadoAt DATETIME2 NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='ComentarioEntrega' AND Object_ID=OBJECT_ID('Alq_Reservas'))
+    ALTER TABLE Alq_Reservas ADD ComentarioEntrega NVARCHAR(500) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='RetiradoPorRepartidorId' AND Object_ID=OBJECT_ID('Alq_Reservas'))
+    ALTER TABLE Alq_Reservas ADD RetiradoPorRepartidorId INT NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='RetiradoAt' AND Object_ID=OBJECT_ID('Alq_Reservas'))
+    ALTER TABLE Alq_Reservas ADD RetiradoAt DATETIME2 NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='ComentarioRetiro' AND Object_ID=OBJECT_ID('Alq_Reservas'))
+    ALTER TABLE Alq_Reservas ADD ComentarioRetiro NVARCHAR(500) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='MontoCobrado' AND Object_ID=OBJECT_ID('Alq_Reservas'))
+    ALTER TABLE Alq_Reservas ADD MontoCobrado DECIMAL(18,2) NOT NULL CONSTRAINT DF_AlqReservas_MontoCobrado DEFAULT 0;
+GO
+
+-- Escaneos de QR de reservas por repartidor. Asignacion estilo ventas:
+-- "el ultimo que escanea se lo queda" (dueño = repartidor del ultimo 'cargado').
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Alq_QrEscaneos' AND xtype='U')
+BEGIN
+    CREATE TABLE Alq_QrEscaneos (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ReservaId INT NOT NULL,
+        RepartidorId INT NOT NULL,
+        Accion NVARCHAR(20) NOT NULL DEFAULT 'cargado',  -- cargado, entregado, retirado, cobrado
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        Ip NVARCHAR(64) NULL,
+        CONSTRAINT FK_AlqQrEscaneo_Reserva FOREIGN KEY (ReservaId) REFERENCES Alq_Reservas(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_AlqQrEscaneo_Repartidor FOREIGN KEY (RepartidorId) REFERENCES Cafe_Repartidores(Id)
+    );
+    CREATE INDEX IX_AlqQrEscaneos_ReservaId ON Alq_QrEscaneos(ReservaId);
+    CREATE INDEX IX_AlqQrEscaneos_RepartidorId_CreatedAt ON Alq_QrEscaneos(RepartidorId, CreatedAt DESC);
+END
+GO
+
+-- Cobranzas precargadas por el repartidor en alquileres (efectivo en mano).
+-- PENDIENTE hasta que el admin apruebe -> suma a Alq_Reservas.MontoCobrado (baja el saldo).
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Alq_CobranzasPendientes' AND xtype='U')
+BEGIN
+    CREATE TABLE Alq_CobranzasPendientes (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ReservaId INT NOT NULL,
+        RepartidorId INT NOT NULL,
+        Importe DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Tipo NVARCHAR(20) NOT NULL DEFAULT 'entrega',     -- entrega | retiro (momento del cobro)
+        MarcadoEntregado BIT NOT NULL DEFAULT 0,
+        MarcadoRetirado BIT NOT NULL DEFAULT 0,
+        Notas NVARCHAR(500) NULL,
+        Estado NVARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',  -- PENDIENTE | APROBADA | RECHAZADA
+        RechazadaMotivo NVARCHAR(120) NULL,
+        RevisadaPor NVARCHAR(120) NULL,
+        RevisadaAt DATETIME2 NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_AlqCobrPend_Reserva FOREIGN KEY (ReservaId) REFERENCES Alq_Reservas(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_AlqCobrPend_Repartidor FOREIGN KEY (RepartidorId) REFERENCES Cafe_Repartidores(Id)
+    );
+    CREATE INDEX IX_AlqCobrPend_Estado ON Alq_CobranzasPendientes(Estado, CreatedAt DESC);
+END
+GO

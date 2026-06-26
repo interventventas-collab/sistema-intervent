@@ -288,6 +288,39 @@ public class ApiClient
         return resp is not null;
     }
 
+    // ===== Alquileres: Repartidor / Cobranzas pendientes (2026-06-26) =====
+    /// <summary>URL (relativa) del PNG del QR de la reserva, para usar directo en un &lt;img src&gt;.</summary>
+    public string AlqReservaQrUrl(int reservaId) => $"/api/alquileres/reservas/{reservaId}/qr";
+
+    public async Task<List<AlqCobranzaPendienteDto>?> GetAlqCobranzasPendientesAsync(string? estado = null, int? repartidorId = null)
+    {
+        var qs = new List<string>();
+        if (!string.IsNullOrWhiteSpace(estado)) qs.Add($"estado={estado}");
+        if (repartidorId.HasValue) qs.Add($"repartidorId={repartidorId}");
+        var url = "/api/alquileres/cobranzas-pendientes" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<List<AlqCobranzaPendienteDto>>(url);
+    }
+
+    public async Task<int> GetCountAlqCobranzasPendientesAsync()
+    {
+        var r = await GetAsync<CountResultDto>("/api/alquileres/cobranzas-pendientes/count-pendientes");
+        return r?.Count ?? 0;
+    }
+
+    public async Task<bool> AprobarAlqCobranzaAsync(int id, string? operador)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/alquileres/cobranzas-pendientes/{id}/aprobar", new { operador });
+        return resp.IsSuccessStatusCode;
+    }
+
+    public async Task<bool> RechazarAlqCobranzaAsync(int id, string? motivo, string? operador)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/alquileres/cobranzas-pendientes/{id}/rechazar", new { motivo, operador });
+        return resp.IsSuccessStatusCode;
+    }
+
     // --- Nominas: Empleados ---
     public async Task<List<NomEmpleadoDto>?> GetNomEmpleadosAsync()
         => await GetAsync<List<NomEmpleadoDto>>("/api/nominas/empleados");

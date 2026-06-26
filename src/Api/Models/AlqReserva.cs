@@ -51,6 +51,29 @@ public class AlqReserva
     [MaxLength(1000)]
     public string? Notas { get; set; }
 
+    // ===== QR + Repartidor (2026-06-26) =====
+    /// <summary>Token publico para el QR del comprobante: lleva a /alquiler/{token}.</summary>
+    [MaxLength(64)]
+    public string? PublicToken { get; set; }
+
+    /// <summary>Monto cobrado en mano por repartidores (cobranzas aprobadas). Baja el saldo.</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal MontoCobrado { get; set; }
+
+    public int? EntregadoPorRepartidorId { get; set; }
+    [ForeignKey(nameof(EntregadoPorRepartidorId))]
+    public CafeRepartidor? EntregadoPorRepartidor { get; set; }
+    public DateTime? EntregadoAt { get; set; }
+    [MaxLength(500)]
+    public string? ComentarioEntrega { get; set; }
+
+    public int? RetiradoPorRepartidorId { get; set; }
+    [ForeignKey(nameof(RetiradoPorRepartidorId))]
+    public CafeRepartidor? RetiradoPorRepartidor { get; set; }
+    public DateTime? RetiradoAt { get; set; }
+    [MaxLength(500)]
+    public string? ComentarioRetiro { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 
