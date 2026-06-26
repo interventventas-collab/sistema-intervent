@@ -272,7 +272,14 @@
                 <div class="mp-card pendiente" style="background:white; border:2px solid #c4b5fd; border-left:6px solid #7c3aed; margin-bottom:0.7rem; padding:0.7rem;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.3rem;">
                         <span style="background:#ede9fe; color:#5b21b6; font-size:0.72rem; font-weight:700; padding:0.15rem 0.5rem; border-radius:4px;">📦 Alquiler · @a.Numero</span>
-                        <span style="font-size:0.7rem; color:#6b7280;">@a.Estado</span>
+                        @if (a.Entregado && !a.Retirado)
+                        {
+                            <span style="background:#dcfce7; color:#166534; font-size:0.7rem; font-weight:800; padding:0.15rem 0.5rem; border-radius:999px;">✅ Entregado · falta retiro</span>
+                        }
+                        else
+                        {
+                            <span style="font-size:0.7rem; color:#6b7280;">@a.Estado</span>
+                        }
                     </div>
                     <div style="font-weight:700; font-size:1.02rem; color:#111827;">@a.ClienteNombre</div>
                     @if (!string.IsNullOrWhiteSpace(a.ClienteTelefono))
@@ -298,8 +305,8 @@
                         </div>
                     </div>
                     <button type="button" class="mp-card-btn mp-card-btn-entregar" style="margin-top:0.7rem; width:100%; padding:0.7rem; font-size:0.95rem; background:#7c3aed;"
-                            @onclick="() => AbrirAlquiler(a.Token)">
-                        Abrir — entregar / retirar / cobrar
+                            @onclick="() => AbrirAlqModal(a)">
+                        @(a.Entregado ? "🔙 Retirar / cobrar" : "📦 Entregar / cobrar")
                     </button>
                 </div>
             }
@@ -470,7 +477,10 @@
             @if (modal.Tipo == "cobrar")
             {
                 <label style="font-size:0.8rem; font-weight:600; color:#374151;">Importe cobrado</label>
-                <input type="number" step="0.01" class="mp-input" @bind="importeCobrado" placeholder="0,00" autofocus />
+                <input type="number" step="0.01" class="mp-input" @bind="importeCobrado" @bind:event="oninput" placeholder="0,00" autofocus />
+                <div style="text-align:right; font-size:1.1rem; font-weight:800; color:#16a34a; margin-top:0.2rem;">
+                    = $ @importeCobrado.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))
+                </div>
                 <label style="font-size:0.8rem; font-weight:600; color:#374151; margin-top:0.5rem; display:block;">Observaciones (opcional)</label>
                 <input type="text" class="mp-input" @bind="notasCobro" placeholder="Ej: parcial, efectivo, etc." style="font-size:0.95rem;" />
                 <div style="margin-top:0.6rem; padding:0.5rem 0.7rem; background:#fef3c7; border-left:3px solid #f59e0b; border-radius:4px; font-size:0.78rem; color:#78350f;">
@@ -533,6 +543,55 @@
                 <button class="mp-modal-btn mp-modal-btn-cancel" @onclick="CerrarModal" disabled="@procesando">Cancelar</button>
                 <button class="mp-modal-btn mp-modal-btn-ok" @onclick="ConfirmarModal" disabled="@procesando">
                     @(procesando ? "..." : "✓ Confirmás")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* MODAL ALQUILER — entrega/retiro/cobro inline (2026-06-26), igual que ventas *@
+@if (alqModal != null)
+{
+    <div class="mp-modal-overlay" @onclick="CerrarAlqModal">
+        <div class="mp-modal" @onclick:stopPropagation="true">
+            <div class="mp-modal-titulo">📦 Alquiler · @alqModal.Numero</div>
+            <div class="mp-modal-sub">@alqModal.ClienteNombre</div>
+
+            <div style="display:flex; gap:0.5rem; margin-bottom:0.8rem;">
+                <button type="button" class="mp-modal-btn @(alqMomento == "entrega" ? "mp-modal-btn-ok" : "mp-modal-btn-cancel")"
+                        @onclick="@(() => SetAlqMomento("entrega"))">
+                    📦 Entrega @(alqModal.Entregado ? "✓" : "")
+                </button>
+                <button type="button" class="mp-modal-btn @(alqMomento == "retiro" ? "mp-modal-btn-ok" : "mp-modal-btn-cancel")"
+                        disabled="@(!alqModal.Entregado)"
+                        title="@(!alqModal.Entregado ? "Primero marcá la entrega" : "")"
+                        @onclick="@(() => SetAlqMomento("retiro"))">
+                    🔙 Retiro @(alqModal.Retirado ? "✓" : "")
+                </button>
+            </div>
+            @if (!alqModal.Entregado)
+            {
+                <div style="font-size:0.72rem; color:#6b7280; margin:-0.5rem 0 0.6rem;">El retiro se habilita después de marcar la entrega.</div>
+            }
+
+            <label class="mp-check-row" style="display:flex; gap:0.5rem; align-items:center; padding:0.7rem; background:@(alqMarcarHecho ? "#dcfce7" : "#f9fafb"); border-radius:8px; cursor:pointer; border:1px solid @(alqMarcarHecho ? "#16a34a" : "#e5e7eb");">
+                <input type="checkbox" @bind="alqMarcarHecho" style="width:20px; height:20px;" />
+                <span style="font-weight:600;">@(alqMomento == "entrega" ? "✅ Entregué los equipos" : "🔙 Retiré los equipos")</span>
+            </label>
+
+            <label style="font-size:0.8rem; font-weight:600; color:#374151; margin-top:0.7rem; display:block;">💰 ¿Cobraste algo? (opcional)</label>
+            <input type="text" inputmode="numeric" class="mp-input" value="@alqImporteStr" @oninput="OnAlqImporteInput" placeholder="0" style="text-align:right; font-size:1.2rem; font-weight:700;" />
+
+            <label style="font-size:0.8rem; font-weight:600; color:#374151; margin-top:0.6rem; display:block;">📝 Comentarios (opcional)</label>
+            <textarea class="mp-input" @bind="alqNotas" rows="2" placeholder="Ej: faltó una silla, el cliente pidió retirar el lunes..." style="resize:vertical; font-size:0.95rem;"></textarea>
+
+            @if (!string.IsNullOrEmpty(alqError)) { <div class="mp-modal-err">⚠ @alqError</div> }
+
+            <div class="mp-modal-btns">
+                <button class="mp-modal-btn mp-modal-btn-cancel" @onclick="CerrarAlqModal" disabled="@alqGuardando">Cancelar</button>
+                <button class="mp-modal-btn mp-modal-btn-ok" @onclick="GuardarAlqModal"
+                        disabled="@(alqGuardando || (!alqMarcarHecho && AlqImporteValor() <= 0))">
+                    @(alqGuardando ? "..." : "✓ Guardar")
                 </button>
             </div>
         </div>
@@ -709,7 +768,8 @@
         string ClienteNombre, string? ClienteTelefono, string? Direccion,
         DateTime FechaEntrega, DateTime FechaRetiro,
         decimal MontoTotal, decimal Saldo, bool Entregado, bool Retirado, DateTime CargadoAt);
-    public record MisAlquileresResp(int RepartidorId, string Nombre, List<AlqReservaItem> Reservas);
+    public record AlqCobroItem(int ReservaId, decimal Importe, string Estado, DateTime FechaCobro);
+    public record MisAlquileresResp(int RepartidorId, string Nombre, List<AlqReservaItem> Reservas, List<AlqCobroItem>? Cobros);
 
     // 2026-06-17: ME1 (MercadoLibre) — pedidos asignados al repartidor por el admin desde /meli/me1/entregas.
     public record Me1PedidoDto(
@@ -731,6 +791,7 @@
     private List<Me1PedidoDto> me1Pedidos = new();
     // 2026-06-26: Alquileres asignados al repartidor
     private List<AlqReservaItem> alqReservas = new();
+    private List<AlqCobroItem> alqCobros = new();
     private Me1PedidoDto? me1ConfirmEntrega; // setea cuando se abre el modal de doble confirmacion
     private bool me1Entregando = false;
     private string? me1EntregaError;
@@ -828,8 +889,9 @@
             {
                 var alq = await Http.GetFromJsonAsync<MisAlquileresResp>($"api/alquileres/repartidor-public/mis-reservas/{Token}");
                 alqReservas = alq?.Reservas ?? new();
+                alqCobros = alq?.Cobros ?? new();
             }
-            catch { alqReservas = new(); }
+            catch { alqReservas = new(); alqCobros = new(); }
             // 2026-06-11: reaplicar orden manual guardado en este celu (si lo hay)
             await AplicarOrdenGuardado();
             // Forzar re-init de Sortable porque cambio el contenido del DOM
@@ -839,10 +901,72 @@
         finally { loading = false; StateHasChanged(); }
     }
 
-    // Pasa el token del repartidor (Token) + su nombre para que la pantalla de alquiler
-    // NO le pida login: ya está identificado por su link propio (igual que ventas).
-    private void AbrirAlquiler(string reservaToken)
-        => Nav.NavigateTo($"/alquiler/{reservaToken}?r={Token}&n={Uri.EscapeDataString(nombre)}");
+    // ===== Modal de alquiler (inline, sin cambiar de pantalla — igual que ventas) =====
+    private AlqReservaItem? alqModal;
+    private string alqMomento = "entrega";
+    private bool alqMarcarHecho = true;
+    private string alqImporteStr = "";
+    private string alqNotas = "";
+    private bool alqGuardando;
+    private string? alqError;
+
+    private void AbrirAlqModal(AlqReservaItem a)
+    {
+        alqModal = a;
+        // Si la entrega ya está hecha, arrancamos en retiro; si no, en entrega.
+        alqMomento = a.Entregado && !a.Retirado ? "retiro" : "entrega";
+        alqMarcarHecho = true;
+        alqImporteStr = "";
+        alqNotas = "";
+        alqError = null;
+    }
+
+    private void CerrarAlqModal() { alqModal = null; alqError = null; }
+
+    private void SetAlqMomento(string m)
+    {
+        if (m == "retiro" && alqModal is not null && !alqModal.Entregado) return; // retiro requiere entrega
+        alqMomento = m;
+    }
+
+    // Formato de miles en vivo (es-AR usa "." como separador de miles).
+    private void OnAlqImporteInput(ChangeEventArgs e)
+    {
+        var digits = new string((e.Value?.ToString() ?? "").Where(char.IsDigit).ToArray());
+        alqImporteStr = digits.Length == 0 ? "" : (long.TryParse(digits, out var n) ? n.ToString("N0", new System.Globalization.CultureInfo("es-AR")) : digits);
+    }
+
+    private decimal AlqImporteValor()
+    {
+        var digits = new string(alqImporteStr.Where(char.IsDigit).ToArray());
+        return decimal.TryParse(digits, out var v) ? v : 0m;
+    }
+
+    private async Task GuardarAlqModal()
+    {
+        if (alqModal is null) return;
+        alqGuardando = true; alqError = null;
+        try
+        {
+            var body = new { Momento = alqMomento, MarcarHecho = alqMarcarHecho, Importe = AlqImporteValor(), Notas = alqNotas };
+            var resp = await Http.PostAsJsonAsync($"api/alquileres/repartidor-public/mis-reservas/{Token}/accion/{alqModal.Id}", body);
+            if (!resp.IsSuccessStatusCode)
+            {
+                try { var err = await resp.Content.ReadFromJsonAsync<ErrorResp>(); alqError = err?.Error ?? "No se pudo guardar."; }
+                catch { alqError = "No se pudo guardar."; }
+            }
+            else
+            {
+                alqModal = null;
+                await Recargar();   // refresca el panel — el item se actualiza/sale solo
+            }
+        }
+        catch { alqError = "Error de conexión."; }
+        alqGuardando = false;
+        StateHasChanged();
+    }
+
+    private record ErrorResp(string Error);
 
     private async Task AplicarOrdenGuardado()
     {
@@ -1250,6 +1374,10 @@
         var efectivo = cobros.Where(c => c.FechaCobro >= d && c.FechaCobro < h
                                           && c.Estado == "PENDIENTE")
                               .Sum(c => c.Importe);
+        // 2026-06-26: sumar también los cobros de ALQUILER pendientes de aprobar (mismo criterio)
+        efectivo += alqCobros.Where(c => c.FechaCobro >= d && c.FechaCobro < h
+                                          && c.Estado == "PENDIENTE")
+                             .Sum(c => c.Importe);
         return (entregas.Count, entregas.Sum(p => p.Total), efectivo);
     }
 

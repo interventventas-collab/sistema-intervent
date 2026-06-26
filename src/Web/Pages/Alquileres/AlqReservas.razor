@@ -454,8 +454,8 @@
                             @* QR para el repartidor: lleva a /alquiler/{token} (marcar entrega/retiro/cobro) *@
                             <div style="text-align: center;">
                                 <img src="@Api.AlqReservaQrUrl(printReserva.Id)" alt="QR repartidor"
-                                     style="width: 92px; height: 92px; object-fit: contain;" />
-                                <div style="font-size: 0.6rem; color: #6b7280; max-width: 92px;">Escaneá para entregar/retirar/cobrar</div>
+                                     style="width: 150px; height: 150px; object-fit: contain;" />
+                                <div style="font-size: 0.7rem; color: #6b7280; max-width: 150px;">Escaneá para entregar/retirar/cobrar</div>
                             </div>
                         </div>
                     </div>
@@ -763,8 +763,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await Load();
-        await LoadCatalogos();
+        // 2026-06-26: cargar todo en paralelo (antes era secuencial y se sentía lento).
+        await Task.WhenAll(Load(), LoadCatalogos());
     }
 
     protected override async Task OnParametersSetAsync()
@@ -808,11 +808,15 @@
     {
         try
         {
-            clientes = await Api.GetAlqClientesAsync() ?? new();
-            equipos = await Api.GetAlqEquiposAsync() ?? new();
-            repartidores = await Api.GetRepartidoresAsync() ?? new();
+            var tClientes = Api.GetAlqClientesAsync();
+            var tEquipos = Api.GetAlqEquiposAsync();
+            var tReps = Api.GetRepartidoresAsync();
+            await Task.WhenAll(tClientes, tEquipos, tReps);
+            clientes = tClientes.Result ?? new();
+            equipos = tEquipos.Result ?? new();
+            repartidores = tReps.Result ?? new();
         }
-        catch { clientes = new(); equipos = new(); }
+        catch { clientes ??= new(); equipos ??= new(); }
     }
 
     // ===== Asignar reparto =====

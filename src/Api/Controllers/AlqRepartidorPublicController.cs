@@ -216,6 +216,15 @@ public class AlqRepartidorPublicController : ControllerBase
             .ThenBy(x => x.FechaEntrega)
             .ToList();
 
-        return Ok(new { repartidorId = rep.Id, nombre = rep.Nombre, reservas = list });
+        // Cobros de alquiler del repartidor (para el arqueo "tenés que rendir"). Mismo criterio
+        // que ventas: PENDIENTE suma (todavía no rindió); APROBADA ya rindió; RECHAZADA no cuenta.
+        var cobros = await _db.AlqCobranzasPendientes
+            .Where(p => p.RepartidorId == rep.Id && p.Estado != "RECHAZADA" && p.CreatedAt >= desde)
+            .Select(p => new MisCobroAlqDto(p.ReservaId, p.Importe, p.Estado, p.CreatedAt))
+            .ToListAsync();
+
+        return Ok(new { repartidorId = rep.Id, nombre = rep.Nombre, reservas = list, cobros });
     }
+
+    public record MisCobroAlqDto(int ReservaId, decimal Importe, string Estado, DateTime FechaCobro);
 }
