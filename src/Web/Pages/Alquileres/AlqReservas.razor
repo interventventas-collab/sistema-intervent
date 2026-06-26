@@ -682,6 +682,26 @@
                         <option value="@rep.Id">🚚 Pasarla a @rep.Nombre</option>
                     }
                 </select>
+
+                @if (reservaAsignar.EntregadoPorRepartidorId.HasValue || reservaAsignar.RetiradoPorRepartidorId.HasValue)
+                {
+                    <hr style="margin: 0.9rem 0 0.6rem; border: none; border-top: 1px dashed #e5e7eb;" />
+                    <div style="font-size: 0.8rem; color: #6b7280; margin-bottom: 0.4rem;">Deshacer (si se marcó por error):</div>
+                    @if (reservaAsignar.EntregadoPorRepartidorId.HasValue)
+                    {
+                        <button class="btn btn-secondary btn-sm" style="width:100%; margin-bottom:0.4rem;" disabled="@asignando"
+                                @onclick='() => DeshacerReparto("entrega")'>
+                            ✖ Deshacer entrega de @reservaAsignar.EntregadoPorRepartidorNombre
+                        </button>
+                    }
+                    @if (reservaAsignar.RetiradoPorRepartidorId.HasValue)
+                    {
+                        <button class="btn btn-secondary btn-sm" style="width:100%;" disabled="@asignando"
+                                @onclick='() => DeshacerReparto("retiro")'>
+                            ✖ Deshacer retiro de @reservaAsignar.RetiradoPorRepartidorNombre
+                        </button>
+                    }
+                }
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="() => showAsignar = false" disabled="@asignando">Cancelar</button>
@@ -840,6 +860,21 @@
             await Load();
         }
         else ToastService.Error("No se pudo asignar");
+    }
+
+    private async Task DeshacerReparto(string tipo)
+    {
+        if (reservaAsignar is null) return;
+        asignando = true;
+        var ok = await Api.LimpiarRepartoAlqAsync(reservaAsignar.Id, tipo);
+        asignando = false;
+        if (ok)
+        {
+            ToastService.Success(tipo == "retiro" ? "Retiro deshecho" : "Entrega deshecha");
+            showAsignar = false;
+            await Load();
+        }
+        else ToastService.Error("No se pudo deshacer");
     }
 
     private async Task RefreshDisponibilidad()

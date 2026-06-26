@@ -329,6 +329,14 @@ public class ApiClient
         return resp.IsSuccessStatusCode;
     }
 
+    /// <summary>Deshace la entrega o el retiro marcado por un repartidor (tipo = "entrega" | "retiro").</summary>
+    public async Task<bool> LimpiarRepartoAlqAsync(int reservaId, string tipo)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/alquileres/reservas/{reservaId}/limpiar-reparto", new { tipo });
+        return resp.IsSuccessStatusCode;
+    }
+
     // --- Nominas: Empleados ---
     public async Task<List<NomEmpleadoDto>?> GetNomEmpleadosAsync()
         => await GetAsync<List<NomEmpleadoDto>>("/api/nominas/empleados");
