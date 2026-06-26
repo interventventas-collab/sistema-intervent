@@ -227,4 +227,50 @@ public class AlqRepartidorPublicController : ControllerBase
     }
 
     public record MisCobroAlqDto(int ReservaId, decimal Importe, string Estado, DateTime FechaCobro);
+
+    public record EscanearAlqResult(bool Ok, string Mensaje, int? ReservaId, string? Numero);
+
+    /// <summary>El repartidor escanea un QR de alquiler desde su panel (lector continuo, igual que
+    /// ventas). Agrega la reserva a su lista (escaneo 'cargado', "el último que escanea se la queda").
+    /// Identidad por token del repartidor, sin PIN. Pedido 2026-06-26.</summary>
+    [HttpPost("mis-reservas/{tokenRepartidor}/escanear/{reservaToken}")]
+    public async Task<IActionResult> EscanearAlq(string tokenRepartidor, string reservaToken)
+    {
+        var rep = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (rep is null) return Unauthorized(new EscanearAlqResult(false, "Necesitás entrar con tu link", null, null));
+
+        var r = await _db.AlqReservas.FirstOrDefaultAsync(x => x.PublicToken == reservaToken);
+        if (r is null) return Ok(new EscanearAlqResult(false, "Alquiler no encontrado (QR inválido)", null, null));
+
+        // Dueño actual = último 'cargado'. Si ya es mío, no duplico.
+        var ultimo = await _db.AlqQrEscaneos
+            .Where(e => e.ReservaId == r.Id && e.Accion == "cargado")
+            .OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.Id)
+            .FirstOrDefaultAsync();
+        var yaEsMia = ultimo is not null && ultimo.RepartidorId == rep.Id;
+
+        string? transferidoDe = null;
+        if (!yaEsMia)
+        {
+            if (ultimo is not null && !r.RetiradoPorRepartidorId.HasValue)
+            {
+                var otro = await _db.CafeRepartidores.FindAsync(ultimo.RepartidorId);
+                transferidoDe = otro?.Nombre;
+            }
+            _db.AlqQrEscaneos.Add(new AlqQrEscaneo
+            {
+                ReservaId = r.Id, RepartidorId = rep.Id, Accion = "cargado",
+                CreatedAt = DateTime.UtcNow,
+                Ip = Request.HttpContext.Connection.RemoteIpAddress?.ToString()
+            });
+            await _db.SaveChangesAsync();
+        }
+
+        var msg = yaEsMia
+            ? $"Ya estaba en tu lista: {r.Numero}"
+            : transferidoDe is not null
+                ? $"⚠ Lo tenía {transferidoDe} — ahora es tuyo: {r.Numero}"
+                : $"✅ Alquiler cargado: {r.Numero}";
+        return Ok(new EscanearAlqResult(true, msg, r.Id, r.Numero));
+    }
 }

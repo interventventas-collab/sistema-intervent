@@ -1228,8 +1228,9 @@
         // dejamos la cámara abierta para que el repartidor escanee el siguiente sin tocar nada.
         scanError = null;
 
-        // El QR del comprobante apunta a /repartidor/{tokenVenta}
+        // El QR de venta apunta a /repartidor/{tokenVenta}; el de alquiler a /alquiler/{tokenReserva}.
         string? tokenVenta = null;
+        string? tokenAlquiler = null;
         try
         {
             if (Uri.TryCreate(decodedText, UriKind.Absolute, out var uri))
@@ -1237,14 +1238,28 @@
                 var parts = uri.AbsolutePath.Trim('/').Split('/');
                 if (parts.Length >= 2 && string.Equals(parts[0], "repartidor", StringComparison.OrdinalIgnoreCase))
                     tokenVenta = parts[1];
+                else if (parts.Length >= 2 && string.Equals(parts[0], "alquiler", StringComparison.OrdinalIgnoreCase))
+                    tokenAlquiler = parts[1];
             }
             else if (decodedText.Contains("/repartidor/"))
             {
                 var idx = decodedText.IndexOf("/repartidor/", StringComparison.OrdinalIgnoreCase);
                 tokenVenta = decodedText.Substring(idx + "/repartidor/".Length).Split('?', '#', '/')[0];
             }
+            else if (decodedText.Contains("/alquiler/"))
+            {
+                var idx = decodedText.IndexOf("/alquiler/", StringComparison.OrdinalIgnoreCase);
+                tokenAlquiler = decodedText.Substring(idx + "/alquiler/".Length).Split('?', '#', '/')[0];
+            }
         }
         catch { }
+
+        // Si es un QR de alquiler, lo procesamos aparte y salimos.
+        if (!string.IsNullOrWhiteSpace(tokenAlquiler))
+        {
+            await ProcesarQrAlquiler(tokenAlquiler);
+            return;
+        }
 
         if (string.IsNullOrWhiteSpace(tokenVenta))
         {
@@ -1287,6 +1302,35 @@
             MostrarToast("Error: " + ex.Message, true);
         }
     }
+
+    // 2026-06-26: procesa un QR de ALQUILER escaneado desde el lector continuo del panel.
+    private async Task ProcesarQrAlquiler(string tokenReserva)
+    {
+        var ahora = DateTime.UtcNow;
+        if (ultimoTokenEscaneado == tokenReserva && (ahora - ultimoTokenAt).TotalSeconds < 2) return;
+        ultimoTokenEscaneado = tokenReserva; ultimoTokenAt = ahora;
+        try
+        {
+            var resp = await Http.PostAsync($"api/alquileres/repartidor-public/mis-reservas/{Token}/escanear/{tokenReserva}", null);
+            var r = await resp.Content.ReadFromJsonAsync<EscanearAlqResp>();
+            if (r is null || !r.Ok)
+            {
+                try { await JS.InvokeVoidAsync("mpBeepError"); } catch { }
+                MostrarToast(r?.Mensaje ?? "QR de alquiler no válido", true);
+                return;
+            }
+            try { await JS.InvokeVoidAsync("mpBeepOk"); } catch { }
+            cantEscaneadosEnSesion++;
+            MostrarToast(r.Mensaje ?? "✓ Alquiler cargado", false);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            try { await JS.InvokeVoidAsync("mpBeepError"); } catch { }
+            MostrarToast("Error: " + ex.Message, true);
+        }
+    }
+    private record EscanearAlqResp(bool Ok, string Mensaje, int? ReservaId, string? Numero);
 
     // 2026-06-08: tracking anti-duplicado en escaneo continuo
     private string? ultimoTokenEscaneado;
