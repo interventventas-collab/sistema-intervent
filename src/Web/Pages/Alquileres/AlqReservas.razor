@@ -466,11 +466,11 @@
                     <div style="border: 1px solid #d1d5db; padding: 0.6rem;">
                         <div style="font-size: 0.7rem; color: #6b7280; font-weight: 700; text-transform: uppercase; margin-bottom: 0.3rem;">Evento</div>
                         <div style="font-size: 0.9rem;">
-                            <strong>Entrega:</strong> @printReserva.FechaEntrega.ToString("dd/MM/yyyy")
+                            <strong>Entrega:</strong> @printReserva.FechaEntrega.ToString("dd/MM/yyyy") <span style="color: #6b7280;">(@DiaSemana(printReserva.FechaEntrega))</span>
                             @if (!string.IsNullOrEmpty(printReserva.HoraInicio)) { <span> · @printReserva.HoraInicio hs</span> }
                         </div>
                         <div style="font-size: 0.9rem;">
-                            <strong>Retiro:</strong> @printReserva.FechaRetiro.ToString("dd/MM/yyyy")
+                            <strong>Retiro:</strong> @printReserva.FechaRetiro.ToString("dd/MM/yyyy") <span style="color: #6b7280;">(@DiaSemana(printReserva.FechaRetiro))</span>
                             @if (!string.IsNullOrEmpty(printReserva.HoraFin)) { <span> · @printReserva.HoraFin hs</span> }
                         </div>
                         @if (!string.IsNullOrEmpty(printReserva.DireccionEvento))
@@ -1027,6 +1027,19 @@
     // --- Helpers de formato ---
     private static string FormatMoney(decimal v)
         => v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+
+    // Nombre del dia en espanol, en mayusculas (ej: SABADO). Mapeo manual para no depender de la cultura del navegador.
+    private static string DiaSemana(DateTime d) => d.DayOfWeek switch
+    {
+        DayOfWeek.Monday => "LUNES",
+        DayOfWeek.Tuesday => "MARTES",
+        DayOfWeek.Wednesday => "MIÉRCOLES",
+        DayOfWeek.Thursday => "JUEVES",
+        DayOfWeek.Friday => "VIERNES",
+        DayOfWeek.Saturday => "SÁBADO",
+        DayOfWeek.Sunday => "DOMINGO",
+        _ => ""
+    };
 
     private static string FormatHorario(AlqReservaDto r)
     {
