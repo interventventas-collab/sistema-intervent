@@ -161,6 +161,20 @@ public class CreateAlqReservaRequest
     public List<CreateAlqReservaItemRequest> Items { get; set; } = new();
 }
 
+// ===== Resumen dashboard (2026-06-26) =====
+public record AlqProximoDto(int Id, string Numero, string ClienteNombre, DateTime Fecha, string Tipo);
+public class AlqDashboardResumen
+{
+    public int EnCalle { get; set; }
+    public decimal MontoEnCalle { get; set; }
+    public decimal SaldoACobrar { get; set; }
+    public int ARetirarHoy { get; set; }
+    public int Vencidos { get; set; }
+    public int EntregasHoy { get; set; }
+    public int RetirosHoy { get; set; }
+    public List<AlqProximoDto> Proximos { get; set; } = new();
+}
+
 // ===== Repartidor / Cobranzas pendientes (2026-06-26) =====
 public record AlqCobranzaPendienteDto(
     int Id, int ReservaId, string ReservaNumero, string ClienteNombre,

@@ -18,6 +18,46 @@ public class AlqReservasController : ControllerBase
 
     public AlqReservasController(AppDbContext db, Api.Services.QrRepartidorService qr) { _db = db; _qr = qr; }
 
+    public record AlqProximoDto(int Id, string Numero, string ClienteNombre, DateTime Fecha, string Tipo);
+    public record AlqDashboardResumen(
+        int EnCalle, decimal MontoEnCalle, decimal SaldoACobrar,
+        int ARetirarHoy, int Vencidos, int EntregasHoy, int RetirosHoy,
+        List<AlqProximoDto> Proximos);
+
+    /// <summary>Resumen para la card del dashboard: equipos en calle, vencidos, movimientos de hoy
+    /// y próximos. Pedido 2026-06-26.</summary>
+    [HttpGet("resumen-dashboard")]
+    public async Task<IActionResult> ResumenDashboard()
+    {
+        var hoy = DateTime.Today;
+        var activas = await _db.AlqReservas
+            .Include(r => r.ClienteNav)
+            .Where(r => r.Estado != "cancelado")
+            .ToListAsync();
+
+        var enCalleList = activas.Where(r => r.EntregadoPorRepartidorId.HasValue && !r.RetiradoPorRepartidorId.HasValue).ToList();
+        var saldoACobrar = activas.Where(r => r.Estado != "finalizado")
+            .Sum(r => Math.Max(0m, r.MontoTotal - r.Sena - r.MontoCobrado));
+
+        // Movimientos programados de hoy
+        var entregasHoy = activas.Count(r => r.FechaEntrega.Date == hoy && !r.EntregadoPorRepartidorId.HasValue);
+        var retirosHoy = enCalleList.Count(r => r.FechaRetiro.Date == hoy);
+        var aRetirarHoy = enCalleList.Count(r => r.FechaRetiro.Date == hoy);
+        var vencidos = enCalleList.Count(r => r.FechaRetiro.Date < hoy);
+
+        // Próximos: entregas pendientes y retiros en calle, ordenados por fecha
+        var proximos = new List<AlqProximoDto>();
+        proximos.AddRange(activas.Where(r => !r.EntregadoPorRepartidorId.HasValue && r.FechaEntrega.Date >= hoy)
+            .Select(r => new AlqProximoDto(r.Id, r.Numero, r.ClienteNav?.Nombre ?? "—", r.FechaEntrega, "entrega")));
+        proximos.AddRange(enCalleList.Where(r => r.FechaRetiro.Date >= hoy)
+            .Select(r => new AlqProximoDto(r.Id, r.Numero, r.ClienteNav?.Nombre ?? "—", r.FechaRetiro, "retiro")));
+        proximos = proximos.OrderBy(p => p.Fecha).Take(5).ToList();
+
+        return Ok(new AlqDashboardResumen(
+            enCalleList.Count, enCalleList.Sum(r => r.MontoTotal), saldoACobrar,
+            aRetirarHoy, vencidos, entregasHoy, retirosHoy, proximos));
+    }
+
     /// <summary>PNG del QR que va en el comprobante. Lleva a /alquiler/{token}. Si la reserva
     /// es vieja y no tiene token, se lo genera al vuelo.</summary>
     [HttpGet("{id:int}/qr")]
