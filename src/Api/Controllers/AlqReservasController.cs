@@ -127,6 +127,39 @@ public class AlqReservasController : ControllerBase
         return Ok(new { ok = true, mensaje });
     }
 
+    public record LimpiarRepartoRequest(string Tipo);   // "entrega" | "retiro"
+
+    /// <summary>Deshace la entrega o el retiro marcado por un repartidor (saca el "Entregó X" /
+    /// "Retiró X") y reacomoda el estado de la reserva. Pedido 2026-06-26.</summary>
+    [HttpPost("{id:int}/limpiar-reparto")]
+    public async Task<IActionResult> LimpiarReparto(int id, [FromBody] LimpiarRepartoRequest req)
+    {
+        var r = await _db.AlqReservas.FirstOrDefaultAsync(x => x.Id == id);
+        if (r is null) return NotFound(new { error = "Reserva no encontrada" });
+
+        var tipo = (req.Tipo ?? "").Trim().ToLowerInvariant();
+        if (tipo == "retiro")
+        {
+            r.RetiradoPorRepartidorId = null;
+            r.RetiradoAt = null;
+            r.ComentarioRetiro = null;
+            if (r.Estado == "finalizado") r.Estado = "entregado";
+        }
+        else // "entrega" (deshace entrega; el retiro no puede existir sin entrega, así que también lo limpia)
+        {
+            r.EntregadoPorRepartidorId = null;
+            r.EntregadoAt = null;
+            r.ComentarioEntrega = null;
+            r.RetiradoPorRepartidorId = null;
+            r.RetiradoAt = null;
+            r.ComentarioRetiro = null;
+            if (r.Estado == "entregado" || r.Estado == "finalizado") r.Estado = "confirmado";
+        }
+        r.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateAlqReservaRequest req)
     {
@@ -233,6 +266,16 @@ public class AlqReservasController : ControllerBase
             var ne = NormalizarEstado(req.Estado);
             if (ne is null) return BadRequest(new { error = $"Estado invalido. Validos: {string.Join(", ", EstadosValidos)}" });
             reserva.Estado = ne;
+        }
+
+        // 2026-06-26: no permitir que el estado quede por debajo de la realidad del reparto.
+        // Si un repartidor ya entregó/retiró, el estado se mantiene consistente (evita desincronización
+        // al editar la reserva). El admin puede deshacer el reparto desde "Asignar reparto".
+        if (reserva.Estado != "cancelado")
+        {
+            if (reserva.RetiradoPorRepartidorId.HasValue) reserva.Estado = "finalizado";
+            else if (reserva.EntregadoPorRepartidorId.HasValue && (reserva.Estado == "reservado" || reserva.Estado == "confirmado"))
+                reserva.Estado = "entregado";
         }
 
         // Si vienen items, reemplazar todos. Validar disponibilidad excluyendo esta reserva.
