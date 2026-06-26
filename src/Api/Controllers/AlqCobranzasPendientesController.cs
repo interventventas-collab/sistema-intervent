@@ -114,6 +114,40 @@ public class AlqCobranzasPendientesController : ControllerBase
         return Ok();
     }
 
+    public record AnularRequest(string? Password, string? Operador);
+
+    /// <summary>Anula un cobro YA APROBADO (se cargó por error). Pide clave del usuario, revierte
+    /// el MontoCobrado de la reserva (sube el saldo) y lo deja como RECHAZADA. Pedido 2026-06-26.</summary>
+    [HttpPost("{id:int}/anular")]
+    public async Task<IActionResult> Anular(int id, [FromBody] AnularRequest req)
+    {
+        var p = await _db.AlqCobranzasPendientes.Include(x => x.Reserva).FirstOrDefaultAsync(x => x.Id == id);
+        if (p is null) return NotFound();
+        if (p.Estado != "APROBADA") return BadRequest(new { error = $"Solo se puede anular una cobranza APROBADA (esta está {p.Estado})." });
+
+        // Pedir clave del usuario actual (acción sensible: mueve plata).
+        var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                       ?? User.FindFirst("sub")?.Value;
+        if (!int.TryParse(userIdClaim, out var userId)) return Unauthorized(new { error = "Sesión inválida" });
+        var user = await _db.Users.FindAsync(userId);
+        if (user is null) return Unauthorized(new { error = "Usuario no encontrado" });
+        if (string.IsNullOrEmpty(req?.Password) || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
+            return BadRequest(new { error = "Clave incorrecta" });
+
+        // Revertir el efecto en la reserva (sube el saldo de nuevo).
+        if (p.Reserva is not null)
+        {
+            p.Reserva.MontoCobrado = Math.Max(0m, p.Reserva.MontoCobrado - p.Importe);
+            p.Reserva.UpdatedAt = DateTime.UtcNow;
+        }
+        p.Estado = "RECHAZADA";
+        p.RechazadaMotivo = "Anulada (estaba aprobada)" + (string.IsNullOrEmpty(req.Operador) ? "" : $" por {req.Operador}");
+        p.RevisadaPor = req.Operador;
+        p.RevisadaAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
     public record ArqueoItemDto(int ReservaId, string ReservaNumero, string? ClienteNombre,
         decimal Importe, string Tipo, string Estado, DateTime CreatedAt);
     public record ArqueoDto(int RepartidorId, string RepartidorNombre, DateTime Dia,
