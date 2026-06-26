@@ -13,9 +13,28 @@ namespace Api.Controllers;
 public class AlqReservasController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly Api.Services.QrRepartidorService _qr;
     private static readonly string[] EstadosValidos = { "reservado", "confirmado", "entregado", "finalizado", "cancelado" };
 
-    public AlqReservasController(AppDbContext db) { _db = db; }
+    public AlqReservasController(AppDbContext db, Api.Services.QrRepartidorService qr) { _db = db; _qr = qr; }
+
+    /// <summary>PNG del QR que va en el comprobante. Lleva a /alquiler/{token}. Si la reserva
+    /// es vieja y no tiene token, se lo genera al vuelo.</summary>
+    [HttpGet("{id:int}/qr")]
+    public async Task<IActionResult> Qr(int id)
+    {
+        var r = await _db.AlqReservas.FirstOrDefaultAsync(x => x.Id == id);
+        if (r is null) return NotFound();
+        if (string.IsNullOrEmpty(r.PublicToken))
+        {
+            r.PublicToken = Guid.NewGuid().ToString("N");
+            r.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+        }
+        var png = await _qr.GenerarQrAlquilerAsync(r.PublicToken);
+        if (png is null) return NotFound(new { error = "No hay URL publica configurada (mapeo.public_base_url)" });
+        return File(png, "image/png");
+    }
 
     [HttpGet]
     public async Task<IActionResult> GetAll(
@@ -25,6 +44,8 @@ public class AlqReservasController : ControllerBase
     {
         var q = _db.AlqReservas
             .Include(r => r.ClienteNav)
+            .Include(r => r.EntregadoPorRepartidor)
+            .Include(r => r.RetiradoPorRepartidor)
             .Include(r => r.Items).ThenInclude(i => i.EquipoNav)
             .AsQueryable();
         if (!string.IsNullOrWhiteSpace(estado))
@@ -52,6 +73,8 @@ public class AlqReservasController : ControllerBase
     {
         var r = await _db.AlqReservas
             .Include(r => r.ClienteNav)
+            .Include(r => r.EntregadoPorRepartidor)
+            .Include(r => r.RetiradoPorRepartidor)
             .Include(r => r.Items).ThenInclude(i => i.EquipoNav)
             .FirstOrDefaultAsync(r => r.Id == id);
         if (r is null) return NotFound(new { error = "Reserva no encontrada" });
@@ -107,6 +130,7 @@ public class AlqReservasController : ControllerBase
         var reserva = new AlqReserva
         {
             Numero = await GenerarNumeroAsync(),
+            PublicToken = Guid.NewGuid().ToString("N"),
             ClienteId = req.ClienteId,
             FechaEntrega = req.FechaEntrega.Date,
             FechaRetiro = req.FechaRetiro.Date,
@@ -132,6 +156,8 @@ public class AlqReservasController : ControllerBase
         // Recargo con includes para devolver el DTO completo
         var saved = await _db.AlqReservas
             .Include(r => r.ClienteNav)
+            .Include(r => r.EntregadoPorRepartidor)
+            .Include(r => r.RetiradoPorRepartidor)
             .Include(r => r.Items).ThenInclude(i => i.EquipoNav)
             .FirstAsync(r => r.Id == reserva.Id);
         return Ok(Map(saved));
@@ -217,6 +243,8 @@ public class AlqReservasController : ControllerBase
 
         var saved = await _db.AlqReservas
             .Include(r => r.ClienteNav)
+            .Include(r => r.EntregadoPorRepartidor)
+            .Include(r => r.RetiradoPorRepartidor)
             .Include(r => r.Items).ThenInclude(i => i.EquipoNav)
             .FirstAsync(r => r.Id == reserva.Id);
         return Ok(Map(saved));
@@ -341,5 +369,8 @@ public class AlqReservasController : ControllerBase
         r.CreatedAt, r.UpdatedAt,
         r.Items.Select(i => new AlqReservaItemDto(
             i.Id, i.EquipoId, i.EquipoNav?.Sku ?? "—", i.EquipoNav?.Nombre ?? "—",
-            i.Cantidad, i.PrecioUnitario)).ToList());
+            i.Cantidad, i.PrecioUnitario)).ToList(),
+        r.PublicToken, r.MontoCobrado,
+        r.EntregadoPorRepartidorId, r.EntregadoPorRepartidor?.Nombre, r.EntregadoAt, r.ComentarioEntrega,
+        r.RetiradoPorRepartidorId, r.RetiradoPorRepartidor?.Nombre, r.RetiradoAt, r.ComentarioRetiro);
 }

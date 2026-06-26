@@ -1,0 +1,131 @@
+@page "/alquileres/cobranzas-pendientes"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject OperatorService Operator
+@using Web.Models
+
+@* Admin: revisa los cobros/entregas que los repartidores precargaron en alquileres.
+   Aprobar → baja el saldo de la reserva. Pedido 2026-06-26 (espejo del de ventas). *@
+
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+        <h3>💰 Cobranzas de alquiler — pendientes de aprobar</h3>
+        <button class="btn btn-secondary btn-sm" @onclick="Cargar">🔄 Actualizar</button>
+    </div>
+
+    <div style="display:flex; gap:0.4rem; padding:0.5rem 0.8rem; flex-wrap:wrap;">
+        @foreach (var t in tabs)
+        {
+            <button class="btn btn-sm @(estadoActivo == t.Key ? "btn-primary" : "btn-secondary")" @onclick="() => CambiarTab(t.Key)">
+                @t.Label @(t.Key == "PENDIENTE" && countPendiente > 0 ? $"({countPendiente})" : "")
+            </button>
+        }
+    </div>
+
+    @if (cargando)
+    {
+        <div style="padding:2rem; text-align:center; color:#6b7280;">Cargando...</div>
+    }
+    else if (lista.Count == 0)
+    {
+        <div style="padding:2rem; text-align:center; color:#9ca3af;">No hay cobranzas @estadoActivo.ToLower() todavía.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Reserva</th>
+                        <th>Cliente</th>
+                        <th>Repartidor</th>
+                        <th>Momento</th>
+                        <th style="text-align:right;">Importe</th>
+                        <th>Marcó</th>
+                        <th>Comentarios</th>
+                        <th style="text-align:right;">Saldo reserva</th>
+                        @if (estadoActivo == "PENDIENTE") { <th></th> }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in lista)
+                    {
+                        <tr>
+                            <td style="white-space:nowrap;">@c.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")</td>
+                            <td style="font-family:monospace;">@c.ReservaNumero</td>
+                            <td>@c.ClienteNombre</td>
+                            <td>@c.RepartidorNombre</td>
+                            <td>@(c.Tipo == "retiro" ? "🔙 Retiro" : "📦 Entrega")</td>
+                            <td style="text-align:right; font-weight:800; color:#16a34a;">$@c.Importe.ToString("N2")</td>
+                            <td style="font-size:0.8rem;">
+                                @if (c.MarcadoEntregado) { <span class="badge" style="background:#dcfce7; color:#166534;">entregó</span> }
+                                @if (c.MarcadoRetirado) { <span class="badge" style="background:#e0e7ff; color:#3730a3;">retiró</span> }
+                            </td>
+                            <td style="max-width:200px; font-size:0.82rem; color:#6b7280;">@c.Notas</td>
+                            <td style="text-align:right;">$@c.ReservaSaldo.ToString("N2")</td>
+                            @if (estadoActivo == "PENDIENTE")
+                            {
+                                <td style="white-space:nowrap;">
+                                    <button class="btn btn-sm btn-success" disabled="@procesando" @onclick="() => Aprobar(c)">✅ Aprobar</button>
+                                    <button class="btn btn-sm btn-danger" disabled="@procesando" @onclick="() => Rechazar(c)">✖ Rechazar</button>
+                                </td>
+                            }
+                            else if (c.Estado == "RECHAZADA" && !string.IsNullOrEmpty(c.RechazadaMotivo))
+                            {
+                                <td style="font-size:0.8rem; color:#991b1b;">@c.RechazadaMotivo</td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private record Tab(string Key, string Label);
+    private readonly Tab[] tabs = new[]
+    {
+        new Tab("PENDIENTE", "⏳ Pendientes"),
+        new Tab("APROBADA", "✅ Aprobadas"),
+        new Tab("RECHAZADA", "✖ Rechazadas"),
+    };
+
+    private string estadoActivo = "PENDIENTE";
+    private List<AlqCobranzaPendienteDto> lista = new();
+    private int countPendiente;
+    private bool cargando = true;
+    private bool procesando;
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task CambiarTab(string k) { estadoActivo = k; await Cargar(); }
+
+    private async Task Cargar()
+    {
+        cargando = true; StateHasChanged();
+        lista = await Api.GetAlqCobranzasPendientesAsync(estadoActivo) ?? new();
+        countPendiente = await Api.GetCountAlqCobranzasPendientesAsync();
+        cargando = false; StateHasChanged();
+    }
+
+    private async Task Aprobar(AlqCobranzaPendienteDto c)
+    {
+        procesando = true;
+        var ok = await Api.AprobarAlqCobranzaAsync(c.Id, Operator.Current);
+        procesando = false;
+        if (ok) { ToastService.Success($"Aprobada — bajó el saldo de {c.ReservaNumero}"); await Cargar(); }
+        else ToastService.Error("No se pudo aprobar");
+    }
+
+    private async Task Rechazar(AlqCobranzaPendienteDto c)
+    {
+        procesando = true;
+        var ok = await Api.RechazarAlqCobranzaAsync(c.Id, null, Operator.Current);
+        procesando = false;
+        if (ok) { ToastService.Success("Rechazada"); await Cargar(); }
+        else ToastService.Error("No se pudo rechazar");
+    }
+}

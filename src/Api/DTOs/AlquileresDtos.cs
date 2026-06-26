@@ -82,7 +82,14 @@ public record AlqReservaDto(
     decimal MontoTotal, decimal Descuento, decimal Sena,
     string Estado, string? Notas,
     DateTime CreatedAt, DateTime? UpdatedAt,
-    List<AlqReservaItemDto> Items);
+    List<AlqReservaItemDto> Items,
+    // ===== QR + Repartidor (2026-06-26) =====
+    string? PublicToken = null,
+    decimal MontoCobrado = 0,
+    int? EntregadoPorRepartidorId = null, string? EntregadoPorRepartidorNombre = null,
+    DateTime? EntregadoAt = null, string? ComentarioEntrega = null,
+    int? RetiradoPorRepartidorId = null, string? RetiradoPorRepartidorNombre = null,
+    DateTime? RetiradoAt = null, string? ComentarioRetiro = null);
 
 public class CreateAlqReservaItemRequest
 {
