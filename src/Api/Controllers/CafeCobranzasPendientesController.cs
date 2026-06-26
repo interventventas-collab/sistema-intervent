@@ -30,7 +30,7 @@ public class CafeCobranzasPendientesController : ControllerBase
         bool VentaYaCobrada = false);
 
     public record ArqueoItemDto(int VentaId, string VentaNumero, string? ClienteNombre, decimal Importe,
-        bool MarcadoEntregado, string Estado, DateTime CreatedAt);
+        bool MarcadoEntregado, string Estado, DateTime CreatedAt, bool EsAlquiler = false);
     public record ArqueoDto(int RepartidorId, string RepartidorNombre, DateTime Fecha,
         decimal TotalPendiente, decimal TotalAprobado, int CantPendiente, int CantAprobado, List<ArqueoItemDto> Items);
 
@@ -465,11 +465,27 @@ public class CafeCobranzasPendientesController : ControllerBase
         var items = pendientes.Select(p => new ArqueoItemDto(
             p.VentaId, p.Venta?.Numero ?? "?", p.Venta?.ClienteNombreSnapshot,
             p.Importe, p.MarcadoEntregado, p.Estado, p.CreatedAt)).ToList();
-        var totalPendiente = pendientes.Where(p => p.Estado == "PENDIENTE").Sum(p => p.Importe);
-        var totalAprobado = pendientes.Where(p => p.Estado == "APROBADA").Sum(p => p.Importe);
-        var cantP = pendientes.Count(p => p.Estado == "PENDIENTE");
-        var cantA = pendientes.Count(p => p.Estado == "APROBADA");
-        return Ok(new ArqueoDto(rep.Id, rep.Nombre, dia, totalPendiente, totalAprobado, cantP, cantA, items));
+
+        // 2026-06-26: sumar también los cobros de ALQUILER del repartidor en el día.
+        var pendAlq = await _db.AlqCobranzasPendientes
+            .Include(p => p.Reserva).ThenInclude(r => r!.ClienteNav)
+            .Where(p => p.RepartidorId == repartidorId
+                && p.CreatedAt >= dia && p.CreatedAt < diaFin
+                && p.Estado != "RECHAZADA")
+            .OrderBy(p => p.CreatedAt)
+            .ToListAsync();
+        items.AddRange(pendAlq.Select(p => new ArqueoItemDto(
+            p.ReservaId, p.Reserva?.Numero ?? "?", p.Reserva?.ClienteNav?.Nombre,
+            p.Importe, p.MarcadoEntregado, p.Estado, p.CreatedAt, EsAlquiler: true)));
+
+        var totalPendiente = pendientes.Where(p => p.Estado == "PENDIENTE").Sum(p => p.Importe)
+                           + pendAlq.Where(p => p.Estado == "PENDIENTE").Sum(p => p.Importe);
+        var totalAprobado = pendientes.Where(p => p.Estado == "APROBADA").Sum(p => p.Importe)
+                          + pendAlq.Where(p => p.Estado == "APROBADA").Sum(p => p.Importe);
+        var cantP = pendientes.Count(p => p.Estado == "PENDIENTE") + pendAlq.Count(p => p.Estado == "PENDIENTE");
+        var cantA = pendientes.Count(p => p.Estado == "APROBADA") + pendAlq.Count(p => p.Estado == "APROBADA");
+        var itemsOrdenados = items.OrderBy(i => i.CreatedAt).ToList();
+        return Ok(new ArqueoDto(rep.Id, rep.Nombre, dia, totalPendiente, totalAprobado, cantP, cantA, itemsOrdenados));
     }
 
     /// <summary>2026-06-10: Arqueo de TODOS los repartidores en un dia. Devuelve una lista
@@ -486,18 +502,34 @@ public class CafeCobranzasPendientesController : ControllerBase
                 && p.Estado != "RECHAZADA")
             .OrderBy(p => p.CreatedAt)
             .ToListAsync();
+        // 2026-06-26: también los cobros de ALQUILER del día.
+        var pendAlq = await _db.AlqCobranzasPendientes
+            .Include(p => p.Reserva).ThenInclude(r => r!.ClienteNav)
+            .Include(p => p.Repartidor)
+            .Where(p => p.CreatedAt >= dia && p.CreatedAt < diaFin && p.Estado != "RECHAZADA")
+            .OrderBy(p => p.CreatedAt)
+            .ToListAsync();
 
-        var resultados = pendientes
-            .GroupBy(p => new { p.RepartidorId, RepartidorNombre = p.Repartidor?.Nombre ?? "?" })
+        // Items unificados (ventas + alquiler) con su repartidor.
+        var todos = pendientes.Select(p => new {
+                p.RepartidorId, Nombre = p.Repartidor?.Nombre ?? "?",
+                Item = new ArqueoItemDto(p.VentaId, p.Venta?.Numero ?? "?", p.Venta?.ClienteNombreSnapshot,
+                    p.Importe, p.MarcadoEntregado, p.Estado, p.CreatedAt) })
+            .Concat(pendAlq.Select(p => new {
+                p.RepartidorId, Nombre = p.Repartidor?.Nombre ?? "?",
+                Item = new ArqueoItemDto(p.ReservaId, p.Reserva?.Numero ?? "?", p.Reserva?.ClienteNav?.Nombre,
+                    p.Importe, p.MarcadoEntregado, p.Estado, p.CreatedAt, EsAlquiler: true) }))
+            .ToList();
+
+        var resultados = todos
+            .GroupBy(p => new { p.RepartidorId, RepartidorNombre = p.Nombre })
             .Select(g =>
             {
-                var items = g.Select(p => new ArqueoItemDto(
-                    p.VentaId, p.Venta?.Numero ?? "?", p.Venta?.ClienteNombreSnapshot,
-                    p.Importe, p.MarcadoEntregado, p.Estado, p.CreatedAt)).ToList();
-                var totalP = g.Where(p => p.Estado == "PENDIENTE").Sum(p => p.Importe);
-                var totalA = g.Where(p => p.Estado == "APROBADA").Sum(p => p.Importe);
-                var cantP = g.Count(p => p.Estado == "PENDIENTE");
-                var cantA = g.Count(p => p.Estado == "APROBADA");
+                var items = g.Select(x => x.Item).OrderBy(i => i.CreatedAt).ToList();
+                var totalP = items.Where(p => p.Estado == "PENDIENTE").Sum(p => p.Importe);
+                var totalA = items.Where(p => p.Estado == "APROBADA").Sum(p => p.Importe);
+                var cantP = items.Count(p => p.Estado == "PENDIENTE");
+                var cantA = items.Count(p => p.Estado == "APROBADA");
                 return new ArqueoDto(g.Key.RepartidorId, g.Key.RepartidorNombre, dia,
                     totalP, totalA, cantP, cantA, items);
             })

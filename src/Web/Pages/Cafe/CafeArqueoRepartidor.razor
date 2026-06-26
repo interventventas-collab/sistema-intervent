@@ -145,7 +145,10 @@
                                     {
                                         <tr>
                                             <td>@it.CreatedAt.ToArTime().ToString("HH:mm")</td>
-                                            <td style="font-family: monospace; font-weight: 700;">@it.VentaNumero</td>
+                                            <td style="font-family: monospace; font-weight: 700;">
+                                                @if (it.EsAlquiler) { <span style="background:#ede9fe; color:#5b21b6; padding:0.05rem 0.35rem; border-radius:4px; font-size:0.7rem; margin-right:0.25rem;">📦 ALQ</span> }
+                                                @it.VentaNumero
+                                            </td>
                                             <td>@(it.ClienteNombre ?? "—")</td>
                                             <td>
                                                 @if (it.Estado == "PENDIENTE")
@@ -221,7 +224,10 @@
                 {
                     <tr>
                         <td>@it.CreatedAt.ToArTime().ToString("HH:mm")</td>
-                        <td style="font-family: monospace; font-weight: 700;">@it.VentaNumero</td>
+                        <td style="font-family: monospace; font-weight: 700;">
+                            @if (it.EsAlquiler) { <span style="background:#ede9fe; color:#5b21b6; padding:0.05rem 0.35rem; border-radius:4px; font-size:0.7rem; margin-right:0.25rem;">📦 ALQ</span> }
+                            @it.VentaNumero
+                        </td>
                         <td>@(it.ClienteNombre ?? "—")</td>
                         <td>
                             @if (it.Estado == "PENDIENTE")

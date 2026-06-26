@@ -310,6 +310,7 @@
                             @onclick="() => AbrirAlqModal(a)">
                         @(a.Entregado ? "🔙 Retirar / cobrar" : "📦 Entregar / cobrar")
                     </button>
+                    <button type="button" class="mp-card-btn-link" @onclick="() => VerComprobanteAlq(a)">📄 Ver comprobante</button>
                 </div>
             }
         }
@@ -452,6 +453,7 @@
                             <span class="mp-chip @(cobroAlq.Estado == "APROBADA" ? "mp-chip-ok" : "mp-chip-pend")">💵 Cobrado $ @cobroAlq.Importe.ToString("N2") @(cobroAlq.Estado == "APROBADA" ? "✓" : "⏳")</span>
                         }
                     </div>
+                    <button type="button" class="mp-card-btn-link" @onclick="() => VerComprobanteAlq(a)">📄 Ver comprobante</button>
                 </div>
             }
             foreach (var p in entregadasFiltro)
@@ -627,6 +629,55 @@
     </div>
 }
 
+@* MODAL: Ver comprobante de ALQUILER (detalle de equipos) - 2026-06-26 *@
+@if (alqDetalle != null)
+{
+    <div class="mp-modal-overlay" @onclick="() => alqDetalle = null">
+        <div class="mp-modal" @onclick:stopPropagation="true">
+            <div class="mp-modal-titulo">📦 @alqDetalle.Numero</div>
+            <div class="mp-modal-sub">@alqDetalle.ClienteNombre</div>
+            @if (!string.IsNullOrWhiteSpace(alqDetalle.Direccion))
+            {
+                <div style="font-size:0.85rem; color:#374151; margin-bottom:0.5rem;">📍 @alqDetalle.Direccion</div>
+            }
+            <div style="display:flex; gap:0.5rem; margin-bottom:0.6rem;">
+                <div style="flex:1; background:#f9fafb; border-radius:6px; padding:0.4rem; text-align:center;">
+                    <div style="font-size:0.62rem; color:#6b7280; text-transform:uppercase; font-weight:700;">Entrega</div>
+                    <div style="font-weight:800;">@alqDetalle.FechaEntrega.ToString("dd/MM")</div>
+                </div>
+                <div style="flex:1; background:#f9fafb; border-radius:6px; padding:0.4rem; text-align:center;">
+                    <div style="font-size:0.62rem; color:#6b7280; text-transform:uppercase; font-weight:700;">Retiro</div>
+                    <div style="font-weight:800;">@alqDetalle.FechaRetiro.ToString("dd/MM")</div>
+                </div>
+            </div>
+            <div style="font-size:0.78rem; font-weight:700; color:#6b7280; text-transform:uppercase; margin-bottom:0.3rem;">📦 Equipos</div>
+            @if (alqDetalle.Items is { Count: > 0 })
+            {
+                <table style="width:100%; font-size:0.9rem; border-collapse:collapse;">
+                    @foreach (var it in alqDetalle.Items)
+                    {
+                        <tr style="border-bottom:1px dashed #f3f4f6;">
+                            <td style="padding:0.35rem 0.2rem; font-weight:800; color:#7c3aed; width:44px;">×@it.Cantidad</td>
+                            <td style="padding:0.35rem 0.2rem;"><b>@it.Nombre</b><div style="font-size:0.72rem; color:#6b7280;">@it.Sku</div></td>
+                        </tr>
+                    }
+                </table>
+            }
+            else
+            {
+                <div style="font-size:0.85rem; color:#9ca3af;">Sin equipos cargados.</div>
+            }
+            <div style="display:flex; justify-content:space-between; margin-top:0.7rem; padding-top:0.5rem; border-top:1px solid #e5e7eb; font-weight:800;">
+                <span>TOTAL</span><span style="color:#16a34a;">$ @alqDetalle.MontoTotal.ToString("N2")</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:0.9rem; color:#dc2626; font-weight:700;">
+                <span>Saldo pendiente</span><span>$ @alqDetalle.Saldo.ToString("N2")</span>
+            </div>
+            <button class="mp-modal-btn mp-modal-btn-cancel" style="width:100%; margin-top:0.8rem;" @onclick="() => alqDetalle = null">Cerrar</button>
+        </div>
+    </div>
+}
+
 @* MODAL: Resumen del comprobante (sin descargar PDF) - 2026-06-10 *@
 @if (resumenLoading || resumenAbierto != null)
 {
@@ -793,11 +844,12 @@
     public record MisPedidosResp(int RepartidorId, string Nombre, List<PedidoDto> Pedidos, List<CobroDto>? Cobros);
 
     // 2026-06-26: Alquileres asignados al repartidor
+    public record AlqEquipoDet(int Cantidad, string Sku, string Nombre);
     public record AlqReservaItem(int Id, string Numero, string Token, string Estado,
         string ClienteNombre, string? ClienteTelefono, string? Direccion,
         DateTime FechaEntrega, DateTime FechaRetiro,
         decimal MontoTotal, decimal Saldo, bool Entregado, bool Retirado, DateTime CargadoAt,
-        DateTime? EntregadoAt, DateTime? RetiradoAt);
+        DateTime? EntregadoAt, DateTime? RetiradoAt, List<AlqEquipoDet>? Items);
     public record AlqCobroItem(int ReservaId, decimal Importe, string Estado, DateTime FechaCobro);
     public record MisAlquileresResp(int RepartidorId, string Nombre, List<AlqReservaItem> Reservas, List<AlqCobroItem>? Cobros);
 
@@ -952,6 +1004,9 @@
     }
 
     private void CerrarAlqModal() { alqModal = null; alqError = null; }
+
+    private AlqReservaItem? alqDetalle;
+    private void VerComprobanteAlq(AlqReservaItem a) => alqDetalle = a;
 
     private void SetAlqMomento(string m)
     {

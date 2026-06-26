@@ -413,6 +413,7 @@ public class ArqueoItemDto
     public bool MarcadoEntregado { get; set; }
     public string Estado { get; set; } = "";
     public DateTime CreatedAt { get; set; }
+    public bool EsAlquiler { get; set; }
 }
 
 public class ArqueoDto

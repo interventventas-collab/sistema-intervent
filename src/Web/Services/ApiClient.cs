@@ -266,8 +266,25 @@ public class ApiClient
     public async Task<AlqReservaDto?> UpdateAlqReservaAsync(int id, UpdateAlqReservaRequest request)
         => await PutAsync<AlqReservaDto>($"/api/alquileres/reservas/{id}", request);
 
-    public async Task<bool> DeleteAlqReservaAsync(int id)
-        => await DeleteAsync($"/api/alquileres/reservas/{id}");
+    /// <summary>Elimina una reserva. Requiere clave del usuario y falla si tiene cobranzas.
+    /// Devuelve (ok, mensajeDeError).</summary>
+    public async Task<(bool ok, string? error)> DeleteAlqReservaAsync(int id, string password)
+    {
+        await SetAuthHeaderAsync();
+        var req = new HttpRequestMessage(HttpMethod.Delete, $"/api/alquileres/reservas/{id}")
+        {
+            Content = JsonContent.Create(new { password })
+        };
+        var resp = await _http.SendAsync(req);
+        if (resp.IsSuccessStatusCode) return (true, null);
+        try
+        {
+            var err = await resp.Content.ReadFromJsonAsync<ErrorResp>();
+            return (false, err?.Error ?? "No se pudo eliminar");
+        }
+        catch { return (false, "No se pudo eliminar"); }
+    }
+    private record ErrorResp(string? Error);
 
     public async Task<List<AlqDisponibilidadDto>?> GetAlqDisponibilidadAsync(DateTime fechaEntrega, DateTime fechaRetiro, int? excluirReservaId = null)
     {
