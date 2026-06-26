@@ -172,7 +172,8 @@ public class AlqRepartidorPublicController : ControllerBase
         DateTime FechaEntrega, DateTime FechaRetiro,
         decimal MontoTotal, decimal Saldo,
         bool Entregado, bool Retirado, DateTime CargadoAt,
-        DateTime? EntregadoAt, DateTime? RetiradoAt);
+        DateTime? EntregadoAt, DateTime? RetiradoAt,
+        List<ItemDto> Items);
 
     /// <summary>Lista de reservas de alquiler asignadas al repartidor (enlace fijo por su token publico).
     /// Asignacion estilo ventas: dueño = repartidor del ultimo escaneo 'cargado'. Sin PIN para mirar.</summary>
@@ -202,6 +203,7 @@ public class AlqRepartidorPublicController : ControllerBase
 
         var reservas = await _db.AlqReservas
             .Include(x => x.ClienteNav)
+            .Include(x => x.Items).ThenInclude(i => i.EquipoNav)
             .Where(x => mias.Contains(x.Id))
             .ToListAsync();
 
@@ -213,7 +215,8 @@ public class AlqRepartidorPublicController : ControllerBase
                 x.MontoTotal, Math.Max(0m, x.MontoTotal - x.Sena - x.MontoCobrado),
                 x.EntregadoPorRepartidorId.HasValue, x.RetiradoPorRepartidorId.HasValue,
                 duenioActual.TryGetValue(x.Id, out var d) ? d.CreatedAt : x.CreatedAt,
-                x.EntregadoAt, x.RetiradoAt))
+                x.EntregadoAt, x.RetiradoAt,
+                x.Items.Select(i => new ItemDto(i.Cantidad, i.EquipoNav?.Sku ?? "—", i.EquipoNav?.Nombre ?? "—")).ToList()))
             .OrderBy(x => x.Entregado && x.Retirado)        // pendientes arriba
             .ThenBy(x => x.FechaEntrega)
             .ToList();

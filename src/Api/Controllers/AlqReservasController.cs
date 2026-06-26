@@ -339,11 +339,30 @@ public class AlqReservasController : ControllerBase
         return Ok(Map(saved));
     }
 
+    public record EliminarReservaRequest(string? Password);
+
     [HttpDelete("{id:int}")]
-    public async Task<IActionResult> Delete(int id)
+    public async Task<IActionResult> Delete(int id, [FromBody] EliminarReservaRequest? req = null)
     {
         var r = await _db.AlqReservas.FindAsync(id);
         if (r is null) return NotFound(new { error = "Reserva no encontrada" });
+
+        // 1) Bloquear si tiene cobranzas cargadas (pendientes o aprobadas). Hay que anularlas/rechazarlas primero.
+        var cobranzas = await _db.AlqCobranzasPendientes
+            .Where(c => c.ReservaId == id && c.Estado != "RECHAZADA").CountAsync();
+        if (cobranzas > 0 || r.MontoCobrado > 0)
+            return BadRequest(new { error = "Esta reserva tiene cobranzas aplicadas. Primero rechazá/anulá las cobranzas en 'Cobros repartidor' y después podés eliminarla." });
+
+        // 2) Pedir clave del usuario actual (acción sensible).
+        var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                       ?? User.FindFirst("sub")?.Value;
+        if (!int.TryParse(userIdClaim, out var userId))
+            return Unauthorized(new { error = "Sesión inválida" });
+        var user = await _db.Users.FindAsync(userId);
+        if (user is null) return Unauthorized(new { error = "Usuario no encontrado" });
+        if (string.IsNullOrEmpty(req?.Password) || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
+            return BadRequest(new { error = "Clave incorrecta" });
+
         _db.AlqReservas.Remove(r);
         await _db.SaveChangesAsync();
         return Ok(new { deleted = true });

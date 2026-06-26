@@ -644,10 +644,19 @@
             <div class="modal-body">
                 <p>Estas seguro que queres eliminar la reserva <strong>@reservaToDelete.Numero</strong> de <strong>@reservaToDelete.ClienteNombre</strong>?</p>
                 <p class="text-muted" style="font-size: 0.85rem;">Esta accion no se puede deshacer. Si la reserva fue cancelada o nunca se concretó, conviene mejor cambiar su estado a "Cancelado" para mantener el historial.</p>
+                <label class="form-label">Ingresá tu clave para confirmar</label>
+                <input class="form-input" type="password" @bind="deletePassword" @bind:event="oninput"
+                       placeholder="Tu clave de acceso" @onkeyup="OnDeleteKey" />
+                @if (!string.IsNullOrEmpty(deleteError))
+                {
+                    <div style="color:#b91c1c; font-size:0.85rem; font-weight:600; margin-top:0.4rem;">⚠ @deleteError</div>
+                }
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" @onclick="() => showDeleteConfirm = false">Cancelar</button>
-                <button class="btn btn-danger" @onclick="Delete">Eliminar definitivamente</button>
+                <button class="btn btn-secondary" @onclick="() => showDeleteConfirm = false" disabled="@deleting">Cancelar</button>
+                <button class="btn btn-danger" @onclick="Delete" disabled="@(deleting || string.IsNullOrWhiteSpace(deletePassword))">
+                    @(deleting ? "Eliminando..." : "Eliminar definitivamente")
+                </button>
             </div>
         </div>
     </div>
@@ -767,6 +776,9 @@
     // Delete
     private bool showDeleteConfirm;
     private AlqReservaDto? reservaToDelete;
+    private string deletePassword = "";
+    private string? deleteError;
+    private bool deleting;
 
     // Print / PDF
     private AlqReservaDto? printReserva;
@@ -1089,7 +1101,7 @@
         finally { isSaving = false; }
     }
 
-    private void ConfirmDelete(AlqReservaDto r) { reservaToDelete = r; showDeleteConfirm = true; }
+    private void ConfirmDelete(AlqReservaDto r) { reservaToDelete = r; showDeleteConfirm = true; deletePassword = ""; deleteError = null; }
 
     // ═══════ Print / PDF ═══════
     private async Task ShowPrint(AlqReservaDto r)
@@ -1154,17 +1166,28 @@
         finally { savingCondiciones = false; }
     }
 
+    private async Task OnDeleteKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(deletePassword) && !deleting) await Delete();
+    }
+
     private async Task Delete()
     {
-        if (reservaToDelete is null) return;
+        if (reservaToDelete is null || string.IsNullOrWhiteSpace(deletePassword)) return;
+        deleting = true; deleteError = null;
         try
         {
-            var ok = await Api.DeleteAlqReservaAsync(reservaToDelete.Id);
-            if (ok) { ToastService.Success("Reserva eliminada"); await Load(); }
-            else { ToastService.Error("No se pudo eliminar"); }
+            var (ok, error) = await Api.DeleteAlqReservaAsync(reservaToDelete.Id, deletePassword);
+            if (ok)
+            {
+                ToastService.Success("Reserva eliminada");
+                showDeleteConfirm = false; reservaToDelete = null; deletePassword = "";
+                await Load();
+            }
+            else { deleteError = error ?? "No se pudo eliminar"; }
         }
-        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
-        finally { showDeleteConfirm = false; reservaToDelete = null; }
+        catch (Exception ex) { deleteError = "Error: " + ex.Message; }
+        finally { deleting = false; }
     }
 
     // --- Helpers de formato ---
