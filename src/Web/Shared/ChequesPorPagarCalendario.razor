@@ -143,9 +143,23 @@
                             // Resumimos eventos del dia para mostrar pildoritas
                             var chequesPendientes = enFecha?.Where(c => !string.Equals(c.Estado, "Pagado", StringComparison.OrdinalIgnoreCase)).ToList() ?? new();
                             var chequesPagados = enFecha?.Where(c => string.Equals(c.Estado, "Pagado", StringComparison.OrdinalIgnoreCase)).ToList() ?? new();
+                            var entregasFecha = alqEntregasPorFecha.TryGetValue(fecha, out var le) ? le : null;
+                            var retirosFecha = alqRetirosPorFecha.TryGetValue(fecha, out var lr) ? lr : null;
                             <div class="@clase" @onclick="() => AbrirDia(fecha)">
                                 <div class="cal-day-numero">@d</div>
                                 <div class="cal-day-events">
+                                    @if (entregasFecha is { Count: > 0 })
+                                    {
+                                        <div class="cal-pill" style="background:#ede9fe; color:#5b21b6;" title="@string.Join(", ", entregasFecha.Select(r => r.ClienteNombre))">
+                                            📦 @(entregasFecha.Count == 1 ? "Entrega" : $"Entregas x{entregasFecha.Count}")
+                                        </div>
+                                    }
+                                    @if (retirosFecha is { Count: > 0 })
+                                    {
+                                        <div class="cal-pill" style="background:#ffedd5; color:#9a3412;" title="@string.Join(", ", retirosFecha.Select(r => r.ClienteNombre))">
+                                            🔙 @(retirosFecha.Count == 1 ? "Retiro" : $"Retiros x{retirosFecha.Count}")
+                                        </div>
+                                    }
                                     @if (chequesPendientes.Count > 0)
                                     {
                                         <div class="cal-pill cal-pill-cheque" title="@chequesPendientes.Count cheque(s) a pagar — total $@chequesPendientes.Sum(c => c.Importe).ToString("N0")">
@@ -194,6 +208,33 @@
                 @{
                     var chs = chequesPorFecha.TryGetValue(diaAbierto.Value, out var l) ? l : new List<ChequeBancoDto>();
                     var ns = notas.Where(x => x.Fecha.Date == diaAbierto.Value).ToList();
+                    var ents = alqEntregasPorFecha.TryGetValue(diaAbierto.Value, out var le2) ? le2 : new List<AlqReservaDto>();
+                    var rets = alqRetirosPorFecha.TryGetValue(diaAbierto.Value, out var lr2) ? lr2 : new List<AlqReservaDto>();
+                }
+                @if (ents.Count > 0 || rets.Count > 0)
+                {
+                    <div class="day-section">
+                        <div class="day-section-title">📦 Alquileres</div>
+                        @foreach (var r in ents)
+                        {
+                            <div class="day-item" style="cursor:pointer;" @onclick='() => Navigation.NavigateTo($"/alquileres/reservas?openId={r.Id}")'>
+                                <div class="day-item-info">
+                                    <div class="day-item-title">📦 Entrega · @r.ClienteNombre</div>
+                                    <div class="day-item-desc">@r.Numero · retiro @r.FechaRetiro.ToString("dd/MM")</div>
+                                </div>
+                                <div class="day-item-importe">$@r.MontoTotal.ToString("N0")</div>
+                            </div>
+                        }
+                        @foreach (var r in rets)
+                        {
+                            <div class="day-item" style="cursor:pointer;" @onclick='() => Navigation.NavigateTo($"/alquileres/reservas?openId={r.Id}")'>
+                                <div class="day-item-info">
+                                    <div class="day-item-title">🔙 Retiro · @r.ClienteNombre</div>
+                                    <div class="day-item-desc">@r.Numero</div>
+                                </div>
+                            </div>
+                        }
+                    </div>
                 }
                 @if (chs.Count > 0)
                 {
@@ -255,6 +296,9 @@
     private decimal chequesPorPagarTotal;
 
     private List<CalendarioNotaDto> notas = new();
+    // 2026-06-26: entregas/retiros de alquiler por fecha
+    private Dictionary<DateTime, List<AlqReservaDto>> alqEntregasPorFecha = new();
+    private Dictionary<DateTime, List<AlqReservaDto>> alqRetirosPorFecha = new();
     private DateTime? diaAbierto;
     private string formTitulo = "";
     private string? formDescripcion;
@@ -284,6 +328,16 @@
             chequesPorPagarTotal = pendientes.Where(c => c.FechaPago.HasValue && c.FechaPago.Value.Date >= hoy).Sum(c => c.Importe);
 
             notas = await Api.GetCalendarioNotasAsync(desde, hasta) ?? new();
+
+            // 2026-06-26: entregas/retiros de alquiler (las no canceladas) en el rango.
+            var reservasAlq = await Api.GetAlqReservasAsync() ?? new();
+            var vigentes = reservasAlq.Where(r => r.Estado != "cancelado").ToList();
+            alqEntregasPorFecha = vigentes
+                .Where(r => r.FechaEntrega.Date >= desde && r.FechaEntrega.Date <= hasta)
+                .GroupBy(r => r.FechaEntrega.Date).ToDictionary(g => g.Key, g => g.ToList());
+            alqRetirosPorFecha = vigentes
+                .Where(r => r.FechaRetiro.Date >= desde && r.FechaRetiro.Date <= hasta)
+                .GroupBy(r => r.FechaRetiro.Date).ToDictionary(g => g.Key, g => g.ToList());
         }
         catch { }
         finally { loading = false; }
