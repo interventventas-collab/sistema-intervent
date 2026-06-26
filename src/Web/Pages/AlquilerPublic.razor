@@ -121,11 +121,15 @@
             <div class="rp-card">
                 <div class="rp-ok">✓ @okMensaje</div>
                 <button class="rp-btn-secondary" @onclick="ResetFormulario">Cargar otra cosa</button>
+                @if (modoPanel && !string.IsNullOrEmpty(RepToken))
+                {
+                    <button class="rp-btn-primary" @onclick="VolverAlPanel">← Volver a mis pedidos</button>
+                }
             </div>
         }
-        else if (repartidorId is null)
+        else if (!modoPanel && repartidorId is null)
         {
-            @* Paso 1: ¿Quién sos? *@
+            @* Paso 1: ¿Quién sos? (solo en flujo "QR frío", no cuando viene del panel) *@
             <div class="rp-card">
                 <div class="rp-section-title">¿Quién sos?</div>
                 @if (errorAccion is not null) { <div class="rp-error">@errorAccion</div> }
@@ -157,7 +161,10 @@
         {
             @* Paso 3: acción (entrega/retiro + cobro) *@
             <div class="rp-card">
-                <div class="rp-saludo">Sos <b>@nombreElegido</b> · <span class="rp-link-cambiar" @onclick="CerrarSesion">cambiar</span></div>
+                <div class="rp-saludo">
+                    Sos <b>@nombreElegido</b>
+                    @if (!modoPanel) { <text> · <span class="rp-link-cambiar" @onclick="CerrarSesion">cambiar</span></text> }
+                </div>
                 @if (errorAccion is not null) { <div class="rp-error">@errorAccion</div> }
 
                 <div class="rp-momento-tabs">
@@ -193,10 +200,15 @@
 
 @code {
     [Parameter] public string Token { get; set; } = "";
+    // Cuando se abre desde el panel "Mis pedidos", llega el token del repartidor (r) y su nombre (n).
+    // En ese caso NO se pide ni nombre ni PIN — el token lo identifica (igual que ventas).
+    [SupplyParameterFromQuery(Name = "r")] public string? RepToken { get; set; }
+    [SupplyParameterFromQuery(Name = "n")] public string? RepNombre { get; set; }
 
     private bool loading = true;
     private string? errorCarga;
     private InfoReserva? info;
+    private bool modoPanel;
 
     private List<RepItem>? repartidores;
     private int? repartidorId;
@@ -215,9 +227,17 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Modo panel: viene con el token del repartidor → no pedimos login.
+        if (!string.IsNullOrEmpty(RepToken))
+        {
+            modoPanel = true;
+            nombreElegido = RepNombre ?? "";
+        }
         await CargarReserva();
-        await RestaurarSesion();
+        if (!modoPanel) await RestaurarSesion();
     }
+
+    private void VolverAlPanel() => Navigation.NavigateTo($"/mis-pedidos/{RepToken}");
 
     private async Task CargarReserva()
     {
@@ -313,7 +333,7 @@
 
     protected override async Task OnAfterRenderAsync(bool first)
     {
-        if (!pasoPin && repartidorId is null && repartidores is null && info is not null)
+        if (!modoPanel && !pasoPin && repartidorId is null && repartidores is null && info is not null)
             await CargarRepartidores();
     }
 
@@ -322,16 +342,19 @@
         enviando = true; errorAccion = null;
         try
         {
-            var body = new
+            HttpResponseMessage resp;
+            if (modoPanel && info is not null && !string.IsNullOrEmpty(RepToken))
             {
-                RepartidorId = repartidorId,
-                Pin = pin,
-                Momento = momento,
-                MarcarHecho = marcarHecho,
-                Importe = importe,
-                Notas = notas
-            };
-            var resp = await Http.PostAsJsonAsync($"/api/alquileres/repartidor-public/accion/{Token}", body);
+                // Desde el panel: el token del repartidor lo identifica, sin PIN.
+                var body = new { Momento = momento, MarcarHecho = marcarHecho, Importe = importe, Notas = notas };
+                resp = await Http.PostAsJsonAsync($"/api/alquileres/repartidor-public/mis-reservas/{RepToken}/accion/{info.Id}", body);
+            }
+            else
+            {
+                // Flujo QR frío: con nombre + PIN.
+                var body = new { RepartidorId = repartidorId, Pin = pin, Momento = momento, MarcarHecho = marcarHecho, Importe = importe, Notas = notas };
+                resp = await Http.PostAsJsonAsync($"/api/alquileres/repartidor-public/accion/{Token}", body);
+            }
             if (!resp.IsSuccessStatusCode)
             {
                 var err = await resp.Content.ReadFromJsonAsync<ErrorResp>();

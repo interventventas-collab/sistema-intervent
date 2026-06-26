@@ -839,7 +839,10 @@
         finally { loading = false; StateHasChanged(); }
     }
 
-    private void AbrirAlquiler(string token) => Nav.NavigateTo($"/alquiler/{token}");
+    // Pasa el token del repartidor (Token) + su nombre para que la pantalla de alquiler
+    // NO le pida login: ya está identificado por su link propio (igual que ventas).
+    private void AbrirAlquiler(string reservaToken)
+        => Nav.NavigateTo($"/alquiler/{reservaToken}?r={Token}&n={Uri.EscapeDataString(nombre)}");
 
     private async Task AplicarOrdenGuardado()
     {
