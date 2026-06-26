@@ -226,7 +226,9 @@ public class DashboardController : ControllerBase
     public record DashboardEquipoItem(
         int NomEmpleadoId, string Nombre, string? ApodoKiosko, string? ApodoRepartidor,
         string Estado, string? HoraEntrada, string? HoraSalida, string? Trabajado,
-        decimal PorRendir, decimal Pagado, decimal LeDebo, bool TieneRepartidor);
+        decimal PorRendir, decimal Pagado, decimal LeDebo, bool TieneRepartidor,
+        // 2026-06-26: desglose para mandar al admin a la pantalla de aprobación correcta.
+        decimal PorRendirVentas = 0, decimal PorRendirAlquiler = 0);
 
     // 2026-06-25: orden fijo pedido por Osmar — repartidores primero (alexis, walter,
     // benjamin, gonzalo, rodrigo), después oficina (osmar, german, gabriel, miguel).
@@ -290,9 +292,13 @@ public class DashboardController : ControllerBase
 
         var fichaByEmp = fichas.ToDictionary(f => f.NomEmpleadoId!.Value, f => f);
         var repByEmp = repartidores.GroupBy(r => r.NomEmpleadoId!.Value).ToDictionary(g => g.Key, g => g.First());
-        var pendByRep = pendientesRepartidor.ToDictionary(p => p.RepartidorId, p => p.Total);
-        foreach (var a in pendientesAlqRepartidor)
-            pendByRep[a.RepartidorId] = (pendByRep.TryGetValue(a.RepartidorId, out var v) ? v : 0m) + a.Total;
+        // Ventas y alquiler separados, para mandar al admin a la pantalla de aprobación correcta.
+        var pendVentasByRep = pendientesRepartidor.ToDictionary(p => p.RepartidorId, p => p.Total);
+        var pendAlqByRep = pendientesAlqRepartidor.ToDictionary(p => p.RepartidorId, p => p.Total);
+        var pendByRep = new Dictionary<int, decimal>();
+        foreach (var kv in pendVentasByRep) pendByRep[kv.Key] = kv.Value;
+        foreach (var a in pendAlqByRep)
+            pendByRep[a.Key] = (pendByRep.TryGetValue(a.Key, out var v) ? v : 0m) + a.Value;
         var liqByEmp = liqsDelMes.ToDictionary(l => l.EmpleadoId, l => l);
         var pagosByLiq = pagosDelMes.GroupBy(p => p.LiquidacionId).ToDictionary(g => g.Key, g => g.Sum(x => x.Monto));
         var regByFicha = regsHoy.ToDictionary(r => r.EmpleadoId, r => r);
@@ -337,12 +343,14 @@ public class DashboardController : ControllerBase
                 else estado = "sin-fichar";
             }
 
-            decimal porRendir = 0m;
+            decimal porRendir = 0m, porRendirVentas = 0m, porRendirAlq = 0m;
             bool tieneRepartidor = repByEmp.TryGetValue(e.Id, out var rep);
             if (tieneRepartidor && rep != null)
             {
                 apodoRepartidor = rep.Nombre;
                 if (pendByRep.TryGetValue(rep.Id, out var monto)) porRendir = monto;
+                pendVentasByRep.TryGetValue(rep.Id, out porRendirVentas);
+                pendAlqByRep.TryGetValue(rep.Id, out porRendirAlq);
             }
 
             decimal neto = 0m, pagado = 0m;
@@ -357,7 +365,8 @@ public class DashboardController : ControllerBase
             return new DashboardEquipoItem(
                 e.Id, e.Nombre, apodoKiosko, apodoRepartidor,
                 estado, horaEntrada, horaSalida, trabajado,
-                porRendir, pagado, leDebo, tieneRepartidor);
+                porRendir, pagado, leDebo, tieneRepartidor,
+                porRendirVentas, porRendirAlq);
         })
         .OrderBy(x => OrdenPersonalizado(x.Nombre))
         .ThenBy(x => x.Nombre)
