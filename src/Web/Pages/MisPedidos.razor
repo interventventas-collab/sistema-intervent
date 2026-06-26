@@ -262,6 +262,49 @@
             }
         }
 
+@* ─── ALQUILERES — 2026-06-26 ─── *@
+        var alqPendientes = alqReservas.Where(a => !(a.Entregado && a.Retirado)).ToList();
+        @if (alqPendientes.Count > 0)
+        {
+            <div class="mp-section-title">📦 Alquileres <span class="badge" style="background:#7c3aed; color:white;">@alqPendientes.Count</span></div>
+            @foreach (var a in alqPendientes)
+            {
+                <div class="mp-card pendiente" style="background:white; border:2px solid #c4b5fd; border-left:6px solid #7c3aed; margin-bottom:0.7rem; padding:0.7rem;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.3rem;">
+                        <span style="background:#ede9fe; color:#5b21b6; font-size:0.72rem; font-weight:700; padding:0.15rem 0.5rem; border-radius:4px;">📦 Alquiler · @a.Numero</span>
+                        <span style="font-size:0.7rem; color:#6b7280;">@a.Estado</span>
+                    </div>
+                    <div style="font-weight:700; font-size:1.02rem; color:#111827;">@a.ClienteNombre</div>
+                    @if (!string.IsNullOrWhiteSpace(a.ClienteTelefono))
+                    {
+                        <div style="font-size:0.78rem; margin-top:0.15rem;">📞 <a href="tel:@a.ClienteTelefono" style="color:#7c3aed; font-weight:600;">@a.ClienteTelefono</a></div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(a.Direccion))
+                    {
+                        <div style="margin-top:0.4rem; font-size:0.85rem; color:#374151;">📍 @a.Direccion</div>
+                    }
+                    <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
+                        <div style="flex:1; background:#f9fafb; border-radius:6px; padding:0.4rem; text-align:center;">
+                            <div style="font-size:0.62rem; color:#6b7280; text-transform:uppercase; font-weight:700;">Entrega</div>
+                            <div style="font-weight:800;">@a.FechaEntrega.ToString("dd/MM") @(a.Entregado ? "✅" : "")</div>
+                        </div>
+                        <div style="flex:1; background:#f9fafb; border-radius:6px; padding:0.4rem; text-align:center;">
+                            <div style="font-size:0.62rem; color:#6b7280; text-transform:uppercase; font-weight:700;">Retiro</div>
+                            <div style="font-weight:800;">@a.FechaRetiro.ToString("dd/MM") @(a.Retirado ? "✅" : "")</div>
+                        </div>
+                        <div style="flex:1; background:#f0fdf4; border-radius:6px; padding:0.4rem; text-align:center;">
+                            <div style="font-size:0.62rem; color:#6b7280; text-transform:uppercase; font-weight:700;">Saldo</div>
+                            <div style="font-weight:800; color:#16a34a;">$@a.Saldo.ToString("N0")</div>
+                        </div>
+                    </div>
+                    <button type="button" class="mp-card-btn mp-card-btn-entregar" style="margin-top:0.7rem; width:100%; padding:0.7rem; font-size:0.95rem; background:#7c3aed;"
+                            @onclick="() => AbrirAlquiler(a.Token)">
+                        Abrir — entregar / retirar / cobrar
+                    </button>
+                </div>
+            }
+        }
+
         @* PENDIENTES — siempre completos, sin filtro de fecha (puede tener pendientes de varios días) *@
         var pendientes = pedidos.Where(p => !p.YaEntregada).ToList();
         <div id="mp-pendientes" class="mp-section-title">📦 Pendientes <span class="badge">@pendientes.Count</span></div>
@@ -661,6 +704,13 @@
     public record CobroDto(int VentaId, decimal Importe, string Estado, DateTime FechaCobro);
     public record MisPedidosResp(int RepartidorId, string Nombre, List<PedidoDto> Pedidos, List<CobroDto>? Cobros);
 
+    // 2026-06-26: Alquileres asignados al repartidor
+    public record AlqReservaItem(int Id, string Numero, string Token, string Estado,
+        string ClienteNombre, string? ClienteTelefono, string? Direccion,
+        DateTime FechaEntrega, DateTime FechaRetiro,
+        decimal MontoTotal, decimal Saldo, bool Entregado, bool Retirado, DateTime CargadoAt);
+    public record MisAlquileresResp(int RepartidorId, string Nombre, List<AlqReservaItem> Reservas);
+
     // 2026-06-17: ME1 (MercadoLibre) — pedidos asignados al repartidor por el admin desde /meli/me1/entregas.
     public record Me1PedidoDto(
         int Id, long MeliShipmentId, long? MeliOrderId,
@@ -679,6 +729,8 @@
     private List<CobroDto> cobros = new();
     // 2026-06-17: ME1 (MercadoLibre)
     private List<Me1PedidoDto> me1Pedidos = new();
+    // 2026-06-26: Alquileres asignados al repartidor
+    private List<AlqReservaItem> alqReservas = new();
     private Me1PedidoDto? me1ConfirmEntrega; // setea cuando se abre el modal de doble confirmacion
     private bool me1Entregando = false;
     private string? me1EntregaError;
@@ -771,6 +823,13 @@
                 me1Pedidos = me1 ?? new();
             }
             catch { me1Pedidos = new(); }
+            // 2026-06-26: Alquileres asignados al repartidor (mismo token publico).
+            try
+            {
+                var alq = await Http.GetFromJsonAsync<MisAlquileresResp>($"api/alquileres/repartidor-public/mis-reservas/{Token}");
+                alqReservas = alq?.Reservas ?? new();
+            }
+            catch { alqReservas = new(); }
             // 2026-06-11: reaplicar orden manual guardado en este celu (si lo hay)
             await AplicarOrdenGuardado();
             // Forzar re-init de Sortable porque cambio el contenido del DOM
@@ -779,6 +838,8 @@
         catch { cargaError = true; }
         finally { loading = false; StateHasChanged(); }
     }
+
+    private void AbrirAlquiler(string token) => Nav.NavigateTo($"/alquiler/{token}");
 
     private async Task AplicarOrdenGuardado()
     {
