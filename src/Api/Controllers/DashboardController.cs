@@ -278,6 +278,12 @@ public class DashboardController : ControllerBase
             .GroupBy(p => p.RepartidorId)
             .Select(g => new { RepartidorId = g.Key, Total = g.Sum(x => x.Importe) })
             .ToListAsync();
+        // 2026-06-26: sumar también lo pendiente de rendir de ALQUILERES (mismo repartidor).
+        var pendientesAlqRepartidor = await _db.AlqCobranzasPendientes
+            .Where(p => p.Estado == "PENDIENTE" && repIds.Contains(p.RepartidorId))
+            .GroupBy(p => p.RepartidorId)
+            .Select(g => new { RepartidorId = g.Key, Total = g.Sum(x => x.Importe) })
+            .ToListAsync();
         var liqsDelMes = await _db.NomLiquidaciones.Where(l => l.Anio == anio && l.Mes == mes).ToListAsync();
         var liqIds = liqsDelMes.Select(l => l.Id).ToList();
         var pagosDelMes = await _db.NomPagos.Where(p => liqIds.Contains(p.LiquidacionId)).ToListAsync();
@@ -285,6 +291,8 @@ public class DashboardController : ControllerBase
         var fichaByEmp = fichas.ToDictionary(f => f.NomEmpleadoId!.Value, f => f);
         var repByEmp = repartidores.GroupBy(r => r.NomEmpleadoId!.Value).ToDictionary(g => g.Key, g => g.First());
         var pendByRep = pendientesRepartidor.ToDictionary(p => p.RepartidorId, p => p.Total);
+        foreach (var a in pendientesAlqRepartidor)
+            pendByRep[a.RepartidorId] = (pendByRep.TryGetValue(a.RepartidorId, out var v) ? v : 0m) + a.Total;
         var liqByEmp = liqsDelMes.ToDictionary(l => l.EmpleadoId, l => l);
         var pagosByLiq = pagosDelMes.GroupBy(p => p.LiquidacionId).ToDictionary(g => g.Key, g => g.Sum(x => x.Monto));
         var regByFicha = regsHoy.ToDictionary(r => r.EmpleadoId, r => r);
