@@ -100,7 +100,9 @@ public class AlqReservasController : ControllerBase
         // Estado y subtotal
         var estado = NormalizarEstado(req.Estado) ?? "reservado";
         var subtotal = consolidados.Sum(i => i.Cantidad * i.PrecioUnitario);
-        var total = Math.Max(0m, subtotal - Math.Max(0m, req.Descuento));
+        var total = req.MontoTotalManual.HasValue
+            ? Math.Max(0m, req.MontoTotalManual.Value)
+            : Math.Max(0m, subtotal - Math.Max(0m, req.Descuento));
 
         var reserva = new AlqReserva
         {
@@ -197,13 +199,17 @@ public class AlqReservasController : ControllerBase
                 PrecioUnitario = i.PrecioUnitario
             }).ToList();
             var subtotal = consolidados.Sum(i => i.Cantidad * i.PrecioUnitario);
-            reserva.MontoTotal = Math.Max(0m, subtotal - reserva.Descuento);
+            reserva.MontoTotal = req.MontoTotalManual.HasValue
+                ? Math.Max(0m, req.MontoTotalManual.Value)
+                : Math.Max(0m, subtotal - reserva.Descuento);
         }
         else
         {
-            // Si solo cambio el descuento, recalcular total
+            // Sin items nuevos: usar el total a mano si vino, si no recalcular desde los items existentes
             var subtotal = reserva.Items.Sum(i => i.Cantidad * i.PrecioUnitario);
-            reserva.MontoTotal = Math.Max(0m, subtotal - reserva.Descuento);
+            reserva.MontoTotal = req.MontoTotalManual.HasValue
+                ? Math.Max(0m, req.MontoTotalManual.Value)
+                : Math.Max(0m, subtotal - reserva.Descuento);
         }
 
         reserva.UpdatedAt = DateTime.UtcNow;

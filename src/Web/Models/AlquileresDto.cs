@@ -141,6 +141,7 @@ public class CreateAlqReservaRequest
     public string? DireccionEvento { get; set; }
     public decimal Descuento { get; set; }
     public decimal Sena { get; set; }
+    public decimal? MontoTotalManual { get; set; }
     public string? Estado { get; set; }
     public string? Notas { get; set; }
     public List<CreateAlqReservaItemRequest> Items { get; set; } = new();
@@ -156,6 +157,7 @@ public class UpdateAlqReservaRequest
     public string? DireccionEvento { get; set; }
     public decimal? Descuento { get; set; }
     public decimal? Sena { get; set; }
+    public decimal? MontoTotalManual { get; set; }
     public string? Estado { get; set; }
     public string? Notas { get; set; }
     public List<CreateAlqReservaItemRequest>? Items { get; set; }
