@@ -66,8 +66,9 @@ public class AlqRepartidorPublicController : ControllerBase
 
     public record AccionResult(bool Ok, string Mensaje, decimal Saldo);
 
-    /// <summary>El repartidor marca entrega/retiro y/o cobra. Valida PIN. El cobro queda
-    /// PENDIENTE de aprobacion del admin; la entrega/retiro se aplica directo a la reserva.</summary>
+    /// <summary>Flujo "QR frío": alguien escanea el QR del comprobante (solo tiene el token de la
+    /// reserva), entonces se identifica con nombre + PIN. El cobro queda PENDIENTE de aprobacion;
+    /// la entrega/retiro se aplica directo a la reserva.</summary>
     [HttpPost("accion/{token}")]
     public async Task<IActionResult> Accion(string token, [FromBody] AccionRequest req)
     {
@@ -78,13 +79,36 @@ public class AlqRepartidorPublicController : ControllerBase
         if ((req.Pin ?? "").Trim() != rep.DniUltimos3)
             return Unauthorized(new { error = "PIN incorrecto" });
 
+        return await EjecutarAccion(token, rep, req.Momento, req.MarcarHecho, req.Importe, req.Notas);
+    }
+
+    public record AccionPanelRequest(string Momento, bool MarcarHecho, decimal? Importe, string? Notas);
+
+    /// <summary>Flujo "desde el panel": el repartidor ya entró con SU link propio (token fijo del
+    /// repartidor), asi que NO se le pide ni nombre ni PIN — el token lo identifica. Mismo modelo
+    /// que la pantalla de ventas. Pedido 2026-06-26.</summary>
+    [HttpPost("mis-reservas/{tokenRepartidor}/accion/{reservaId:int}")]
+    public async Task<IActionResult> AccionPanel(string tokenRepartidor, int reservaId, [FromBody] AccionPanelRequest req)
+    {
+        var rep = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (rep is null) return Unauthorized(new { error = "Enlace invalido o repartidor inactivo" });
+
+        var r = await _db.AlqReservas.FirstOrDefaultAsync(x => x.Id == reservaId);
+        if (r is null) return NotFound(new { error = "Reserva no encontrada" });
+
+        return await EjecutarAccion(r.PublicToken ?? "", rep, req.Momento, req.MarcarHecho, req.Importe, req.Notas);
+    }
+
+    /// <summary>Logica compartida de entrega/retiro/cobro. La identidad del repartidor ya viene resuelta.</summary>
+    private async Task<IActionResult> EjecutarAccion(string token, CafeRepartidor rep, string? momentoRaw, bool marcarHecho, decimal? importeRaw, string? notas)
+    {
         var r = await _db.AlqReservas.Include(x => x.ClienteNav).FirstOrDefaultAsync(x => x.PublicToken == token);
         if (r is null) return NotFound(new { error = "Reserva no encontrada (QR invalido)" });
 
-        var momento = (req.Momento ?? "entrega").Trim().ToLowerInvariant();
+        var momento = (momentoRaw ?? "entrega").Trim().ToLowerInvariant();
         if (momento != "entrega" && momento != "retiro") momento = "entrega";
-        var importe = req.Importe.HasValue ? Math.Max(0m, req.Importe.Value) : 0m;
-        if (!req.MarcarHecho && importe <= 0m)
+        var importe = importeRaw.HasValue ? Math.Max(0m, importeRaw.Value) : 0m;
+        if (!marcarHecho && importe <= 0m)
             return BadRequest(new { error = "No marcaste nada: tildá entrega/retiro o ingresá un importe cobrado." });
 
         var ip = Request.HttpContext.Connection.RemoteIpAddress?.ToString();
@@ -95,13 +119,13 @@ public class AlqRepartidorPublicController : ControllerBase
 
         var mensajes = new List<string>();
 
-        if (req.MarcarHecho)
+        if (marcarHecho)
         {
             if (momento == "entrega")
             {
                 r.EntregadoPorRepartidorId = rep.Id;
                 r.EntregadoAt = now;
-                if (!string.IsNullOrWhiteSpace(req.Notas)) r.ComentarioEntrega = req.Notas.Trim();
+                if (!string.IsNullOrWhiteSpace(notas)) r.ComentarioEntrega = notas.Trim();
                 if (r.Estado == "reservado" || r.Estado == "confirmado") r.Estado = "entregado";
                 _db.AlqQrEscaneos.Add(new AlqQrEscaneo { ReservaId = r.Id, RepartidorId = rep.Id, Accion = "entregado", CreatedAt = now, Ip = ip });
                 mensajes.Add("Entrega registrada");
@@ -110,7 +134,7 @@ public class AlqRepartidorPublicController : ControllerBase
             {
                 r.RetiradoPorRepartidorId = rep.Id;
                 r.RetiradoAt = now;
-                if (!string.IsNullOrWhiteSpace(req.Notas)) r.ComentarioRetiro = req.Notas.Trim();
+                if (!string.IsNullOrWhiteSpace(notas)) r.ComentarioRetiro = notas.Trim();
                 if (r.Estado == "entregado" || r.Estado == "confirmado" || r.Estado == "reservado") r.Estado = "finalizado";
                 _db.AlqQrEscaneos.Add(new AlqQrEscaneo { ReservaId = r.Id, RepartidorId = rep.Id, Accion = "retirado", CreatedAt = now, Ip = ip });
                 mensajes.Add("Retiro registrado");
@@ -126,9 +150,9 @@ public class AlqRepartidorPublicController : ControllerBase
                 RepartidorId = rep.Id,
                 Importe = importe,
                 Tipo = momento,
-                MarcadoEntregado = req.MarcarHecho && momento == "entrega",
-                MarcadoRetirado = req.MarcarHecho && momento == "retiro",
-                Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim(),
+                MarcadoEntregado = marcarHecho && momento == "entrega",
+                MarcadoRetirado = marcarHecho && momento == "retiro",
+                Notas = string.IsNullOrWhiteSpace(notas) ? null : notas.Trim(),
                 Estado = "PENDIENTE",
                 CreatedAt = now
             });
