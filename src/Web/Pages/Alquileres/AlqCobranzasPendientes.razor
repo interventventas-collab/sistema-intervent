@@ -72,6 +72,12 @@
                                     <button class="btn btn-sm btn-danger" disabled="@procesando" @onclick="() => Rechazar(c)">✖ Rechazar</button>
                                 </td>
                             }
+                            else if (estadoActivo == "APROBADA")
+                            {
+                                <td style="white-space:nowrap;">
+                                    <button class="btn btn-sm btn-danger" disabled="@procesando" @onclick="() => PedirAnular(c)" title="Anular esta cobranza (se cargó por error)">↩ Anular</button>
+                                </td>
+                            }
                             else if (c.Estado == "RECHAZADA" && !string.IsNullOrEmpty(c.RechazadaMotivo))
                             {
                                 <td style="font-size:0.8rem; color:#991b1b;">@c.RechazadaMotivo</td>
@@ -83,6 +89,32 @@
         </div>
     }
 </div>
+
+@* Modal: anular cobranza aprobada (pide clave) *@
+@if (anularTarget is not null)
+{
+    <div class="modal-overlay" @onclick="() => anularTarget = null">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background:#dc3545; color:white;">
+                <h4 style="margin:0;">↩ Anular cobranza aprobada</h4>
+                <button class="btn-close" style="color:white;" @onclick="() => anularTarget = null">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Vas a anular el cobro de <strong>$@anularTarget.Importe.ToString("N2")</strong> de la reserva <strong>@anularTarget.ReservaNumero</strong> (@anularTarget.RepartidorNombre).</p>
+                <p class="text-muted" style="font-size:0.85rem;">Esto le devuelve el saldo a la reserva. Usalo solo si se cargó por error.</p>
+                <label class="form-label">Ingresá tu clave para confirmar</label>
+                <input class="form-input" type="password" @bind="anularPassword" @bind:event="oninput" placeholder="Tu clave de acceso" />
+                @if (!string.IsNullOrEmpty(anularError)) { <div style="color:#b91c1c; font-size:0.85rem; font-weight:600; margin-top:0.4rem;">⚠ @anularError</div> }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => anularTarget = null" disabled="@procesando">Cancelar</button>
+                <button class="btn btn-danger" disabled="@(procesando || string.IsNullOrWhiteSpace(anularPassword))" @onclick="ConfirmarAnular">
+                    @(procesando ? "Anulando..." : "Anular definitivamente")
+                </button>
+            </div>
+        </div>
+    </div>
+}
 
 @code {
     private record Tab(string Key, string Label);
@@ -98,6 +130,11 @@
     private int countPendiente;
     private bool cargando = true;
     private bool procesando;
+
+    // Anular cobranza aprobada
+    private AlqCobranzaPendienteDto? anularTarget;
+    private string anularPassword = "";
+    private string? anularError;
 
     protected override async Task OnInitializedAsync() => await Cargar();
 
@@ -127,5 +164,22 @@
         procesando = false;
         if (ok) { ToastService.Success("Rechazada"); await Cargar(); }
         else ToastService.Error("No se pudo rechazar");
+    }
+
+    private void PedirAnular(AlqCobranzaPendienteDto c) { anularTarget = c; anularPassword = ""; anularError = null; }
+
+    private async Task ConfirmarAnular()
+    {
+        if (anularTarget is null || string.IsNullOrWhiteSpace(anularPassword)) return;
+        procesando = true; anularError = null;
+        var (ok, error) = await Api.AnularAlqCobranzaAsync(anularTarget.Id, anularPassword, Operator.Current);
+        procesando = false;
+        if (ok)
+        {
+            ToastService.Success($"Cobranza anulada — volvió el saldo a {anularTarget.ReservaNumero}");
+            anularTarget = null; anularPassword = "";
+            await Cargar();
+        }
+        else anularError = error ?? "No se pudo anular";
     }
 }

@@ -334,6 +334,16 @@ public class ApiClient
         return resp.IsSuccessStatusCode;
     }
 
+    /// <summary>Anula un cobro de alquiler ya aprobado (pide clave). Devuelve (ok, error).</summary>
+    public async Task<(bool ok, string? error)> AnularAlqCobranzaAsync(int id, string password, string? operador)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/alquileres/cobranzas-pendientes/{id}/anular", new { password, operador });
+        if (resp.IsSuccessStatusCode) return (true, null);
+        try { var e = await resp.Content.ReadFromJsonAsync<ErrorResp>(); return (false, e?.Error ?? "No se pudo anular"); }
+        catch { return (false, "No se pudo anular"); }
+    }
+
     public async Task<bool> RechazarAlqCobranzaAsync(int id, string? motivo, string? operador)
     {
         await SetAuthHeaderAsync();
