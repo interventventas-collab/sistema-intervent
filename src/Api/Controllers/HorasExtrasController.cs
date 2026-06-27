@@ -241,6 +241,12 @@ public class HorasExtrasController : ControllerBase
             }
         }
 
+        // 2026-06-27: bloqueo por GPS (geocerca). Independiente del WiFi: solo aplica a los empleados
+        // del piloto (ProbarGpsFichada) si el toggle maestro está ON y hay ubicación del negocio.
+        bool gpsAplica = GpsAplica(cfg, emp);
+        var gpsRechazo = EvaluarBloqueoGps(cfg, emp, req.GpsLat, req.GpsLon, req.GpsAccuracy);
+        if (gpsRechazo is not null) return BadRequest(new { error = gpsRechazo });
+
         var horaEnt = ParseHora(req.HoraEntrada);
         var horaSal = ParseHora(req.HoraSalida);
 
@@ -272,9 +278,9 @@ public class HorasExtrasController : ControllerBase
         }
         await _db.SaveChangesAsync();
 
-        // 2026-06-03: log de metadata para auditoria (IP + GPS) — solo si modo nuevo activo.
+        // 2026-06-03: log de metadata para auditoria (IP + GPS) — si modo nuevo (WiFi) o GPS activo.
         // Loguea solo si esta marcacion (entrada o salida) es realmente nueva (no se repite).
-        if (modoNuevoActivo)
+        if (modoNuevoActivo || gpsAplica)
         {
             bool entradaCambio = entradaAnterior != horaEnt && horaEnt.HasValue;
             bool salidaCambio = salidaAnterior != horaSal && horaSal.HasValue;
@@ -410,6 +416,45 @@ public class HorasExtrasController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(s)) return null;
         return TimeSpan.TryParse(s.Trim(), out var t) ? t : null;
+    }
+
+    /// <summary>2026-06-27: distancia en metros entre dos puntos (lat/lon). Formula de Haversine.</summary>
+    private static double DistanciaMetros(decimal lat1, decimal lon1, decimal lat2, decimal lon2)
+    {
+        const double R = 6371000.0; // radio de la Tierra en metros
+        double rad = Math.PI / 180.0;
+        double dLat = (double)(lat2 - lat1) * rad;
+        double dLon = (double)(lon2 - lon1) * rad;
+        double a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2)
+                 + Math.Cos((double)lat1 * rad) * Math.Cos((double)lat2 * rad)
+                 * Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+        double c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+        return R * c;
+    }
+
+    /// <summary>2026-06-27: ¿este empleado está sujeto al bloqueo por GPS ahora mismo?
+    /// Solo si el toggle maestro está ON, el empleado está en el piloto (ProbarGpsFichada)
+    /// y hay ubicación del negocio cargada. Si no, GPS no bloquea nada.</summary>
+    private static bool GpsAplica(HorasExtrasConfigFichada? cfg, HorasExtrasEmpleado emp)
+        => cfg is not null && cfg.BloquearPorGps && emp.ProbarGpsFichada
+           && cfg.NegocioLat.HasValue && cfg.NegocioLon.HasValue;
+
+    /// <summary>2026-06-27: evalúa el bloqueo por GPS. Devuelve null si el empleado PUEDE fichar,
+    /// o un mensaje de error si hay que rechazarlo (sin ubicación, o fuera del radio). Aplica
+    /// una tolerancia según la precisión reportada por el GPS (tope 100 m) para no rechazar de
+    /// más a quien sí está adentro pero con señal imprecisa.</summary>
+    private static string? EvaluarBloqueoGps(HorasExtrasConfigFichada? cfg, HorasExtrasEmpleado emp,
+        decimal? lat, decimal? lon, int? accuracy)
+    {
+        if (!GpsAplica(cfg, emp)) return null;
+        if (!lat.HasValue || !lon.HasValue)
+            return "Necesitamos tu ubicación para fichar. Activá el GPS del celular y dale permiso a la página.";
+        double dist = DistanciaMetros(cfg!.NegocioLat!.Value, cfg.NegocioLon!.Value, lat.Value, lon.Value);
+        double tolerancia = Math.Min(accuracy ?? 0, 100); // margen por imprecisión del GPS (tope 100 m)
+        double radio = cfg.RadioMetros;
+        if (dist - tolerancia > radio)
+            return $"Estás lejos del negocio, no podés fichar desde acá. (A {Math.Round(dist)} m del local, máximo permitido {radio} m)";
+        return null;
     }
 
     // ============================================================
@@ -1011,6 +1056,8 @@ public class HorasExtrasController : ControllerBase
 
     public record ConfigFichadaDto(bool ActivarModoNuevo, string? Wifi1Ip, string? Wifi1Label,
         string? Wifi2Ip, string? Wifi2Label, bool RequiereHuella, bool LoguearGps,
+        // 2026-06-27: bloqueo por GPS (geocerca)
+        bool BloquearPorGps, decimal? NegocioLat, decimal? NegocioLon, int RadioMetros,
         DateTime? UpdatedAt, string? UpdatedBy);
 
     [HttpGet("admin/config-fichada")]
@@ -1025,7 +1072,9 @@ public class HorasExtrasController : ControllerBase
             await _db.SaveChangesAsync();
         }
         return Ok(new ConfigFichadaDto(cfg.ActivarModoNuevo, cfg.Wifi1Ip, cfg.Wifi1Label,
-            cfg.Wifi2Ip, cfg.Wifi2Label, cfg.RequiereHuella, cfg.LoguearGps, cfg.UpdatedAt, cfg.UpdatedBy));
+            cfg.Wifi2Ip, cfg.Wifi2Label, cfg.RequiereHuella, cfg.LoguearGps,
+            cfg.BloquearPorGps, cfg.NegocioLat, cfg.NegocioLon, cfg.RadioMetros,
+            cfg.UpdatedAt, cfg.UpdatedBy));
     }
 
     public class UpdateConfigFichadaRequest
@@ -1037,6 +1086,11 @@ public class HorasExtrasController : ControllerBase
         public string? Wifi2Label { get; set; }
         public bool? RequiereHuella { get; set; }
         public bool? LoguearGps { get; set; }
+        // 2026-06-27: bloqueo por GPS
+        public bool? BloquearPorGps { get; set; }
+        public decimal? NegocioLat { get; set; }
+        public decimal? NegocioLon { get; set; }
+        public int? RadioMetros { get; set; }
         public string? UpdatedBy { get; set; }
     }
 
@@ -1054,6 +1108,11 @@ public class HorasExtrasController : ControllerBase
         if (req.RequiereHuella.HasValue) cfg.RequiereHuella = req.RequiereHuella.Value;
         if (req.LoguearGps.HasValue) cfg.LoguearGps = req.LoguearGps.Value;
 
+        // 2026-06-27: ubicacion del negocio + radio (geocerca). Lat/Lon llegan juntos al capturar.
+        if (req.NegocioLat.HasValue) cfg.NegocioLat = req.NegocioLat.Value;
+        if (req.NegocioLon.HasValue) cfg.NegocioLon = req.NegocioLon.Value;
+        if (req.RadioMetros.HasValue) cfg.RadioMetros = Math.Max(20, Math.Min(5000, req.RadioMetros.Value));
+
         // VALIDACION: no se puede activar el modo nuevo si no hay al menos UNA IP configurada.
         // Asi evitamos que se prenda sin querer y bloquee a todos.
         if (req.ActivarModoNuevo == true)
@@ -1067,11 +1126,55 @@ public class HorasExtrasController : ControllerBase
             cfg.ActivarModoNuevo = false;
         }
 
+        // 2026-06-27: no se puede activar el bloqueo por GPS sin la ubicacion del negocio capturada.
+        if (req.BloquearPorGps == true)
+        {
+            if (!cfg.NegocioLat.HasValue || !cfg.NegocioLon.HasValue)
+                return BadRequest(new { error = "No podés activar el bloqueo por GPS sin capturar primero la ubicación del negocio. Parate en el local y tocá 'Capturar ubicación del negocio'." });
+            cfg.BloquearPorGps = true;
+        }
+        else if (req.BloquearPorGps == false)
+        {
+            cfg.BloquearPorGps = false;
+        }
+
         cfg.UpdatedAt = DateTime.UtcNow;
         cfg.UpdatedBy = req.UpdatedBy?.Trim();
         await _db.SaveChangesAsync();
         return Ok(new ConfigFichadaDto(cfg.ActivarModoNuevo, cfg.Wifi1Ip, cfg.Wifi1Label,
-            cfg.Wifi2Ip, cfg.Wifi2Label, cfg.RequiereHuella, cfg.LoguearGps, cfg.UpdatedAt, cfg.UpdatedBy));
+            cfg.Wifi2Ip, cfg.Wifi2Label, cfg.RequiereHuella, cfg.LoguearGps,
+            cfg.BloquearPorGps, cfg.NegocioLat, cfg.NegocioLon, cfg.RadioMetros,
+            cfg.UpdatedAt, cfg.UpdatedBy));
+    }
+
+    // ─── 2026-06-27: piloto GPS por empleado — lista + toggle (para la pantalla de config) ───
+    public record EmpleadoGpsDto(int Id, string Nombre, bool ProbarGps);
+
+    /// <summary>Lista de empleados activos con su flag de "probar bloqueo por GPS". Sirve para que
+    /// el admin marque desde la pantalla de config quiénes entran al piloto (ej: Germán y Osmar).</summary>
+    [HttpGet("admin/config-fichada/empleados-gps")]
+    [Authorize]
+    public async Task<IActionResult> GetEmpleadosGps()
+    {
+        var emps = await _db.HorasExtrasEmpleados
+            .Where(e => e.IsActive)
+            .OrderBy(e => e.Nombre)
+            .Select(e => new EmpleadoGpsDto(e.Id, e.Nombre, e.ProbarGpsFichada))
+            .ToListAsync();
+        return Ok(emps);
+    }
+
+    public class SetEmpleadoGpsRequest { public bool Probar { get; set; } }
+
+    [HttpPut("admin/config-fichada/empleados-gps/{id:int}")]
+    [Authorize]
+    public async Task<IActionResult> SetEmpleadoGps(int id, [FromBody] SetEmpleadoGpsRequest req)
+    {
+        var emp = await _db.HorasExtrasEmpleados.FindAsync(id);
+        if (emp is null) return NotFound();
+        emp.ProbarGpsFichada = req.Probar;
+        await _db.SaveChangesAsync();
+        return Ok(new EmpleadoGpsDto(emp.Id, emp.Nombre, emp.ProbarGpsFichada));
     }
 
     /// <summary>Devuelve la IP publica del admin que esta llamando este endpoint. Sirve para
@@ -1166,6 +1269,12 @@ public class HorasExtrasController : ControllerBase
                     null, null, emp.Nombre));
         }
 
+        // 2026-06-27: bloqueo por GPS (geocerca) — independiente del WiFi.
+        bool gpsAplica = GpsAplica(cfg, emp);
+        var gpsRechazo = EvaluarBloqueoGps(cfg, emp, req.GpsLat, req.GpsLon, req.GpsAccuracy);
+        if (gpsRechazo is not null)
+            return Ok(new FichadorMarcarResult(false, gpsRechazo, null, null, emp.Nombre));
+
         var hoy = FechaArgentinaHoy();
         var ahora = DateTime.UtcNow.AddHours(-3); // ART
         var horaActual = new TimeSpan(ahora.Hour, ahora.Minute, 0);
@@ -1209,8 +1318,8 @@ public class HorasExtrasController : ControllerBase
         }
         await _db.SaveChangesAsync();
 
-        // Loguear meta (IP + GPS) si el modo nuevo esta activo
-        if (modoNuevoActivo)
+        // Loguear meta (IP + GPS) si el modo nuevo (WiFi) o el bloqueo por GPS estan activos
+        if (modoNuevoActivo || gpsAplica)
         {
             _db.HorasExtrasFichadaMetas.Add(new HorasExtrasFichadaMeta
             {

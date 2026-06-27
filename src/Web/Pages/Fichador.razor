@@ -353,12 +353,13 @@
         errorPin = null;
         try
         {
-            // GPS opcional (no bloqueante)
+            // GPS de alta precisión (lo usa el bloqueo por geocerca si está activo). Si falla, manda
+            // null y el backend decide: para los empleados del piloto GPS, sin ubicación no deja fichar.
             decimal? lat = null, lon = null; int? acc = null;
             try
             {
-                var pos = await JS.InvokeAsync<GpsPos?>("heTryGetPosition", 3000);
-                if (pos is not null) { lat = pos.Lat; lon = pos.Lon; acc = pos.Accuracy; }
+                var pos = await JS.InvokeAsync<GpsPos?>("heGetPositionAccurate", 8000);
+                if (pos is not null && pos.Lat.HasValue && pos.Lon.HasValue) { lat = pos.Lat; lon = pos.Lon; acc = pos.Accuracy; }
             }
             catch { }
 

@@ -945,6 +945,34 @@
             });
         };
 
+        // 2026-06-27: version de ALTA PRECISION para el bloqueo por GPS (geocerca). A diferencia
+        // de heTryGetPosition: enableHighAccuracy:true, maximumAge:0 (sin cache, ubicacion fresca)
+        // y valida que lat/lon sean numeros finitos (descarta NaN/Infinity). Devuelve null en error.
+        window.heGetPositionAccurate = function(timeoutMs) {
+            return new Promise(function(resolve) {
+                if (!navigator.geolocation) { resolve(null); return; }
+                var resolved = false;
+                var t = setTimeout(function() {
+                    if (!resolved) { resolved = true; resolve(null); }
+                }, (timeoutMs || 8000) + 500);
+                navigator.geolocation.getCurrentPosition(
+                    function(pos) {
+                        if (resolved) return;
+                        resolved = true; clearTimeout(t);
+                        var lat = pos.coords.latitude, lon = pos.coords.longitude, acc = pos.coords.accuracy;
+                        if (!isFinite(lat) || !isFinite(lon)) { resolve(null); return; }
+                        resolve({ lat: lat, lon: lon, accuracy: isFinite(acc) ? Math.round(acc) : null });
+                    },
+                    function() {
+                        if (resolved) return;
+                        resolved = true; clearTimeout(t);
+                        resolve(null);
+                    },
+                    { enableHighAccuracy: true, timeout: timeoutMs || 8000, maximumAge: 0 }
+                );
+            });
+        };
+
         // 2026-06-11: Pide al browser la ubicacion GPS para Mis Pedidos (repartidor parado en
         // la puerta del cliente). Devuelve [lat, lng] o null si el usuario rechazo / no hay GPS.
         // Usa alta precision (enableHighAccuracy:true) porque queremos guardar la ubicacion

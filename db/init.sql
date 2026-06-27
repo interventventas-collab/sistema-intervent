@@ -4458,12 +4458,30 @@ BEGIN
         Wifi2Label NVARCHAR(80) NULL,
         RequiereHuella BIT NOT NULL DEFAULT 0,
         LoguearGps BIT NOT NULL DEFAULT 0,
+        BloquearPorGps BIT NOT NULL DEFAULT 0,
+        NegocioLat DECIMAL(10,7) NULL,
+        NegocioLon DECIMAL(10,7) NULL,
+        RadioMetros INT NOT NULL DEFAULT 150,
         UpdatedAt DATETIME2 NULL,
         UpdatedBy NVARCHAR(120) NULL
     );
     -- Insertar la fila singleton (Id=1)
     INSERT INTO HorasExtras_ConfigFichada (Id, ActivarModoNuevo, RequiereHuella, LoguearGps) VALUES (1, 0, 0, 0);
 END
+GO
+
+-- 2026-06-27: bloqueo por GPS (geocerca) — columnas nuevas para DBs ya existentes.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='BloquearPorGps' AND Object_ID=OBJECT_ID('HorasExtras_ConfigFichada'))
+    ALTER TABLE HorasExtras_ConfigFichada ADD BloquearPorGps BIT NOT NULL CONSTRAINT DF_HE_ConfigFichada_BloquearGps DEFAULT 0;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='NegocioLat' AND Object_ID=OBJECT_ID('HorasExtras_ConfigFichada'))
+    ALTER TABLE HorasExtras_ConfigFichada ADD NegocioLat DECIMAL(10,7) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='NegocioLon' AND Object_ID=OBJECT_ID('HorasExtras_ConfigFichada'))
+    ALTER TABLE HorasExtras_ConfigFichada ADD NegocioLon DECIMAL(10,7) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='RadioMetros' AND Object_ID=OBJECT_ID('HorasExtras_ConfigFichada'))
+    ALTER TABLE HorasExtras_ConfigFichada ADD RadioMetros INT NOT NULL CONSTRAINT DF_HE_ConfigFichada_RadioMetros DEFAULT 150;
 GO
 
 -- Credenciales WebAuthn por empleado (Fase 2 - huella). Tabla armada por adelantado.
@@ -4518,6 +4536,13 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='MostrarEnFichador' AND Object_ID=OBJECT_ID('HorasExtras_Empleados'))
 BEGIN
     ALTER TABLE HorasExtras_Empleados ADD MostrarEnFichador BIT NOT NULL CONSTRAINT DF_HorasExtras_Empleados_MostrarFichador DEFAULT 1;
+END
+GO
+
+-- 2026-06-27: piloto bloqueo por GPS - flag por empleado para testear con pocos sin afectar a todos
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ProbarGpsFichada' AND Object_ID=OBJECT_ID('HorasExtras_Empleados'))
+BEGIN
+    ALTER TABLE HorasExtras_Empleados ADD ProbarGpsFichada BIT NOT NULL CONSTRAINT DF_HorasExtras_Empleados_ProbarGps DEFAULT 0;
 END
 GO
 

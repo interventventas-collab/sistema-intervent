@@ -37,6 +37,23 @@ public class HorasExtrasConfigFichada
     /// NO bloquea — solo dato de auditoria.</summary>
     public bool LoguearGps { get; set; } = false;
 
+    // ─── 2026-06-27: bloqueo por GPS (geocerca) ───
+    /// <summary>Toggle maestro del bloqueo por ubicacion. Si true, los empleados marcados con
+    /// ProbarGpsFichada solo pueden fichar si estan dentro del radio del negocio. Independiente
+    /// del WiFi: se puede usar "solo GPS" dejando ActivarModoNuevo en false.</summary>
+    public bool BloquearPorGps { get; set; } = false;
+
+    /// <summary>Coordenadas del negocio (centro de la geocerca). Se capturan una vez parado en el
+    /// local con el boton "Capturar ubicacion del negocio". Si estan en null, el bloqueo no aplica.</summary>
+    [Column(TypeName = "decimal(10,7)")]
+    public decimal? NegocioLat { get; set; }
+    [Column(TypeName = "decimal(10,7)")]
+    public decimal? NegocioLon { get; set; }
+
+    /// <summary>Radio permitido en metros alrededor del negocio. Default 150 (tolerante para que el
+    /// GPS impreciso de interiores no rechace de mas a quien si esta adentro).</summary>
+    public int RadioMetros { get; set; } = 150;
+
     public DateTime? UpdatedAt { get; set; }
     [MaxLength(120)]
     public string? UpdatedBy { get; set; }
