@@ -199,30 +199,8 @@
             }
         </div>
 
-        @* ── OPCIONES ADICIONALES ───────────────────────────────────── *@
-        <div style="background: #f9fafb; border: 1px solid #d1d5db; border-radius: 10px; padding: 1rem 1.2rem; margin-bottom: 1.2rem;">
-            <h3 style="margin: 0 0 0.6rem; color: #1f2937;">⚙ Opciones</h3>
-
-            <label style="display: flex; gap: 0.6rem; align-items: flex-start; cursor: pointer; padding: 0.5rem; border-radius: 6px; margin-bottom: 0.3rem;">
-                <input type="checkbox" checked="@cfg.LoguearGps" @onchange="@(e => OnChange(c => c.LoguearGps = (bool)e.Value!))" style="margin-top: 0.2rem;" />
-                <div>
-                    <strong>📍 Loguear ubicación GPS al fichar</strong>
-                    <div style="font-size: 0.78rem; color: #6b7280;">
-                        Guarda lat/long de cada fichada para auditoría. NO bloquea — solo registra.
-                    </div>
-                </div>
-            </label>
-
-            <label style="display: flex; gap: 0.6rem; align-items: flex-start; cursor: pointer; padding: 0.5rem; border-radius: 6px; opacity: 0.5;">
-                <input type="checkbox" checked="@cfg.RequiereHuella" disabled="true" style="margin-top: 0.2rem;" />
-                <div>
-                    <strong>👆 Requerir huella biométrica</strong>
-                    <div style="font-size: 0.78rem; color: #6b7280;">
-                        🚧 <strong>Fase 2 — Próximamente.</strong> Requiere registrar la huella de cada empleado en su celular (WebAuthn).
-                    </div>
-                </div>
-            </label>
-        </div>
+        @* 2026-06-27: se quitó la sección "Opciones" (Loguear GPS / Requerir huella): ambos botones
+           no hacían nada — la ubicación ya se guarda sola para quien tenga WiFi/GPS marcado en la tabla. *@
 
         @* ── ACCIONES ───────────────────────────────────────────────── *@
         <div style="display: flex; gap: 0.5rem; align-items: center;">
