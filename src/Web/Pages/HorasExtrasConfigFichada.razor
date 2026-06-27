@@ -150,8 +150,10 @@
         <div style="background: #fffbeb; border: 1px solid #fbbf24; border-radius: 10px; padding: 1rem 1.2rem; margin-bottom: 1.2rem;">
             <h3 style="margin: 0 0 0.3rem; color: #92400e;">👥 ¿A quién se le controla la fichada?</h3>
             <p style="font-size: 0.8rem; color: #b45309; margin: 0 0 0.8rem;">
-                Marcá por empleado qué se le controla al fichar. <strong>📡 WiFi</strong> = tiene que estar conectado al WiFi del negocio.
-                <strong>📍 GPS</strong> = tiene que estar cerca del negocio (según el radio de arriba). A quien no marques, ficha sin restricción.
+                Todo lo de fichar por empleado, en un solo lugar. <strong>📡 WiFi</strong> = tiene que estar en el WiFi del negocio ·
+                <strong>📍 GPS</strong> = tiene que estar cerca (según el radio de arriba) ·
+                <strong>👆 Kiosco</strong> = aparece en la pantalla del kiosco ·
+                <strong>🖐️ Solo info</strong> = no ficha desde su celu, solo desde el kiosco.
             </p>
             @if (empleadosPiloto.Count == 0)
             {
@@ -163,8 +165,10 @@
                     <thead>
                         <tr style="text-align: left; color: #6b7280; border-bottom: 1px solid #fde68a;">
                             <th style="padding: 0.3rem 0.5rem;">Empleado</th>
-                            <th style="padding: 0.3rem 0.5rem; text-align: center; width: 90px;">📡 WiFi</th>
-                            <th style="padding: 0.3rem 0.5rem; text-align: center; width: 90px;">📍 GPS</th>
+                            <th style="padding: 0.3rem 0.4rem; text-align: center; width: 70px;">📡 WiFi</th>
+                            <th style="padding: 0.3rem 0.4rem; text-align: center; width: 70px;">📍 GPS</th>
+                            <th style="padding: 0.3rem 0.4rem; text-align: center; width: 70px;">👆 Kiosco</th>
+                            <th style="padding: 0.3rem 0.4rem; text-align: center; width: 70px;">🖐️ Solo info</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -172,13 +176,21 @@
                         {
                             <tr style="border-bottom: 1px solid #fef3c7;">
                                 <td style="padding: 0.45rem 0.5rem; font-weight: 600; color: #1f2937;">@emp.Nombre</td>
-                                <td style="padding: 0.45rem 0.5rem; text-align: center;">
+                                <td style="padding: 0.45rem 0.4rem; text-align: center;">
                                     <input type="checkbox" checked="@emp.ProbarWifi" style="width: 18px; height: 18px; cursor: pointer;"
                                            @onchange="@(e => TogglePilotoWifi(emp, (bool)e.Value!))" />
                                 </td>
-                                <td style="padding: 0.45rem 0.5rem; text-align: center;">
+                                <td style="padding: 0.45rem 0.4rem; text-align: center;">
                                     <input type="checkbox" checked="@emp.ProbarGps" style="width: 18px; height: 18px; cursor: pointer;"
                                            @onchange="@(e => TogglePilotoGps(emp, (bool)e.Value!))" />
+                                </td>
+                                <td style="padding: 0.45rem 0.4rem; text-align: center;">
+                                    <input type="checkbox" checked="@emp.Kiosco" style="width: 18px; height: 18px; cursor: pointer;"
+                                           @onchange="@(e => TogglePilotoKiosco(emp, (bool)e.Value!))" />
+                                </td>
+                                <td style="padding: 0.45rem 0.4rem; text-align: center;">
+                                    <input type="checkbox" checked="@emp.SoloInfo" style="width: 18px; height: 18px; cursor: pointer;"
+                                           @onchange="@(e => TogglePilotoSoloInfo(emp, (bool)e.Value!))" />
                                 </td>
                             </tr>
                         }
@@ -437,6 +449,30 @@
             var i = empleadosPiloto.FindIndex(e => e.Id == emp.Id);
             if (i >= 0) empleadosPiloto[i] = emp with { ProbarGps = valor };
             ToastService.Success($"{emp.Nombre}: GPS {(valor ? "activado" : "desactivado")} ✓");
+        }
+        else ToastService.Error("No se pudo guardar el cambio");
+    }
+
+    private async Task TogglePilotoKiosco(ApiClient.EmpleadoPilotoDto emp, bool valor)
+    {
+        var ok = await Api.SetEmpleadoPilotoAsync(emp.Id, kiosco: valor);
+        if (ok)
+        {
+            var i = empleadosPiloto.FindIndex(e => e.Id == emp.Id);
+            if (i >= 0) empleadosPiloto[i] = emp with { Kiosco = valor };
+            ToastService.Success($"{emp.Nombre}: {(valor ? "aparece en el kiosco" : "oculto del kiosco")} ✓");
+        }
+        else ToastService.Error("No se pudo guardar el cambio");
+    }
+
+    private async Task TogglePilotoSoloInfo(ApiClient.EmpleadoPilotoDto emp, bool valor)
+    {
+        var ok = await Api.SetEmpleadoPilotoAsync(emp.Id, soloInfo: valor);
+        if (ok)
+        {
+            var i = empleadosPiloto.FindIndex(e => e.Id == emp.Id);
+            if (i >= 0) empleadosPiloto[i] = emp with { SoloInfo = valor };
+            ToastService.Success($"{emp.Nombre}: {(valor ? "solo informativo (ficha por kiosco)" : "puede fichar desde su celu")} ✓");
         }
         else ToastService.Error("No se pudo guardar el cambio");
     }

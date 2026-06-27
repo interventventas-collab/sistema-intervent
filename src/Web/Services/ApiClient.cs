@@ -1208,15 +1208,16 @@ public class ApiClient
         public string? UpdatedBy { get; set; }
     }
 
-    // ─── 2026-06-27: piloto de fichada por empleado (WiFi + GPS), unificado en la pantalla de config ───
-    public record EmpleadoPilotoDto(int Id, string Nombre, bool ProbarWifi, bool ProbarGps);
+    // ─── 2026-06-27: toda la fichada por empleado (WiFi, GPS, kiosco, solo-info) en una pantalla ───
+    public record EmpleadoPilotoDto(int Id, string Nombre, bool ProbarWifi, bool ProbarGps, bool Kiosco, bool SoloInfo);
     public async Task<List<EmpleadoPilotoDto>?> GetEmpleadosPilotoAsync()
         => await GetAsync<List<EmpleadoPilotoDto>>("/api/horas-extras/admin/config-fichada/empleados-piloto");
-    /// <summary>Setea WiFi y/o GPS del empleado. Pasá null en el que no querés tocar.</summary>
-    public async Task<bool> SetEmpleadoPilotoAsync(int id, bool? wifi, bool? gps)
+    /// <summary>Setea uno o varios flags del empleado. Pasá null en el que no querés tocar.</summary>
+    public async Task<bool> SetEmpleadoPilotoAsync(int id, bool? wifi = null, bool? gps = null, bool? kiosco = null, bool? soloInfo = null)
     {
         await SetAuthHeaderAsync();
-        var resp = await _http.PutAsJsonAsync($"/api/horas-extras/admin/config-fichada/empleados-piloto/{id}", new { Wifi = wifi, Gps = gps });
+        var resp = await _http.PutAsJsonAsync($"/api/horas-extras/admin/config-fichada/empleados-piloto/{id}",
+            new { Wifi = wifi, Gps = gps, Kiosco = kiosco, SoloInfo = soloInfo });
         return resp.IsSuccessStatusCode;
     }
     public async Task<(ConfigFichadaDto? cfg, string? error)> UpdateConfigFichadaAsync(UpdateConfigFichadaRequest req)
