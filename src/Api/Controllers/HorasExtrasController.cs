@@ -1147,34 +1147,37 @@ public class HorasExtrasController : ControllerBase
             cfg.UpdatedAt, cfg.UpdatedBy));
     }
 
-    // ─── 2026-06-27: piloto GPS por empleado — lista + toggle (para la pantalla de config) ───
-    public record EmpleadoGpsDto(int Id, string Nombre, bool ProbarGps);
+    // ─── 2026-06-27: piloto de fichada por empleado (WiFi + GPS) — TODO en la pantalla de config ───
+    // Unifica lo que antes estaba partido: el flag WiFi vivía en la pantalla de Empleados y el de GPS acá.
+    public record EmpleadoPilotoDto(int Id, string Nombre, bool ProbarWifi, bool ProbarGps);
 
-    /// <summary>Lista de empleados activos con su flag de "probar bloqueo por GPS". Sirve para que
-    /// el admin marque desde la pantalla de config quiénes entran al piloto (ej: Germán y Osmar).</summary>
-    [HttpGet("admin/config-fichada/empleados-gps")]
+    /// <summary>Lista de empleados activos con sus flags de piloto (WiFi y GPS). Es la única fuente
+    /// para marcar quién pasa por cada validación al fichar, desde la pantalla de config.</summary>
+    [HttpGet("admin/config-fichada/empleados-piloto")]
     [Authorize]
-    public async Task<IActionResult> GetEmpleadosGps()
+    public async Task<IActionResult> GetEmpleadosPiloto()
     {
         var emps = await _db.HorasExtrasEmpleados
             .Where(e => e.IsActive)
             .OrderBy(e => e.Nombre)
-            .Select(e => new EmpleadoGpsDto(e.Id, e.Nombre, e.ProbarGpsFichada))
+            .Select(e => new EmpleadoPilotoDto(e.Id, e.Nombre, e.ProbarModoNuevoFichada, e.ProbarGpsFichada))
             .ToListAsync();
         return Ok(emps);
     }
 
-    public class SetEmpleadoGpsRequest { public bool Probar { get; set; } }
+    /// <summary>Setea uno o ambos flags del empleado. Manda solo el que cambió (el otro va null).</summary>
+    public class SetEmpleadoPilotoRequest { public bool? Wifi { get; set; } public bool? Gps { get; set; } }
 
-    [HttpPut("admin/config-fichada/empleados-gps/{id:int}")]
+    [HttpPut("admin/config-fichada/empleados-piloto/{id:int}")]
     [Authorize]
-    public async Task<IActionResult> SetEmpleadoGps(int id, [FromBody] SetEmpleadoGpsRequest req)
+    public async Task<IActionResult> SetEmpleadoPiloto(int id, [FromBody] SetEmpleadoPilotoRequest req)
     {
         var emp = await _db.HorasExtrasEmpleados.FindAsync(id);
         if (emp is null) return NotFound();
-        emp.ProbarGpsFichada = req.Probar;
+        if (req.Wifi.HasValue) emp.ProbarModoNuevoFichada = req.Wifi.Value;
+        if (req.Gps.HasValue) emp.ProbarGpsFichada = req.Gps.Value;
         await _db.SaveChangesAsync();
-        return Ok(new EmpleadoGpsDto(emp.Id, emp.Nombre, emp.ProbarGpsFichada));
+        return Ok(new EmpleadoPilotoDto(emp.Id, emp.Nombre, emp.ProbarModoNuevoFichada, emp.ProbarGpsFichada));
     }
 
     /// <summary>Devuelve la IP publica del admin que esta llamando este endpoint. Sirve para
