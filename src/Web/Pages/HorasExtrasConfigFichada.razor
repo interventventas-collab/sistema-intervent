@@ -153,7 +153,7 @@
                 Todo lo de fichar por empleado, en un solo lugar. <strong>📡 WiFi</strong> = tiene que estar en el WiFi del negocio ·
                 <strong>📍 GPS</strong> = tiene que estar cerca (según el radio de arriba) ·
                 <strong>👆 Kiosco</strong> = aparece en la pantalla del kiosco ·
-                <strong>🖐️ Solo info</strong> = no ficha desde su celu, solo desde el kiosco.
+                <strong>🖐️ Fichar solo en kiosco</strong> = el empleado NO puede fichar desde su celular; tiene que ir al kiosco del depósito.
             </p>
             @if (empleadosPiloto.Count == 0)
             {
@@ -168,7 +168,7 @@
                             <th style="padding: 0.3rem 0.4rem; text-align: center; width: 70px;">📡 WiFi</th>
                             <th style="padding: 0.3rem 0.4rem; text-align: center; width: 70px;">📍 GPS</th>
                             <th style="padding: 0.3rem 0.4rem; text-align: center; width: 70px;">👆 Kiosco</th>
-                            <th style="padding: 0.3rem 0.4rem; text-align: center; width: 70px;">🖐️ Solo info</th>
+                            <th style="padding: 0.3rem 0.4rem; text-align: center; width: 110px;">🖐️ Fichar solo en kiosco</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -450,7 +450,7 @@
         {
             var i = empleadosPiloto.FindIndex(e => e.Id == emp.Id);
             if (i >= 0) empleadosPiloto[i] = emp with { SoloInfo = valor };
-            ToastService.Success($"{emp.Nombre}: {(valor ? "solo informativo (ficha por kiosco)" : "puede fichar desde su celu")} ✓");
+            ToastService.Success($"{emp.Nombre}: {(valor ? "ficha solo en el kiosco" : "puede fichar desde su celu")} ✓");
         }
         else ToastService.Error("No se pudo guardar el cambio");
     }
