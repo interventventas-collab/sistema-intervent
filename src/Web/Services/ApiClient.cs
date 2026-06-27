@@ -1209,15 +1209,15 @@ public class ApiClient
     }
 
     // ─── 2026-06-27: toda la fichada por empleado (WiFi, GPS, kiosco, solo-info) en una pantalla ───
-    public record EmpleadoPilotoDto(int Id, string Nombre, bool ProbarWifi, bool ProbarGps, bool Kiosco, bool SoloInfo);
+    public record EmpleadoPilotoDto(int Id, string Nombre, bool ProbarWifi, bool ProbarGps, bool Kiosco, bool SoloInfo, bool KioscoPersonal);
     public async Task<List<EmpleadoPilotoDto>?> GetEmpleadosPilotoAsync()
         => await GetAsync<List<EmpleadoPilotoDto>>("/api/horas-extras/admin/config-fichada/empleados-piloto");
     /// <summary>Setea uno o varios flags del empleado. Pasá null en el que no querés tocar.</summary>
-    public async Task<bool> SetEmpleadoPilotoAsync(int id, bool? wifi = null, bool? gps = null, bool? kiosco = null, bool? soloInfo = null)
+    public async Task<bool> SetEmpleadoPilotoAsync(int id, bool? wifi = null, bool? gps = null, bool? kiosco = null, bool? soloInfo = null, bool? kioscoPersonal = null)
     {
         await SetAuthHeaderAsync();
         var resp = await _http.PutAsJsonAsync($"/api/horas-extras/admin/config-fichada/empleados-piloto/{id}",
-            new { Wifi = wifi, Gps = gps, Kiosco = kiosco, SoloInfo = soloInfo });
+            new { Wifi = wifi, Gps = gps, Kiosco = kiosco, SoloInfo = soloInfo, KioscoPersonal = kioscoPersonal });
         return resp.IsSuccessStatusCode;
     }
     public async Task<(ConfigFichadaDto? cfg, string? error)> UpdateConfigFichadaAsync(UpdateConfigFichadaRequest req)

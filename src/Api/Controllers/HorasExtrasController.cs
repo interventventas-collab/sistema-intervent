@@ -56,7 +56,11 @@ public class HorasExtrasController : ControllerBase
         bool MostrarCuadroCiclo, bool MostrarHorasTrabajadasDia,
         // 2026-06-08: si true, la pagina mobile oculta el form de carga (solo lectura).
         // El empleado debe fichar desde el kiosco /fichador (huella o PIN).
-        bool SoloInformativo = false);
+        bool SoloInformativo = false,
+        // 2026-06-27: para el "kiosco personal" (fichar con huella desde el area personal).
+        // EmpleadoId: necesario para los endpoints de huella. KioscoPersonal: si la funcion esta
+        // activa para este empleado. TieneHuella: si ya registro al menos una huella.
+        int EmpleadoId = 0, bool KioscoPersonal = false, bool TieneHuella = false);
 
     /// <summary>Busca un empleado por slug del nombre + clave (últimos 3 del DNI). Helper
     /// usado por todos los endpoints públicos. Devuelve null si no coincide nada activo.</summary>
@@ -157,6 +161,9 @@ public class HorasExtrasController : ControllerBase
         // Extras del ciclo = SOLO POSITIVOS (no se compensan horas faltadas con extras).
         var extrasCiclo = registrosCiclo.Sum(r => Math.Max(0m, ExtrasDelDia(r) ?? 0m));
 
+        // 2026-06-27: ¿el empleado ya registró alguna huella? (para el kiosco personal)
+        bool tieneHuella = await _db.HorasExtrasWebAuthnCredentials.AnyAsync(c => c.EmpleadoId == emp.Id);
+
         return Ok(new PublicEmpleadoDto(emp.Nombre, hoy, fechaSel,
             registroSel?.Cantidad, registroSel?.Observaciones,
             FormatHora(registroSel?.HoraEntrada), FormatHora(registroSel?.HoraSalida),
@@ -164,7 +171,8 @@ public class HorasExtrasController : ControllerBase
             ciclo.Desde, ciclo.Hasta, ciclo.Label,
             totalCiclo, extrasCiclo, emp.MostrarExtrasAlEmpleado,
             emp.MostrarCuadroCiclo, emp.MostrarHorasTrabajadasDia,
-            emp.SoloInformativo));   // 2026-06-08
+            emp.SoloInformativo,   // 2026-06-08
+            emp.Id, emp.KioscoPersonal, tieneHuella));   // 2026-06-27
     }
 
     /// <summary>Devuelve "HH:mm" o null. Lo usamos en el JSON para que el input type=time del browser
@@ -1149,10 +1157,10 @@ public class HorasExtrasController : ControllerBase
 
     // ─── 2026-06-27: piloto de fichada por empleado (WiFi + GPS) — TODO en la pantalla de config ───
     // Unifica lo que antes estaba partido: el flag WiFi vivía en la pantalla de Empleados y el de GPS acá.
-    public record EmpleadoPilotoDto(int Id, string Nombre, bool ProbarWifi, bool ProbarGps, bool Kiosco, bool SoloInfo);
+    public record EmpleadoPilotoDto(int Id, string Nombre, bool ProbarWifi, bool ProbarGps, bool Kiosco, bool SoloInfo, bool KioscoPersonal);
 
     /// <summary>Lista de empleados activos con TODAS sus opciones de fichada (WiFi, GPS, aparece en
-    /// kiosco, solo informativo). Fuente única para configurar el fichaje desde una sola pantalla.</summary>
+    /// kiosco, solo informativo, kiosco personal). Fuente única para configurar el fichaje.</summary>
     [HttpGet("admin/config-fichada/empleados-piloto")]
     [Authorize]
     public async Task<IActionResult> GetEmpleadosPiloto()
@@ -1160,7 +1168,7 @@ public class HorasExtrasController : ControllerBase
         var emps = await _db.HorasExtrasEmpleados
             .Where(e => e.IsActive)
             .OrderBy(e => e.Nombre)
-            .Select(e => new EmpleadoPilotoDto(e.Id, e.Nombre, e.ProbarModoNuevoFichada, e.ProbarGpsFichada, e.MostrarEnFichador, e.SoloInformativo))
+            .Select(e => new EmpleadoPilotoDto(e.Id, e.Nombre, e.ProbarModoNuevoFichada, e.ProbarGpsFichada, e.MostrarEnFichador, e.SoloInformativo, e.KioscoPersonal))
             .ToListAsync();
         return Ok(emps);
     }
@@ -1172,6 +1180,7 @@ public class HorasExtrasController : ControllerBase
         public bool? Gps { get; set; }
         public bool? Kiosco { get; set; }
         public bool? SoloInfo { get; set; }
+        public bool? KioscoPersonal { get; set; }
     }
 
     [HttpPut("admin/config-fichada/empleados-piloto/{id:int}")]
@@ -1184,8 +1193,9 @@ public class HorasExtrasController : ControllerBase
         if (req.Gps.HasValue) emp.ProbarGpsFichada = req.Gps.Value;
         if (req.Kiosco.HasValue) emp.MostrarEnFichador = req.Kiosco.Value;
         if (req.SoloInfo.HasValue) emp.SoloInformativo = req.SoloInfo.Value;
+        if (req.KioscoPersonal.HasValue) emp.KioscoPersonal = req.KioscoPersonal.Value;
         await _db.SaveChangesAsync();
-        return Ok(new EmpleadoPilotoDto(emp.Id, emp.Nombre, emp.ProbarModoNuevoFichada, emp.ProbarGpsFichada, emp.MostrarEnFichador, emp.SoloInformativo));
+        return Ok(new EmpleadoPilotoDto(emp.Id, emp.Nombre, emp.ProbarModoNuevoFichada, emp.ProbarGpsFichada, emp.MostrarEnFichador, emp.SoloInformativo, emp.KioscoPersonal));
     }
 
     /// <summary>Devuelve la IP publica del admin que esta llamando este endpoint. Sirve para

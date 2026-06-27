@@ -73,6 +73,11 @@ public class HorasExtrasEmpleado
     /// el kiosco (/fichador) con huella o PIN, para evitar el "fichaje fantasma" desde el celular.</summary>
     public bool SoloInformativo { get; set; } = false;
 
+    /// <summary>2026-06-27: si TRUE, el área personal /he/{slug}/horario funciona como un "kiosco
+    /// personal": el empleado puede registrar y usar su HUELLA (WebAuthn) desde su propio celular,
+    /// igual que el kiosco compartido. Convive con /fichador. Reusa los endpoints de huella del kiosco.</summary>
+    public bool KioscoPersonal { get; set; } = false;
+
     /// <summary>Dia del mes (1-31) en que arranca el ciclo de liquidacion. NULL = mes calendario (1 al fin del mes).
     /// Ej: 16 -> el ciclo va del 16 de un mes al 15 del siguiente (o al CicloDiaFin si se configuro).</summary>
     public int? CicloDiaInicio { get; set; }
