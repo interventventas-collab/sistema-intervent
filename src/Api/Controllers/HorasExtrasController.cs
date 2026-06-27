@@ -1149,10 +1149,10 @@ public class HorasExtrasController : ControllerBase
 
     // ─── 2026-06-27: piloto de fichada por empleado (WiFi + GPS) — TODO en la pantalla de config ───
     // Unifica lo que antes estaba partido: el flag WiFi vivía en la pantalla de Empleados y el de GPS acá.
-    public record EmpleadoPilotoDto(int Id, string Nombre, bool ProbarWifi, bool ProbarGps);
+    public record EmpleadoPilotoDto(int Id, string Nombre, bool ProbarWifi, bool ProbarGps, bool Kiosco, bool SoloInfo);
 
-    /// <summary>Lista de empleados activos con sus flags de piloto (WiFi y GPS). Es la única fuente
-    /// para marcar quién pasa por cada validación al fichar, desde la pantalla de config.</summary>
+    /// <summary>Lista de empleados activos con TODAS sus opciones de fichada (WiFi, GPS, aparece en
+    /// kiosco, solo informativo). Fuente única para configurar el fichaje desde una sola pantalla.</summary>
     [HttpGet("admin/config-fichada/empleados-piloto")]
     [Authorize]
     public async Task<IActionResult> GetEmpleadosPiloto()
@@ -1160,13 +1160,19 @@ public class HorasExtrasController : ControllerBase
         var emps = await _db.HorasExtrasEmpleados
             .Where(e => e.IsActive)
             .OrderBy(e => e.Nombre)
-            .Select(e => new EmpleadoPilotoDto(e.Id, e.Nombre, e.ProbarModoNuevoFichada, e.ProbarGpsFichada))
+            .Select(e => new EmpleadoPilotoDto(e.Id, e.Nombre, e.ProbarModoNuevoFichada, e.ProbarGpsFichada, e.MostrarEnFichador, e.SoloInformativo))
             .ToListAsync();
         return Ok(emps);
     }
 
-    /// <summary>Setea uno o ambos flags del empleado. Manda solo el que cambió (el otro va null).</summary>
-    public class SetEmpleadoPilotoRequest { public bool? Wifi { get; set; } public bool? Gps { get; set; } }
+    /// <summary>Setea uno o varios flags de fichada del empleado. Manda solo el que cambió (el resto va null).</summary>
+    public class SetEmpleadoPilotoRequest
+    {
+        public bool? Wifi { get; set; }
+        public bool? Gps { get; set; }
+        public bool? Kiosco { get; set; }
+        public bool? SoloInfo { get; set; }
+    }
 
     [HttpPut("admin/config-fichada/empleados-piloto/{id:int}")]
     [Authorize]
@@ -1176,8 +1182,10 @@ public class HorasExtrasController : ControllerBase
         if (emp is null) return NotFound();
         if (req.Wifi.HasValue) emp.ProbarModoNuevoFichada = req.Wifi.Value;
         if (req.Gps.HasValue) emp.ProbarGpsFichada = req.Gps.Value;
+        if (req.Kiosco.HasValue) emp.MostrarEnFichador = req.Kiosco.Value;
+        if (req.SoloInfo.HasValue) emp.SoloInformativo = req.SoloInfo.Value;
         await _db.SaveChangesAsync();
-        return Ok(new EmpleadoPilotoDto(emp.Id, emp.Nombre, emp.ProbarModoNuevoFichada, emp.ProbarGpsFichada));
+        return Ok(new EmpleadoPilotoDto(emp.Id, emp.Nombre, emp.ProbarModoNuevoFichada, emp.ProbarGpsFichada, emp.MostrarEnFichador, emp.SoloInformativo));
     }
 
     /// <summary>Devuelve la IP publica del admin que esta llamando este endpoint. Sirve para

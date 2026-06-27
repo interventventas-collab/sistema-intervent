@@ -122,37 +122,11 @@
                 </div>
             </div>
 
-            @* 2026-06-27: el control de fichada por WiFi/GPS de cada empleado se maneja TODO en una
-               sola pantalla (Config fichada). Acá solo dejamos un acceso para no duplicar. *@
+            @* 2026-06-27: TODA la config de fichada (WiFi, GPS, kiosco, solo-info) se maneja en una
+               sola pantalla (Config fichada). Acá solo queda el acceso, para no duplicar. *@
             <div style="margin-top:0.7rem; padding:0.6rem 0.8rem; background:#eff6ff; border:1px solid #93c5fd; border-radius:8px; font-size:0.8rem; color:#1e40af;">
-                🔒 <strong>Control de fichada (WiFi / GPS):</strong> se configura por empleado en
-                <a href="/horas-extras/configuracion-fichada" target="_blank">📍 Config fichada</a>, todo en un solo lugar.
-            </div>
-
-            @* 2026-06-03 v4: mostrar/ocultar empleado en el kiosco /fichador *@
-            <div style="margin-top:0.7rem; padding:0.6rem 0.8rem; background:#ecfdf5; border:1px solid #10b981; border-radius:8px;">
-                <label style="display:flex; gap:0.5rem; align-items:flex-start; cursor:pointer; font-size:0.88rem;">
-                    <input type="checkbox" @bind="formMostrarEnFichador" style="margin-top:0.15rem;" />
-                    <span>
-                        <strong>👆 Mostrar en el kiosco de fichada (/fichador)</strong>
-                        <div style="font-size:0.72rem; color:#6b7280; margin-top:0.1rem;">
-                            Si está tildado, este empleado aparece como card en la pantalla del kiosco. Destildalo para empleados de prueba o que no usan el kiosco.
-                        </div>
-                    </span>
-                </label>
-            </div>
-
-            @* 2026-06-08: forzar fichaje por kiosco — el link personal se vuelve solo informativo *@
-            <div style="margin-top:0.5rem; padding:0.6rem 0.8rem; background:#fef3c7; border:1px solid #f59e0b; border-radius:8px;">
-                <label style="display:flex; gap:0.5rem; align-items:flex-start; cursor:pointer; font-size:0.88rem;">
-                    <input type="checkbox" @bind="formSoloInformativo" style="margin-top:0.15rem;" />
-                    <span>
-                        <strong>🖐️ Solo informativo en su link personal (debe fichar por kiosco)</strong>
-                        <div style="font-size:0.72rem; color:#6b7280; margin-top:0.1rem;">
-                            Si está tildado, en /he/{slug}/horario el empleado puede VER sus horas pero NO marcar entrada/salida. Tiene que fichar SÍ o SÍ desde el kiosco (huella o PIN). Sirve para evitar el "fichaje fantasma" desde el celular.
-                        </div>
-                    </span>
-                </label>
+                📍 <strong>Fichada de este empleado</strong> (WiFi, GPS, si aparece en el kiosco, solo informativo):
+                se configura todo junto en <a href="/horas-extras/configuracion-fichada" target="_blank">Config fichada</a>.
             </div>
 
             @* 2026-06-03: período de liquidación (mes calendario o personalizado) *@
@@ -633,10 +607,7 @@
     // 2026-06-03 v2: flags granulares de visibilidad
     private bool formMostrarCuadroCiclo = false;
     private bool formMostrarHorasTrabajadasDia = false;
-    // 2026-06-27: el flag WiFi/GPS por empleado se maneja desde Config fichada (pantalla unificada), no acá.
-    // 2026-06-03 v4: mostrar este empleado en el kiosco /fichador (default true)
-    private bool formMostrarEnFichador = true;
-    private bool formSoloInformativo = false;   // 2026-06-08
+    // 2026-06-27: WiFi/GPS/Kiosco/Solo-info por empleado se manejan desde Config fichada (pantalla unificada).
 
     // Carga manual (para acumulados)
     private bool showCargarManual, savingManual;
@@ -714,8 +685,6 @@
         // 2026-06-03 v2: nuevos defaults OFF
         formMostrarCuadroCiclo = false;
         formMostrarHorasTrabajadasDia = false;
-        formMostrarEnFichador = true;
-        formSoloInformativo = false;   // 2026-06-08
     }
 
     private void ShowEditEmpleado(AdminEmpleadoDto e)
@@ -733,8 +702,6 @@
         // 2026-06-03 v2: flags granulares
         formMostrarCuadroCiclo = e.MostrarCuadroCiclo;
         formMostrarHorasTrabajadasDia = e.MostrarHorasTrabajadasDia;
-        formMostrarEnFichador = e.MostrarEnFichador;
-        formSoloInformativo = e.SoloInformativo;   // 2026-06-08
     }
 
     private async Task GuardarEmpleado()
@@ -764,9 +731,8 @@
                           CicloDiaFin = formCicloPersonalizado ? (int?)formCicloDiaFin : null,
                           ClearCiclo = !formCicloPersonalizado,
                           MostrarCuadroCiclo = formMostrarCuadroCiclo,
-                          MostrarHorasTrabajadasDia = formMostrarHorasTrabajadasDia,
-                          MostrarEnFichador = formMostrarEnFichador,
-                          SoloInformativo = formSoloInformativo });   // 2026-06-08
+                          MostrarHorasTrabajadasDia = formMostrarHorasTrabajadasDia });
+                          // 2026-06-27: MostrarEnFichador / SoloInformativo se setean desde Config fichada
                 if (resp.IsSuccessStatusCode) ToastService.Success("Empleado actualizado");
                 else { ToastService.Error("Error actualizando"); return; }
             }
