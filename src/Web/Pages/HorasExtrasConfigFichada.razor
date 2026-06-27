@@ -144,29 +144,47 @@
                 <small style="color: #9ca3af;">(recomendado 150 — el GPS adentro de un galpón es impreciso)</small>
             </div>
 
-            @* Empleados del piloto GPS *@
-            <div style="margin-top: 1rem; padding-top: 0.8rem; border-top: 1px dashed #86efac;">
-                <div style="font-size: 0.85rem; font-weight: 700; color: #166534; margin-bottom: 0.5rem;">
-                    👥 ¿A quién se le controla el GPS? (marcá los de la prueba)
-                </div>
-                @if (empleadosGps.Count == 0)
-                {
-                    <p style="font-size: 0.8rem; color: #6b7280; margin: 0;">No hay empleados activos.</p>
-                }
-                else
-                {
-                    <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
-                        @foreach (var emp in empleadosGps)
+        </div>
+
+        @* ── 2026-06-27: PILOTO POR EMPLEADO (WiFi + GPS) — una sola tabla, fuente única ── *@
+        <div style="background: #fffbeb; border: 1px solid #fbbf24; border-radius: 10px; padding: 1rem 1.2rem; margin-bottom: 1.2rem;">
+            <h3 style="margin: 0 0 0.3rem; color: #92400e;">👥 ¿A quién se le controla la fichada?</h3>
+            <p style="font-size: 0.8rem; color: #b45309; margin: 0 0 0.8rem;">
+                Marcá por empleado qué se le controla al fichar. <strong>📡 WiFi</strong> = tiene que estar conectado al WiFi del negocio.
+                <strong>📍 GPS</strong> = tiene que estar cerca del negocio (según el radio de arriba). A quien no marques, ficha sin restricción.
+            </p>
+            @if (empleadosPiloto.Count == 0)
+            {
+                <p style="font-size: 0.8rem; color: #6b7280; margin: 0;">No hay empleados activos.</p>
+            }
+            else
+            {
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                    <thead>
+                        <tr style="text-align: left; color: #6b7280; border-bottom: 1px solid #fde68a;">
+                            <th style="padding: 0.3rem 0.5rem;">Empleado</th>
+                            <th style="padding: 0.3rem 0.5rem; text-align: center; width: 90px;">📡 WiFi</th>
+                            <th style="padding: 0.3rem 0.5rem; text-align: center; width: 90px;">📍 GPS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var emp in empleadosPiloto)
                         {
-                            <label style="display: flex; gap: 0.4rem; align-items: center; cursor: pointer; padding: 0.35rem 0.6rem; border-radius: 6px; border: 1px solid @(emp.ProbarGps ? "#16a34a" : "#e5e7eb"); background: @(emp.ProbarGps ? "#dcfce7" : "white"); font-size: 0.82rem;">
-                                <input type="checkbox" checked="@emp.ProbarGps"
-                                       @onchange="@(e => ToggleEmpleadoGps(emp, (bool)e.Value!))" />
-                                <span>@emp.Nombre</span>
-                            </label>
+                            <tr style="border-bottom: 1px solid #fef3c7;">
+                                <td style="padding: 0.45rem 0.5rem; font-weight: 600; color: #1f2937;">@emp.Nombre</td>
+                                <td style="padding: 0.45rem 0.5rem; text-align: center;">
+                                    <input type="checkbox" checked="@emp.ProbarWifi" style="width: 18px; height: 18px; cursor: pointer;"
+                                           @onchange="@(e => TogglePilotoWifi(emp, (bool)e.Value!))" />
+                                </td>
+                                <td style="padding: 0.45rem 0.5rem; text-align: center;">
+                                    <input type="checkbox" checked="@emp.ProbarGps" style="width: 18px; height: 18px; cursor: pointer;"
+                                           @onchange="@(e => TogglePilotoGps(emp, (bool)e.Value!))" />
+                                </td>
+                            </tr>
                         }
-                    </div>
-                }
-            </div>
+                    </tbody>
+                </table>
+            }
         </div>
 
         @* ── OPCIONES ADICIONALES ───────────────────────────────────── *@
@@ -281,7 +299,7 @@
     {
         await Operator.LoadAsync();
         await CargarConfig();
-        await CargarEmpleadosGps();
+        await CargarEmpleadosPiloto();
     }
 
     private async Task CargarConfig()
@@ -389,24 +407,36 @@
         public int RadioMetros { get; set; }
     }
 
-    // ─── 2026-06-27: piloto bloqueo por GPS ───
-    private List<ApiClient.EmpleadoGpsDto> empleadosGps = new();
+    // ─── 2026-06-27: piloto de fichada por empleado (WiFi + GPS), unificado ───
+    private List<ApiClient.EmpleadoPilotoDto> empleadosPiloto = new();
     private bool capturandoUbic;
 
-    private async Task CargarEmpleadosGps()
+    private async Task CargarEmpleadosPiloto()
     {
-        try { empleadosGps = await Api.GetEmpleadosGpsAsync() ?? new(); }
+        try { empleadosPiloto = await Api.GetEmpleadosPilotoAsync() ?? new(); }
         catch (Exception ex) { ToastService.Error("Error cargando empleados: " + ex.Message); }
     }
 
-    private async Task ToggleEmpleadoGps(ApiClient.EmpleadoGpsDto emp, bool probar)
+    private async Task TogglePilotoWifi(ApiClient.EmpleadoPilotoDto emp, bool valor)
     {
-        var ok = await Api.SetEmpleadoGpsAsync(emp.Id, probar);
+        var ok = await Api.SetEmpleadoPilotoAsync(emp.Id, wifi: valor, gps: null);
         if (ok)
         {
-            var i = empleadosGps.FindIndex(e => e.Id == emp.Id);
-            if (i >= 0) empleadosGps[i] = emp with { ProbarGps = probar };
-            ToastService.Success(probar ? $"{emp.Nombre} entra al piloto GPS ✓" : $"{emp.Nombre} sale del piloto GPS");
+            var i = empleadosPiloto.FindIndex(e => e.Id == emp.Id);
+            if (i >= 0) empleadosPiloto[i] = emp with { ProbarWifi = valor };
+            ToastService.Success($"{emp.Nombre}: WiFi {(valor ? "activado" : "desactivado")} ✓");
+        }
+        else ToastService.Error("No se pudo guardar el cambio");
+    }
+
+    private async Task TogglePilotoGps(ApiClient.EmpleadoPilotoDto emp, bool valor)
+    {
+        var ok = await Api.SetEmpleadoPilotoAsync(emp.Id, wifi: null, gps: valor);
+        if (ok)
+        {
+            var i = empleadosPiloto.FindIndex(e => e.Id == emp.Id);
+            if (i >= 0) empleadosPiloto[i] = emp with { ProbarGps = valor };
+            ToastService.Success($"{emp.Nombre}: GPS {(valor ? "activado" : "desactivado")} ✓");
         }
         else ToastService.Error("No se pudo guardar el cambio");
     }

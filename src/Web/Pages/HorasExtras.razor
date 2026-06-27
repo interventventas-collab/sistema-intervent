@@ -122,17 +122,11 @@
                 </div>
             </div>
 
-            @* 2026-06-03 v3: piloto modo nuevo de fichada - flag por empleado para testear *@
-            <div style="margin-top:0.7rem; padding:0.6rem 0.8rem; background:#fef3c7; border:1px solid #f59e0b; border-radius:8px;">
-                <label style="display:flex; gap:0.5rem; align-items:flex-start; cursor:pointer; font-size:0.88rem;">
-                    <input type="checkbox" @bind="formProbarModoNuevoFichada" style="margin-top:0.15rem;" />
-                    <span>
-                        <strong>🔒 Probar modo nuevo de fichada (WiFi + GPS)</strong>
-                        <div style="font-size:0.72rem; color:#6b7280; margin-top:0.1rem;">
-                            <strong>Solo este empleado</strong> va a pasar por la validación de WiFi al fichar (los demás siguen sin restricciones). Útil para testear antes de activar el modo global. Configurá las IPs autorizadas en <a href="/horas-extras/configuracion-fichada" target="_blank">🔒 Config fichada</a>.
-                        </div>
-                    </span>
-                </label>
+            @* 2026-06-27: el control de fichada por WiFi/GPS de cada empleado se maneja TODO en una
+               sola pantalla (Config fichada). Acá solo dejamos un acceso para no duplicar. *@
+            <div style="margin-top:0.7rem; padding:0.6rem 0.8rem; background:#eff6ff; border:1px solid #93c5fd; border-radius:8px; font-size:0.8rem; color:#1e40af;">
+                🔒 <strong>Control de fichada (WiFi / GPS):</strong> se configura por empleado en
+                <a href="/horas-extras/configuracion-fichada" target="_blank">📍 Config fichada</a>, todo en un solo lugar.
             </div>
 
             @* 2026-06-03 v4: mostrar/ocultar empleado en el kiosco /fichador *@
@@ -639,8 +633,7 @@
     // 2026-06-03 v2: flags granulares de visibilidad
     private bool formMostrarCuadroCiclo = false;
     private bool formMostrarHorasTrabajadasDia = false;
-    // 2026-06-03 v3: flag para probar el modo nuevo de fichada SOLO en este empleado
-    private bool formProbarModoNuevoFichada = false;
+    // 2026-06-27: el flag WiFi/GPS por empleado se maneja desde Config fichada (pantalla unificada), no acá.
     // 2026-06-03 v4: mostrar este empleado en el kiosco /fichador (default true)
     private bool formMostrarEnFichador = true;
     private bool formSoloInformativo = false;   // 2026-06-08
@@ -721,7 +714,6 @@
         // 2026-06-03 v2: nuevos defaults OFF
         formMostrarCuadroCiclo = false;
         formMostrarHorasTrabajadasDia = false;
-        formProbarModoNuevoFichada = false;
         formMostrarEnFichador = true;
         formSoloInformativo = false;   // 2026-06-08
     }
@@ -741,7 +733,6 @@
         // 2026-06-03 v2: flags granulares
         formMostrarCuadroCiclo = e.MostrarCuadroCiclo;
         formMostrarHorasTrabajadasDia = e.MostrarHorasTrabajadasDia;
-        formProbarModoNuevoFichada = e.ProbarModoNuevoFichada;
         formMostrarEnFichador = e.MostrarEnFichador;
         formSoloInformativo = e.SoloInformativo;   // 2026-06-08
     }
@@ -774,7 +765,6 @@
                           ClearCiclo = !formCicloPersonalizado,
                           MostrarCuadroCiclo = formMostrarCuadroCiclo,
                           MostrarHorasTrabajadasDia = formMostrarHorasTrabajadasDia,
-                          ProbarModoNuevoFichada = formProbarModoNuevoFichada,
                           MostrarEnFichador = formMostrarEnFichador,
                           SoloInformativo = formSoloInformativo });   // 2026-06-08
                 if (resp.IsSuccessStatusCode) ToastService.Success("Empleado actualizado");
