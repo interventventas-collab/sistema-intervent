@@ -153,7 +153,8 @@
                 Todo lo de fichar por empleado, en un solo lugar. <strong>📡 WiFi</strong> = tiene que estar en el WiFi del negocio ·
                 <strong>📍 GPS</strong> = tiene que estar cerca (según el radio de arriba) ·
                 <strong>👆 Kiosco</strong> = aparece en la pantalla del kiosco ·
-                <strong>🖐️ Fichar solo en kiosco</strong> = el empleado NO puede fichar desde su celular; tiene que ir al kiosco del depósito.
+                <strong>🖐️ Fichar solo en kiosco</strong> = el empleado NO puede fichar desde su celular; tiene que ir al kiosco del depósito ·
+                <strong>📱 Kiosco personal</strong> = su área personal funciona como kiosco completo (puede fichar con huella desde su propio celu).
             </p>
             @if (empleadosPiloto.Count == 0)
             {
@@ -169,6 +170,7 @@
                             <th style="padding: 0.3rem 0.4rem; text-align: center; width: 70px;">📍 GPS</th>
                             <th style="padding: 0.3rem 0.4rem; text-align: center; width: 70px;">👆 Kiosco</th>
                             <th style="padding: 0.3rem 0.4rem; text-align: center; width: 110px;">🖐️ Fichar solo en kiosco</th>
+                            <th style="padding: 0.3rem 0.4rem; text-align: center; width: 90px;">📱 Kiosco personal</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -191,6 +193,10 @@
                                 <td style="padding: 0.45rem 0.4rem; text-align: center;">
                                     <input type="checkbox" checked="@emp.SoloInfo" style="width: 18px; height: 18px; cursor: pointer;"
                                            @onchange="@(e => TogglePilotoSoloInfo(emp, (bool)e.Value!))" />
+                                </td>
+                                <td style="padding: 0.45rem 0.4rem; text-align: center;">
+                                    <input type="checkbox" checked="@emp.KioscoPersonal" style="width: 18px; height: 18px; cursor: pointer;"
+                                           @onchange="@(e => TogglePilotoKioscoPersonal(emp, (bool)e.Value!))" />
                                 </td>
                             </tr>
                         }
@@ -451,6 +457,18 @@
             var i = empleadosPiloto.FindIndex(e => e.Id == emp.Id);
             if (i >= 0) empleadosPiloto[i] = emp with { SoloInfo = valor };
             ToastService.Success($"{emp.Nombre}: {(valor ? "ficha solo en el kiosco" : "puede fichar desde su celu")} ✓");
+        }
+        else ToastService.Error("No se pudo guardar el cambio");
+    }
+
+    private async Task TogglePilotoKioscoPersonal(ApiClient.EmpleadoPilotoDto emp, bool valor)
+    {
+        var ok = await Api.SetEmpleadoPilotoAsync(emp.Id, kioscoPersonal: valor);
+        if (ok)
+        {
+            var i = empleadosPiloto.FindIndex(e => e.Id == emp.Id);
+            if (i >= 0) empleadosPiloto[i] = emp with { KioscoPersonal = valor };
+            ToastService.Success($"{emp.Nombre}: kiosco personal {(valor ? "activado (puede fichar con huella desde su celu)" : "desactivado")} ✓");
         }
         else ToastService.Error("No se pudo guardar el cambio");
     }

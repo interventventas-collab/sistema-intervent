@@ -104,6 +104,38 @@
                 📅 @FechaLabel(datos.HoyFecha)
             </div>
 
+            @* 2026-06-27: KIOSCO PERSONAL — fichar con huella desde el propio celu (igual que el kiosco compartido) *@
+            @if (datos.KioscoPersonal)
+            {
+                <div style="margin-top:0.8rem; padding:1rem; background:#f5f3ff; border:2px solid #8b5cf6; border-radius:10px; text-align:center;">
+                    <div style="font-weight:800; color:#5b21b6; font-size:1rem; margin-bottom:0.5rem;">📱 Fichar con huella</div>
+                    @if (datos.TieneHuella)
+                    {
+                        <button class="he-btn" style="background:#7c3aed; color:white; margin-top:0;" @onclick="FicharConHuellaPersonal" disabled="@huellaProcesando">
+                            @(huellaProcesando ? "Procesando..." : "👆 Fichar con huella")
+                        </button>
+                        <button style="display:block; margin:0.5rem auto 0; background:none; border:none; color:#6d28d9; font-size:0.78rem; text-decoration:underline; cursor:pointer;" @onclick="RegistrarHuellaPersonal" disabled="@huellaProcesando">
+                            Registrar otra huella
+                        </button>
+                    }
+                    else
+                    {
+                        <div style="font-size:0.85rem; color:#6d28d9; margin-bottom:0.5rem;">Registrá tu huella una vez y después fichás con un toque.</div>
+                        <button class="he-btn" style="background:#7c3aed; color:white; margin-top:0;" @onclick="RegistrarHuellaPersonal" disabled="@huellaProcesando">
+                            @(huellaProcesando ? "Procesando..." : "📲 Registrar mi huella")
+                        </button>
+                    }
+                    @if (!string.IsNullOrEmpty(huellaMsg))
+                    {
+                        <p style="margin:0.6rem 0 0; font-size:0.88rem; font-weight:700; color:@(huellaError ? "#b91c1c" : "#15803d");">@huellaMsg</p>
+                    }
+                    @if (!datos.SoloInformativo)
+                    {
+                        <div style="font-size:0.72rem; color:#7c3aed; margin-top:0.5rem;">O marcá manualmente abajo 👇</div>
+                    }
+                </div>
+            }
+
             @* 2026-06-08: variables del form. Calculadas siempre (no rompen aunque el form esté oculto). *@
             @{
                 var tieneEntrada = !string.IsNullOrEmpty(formHoraEntrada);
@@ -339,6 +371,10 @@
     private bool validandoClave;
     private bool loading = true, guardando, toastVisible;
     private string? errorMsg;
+    // 2026-06-27: kiosco personal (huella desde el area personal)
+    private bool huellaProcesando;
+    private string? huellaMsg;
+    private bool huellaError;
     private PublicEmpleadoDto? datos;
     // 2026-06-22: estado de los tabs (horas / cobros). Solo aparece si el empleado esta vinculado.
     private string tabActiva = "horas";
@@ -356,6 +392,12 @@
     /// <summary>2026-06-03: respuesta del helper JS heTryGetPosition (GPS opcional).</summary>
     public record GpsPos(decimal? Lat, decimal? Lon, int? Accuracy);
 
+    // 2026-06-27: respuestas de los endpoints de huella del kiosco (los reusamos desde el área personal).
+    private record HuellaLoginBeginResp(bool Ok, string? Mensaje, object? Options, string? SessionId);
+    private record HuellaRegistroBeginResp(bool Ok, string? Mensaje, object? Options, string? SessionId);
+    private record HuellaRegistroCompleteResp(bool Ok, string? Mensaje, string? DeviceName);
+    private record FichadorMarcarResultDto(bool Ok, string? Mensaje, string? Tipo, string? Hora, string? NombreEmpleado);
+
     public record PublicEmpleadoDto(string Nombre, DateTime HoyFecha, DateTime FechaSeleccionada,
         decimal? HorasSeleccionada, string? ObservacionesSeleccionada,
         string? HoraEntradaSeleccionada, string? HoraSalidaSeleccionada,
@@ -366,7 +408,9 @@
         // 2026-06-03 v2: flags granulares de visibilidad
         bool MostrarCuadroCiclo = false, bool MostrarHorasTrabajadasDia = false,
         // 2026-06-08: si true, oculta el form de carga (solo lectura). Empleado ficha por kiosco.
-        bool SoloInformativo = false);
+        bool SoloInformativo = false,
+        // 2026-06-27: kiosco personal (fichar con huella desde el area personal)
+        int EmpleadoId = 0, bool KioscoPersonal = false, bool TieneHuella = false);
 
     protected override async Task OnInitializedAsync()
     {
@@ -455,6 +499,72 @@
         }
         catch { datos = null; }
         finally { loading = false; }
+    }
+
+    // ─── 2026-06-27: KIOSCO PERSONAL — fichar / registrar huella desde el área personal ───
+    // Reusa los mismos endpoints del kiosco compartido (fichador/huella/...). El empleado ya está
+    // identificado por slug+clave, así que pasamos su EmpleadoId. El backend valida la huella, aplica
+    // el bloqueo por GPS (si corresponde) y marca entrada/salida automáticamente.
+
+    private async Task FicharConHuellaPersonal()
+    {
+        if (datos is null || huellaProcesando) return;
+        huellaProcesando = true; huellaMsg = null; huellaError = false;
+        try
+        {
+            var beginResp = await Http.PostAsync($"api/horas-extras/fichador/huella/login/begin?empleadoId={datos.EmpleadoId}", null);
+            var begin = await beginResp.Content.ReadFromJsonAsync<HuellaLoginBeginResp>();
+            if (begin is null || !begin.Ok) { huellaError = true; huellaMsg = begin?.Mensaje ?? "No se pudo iniciar el fichaje con huella."; return; }
+
+            var credJs = await JS.InvokeAsync<System.Text.Json.JsonElement>("webAuthnGet", begin.Options!);
+            if (credJs.TryGetProperty("_error", out var errEl)) { huellaError = true; huellaMsg = "No se pudo leer la huella: " + errEl.GetString(); return; }
+
+            // GPS por si el empleado tiene la geocerca activa (el backend la chequea)
+            decimal? lat = null, lon = null; int? acc = null;
+            try
+            {
+                var pos = await JS.InvokeAsync<GpsPos?>("heGetPositionAccurate", 8000);
+                if (pos is not null && pos.Lat.HasValue && pos.Lon.HasValue) { lat = pos.Lat; lon = pos.Lon; acc = pos.Accuracy; }
+            }
+            catch { }
+
+            var body = new { SessionId = begin.SessionId, AssertionResponse = credJs, GpsLat = lat, GpsLon = lon, GpsAccuracy = acc };
+            var resp = await Http.PostAsJsonAsync("api/horas-extras/fichador/huella/login/complete", body);
+            var r = await resp.Content.ReadFromJsonAsync<FichadorMarcarResultDto>();
+            if (r is null) { huellaError = true; huellaMsg = "Error de conexión."; return; }
+            if (!r.Ok) { huellaError = true; huellaMsg = r.Mensaje; return; }
+            huellaError = false;
+            huellaMsg = $"✓ {r.Tipo} registrada a las {r.Hora}";
+            await CargarAsync(); // refresca el form con la entrada/salida marcada
+        }
+        catch (Exception ex) { huellaError = true; huellaMsg = "Error: " + ex.Message; }
+        finally { huellaProcesando = false; }
+    }
+
+    private async Task RegistrarHuellaPersonal()
+    {
+        if (datos is null || huellaProcesando) return;
+        huellaProcesando = true; huellaMsg = null; huellaError = false;
+        try
+        {
+            var beginBody = new { EmpleadoId = datos.EmpleadoId, Pin = Clave, DeviceName = "Mi celular" };
+            var beginResp = await Http.PostAsJsonAsync("api/horas-extras/fichador/huella/registro/begin", beginBody);
+            var begin = await beginResp.Content.ReadFromJsonAsync<HuellaRegistroBeginResp>();
+            if (begin is null || !begin.Ok) { huellaError = true; huellaMsg = begin?.Mensaje ?? "No se pudo iniciar el registro de huella."; return; }
+
+            var credJs = await JS.InvokeAsync<System.Text.Json.JsonElement>("webAuthnCreate", begin.Options!);
+            if (credJs.TryGetProperty("_error", out var errEl)) { huellaError = true; huellaMsg = "No se pudo registrar la huella: " + errEl.GetString(); return; }
+
+            var body = new { SessionId = begin.SessionId, AttestationResponse = credJs };
+            var resp = await Http.PostAsJsonAsync("api/horas-extras/fichador/huella/registro/complete", body);
+            var r = await resp.Content.ReadFromJsonAsync<HuellaRegistroCompleteResp>();
+            if (r is null || !r.Ok) { huellaError = true; huellaMsg = r?.Mensaje ?? "No se pudo guardar la huella."; return; }
+            huellaError = false;
+            huellaMsg = "✓ ¡Huella registrada! Ya podés fichar con un toque.";
+            await CargarAsync(); // refresca: TieneHuella ahora es true
+        }
+        catch (Exception ex) { huellaError = true; huellaMsg = "Error: " + ex.Message; }
+        finally { huellaProcesando = false; }
     }
 
     private async Task OnFechaChanged(ChangeEventArgs e)

@@ -4546,6 +4546,21 @@ BEGIN
 END
 GO
 
+-- 2026-06-08: SoloInformativo faltaba en init.sql (estaba solo en el modelo C#). Para DBs nuevas.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='SoloInformativo' AND Object_ID=OBJECT_ID('HorasExtras_Empleados'))
+BEGIN
+    ALTER TABLE HorasExtras_Empleados ADD SoloInformativo BIT NOT NULL CONSTRAINT DF_HorasExtras_Empleados_SoloInformativo DEFAULT 0;
+END
+GO
+
+-- 2026-06-27: KioscoPersonal - si true, el area personal del empleado funciona como kiosco completo
+-- (puede fichar con huella desde su propio celu). Convive con el kiosco compartido /fichador.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='KioscoPersonal' AND Object_ID=OBJECT_ID('HorasExtras_Empleados'))
+BEGIN
+    ALTER TABLE HorasExtras_Empleados ADD KioscoPersonal BIT NOT NULL CONSTRAINT DF_HorasExtras_Empleados_KioscoPersonal DEFAULT 0;
+END
+GO
+
 -- ─── 2026-06-05: Proyecto "Mis Pedidos" del repartidor ───
 -- 1) PublicToken para el enlace fijo /mis-pedidos/{token}
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PublicToken' AND Object_ID=OBJECT_ID('Cafe_Repartidores'))
