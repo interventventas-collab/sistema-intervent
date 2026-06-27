@@ -1186,6 +1186,7 @@ public class ApiClient
     // ─── 2026-06-03: Config del modo nuevo de fichada (piloto WiFi + GPS) ───
     public record ConfigFichadaDto(bool ActivarModoNuevo, string? Wifi1Ip, string? Wifi1Label,
         string? Wifi2Ip, string? Wifi2Label, bool RequiereHuella, bool LoguearGps,
+        bool BloquearPorGps, decimal? NegocioLat, decimal? NegocioLon, int RadioMetros,
         DateTime? UpdatedAt, string? UpdatedBy);
 
     public async Task<ConfigFichadaDto?> GetConfigFichadaAsync()
@@ -1200,7 +1201,22 @@ public class ApiClient
         public string? Wifi2Label { get; set; }
         public bool? RequiereHuella { get; set; }
         public bool? LoguearGps { get; set; }
+        public bool? BloquearPorGps { get; set; }
+        public decimal? NegocioLat { get; set; }
+        public decimal? NegocioLon { get; set; }
+        public int? RadioMetros { get; set; }
         public string? UpdatedBy { get; set; }
+    }
+
+    // ─── 2026-06-27: piloto bloqueo por GPS — empleados que entran a la prueba ───
+    public record EmpleadoGpsDto(int Id, string Nombre, bool ProbarGps);
+    public async Task<List<EmpleadoGpsDto>?> GetEmpleadosGpsAsync()
+        => await GetAsync<List<EmpleadoGpsDto>>("/api/horas-extras/admin/config-fichada/empleados-gps");
+    public async Task<bool> SetEmpleadoGpsAsync(int id, bool probar)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PutAsJsonAsync($"/api/horas-extras/admin/config-fichada/empleados-gps/{id}", new { Probar = probar });
+        return resp.IsSuccessStatusCode;
     }
     public async Task<(ConfigFichadaDto? cfg, string? error)> UpdateConfigFichadaAsync(UpdateConfigFichadaRequest req)
     {

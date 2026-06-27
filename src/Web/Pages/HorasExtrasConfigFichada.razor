@@ -82,6 +82,93 @@
             </div>
         </div>
 
+        @* ── 2026-06-27: BLOQUEO POR GPS (GEOCERCA) ─────────────────── *@
+        <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 10px; padding: 1rem 1.2rem; margin-bottom: 1.2rem;">
+            <h3 style="margin: 0 0 0.5rem; color: #166534;">📍 Bloqueo por ubicación (GPS)</h3>
+            <p style="font-size: 0.8rem; color: #15803d; margin: 0 0 0.9rem;">
+                Solo deja fichar a quien esté <strong>cerca del negocio</strong>. Es independiente del WiFi.
+                Por ahora es una <strong>prueba</strong>: solo se les controla la ubicación a los empleados que marques abajo.
+            </p>
+
+            @* Toggle GPS *@
+            <div style="padding: 0.8rem 1rem; background: @(cfg.BloquearPorGps ? "#dcfce7" : "white"); border: 2px solid @(cfg.BloquearPorGps ? "#16a34a" : "#d1d5db"); border-radius: 8px; margin-bottom: 0.9rem;">
+                <div style="display: flex; align-items: center; gap: 0.8rem; cursor: pointer;" @onclick="ToggleBloqueoGps">
+                    <input type="checkbox" checked="@cfg.BloquearPorGps" style="width: 20px; height: 20px;" />
+                    <div style="flex: 1;">
+                        <div style="font-weight: 700; color: @(cfg.BloquearPorGps ? "#14532d" : "#4b5563");">
+                            @(cfg.BloquearPorGps ? "✅ Bloqueo por GPS ACTIVO" : "⭕ Bloqueo por GPS apagado")
+                        </div>
+                        <div style="font-size: 0.78rem; color: #6b7280;">
+                            @(cfg.BloquearPorGps
+                                ? "Los empleados marcados solo pueden fichar dentro del radio."
+                                : "Nadie tiene control de ubicación todavía.")
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* Ubicación del negocio: capturar con GPS (parado en el local) o cargar a mano (ej: desde Google Maps) *@
+            <div style="margin-bottom: 0.6rem;">
+                <div style="display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.5rem;">
+                    <button class="btn btn-secondary" @onclick="CapturarUbicacionNegocio" disabled="@(capturandoUbic || guardando)">
+                        @(capturandoUbic ? "📡 Obteniendo ubicación..." : "📍 Capturar ubicación del negocio")
+                    </button>
+                    <small style="color: #9ca3af;">(tocá esto parado EN el depósito) — o cargá los números a mano debajo</small>
+                </div>
+                <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+                    <label style="font-size: 0.82rem; font-weight: 700; color: #1f2937;">Lat:</label>
+                    <input type="text" class="form-input" placeholder="-34.603722" style="width: 130px; font-family: monospace;"
+                           value="@(cfg.NegocioLat?.ToString(System.Globalization.CultureInfo.InvariantCulture))"
+                           @onchange="@(e => OnLatInput(e.Value?.ToString()))" />
+                    <label style="font-size: 0.82rem; font-weight: 700; color: #1f2937;">Long:</label>
+                    <input type="text" class="form-input" placeholder="-58.381592" style="width: 130px; font-family: monospace;"
+                           value="@(cfg.NegocioLon?.ToString(System.Globalization.CultureInfo.InvariantCulture))"
+                           @onchange="@(e => OnChange(c => c.NegocioLon = ParseCoord(e.Value?.ToString())))" />
+                    @if (cfg.NegocioLat.HasValue && cfg.NegocioLon.HasValue)
+                    {
+                        <a href="@($"https://www.google.com/maps?q={cfg.NegocioLat.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{cfg.NegocioLon.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}")"
+                           target="_blank" style="font-size: 0.8rem; color: #2563eb;">🗺️ ver en mapa</a>
+                    }
+                    else
+                    {
+                        <span style="font-size: 0.82rem; color: #b91c1c;">Sin ubicación</span>
+                    }
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <label style="font-size: 0.85rem; font-weight: 700; color: #1f2937;">Radio permitido:</label>
+                <input type="number" class="form-input" min="20" max="5000" step="10" style="width: 100px;"
+                       value="@cfg.RadioMetros" @onchange="@(e => OnChange(c => { if (int.TryParse(e.Value?.ToString(), out var v)) c.RadioMetros = v; }))" />
+                <span style="font-size: 0.85rem; color: #4b5563;">metros</span>
+                <small style="color: #9ca3af;">(recomendado 150 — el GPS adentro de un galpón es impreciso)</small>
+            </div>
+
+            @* Empleados del piloto GPS *@
+            <div style="margin-top: 1rem; padding-top: 0.8rem; border-top: 1px dashed #86efac;">
+                <div style="font-size: 0.85rem; font-weight: 700; color: #166534; margin-bottom: 0.5rem;">
+                    👥 ¿A quién se le controla el GPS? (marcá los de la prueba)
+                </div>
+                @if (empleadosGps.Count == 0)
+                {
+                    <p style="font-size: 0.8rem; color: #6b7280; margin: 0;">No hay empleados activos.</p>
+                }
+                else
+                {
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+                        @foreach (var emp in empleadosGps)
+                        {
+                            <label style="display: flex; gap: 0.4rem; align-items: center; cursor: pointer; padding: 0.35rem 0.6rem; border-radius: 6px; border: 1px solid @(emp.ProbarGps ? "#16a34a" : "#e5e7eb"); background: @(emp.ProbarGps ? "#dcfce7" : "white"); font-size: 0.82rem;">
+                                <input type="checkbox" checked="@emp.ProbarGps"
+                                       @onchange="@(e => ToggleEmpleadoGps(emp, (bool)e.Value!))" />
+                                <span>@emp.Nombre</span>
+                            </label>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
         @* ── OPCIONES ADICIONALES ───────────────────────────────────── *@
         <div style="background: #f9fafb; border: 1px solid #d1d5db; border-radius: 10px; padding: 1rem 1.2rem; margin-bottom: 1.2rem;">
             <h3 style="margin: 0 0 0.6rem; color: #1f2937;">⚙ Opciones</h3>
@@ -194,6 +281,7 @@
     {
         await Operator.LoadAsync();
         await CargarConfig();
+        await CargarEmpleadosGps();
     }
 
     private async Task CargarConfig()
@@ -217,11 +305,14 @@
             Wifi1Ip = cfg.Wifi1Ip, Wifi1Label = cfg.Wifi1Label,
             Wifi2Ip = cfg.Wifi2Ip, Wifi2Label = cfg.Wifi2Label,
             RequiereHuella = cfg.RequiereHuella, LoguearGps = cfg.LoguearGps,
-            ActivarModoNuevo = cfg.ActivarModoNuevo
+            ActivarModoNuevo = cfg.ActivarModoNuevo,
+            BloquearPorGps = cfg.BloquearPorGps, NegocioLat = cfg.NegocioLat,
+            NegocioLon = cfg.NegocioLon, RadioMetros = cfg.RadioMetros
         };
         apply(m);
         cfg = new ApiClient.ConfigFichadaDto(m.ActivarModoNuevo, m.Wifi1Ip, m.Wifi1Label,
             m.Wifi2Ip, m.Wifi2Label, m.RequiereHuella, m.LoguearGps,
+            m.BloquearPorGps, m.NegocioLat, m.NegocioLon, m.RadioMetros,
             cfg.UpdatedAt, cfg.UpdatedBy);
     }
 
@@ -229,6 +320,19 @@
     {
         if (cfg is null) return;
         OnChange(c => c.ActivarModoNuevo = !cfg.ActivarModoNuevo);
+        await Guardar();
+    }
+
+    private async Task ToggleBloqueoGps()
+    {
+        if (cfg is null) return;
+        // Si se prende sin ubicación capturada, avisar (el backend igual lo rechaza).
+        if (!cfg.BloquearPorGps && (cfg.NegocioLat is null || cfg.NegocioLon is null))
+        {
+            ToastService.Error("Primero capturá la ubicación del negocio (parado en el local) y tocá Guardar.");
+            return;
+        }
+        OnChange(c => c.BloquearPorGps = !cfg.BloquearPorGps);
         await Guardar();
     }
 
@@ -257,6 +361,9 @@
                 Wifi1Ip = cfg.Wifi1Ip ?? "", Wifi1Label = cfg.Wifi1Label ?? "",
                 Wifi2Ip = cfg.Wifi2Ip ?? "", Wifi2Label = cfg.Wifi2Label ?? "",
                 RequiereHuella = cfg.RequiereHuella, LoguearGps = cfg.LoguearGps,
+                BloquearPorGps = cfg.BloquearPorGps,
+                NegocioLat = cfg.NegocioLat, NegocioLon = cfg.NegocioLon,
+                RadioMetros = cfg.RadioMetros,
                 UpdatedBy = Operator.Current
             });
             if (nuevo is null) { ToastService.Error(err ?? "Error guardando"); return; }
@@ -276,5 +383,78 @@
         public string? Wifi2Label { get; set; }
         public bool RequiereHuella { get; set; }
         public bool LoguearGps { get; set; }
+        public bool BloquearPorGps { get; set; }
+        public decimal? NegocioLat { get; set; }
+        public decimal? NegocioLon { get; set; }
+        public int RadioMetros { get; set; }
+    }
+
+    // ─── 2026-06-27: piloto bloqueo por GPS ───
+    private List<ApiClient.EmpleadoGpsDto> empleadosGps = new();
+    private bool capturandoUbic;
+
+    private async Task CargarEmpleadosGps()
+    {
+        try { empleadosGps = await Api.GetEmpleadosGpsAsync() ?? new(); }
+        catch (Exception ex) { ToastService.Error("Error cargando empleados: " + ex.Message); }
+    }
+
+    private async Task ToggleEmpleadoGps(ApiClient.EmpleadoGpsDto emp, bool probar)
+    {
+        var ok = await Api.SetEmpleadoGpsAsync(emp.Id, probar);
+        if (ok)
+        {
+            var i = empleadosGps.FindIndex(e => e.Id == emp.Id);
+            if (i >= 0) empleadosGps[i] = emp with { ProbarGps = probar };
+            ToastService.Success(probar ? $"{emp.Nombre} entra al piloto GPS ✓" : $"{emp.Nombre} sale del piloto GPS");
+        }
+        else ToastService.Error("No se pudo guardar el cambio");
+    }
+
+    /// <summary>Capturar la ubicación del negocio: pide GPS preciso al navegador y la guarda como
+    /// centro de la geocerca. Hay que estar parado en el local con buena señal.</summary>
+    private async Task CapturarUbicacionNegocio()
+    {
+        capturandoUbic = true;
+        try
+        {
+            var pos = await JS.InvokeAsync<GpsCapture?>("heGetPositionAccurate", 12000);
+            if (pos is null || pos.Lat is null || pos.Lon is null)
+            {
+                ToastService.Error("No se pudo obtener la ubicación. Activá el GPS, dale permiso y probá de nuevo (mejor cerca de una ventana).");
+                return;
+            }
+            OnChange(c => { c.NegocioLat = pos.Lat; c.NegocioLon = pos.Lon; });
+            var precision = pos.Accuracy.HasValue ? $" (precisión ~{pos.Accuracy} m)" : "";
+            ToastService.Success($"Ubicación capturada{precision}. Acordate de tocar 💾 Guardar.");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { capturandoUbic = false; }
+    }
+
+    private record GpsCapture(decimal? Lat, decimal? Lon, int? Accuracy);
+
+    /// <summary>Parsea una coordenada (punto decimal, formato Google Maps). Devuelve null si no es válida.</summary>
+    private static decimal? ParseCoord(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        return decimal.TryParse(s.Trim(), System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : (decimal?)null;
+    }
+
+    /// <summary>Maneja el campo Lat. Si pegan "lat, long" junto (como copia Google Maps), llena los dos.</summary>
+    private void OnLatInput(string? raw)
+    {
+        if (!string.IsNullOrWhiteSpace(raw) && raw.Contains(','))
+        {
+            var parts = raw.Split(',');
+            if (parts.Length == 2)
+            {
+                var la = ParseCoord(parts[0]);
+                var lo = ParseCoord(parts[1]);
+                if (la.HasValue && lo.HasValue) { OnChange(c => { c.NegocioLat = la; c.NegocioLon = lo; }); return; }
+            }
+        }
+        OnChange(c => c.NegocioLat = ParseCoord(raw));
     }
 }

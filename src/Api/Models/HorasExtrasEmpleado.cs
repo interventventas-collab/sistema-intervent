@@ -56,6 +56,12 @@ public class HorasExtrasEmpleado
     /// de WiFi. Permite testear con un empleado de prueba sin afectar a los demas.</summary>
     public bool ProbarModoNuevoFichada { get; set; } = false;
 
+    /// <summary>2026-06-27: piloto - flag por empleado para probar el bloqueo por GPS.
+    /// Si el toggle GLOBAL BloquearPorGps esta ON, SOLO los empleados con este flag pasan por
+    /// la validacion de distancia (deben estar dentro del radio del negocio para fichar).
+    /// El resto ficha como siempre. Permite testear con pocos empleados sin afectar a todos.</summary>
+    public bool ProbarGpsFichada { get; set; } = false;
+
     /// <summary>2026-06-03 v4: controla si el empleado aparece en la pantalla /fichador (kiosco).
     /// Default true (compatibilidad). Si false, no se ve en el grid del kiosco aunque este activo.
     /// Util para sacar a empleados de prueba, ex-empleados que siguen activos en el sistema, etc.</summary>

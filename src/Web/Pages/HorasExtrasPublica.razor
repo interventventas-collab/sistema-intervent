@@ -295,53 +295,28 @@
                 {
                     <p style="text-align:center; color:#6b7280; padding:1rem 0;">Cargando…</p>
                 }
+                else if (cobros.Items.Count == 0)
+                {
+                    <div style="text-align:center; padding:1.5rem 0; color:#6b7280;">
+                        Todavía no tenés pagos registrados.
+                    </div>
+                }
                 else
                 {
-                    <div class="he-resumen" style="margin-bottom:0.8rem;">
-                        <div class="he-resumen-box">
-                            <div class="he-resumen-label">Este mes</div>
-                            <div class="he-resumen-value" style="color:#059669; font-size:1.2rem;">
-                                $@cobros.TotalMes.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))
-                            </div>
-                        </div>
-                        <div class="he-resumen-box">
-                            <div class="he-resumen-label">Este año</div>
-                            <div class="he-resumen-value" style="color:#1d4ed8; font-size:1.2rem;">
-                                $@cobros.TotalAnio.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))
-                            </div>
-                        </div>
-                    </div>
-
-                    @if (cobros.Items.Count == 0)
-                    {
-                        <div style="text-align:center; padding:1.5rem 0; color:#6b7280;">
-                            Todavía no tenés pagos registrados.
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="he-history">
-                            @foreach (var c in cobros.Items)
-                            {
-                                <div style="padding:0.7rem; background:#f9fafb; border-radius:10px; margin-bottom:0.5rem; border:1px solid #e5e7eb;">
-                                    <div style="display:flex; justify-content:space-between; align-items:baseline;">
-                                        <div style="font-size:0.78rem; color:#6b7280;">
-                                            @c.FechaPago.ToString("dd/MM/yyyy") · @c.FechaPago.ToString("HH:mm")
-                                        </div>
-                                        <div style="font-size:1.1rem; font-weight:700; color:#059669;">
-                                            $@c.Monto.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))
-                                        </div>
-                                    </div>
-                                    <div style="font-size:0.95rem; font-weight:600; color:#1f2937; margin-top:0.2rem; text-transform:capitalize;">
-                                        @(c.Detalle ?? c.Concepto)
-                                    </div>
-                                    <div style="font-size:0.78rem; color:#6b7280; margin-top:0.15rem;">
-                                        @c.Metodo
-                                    </div>
+                    <div style="margin-top:0.4rem;">
+                        @foreach (var c in cobros.Items)
+                        {
+                            <div style="display:flex; justify-content:space-between; align-items:baseline; padding:0.65rem 0.2rem; border-bottom:1px solid #f3f4f6;">
+                                <div>
+                                    <span style="font-size:0.95rem; color:#1f2937; font-weight:600;">@c.FechaPago.ToString("dd/MM")</span>
+                                    <span style="font-size:0.85rem; color:#6b7280; margin-left:0.5rem; text-transform:capitalize;">@(c.Detalle ?? c.Concepto)</span>
                                 </div>
-                            }
-                        </div>
-                    }
+                                <div style="font-size:1rem; font-weight:700; color:#059669; white-space:nowrap;">
+                                    $@c.Monto.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))
+                                </div>
+                            </div>
+                        }
+                    </div>
                 }
             </div>
         }
@@ -503,13 +478,13 @@
             int? accuracy = null;
             try
             {
-                var pos = await JS.InvokeAsync<GpsPos?>("heTryGetPosition", 5000);
+                var pos = await JS.InvokeAsync<GpsPos?>("heGetPositionAccurate", 8000);
                 if (pos is not null && pos.Lat.HasValue && pos.Lon.HasValue)
                 {
                     lat = pos.Lat; lon = pos.Lon; accuracy = pos.Accuracy;
                 }
             }
-            catch { /* GPS opcional, si falla seguimos */ }
+            catch { /* GPS opcional para auditoría; el backend exige ubicación solo a quien esté en el piloto GPS */ }
 
             var body = new
             {
@@ -529,9 +504,14 @@
             if (!resp.IsSuccessStatusCode)
             {
                 // 2026-06-03: el backend puede rechazar por IP no autorizada (modo nuevo). Mensaje claro.
+                // 2026-06-27: o por GPS (geocerca) — lejos del negocio / sin ubicación.
                 var errBody = await resp.Content.ReadAsStringAsync();
                 if (errBody.Contains("WiFi del negocio"))
                     errorMsg = "🚫 Tenés que estar conectado al WiFi del negocio para fichar. Si esto es un error, hablá con el admin.";
+                else if (errBody.Contains("lejos del negocio"))
+                    errorMsg = "🚫 Estás lejos del negocio, no podés fichar desde acá. Si esto es un error, hablá con el admin.";
+                else if (errBody.Contains("Necesitamos tu ubicación"))
+                    errorMsg = "📍 Necesitamos tu ubicación para fichar. Activá el GPS del celular y dale permiso a la página, después probá de nuevo.";
                 else
                     errorMsg = "No se pudo guardar. Intentá de nuevo.";
                 return;
