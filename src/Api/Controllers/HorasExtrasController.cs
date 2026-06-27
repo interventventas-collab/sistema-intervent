@@ -1559,6 +1559,12 @@ public class HorasExtrasController : ControllerBase
                     null, null, emp.Nombre));
         }
 
+        // 2026-06-27: bloqueo por GPS (geocerca) — TAMBIÉN por huella (antes solo aplicaba al PIN).
+        bool gpsAplica = GpsAplica(cfg, emp);
+        var gpsRechazo = EvaluarBloqueoGps(cfg, emp, req.GpsLat, req.GpsLon, (int?)req.GpsAccuracy);
+        if (gpsRechazo is not null)
+            return Ok(new FichadorMarcarResult(false, gpsRechazo, null, null, emp.Nombre));
+
         // Marcar entrada/salida igual que FichadorMarcar
         var hoy = FechaArgentinaHoy();
         var ahora = DateTime.UtcNow.AddHours(-3);
@@ -1577,7 +1583,7 @@ public class HorasExtrasController : ControllerBase
         else { existente.HoraSalida = horaActual; existente.UpdatedAt = DateTime.UtcNow; tipo = "SALIDA"; }
         await _db.SaveChangesAsync();
 
-        if (modoNuevoActivo)
+        if (modoNuevoActivo || gpsAplica)
         {
             _db.HorasExtrasFichadaMetas.Add(new HorasExtrasFichadaMeta
             {
