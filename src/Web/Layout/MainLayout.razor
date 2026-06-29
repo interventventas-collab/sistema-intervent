@@ -166,6 +166,79 @@
     .topbar-action-secondary:hover { background: #f9fafb; border-color: #9ca3af; }
     .topbar-action-secondary:active { transform: scale(0.97); }
 
+    /* 2026-06-29: botones cuadrados robustos (Widgets, Buscar, Actualizar) */
+    .topbar-square-btn {
+        width: 44px;
+        height: 44px;
+        background: white;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        cursor: pointer;
+        color: #1f2937;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-family: inherit;
+        transition: background 0.12s ease, border-color 0.12s ease, transform 0.06s ease;
+        padding: 0;
+    }
+    .topbar-square-btn:hover { background: #f9fafb; border-color: #9ca3af; }
+    .topbar-square-btn:active { transform: scale(0.95); }
+    .topbar-square-btn svg { width: 22px; height: 22px; }
+    /* Tinte violeta para distinguir el boton de Widgets */
+    .topbar-widgets-btn { background: #eef2ff; border-color: #a5b4fc; color: #4338ca; }
+    .topbar-widgets-btn:hover { background: #e0e7ff; border-color: #818cf8; }
+    .topbar-widgets-btn.abierto { background: #c7d2fe; border-color: #6366f1; }
+    /* Dropdown de widgets */
+    .topbar-widgets-wrap { position: relative; display: inline-block; }
+    .topbar-widgets-menu {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        margin-top: 6px;
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 6px;
+        min-width: 240px;
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.10);
+        z-index: 100;
+    }
+    .topbar-widgets-header {
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        color: #6b7280;
+        font-weight: 500;
+        padding: 6px 10px 4px;
+        text-transform: uppercase;
+    }
+    .topbar-widgets-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 10px;
+        border-radius: 8px;
+        color: #1f2937;
+        font-size: 14px;
+        cursor: pointer;
+        border: none;
+        background: transparent;
+        width: 100%;
+        text-align: left;
+        font-family: inherit;
+    }
+    .topbar-widgets-item:hover { background: #f3f4f6; }
+    .topbar-widgets-item .ico {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        color: #6b7280;
+    }
+    .topbar-widgets-item .ico svg { width: 20px; height: 20px; }
+    .topbar-widgets-item .label { font-weight: 500; }
+    .topbar-widgets-item .desc { font-size: 12px; color: #6b7280; }
+
     /* 2026-06-19: boton WhatsApp llamativo, verde estilo WhatsApp con leve glow */
     /* 2026-06-29: bump alto 32→40 y font 0.875→0.95 para alinear con el resto */
     .topbar-action-whatsapp {
@@ -1048,22 +1121,40 @@
                     }
                 </button>
             }
-            @* 2026-06-22: Tools agrupadas en cápsula glass tipo iOS segment-control
-               (calculadora + post-its + buscador + hard-reload). Iconos SVG uniformes. *@
-            <div class="topbar-icon-group">
-                <button class="topbar-icon-btn" @onclick="ToggleCalc"
-                        title="Calculadora (se puede mover por la pantalla)"
-                        aria-label="Calculadora">@SvgIcons.Calculator</button>
-                <button class="topbar-icon-btn" @onclick="TogglePostits"
-                        title="Mis post-its (solo los tuyos)"
-                        aria-label="Post-its">@SvgIcons.Notes</button>
-                <button class="topbar-icon-btn" @onclick="OpenCommandPalette"
-                        title="Buscar pantalla rápido (Ctrl + K)"
-                        aria-label="Buscar pantalla">@SvgIcons.Search</button>
-                <button class="topbar-icon-btn" @onclick="DoHardReload"
-                        title="Forzar recarga (limpia el cache del navegador). Usalo si un cambio nuevo no aparece."
-                        aria-label="Forzar recarga">@SvgIcons.Refresh</button>
+            @* 2026-06-29: Reemplazo de la capsula glass — Widgets como dropdown
+               (calc + post-its) + Buscar y Actualizar como cuadrados robustos sueltos. *@
+            <div class="topbar-widgets-wrap">
+                <button class="topbar-square-btn topbar-widgets-btn @(showWidgetsDropdown ? "abierto" : "")"
+                        @onclick="ToggleWidgetsDropdown"
+                        title="Widgets (Calculadora, Post-its)"
+                        aria-label="Widgets">@SvgIcons.Apps</button>
+                @if (showWidgetsDropdown)
+                {
+                    <div class="topbar-widgets-menu" @onclick:stopPropagation="true">
+                        <div class="topbar-widgets-header">Widgets</div>
+                        <button class="topbar-widgets-item" @onclick="OpenCalculatorAndCloseWidgets">
+                            <span class="ico">@SvgIcons.Calculator</span>
+                            <div>
+                                <div class="label">Calculadora</div>
+                                <div class="desc">Se mueve por la pantalla</div>
+                            </div>
+                        </button>
+                        <button class="topbar-widgets-item" @onclick="OpenPostitsAndCloseWidgets">
+                            <span class="ico">@SvgIcons.Notes</span>
+                            <div>
+                                <div class="label">Post-its</div>
+                                <div class="desc">Mis notas flotantes</div>
+                            </div>
+                        </button>
+                    </div>
+                }
             </div>
+            <button class="topbar-square-btn" @onclick="OpenCommandPalette"
+                    title="Buscar pantalla rápido (Ctrl + K)"
+                    aria-label="Buscar pantalla">@SvgIcons.Search</button>
+            <button class="topbar-square-btn" @onclick="DoHardReload"
+                    title="Forzar recarga (limpia el cache del navegador). Usalo si un cambio nuevo no aparece."
+                    aria-label="Forzar recarga">@SvgIcons.Refresh</button>
             @* 2026-06-08: ocultar campanas a deposito EXCEPTO Preguntas MeLi — el usuario
                quiere que deposito vea las preguntas para responderlas.
                TODO mañana: revisar por qué MeliQuestionsBell no muestra preguntas que SÍ
@@ -1694,6 +1785,11 @@
     private bool showVentasDropdown;
     private void ToggleVentasDropdown() { showVentasDropdown = !showVentasDropdown; }
     private void NavigateAndCloseVentas(string url) { showVentasDropdown = false; NavigateTo(url); }
+    // 2026-06-29: dropdown Widgets (calculadora + post-its)
+    private bool showWidgetsDropdown;
+    private void ToggleWidgetsDropdown() { showWidgetsDropdown = !showWidgetsDropdown; }
+    private void OpenCalculatorAndCloseWidgets() { showWidgetsDropdown = false; ToggleCalc(); }
+    private void OpenPostitsAndCloseWidgets() { showWidgetsDropdown = false; TogglePostits(); }
     // 2026-06-08: dropdown del split-button "Ventas ▾" para abrir Presupuestos
     private bool menuPresupuestosAbierto;
     private void ToggleMenuPresupuestos() { menuPresupuestosAbierto = !menuPresupuestosAbierto; }
