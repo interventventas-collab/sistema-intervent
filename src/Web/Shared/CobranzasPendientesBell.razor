@@ -2,41 +2,68 @@
 @inject NavigationManager Navigation
 @implements IDisposable
 
-@* Badge en topbar: muestra cantidad de cobranzas precargadas por repartidores que
-   esperan aprobacion. Click → te lleva a /cafe/cobranzas-pendientes. Refresca cada 60s. *@
+@* Badge en topbar: cobranzas precargadas por repartidores esperando aprobacion.
+   2026-06-29: siempre visible — apagada (gris) cuando no hay pendientes, encendida
+   (ambar) y titilando cuando count > 0. Click → /cafe/cobranzas-pendientes. Refresca cada 60s. *@
 
-@if (count > 0)
-{
-    <div class="cpb-badge" @onclick="@(() => Navigation.NavigateTo("/cafe/cobranzas-pendientes"))"
-         title="@count cobranzas precargadas por repartidores esperando aprobación">
-        <span class="cpb-icon">💰</span>
+<div class="cpb-square @(count > 0 ? "active" : "quiet")"
+     @onclick="@(() => Navigation.NavigateTo("/cafe/cobranzas-pendientes"))"
+     title="@(count > 0 ? $"{count} cobranzas de repartidores esperando aprobación" : "Cobranzas de repartidores (sin pendientes)")">
+    <span class="cpb-icon">💰</span>
+    @if (count > 0)
+    {
         <span class="cpb-num">@count</span>
-    </div>
-}
+    }
+</div>
 
 <style>
-    .cpb-badge {
+    .cpb-square {
+        width: 44px;
+        height: 44px;
+        border-radius: 8px;
+        cursor: pointer;
         display: inline-flex;
         align-items: center;
-        gap: 0.3rem;
-        padding: 0.35rem 0.7rem;
-        background: linear-gradient(135deg, #fef3c7, #fde68a);
-        color: #92400e;
-        border: 1px solid #f59e0b;
-        border-radius: 999px;
-        font-weight: 800;
-        font-size: 0.85rem;
-        cursor: pointer;
-        margin: 0 0.3rem;
-        animation: cpb-pulse 2s ease-in-out infinite;
-        transition: transform 0.15s;
+        justify-content: center;
+        transition: background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease, transform 0.06s ease;
+        position: relative;
+        margin: 0 0.15rem;
+        box-sizing: border-box;
     }
-    .cpb-badge:hover { transform: scale(1.08); }
-    .cpb-icon { font-size: 1.05rem; }
-    .cpb-num { font-weight: 900; }
+    .cpb-square:active { transform: scale(0.95); }
+    .cpb-square.quiet {
+        background: white;
+        border: 1px solid #d1d5db;
+        opacity: 0.55;
+    }
+    .cpb-square.quiet:hover { opacity: 1; background: #f9fafb; border-color: #9ca3af; }
+    .cpb-square.quiet .cpb-icon { filter: grayscale(1); opacity: 0.7; }
+    .cpb-square.active {
+        background: linear-gradient(135deg, #fef3c7, #fde68a);
+        border: 1px solid #f59e0b;
+        animation: cpb-pulse 1.6s ease-in-out infinite;
+    }
+    .cpb-square.active:hover { transform: scale(1.05); }
+    .cpb-square .cpb-icon { font-size: 22px; line-height: 1; }
+    .cpb-square .cpb-num {
+        position: absolute;
+        top: -4px;
+        right: -4px;
+        background: #b45309;
+        color: white;
+        font-size: 10px;
+        padding: 2px 6px;
+        border-radius: 999px;
+        font-weight: 600;
+        line-height: 1;
+        border: 2px solid white;
+        min-width: 18px;
+        text-align: center;
+        box-sizing: border-box;
+    }
     @@keyframes cpb-pulse {
-        0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.45); }
-        50% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+        0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.5); }
+        50% { box-shadow: 0 0 0 8px rgba(245, 158, 11, 0); }
     }
 </style>
 

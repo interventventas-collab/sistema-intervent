@@ -3,32 +3,67 @@
 @implements IDisposable
 
 @* Badge topbar: cobros de ALQUILER precargados por repartidores esperando aprobación.
-   Click → /alquileres/cobranzas-pendientes. Refresca cada 60s. Pedido 2026-06-26. *@
+   2026-06-29: siempre visible — apagada (gris) cuando no hay pendientes, encendida
+   (violeta) y titilando cuando count > 0. Click → /alquileres/cobranzas-pendientes. *@
 
-@if (count > 0)
-{
-    <div class="acpb-badge" @onclick="@(() => Navigation.NavigateTo("/alquileres/cobranzas-pendientes"))"
-         title="@count cobros de alquiler esperando aprobación">
-        <span class="acpb-icon">📦</span>
+<div class="acpb-square @(count > 0 ? "active" : "quiet")"
+     @onclick="@(() => Navigation.NavigateTo("/alquileres/cobranzas-pendientes"))"
+     title="@(count > 0 ? $"{count} cobros de alquiler esperando aprobación" : "Cobros de alquiler (sin pendientes)")">
+    <span class="acpb-icon">📦</span>
+    @if (count > 0)
+    {
         <span class="acpb-num">@count</span>
-    </div>
-}
+    }
+</div>
 
 <style>
-    .acpb-badge {
-        display: inline-flex; align-items: center; gap: 0.3rem;
-        padding: 0.35rem 0.7rem;
-        background: linear-gradient(135deg, #ede9fe, #ddd6fe);
-        color: #5b21b6; border: 1px solid #8b5cf6; border-radius: 999px;
-        font-weight: 800; font-size: 0.85rem; cursor: pointer; margin: 0 0.3rem;
-        animation: acpb-pulse 2s ease-in-out infinite; transition: transform 0.15s;
+    .acpb-square {
+        width: 44px;
+        height: 44px;
+        border-radius: 8px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease, transform 0.06s ease;
+        position: relative;
+        margin: 0 0.15rem;
+        box-sizing: border-box;
     }
-    .acpb-badge:hover { transform: scale(1.08); }
-    .acpb-icon { font-size: 1.05rem; }
-    .acpb-num { font-weight: 900; }
+    .acpb-square:active { transform: scale(0.95); }
+    .acpb-square.quiet {
+        background: white;
+        border: 1px solid #d1d5db;
+        opacity: 0.55;
+    }
+    .acpb-square.quiet:hover { opacity: 1; background: #f9fafb; border-color: #9ca3af; }
+    .acpb-square.quiet .acpb-icon { filter: grayscale(1); opacity: 0.7; }
+    .acpb-square.active {
+        background: linear-gradient(135deg, #ede9fe, #ddd6fe);
+        border: 1px solid #8b5cf6;
+        animation: acpb-pulse 1.6s ease-in-out infinite;
+    }
+    .acpb-square.active:hover { transform: scale(1.05); }
+    .acpb-square .acpb-icon { font-size: 22px; line-height: 1; }
+    .acpb-square .acpb-num {
+        position: absolute;
+        top: -4px;
+        right: -4px;
+        background: #6d28d9;
+        color: white;
+        font-size: 10px;
+        padding: 2px 6px;
+        border-radius: 999px;
+        font-weight: 600;
+        line-height: 1;
+        border: 2px solid white;
+        min-width: 18px;
+        text-align: center;
+        box-sizing: border-box;
+    }
     @@keyframes acpb-pulse {
-        0%, 100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.45); }
-        50% { box-shadow: 0 0 0 6px rgba(139, 92, 246, 0); }
+        0%, 100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.5); }
+        50% { box-shadow: 0 0 0 8px rgba(139, 92, 246, 0); }
     }
 </style>
 
