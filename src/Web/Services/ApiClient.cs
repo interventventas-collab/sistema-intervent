@@ -4063,6 +4063,40 @@ public class ApiClient
         return r is not null;
     }
 
+    // 2026-06-25: Adjuntos de cobranza (comprobante de retencion, transferencia, etc.)
+    public record CobranzaAdjuntoDto(int Id, int CobranzaId, string Tipo, string NombreOriginal,
+        string? MimeType, long Tamano, DateTime CreatedAt);
+
+    public async Task<List<CobranzaAdjuntoDto>?> GetCobranzaAdjuntosAsync(int cobranzaId)
+        => await GetAsync<List<CobranzaAdjuntoDto>>($"/api/cafe/cobranzas/{cobranzaId}/adjuntos");
+
+    /// <summary>Sube un archivo adjunto. Devuelve el DTO del adjunto creado o null si falla.</summary>
+    public async Task<CobranzaAdjuntoDto?> SubirCobranzaAdjuntoAsync(int cobranzaId, string tipo,
+        Stream stream, string fileName, string? mimeType)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        var streamContent = new StreamContent(stream);
+        if (!string.IsNullOrEmpty(mimeType))
+            streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(mimeType);
+        content.Add(streamContent, "file", string.IsNullOrEmpty(fileName) ? "archivo" : fileName);
+        content.Add(new StringContent(tipo), "tipo");
+        var resp = await _http.PostAsync($"/api/cafe/cobranzas/{cobranzaId}/adjuntos", content);
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadFromJsonAsync<CobranzaAdjuntoDto>();
+    }
+
+    /// <summary>URL absoluta para descargar el adjunto (la cookie httpOnly viaja sola).</summary>
+    public string BuildCobranzaAdjuntoDownloadUrl(int adjuntoId)
+        => $"/api/cafe/cobranzas/adjuntos/{adjuntoId}/download";
+
+    public async Task<bool> BorrarCobranzaAdjuntoAsync(int adjuntoId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.DeleteAsync($"/api/cafe/cobranzas/adjuntos/{adjuntoId}");
+        return resp.IsSuccessStatusCode;
+    }
+
     /// <summary>Re-imputa una cobranza VIGENTE: reemplaza la lista de comprobantes (VentaId + Importe)
     /// manteniendo el mismo total. NO toca medios de cobro ni cheques. Devuelve (ok, error).</summary>
     public async Task<(bool ok, string? error)> EditarImputacionesCafeCobranzaAsync(int id, List<CrearComprobanteItemRequest> comprobantes)

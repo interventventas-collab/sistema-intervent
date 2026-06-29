@@ -153,6 +153,7 @@
                             <td><span class="badge @(c.Estado == "VIGENTE" ? "badge-success" : "badge-danger")">@c.Estado</span></td>
                             <td>
                                 <a class="btn-icon" href="@Api.GetCobranzaPdfUrl(c.Id)" target="_blank" title="Imprimir recibo PDF">📄</a>
+                                <button class="btn-icon" @onclick="() => AbrirAdjuntos(c)" title="Adjuntos (comprobante de retención, transferencia)">📎</button>
                                 @if (c.Estado == "VIGENTE")
                                 {
                                     <button class="btn-icon" @onclick="() => AbrirEditarImputaciones(c)" title="Editar imputaciones (reasignar importes sin tocar el cheque)">✏️</button>
@@ -535,6 +536,32 @@
                         </div>
                     </div>
 
+                    @* --- Adjuntos (2026-06-25) — comprobantes de retencion y transferencia --- *@
+                    <div style="padding:0.6rem 0.8rem; background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; margin-bottom:0.6rem;">
+                        <div style="font-weight:700; font-size:0.85rem; color:#374151; margin-bottom:0.4rem;">📎 Adjuntar comprobantes (opcional)</div>
+                        <div style="display:flex; gap:0.8rem; flex-wrap:wrap;">
+                            <div style="flex:1; min-width:200px;">
+                                <label style="font-size:0.78rem; color:#6b7280; font-weight:600;">Comprobante de retención</label>
+                                <InputFile OnChange="OnAdjRetencionPicked" accept=".pdf,.jpg,.jpeg,.png,.webp"
+                                           class="form-input" style="padding:0.3rem; font-size:0.78rem;" />
+                                @if (adjRetencionFile is not null)
+                                {
+                                    <div style="font-size:0.72rem; color:#16a34a; margin-top:0.2rem;">✓ @adjRetencionFile.Name (@FormatFileSize(adjRetencionFile.Size))</div>
+                                }
+                            </div>
+                            <div style="flex:1; min-width:200px;">
+                                <label style="font-size:0.78rem; color:#6b7280; font-weight:600;">Comprobante de transferencia / cobro</label>
+                                <InputFile OnChange="OnAdjTransferenciaPicked" accept=".pdf,.jpg,.jpeg,.png,.webp"
+                                           class="form-input" style="padding:0.3rem; font-size:0.78rem;" />
+                                @if (adjTransferenciaFile is not null)
+                                {
+                                    <div style="font-size:0.72rem; color:#16a34a; margin-top:0.2rem;">✓ @adjTransferenciaFile.Name (@FormatFileSize(adjTransferenciaFile.Size))</div>
+                                }
+                            </div>
+                        </div>
+                        <div style="font-size:0.7rem; color:#6b7280; margin-top:0.4rem;">PDF, JPG o PNG · máximo 10 MB cada uno · se podés agregar más después desde el botón 📎 del listado</div>
+                    </div>
+
                     @* --- Observaciones --- *@
                     <div class="form-group">
                         <label class="form-label">Observaciones</label>
@@ -715,6 +742,75 @@
                 <button class="btn btn-primary" disabled="@(!EditCuadra || editGuardando)" @onclick="GuardarEditarImputaciones">
                     @(editGuardando ? "Guardando..." : "💾 Guardar")
                 </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===== 2026-06-25: Modal adjuntos — ver/agregar/borrar comprobantes de una cobranza ===== *@
+@if (adjModalCobranza is not null)
+{
+    var c = adjModalCobranza;
+    <div class="modal-overlay" @onclick="CerrarAdjuntos">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width:560px; width:90vw;">
+            <div class="modal-header">
+                <h4 style="margin:0;">📎 Adjuntos — @c.Numero</h4>
+                <button class="btn-close" @onclick="CerrarAdjuntos">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="font-size:0.85rem; color:#6b7280; margin-bottom:0.7rem;">
+                    Cliente: <strong>@c.ClienteNombre</strong> · Total: <strong>$@c.Total.ToString("N2")</strong>
+                </div>
+
+                @if (adjModalCargando)
+                {
+                    <div style="text-align:center; padding:1.5rem; color:#6b7280;">Cargando...</div>
+                }
+                else if (adjModalLista is null || adjModalLista.Count == 0)
+                {
+                    <div style="padding:0.8rem; background:#f9fafb; border:1px dashed #d1d5db; border-radius:6px; color:#6b7280; font-size:0.9rem; text-align:center;">
+                        Sin adjuntos. Subí abajo el primero.
+                    </div>
+                }
+                else
+                {
+                    <div style="display:flex; flex-direction:column; gap:0.4rem;">
+                        @foreach (var a in adjModalLista)
+                        {
+                            <div style="display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.7rem; background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px;">
+                                <span style="font-size:1.1rem;">@(a.MimeType?.StartsWith("image/") == true ? "🖼" : "📄")</span>
+                                <div style="flex:1; min-width:0;">
+                                    <div style="font-size:0.85rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">@a.NombreOriginal</div>
+                                    <div style="font-size:0.7rem; color:#6b7280;">
+                                        @TipoLabel(a.Tipo) · @FormatFileSize(a.Tamano) · @a.CreatedAt.ToArTime().ToString("dd/MM/yyyy HH:mm")
+                                    </div>
+                                </div>
+                                <a class="btn-icon" href="@Api.BuildCobranzaAdjuntoDownloadUrl(a.Id)" target="_blank" title="Descargar">⬇️</a>
+                                <button class="btn-icon" @onclick="() => BorrarAdjunto(a)" title="Borrar" style="color:#b91c1c;">🗑</button>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <div style="margin-top:1rem; padding:0.7rem; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px;">
+                    <div style="font-weight:700; font-size:0.85rem; color:#1e40af; margin-bottom:0.4rem;">+ Agregar adjunto</div>
+                    <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
+                        <select class="form-input" @bind="adjNuevoTipo" style="flex:0 0 150px; font-size:0.8rem; padding:0.3rem;">
+                            <option value="RETENCION">Retención</option>
+                            <option value="TRANSFERENCIA">Transferencia</option>
+                            <option value="OTRO">Otro</option>
+                        </select>
+                        <InputFile OnChange="OnAdjNuevoPicked" accept=".pdf,.jpg,.jpeg,.png,.webp"
+                                   class="form-input" style="flex:1; min-width:160px; padding:0.3rem; font-size:0.78rem;" disabled="@adjSubiendo" />
+                    </div>
+                    @if (adjSubiendo)
+                    {
+                        <div style="margin-top:0.3rem; font-size:0.78rem; color:#1e40af;">Subiendo...</div>
+                    }
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CerrarAdjuntos">Cerrar</button>
             </div>
         </div>
     </div>
@@ -1074,6 +1170,15 @@
     private List<CafeCajaDto>? cajas;
 
     private bool showNueva, guardando;
+    // 2026-06-25: adjuntos a subir cuando se guarde la nueva cobranza
+    private Microsoft.AspNetCore.Components.Forms.IBrowserFile? adjRetencionFile;
+    private Microsoft.AspNetCore.Components.Forms.IBrowserFile? adjTransferenciaFile;
+    // Modal "Ver adjuntos" (post-creacion)
+    private CobranzaListDto? adjModalCobranza;
+    private List<ApiClient.CobranzaAdjuntoDto>? adjModalLista;
+    private bool adjModalCargando;
+    private string adjNuevoTipo = "TRANSFERENCIA";
+    private bool adjSubiendo;
     private int selClienteId = 0;
     private string clienteSearch = "";
     private bool clienteSearchOpen;
@@ -1284,6 +1389,8 @@
     {
         if (guardando) return;
         showNueva = false;
+        adjRetencionFile = null;
+        adjTransferenciaFile = null;
     }
 
     private async Task OnClienteChange()
@@ -1508,11 +1615,132 @@
                 catch { /* no critico */ }
                 pendienteOrigen = null;
             }
+            // 2026-06-25: subir adjuntos pendientes (comprobante de retencion / transferencia)
+            await SubirAdjuntoPendienteAsync(r.Id, adjRetencionFile, "RETENCION");
+            await SubirAdjuntoPendienteAsync(r.Id, adjTransferenciaFile, "TRANSFERENCIA");
+            adjRetencionFile = null;
+            adjTransferenciaFile = null;
             ToastService.Success($"Cobranza {r.Numero} creada");
             showNueva = false;
             await Load();
         }
         catch (Exception ex) { ToastService.Error(ex.Message); }
         finally { guardando = false; }
+    }
+
+    // ============================================================
+    // 2026-06-25: Adjuntos
+    // ============================================================
+
+    private const long AdjMaxBytes = 10L * 1024 * 1024;  // 10 MB
+
+    private void OnAdjRetencionPicked(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    {
+        var f = e.File;
+        if (f is null) { adjRetencionFile = null; return; }
+        if (f.Size > AdjMaxBytes) { ToastService.Error("Archivo demasiado grande (máx 10 MB)"); return; }
+        adjRetencionFile = f;
+    }
+
+    private void OnAdjTransferenciaPicked(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    {
+        var f = e.File;
+        if (f is null) { adjTransferenciaFile = null; return; }
+        if (f.Size > AdjMaxBytes) { ToastService.Error("Archivo demasiado grande (máx 10 MB)"); return; }
+        adjTransferenciaFile = f;
+    }
+
+    private async Task SubirAdjuntoPendienteAsync(int cobranzaId,
+        Microsoft.AspNetCore.Components.Forms.IBrowserFile? file, string tipo)
+    {
+        if (file is null) return;
+        try
+        {
+            using var stream = file.OpenReadStream(maxAllowedSize: AdjMaxBytes);
+            var dto = await Api.SubirCobranzaAdjuntoAsync(cobranzaId, tipo, stream, file.Name, file.ContentType);
+            if (dto is null)
+                ToastService.Error($"No se pudo subir el comprobante de {TipoLabel(tipo).ToLower()}");
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error subiendo adjunto: {ex.Message}");
+        }
+    }
+
+    private async Task AbrirAdjuntos(CobranzaListDto c)
+    {
+        adjModalCobranza = c;
+        adjModalLista = null;
+        adjModalCargando = true;
+        adjNuevoTipo = "TRANSFERENCIA";
+        StateHasChanged();
+        try
+        {
+            adjModalLista = await Api.GetCobranzaAdjuntosAsync(c.Id) ?? new();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error cargando adjuntos: " + ex.Message);
+        }
+        finally
+        {
+            adjModalCargando = false;
+        }
+    }
+
+    private void CerrarAdjuntos()
+    {
+        adjModalCobranza = null;
+        adjModalLista = null;
+    }
+
+    private async Task OnAdjNuevoPicked(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    {
+        if (adjModalCobranza is null) return;
+        var f = e.File;
+        if (f is null) return;
+        if (f.Size > AdjMaxBytes) { ToastService.Error("Archivo demasiado grande (máx 10 MB)"); return; }
+        adjSubiendo = true;
+        StateHasChanged();
+        try
+        {
+            using var stream = f.OpenReadStream(maxAllowedSize: AdjMaxBytes);
+            var dto = await Api.SubirCobranzaAdjuntoAsync(adjModalCobranza.Id, adjNuevoTipo, stream, f.Name, f.ContentType);
+            if (dto is null) { ToastService.Error("No se pudo subir el archivo"); return; }
+            (adjModalLista ??= new()).Add(dto);
+            ToastService.Success($"✓ {f.Name} subido");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { adjSubiendo = false; }
+    }
+
+    private async Task BorrarAdjunto(ApiClient.CobranzaAdjuntoDto a)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Borrar {a.NombreOriginal}?")) return;
+        try
+        {
+            var ok = await Api.BorrarCobranzaAdjuntoAsync(a.Id);
+            if (ok)
+            {
+                adjModalLista?.Remove(a);
+                ToastService.Success("✓ Borrado");
+            }
+            else { ToastService.Error("No se pudo borrar"); }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private static string TipoLabel(string tipo) => tipo switch
+    {
+        "RETENCION" => "Retención",
+        "TRANSFERENCIA" => "Transferencia",
+        _ => "Otro"
+    };
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / 1024.0 / 1024.0:F1} MB";
     }
 }

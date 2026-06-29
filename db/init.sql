@@ -3251,6 +3251,24 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='CobranzaOrigenId' AND Object_ID=Object_ID('Cafe_Cheques'))
     ALTER TABLE Cafe_Cheques ADD CobranzaOrigenId INT NULL;
 GO
+
+-- 2026-06-25: Adjuntos de cobranza (comprobante de retenciones, transferencia, etc.)
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_CobranzaAdjuntos')
+BEGIN
+    CREATE TABLE Cafe_CobranzaAdjuntos (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        CobranzaId INT NOT NULL,
+        Tipo NVARCHAR(30) NOT NULL,           -- RETENCION | TRANSFERENCIA | OTRO
+        FilePath NVARCHAR(500) NOT NULL,      -- path relativo dentro de /data/files (cobranzas/{id}/uuid.ext)
+        NombreOriginal NVARCHAR(255) NOT NULL,
+        MimeType NVARCHAR(100) NULL,
+        Tamano BIGINT NOT NULL,
+        CreatedAt DATETIME2 NOT NULL,
+        CONSTRAINT FK_CafeCobAdj_Cobranza FOREIGN KEY (CobranzaId) REFERENCES Cafe_Cobranzas(Id) ON DELETE CASCADE
+    );
+    CREATE INDEX IX_CafeCobAdj_Cobranza ON Cafe_CobranzaAdjuntos(CobranzaId);
+END
+GO
 -- Nota: no agrego FK explicita para evitar ciclos en cascada con CobranzasMedios.ChequeId
 
 -- Permisos sidebar para el grupo Tesoreria
