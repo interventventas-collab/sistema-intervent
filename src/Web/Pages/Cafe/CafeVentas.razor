@@ -2135,8 +2135,8 @@
                                 var borderColor = enCarrito > 0 ? "#16a34a" : "#fcd34d";
                                 var bgColor = enCarrito > 0 ? "#f0fdf4" : "white";
                                 <div style="display:flex; flex-direction:column; gap:0.15rem; background:@bgColor; border:1.5px solid @borderColor; border-radius:6px; padding:0.4rem 0.5rem; font-size:0.78rem; cursor:pointer; transition:background 0.12s, transform 0.08s;"
-                                     @onclick="() => AddTopProduct(prodId, fmt)"
-                                     title="Tocá para agregar 1 al carrito — Comprado @t.TimesOrdered ve@(t.TimesOrdered == 1 ? "z" : "ces") · Última: @t.LastPurchase.ToString("dd/MM/yyyy")">
+                                     @onclick="() => AbrirCantidadTopProduct(prodId, fmt)"
+                                     title="Tocá para elegir cantidad — Comprado @t.TimesOrdered ve@(t.TimesOrdered == 1 ? "z" : "ces") · Última: @t.LastPurchase.ToString("dd/MM/yyyy")">
                                     <div style="display:flex; align-items:center; gap:0.4rem;">
                                         <span style="background:#f59e0b; color:white; padding:0.1rem 0.35rem; border-radius:999px; font-size:0.66rem; font-weight:800; min-width:26px; text-align:center;">@t.TimesOrdered×</span>
                                         <strong style="flex:1; color:#78350f; line-height:1.15; word-break: break-word;">@t.Nombre</strong>
@@ -2156,6 +2156,29 @@
                                         <span style="margin-left:auto; color:@stockColor;">@stockTxt</span>
                                         <span style="color:#78350f; font-weight:600;">$@FormatMoney(t.PrecioReferencia)</span>
                                     </div>
+                                    @* 2026-06-29: input rapido de cantidad — click en card abre este input, Enter confirma *@
+                                    @if (topQtyProductoId == prodId && topQtyFormato == fmt)
+                                    {
+                                        <div style="display:flex; gap:0.3rem; align-items:center; padding-top:0.35rem; margin-top:0.3rem; border-top:1px dashed #f59e0b;"
+                                             @onclick:stopPropagation="true">
+                                            <span style="font-size:0.72rem; color:#78350f; font-weight:600;">Cantidad:</span>
+                                            <input type="number" min="1" step="1"
+                                                   id="top-qty-input"
+                                                   class="form-input"
+                                                   style="flex:1; padding:0.25rem 0.4rem; font-size:0.95rem; border:1px solid #f59e0b; font-weight:600;"
+                                                   @bind="topQtyValue" @bind:event="oninput"
+                                                   @onkeydown="OnTopQtyKeyDown"
+                                                   @ref="topQtyInputRef" />
+                                            <button type="button"
+                                                    style="background:#16a34a; color:white; border:none; padding:0.3rem 0.6rem; border-radius:4px; font-weight:700; cursor:pointer; font-size:0.78rem;"
+                                                    @onclick="ConfirmarCantidadTopProduct"
+                                                    title="Agregar (Enter)">✓ Agregar</button>
+                                            <button type="button"
+                                                    style="background:transparent; color:#78350f; border:1px solid #f59e0b; padding:0.3rem 0.4rem; border-radius:4px; font-size:0.78rem; cursor:pointer;"
+                                                    @onclick="CancelarCantidadTopProduct"
+                                                    title="Cancelar (Escape)">✕</button>
+                                        </div>
+                                    }
                                 </div>
                             }
                         </div>
@@ -5648,7 +5671,7 @@
 
     /// <summary>Agrega un producto sugerido (top productos del cliente) al carrito con cantidad 1.
     /// Si ya existia ese (Producto, Formato, Molienda, DoyPack), suma 1 a la cantidad.</summary>
-    private async Task AddTopProduct(int productoId, string formato)
+    private async Task AddTopProduct(int productoId, string formato, int cantidad = 1)
     {
         var def = DefaultMolienda(productoId);
         // 2026-06-11: el "+1" del sugerido siempre es envase negro (default).
@@ -5659,17 +5682,60 @@
             && (i.Molienda ?? "") == (def ?? "")
             && !i.EsDoyPack
             && !i.EsEnvasePlateado);
-        if (existing is not null) existing.Cantidad += 1;
+        if (existing is not null) existing.Cantidad += cantidad;
         else formItems.Add(new CafeCotizarItemRequest
         {
             ProductoId = productoId,
             Formato = formato,
-            Cantidad = 1,
+            Cantidad = cantidad,
             Molienda = def,
             EsDoyPack = false,
             EsEnvasePlateado = false
         });
         await Cotizar();
+    }
+
+    // 2026-06-29: popup rapido de cantidad para los productos del panel "Mas comprados".
+    // Click en card -> abre input inline -> usuario tipea numero -> Enter confirma -> agrega
+    // al carrito con esa cantidad. Escape cancela. Default: 1.
+    private int? topQtyProductoId;
+    private string? topQtyFormato;
+    private int topQtyValue = 1;
+    private ElementReference topQtyInputRef;
+
+    private async Task AbrirCantidadTopProduct(int prodId, string fmt)
+    {
+        topQtyProductoId = prodId;
+        topQtyFormato = fmt;
+        topQtyValue = 1;
+        StateHasChanged();
+        // dar tiempo a que se renderee el input antes de focusearlo y seleccionar el "1"
+        await Task.Delay(40);
+        try { await topQtyInputRef.FocusAsync(); } catch { }
+        try { await JS.InvokeVoidAsync("eval", "document.getElementById('top-qty-input')?.select()"); } catch { }
+    }
+
+    private async Task ConfirmarCantidadTopProduct()
+    {
+        if (!topQtyProductoId.HasValue || string.IsNullOrEmpty(topQtyFormato)) return;
+        var qty = topQtyValue < 1 ? 1 : topQtyValue;
+        var prodId = topQtyProductoId.Value;
+        var fmt = topQtyFormato!;
+        CancelarCantidadTopProduct();
+        await AddTopProduct(prodId, fmt, qty);
+    }
+
+    private void CancelarCantidadTopProduct()
+    {
+        topQtyProductoId = null;
+        topQtyFormato = null;
+        topQtyValue = 1;
+    }
+
+    private async Task OnTopQtyKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") { await ConfirmarCantidadTopProduct(); }
+        else if (e.Key == "Escape") { CancelarCantidadTopProduct(); }
     }
 
     /// <summary>Selecciona un cliente del dropdown filtrable.</summary>
