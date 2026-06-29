@@ -242,6 +242,34 @@
             window.location.replace(url.toString());
         };
 
+        // 2026-06-29: Zoom UI persistente — funciona como Ctrl+/Ctrl- del browser
+        // pero queda guardado por usuario en localStorage. Usa document.body.style.zoom
+        // (soportado en Chrome, Edge, Safari, Firefox 126+).
+        window.uiZoom = {
+            STORAGE_KEY: 'palanica.uiZoom',
+            MIN: 70,
+            MAX: 200,
+            STEP: 10,
+            get: function () {
+                const v = parseInt(localStorage.getItem(this.STORAGE_KEY) || '100', 10);
+                return isNaN(v) ? 100 : Math.max(this.MIN, Math.min(this.MAX, v));
+            },
+            apply: function (level) {
+                document.body.style.zoom = (level / 100).toString();
+            },
+            set: function (level) {
+                const clamped = Math.max(this.MIN, Math.min(this.MAX, Math.round(level)));
+                localStorage.setItem(this.STORAGE_KEY, clamped.toString());
+                this.apply(clamped);
+                return clamped;
+            },
+            increment: function () { return this.set(this.get() + this.STEP); },
+            decrement: function () { return this.set(this.get() - this.STEP); },
+            reset: function () { return this.set(100); }
+        };
+        // Aplicar el zoom guardado al cargar la pagina
+        try { window.uiZoom.apply(window.uiZoom.get()); } catch (e) { console.warn('uiZoom restore', e); }
+
         // 2026-06-05: Registra el atajo Ctrl+K (o Cmd+K en Mac) que abre el CommandPalette.
         // MainLayout.razor llama a esta funcion al primer render, pasandole un DotNetObjectReference.
         window.registerCommandPaletteShortcut = function (dotnetRef) {
