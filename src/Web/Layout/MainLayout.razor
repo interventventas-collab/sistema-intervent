@@ -973,37 +973,43 @@
                         </div>
                     }
                 </div>
-                @* 2026-06-17 v9: Ventas + Saldos quedan como botones secundarios (estilo nav).
-                   Nueva Venta es la accion PRIMARIA (negro). Nueva Cobranza secundaria con borde. *@
-                <div class="fab-cafe-split @(menuPresupuestosAbierto ? "open" : "")" style="display: inline-flex;">
-                    <button class="topbar-nav-modern" @onclick="@(() => NavigateTo("/cafe/ventas"))"
-                            style="border-top-right-radius: 0; border-bottom-right-radius: 0; padding-right: 0.4rem;"
-                            title="Ver listado de ventas">
+                @* 2026-06-29: Ventas como dropdown estilo Empleados — agrupa todo lo relacionado con
+                   ventas, clientes y deudas. Reemplazo del split-button anterior (Ventas + caret de
+                   Presupuestos) y del boton "Saldos" suelto. *@
+                <div class="topbar-empleados-wrap">
+                    <button class="topbar-nav-modern @(showVentasDropdown ? "abierto" : "")"
+                            @onclick="ToggleVentasDropdown"
+                            title="Accesos rápidos a Ventas">
                         <span class="topbar-nav-modern-ico">@SvgIcons.BarChart</span>
                         <span>Ventas</span>
-                    </button>
-                    <button class="topbar-nav-modern" @onclick="ToggleMenuPresupuestos"
-                            style="border-top-left-radius: 0; border-bottom-left-radius: 0; padding: 0 0.5rem; border-left: 1px solid #e5e7eb;"
-                            title="Más opciones (Presupuestos)"
-                            aria-label="Más opciones">
                         <span class="topbar-nav-modern-caret">▾</span>
                     </button>
-                    @if (menuPresupuestosAbierto)
+                    @if (showVentasDropdown)
                     {
-                        <div class="fab-cafe-split-menu" @onclick:stopPropagation="true">
-                            <button @onclick="@(() => { menuPresupuestosAbierto = false; NavigateTo("/cafe/presupuestos"); })"
-                                    title="Ver listado de presupuestos (proformas — sin descontar stock)">
-                                📋 Presupuestos
+                        <div class="topbar-empleados-menu" @onclick:stopPropagation="true">
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/cafe/ventas"))">
+                                <span class="ico">🛒</span> Ventas
+                            </button>
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/cafe/presupuestos"))">
+                                <span class="ico">📋</span> Presupuestos
+                            </button>
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/cafe/preparacion"))">
+                                <span class="ico">📦</span> Preparación
+                            </button>
+                            <div class="topbar-empleados-sep"></div>
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/cafe/clientes"))">
+                                <span class="ico">👤</span> Clientes
+                            </button>
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/cafe/clientes-mapeados"))">
+                                <span class="ico">📍</span> Clientes mapeados
+                            </button>
+                            <div class="topbar-empleados-sep"></div>
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/cafe/clientes/panel-deudas"))">
+                                <span class="ico">💼</span> ¿Quién me debe?
                             </button>
                         </div>
                     }
                 </div>
-                <button class="topbar-nav-modern"
-                        @onclick="@(() => NavigateTo("/cafe/clientes/panel-deudas"))"
-                        title="Ver saldos pendientes — ¿Quién me debe?">
-                    <span class="topbar-nav-modern-ico">@SvgIcons.Wallet</span>
-                    <span>Saldos</span>
-                </button>
 
                 @* 2026-06-18: badge cheques con hover dropdown — los proximos 5 cheques EMITIDOS por pagar.
                    Click → /cafe/tesoreria/cheques-banco. *@
@@ -1683,6 +1689,10 @@
     private bool showEmpleadosDropdown;
     private void ToggleEmpleadosDropdown() { showEmpleadosDropdown = !showEmpleadosDropdown; }
     private void NavigateAndCloseEmpleados(string url) { showEmpleadosDropdown = false; NavigateTo(url); }
+    // 2026-06-29: dropdown Ventas (mismo estilo que Empleados)
+    private bool showVentasDropdown;
+    private void ToggleVentasDropdown() { showVentasDropdown = !showVentasDropdown; }
+    private void NavigateAndCloseVentas(string url) { showVentasDropdown = false; NavigateTo(url); }
     // 2026-06-08: dropdown del split-button "Ventas ▾" para abrir Presupuestos
     private bool menuPresupuestosAbierto;
     private void ToggleMenuPresupuestos() { menuPresupuestosAbierto = !menuPresupuestosAbierto; }
