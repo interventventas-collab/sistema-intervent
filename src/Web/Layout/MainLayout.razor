@@ -990,6 +990,9 @@
                             <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/cafe/ventas"))">
                                 <span class="ico">🛒</span> Ventas
                             </button>
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/cafe/tesoreria/cobranzas"))">
+                                <span class="ico">📥</span> Cobranzas
+                            </button>
                             <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/cafe/presupuestos"))">
                                 <span class="ico">📋</span> Presupuestos
                             </button>
@@ -1026,12 +1029,7 @@
                     @SvgIcons.Plus
                     <span>Nueva venta</span>
                 </button>
-                <button class="topbar-action-secondary"
-                        @onclick="@(() => NavigateTo("/cafe/tesoreria/cobranzas"))"
-                        title="Ir al listado de cobranzas"
-                        aria-label="Cobranzas">
-                    <span>Cobranzas</span>
-                </button>
+                @* 2026-06-29: el boton 'Cobranzas' suelto se movio al dropdown Ventas (abajo de Ventas) *@
                 @* 2026-06-19: boton WhatsApp llamativo verde — chat Twilio para pedidos de hermanos/empleados *@
                 @* 2026-06-23: si Playwright esta linked -> va al chat. Si NO -> abre modal QR directo. *@
                 <button class="topbar-action-whatsapp"
