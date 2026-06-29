@@ -63,36 +63,38 @@
     }
 
     /* SVG dentro de nav-modern alineado al texto */
+    /* 2026-06-29: bump 15→18px (texto a 15px) */
     .topbar-nav-modern-ico svg {
-        width: 15px;
-        height: 15px;
+        width: 18px;
+        height: 18px;
         display: block;
     }
-    /* SVG dentro de botones de acción (Nueva venta, Cobranza, WhatsApp) */
+    /* SVG dentro de botones de acción (Nueva venta, WhatsApp) */
+    /* 2026-06-29: bump 16→18px */
     .topbar-action-primary svg,
     .topbar-action-secondary svg,
     .topbar-action-whatsapp svg {
-        width: 16px;
-        height: 16px;
+        width: 18px;
+        height: 18px;
         display: block;
     }
 
     /* 2026-06-17 v9: rediseno topbar moderno — paleta neutra estilo Linear/Notion.
-       Una sola altura (32px), una sola tipografia. Solo "Nueva venta" tiene fondo oscuro (accion primaria). */
+       2026-06-29: tipografia subida de 0.85rem (13px) a 0.95rem (15px) + padding/altura proporcional. */
     .topbar-nav-modern {
         background: transparent;
         border: none;
-        padding: 0.4rem 0.7rem;
-        height: 34px;
+        padding: 0.55rem 0.9rem;
+        height: 40px;
         border-radius: 6px;
-        font-size: 0.85rem;
+        font-size: 0.95rem;
         font-weight: 500;
         color: #1f2937;
         font-family: inherit;
         cursor: pointer;
         display: inline-flex;
         align-items: center;
-        gap: 0.4rem;
+        gap: 0.5rem;
         line-height: 1;
         transition: background 0.12s ease;
         white-space: nowrap;
@@ -100,19 +102,19 @@
     .topbar-nav-modern:hover { background: #f3f4f6; }
     .topbar-nav-modern.abierto { background: #f3f4f6; }
     .topbar-nav-modern-ico {
-        font-size: 0.95rem;
+        font-size: 1.1rem;
         opacity: 0.85;
         line-height: 1;
     }
     .topbar-nav-modern-caret {
-        font-size: 0.7rem;
+        font-size: 0.78rem;
         color: #9ca3af;
         margin-left: 0.1rem;
     }
 
     .topbar-divider-modern {
         width: 1px;
-        height: 20px;
+        height: 22px;
         background: #e5e7eb;
         margin: 0 0.4rem;
         align-self: center;
@@ -123,16 +125,16 @@
         background: #111827;
         border: 1px solid #111827;
         color: white;
-        padding: 0.45rem 0.85rem;
-        height: 34px;
+        padding: 0.6rem 1rem;
+        height: 40px;
         border-radius: 6px;
-        font-size: 0.85rem;
+        font-size: 0.95rem;
         font-weight: 600;
         font-family: inherit;
         cursor: pointer;
         display: inline-flex;
         align-items: center;
-        gap: 0.4rem;
+        gap: 0.5rem;
         line-height: 1;
         transition: background 0.12s ease, transform 0.06s ease;
         white-space: nowrap;
@@ -145,16 +147,16 @@
         background: white;
         border: 1px solid #d1d5db;
         color: #1f2937;
-        padding: 0.45rem 0.85rem;
-        height: 34px;
+        padding: 0.6rem 1rem;
+        height: 40px;
         border-radius: 6px;
-        font-size: 0.85rem;
+        font-size: 0.95rem;
         font-weight: 600;
         font-family: inherit;
         cursor: pointer;
         display: inline-flex;
         align-items: center;
-        gap: 0.4rem;
+        gap: 0.5rem;
         line-height: 1;
         transition: background 0.12s ease, transform 0.06s ease;
         white-space: nowrap;
@@ -165,18 +167,19 @@
     .topbar-action-secondary:active { transform: scale(0.97); }
 
     /* 2026-06-19: boton WhatsApp llamativo, verde estilo WhatsApp con leve glow */
+    /* 2026-06-29: bump alto 32→40 y font 0.875→0.95 para alinear con el resto */
     .topbar-action-whatsapp {
-        height: 32px;
-        padding: 0 0.85rem;
+        height: 40px;
+        padding: 0 1rem;
         display: inline-flex;
         align-items: center;
-        gap: 0.4rem;
+        gap: 0.5rem;
         background: #25d366;
         color: #fff;
         border: none;
         border-radius: 6px;
         cursor: pointer;
-        font-size: 0.875rem;
+        font-size: 0.95rem;
         font-weight: 600;
         font-family: inherit;
         line-height: 1;
