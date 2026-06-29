@@ -441,6 +441,8 @@ button {
   color: #6d28d9;
 }
 .topbar-empleados-item .ico { font-size: 1.05rem; flex: 0 0 1.5rem; text-align: center; }
+/* 2026-06-29: separador entre grupos dentro del dropdown (Ventas y Empleados) */
+.topbar-empleados-sep { height: 1px; background: #e5e7eb; margin: 0.3rem 0.6rem; }
 
 @media (max-width: 640px) {
   .topbar-empleados-label { display: none; }
