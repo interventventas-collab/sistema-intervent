@@ -701,15 +701,18 @@
             @* 2026-06-24: Fix doble-click. Lambdas async/await para que el Task no quede colgado
                cuando se cierra el menú. Para el "Recibo de entrega" usamos JS.open en vez de <a>
                porque el re-render quitaba el <a> del DOM antes de que el browser procesara el href. *@
-            <button class="actions-popup-item" @onclick="async () => { var v = vPrint; ClosePrintMenu(); await ShowPrint(v); }">
+            @* 2026-06-29: bug fix doble-click — Task.Yield() entre el close y el await permite
+               que Blazor procese el cierre del popup ANTES de arrancar la tarea async. Sin esto,
+               el primer click no se "tomaba" (close + await en la misma tarea hacian conflicto). *@
+            <button class="actions-popup-item" @onclick="async () => { var v = vPrint; ClosePrintMenu(); await Task.Yield(); await ShowPrint(v); }">
                 <span class="ic" style="color:#1d4ed8;">🖨</span><span>Comprobante / Factura</span>
             </button>
-            <button class="actions-popup-item" @onclick="async () => { var v = vPrint; ClosePrintMenu(); await AbrirReciboEntregaEnNuevaPestana(v.Id); }">
+            <button class="actions-popup-item" @onclick="async () => { var v = vPrint; ClosePrintMenu(); await Task.Yield(); await AbrirReciboEntregaEnNuevaPestana(v.Id); }">
                 <span class="ic" style="color:#7c3aed;">📦</span><span>Recibo de entrega</span>
             </button>
             @if (!anuladaPM && saldoPM > 0.01m)
             {
-                <button class="actions-popup-item" @onclick="async () => { var v = vPrint; ClosePrintMenu(); await DescargarReciboVisita(v); }">
+                <button class="actions-popup-item" @onclick="async () => { var v = vPrint; ClosePrintMenu(); await Task.Yield(); await DescargarReciboVisita(v); }">
                     <span class="ic" style="color:#d97706;">🚪</span><span>Recibo de visita por cobranza</span>
                 </button>
             }
@@ -729,11 +732,14 @@
         <div id="@($"act-menu-{vMenu.Id}")" class="actions-popup" @onclick:stopPropagation="true">
             @if (string.IsNullOrEmpty(vMenu.EstadoPreparacion) && !anuladaM)
             {
-                <button class="actions-popup-item" @onclick="async () => { var v = vMenu; CloseActionsMenu(); await EnviarAPreparacion(v); }">
+                <button class="actions-popup-item" @onclick="async () => { var v = vMenu; CloseActionsMenu(); await Task.Yield(); await EnviarAPreparacion(v); }">
                     <span class="ic" style="color:#f59e0b;">📦</span><span>Enviar a Preparación</span>
                 </button>
             }
-            <button class="actions-popup-item" @onclick="async () => { var v = vMenu; CloseActionsMenu(); await DuplicarComprobante(v); }">
+            @* 2026-06-29: bug fix doble-click — Task.Yield() entre el close y el await,
+               sino el primer click se pierde porque Blazor no llega a cerrar el popup antes
+               de arrancar la tarea async. *@
+            <button class="actions-popup-item" @onclick="async () => { var v = vMenu; CloseActionsMenu(); await Task.Yield(); await DuplicarComprobante(v); }">
                 <span class="ic" style="color:#16a34a;">📋</span><span>Duplicar comprobante</span>
             </button>
             @if ((vMenu.TipoComprobante == "PRO" || vMenu.TipoComprobante == "X") && !vMenu.FacturadaComoVentaId.HasValue && vMenu.Estado != "anulado")
@@ -762,7 +768,7 @@
                 @* 2026-06-09: Emitir NC total — solo para facturas con CAE *@
                 @if (vMenu.TipoComprobante is "FA" or "FB" or "FC")
                 {
-                    <button class="actions-popup-item" @onclick="async () => { var v = vMenu; CloseActionsMenu(); await EmitirNotaCredito(v); }">
+                    <button class="actions-popup-item" @onclick="async () => { var v = vMenu; CloseActionsMenu(); await Task.Yield(); await EmitirNotaCredito(v); }">
                         <span class="ic" style="color:#dc2626;">➖</span><span>Emitir Nota de Crédito (total)</span>
                     </button>
                 }
