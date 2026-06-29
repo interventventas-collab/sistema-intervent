@@ -238,6 +238,63 @@
     .topbar-widgets-item .ico svg { width: 20px; height: 20px; }
     .topbar-widgets-item .label { font-weight: 500; }
     .topbar-widgets-item .desc { font-size: 12px; color: #6b7280; }
+    /* 2026-06-29: control de Zoom dentro del dropdown — separador arriba */
+    .topbar-widgets-zoom {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 10px;
+        margin-top: 4px;
+        border-top: 1px solid #e5e7eb;
+    }
+    .topbar-widgets-zoom .ico {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        font-size: 18px;
+    }
+    .topbar-widgets-zoom .meta { flex: 1; min-width: 0; }
+    .topbar-widgets-zoom .meta .label { font-weight: 500; font-size: 14px; color: #1f2937; }
+    .topbar-widgets-zoom .meta .desc { font-size: 12px; color: #6b7280; }
+    .topbar-widgets-zoom .ctrls {
+        display: inline-flex;
+        align-items: center;
+        background: #f3f4f6;
+        border-radius: 8px;
+        padding: 2px;
+        gap: 2px;
+    }
+    .topbar-widgets-zoom .zbtn {
+        width: 26px;
+        height: 26px;
+        border: none;
+        background: white;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: 600;
+        color: #1f2937;
+        font-family: inherit;
+        line-height: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .topbar-widgets-zoom .zbtn:hover { background: #e5e7eb; }
+    .topbar-widgets-zoom .zlvl {
+        min-width: 46px;
+        height: 26px;
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+        color: #4b5563;
+        font-family: inherit;
+        padding: 0 6px;
+    }
+    .topbar-widgets-zoom .zlvl:hover { color: #1f2937; }
 
     /* 2026-06-19: boton WhatsApp llamativo, verde estilo WhatsApp con leve glow */
     /* 2026-06-29: bump alto 32→40 y font 0.875→0.95 para alinear con el resto */
@@ -1146,6 +1203,18 @@
                                 <div class="desc">Mis notas flotantes</div>
                             </div>
                         </button>
+                        <div class="topbar-widgets-zoom">
+                            <span class="ico">🔍</span>
+                            <div class="meta">
+                                <div class="label">Zoom</div>
+                                <div class="desc">Agranda o achica todo el sistema</div>
+                            </div>
+                            <div class="ctrls">
+                                <button class="zbtn" @onclick="ZoomDecrement" title="Reducir zoom (Ctrl −)">−</button>
+                                <button class="zlvl" @onclick="ZoomReset" title="Volver a 100%">@zoomLevel%</button>
+                                <button class="zbtn" @onclick="ZoomIncrement" title="Aumentar zoom (Ctrl +)">+</button>
+                            </div>
+                        </div>
                     </div>
                 }
             </div>
@@ -1785,11 +1854,22 @@
     private bool showVentasDropdown;
     private void ToggleVentasDropdown() { showVentasDropdown = !showVentasDropdown; }
     private void NavigateAndCloseVentas(string url) { showVentasDropdown = false; NavigateTo(url); }
-    // 2026-06-29: dropdown Widgets (calculadora + post-its)
+    // 2026-06-29: dropdown Widgets (calculadora + post-its + zoom)
     private bool showWidgetsDropdown;
-    private void ToggleWidgetsDropdown() { showWidgetsDropdown = !showWidgetsDropdown; }
+    private int zoomLevel = 100;
+    private async Task ToggleWidgetsDropdown()
+    {
+        showWidgetsDropdown = !showWidgetsDropdown;
+        if (showWidgetsDropdown)
+        {
+            try { zoomLevel = await JS.InvokeAsync<int>("uiZoom.get"); } catch { }
+        }
+    }
     private void OpenCalculatorAndCloseWidgets() { showWidgetsDropdown = false; ToggleCalc(); }
     private void OpenPostitsAndCloseWidgets() { showWidgetsDropdown = false; TogglePostits(); }
+    private async Task ZoomIncrement() { try { zoomLevel = await JS.InvokeAsync<int>("uiZoom.increment"); } catch { } }
+    private async Task ZoomDecrement() { try { zoomLevel = await JS.InvokeAsync<int>("uiZoom.decrement"); } catch { } }
+    private async Task ZoomReset() { try { zoomLevel = await JS.InvokeAsync<int>("uiZoom.reset"); } catch { } }
     // 2026-06-08: dropdown del split-button "Ventas ▾" para abrir Presupuestos
     private bool menuPresupuestosAbierto;
     private void ToggleMenuPresupuestos() { menuPresupuestosAbierto = !menuPresupuestosAbierto; }
