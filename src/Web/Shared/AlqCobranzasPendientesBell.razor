@@ -4,12 +4,21 @@
 
 @* Badge topbar: cobros de ALQUILER precargados por repartidores esperando aprobación.
    2026-06-29: siempre visible — apagada (gris) cuando no hay pendientes, encendida
-   (violeta) y titilando cuando count > 0. Click → /alquileres/cobranzas-pendientes. *@
+   (violeta) y titilando cuando count > 0. Icono: silla plastica Monoblock (line drawing).
+   Click → /alquileres/cobranzas-pendientes. *@
 
 <div class="acpb-square @(count > 0 ? "active" : "quiet")"
      @onclick="@(() => Navigation.NavigateTo("/alquileres/cobranzas-pendientes"))"
      title="@(count > 0 ? $"{count} cobros de alquiler esperando aprobación" : "Cobros de alquiler (sin pendientes)")">
-    <span class="acpb-icon">📦</span>
+    <svg class="acpb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 13 L8.5 5 Q8.8 2.8 12 2.8 Q15.2 2.8 15.5 5 L16 13" />
+        <line x1="10.5" y1="5.5" x2="10.7" y2="12" />
+        <line x1="12" y1="5" x2="12" y2="12" />
+        <line x1="13.5" y1="5.5" x2="13.3" y2="12" />
+        <path d="M6.5 13 L17.5 13 L16.7 15.8 L7.3 15.8 Z" />
+        <line x1="7.5" y1="15.8" x2="7" y2="21.5" />
+        <line x1="16.5" y1="15.8" x2="17" y2="21.5" />
+    </svg>
     @if (count > 0)
     {
         <span class="acpb-num">@count</span>
@@ -25,7 +34,7 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        transition: background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease, transform 0.06s ease;
+        transition: background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease, transform 0.06s ease, color 0.12s ease;
         position: relative;
         margin: 0 0.15rem;
         box-sizing: border-box;
@@ -34,17 +43,18 @@
     .acpb-square.quiet {
         background: white;
         border: 1px solid #d1d5db;
+        color: #6b7280;
         opacity: 0.55;
     }
     .acpb-square.quiet:hover { opacity: 1; background: #f9fafb; border-color: #9ca3af; }
-    .acpb-square.quiet .acpb-icon { filter: grayscale(1); opacity: 0.7; }
     .acpb-square.active {
         background: linear-gradient(135deg, #ede9fe, #ddd6fe);
         border: 1px solid #8b5cf6;
+        color: #5b21b6;
         animation: acpb-pulse 1.6s ease-in-out infinite;
     }
     .acpb-square.active:hover { transform: scale(1.05); }
-    .acpb-square .acpb-icon { font-size: 22px; line-height: 1; }
+    .acpb-square .acpb-icon { width: 22px; height: 22px; display: block; }
     .acpb-square .acpb-num {
         position: absolute;
         top: -4px;
