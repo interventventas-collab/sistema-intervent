@@ -1102,13 +1102,17 @@ button {
 .topbar {
   position: sticky;
   top: 0;
-  height: var(--topbar-height);
+  /* 2026-06-29: min-height en lugar de height fijo + permitir wrap para que con Ctrl+
+     los items no desaparezcan del viewport — se van a una 2da fila cuando no entran. */
+  min-height: var(--topbar-height);
   background: var(--topbar-bg);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 1.5rem;
+  flex-wrap: wrap;
+  row-gap: 0.4rem;
+  padding: 0.3rem 1.5rem;
   z-index: 50;
 }
 
@@ -1204,6 +1208,12 @@ button {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  /* 2026-06-29: cuando se agranda la fuente o se hace Ctrl+ los items hacen wrap
+     a la siguiente linea en lugar de quedar ocultos detras del viewport. */
+  flex-wrap: wrap;
+  row-gap: 0.4rem;
+  flex: 1 1 auto;
+  justify-content: flex-end;
 }
 
 .topbar-btn {
