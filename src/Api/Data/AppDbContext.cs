@@ -150,6 +150,7 @@ public class AppDbContext : DbContext
     public DbSet<CafeCobranza> CafeCobranzas => Set<CafeCobranza>();
     public DbSet<CafeCobranzaComprobante> CafeCobranzasComprobantes => Set<CafeCobranzaComprobante>();
     public DbSet<CafeCobranzaMedio> CafeCobranzasMedios => Set<CafeCobranzaMedio>();
+    public DbSet<CafeCobranzaAdjunto> CafeCobranzaAdjuntos => Set<CafeCobranzaAdjunto>();
     public DbSet<CafePagoProveedor> CafePagosProveedor => Set<CafePagoProveedor>();
     public DbSet<CafePagoProveedorComprobante> CafePagosProveedorComprobantes => Set<CafePagoProveedorComprobante>();
     public DbSet<CafePagoProveedorMedio> CafePagosProveedorMedios => Set<CafePagoProveedorMedio>();

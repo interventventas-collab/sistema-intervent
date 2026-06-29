@@ -20,10 +20,19 @@ public class CafeCobranzasController : ControllerBase
     private readonly AppDbContext _db;
     private readonly AuditLogService _audit;
     private readonly CafeReciboCobranzaPdfService _pdfService;
+    private readonly FileStorageService _files;
 
-    public CafeCobranzasController(AppDbContext db, AuditLogService audit, CafeReciboCobranzaPdfService pdfService)
+    // 2026-06-25: Tipos validos de adjuntos (comprobante de retencion, de transferencia, etc.)
+    private static readonly string[] AdjuntoTiposValidos = { "RETENCION", "TRANSFERENCIA", "OTRO" };
+    // Extensiones permitidas (PDFs + imagenes comunes)
+    private static readonly HashSet<string> AdjuntoExtensionesValidas = new(StringComparer.OrdinalIgnoreCase)
+        { ".pdf", ".jpg", ".jpeg", ".png", ".webp", ".heic" };
+    private const long AdjuntoMaxBytes = 10L * 1024 * 1024;  // 10 MB
+
+    public CafeCobranzasController(AppDbContext db, AuditLogService audit,
+        CafeReciboCobranzaPdfService pdfService, FileStorageService files)
     {
-        _db = db; _audit = audit; _pdfService = pdfService;
+        _db = db; _audit = audit; _pdfService = pdfService; _files = files;
     }
 
     /// <summary>Genera el PDF del recibo de cobranza.</summary>
@@ -658,6 +667,117 @@ public class CafeCobranzasController : ControllerBase
 
         await _audit.LogAsync("CafeCobranza", id.ToString(), "EDIT_IMPUTACIONES",
             $"Cobranza {c.Numero}: re-imputada en {req.Comprobantes.Count} items, suma ${sumNuevo:N2}");
+        return Ok(new { ok = true });
+    }
+
+    // ============================================================
+    // 2026-06-25: Adjuntos (comprobante de retencion, de transferencia)
+    // ============================================================
+
+    public record CobranzaAdjuntoDto(int Id, int CobranzaId, string Tipo, string NombreOriginal,
+        string? MimeType, long Tamano, DateTime CreatedAt);
+
+    private static CobranzaAdjuntoDto MapAdjunto(CafeCobranzaAdjunto a) =>
+        new(a.Id, a.CobranzaId, a.Tipo, a.NombreOriginal, a.MimeType, a.Tamano, a.CreatedAt);
+
+    /// <summary>Lista los adjuntos de una cobranza.</summary>
+    [HttpGet("{cobranzaId:int}/adjuntos")]
+    public async Task<IActionResult> ListarAdjuntos(int cobranzaId)
+    {
+        var existe = await _db.CafeCobranzas.AnyAsync(c => c.Id == cobranzaId);
+        if (!existe) return NotFound(new { error = "Cobranza no encontrada" });
+        var adj = await _db.CafeCobranzaAdjuntos
+            .Where(a => a.CobranzaId == cobranzaId)
+            .OrderBy(a => a.CreatedAt)
+            .ToListAsync();
+        return Ok(adj.Select(MapAdjunto).ToList());
+    }
+
+    /// <summary>Sube un archivo adjunto a una cobranza. multipart/form-data con: file, tipo.</summary>
+    [HttpPost("{cobranzaId:int}/adjuntos")]
+    [RequestSizeLimit(AdjuntoMaxBytes + 1024)]
+    [RequestFormLimits(MultipartBodyLengthLimit = AdjuntoMaxBytes + 1024)]
+    public async Task<IActionResult> SubirAdjunto(int cobranzaId, [FromForm] IFormFile file, [FromForm] string tipo)
+    {
+        var c = await _db.CafeCobranzas.FirstOrDefaultAsync(x => x.Id == cobranzaId);
+        if (c is null) return NotFound(new { error = "Cobranza no encontrada" });
+        if (c.Estado == "ANULADA") return BadRequest(new { error = "Cobranza anulada — no se pueden agregar adjuntos" });
+        if (file is null || file.Length == 0) return BadRequest(new { error = "No se envio ningun archivo" });
+        if (file.Length > AdjuntoMaxBytes)
+            return BadRequest(new { error = $"Archivo demasiado grande (max {AdjuntoMaxBytes / 1024 / 1024} MB)" });
+
+        var tipoNorm = (tipo ?? "OTRO").ToUpperInvariant();
+        if (!AdjuntoTiposValidos.Contains(tipoNorm))
+            return BadRequest(new { error = $"Tipo invalido. Usa: {string.Join(", ", AdjuntoTiposValidos)}" });
+
+        var ext = Path.GetExtension(file.FileName)?.ToLowerInvariant() ?? "";
+        if (!AdjuntoExtensionesValidas.Contains(ext))
+            return BadRequest(new { error = $"Formato no permitido. Usa: {string.Join(", ", AdjuntoExtensionesValidas)}" });
+
+        var relativeDir = $"cobranzas/{cobranzaId}";
+        var absDir = _files.ResolveSafe(relativeDir);
+        Directory.CreateDirectory(absDir);
+        var fileName = $"{Guid.NewGuid():N}{ext}";
+        var absPath = Path.Combine(absDir, fileName);
+        await using (var fs = System.IO.File.Create(absPath))
+        {
+            await file.CopyToAsync(fs);
+        }
+
+        var adjunto = new CafeCobranzaAdjunto
+        {
+            CobranzaId = cobranzaId,
+            Tipo = tipoNorm,
+            FilePath = $"{relativeDir}/{fileName}",
+            NombreOriginal = file.FileName ?? "archivo",
+            MimeType = file.ContentType,
+            Tamano = file.Length,
+            CreatedAt = DateTime.UtcNow
+        };
+        _db.CafeCobranzaAdjuntos.Add(adjunto);
+        await _db.SaveChangesAsync();
+
+        await _audit.LogAsync("CafeCobranza", cobranzaId.ToString(), "ADJUNTO_UPLOAD",
+            $"{tipoNorm}: {adjunto.NombreOriginal} ({adjunto.Tamano} bytes)");
+        return Ok(MapAdjunto(adjunto));
+    }
+
+    /// <summary>Descarga el archivo adjunto.</summary>
+    [HttpGet("adjuntos/{adjuntoId:int}/download")]
+    public async Task<IActionResult> DescargarAdjunto(int adjuntoId)
+    {
+        var a = await _db.CafeCobranzaAdjuntos.FirstOrDefaultAsync(x => x.Id == adjuntoId);
+        if (a is null) return NotFound(new { error = "Adjunto no encontrado" });
+
+        string absPath;
+        try { absPath = _files.ResolveSafe(a.FilePath); }
+        catch { return NotFound(new { error = "Path invalido" }); }
+        if (!System.IO.File.Exists(absPath))
+            return NotFound(new { error = "Archivo no encontrado en disco" });
+
+        var mime = string.IsNullOrEmpty(a.MimeType) ? "application/octet-stream" : a.MimeType;
+        return PhysicalFile(absPath, mime, a.NombreOriginal);
+    }
+
+    /// <summary>Borra un adjunto (archivo + registro).</summary>
+    [HttpDelete("adjuntos/{adjuntoId:int}")]
+    public async Task<IActionResult> BorrarAdjunto(int adjuntoId)
+    {
+        var a = await _db.CafeCobranzaAdjuntos.FirstOrDefaultAsync(x => x.Id == adjuntoId);
+        if (a is null) return NotFound(new { error = "Adjunto no encontrado" });
+
+        try
+        {
+            var absPath = _files.ResolveSafe(a.FilePath);
+            if (System.IO.File.Exists(absPath)) System.IO.File.Delete(absPath);
+        }
+        catch { /* el registro se borra igual */ }
+
+        _db.CafeCobranzaAdjuntos.Remove(a);
+        await _db.SaveChangesAsync();
+
+        await _audit.LogAsync("CafeCobranza", a.CobranzaId.ToString(), "ADJUNTO_DELETE",
+            $"{a.Tipo}: {a.NombreOriginal}");
         return Ok(new { ok = true });
     }
 }
