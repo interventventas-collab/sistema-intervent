@@ -977,92 +977,68 @@
 
                 @* 2026-06-17: ① y ② lado a lado cuando NO esta en Venta Rapida (que ocupa todo el ancho con sus campos extra).
                    En Venta Rapida se apilan como antes para que entren bien los campos manuales del cliente. *@
-                <div style="display: flex; gap: 1.5rem; flex-direction: @(modoVentaRapida ? "column" : "row"); align-items: flex-start;">
-                @* ── Datos generales ── *@
-                @* 2026-06-17: bloque compactado — sin caja, header chiquito, padding reducido.
-                   2026-06-17 v3: flex 0.9 para no robarle aire al bloque Cliente. *@
-                <div style="padding: 0.3rem 0; margin-bottom: 0.4rem; flex: 0.9; min-width: 0;">
-                    <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
-                        <strong style="font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;">Datos generales</strong>
+                @* 2026-06-30: layout en 3 columnas (grid) — más prolijo que el flex anterior.
+                   En modo Venta Rapida queda en columna unica (apilado). *@
+                <div style="@(modoVentaRapida
+                    ? "display: flex; flex-direction: column; gap: 1rem; align-items: stretch;"
+                    : "display: grid; grid-template-columns: 1.1fr 1.4fr 1.1fr; gap: 1.2rem; align-items: flex-start;")">
+
+                @* ── ① COMPROBANTE ── *@
+                <div style="padding: 0.3rem 0; margin-bottom: 0.4rem; min-width: 0;">
+                    <div style="font-size: 0.66rem; color: #6b7280; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700; margin-bottom: 0.5rem; padding-bottom: 0.25rem; border-bottom: 1px solid #f3f4f6;">📋 Comprobante</div>
+                    <div class="form-group" style="margin-bottom: 0.4rem;">
+                        <label class="form-label" style="font-size: 0.66rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;">Tipo *</label>
+                        <select class="form-input" @bind="formTipoComprobante" @bind:after="OnTipoComprobanteChanged" disabled="@modoVentaRapida">
+                            <option value="X">X — Cotización / Remito interno (sin IVA)</option>
+                            <option value="PRO">📋 PRESUPUESTO — Proforma con IVA (NO descuenta stock)</option>
+                            <option value="FA">Factura A — emite por ARCA (con CAE)</option>
+                            <option value="FB">Factura B — emite por ARCA (con CAE)</option>
+                        </select>
+                        @if (modoVentaRapida)
+                        {
+                            <p style="font-size: 0.66rem; color: #d97706; margin: 0.2rem 0 0;">⚡ En Venta Rápida solo se emite Remito interno (X).</p>
+                        }
                     </div>
-                    <div class="form-row">
-                        <div class="form-group" style="flex: 2;">
-                            <label class="form-label">Tipo de comprobante *</label>
-                            <select class="form-input" @bind="formTipoComprobante" @bind:after="OnTipoComprobanteChanged" disabled="@modoVentaRapida">
-                                <option value="X">X — Cotización / Remito interno (sin IVA)</option>
-                                <option value="PRO">📋 PRESUPUESTO — Proforma con IVA (NO descuenta stock)</option>
-                                <option value="FA">Factura A — emite por ARCA (con CAE)</option>
-                                <option value="FB">Factura B — emite por ARCA (con CAE)</option>
-                                @* Factura C es para monotributistas — PALANICA es Responsable Inscripto, no aplica.
-                                   Si en el futuro hay un CUIT MO, se vuelve a habilitar segun NegocioCondicionIva. *@
-                            </select>
-                            @if (modoVentaRapida)
-                            {
-                                <p style="font-size: 0.7rem; color: #d97706; margin: 0.2rem 0 0;">⚡ En Venta Rápida solo se emite Remito interno (X).</p>
-                            }
-                        </div>
-                        <div class="form-group" style="flex: 1;">
-                            <label class="form-label">Condición IVA del cliente</label>
-                            <select class="form-input" @bind="formCondicionIva">
-                                <option value="CF">Consumidor final</option>
-                                <option value="RI">Responsable Inscripto</option>
-                                <option value="MO">Monotributo</option>
-                                <option value="EX">Exento</option>
-                            </select>
-                        </div>
-                        <div class="form-group" style="flex: 1;">
-                            <label class="form-label">Condición de pago</label>
-                            <select class="form-input" @bind="formCondicionPago">
-                                <option value="EFECTIVO">Efectivo</option>
-                                <option value="TRANSFERENCIA">Transferencia</option>
-                                <option value="MERCADOPAGO">Mercado Pago</option>
-                                <option value="DEBITO">Tarjeta de débito</option>
-                                <option value="CREDITO">Tarjeta de crédito</option>
-                                <option value="CTA_CORRIENTE">Cuenta corriente</option>
-                                <option value="CHEQUE">Cheque</option>
-                                <option value="V_PRIVADO">*V********</option>
-                            </select>
-                        </div>
-                        @* 2026-06-17: Fecha movida acá (antes estaba en el bloque Cliente y fecha). *@
-                        <div class="form-group" style="flex: 1;">
-                            <label class="form-label">Fecha</label>
-                            <input class="form-input" type="date" @bind="formFecha" />
-                        </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label" style="font-size: 0.66rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;">Cond. IVA</label>
+                        <select class="form-input" @bind="formCondicionIva">
+                            <option value="CF">Consumidor final</option>
+                            <option value="RI">Responsable Inscripto</option>
+                            <option value="MO">Monotributo</option>
+                            <option value="EX">Exento</option>
+                        </select>
                     </div>
-                    @* 2026-06-23: Concepto AFIP. Solo se muestra cuando es factura real (FA/FB/FC).
-                       Productos = comportamiento histórico. Si elige Servicios o Mixto, aparecen 2 inputs
-                       de fecha de prestación que se mandan a ARCA junto con la factura. *@
+                    @* 2026-06-23: AFIP Concepto solo en FA/FB/FC *@
                     @if (formTipoComprobante is "FA" or "FB" or "FC")
                     {
-                        <div class="form-row" style="margin-top: 0.3rem;">
-                            <div class="form-group" style="flex: 1;">
-                                <label class="form-label">Concepto AFIP</label>
-                                <select class="form-input" @bind="formConcepto" @bind:after="OnConceptoChanged">
-                                    <option value="1">📦 Productos</option>
-                                    <option value="2">🛠️ Servicios</option>
-                                    <option value="3">📦 + 🛠️ Productos y Servicios</option>
-                                </select>
-                            </div>
-                            @if (formConcepto != 1)
-                            {
+                        <div class="form-group" style="margin-top: 0.4rem; margin-bottom: 0;">
+                            <label class="form-label" style="font-size: 0.66rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;">Concepto AFIP</label>
+                            <select class="form-input" @bind="formConcepto" @bind:after="OnConceptoChanged">
+                                <option value="1">📦 Productos</option>
+                                <option value="2">🛠️ Servicios</option>
+                                <option value="3">📦 + 🛠️ Productos y Servicios</option>
+                            </select>
+                        </div>
+                        @if (formConcepto != 1)
+                        {
+                            <div class="form-row" style="margin-top: 0.4rem;">
                                 <div class="form-group" style="flex: 1;">
-                                    <label class="form-label">Prestación desde</label>
+                                    <label class="form-label" style="font-size: 0.66rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;">Prestación desde</label>
                                     <input class="form-input" type="date" @bind="formConceptoServDesde" />
                                 </div>
                                 <div class="form-group" style="flex: 1;">
-                                    <label class="form-label">Prestación hasta</label>
+                                    <label class="form-label" style="font-size: 0.66rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;">Prestación hasta</label>
                                     <input class="form-input" type="date" @bind="formConceptoServHasta" />
                                 </div>
-                            }
-                        </div>
+                            </div>
+                        }
                     }
                 </div>
 
-                @* ── Cliente y fecha ── *@
-                @* 2026-06-17: bloque compactado — sin caja, header chiquito. Lado a lado con ① cuando no es Venta Rapida. *@
-                <div style="padding: 0.3rem 0; margin-bottom: 0.4rem; flex: 1.5; min-width: 0; @(modoVentaRapida ? "border-top: 1px solid #f3f4f6;" : "")">
-                    <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem; flex-wrap: wrap;">
-                        <strong style="font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;">Cliente y fecha</strong>
+                @* ── ② CLIENTE ── *@
+                <div style="padding: 0.3rem 0; margin-bottom: 0.4rem; min-width: 0; @(modoVentaRapida ? "border-top: 1px solid #f3f4f6;" : "")">
+                    <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.5rem; padding-bottom: 0.25rem; border-bottom: 1px solid #f3f4f6; flex-wrap: wrap;">
+                        <span style="font-size: 0.66rem; color: #6b7280; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700;">👤 Cliente</span>
                         <div style="margin-left: auto; display: flex; gap: 0.3rem;">
                             @if (!modoVentaRapida)
                             {
@@ -1317,11 +1293,32 @@
                         </div>
                     }
                 </div>
-                @* 2026-06-30: La 3ra columna del header desaparecio.
-                   - ENTREGA bajo al footer (fila amarilla)
-                   - COMENTARIO ARMADO bajo a la fila de "Notas internas" (a la derecha)
-                   Solo quedan ① Datos Generales + ② Cliente arriba. *@
-                </div> @* fin wrapper flex ① + ② *@
+
+                @* ── ③ PAGO Y FECHA ── (2026-06-30: nueva 3ra columna del header) *@
+                @if (!modoVentaRapida)
+                {
+                    <div style="padding: 0.3rem 0; margin-bottom: 0.4rem; min-width: 0;">
+                        <div style="font-size: 0.66rem; color: #6b7280; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700; margin-bottom: 0.5rem; padding-bottom: 0.25rem; border-bottom: 1px solid #f3f4f6;">📅 Pago y fecha</div>
+                        <div class="form-group" style="margin-bottom: 0.4rem;">
+                            <label class="form-label" style="font-size: 0.66rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;">Condición de pago</label>
+                            <select class="form-input" @bind="formCondicionPago">
+                                <option value="EFECTIVO">Efectivo</option>
+                                <option value="TRANSFERENCIA">Transferencia</option>
+                                <option value="MERCADOPAGO">Mercado Pago</option>
+                                <option value="DEBITO">Tarjeta de débito</option>
+                                <option value="CREDITO">Tarjeta de crédito</option>
+                                <option value="CTA_CORRIENTE">Cuenta corriente</option>
+                                <option value="CHEQUE">Cheque</option>
+                                <option value="V_PRIVADO">*V********</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label" style="font-size: 0.66rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;">Fecha</label>
+                            <input class="form-input" type="date" @bind="formFecha" />
+                        </div>
+                    </div>
+                }
+                </div> @* fin wrapper grid ① + ② + ③ *@
 
                 @* ── Items ── *@
                 @* 2026-06-17: bloque compactado — sin caja, header chico. *@
