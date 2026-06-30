@@ -1331,8 +1331,8 @@
                         @* 2026-06-30: cajita de ayuda con atajos de teclado *@
                         <div style="margin-left: auto; display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.6rem; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; font-size: 0.7rem; color: #1e40af;">
                             <span style="font-weight: 600;">⌨ Atajos:</span>
-                            <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Enter</kbd> avanza campo</span>
-                            <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Ctrl+Enter</kbd> sale a Notas → Comentario → Emitir</span>
+                            <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Enter</kbd> avanza dentro del producto</span>
+                            <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Ctrl+Enter</kbd> Notas → Comentario → Entrega → Envíos → Emitir</span>
                         </div>
                     </div>
 
@@ -2031,12 +2031,12 @@
                         </div>
                         <div style="font-size: 0.7rem; color: #78350f; font-style: italic;">Tocá el producto para agregar 1 al carrito · Ajustá la cantidad abajo.</div>
 
-                        <input type="text" placeholder="🔍 Buscar..." @bind="topProductsSearch" @bind:event="oninput"
+                        <input type="text" tabindex="-1" placeholder="🔍 Buscar..." @bind="topProductsSearch" @bind:event="oninput"
                                style="width: 100%; padding: 0.3rem 0.5rem; font-size: 0.78rem; border: 1px solid #f59e0b; border-radius: 4px;" />
 
                         @if (topProductosDescartadosCount > 0)
                         {
-                            <button type="button"
+                            <button type="button" tabindex="-1"
                                     style="background:transparent; border:1px solid #f59e0b; color:#78350f; padding:0.25rem 0.4rem; border-radius:4px; font-size:0.7rem; cursor:pointer;"
                                     @onclick="RestaurarTopProductosDescartados"
                                     title="Volver a ver los productos descartados">
@@ -2069,7 +2069,7 @@
                                 var enCarrito = ContarEnCarrito(prodId, fmt);
                                 var borderColor = enCarrito > 0 ? "#16a34a" : "#fcd34d";
                                 var bgColor = enCarrito > 0 ? "#f0fdf4" : "white";
-                                <div style="display:flex; flex-direction:column; gap:0.15rem; background:@bgColor; border:1.5px solid @borderColor; border-radius:6px; padding:0.4rem 0.5rem; font-size:0.78rem; cursor:pointer; transition:background 0.12s, transform 0.08s;"
+                                <div tabindex="-1" style="display:flex; flex-direction:column; gap:0.15rem; background:@bgColor; border:1.5px solid @borderColor; border-radius:6px; padding:0.4rem 0.5rem; font-size:0.78rem; cursor:pointer; transition:background 0.12s, transform 0.08s;"
                                      @onclick="() => AbrirCantidadTopProduct(prodId, fmt, t.Nombre)"
                                      title="Tocá para elegir cantidad — Comprado @t.TimesOrdered ve@(t.TimesOrdered == 1 ? "z" : "ces") · Última: @t.LastPurchase.ToString("dd/MM/yyyy")">
                                     <div style="display:flex; align-items:center; gap:0.4rem;">
@@ -2079,7 +2079,7 @@
                                         {
                                             <span style="background:#16a34a; color:white; padding:0.1rem 0.35rem; border-radius:999px; font-size:0.7rem; font-weight:800;" title="En el carrito">✓ @enCarrito</span>
                                         }
-                                        <button type="button"
+                                        <button type="button" tabindex="-1"
                                                 style="background:transparent; color:#dc2626; border:1px solid #fca5a5; border-radius:4px; padding:0.05rem 0.3rem; font-weight:700; cursor:pointer; font-size:0.72rem;"
                                                 @onclick="() => DescartarTopProduct(prodId)"
                                                 @onclick:stopPropagation="true"
@@ -2134,7 +2134,7 @@
                             var bgF = onF ? "#dbeafe" : "white";
                             var fgF = onF ? "#1e3a8a" : "#374151";
                             var bdF = onF ? "#1e40af" : "#d1d5db";
-                            <button type="button" @onclick="() => ToggleFormDay(d)"
+                            <button type="button" id="@($"nv-dia-{d}")" @onclick="() => ToggleFormDay(d)" @onkeydown="OnKeyDownEntrega"
                                     style="padding: 0.25rem 0.45rem; border: 1px solid @bdF; background: @bgF; color: @fgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer; min-width: 34px;">@(onF ? "✓" : "")@d</button>
                         }
                     </div>
@@ -2149,18 +2149,18 @@
                         var trFgF = formPorTransporte ? "white" : "#374151";
                     }
                     <div style="display: inline-flex; gap: 0.3rem; flex-wrap: wrap;">
-                        <button type="button" @onclick="ToggleEnRadar" title="El cliente ve 'a coordinar'"
+                        <button type="button" @onclick="ToggleEnRadar" @onkeydown="OnKeyDownEntrega" title="El cliente ve 'a coordinar'"
                                 style="padding: 0.25rem 0.55rem; border: 1px solid #1e3a8a; background: @radarBgF; color: @radarFgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer;">@(formEnRadar ? "✓ " : "")🛰 RADAR</button>
-                        <button type="button" @onclick="ToggleRetira" title="Retira en local"
+                        <button type="button" @onclick="ToggleRetira" @onkeydown="OnKeyDownEntrega" title="Retira en local"
                                 style="padding: 0.25rem 0.55rem; border: 1px solid #15803d; background: @retiraBgF; color: @retiraFgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer;">@(formRetira ? "✓ " : "")🚗 RETIRA</button>
-                        <button type="button" @onclick="ToggleTransporte" title="Por empresa de transporte"
+                        <button type="button" @onclick="ToggleTransporte" @onkeydown="OnKeyDownEntrega" title="Por empresa de transporte"
                                 style="padding: 0.25rem 0.55rem; border: 1px solid #c2410c; background: @trBgF; color: @trFgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer;">@(formPorTransporte ? "✓ " : "")🚛 TRANSPORTE</button>
                     </div>
 
                     @* Repartidor *@
                     <div style="display: inline-flex; align-items: center; gap: 0.35rem;">
                         <span style="font-size: 0.68rem; color: #92400e; white-space: nowrap;">Repartidor:</span>
-                        <select class="form-input" @bind="formEntregaPor" style="font-size: 0.78rem; padding: 0.25rem 0.45rem; min-width: 160px;">
+                        <select class="form-input" @bind="formEntregaPor" @onkeydown="OnKeyDownEntrega" style="font-size: 0.78rem; padding: 0.25rem 0.45rem; min-width: 160px;">
                             <option value="">— sin asignar —</option>
                             @foreach (var nom in EntregaResponsables)
                             {
@@ -2211,26 +2211,26 @@
 
                             @{ var chipMail = envioEmail; }
                             <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipMail ? "#f0fdf4" : "white"); border: 1px solid @(chipMail ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;">
-                                <input type="checkbox" @bind="envioEmail" style="margin: 0;" />
+                                <input id="nv-envio-mail" type="checkbox" @bind="envioEmail" @onkeydown="OnKeyDownEnvios" style="margin: 0;" />
                                 <span>📧 Mail</span>
                             </label>
 
                             @{ var chipWaWeb = envioWhatsappWeb; }
                             <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipWaWeb ? "#f0fdf4" : "white"); border: 1px solid @(chipWaWeb ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;">
-                                <input type="checkbox" @bind="envioWhatsappWeb" style="margin: 0;" />
+                                <input type="checkbox" @bind="envioWhatsappWeb" @onkeydown="OnKeyDownEnvios" style="margin: 0;" />
                                 <span>📱 WA Web</span>
                             </label>
 
                             @{ var chipWaInt = envioWhatsappInterno; }
                             <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipWaInt ? "#f0fdf4" : "white"); border: 1px solid @(chipWaInt ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;">
-                                <input type="checkbox" @bind="envioWhatsappInterno" style="margin: 0;" />
+                                <input type="checkbox" @bind="envioWhatsappInterno" @onkeydown="OnKeyDownEnvios" style="margin: 0;" />
                                 <span>🚀 WA Interno</span>
                             </label>
 
                             @{ var chipDrive = envioDrive; }
                             <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipDrive ? "#f0fdf4" : "white"); border: 1px solid @(chipDrive ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;"
                                    title="Sube el PDF a Drive y aparece en /cafe/preparacion">
-                                <input type="checkbox" @bind="envioDrive" style="margin: 0;" />
+                                <input type="checkbox" @bind="envioDrive" @onkeydown="OnKeyDownEnvios" style="margin: 0;" />
                                 <span>📁 Imprimir pedidos</span>
                             </label>
 
@@ -5910,8 +5910,26 @@
         }
     }
 
-    // 2026-06-30: Ctrl+Enter en Comentario armado -> Emite la cotizacion/factura.
-    private void OnKeyDownComentarioArmado(KeyboardEventArgs e)
+    // 2026-06-30: Ctrl+Enter en Comentario armado -> salta a Entrega (primer dia LUN).
+    private async Task OnKeyDownComentarioArmado(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && e.CtrlKey)
+        {
+            await FocusFieldAsync("nv-dia-LUN");
+        }
+    }
+
+    // 2026-06-30: Ctrl+Enter en cualquier dia/chip de Entrega -> salta al primer chip de Envios.
+    private async Task OnKeyDownEntrega(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && e.CtrlKey)
+        {
+            await FocusFieldAsync("nv-envio-mail");
+        }
+    }
+
+    // 2026-06-30: Ctrl+Enter en cualquier chip de Envios al emitir -> Emite la venta.
+    private void OnKeyDownEnvios(KeyboardEventArgs e)
     {
         if (e.Key == "Enter" && e.CtrlKey)
         {
