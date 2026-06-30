@@ -2173,7 +2173,10 @@
                             var bgF = onF ? "#dbeafe" : "white";
                             var fgF = onF ? "#1e3a8a" : "#374151";
                             var bdF = onF ? "#1e40af" : "#d1d5db";
-                            <button type="button" id="@($"nv-dia-{d}")" @onclick="() => ToggleFormDay(d)" @onkeydown="OnKeyDownEntrega"
+                            var dCaptured = d;
+                            <button type="button" id="@($"nv-dia-{d}")"
+                                    @onclick="() => ToggleFormDay(dCaptured)"
+                                    @onkeydown="@((KeyboardEventArgs e) => OnKeyDownDia(e, dCaptured))"
                                     style="padding: 0.25rem 0.45rem; border: 1px solid @bdF; background: @bgF; color: @fgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer; min-width: 34px;">@(onF ? "✓" : "")@d</button>
                         }
                     </div>
@@ -2250,26 +2253,26 @@
 
                             @{ var chipMail = envioEmail; }
                             <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipMail ? "#f0fdf4" : "white"); border: 1px solid @(chipMail ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;">
-                                <input id="nv-envio-mail" type="checkbox" @bind="envioEmail" @onkeydown="OnKeyDownEnvios" style="margin: 0;" />
+                                <input id="nv-envio-mail" type="checkbox" @bind="envioEmail" @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEnvioChip(e, 0))" style="margin: 0;" />
                                 <span>📧 Mail</span>
                             </label>
 
                             @{ var chipWaWeb = envioWhatsappWeb; }
                             <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipWaWeb ? "#f0fdf4" : "white"); border: 1px solid @(chipWaWeb ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;">
-                                <input type="checkbox" @bind="envioWhatsappWeb" @onkeydown="OnKeyDownEnvios" style="margin: 0;" />
+                                <input id="nv-envio-waweb" type="checkbox" @bind="envioWhatsappWeb" @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEnvioChip(e, 1))" style="margin: 0;" />
                                 <span>📱 WA Web</span>
                             </label>
 
                             @{ var chipWaInt = envioWhatsappInterno; }
                             <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipWaInt ? "#f0fdf4" : "white"); border: 1px solid @(chipWaInt ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;">
-                                <input type="checkbox" @bind="envioWhatsappInterno" @onkeydown="OnKeyDownEnvios" style="margin: 0;" />
+                                <input id="nv-envio-wainterno" type="checkbox" @bind="envioWhatsappInterno" @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEnvioChip(e, 2))" style="margin: 0;" />
                                 <span>🚀 WA Interno</span>
                             </label>
 
                             @{ var chipDrive = envioDrive; }
                             <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipDrive ? "#f0fdf4" : "white"); border: 1px solid @(chipDrive ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;"
                                    title="Sube el PDF a Drive y aparece en /cafe/preparacion">
-                                <input type="checkbox" @bind="envioDrive" @onkeydown="OnKeyDownEnvios" style="margin: 0;" />
+                                <input id="nv-envio-drive" type="checkbox" @bind="envioDrive" @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEnvioChip(e, 3))" style="margin: 0;" />
                                 <span>📁 Imprimir pedidos</span>
                             </label>
 
@@ -6073,6 +6076,25 @@
         }
     }
 
+    // 2026-06-30: navegacion con flechas entre dias de visita. Enter toggla. Tab sale natural.
+    private async Task OnKeyDownDia(KeyboardEventArgs e, string currentDay)
+    {
+        if (e.Key == "Enter" && e.CtrlKey)
+        {
+            await FocusFieldAsync("nv-envio-mail");
+            return;
+        }
+        if (e.Key == "ArrowRight" || e.Key == "ArrowLeft")
+        {
+            var days = AllWeekDays.ToList();
+            var idx = days.IndexOf(currentDay);
+            if (idx < 0) return;
+            var newIdx = e.Key == "ArrowRight" ? idx + 1 : idx - 1;
+            if (newIdx < 0 || newIdx >= days.Count) return;
+            await FocusFieldAsync($"nv-dia-{days[newIdx]}");
+        }
+    }
+
     // 2026-06-30: Enter en el modal de confirmacion = emitir. Escape = cancelar.
     private async Task OnKeyDownConfirmModal(KeyboardEventArgs e)
     {
@@ -6083,6 +6105,23 @@
         else if (e.Key == "Escape")
         {
             showConfirmEmision = false;
+        }
+    }
+
+    // 2026-06-30: navegacion con flechas entre chips de envios. Ctrl+Enter abre resumen.
+    private async Task OnKeyDownEnvioChip(KeyboardEventArgs e, int chipIdx)
+    {
+        if (e.Key == "Enter" && e.CtrlKey)
+        {
+            await OnKeyDownEnvios(e);
+            return;
+        }
+        if (e.Key == "ArrowRight" || e.Key == "ArrowLeft")
+        {
+            var ids = new[] { "nv-envio-mail", "nv-envio-waweb", "nv-envio-wainterno", "nv-envio-drive" };
+            var newIdx = e.Key == "ArrowRight" ? chipIdx + 1 : chipIdx - 1;
+            if (newIdx < 0 || newIdx >= ids.Length) return;
+            await FocusFieldAsync(ids[newIdx]);
         }
     }
 
