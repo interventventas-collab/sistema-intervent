@@ -3447,6 +3447,88 @@
     </div>
 }
 
+@* 2026-06-30: Modal universal "Agregar item al carrito" — usado por Producto, Combo y Servicio.
+   Se abre al seleccionar un item desde el buscador/dropdown. Enter confirma. *@
+@if (!string.IsNullOrEmpty(addItemModalMode))
+{
+    <div class="modal-overlay" style="z-index:9500;" @onclick="CerrarAddItemModal" @onkeydown="OnKeyDownAddItemModal">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 460px; width:90vw; padding:1.3rem;">
+            <div style="font-size:0.78rem; color:#1d4ed8; letter-spacing:0.05em; text-transform:uppercase; font-weight:600; margin-bottom:0.4rem;">
+                @(addItemModalMode == "PRODUCTO" ? "📦 Agregar producto" : addItemModalMode == "COMBO" ? "🎁 Agregar combo" : "🛠 Agregar servicio")
+            </div>
+            <div style="font-weight:700; font-size:1.05rem; color:#1f2937; margin-bottom:1rem; line-height:1.3;">
+                @if (!string.IsNullOrEmpty(addItemModalSku))
+                {
+                    <span style="font-family:monospace; color:#1d4ed8; margin-right:0.4rem;">@addItemModalSku</span>
+                }
+                @addItemModalNombre
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 0.7rem;">
+                <div>
+                    <label style="font-size:0.78rem; color:#374151; font-weight:600; display:block; margin-bottom:0.2rem;">Cantidad</label>
+                    <input type="number" min="1" step="1"
+                           id="add-item-cant"
+                           class="form-input"
+                           style="width:100%; padding:0.55rem 0.7rem; font-size:1.3rem; font-weight:700; text-align:center; border:2px solid #1d4ed8; border-radius:8px;"
+                           @bind="addItemModalCantidad" @bind:event="oninput" />
+                </div>
+
+                @if (addItemModalMode == "PRODUCTO" && addItemModalCategoria == "CAFE")
+                {
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.4rem;">
+                        <div>
+                            <label style="font-size:0.72rem; color:#6b7280; font-weight:600;">Formato</label>
+                            <select class="form-input" @bind="addItemModalFormato" style="font-size:0.85rem; padding:0.35rem 0.4rem; margin-top:0.15rem;">
+                                <option value="1KG">1 kg</option>
+                                <option value="500G">500 g</option>
+                                <option value="250G">250 g</option>
+                                <option value="MEDIO">Medio kg (doy-pack)</option>
+                                <option value="CUARTO">¼ kg (doy-pack)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:0.72rem; color:#6b7280; font-weight:600;">Molienda</label>
+                            <select class="form-input" @bind="addItemModalMolienda" style="font-size:0.85rem; padding:0.35rem 0.4rem; margin-top:0.15rem;">
+                                <option value="EN GRANOS">🌰 En granos</option>
+                                <option value="MOLIDO FILTRO">☕ Molido filtro</option>
+                                <option value="MOLIDO ESPRESSO">☕ Molido espresso</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:0.72rem; color:#6b7280; font-weight:600;">Envase</label>
+                            <select @bind="addItemModalEsEnvasePlateado" class="form-input" style="font-size:0.85rem; padding:0.35rem 0.4rem; margin-top:0.15rem;">
+                                <option value="false">⚫ Negro</option>
+                                <option value="true">⚪ Plateado</option>
+                            </select>
+                        </div>
+                    </div>
+                }
+
+                @if (addItemModalMode == "SERVICIO")
+                {
+                    <div>
+                        <label style="font-size:0.78rem; color:#374151; font-weight:600;">Precio U. (opcional, pisa el del catálogo)</label>
+                        <input type="number" step="0.01" min="0" class="form-input"
+                               style="width:100%; padding:0.4rem 0.6rem; font-size:1rem; margin-top:0.15rem;"
+                               placeholder="(usa precio del catálogo)"
+                               @bind="addItemModalPrecioOverride" />
+                    </div>
+                }
+            </div>
+
+            <div style="font-size:0.72rem; color:#6b7280; margin-top:0.7rem; text-align:center;">
+                <strong>Enter</strong> para agregar · <strong>Escape</strong> para cancelar
+            </div>
+
+            <div style="display:flex; gap:0.5rem; margin-top:1rem; justify-content:flex-end;">
+                <button class="btn btn-secondary" @onclick="CerrarAddItemModal">Cancelar</button>
+                <button class="btn btn-primary" style="background:#16a34a; border-color:#16a34a;" @onclick="ConfirmarAddItemModal">✓ Agregar</button>
+            </div>
+        </div>
+    </div>
+}
+
 @* 2026-06-29: Modal flotante de cantidad para productos del panel "Mas comprados".
    Click en card -> aparece este modal en el centro con la cantidad enfocada. Enter confirma. *@
 @if (topQtyProductoId.HasValue)
@@ -5932,8 +6014,8 @@
         // Producto normal o compuesto segun el indice resaltado
         if (productoHighlight < pmatches.Count)
         {
-            SelectProducto(pmatches[productoHighlight].Id);
-            await FocusFieldAsync("nv-formato");
+            // 2026-06-30: SelectProducto ahora abre modal — no necesitamos focus a nv-formato
+            await SelectProducto(pmatches[productoHighlight].Id);
         }
         else
         {
@@ -6105,12 +6187,77 @@
     }
 
     /// <summary>Selecciona un producto desde el dropdown filtrable.</summary>
-    private void SelectProducto(int id)
+    private async Task SelectProducto(int id)
     {
         addProductoId = id;
         productoSearch = "";
         productoSearchOpen = false;
         OnAddProductoChanged();
+        // 2026-06-30: abrir modal "Agregar item" con campos del producto.
+        var p = productos?.FirstOrDefault(x => x.Id == id);
+        if (p is null) return;
+        addItemModalMode = "PRODUCTO";
+        addItemModalNombre = p.Nombre;
+        addItemModalSku = p.Sku ?? "";
+        addItemModalCategoria = p.Categoria;
+        addItemModalCantidad = 1;
+        addItemModalFormato = p.Categoria == "CAFE" ? "1KG" : "UNIT";
+        addItemModalMolienda = DefaultMolienda(id) ?? "EN_GRANOS";
+        addItemModalEsEnvasePlateado = false;
+        StateHasChanged();
+        await Task.Delay(40);
+        try { await JS.InvokeVoidAsync("eval", "document.getElementById('add-item-cant')?.select()"); } catch { }
+    }
+
+    // 2026-06-30: Modal universal "Agregar item al carrito" — comparte UI con Top.
+    // Usado al seleccionar Producto, Combo o Servicio desde la pestaña correspondiente.
+    private string addItemModalMode = ""; // "", "PRODUCTO", "COMBO", "SERVICIO"
+    private string addItemModalNombre = "";
+    private string addItemModalSku = "";
+    private string addItemModalCategoria = "OTROS";
+    private int addItemModalCantidad = 1;
+    private string addItemModalFormato = "1KG";
+    private string addItemModalMolienda = "EN_GRANOS";
+    private bool addItemModalEsEnvasePlateado;
+    private decimal? addItemModalPrecioOverride;
+
+    private void CerrarAddItemModal()
+    {
+        addItemModalMode = "";
+    }
+
+    private async Task ConfirmarAddItemModal()
+    {
+        if (string.IsNullOrEmpty(addItemModalMode)) return;
+        if (addItemModalCantidad < 1) addItemModalCantidad = 1;
+
+        if (addItemModalMode == "PRODUCTO")
+        {
+            // Aplicar valores del modal al estado del form
+            addCantidad = addItemModalCantidad;
+            addFormato = addItemModalFormato;
+            addMolienda = addItemModalMolienda;
+            addEnvase = addItemModalEsEnvasePlateado ? "PLATEADO" : "NEGRO";
+            await AddItem();
+        }
+        else if (addItemModalMode == "COMBO")
+        {
+            addComboCantidad = addItemModalCantidad;
+            await AddCombo();
+        }
+        else if (addItemModalMode == "SERVICIO")
+        {
+            addServicioCantidad = addItemModalCantidad;
+            if (addItemModalPrecioOverride.HasValue) addServicioPrecio = addItemModalPrecioOverride.Value;
+            await AddItemServicio();
+        }
+        addItemModalMode = "";
+    }
+
+    private async Task OnKeyDownAddItemModal(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") { await ConfirmarAddItemModal(); }
+        else if (e.Key == "Escape") { CerrarAddItemModal(); }
     }
 
     /// <summary>Vuelve a "sin producto seleccionado" para elegir otro.</summary>
@@ -6205,11 +6352,20 @@
     }
 
     // ── Combo: seleccionar y expandir ──
-    private void SelectCombo(int id)
+    // 2026-06-30: al seleccionar combo, abrimos modal de cantidad (igual UX que Top).
+    private async Task SelectCombo(int id)
     {
         addComboId = id;
         comboSearch = "";
         comboSearchOpen = false;
+        var combo = combos?.FirstOrDefault(c => c.Id == id);
+        if (combo is null) return;
+        addItemModalMode = "COMBO";
+        addItemModalNombre = combo.Nombre;
+        addItemModalCantidad = 1;
+        StateHasChanged();
+        await Task.Delay(40);
+        try { await JS.InvokeVoidAsync("eval", "document.getElementById('add-item-cant')?.select()"); } catch { }
     }
 
     private void ClearCombo()
