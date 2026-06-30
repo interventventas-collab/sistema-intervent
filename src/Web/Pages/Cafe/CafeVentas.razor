@@ -1322,80 +1322,8 @@
                 {
                 <div style="flex: 1.25; min-width: 0; display: flex; flex-direction: column; gap: 0.7rem;">
 
-                    @* Entrega *@
-                    <div style="padding: 0.7rem 0.85rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; display: flex; flex-direction: column; gap: 0.55rem;">
-                        <strong style="font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;">🚚 Entrega</strong>
-
-                        <div>
-                            <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600; text-transform: uppercase;">Días de visita / reparto</label>
-                            <div style="display: flex; gap: 0.25rem; flex-wrap: wrap; margin-top: 0.3rem;">
-                                @foreach (var d in AllWeekDays)
-                                {
-                                    var onH = formWeekDays.Contains(d);
-                                    var bgH = onH ? "#dbeafe" : "white";
-                                    var fgH = onH ? "#1e3a8a" : "#374151";
-                                    var bdH = onH ? "#1e40af" : "#d1d5db";
-                                    <button type="button" @onclick="() => ToggleFormDay(d)"
-                                            style="padding: 0.3rem 0.5rem; border: 1px solid @bdH; background: @bgH; color: @fgH; border-radius: 5px; font-weight: 700; font-size: 0.72rem; cursor: pointer; min-width: 36px;">@(onH ? "✓" : "")@d</button>
-                                }
-                            </div>
-                        </div>
-
-                        <div style="display: flex; gap: 0.35rem; flex-wrap: wrap;">
-                            @{
-                                var radarBgH = formEnRadar ? "#1d4ed8" : "white";
-                                var radarFgH = formEnRadar ? "white" : "#374151";
-                                var retiraBgH = formRetira ? "#16a34a" : "white";
-                                var retiraFgH = formRetira ? "white" : "#374151";
-                                var trBgH = formPorTransporte ? "#ea580c" : "white";
-                                var trFgH = formPorTransporte ? "white" : "#374151";
-                            }
-                            <button type="button" @onclick="ToggleEnRadar" title="El cliente ve 'a coordinar'"
-                                    style="padding: 0.3rem 0.65rem; border: 1px solid #1e3a8a; background: @radarBgH; color: @radarFgH; border-radius: 5px; font-weight: 700; font-size: 0.72rem; cursor: pointer;">@(formEnRadar ? "✓ " : "")🛰 RADAR</button>
-                            <button type="button" @onclick="ToggleRetira" title="Retira en local"
-                                    style="padding: 0.3rem 0.65rem; border: 1px solid #15803d; background: @retiraBgH; color: @retiraFgH; border-radius: 5px; font-weight: 700; font-size: 0.72rem; cursor: pointer;">@(formRetira ? "✓ " : "")🚗 RETIRA</button>
-                            <button type="button" @onclick="ToggleTransporte" title="Por empresa de transporte"
-                                    style="padding: 0.3rem 0.65rem; border: 1px solid #c2410c; background: @trBgH; color: @trFgH; border-radius: 5px; font-weight: 700; font-size: 0.72rem; cursor: pointer;">@(formPorTransporte ? "✓ " : "")🚛 TRANSPORTE</button>
-                        </div>
-
-                        @if (formPorTransporte)
-                        {
-                            <div style="background:#fff7ed; border:1px solid #fdba74; border-radius:6px; padding:0.45rem; display: flex; gap: 0.35rem; flex-direction: column;">
-                                <input class="form-input" @bind="formTransporteEmpresa" placeholder="Empresa (Andreani, Cruz del Sur…)" style="font-size: 0.8rem; padding: 0.3rem 0.5rem;" />
-                                <input class="form-input" @bind="formTransporteDestino" placeholder="Destino (ciudad/sucursal)" style="font-size: 0.8rem; padding: 0.3rem 0.5rem;" />
-                            </div>
-                        }
-
-                        <div>
-                            <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600; text-transform: uppercase;">Asignar a repartidor</label>
-                            <select class="form-input" @bind="formEntregaPor" style="font-size: 0.85rem; padding: 0.3rem 0.5rem; margin-top: 0.25rem;">
-                                <option value="">— sin asignar —</option>
-                                @foreach (var nom in EntregaResponsables)
-                                {
-                                    <option value="@nom">@nom</option>
-                                }
-                                <option value="Logística tercerizada">📦 Logística tercerizada</option>
-                            </select>
-                        </div>
-
-                        @if (editingVentaId.HasValue && saldosPorVenta.TryGetValue(editingVentaId.Value, out var saldoEditH))
-                        {
-                            var totalEditH = ventas?.FirstOrDefault(v => v.Id == editingVentaId.Value)?.Total ?? 0m;
-                            var pagadoEditH = totalEditH - saldoEditH;
-                            <div style="padding: 0.5rem 0.65rem; border-radius:6px; background: @(saldoEditH <= 0.01m ? "#dcfce7" : pagadoEditH > 0.01m ? "#fef3c7" : "#fee2e2"); font-size: 0.82rem;">
-                                @if (saldoEditH <= 0.01m) { <strong style="color:#166534;">✅ PAGADA</strong> }
-                                else if (pagadoEditH > 0.01m) { <strong style="color:#92400e;">⚠ Pagó $@FormatMoney(pagadoEditH), debe $@FormatMoney(saldoEditH)</strong> }
-                                else { <strong style="color:#991b1b;">⏳ Sin cobranzas · saldo $@FormatMoney(saldoEditH)</strong> }
-                            </div>
-                        }
-                        else if (!editingVentaId.HasValue)
-                        {
-                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.85rem; padding: 0.4rem 0; border-top: 1px solid #e5e7eb; margin-top: 0.2rem;">
-                                <input type="checkbox" @bind="formIsPaid" />
-                                <strong>💰 Cobrar al guardar</strong>
-                            </label>
-                        }
-                    </div>
+                    @* 2026-06-30: ENTREGA se mudo al footer del modal (fila horizontal arriba de los
+                       chips de envio). Aca queda solo el Comentario para armado. *@
 
                     @* Comentario para armado *@
                     <div style="padding: 0.7rem 0.85rem; background: #fefce8; border: 2px dashed #facc15; border-radius: 10px;">
@@ -2225,8 +2153,90 @@
                 </div> @* fin panel sticky derecho *@
                 </div> @* fin wrapper flex split *@
 
-            @* 2026-06-30: footer con dos zonas — IZQUIERDA chips "Enviar al emitir" + auto-guardado.
+            @* 2026-06-30: footer con dos zonas — IZQUIERDA fila ENTREGA + chips "Enviar al emitir" + auto-guardado.
                DERECHA los botones de accion (Cancelar / Previsualizar / Emitir). *@
+
+            @* Fila ENTREGA — full width arriba del footer principal *@
+            @if (!modoVentaRapida)
+            {
+                <div style="padding: 0.55rem 0.85rem; background: #fefce8; border-top: 1px solid #fde047; border-bottom: 1px solid #fde047; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                    <span style="font-size: 0.7rem; color: #92400e; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; display: inline-flex; align-items: center; gap: 0.3rem;">🚚 Entrega</span>
+
+                    @* Dias de visita *@
+                    <div style="display: inline-flex; align-items: center; gap: 0.25rem; flex-wrap: wrap;">
+                        <span style="font-size: 0.68rem; color: #92400e; margin-right: 0.2rem;">Días:</span>
+                        @foreach (var d in AllWeekDays)
+                        {
+                            var onF = formWeekDays.Contains(d);
+                            var bgF = onF ? "#dbeafe" : "white";
+                            var fgF = onF ? "#1e3a8a" : "#374151";
+                            var bdF = onF ? "#1e40af" : "#d1d5db";
+                            <button type="button" @onclick="() => ToggleFormDay(d)"
+                                    style="padding: 0.25rem 0.45rem; border: 1px solid @bdF; background: @bgF; color: @fgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer; min-width: 34px;">@(onF ? "✓" : "")@d</button>
+                        }
+                    </div>
+
+                    @* Radar / Retira / Transporte *@
+                    @{
+                        var radarBgF = formEnRadar ? "#1d4ed8" : "white";
+                        var radarFgF = formEnRadar ? "white" : "#374151";
+                        var retiraBgF = formRetira ? "#16a34a" : "white";
+                        var retiraFgF = formRetira ? "white" : "#374151";
+                        var trBgF = formPorTransporte ? "#ea580c" : "white";
+                        var trFgF = formPorTransporte ? "white" : "#374151";
+                    }
+                    <div style="display: inline-flex; gap: 0.3rem; flex-wrap: wrap;">
+                        <button type="button" @onclick="ToggleEnRadar" title="El cliente ve 'a coordinar'"
+                                style="padding: 0.25rem 0.55rem; border: 1px solid #1e3a8a; background: @radarBgF; color: @radarFgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer;">@(formEnRadar ? "✓ " : "")🛰 RADAR</button>
+                        <button type="button" @onclick="ToggleRetira" title="Retira en local"
+                                style="padding: 0.25rem 0.55rem; border: 1px solid #15803d; background: @retiraBgF; color: @retiraFgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer;">@(formRetira ? "✓ " : "")🚗 RETIRA</button>
+                        <button type="button" @onclick="ToggleTransporte" title="Por empresa de transporte"
+                                style="padding: 0.25rem 0.55rem; border: 1px solid #c2410c; background: @trBgF; color: @trFgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer;">@(formPorTransporte ? "✓ " : "")🚛 TRANSPORTE</button>
+                    </div>
+
+                    @* Repartidor *@
+                    <div style="display: inline-flex; align-items: center; gap: 0.35rem;">
+                        <span style="font-size: 0.68rem; color: #92400e; white-space: nowrap;">Repartidor:</span>
+                        <select class="form-input" @bind="formEntregaPor" style="font-size: 0.78rem; padding: 0.25rem 0.45rem; min-width: 160px;">
+                            <option value="">— sin asignar —</option>
+                            @foreach (var nom in EntregaResponsables)
+                            {
+                                <option value="@nom">@nom</option>
+                            }
+                            <option value="Logística tercerizada">📦 Logística tercerizada</option>
+                        </select>
+                    </div>
+
+                    @* Cobrar al guardar (solo NUEVA) — o saldo summary (EDIT) *@
+                    @if (editingVentaId.HasValue && saldosPorVenta.TryGetValue(editingVentaId.Value, out var saldoEditH2))
+                    {
+                        var totalEditH2 = ventas?.FirstOrDefault(v => v.Id == editingVentaId.Value)?.Total ?? 0m;
+                        var pagadoEditH2 = totalEditH2 - saldoEditH2;
+                        <span style="font-size: 0.78rem; padding: 0.3rem 0.6rem; border-radius:6px; background: @(saldoEditH2 <= 0.01m ? "#dcfce7" : pagadoEditH2 > 0.01m ? "#fef3c7" : "#fee2e2");">
+                            @if (saldoEditH2 <= 0.01m) { <strong style="color:#166534;">✅ PAGADA</strong> }
+                            else if (pagadoEditH2 > 0.01m) { <strong style="color:#92400e;">⚠ Pagó $@FormatMoney(pagadoEditH2), debe $@FormatMoney(saldoEditH2)</strong> }
+                            else { <strong style="color:#991b1b;">⏳ Sin cobranzas · saldo $@FormatMoney(saldoEditH2)</strong> }
+                        </span>
+                    }
+                    else if (!editingVentaId.HasValue)
+                    {
+                        <label style="display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: #166534;">
+                            <input type="checkbox" @bind="formIsPaid" style="margin: 0;" />
+                            💰 Cobrar al guardar
+                        </label>
+                    }
+
+                    @* Inputs de transporte (cuando aplica) *@
+                    @if (formPorTransporte)
+                    {
+                        <div style="display: inline-flex; gap: 0.35rem; flex-basis: 100%;">
+                            <input class="form-input" @bind="formTransporteEmpresa" placeholder="Empresa (Andreani, Cruz del Sur…)" style="font-size: 0.78rem; padding: 0.3rem 0.5rem; flex: 1; max-width: 320px;" />
+                            <input class="form-input" @bind="formTransporteDestino" placeholder="Destino (ciudad/sucursal)" style="font-size: 0.78rem; padding: 0.3rem 0.5rem; flex: 1; max-width: 320px;" />
+                        </div>
+                    }
+                </div>
+            }
+
             <div class="modal-footer" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: center;">
 
                 @* IZQUIERDA: chips de envios + destinatarios (cuando aplican) + auto-guardado *@
