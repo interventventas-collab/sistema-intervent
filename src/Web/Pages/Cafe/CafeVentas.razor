@@ -2170,69 +2170,9 @@
                    En venta NUEVA muestra los 4 canales (Email / WhatsApp Web / WhatsApp Interno / Drive).
                    En EDIT solo muestra Drive (los otros canales no se re-envian al editar).
                    Los inputs de destinatario solo aparecen cuando el checkbox esta tildado, para ahorrar espacio. *@
-                @if (!editingVentaId.HasValue)
-                {
-                    <div style="padding: 0.55rem 0.7rem; background: #f9fafb; border: 1px solid #d1d5db; border-radius: 8px; flex: 0 0 auto; display:flex; flex-direction:column; gap:0.4rem;">
-                        <div style="display: flex; align-items: center; justify-content: space-between;">
-                            <strong style="font-size: 0.8rem; color: #374151;">📤 Enviar al emitir</strong>
-                            <button type="button"
-                                    style="font-size: 0.68rem; padding: 0.15rem 0.45rem; background:white; border:1px solid #9ca3af; border-radius:4px; cursor:pointer; color:#374151;"
-                                    @onclick="MarcarTodosEnvios">
-                                @(envioEmail && envioWhatsappWeb && envioWhatsappInterno ? "Desmarcar" : "Marcar todos")
-                            </button>
-                        </div>
-                        <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; cursor:pointer;">
-                            <input type="checkbox" @bind="envioEmail" />
-                            <span>📧 Por Mail</span>
-                        </label>
-                        @if (envioEmail)
-                        {
-                            <input type="email" class="form-input" placeholder="email@cliente.com"
-                                   style="font-size: 0.75rem; padding: 0.25rem 0.4rem; margin-left: 1.2rem;"
-                                   @bind="envioEmailTo" />
-                        }
-                        <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; cursor:pointer;">
-                            <input type="checkbox" @bind="envioWhatsappWeb" />
-                            <span>📱 WhatsApp Web</span>
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; cursor:pointer;">
-                            <input type="checkbox" @bind="envioWhatsappInterno" />
-                            <span>🚀 WhatsApp Interno</span>
-                        </label>
-                        @if (envioWhatsappWeb || envioWhatsappInterno)
-                        {
-                            <input type="tel" class="form-input" placeholder="11 1234 5678"
-                                   style="font-size: 0.75rem; padding: 0.25rem 0.4rem; margin-left: 1.2rem;"
-                                   @bind="envioWhatsappPhone" />
-                        }
-                        <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; cursor:pointer; padding-top:0.25rem; border-top:1px dashed #d1d5db;">
-                            <input type="checkbox" @bind="envioDrive" />
-                            <span>📁 <strong>IMPRIMIR PEDIDOS DE OSMAR</strong></span>
-                        </label>
-                        <div style="font-size: 0.66rem; color: #6b7280; margin-left: 1.2rem;">Sube el PDF a Drive y aparece en /cafe/preparacion.</div>
-                        @if (formClienteId == 0 && (envioEmail || envioWhatsappWeb || envioWhatsappInterno))
-                        {
-                            <div style="font-size: 0.68rem; color: #9a3412; background: #fef3c7; padding: 0.25rem 0.4rem; border-radius: 4px;">
-                                ⚠ Sin cliente — completá los destinatarios a mano.
-                            </div>
-                        }
-                    </div>
-                }
-                else
-                {
-                    @* EDIT: solo checkbox de Drive (re-subir PDF actualizado a IMPRIMIR PEDIDOS DE OSMAR). *@
-                    <div style="padding: 0.55rem 0.7rem; background: #f0f9ff; border: 1px solid #93c5fd; border-radius: 8px; flex: 0 0 auto;">
-                        <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; cursor:pointer;">
-                            <input type="checkbox" @bind="envioDriveEdit" />
-                            <span>📁 <strong>@(editingVentaTieneDrive ? "Re-subir a" : "Enviar a") IMPRIMIR PEDIDOS DE OSMAR</strong></span>
-                        </label>
-                        <div style="font-size: 0.66rem; color: #6b7280; margin-left: 1.2rem; margin-top: 0.2rem;">
-                            @(editingVentaTieneDrive
-                                ? "Sube el PDF actualizado y avisa con chip '⚠ PEDIDO MODIFICADO'."
-                                : "Sube el PDF a Drive y aparece en /cafe/preparacion.")
-                        </div>
-                    </div>
-                }
+                @* 2026-06-30: panel "Enviar al emitir" se mudo al footer del modal (chips compactos
+                   junto a Cancelar / Previsualizar / Emitir). Esto evita que el panel sticky se mueva
+                   cuando aparecen los Mas comprados. *@
 
                 @* ─── TOTALES ─── *@
                 @* 2026-06-17 v4: flex 0 0 auto → siempre visible al fondo del panel sticky, no entra al scroll de Más comprados. *@
@@ -2285,14 +2225,95 @@
                 </div> @* fin panel sticky derecho *@
                 </div> @* fin wrapper flex split *@
 
-            @* 2026-06-17 v5: footer con botones centrados horizontalmente — asi el panel sticky derecho
-               (Mas comprados) nunca puede taparlos por mas larga que sea la lista del cliente.
-               El chip Auto-guardado va a la izquierda como elemento absoluto para no romper el centrado. *@
-            <div class="modal-footer" style="position: relative; justify-content: center; gap: 0.5rem;">
-                @if (!editingVentaId.HasValue && lastBorradorSavedAt.HasValue)
-                {
-                    <span style="font-size:0.75rem; color:#16a34a; position: absolute; left: 1rem; top: 50%; transform: translateY(-50%);">💾 Auto-guardado · @LastSavedAgo()</span>
-                }
+            @* 2026-06-30: footer con dos zonas — IZQUIERDA chips "Enviar al emitir" + auto-guardado.
+               DERECHA los botones de accion (Cancelar / Previsualizar / Emitir). *@
+            <div class="modal-footer" style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: center;">
+
+                @* IZQUIERDA: chips de envios + destinatarios (cuando aplican) + auto-guardado *@
+                <div style="display: flex; flex-direction: column; gap: 0.4rem; flex: 1; min-width: 0;">
+                    @if (!editingVentaId.HasValue)
+                    {
+                        <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                            <span style="font-size: 0.68rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;">Enviar al emitir:</span>
+
+                            @{ var chipMail = envioEmail; }
+                            <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipMail ? "#f0fdf4" : "white"); border: 1px solid @(chipMail ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;">
+                                <input type="checkbox" @bind="envioEmail" style="margin: 0;" />
+                                <span>📧 Mail</span>
+                            </label>
+
+                            @{ var chipWaWeb = envioWhatsappWeb; }
+                            <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipWaWeb ? "#f0fdf4" : "white"); border: 1px solid @(chipWaWeb ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;">
+                                <input type="checkbox" @bind="envioWhatsappWeb" style="margin: 0;" />
+                                <span>📱 WA Web</span>
+                            </label>
+
+                            @{ var chipWaInt = envioWhatsappInterno; }
+                            <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipWaInt ? "#f0fdf4" : "white"); border: 1px solid @(chipWaInt ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;">
+                                <input type="checkbox" @bind="envioWhatsappInterno" style="margin: 0;" />
+                                <span>🚀 WA Interno</span>
+                            </label>
+
+                            @{ var chipDrive = envioDrive; }
+                            <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipDrive ? "#f0fdf4" : "white"); border: 1px solid @(chipDrive ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;"
+                                   title="Sube el PDF a Drive y aparece en /cafe/preparacion">
+                                <input type="checkbox" @bind="envioDrive" style="margin: 0;" />
+                                <span>📁 Imprimir pedidos</span>
+                            </label>
+
+                            <button type="button"
+                                    style="font-size: 0.68rem; padding: 0.25rem 0.5rem; background:white; border:1px solid #9ca3af; border-radius:4px; cursor:pointer; color:#374151;"
+                                    @onclick="MarcarTodosEnvios">
+                                @(envioEmail && envioWhatsappWeb && envioWhatsappInterno ? "Desmarcar" : "Marcar todos")
+                            </button>
+                        </div>
+
+                        @if (envioEmail || envioWhatsappWeb || envioWhatsappInterno)
+                        {
+                            <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                                @if (envioEmail)
+                                {
+                                    <input type="email" class="form-input" placeholder="📧 email@cliente.com"
+                                           style="font-size: 0.75rem; padding: 0.3rem 0.5rem; max-width: 240px;"
+                                           @bind="envioEmailTo" />
+                                }
+                                @if (envioWhatsappWeb || envioWhatsappInterno)
+                                {
+                                    <input type="tel" class="form-input" placeholder="📱 11 1234 5678"
+                                           style="font-size: 0.75rem; padding: 0.3rem 0.5rem; max-width: 180px;"
+                                           @bind="envioWhatsappPhone" />
+                                }
+                            </div>
+                        }
+                        @if (formClienteId == 0 && (envioEmail || envioWhatsappWeb || envioWhatsappInterno))
+                        {
+                            <div style="font-size: 0.68rem; color: #9a3412; background: #fef3c7; padding: 0.25rem 0.4rem; border-radius: 4px;">
+                                ⚠ Sin cliente — completá los destinatarios a mano.
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        @* EDIT: solo el chip Drive *@
+                        <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                            <span style="font-size: 0.68rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;">Al guardar:</span>
+                            @{ var chipDriveEdit = envioDriveEdit; }
+                            <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipDriveEdit ? "#f0fdf4" : "white"); border: 1px solid @(chipDriveEdit ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;"
+                                   title="@(editingVentaTieneDrive ? "Sube el PDF actualizado y avisa con chip ⚠ PEDIDO MODIFICADO." : "Sube el PDF a Drive y aparece en /cafe/preparacion.")">
+                                <input type="checkbox" @bind="envioDriveEdit" style="margin: 0;" />
+                                <span>📁 @(editingVentaTieneDrive ? "Re-subir a" : "Enviar a") Imprimir pedidos</span>
+                            </label>
+                        </div>
+                    }
+
+                    @if (!editingVentaId.HasValue && lastBorradorSavedAt.HasValue)
+                    {
+                        <span style="font-size:0.72rem; color:#16a34a;">💾 Auto-guardado · @LastSavedAgo()</span>
+                    }
+                </div>
+
+                @* DERECHA: botones de accion *@
+                <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
                 <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
                 <button class="btn btn-secondary" @onclick="PreviewPdf" disabled="@(saving || previewLoading || formItems.Count == 0 || cotizacion?.TodoOk != true)"
                         title="Ver cómo quedaría el PDF sin guardar la venta">
@@ -2318,6 +2339,7 @@
                             : (editingVentaId.HasValue ? "💾 Guardar cambios" : $"Emitir {EmitirLabelForTipo(formTipoComprobante)}"))
                     </button>
                 }
+                </div> @* fin DERECHA *@
             </div>
         </div>
     </div> @* fin modal-overlay *@
