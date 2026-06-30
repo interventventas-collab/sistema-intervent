@@ -1151,7 +1151,8 @@
                                 <div style="display: flex; gap: 0.3rem; align-items: stretch;">
                                     <div class="form-input" style="flex: 1; background: #ecfdf5; border-color: #10b981; display: flex; flex-direction: column; gap: 0.1rem; padding: 0.3rem 0.55rem; height: auto;">
                                         <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; line-height: 1.15;">
-                                            <span style="font-family: monospace; font-weight: 700; color: #1d4ed8; font-size: 0.82rem;">@(ciSel?.Codigo ?? "—")</span>
+                                            @* 2026-06-30: mostrar CodigoInterno (numero asignado por el usuario) en vez de Codigo (auto sistema) *@
+                                            <span style="font-family: monospace; font-weight: 700; color: #1d4ed8; font-size: 0.82rem;">#@(ciSel?.CodigoInterno?.ToString() ?? ciSel?.Codigo ?? "—")</span>
                                             <strong style="font-size: 0.88rem;">@(ciSel?.Nombre ?? "?")</strong>
                                             @if (ciSel is not null)
                                             {
@@ -1225,7 +1226,8 @@
                                                 <div class="cli-pick-row" @onclick="() => SelectCliente(ciId)"
                                                      style="@($"padding: 0.55rem 0.75rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; line-height: 1.25; background: {(isHl ? "#dbeafe" : "transparent")};")">
                                                     <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
-                                                        <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; font-size: 0.9rem;">@ci.Codigo</span>
+                                                        @* 2026-06-30: mostrar CodigoInterno (asignado por usuario) prioritario *@
+                                                        <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; font-size: 0.9rem;">#@(ci.CodigoInterno?.ToString() ?? ci.Codigo ?? "—")</span>
                                                         <strong style="font-size: 0.95rem;">@ci.Nombre</strong>
                                                         <span style="color: #6b7280; font-size: 0.75rem;">· @ci.Tipo</span>
                                                         @if (!string.IsNullOrEmpty(ci.Cuit))
@@ -5920,11 +5922,27 @@
         var t = q.Trim();
         if (string.IsNullOrEmpty(t)) return clientes;
         bool h(string? s) => s.MatchesSearch(t);
-        return clientes.Where(c => c.IsActive
+
+        // 2026-06-30: tambien buscar por CodigoInterno (el numero asignado por el usuario).
+        // Si el input es solo digitos, priorizar match EXACTO de CodigoInterno arriba.
+        bool isPureNumber = int.TryParse(t, out var numQuery);
+
+        var matches = clientes.Where(c => c.IsActive
             && (h(c.Codigo) || h(c.Nombre) || h(c.RazonSocial) || h(c.Cuit)
                 || h(c.Telefono) || h(c.Email)
                 || h(c.Direccion) || h(c.Localidad) || h(c.Ciudad) || h(c.Cp)
-                || h(c.DomicilioEntrega)));
+                || h(c.DomicilioEntrega)
+                || (c.CodigoInterno.HasValue && c.CodigoInterno.Value.ToString().Contains(t))));
+
+        if (isPureNumber)
+        {
+            // Orden: exacto CodigoInterno → empieza con → contiene → resto
+            return matches.OrderByDescending(c => c.CodigoInterno == numQuery ? 3
+                                                  : (c.CodigoInterno.HasValue && c.CodigoInterno.Value.ToString().StartsWith(t) ? 2
+                                                  : (c.CodigoInterno.HasValue && c.CodigoInterno.Value.ToString().Contains(t) ? 1 : 0)))
+                          .ThenBy(c => c.Nombre);
+        }
+        return matches;
     }
 
     private void OnAddProductoChanged()
