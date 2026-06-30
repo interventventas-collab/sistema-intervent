@@ -1554,20 +1554,23 @@
                                    pasa a la busqueda normal. *@
                                 @if (productoSearchOpen && string.IsNullOrWhiteSpace(productoSearch) && MostrarPanelTopProductos)
                                 {
+                                    var topList = topProductsForClient.Take(15).ToList();
                                     <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #f59e0b; border-radius: 6px; max-height: 320px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
                                         <div style="font-size: 0.66rem; color: #78350f; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.4rem 0.7rem; font-weight: 700; background: linear-gradient(180deg, #fef3c7 0%, #fde68a 100%); border-bottom: 1px solid #f59e0b;">
-                                            ⭐ Más comprados por este cliente (@topProductsForClient.Count) — tipeá para buscar otros
+                                            ⭐ Más comprados por este cliente (@topProductsForClient.Count) — ↓↑ para elegir · Enter para agregar · tipeá para buscar otros
                                         </div>
-                                        @foreach (var t in topProductsForClient.Take(15))
+                                        @for (int ti = 0; ti < topList.Count; ti++)
                                         {
+                                            var t = topList[ti];
                                             var prodIdTop = t.ProductoId;
                                             var fmtTop = t.Formato;
                                             var nombreTop = t.Nombre;
                                             var stockTxtTop = t.Categoria == "CAFE" ? FormatGramos(t.StockGramos) : $"{t.StockUnidades} u.";
                                             var stockColorTop = (t.Categoria == "CAFE" ? t.StockGramos : t.StockUnidades) <= 0 ? "#dc2626" : "#15803d";
                                             var enCarritoTop = ContarEnCarrito(prodIdTop, fmtTop);
+                                            var isHlTop = ti == productoHighlight;
                                             <div class="cli-pick-row" @onclick="() => AbrirCantidadTopProduct(prodIdTop, fmtTop, nombreTop)"
-                                                 style="padding: 0.5rem 0.7rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem;">
+                                                 style="@($"padding: 0.5rem 0.7rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; background: {(isHlTop ? "#fef3c7" : "transparent")};")">
                                                 <span style="background:#f59e0b; color:white; padding:0.1rem 0.4rem; border-radius:999px; font-size:0.7rem; font-weight:800; min-width:32px; text-align:center;">@t.TimesOrdered×</span>
                                                 <div style="flex:1; min-width:0;">
                                                     <strong style="color:#78350f;">@t.Nombre</strong>
@@ -5895,6 +5898,32 @@
         if (e.Key == "Enter" && e.CtrlKey)
         {
             await FocusFieldAsync("nv-notas");
+            return;
+        }
+
+        // 2026-06-30 v2: si el buscador esta vacio y hay top productos, navegar el Top con flechas + Enter.
+        var isEmpty = string.IsNullOrWhiteSpace(productoSearch);
+        if (isEmpty && MostrarPanelTopProductos)
+        {
+            var topList = topProductsForClient.Take(15).ToList();
+            if (topList.Count == 0) return;
+            if (e.Key == "ArrowDown")
+            {
+                productoHighlight = Math.Min(productoHighlight + 1, topList.Count - 1);
+                return;
+            }
+            if (e.Key == "ArrowUp")
+            {
+                productoHighlight = Math.Max(productoHighlight - 1, 0);
+                return;
+            }
+            if (e.Key == "Enter")
+            {
+                var idx = Math.Max(0, Math.Min(productoHighlight, topList.Count - 1));
+                var t = topList[idx];
+                await AbrirCantidadTopProduct(t.ProductoId, t.Formato, t.Nombre);
+                return;
+            }
             return;
         }
 
