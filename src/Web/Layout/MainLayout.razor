@@ -1504,8 +1504,12 @@
 
 <ToastContainer />
 
-@* Asistente flotante en todas las pantallas (sin permiso especial: cualquier usuario logueado lo ve). *@
-<AssistantWidget />
+@* 2026-06-30: Asistente flotante SOLO en el dashboard (antes aparecia en todas las pantallas
+   y tapaba el boton "Emitir cotizacion" del modal de Nueva Venta). *@
+@if (IsOnDashboard)
+{
+    <AssistantWidget />
+}
 
 @* 2026-05-28: modal para pedir clave del admin al activar modo edición del sidebar. *@
 @if (showMenuEditPasswordModal)
@@ -1854,6 +1858,16 @@
     private bool showVentasDropdown;
     private void ToggleVentasDropdown() { showVentasDropdown = !showVentasDropdown; }
     private void NavigateAndCloseVentas(string url) { showVentasDropdown = false; NavigateTo(url); }
+    // 2026-06-30: solo mostrar AssistantWidget en el dashboard (ruta "/")
+    private bool IsOnDashboard
+    {
+        get
+        {
+            var path = new Uri(Navigation.Uri).AbsolutePath.TrimEnd('/');
+            return string.IsNullOrEmpty(path) || path == "/";
+        }
+    }
+
     // 2026-06-29: dropdown Widgets (calculadora + post-its + zoom)
     private bool showWidgetsDropdown;
     private int zoomLevel = 100;
@@ -2061,6 +2075,8 @@
         // 2026-06-15: cada vez que navegas, refrescamos el timestamp de "última actividad"
         // para que la sesión no se bloquee mientras estás trabajando.
         _ = InvokeAsync(async () => await Operator.TouchAsync());
+        // 2026-06-30: re-render para que IsOnDashboard (que controla el AssistantWidget) se actualice
+        _ = InvokeAsync(StateHasChanged);
     }
 
     private void CheckRoutePermission()
