@@ -2398,17 +2398,27 @@
     }
 }
 
-@* ════════ Modal de confirmacion de emision (doble-check para FA/FB/FC) ════════ *@
+@* ════════ Modal de confirmacion de emision (resumen + doble-check) ════════
+   2026-06-30: ahora se muestra para TODOS los tipos cuando se emite con Ctrl+Enter
+   (antes solo para FA/FB/FC). Sirve de preview rapido para confirmar con Enter. *@
 @if (showConfirmEmision && cotizacion is not null)
 {
-    <div class="modal-overlay" style="z-index: 9100;" @onclick="@(() => showConfirmEmision = false)">
+    var esArca = formTipoComprobante is "FA" or "FB" or "FC";
+    <div class="modal-overlay" style="z-index: 9100;" @onclick="@(() => showConfirmEmision = false)" @onkeydown="OnKeyDownConfirmModal">
         <div id="confirm-emision-modal" class="modal-card" @onclick:stopPropagation="true" style="max-width: 480px;">
-            <div class="modal-header" style="background: #fef3c7;" title="Arrastrá para mover">
-                <h3 style="margin: 0; color: #92400e;">⚠ Confirmar emisión <span style="font-size:0.7rem; color:#92400e; opacity:0.6; font-weight:normal; margin-left:0.4rem;">(arrastrame)</span></h3>
+            <div class="modal-header" style="background: @(esArca ? "#fef3c7" : "#dcfce7");">
+                <h3 style="margin: 0; color: @(esArca ? "#92400e" : "#166534");">@(esArca ? "⚠ Confirmar emisión" : "✅ Confirmar emisión")</h3>
                 <button class="btn-close" @onclick="@(() => showConfirmEmision = false)">&times;</button>
             </div>
             <div class="modal-body" style="padding: 1.2rem;">
-                <p style="margin: 0 0 1rem; color: #4b5563;">Estás por <strong>emitir un comprobante con CAE</strong>. Una vez emitido <strong>no se puede deshacer</strong>: solo se puede revertir con Nota de Crédito.</p>
+                @if (esArca)
+                {
+                    <p style="margin: 0 0 1rem; color: #4b5563;">Estás por <strong>emitir un comprobante con CAE</strong>. Una vez emitido <strong>no se puede deshacer</strong>: solo se puede revertir con Nota de Crédito.</p>
+                }
+                else
+                {
+                    <p style="margin: 0 0 1rem; color: #4b5563;">Resumen de la venta. Revisalo y dale <strong>Enter</strong> para emitir.</p>
+                }
 
                 <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.8rem; margin-bottom: 1rem;">
                     <div style="display: flex; justify-content: space-between; padding: 0.2rem 0; font-size: 0.88rem;">
@@ -2465,9 +2475,9 @@
                 <p style="font-size: 0.78rem; color: #6b7280; margin: 0;">💡 Tip: si querés ver el PDF antes de confirmar, tocá <em>Cancelar</em> y después <em>Previsualizar PDF</em>.</p>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" @onclick="@(() => showConfirmEmision = false)" disabled="@saving">Cancelar</button>
-                <button class="btn btn-primary" style="background: #16a34a; border-color: #15803d;" @onclick="ConfirmarYEmitir" disabled="@saving">
-                    @(saving ? "Emitiendo..." : "✓ Sí, emitir")
+                <button class="btn btn-secondary" @onclick="@(() => showConfirmEmision = false)" disabled="@saving">Cancelar (Esc)</button>
+                <button id="confirm-emision-btn" class="btn btn-primary" style="background: #16a34a; border-color: #15803d;" @onclick="ConfirmarYEmitir" disabled="@saving">
+                    @(saving ? "Emitiendo..." : "✓ Emitir (Enter)")
                 </button>
             </div>
         </div>
@@ -5916,15 +5926,43 @@
         }
     }
 
-    // 2026-06-30: Ctrl+Enter en cualquier chip de Envios al emitir -> Emite la venta.
-    private void OnKeyDownEnvios(KeyboardEventArgs e)
+    // 2026-06-30: Enter en el modal de confirmacion = emitir. Escape = cancelar.
+    private async Task OnKeyDownConfirmModal(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !saving)
+        {
+            await ConfirmarYEmitir();
+        }
+        else if (e.Key == "Escape")
+        {
+            showConfirmEmision = false;
+        }
+    }
+
+    // 2026-06-30: Ctrl+Enter en cualquier chip de Envios al emitir -> abre el modal de resumen.
+    // SIEMPRE muestra el modal (incluso para X/PRO), no emite directo. Adentro del modal, Enter
+    // sobre el boton verde confirma y emite.
+    private async Task OnKeyDownEnvios(KeyboardEventArgs e)
     {
         if (e.Key == "Enter" && e.CtrlKey)
         {
             if (formItems.Count > 0 && cotizacion?.TodoOk == true && !saving)
             {
-                if (EditModoEmitirCae) IniciarEmisionCAEDesdeEdicion();
-                else ConfirmarEmision();
+                if (EditModoEmitirCae)
+                {
+                    IniciarEmisionCAEDesdeEdicion();
+                }
+                else
+                {
+                    // Siempre abre el modal de resumen (no llamamos a ConfirmarEmision que
+                    // tiene logica condicional segun tipo)
+                    if (formItems.Count == 0) { formError = "Agregá al menos un producto"; return; }
+                    if (cotizacion?.TodoOk != true) { formError = "Hay items con stock insuficiente o inválidos"; return; }
+                    showConfirmEmision = true;
+                    // Focus en el boton "Si, emitir" para que Enter confirme al toque
+                    await Task.Delay(60);
+                    try { await JS.InvokeVoidAsync("eval", "document.getElementById('confirm-emision-btn')?.focus()"); } catch { }
+                }
             }
         }
     }
