@@ -3481,25 +3481,30 @@
                             <label style="font-size:0.72rem; color:#6b7280; font-weight:600;">Formato</label>
                             <select class="form-input" @bind="addItemModalFormato" style="font-size:0.85rem; padding:0.35rem 0.4rem; margin-top:0.15rem;">
                                 <option value="1KG">1 kg</option>
-                                <option value="500G">500 g</option>
-                                <option value="250G">250 g</option>
-                                <option value="MEDIO">Medio kg (doy-pack)</option>
-                                <option value="CUARTO">¼ kg (doy-pack)</option>
+                                <option value="MEDIO">1/2 kg</option>
+                                <option value="CUARTO">1/4 kg</option>
                             </select>
                         </div>
                         <div>
                             <label style="font-size:0.72rem; color:#6b7280; font-weight:600;">Molienda</label>
                             <select class="form-input" @bind="addItemModalMolienda" style="font-size:0.85rem; padding:0.35rem 0.4rem; margin-top:0.15rem;">
-                                <option value="EN GRANOS">🌰 En granos</option>
-                                <option value="MOLIDO FILTRO">☕ Molido filtro</option>
-                                <option value="MOLIDO ESPRESSO">☕ Molido espresso</option>
+                                <option value="EN GRANOS">🫘 EN GRANOS</option>
+                                <option value="MOLIDO FILTRO">☕ MOLIDO FILTRO</option>
+                                <option value="MOLIDO EXPRESS">⚡ MOLIDO EXPRESS</option>
+                                <option value="MOLIDO MOKA">☕ MOLIDO MOKA</option>
+                                <option value="MOLIDO BODUM">☕ MOLIDO BODUM</option>
+                                <option value="MOLIDO PRENSA FRANCESA">☕ MOLIDO PRENSA FRANCESA</option>
+                                <option value="MOLIDO CAFETERA ITALIANA">☕ MOLIDO CAFETERA ITALIANA</option>
+                                <option value="MOLIDO A LA TURCA">☕ MOLIDO A LA TURCA</option>
+                                <option value="MINI EXPRESS">🔸 MINI EXPRESS</option>
                             </select>
                         </div>
                         <div>
                             <label style="font-size:0.72rem; color:#6b7280; font-weight:600;">Envase</label>
-                            <select @bind="addItemModalEsEnvasePlateado" class="form-input" style="font-size:0.85rem; padding:0.35rem 0.4rem; margin-top:0.15rem;">
-                                <option value="false">⚫ Negro</option>
-                                <option value="true">⚪ Plateado</option>
+                            <select class="form-input" @bind="addItemModalEnvase" style="font-size:0.85rem; padding:0.35rem 0.4rem; margin-top:0.15rem;">
+                                <option value="NEGRO">⚫ Envase negro</option>
+                                <option value="PLATEADO">⚪ Envase plateado</option>
+                                <option value="DOY_PACK">📦 Doy pack</option>
                             </select>
                         </div>
                     </div>
@@ -6202,8 +6207,8 @@
         addItemModalCategoria = p.Categoria;
         addItemModalCantidad = 1;
         addItemModalFormato = p.Categoria == "CAFE" ? "1KG" : "UNIT";
-        addItemModalMolienda = DefaultMolienda(id) ?? "EN_GRANOS";
-        addItemModalEsEnvasePlateado = false;
+        addItemModalMolienda = DefaultMolienda(id) ?? "EN GRANOS";
+        addItemModalEnvase = "NEGRO";
         StateHasChanged();
         await Task.Delay(40);
         try { await JS.InvokeVoidAsync("eval", "document.getElementById('add-item-cant')?.select()"); } catch { }
@@ -6217,8 +6222,8 @@
     private string addItemModalCategoria = "OTROS";
     private int addItemModalCantidad = 1;
     private string addItemModalFormato = "1KG";
-    private string addItemModalMolienda = "EN_GRANOS";
-    private bool addItemModalEsEnvasePlateado;
+    private string addItemModalMolienda = "EN GRANOS";
+    private string addItemModalEnvase = "NEGRO";
     private decimal? addItemModalPrecioOverride;
 
     private void CerrarAddItemModal()
@@ -6237,7 +6242,7 @@
             addCantidad = addItemModalCantidad;
             addFormato = addItemModalFormato;
             addMolienda = addItemModalMolienda;
-            addEnvase = addItemModalEsEnvasePlateado ? "PLATEADO" : "NEGRO";
+            addEnvase = addItemModalEnvase;
             await AddItem();
         }
         else if (addItemModalMode == "COMBO")
