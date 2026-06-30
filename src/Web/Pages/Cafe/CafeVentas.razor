@@ -5910,15 +5910,24 @@
 
     private async Task AbrirCantidadTopProduct(int prodId, string fmt, string nombre)
     {
-        topQtyProductoId = prodId;
-        topQtyFormato = fmt;
-        topQtyNombre = nombre;
-        topQtyValue = 1;
+        // 2026-06-30: ahora unifica con el modal grande "Agregar item" (mismo que para Producto del buscador).
+        // Asi el usuario puede ajustar Formato/Molienda/Envase del producto del Top tambien.
+        var p = productos?.FirstOrDefault(x => x.Id == prodId);
+        if (p is null) return;
+        addProductoId = prodId;
+        OnAddProductoChanged();
+
+        addItemModalMode = "PRODUCTO";
+        addItemModalNombre = nombre;
+        addItemModalSku = p.Sku ?? "";
+        addItemModalCategoria = p.Categoria;
+        addItemModalCantidad = 1;
+        addItemModalFormato = !string.IsNullOrEmpty(fmt) ? fmt : (p.Categoria == "CAFE" ? "1KG" : "UNIT");
+        addItemModalMolienda = DefaultMolienda(prodId) ?? "EN GRANOS";
+        addItemModalEnvase = "NEGRO";
         StateHasChanged();
-        // dar tiempo a que se renderee el input antes de focusearlo y seleccionar el "1"
         await Task.Delay(40);
-        try { await topQtyInputRef.FocusAsync(); } catch { }
-        try { await JS.InvokeVoidAsync("eval", "document.getElementById('top-qty-input')?.select()"); } catch { }
+        try { await JS.InvokeVoidAsync("eval", "document.getElementById('add-item-cant')?.select()"); } catch { }
     }
 
     private async Task ConfirmarCantidadTopProduct()
