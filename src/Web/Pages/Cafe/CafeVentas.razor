@@ -2104,53 +2104,9 @@
                    junto a Cancelar / Previsualizar / Emitir). Esto evita que el panel sticky se mueva
                    cuando aparecen los Mas comprados. *@
 
-                @* ─── TOTALES ─── *@
-                @* 2026-06-17 v4: flex 0 0 auto → siempre visible al fondo del panel sticky, no entra al scroll de Más comprados. *@
-                @if (cotizacion is not null)
-                {
-                    <div style="padding: 0.6rem 0.8rem; background: white; border: 1px solid #d1d5db; border-radius: 10px; flex: 0 0 auto; box-shadow: 0 -2px 8px rgba(0,0,0,0.04);">
-                        <div class="venta-totals-row" style="font-size: 0.85rem;">
-                            <span>Subtotal:</span>
-                            <strong>$@FormatMoney(cotizacion.Subtotal)</strong>
-                        </div>
-                        <div class="venta-totals-row" style="font-size: 0.85rem;">
-                            <span>Descuento:</span>
-                            <input class="form-input" type="number" step="0.01" @bind="formDescuento" @bind:after="Cotizar"
-                                   style="text-align: right; max-width: 100px; font-weight: 700; padding: 0.15rem 0.3rem; font-size: 0.8rem;" />
-                        </div>
-                        @{
-                            bool formMostrarIva2 = formTipoComprobante is "FA" or "FB" or "PRO";
-                            decimal formIva2 = formMostrarIva2 ? Math.Round(cotizacion.Total * 0.21m, 2, MidpointRounding.AwayFromZero) : 0m;
-                            decimal formTotalConIva2 = cotizacion.Total + formIva2;
-                        }
-                        @if (formMostrarIva2)
-                        {
-                            <hr style="margin: 0.35rem 0; border: none; border-top: 1px dashed #d1d5db;" />
-                            <div class="venta-totals-row" style="font-size: 0.78rem;"><span>Neto:</span><strong>$@FormatMoney(cotizacion.Total)</strong></div>
-                            <div class="venta-totals-row" style="font-size: 0.78rem; color: #1d4ed8;"><span>IVA 21%:</span><strong>$@FormatMoney(formIva2)</strong></div>
-                            <hr style="margin: 0.35rem 0; border: none; border-top: 2px solid #1f2937;" />
-                            <div class="venta-totals-row" style="font-size: 1.05rem; font-weight: 800; color: #059669;"><span>TOTAL c/IVA:</span><strong>$@FormatMoney(formTotalConIva2)</strong></div>
-                        }
-                        else
-                        {
-                            <hr style="margin: 0.35rem 0; border: none; border-top: 2px solid #1f2937;" />
-                            <div class="venta-totals-row" style="font-size: 1.05rem; font-weight: 800; color: #059669;"><span>TOTAL:</span><strong>$@FormatMoney(cotizacion.Total)</strong></div>
-                        }
-                        <hr style="margin: 0.35rem 0; border: none; border-top: 1px dashed #d1d5db;" />
-                        <div class="venta-totals-row" style="font-size: 0.72rem; color: #6b7280;"><span>Costo:</span><span>$@FormatMoney(cotizacion.CostoTotal)</span></div>
-                        <div class="venta-totals-row" style="font-size: 0.85rem; font-weight: 700; color: @(cotizacion.Margen >= 0 ? "#15803d" : "#b91c1c");">
-                            <span>Margen:</span>
-                            <span>
-                                $@FormatMoney(cotizacion.Margen)
-                                @if (cotizacion.CostoTotal > 0)
-                                {
-                                    var margenPctGlobal2 = Math.Round((cotizacion.Total / cotizacion.CostoTotal - 1m) * 100m, 1, MidpointRounding.AwayFromZero);
-                                    <span style="font-size: 0.72rem; font-weight: 500; opacity: 0.85;">(@margenPctGlobal2%)</span>
-                                }
-                            </span>
-                        </div>
-                    </div>
-                }
+                @* 2026-06-30: bloque TOTALES se mudo al footer (fila verde con totales a la
+                   izquierda y botones Cancelar/Previsualizar/Emitir a la derecha). El panel
+                   sticky derecho ahora solo tiene Mas comprados. *@
 
                 </div> @* fin panel sticky derecho *@
                 </div> @* fin wrapper flex split *@
@@ -2324,35 +2280,105 @@
                     }
                 </div>
 
-                @* DERECHA: botones de accion *@
-                <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-                <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
-                <button class="btn btn-secondary" @onclick="PreviewPdf" disabled="@(saving || previewLoading || formItems.Count == 0 || cotizacion?.TodoOk != true)"
-                        title="Ver cómo quedaría el PDF sin guardar la venta">
-                    @(previewLoading ? "⏳ Generando..." : "👁 Previsualizar PDF")
-                </button>
-                @* 2026-06-18: si estamos editando y el tipo es FA/FB/FC sin CAE, el boton se transforma a violeta
-                   "Emitir Factura X con CAE" y dispara el flujo de conversion ARCA. Sino sigue el comportamiento normal. *@
-                @if (EditModoEmitirCae)
-                {
-                    <button class="btn" style="background: #7c3aed; color: white; border-color: #7c3aed;"
-                            @onclick="IniciarEmisionCAEDesdeEdicion"
-                            disabled="@(saving || convirtiendoLoading || formItems.Count == 0 || cotizacion?.TodoOk != true)">
-                        @(saving || convirtiendoLoading
-                            ? "Emitiendo..."
-                            : $"📈 Emitir Factura {(formTipoComprobante.Length >= 2 ? formTipoComprobante.Substring(1) : "")} con CAE")
-                    </button>
-                }
-                else
-                {
-                    <button class="btn btn-primary" @onclick="ConfirmarEmision" disabled="@(saving || formItems.Count == 0 || cotizacion?.TodoOk != true)">
-                        @(saving
-                            ? (editingVentaId.HasValue ? "Guardando..." : "Emitiendo...")
-                            : (editingVentaId.HasValue ? "💾 Guardar cambios" : $"Emitir {EmitirLabelForTipo(formTipoComprobante)}"))
-                    </button>
-                }
-                </div> @* fin DERECHA *@
+                @* 2026-06-30: botones se mudaron a la fila VERDE de Totales (abajo del todo) *@
             </div>
+
+            @* Fila TOTALES + BOTONES — verde, abajo del todo. Totales a la izquierda, botones a la derecha. *@
+            @if (cotizacion is not null)
+            {
+                @{
+                    bool mostrarIvaT = formTipoComprobante is "FA" or "FB" or "PRO";
+                    decimal ivaT = mostrarIvaT ? Math.Round(cotizacion.Total * 0.21m, 2, MidpointRounding.AwayFromZero) : 0m;
+                    decimal totalConIvaT = cotizacion.Total + ivaT;
+                    decimal margenPctT = cotizacion.CostoTotal > 0
+                        ? Math.Round((cotizacion.Total / cotizacion.CostoTotal - 1m) * 100m, 1, MidpointRounding.AwayFromZero)
+                        : 0m;
+                }
+                <div style="padding: 0.7rem 1rem; background: #ecfdf5; border-top: 2px solid #10b981; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+
+                    @* IZQUIERDA — desglose *@
+                    <div style="display: flex; align-items: center; gap: 0.9rem; flex: 1; min-width: 0; flex-wrap: wrap;">
+                        <div style="display: inline-flex; align-items: center; gap: 0.35rem;">
+                            <span style="font-size: 0.68rem; color: #047857; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700;">Subtotal:</span>
+                            <strong style="font-size: 0.88rem; color: #1f2937;">$@FormatMoney(cotizacion.Subtotal)</strong>
+                        </div>
+                        <div style="display: inline-flex; align-items: center; gap: 0.35rem;">
+                            <span style="font-size: 0.68rem; color: #047857; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700;">Descuento:</span>
+                            <input class="form-input" type="number" step="0.01" @bind="formDescuento" @bind:after="Cotizar"
+                                   style="text-align: right; width: 70px; font-weight: 700; padding: 0.2rem 0.4rem; font-size: 0.82rem;" />
+                        </div>
+                        <div style="display: inline-flex; align-items: center; gap: 0.35rem;">
+                            <span style="font-size: 0.68rem; color: #b91c1c; font-weight: 700;">Costo:</span>
+                            <strong style="font-size: 0.82rem; color: #b91c1c;">$@FormatMoney(cotizacion.CostoTotal)</strong>
+                        </div>
+                        <div style="display: inline-flex; align-items: center; gap: 0.35rem;">
+                            <span style="font-size: 0.68rem; color: #1d4ed8; font-weight: 700;">Margen:</span>
+                            <strong style="font-size: 0.82rem; color: #1d4ed8;">
+                                $@FormatMoney(cotizacion.Margen)
+                                @if (cotizacion.CostoTotal > 0)
+                                {
+                                    <span style="font-size: 0.72rem; font-weight: 500; opacity: 0.85;">(@margenPctT%)</span>
+                                }
+                            </strong>
+                        </div>
+                        @if (mostrarIvaT)
+                        {
+                            <div style="height: 22px; width: 1px; background: #a7f3d0;"></div>
+                            <div style="display: inline-flex; align-items: center; gap: 0.35rem;">
+                                <span style="font-size: 0.68rem; color: #6b7280; font-weight: 600;">Neto:</span>
+                                <strong style="font-size: 0.82rem; color: #1f2937;">$@FormatMoney(cotizacion.Total)</strong>
+                            </div>
+                            <div style="display: inline-flex; align-items: center; gap: 0.35rem;">
+                                <span style="font-size: 0.68rem; color: #6b7280; font-weight: 600;">IVA 21%:</span>
+                                <strong style="font-size: 0.82rem; color: #1f2937;">$@FormatMoney(ivaT)</strong>
+                            </div>
+                        }
+                    </div>
+
+                    @* DERECHA — Total + botones apilados *@
+                    <div style="display: flex; flex-direction: column; gap: 0.4rem; align-items: stretch; min-width: 260px;">
+                        <div style="display: flex; align-items: baseline; justify-content: space-between; padding: 0.35rem 0.85rem; background: white; border-radius: 8px; border: 1px solid #10b981;">
+                            <span style="font-size: 0.82rem; color: #047857; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700;">@(mostrarIvaT ? "Total c/IVA" : "Total"):</span>
+                            <strong style="font-size: 1.4rem; color: #047857; line-height: 1.05;">$@FormatMoney(mostrarIvaT ? totalConIvaT : cotizacion.Total)</strong>
+                        </div>
+                        <div style="display: flex; gap: 0.4rem; align-items: center; justify-content: flex-end;">
+                            <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
+                            <button class="btn btn-secondary" @onclick="PreviewPdf" disabled="@(saving || previewLoading || formItems.Count == 0 || cotizacion?.TodoOk != true)"
+                                    title="Ver cómo quedaría el PDF sin guardar la venta">
+                                @(previewLoading ? "⏳..." : "👁 PDF")
+                            </button>
+                            @if (EditModoEmitirCae)
+                            {
+                                <button class="btn" style="background: #7c3aed; color: white; border-color: #7c3aed;"
+                                        @onclick="IniciarEmisionCAEDesdeEdicion"
+                                        disabled="@(saving || convirtiendoLoading || formItems.Count == 0 || cotizacion?.TodoOk != true)">
+                                    @(saving || convirtiendoLoading
+                                        ? "Emitiendo..."
+                                        : $"📈 Emitir Factura {(formTipoComprobante.Length >= 2 ? formTipoComprobante.Substring(1) : "")} con CAE")
+                                </button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-primary" @onclick="ConfirmarEmision" disabled="@(saving || formItems.Count == 0 || cotizacion?.TodoOk != true)">
+                                    @(saving
+                                        ? (editingVentaId.HasValue ? "Guardando..." : "Emitiendo...")
+                                        : (editingVentaId.HasValue ? "💾 Guardar cambios" : $"Emitir {EmitirLabelForTipo(formTipoComprobante)}"))
+                                </button>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                @* Si todavia no hay cotizacion, mostramos botones simples sin totales *@
+                <div style="padding: 0.7rem 1rem; background: #f9fafb; border-top: 1px solid #e5e7eb; display: flex; gap: 0.4rem; justify-content: flex-end;">
+                    <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
+                    <button class="btn btn-primary" disabled="true" title="Agregá productos para emitir">
+                        @(editingVentaId.HasValue ? "💾 Guardar cambios" : $"Emitir {EmitirLabelForTipo(formTipoComprobante)}")
+                    </button>
+                </div>
+            }
         </div>
     </div> @* fin modal-overlay *@
     }
