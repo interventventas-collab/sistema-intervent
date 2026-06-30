@@ -2190,19 +2190,22 @@
                         var trBgF = formPorTransporte ? "#ea580c" : "white";
                         var trFgF = formPorTransporte ? "white" : "#374151";
                     }
+                    @* 2026-06-30: tabindex=-1 en estos botones para que Tab desde cualquier dia
+                       salte directo a Envios (skip de Radar/Retira/Transporte/Repartidor/Cobrar).
+                       Siguen siendo clickeables con mouse normalmente. *@
                     <div style="display: inline-flex; gap: 0.3rem; flex-wrap: wrap;">
-                        <button type="button" @onclick="ToggleEnRadar" @onkeydown="OnKeyDownEntrega" title="El cliente ve 'a coordinar'"
+                        <button type="button" tabindex="-1" @onclick="ToggleEnRadar" title="El cliente ve 'a coordinar'"
                                 style="padding: 0.25rem 0.55rem; border: 1px solid #1e3a8a; background: @radarBgF; color: @radarFgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer;">@(formEnRadar ? "✓ " : "")🛰 RADAR</button>
-                        <button type="button" @onclick="ToggleRetira" @onkeydown="OnKeyDownEntrega" title="Retira en local"
+                        <button type="button" tabindex="-1" @onclick="ToggleRetira" title="Retira en local"
                                 style="padding: 0.25rem 0.55rem; border: 1px solid #15803d; background: @retiraBgF; color: @retiraFgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer;">@(formRetira ? "✓ " : "")🚗 RETIRA</button>
-                        <button type="button" @onclick="ToggleTransporte" @onkeydown="OnKeyDownEntrega" title="Por empresa de transporte"
+                        <button type="button" tabindex="-1" @onclick="ToggleTransporte" title="Por empresa de transporte"
                                 style="padding: 0.25rem 0.55rem; border: 1px solid #c2410c; background: @trBgF; color: @trFgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer;">@(formPorTransporte ? "✓ " : "")🚛 TRANSPORTE</button>
                     </div>
 
                     @* Repartidor *@
                     <div style="display: inline-flex; align-items: center; gap: 0.35rem;">
                         <span style="font-size: 0.68rem; color: #92400e; white-space: nowrap;">Repartidor:</span>
-                        <select class="form-input" @bind="formEntregaPor" @onkeydown="OnKeyDownEntrega" style="font-size: 0.78rem; padding: 0.25rem 0.45rem; min-width: 160px;">
+                        <select class="form-input" @bind="formEntregaPor" tabindex="-1" style="font-size: 0.78rem; padding: 0.25rem 0.45rem; min-width: 160px;">
                             <option value="">— sin asignar —</option>
                             @foreach (var nom in EntregaResponsables)
                             {
@@ -2226,7 +2229,7 @@
                     else if (!editingVentaId.HasValue)
                     {
                         <label style="display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: #166534;">
-                            <input type="checkbox" @bind="formIsPaid" style="margin: 0;" />
+                            <input type="checkbox" @bind="formIsPaid" tabindex="-1" style="margin: 0;" />
                             💰 Cobrar al guardar
                         </label>
                     }
