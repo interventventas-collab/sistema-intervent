@@ -6257,6 +6257,9 @@
             await AddItemServicio();
         }
         addItemModalMode = "";
+        // 2026-06-30: volver el foco al buscador para seguir cargando productos sin mouse
+        await Task.Delay(60);
+        try { await FocusFieldAsync("nv-producto"); } catch { }
     }
 
     private async Task OnKeyDownAddItemModal(KeyboardEventArgs e)
