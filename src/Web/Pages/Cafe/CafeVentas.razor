@@ -1317,30 +1317,11 @@
                         </div>
                     }
                 </div>
-                @* ── ③ ENTREGA + COMENTARIO ARMADO ── *@
-                @* 2026-06-17 v2: 3a columna del header. Antes vivían en el panel sticky derecho.
-                   No se muestra en modo Venta Rápida (en ese flujo el wrapper es column). *@
-                @if (!modoVentaRapida)
-                {
-                <div style="flex: 1.25; min-width: 0; display: flex; flex-direction: column; gap: 0.7rem;">
-
-                    @* 2026-06-30: ENTREGA se mudo al footer del modal (fila horizontal arriba de los
-                       chips de envio). Aca queda solo el Comentario para armado. *@
-
-                    @* Comentario para armado *@
-                    <div style="padding: 0.7rem 0.85rem; background: #fefce8; border: 2px dashed #facc15; border-radius: 10px;">
-                        <div style="display: flex; align-items: center; gap: 0.35rem; margin-bottom: 0.4rem;">
-                            <span style="font-size: 1rem;">📌</span>
-                            <strong style="font-size: 0.78rem; color: #92400e; text-transform: uppercase; letter-spacing: 0.04em;">Comentario para armado</strong>
-                        </div>
-                        <textarea class="form-input" rows="2" @bind="formComentarioArmado"
-                                  placeholder="Ej: SOBRES CORTESIA"
-                                  style="background: white; font-size: 0.85rem; resize: vertical; width: 100%; padding: 0.4rem 0.55rem; border-radius: 6px;"></textarea>
-                        <div style="font-size: 0.66rem; color: #78716c; margin-top: 0.3rem; font-style: italic;">Solo lo ve quien arma el pedido. No sale al cliente.</div>
-                    </div>
-                </div>
-                }
-                </div> @* fin wrapper flex ① + ② + ③ *@
+                @* 2026-06-30: La 3ra columna del header desaparecio.
+                   - ENTREGA bajo al footer (fila amarilla)
+                   - COMENTARIO ARMADO bajo a la fila de "Notas internas" (a la derecha)
+                   Solo quedan ① Datos Generales + ② Cliente arriba. *@
+                </div> @* fin wrapper flex ① + ② *@
 
                 @* ── Items ── *@
                 @* 2026-06-17: bloque compactado — sin caja, header chico. *@
@@ -1994,14 +1975,29 @@
                     }
                 </div>
 
-                @* 2026-06-17: solo queda Notas internas en la izq — el resto (Dias, Entrega, Comentario armado, Totales, Cobrar al guardar)
-                   se movio al panel sticky derecho. *@
-                <div style="padding: 0.3rem 0; margin-bottom: 0.4rem;">
-                    <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
-                        <strong style="font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;">Notas internas de la venta</strong>
-                        <span style="font-size: 0.7rem; color: #c2410c; font-weight: 600;">⚠ esto se visualizará en el comprobante que recibirá el cliente</span>
+                @* 2026-06-30: 2 columnas — Notas internas (que SI salen al comprobante) +
+                   Comentario para armado (solo para quien arma el pedido). El Comentario armado
+                   estaba antes en la 3ra columna del header. *@
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; padding: 0.3rem 0; margin-bottom: 0.4rem;">
+
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem; flex-wrap: wrap;">
+                            <strong style="font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;">📄 Notas internas de la venta</strong>
+                            <span style="font-size: 0.7rem; color: #c2410c; font-weight: 600;">⚠ se ven en el comprobante</span>
+                        </div>
+                        <textarea class="form-input" rows="3" @bind="formObservaciones" placeholder="Esto se visualizará en el comprobante que recibirá el cliente"
+                                  style="resize: vertical; min-height: 80px;"></textarea>
                     </div>
-                    <textarea class="form-input" rows="2" @bind="formObservaciones" placeholder="Esto se visualizará en el comprobante que recibirá el cliente"></textarea>
+
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem; flex-wrap: wrap;">
+                            <strong style="font-size: 0.78rem; color: #92400e; text-transform: uppercase; letter-spacing: 0.04em;">📌 Comentario para armado</strong>
+                            <span style="font-size: 0.7rem; color: #78350f; font-style: italic;">solo lo ve quien arma</span>
+                        </div>
+                        <textarea class="form-input" rows="3" @bind="formComentarioArmado"
+                                  placeholder="Ej: SOBRES CORTESIA"
+                                  style="background: #fefce8; border: 2px dashed #facc15; resize: vertical; min-height: 80px;"></textarea>
+                    </div>
                 </div>
             </div>
             @* 2026-06-17: el bloque "Enviar al cliente al emitir" se movio al panel sticky derecho. *@
