@@ -1549,6 +1549,40 @@
                                        @onkeydown="OnKeyDownProducto"
                                        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
                                        placeholder="🔍 SKU, código de barras, nombre, marca... (Enter para seguir)" />
+                                @* 2026-06-30: cuando el buscador esta vacio y enfocado, mostramos el TOP del cliente
+                                   como dropdown (igual que en el panel derecho). Apenas se tipea una letra,
+                                   pasa a la busqueda normal. *@
+                                @if (productoSearchOpen && string.IsNullOrWhiteSpace(productoSearch) && MostrarPanelTopProductos)
+                                {
+                                    <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #f59e0b; border-radius: 6px; max-height: 320px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
+                                        <div style="font-size: 0.66rem; color: #78350f; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.4rem 0.7rem; font-weight: 700; background: linear-gradient(180deg, #fef3c7 0%, #fde68a 100%); border-bottom: 1px solid #f59e0b;">
+                                            ⭐ Más comprados por este cliente (@topProductsForClient.Count) — tipeá para buscar otros
+                                        </div>
+                                        @foreach (var t in topProductsForClient.Take(15))
+                                        {
+                                            var prodIdTop = t.ProductoId;
+                                            var fmtTop = t.Formato;
+                                            var nombreTop = t.Nombre;
+                                            var stockTxtTop = t.Categoria == "CAFE" ? FormatGramos(t.StockGramos) : $"{t.StockUnidades} u.";
+                                            var stockColorTop = (t.Categoria == "CAFE" ? t.StockGramos : t.StockUnidades) <= 0 ? "#dc2626" : "#15803d";
+                                            var enCarritoTop = ContarEnCarrito(prodIdTop, fmtTop);
+                                            <div class="cli-pick-row" @onclick="() => AbrirCantidadTopProduct(prodIdTop, fmtTop, nombreTop)"
+                                                 style="padding: 0.5rem 0.7rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem;">
+                                                <span style="background:#f59e0b; color:white; padding:0.1rem 0.4rem; border-radius:999px; font-size:0.7rem; font-weight:800; min-width:32px; text-align:center;">@t.TimesOrdered×</span>
+                                                <div style="flex:1; min-width:0;">
+                                                    <strong style="color:#78350f;">@t.Nombre</strong>
+                                                    <span style="color:#92400e; font-size:0.72rem; margin-left:0.3rem;">@(string.IsNullOrEmpty(t.Sku) ? "" : t.Sku) · @FormatoLabel(t.Formato)</span>
+                                                </div>
+                                                @if (enCarritoTop > 0)
+                                                {
+                                                    <span style="background:#16a34a; color:white; padding:0.1rem 0.4rem; border-radius:999px; font-size:0.7rem; font-weight:700;">✓ @enCarritoTop</span>
+                                                }
+                                                <span style="color:@stockColorTop; font-size:0.72rem;">@stockTxtTop</span>
+                                                <strong style="color:#78350f;">$@FormatMoney(t.PrecioReferencia)</strong>
+                                            </div>
+                                        }
+                                    </div>
+                                }
                                 @if (productoSearchOpen && !string.IsNullOrWhiteSpace(productoSearch))
                                 {
                                     var pmatches = ProductosMatching(productoSearch).Take(20).ToList();
