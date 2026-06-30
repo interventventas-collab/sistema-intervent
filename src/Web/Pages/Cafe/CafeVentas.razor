@@ -1326,8 +1326,14 @@
                 @* ── Items ── *@
                 @* 2026-06-17: bloque compactado — sin caja, header chico. *@
                 <div style="padding: 0.3rem 0; margin-bottom: 0.4rem; border-top: 1px solid #f3f4f6;">
-                    <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
+                    <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem; flex-wrap: wrap;">
                         <strong style="font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;">Productos a vender</strong>
+                        @* 2026-06-30: cajita de ayuda con atajos de teclado *@
+                        <div style="margin-left: auto; display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.6rem; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; font-size: 0.7rem; color: #1e40af;">
+                            <span style="font-weight: 600;">⌨ Atajos:</span>
+                            <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Enter</kbd> avanza campo</span>
+                            <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Ctrl+Enter</kbd> sale a Notas → Comentario → Emitir</span>
+                        </div>
                     </div>
 
                     @* 2026-06-17: la seccion "productos mas comprados" se movio al panel sticky de la derecha — ver final del modal-body *@
@@ -1985,7 +1991,9 @@
                             <strong style="font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;">📄 Notas internas de la venta</strong>
                             <span style="font-size: 0.7rem; color: #c2410c; font-weight: 600;">⚠ se ven en el comprobante</span>
                         </div>
-                        <textarea class="form-input" rows="3" @bind="formObservaciones" placeholder="Esto se visualizará en el comprobante que recibirá el cliente"
+                        <textarea id="nv-notas" class="form-input" rows="3" @bind="formObservaciones"
+                                  placeholder="Esto se visualizará en el comprobante que recibirá el cliente"
+                                  @onkeydown="OnKeyDownNotas"
                                   style="resize: vertical; min-height: 80px;"></textarea>
                     </div>
 
@@ -1994,8 +2002,9 @@
                             <strong style="font-size: 0.78rem; color: #92400e; text-transform: uppercase; letter-spacing: 0.04em;">📌 Comentario para armado</strong>
                             <span style="font-size: 0.7rem; color: #78350f; font-style: italic;">solo lo ve quien arma</span>
                         </div>
-                        <textarea class="form-input" rows="3" @bind="formComentarioArmado"
+                        <textarea id="nv-comentario-armado" class="form-input" rows="3" @bind="formComentarioArmado"
                                   placeholder="Ej: SOBRES CORTESIA"
+                                  @onkeydown="OnKeyDownComentarioArmado"
                                   style="background: #fefce8; border: 2px dashed #facc15; resize: vertical; min-height: 80px;"></textarea>
                     </div>
                 </div>
@@ -5849,6 +5858,14 @@
 
     private async Task OnKeyDownProducto(KeyboardEventArgs e)
     {
+        // 2026-06-30: Ctrl+Enter sale del loop de productos y salta a Notas internas.
+        // Funciona estes en el buscador con texto o vacio.
+        if (e.Key == "Enter" && e.CtrlKey)
+        {
+            await FocusFieldAsync("nv-notas");
+            return;
+        }
+
         var pmatches = ProductosMatching(productoSearch).Take(20).ToList();
         var cmpMatches = CompuestosMatching(productoSearch).Take(10).ToList();
         var total = pmatches.Count + cmpMatches.Count;
@@ -5882,6 +5899,28 @@
             await FocusFieldAsync("nv-cantidad");
         }
         return;
+    }
+
+    // 2026-06-30: Ctrl+Enter en Notas internas -> salta a Comentario armado.
+    private async Task OnKeyDownNotas(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && e.CtrlKey)
+        {
+            await FocusFieldAsync("nv-comentario-armado");
+        }
+    }
+
+    // 2026-06-30: Ctrl+Enter en Comentario armado -> Emite la cotizacion/factura.
+    private void OnKeyDownComentarioArmado(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && e.CtrlKey)
+        {
+            if (formItems.Count > 0 && cotizacion?.TodoOk == true && !saving)
+            {
+                if (EditModoEmitirCae) IniciarEmisionCAEDesdeEdicion();
+                else ConfirmarEmision();
+            }
+        }
     }
 
     private async Task OnKeyDownFormato(KeyboardEventArgs e)
