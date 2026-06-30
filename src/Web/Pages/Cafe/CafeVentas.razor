@@ -2238,8 +2238,8 @@
                     @if (formPorTransporte)
                     {
                         <div style="display: inline-flex; gap: 0.35rem; flex-basis: 100%;">
-                            <input class="form-input" @bind="formTransporteEmpresa" placeholder="Empresa (Andreani, Cruz del Sur…)" style="font-size: 0.78rem; padding: 0.3rem 0.5rem; flex: 1; max-width: 320px;" />
-                            <input class="form-input" @bind="formTransporteDestino" placeholder="Destino (ciudad/sucursal)" style="font-size: 0.78rem; padding: 0.3rem 0.5rem; flex: 1; max-width: 320px;" />
+                            <input class="form-input" tabindex="-1" @bind="formTransporteEmpresa" placeholder="Empresa (Andreani, Cruz del Sur…)" style="font-size: 0.78rem; padding: 0.3rem 0.5rem; flex: 1; max-width: 320px;" />
+                            <input class="form-input" tabindex="-1" @bind="formTransporteDestino" placeholder="Destino (ciudad/sucursal)" style="font-size: 0.78rem; padding: 0.3rem 0.5rem; flex: 1; max-width: 320px;" />
                         </div>
                     }
                 </div>
@@ -2279,7 +2279,7 @@
                                 <span>📁 Imprimir pedidos</span>
                             </label>
 
-                            <button type="button"
+                            <button type="button" tabindex="-1"
                                     style="font-size: 0.68rem; padding: 0.25rem 0.5rem; background:white; border:1px solid #9ca3af; border-radius:4px; cursor:pointer; color:#374151;"
                                     @onclick="MarcarTodosEnvios">
                                 @(envioEmail && envioWhatsappWeb && envioWhatsappInterno ? "Desmarcar" : "Marcar todos")
