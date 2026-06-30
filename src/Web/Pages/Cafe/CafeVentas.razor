@@ -2286,14 +2286,12 @@
             @* Fila TOTALES + BOTONES — verde, abajo del todo. Totales a la izquierda, botones a la derecha. *@
             @if (cotizacion is not null)
             {
-                @{
-                    bool mostrarIvaT = formTipoComprobante is "FA" or "FB" or "PRO";
-                    decimal ivaT = mostrarIvaT ? Math.Round(cotizacion.Total * 0.21m, 2, MidpointRounding.AwayFromZero) : 0m;
-                    decimal totalConIvaT = cotizacion.Total + ivaT;
-                    decimal margenPctT = cotizacion.CostoTotal > 0
-                        ? Math.Round((cotizacion.Total / cotizacion.CostoTotal - 1m) * 100m, 1, MidpointRounding.AwayFromZero)
-                        : 0m;
-                }
+                bool mostrarIvaT = formTipoComprobante is "FA" or "FB" or "PRO";
+                decimal ivaT = mostrarIvaT ? Math.Round(cotizacion.Total * 0.21m, 2, MidpointRounding.AwayFromZero) : 0m;
+                decimal totalConIvaT = cotizacion.Total + ivaT;
+                decimal margenPctT = cotizacion.CostoTotal > 0
+                    ? Math.Round((cotizacion.Total / cotizacion.CostoTotal - 1m) * 100m, 1, MidpointRounding.AwayFromZero)
+                    : 0m;
                 <div style="padding: 0.7rem 1rem; background: #ecfdf5; border-top: 2px solid #10b981; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
 
                     @* IZQUIERDA — desglose *@
