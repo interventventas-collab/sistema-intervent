@@ -5118,6 +5118,11 @@ BEGIN
 END
 GO
 
+-- 2026-06-29: día del evento (la fiesta), aparte de entrega/retiro. Opcional.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='FechaEvento' AND Object_ID=OBJECT_ID('Alq_Reservas'))
+    ALTER TABLE Alq_Reservas ADD FechaEvento DATE NULL;
+GO
+
 -- Cobranzas precargadas por el repartidor en alquileres (efectivo en mano).
 -- PENDIENTE hasta que el admin apruebe -> suma a Alq_Reservas.MontoCobrado (baja el saldo).
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Alq_CobranzasPendientes' AND xtype='U')

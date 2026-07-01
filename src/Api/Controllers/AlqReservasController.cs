@@ -251,6 +251,7 @@ public class AlqReservasController : ControllerBase
             Numero = await GenerarNumeroAsync(),
             PublicToken = Guid.NewGuid().ToString("N"),
             ClienteId = req.ClienteId,
+            FechaEvento = req.FechaEvento?.Date,
             FechaEntrega = req.FechaEntrega.Date,
             FechaRetiro = req.FechaRetiro.Date,
             HoraInicio = NormHora(req.HoraInicio),
@@ -293,6 +294,7 @@ public class AlqReservasController : ControllerBase
         if (req.ClienteId.HasValue) reserva.ClienteId = req.ClienteId.Value;
         if (req.FechaEntrega.HasValue) reserva.FechaEntrega = req.FechaEntrega.Value.Date;
         if (req.FechaRetiro.HasValue) reserva.FechaRetiro = req.FechaRetiro.Value.Date;
+        if (req.FechaEventoSet) reserva.FechaEvento = req.FechaEvento?.Date;
         if (reserva.FechaRetiro < reserva.FechaEntrega)
             return BadRequest(new { error = "La fecha de retiro no puede ser anterior a la de entrega" });
         if (req.HoraInicio is not null) reserva.HoraInicio = NormHora(req.HoraInicio);
@@ -518,6 +520,7 @@ public class AlqReservasController : ControllerBase
         r.Items.Select(i => new AlqReservaItemDto(
             i.Id, i.EquipoId, i.EquipoNav?.Sku ?? "—", i.EquipoNav?.Nombre ?? "—",
             i.Cantidad, i.PrecioUnitario)).ToList(),
+        r.FechaEvento,
         r.PublicToken, r.MontoCobrado,
         r.EntregadoPorRepartidorId, r.EntregadoPorRepartidor?.Nombre, r.EntregadoAt, r.ComentarioEntrega,
         r.RetiradoPorRepartidorId, r.RetiradoPorRepartidor?.Nombre, r.RetiradoAt, r.ComentarioRetiro,
