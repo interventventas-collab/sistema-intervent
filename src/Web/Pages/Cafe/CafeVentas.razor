@@ -1333,42 +1333,47 @@
                     <div style="display: inline-flex; gap: 0; margin-bottom: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px; overflow: hidden;">
                         <button type="button" id="nv-tab-producto"
                                 class="btn"
-                                style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "PRODUCTO" ? "background:#1d4ed8;color:white;" : "background:white;color:#374151;")"
+                                style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "PRODUCTO" ? "background:#1d4ed8;color:white;" : "background:white;color:#374151;") display:inline-flex; align-items:center; gap:0.35rem;"
                                 @onclick="@(() => addMode = "PRODUCTO")"
                                 title="Ctrl+1">
                             📦 Producto
+                            <kbd style="font-size:0.62rem; padding:1px 5px; border-radius:3px; font-family:monospace; opacity:0.75; background:@(addMode == "PRODUCTO" ? "rgba(255,255,255,0.18)" : "#eef2ff"); color:@(addMode == "PRODUCTO" ? "white" : "#4338ca"); border:1px solid @(addMode == "PRODUCTO" ? "rgba(255,255,255,0.35)" : "#c7d2fe");">Ctrl+1</kbd>
                         </button>
                         @* 2026-06-30: pestaña "⭐ Top" — solo visible si el cliente tiene historial. *@
                         @if (MostrarPanelTopProductos)
                         {
                             <button type="button" id="nv-tab-top"
                                     class="btn"
-                                    style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "TOP" ? "background:#f59e0b;color:white;" : "background:#fefce8;color:#78350f;")"
+                                    style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "TOP" ? "background:#f59e0b;color:white;" : "background:#fefce8;color:#78350f;") display:inline-flex; align-items:center; gap:0.35rem;"
                                     @onclick="EntrarModoTop"
                                     title="Ctrl+2 · Más comprados por este cliente">
                                 ⭐ Top (@topProductsForClient.Count)
+                                <kbd style="font-size:0.62rem; padding:1px 5px; border-radius:3px; font-family:monospace; opacity:0.85; background:@(addMode == "TOP" ? "rgba(255,255,255,0.22)" : "#fef3c7"); color:@(addMode == "TOP" ? "white" : "#92400e"); border:1px solid @(addMode == "TOP" ? "rgba(255,255,255,0.4)" : "#fcd34d");">Ctrl+2</kbd>
                             </button>
                         }
                         <button type="button" id="nv-tab-combo"
                                 class="btn"
-                                style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "COMBO" ? "background:#1d4ed8;color:white;" : "background:white;color:#374151;")"
+                                style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "COMBO" ? "background:#1d4ed8;color:white;" : "background:white;color:#374151;") display:inline-flex; align-items:center; gap:0.35rem;"
                                 @onclick="@(() => addMode = "COMBO")"
                                 title="Ctrl+3">
                             🎁 Combo
+                            <kbd style="font-size:0.62rem; padding:1px 5px; border-radius:3px; font-family:monospace; opacity:0.75; background:@(addMode == "COMBO" ? "rgba(255,255,255,0.18)" : "#eef2ff"); color:@(addMode == "COMBO" ? "white" : "#4338ca"); border:1px solid @(addMode == "COMBO" ? "rgba(255,255,255,0.35)" : "#c7d2fe");">Ctrl+3</kbd>
                         </button>
                         <button type="button" id="nv-tab-servicio"
                                 class="btn"
-                                style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "SERVICIO" ? "background:#7c3aed;color:white;" : "background:white;color:#374151;")"
+                                style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "SERVICIO" ? "background:#7c3aed;color:white;" : "background:white;color:#374151;") display:inline-flex; align-items:center; gap:0.35rem;"
                                 @onclick="@(async () => { addMode = "SERVICIO"; await CargarServiciosSiHaceFalta(); })"
                                 title="Ctrl+4 · Servicio del catálogo (envío, mano de obra, instalación, etc). No descuenta stock.">
                             🛠 Servicio
+                            <kbd style="font-size:0.62rem; padding:1px 5px; border-radius:3px; font-family:monospace; opacity:0.75; background:@(addMode == "SERVICIO" ? "rgba(255,255,255,0.18)" : "#f3e8ff"); color:@(addMode == "SERVICIO" ? "white" : "#6d28d9"); border:1px solid @(addMode == "SERVICIO" ? "rgba(255,255,255,0.35)" : "#ddd6fe");">Ctrl+4</kbd>
                         </button>
                         <button type="button" id="nv-tab-libre"
                                 class="btn"
-                                style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "LIBRE" ? "background:#1d4ed8;color:white;" : "background:white;color:#374151;")"
+                                style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "LIBRE" ? "background:#1d4ed8;color:white;" : "background:white;color:#374151;") display:inline-flex; align-items:center; gap:0.35rem;"
                                 @onclick="@(() => addMode = "LIBRE")"
                                 title="Ctrl+5 · Item con descripción y precio cargados a mano, sin producto del catálogo">
                             ✏️ Concepto libre
+                            <kbd style="font-size:0.62rem; padding:1px 5px; border-radius:3px; font-family:monospace; opacity:0.75; background:@(addMode == "LIBRE" ? "rgba(255,255,255,0.18)" : "#eef2ff"); color:@(addMode == "LIBRE" ? "white" : "#4338ca"); border:1px solid @(addMode == "LIBRE" ? "rgba(255,255,255,0.35)" : "#c7d2fe");">Ctrl+5</kbd>
                         </button>
                     </div>
 
