@@ -1,4 +1,5 @@
 using Api.DTOs;
+using Api.Models;
 using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -1981,6 +1982,20 @@ public class MeliController : ControllerBase
 
     public record PushPrecioAjustadoResult(bool Success, string Message, decimal? PushedPrice, decimal? PrecioBaseSistema);
 
+    // 2026-07-01: ajuste masivo desde /publicaciones. Solo guarda en MeliItem_SyncConfig — NO pushea a MeLi.
+    // ItemIds: MeliItem.Id de las filas tildadas. Campos null = no tocar el actual. ModoBorrar=true resetea a 0/null.
+    // IncluirPrecioIndependiente=false salta las que tienen la fórmula independiente (PrecioIndependiente=true).
+    public record BulkAjusteRequest(
+        List<int> ItemIds,
+        decimal? AjustePct,
+        decimal? AjusteFijo,
+        string? AjusteRedondeo,        // null = no tocar; "" = borrar; "99"/"999"/"000" = poner
+        bool RedondeoTocado,            // frontend indica explícitamente si el usuario tocó el redondeo
+        bool ModoBorrar,
+        bool IncluirPrecioIndependiente);
+
+    public record BulkAjusteResponse(int Modificados, int SaltadosPrecioIndependiente, int NoEncontrados);
+
     /// <summary>2026-05-29: push de stock para UNA publicación MeLi via MeliStockPushService.
     /// Maneja TANTO linkeo legacy CafeProductoId COMO componentes MeliItemComponentes.
     /// Reemplaza el botón 📦 de /publicaciones para que funcione en publis sin linkeo legacy.</summary>
@@ -2057,6 +2072,70 @@ public class MeliController : ControllerBase
         item.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
         return NoContent();
+    }
+
+    /// <summary>2026-07-01: aplica un ajuste (%/$/Redondeo) a MÚLTIPLES publicaciones de una vez.
+    /// Solo persiste en MeliItem_SyncConfig — NO pushea a MeLi. Semántica de campos:
+    /// - Si un campo viene null → no se toca el valor actual de esa publi.
+    /// - Si ModoBorrar=true → resetea AjustePct=0, AjusteFijo=0, AjusteRedondeo=null.
+    /// - Si RedondeoTocado=false → no se toca el redondeo actual (aunque venga "" o "99").
+    /// - Si IncluirPrecioIndependiente=false → publis con PrecioIndependiente=true se saltan.</summary>
+    [HttpPost("items/bulk-ajuste-precio")]
+    public async Task<IActionResult> BulkAjustePrecio(
+        [FromBody] BulkAjusteRequest req,
+        [FromServices] Api.Data.AppDbContext db)
+    {
+        if (req.ItemIds is null || req.ItemIds.Count == 0)
+            return BadRequest(new { error = "No hay publicaciones seleccionadas." });
+
+        var items = await db.MeliItems
+            .Where(i => req.ItemIds.Contains(i.Id))
+            .ToListAsync();
+
+        var meliItemIds = items.Select(i => i.MeliItemId).ToList();
+        var configs = await db.MeliItemSyncConfigs
+            .Where(c => meliItemIds.Contains(c.MeliItemId))
+            .ToDictionaryAsync(c => c.MeliItemId, c => c);
+
+        int modificados = 0;
+        int saltadosPI = 0;
+        var ahora = DateTime.UtcNow;
+
+        foreach (var item in items)
+        {
+            if (!configs.TryGetValue(item.MeliItemId, out var cfg))
+            {
+                cfg = new MeliItemSyncConfig { MeliItemId = item.MeliItemId };
+                db.MeliItemSyncConfigs.Add(cfg);
+                configs[item.MeliItemId] = cfg;
+            }
+
+            if (cfg.PrecioIndependiente && !req.IncluirPrecioIndependiente)
+            {
+                saltadosPI++;
+                continue;
+            }
+
+            if (req.ModoBorrar)
+            {
+                cfg.AjustePct = 0m;
+                cfg.AjusteFijo = 0m;
+                cfg.AjusteRedondeo = null;
+            }
+            else
+            {
+                if (req.AjustePct.HasValue) cfg.AjustePct = req.AjustePct.Value;
+                if (req.AjusteFijo.HasValue) cfg.AjusteFijo = req.AjusteFijo.Value;
+                if (req.RedondeoTocado)
+                    cfg.AjusteRedondeo = string.IsNullOrEmpty(req.AjusteRedondeo) ? null : req.AjusteRedondeo;
+            }
+            cfg.UpdatedAt = ahora;
+            modificados++;
+        }
+
+        await db.SaveChangesAsync();
+        int noEncontrados = req.ItemIds.Count - items.Count;
+        return Ok(new BulkAjusteResponse(modificados, saltadosPI, noEncontrados));
     }
 
     /// <summary>2026-06-03: copia el ajuste de precio del item id a TODAS las MLAs que comparten

@@ -3291,6 +3291,37 @@ public class ApiClient
     }
     private record PropagarResp(bool Ok, string FamilyId, int Propagados);
 
+    // 2026-07-01: ajuste masivo (Fase B). Solo guarda en MeliItem_SyncConfig — NO pushea a MeLi.
+    public record BulkAjusteRequest(
+        List<int> ItemIds,
+        decimal? AjustePct,
+        decimal? AjusteFijo,
+        string? AjusteRedondeo,
+        bool RedondeoTocado,
+        bool ModoBorrar,
+        bool IncluirPrecioIndependiente);
+    public record BulkAjusteResponse(int Modificados, int SaltadosPrecioIndependiente, int NoEncontrados);
+
+    public async Task<(BulkAjusteResponse? resp, string? error)> BulkAjustePrecioAsync(BulkAjusteRequest req)
+    {
+        await SetAuthHeaderAsync();
+        try
+        {
+            var http = await _http.PostAsJsonAsync("/api/meli/items/bulk-ajuste-precio", req);
+            if (http.IsSuccessStatusCode)
+                return (await http.Content.ReadFromJsonAsync<BulkAjusteResponse>(), null);
+            string err = "Error al guardar";
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(await http.Content.ReadAsStringAsync());
+                if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err;
+            }
+            catch { }
+            return (null, err);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
     public record PushPrecioAjustadoResultDto(bool Success, string Message, decimal? PushedPrice, decimal? PrecioBaseSistema);
 
     /// <summary>2026-05-29: pushea precio a MeLi calculado desde PrecioOtro del sistema + ajuste
