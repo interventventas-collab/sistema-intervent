@@ -36,11 +36,6 @@ public class ApiClient
             _http.DefaultRequestHeaders.Add("X-Operator-Name", _operator.Current);
     }
 
-    public async Task<DashboardStats?> GetDashboardStatsAsync()
-    {
-        return await GetAsync<DashboardStats>("/api/dashboard/stats");
-    }
-
     public async Task<SystemInfoDto?> GetSystemInfoAsync()
     {
         return await GetAsync<SystemInfoDto>("/api/system/info");

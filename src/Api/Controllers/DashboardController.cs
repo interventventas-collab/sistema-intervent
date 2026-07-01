@@ -17,40 +17,6 @@ public class DashboardController : ControllerBase
         _db = db;
     }
 
-    [HttpGet("stats")]
-    public async Task<IActionResult> GetStats()
-    {
-        var totalItems = await _db.MeliItems.CountAsync();
-        var totalProducts = await _db.Products.CountAsync();
-        var itemsSinProducto = await _db.MeliItems.CountAsync(i => i.ProductId == null);
-        var productosSinItems = await _db.Products.CountAsync(p => !_db.MeliItems.Any(i => i.ProductId == p.Id));
-
-        var accountStats = await _db.MeliAccounts
-            .GroupJoin(
-                _db.MeliItems,
-                a => a.Id,
-                i => i.MeliAccountId,
-                (a, items) => new
-                {
-                    accountId = a.Id,
-                    nickname = a.Nickname,
-                    totalItems = items.Count(),
-                    itemsConProducto = items.Count(i => i.ProductId != null),
-                    itemsSinProducto = items.Count(i => i.ProductId == null),
-                    productosVinculados = items.Where(i => i.ProductId != null).Select(i => i.ProductId).Distinct().Count()
-                })
-            .ToListAsync();
-
-        return Ok(new
-        {
-            totalItems,
-            totalProducts,
-            itemsSinProducto,
-            productosSinItems,
-            accountStats
-        });
-    }
-
     /// <summary>
     /// Devuelve la sumatoria de kg de café vendidos en el mes actual desde el módulo
     /// Café (tablas Cafe_Ventas + Cafe_VentaItems). Suma los GramosDescontados de los

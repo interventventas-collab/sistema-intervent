@@ -948,83 +948,6 @@
 @* === Cheques por pagar — calendario visual === *@
 <ChequesPorPagarCalendario />
 
-
-<div class="dashboard-cards-row">
-    @* Publicaciones (MercadoLibre): solo visible para INTERVENT *@
-    @if (ShowMlWidgets)
-    {
-        <div class="dashboard-detail-card">
-            <div class="detail-card-header">
-                <div class="detail-card-icon primary">@SvgIcons.Tag</div>
-                <div>
-                    <span class="detail-card-value">@totalItems</span>
-                    <span class="detail-card-label">Publicaciones</span>
-                </div>
-                <div class="detail-card-badge warning">@itemsSinProducto sin producto</div>
-            </div>
-
-            @if (accountStats.Any())
-            {
-                <table class="detail-card-table">
-                    <thead>
-                        <tr>
-                            <th>Cuenta</th>
-                            <th>Publicaciones</th>
-                            <th>Con producto</th>
-                            <th>Sin producto</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var acc in accountStats)
-                        {
-                            <tr>
-                                <td><strong>@acc.Nickname</strong></td>
-                                <td>@acc.TotalItems</td>
-                                <td>@acc.ItemsConProducto</td>
-                                <td class="@(acc.ItemsSinProducto > 0 ? "text-warning-bold" : "")">@acc.ItemsSinProducto</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            }
-        </div>
-    }
-
-    <div class="dashboard-detail-card">
-        <div class="detail-card-header">
-            <div class="detail-card-icon info">@SvgIcons.Box</div>
-            <div>
-                <span class="detail-card-value">@totalProducts</span>
-                <span class="detail-card-label">Productos</span>
-            </div>
-            @if (ShowMlWidgets)
-            {
-                <div class="detail-card-badge warning">@productosSinItems sin publicacion</div>
-            }
-        </div>
-
-        @if (ShowMlWidgets && accountStats.Any())
-        {
-            <table class="detail-card-table">
-                <thead>
-                    <tr>
-                        <th>Cuenta</th>
-                        <th>Productos vinculados</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var acc in accountStats)
-                    {
-                        <tr>
-                            <td><strong>@acc.Nickname</strong></td>
-                            <td>@acc.ProductosVinculados</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        }
-    </div>
-</div>
 } @* fin @if (!isDepositoOnly) *@
 
 @code {
@@ -1034,11 +957,6 @@
     private bool isDepositoOnly => userPermissions.Contains("deposito")
         && !userPermissions.Contains("cafe")
         && !userPermissions.Contains("oficina");
-    private string totalItems = "--";
-    private string totalProducts = "--";
-    private string itemsSinProducto = "--";
-    private string productosSinItems = "--";
-    private List<AccountStatsRow> accountStats = new();
 
     // Widgets nuevos
     private DolarBnaDto? dolar;
@@ -1104,12 +1022,6 @@
     private static readonly TimeZoneInfo ArgentinaTz = SafeTz("America/Argentina/Buenos_Aires", -3);
     private static readonly TimeZoneInfo SpainTz = SafeTz("Europe/Madrid", 1);
 
-    // MercadoLibre solo aplica a INTERVENT. Si no hay empresa elegida, lo mostramos
-    // para mantener compatibilidad con usuarios que todavia no eligieron empresa.
-    private bool ShowMlWidgets =>
-        !Company.HasCompany ||
-        string.Equals(Company.Current, "INTERVENT", StringComparison.OrdinalIgnoreCase);
-
     protected override async Task OnInitializedAsync()
     {
         var user = await AuthService.GetUserAsync();
@@ -1161,24 +1073,6 @@
         _ = LoadResumenDiaAsync();
         resumenDiaTimer = new System.Threading.Timer(_ => InvokeAsync(LoadResumenDiaAsync), null,
             TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
-
-
-        try
-        {
-            var stats = await Api.GetDashboardStatsAsync();
-            if (stats is not null)
-            {
-                totalItems = stats.TotalItems.ToString();
-                totalProducts = stats.TotalProducts.ToString();
-                itemsSinProducto = stats.ItemsSinProducto.ToString();
-                productosSinItems = stats.ProductosSinItems.ToString();
-                accountStats = stats.AccountStats;
-            }
-        }
-        catch
-        {
-            // defaults already set
-        }
     }
 
     private void UpdateClocks()
