@@ -33,7 +33,14 @@ public class NomLiquidacionesController : ControllerBase
         if (mes.HasValue) q = q.Where(l => l.Mes == mes.Value);
         if (!string.IsNullOrWhiteSpace(estado)) { var e = estado.Trim().ToLowerInvariant(); q = q.Where(l => l.Estado == e); }
         var list = await q.OrderByDescending(l => l.Anio).ThenByDescending(l => l.Mes).ThenBy(l => l.EmpleadoNav!.Nombre).ToListAsync();
-        return Ok(list.Select(Map).ToList());
+        // 2026-07-01: contar archivos adjuntos por liquidación (sin traer el contenido binario).
+        var ids = list.Select(l => l.Id).ToList();
+        var counts = await _db.NomNominaArchivos
+            .Where(a => ids.Contains(a.LiquidacionId))
+            .GroupBy(a => a.LiquidacionId)
+            .Select(g => new { LiquidacionId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.LiquidacionId, x => x.Count);
+        return Ok(list.Select(l => Map(l, counts.TryGetValue(l.Id, out var c) ? c : 0)).ToList());
     }
 
     [HttpGet("liquidaciones/{id:int}")]
@@ -45,6 +52,78 @@ public class NomLiquidacionesController : ControllerBase
             .FirstOrDefaultAsync(l => l.Id == id);
         if (l is null) return NotFound(new { error = "Liquidacion no encontrada" });
         return Ok(Map(l));
+    }
+
+    // ============================================================
+    //  2026-07-01: ARCHIVOS ADJUNTOS (recibos / nóminas) por liquidación.
+    //  Varios por liquidación. Se guardan en la DB (varbinary) para que entren en los backups.
+    // ============================================================
+    private const long MaxArchivoBytes = 10 * 1024 * 1024; // 10 MB por archivo
+
+    [HttpGet("liquidaciones/{id:int}/archivos")]
+    public async Task<IActionResult> GetArchivos(int id)
+    {
+        if (!await _db.NomLiquidaciones.AnyAsync(l => l.Id == id))
+            return NotFound(new { error = "Liquidacion no encontrada" });
+        var archivos = await _db.NomNominaArchivos
+            .Where(a => a.LiquidacionId == id)
+            .OrderByDescending(a => a.UploadedAt)
+            .Select(a => new NomNominaArchivoDto(a.Id, a.LiquidacionId, a.FileName, a.ContentType, a.FileSize, a.UploadedAt, a.UploadedBy))
+            .ToListAsync();
+        return Ok(archivos);
+    }
+
+    [HttpPost("liquidaciones/{id:int}/archivos")]
+    public async Task<IActionResult> UploadArchivo(int id, [FromBody] UploadNominaArchivoRequest req)
+    {
+        var liq = await _db.NomLiquidaciones.FindAsync(id);
+        if (liq is null) return NotFound(new { error = "Liquidacion no encontrada" });
+        if (string.IsNullOrWhiteSpace(req.Base64)) return BadRequest(new { error = "Archivo vacío" });
+
+        byte[] bytes;
+        try { bytes = Convert.FromBase64String(req.Base64); }
+        catch { return BadRequest(new { error = "Archivo inválido" }); }
+        if (bytes.Length == 0) return BadRequest(new { error = "Archivo vacío" });
+        if (bytes.Length > MaxArchivoBytes) return BadRequest(new { error = "El archivo es muy grande (máximo 10 MB)" });
+
+        var ct = (req.ContentType ?? "").Trim().ToLowerInvariant();
+        var name = string.IsNullOrWhiteSpace(req.FileName) ? "archivo" : System.IO.Path.GetFileName(req.FileName.Trim());
+        var ext = System.IO.Path.GetExtension(name).ToLowerInvariant();
+        var okType = ct is "application/pdf" or "image/jpeg" or "image/png" or "image/webp"
+                  || ext is ".pdf" or ".jpg" or ".jpeg" or ".png" or ".webp";
+        if (!okType) return BadRequest(new { error = "Solo se permiten PDF o imágenes (JPG, PNG)" });
+
+        var archivo = new NomNominaArchivo
+        {
+            LiquidacionId = id,
+            FileName = name.Length > 255 ? name.Substring(0, 255) : name,
+            ContentType = string.IsNullOrWhiteSpace(ct) ? "application/octet-stream" : ct,
+            FileSize = bytes.Length,
+            Contenido = bytes,
+            UploadedAt = DateTime.UtcNow,
+            UploadedBy = User?.Identity?.Name
+        };
+        _db.NomNominaArchivos.Add(archivo);
+        await _db.SaveChangesAsync();
+        return Ok(new NomNominaArchivoDto(archivo.Id, archivo.LiquidacionId, archivo.FileName, archivo.ContentType, archivo.FileSize, archivo.UploadedAt, archivo.UploadedBy));
+    }
+
+    [HttpGet("liquidaciones/{id:int}/archivos/{archivoId:int}/download")]
+    public async Task<IActionResult> DownloadArchivo(int id, int archivoId)
+    {
+        var a = await _db.NomNominaArchivos.FirstOrDefaultAsync(x => x.Id == archivoId && x.LiquidacionId == id);
+        if (a is null) return NotFound(new { error = "Archivo no encontrado" });
+        return File(a.Contenido, string.IsNullOrWhiteSpace(a.ContentType) ? "application/octet-stream" : a.ContentType, a.FileName);
+    }
+
+    [HttpDelete("liquidaciones/{id:int}/archivos/{archivoId:int}")]
+    public async Task<IActionResult> DeleteArchivo(int id, int archivoId)
+    {
+        var a = await _db.NomNominaArchivos.FirstOrDefaultAsync(x => x.Id == archivoId && x.LiquidacionId == id);
+        if (a is null) return NotFound(new { error = "Archivo no encontrado" });
+        _db.NomNominaArchivos.Remove(a);
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
     }
 
     [HttpPost("liquidaciones")]
@@ -336,7 +415,7 @@ public class NomLiquidacionesController : ControllerBase
         liq.NetoAPagar = Math.Round(liq.TotalGanado - liq.TotalDescuentos, 2, MidpointRounding.AwayFromZero);
     }
 
-    private static NomLiquidacionDto Map(NomLiquidacion l)
+    private static NomLiquidacionDto Map(NomLiquidacion l, int archivosCount = 0)
     {
         var totalPagado = l.Pagos.Sum(p => p.Monto);
         // 2026-06-08: incluir DiasTrabajados + datos del empleado (modalidad / jornal)
@@ -358,7 +437,8 @@ public class NomLiquidacionesController : ControllerBase
             l.Pagos.OrderByDescending(p => p.FechaPago).Select(p => new NomPagoDto(
                 p.Id, p.LiquidacionId, p.FechaPago, p.Metodo, p.Monto,
                 p.Concepto, p.Detalle,
-                p.Notas, p.CreatedAt)).ToList());
+                p.Notas, p.CreatedAt)).ToList(),
+            archivosCount);
     }
 
     // ============================================================

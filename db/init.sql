@@ -1834,6 +1834,25 @@ BEGIN
 END
 GO
 
+-- 2026-07-01: archivos adjuntos de una liquidacion (recibo, nomina, aguinaldo). Se pueden subir varios.
+-- El contenido va EN LA BASE (VARBINARY) a proposito, para que entre en los backups de la DB.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Nom_NominaArchivos' AND xtype='U')
+BEGIN
+    CREATE TABLE Nom_NominaArchivos (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        LiquidacionId INT NOT NULL,
+        FileName NVARCHAR(255) NOT NULL,
+        ContentType NVARCHAR(120) NOT NULL DEFAULT 'application/pdf',
+        FileSize BIGINT NOT NULL DEFAULT 0,
+        Contenido VARBINARY(MAX) NOT NULL,
+        UploadedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        UploadedBy NVARCHAR(120) NULL,
+        CONSTRAINT FK_NomArch_Liq FOREIGN KEY (LiquidacionId) REFERENCES Nom_Liquidaciones(Id) ON DELETE CASCADE
+    );
+    CREATE INDEX IX_NomArch_Liq ON Nom_NominaArchivos (LiquidacionId);
+END
+GO
+
 -- Migracion: si la tabla Nom_Pagos ya existe (instalaciones viejas), agregamos
 -- las columnas Concepto y Detalle. Concepto NOT NULL con default 'sueldo' asi
 -- los pagos previos quedan etiquetados como sueldo (el usuario puede borrarlos
