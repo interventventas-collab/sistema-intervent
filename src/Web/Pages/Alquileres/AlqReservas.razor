@@ -439,7 +439,10 @@
             <div class="modal-header no-print" style="background: whitesmoke;">
                 <h3 style="margin: 0;">📄 Reserva @printReserva.Numero</h3>
                 <div style="display: flex; gap: 0.4rem; align-items: center;">
-                    <button class="btn btn-secondary" @onclick="DoPrint" style="font-size: 0.85rem;">🖨 Imprimir / Guardar PDF</button>
+                    <button class="btn btn-primary" @onclick="() => DescargarPdfReserva(printReserva.Id, printReserva.Numero)" disabled="@descargandoPdf" style="font-size: 0.85rem;">
+                        @(descargandoPdf ? "Generando..." : "⬇ Descargar PDF")
+                    </button>
+                    <button class="btn btn-secondary" @onclick="DoPrint" style="font-size: 0.85rem;">🖨 Imprimir</button>
                     <button class="btn-close" @onclick="ClosePrint">&times;</button>
                 </div>
             </div>
@@ -1141,6 +1144,8 @@
                 });
                 if (created is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success($"Reserva {created.Numero} creada");
+                // Descarga automática del comprobante al crear (pedido 2026-06-29)
+                await DescargarPdfReserva(created.Id, created.Numero);
             }
             showForm = false;
             await Load();
@@ -1217,6 +1222,22 @@
     private async Task OnDeleteKey(KeyboardEventArgs e)
     {
         if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(deletePassword) && !deleting) await Delete();
+    }
+
+    private bool descargandoPdf;
+    private async Task DescargarPdfReserva(int id, string numero)
+    {
+        descargandoPdf = true;
+        try
+        {
+            var (bytes, error) = await Api.GetAlqReservaPdfAsync(id);
+            if (bytes is not null)
+                await JS.InvokeVoidAsync("downloadFile", $"Reserva-{numero}.pdf", "application/pdf", Convert.ToBase64String(bytes));
+            else
+                ToastService.Error("No se pudo generar el PDF" + (string.IsNullOrEmpty(error) ? "" : $": {error}"));
+        }
+        catch (Exception ex) { ToastService.Error("Error al descargar: " + ex.Message); }
+        finally { descargandoPdf = false; }
     }
 
     private async Task Delete()

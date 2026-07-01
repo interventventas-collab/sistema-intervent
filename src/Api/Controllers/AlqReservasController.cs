@@ -14,9 +14,32 @@ public class AlqReservasController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly Api.Services.QrRepartidorService _qr;
+    private readonly Api.Services.AlqReservaPdfService _pdf;
     private static readonly string[] EstadosValidos = { "reservado", "confirmado", "entregado", "finalizado", "cancelado" };
 
-    public AlqReservasController(AppDbContext db, Api.Services.QrRepartidorService qr) { _db = db; _qr = qr; }
+    public AlqReservasController(AppDbContext db, Api.Services.QrRepartidorService qr, Api.Services.AlqReservaPdfService pdf) { _db = db; _qr = qr; _pdf = pdf; }
+
+    /// <summary>PDF descargable del comprobante de la reserva (como el de ventas). Pedido 2026-06-29.</summary>
+    [HttpGet("{id:int}/pdf")]
+    public async Task<IActionResult> Pdf(int id)
+    {
+        var r = await _db.AlqReservas
+            .Include(x => x.ClienteNav)
+            .Include(x => x.Items).ThenInclude(i => i.EquipoNav)
+            .FirstOrDefaultAsync(x => x.Id == id);
+        if (r is null) return NotFound(new { error = "Reserva no encontrada" });
+        if (string.IsNullOrEmpty(r.PublicToken))
+        {
+            r.PublicToken = Guid.NewGuid().ToString("N");
+            r.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+        }
+        var cfg = await _db.CafeSettings.FindAsync(1);
+        var qr = await _qr.GenerarQrAlquilerAsync(r.PublicToken);
+        var condiciones = (await _db.AppSettings.FindAsync("alq.condiciones"))?.Value;
+        var bytes = _pdf.Generar(r, cfg, qr, condiciones);
+        return File(bytes, "application/pdf", $"Reserva-{r.Numero}.pdf");
+    }
 
     public record AlqProximoDto(int Id, string Numero, string ClienteNombre, DateTime Fecha, string Tipo);
     public record AlqDashboardResumen(
