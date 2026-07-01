@@ -435,7 +435,11 @@
                             {
                                 var item = grp.Item;
                                 var isExpanded = expandedGroups.Contains(grp.Key);
-                                <tr class="clickable-row @(selectedItems.Contains(item.Id) ? "row-selected" : "")" style="@CatalogRowStyle(item)" @onclick="() => OpenItemModal(item)">
+                                @* 2026-07-01: click en padre de familia expande/colapsa en vez de abrir ficha
+                                   — el padre es un contenedor visual, las variantes hijas tienen la info operable. *@
+                                <tr class="clickable-row @(selectedItems.Contains(item.Id) ? "row-selected" : "")" style="@CatalogRowStyle(item)"
+                                    @onclick="() => { if (grp.IsFamily) ToggleGroupExpand(grp.Key); else OpenItemModal(item); }"
+                                    title="@(grp.IsFamily ? "Click para ver las variantes de la familia" : "Click para abrir la ficha")">
                                     <td class="td-checkbox" @onclick:stopPropagation="true"><input type="checkbox" checked="@selectedItems.Contains(item.Id)" @onchange="() => ToggleSelectItem(item.Id)" /></td>
                                     <td style="text-align: center;">
                                         @if (!string.IsNullOrEmpty(item.Thumbnail))
@@ -529,18 +533,26 @@
                                         }
                                     </td>
                                     <td>
-                                        @if (item.OriginalPrice.HasValue && item.OriginalPrice.Value > 0 && item.OriginalPrice.Value != item.Price)
+                                        @* 2026-07-01: padre familia = contenedor visual, sin precio ni chips. Cada variante tiene su realidad. *@
+                                        @if (!grp.IsFamily)
                                         {
-                                            <span class="price-sale">@item.CurrencyId @item.Price.ToString("N2")</span>
-                                            <span class="price-original">@item.CurrencyId @item.OriginalPrice.Value.ToString("N2")</span>
-                                            <span class="price-discount-pct">-@(((item.OriginalPrice.Value - item.Price) / item.OriginalPrice.Value * 100).ToString("N0"))%</span>
+                                            @if (item.OriginalPrice.HasValue && item.OriginalPrice.Value > 0 && item.OriginalPrice.Value != item.Price)
+                                            {
+                                                <span class="price-sale">@item.CurrencyId @item.Price.ToString("N2")</span>
+                                                <span class="price-original">@item.CurrencyId @item.OriginalPrice.Value.ToString("N2")</span>
+                                                <span class="price-discount-pct">-@(((item.OriginalPrice.Value - item.Price) / item.OriginalPrice.Value * 100).ToString("N0"))%</span>
+                                            }
+                                            else
+                                            {
+                                                <span>@item.CurrencyId @item.Price.ToString("N2")</span>
+                                            }
+                                            @AjusteChipPrecio(item)
+                                            @MargenChipPrecio(item)
                                         }
                                         else
                                         {
-                                            <span>@item.CurrencyId @item.Price.ToString("N2")</span>
+                                            <span style="color:#9ca3af; font-size:0.8rem; font-style:italic;">— ver variantes ↓</span>
                                         }
-                                        @AjusteChipPrecio(item)
-                                        @MargenChipPrecio(item)
                                     </td>
                                     <td style="text-align: center; font-weight: 700;">
                                         @{ var stockShow = grp.HasMultiple ? grp.TotalStock : item.AvailableQuantity; }
@@ -558,35 +570,52 @@
                                         }
                                     </td>
                                     <td><span class="status-badge @GetStatusClass(item.Status)">@GetStatusLabel(item.Status)</span></td>
-                                    <td>@GetListingTypeLabel(item.ListingTypeId)<div style="font-size:0.68rem; color:#6b7280; margin-top:0.1rem; font-weight:500;">@GetCuotasLabel(item.InstallmentTag)</div></td>
+                                    <td>
+                                        @if (!grp.IsFamily)
+                                        {
+                                            @GetListingTypeLabel(item.ListingTypeId)
+                                            <div style="font-size:0.68rem; color:#6b7280; margin-top:0.1rem; font-weight:500;">@GetCuotasLabel(item.InstallmentTag)</div>
+                                        }
+                                        else
+                                        {
+                                            <span style="color:#9ca3af; font-size:0.8rem;">—</span>
+                                        }
+                                    </td>
                                     <td>@item.AccountNickname</td>
                                     <td class="td-ajuste" @onclick:stopPropagation="true">
-                                        @* 2026-06-12: la celda AJUSTE pasó a chip de SOLO LECTURA — la edición vive en la ficha. *@
-                                        @{ var prev1 = PreviewPrecioAjustado(item); }
-                                        <div style="cursor:pointer; line-height:1.3;" @onclick="() => OpenItemModal(item)" title="Click para editar el ajuste desde la ficha">
-                                            @if (item.PrecioIndependiente && item.PrecioFactor.HasValue)
-                                            {
-                                                <span style="display:inline-block; padding:0.1rem 0.4rem; background:#dbeafe; color:#1d4ed8; border-radius:0.3rem; font-size:0.7rem; font-weight:600; margin-bottom:0.15rem;">🔒 INDEP × @item.PrecioFactor.Value.ToString("F2")</span>
-                                            }
-                                            @if (HasAjuste(item))
-                                            {
-                                                <div style="display:inline-block; padding:0.2rem 0.55rem 0.25rem; background:white; border:1px solid #e5e7eb; border-left:3px solid #f59e0b; border-radius:0.35rem;">
-                                                    @if (!string.IsNullOrEmpty(prev1))
-                                                    {
-                                                        <div style="font-size:0.8rem; font-weight:700; color:#92400e; white-space:nowrap;">$@prev1</div>
-                                                        <div style="font-size:0.6rem; color:#9ca3af; white-space:nowrap;">@AjusteResumen(item)</div>
-                                                    }
-                                                    else
-                                                    {
-                                                        <div style="font-size:0.72rem; font-weight:600; color:#92400e; white-space:nowrap;">@AjusteResumen(item)</div>
-                                                    }
-                                                </div>
-                                            }
-                                            else
-                                            {
-                                                <span style="color:#d1d5db; font-size:0.8rem;">—</span>
-                                            }
-                                        </div>
+                                        @* 2026-07-01: en padre familia el ajuste vive en cada variante — vacío acá. *@
+                                        @if (grp.IsFamily)
+                                        {
+                                            <span style="color:#d1d5db; font-size:0.8rem;">—</span>
+                                        }
+                                        else
+                                        {
+                                            var prev1 = PreviewPrecioAjustado(item);
+                                            <div style="cursor:pointer; line-height:1.3;" @onclick="() => OpenItemModal(item)" title="Click para editar el ajuste desde la ficha">
+                                                @if (item.PrecioIndependiente && item.PrecioFactor.HasValue)
+                                                {
+                                                    <span style="display:inline-block; padding:0.1rem 0.4rem; background:#dbeafe; color:#1d4ed8; border-radius:0.3rem; font-size:0.7rem; font-weight:600; margin-bottom:0.15rem;">🔒 INDEP × @item.PrecioFactor.Value.ToString("F2")</span>
+                                                }
+                                                @if (HasAjuste(item))
+                                                {
+                                                    <div style="display:inline-block; padding:0.2rem 0.55rem 0.25rem; background:white; border:1px solid #e5e7eb; border-left:3px solid #f59e0b; border-radius:0.35rem;">
+                                                        @if (!string.IsNullOrEmpty(prev1))
+                                                        {
+                                                            <div style="font-size:0.8rem; font-weight:700; color:#92400e; white-space:nowrap;">$@prev1</div>
+                                                            <div style="font-size:0.6rem; color:#9ca3af; white-space:nowrap;">@AjusteResumen(item)</div>
+                                                        }
+                                                        else
+                                                        {
+                                                            <div style="font-size:0.72rem; font-weight:600; color:#92400e; white-space:nowrap;">@AjusteResumen(item)</div>
+                                                        }
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <span style="color:#d1d5db; font-size:0.8rem;">—</span>
+                                                }
+                                            </div>
+                                        }
                                     </td>
                                     <td class="td-product" @onclick:stopPropagation="true">
                                         @if (item.ProductId.HasValue)
