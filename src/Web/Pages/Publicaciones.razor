@@ -1223,7 +1223,9 @@
                     </div>
                     <div class="info-costs-right">
                         <div class="cost-simulator">
-                            <h4>Simulador de costos</h4>
+                            @* 2026-07-01: rediseño — un solo bloque con flujo apilado hacia abajo.
+                               Fusiona el simulador de costos + análisis de ganancia + calcular precio. *@
+                            <h4>📊 Cuentas de esta venta</h4>
                             @if (isLoadingCosts)
                             {
                                 <div class="cost-loading"><span>Calculando costos...</span></div>
@@ -1232,46 +1234,35 @@
                             {
                                 // 2026-06-19: descomposicion identica al simulador de MeLi.
                                 // El sale_fee_amount de la API incluye comision base + cargo fijo + financiacion.
-                                // MeLi UI separa (base+fijo) como "Cargo por vender" y (financ) como "Costo por ofrecer cuotas".
                                 var financingEnPesos = Math.Round(itemCosts.Price * itemCosts.FinancingFee / 100m, 2);
                                 var cargoPorVenderNeto = itemCosts.SaleFeeAmount - financingEnPesos;
-                                <div class="cost-price-box">
-                                    <span class="cost-price-label">Precio</span>
-                                    <span class="cost-price-value">$ @itemCosts.Price.ToString("N2", argCulture)</span>
-                                </div>
+                                var recibisConIva = CalculateNetAmount();
+                                var ivaAAfip = recibisConIva - (recibisConIva / (1m + IvaAlicuota));
+                                var teQuedaSinIva = RecibisSinIva();
+                                var comisionPct = itemCosts.Price > 0 ? cargoPorVenderNeto / itemCosts.Price * 100m : 0m;
                                 <div class="cost-line-items">
+                                    <div class="cost-line cost-line-headline">
+                                        <span class="cost-line-label"><strong>Precio publicado</strong></span>
+                                        <span class="cost-line-amount"><strong>$ @itemCosts.Price.ToString("N2", argCulture)</strong></span>
+                                    </div>
                                     <div class="cost-line">
-                                        <span class="cost-line-label">Cargo por vender</span>
+                                        <span class="cost-line-label">Cargo por vender (@comisionPct.ToString("0.#", argCulture)%)</span>
                                         <span class="cost-line-amount negative">-$ @cargoPorVenderNeto.ToString("N2", argCulture)</span>
                                     </div>
                                     @if (itemCosts.FinancingFee > 0)
                                     {
                                         <div class="cost-line">
-                                            <div>
-                                                <span class="cost-line-label">Costo por ofrecer cuotas</span>
-                                                <div class="cost-line-sub">@GetCuotasLabel(selectedItem?.InstallmentTag) · @(itemCosts.FinancingFee.ToString("N1", argCulture))%</div>
-                                            </div>
+                                            <span class="cost-line-label">Costo por cuotas (@GetCuotasLabel(selectedItem?.InstallmentTag))</span>
                                             <span class="cost-line-amount negative">-$ @financingEnPesos.ToString("N2", argCulture)</span>
                                         </div>
                                     }
                                     <div class="cost-line">
-                                        <div>
-                                            <span class="cost-line-label">Costo por envio</span>
-                                            @if (itemCosts.ShippingCost == 0)
-                                            {
-                                                <div class="cost-line-sub">No ofreces envio gratis</div>
-                                            }
-                                            else
-                                            {
-                                                <div class="cost-line-sub">Envios de Mercado Libre</div>
-                                            }
-                                        </div>
+                                        <span class="cost-line-label">Costo por envío</span>
                                         <span class="cost-line-amount @(itemCosts.ShippingCost > 0 ? "negative" : "")">@(itemCosts.ShippingCost > 0 ? "-" : "")$ @itemCosts.ShippingCost.ToString("N2", argCulture)</span>
                                     </div>
                                     <div class="cost-line cost-line-tax">
                                         <div>
-                                            <span class="cost-line-label">Impuestos estimados</span>
-                                            <div class="cost-line-sub">% sobre el precio · segun tu condicion fiscal</div>
+                                            <span class="cost-line-label" title="Más adelante los traeremos del padrón ARCA automáticamente. Por ahora lo cargás vos si querés simular.">Impuestos estimados ⓘ</span>
                                         </div>
                                         <div class="cost-tax-input">
                                             <input type="text" class="cost-tax-field" value="@FormatTaxPct()" @oninput="OnTaxPercentageChanged" inputmode="decimal" />
@@ -1279,10 +1270,118 @@
                                             <span class="cost-line-amount negative" style="margin-left: 0.5rem;">-$ @(CalculateTaxAmount().ToString("N2", argCulture))</span>
                                         </div>
                                     </div>
-                                </div>
-                                <div class="cost-total">
-                                    <span class="cost-total-label">Recibis</span>
-                                    <span class="cost-total-value">$ @(CalculateNetAmount().ToString("N2", argCulture))</span>
+                                    <div class="cost-line cost-line-subtotal">
+                                        <span class="cost-line-label"><strong>Recibís de MeLi</strong></span>
+                                        <span class="cost-line-amount"><strong>$ @recibisConIva.ToString("N2", argCulture)</strong></span>
+                                    </div>
+                                    <div class="cost-line">
+                                        <span class="cost-line-label">IVA (21%) a AFIP</span>
+                                        <span class="cost-line-amount negative">-$ @ivaAAfip.ToString("N2", argCulture)</span>
+                                    </div>
+                                    <div class="cost-line cost-line-subtotal">
+                                        <span class="cost-line-label"><strong>Te queda (sin IVA)</strong></span>
+                                        <span class="cost-line-amount"><strong>$ @teQuedaSinIva.ToString("N2", argCulture)</strong></span>
+                                    </div>
+                                    @if (isLoadingProductCost)
+                                    {
+                                        <div class="cost-line" style="color:#6b7280; font-style:italic;">
+                                            <span class="cost-line-label">Costo del producto</span>
+                                            <span class="cost-line-amount">Calculando...</span>
+                                        </div>
+                                    }
+                                    else if (itemProductCost is null || itemProductCost.TotalCost == 0)
+                                    {
+                                        <div style="margin-top:0.5rem; padding:0.5rem 0.6rem; background:#fef3c7; border:1px solid #fcd34d; border-radius:6px; font-size:0.8rem; color:#92400e;">
+                                            ⚠ Sin costo cargado en el sistema — no puedo calcular la ganancia real. Cargá el costo en el producto y volvé a abrir esta ficha.
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="cost-line">
+                                            <span class="cost-line-label">Costo del producto</span>
+                                            <span class="cost-line-amount negative">-$ @itemProductCost.TotalCost.ToString("N2", argCulture)</span>
+                                        </div>
+                                        <div class="cost-line cost-line-total" style="background:@MarginColor(); color:white; padding:0.5rem 0.75rem; border-radius:6px; margin-top:0.35rem;">
+                                            <span class="cost-line-label" style="color:white;"><strong>@MarginLabel().Split(' ')[0] GANANCIA REAL</strong></span>
+                                            <span class="cost-line-amount" style="color:white;"><strong>$ @MarginGanancia().ToString("N2", argCulture)</strong></span>
+                                        </div>
+                                        <div style="display:flex; justify-content:space-between; padding:0.25rem 0.75rem 0; font-size:0.85rem; color:#6b7280;">
+                                            <span>Margen</span>
+                                            <span><strong style="color:@MarginColor();">@MarginPctSobreCosto().ToString("0.0", argCulture)% sobre costo</strong> · @MarginLabel()</span>
+                                        </div>
+                                        @if (itemProductCost.Components.Count > 1)
+                                        {
+                                            <div style="margin-top: 0.35rem; padding-top: 0.35rem; border-top: 1px dashed #d1d5db; font-size: 0.7rem; color: #6b7280;">
+                                                📦 Costo = @string.Join(" + ", itemProductCost.Components.Select(c => $"{c.Cantidad}×{c.Sku} (${c.CostoTotal.ToString("N0", argCulture)})"))
+                                            </div>
+                                        }
+
+                                        @* ─── Calculadora inversa: qué precio necesito para ganar X% ─── *@
+                                        <div style="margin-top:1rem; padding-top:0.75rem; border-top:2px solid #e5e7eb;">
+                                            <div style="font-weight:700; font-size:0.9rem; color:#1e40af; margin-bottom:0.5rem;">🧮 ¿Qué querés ganar?</div>
+                                            <div style="display:flex; gap:0.5rem; align-items:flex-end; flex-wrap:wrap;">
+                                                <div>
+                                                    <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase; margin-bottom:0.15rem;">Ganancia</div>
+                                                    <div style="display:flex; gap:0.2rem;">
+                                                        <input type="number" step="any" value="@calcGananciaValor"
+                                                               @oninput="@(e => { if (decimal.TryParse(e.Value?.ToString()?.Replace(',', '.'), NumberStyles.Any, CultureInfo.InvariantCulture, out var v)) calcGananciaValor = v; })"
+                                                               style="width:75px; padding:0.35rem; border:1px solid #93c5fd; border-radius:5px; font-weight:700; text-align:right;" />
+                                                        <button @onclick='() => calcGananciaModo = "%"'
+                                                                style="padding:0.35rem 0.5rem; border:1px solid #93c5fd; border-radius:5px; cursor:pointer; font-weight:700; background:@(calcGananciaModo == "%" ? "#2563eb" : "white"); color:@(calcGananciaModo == "%" ? "white" : "#1e40af");">%</button>
+                                                        <button @onclick='() => calcGananciaModo = "$"'
+                                                                style="padding:0.35rem 0.5rem; border:1px solid #93c5fd; border-radius:5px; cursor:pointer; font-weight:700; background:@(calcGananciaModo == "$" ? "#2563eb" : "white"); color:@(calcGananciaModo == "$" ? "white" : "#1e40af");">$</button>
+                                                    </div>
+                                                    <div style="font-size:0.65rem; color:#9ca3af; margin-top:0.1rem;">@(calcGananciaModo == "%" ? "% sobre costo" : "$ por unidad")</div>
+                                                </div>
+                                                <div>
+                                                    <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase; margin-bottom:0.15rem;">Redondeo</div>
+                                                    <div style="display:flex; gap:0.2rem;">
+                                                        @foreach (var r in new[] { "exacto", "99", "999" })
+                                                        {
+                                                            var rLocal = r;
+                                                            <button @onclick="() => calcRedondeo = rLocal"
+                                                                    style="padding:0.35rem 0.5rem; border:1px solid #93c5fd; border-radius:5px; cursor:pointer; font-weight:700; background:@(calcRedondeo == rLocal ? "#2563eb" : "white"); color:@(calcRedondeo == rLocal ? "white" : "#1e40af");">@rLocal</button>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            @{
+                                                var precioCalc = CalcPrecioFinal();
+                                            }
+                                            @if (precioCalc.HasValue)
+                                            {
+                                                var netoCalc = CalcNetoAtPrecio(precioCalc.Value);
+                                                var gananciaCalc = netoCalc - itemProductCost.TotalCost;
+                                                <div style="margin-top:0.6rem; padding:0.5rem 0.75rem; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px;">
+                                                    <div style="display:flex; justify-content:space-between; align-items:baseline;">
+                                                        <span style="font-size:0.7rem; color:#6b7280; text-transform:uppercase;">Precio sugerido</span>
+                                                        <span style="font-size:1.15rem; font-weight:800; color:#1e40af;">$ @precioCalc.Value.ToString("N2", argCulture)</span>
+                                                    </div>
+                                                    <div style="font-size:0.75rem; color:#16a34a; font-weight:600; margin-top:0.15rem;">ganarías $@gananciaCalc.ToString("N0", argCulture)</div>
+                                                </div>
+                                                <button @onclick="AplicarPrecioCalculado" disabled="@(isPushingCalcPrecio)"
+                                                        style="margin-top:0.5rem; width:100%; padding:0.55rem; background:#16a34a; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer;">
+                                                    @(isPushingCalcPrecio ? "Pusheando..." : "✔ Aplicar y pushear")
+                                                </button>
+                                            }
+                                            else
+                                            {
+                                                <div style="margin-top:0.6rem; font-size:0.78rem; color:#9ca3af;">Ingresá la ganancia deseada para calcular el precio.</div>
+                                            }
+                                            @{
+                                                var catSibling = GetCatalogSibling(selectedItem);
+                                            }
+                                            @if (selectedItem.CatalogListing || catSibling is not null)
+                                            {
+                                                <div style="margin-top:0.5rem; padding:0.4rem 0.6rem; background:#fef9c3; border-left:3px solid #f59e0b; border-radius:4px; font-size:0.72rem; color:#92400e;">
+                                                    📋 @(selectedItem.CatalogListing ? "Publi de CATÁLOGO" : "Hermana de CATÁLOGO")@(catSibling is not null ? $" ({catSibling.MeliItemId})" : "") — MeLi hermana los precios: cambiás una, la otra se mueve sola.
+                                                </div>
+                                            }
+                                            <div style="margin-top:0.4rem; font-size:0.65rem; color:#9ca3af;">
+                                                El cálculo usa los costos actuales del simulador (comisión @itemCosts.PercentageFee.ToString("0.#")%, cargo fijo, envío). No incluye IVA (se descuenta arriba) ni retenciones IIBB ~1% (que MeLi te aplica y todavía no las traemos). Si el precio cruza $30.000 el cargo fijo se elimina solo.
+                                            </div>
+                                        </div>
+                                    }
                                 </div>
                             }
                             else
@@ -1292,130 +1391,8 @@
                         </div>
                     </div>
                 </div>
-                @* 2026-06-01: VISOR DE MARGEN — abajo del simulador de costos. NO TOCA NADA EXISTENTE. *@
-                @if (itemCosts is not null)
-                {
-                    <div style="margin-top: 0.75rem; padding: 0.75rem 1rem; background: linear-gradient(135deg, #f0fdf4 0%, #fefce8 100%); border: 2px solid #d1d5db; border-radius: 8px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-                            <span style="font-weight: 700; font-size: 0.9rem; color: #374151;">💰 Análisis de Ganancia (sistema)</span>
-                            @if (isLoadingProductCost)
-                            {
-                                <span style="font-size: 0.75rem; color: #6b7280;">Calculando...</span>
-                            }
-                            else if (itemProductCost is null || itemProductCost.TotalCost == 0)
-                            {
-                                <span style="font-size: 0.75rem; color: #dc2626;">⚠ No hay costo cargado en sistema</span>
-                            }
-                            else
-                            {
-                                <span style="font-size: 0.75rem; padding: 0.15rem 0.5rem; background:@MarginColor(); color:white; border-radius:10px; font-weight:700;">@MarginLabel()</span>
-                            }
-                        </div>
-                        @if (itemProductCost is not null && itemProductCost.TotalCost > 0)
-                        {
-                            @* 2026-07-01: simplificado — un solo % (sobre costo), todo sin IVA. Antes mostraba
-                               "Recibís neto" con IVA y ganancia inflada ~21%. Ahora es el número honesto. *@
-                            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; font-size: 0.85rem;">
-                                <div title="Costo del producto/combo que cargaste en el sistema. Se guarda SIN IVA.">
-                                    <div style="color: #6b7280; font-size: 0.7rem; text-transform: uppercase;">Costo producto</div>
-                                    <div style="font-weight: 700; color: #374151;">$ @itemProductCost.TotalCost.ToString("N2", argCulture)</div>
-                                </div>
-                                <div title="Lo que MeLi te transfiere ($@CalculateNetAmount().ToString("N0", argCulture)) menos el IVA 21% que después le pasás a AFIP. Es tu ingreso neto real (comparable al costo).">
-                                    <div style="color: #6b7280; font-size: 0.7rem; text-transform: uppercase;">Te queda (sin IVA)</div>
-                                    <div style="font-weight: 700; color: #374151;">$ @RecibisSinIva().ToString("N2", argCulture)</div>
-                                </div>
-                                <div title="Ganancia real = te queda (sin IVA) − costo. Antes este número aparecía inflado porque comparaba peras (con IVA) con manzanas (sin IVA).">
-                                    <div style="color: #6b7280; font-size: 0.7rem; text-transform: uppercase;">Ganancia real</div>
-                                    <div style="font-weight: 700; color:@MarginColor();">$ @MarginGanancia().ToString("N2", argCulture)</div>
-                                </div>
-                                <div title="Margen sobre el costo. Ej: si costo $100 y ganás $80, margen = 80%. Usá este número para decidir cuánto ajustar precios.">
-                                    <div style="color: #6b7280; font-size: 0.7rem; text-transform: uppercase;">Margen</div>
-                                    <div style="font-weight: 700; color:@MarginColor();">
-                                        @MarginPctSobreCosto().ToString("0.0", argCulture)%
-                                        <span style="font-size: 0.65rem; color: #9ca3af; font-weight: 500; display: block;">sobre costo</span>
-                                    </div>
-                                </div>
-                            </div>
-                            @if (itemProductCost.Components.Count > 1)
-                            {
-                                <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed #d1d5db; font-size: 0.7rem; color: #6b7280;">
-                                    📦 Costo = @string.Join(" + ", itemProductCost.Components.Select(c => $"{c.Cantidad}×{c.Sku} (${c.CostoTotal.ToString("N0", argCulture)})"))
-                                </div>
-                            }
-                        }
-                    </div>
-                }
-
-                @* 2026-06-12: CALCULAR PRECIO DESDE COSTO — el camino inverso del simulador.
-                   Costo + ganancia deseada → precio de publicación con todos los costos MeLi adentro. *@
-                @if (itemCosts is not null && itemProductCost is not null && itemProductCost.TotalCost > 0)
-                {
-                    <div style="margin-top: 0.75rem; padding: 0.75rem 1rem; background: #eff6ff; border: 2px solid #bfdbfe; border-radius: 8px;">
-                        <div style="font-weight: 700; font-size: 0.9rem; color: #1e40af; margin-bottom: 0.6rem;">🧮 Calcular precio desde costo</div>
-                        <div style="display:flex; gap:1rem; align-items:flex-end; flex-wrap:wrap;">
-                            <div>
-                                <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase; margin-bottom:0.2rem;">Quiero ganar</div>
-                                <div style="display:flex; gap:0.25rem;">
-                                    <input type="number" step="any" value="@calcGananciaValor"
-                                           @oninput="@(e => { if (decimal.TryParse(e.Value?.ToString()?.Replace(',', '.'), NumberStyles.Any, CultureInfo.InvariantCulture, out var v)) calcGananciaValor = v; })"
-                                           style="width:90px; padding:0.4rem; border:1px solid #93c5fd; border-radius:6px; font-weight:700; text-align:right;" />
-                                    <button @onclick='() => calcGananciaModo = "%"'
-                                            style="padding:0.4rem 0.6rem; border:1px solid #93c5fd; border-radius:6px; cursor:pointer; font-weight:700; background:@(calcGananciaModo == "%" ? "#2563eb" : "white"); color:@(calcGananciaModo == "%" ? "white" : "#1e40af");">%</button>
-                                    <button @onclick='() => calcGananciaModo = "$"'
-                                            style="padding:0.4rem 0.6rem; border:1px solid #93c5fd; border-radius:6px; cursor:pointer; font-weight:700; background:@(calcGananciaModo == "$" ? "#2563eb" : "white"); color:@(calcGananciaModo == "$" ? "white" : "#1e40af");">$</button>
-                                </div>
-                                <div style="font-size:0.65rem; color:#9ca3af; margin-top:0.15rem;">@(calcGananciaModo == "%" ? "% sobre el costo" : "$ por unidad") (costo $@itemProductCost.TotalCost.ToString("N0", argCulture))</div>
-                            </div>
-                            <div>
-                                <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase; margin-bottom:0.2rem;">Redondeo</div>
-                                <div style="display:flex; gap:0.25rem;">
-                                    @foreach (var r in new[] { "exacto", "99", "999" })
-                                    {
-                                        var rLocal = r;
-                                        <button @onclick="() => calcRedondeo = rLocal"
-                                                style="padding:0.4rem 0.6rem; border:1px solid #93c5fd; border-radius:6px; cursor:pointer; font-weight:700; background:@(calcRedondeo == rLocal ? "#2563eb" : "white"); color:@(calcRedondeo == rLocal ? "white" : "#1e40af");">@rLocal</button>
-                                    }
-                                </div>
-                            </div>
-                            <div style="flex:1; min-width:220px;">
-                                @{
-                                    var precioCalc = CalcPrecioFinal();
-                                }
-                                @if (precioCalc.HasValue)
-                                {
-                                    var netoCalc = CalcNetoAtPrecio(precioCalc.Value);
-                                    var gananciaCalc = netoCalc - itemProductCost.TotalCost;
-                                    var margenCalc = itemProductCost.TotalCost > 0 ? gananciaCalc / itemProductCost.TotalCost * 100m : 0m;
-                                    <div style="padding:0.5rem 0.75rem; background:white; border:1px solid #bfdbfe; border-radius:6px;">
-                                        <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase;">Precio sugerido</div>
-                                        <div style="font-size:1.3rem; font-weight:800; color:#1e40af;">$ @precioCalc.Value.ToString("N2", argCulture)</div>
-                                        <div style="font-size:0.72rem; color:#16a34a; font-weight:600;">→ te quedan $@netoCalc.ToString("N0", argCulture) · ganás $@gananciaCalc.ToString("N0", argCulture) (@margenCalc.ToString("0.0", argCulture)% s/costo)</div>
-                                    </div>
-                                }
-                                else
-                                {
-                                    <div style="font-size:0.78rem; color:#9ca3af;">Ingresá la ganancia deseada para calcular.</div>
-                                }
-                            </div>
-                            <button @onclick="AplicarPrecioCalculado" disabled="@(isPushingCalcPrecio || CalcPrecioFinal() is null)"
-                                    style="padding:0.6rem 1rem; background:#16a34a; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer; white-space:nowrap;">
-                                @(isPushingCalcPrecio ? "Pusheando..." : "✔ Aplicar y pushear")
-                            </button>
-                        </div>
-                        @{
-                            var catSibling = GetCatalogSibling(selectedItem);
-                        }
-                        @if (selectedItem.CatalogListing || catSibling is not null)
-                        {
-                            <div style="margin-top:0.5rem; padding:0.4rem 0.6rem; background:#fef9c3; border-left:3px solid #f59e0b; border-radius:4px; font-size:0.75rem; color:#92400e;">
-                                📋 @(selectedItem.CatalogListing ? "Esta publicación es de CATÁLOGO" : "Esta publicación tiene una hermana de CATÁLOGO")@(catSibling is not null ? $" ({catSibling.MeliItemId})" : "") — el precio va hermanado: al cambiar una, MeLi actualiza la otra automáticamente.
-                            </div>
-                        }
-                        <div style="margin-top:0.4rem; font-size:0.65rem; color:#9ca3af;">
-                            El cálculo usa los costos actuales del simulador (comisión @itemCosts.PercentageFee.ToString("0.#")%, cargo fijo, envío, retenciones). Si el precio sugerido cruza los $30.000, el cargo fijo se elimina solo.
-                        </div>
-                    </div>
-                }
+                @* 2026-07-01: se eliminaron los cuadros duplicados "Análisis de Ganancia" y "Calcular precio desde costo"
+                   — ambos se fusionaron dentro del simulador arriba en un solo bloque con flujo apilado. *@
 
                 @* 2026-06-12: SECCIÓN AJUSTE DE PRECIO — movida desde la grilla (la celda AJUSTE pasó a chip). *@
                 <div style="margin-top: 0.75rem; padding: 0.75rem 1rem; background: #fffbeb; border: 2px solid #fde68a; border-radius: 8px;">
