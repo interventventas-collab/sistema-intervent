@@ -3502,6 +3502,27 @@
                            @bind="addItemModalCantidad" @bind:event="oninput" />
                 </div>
 
+                @* 2026-07-01: Formato para productos NO cafe (Suelto / Pack x N / Bulto).
+                   Solo se muestra si el producto tiene packs o bulto — sino no hay nada que elegir. *@
+                @if (addItemModalMode == "PRODUCTO" && addItemModalCategoria != "CAFE"
+                     && (AddProductoPacks.Count > 0 || AddProductoTieneBulto))
+                {
+                    <div>
+                        <label style="font-size:0.78rem; color:#374151; font-weight:600; display:block; margin-bottom:0.2rem;">Formato</label>
+                        <select class="form-input" @bind="addItemModalFormato" style="width:100%; padding:0.45rem 0.6rem; font-size:1rem; font-weight:600;">
+                            <option value="UNIT">📦 Suelto</option>
+                            @foreach (var pack in AddProductoPacks)
+                            {
+                                <option value="@($"PACK_{pack.Cantidad}")">🎁 @pack.Nombre</option>
+                            }
+                            @if (AddProductoTieneBulto)
+                            {
+                                <option value="BULTO">📥 @AddProductoBultoLabel</option>
+                            }
+                        </select>
+                    </div>
+                }
+
                 @if (addItemModalMode == "PRODUCTO" && addItemModalCategoria == "CAFE")
                 {
                     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.4rem;">
