@@ -6301,6 +6301,21 @@
             var t = topProductsForClient[idx];
             await AbrirCantidadTopProduct(t.ProductoId, t.Formato, t.Nombre);
         }
+        else if (e.Key == "Tab")
+        {
+            // 2026-07-01: cerrar la pestaña Top al hacer Tab, volver a modo Producto y focusear
+            // el buscador. Asi el usuario libera pantalla para revisar el carrito.
+            addMode = "PRODUCTO";
+            StateHasChanged();
+            await Task.Delay(40);
+            try { await FocusFieldAsync("nv-producto"); } catch { }
+        }
+        else if (e.Key == "Escape")
+        {
+            // Escape tambien cierra el Top
+            addMode = "PRODUCTO";
+            StateHasChanged();
+        }
     }
 
     // 2026-06-30: Modal universal "Agregar item al carrito" — comparte UI con Top.
