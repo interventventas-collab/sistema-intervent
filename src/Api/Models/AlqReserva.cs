@@ -21,6 +21,9 @@ public class AlqReserva
     public DateTime FechaEntrega { get; set; }
     public DateTime FechaRetiro { get; set; }
 
+    /// <summary>Día del evento en sí (la fiesta). Suele caer entre la entrega y el retiro. Opcional.</summary>
+    public DateTime? FechaEvento { get; set; }
+
     [MaxLength(8)]
     public string? HoraInicio { get; set; }
 

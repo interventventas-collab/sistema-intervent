@@ -163,6 +163,12 @@
                         </div>
                     </div>
 
+                    <div class="form-group" style="background:#f5f3ff; border:1px solid #ddd6fe; border-radius:8px; padding:0.6rem 0.8rem; margin-bottom:0.6rem;">
+                        <label class="form-label" style="color:#6d28d9; font-weight:700;">📅 Fecha del evento (la fiesta)</label>
+                        <input class="form-input" type="date" @bind="formFechaEvento" style="max-width:220px;" />
+                        <div style="font-size:0.72rem; color:#7c3aed; margin-top:0.2rem;">El día del evento en sí. Ej: evento domingo 10 → entrega sábado 9, retiro lunes 11.</div>
+                    </div>
+
                     <div class="form-row">
                         <div class="form-group" style="flex: 1;">
                             <label class="form-label">Fecha entrega *</label>
@@ -475,6 +481,17 @@
                     </div>
                 </div>
 
+                @* Fecha del evento — destacada, más grande que el resto *@
+                @if (printReserva.FechaEvento.HasValue)
+                {
+                    <div style="margin-top: 0.6rem; background: #f5f3ff; border: 2px solid #7c3aed; border-radius: 10px; padding: 0.6rem 1rem; text-align: center;">
+                        <div style="font-size: 0.72rem; color: #6d28d9; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">📅 Fecha del evento</div>
+                        <div style="font-size: 1.5rem; font-weight: 800; color: #5b21b6;">
+                            @printReserva.FechaEvento.Value.ToString("dddd dd 'de' MMMM 'de' yyyy", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))
+                        </div>
+                    </div>
+                }
+
                 @* Datos del cliente y del evento *@
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.6rem;">
                     <div style="border: 1px solid #d1d5db; padding: 0.6rem;">
@@ -776,6 +793,7 @@
     private int formClienteId;
     private DateTime formFechaEntrega = DateTime.Today;
     private DateTime formFechaRetiro = DateTime.Today.AddDays(1);
+    private DateTime? formFechaEvento;
     private string formHoraInicio = "";
     private string formHoraFin = "";
     private string formDireccionEvento = "";
@@ -980,6 +998,7 @@
         formClienteId = r.ClienteId;
         formFechaEntrega = r.FechaEntrega.Date;
         formFechaRetiro = r.FechaRetiro.Date;
+        formFechaEvento = r.FechaEvento?.Date;
         formHoraInicio = r.HoraInicio ?? "";
         formHoraFin = r.HoraFin ?? "";
         formDireccionEvento = r.DireccionEvento ?? "";
@@ -1003,6 +1022,7 @@
     private void ResetForm()
     {
         formClienteId = 0;
+        formFechaEvento = null;
         formFechaEntrega = DateTime.Today;
         formFechaRetiro = DateTime.Today.AddDays(1);
         formHoraInicio = ""; formHoraFin = "";
@@ -1086,6 +1106,8 @@
                     ClienteId = formClienteId,
                     FechaEntrega = formFechaEntrega,
                     FechaRetiro = formFechaRetiro,
+                    FechaEvento = formFechaEvento,
+                    FechaEventoSet = true,
                     HoraInicio = formHoraInicio,
                     HoraFin = formHoraFin,
                     DireccionEvento = formDireccionEvento,
@@ -1106,6 +1128,7 @@
                     ClienteId = formClienteId,
                     FechaEntrega = formFechaEntrega,
                     FechaRetiro = formFechaRetiro,
+                    FechaEvento = formFechaEvento,
                     HoraInicio = formHoraInicio,
                     HoraFin = formHoraFin,
                     DireccionEvento = formDireccionEvento,

@@ -83,6 +83,7 @@ public record AlqReservaDto(
     string Estado, string? Notas,
     DateTime CreatedAt, DateTime? UpdatedAt,
     List<AlqReservaItemDto> Items,
+    DateTime? FechaEvento = null,
     // ===== QR + Repartidor (2026-06-26) =====
     string? PublicToken = null,
     decimal MontoCobrado = 0,
@@ -105,6 +106,7 @@ public class CreateAlqReservaRequest
     public int ClienteId { get; set; }
     public DateTime FechaEntrega { get; set; }
     public DateTime FechaRetiro { get; set; }
+    public DateTime? FechaEvento { get; set; }
     public string? HoraInicio { get; set; }
     public string? HoraFin { get; set; }
     public string? DireccionEvento { get; set; }
@@ -122,6 +124,8 @@ public class UpdateAlqReservaRequest
     public int? ClienteId { get; set; }
     public DateTime? FechaEntrega { get; set; }
     public DateTime? FechaRetiro { get; set; }
+    public DateTime? FechaEvento { get; set; }
+    public bool FechaEventoSet { get; set; }   // true si el form mandó explícitamente FechaEvento (permite limpiarla)
     public string? HoraInicio { get; set; }
     public string? HoraFin { get; set; }
     public string? DireccionEvento { get; set; }

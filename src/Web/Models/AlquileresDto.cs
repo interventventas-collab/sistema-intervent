@@ -111,6 +111,7 @@ public class AlqReservaDto
     public string? ClienteTelefono { get; set; }
     public DateTime FechaEntrega { get; set; }
     public DateTime FechaRetiro { get; set; }
+    public DateTime? FechaEvento { get; set; }
     public string? HoraInicio { get; set; }
     public string? HoraFin { get; set; }
     public string? DireccionEvento { get; set; }
@@ -150,6 +151,7 @@ public class CreateAlqReservaRequest
     public int ClienteId { get; set; }
     public DateTime FechaEntrega { get; set; }
     public DateTime FechaRetiro { get; set; }
+    public DateTime? FechaEvento { get; set; }
     public string? HoraInicio { get; set; }
     public string? HoraFin { get; set; }
     public string? DireccionEvento { get; set; }
@@ -188,6 +190,8 @@ public class UpdateAlqReservaRequest
     public int? ClienteId { get; set; }
     public DateTime? FechaEntrega { get; set; }
     public DateTime? FechaRetiro { get; set; }
+    public DateTime? FechaEvento { get; set; }
+    public bool FechaEventoSet { get; set; }
     public string? HoraInicio { get; set; }
     public string? HoraFin { get; set; }
     public string? DireccionEvento { get; set; }
