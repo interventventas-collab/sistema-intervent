@@ -308,6 +308,15 @@ public class ApiClient
     public async Task<AlqDashboardResumen?> GetAlqResumenDashboardAsync()
         => await GetAsync<AlqDashboardResumen>("/api/alquileres/reservas/resumen-dashboard");
 
+    public async Task<(byte[]? bytes, string? error)> GetAlqReservaPdfAsync(int id)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync($"/api/alquileres/reservas/{id}/pdf");
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return (null, "Sesión expirada"); }
+        if (resp.IsSuccessStatusCode) return (await resp.Content.ReadAsByteArrayAsync(), null);
+        return (null, $"Error {(int)resp.StatusCode}");
+    }
+
     // ===== Alquileres: Repartidor / Cobranzas pendientes (2026-06-26) =====
     /// <summary>URL (relativa) del PNG del QR de la reserva, para usar directo en un &lt;img src&gt;.</summary>
     public string AlqReservaQrUrl(int reservaId) => $"/api/alquileres/reservas/{reservaId}/qr";
