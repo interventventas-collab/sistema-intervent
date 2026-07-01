@@ -268,6 +268,16 @@ public class CafeCotizacionPdfService
                                     // 2026-06-17 v7: fuentes más grandes — la dirección estaba ilegible.
                                     cc.Item().Text("DOMICILIO DE ENTREGA").FontSize(8).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.05f);
                                     cc.Item().PaddingTop(3).Text(domicilio!).FontSize(11).Bold();
+                                    // 2026-07-01: linea con dias de visita — antes se veia solo el domicilio.
+                                    var diasMostrar = diasDelComp.Where(d => diasActivos.Contains(d)).ToList();
+                                    if (diasMostrar.Count > 0)
+                                    {
+                                        cc.Item().PaddingTop(3).Text(t =>
+                                        {
+                                            t.Span("Días: ").FontSize(8).Bold().FontColor(Colors.Grey.Darken2);
+                                            t.Span(string.Join(" · ", diasMostrar)).FontSize(9).Bold().FontColor(Colors.Blue.Darken2);
+                                        });
+                                    }
                                     cc.Item().PaddingTop(4).Column(chips =>
                                     {
                                         if (v.Retira)
