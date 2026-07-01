@@ -553,6 +553,17 @@ public class ArcaInvoicePdfService
                 cc.Item().Text("DOMICILIO DE ENTREGA").FontSize(8).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.05f);
                 if (tieneEntrega) cc.Item().PaddingTop(3).Text(domicilio!).FontSize(11).Bold();
 
+                // 2026-07-01: linea con dias de visita — se veia solo el domicilio, no que dia entrega.
+                var diasMostrar = diasDelComp.Where(d => diasActivos.Contains(d)).ToList();
+                if (diasMostrar.Count > 0)
+                {
+                    cc.Item().PaddingTop(3).Text(t =>
+                    {
+                        t.Span("Días: ").FontSize(8).Bold().FontColor(Colors.Grey.Darken2);
+                        t.Span(string.Join(" · ", diasMostrar)).FontSize(9).Bold().FontColor(Colors.Blue.Darken2);
+                    });
+                }
+
                 cc.Item().PaddingTop(4).Row(lineRow =>
                 {
                     if (comp.Retira)
