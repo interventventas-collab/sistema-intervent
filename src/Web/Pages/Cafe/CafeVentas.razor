@@ -3503,9 +3503,8 @@
                 </div>
 
                 @* 2026-07-01: Formato para productos NO cafe (Suelto / Pack x N / Bulto).
-                   Solo se muestra si el producto tiene packs o bulto — sino no hay nada que elegir. *@
-                @if (addItemModalMode == "PRODUCTO" && addItemModalCategoria != "CAFE"
-                     && (AddProductoPacks.Count > 0 || AddProductoTieneBulto))
+                   Se muestra siempre para consistencia con el flujo cafe, aunque solo tenga Suelto. *@
+                @if (addItemModalMode == "PRODUCTO" && addItemModalCategoria != "CAFE")
                 {
                     <div>
                         <label style="font-size:0.78rem; color:#374151; font-weight:600; display:block; margin-bottom:0.2rem;">Formato</label>
