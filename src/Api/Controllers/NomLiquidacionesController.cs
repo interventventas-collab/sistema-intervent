@@ -158,7 +158,7 @@ public class NomLiquidacionesController : ControllerBase
             Estado = "pendiente",
             CreatedAt = DateTime.UtcNow
         };
-        Calcular(liq, emp);
+        Calcular(liq, emp, esCreacion: true);
         _db.NomLiquidaciones.Add(liq);
         await _db.SaveChangesAsync();
 
@@ -188,6 +188,10 @@ public class NomLiquidacionesController : ControllerBase
         if (req.Aguinaldo.HasValue) liq.Aguinaldo = Math.Max(0m, req.Aguinaldo.Value);
         if (req.Adelantos.HasValue) liq.Adelantos = Math.Max(0m, req.Adelantos.Value);
         if (req.OtrosDescuentos.HasValue) liq.OtrosDescuentos = Math.Max(0m, req.OtrosDescuentos.Value);
+        // 2026-07-01: el sueldo base de un empleado MENSUAL se puede editar por liquidación (queda
+        // congelado ahí). Para diarios no aplica (surge de días × jornal).
+        var empEsDiario = string.Equals(emp.ModalidadSueldo, "diario", StringComparison.OrdinalIgnoreCase);
+        if (req.SueldoBase.HasValue && !empEsDiario) liq.SueldoBase = Math.Max(0m, req.SueldoBase.Value);
         if (req.Notas is not null) liq.Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim();
         if (req.Estado is not null)
         {
@@ -196,7 +200,7 @@ public class NomLiquidacionesController : ControllerBase
             liq.Estado = ne;
         }
 
-        Calcular(liq, emp);
+        Calcular(liq, emp, esCreacion: false);
         liq.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
@@ -389,26 +393,34 @@ public class NomLiquidacionesController : ControllerBase
     ///  - TOTAL DESCUENTOS = DescuentoFaltas + Adelantos + OtrosDescuentos
     ///  - NETO = Ganado - Descuentos
     /// </summary>
-    private static void Calcular(NomLiquidacion liq, NomEmpleado emp)
+    /// <summary>2026-07-01: 'esCreacion' congela el sueldo. En la CREACIÓN se toma el sueldo de la
+    /// ficha (snapshot). En un UPDATE NO se vuelve a leer la ficha — el SueldoBase queda congelado
+    /// (o el que el usuario editó en esa liquidación). Así, cambiar el sueldo en la ficha NO afecta
+    /// meses ya cargados: cada liquidación conserva el importe de cuando se cargó.</summary>
+    private static void Calcular(NomLiquidacion liq, NomEmpleado emp, bool esCreacion)
     {
         // 2026-06-08: si el empleado es modalidad "diario", el sueldo base se calcula
         // como DiasTrabajados × JornalDiario (en vez de tomar el SueldoBase mensual fijo).
         var esDiario = string.Equals(emp.ModalidadSueldo, "diario", StringComparison.OrdinalIgnoreCase);
         if (esDiario)
         {
+            // Diario: siempre días × jornal (el importe surge de los días trabajados de ese mes).
             liq.SueldoBase = Math.Round(liq.DiasTrabajados * emp.JornalDiario, 2, MidpointRounding.AwayFromZero);
         }
-        else
+        else if (esCreacion)
         {
+            // Mensual, primera carga: snapshot del sueldo de la ficha en ese momento.
             liq.SueldoBase = emp.SueldoBase;
         }
+        // Mensual + UPDATE: NO se toca liq.SueldoBase — queda congelado / lo que el usuario editó.
         var hsExtraConRecargo = emp.ValorHora * (1m + liq.RecargoHsExtraPct / 100m);
         liq.MontoHsExtra = Math.Round(liq.HorasExtra * hsExtraConRecargo, 2, MidpointRounding.AwayFromZero);
         // Comision auto-calc: kg de café del mes × tarifa por kg del empleado.
         liq.Comision = Math.Round(liq.KgCafe * emp.ComisionPorKg, 2, MidpointRounding.AwayFromZero);
         // Para empleados diarios, el descuento por ausencia ya está implícito (si faltó un día,
         // no se cuenta en DiasTrabajados). Solo se aplica DescuentoFaltas a mensuales.
-        var diaProporcional = esDiario ? 0m : emp.SueldoBase / 30m;
+        // Usa el SueldoBase CONGELADO de la liquidación (no el de la ficha) para no descuadrar meses viejos.
+        var diaProporcional = esDiario ? 0m : liq.SueldoBase / 30m;
         liq.DescuentoFaltas = Math.Round(liq.DiasAusencia * diaProporcional, 2, MidpointRounding.AwayFromZero);
         liq.TotalGanado = liq.SueldoBase + liq.MontoHsExtra + liq.Comision + liq.Bonos + liq.Aguinaldo;
         liq.TotalDescuentos = liq.DescuentoFaltas + liq.Adelantos + liq.OtrosDescuentos;

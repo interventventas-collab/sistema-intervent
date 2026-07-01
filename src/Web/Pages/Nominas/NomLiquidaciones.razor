@@ -314,10 +314,26 @@
                     <div style="flex: 1;">
                         <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem;">
                             <strong style="display: block; margin-bottom: 0.5rem;">Cálculo del sueldo</strong>
-                            <div class="venta-totals-row" style="font-size: 0.85rem;">
+                            <div class="venta-totals-row" style="font-size: 0.85rem; @(!EsEmpleadoDiario && isEditing ? "align-items:center;" : "")">
                                 <span>@(EsEmpleadoDiario ? $"Sueldo ({formDiasTrabajados} días × ${FormatMoney(JornalDiarioEmp)}):" : "Sueldo base:")</span>
-                                <span>$@FormatMoney(SueldoBaseEmp)</span>
+                                @if (!EsEmpleadoDiario && isEditing)
+                                {
+                                    <span style="display:flex; align-items:center; gap:0.2rem; font-weight:600;">$
+                                        <input type="number" step="1" min="0" class="form-input" style="width:130px; padding:0.2rem 0.4rem; text-align:right; font-weight:700;"
+                                               value="@formSueldoBase" @onchange="@(e => { if (decimal.TryParse(e.Value?.ToString(), out var v)) formSueldoBase = Math.Max(0m, v); })" />
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span>$@FormatMoney(SueldoBaseEmp)</span>
+                                }
                             </div>
+                            @if (!EsEmpleadoDiario && isEditing)
+                            {
+                                <div style="font-size: 0.68rem; color: #9ca3af; margin: -0.2rem 0 0.3rem; text-align: right;">
+                                    Este sueldo queda guardado en este mes. Cambiar la ficha del empleado no lo modifica.
+                                </div>
+                            }
                             <div class="venta-totals-row" style="font-size: 0.85rem;">
                                 <span>+ Hs extra (@formHorasExtra × $@FormatMoney(ValorHoraEmp)):</span>
                                 <span style="color: #059669;">$@FormatMoney(MontoHsExtra)</span>
@@ -795,6 +811,7 @@
     private int formEmpleadoId;
     private int formAnio = DateTime.Today.Year;
     private int formMes = DateTime.Today.Month;
+    private decimal formSueldoBase;  // 2026-07-01: sueldo base congelado/editable por liquidación (mensual)
     private decimal formHorasTrabajadas;
     private decimal formHorasExtra;
     private decimal formRecargoPct = 0m;
@@ -964,16 +981,19 @@
     private NomEmpleadoDto? EmpSeleccionado => empleados?.FirstOrDefault(e => e.Id == formEmpleadoId);
     private bool EsEmpleadoDiario => EmpSeleccionado is not null && string.Equals(EmpSeleccionado.ModalidadSueldo, "diario", StringComparison.OrdinalIgnoreCase);
     private decimal JornalDiarioEmp => EmpSeleccionado?.JornalDiario ?? 0m;
+    // 2026-07-01: sueldo base mensual. En EDICIÓN usa el valor congelado/editado de la liquidación
+    // (formSueldoBase); en CREACIÓN toma el de la ficha del empleado seleccionado.
+    private decimal SueldoBaseMensual => isEditing ? formSueldoBase : (EmpSeleccionado?.SueldoBase ?? 0m);
     private decimal SueldoBaseEmp => EsEmpleadoDiario
         ? Math.Round(formDiasTrabajados * JornalDiarioEmp, 2, MidpointRounding.AwayFromZero)
-        : (EmpSeleccionado?.SueldoBase ?? 0m);
+        : SueldoBaseMensual;
     private decimal ValorHoraEmp => EmpSeleccionado?.ValorHora ?? 0m;
     private decimal ComisionPorKgEmp => EmpSeleccionado?.ComisionPorKg ?? 0m;
     private decimal HoraExtraConRecargo => Math.Round(ValorHoraEmp * (1m + formRecargoPct / 100m), 2, MidpointRounding.AwayFromZero);
     private decimal MontoHsExtra => Math.Round(formHorasExtra * HoraExtraConRecargo, 2, MidpointRounding.AwayFromZero);
     private decimal ComisionCalculada => Math.Round(formKgCafe * ComisionPorKgEmp, 2, MidpointRounding.AwayFromZero);
     // Para diarios el descuento por ausencia no aplica (si no trabajó un día simplemente no lo cuenta).
-    private decimal DiaProporcional => EsEmpleadoDiario ? 0m : (EmpSeleccionado?.SueldoBase ?? 0m) / 30m;
+    private decimal DiaProporcional => EsEmpleadoDiario ? 0m : SueldoBaseMensual / 30m;
     private decimal DescuentoFaltas => Math.Round(formDiasAusencia * DiaProporcional, 2, MidpointRounding.AwayFromZero);
     private decimal TotalGanado => SueldoBaseEmp + MontoHsExtra + ComisionCalculada + formBonos + formAguinaldo;
     private decimal TotalDescuentos => DescuentoFaltas + formAdelantos + formOtros;
@@ -1019,6 +1039,7 @@
         isEditing = true; editingId = l.Id; editingLiq = l; editingNombre = l.EmpleadoNombre;
         formEmpleadoId = l.EmpleadoId;
         formAnio = l.Anio; formMes = l.Mes;
+        formSueldoBase = l.SueldoBase;  // 2026-07-01: el sueldo congelado de ESTE mes (editable)
         formHorasTrabajadas = l.HorasTrabajadas;
         formHorasExtra = l.HorasExtra;
         formRecargoPct = 0m; // siempre 0 — el campo recargo se removio del form, la hora extra paga el valor hora tal cual
@@ -1107,6 +1128,7 @@
     private void ResetForm()
     {
         formEmpleadoId = 0;
+        formSueldoBase = 0;
         formHorasTrabajadas = 0; formHorasExtra = 0; formRecargoPct = 0m;
         formDiasAusencia = 0; formDiasVacaciones = 0;
         formKgCafe = 0; formDiasTrabajados = 0; formBonos = 0; formAguinaldo = 0; formAdelantos = 0; formOtros = 0;
@@ -1129,6 +1151,7 @@
             {
                 var updated = await Api.UpdateNomLiquidacionAsync(editingId.Value, new UpdateNomLiquidacionRequest
                 {
+                    SueldoBase = formSueldoBase,  // 2026-07-01: sueldo congelado/editado de este mes
                     HorasTrabajadas = formHorasTrabajadas,
                     HorasExtra = formHorasExtra,
                     RecargoHsExtraPct = formRecargoPct,
@@ -1163,6 +1186,7 @@
                 ToastService.Success($"Liquidación creada — Neto $@FormatMoney(created.NetoAPagar)");
                 // Pasar a modo edicion para poder cargar pagos
                 isEditing = true; editingId = created.Id; editingLiq = created; editingNombre = created.EmpleadoNombre;
+                formSueldoBase = created.SueldoBase;  // 2026-07-01: mostrar el sueldo congelado ya editable
             }
             await Load();
         }

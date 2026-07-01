@@ -103,6 +103,8 @@ public class CreateNomLiquidacionRequest
 
 public class UpdateNomLiquidacionRequest
 {
+    // 2026-07-01: sueldo base editable por liquidación (mensual). Queda congelado en ese mes.
+    public decimal? SueldoBase { get; set; }
     public decimal? HorasTrabajadas { get; set; }
     public decimal? HorasExtra { get; set; }
     public decimal? RecargoHsExtraPct { get; set; }
