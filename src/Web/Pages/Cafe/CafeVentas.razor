@@ -1322,7 +1322,7 @@
                             <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Tab</kbd> siguiente</span>
                             <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Shift+Tab</kbd> anterior</span>
                             <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">← →</kbd> en grupos</span>
-                            <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Ctrl+Enter</kbd> sale del loop de productos</span>
+                            <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Enter</kbd> (buscador vacío) sale del loop de productos</span>
                         </div>
                     </div>
 
@@ -6012,9 +6012,9 @@
 
     private async Task OnKeyDownProducto(KeyboardEventArgs e)
     {
-        // 2026-06-30: Ctrl+Enter sale del loop de productos y salta a Notas internas.
-        // Funciona estes en el buscador con texto o vacio.
-        if (e.Key == "Enter" && e.CtrlKey)
+        // 2026-07-01: Enter en buscador vacio = "no hay mas productos" -> salta a Notas.
+        // Reemplaza al viejo Ctrl+Enter. Modelo teclado: Tab / Shift+Tab / flechas / Enter.
+        if (e.Key == "Enter" && string.IsNullOrWhiteSpace(productoSearch))
         {
             await FocusFieldAsync("nv-notas");
             return;
@@ -6035,7 +6035,6 @@
             return;
         }
         if (e.Key != "Enter") return;
-        if (string.IsNullOrWhiteSpace(productoSearch)) return;
         if (total == 0) return;
 
         // Producto normal o compuesto segun el indice resaltado
