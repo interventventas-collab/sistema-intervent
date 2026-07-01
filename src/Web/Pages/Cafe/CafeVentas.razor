@@ -3503,21 +3503,28 @@
                 </div>
 
                 @* 2026-07-01: Formato para productos NO cafe (Suelto / Pack x N / Bulto).
-                   Solo se muestra si el producto tiene packs o bulto — sino no hay nada que elegir. *@
-                @if (addItemModalMode == "PRODUCTO" && addItemModalCategoria != "CAFE"
-                     && (AddProductoPacks.Count > 0 || AddProductoTieneBulto))
+                   Se muestra siempre para consistencia con el flujo cafe, aunque solo tenga Suelto.
+                   Leemos el producto directo desde 'productos' (los getters computados no siempre
+                   se re-evaluan cuando addProductoId cambia junto con addItemModalMode). *@
+                @if (addItemModalMode == "PRODUCTO" && addItemModalCategoria != "CAFE")
                 {
+                    var pModal = productos?.FirstOrDefault(x => x.Id == addProductoId);
+                    var packsModal = (pModal?.Packs ?? new List<CafeProductoPackDto>())
+                        .Where(x => x.IsActive).OrderBy(x => x.SortOrder).ThenBy(x => x.Cantidad).ToList();
+                    var tieneBultoModal = pModal is not null
+                        && pModal.UxB.HasValue && pModal.UxB.Value > 0
+                        && (pModal.PrecioBulto.HasValue || pModal.PrecioBultoOtro.HasValue);
                     <div>
                         <label style="font-size:0.78rem; color:#374151; font-weight:600; display:block; margin-bottom:0.2rem;">Formato</label>
                         <select class="form-input" @bind="addItemModalFormato" style="width:100%; padding:0.45rem 0.6rem; font-size:1rem; font-weight:600;">
                             <option value="UNIT">📦 Suelto</option>
-                            @foreach (var pack in AddProductoPacks)
+                            @foreach (var pack in packsModal)
                             {
                                 <option value="@($"PACK_{pack.Cantidad}")">🎁 @pack.Nombre</option>
                             }
-                            @if (AddProductoTieneBulto)
+                            @if (tieneBultoModal)
                             {
-                                <option value="BULTO">📥 @AddProductoBultoLabel</option>
+                                <option value="BULTO">📥 Bulto x @pModal!.UxB</option>
                             }
                         </select>
                     </div>
