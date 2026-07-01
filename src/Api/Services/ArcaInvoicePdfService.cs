@@ -559,7 +559,7 @@ public class ArcaInvoicePdfService
                 {
                     cc.Item().PaddingTop(3).Text(t =>
                     {
-                        t.Span("Días: ").FontSize(8).Bold().FontColor(Colors.Grey.Darken2);
+                        t.Span("ENTREGA: ").FontSize(8).Bold().FontColor(Colors.Grey.Darken2);
                         t.Span(string.Join(" · ", diasMostrar)).FontSize(9).Bold().FontColor(Colors.Blue.Darken2);
                     });
                 }
