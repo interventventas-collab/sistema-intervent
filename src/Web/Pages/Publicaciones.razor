@@ -558,7 +558,7 @@
                                         }
                                     </td>
                                     <td><span class="status-badge @GetStatusClass(item.Status)">@GetStatusLabel(item.Status)</span></td>
-                                    <td>@GetListingTypeLabel(item.ListingTypeId)</td>
+                                    <td>@GetListingTypeLabel(item.ListingTypeId)<div style="font-size:0.68rem; color:#6b7280; margin-top:0.1rem; font-weight:500;">@GetCuotasLabel(item.InstallmentTag)</div></td>
                                     <td>@item.AccountNickname</td>
                                     <td class="td-ajuste" @onclick:stopPropagation="true">
                                         @* 2026-06-12: la celda AJUSTE pasó a chip de SOLO LECTURA — la edición vive en la ficha. *@
@@ -691,7 +691,21 @@
                                                     var neto = CalcularNetoMla(v);
                                                     var ganancia = CalcularGananciaRealMla(v);
                                                     var margenPct = CalcularMargenPctMla(v);
-                                                    var pctText = $"{CalcularComisionTotalPct(v.InstallmentTag):F1}%";
+                                                    // 2026-07-01: mostrar el % REAL total que MeLi te cobra (incluye comisión + cuotas + envío + cargo fijo),
+                                                    // no solo la comisión base estimada. Solo cuando tenemos SaleFeeAmountReal cacheado y el precio no se movió.
+                                                    decimal comisionRealPct;
+                                                    if (v.SaleFeeAmountReal.HasValue && v.SaleFeeAmountReal.Value > 0
+                                                        && v.SaleFeePriceSnapshot.HasValue
+                                                        && Math.Abs(v.Price - v.SaleFeePriceSnapshot.Value) / Math.Max(v.Price, 1m) < 0.05m)
+                                                    {
+                                                        comisionRealPct = v.SaleFeeAmountReal.Value / v.Price * 100m;
+                                                    }
+                                                    else
+                                                    {
+                                                        comisionRealPct = CalcularComisionTotalPct(v.InstallmentTag);
+                                                    }
+                                                    var pctText = $"{comisionRealPct:F1}%";
+                                                    var pctLabel = (v.SaleFeeAmountReal.HasValue && v.SaleFeeAmountReal.Value > 0) ? "MeLi -" : "estim.";
                                                     @if (ganancia.HasValue)
                                                     {
                                                         <div style="display:flex; align-items:center; justify-content:flex-end; gap:0.6rem; line-height:1.15;">
@@ -699,8 +713,8 @@
                                                                 <div style="font-size:0.7rem; color:#6b7280;">
                                                                     @(margenPct?.ToString("F1"))% margen
                                                                 </div>
-                                                                <div style="font-size:0.65rem; color:#9ca3af;" title="MeLi te paga este monto antes de descontar costo">
-                                                                    neto $@neto.ToString("N0") · @pctText comis.
+                                                                <div style="font-size:0.65rem; color:#9ca3af;" title="MeLi te paga este monto antes de descontar costo. El % es lo que MeLi te descuenta en total (comisión + envío gratis + cargo fijo + cuotas).">
+                                                                    neto $@neto.ToString("N0") · @pctLabel@pctText
                                                                 </div>
                                                             </div>
                                                             <strong style="color:#16a34a; font-size:1.05rem; min-width:5rem; text-align:right;" title="Ganancia real = lo que MeLi te deposita ($@neto.ToString("N0")) − costo del producto ($@v.ProductCost!.Value.ToString("N0"))">
@@ -712,7 +726,7 @@
                                                     {
                                                         <div style="display:flex; align-items:center; justify-content:flex-end; gap:0.6rem; line-height:1.15;">
                                                             <div style="text-align:right;">
-                                                                <div style="font-size:0.7rem; color:#6b7280;">neto · @pctText comis.</div>
+                                                                <div style="font-size:0.7rem; color:#6b7280;">neto · @pctLabel@pctText</div>
                                                                 <div style="font-size:0.65rem; color:#dc2626;" title="No hay costo cargado en el producto del sistema">
                                                                     ⚠ sin costo en sistema
                                                                 </div>
@@ -820,7 +834,7 @@
                                         }
                                     </td>
                                         <td><span class="status-badge @GetStatusClass(item.Status)">@GetStatusLabel(item.Status)</span></td>
-                                        <td>@GetListingTypeLabel(item.ListingTypeId)</td>
+                                        <td>@GetListingTypeLabel(item.ListingTypeId)<div style="font-size:0.68rem; color:#6b7280; margin-top:0.1rem; font-weight:500;">@GetCuotasLabel(item.InstallmentTag)</div></td>
                                         <td>@item.AccountNickname</td>
                                         <td class="td-ajuste" @onclick:stopPropagation="true">
                                             @* 2026-06-12: chip de solo lectura — la edición vive en la ficha *@
@@ -936,7 +950,7 @@
                                         }
                                     </td>
                                             <td><span class="status-badge @GetStatusClass(item.Status)">@GetStatusLabel(item.Status)</span></td>
-                                            <td>@GetListingTypeLabel(item.ListingTypeId)</td>
+                                            <td>@GetListingTypeLabel(item.ListingTypeId)<div style="font-size:0.68rem; color:#6b7280; margin-top:0.1rem; font-weight:500;">@GetCuotasLabel(item.InstallmentTag)</div></td>
                                             <td>@item.AccountNickname</td>
                                         </tr>
                                     }
@@ -999,7 +1013,7 @@
                                         }
                                     </td>
                                         <td><span class="status-badge @GetStatusClass(item.Status)">@GetStatusLabel(item.Status)</span></td>
-                                        <td>@GetListingTypeLabel(item.ListingTypeId)</td>
+                                        <td>@GetListingTypeLabel(item.ListingTypeId)<div style="font-size:0.68rem; color:#6b7280; margin-top:0.1rem; font-weight:500;">@GetCuotasLabel(item.InstallmentTag)</div></td>
                                         <td>@item.AccountNickname</td>
                                     </tr>
                                 }
