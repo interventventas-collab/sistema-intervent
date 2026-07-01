@@ -1313,24 +1313,26 @@
                         </div>
                         @if (itemProductCost is not null && itemProductCost.TotalCost > 0)
                         {
+                            @* 2026-07-01: simplificado — un solo % (sobre costo), todo sin IVA. Antes mostraba
+                               "Recibís neto" con IVA y ganancia inflada ~21%. Ahora es el número honesto. *@
                             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; font-size: 0.85rem;">
-                                <div>
+                                <div title="Costo del producto/combo que cargaste en el sistema. Se guarda SIN IVA.">
                                     <div style="color: #6b7280; font-size: 0.7rem; text-transform: uppercase;">Costo producto</div>
                                     <div style="font-weight: 700; color: #374151;">$ @itemProductCost.TotalCost.ToString("N2", argCulture)</div>
                                 </div>
-                                <div>
-                                    <div style="color: #6b7280; font-size: 0.7rem; text-transform: uppercase;">Recibís neto</div>
-                                    <div style="font-weight: 700; color: #374151;">$ @CalculateNetAmount().ToString("N2", argCulture)</div>
+                                <div title="Lo que MeLi te transfiere ($@CalculateNetAmount().ToString("N0", argCulture)) menos el IVA 21% que después le pasás a AFIP. Es tu ingreso neto real (comparable al costo).">
+                                    <div style="color: #6b7280; font-size: 0.7rem; text-transform: uppercase;">Te queda (sin IVA)</div>
+                                    <div style="font-weight: 700; color: #374151;">$ @RecibisSinIva().ToString("N2", argCulture)</div>
                                 </div>
-                                <div>
-                                    <div style="color: #6b7280; font-size: 0.7rem; text-transform: uppercase;">Ganancia $</div>
+                                <div title="Ganancia real = te queda (sin IVA) − costo. Antes este número aparecía inflado porque comparaba peras (con IVA) con manzanas (sin IVA).">
+                                    <div style="color: #6b7280; font-size: 0.7rem; text-transform: uppercase;">Ganancia real</div>
                                     <div style="font-weight: 700; color:@MarginColor();">$ @MarginGanancia().ToString("N2", argCulture)</div>
                                 </div>
-                                <div>
-                                    <div style="color: #6b7280; font-size: 0.7rem; text-transform: uppercase;">Margen %</div>
+                                <div title="Margen sobre el costo. Ej: si costo $100 y ganás $80, margen = 80%. Usá este número para decidir cuánto ajustar precios.">
+                                    <div style="color: #6b7280; font-size: 0.7rem; text-transform: uppercase;">Margen</div>
                                     <div style="font-weight: 700; color:@MarginColor();">
-                                        @MarginPctSobreCosto().ToString("0.0", argCulture)% s/costo
-                                        <span style="font-size: 0.65rem; color: #9ca3af; font-weight: 500; display: block;">@MarginPctSobreVenta().ToString("0.0", argCulture)% s/venta</span>
+                                        @MarginPctSobreCosto().ToString("0.0", argCulture)%
+                                        <span style="font-size: 0.65rem; color: #9ca3af; font-weight: 500; display: block;">sobre costo</span>
                                     </div>
                                 </div>
                             </div>
@@ -4728,20 +4730,27 @@
     private int? fichaStockFull;
 
     // 2026-06-01: helpers visor de margen
+    // 2026-07-01: ganancia se calcula SIN IVA (el recibís que trae MeLi tiene IVA adentro, el costo del sistema
+    // está sin IVA). Antes el número aparecía inflado ~21%. Ahora dividimos el recibís por 1,21.
+    // Usamos 21% fijo — 99% de los productos MeLi son 21%; los pocos con 10,5% se ignoran (impacto marginal).
+    private const decimal IvaAlicuota = 0.21m;
+
+    /// <summary>Recibís del simulador MeLi (con IVA adentro) dividido por 1,21 para compararlo con el costo del sistema (sin IVA).</summary>
+    private decimal RecibisSinIva()
+    {
+        if (itemCosts is null) return 0;
+        return CalculateNetAmount() / (1m + IvaAlicuota);
+    }
+
     private decimal MarginGanancia()
     {
         if (itemProductCost is null || itemCosts is null) return 0;
-        return CalculateNetAmount() - itemProductCost.TotalCost;
+        return RecibisSinIva() - itemProductCost.TotalCost;
     }
     private decimal MarginPctSobreCosto()
     {
         if (itemProductCost is null || itemProductCost.TotalCost <= 0) return 0;
         return MarginGanancia() / itemProductCost.TotalCost * 100m;
-    }
-    private decimal MarginPctSobreVenta()
-    {
-        if (itemCosts is null || itemCosts.Price <= 0) return 0;
-        return MarginGanancia() / itemCosts.Price * 100m;
     }
     private string MarginColor()
     {
@@ -4785,14 +4794,17 @@
 
     /// <summary>Precio crudo que cubre costo + ganancia + todos los costos MeLi.
     /// neto(P) = P − P·comis% − cargoFijo − envío − P·retenciones% ⇒ despejamos P.
-    /// El cargo fijo depende del precio (umbral $30.000): probamos las dos hipótesis.</summary>
+    /// El cargo fijo depende del precio (umbral $30.000): probamos las dos hipótesis.
+    /// 2026-07-01: el usuario quiere ganar % SIN IVA sobre costo (sin IVA). El neto que da MeLi es CON IVA,
+    /// así que multiplicamos por 1,21 para llegar al neto con IVA que necesitamos.</summary>
     private decimal? CalcPrecioCrudo()
     {
         if (itemCosts is null || itemProductCost is null || itemProductCost.TotalCost <= 0) return null;
         if (calcGananciaValor <= 0) return null;
         var costo = itemProductCost.TotalCost;
         var ganancia = calcGananciaModo == "%" ? costo * calcGananciaValor / 100m : calcGananciaValor;
-        var netoNecesario = costo + ganancia;
+        var netoNecesarioSinIva = costo + ganancia;
+        var netoNecesarioConIva = netoNecesarioSinIva * (1m + IvaAlicuota);
 
         var price = itemCosts.Price;
         if (price <= 0) return null;
@@ -4806,10 +4818,10 @@
         var fijoActual = itemCosts.FixedFee;
 
         // Hipótesis B: precio >= $30.000 → sin cargo fijo
-        var pSinFijo = (netoNecesario + envio) / denom;
+        var pSinFijo = (netoNecesarioConIva + envio) / denom;
         if (pSinFijo >= 30000m) return Math.Round(pSinFijo, 2);
         // Hipótesis A: precio < $30.000 → usamos el cargo fijo actual como estimación
-        var pConFijo = (netoNecesario + envio + fijoActual) / denom;
+        var pConFijo = (netoNecesarioConIva + envio + fijoActual) / denom;
         return Math.Round(pConFijo, 2);
     }
 
@@ -4825,7 +4837,8 @@
         };
     }
 
-    /// <summary>Neto estimado si publicamos al precio P (misma fórmula del simulador, escalada).</summary>
+    /// <summary>Neto SIN IVA estimado si publicamos al precio P (misma fórmula del simulador, escalada).
+    /// 2026-07-01: dividimos por 1,21 al final para descontar el IVA — comparable con el costo del sistema.</summary>
     private decimal CalcNetoAtPrecio(decimal p)
     {
         if (itemCosts is null || itemCosts.Price <= 0) return 0;
@@ -4834,7 +4847,8 @@
                            + taxPercentage / 100m;
         var fijo = p >= 30000m ? 0m : itemCosts.FixedFee;
         var envio = itemCosts.ShippingCost + itemCosts.ListingFeeAmount;
-        return Math.Round(p * (1m - pctEscalable) - fijo - envio, 2);
+        var netoConIva = p * (1m - pctEscalable) - fijo - envio;
+        return Math.Round(netoConIva / (1m + IvaAlicuota), 2);
     }
 
     /// <summary>Par de catálogo: misma familia + mismo SKU + una es catálogo y la otra no.
@@ -5821,14 +5835,17 @@
     // 2026-06-01: Calcula margen aproximado (s/costo) usando 30% de fees MeLi estimados.
     // El cálculo EXACTO está en el modal individual con los fees reales de MeLi.
     // Este es para visualización rápida en lista — sirve para detectar publicaciones con bajo/sin margen.
+    // 2026-07-01: dividimos el neto por 1,21 para descontar el IVA — el precio de MeLi lo incluye,
+    // el costo del sistema no. Antes el chip mostraba margen inflado ~21%.
     private decimal? CalcMargenPct(MeliItemDto item)
     {
         if (!item.ProductCost.HasValue || item.ProductCost.Value <= 0) return null;
         var precio = item.Price;
         if (precio <= 0) return null;
         var fees = 0.30m;  // 25% comisión + 5% aprox envío/cuotas
-        var netoEstimado = precio * (1m - fees);
-        var ganancia = netoEstimado - item.ProductCost.Value;
+        var netoEstimadoConIva = precio * (1m - fees);
+        var netoSinIva = netoEstimadoConIva / (1m + IvaAlicuota);
+        var ganancia = netoSinIva - item.ProductCost.Value;
         return ganancia / item.ProductCost.Value * 100m;
     }
 
@@ -6203,12 +6220,15 @@
     }
 
     /// <summary>2026-06-11: ganancia real = neto MeLi (lo que te depositan) - costo del producto.
-    /// Si no hay costo cargado en el sistema, devuelve null.</summary>
+    /// Si no hay costo cargado en el sistema, devuelve null.
+    /// 2026-07-01: dividimos el neto por 1,21 para descontar el IVA (que después le pasás a AFIP).
+    /// El costo del sistema está sin IVA, ahora se compara con el mismo mundo.</summary>
     private static decimal? CalcularGananciaRealMla(MeliItemDto v)
     {
         if (!v.ProductCost.HasValue || v.ProductCost.Value <= 0m) return null;
-        var neto = CalcularNetoMla(v);
-        return Math.Round(neto - v.ProductCost.Value, 0);
+        var netoConIva = CalcularNetoMla(v);
+        var netoSinIva = netoConIva / (1m + IvaAlicuota);
+        return Math.Round(netoSinIva - v.ProductCost.Value, 0);
     }
 
     /// <summary>2026-06-11: margen % sobre el costo. Ej: gano $6.000 / costo $10.000 = 60%</summary>
