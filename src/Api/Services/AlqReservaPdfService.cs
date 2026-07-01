@@ -23,7 +23,9 @@ public class AlqReservaPdfService
     public byte[] Generar(AlqReserva r, CafeSetting? cfg, byte[]? qr, string? condiciones)
     {
         cfg ??= new CafeSetting();
-        var negocio = string.IsNullOrWhiteSpace(cfg.NegocioNombre) ? "Alquileres" : cfg.NegocioNombre!;
+        // 2026-07-01: las reservas de alquiler usan la marca propia INTEREVENTOS (no la del café).
+        const string negocio = "INTEREVENTOS ®";
+        const string webAlquileres = "www.intereventos.com.ar";
         var conPrecios = r.Items.Any(i => i.PrecioUnitario > 0);
         var subtotal = r.Items.Sum(i => i.Cantidad * i.PrecioUnitario);
         var saldo = Math.Max(0m, r.MontoTotal - r.Sena - r.MontoCobrado);
@@ -47,7 +49,7 @@ public class AlqReservaPdfService
                             var contacto = new List<string>();
                             if (!string.IsNullOrWhiteSpace(cfg.NegocioTelefono)) contacto.Add("Tel: " + cfg.NegocioTelefono);
                             if (!string.IsNullOrWhiteSpace(cfg.NegocioEmail)) contacto.Add(cfg.NegocioEmail!);
-                            if (!string.IsNullOrWhiteSpace(cfg.NegocioDireccion)) contacto.Add(cfg.NegocioDireccion!);
+                            contacto.Add(webAlquileres);
                             if (contacto.Count > 0) c.Item().Text(string.Join("  ·  ", contacto)).FontSize(8).FontColor("#6b7280");
                         });
                         row.ConstantItem(150).Column(c =>
