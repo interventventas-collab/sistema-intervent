@@ -320,7 +320,7 @@
                                 {
                                     <span style="display:flex; align-items:center; gap:0.2rem; font-weight:600;">$
                                         <input type="number" step="1" min="0" class="form-input" style="width:130px; padding:0.2rem 0.4rem; text-align:right; font-weight:700;"
-                                               value="@formSueldoBase" @onchange="@(e => { if (decimal.TryParse(e.Value?.ToString(), out var v)) formSueldoBase = Math.Max(0m, v); })" />
+                                               @bind="formSueldoBase" @bind:event="oninput" />
                                     </span>
                                 }
                                 else
