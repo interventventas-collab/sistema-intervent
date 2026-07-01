@@ -134,6 +134,15 @@
                             <button class="more-filters-item @(filterSinLinkear ? "active" : "")" @onclick="() => { filterSinLinkear = !filterSinLinkear; InvalidateFilterCache(); showMoreFilters = false; }">
                                 ⚠ Sin linkear (ningún tipo)
                             </button>
+                            @* 2026-07-01: filtros para ajuste masivo — separar las que ya toqué vs vírgenes *@
+                            <button class="more-filters-item @(filterConAjuste ? "active" : "")" @onclick="() => { filterConAjuste = !filterConAjuste; if (filterConAjuste) filterSinAjuste = false; InvalidateFilterCache(); showMoreFilters = false; }"
+                                    style="background:@(filterConAjuste ? "#d1fae5" : "transparent"); color:@(filterConAjuste ? "#065f46" : "inherit"); font-weight:700;">
+                                💵 Con ajuste cargado (% o $)
+                            </button>
+                            <button class="more-filters-item @(filterSinAjuste ? "active" : "")" @onclick="() => { filterSinAjuste = !filterSinAjuste; if (filterSinAjuste) filterConAjuste = false; InvalidateFilterCache(); showMoreFilters = false; }"
+                                    style="background:@(filterSinAjuste ? "#f3f4f6" : "transparent"); color:@(filterSinAjuste ? "#374151" : "inherit"); font-weight:700;">
+                                ○ Sin ajuste (vírgenes)
+                            </button>
                             <button class="more-filters-item @(filterPromo ? "active" : "")" @onclick="() => { TogglePromoFilter(); showMoreFilters = false; }">
                                 <i class="fa-solid fa-tag"></i> En promoción
                             </button>
@@ -3138,6 +3147,9 @@
     private bool filterMargenPerdida = false;          // 🔴 margen ≤ 0% (pérdida)
     private bool filterMargenBajo = false;             // 🟠 margen 0-15% (bajo)
     private bool filterCatalogo = false;               // 📋 solo publicaciones de catálogo (amarillas)
+    // 2026-07-01: para ajuste masivo — separar las que ya tienen % o $ cargado vs las vírgenes.
+    private bool filterConAjuste = false;              // 💵 tiene AjustePct/AjusteFijo/Redondeo cargado
+    private bool filterSinAjuste = false;              // ○ virgen: nada cargado
     private bool showMoreFilters = false;
 
     // Selection & bulk actions
@@ -3313,6 +3325,8 @@
         if (filterMargenBajo) count++;
         if (filterUrgente) count++;
         if (filterCatalogo) count++;
+        if (filterConAjuste) count++;
+        if (filterSinAjuste) count++;
         return count;
     }
 
@@ -3740,6 +3754,12 @@
             filtered = filtered.Where(i =>
                 i.AvailableQuantity <= 0 ||
                 string.Equals(i.Status, "paused", StringComparison.OrdinalIgnoreCase));
+
+        // 2026-07-01: filtros por ajuste cargado — para separar las que ya toqué del resto
+        if (filterConAjuste)
+            filtered = filtered.Where(HasAjuste);
+        if (filterSinAjuste)
+            filtered = filtered.Where(i => !HasAjuste(i));
 
         // 2026-06-01: Filtros por margen — para detectar publicaciones perdiendo plata
         if (filterMargenPerdida)
