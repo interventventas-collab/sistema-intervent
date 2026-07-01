@@ -1323,6 +1323,7 @@
                             <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Shift+Tab</kbd> anterior</span>
                             <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">← →</kbd> en grupos</span>
                             <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Enter</kbd> (buscador vacío) sale del loop de productos</span>
+                            <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Ctrl+1..5</kbd> pestañas</span>
                         </div>
                     </div>
 
@@ -1330,41 +1331,43 @@
 
                     @* Selector Producto / Combo / Concepto libre *@
                     <div style="display: inline-flex; gap: 0; margin-bottom: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px; overflow: hidden;">
-                        <button type="button"
+                        <button type="button" id="nv-tab-producto"
                                 class="btn"
                                 style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "PRODUCTO" ? "background:#1d4ed8;color:white;" : "background:white;color:#374151;")"
-                                @onclick="@(() => addMode = "PRODUCTO")">
+                                @onclick="@(() => addMode = "PRODUCTO")"
+                                title="Ctrl+1">
                             📦 Producto
                         </button>
                         @* 2026-06-30: pestaña "⭐ Top" — solo visible si el cliente tiene historial. *@
                         @if (MostrarPanelTopProductos)
                         {
-                            <button type="button"
+                            <button type="button" id="nv-tab-top"
                                     class="btn"
                                     style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "TOP" ? "background:#f59e0b;color:white;" : "background:#fefce8;color:#78350f;")"
                                     @onclick="EntrarModoTop"
-                                    title="Más comprados por este cliente">
+                                    title="Ctrl+2 · Más comprados por este cliente">
                                 ⭐ Top (@topProductsForClient.Count)
                             </button>
                         }
-                        <button type="button"
+                        <button type="button" id="nv-tab-combo"
                                 class="btn"
                                 style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "COMBO" ? "background:#1d4ed8;color:white;" : "background:white;color:#374151;")"
-                                @onclick="@(() => addMode = "COMBO")">
+                                @onclick="@(() => addMode = "COMBO")"
+                                title="Ctrl+3">
                             🎁 Combo
                         </button>
-                        <button type="button"
+                        <button type="button" id="nv-tab-servicio"
                                 class="btn"
                                 style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "SERVICIO" ? "background:#7c3aed;color:white;" : "background:white;color:#374151;")"
                                 @onclick="@(async () => { addMode = "SERVICIO"; await CargarServiciosSiHaceFalta(); })"
-                                title="Servicio del catálogo (envío, mano de obra, instalación, etc). No descuenta stock.">
+                                title="Ctrl+4 · Servicio del catálogo (envío, mano de obra, instalación, etc). No descuenta stock.">
                             🛠 Servicio
                         </button>
-                        <button type="button"
+                        <button type="button" id="nv-tab-libre"
                                 class="btn"
                                 style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "LIBRE" ? "background:#1d4ed8;color:white;" : "background:white;color:#374151;")"
                                 @onclick="@(() => addMode = "LIBRE")"
-                                title="Item con descripción y precio cargados a mano, sin producto del catálogo">
+                                title="Ctrl+5 · Item con descripción y precio cargados a mano, sin producto del catálogo">
                             ✏️ Concepto libre
                         </button>
                     </div>

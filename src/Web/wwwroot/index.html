@@ -242,6 +242,22 @@
             window.location.replace(url.toString());
         };
 
+        // 2026-07-01: Atajos Ctrl+1..5 para cambiar de pestaña dentro del modal Nueva Venta.
+        // 1=Producto, 2=Top, 3=Combo, 4=Servicio, 5=Concepto libre.
+        // preventDefault evita que Chrome cambie de pestaña del navegador.
+        document.addEventListener('keydown', function (e) {
+            if (!e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return;
+            var map = { '1': 'nv-tab-producto', '2': 'nv-tab-top', '3': 'nv-tab-combo', '4': 'nv-tab-servicio', '5': 'nv-tab-libre' };
+            var id = map[e.key];
+            if (!id) return;
+            if (!document.querySelector('.nv-form')) return; // Solo con modal Nueva Venta abierto
+            var btn = document.getElementById(id);
+            if (!btn) return;
+            e.preventDefault();
+            e.stopPropagation();
+            btn.click();
+        }, true);
+
         // 2026-07-01: GPS bar de navegacion con teclado en Nueva Venta. Detecta el foco actual
         // dentro del modal (.nv-form), enumera los elementos tabbeables visibles, y muestra
         // una barrita flotante abajo con "Anterior · Actual (N/M) · Siguiente". Se muestra al
