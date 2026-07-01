@@ -2360,7 +2360,7 @@
                 decimal margenPctT = cotizacion.CostoTotal > 0
                     ? Math.Round((cotizacion.Total / cotizacion.CostoTotal - 1m) * 100m, 1, MidpointRounding.AwayFromZero)
                     : 0m;
-                <div style="padding: 0.7rem 1rem; background: #ecfdf5; border-top: 2px solid #10b981; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                <div style="padding: 0.7rem 1rem; background: #ecfdf5; border-top: 2px solid #10b981; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; position: sticky; bottom: 0; z-index: 6; box-shadow: 0 -4px 10px rgba(0,0,0,0.06);">
 
                     @* IZQUIERDA — desglose *@
                     <div style="display: flex; align-items: center; gap: 0.9rem; flex: 1; min-width: 0; flex-wrap: wrap;">
@@ -2438,7 +2438,7 @@
             else
             {
                 @* Si todavia no hay cotizacion, mostramos botones simples sin totales *@
-                <div style="padding: 0.7rem 1rem; background: #f9fafb; border-top: 1px solid #e5e7eb; display: flex; gap: 0.4rem; justify-content: flex-end;">
+                <div style="padding: 0.7rem 1rem; background: #f9fafb; border-top: 1px solid #e5e7eb; display: flex; gap: 0.4rem; justify-content: flex-end; position: sticky; bottom: 0; z-index: 6; box-shadow: 0 -4px 10px rgba(0,0,0,0.06);">
                     <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
                     <button class="btn btn-primary" disabled="true" title="Agregá productos para emitir">
                         @(editingVentaId.HasValue ? "💾 Guardar cambios" : $"Emitir {EmitirLabelForTipo(formTipoComprobante)}")
