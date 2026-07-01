@@ -2370,7 +2370,7 @@
                         </div>
                         <div style="display: inline-flex; align-items: center; gap: 0.35rem;">
                             <span style="font-size: 0.68rem; color: #047857; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700;">Descuento:</span>
-                            <input class="form-input" type="number" step="0.01" @bind="formDescuento" @bind:after="Cotizar"
+                            <input class="form-input" type="number" step="0.01" tabindex="-1" @bind="formDescuento" @bind:after="Cotizar"
                                    style="text-align: right; width: 70px; font-weight: 700; padding: 0.2rem 0.4rem; font-size: 0.82rem;" />
                         </div>
                         <div style="display: inline-flex; align-items: center; gap: 0.35rem;">
@@ -2408,14 +2408,14 @@
                             <strong style="font-size: 1.4rem; color: #047857; line-height: 1.05;">$@FormatMoney(mostrarIvaT ? totalConIvaT : cotizacion.Total)</strong>
                         </div>
                         <div style="display: flex; gap: 0.4rem; align-items: center; justify-content: flex-end;">
-                            <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
-                            <button class="btn btn-secondary" @onclick="PreviewPdf" disabled="@(saving || previewLoading || formItems.Count == 0 || cotizacion?.TodoOk != true)"
+                            <button class="btn btn-secondary" tabindex="-1" @onclick="CloseForm" disabled="@saving">Cancelar</button>
+                            <button class="btn btn-secondary" tabindex="-1" @onclick="PreviewPdf" disabled="@(saving || previewLoading || formItems.Count == 0 || cotizacion?.TodoOk != true)"
                                     title="Ver cómo quedaría el PDF sin guardar la venta">
                                 @(previewLoading ? "⏳..." : "👁 PDF")
                             </button>
                             @if (EditModoEmitirCae)
                             {
-                                <button class="btn" style="background: #7c3aed; color: white; border-color: #7c3aed;"
+                                <button id="nv-emitir" class="btn" style="background: #7c3aed; color: white; border-color: #7c3aed;"
                                         @onclick="IniciarEmisionCAEDesdeEdicion"
                                         disabled="@(saving || convirtiendoLoading || formItems.Count == 0 || cotizacion?.TodoOk != true)">
                                     @(saving || convirtiendoLoading
@@ -2425,7 +2425,7 @@
                             }
                             else
                             {
-                                <button class="btn btn-primary" @onclick="ConfirmarEmision" disabled="@(saving || formItems.Count == 0 || cotizacion?.TodoOk != true)">
+                                <button id="nv-emitir" class="btn btn-primary" @onclick="ConfirmarEmision" disabled="@(saving || formItems.Count == 0 || cotizacion?.TodoOk != true)">
                                     @(saving
                                         ? (editingVentaId.HasValue ? "Guardando..." : "Emitiendo...")
                                         : (editingVentaId.HasValue ? "💾 Guardar cambios" : $"Emitir {EmitirLabelForTipo(formTipoComprobante)}"))
