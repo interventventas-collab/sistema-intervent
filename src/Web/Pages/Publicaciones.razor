@@ -5809,19 +5809,32 @@
         __builder.CloseElement();
     };
 
-    // 2026-06-01: Calcula margen aproximado (s/costo) usando 30% de fees MeLi estimados.
-    // El cálculo EXACTO está en el modal individual con los fees reales de MeLi.
-    // Este es para visualización rápida en lista — sirve para detectar publicaciones con bajo/sin margen.
-    // 2026-07-01: dividimos el neto por 1,21 para descontar el IVA — el precio de MeLi lo incluye,
-    // el costo del sistema no. Antes el chip mostraba margen inflado ~21%.
+    // 2026-06-01: Calcula margen (s/costo) para el chip debajo del precio en la grilla.
+    // 2026-07-01a: dividimos el neto por 1,21 para descontar el IVA — el precio incluye IVA, el costo no.
+    // 2026-07-01b: si tenemos el sale_fee REAL de MeLi cacheado (botón 💰 Refrescar comisiones) y el precio
+    // no se movió más del 5% desde que se calculó, usamos ese número — coincide con el margen que muestra la
+    // ficha. Solo caemos al 30% estimado si no hay sale_fee real (publis viejas o que nunca se refrescaron).
     private decimal? CalcMargenPct(MeliItemDto item)
     {
         if (!item.ProductCost.HasValue || item.ProductCost.Value <= 0) return null;
         var precio = item.Price;
         if (precio <= 0) return null;
-        var fees = 0.30m;  // 25% comisión + 5% aprox envío/cuotas
-        var netoEstimadoConIva = precio * (1m - fees);
-        var netoSinIva = netoEstimadoConIva / (1m + IvaAlicuota);
+
+        decimal netoConIva;
+        if (item.SaleFeeAmountReal.HasValue && item.SaleFeeAmountReal.Value > 0
+            && item.SaleFeePriceSnapshot.HasValue
+            && Math.Abs(precio - item.SaleFeePriceSnapshot.Value) / Math.Max(precio, 1m) < 0.05m)
+        {
+            // Sale_fee real: la API listing_prices ya incluye comisión + cargo fijo + envío gratis.
+            netoConIva = precio - item.SaleFeeAmountReal.Value;
+        }
+        else
+        {
+            // Fallback: 30% estimado (25% comisión + 5% aprox envío/cuotas).
+            netoConIva = precio * (1m - 0.30m);
+        }
+
+        var netoSinIva = netoConIva / (1m + IvaAlicuota);
         var ganancia = netoSinIva - item.ProductCost.Value;
         return ganancia / item.ProductCost.Value * 100m;
     }
