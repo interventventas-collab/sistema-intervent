@@ -245,17 +245,37 @@
         // 2026-07-01: Atajos Ctrl+1..5 para cambiar de pestaña dentro del modal Nueva Venta.
         // 1=Producto, 2=Top, 3=Combo, 4=Servicio, 5=Concepto libre.
         // preventDefault evita que Chrome cambie de pestaña del navegador.
+        // Tras clickear el tab damos foco al input principal (con reintentos porque
+        // Blazor tarda un tick en renderizar el nuevo panel).
         document.addEventListener('keydown', function (e) {
             if (!e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return;
-            var map = { '1': 'nv-tab-producto', '2': 'nv-tab-top', '3': 'nv-tab-combo', '4': 'nv-tab-servicio', '5': 'nv-tab-libre' };
-            var id = map[e.key];
-            if (!id) return;
+            var tabs = {
+                '1': { tab: 'nv-tab-producto', focus: 'nv-producto' },
+                '2': { tab: 'nv-tab-top', focus: 'top-list-container' },
+                '3': { tab: 'nv-tab-combo', focus: 'nv-combo-search' },
+                '4': { tab: 'nv-tab-servicio', focus: 'nv-servicio-select' },
+                '5': { tab: 'nv-tab-libre', focus: 'nv-libre-descripcion' }
+            };
+            var entry = tabs[e.key];
+            if (!entry) return;
             if (!document.querySelector('.nv-form')) return; // Solo con modal Nueva Venta abierto
-            var btn = document.getElementById(id);
+            var btn = document.getElementById(entry.tab);
             if (!btn) return;
             e.preventDefault();
             e.stopPropagation();
             btn.click();
+            // Reintenta hasta 10 veces (~500ms) por si Blazor todavia no renderizo el panel.
+            var tries = 0;
+            var focusTimer = setInterval(function () {
+                tries++;
+                var el = document.getElementById(entry.focus);
+                if (el) {
+                    el.focus();
+                    if (el.select && el.tagName === 'INPUT' && el.type !== 'checkbox') { try { el.select(); } catch (_) {} }
+                    clearInterval(focusTimer);
+                }
+                if (tries >= 10) clearInterval(focusTimer);
+            }, 50);
         }, true);
 
         // 2026-07-01: GPS bar de navegacion con teclado en Nueva Venta. Detecta el foco actual
