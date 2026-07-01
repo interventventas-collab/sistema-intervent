@@ -359,7 +359,7 @@
                 Concepto = pagarConcepto,
                 Monto = pagarMonto,
                 Metodo = pagarMetodo,
-                FechaPago = pagarFecha,
+                FechaPagoStr = pagarFecha.ToString("yyyy-MM-dd"),  // 2026-07-01: sin zona horaria
                 Notas = string.IsNullOrWhiteSpace(pagarNotas) ? null : pagarNotas,
                 Operator = pagarOperator,
                 Password = pagarPassword

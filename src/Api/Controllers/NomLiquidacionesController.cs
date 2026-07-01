@@ -249,7 +249,7 @@ public class NomLiquidacionesController : ControllerBase
         var pago = new NomPago
         {
             LiquidacionId = req.LiquidacionId,
-            FechaPago = (req.FechaPago ?? DateTime.Today).Date,
+            FechaPago = ParseFechaPago(req.FechaPagoStr, req.FechaPago),
             Metodo = req.Metodo.Trim().ToLowerInvariant(),
             Monto = req.Monto,
             Concepto = concepto,
@@ -298,7 +298,8 @@ public class NomLiquidacionesController : ControllerBase
         if (liq.Estado == "anulada") return BadRequest(new { error = "No se puede editar un pago de una liquidacion anulada" });
 
         // ── Aplicar cambios (solo los campos que vienen seteados) ──
-        if (req.FechaPago.HasValue) pago.FechaPago = req.FechaPago.Value.Date;
+        if (!string.IsNullOrWhiteSpace(req.FechaPagoStr) || req.FechaPago.HasValue)
+            pago.FechaPago = ParseFechaPago(req.FechaPagoStr, req.FechaPago);
         if (!string.IsNullOrWhiteSpace(req.Metodo)) pago.Metodo = req.Metodo.Trim().ToLowerInvariant();
         if (req.Monto.HasValue)
         {
@@ -397,6 +398,18 @@ public class NomLiquidacionesController : ControllerBase
     /// ficha (snapshot). En un UPDATE NO se vuelve a leer la ficha — el SueldoBase queda congelado
     /// (o el que el usuario editó en esa liquidación). Así, cambiar el sueldo en la ficha NO afecta
     /// meses ya cargados: cada liquidación conserva el importe de cuando se cargó.</summary>
+    /// <summary>2026-07-01: parsea la fecha de un pago sin zona horaria. Prioriza el string "yyyy-MM-dd"
+    /// (lo que manda el frontend nuevo) para evitar el corrimiento de día cuando el navegador está en
+    /// otra zona (ej: admin en España). Si no viene, usa el DateTime legacy, y si tampoco, hoy (ART).</summary>
+    private static DateTime ParseFechaPago(string? str, DateTime? legacy)
+    {
+        if (!string.IsNullOrWhiteSpace(str) && DateTime.TryParseExact(str.Trim(), "yyyy-MM-dd",
+            System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var d))
+            return d.Date;
+        if (legacy.HasValue) return legacy.Value.Date;
+        return DateTime.UtcNow.AddHours(-3).Date; // hoy en horario Argentina
+    }
+
     private static void Calcular(NomLiquidacion liq, NomEmpleado emp, bool esCreacion)
     {
         // 2026-06-08: si el empleado es modalidad "diario", el sueldo base se calcula
@@ -467,6 +480,7 @@ public class NomLiquidacionesController : ControllerBase
         public decimal Monto { get; set; }
         public string Metodo { get; set; } = "efectivo";
         public DateTime? FechaPago { get; set; }
+        public string? FechaPagoStr { get; set; }  // 2026-07-01: fecha "yyyy-MM-dd" sin zona horaria
         public string? Detalle { get; set; }
         public string? Notas { get; set; }
         public string? Operator { get; set; }
@@ -501,7 +515,7 @@ public class NomLiquidacionesController : ControllerBase
         var pago = new NomPago
         {
             LiquidacionId = req.LiquidacionId,
-            FechaPago = (req.FechaPago ?? DateTime.UtcNow.AddHours(-3)).Date,
+            FechaPago = ParseFechaPago(req.FechaPagoStr, req.FechaPago),
             Metodo = req.Metodo.Trim().ToLowerInvariant(),
             Monto = req.Monto,
             Concepto = concepto,

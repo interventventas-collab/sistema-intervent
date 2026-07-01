@@ -161,6 +161,7 @@ public class CreateNomPagoRequest
 {
     public int LiquidacionId { get; set; }
     public DateTime? FechaPago { get; set; }
+    public string? FechaPagoStr { get; set; }  // 2026-07-01: fecha "yyyy-MM-dd" sin zona horaria
     public string Metodo { get; set; } = "efectivo";
     public decimal Monto { get; set; }
     public string Concepto { get; set; } = "sueldo";
@@ -172,6 +173,7 @@ public class CreateNomPagoRequest
 public class UpdateNomPagoRequest
 {
     public DateTime? FechaPago { get; set; }
+    public string? FechaPagoStr { get; set; }  // 2026-07-01: fecha "yyyy-MM-dd" sin zona horaria
     public string? Metodo { get; set; }
     public decimal? Monto { get; set; }
     public string? Concepto { get; set; }
@@ -242,6 +244,7 @@ public class DashboardPagarRequest
     public decimal Monto { get; set; }
     public string Metodo { get; set; } = "efectivo";
     public DateTime? FechaPago { get; set; }
+    public string? FechaPagoStr { get; set; }  // 2026-07-01: fecha "yyyy-MM-dd" sin zona horaria
     public string? Detalle { get; set; }
     public string? Notas { get; set; }
     public string? Operator { get; set; }

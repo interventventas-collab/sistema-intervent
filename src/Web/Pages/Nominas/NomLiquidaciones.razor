@@ -1239,7 +1239,7 @@
             var updated = await Api.AddNomPagoAsync(new CreateNomPagoRequest
             {
                 LiquidacionId = editingId.Value,
-                FechaPago = pagoFecha,
+                FechaPagoStr = pagoFecha.ToString("yyyy-MM-dd"),  // 2026-07-01: sin zona horaria (no corre el día)
                 Metodo = pagoMetodo,
                 Monto = pagoMonto,
                 Concepto = pagoConcepto,
@@ -1309,7 +1309,7 @@
         {
             var (liq, err) = await Api.UpdateNomPagoAsync(editingPago.Id, new UpdateNomPagoRequest
             {
-                FechaPago = editingPagoFecha,
+                FechaPagoStr = editingPagoFecha.ToString("yyyy-MM-dd"),  // 2026-07-01: sin zona horaria
                 Metodo = editingPagoMetodo,
                 Monto = editingPagoMonto,
                 Concepto = editingPagoConcepto,
