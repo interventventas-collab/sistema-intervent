@@ -2280,20 +2280,20 @@
 
                             @{ var chipWaWeb = envioWhatsappWeb; }
                             <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipWaWeb ? "#f0fdf4" : "white"); border: 1px solid @(chipWaWeb ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;">
-                                <input id="nv-envio-waweb" type="checkbox" @bind="envioWhatsappWeb" @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEnvioChip(e, 1))" style="margin: 0;" />
+                                <input id="nv-envio-waweb" type="checkbox" tabindex="-1" @bind="envioWhatsappWeb" @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEnvioChip(e, 1))" style="margin: 0;" />
                                 <span>📱 WA Web</span>
                             </label>
 
                             @{ var chipWaInt = envioWhatsappInterno; }
                             <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipWaInt ? "#f0fdf4" : "white"); border: 1px solid @(chipWaInt ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;">
-                                <input id="nv-envio-wainterno" type="checkbox" @bind="envioWhatsappInterno" @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEnvioChip(e, 2))" style="margin: 0;" />
+                                <input id="nv-envio-wainterno" type="checkbox" tabindex="-1" @bind="envioWhatsappInterno" @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEnvioChip(e, 2))" style="margin: 0;" />
                                 <span>🚀 WA Interno</span>
                             </label>
 
                             @{ var chipDrive = envioDrive; }
                             <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipDrive ? "#f0fdf4" : "white"); border: 1px solid @(chipDrive ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;"
                                    title="Sube el PDF a Drive y aparece en /cafe/preparacion">
-                                <input id="nv-envio-drive" type="checkbox" @bind="envioDrive" @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEnvioChip(e, 3))" style="margin: 0;" />
+                                <input id="nv-envio-drive" type="checkbox" tabindex="-1" @bind="envioDrive" @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEnvioChip(e, 3))" style="margin: 0;" />
                                 <span>📁 Imprimir pedidos</span>
                             </label>
 
@@ -6118,7 +6118,9 @@
         }
     }
 
-    // 2026-07-01: navegacion con ← → entre chips de envios. Space toggla el checkbox.
+    // 2026-07-01: navegacion con ← → entre chips de envios. Enter o Space toggla el checkbox.
+    // Solo nv-envio-mail queda tab-focusable; el resto tiene tabindex=-1, asi Tab escapa
+    // hacia el bloque de botones (Cancelar / PDF / Emitir cotizacion).
     private async Task OnKeyDownEnvioChip(KeyboardEventArgs e, int chipIdx)
     {
         if (e.Key == "ArrowRight" || e.Key == "ArrowLeft")
@@ -6127,6 +6129,18 @@
             var newIdx = e.Key == "ArrowRight" ? chipIdx + 1 : chipIdx - 1;
             if (newIdx < 0 || newIdx >= ids.Length) return;
             await FocusFieldAsync(ids[newIdx]);
+        }
+        else if (e.Key == "Enter")
+        {
+            // Space ya toggla nativo; Enter en checkbox no hace nada, lo hacemos a mano.
+            switch (chipIdx)
+            {
+                case 0: envioEmail = !envioEmail; break;
+                case 1: envioWhatsappWeb = !envioWhatsappWeb; break;
+                case 2: envioWhatsappInterno = !envioWhatsappInterno; break;
+                case 3: envioDrive = !envioDrive; break;
+            }
+            StateHasChanged();
         }
     }
 
