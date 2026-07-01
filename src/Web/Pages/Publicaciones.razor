@@ -207,6 +207,12 @@
                             style="background:#16a34a; color:white; border:1px solid #15803d; font-weight:600;">
                         ⚡ Cargar ajuste en lote
                     </button>
+                    @* 2026-07-01: Fase C — pushear a MeLi los ajustes ya cargados. Toca precios REALES. *@
+                    <button class="btn btn-sm" @onclick="AbrirBulkPushModal"
+                            style="background:#ea580c; color:white; border:1px solid #c2410c; font-weight:600;"
+                            title="Envía a MeLi los precios de las publis tildadas que tengan ajuste cargado">
+                        🚀 Pushear precios a MeLi
+                    </button>
                     <button class="btn btn-primary btn-sm" @onclick="BulkCreateProducts">
                         <i class="fa-solid fa-box"></i> Crear productos
                     </button>
@@ -1436,6 +1442,129 @@
                 </div>
                 @* 2026-07-01: se eliminaron los cuadros duplicados "Análisis de Ganancia" y "Calcular precio desde costo"
                    — ambos se fusionaron dentro del simulador arriba en un solo bloque con flujo apilado. *@
+
+                @* ═══════════════════════════════════════════════════════════════════════════
+                   2026-07-01: Modal FASE C — Push masivo de precios ya cargados a MeLi.
+                   Este SÍ toca MeLi (los precios reales cambian). Preview obligatorio.
+                   ═══════════════════════════════════════════════════════════════════════════ *@
+                @if (showBulkPushModal)
+                {
+                    <div class="modal-overlay" @onclick="CerrarBulkPushModal">
+                        <div class="modal-card modal-wide" @onclick:stopPropagation="true">
+                            <div class="modal-header" style="background:#ea580c; color:white;">
+                                <h4 style="margin:0;">🚀 Pushear precios a MercadoLibre</h4>
+                                <button class="modal-close" @onclick="CerrarBulkPushModal" style="color:white;">&times;</button>
+                            </div>
+                            <div class="modal-body">
+                                @{
+                                    var previewPush = GetBulkPushPreview();
+                                }
+                                <div style="background:#fef2f2; border:1px solid #dc2626; border-radius:6px; padding:0.7rem 0.9rem; margin-bottom:1rem; font-size:0.88rem; color:#991b1b;">
+                                    <strong>⚠ Esta acción modifica precios REALES en MercadoLibre.</strong>
+                                    Es reversible pusheando otro cambio, pero los compradores van a ver los precios nuevos ya. Revisá el preview con cuidado.
+                                </div>
+
+                                <div style="background:#f3f4f6; border-radius:6px; padding:0.6rem 0.8rem; margin-bottom:0.75rem; font-size:0.9rem;">
+                                    <strong>@previewPush.PublisConAjuste</strong> se van a pushear a MeLi
+                                    @if (previewPush.SinAjuste > 0)
+                                    {
+                                        <span style="color:#6b7280;"> · <strong>@previewPush.SinAjuste</strong> se saltan (no tienen ajuste cargado)</span>
+                                    }
+                                    <span style="color:#6b7280;"> · Total tildadas: @selectedItems.Count</span>
+                                    @if (previewPush.DeltaTotal != 0)
+                                    {
+                                        var deltaColor = previewPush.DeltaTotal > 0 ? "#065f46" : "#991b1b";
+                                        <div style="margin-top:0.35rem;">Impacto de los precios: <strong style="color:@deltaColor;">@(previewPush.DeltaTotal > 0 ? "+" : "")$@previewPush.DeltaTotal.ToString("N0")</strong> total sobre los precios actuales</div>
+                                    }
+                                </div>
+
+                                @if (previewPush.PublisConAjuste == 0)
+                                {
+                                    <div style="padding:1rem; text-align:center; color:#9a3412; font-size:0.9rem; background:#fef3c7; border-radius:6px;">
+                                        Ninguna de las publis tildadas tiene ajuste cargado. Cargá ajuste primero con ⚡ Cargar ajuste en lote.
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div style="max-height:340px; overflow-y:auto; border:1px solid #e5e7eb; border-radius:6px;">
+                                        <table style="width:100%; font-size:0.82rem; border-collapse:collapse;">
+                                            <thead style="background:#f9fafb; position:sticky; top:0;">
+                                                <tr>
+                                                    <th style="text-align:left; padding:0.4rem 0.6rem; border-bottom:1px solid #e5e7eb;">Publicación</th>
+                                                    <th style="text-align:right; padding:0.4rem 0.6rem; border-bottom:1px solid #e5e7eb;">Ahora en MeLi</th>
+                                                    <th style="text-align:right; padding:0.4rem 0.6rem; border-bottom:1px solid #e5e7eb;">Nuevo</th>
+                                                    <th style="text-align:right; padding:0.4rem 0.6rem; border-bottom:1px solid #e5e7eb;">Δ</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var row in previewPush.Filas)
+                                                {
+                                                    var color = row.Delta > 0 ? "#065f46" : row.Delta < 0 ? "#991b1b" : "#6b7280";
+                                                    <tr style="border-bottom:1px solid #f3f4f6;">
+                                                        <td style="padding:0.35rem 0.6rem;">@Truncate(row.Titulo, 55)</td>
+                                                        <td style="padding:0.35rem 0.6rem; text-align:right; color:#6b7280;">$@row.PrecioAhora.ToString("N0")</td>
+                                                        <td style="padding:0.35rem 0.6rem; text-align:right; font-weight:600;">$@row.PrecioNuevo.ToString("N0")</td>
+                                                        <td style="padding:0.35rem 0.6rem; text-align:right; color:@color; font-weight:600;">
+                                                            @(row.Delta > 0 ? "+" : "")@row.Delta.ToString("N0")
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                        @if (previewPush.PublisConAjuste > previewPush.Filas.Count)
+                                        {
+                                            <div style="padding:0.4rem 0.6rem; text-align:center; color:#6b7280; font-size:0.78rem; background:#f9fafb;">
+                                                Mostrando las primeras @previewPush.Filas.Count de @previewPush.PublisConAjuste
+                                            </div>
+                                        }
+                                    </div>
+                                }
+
+                                @if (bulkPushResultado is not null)
+                                {
+                                    <div style="margin-top:1rem; padding:0.75rem 1rem; border-radius:6px; background:@(bulkPushResultado.Errores > 0 ? "#fef2f2" : "#dcfce7"); border:1px solid @(bulkPushResultado.Errores > 0 ? "#dc2626" : "#16a34a");">
+                                        <div style="font-weight:700; font-size:0.9rem; margin-bottom:0.35rem;">Resultado del push</div>
+                                        <div style="font-size:0.85rem;">
+                                            ✅ Pusheadas OK: <strong>@bulkPushResultado.Pusheados</strong>
+                                            @if (bulkPushResultado.SinAjuste > 0)
+                                            {
+                                                <span> · Sin ajuste (saltadas): @bulkPushResultado.SinAjuste</span>
+                                            }
+                                            @if (bulkPushResultado.Errores > 0)
+                                            {
+                                                <span style="color:#991b1b;"> · ❌ Errores: <strong>@bulkPushResultado.Errores</strong></span>
+                                            }
+                                        </div>
+                                        @if (bulkPushResultado.Errores > 0)
+                                        {
+                                            <details style="margin-top:0.5rem; font-size:0.8rem;">
+                                                <summary style="cursor:pointer; color:#991b1b;">Ver detalle de errores</summary>
+                                                <div style="margin-top:0.35rem; max-height:120px; overflow-y:auto;">
+                                                    @foreach (var d in bulkPushResultado.Detalles.Where(x => !x.Ok && !x.Message.Contains("Sin ajuste")))
+                                                    {
+                                                        <div style="padding:0.2rem 0.4rem; border-bottom:1px solid #fca5a5;">@d.MeliItemId — @d.Message</div>
+                                                    }
+                                                </div>
+                                            </details>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            <div class="modal-footer">
+                                <button class="btn btn-secondary btn-sm" @onclick="CerrarBulkPushModal" disabled="@bulkPushEjecutando">
+                                    @(bulkPushResultado is not null ? "Cerrar" : "Cancelar")
+                                </button>
+                                @if (bulkPushResultado is null && previewPush.PublisConAjuste > 0)
+                                {
+                                    <button class="btn btn-sm" @onclick="EjecutarBulkPush" disabled="@bulkPushEjecutando"
+                                            style="background:#ea580c; color:white; border:1px solid #c2410c; font-weight:600;">
+                                        @(bulkPushEjecutando ? $"Pusheando... (esperá {previewPush.PublisConAjuste * 200 / 1000}s aprox)" : $"🚀 Pushear {previewPush.PublisConAjuste} precios ahora")
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
 
                 @* 2026-06-12: SECCIÓN AJUSTE DE PRECIO — movida desde la grilla (la celda AJUSTE pasó a chip). *@
                 <div style="margin-top: 0.75rem; padding: 0.75rem 1rem; background: #fffbeb; border: 2px solid #fde68a; border-radius: 8px;">
@@ -3331,6 +3460,13 @@
     public record BulkPreviewRow(string Titulo, decimal PrecioAhora, decimal PrecioNuevo, decimal Delta, bool EsPrecioIndep);
     public record BulkPreviewResult(List<BulkPreviewRow> Filas, int VanACambiar, int SaltadasPrecioIndependiente);
 
+    // 2026-07-01: Fase C — estado del modal de push masivo.
+    private bool showBulkPushModal;
+    private bool bulkPushEjecutando;
+    private ApiClient.BulkPushPrecioResponse? bulkPushResultado;
+    public record BulkPushPreviewRow(string Titulo, decimal PrecioAhora, decimal PrecioNuevo, decimal Delta);
+    public record BulkPushPreviewResult(List<BulkPushPreviewRow> Filas, int PublisConAjuste, int SinAjuste, decimal DeltaTotal);
+
     /// <summary>2026-07-01: redondeo hacia arriba (nunca baja el precio). Copia local
     /// del helper del backend para calcular preview del ajuste masivo sin trip al servidor.
     /// Al pushear a MeLi, el backend usa su propio helper que da el mismo resultado.</summary>
@@ -4365,6 +4501,90 @@
         ajustesPrecio.Clear();
         selectedItems.Clear();
         await LoadItems();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 2026-07-01: Fase C — Push masivo de precios YA CARGADOS a MeLi.
+    // Este SÍ toca MeLi. Solo pushea publis con ajuste guardado.
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    private void AbrirBulkPushModal()
+    {
+        if (!selectedItems.Any()) return;
+        bulkPushResultado = null;
+        bulkPushEjecutando = false;
+        showBulkPushModal = true;
+    }
+
+    private void CerrarBulkPushModal()
+    {
+        if (bulkPushEjecutando) return;
+        showBulkPushModal = false;
+        if (bulkPushResultado is not null && bulkPushResultado.Pusheados > 0)
+        {
+            // Después de un push exitoso, refresco la lista para ver los precios nuevos en MeLi.
+            ajustesPrecio.Clear();
+            _ = LoadItems();
+        }
+        bulkPushResultado = null;
+    }
+
+    /// <summary>Preview client-side: precio actual en MeLi vs precio con ajuste cargado. Solo publis con ajuste.</summary>
+    private BulkPushPreviewResult GetBulkPushPreview()
+    {
+        var filas = new List<BulkPushPreviewRow>();
+        int conAjuste = 0, sinAjuste = 0;
+        decimal deltaTotal = 0m;
+        if (items is null) return new BulkPushPreviewResult(filas, 0, 0, 0m);
+
+        foreach (var id in selectedItems)
+        {
+            var it = items.FirstOrDefault(x => x.Id == id);
+            if (it is null) continue;
+            if (!HasAjuste(it))
+            {
+                sinAjuste++;
+                continue;
+            }
+            var precioNuevo = CalcularPrecioConAjuste(it);
+            if (!precioNuevo.HasValue) continue;
+            conAjuste++;
+            var delta = precioNuevo.Value - it.Price;
+            deltaTotal += delta;
+            if (filas.Count < 20)
+            {
+                filas.Add(new BulkPushPreviewRow(
+                    it.Title,
+                    Math.Round(it.Price, 0),
+                    Math.Round(precioNuevo.Value, 0),
+                    Math.Round(delta, 0)));
+            }
+        }
+        return new BulkPushPreviewResult(filas, conAjuste, sinAjuste, Math.Round(deltaTotal, 0));
+    }
+
+    private async Task EjecutarBulkPush()
+    {
+        if (bulkPushEjecutando) return;
+        bulkPushEjecutando = true;
+        StateHasChanged();
+
+        var (resp, err) = await Api.BulkPushPrecioAsync(selectedItems.ToList());
+        bulkPushEjecutando = false;
+
+        if (resp is null)
+        {
+            ToastService.Error("No se pudo pushear: " + (err ?? "Error"));
+            StateHasChanged();
+            return;
+        }
+
+        bulkPushResultado = resp;
+        if (resp.Errores == 0)
+            ToastService.Success($"✅ {resp.Pusheados} precios pusheados a MeLi");
+        else
+            ToastService.Warning($"{resp.Pusheados} OK · {resp.Errores} con error — ver detalle");
+        StateHasChanged();
     }
 
     private void BulkCreateProducts()

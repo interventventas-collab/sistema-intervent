@@ -2138,6 +2138,70 @@ public class MeliController : ControllerBase
         return Ok(new BulkAjusteResponse(modificados, saltadosPI, noEncontrados));
     }
 
+    // 2026-07-01: Fase C — push masivo de precios a MeLi. Solo pushea las que tienen ajuste cargado.
+    public record BulkPushPrecioRequest(List<int> ItemIds);
+    public record BulkPushPrecioDetail(int ItemId, string MeliItemId, bool Ok, string Message, decimal? PushedPrice);
+    public record BulkPushPrecioResponse(int Total, int Pusheados, int SinAjuste, int Errores, List<BulkPushPrecioDetail> Detalles);
+
+    /// <summary>2026-07-01: pushea a MeLi los precios de MÚLTIPLES publis en una sola llamada.
+    /// Cada publi pushea SU propio ajuste (no comparten). Publis sin ajuste cargado se saltan.
+    /// Throttle 200ms entre requests para no saturar MeLi. Reporta al final total/ok/sin/error.</summary>
+    [HttpPost("items/bulk-push-precio")]
+    public async Task<IActionResult> BulkPushPrecio(
+        [FromBody] BulkPushPrecioRequest req,
+        [FromServices] Api.Data.AppDbContext db,
+        [FromServices] MeliPricePushService pushSvc,
+        CancellationToken ct)
+    {
+        if (req.ItemIds is null || req.ItemIds.Count == 0)
+            return BadRequest(new { error = "No hay publicaciones seleccionadas." });
+
+        var items = await db.MeliItems
+            .Where(i => req.ItemIds.Contains(i.Id))
+            .Select(i => new { i.Id, i.MeliItemId })
+            .ToListAsync(ct);
+
+        var meliItemIds = items.Select(i => i.MeliItemId).ToList();
+        var configs = await db.MeliItemSyncConfigs
+            .Where(c => meliItemIds.Contains(c.MeliItemId))
+            .ToDictionaryAsync(c => c.MeliItemId, c => c, ct);
+
+        var detalles = new List<BulkPushPrecioDetail>();
+        int pusheados = 0, sinAjuste = 0, errores = 0;
+
+        foreach (var it in items)
+        {
+            if (ct.IsCancellationRequested) break;
+
+            bool tieneAjuste = configs.TryGetValue(it.MeliItemId, out var cfg)
+                && ((cfg.AjustePct != 0m) || (cfg.AjusteFijo != 0m) || !string.IsNullOrEmpty(cfg.AjusteRedondeo));
+
+            if (!tieneAjuste)
+            {
+                sinAjuste++;
+                detalles.Add(new BulkPushPrecioDetail(it.Id, it.MeliItemId, false, "Sin ajuste cargado — se saltó", null));
+                continue;
+            }
+
+            try
+            {
+                var r = await pushSvc.PushPrecioForItemAsync(it.Id, markAsClaimed: true, ct);
+                if (r.Ok) pusheados++; else errores++;
+                detalles.Add(new BulkPushPrecioDetail(it.Id, it.MeliItemId, r.Ok, r.Message, r.PushedPrice));
+            }
+            catch (Exception ex)
+            {
+                errores++;
+                detalles.Add(new BulkPushPrecioDetail(it.Id, it.MeliItemId, false, ex.Message, null));
+            }
+
+            // Throttle 200ms entre requests — evita saturar la API de MeLi.
+            await Task.Delay(200, ct);
+        }
+
+        return Ok(new BulkPushPrecioResponse(items.Count, pusheados, sinAjuste, errores, detalles));
+    }
+
     /// <summary>2026-06-03: copia el ajuste de precio del item id a TODAS las MLAs que comparten
     /// el mismo FamilyId. Pisa lo que tenian antes. Pensado para el boton "Propagar a la familia"
     /// de /publicaciones cuando hay multiples MLAs bajo una sola familia (catalogo MeLi).

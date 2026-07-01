@@ -3302,6 +3302,30 @@ public class ApiClient
         bool IncluirPrecioIndependiente);
     public record BulkAjusteResponse(int Modificados, int SaltadosPrecioIndependiente, int NoEncontrados);
 
+    // 2026-07-01: Fase C — push masivo de precios cargados a MeLi.
+    public record BulkPushPrecioDetail(int ItemId, string MeliItemId, bool Ok, string Message, decimal? PushedPrice);
+    public record BulkPushPrecioResponse(int Total, int Pusheados, int SinAjuste, int Errores, List<BulkPushPrecioDetail> Detalles);
+
+    public async Task<(BulkPushPrecioResponse? resp, string? error)> BulkPushPrecioAsync(List<int> itemIds)
+    {
+        await SetAuthHeaderAsync();
+        try
+        {
+            var http = await _http.PostAsJsonAsync("/api/meli/items/bulk-push-precio", new { itemIds });
+            if (http.IsSuccessStatusCode)
+                return (await http.Content.ReadFromJsonAsync<BulkPushPrecioResponse>(), null);
+            string err = "Error al pushear";
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(await http.Content.ReadAsStringAsync());
+                if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err;
+            }
+            catch { }
+            return (null, err);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
     public async Task<(BulkAjusteResponse? resp, string? error)> BulkAjustePrecioAsync(BulkAjusteRequest req)
     {
         await SetAuthHeaderAsync();
