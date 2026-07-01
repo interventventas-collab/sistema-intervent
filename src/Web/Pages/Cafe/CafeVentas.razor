@@ -2175,6 +2175,7 @@
                             var bdF = onF ? "#1e40af" : "#d1d5db";
                             var dCaptured = d;
                             <button type="button" id="@($"nv-dia-{d}")"
+                                    tabindex="@(d == "LUN" ? 0 : -1)"
                                     @onclick="() => ToggleFormDay(dCaptured)"
                                     @onkeydown="@((KeyboardEventArgs e) => OnKeyDownDia(e, dCaptured))"
                                     style="padding: 0.25rem 0.45rem; border: 1px solid @bdF; background: @bgF; color: @fgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer; min-width: 34px;">@(onF ? "✓" : "")@d</button>
@@ -2190,16 +2191,19 @@
                         var trBgF = formPorTransporte ? "#ea580c" : "white";
                         var trFgF = formPorTransporte ? "white" : "#374151";
                     }
-                    @* 2026-07-01: se sacaron tabindex=-1 — Tab recorre naturalmente todo el bloque
-                       de Entrega en orden DOM. ← → siguen funcionando dentro del grupo de días. *@
+                    @* 2026-07-01: TODOS con tabindex=-1: solo se llega por flechas desde LUN.
+                       Tab desde LUN o desde estos elementos salta directo a Enviar al emitir (Mail). *@
                     <div style="display: inline-flex; gap: 0.3rem; flex-wrap: wrap;">
-                        <button type="button" id="nv-radar" @onclick="ToggleEnRadar"
+                        <button type="button" id="nv-radar" tabindex="-1" @onclick="ToggleEnRadar"
+                                @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEntrega(e, "nv-radar"))"
                                 title="El cliente ve 'a coordinar'"
                                 style="padding: 0.25rem 0.55rem; border: 1px solid #1e3a8a; background: @radarBgF; color: @radarFgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer;">@(formEnRadar ? "✓ " : "")🛰 RADAR</button>
-                        <button type="button" id="nv-retira" @onclick="ToggleRetira"
+                        <button type="button" id="nv-retira" tabindex="-1" @onclick="ToggleRetira"
+                                @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEntrega(e, "nv-retira"))"
                                 title="Retira en local"
                                 style="padding: 0.25rem 0.55rem; border: 1px solid #15803d; background: @retiraBgF; color: @retiraFgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer;">@(formRetira ? "✓ " : "")🚗 RETIRA</button>
-                        <button type="button" id="nv-transporte" @onclick="ToggleTransporte"
+                        <button type="button" id="nv-transporte" tabindex="-1" @onclick="ToggleTransporte"
+                                @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEntrega(e, "nv-transporte"))"
                                 title="Por empresa de transporte"
                                 style="padding: 0.25rem 0.55rem; border: 1px solid #c2410c; background: @trBgF; color: @trFgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer;">@(formPorTransporte ? "✓ " : "")🚛 TRANSPORTE</button>
                     </div>
@@ -2207,7 +2211,8 @@
                     @* Repartidor *@
                     <div style="display: inline-flex; align-items: center; gap: 0.35rem;">
                         <span style="font-size: 0.68rem; color: #92400e; white-space: nowrap;">Repartidor:</span>
-                        <select id="nv-repartidor" class="form-input" @bind="formEntregaPor"
+                        <select id="nv-repartidor" tabindex="-1" class="form-input" @bind="formEntregaPor"
+                                @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEntrega(e, "nv-repartidor"))"
                                 style="font-size: 0.78rem; padding: 0.25rem 0.45rem; min-width: 160px;">
                             <option value="">— sin asignar —</option>
                             @foreach (var nom in EntregaResponsables)
@@ -2232,7 +2237,9 @@
                     else if (!editingVentaId.HasValue)
                     {
                         <label style="display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: #166534;">
-                            <input id="nv-cobrar" type="checkbox" @bind="formIsPaid" style="margin: 0;" />
+                            <input id="nv-cobrar" type="checkbox" tabindex="-1" @bind="formIsPaid"
+                                   @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEntrega(e, "nv-cobrar"))"
+                                   style="margin: 0;" />
                             💰 Cobrar al guardar
                         </label>
                     }
@@ -6054,20 +6061,41 @@
         return;
     }
 
-    // 2026-07-01: navegacion con ← → entre dias de visita solamente. Enter/Space toggla.
-    // El resto del flujo usa Tab natural del browser + Shift+Tab para volver.
-    private async Task OnKeyDownDia(KeyboardEventArgs e, string currentDay)
+    // 2026-07-01: TODO el bloque Entrega (dias + Radar/Retira/Transporte + Repartidor + Cobrar)
+    // es un solo grupo de flechas ← →. Enter/Space toggla en cada uno. Tab escapa a "Enviar al emitir".
+    // Todos los elementos menos el primero (nv-dia-LUN) tienen tabindex=-1 para que Tab salte fuera.
+    private List<string> GetEntregaFocusOrder()
+    {
+        var list = AllWeekDays.Select(d => $"nv-dia-{d}").ToList();
+        list.Add("nv-radar");
+        list.Add("nv-retira");
+        list.Add("nv-transporte");
+        list.Add("nv-repartidor");
+        if (!editingVentaId.HasValue) list.Add("nv-cobrar");
+        return list;
+    }
+
+    private async Task OnKeyDownEntrega(KeyboardEventArgs e, string currentId)
     {
         if (e.Key == "ArrowRight" || e.Key == "ArrowLeft")
         {
-            var days = AllWeekDays.ToList();
-            var idx = days.IndexOf(currentDay);
+            var order = GetEntregaFocusOrder();
+            var idx = order.IndexOf(currentId);
             if (idx < 0) return;
             var newIdx = e.Key == "ArrowRight" ? idx + 1 : idx - 1;
-            if (newIdx < 0 || newIdx >= days.Count) return;
-            await FocusFieldAsync($"nv-dia-{days[newIdx]}");
+            if (newIdx < 0 || newIdx >= order.Count) return;
+            await FocusFieldAsync(order[newIdx]);
+        }
+        else if (e.Key == "Enter" && currentId == "nv-cobrar")
+        {
+            // Enter en el checkbox alterna el valor (Space ya lo hace nativo)
+            formIsPaid = !formIsPaid;
+            StateHasChanged();
         }
     }
+
+    // Alias para no romper el binding existente en las botoneras de dia.
+    private Task OnKeyDownDia(KeyboardEventArgs e, string currentDay) => OnKeyDownEntrega(e, $"nv-dia-{currentDay}");
 
     // 2026-06-30: Enter en el modal de confirmacion = emitir. Escape = cancelar.
     private async Task OnKeyDownConfirmModal(KeyboardEventArgs e)
