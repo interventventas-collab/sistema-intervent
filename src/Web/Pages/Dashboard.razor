@@ -337,6 +337,27 @@
             {
                 <div class="mac-card-bignum">@FormatKg(coffeeKg.KgTotal)<span class="mac-card-unit">kg</span></div>
                 <div class="mac-card-sub">@coffeeKg.PeriodStart.ToString("MMMM yyyy", new System.Globalization.CultureInfo("es-AR"))</div>
+                @* 2026-07-01: linea con mes anterior + total (12 meses). Se ve todo el hover al pasar el mouse. *@
+                @if (historicoMeses is not null && historicoMeses.Count > 0)
+                {
+                    var mesActualKey = coffeeKg.PeriodStart.Year * 100 + coffeeKg.PeriodStart.Month;
+                    var previos = historicoMeses.Where(m => (m.Year * 100 + m.Month) < mesActualKey).OrderByDescending(m => m.Year * 100 + m.Month).ToList();
+                    var mesAnterior = previos.FirstOrDefault();
+                    var totalKg = historicoMeses.Sum(m => m.KgTotal);
+                    <div style="display:flex; gap:14px; margin-top:8px; font-size:0.78rem; color:#6b7280;">
+                        @if (mesAnterior is not null)
+                        {
+                            <div style="display:flex; flex-direction:column;">
+                                <span style="font-size:0.68rem; text-transform:uppercase; letter-spacing:0.04em;">Mes anterior</span>
+                                <strong style="font-variant-numeric:tabular-nums; color:#374151;">@mesAnterior.KgTotal.ToString("N1") kg</strong>
+                            </div>
+                        }
+                        <div style="display:flex; flex-direction:column;">
+                            <span style="font-size:0.68rem; text-transform:uppercase; letter-spacing:0.04em;">Total 12m</span>
+                            <strong style="font-variant-numeric:tabular-nums; color:#374151;">@totalKg.ToString("N1") kg</strong>
+                        </div>
+                    </div>
+                }
             }
         </div>
 
@@ -1196,6 +1217,13 @@
             coffeeStock = await Api.GetCoffeeStockKgAsync();
         }
         catch { /* idem */ }
+        // 2026-07-01: precargar historico para mostrar "mes anterior" y "total" en el card,
+        // sin esperar a que el usuario haga hover.
+        try
+        {
+            historicoMeses = await Api.GetCoffeeMonthlyKgHistoricoAsync(12);
+        }
+        catch { /* opcional */ }
         StateHasChanged();
     }
 
