@@ -1318,9 +1318,11 @@
                         <strong style="font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;">Productos a vender</strong>
                         @* 2026-06-30: cajita de ayuda con atajos de teclado *@
                         <div style="margin-left: auto; display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.6rem; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; font-size: 0.7rem; color: #1e40af;">
-                            <span style="font-weight: 600;">⌨ Atajos:</span>
-                            <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Enter</kbd> avanza dentro del producto</span>
-                            <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Ctrl+Enter</kbd> Notas → Comentario → Entrega → Envíos → Emitir</span>
+                            <span style="font-weight: 600;">⌨ Teclado:</span>
+                            <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Tab</kbd> siguiente</span>
+                            <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Shift+Tab</kbd> anterior</span>
+                            <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">← →</kbd> en grupos</span>
+                            <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Ctrl+Enter</kbd> sale del loop de productos</span>
                         </div>
                     </div>
 
@@ -2032,7 +2034,6 @@
                         </div>
                         <textarea id="nv-notas" class="form-input" rows="3" @bind="formObservaciones"
                                   placeholder="Esto se visualizará en el comprobante que recibirá el cliente"
-                                  @onkeydown="OnKeyDownNotas"
                                   style="resize: vertical; min-height: 80px;"></textarea>
                     </div>
 
@@ -2043,7 +2044,6 @@
                         </div>
                         <textarea id="nv-comentario-armado" class="form-input" rows="3" @bind="formComentarioArmado"
                                   placeholder="Ej: SOBRES CORTESIA"
-                                  @onkeydown="OnKeyDownComentarioArmado"
                                   style="background: #fefce8; border: 2px dashed #facc15; resize: vertical; min-height: 80px;"></textarea>
                     </div>
                 </div>
@@ -2190,19 +2190,16 @@
                         var trBgF = formPorTransporte ? "#ea580c" : "white";
                         var trFgF = formPorTransporte ? "white" : "#374151";
                     }
-                    @* 2026-06-30: tabindex=-1 en estos botones para que Tab desde cualquier dia
-                       salte directo a Envios. Igual son navegables con ← → arrows dentro del bloque. *@
+                    @* 2026-07-01: se sacaron tabindex=-1 — Tab recorre naturalmente todo el bloque
+                       de Entrega en orden DOM. ← → siguen funcionando dentro del grupo de días. *@
                     <div style="display: inline-flex; gap: 0.3rem; flex-wrap: wrap;">
-                        <button type="button" id="nv-radar" tabindex="-1" @onclick="ToggleEnRadar"
-                                @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEntregaExtra(e, "nv-radar"))"
+                        <button type="button" id="nv-radar" @onclick="ToggleEnRadar"
                                 title="El cliente ve 'a coordinar'"
                                 style="padding: 0.25rem 0.55rem; border: 1px solid #1e3a8a; background: @radarBgF; color: @radarFgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer;">@(formEnRadar ? "✓ " : "")🛰 RADAR</button>
-                        <button type="button" id="nv-retira" tabindex="-1" @onclick="ToggleRetira"
-                                @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEntregaExtra(e, "nv-retira"))"
+                        <button type="button" id="nv-retira" @onclick="ToggleRetira"
                                 title="Retira en local"
                                 style="padding: 0.25rem 0.55rem; border: 1px solid #15803d; background: @retiraBgF; color: @retiraFgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer;">@(formRetira ? "✓ " : "")🚗 RETIRA</button>
-                        <button type="button" id="nv-transporte" tabindex="-1" @onclick="ToggleTransporte"
-                                @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEntregaExtra(e, "nv-transporte"))"
+                        <button type="button" id="nv-transporte" @onclick="ToggleTransporte"
                                 title="Por empresa de transporte"
                                 style="padding: 0.25rem 0.55rem; border: 1px solid #c2410c; background: @trBgF; color: @trFgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer;">@(formPorTransporte ? "✓ " : "")🚛 TRANSPORTE</button>
                     </div>
@@ -2210,8 +2207,7 @@
                     @* Repartidor *@
                     <div style="display: inline-flex; align-items: center; gap: 0.35rem;">
                         <span style="font-size: 0.68rem; color: #92400e; white-space: nowrap;">Repartidor:</span>
-                        <select id="nv-repartidor" class="form-input" @bind="formEntregaPor" tabindex="-1"
-                                @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEntregaExtra(e, "nv-repartidor"))"
+                        <select id="nv-repartidor" class="form-input" @bind="formEntregaPor"
                                 style="font-size: 0.78rem; padding: 0.25rem 0.45rem; min-width: 160px;">
                             <option value="">— sin asignar —</option>
                             @foreach (var nom in EntregaResponsables)
@@ -2236,9 +2232,7 @@
                     else if (!editingVentaId.HasValue)
                     {
                         <label style="display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: #166534;">
-                            <input id="nv-cobrar" type="checkbox" @bind="formIsPaid" tabindex="-1"
-                                   @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEntregaExtra(e, "nv-cobrar"))"
-                                   style="margin: 0;" />
+                            <input id="nv-cobrar" type="checkbox" @bind="formIsPaid" style="margin: 0;" />
                             💰 Cobrar al guardar
                         </label>
                     }
@@ -2247,8 +2241,8 @@
                     @if (formPorTransporte)
                     {
                         <div style="display: inline-flex; gap: 0.35rem; flex-basis: 100%;">
-                            <input class="form-input" tabindex="-1" @bind="formTransporteEmpresa" placeholder="Empresa (Andreani, Cruz del Sur…)" style="font-size: 0.78rem; padding: 0.3rem 0.5rem; flex: 1; max-width: 320px;" />
-                            <input class="form-input" tabindex="-1" @bind="formTransporteDestino" placeholder="Destino (ciudad/sucursal)" style="font-size: 0.78rem; padding: 0.3rem 0.5rem; flex: 1; max-width: 320px;" />
+                            <input class="form-input" @bind="formTransporteEmpresa" placeholder="Empresa (Andreani, Cruz del Sur…)" style="font-size: 0.78rem; padding: 0.3rem 0.5rem; flex: 1; max-width: 320px;" />
+                            <input class="form-input" @bind="formTransporteDestino" placeholder="Destino (ciudad/sucursal)" style="font-size: 0.78rem; padding: 0.3rem 0.5rem; flex: 1; max-width: 320px;" />
                         </div>
                     }
                 </div>
@@ -2288,7 +2282,7 @@
                                 <span>📁 Imprimir pedidos</span>
                             </label>
 
-                            <button type="button" tabindex="-1"
+                            <button type="button"
                                     style="font-size: 0.68rem; padding: 0.25rem 0.5rem; background:white; border:1px solid #9ca3af; border-radius:4px; cursor:pointer; color:#374151;"
                                     @onclick="MarcarTodosEnvios">
                                 @(envioEmail && envioWhatsappWeb && envioWhatsappInterno ? "Desmarcar" : "Marcar todos")
@@ -6061,86 +6055,18 @@
         return;
     }
 
-    // 2026-06-30: Ctrl+Enter en Notas internas -> salta a Comentario armado.
-    private async Task OnKeyDownNotas(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter" && e.CtrlKey)
-        {
-            await FocusFieldAsync("nv-comentario-armado");
-        }
-    }
-
-    // 2026-06-30: Ctrl+Enter en Comentario armado -> salta a Entrega (primer dia LUN).
-    private async Task OnKeyDownComentarioArmado(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter" && e.CtrlKey)
-        {
-            await FocusFieldAsync("nv-dia-LUN");
-        }
-    }
-
-    // 2026-06-30: Ctrl+Enter en cualquier dia/chip de Entrega -> salta al primer chip de Envios.
-    private async Task OnKeyDownEntrega(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter" && e.CtrlKey)
-        {
-            await FocusFieldAsync("nv-envio-mail");
-        }
-    }
-
-    // 2026-06-30: navegacion con flechas entre dias de visita + resto del bloque Entrega.
-    // Orden: LUN..DOM -> RADAR -> RETIRA -> TRANSPORTE -> REPARTIDOR -> COBRAR
+    // 2026-07-01: navegacion con ← → entre dias de visita solamente. Enter/Space toggla.
+    // El resto del flujo usa Tab natural del browser + Shift+Tab para volver.
     private async Task OnKeyDownDia(KeyboardEventArgs e, string currentDay)
     {
-        if (e.Key == "Enter" && e.CtrlKey)
-        {
-            await FocusFieldAsync("nv-envio-mail");
-            return;
-        }
         if (e.Key == "ArrowRight" || e.Key == "ArrowLeft")
         {
             var days = AllWeekDays.ToList();
             var idx = days.IndexOf(currentDay);
             if (idx < 0) return;
-            if (e.Key == "ArrowRight")
-            {
-                if (idx + 1 < days.Count)
-                {
-                    await FocusFieldAsync($"nv-dia-{days[idx + 1]}");
-                }
-                else
-                {
-                    // desde DOM -> RADAR
-                    await FocusFieldAsync("nv-radar");
-                }
-            }
-            else
-            {
-                if (idx > 0)
-                {
-                    await FocusFieldAsync($"nv-dia-{days[idx - 1]}");
-                }
-            }
-        }
-    }
-
-    // 2026-07-01: navegacion con flechas entre RADAR / RETIRA / TRANSPORTE / REPARTIDOR / COBRAR.
-    // Al llegar al final (COBRAR) y ->, no hace nada. Al ir a la izq desde RADAR, vuelve a DOM.
-    private async Task OnKeyDownEntregaExtra(KeyboardEventArgs e, string currentId)
-    {
-        if (e.Key == "Enter" && e.CtrlKey)
-        {
-            await FocusFieldAsync("nv-envio-mail");
-            return;
-        }
-        if (e.Key == "ArrowRight" || e.Key == "ArrowLeft")
-        {
-            var seq = new[] { "nv-dia-DOM", "nv-radar", "nv-retira", "nv-transporte", "nv-repartidor", "nv-cobrar" };
-            var idx = Array.IndexOf(seq, currentId);
-            if (idx < 0) return;
             var newIdx = e.Key == "ArrowRight" ? idx + 1 : idx - 1;
-            if (newIdx < 0 || newIdx >= seq.Length) return;
-            await FocusFieldAsync(seq[newIdx]);
+            if (newIdx < 0 || newIdx >= days.Count) return;
+            await FocusFieldAsync($"nv-dia-{days[newIdx]}");
         }
     }
 
@@ -6157,48 +6083,15 @@
         }
     }
 
-    // 2026-06-30: navegacion con flechas entre chips de envios. Ctrl+Enter abre resumen.
+    // 2026-07-01: navegacion con ← → entre chips de envios. Space toggla el checkbox.
     private async Task OnKeyDownEnvioChip(KeyboardEventArgs e, int chipIdx)
     {
-        if (e.Key == "Enter" && e.CtrlKey)
-        {
-            await OnKeyDownEnvios(e);
-            return;
-        }
         if (e.Key == "ArrowRight" || e.Key == "ArrowLeft")
         {
             var ids = new[] { "nv-envio-mail", "nv-envio-waweb", "nv-envio-wainterno", "nv-envio-drive" };
             var newIdx = e.Key == "ArrowRight" ? chipIdx + 1 : chipIdx - 1;
             if (newIdx < 0 || newIdx >= ids.Length) return;
             await FocusFieldAsync(ids[newIdx]);
-        }
-    }
-
-    // 2026-06-30: Ctrl+Enter en cualquier chip de Envios al emitir -> abre el modal de resumen.
-    // SIEMPRE muestra el modal (incluso para X/PRO), no emite directo. Adentro del modal, Enter
-    // sobre el boton verde confirma y emite.
-    private async Task OnKeyDownEnvios(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter" && e.CtrlKey)
-        {
-            if (formItems.Count > 0 && cotizacion?.TodoOk == true && !saving)
-            {
-                if (EditModoEmitirCae)
-                {
-                    IniciarEmisionCAEDesdeEdicion();
-                }
-                else
-                {
-                    // Siempre abre el modal de resumen (no llamamos a ConfirmarEmision que
-                    // tiene logica condicional segun tipo)
-                    if (formItems.Count == 0) { formError = "Agregá al menos un producto"; return; }
-                    if (cotizacion?.TodoOk != true) { formError = "Hay items con stock insuficiente o inválidos"; return; }
-                    showConfirmEmision = true;
-                    // Focus en el boton "Si, emitir" para que Enter confirme al toque
-                    await Task.Delay(60);
-                    try { await JS.InvokeVoidAsync("eval", "document.getElementById('confirm-emision-btn')?.focus()"); } catch { }
-                }
-            }
         }
     }
 
