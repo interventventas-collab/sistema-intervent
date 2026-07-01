@@ -242,6 +242,75 @@
             window.location.replace(url.toString());
         };
 
+        // 2026-07-01: GPS bar de navegacion con teclado en Nueva Venta. Detecta el foco actual
+        // dentro del modal (.nv-form), enumera los elementos tabbeables visibles, y muestra
+        // una barrita flotante abajo con "Anterior · Actual (N/M) · Siguiente". Se muestra al
+        // usar Tab, se oculta al usar mouse (mousedown).
+        window.nvGps = (function () {
+            let active = false;
+            let barEl = null;
+            function ensureBar() {
+                if (barEl) return barEl;
+                barEl = document.createElement('div');
+                barEl.className = 'nv-gps-bar hidden';
+                barEl.innerHTML =
+                    '<span class="nv-gps-opaque">←</span>' +
+                    '<span class="nv-gps-opaque" id="nv-gps-prev">-</span>' +
+                    '<span class="nv-gps-current" id="nv-gps-current">-</span>' +
+                    '<span class="nv-gps-opaque" id="nv-gps-next">-</span>' +
+                    '<span class="nv-gps-opaque">→</span>';
+                document.body.appendChild(barEl);
+                return barEl;
+            }
+            function getModal() { return document.querySelector('.nv-form'); }
+            function getTabbable(modal) {
+                const sel = 'input:not([type=hidden]):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])';
+                return Array.from(modal.querySelectorAll(sel))
+                    .filter(el => el.tabIndex !== -1 && el.offsetParent !== null);
+            }
+            function getName(el) {
+                if (!el) return '(inicio)';
+                if (el.id) {
+                    const lbl = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
+                    if (lbl && lbl.textContent) return lbl.textContent.trim().slice(0, 32);
+                }
+                const parentLabel = el.closest('label');
+                if (parentLabel) {
+                    const txt = parentLabel.textContent.trim();
+                    if (txt) return txt.slice(0, 32);
+                }
+                if (el.getAttribute('aria-label')) return el.getAttribute('aria-label').slice(0, 32);
+                if (el.placeholder) return el.placeholder.slice(0, 32);
+                if (el.tagName === 'BUTTON') {
+                    const t = (el.innerText || el.textContent || '').trim();
+                    if (t) return t.slice(0, 32);
+                }
+                if (el.title) return el.title.slice(0, 32);
+                return '(sin nombre)';
+            }
+            function update(el) {
+                if (!active) return;
+                const modal = getModal();
+                if (!modal || !modal.contains(el)) { hide(); return; }
+                const list = getTabbable(modal);
+                const idx = list.indexOf(el);
+                if (idx === -1) return;
+                const bar = ensureBar();
+                bar.classList.remove('hidden');
+                document.getElementById('nv-gps-prev').textContent = idx > 0 ? getName(list[idx - 1]) : '(inicio)';
+                document.getElementById('nv-gps-next').textContent = idx < list.length - 1 ? getName(list[idx + 1]) : '(fin)';
+                document.getElementById('nv-gps-current').textContent = (idx + 1) + '/' + list.length + ' · ' + getName(el);
+            }
+            function show() { active = true; ensureBar(); }
+            function hide() { active = false; if (barEl) barEl.classList.add('hidden'); }
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Tab') { show(); setTimeout(function () { update(document.activeElement); }, 0); }
+            }, true);
+            document.addEventListener('mousedown', function () { hide(); }, true);
+            document.addEventListener('focusin', function (e) { if (active) update(e.target); }, true);
+            return { show: show, hide: hide };
+        })();
+
         // 2026-06-29: Zoom UI persistente — funciona como Ctrl+/Ctrl- del browser
         // pero queda guardado por usuario en localStorage. Usa document.body.style.zoom
         // (soportado en Chrome, Edge, Safari, Firefox 126+).
