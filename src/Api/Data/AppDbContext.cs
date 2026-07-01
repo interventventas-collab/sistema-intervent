@@ -68,6 +68,7 @@ public class AppDbContext : DbContext
     public DbSet<NomEmpleado> NomEmpleados => Set<NomEmpleado>();
     public DbSet<NomLiquidacion> NomLiquidaciones => Set<NomLiquidacion>();
     public DbSet<NomPago> NomPagos => Set<NomPago>();
+    public DbSet<NomNominaArchivo> NomNominaArchivos => Set<NomNominaArchivo>();
     // Modulo Pagos Movil (bandeja precarga -> confirmar en PC)
     public DbSet<PagosMovilPendiente> PagosMovilPendientes => Set<PagosMovilPendiente>();
     public DbSet<PagosMovilPendienteComprobante> PagosMovilPendientesComprobantes => Set<PagosMovilPendienteComprobante>();

@@ -104,6 +104,20 @@ public class NomLiquidacionDto
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public List<NomPagoDto> Pagos { get; set; } = new();
+    // 2026-07-01: cantidad de recibos/nóminas adjuntas (para mostrar 📎N en la lista)
+    public int ArchivosCount { get; set; }
+}
+
+// 2026-07-01: metadata de un archivo adjunto (recibo/nómina) — sin el contenido binario.
+public class NomNominaArchivoDto
+{
+    public int Id { get; set; }
+    public int LiquidacionId { get; set; }
+    public string FileName { get; set; } = "";
+    public string ContentType { get; set; } = "application/pdf";
+    public long FileSize { get; set; }
+    public DateTime UploadedAt { get; set; }
+    public string? UploadedBy { get; set; }
 }
 
 public class CreateNomLiquidacionRequest

@@ -65,7 +65,22 @@ public record NomLiquidacionDto(
     decimal TotalPagado, decimal Saldo,
     string EmpleadoModalidadSueldo, decimal EmpleadoJornalDiario,
     DateTime CreatedAt, DateTime? UpdatedAt,
-    List<NomPagoDto> Pagos);
+    List<NomPagoDto> Pagos,
+    // 2026-07-01: recibos/nóminas adjuntas
+    int ArchivosCount = 0);
+
+// 2026-07-01: metadata de un archivo adjunto (sin el contenido binario).
+public record NomNominaArchivoDto(
+    int Id, int LiquidacionId, string FileName, string ContentType, long FileSize,
+    DateTime UploadedAt, string? UploadedBy);
+
+// Subida de un archivo en base64 (el frontend lee el archivo y lo manda así — sirve para PDF e imágenes).
+public class UploadNominaArchivoRequest
+{
+    public string FileName { get; set; } = "";
+    public string ContentType { get; set; } = "application/pdf";
+    public string Base64 { get; set; } = "";
+}
 
 public class CreateNomLiquidacionRequest
 {

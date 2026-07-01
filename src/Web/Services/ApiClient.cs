@@ -541,6 +541,43 @@ public class ApiClient
     public async Task<NomResumenMensualDto?> GetNomResumenAsync(int anio, int mes)
         => await GetAsync<NomResumenMensualDto>($"/api/nominas/resumen?anio={anio}&mes={mes}");
 
+    // --- 2026-07-01: Nominas: archivos adjuntos (recibos / nóminas) por liquidación ---
+    public async Task<List<NomNominaArchivoDto>?> GetNominaArchivosAsync(int liqId)
+        => await GetAsync<List<NomNominaArchivoDto>>($"/api/nominas/liquidaciones/{liqId}/archivos");
+
+    public async Task<(NomNominaArchivoDto? archivo, string? error)> UploadNominaArchivoAsync(int liqId, string fileName, string contentType, string base64)
+    {
+        await SetAuthHeaderAsync();
+        var body = new { FileName = fileName, ContentType = contentType, Base64 = base64 };
+        var resp = await _http.PostAsJsonAsync($"/api/nominas/liquidaciones/{liqId}/archivos", body);
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return (null, "Sesión expirada"); }
+        var content = await resp.Content.ReadAsStringAsync();
+        if (resp.IsSuccessStatusCode)
+        {
+            try
+            {
+                return (System.Text.Json.JsonSerializer.Deserialize<NomNominaArchivoDto>(content,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }), null);
+            }
+            catch { return (null, "No se pudo leer la respuesta"); }
+        }
+        try { using var doc = System.Text.Json.JsonDocument.Parse(content); if (doc.RootElement.TryGetProperty("error", out var err)) return (null, err.GetString()); }
+        catch { }
+        return (null, "No se pudo subir el archivo");
+    }
+
+    public async Task<byte[]?> DownloadNominaArchivoAsync(int liqId, int archivoId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync($"/api/nominas/liquidaciones/{liqId}/archivos/{archivoId}/download");
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return null; }
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadAsByteArrayAsync();
+    }
+
+    public async Task<bool> DeleteNominaArchivoAsync(int liqId, int archivoId)
+        => await DeleteAsync($"/api/nominas/liquidaciones/{liqId}/archivos/{archivoId}");
+
     // ════════════════════════════════════════════════════════════
     // BÓVEDA DE CONTRASEÑAS
     // ════════════════════════════════════════════════════════════
