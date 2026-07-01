@@ -3,6 +3,51 @@
    Blazor WASM - Migrated from vanilla JS
    ============================================================ */
 
+/* 2026-07-01: Foco fuerte + GPS bar para navegacion con teclado en Nueva Venta.
+   Solo aplica dentro del modal (.nv-form) para no afectar otras pantallas. */
+.nv-form input:focus,
+.nv-form select:focus,
+.nv-form textarea:focus,
+.nv-form button:focus,
+.nv-form [tabindex="0"]:focus {
+    outline: none !important;
+    border-color: #2563eb !important;
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.20) !important;
+    transition: box-shadow 0.08s ease, border-color 0.08s ease;
+}
+.nv-gps-bar {
+    position: fixed;
+    bottom: 84px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #111827;
+    color: white;
+    padding: 8px 14px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+    z-index: 9999;
+    max-width: 90vw;
+    white-space: nowrap;
+    overflow: hidden;
+    animation: nv-gps-fade 0.15s ease-out;
+}
+.nv-gps-bar.hidden { display: none; }
+.nv-gps-bar .nv-gps-opaque { opacity: 0.55; }
+.nv-gps-bar .nv-gps-current {
+    padding: 2px 8px;
+    background: #2563eb;
+    border-radius: 4px;
+    font-weight: 600;
+}
+@keyframes nv-gps-fade {
+    from { opacity: 0; transform: translate(-50%, 4px); }
+    to { opacity: 1; transform: translate(-50%, 0); }
+}
+
 /* --- CSS Variables / Design Tokens --- */
 :root {
   /* Sidebar */

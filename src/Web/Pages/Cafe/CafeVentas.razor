@@ -1318,9 +1318,12 @@
                         <strong style="font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;">Productos a vender</strong>
                         @* 2026-06-30: cajita de ayuda con atajos de teclado *@
                         <div style="margin-left: auto; display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.6rem; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; font-size: 0.7rem; color: #1e40af;">
-                            <span style="font-weight: 600;">⌨ Atajos:</span>
-                            <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Enter</kbd> avanza dentro del producto</span>
-                            <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Ctrl+Enter</kbd> Notas → Comentario → Entrega → Envíos → Emitir</span>
+                            <span style="font-weight: 600;">⌨ Teclado:</span>
+                            <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Tab</kbd> siguiente</span>
+                            <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Shift+Tab</kbd> anterior</span>
+                            <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">← →</kbd> en grupos</span>
+                            <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Enter</kbd> (buscador vacío) sale del loop de productos</span>
+                            <span><kbd style="background:white; border:1px solid #93c5fd; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:0.68rem;">Ctrl+1..5</kbd> pestañas</span>
                         </div>
                     </div>
 
@@ -1328,42 +1331,49 @@
 
                     @* Selector Producto / Combo / Concepto libre *@
                     <div style="display: inline-flex; gap: 0; margin-bottom: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px; overflow: hidden;">
-                        <button type="button"
+                        <button type="button" id="nv-tab-producto"
                                 class="btn"
-                                style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "PRODUCTO" ? "background:#1d4ed8;color:white;" : "background:white;color:#374151;")"
-                                @onclick="@(() => addMode = "PRODUCTO")">
+                                style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "PRODUCTO" ? "background:#1d4ed8;color:white;" : "background:white;color:#374151;") display:inline-flex; align-items:center; gap:0.35rem;"
+                                @onclick="@(() => addMode = "PRODUCTO")"
+                                title="Ctrl+1">
                             📦 Producto
+                            <kbd style="font-size:0.62rem; padding:1px 5px; border-radius:3px; font-family:monospace; opacity:0.75; background:@(addMode == "PRODUCTO" ? "rgba(255,255,255,0.18)" : "#eef2ff"); color:@(addMode == "PRODUCTO" ? "white" : "#4338ca"); border:1px solid @(addMode == "PRODUCTO" ? "rgba(255,255,255,0.35)" : "#c7d2fe");">Ctrl+1</kbd>
                         </button>
                         @* 2026-06-30: pestaña "⭐ Top" — solo visible si el cliente tiene historial. *@
                         @if (MostrarPanelTopProductos)
                         {
-                            <button type="button"
+                            <button type="button" id="nv-tab-top"
                                     class="btn"
-                                    style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "TOP" ? "background:#f59e0b;color:white;" : "background:#fefce8;color:#78350f;")"
+                                    style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "TOP" ? "background:#f59e0b;color:white;" : "background:#fefce8;color:#78350f;") display:inline-flex; align-items:center; gap:0.35rem;"
                                     @onclick="EntrarModoTop"
-                                    title="Más comprados por este cliente">
+                                    title="Ctrl+2 · Más comprados por este cliente">
                                 ⭐ Top (@topProductsForClient.Count)
+                                <kbd style="font-size:0.62rem; padding:1px 5px; border-radius:3px; font-family:monospace; opacity:0.85; background:@(addMode == "TOP" ? "rgba(255,255,255,0.22)" : "#fef3c7"); color:@(addMode == "TOP" ? "white" : "#92400e"); border:1px solid @(addMode == "TOP" ? "rgba(255,255,255,0.4)" : "#fcd34d");">Ctrl+2</kbd>
                             </button>
                         }
-                        <button type="button"
+                        <button type="button" id="nv-tab-combo"
                                 class="btn"
-                                style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "COMBO" ? "background:#1d4ed8;color:white;" : "background:white;color:#374151;")"
-                                @onclick="@(() => addMode = "COMBO")">
+                                style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "COMBO" ? "background:#1d4ed8;color:white;" : "background:white;color:#374151;") display:inline-flex; align-items:center; gap:0.35rem;"
+                                @onclick="@(() => addMode = "COMBO")"
+                                title="Ctrl+3">
                             🎁 Combo
+                            <kbd style="font-size:0.62rem; padding:1px 5px; border-radius:3px; font-family:monospace; opacity:0.75; background:@(addMode == "COMBO" ? "rgba(255,255,255,0.18)" : "#eef2ff"); color:@(addMode == "COMBO" ? "white" : "#4338ca"); border:1px solid @(addMode == "COMBO" ? "rgba(255,255,255,0.35)" : "#c7d2fe");">Ctrl+3</kbd>
                         </button>
-                        <button type="button"
+                        <button type="button" id="nv-tab-servicio"
                                 class="btn"
-                                style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "SERVICIO" ? "background:#7c3aed;color:white;" : "background:white;color:#374151;")"
+                                style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "SERVICIO" ? "background:#7c3aed;color:white;" : "background:white;color:#374151;") display:inline-flex; align-items:center; gap:0.35rem;"
                                 @onclick="@(async () => { addMode = "SERVICIO"; await CargarServiciosSiHaceFalta(); })"
-                                title="Servicio del catálogo (envío, mano de obra, instalación, etc). No descuenta stock.">
+                                title="Ctrl+4 · Servicio del catálogo (envío, mano de obra, instalación, etc). No descuenta stock.">
                             🛠 Servicio
+                            <kbd style="font-size:0.62rem; padding:1px 5px; border-radius:3px; font-family:monospace; opacity:0.75; background:@(addMode == "SERVICIO" ? "rgba(255,255,255,0.18)" : "#f3e8ff"); color:@(addMode == "SERVICIO" ? "white" : "#6d28d9"); border:1px solid @(addMode == "SERVICIO" ? "rgba(255,255,255,0.35)" : "#ddd6fe");">Ctrl+4</kbd>
                         </button>
-                        <button type="button"
+                        <button type="button" id="nv-tab-libre"
                                 class="btn"
-                                style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "LIBRE" ? "background:#1d4ed8;color:white;" : "background:white;color:#374151;")"
+                                style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "LIBRE" ? "background:#1d4ed8;color:white;" : "background:white;color:#374151;") display:inline-flex; align-items:center; gap:0.35rem;"
                                 @onclick="@(() => addMode = "LIBRE")"
-                                title="Item con descripción y precio cargados a mano, sin producto del catálogo">
+                                title="Ctrl+5 · Item con descripción y precio cargados a mano, sin producto del catálogo">
                             ✏️ Concepto libre
+                            <kbd style="font-size:0.62rem; padding:1px 5px; border-radius:3px; font-family:monospace; opacity:0.75; background:@(addMode == "LIBRE" ? "rgba(255,255,255,0.18)" : "#eef2ff"); color:@(addMode == "LIBRE" ? "white" : "#4338ca"); border:1px solid @(addMode == "LIBRE" ? "rgba(255,255,255,0.35)" : "#c7d2fe");">Ctrl+5</kbd>
                         </button>
                     </div>
 
@@ -1385,7 +1395,7 @@
                                 }
                                 else
                                 {
-                                    <select class="form-input" @bind="addServicioId">
+                                    <select id="nv-servicio-select" class="form-input" @bind="addServicioId">
                                         <option value="0">-- Elegir servicio --</option>
                                         @foreach (var s in catalogoServicios.OrderBy(x => x.Nombre))
                                         {
@@ -1422,7 +1432,7 @@
                         <div class="form-row" style="align-items: end;">
                             <div class="form-group" style="flex: 3;">
                                 <label class="form-label" style="font-size: 0.75rem;">Descripción *</label>
-                                <input class="form-input" @bind="addLibreDescripcion"
+                                <input id="nv-libre-descripcion" class="form-input" @bind="addLibreDescripcion"
                                        placeholder="Ej: Servicio de delivery / Capacitación / Honorarios..." />
                             </div>
                             <div class="form-group" style="flex: 1;">
@@ -1506,7 +1516,7 @@
                                 }
                                 else
                                 {
-                                    <input class="form-input" @bind="comboSearch" @bind:event="oninput"
+                                    <input id="nv-combo-search" class="form-input" @bind="comboSearch" @bind:event="oninput"
                                            @onfocus="() => comboSearchOpen = true"
                                            placeholder="🔍 Buscar combo por nombre..." />
                                     @if (comboSearchOpen && combos is not null)
@@ -2032,7 +2042,6 @@
                         </div>
                         <textarea id="nv-notas" class="form-input" rows="3" @bind="formObservaciones"
                                   placeholder="Esto se visualizará en el comprobante que recibirá el cliente"
-                                  @onkeydown="OnKeyDownNotas"
                                   style="resize: vertical; min-height: 80px;"></textarea>
                     </div>
 
@@ -2043,7 +2052,6 @@
                         </div>
                         <textarea id="nv-comentario-armado" class="form-input" rows="3" @bind="formComentarioArmado"
                                   placeholder="Ej: SOBRES CORTESIA"
-                                  @onkeydown="OnKeyDownComentarioArmado"
                                   style="background: #fefce8; border: 2px dashed #facc15; resize: vertical; min-height: 80px;"></textarea>
                     </div>
                 </div>
@@ -2175,6 +2183,7 @@
                             var bdF = onF ? "#1e40af" : "#d1d5db";
                             var dCaptured = d;
                             <button type="button" id="@($"nv-dia-{d}")"
+                                    tabindex="@(d == "LUN" ? 0 : -1)"
                                     @onclick="() => ToggleFormDay(dCaptured)"
                                     @onkeydown="@((KeyboardEventArgs e) => OnKeyDownDia(e, dCaptured))"
                                     style="padding: 0.25rem 0.45rem; border: 1px solid @bdF; background: @bgF; color: @fgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer; min-width: 34px;">@(onF ? "✓" : "")@d</button>
@@ -2190,22 +2199,29 @@
                         var trBgF = formPorTransporte ? "#ea580c" : "white";
                         var trFgF = formPorTransporte ? "white" : "#374151";
                     }
-                    @* 2026-06-30: tabindex=-1 en estos botones para que Tab desde cualquier dia
-                       salte directo a Envios (skip de Radar/Retira/Transporte/Repartidor/Cobrar).
-                       Siguen siendo clickeables con mouse normalmente. *@
+                    @* 2026-07-01: TODOS con tabindex=-1: solo se llega por flechas desde LUN.
+                       Tab desde LUN o desde estos elementos salta directo a Enviar al emitir (Mail). *@
                     <div style="display: inline-flex; gap: 0.3rem; flex-wrap: wrap;">
-                        <button type="button" tabindex="-1" @onclick="ToggleEnRadar" title="El cliente ve 'a coordinar'"
+                        <button type="button" id="nv-radar" tabindex="-1" @onclick="ToggleEnRadar"
+                                @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEntrega(e, "nv-radar"))"
+                                title="El cliente ve 'a coordinar'"
                                 style="padding: 0.25rem 0.55rem; border: 1px solid #1e3a8a; background: @radarBgF; color: @radarFgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer;">@(formEnRadar ? "✓ " : "")🛰 RADAR</button>
-                        <button type="button" tabindex="-1" @onclick="ToggleRetira" title="Retira en local"
+                        <button type="button" id="nv-retira" tabindex="-1" @onclick="ToggleRetira"
+                                @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEntrega(e, "nv-retira"))"
+                                title="Retira en local"
                                 style="padding: 0.25rem 0.55rem; border: 1px solid #15803d; background: @retiraBgF; color: @retiraFgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer;">@(formRetira ? "✓ " : "")🚗 RETIRA</button>
-                        <button type="button" tabindex="-1" @onclick="ToggleTransporte" title="Por empresa de transporte"
+                        <button type="button" id="nv-transporte" tabindex="-1" @onclick="ToggleTransporte"
+                                @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEntrega(e, "nv-transporte"))"
+                                title="Por empresa de transporte"
                                 style="padding: 0.25rem 0.55rem; border: 1px solid #c2410c; background: @trBgF; color: @trFgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer;">@(formPorTransporte ? "✓ " : "")🚛 TRANSPORTE</button>
                     </div>
 
                     @* Repartidor *@
                     <div style="display: inline-flex; align-items: center; gap: 0.35rem;">
                         <span style="font-size: 0.68rem; color: #92400e; white-space: nowrap;">Repartidor:</span>
-                        <select class="form-input" @bind="formEntregaPor" tabindex="-1" style="font-size: 0.78rem; padding: 0.25rem 0.45rem; min-width: 160px;">
+                        <select id="nv-repartidor" tabindex="-1" class="form-input" @bind="formEntregaPor"
+                                @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEntrega(e, "nv-repartidor"))"
+                                style="font-size: 0.78rem; padding: 0.25rem 0.45rem; min-width: 160px;">
                             <option value="">— sin asignar —</option>
                             @foreach (var nom in EntregaResponsables)
                             {
@@ -2229,7 +2245,9 @@
                     else if (!editingVentaId.HasValue)
                     {
                         <label style="display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: #166534;">
-                            <input type="checkbox" @bind="formIsPaid" tabindex="-1" style="margin: 0;" />
+                            <input id="nv-cobrar" type="checkbox" tabindex="-1" @bind="formIsPaid"
+                                   @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEntrega(e, "nv-cobrar"))"
+                                   style="margin: 0;" />
                             💰 Cobrar al guardar
                         </label>
                     }
@@ -2238,8 +2256,8 @@
                     @if (formPorTransporte)
                     {
                         <div style="display: inline-flex; gap: 0.35rem; flex-basis: 100%;">
-                            <input class="form-input" tabindex="-1" @bind="formTransporteEmpresa" placeholder="Empresa (Andreani, Cruz del Sur…)" style="font-size: 0.78rem; padding: 0.3rem 0.5rem; flex: 1; max-width: 320px;" />
-                            <input class="form-input" tabindex="-1" @bind="formTransporteDestino" placeholder="Destino (ciudad/sucursal)" style="font-size: 0.78rem; padding: 0.3rem 0.5rem; flex: 1; max-width: 320px;" />
+                            <input class="form-input" @bind="formTransporteEmpresa" placeholder="Empresa (Andreani, Cruz del Sur…)" style="font-size: 0.78rem; padding: 0.3rem 0.5rem; flex: 1; max-width: 320px;" />
+                            <input class="form-input" @bind="formTransporteDestino" placeholder="Destino (ciudad/sucursal)" style="font-size: 0.78rem; padding: 0.3rem 0.5rem; flex: 1; max-width: 320px;" />
                         </div>
                     }
                 </div>
@@ -2262,24 +2280,24 @@
 
                             @{ var chipWaWeb = envioWhatsappWeb; }
                             <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipWaWeb ? "#f0fdf4" : "white"); border: 1px solid @(chipWaWeb ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;">
-                                <input id="nv-envio-waweb" type="checkbox" @bind="envioWhatsappWeb" @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEnvioChip(e, 1))" style="margin: 0;" />
+                                <input id="nv-envio-waweb" type="checkbox" tabindex="-1" @bind="envioWhatsappWeb" @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEnvioChip(e, 1))" style="margin: 0;" />
                                 <span>📱 WA Web</span>
                             </label>
 
                             @{ var chipWaInt = envioWhatsappInterno; }
                             <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipWaInt ? "#f0fdf4" : "white"); border: 1px solid @(chipWaInt ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;">
-                                <input id="nv-envio-wainterno" type="checkbox" @bind="envioWhatsappInterno" @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEnvioChip(e, 2))" style="margin: 0;" />
+                                <input id="nv-envio-wainterno" type="checkbox" tabindex="-1" @bind="envioWhatsappInterno" @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEnvioChip(e, 2))" style="margin: 0;" />
                                 <span>🚀 WA Interno</span>
                             </label>
 
                             @{ var chipDrive = envioDrive; }
                             <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipDrive ? "#f0fdf4" : "white"); border: 1px solid @(chipDrive ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;"
                                    title="Sube el PDF a Drive y aparece en /cafe/preparacion">
-                                <input id="nv-envio-drive" type="checkbox" @bind="envioDrive" @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEnvioChip(e, 3))" style="margin: 0;" />
+                                <input id="nv-envio-drive" type="checkbox" tabindex="-1" @bind="envioDrive" @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEnvioChip(e, 3))" style="margin: 0;" />
                                 <span>📁 Imprimir pedidos</span>
                             </label>
 
-                            <button type="button" tabindex="-1"
+                            <button type="button"
                                     style="font-size: 0.68rem; padding: 0.25rem 0.5rem; background:white; border:1px solid #9ca3af; border-radius:4px; cursor:pointer; color:#374151;"
                                     @onclick="MarcarTodosEnvios">
                                 @(envioEmail && envioWhatsappWeb && envioWhatsappInterno ? "Desmarcar" : "Marcar todos")
@@ -2352,7 +2370,7 @@
                         </div>
                         <div style="display: inline-flex; align-items: center; gap: 0.35rem;">
                             <span style="font-size: 0.68rem; color: #047857; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700;">Descuento:</span>
-                            <input class="form-input" type="number" step="0.01" @bind="formDescuento" @bind:after="Cotizar"
+                            <input class="form-input" type="number" step="0.01" tabindex="-1" @bind="formDescuento" @bind:after="Cotizar"
                                    style="text-align: right; width: 70px; font-weight: 700; padding: 0.2rem 0.4rem; font-size: 0.82rem;" />
                         </div>
                         <div style="display: inline-flex; align-items: center; gap: 0.35rem;">
@@ -2390,14 +2408,14 @@
                             <strong style="font-size: 1.4rem; color: #047857; line-height: 1.05;">$@FormatMoney(mostrarIvaT ? totalConIvaT : cotizacion.Total)</strong>
                         </div>
                         <div style="display: flex; gap: 0.4rem; align-items: center; justify-content: flex-end;">
-                            <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
-                            <button class="btn btn-secondary" @onclick="PreviewPdf" disabled="@(saving || previewLoading || formItems.Count == 0 || cotizacion?.TodoOk != true)"
+                            <button class="btn btn-secondary" tabindex="-1" @onclick="CloseForm" disabled="@saving">Cancelar</button>
+                            <button class="btn btn-secondary" tabindex="-1" @onclick="PreviewPdf" disabled="@(saving || previewLoading || formItems.Count == 0 || cotizacion?.TodoOk != true)"
                                     title="Ver cómo quedaría el PDF sin guardar la venta">
                                 @(previewLoading ? "⏳..." : "👁 PDF")
                             </button>
                             @if (EditModoEmitirCae)
                             {
-                                <button class="btn" style="background: #7c3aed; color: white; border-color: #7c3aed;"
+                                <button id="nv-emitir" class="btn" style="background: #7c3aed; color: white; border-color: #7c3aed;"
                                         @onclick="IniciarEmisionCAEDesdeEdicion"
                                         disabled="@(saving || convirtiendoLoading || formItems.Count == 0 || cotizacion?.TodoOk != true)">
                                     @(saving || convirtiendoLoading
@@ -2407,7 +2425,7 @@
                             }
                             else
                             {
-                                <button class="btn btn-primary" @onclick="ConfirmarEmision" disabled="@(saving || formItems.Count == 0 || cotizacion?.TodoOk != true)">
+                                <button id="nv-emitir" class="btn btn-primary" @onclick="ConfirmarEmision" disabled="@(saving || formItems.Count == 0 || cotizacion?.TodoOk != true)">
                                     @(saving
                                         ? (editingVentaId.HasValue ? "Guardando..." : "Emitiendo...")
                                         : (editingVentaId.HasValue ? "💾 Guardar cambios" : $"Emitir {EmitirLabelForTipo(formTipoComprobante)}"))
@@ -6009,9 +6027,9 @@
 
     private async Task OnKeyDownProducto(KeyboardEventArgs e)
     {
-        // 2026-06-30: Ctrl+Enter sale del loop de productos y salta a Notas internas.
-        // Funciona estes en el buscador con texto o vacio.
-        if (e.Key == "Enter" && e.CtrlKey)
+        // 2026-07-01: Enter en buscador vacio = "no hay mas productos" -> salta a Notas.
+        // Reemplaza al viejo Ctrl+Enter. Modelo teclado: Tab / Shift+Tab / flechas / Enter.
+        if (e.Key == "Enter" && string.IsNullOrWhiteSpace(productoSearch))
         {
             await FocusFieldAsync("nv-notas");
             return;
@@ -6032,7 +6050,6 @@
             return;
         }
         if (e.Key != "Enter") return;
-        if (string.IsNullOrWhiteSpace(productoSearch)) return;
         if (total == 0) return;
 
         // Producto normal o compuesto segun el indice resaltado
@@ -6052,51 +6069,41 @@
         return;
     }
 
-    // 2026-06-30: Ctrl+Enter en Notas internas -> salta a Comentario armado.
-    private async Task OnKeyDownNotas(KeyboardEventArgs e)
+    // 2026-07-01: TODO el bloque Entrega (dias + Radar/Retira/Transporte + Repartidor + Cobrar)
+    // es un solo grupo de flechas ← →. Enter/Space toggla en cada uno. Tab escapa a "Enviar al emitir".
+    // Todos los elementos menos el primero (nv-dia-LUN) tienen tabindex=-1 para que Tab salte fuera.
+    private List<string> GetEntregaFocusOrder()
     {
-        if (e.Key == "Enter" && e.CtrlKey)
-        {
-            await FocusFieldAsync("nv-comentario-armado");
-        }
+        var list = AllWeekDays.Select(d => $"nv-dia-{d}").ToList();
+        list.Add("nv-radar");
+        list.Add("nv-retira");
+        list.Add("nv-transporte");
+        list.Add("nv-repartidor");
+        if (!editingVentaId.HasValue) list.Add("nv-cobrar");
+        return list;
     }
 
-    // 2026-06-30: Ctrl+Enter en Comentario armado -> salta a Entrega (primer dia LUN).
-    private async Task OnKeyDownComentarioArmado(KeyboardEventArgs e)
+    private async Task OnKeyDownEntrega(KeyboardEventArgs e, string currentId)
     {
-        if (e.Key == "Enter" && e.CtrlKey)
-        {
-            await FocusFieldAsync("nv-dia-LUN");
-        }
-    }
-
-    // 2026-06-30: Ctrl+Enter en cualquier dia/chip de Entrega -> salta al primer chip de Envios.
-    private async Task OnKeyDownEntrega(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter" && e.CtrlKey)
-        {
-            await FocusFieldAsync("nv-envio-mail");
-        }
-    }
-
-    // 2026-06-30: navegacion con flechas entre dias de visita. Enter toggla. Tab sale natural.
-    private async Task OnKeyDownDia(KeyboardEventArgs e, string currentDay)
-    {
-        if (e.Key == "Enter" && e.CtrlKey)
-        {
-            await FocusFieldAsync("nv-envio-mail");
-            return;
-        }
         if (e.Key == "ArrowRight" || e.Key == "ArrowLeft")
         {
-            var days = AllWeekDays.ToList();
-            var idx = days.IndexOf(currentDay);
+            var order = GetEntregaFocusOrder();
+            var idx = order.IndexOf(currentId);
             if (idx < 0) return;
             var newIdx = e.Key == "ArrowRight" ? idx + 1 : idx - 1;
-            if (newIdx < 0 || newIdx >= days.Count) return;
-            await FocusFieldAsync($"nv-dia-{days[newIdx]}");
+            if (newIdx < 0 || newIdx >= order.Count) return;
+            await FocusFieldAsync(order[newIdx]);
+        }
+        else if (e.Key == "Enter" && currentId == "nv-cobrar")
+        {
+            // Enter en el checkbox alterna el valor (Space ya lo hace nativo)
+            formIsPaid = !formIsPaid;
+            StateHasChanged();
         }
     }
+
+    // Alias para no romper el binding existente en las botoneras de dia.
+    private Task OnKeyDownDia(KeyboardEventArgs e, string currentDay) => OnKeyDownEntrega(e, $"nv-dia-{currentDay}");
 
     // 2026-06-30: Enter en el modal de confirmacion = emitir. Escape = cancelar.
     private async Task OnKeyDownConfirmModal(KeyboardEventArgs e)
@@ -6111,14 +6118,11 @@
         }
     }
 
-    // 2026-06-30: navegacion con flechas entre chips de envios. Ctrl+Enter abre resumen.
+    // 2026-07-01: navegacion con ← → entre chips de envios. Enter o Space toggla el checkbox.
+    // Solo nv-envio-mail queda tab-focusable; el resto tiene tabindex=-1, asi Tab escapa
+    // hacia el bloque de botones (Cancelar / PDF / Emitir cotizacion).
     private async Task OnKeyDownEnvioChip(KeyboardEventArgs e, int chipIdx)
     {
-        if (e.Key == "Enter" && e.CtrlKey)
-        {
-            await OnKeyDownEnvios(e);
-            return;
-        }
         if (e.Key == "ArrowRight" || e.Key == "ArrowLeft")
         {
             var ids = new[] { "nv-envio-mail", "nv-envio-waweb", "nv-envio-wainterno", "nv-envio-drive" };
@@ -6126,33 +6130,17 @@
             if (newIdx < 0 || newIdx >= ids.Length) return;
             await FocusFieldAsync(ids[newIdx]);
         }
-    }
-
-    // 2026-06-30: Ctrl+Enter en cualquier chip de Envios al emitir -> abre el modal de resumen.
-    // SIEMPRE muestra el modal (incluso para X/PRO), no emite directo. Adentro del modal, Enter
-    // sobre el boton verde confirma y emite.
-    private async Task OnKeyDownEnvios(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter" && e.CtrlKey)
+        else if (e.Key == "Enter")
         {
-            if (formItems.Count > 0 && cotizacion?.TodoOk == true && !saving)
+            // Space ya toggla nativo; Enter en checkbox no hace nada, lo hacemos a mano.
+            switch (chipIdx)
             {
-                if (EditModoEmitirCae)
-                {
-                    IniciarEmisionCAEDesdeEdicion();
-                }
-                else
-                {
-                    // Siempre abre el modal de resumen (no llamamos a ConfirmarEmision que
-                    // tiene logica condicional segun tipo)
-                    if (formItems.Count == 0) { formError = "Agregá al menos un producto"; return; }
-                    if (cotizacion?.TodoOk != true) { formError = "Hay items con stock insuficiente o inválidos"; return; }
-                    showConfirmEmision = true;
-                    // Focus en el boton "Si, emitir" para que Enter confirme al toque
-                    await Task.Delay(60);
-                    try { await JS.InvokeVoidAsync("eval", "document.getElementById('confirm-emision-btn')?.focus()"); } catch { }
-                }
+                case 0: envioEmail = !envioEmail; break;
+                case 1: envioWhatsappWeb = !envioWhatsappWeb; break;
+                case 2: envioWhatsappInterno = !envioWhatsappInterno; break;
+                case 3: envioDrive = !envioDrive; break;
             }
+            StateHasChanged();
         }
     }
 
@@ -6300,6 +6288,21 @@
             var idx = Math.Max(0, Math.Min(topListHighlight, count - 1));
             var t = topProductsForClient[idx];
             await AbrirCantidadTopProduct(t.ProductoId, t.Formato, t.Nombre);
+        }
+        else if (e.Key == "Tab")
+        {
+            // 2026-07-01: cerrar la pestaña Top al hacer Tab, volver a modo Producto y focusear
+            // el buscador. Asi el usuario libera pantalla para revisar el carrito.
+            addMode = "PRODUCTO";
+            StateHasChanged();
+            await Task.Delay(40);
+            try { await FocusFieldAsync("nv-producto"); } catch { }
+        }
+        else if (e.Key == "Escape")
+        {
+            // Escape tambien cierra el Top
+            addMode = "PRODUCTO";
+            StateHasChanged();
         }
     }
 
