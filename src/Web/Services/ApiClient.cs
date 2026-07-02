@@ -3302,6 +3302,28 @@ public class ApiClient
         bool IncluirPrecioIndependiente);
     public record BulkAjusteResponse(int Modificados, int SaltadosPrecioIndependiente, int NoEncontrados);
 
+    // 2026-07-02: refresh de comisiones SELECTIVO — solo las publis tildadas.
+    public record RefreshSaleFeeSelectedResult(int Ok, int Fail, List<string> Errores);
+    public async Task<(RefreshSaleFeeSelectedResult? resp, string? error)> RefreshSaleFeeSelectedAsync(List<int> itemIds)
+    {
+        await SetAuthHeaderAsync();
+        try
+        {
+            var http = await _http.PostAsJsonAsync("/api/meli/items/refresh-salefee-selected", new { itemIds });
+            if (http.IsSuccessStatusCode)
+                return (await http.Content.ReadFromJsonAsync<RefreshSaleFeeSelectedResult>(), null);
+            string err = "Error al refrescar";
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(await http.Content.ReadAsStringAsync());
+                if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err;
+            }
+            catch { }
+            return (null, err);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
     // 2026-07-01: masivo por ganancia — mismo motor que la ficha individual "¿Qué querés ganar?".
     public record BulkPrecioPorGananciaRequest(
         List<int> ItemIds, decimal GananciaPct, string? Redondeo,
