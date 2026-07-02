@@ -152,6 +152,14 @@ public class UpdatePrecioResultDto
     public decimal ComisionTotal { get; set; }
     public decimal NetoConIva { get; set; }
     public decimal NetoSinIva { get; set; }
+    // 2026-07-02: verificacion del objetivo cumplido despues del push.
+    public decimal? ShippingCost { get; set; }
+    public decimal? Costo { get; set; }
+    public decimal? GananciaReal { get; set; }
+    public decimal? MargenRealPct { get; set; }
+    public decimal? ObjetivoPct { get; set; }
+    public bool? DentroDelUmbral { get; set; }
+    public decimal? DesviacionPt { get; set; }
 }
 
 // ========== Cobranzas ==========

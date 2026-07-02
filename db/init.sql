@@ -4874,6 +4874,16 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='FreeShipping' AND object_id
     ALTER TABLE MeliItem_SyncConfig ADD FreeShipping BIT NULL;
 GO
 
+-- 2026-07-02: objetivo de ganancia. Se graba al pushear precio (individual o masivo)
+-- con modo "%". Sirve para chequear despues si el precio publicado sigue dando esa
+-- ganancia, o si comisiones/envio la corrieron mas de +-2 puntos.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='GananciaObjetivoPct' AND object_id=OBJECT_ID('MeliItem_SyncConfig'))
+    ALTER TABLE MeliItem_SyncConfig ADD GananciaObjetivoPct DECIMAL(6,2) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='GananciaObjetivoAt' AND object_id=OBJECT_ID('MeliItem_SyncConfig'))
+    ALTER TABLE MeliItem_SyncConfig ADD GananciaObjetivoAt DATETIME2 NULL;
+GO
+
 -- 2026-06-16: contacto + datos bancarios en ArcaEmisores (van en franja gris y pie de los PDFs de factura).
 -- Telefono/Telefono2 = WhatsApp con logo. Email = centro. Web/Web2 = pie del PDF.
 -- BancoNombre/BancoCbu/BancoAlias = franja de transferencia (SOLO en facturas con CAE).

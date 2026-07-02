@@ -186,7 +186,10 @@ public record MeliItemDto(
     // 2026-07-02: desglose para que el modal masivo separe cargo fijo del %.
     decimal? SaleFeePercentageFee = null,
     decimal? SaleFeeFixedFee = null,
-    decimal? SaleFeeFinancingFee = null
+    decimal? SaleFeeFinancingFee = null,
+    // 2026-07-02: objetivo de ganancia cargado al pushear (% sobre costo).
+    decimal? GananciaObjetivoPct = null,
+    DateTime? GananciaObjetivoAt = null
 );
 
 public record MeliItemsResponse(List<MeliItemDto> Items, int Total);

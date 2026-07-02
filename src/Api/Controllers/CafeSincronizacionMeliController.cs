@@ -316,12 +316,24 @@ public class CafeSincronizacionMeliController : ControllerBase
         return siguiente;
     }
 
-    public record UpdatePrecioRequest(decimal Precio);
-    public record UpdatePrecioResultDto(decimal NuevoPrecio, decimal ComisionTotal, decimal NetoConIva, decimal NetoSinIva);
+    public record UpdatePrecioRequest(decimal Precio, decimal? GananciaObjetivoPct = null);
+    public record UpdatePrecioResultDto(
+        decimal NuevoPrecio, decimal ComisionTotal, decimal NetoConIva, decimal NetoSinIva,
+        // 2026-07-02: verificacion del objetivo cumplido
+        decimal? ShippingCost = null,
+        decimal? Costo = null,
+        decimal? GananciaReal = null,
+        decimal? MargenRealPct = null,
+        decimal? ObjetivoPct = null,
+        bool? DentroDelUmbral = null,
+        decimal? DesviacionPt = null);
 
-    /// <summary>Push manual de precio a MeLi. Llama PUT /items/{id} con price.</summary>
+    /// <summary>Push manual de precio a MeLi. Llama PUT /items/{id} con price.
+    /// 2026-07-02: si viene GananciaObjetivoPct, se guarda el objetivo Y despues del push se refrescan
+    /// comisiones+envio con el precio final para verificar si sigue dando esa ganancia (+-2 pt).</summary>
     [HttpPut("{meliItemId}/precio")]
-    public async Task<IActionResult> UpdatePrecio(string meliItemId, [FromBody] UpdatePrecioRequest req)
+    public async Task<IActionResult> UpdatePrecio(string meliItemId, [FromBody] UpdatePrecioRequest req,
+        [FromServices] Api.Services.MeliItemService meliSvc)
     {
         if (req.Precio <= 0) return BadRequest(new { error = "Precio debe ser mayor a 0" });
 
@@ -347,20 +359,110 @@ public class CafeSincronizacionMeliController : ControllerBase
         mi.Price = req.Precio;
         mi.UpdatedAt = DateTime.UtcNow;
         var cfg = await _db.MeliItemSyncConfigs.FindAsync(meliItemId);
-        if (cfg is not null) { cfg.LastSyncAt = DateTime.UtcNow; cfg.UpdatedAt = DateTime.UtcNow; }
+        if (cfg is null)
+        {
+            cfg = new MeliItemSyncConfig { MeliItemId = meliItemId };
+            _db.MeliItemSyncConfigs.Add(cfg);
+        }
+        cfg.LastSyncAt = DateTime.UtcNow;
+        cfg.UpdatedAt = DateTime.UtcNow;
+
+        // 2026-07-02: si vino objetivo, guardarlo
+        if (req.GananciaObjetivoPct.HasValue && req.GananciaObjetivoPct.Value > 0)
+        {
+            cfg.GananciaObjetivoPct = req.GananciaObjetivoPct.Value;
+            cfg.GananciaObjetivoAt = DateTime.UtcNow;
+        }
         await _db.SaveChangesAsync();
 
-        // Calcular comision + neto para devolver al frontend
-        var rate = await _db.MeliCommissionRates.FirstOrDefaultAsync(r => r.CategoryId == (mi.CategoryId ?? "?") && r.ListingTypeId == (mi.ListingTypeId ?? "?"));
-        var comisPct = rate?.PercentageFee ?? 16.00m;
-        var comisFija = rate?.FixedFee ?? 1250.00m;
-        var comisionTotal = Math.Round(req.Precio * comisPct / 100m + comisFija, 2);
-        var netoConIva = Math.Round(req.Precio - comisionTotal, 2);
+        // 2026-07-02: refrescar costos REALES de MeLi con el precio nuevo para verificar objetivo.
+        // Si algo falla, devolvemos igual el resultado basico sin la verificacion.
+        decimal comisionTotal;
+        decimal shippingCost = 0m;
+        decimal netoConIva;
+        try
+        {
+            var costs = await meliSvc.GetListingCostsAsync(meliItemId);
+            comisionTotal = costs.SaleFeeAmount;
+            shippingCost = costs.ShippingCost;
+            netoConIva = Math.Round(req.Precio - comisionTotal - shippingCost, 2);
+        }
+        catch
+        {
+            var rate = await _db.MeliCommissionRates.FirstOrDefaultAsync(r => r.CategoryId == (mi.CategoryId ?? "?") && r.ListingTypeId == (mi.ListingTypeId ?? "?"));
+            var comisPct = rate?.PercentageFee ?? 16.00m;
+            var comisFija = rate?.FixedFee ?? 1250.00m;
+            comisionTotal = Math.Round(req.Precio * comisPct / 100m + comisFija, 2);
+            netoConIva = Math.Round(req.Precio - comisionTotal, 2);
+        }
+
         var prod = await _db.CafeProductos.FindAsync(mi.CafeProductoId);
         var ivaPct = prod?.IvaPct ?? 21m;
         var netoSinIva = ivaPct > 0 ? Math.Round(netoConIva / (1 + ivaPct/100m), 2) : netoConIva;
 
-        return Ok(new UpdatePrecioResultDto(req.Precio, comisionTotal, netoConIva, netoSinIva));
+        // 2026-07-02: calcular costo del producto (mismas reglas que GetProductCost) para poder verificar objetivo
+        decimal? costoProducto = await CalcularCostoProductoAsync(mi);
+        decimal? gananciaReal = null;
+        decimal? margenRealPct = null;
+        bool? dentroDelUmbral = null;
+        decimal? desviacionPt = null;
+        if (costoProducto.HasValue && costoProducto.Value > 0)
+        {
+            gananciaReal = Math.Round(netoSinIva - costoProducto.Value, 2);
+            margenRealPct = Math.Round(gananciaReal.Value / costoProducto.Value * 100m, 2);
+            if (cfg?.GananciaObjetivoPct.HasValue == true)
+            {
+                var obj = cfg.GananciaObjetivoPct.Value;
+                desviacionPt = Math.Round(margenRealPct.Value - obj, 2);
+                dentroDelUmbral = Math.Abs(desviacionPt.Value) <= 2m;
+            }
+        }
+
+        return Ok(new UpdatePrecioResultDto(
+            req.Precio, comisionTotal, netoConIva, netoSinIva,
+            shippingCost, costoProducto, gananciaReal, margenRealPct,
+            cfg?.GananciaObjetivoPct, dentroDelUmbral, desviacionPt));
+    }
+
+    /// <summary>2026-07-02: costo del producto/combo asociado a la MLA. Copia de GetProductCost
+    /// para reutilizar en UpdatePrecio sin duplicar el endpoint.</summary>
+    private async Task<decimal?> CalcularCostoProductoAsync(MeliItem mi)
+    {
+        var mecs = await (
+            from c in _db.MeliItemComponentes
+            join p in _db.CafeProductos on c.CafeProductoId equals p.Id
+            where c.MeliItemId == mi.MeliItemId
+            select new { p.Sku, p.Costo, c.Cantidad }
+        ).ToListAsync();
+        if (mecs.Count > 0)
+        {
+            // Dedup por SKU si son todas del mismo producto
+            var deduped = mecs.GroupBy(x => x.Sku).Select(g => g.First()).ToList();
+            return deduped.Sum(x => x.Costo * x.Cantidad);
+        }
+        if (mi.CafeComboId.HasValue)
+        {
+            var items = await (
+                from ci in _db.CafeComboItems
+                join p in _db.CafeProductos on ci.ProductoId equals p.Id
+                where ci.ComboId == mi.CafeComboId.Value
+                select p.Costo * ci.Cantidad
+            ).ToListAsync();
+            return items.Sum();
+        }
+        if (mi.CafeProductoId.HasValue)
+        {
+            var p = await _db.CafeProductos.AsNoTracking().FirstOrDefaultAsync(x => x.Id == mi.CafeProductoId.Value);
+            if (p == null) return null;
+            decimal cant = 1m;
+            if (!string.IsNullOrEmpty(mi.Sku))
+            {
+                if (mi.Sku.EndsWith(".4")) cant = 0.25m;
+                else if (mi.Sku.EndsWith(".2")) cant = 0.5m;
+            }
+            return p.Costo * cant;
+        }
+        return null;
     }
 
     /// <summary>Refresca la cache de comisiones consultando /sites/MLA/listing_prices para una categoria+listing.

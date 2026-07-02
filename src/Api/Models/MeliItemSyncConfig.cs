@@ -83,6 +83,15 @@ public class MeliItemSyncConfig
 
     /// <summary>2026-06-11: Si esta MLA tiene envio gratis configurado en MeLi.</summary>
     public bool? FreeShipping { get; set; }
+
+    /// <summary>2026-07-02: Objetivo de ganancia (% sobre costo) que el operador queria
+    /// al pushear el precio. Se usa para verificar despues si el precio publicado sigue
+    /// dando ese margen, o si comisiones/envio lo corrieron. Umbral tolerado: +-2 pt.</summary>
+    [Column(TypeName = "decimal(6,2)")]
+    public decimal? GananciaObjetivoPct { get; set; }
+
+    /// <summary>2026-07-02: Cuando se cargo/actualizo el objetivo.</summary>
+    public DateTime? GananciaObjetivoAt { get; set; }
 }
 
 /// <summary>

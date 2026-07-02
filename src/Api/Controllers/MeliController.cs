@@ -2299,6 +2299,10 @@ public class MeliController : ControllerBase
             cfg.AjusteFijo = Math.Round(precioNuevo - precioBase, 2);
             cfg.AjusteRedondeo = redondeo;
             cfg.UpdatedAt = ahora;
+            // 2026-07-02: guardar el objetivo de ganancia — se usa despues para verificar
+            // si el precio publicado sigue dando esa ganancia (chip verde/ambar en ficha/grilla).
+            cfg.GananciaObjetivoPct = req.GananciaPct;
+            cfg.GananciaObjetivoAt = ahora;
             guardados++;
 
             // 6) Ganancia y margen estimados con el precio nuevo (misma fórmula desglosada).
