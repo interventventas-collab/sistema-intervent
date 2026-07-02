@@ -5496,6 +5496,14 @@
                     selectedItem.GananciaObjetivoPct = objetivoPct.Value;
                     selectedItem.GananciaObjetivoAt = DateTime.UtcNow;
                 }
+                // 2026-07-02: el backend refrescó SaleFeeAmountReal con el precio nuevo (lo hace GetListingCostsAsync).
+                // Actualizo el DTO en memoria para que el chip 🎯 de la grilla se pinte en verde/ámbar sin recargar.
+                if (res is not null && res.ComisionTotal > 0)
+                {
+                    selectedItem.SaleFeeAmountReal = res.ComisionTotal;
+                    selectedItem.SaleFeePriceSnapshot = precio.Value;
+                    selectedItem.SaleFeeCapturedAt = DateTime.UtcNow;
+                }
                 var sib = GetCatalogSibling(selectedItem);
                 if (sib is not null) sib.Price = precio.Value; // hermanada — MeLi la actualiza sola
                 // Refrescar el simulador con el precio nuevo
@@ -6353,18 +6361,34 @@
         __builder.CloseElement();
 
         // 2026-07-02: chip 🎯 objetivo — si tiene objetivo cargado, compara vs real (±2 pt).
+        // Si el sale_fee real esta cacheado y fresco → verde/ambar (dato exacto, coincide con ficha).
+        // Si caimos al estimado 30% → gris "aprox" (no queremos dar falso positivo).
         if (item.GananciaObjetivoPct.HasValue && item.ProductCost.HasValue && item.ProductCost.Value > 0)
         {
             var obj = item.GananciaObjetivoPct.Value;
             var real = pct.Value;
-            var desv = real - obj;
-            var ok = Math.Abs(desv) <= 2m;
-            var objBg = ok ? "#dcfce7" : "#fef3c7";
-            var objFg = ok ? "#166534" : "#92400e";
-            var objIcon = ok ? "✓" : "⚠";
-            var objTip = ok
-                ? $"Objetivo cumplido: querías {obj:0.#}%, hoy da {real:0.#}%"
-                : $"Objetivo NO cumplido: querías {obj:0.#}%, hoy da {real:0.#}% (desv {desv:+0.#;-0.#} pt)";
+            var esExacto = item.SaleFeeAmountReal.HasValue && item.SaleFeeAmountReal.Value > 0
+                && item.SaleFeePriceSnapshot.HasValue
+                && Math.Abs(item.Price - item.SaleFeePriceSnapshot.Value) / Math.Max(item.Price, 1m) < 0.05m;
+
+            string objBg, objFg, objIcon, objTip;
+            if (!esExacto)
+            {
+                // Aprox: no refrescamos las comisiones o el precio se movio → gris, sin comparar.
+                objBg = "#e5e7eb"; objFg = "#4b5563"; objIcon = "?";
+                objTip = $"Objetivo: {obj:0.#}%. Comisiones desactualizadas — refrescá para saber exacto (abrí la ficha o botón 💰 Refrescar comisiones).";
+            }
+            else
+            {
+                var desv = real - obj;
+                var ok = Math.Abs(desv) <= 2m;
+                objBg = ok ? "#dcfce7" : "#fef3c7";
+                objFg = ok ? "#166534" : "#92400e";
+                objIcon = ok ? "✓" : "⚠";
+                objTip = ok
+                    ? $"Objetivo cumplido: querías {obj:0.#}%, hoy da {real:0.#}%"
+                    : $"Objetivo NO cumplido: querías {obj:0.#}%, hoy da {real:0.#}% (desv {desv:+0.#;-0.#} pt)";
+            }
             __builder.OpenElement(10, "div");
             __builder.AddAttribute(11, "style", $"display:inline-block; background:{objBg}; color:{objFg}; padding:0.1rem 0.45rem; border-radius:10px; font-size:0.7rem; font-weight:700; margin-top:0.15rem; margin-left:0.25rem;");
             __builder.AddAttribute(12, "title", objTip);
