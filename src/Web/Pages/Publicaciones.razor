@@ -2723,11 +2723,26 @@
     .td-checkbox input[type="checkbox"], .th-checkbox input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; }
     .row-selected { background: #eff6ff !important; }
     .row-selected:hover { background: #dbeafe !important; }
-    /* 2026-07-01: el .card global tiene overflow:hidden — bloquea position:sticky en descendientes.
-       Override scopeado a esta página para no afectar otras. */
-    .card-publicaciones { overflow: visible; }
-    /* Sticky de la barra flotante para que siga al scroll y siempre esté visible. */
-    .bulk-actions-bar { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 1rem; padding: 0.75rem 1rem; background: #dbeafe; border: 2px solid #3b82f6; border-radius: 8px; margin-bottom: 0.75rem; font-size: 0.9rem; box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2); flex-wrap: wrap; }
+    /* 2026-07-01: barra flotante al fondo del viewport (patrón Gmail/Slack cuando hay selección).
+       Fixed a prueba de overflows de ancestros — el sticky no funcionaba por el .card global. */
+    .bulk-actions-bar {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 200;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.85rem 1.25rem;
+        background: #dbeafe;
+        border: 2px solid #3b82f6;
+        border-radius: 12px;
+        font-size: 0.9rem;
+        box-shadow: 0 8px 24px rgba(30, 64, 175, 0.25);
+        flex-wrap: wrap;
+        max-width: 95vw;
+    }
     .btn-sm { padding: 0.3rem 0.75rem; font-size: 0.85rem; }
 </style>
 
