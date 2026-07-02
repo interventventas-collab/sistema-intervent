@@ -35,7 +35,8 @@ public class CafeClientesController : ControllerBase
         c.CodigoInterno, c.MapeoLink,
         c.MapeoLat, c.MapeoLng,
         c.TieneMiniImpresora,
-        c.SolicitarFirmaEntrega);
+        c.SolicitarFirmaEntrega,
+        c.Telefono2, c.EntreCalles);
 
     [HttpGet]
     public async Task<IActionResult> GetAll()
@@ -121,8 +122,10 @@ public class CafeClientesController : ControllerBase
             Tipo = tipo,
             Cuit = Norm(req.Cuit),
             Telefono = Norm(req.Telefono),
+            Telefono2 = Norm(req.Telefono2),
             Email = Norm(req.Email),
             Direccion = Norm(req.Direccion),
+            EntreCalles = Norm(req.EntreCalles),
             Localidad = Norm(req.Localidad),
             Ciudad = Norm(req.Ciudad),
             Cp = Norm(req.Cp),
@@ -206,8 +209,10 @@ public class CafeClientesController : ControllerBase
         if (req.Tipo is not null) c.Tipo = NormTipo(req.Tipo);
         if (req.Cuit is not null) c.Cuit = Norm(req.Cuit);
         if (req.Telefono is not null) c.Telefono = Norm(req.Telefono);
+        if (req.Telefono2 is not null) c.Telefono2 = Norm(req.Telefono2);
         if (req.Email is not null) c.Email = Norm(req.Email);
         if (req.Direccion is not null) c.Direccion = Norm(req.Direccion);
+        if (req.EntreCalles is not null) c.EntreCalles = Norm(req.EntreCalles);
         if (req.Localidad is not null) c.Localidad = Norm(req.Localidad);
         if (req.Ciudad is not null) c.Ciudad = Norm(req.Ciudad);
         if (req.Cp is not null) c.Cp = Norm(req.Cp);

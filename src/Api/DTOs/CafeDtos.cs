@@ -13,7 +13,9 @@ public record CafeClienteDto(
     decimal? MapeoLat = null, decimal? MapeoLng = null,
     bool TieneMiniImpresora = false,
     // 2026-06-22: si true, todas las ventas para este cliente piden firma al entregar.
-    bool SolicitarFirmaEntrega = false);
+    bool SolicitarFirmaEntrega = false,
+    // 2026-07-01: teléfono 2 + entre calles (sirven para ventas y alquileres/eventos)
+    string? Telefono2 = null, string? EntreCalles = null);
 
 public class CreateCafeClienteRequest
 {
@@ -22,8 +24,10 @@ public class CreateCafeClienteRequest
     public string Tipo { get; set; } = "OTRO";
     public string? Cuit { get; set; }
     public string? Telefono { get; set; }
+    public string? Telefono2 { get; set; }
     public string? Email { get; set; }
     public string? Direccion { get; set; }
+    public string? EntreCalles { get; set; }
     public string? Localidad { get; set; }
     public string? Ciudad { get; set; }
     public string? Cp { get; set; }
@@ -46,8 +50,10 @@ public class UpdateCafeClienteRequest
     public string? Tipo { get; set; }
     public string? Cuit { get; set; }
     public string? Telefono { get; set; }
+    public string? Telefono2 { get; set; }
     public string? Email { get; set; }
     public string? Direccion { get; set; }
+    public string? EntreCalles { get; set; }
     public string? Localidad { get; set; }
     public string? Ciudad { get; set; }
     public string? Cp { get; set; }

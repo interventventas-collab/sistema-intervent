@@ -9,8 +9,10 @@ public class CafeClienteDto
     public string Tipo { get; set; } = "OTRO";
     public string? Cuit { get; set; }
     public string? Telefono { get; set; }
+    public string? Telefono2 { get; set; }
     public string? Email { get; set; }
     public string? Direccion { get; set; }
+    public string? EntreCalles { get; set; }
     public string? Localidad { get; set; }
     public string? Ciudad { get; set; }
     public string? Cp { get; set; }
@@ -42,8 +44,10 @@ public class CreateCafeClienteRequest
     public string Tipo { get; set; } = "OTRO";
     public string? Cuit { get; set; }
     public string? Telefono { get; set; }
+    public string? Telefono2 { get; set; }
     public string? Email { get; set; }
     public string? Direccion { get; set; }
+    public string? EntreCalles { get; set; }
     public string? Localidad { get; set; }
     public string? Ciudad { get; set; }
     public string? Cp { get; set; }
@@ -64,8 +68,10 @@ public class UpdateCafeClienteRequest
     public string? Tipo { get; set; }
     public string? Cuit { get; set; }
     public string? Telefono { get; set; }
+    public string? Telefono2 { get; set; }
     public string? Email { get; set; }
     public string? Direccion { get; set; }
+    public string? EntreCalles { get; set; }
     public string? Localidad { get; set; }
     public string? Ciudad { get; set; }
     public string? Cp { get; set; }

@@ -277,11 +277,19 @@
                                 (ej: <code>5491141234567</code> = 54 + 9 + 11 + número). El icono 📱 que aparece en el PDF abre WhatsApp directo a este número.
                             </p>
                         </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Teléfono 2</label>
+                            <input class="form-input" @bind="formTelefono2" placeholder="Teléfono alternativo (opcional)" />
+                        </div>
                     </div>
                     <div class="form-group">
                         <label class="form-label">Domicilio de entrega</label>
                         <input class="form-input" @bind="formDomicilioEntrega" placeholder="Donde se entregan los pedidos (si difiere del fiscal)" />
                         <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Si está vacío, se usa la dirección fiscal.</p>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Entre calles</label>
+                        <input class="form-input" @bind="formEntreCalles" placeholder="Ej: entre Larroque y Beruti (referencia para la entrega)" />
                     </div>
                     <div class="form-group">
                         <label class="form-label">Notas internas</label>
@@ -531,6 +539,7 @@
     private int? editingId;
     private string formNombre = "", formTipo = "OTRO", formCuit = "", formTelefono = "", formEmail = "", formDireccion = "", formNotas = "";
     private string formRazonSocial = "", formDomicilioEntrega = "", formComentariosComprobante = "";
+    private string formTelefono2 = "", formEntreCalles = "";
     private int? formCodigoInterno;
     private string formMapeoLink = "";
     private decimal? formMapeoLat;
@@ -712,6 +721,7 @@
         isEditing = false; editingId = null;
         formNombre = ""; formTipo = "OTRO"; formCuit = ""; formTelefono = ""; formEmail = ""; formDireccion = ""; formNotas = "";
         formRazonSocial = ""; formDomicilioEntrega = ""; formComentariosComprobante = "";
+        formTelefono2 = ""; formEntreCalles = "";
         formLocalidad = ""; formCiudad = ""; formCp = ""; formCondicionIvaDefault = "";
         formCodigoInterno = null; formMapeoLink = "";
         formMapeoLat = null; formMapeoLng = null;
@@ -728,6 +738,7 @@
         formDireccion = c.Direccion ?? ""; formNotas = c.Notas ?? "";
         formRazonSocial = c.RazonSocial ?? "";
         formDomicilioEntrega = c.DomicilioEntrega ?? "";
+        formTelefono2 = c.Telefono2 ?? ""; formEntreCalles = c.EntreCalles ?? "";
         formComentariosComprobante = c.ComentariosComprobante ?? "";
         formLocalidad = c.Localidad ?? ""; formCiudad = c.Ciudad ?? "";
         formCp = c.Cp ?? ""; formCondicionIvaDefault = c.CondicionIvaDefault ?? "";
@@ -842,8 +853,8 @@
                 var u = await Api.UpdateCafeClienteAsync(editingId.Value, new UpdateCafeClienteRequest
                 {
                     Nombre = formNombre, RazonSocial = formRazonSocial, Tipo = formTipo,
-                    Cuit = formCuit, Telefono = formTelefono, Email = formEmail,
-                    Direccion = formDireccion, DomicilioEntrega = formDomicilioEntrega,
+                    Cuit = formCuit, Telefono = formTelefono, Telefono2 = formTelefono2, Email = formEmail,
+                    Direccion = formDireccion, EntreCalles = formEntreCalles, DomicilioEntrega = formDomicilioEntrega,
                     Localidad = formLocalidad, Ciudad = formCiudad, Cp = formCp,
                     CondicionIvaDefault = formCondicionIvaDefault,
                     Notas = formNotas, ComentariosComprobante = formComentariosComprobante,
@@ -864,8 +875,8 @@
                 var c = await Api.CreateCafeClienteAsync(new CreateCafeClienteRequest
                 {
                     Nombre = formNombre, RazonSocial = formRazonSocial, Tipo = formTipo,
-                    Cuit = formCuit, Telefono = formTelefono, Email = formEmail,
-                    Direccion = formDireccion, DomicilioEntrega = formDomicilioEntrega,
+                    Cuit = formCuit, Telefono = formTelefono, Telefono2 = formTelefono2, Email = formEmail,
+                    Direccion = formDireccion, EntreCalles = formEntreCalles, DomicilioEntrega = formDomicilioEntrega,
                     Localidad = formLocalidad, Ciudad = formCiudad, Cp = formCp,
                     CondicionIvaDefault = formCondicionIvaDefault,
                     Notas = formNotas, ComentariosComprobante = formComentariosComprobante,

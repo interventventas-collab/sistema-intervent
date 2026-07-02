@@ -5176,3 +5176,11 @@ BEGIN
     CREATE INDEX IX_AlqCobrPend_Estado ON Alq_CobranzasPendientes(Estado, CreatedAt DESC);
 END
 GO
+
+-- 2026-07-01: Clientes generales — teléfono 2 y entre calles (sirven para ventas y alquileres).
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='Telefono2' AND Object_ID=OBJECT_ID('Cafe_Clientes'))
+    ALTER TABLE Cafe_Clientes ADD Telefono2 NVARCHAR(50) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='EntreCalles' AND Object_ID=OBJECT_ID('Cafe_Clientes'))
+    ALTER TABLE Cafe_Clientes ADD EntreCalles NVARCHAR(200) NULL;
+GO
