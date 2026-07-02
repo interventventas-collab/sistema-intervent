@@ -7,7 +7,7 @@
 @inject SyncProgressTracker SyncProgress
 @implements IDisposable
 
-<div class="card">
+<div class="card card-publicaciones">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h3>Publicaciones de MercadoLibre (@GetGroupedRows().Count publicaciones · @GetCachedFilteredItems().Count filas)</h3>
         <div style="display: flex; gap: 0.5rem; align-items: center;">
@@ -2723,7 +2723,10 @@
     .td-checkbox input[type="checkbox"], .th-checkbox input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; }
     .row-selected { background: #eff6ff !important; }
     .row-selected:hover { background: #dbeafe !important; }
-    /* 2026-07-01: sticky para que la barra siempre esté visible mientras el usuario hace scroll */
+    /* 2026-07-01: el .card global tiene overflow:hidden — bloquea position:sticky en descendientes.
+       Override scopeado a esta página para no afectar otras. */
+    .card-publicaciones { overflow: visible; }
+    /* Sticky de la barra flotante para que siga al scroll y siempre esté visible. */
     .bulk-actions-bar { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 1rem; padding: 0.75rem 1rem; background: #dbeafe; border: 2px solid #3b82f6; border-radius: 8px; margin-bottom: 0.75rem; font-size: 0.9rem; box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2); flex-wrap: wrap; }
     .btn-sm { padding: 0.3rem 0.75rem; font-size: 0.85rem; }
 </style>
