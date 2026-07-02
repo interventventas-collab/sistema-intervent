@@ -31,11 +31,19 @@ public class CafeCliente
     [MaxLength(50)]
     public string? Telefono { get; set; }
 
+    /// <summary>2026-07-01: teléfono secundario (útil para eventos/alquileres y ventas).</summary>
+    [MaxLength(50)]
+    public string? Telefono2 { get; set; }
+
     [MaxLength(255)]
     public string? Email { get; set; }
 
     [MaxLength(300)]
     public string? Direccion { get; set; }
+
+    /// <summary>2026-07-01: entre qué calles (referencia para la entrega).</summary>
+    [MaxLength(200)]
+    public string? EntreCalles { get; set; }
 
     [MaxLength(150)]
     public string? Localidad { get; set; }
