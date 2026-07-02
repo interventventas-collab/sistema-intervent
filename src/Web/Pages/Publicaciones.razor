@@ -4421,6 +4421,8 @@
             if (resp.Fail > 0) msg += $" · ⚠ {resp.Fail} con error";
             ToastService.Success(msg);
             ajustesPrecio.Clear();
+            // 2026-07-02: destildar al terminar — igual que el masivo, deja limpio para otro lote.
+            selectedItems.Clear();
             await LoadItems();
         }
         StateHasChanged();
@@ -4614,6 +4616,10 @@
 
         showBulkAjusteModal = false;
         ajustesPrecio.Clear();
+        // 2026-07-02: al terminar el masivo, deseleccionar todo. Antes se mantenían tildadas y
+        // arrastraba la selección al siguiente lote, lo cual confundía. Ahora queda limpio para
+        // empezar con otro grupo de publis.
+        selectedItems.Clear();
         await LoadItems();
     }
 
