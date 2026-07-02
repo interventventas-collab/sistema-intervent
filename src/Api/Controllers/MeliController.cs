@@ -840,6 +840,38 @@ public class MeliController : ControllerBase
         return Ok(new { ok = true, msg = "Refresco masivo disparado en background. Ver logs del API para progreso." });
     }
 
+    // 2026-07-02: refresh de comisiones SELECTIVO. Recibe una lista de IDs y refresca solo esas
+    // (síncrono — para pocas publis, el usuario espera la respuesta). Útil para probar el fix
+    // del financing por modalidad sin tener que esperar 3h del bulk masivo.
+    public record RefreshSaleFeeSelectedRequest(List<int> ItemIds);
+    public record RefreshSaleFeeSelectedResult(int Ok, int Fail, List<string> Errores);
+
+    [HttpPost("items/refresh-salefee-selected")]
+    public async Task<IActionResult> RefreshSaleFeeSelected(
+        [FromBody] RefreshSaleFeeSelectedRequest req,
+        [FromServices] Api.Data.AppDbContext db)
+    {
+        if (req.ItemIds is null || req.ItemIds.Count == 0)
+            return BadRequest(new { error = "No hay publicaciones seleccionadas." });
+        // Máximo 200 por request para no colgar el request HTTP.
+        if (req.ItemIds.Count > 200)
+            return BadRequest(new { error = "Máximo 200 publicaciones por request." });
+
+        var items = await db.MeliItems.Where(i => req.ItemIds.Contains(i.Id)).Select(i => i.MeliItemId).ToListAsync();
+        int ok = 0, fail = 0;
+        var errores = new List<string>();
+        foreach (var mla in items)
+        {
+            try
+            {
+                if (await _itemService.RefreshSaleFeeAsync(mla)) ok++;
+                else { fail++; errores.Add($"{mla}: sin resultado"); }
+            }
+            catch (Exception ex) { fail++; errores.Add($"{mla}: {ex.Message}"); }
+        }
+        return Ok(new RefreshSaleFeeSelectedResult(ok, fail, errores.Take(10).ToList()));
+    }
+
         [HttpPut("items/{meliItemId}/link")]
     public async Task<IActionResult> LinkItemToProduct(string meliItemId, [FromBody] LinkItemToProductRequest request)
     {

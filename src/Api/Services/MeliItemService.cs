@@ -1862,6 +1862,22 @@ public class MeliItemService
                 result.FinancingFee = sfd.TryGetProperty("financing_add_on_fee", out var faf) && faf.ValueKind == JsonValueKind.Number
                     ? faf.GetDecimal() : 0;
             }
+
+            // 2026-07-02 FIX CRÍTICO: la API listing_prices para gold_pro devuelve SIEMPRE el
+            // financing_add_on_fee del default (6 cuotas = 12,3%) sin importar el installment_tag.
+            // Verificado con Integraly y con datos reales: MeLi cobra distinto financing por modalidad.
+            // Aplicamos tabla real (los valores son fijos por modalidad, no varían por categoría/precio).
+            var meliPctFee = sfd.TryGetProperty("meli_percentage_fee", out var mpf) && mpf.ValueKind == JsonValueKind.Number
+                ? mpf.GetDecimal() : 14.30m;
+            var realFinancing = GetFinancingRealPct(item.ListingTypeId, item.InstallmentTag);
+            if (realFinancing.HasValue)
+            {
+                result.FinancingFee = realFinancing.Value;
+                result.PercentageFee = meliPctFee + realFinancing.Value;
+                // Fixed fee = $3050 estándar; excepto pcj-co-funded (interés bajo) = $0.
+                result.FixedFee = item.InstallmentTag == "pcj-co-funded" ? 0m : 3050m;
+                result.SaleFeeAmount = Math.Round(price * result.PercentageFee / 100m + result.FixedFee, 2);
+            }
         }
 
         // Step 2: Get shipping costs (only if item offers free shipping - seller pays)
@@ -3336,5 +3352,24 @@ public class MeliItemService
         }
 
         return await GetMayoristaAsync(meliItemId);
+    }
+
+    // 2026-07-02: tabla FIJA de financing_add_on_fee por modalidad de cuotas.
+    // La API listing_prices no la distingue (devuelve siempre el default 12,3%).
+    // Verificado con Integraly y con múltiples publis. Los % son constantes por modalidad,
+    // no varían por categoría/precio/vendedor. Aplican tanto a Premium (gold_pro) como
+    // a Clásica (gold_special) cuando usan tags específicos.
+    private static decimal? GetFinancingRealPct(string? listingTypeId, string? installmentTag)
+    {
+        if (string.IsNullOrEmpty(installmentTag)) return null;
+        return installmentTag switch
+        {
+            "3x_campaign"    => 8.4m,
+            "6x_campaign"    => 12.3m,
+            "9x_campaign"    => 15.7m,
+            "12x_campaign"   => 19.2m,
+            "pcj-co-funded"  => 5.0m,
+            _                => null,
+        };
     }
 }

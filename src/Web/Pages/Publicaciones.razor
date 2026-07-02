@@ -208,6 +208,12 @@
                             title="Modificar precios de las publis tildadas: ver preview y elegir si solo guardás o publicás en MeLi ya">
                         💵 Ajustar precios en lote
                     </button>
+                    @* 2026-07-02: refresh de comisiones SELECTIVO (sin esperar el bulk de 3h). *@
+                    <button class="btn btn-sm" @onclick="RefrescarComisionesSeleccionadas" disabled="@refrescandoSeleccion"
+                            style="background:#7c3aed; color:white; border:1px solid #6d28d9; font-weight:600;"
+                            title="Actualiza las comisiones reales de MeLi solo para las publis tildadas (rápido)">
+                        @(refrescandoSeleccion ? "⏳ Refrescando..." : "💰 Refrescar comisiones (tildadas)")
+                    </button>
                     <button class="btn btn-primary btn-sm" @onclick="BulkCreateProducts">
                         <i class="fa-solid fa-box"></i> Crear productos
                     </button>
@@ -4390,6 +4396,35 @@
     }
 
     private void ClearSelection() => selectedItems.Clear();
+
+    // 2026-07-02: refresh de comisiones solo para las publis tildadas — sin esperar el bulk masivo.
+    private bool refrescandoSeleccion;
+    private async Task RefrescarComisionesSeleccionadas()
+    {
+        if (refrescandoSeleccion || selectedItems.Count == 0) return;
+        if (selectedItems.Count > 200)
+        {
+            ToastService.Warning($"Máximo 200 publicaciones por refresh selectivo. Tildaste {selectedItems.Count}.");
+            return;
+        }
+        refrescandoSeleccion = true;
+        StateHasChanged();
+        var (resp, err) = await Api.RefreshSaleFeeSelectedAsync(selectedItems.ToList());
+        refrescandoSeleccion = false;
+        if (resp is null)
+        {
+            ToastService.Error("No se pudo refrescar: " + (err ?? "Error"));
+        }
+        else
+        {
+            string msg = $"✅ {resp.Ok} comisiones refrescadas";
+            if (resp.Fail > 0) msg += $" · ⚠ {resp.Fail} con error";
+            ToastService.Success(msg);
+            ajustesPrecio.Clear();
+            await LoadItems();
+        }
+        StateHasChanged();
+    }
 
     /// <summary>2026-07-01: tildar el checkbox de un padre familia = tildar todas las variantes hijas
     /// (antes solo se tildaba la variante representante y las hermanas quedaban sin ajuste).</summary>
