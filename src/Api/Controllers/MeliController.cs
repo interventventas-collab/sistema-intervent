@@ -2254,20 +2254,33 @@ public class MeliController : ControllerBase
                 continue;
             }
 
-            // 3) Comisión efectiva total (SaleFee real / precio actual). Fallback 30% si no hay.
-            decimal saleFeePct;
-            if (it.SaleFeeAmount.HasValue && it.SaleFeeAmount.Value > 0 && it.Price > 0)
-                saleFeePct = it.SaleFeeAmount.Value / it.Price;
+            // 3) Comisión desglosada: parte % (variable con el precio) + cargo FIJO (independiente).
+            //    Antes usábamos SaleFeeAmount/Price como % único → aplicaba el fijo como si escalara.
+            //    Ahora separado → fórmula exacta (coincide con Integraly al peso).
+            decimal pctPart;
+            decimal fixedPart;
+            if (it.SaleFeePercentageFee.HasValue && it.SaleFeePercentageFee.Value > 0)
+            {
+                pctPart = it.SaleFeePercentageFee.Value / 100m;
+                fixedPart = it.SaleFeeFixedFee ?? 0m;
+            }
+            else if (it.SaleFeeAmount.HasValue && it.SaleFeeAmount.Value > 0 && it.Price > 0)
+            {
+                pctPart = it.SaleFeeAmount.Value / it.Price;
+                fixedPart = 0m;
+            }
             else
-                saleFeePct = 0.30m;
+            {
+                pctPart = 0.30m;
+                fixedPart = 0m;
+            }
 
-            // 4) Precio necesario para ganar req.GananciaPct sobre costo (misma lógica que la ficha):
-            //    netoSinIvaNecesario = costo × (1 + gan%/100)
-            //    netoConIvaNecesario = netoSinIva × 1.21
-            //    precio = netoConIva / (1 - comisiónPct)
+            // 4) Precio necesario para ganar req.GananciaPct sobre costo:
+            //    netoConIva(precio) = precio × (1 - pctPart) - fixedPart
+            //    ⇒ precio = (netoConIvaNecesario + fixedPart) / (1 - pctPart)
             decimal netoSinIvaNec = costo.Value * (1 + req.GananciaPct / 100m);
             decimal netoConIvaNec = netoSinIvaNec * 1.21m;
-            decimal denom = 1m - saleFeePct;
+            decimal denom = 1m - pctPart;
             if (denom <= 0.05m)
             {
                 errores++;
@@ -2275,7 +2288,7 @@ public class MeliController : ControllerBase
                     costo, precioBase, it.Price, null, null, null, false, false, "Comisión demasiado alta — no hay precio posible"));
                 continue;
             }
-            decimal precioNuevo = netoConIvaNec / denom;
+            decimal precioNuevo = (netoConIvaNec + fixedPart) / denom;
             if (!string.IsNullOrEmpty(redondeo))
                 precioNuevo = AplicarRedondeoUpHelper(precioNuevo, redondeo);
             precioNuevo = Math.Round(precioNuevo, 2);
@@ -2288,8 +2301,8 @@ public class MeliController : ControllerBase
             cfg.UpdatedAt = ahora;
             guardados++;
 
-            // 6) Ganancia y margen estimados con el precio nuevo (para el reporte al frontend).
-            decimal netoConIvaResult = precioNuevo * (1m - saleFeePct);
+            // 6) Ganancia y margen estimados con el precio nuevo (misma fórmula desglosada).
+            decimal netoConIvaResult = precioNuevo * (1m - pctPart) - fixedPart;
             decimal netoSinIvaResult = netoConIvaResult / 1.21m;
             decimal gananciaEst = Math.Round(netoSinIvaResult - costo.Value, 2);
             decimal margenPct = costo.Value > 0 ? Math.Round(gananciaEst / costo.Value * 100m, 1) : 0m;

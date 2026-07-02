@@ -89,6 +89,11 @@ public class MeliItemDto
     public decimal? SaleFeeAmountReal { get; set; }
     public decimal? SaleFeePriceSnapshot { get; set; }
     public DateTime? SaleFeeCapturedAt { get; set; }
+    // 2026-07-02: desglose del sale_fee cacheado. Necesario para calcular el precio de forma exacta
+    // en el modal masivo (separar el cargo fijo del componente % para no aplicar el fijo como si escalara).
+    public decimal? SaleFeePercentageFee { get; set; }
+    public decimal? SaleFeeFixedFee { get; set; }
+    public decimal? SaleFeeFinancingFee { get; set; }
 }
 
 public class MeliItemsResponse
