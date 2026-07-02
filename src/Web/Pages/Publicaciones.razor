@@ -4538,8 +4538,13 @@
                 precioNuevo = AplicarRedondeoUp(precioNuevo, redondeo);
             precioNuevo = Math.Round(precioNuevo, 0);
 
-            // Cruce del umbral (solo publis con envío gratis).
-            bool cruzaUmbral = it.FreeShipping
+            // 2026-07-02: cruce del umbral aplica a CUALQUIER publi cuyo envío maneje MeLi
+            // (Full / Flex / cross_docking / drop_off). Solo se excluyen las ME1 (LogisticType=custom)
+            // donde el cliente paga el envío directo, sin importar el precio.
+            // Antes: solo alertaba si YA tenía envío gratis — bug. Ahora también alerta cuando
+            // pasa de "sin envío gratis" a "con envío gratis obligatorio" (cruzando $33k).
+            bool esME1 = string.Equals(it.LogisticType, "custom", StringComparison.OrdinalIgnoreCase);
+            bool cruzaUmbral = !esME1
                 && (it.Price < UMBRAL_ENVIO_APROX) != (precioNuevo < UMBRAL_ENVIO_APROX)
                 && Math.Abs(precioNuevo - it.Price) > 0.5m;
             if (cruzaUmbral) { cruzan++; idsQueCruzan.Add(id); }
