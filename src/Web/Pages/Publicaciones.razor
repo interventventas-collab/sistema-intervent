@@ -580,7 +580,7 @@
                                         @if (!grp.IsFamily)
                                         {
                                             @GetListingTypeLabel(item.ListingTypeId)
-                                            <div style="font-size:0.68rem; color:#6b7280; margin-top:0.1rem; font-weight:500;">@GetCuotasLabel(item.InstallmentTag)</div>
+                                            <div style="font-size:0.68rem; color:#6b7280; margin-top:0.1rem; font-weight:500;">@GetCuotasLabel(item.InstallmentTag, item.ListingTypeId)</div>
                                         }
                                         else
                                         {
@@ -712,7 +712,7 @@
                                             <td style="font-size:0.78rem;">
                                                 @if (grp.IsFamily)
                                                 {
-                                                    var label = GetCuotasLabel(v.InstallmentTag);
+                                                    var label = GetCuotasLabel(v.InstallmentTag, v.ListingTypeId);
                                                     <span style="background:#f3f4f6; padding:0.1rem 0.4rem; border-radius:3px;">@label</span>
                                                     @if (v.FreeShipping)
                                                     {
@@ -869,7 +869,7 @@
                                         }
                                     </td>
                                         <td><span class="status-badge @GetStatusClass(item.Status)">@GetStatusLabel(item.Status)</span></td>
-                                        <td>@GetListingTypeLabel(item.ListingTypeId)<div style="font-size:0.68rem; color:#6b7280; margin-top:0.1rem; font-weight:500;">@GetCuotasLabel(item.InstallmentTag)</div></td>
+                                        <td>@GetListingTypeLabel(item.ListingTypeId)<div style="font-size:0.68rem; color:#6b7280; margin-top:0.1rem; font-weight:500;">@GetCuotasLabel(item.InstallmentTag, item.ListingTypeId)</div></td>
                                         <td>@item.AccountNickname</td>
                                         <td class="td-ajuste" @onclick:stopPropagation="true">
                                             @* 2026-06-12: chip de solo lectura — la edición vive en la ficha *@
@@ -985,7 +985,7 @@
                                         }
                                     </td>
                                             <td><span class="status-badge @GetStatusClass(item.Status)">@GetStatusLabel(item.Status)</span></td>
-                                            <td>@GetListingTypeLabel(item.ListingTypeId)<div style="font-size:0.68rem; color:#6b7280; margin-top:0.1rem; font-weight:500;">@GetCuotasLabel(item.InstallmentTag)</div></td>
+                                            <td>@GetListingTypeLabel(item.ListingTypeId)<div style="font-size:0.68rem; color:#6b7280; margin-top:0.1rem; font-weight:500;">@GetCuotasLabel(item.InstallmentTag, item.ListingTypeId)</div></td>
                                             <td>@item.AccountNickname</td>
                                         </tr>
                                     }
@@ -1048,7 +1048,7 @@
                                         }
                                     </td>
                                         <td><span class="status-badge @GetStatusClass(item.Status)">@GetStatusLabel(item.Status)</span></td>
-                                        <td>@GetListingTypeLabel(item.ListingTypeId)<div style="font-size:0.68rem; color:#6b7280; margin-top:0.1rem; font-weight:500;">@GetCuotasLabel(item.InstallmentTag)</div></td>
+                                        <td>@GetListingTypeLabel(item.ListingTypeId)<div style="font-size:0.68rem; color:#6b7280; margin-top:0.1rem; font-weight:500;">@GetCuotasLabel(item.InstallmentTag, item.ListingTypeId)</div></td>
                                         <td>@item.AccountNickname</td>
                                     </tr>
                                 }
@@ -1301,7 +1301,7 @@
                                     @if (itemCosts.FinancingFee > 0)
                                     {
                                         <div class="cost-line">
-                                            <span class="cost-line-label">Costo por cuotas (@GetCuotasLabel(selectedItem?.InstallmentTag))</span>
+                                            <span class="cost-line-label">Costo por cuotas (@GetCuotasLabel(selectedItem?.InstallmentTag, selectedItem?.ListingTypeId))</span>
                                             <span class="cost-line-amount negative">-$ @financingEnPesos.ToString("N2", argCulture)</span>
                                         </div>
                                     }
@@ -6605,16 +6605,19 @@
         return Math.Round(ganancia.Value / v.ProductCost.Value * 100m, 1);
     }
 
-    private static string GetCuotasLabel(string? installmentTag)
+    // 2026-07-01: Premium (gold_pro) por default = 6 cuotas al mismo precio. Si el InstallmentTag no
+    // está cacheado, asumimos ese default (coincide con la ficha individual y con MeLi web).
+    private static string GetCuotasLabel(string? installmentTag, string? listingTypeId = null)
     {
-        if (string.IsNullOrWhiteSpace(installmentTag)) return "Sin cuotas";
+        if (string.IsNullOrWhiteSpace(installmentTag))
+            return listingTypeId == "gold_pro" ? "6 cuotas" : "Sin cuotas";
         var l = installmentTag.ToLowerInvariant();
         if (l.Contains("12x_campaign")) return "12 cuotas";
         if (l.Contains("9x_campaign")) return "9 cuotas";
         if (l.Contains("6x_campaign")) return "6 cuotas";
         if (l.Contains("3x_campaign")) return "3 cuotas";
         if (l.Contains("co-funded")) return "3-12 c/int bajo";
-        return "Sin cuotas";
+        return listingTypeId == "gold_pro" ? "6 cuotas" : "Sin cuotas";
     }
 
     // ==================================================
