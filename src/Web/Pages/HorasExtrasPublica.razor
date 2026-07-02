@@ -160,35 +160,15 @@
 
             <label class="he-label" style="margin-top:0.7rem;">🕒 Horario</label>
 
-            @* ENTRADA *@
-            @if (modoEdicion == "entrada")
-            {
-                <div style="padding:0.6rem; border:2px solid #16a34a; border-radius:8px; background:#f0fdf4; margin-bottom:0.5rem;">
-                    <div style="font-size:0.8rem; font-weight:700; color:#166534; margin-bottom:0.5rem;">🌅 Ajustá tu hora de ENTRADA</div>
-                    <div style="display:flex; gap:0.4rem; align-items:center;">
-                        <select class="he-input" style="flex:1; font-size:1.3rem; padding:0.55rem; text-align:center;"
-                                value="@eH"
-                                @onchange="@(e => OnHoraSelectChanged("entH", e.Value?.ToString()))">
-                            @for (int h = 0; h < 24; h++) { <option value="@h">@h.ToString("00")</option> }
-                        </select>
-                        <span style="font-size:1.5rem; font-weight:700;">:</span>
-                        <select class="he-input" style="flex:1; font-size:1.3rem; padding:0.55rem; text-align:center;"
-                                value="@eM"
-                                @onchange="@(e => OnHoraSelectChanged("entM", e.Value?.ToString()))">
-                            @for (int m = 0; m < 60; m += 30) { <option value="@m">@m.ToString("00")</option> }
-                        </select>
-                    </div>
-                    <button class="he-btn he-btn-primary" style="width:100%; margin-top:0.5rem; background:#16a34a;" @onclick="@(() => { modoEdicion = ""; })">✓ Listo</button>
-                </div>
-            }
-            else if (tieneEntrada)
+            @* ENTRADA — 2026-07-02: el empleado marca la hora REAL del momento y NO la puede editar.
+               Si hay que corregir un horario, lo hace el admin desde el panel. *@
+            @if (tieneEntrada)
             {
                 <div style="display:flex; justify-content:space-between; align-items:center; padding:0.7rem 0.9rem; background:#dcfce7; border:1px solid #16a34a; border-radius:8px; margin-bottom:0.4rem;">
                     <div>
                         <div style="font-size:0.72rem; color:#166534; font-weight:600;">🌅 ENTRADA</div>
                         <div style="font-size:1.3rem; font-weight:700; color:#15803d;">@formHoraEntrada ✓</div>
                     </div>
-                    <button class="he-link-btn" style="padding:0.3rem 0.7rem; background:white; color:#15803d; border:1px solid #16a34a; border-radius:6px;" @onclick="@(() => AbrirEdicion("entrada"))">✏ Editar</button>
                 </div>
             }
             else
@@ -197,35 +177,14 @@
                         @onclick="MarcarEntradaAhora">🌅 Marcar entrada ahora</button>
             }
 
-            @* SALIDA *@
-            @if (modoEdicion == "salida")
-            {
-                <div style="padding:0.6rem; border:2px solid #1d4ed8; border-radius:8px; background:#eff6ff; margin-bottom:0.5rem;">
-                    <div style="font-size:0.8rem; font-weight:700; color:#1e40af; margin-bottom:0.5rem;">🌆 Ajustá tu hora de SALIDA</div>
-                    <div style="display:flex; gap:0.4rem; align-items:center;">
-                        <select class="he-input" style="flex:1; font-size:1.3rem; padding:0.55rem; text-align:center;"
-                                value="@sH"
-                                @onchange="@(e => OnHoraSelectChanged("salH", e.Value?.ToString()))">
-                            @for (int h = 0; h < 24; h++) { <option value="@h">@h.ToString("00")</option> }
-                        </select>
-                        <span style="font-size:1.5rem; font-weight:700;">:</span>
-                        <select class="he-input" style="flex:1; font-size:1.3rem; padding:0.55rem; text-align:center;"
-                                value="@sM"
-                                @onchange="@(e => OnHoraSelectChanged("salM", e.Value?.ToString()))">
-                            @for (int m = 0; m < 60; m += 30) { <option value="@m">@m.ToString("00")</option> }
-                        </select>
-                    </div>
-                    <button class="he-btn he-btn-primary" style="width:100%; margin-top:0.5rem;" @onclick="@(() => { modoEdicion = ""; })">✓ Listo</button>
-                </div>
-            }
-            else if (tieneSalida)
+            @* SALIDA — 2026-07-02: hora real del momento, sin edición manual (corrige el admin). *@
+            @if (tieneSalida)
             {
                 <div style="display:flex; justify-content:space-between; align-items:center; padding:0.7rem 0.9rem; background:#dbeafe; border:1px solid #1d4ed8; border-radius:8px; margin-bottom:0.4rem;">
                     <div>
                         <div style="font-size:0.72rem; color:#1e40af; font-weight:600;">🌆 SALIDA</div>
                         <div style="font-size:1.3rem; font-weight:700; color:#1d4ed8;">@formHoraSalida ✓</div>
                     </div>
-                    <button class="he-link-btn" style="padding:0.3rem 0.7rem; background:white; color:#1d4ed8; border:1px solid #1d4ed8; border-radius:6px;" @onclick="@(() => AbrirEdicion("salida"))">✏ Editar</button>
                 </div>
             }
             else
