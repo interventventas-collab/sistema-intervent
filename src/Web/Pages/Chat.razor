@@ -1,0 +1,432 @@
+@page "/chat"
+@attribute [Authorize]
+@using Web.Models
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="chat-wrap">
+
+    @* ─────────── Panel izquierdo: grupo + usuarios ─────────── *@
+    <div class="chat-side @(sel is null ? "" : "chat-side-hidden-mobile")">
+        <div class="chat-side-header">💬 Chat interno</div>
+        <div class="chat-side-list">
+            @* Grupo general *@
+            <button class="chat-conv @(sel == "grupo" ? "active" : "")" @onclick='() => Abrir("grupo", "Grupo general")'>
+                <div class="chat-avatar chat-avatar-grupo">👥</div>
+                <div class="chat-conv-body">
+                    <div class="chat-conv-top">
+                        <span class="chat-conv-name">Grupo general</span>
+                        @if (convs?.GrupoUltimaFecha is DateTime gf)
+                        {
+                            <span class="chat-conv-time">@Hora(gf)</span>
+                        }
+                    </div>
+                    <div class="chat-conv-preview">@(string.IsNullOrEmpty(convs?.GrupoUltimo) ? "Todos los usuarios" : Recortar(convs!.GrupoUltimo!))</div>
+                </div>
+                @if (convs is not null && convs.GrupoNoLeidos > 0)
+                {
+                    <span class="chat-badge">@(convs.GrupoNoLeidos > 99 ? "99+" : convs.GrupoNoLeidos.ToString())</span>
+                }
+            </button>
+
+            <div class="chat-side-sep">Personas</div>
+
+            @if (convs is null)
+            {
+                <div class="chat-empty-side">Cargando...</div>
+            }
+            else if (convs.Usuarios.Count == 0)
+            {
+                <div class="chat-empty-side">No hay otros usuarios</div>
+            }
+            else
+            {
+                @foreach (var u in convs.Usuarios)
+                {
+                    var key = $"u:{u.UserId}";
+                    <button class="chat-conv @(sel == key ? "active" : "")" @onclick="() => Abrir(key, u.Nombre)">
+                        <div class="chat-avatar">@Iniciales(u.Nombre)</div>
+                        <div class="chat-conv-body">
+                            <div class="chat-conv-top">
+                                <span class="chat-conv-name">@u.Nombre</span>
+                                @if (u.UltimaFecha is DateTime uf)
+                                {
+                                    <span class="chat-conv-time">@Hora(uf)</span>
+                                }
+                            </div>
+                            <div class="chat-conv-preview">@(string.IsNullOrEmpty(u.UltimoMensaje) ? (u.Rol ?? "—") : Recortar(u.UltimoMensaje!))</div>
+                        </div>
+                        @if (u.NoLeidos > 0)
+                        {
+                            <span class="chat-badge">@(u.NoLeidos > 99 ? "99+" : u.NoLeidos.ToString())</span>
+                        }
+                    </button>
+                }
+            }
+        </div>
+    </div>
+
+    @* ─────────── Panel derecho: conversación abierta ─────────── *@
+    <div class="chat-main @(sel is null ? "chat-main-empty-mobile" : "")">
+        @if (sel is null)
+        {
+            <div class="chat-placeholder">
+                <div style="font-size:3.5rem;">💬</div>
+                <p>Elegí una conversación para empezar a chatear</p>
+            </div>
+        }
+        else
+        {
+            <div class="chat-main-header">
+                <button class="chat-back-btn" @onclick="Cerrar" title="Volver">←</button>
+                <div class="chat-avatar @(sel == "grupo" ? "chat-avatar-grupo" : "")">
+                    @(sel == "grupo" ? "👥" : Iniciales(selNombre))
+                </div>
+                <div>
+                    <div class="chat-main-title">@selNombre</div>
+                    <div class="chat-main-sub">@(sel == "grupo" ? "Todos los usuarios del sistema" : "Mensaje privado")</div>
+                </div>
+            </div>
+
+            <div id="chat-msgs" class="chat-msgs">
+                @if (mensajes.Count == 0)
+                {
+                    <div class="chat-msgs-empty">
+                        <div style="font-size:2.5rem;">✉️</div>
+                        <p>Todavía no hay mensajes. ¡Escribí el primero!</p>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var m in mensajes)
+                    {
+                        <div class="chat-msg @(m.Mio ? "mio" : "otro")">
+                            <div class="chat-bubble">
+                                @if (!m.Mio && sel == "grupo")
+                                {
+                                    <div class="chat-bubble-autor">@m.DeNombre</div>
+                                }
+                                <div class="chat-bubble-texto">@m.Cuerpo</div>
+                                <div class="chat-bubble-hora">@Hora(m.CreatedAt)</div>
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+
+            <div class="chat-input">
+                <input class="chat-input-box" @bind="draft" @bind:event="oninput"
+                       @onkeydown="OnKeyDown" placeholder="Escribí un mensaje..." disabled="@enviando" />
+                <button class="chat-send-btn" @onclick="Enviar" disabled="@(enviando || string.IsNullOrWhiteSpace(draft))">
+                    @(enviando ? "..." : "➤")
+                </button>
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .chat-wrap {
+        display: flex;
+        height: calc(100vh - 130px);
+        min-height: 420px;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        overflow: hidden;
+        background: white;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+
+    /* ---- Panel izquierdo ---- */
+    .chat-side {
+        width: 320px;
+        flex: 0 0 320px;
+        border-right: 1px solid #e5e7eb;
+        display: flex;
+        flex-direction: column;
+        background: #fafafa;
+    }
+    .chat-side-header {
+        padding: 0.9rem 1rem;
+        font-weight: 800;
+        font-size: 1.05rem;
+        color: #1f2937;
+        border-bottom: 1px solid #e5e7eb;
+        background: white;
+    }
+    .chat-side-list { overflow-y: auto; flex: 1; }
+    .chat-side-sep {
+        padding: 0.6rem 1rem 0.3rem;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #9ca3af;
+    }
+    .chat-empty-side { padding: 1rem; color: #9ca3af; font-size: 0.9rem; text-align: center; }
+
+    .chat-conv {
+        display: flex;
+        align-items: center;
+        gap: 0.7rem;
+        width: 100%;
+        padding: 0.65rem 1rem;
+        background: transparent;
+        border: none;
+        border-bottom: 1px solid #f0f0f0;
+        cursor: pointer;
+        text-align: left;
+        transition: background 0.12s;
+    }
+    .chat-conv:hover { background: #f3f4f6; }
+    .chat-conv.active { background: #e0e7ff; }
+    .chat-conv-body { flex: 1; min-width: 0; }
+    .chat-conv-top { display: flex; justify-content: space-between; align-items: baseline; gap: 0.4rem; }
+    .chat-conv-name { font-weight: 700; color: #1f2937; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .chat-conv-time { font-size: 0.7rem; color: #9ca3af; flex-shrink: 0; }
+    .chat-conv-preview { font-size: 0.82rem; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .chat-avatar {
+        width: 42px; height: 42px;
+        flex-shrink: 0;
+        border-radius: 50%;
+        background: #6366f1;
+        color: white;
+        font-weight: 800;
+        font-size: 0.95rem;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .chat-avatar-grupo { background: #10b981; font-size: 1.2rem; }
+
+    .chat-badge {
+        flex-shrink: 0;
+        background: #dc2626;
+        color: white;
+        font-size: 0.72rem;
+        font-weight: 800;
+        padding: 0.12rem 0.45rem;
+        border-radius: 999px;
+        min-width: 1.3rem;
+        text-align: center;
+    }
+
+    /* ---- Panel derecho ---- */
+    .chat-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .chat-placeholder {
+        flex: 1;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        color: #9ca3af; gap: 0.6rem;
+    }
+    .chat-main-header {
+        display: flex; align-items: center; gap: 0.7rem;
+        padding: 0.7rem 1rem;
+        border-bottom: 1px solid #e5e7eb;
+        background: white;
+    }
+    .chat-main-title { font-weight: 800; color: #1f2937; }
+    .chat-main-sub { font-size: 0.78rem; color: #9ca3af; }
+    .chat-back-btn {
+        display: none;
+        background: transparent; border: none;
+        font-size: 1.5rem; cursor: pointer; color: #4b5563;
+        padding: 0 0.3rem;
+    }
+
+    .chat-msgs {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem;
+        background: #f5f6f8;
+        display: flex; flex-direction: column; gap: 0.4rem;
+    }
+    .chat-msgs-empty {
+        margin: auto; text-align: center; color: #9ca3af;
+    }
+    .chat-msg { display: flex; }
+    .chat-msg.mio { justify-content: flex-end; }
+    .chat-msg.otro { justify-content: flex-start; }
+    .chat-bubble {
+        max-width: 72%;
+        padding: 0.5rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.92rem;
+        line-height: 1.35;
+        box-shadow: 0 1px 1px rgba(0,0,0,0.06);
+        word-wrap: break-word;
+    }
+    .chat-msg.mio .chat-bubble { background: #d1fae5; border-bottom-right-radius: 3px; }
+    .chat-msg.otro .chat-bubble { background: white; border-bottom-left-radius: 3px; }
+    .chat-bubble-autor { font-size: 0.75rem; font-weight: 800; color: #4f46e5; margin-bottom: 0.15rem; }
+    .chat-bubble-texto { color: #1f2937; white-space: pre-wrap; }
+    .chat-bubble-hora { font-size: 0.65rem; color: #9ca3af; text-align: right; margin-top: 0.15rem; }
+
+    .chat-input {
+        display: flex; gap: 0.5rem;
+        padding: 0.7rem;
+        border-top: 1px solid #e5e7eb;
+        background: white;
+    }
+    .chat-input-box {
+        flex: 1;
+        padding: 0.6rem 0.9rem;
+        border: 1px solid #d1d5db;
+        border-radius: 999px;
+        font-size: 0.95rem;
+        outline: none;
+    }
+    .chat-input-box:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.15); }
+    .chat-send-btn {
+        flex-shrink: 0;
+        width: 44px; height: 44px;
+        border-radius: 50%;
+        background: #6366f1;
+        color: white; border: none;
+        font-size: 1.1rem; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .chat-send-btn:disabled { background: #c7d2fe; cursor: default; }
+
+    /* ---- Responsive: en celular se ve una pantalla a la vez ---- */
+    @@media (max-width: 720px) {
+        .chat-wrap { height: calc(100vh - 110px); }
+        .chat-side { width: 100%; flex: 1 0 100%; }
+        .chat-side-hidden-mobile { display: none; }
+        .chat-main { flex: 1 0 100%; }
+        .chat-main-empty-mobile { display: none; }
+        .chat-back-btn { display: block; }
+    }
+</style>
+
+@code {
+    private ChatConversacionesDto? convs;
+    private string? sel;
+    private string selNombre = "";
+    private List<ChatMensajeDto> mensajes = new();
+    private string draft = "";
+    private bool enviando;
+    private int lastMsgId;
+    private System.Threading.Timer? timer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefrescarConvs();
+        timer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(Poll);
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+    }
+
+    private async Task Poll()
+    {
+        await RefrescarConvs();
+        if (sel is not null)
+            await CargarMensajes(scroll: false, ding: true);
+        StateHasChanged();
+    }
+
+    private async Task RefrescarConvs()
+    {
+        try { convs = await Api.GetChatConversacionesAsync(); }
+        catch { /* tolerar caída puntual del polling */ }
+    }
+
+    private async Task Abrir(string key, string nombre)
+    {
+        sel = key;
+        selNombre = nombre;
+        mensajes = new();
+        lastMsgId = 0;
+        await CargarMensajes(scroll: true, ding: false);
+        await RefrescarConvs(); // el badge de esta conversación baja a 0
+        StateHasChanged();
+    }
+
+    private void Cerrar()
+    {
+        sel = null;
+        mensajes = new();
+    }
+
+    private async Task CargarMensajes(bool scroll, bool ding)
+    {
+        if (sel is null) return;
+        try
+        {
+            var lista = await Api.GetChatMensajesAsync(sel) ?? new();
+            var nuevoMax = lista.Count > 0 ? lista[^1].Id : 0;
+            var hayNuevoDeOtro = nuevoMax > lastMsgId && lista.Count > 0 && !lista[^1].Mio;
+            mensajes = lista;
+            var crecio = nuevoMax > lastMsgId;
+            lastMsgId = nuevoMax;
+
+            if (ding && hayNuevoDeOtro)
+                try { await JS.InvokeVoidAsync("chatDing"); } catch { }
+
+            if (scroll || crecio)
+                await ScrollAbajo();
+        }
+        catch { /* tolerar */ }
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+            await Enviar();
+    }
+
+    private async Task Enviar()
+    {
+        var texto = (draft ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(texto) || sel is null) return;
+        enviando = true;
+        try
+        {
+            int? para = sel == "grupo" ? null : int.Parse(sel[2..]);
+            var msg = await Api.EnviarChatAsync(new EnviarChatRequest { ParaUserId = para, Cuerpo = texto });
+            if (msg is not null)
+            {
+                mensajes.Add(msg);
+                lastMsgId = msg.Id;
+                draft = "";
+                await ScrollAbajo();
+                await RefrescarConvs();
+            }
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo enviar: " + ex.Message); }
+        finally { enviando = false; }
+    }
+
+    private async Task ScrollAbajo()
+    {
+        try
+        {
+            await Task.Yield();
+            await JS.InvokeVoidAsync("chatScrollToBottom", "chat-msgs");
+        }
+        catch { }
+    }
+
+    private static string Iniciales(string nombre)
+    {
+        if (string.IsNullOrWhiteSpace(nombre)) return "?";
+        var partes = nombre.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (partes.Length == 1) return partes[0][..1].ToUpper();
+        return (partes[0][..1] + partes[^1][..1]).ToUpper();
+    }
+
+    private static string Recortar(string s) => s.Length <= 38 ? s : s[..38] + "…";
+
+    private static string Hora(DateTime utc)
+    {
+        var ar = utc.AddHours(-3); // Argentina (UTC-3)
+        var hoy = DateTime.UtcNow.AddHours(-3).Date;
+        if (ar.Date == hoy) return ar.ToString("HH:mm");
+        if (ar.Date == hoy.AddDays(-1)) return "ayer";
+        return ar.ToString("dd/MM");
+    }
+
+    public void Dispose() => timer?.Dispose();
+}

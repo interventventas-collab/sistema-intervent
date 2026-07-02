@@ -1509,5 +1509,20 @@
             document.addEventListener('touchend', function() { dragging = false; });
         };
     </script>
+    <script>
+        // 2026-07-02: Chat interno. Baja el scroll del panel de mensajes al último.
+        window.chatScrollToBottom = function (elementId) {
+            try {
+                var el = document.getElementById(elementId);
+                if (el) el.scrollTop = el.scrollHeight;
+            } catch (e) {}
+        };
+        // Sonidito corto al recibir un mensaje nuevo (reusa Web Audio).
+        window.chatDing = function () {
+            try {
+                if (typeof mpPlayTone === 'function') { mpPlayTone(880, 90, 'sine', 0.15); }
+            } catch (e) {}
+        };
+    </script>
 </body>
 </html>

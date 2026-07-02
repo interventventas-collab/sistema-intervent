@@ -516,6 +516,10 @@
                      IsActive="@IsActive("/")" OnClick="@(() => NavigateTo("/"))" />
         }
 
+        @* ═════════════ CHAT INTERNO (visible para todos los usuarios) ═════════════ *@
+        <NavItem Href="/chat" Label="💬 Chat" Icon="@SvgIcons.Users"
+                 IsActive="@IsActive("/chat")" OnClick="@(() => NavigateTo("/chat"))" />
+
         @* ═════════════ 1B. CAFE (modulo independiente, debajo de Dashboard) ═════════════
            Negocio de venta de cafe e insumos, totalmente aislado del resto del ERP. *@
         @* ═════════════ MENÚ REDUCIDO PARA USUARIOS DE DEPÓSITO Y OFICINA ═════════════
@@ -1233,6 +1237,7 @@
                 <CobranzasPendientesBell />
                 <AlqCobranzasPendientesBell />
             }
+            <ChatBell />
             <MeliQuestionsBell />
             @if (!IsRoleWithCustomSidebar())
             {

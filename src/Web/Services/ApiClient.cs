@@ -698,6 +698,19 @@ public class ApiClient
     public async Task<bool> DeletePostitAsync(int id)
         => await DeleteAsync($"/api/postits/{id}");
 
+    // --- Chat interno entre usuarios (2026-07-02) ---
+    public async Task<ChatConversacionesDto?> GetChatConversacionesAsync()
+        => await GetAsync<ChatConversacionesDto>("/api/chat/conversaciones");
+
+    public async Task<List<ChatMensajeDto>?> GetChatMensajesAsync(string con)
+        => await GetAsync<List<ChatMensajeDto>>($"/api/chat/mensajes?con={Uri.EscapeDataString(con)}");
+
+    public async Task<ChatMensajeDto?> EnviarChatAsync(EnviarChatRequest request)
+        => await PostAsync<ChatMensajeDto>("/api/chat/enviar", request);
+
+    public async Task<ChatNoLeidosDto?> GetChatNoLeidosAsync()
+        => await GetAsync<ChatNoLeidosDto>("/api/chat/no-leidos");
+
     // --- Visibilidad granular del sidebar por rol (2026-05-28) ---
     public async Task<Dictionary<string, List<string>>?> GetMenuVisibilityAsync()
         => await GetAsync<Dictionary<string, List<string>>>("/api/menu-visibility");
