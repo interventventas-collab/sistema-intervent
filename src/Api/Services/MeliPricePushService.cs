@@ -228,8 +228,9 @@ public class MeliPricePushService
 
     /// <summary>Calcula el precio base del sistema para un MeliItem (sin ajuste).
     /// 2026-05-30: respeta el modelo OEM. Si un producto tiene OemId y el OEM tiene PvpConIva,
-    /// el precio = OEM.PvpConIva × MultiplicadorOem (default 1). Si no, PrecioOtro × (1 + IvaPct/100).</summary>
-    private async Task<(decimal Price, bool Found)> CalcularPrecioBaseAsync(MeliItem item, CancellationToken ct)
+    /// el precio = OEM.PvpConIva × MultiplicadorOem (default 1). Si no, PrecioOtro × (1 + IvaPct/100).
+    /// 2026-07-01: público para que el endpoint bulk-precio-por-ganancia lo reuse.</summary>
+    public async Task<(decimal Price, bool Found)> CalcularPrecioBaseAsync(MeliItem item, CancellationToken ct)
     {
         // Helper local que devuelve precio c/IVA de un producto, respetando OEM.
         async Task<decimal?> PrecioCIvaAsync(int prodId)
@@ -278,6 +279,50 @@ public class MeliPricePushService
         }
         if (!any) return (0m, false);
         return (Math.Round(sum, 2), true);
+    }
+
+    /// <summary>2026-07-01: costo total del producto/combo linkeado a un MeliItem, mismo cálculo
+    /// que el endpoint /product-cost del controller. Usado por el bulk-precio-por-ganancia.</summary>
+    public async Task<decimal?> CalcularCostoTotalAsync(MeliItem mi, CancellationToken ct)
+    {
+        // 1) Modelo nuevo: MeliItemComponentes
+        var mecs = await (
+            from c in _db.MeliItemComponentes
+            join p in _db.CafeProductos on c.CafeProductoId equals p.Id
+            where c.MeliItemId == mi.MeliItemId
+            select new { p.Sku, p.Costo, c.Cantidad }
+        ).ToListAsync(ct);
+        if (mecs.Count > 0)
+        {
+            // Dedup por SKU (misma lógica que /product-cost)
+            var uniq = mecs.GroupBy(x => x.Sku).Select(g => g.First()).ToList();
+            return uniq.Sum(x => x.Costo * x.Cantidad);
+        }
+        // 2) Legacy: combo directo
+        if (mi.CafeComboId.HasValue)
+        {
+            var items = await (
+                from ci in _db.CafeComboItems
+                join p in _db.CafeProductos on ci.ProductoId equals p.Id
+                where ci.ComboId == mi.CafeComboId.Value
+                select new { p.Costo, ci.Cantidad }
+            ).ToListAsync(ct);
+            return items.Sum(x => x.Costo * x.Cantidad);
+        }
+        // 3) Legacy: producto directo
+        if (mi.CafeProductoId.HasValue)
+        {
+            var p = await _db.CafeProductos.AsNoTracking().FirstOrDefaultAsync(x => x.Id == mi.CafeProductoId.Value, ct);
+            if (p is null) return null;
+            decimal cant = 1m;
+            if (!string.IsNullOrEmpty(mi.Sku))
+            {
+                if (mi.Sku.EndsWith(".4")) cant = 0.25m;
+                else if (mi.Sku.EndsWith(".2")) cant = 0.5m;
+            }
+            return p.Costo * cant;
+        }
+        return null;
     }
 
     private static decimal AplicarRedondeoUp(decimal valor, string? modo)

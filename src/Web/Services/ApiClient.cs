@@ -3302,6 +3302,39 @@ public class ApiClient
         bool IncluirPrecioIndependiente);
     public record BulkAjusteResponse(int Modificados, int SaltadosPrecioIndependiente, int NoEncontrados);
 
+    // 2026-07-01: masivo por ganancia — mismo motor que la ficha individual "¿Qué querés ganar?".
+    public record BulkPrecioPorGananciaRequest(
+        List<int> ItemIds, decimal GananciaPct, string? Redondeo,
+        bool IncluirPrecioIndependiente, bool PublicarEnMeli);
+    public record BulkPrecioPorGananciaDetail(
+        int ItemId, string MeliItemId, string Titulo,
+        decimal? Costo, decimal? PrecioBase, decimal? PrecioActual, decimal? PrecioNuevo,
+        decimal? GananciaEstimada, decimal? MargenPct,
+        bool Guardado, bool PusheadoOk, string? Mensaje);
+    public record BulkPrecioPorGananciaResponse(
+        int Total, int Guardados, int Pusheados, int SinCosto, int SaltadosPrecioIndep, int Errores,
+        List<BulkPrecioPorGananciaDetail> Detalles);
+
+    public async Task<(BulkPrecioPorGananciaResponse? resp, string? error)> BulkPrecioPorGananciaAsync(BulkPrecioPorGananciaRequest req)
+    {
+        await SetAuthHeaderAsync();
+        try
+        {
+            var http = await _http.PostAsJsonAsync("/api/meli/items/bulk-precio-por-ganancia", req);
+            if (http.IsSuccessStatusCode)
+                return (await http.Content.ReadFromJsonAsync<BulkPrecioPorGananciaResponse>(), null);
+            string err = "Error al aplicar";
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(await http.Content.ReadAsStringAsync());
+                if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err;
+            }
+            catch { }
+            return (null, err);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
     // 2026-07-01: Fase C — push masivo de precios cargados a MeLi.
     public record BulkPushPrecioDetail(int ItemId, string MeliItemId, bool Ok, string Message, decimal? PushedPrice);
     public record BulkPushPrecioResponse(int Total, int Pusheados, int SinAjuste, int Errores, List<BulkPushPrecioDetail> Detalles);

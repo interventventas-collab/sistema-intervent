@@ -2883,30 +2883,22 @@
             </div>
             <div class="modal-body">
                 <div style="background:#dbeafe; border:1px solid #3b82f6; border-radius:6px; padding:0.6rem 0.8rem; margin-bottom:1rem; font-size:0.85rem; color:#1e40af;">
-                    Cargá el ajuste que querés aplicar. Al pie tenés dos opciones:
-                    <strong>"Solo guardar"</strong> (queda en tu base, MeLi sigue con los precios viejos hasta que decidas)
-                    o <strong>"🚀 Guardar y publicar en MeLi"</strong> (los precios cambian YA en MercadoLibre).
+                    Ponés la <strong>ganancia que querés obtener sobre el costo</strong> y para cada publi el sistema calcula
+                    el precio necesario considerando su costo + comisión MeLi + envío + IVA (mismo motor que la ficha individual "¿Qué querés ganar?").
                 </div>
 
-                <div style="display:grid; grid-template-columns: 1fr 1fr 1.2fr; gap:0.75rem; margin-bottom:1rem;">
+                <div style="display:grid; grid-template-columns: 1fr 1.2fr; gap:0.75rem; margin-bottom:1rem;">
                     <div>
-                        <label style="display:block; font-size:0.78rem; color:#374151; font-weight:600; margin-bottom:0.2rem;">% extra</label>
-                        <input type="number" step="0.01" @bind="bulkAjustePct" @bind:event="oninput"
-                               placeholder="ej: 10 o -5 (dejar vacío = no tocar)"
-                               style="width:100%; padding:0.4rem 0.5rem; border:1px solid #d1d5db; border-radius:4px; font-size:0.9rem;" />
-                    </div>
-                    <div>
-                        <label style="display:block; font-size:0.78rem; color:#374151; font-weight:600; margin-bottom:0.2rem;">$ extra</label>
-                        <input type="number" step="1" @bind="bulkAjusteFijo" @bind:event="oninput"
-                               placeholder="ej: 100 o -500 (vacío = no tocar)"
+                        <label style="display:block; font-size:0.78rem; color:#374151; font-weight:600; margin-bottom:0.2rem;">🎯 Ganancia deseada (% sobre costo)</label>
+                        <input type="number" step="0.1" @bind="bulkGananciaPct" @bind:event="oninput"
+                               placeholder="ej: 30"
                                style="width:100%; padding:0.4rem 0.5rem; border:1px solid #d1d5db; border-radius:4px; font-size:0.9rem;" />
                     </div>
                     <div>
                         <label style="display:block; font-size:0.78rem; color:#374151; font-weight:600; margin-bottom:0.2rem;">Redondeo</label>
                         <select @bind="bulkAjusteRedondeoOpt"
                                 style="width:100%; padding:0.4rem 0.5rem; border:1px solid #d1d5db; border-radius:4px; font-size:0.9rem;">
-                            <option value="__nochange">(no cambiar)</option>
-                            <option value="">Sin redondeo</option>
+                            <option value="">Sin redondeo (exacto)</option>
                             <option value="99">Termina en 99</option>
                             <option value="999">Termina en 999</option>
                             <option value="000">Múltiplo de 1000</option>
@@ -2949,6 +2941,10 @@
                     {
                         <span style="color:#9a3412;"> · <strong>@saltadasPI</strong> se saltan por precio independiente</span>
                     }
+                    @if (preview.SinCosto > 0)
+                    {
+                        <span style="color:#dc2626;"> · <strong>@preview.SinCosto</strong> sin costo cargado (se saltan)</span>
+                    }
                     <span style="color:#6b7280;"> · Total tildadas: @totalTildadas</span>
                 </div>
 
@@ -2959,32 +2955,35 @@
                             <thead style="background:#f9fafb; position:sticky; top:0;">
                                 <tr>
                                     <th style="text-align:left; padding:0.4rem 0.6rem; border-bottom:1px solid #e5e7eb;">Publicación</th>
-                                    <th style="text-align:right; padding:0.4rem 0.6rem; border-bottom:1px solid #e5e7eb;">Ahora</th>
-                                    <th style="text-align:right; padding:0.4rem 0.6rem; border-bottom:1px solid #e5e7eb;">Quedará</th>
-                                    <th style="text-align:right; padding:0.4rem 0.6rem; border-bottom:1px solid #e5e7eb;">Δ</th>
+                                    <th style="text-align:right; padding:0.4rem 0.6rem; border-bottom:1px solid #e5e7eb;">Costo</th>
+                                    <th style="text-align:right; padding:0.4rem 0.6rem; border-bottom:1px solid #e5e7eb;">Precio ahora</th>
+                                    <th style="text-align:right; padding:0.4rem 0.6rem; border-bottom:1px solid #e5e7eb;">Precio nuevo</th>
+                                    <th style="text-align:right; padding:0.4rem 0.6rem; border-bottom:1px solid #e5e7eb;">Ganancia $</th>
+                                    <th style="text-align:right; padding:0.4rem 0.6rem; border-bottom:1px solid #e5e7eb;">Margen</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @foreach (var row in preview.Filas)
                                 {
-                                    var color = row.Delta > 0 ? "#065f46" : row.Delta < 0 ? "#991b1b" : "#6b7280";
-                                    var rowBg = row.CruzaUmbral ? "background:#fef2f2;" : "";
+                                    var rowBg = row.SinCosto ? "background:#fef3c7;" : (row.CruzaUmbral ? "background:#fef2f2;" : "");
                                     <tr style="border-bottom:1px solid #f3f4f6; @rowBg">
                                         <td style="padding:0.35rem 0.6rem;">
                                             @if (row.CruzaUmbral)
                                             {
                                                 <span style="margin-right:0.35rem; color:#dc2626; font-weight:700;" title="Cruza el umbral $@UMBRAL_ENVIO_APROX.ToString("N0") — hay que trabajarla individual">⚠</span>
                                             }
-                                            @Truncate(row.Titulo, 55)
-                                            @if (row.EsPrecioIndep)
+                                            @if (row.SinCosto)
                                             {
-                                                <span style="margin-left:0.4rem; background:#fed7aa; color:#9a3412; padding:0.05rem 0.3rem; border-radius:3px; font-size:0.65rem; font-weight:700;" title="Precio independiente — se salta">🔒 indep</span>
+                                                <span style="margin-right:0.35rem; color:#92400e; font-weight:700;" title="Sin costo cargado en el sistema — no puedo calcular">⚠</span>
                                             }
+                                            @Truncate(row.Titulo, 45)
                                         </td>
+                                        <td style="padding:0.35rem 0.6rem; text-align:right; color:#6b7280;">@(row.Costo.HasValue ? "$" + row.Costo.Value.ToString("N0") : "—")</td>
                                         <td style="padding:0.35rem 0.6rem; text-align:right; color:#6b7280;">$@row.PrecioAhora.ToString("N0")</td>
-                                        <td style="padding:0.35rem 0.6rem; text-align:right; font-weight:600;">$@row.PrecioNuevo.ToString("N0")</td>
-                                        <td style="padding:0.35rem 0.6rem; text-align:right; color:@color; font-weight:600;">
-                                            @(row.Delta > 0 ? "+" : "")@row.Delta.ToString("N0")
+                                        <td style="padding:0.35rem 0.6rem; text-align:right; font-weight:700;">@(row.PrecioNuevo.HasValue ? "$" + row.PrecioNuevo.Value.ToString("N0") : "—")</td>
+                                        <td style="padding:0.35rem 0.6rem; text-align:right; font-weight:600; color:#16a34a;">@(row.Ganancia.HasValue ? "$" + row.Ganancia.Value.ToString("N0") : "—")</td>
+                                        <td style="padding:0.35rem 0.6rem; text-align:right; font-weight:700; color:@(row.MargenPct.HasValue && row.MargenPct.Value >= 15 ? "#16a34a" : row.MargenPct.HasValue && row.MargenPct.Value >= 0 ? "#f97316" : "#dc2626");">
+                                            @(row.MargenPct.HasValue ? row.MargenPct.Value.ToString("0.#") + "%" : "—")
                                         </td>
                                     </tr>
                                 }
@@ -3001,7 +3000,7 @@
                 else
                 {
                     <div style="padding:1rem; text-align:center; color:#6b7280; font-size:0.85rem; background:#f9fafb; border-radius:6px;">
-                        Cargá al menos un valor (% o $ o redondeo) para ver el preview.
+                        Ingresá una ganancia > 0 para ver el preview.
                     </div>
                 }
             </div>
@@ -3481,15 +3480,14 @@
 
     // 2026-07-01: Fase B — modal ajuste masivo (%/$/redondeo). NO pushea a MeLi.
     private bool showBulkAjusteModal;
-    private decimal? bulkAjustePct;
-    private decimal? bulkAjusteFijo;
-    private string bulkAjusteRedondeoOpt = "__nochange";  // "__nochange" / "" / "99" / "999" / "000"
+    private decimal bulkGananciaPct = 30m;  // 2026-07-01: % de ganancia sobre costo (default 30%)
+    private string bulkAjusteRedondeoOpt = "99";  // "" / "99" / "999" / "000"
     private bool bulkIncluirPrecioIndep;
     private bool bulkGuardando;
     private bool bulkPublicarEnMeli;  // 2026-07-01: flag para saber si el usuario apretó "Solo guardar" o "Guardar y publicar"
 
-    public record BulkPreviewRow(string Titulo, decimal PrecioAhora, decimal PrecioNuevo, decimal Delta, bool EsPrecioIndep, bool CruzaUmbral);
-    public record BulkPreviewResult(List<BulkPreviewRow> Filas, int VanACambiar, int SaltadasPrecioIndependiente, int CruzanUmbral, List<int> IdsQueCruzan);
+    public record BulkPreviewRow(string Titulo, decimal? Costo, decimal PrecioAhora, decimal? PrecioNuevo, decimal? Ganancia, decimal? MargenPct, bool CruzaUmbral, bool SinCosto);
+    public record BulkPreviewResult(List<BulkPreviewRow> Filas, int VanACambiar, int SaltadasPrecioIndependiente, int SinCosto, int CruzanUmbral, List<int> IdsQueCruzan);
 
     /// <summary>2026-07-01: umbral de precio donde MeLi te obliga a ofrecer envío gratis. Cruzar este umbral
     /// cambia dramáticamente el costo (aparecen ~$50k+ de envío) y el masivo no lo maneja bien.</summary>
@@ -4401,9 +4399,8 @@
     {
         if (!selectedItems.Any()) return;
         // Reset estado: no arrastrar valores del último masivo.
-        bulkAjustePct = null;
-        bulkAjusteFijo = null;
-        bulkAjusteRedondeoOpt = "__nochange";
+        bulkGananciaPct = 30m;
+        bulkAjusteRedondeoOpt = "99";
         bulkIncluirPrecioIndep = false;
         showBulkAjusteModal = true;
     }
@@ -4414,30 +4411,24 @@
         showBulkAjusteModal = false;
     }
 
-    /// <summary>True si hay al menos 1 campo cargado (evita "guardar sin cambios").</summary>
-    private bool PuedeGuardarBulk()
-    {
-        return bulkAjustePct.HasValue
-            || bulkAjusteFijo.HasValue
-            || bulkAjusteRedondeoOpt != "__nochange";
-    }
+    /// <summary>True si la ganancia es válida (>0).</summary>
+    private bool PuedeGuardarBulk() => bulkGananciaPct > 0m;
 
     /// <summary>Calcula el preview de las primeras 20 publis tildadas: precio actual (con ajuste
     /// actual) vs precio nuevo (con ajuste hipotético del modal). Todo client-side sobre `items`.</summary>
+    /// <summary>2026-07-01: preview del masivo por GANANCIA. Para cada publi tildada calcula:
+    /// precio necesario = (costo × (1 + gan%/100) × 1.21) / (1 - comisión%)
+    /// Todo client-side con los datos del DTO (ProductCost, SaleFeeAmountReal, Price, FreeShipping).
+    /// El backend recalcula con datos frescos al guardar/pushear.</summary>
     private BulkPreviewResult GetBulkPreview()
     {
         var filas = new List<BulkPreviewRow>();
         var idsQueCruzan = new List<int>();
-        int vanACambiar = 0;
-        int saltadasPI = 0;
-        int cruzan = 0;
-        if (items is null) return new BulkPreviewResult(filas, 0, 0, 0, idsQueCruzan);
-        if (!PuedeGuardarBulk()) return new BulkPreviewResult(filas, 0, 0, 0, idsQueCruzan);
+        int vanACambiar = 0, saltadasPI = 0, sinCosto = 0, cruzan = 0;
+        if (items is null || !PuedeGuardarBulk())
+            return new BulkPreviewResult(filas, 0, 0, 0, 0, idsQueCruzan);
 
-        bool redondeoTocado = bulkAjusteRedondeoOpt != "__nochange";
-        string? redondeoNuevo = string.IsNullOrEmpty(bulkAjusteRedondeoOpt) || bulkAjusteRedondeoOpt == "__nochange"
-            ? null
-            : bulkAjusteRedondeoOpt;
+        string? redondeo = string.IsNullOrEmpty(bulkAjusteRedondeoOpt) ? null : bulkAjusteRedondeoOpt;
 
         foreach (var id in selectedItems)
         {
@@ -4449,48 +4440,55 @@
                 saltadasPI++;
                 continue;
             }
+
+            decimal? costo = it.ProductCost;
+            if (!costo.HasValue || costo.Value <= 0)
+            {
+                sinCosto++;
+                if (filas.Count < 20)
+                    filas.Add(new BulkPreviewRow(it.Title, null, it.Price, null, null, null, false, true));
+                continue;
+            }
             vanACambiar++;
 
-            // Ajuste ACTUAL
-            var ajActual = GetAjuste(it);
-            decimal precioAhora = it.Price;  // precio REAL en MeLi (para detectar cruce del umbral)
+            // Comisión total efectiva: usar SaleFeeAmountReal cacheado (si hay + precio no cambió),
+            // sino fallback 30% aprox.
+            decimal saleFeePct;
+            if (it.SaleFeeAmountReal.HasValue && it.SaleFeeAmountReal.Value > 0 && it.Price > 0)
+                saleFeePct = it.SaleFeeAmountReal.Value / it.Price;
+            else
+                saleFeePct = 0.30m;
 
-            // Ajuste NUEVO (patch: solo se sobrescriben los campos con valor)
-            var pctNuevo = bulkAjustePct ?? (ajActual.DeltaPct ?? 0m);
-            var fijoNuevo = bulkAjusteFijo ?? (ajActual.DeltaPesos ?? 0m);
-            var redNuevo = redondeoTocado ? redondeoNuevo : (string.IsNullOrEmpty(ajActual.Redondeo) ? null : ajActual.Redondeo);
-
-            decimal baseP = it.PrecioOtroConIvaCalc ?? it.Price;
-            decimal precioNuevo = baseP;
-            if (baseP > 0)
+            decimal netoSinIvaNec = costo.Value * (1m + bulkGananciaPct / 100m);
+            decimal netoConIvaNec = netoSinIvaNec * (1m + IvaAlicuota);
+            decimal denom = 1m - saleFeePct;
+            if (denom <= 0.05m)
             {
-                precioNuevo = baseP * (1m + pctNuevo / 100m) + fijoNuevo;
-                if (!string.IsNullOrEmpty(redNuevo))
-                    precioNuevo = AplicarRedondeoUp(precioNuevo, redNuevo);
+                if (filas.Count < 20)
+                    filas.Add(new BulkPreviewRow(it.Title, costo, it.Price, null, null, null, false, false));
+                continue;
             }
+            decimal precioNuevo = netoConIvaNec / denom;
+            if (!string.IsNullOrEmpty(redondeo))
+                precioNuevo = AplicarRedondeoUp(precioNuevo, redondeo);
+            precioNuevo = Math.Round(precioNuevo, 0);
 
-            // 2026-07-01: detectar si el ajuste hace CRUZAR el umbral (cambia el régimen de envío).
-            // Solo importa si la publi OFRECE envío gratis (Full/Flex). En ME1 el cliente paga
-            // el envío directo, MeLi nunca cobra el envío al vendedor → el umbral no cambia nada.
+            // Cruce del umbral (solo publis con envío gratis).
             bool cruzaUmbral = it.FreeShipping
-                && (precioAhora < UMBRAL_ENVIO_APROX) != (precioNuevo < UMBRAL_ENVIO_APROX)
-                && Math.Abs(precioNuevo - precioAhora) > 0.5m;
-            if (cruzaUmbral)
-            {
-                cruzan++;
-                idsQueCruzan.Add(id);
-            }
+                && (it.Price < UMBRAL_ENVIO_APROX) != (precioNuevo < UMBRAL_ENVIO_APROX)
+                && Math.Abs(precioNuevo - it.Price) > 0.5m;
+            if (cruzaUmbral) { cruzan++; idsQueCruzan.Add(id); }
 
-            if (filas.Count >= 20) continue;
-            filas.Add(new BulkPreviewRow(
-                it.Title,
-                Math.Round(precioAhora, 0),
-                Math.Round(precioNuevo, 0),
-                Math.Round(precioNuevo - precioAhora, 0),
-                false,
-                cruzaUmbral));
+            // Ganancia y margen resultantes.
+            decimal netoConIvaResult = precioNuevo * (1m - saleFeePct);
+            decimal netoSinIvaResult = netoConIvaResult / (1m + IvaAlicuota);
+            decimal gananciaResult = Math.Round(netoSinIvaResult - costo.Value, 0);
+            decimal margenPctResult = costo.Value > 0 ? Math.Round(gananciaResult / costo.Value * 100m, 1) : 0m;
+
+            if (filas.Count < 20)
+                filas.Add(new BulkPreviewRow(it.Title, costo, it.Price, precioNuevo, gananciaResult, margenPctResult, cruzaUmbral, false));
         }
-        return new BulkPreviewResult(filas, vanACambiar, saltadasPI, cruzan, idsQueCruzan);
+        return new BulkPreviewResult(filas, vanACambiar, saltadasPI, sinCosto, cruzan, idsQueCruzan);
     }
 
     /// <summary>2026-07-01: destilda las publis que cruzarían el umbral. El usuario después las trabaja
@@ -4510,70 +4508,39 @@
         bulkPublicarEnMeli = publicarEnMeli;
         StateHasChanged();
 
-        bool redondeoTocado = bulkAjusteRedondeoOpt != "__nochange";
-        string? redondeo = string.IsNullOrEmpty(bulkAjusteRedondeoOpt) || bulkAjusteRedondeoOpt == "__nochange"
-            ? null
-            : bulkAjusteRedondeoOpt;
+        string? redondeo = string.IsNullOrEmpty(bulkAjusteRedondeoOpt) ? null : bulkAjusteRedondeoOpt;
 
-        var req = new ApiClient.BulkAjusteRequest(
+        var req = new ApiClient.BulkPrecioPorGananciaRequest(
             selectedItems.ToList(),
-            bulkAjustePct,
-            bulkAjusteFijo,
+            bulkGananciaPct,
             redondeo,
-            redondeoTocado,
-            ModoBorrar: false,
-            IncluirPrecioIndependiente: bulkIncluirPrecioIndep);
+            bulkIncluirPrecioIndep,
+            publicarEnMeli);
 
-        var (resp, err) = await Api.BulkAjustePrecioAsync(req);
+        var (resp, err) = await Api.BulkPrecioPorGananciaAsync(req);
+        bulkGuardando = false;
 
         if (resp is null)
         {
-            bulkGuardando = false;
-            ToastService.Error("No se pudo guardar: " + (err ?? "Error"));
+            ToastService.Error("No se pudo aplicar: " + (err ?? "Error"));
             StateHasChanged();
             return;
         }
 
-        // 2026-07-01: mantengo la selección tildada (antes se limpiaba y confundía).
-        // El usuario decide cuándo deseleccionar con el botón "Deseleccionar" de la barra.
-        if (!publicarEnMeli)
-        {
-            // Modo "Solo guardar": queda en base, no toca MeLi.
-            bulkGuardando = false;
-            string msg = $"✓ {resp.Modificados} publicaciones actualizadas en tu base (MeLi sigue con los precios viejos)";
-            if (resp.SaltadosPrecioIndependiente > 0)
-                msg += $" · {resp.SaltadosPrecioIndependiente} saltadas por precio independiente";
-            ToastService.Success(msg);
-            showBulkAjusteModal = false;
-            ajustesPrecio.Clear();
-            await LoadItems();
-            return;
-        }
-
-        // Modo "Guardar y publicar en MeLi": pusheamos ya lo recién guardado.
-        var (pushResp, pushErr) = await Api.BulkPushPrecioAsync(selectedItems.ToList());
-        bulkGuardando = false;
-
-        if (pushResp is null)
-        {
-            ToastService.Warning($"✓ Guardadas OK en tu base, pero falló el push a MeLi: {pushErr ?? "Error"}. Podés reintentar publicándolas después.");
-            showBulkAjusteModal = false;
-            ajustesPrecio.Clear();
-            await LoadItems();
-            return;
-        }
-
-        string pushMsg = $"✅ {pushResp.Pusheados} precios publicados en MeLi";
-        if (pushResp.SinAjuste > 0) pushMsg += $" · {pushResp.SinAjuste} sin ajuste (saltadas)";
-        if (pushResp.Errores > 0)
-        {
-            pushMsg += $" · ⚠ {pushResp.Errores} con error";
-            ToastService.Warning(pushMsg);
-        }
+        // Construir mensaje resumen (se mantiene la selección para poder seguir trabajando).
+        var parts = new List<string>();
+        if (publicarEnMeli)
+            parts.Add($"✅ {resp.Pusheados} precios publicados en MeLi");
         else
-        {
-            ToastService.Success(pushMsg);
-        }
+            parts.Add($"✓ {resp.Guardados} publis actualizadas en tu base (sin tocar MeLi)");
+
+        if (resp.SinCosto > 0) parts.Add($"⚠ {resp.SinCosto} sin costo (saltadas)");
+        if (resp.SaltadosPrecioIndep > 0) parts.Add($"{resp.SaltadosPrecioIndep} con precio independiente");
+        if (resp.Errores > 0) parts.Add($"❌ {resp.Errores} con error");
+
+        var msg = string.Join(" · ", parts);
+        if (resp.Errores > 0) ToastService.Warning(msg);
+        else ToastService.Success(msg);
 
         showBulkAjusteModal = false;
         ajustesPrecio.Clear();
