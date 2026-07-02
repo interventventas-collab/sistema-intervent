@@ -4367,11 +4367,12 @@ public class ApiClient
         catch { return null; }
     }
 
-    public async Task<(UpdatePrecioResultDto? result, string? error)> PushPrecioAMeliAsync(string meliItemId, decimal precio)
+    public async Task<(UpdatePrecioResultDto? result, string? error)> PushPrecioAMeliAsync(string meliItemId, decimal precio, decimal? gananciaObjetivoPct = null)
     {
         try
         {
-            var resp = await _http.PutAsJsonAsync($"/api/cafe/sincronizacion-meli/{meliItemId}/precio", new { precio });
+            var body = new { precio, gananciaObjetivoPct };
+            var resp = await _http.PutAsJsonAsync($"/api/cafe/sincronizacion-meli/{meliItemId}/precio", body);
             if (resp.IsSuccessStatusCode) return (await resp.Content.ReadFromJsonAsync<UpdatePrecioResultDto>(), null);
             string err = "Error";
             try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());

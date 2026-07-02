@@ -94,6 +94,12 @@ public class MeliItemDto
     public decimal? SaleFeePercentageFee { get; set; }
     public decimal? SaleFeeFixedFee { get; set; }
     public decimal? SaleFeeFinancingFee { get; set; }
+
+    // 2026-07-02: objetivo de ganancia cargado al pushear precio (% sobre costo).
+    // Null = nunca se pusheó con modo %. Si está cargado, ficha/grilla muestra chip
+    // "objetivo vs actual": verde ✓ si dentro de ±2 pt, ambar ⚠ si se desvió.
+    public decimal? GananciaObjetivoPct { get; set; }
+    public DateTime? GananciaObjetivoAt { get; set; }
 }
 
 public class MeliItemsResponse

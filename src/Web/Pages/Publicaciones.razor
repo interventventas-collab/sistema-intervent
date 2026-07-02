@@ -143,6 +143,11 @@
                                     style="background:@(filterSinAjuste ? "#f3f4f6" : "transparent"); color:@(filterSinAjuste ? "#374151" : "inherit"); font-weight:700;">
                                 ○ Sin ajuste (vírgenes)
                             </button>
+                            @* 2026-07-02: publis con objetivo cargado y ganancia real fuera de ±2 pt *@
+                            <button class="more-filters-item @(filterDesviadaObjetivo ? "active" : "")" @onclick="() => { filterDesviadaObjetivo = !filterDesviadaObjetivo; InvalidateFilterCache(); showMoreFilters = false; }"
+                                    style="background:@(filterDesviadaObjetivo ? "#fef3c7" : "transparent"); color:@(filterDesviadaObjetivo ? "#92400e" : "inherit"); font-weight:700;">
+                                🎯 Desviadas del objetivo (±2 pt)
+                            </button>
                             <button class="more-filters-item @(filterPromo ? "active" : "")" @onclick="() => { TogglePromoFilter(); showMoreFilters = false; }">
                                 <i class="fa-solid fa-tag"></i> En promoción
                             </button>
@@ -1364,6 +1369,27 @@
                                             <span>Margen</span>
                                             <span><strong style="color:@MarginColor();">@MarginPctSobreCosto().ToString("0.0", argCulture)% sobre costo</strong> · @MarginLabel()</span>
                                         </div>
+                                        @* 2026-07-02: chip 🎯 objetivo cargado — verde si está dentro de ±2 pt, ámbar si se desvió *@
+                                        @if (selectedItem?.GananciaObjetivoPct.HasValue == true)
+                                        {
+                                            var _obj = selectedItem.GananciaObjetivoPct!.Value;
+                                            var _real = MarginPctSobreCosto();
+                                            var _desv = _real - _obj;
+                                            var _ok = Math.Abs(_desv) <= 2m;
+                                            var _bg = _ok ? "#dcfce7" : "#fef3c7";
+                                            var _fg = _ok ? "#166534" : "#92400e";
+                                            var _icon = _ok ? "✓" : "⚠";
+                                            <div style="display:flex; justify-content:space-between; align-items:center; padding:0.35rem 0.75rem; margin-top:0.35rem; background:@_bg; color:@_fg; border-radius:6px; font-size:0.82rem; font-weight:600;">
+                                                <span>🎯 Objetivo cargado: <strong>@_obj.ToString("0.#", argCulture)%</strong></span>
+                                                <span>Hoy da <strong>@_real.ToString("0.#", argCulture)%</strong> @_icon</span>
+                                            </div>
+                                            @if (!_ok)
+                                            {
+                                                <div style="padding:0.15rem 0.75rem 0; font-size:0.72rem; color:#92400e;">
+                                                    Desviación: @(_desv > 0 ? "+" : "")@_desv.ToString("0.#", argCulture) pt · umbral tolerado ±2 pt · <em>republicá para volver al objetivo</em>
+                                                </div>
+                                            }
+                                        }
                                         @if (itemProductCost.Components.Count > 1)
                                         {
                                             <div style="margin-top: 0.35rem; padding-top: 0.35rem; border-top: 1px dashed #d1d5db; font-size: 0.7rem; color: #6b7280;">
@@ -3493,6 +3519,8 @@
     // 2026-07-01: para ajuste masivo — separar las que ya tienen % o $ cargado vs las vírgenes.
     private bool filterConAjuste = false;              // 💵 tiene AjustePct/AjusteFijo/Redondeo cargado
     private bool filterSinAjuste = false;              // ○ virgen: nada cargado
+    // 2026-07-02: publis con objetivo cargado cuyo margen real esta fuera del umbral ±2 pt.
+    private bool filterDesviadaObjetivo = false;
     private bool showMoreFilters = false;
 
     // Selection & bulk actions
@@ -3713,6 +3741,7 @@
         if (filterCatalogo) count++;
         if (filterConAjuste) count++;
         if (filterSinAjuste) count++;
+        if (filterDesviadaObjetivo) count++;
         return count;
     }
 
@@ -4146,6 +4175,17 @@
             filtered = filtered.Where(HasAjuste);
         if (filterSinAjuste)
             filtered = filtered.Where(i => !HasAjuste(i));
+
+        // 2026-07-02: filtro Desviadas del Objetivo — publis con objetivo cargado cuya
+        // ganancia real actual esta fuera del umbral ±2 pt.
+        if (filterDesviadaObjetivo)
+            filtered = filtered.Where(i =>
+            {
+                if (!i.GananciaObjetivoPct.HasValue) return false;
+                var real = CalcMargenPct(i);
+                if (!real.HasValue) return false;
+                return Math.Abs(real.Value - i.GananciaObjetivoPct.Value) > 2m;
+            });
 
         // 2026-06-01: Filtros por margen — para detectar publicaciones perdiendo plata
         if (filterMargenPerdida)
@@ -5423,11 +5463,39 @@
         StateHasChanged();
         try
         {
-            var (res, err) = await Api.PushPrecioAMeliAsync(selectedItem.MeliItemId, precio.Value);
+            // 2026-07-02: si el modo es %, mandamos el objetivo para que quede grabado.
+            // Si el modo es $, derivamos el % equivalente sobre el costo.
+            decimal? objetivoPct = null;
+            if (itemProductCost is not null && itemProductCost.TotalCost > 0)
+            {
+                if (calcGananciaModo == "%") objetivoPct = calcGananciaValor;
+                else if (calcGananciaModo == "$") objetivoPct = Math.Round(calcGananciaValor / itemProductCost.TotalCost * 100m, 2);
+            }
+
+            var (res, err) = await Api.PushPrecioAMeliAsync(selectedItem.MeliItemId, precio.Value, objetivoPct);
             if (err is null)
             {
-                ToastService.Success($"✔ Precio ${precio.Value.ToString("N2", argCulture)} pusheado a MeLi");
+                // Mensaje con verificacion del objetivo, cuando aplique.
+                string msg = $"✔ Precio ${precio.Value.ToString("N2", argCulture)} pusheado a MeLi";
+                if (res?.ObjetivoPct.HasValue == true && res.MargenRealPct.HasValue)
+                {
+                    var obj = res.ObjetivoPct.Value.ToString("0.#", argCulture);
+                    var real = res.MargenRealPct.Value.ToString("0.#", argCulture);
+                    if (res.DentroDelUmbral == true)
+                        ToastService.Success($"{msg}. 🎯 Objetivo {obj}% cumplido — quedó en {real}%.");
+                    else
+                        ToastService.Warning($"{msg}. ⚠ Objetivo {obj}% NO cumplido — quedó en {real}% (revisá).");
+                }
+                else
+                {
+                    ToastService.Success(msg);
+                }
                 selectedItem.Price = precio.Value;
+                if (objetivoPct.HasValue)
+                {
+                    selectedItem.GananciaObjetivoPct = objetivoPct.Value;
+                    selectedItem.GananciaObjetivoAt = DateTime.UtcNow;
+                }
                 var sib = GetCatalogSibling(selectedItem);
                 if (sib is not null) sib.Price = precio.Value; // hermanada — MeLi la actualiza sola
                 // Refrescar el simulador con el precio nuevo
@@ -6283,6 +6351,26 @@
         __builder.AddAttribute(2, "title", tooltip);
         __builder.AddContent(3, $"📊 {label}");
         __builder.CloseElement();
+
+        // 2026-07-02: chip 🎯 objetivo — si tiene objetivo cargado, compara vs real (±2 pt).
+        if (item.GananciaObjetivoPct.HasValue && item.ProductCost.HasValue && item.ProductCost.Value > 0)
+        {
+            var obj = item.GananciaObjetivoPct.Value;
+            var real = pct.Value;
+            var desv = real - obj;
+            var ok = Math.Abs(desv) <= 2m;
+            var objBg = ok ? "#dcfce7" : "#fef3c7";
+            var objFg = ok ? "#166534" : "#92400e";
+            var objIcon = ok ? "✓" : "⚠";
+            var objTip = ok
+                ? $"Objetivo cumplido: querías {obj:0.#}%, hoy da {real:0.#}%"
+                : $"Objetivo NO cumplido: querías {obj:0.#}%, hoy da {real:0.#}% (desv {desv:+0.#;-0.#} pt)";
+            __builder.OpenElement(10, "div");
+            __builder.AddAttribute(11, "style", $"display:inline-block; background:{objBg}; color:{objFg}; padding:0.1rem 0.45rem; border-radius:10px; font-size:0.7rem; font-weight:700; margin-top:0.15rem; margin-left:0.25rem;");
+            __builder.AddAttribute(12, "title", objTip);
+            __builder.AddContent(13, $"🎯 {obj.ToString("0.#", argCulture)}% {objIcon}");
+            __builder.CloseElement();
+        }
     };
 
     /// <summary>2026-05-30 — Renderiza el SKU + el precio del sistema (PrecioOtroConIvaCalc)

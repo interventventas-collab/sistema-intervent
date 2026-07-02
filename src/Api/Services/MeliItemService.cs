@@ -81,7 +81,8 @@ public class MeliItemService
                 null,  // 2026-06-01: ProductCost — se completa abajo en memoria
                 i.CatalogListing,  // 2026-06-12: publicacion de catalogo
                 i.SaleFeeAmount, i.SaleFeePriceSnapshot, i.SaleFeeCapturedAt,  // 2026-06-19: comision real cacheada
-                i.SaleFeePercentageFee, i.SaleFeeFixedFee, i.SaleFeeFinancingFee  // 2026-07-02: desglose
+                i.SaleFeePercentageFee, i.SaleFeeFixedFee, i.SaleFeeFinancingFee,  // 2026-07-02: desglose
+                null, null  // 2026-07-02: GananciaObjetivoPct/At — se completan abajo desde MeliItemSyncConfigs
                 ))
             .ToListAsync();
 
@@ -183,7 +184,10 @@ public class MeliItemService
                     AjusteRedondeo = cfg.AjusteRedondeo,
                     PrecioIndependiente = cfg.PrecioIndependiente,
                     PrecioFactor = cfg.PrecioFactor,
-                    PrecioBaseRef = cfg.PrecioBaseRef
+                    PrecioBaseRef = cfg.PrecioBaseRef,
+                    // 2026-07-02: objetivo de ganancia
+                    GananciaObjetivoPct = cfg.GananciaObjetivoPct,
+                    GananciaObjetivoAt = cfg.GananciaObjetivoAt
                 };
             }
         }
