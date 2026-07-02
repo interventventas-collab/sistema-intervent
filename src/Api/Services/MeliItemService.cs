@@ -1889,10 +1889,13 @@ public class MeliItemService
             {
                 var userId = item.MeliAccount.MeliUserId;
                 var shippingUrl = $"https://api.mercadolibre.com/users/{userId}/shipping_options/free?item_id={meliItemId}&item_price={price.ToString(System.Globalization.CultureInfo.InvariantCulture)}&free_shipping=true&listing_type_id={item.ListingTypeId}";
+                Console.WriteLine($"[shipping-cost] {meliItemId} → GET {shippingUrl}");
                 var shippingResp = await http.GetAsync(shippingUrl);
+                Console.WriteLine($"[shipping-cost] {meliItemId} ← HTTP {(int)shippingResp.StatusCode}");
                 if (shippingResp.IsSuccessStatusCode)
                 {
                     var shippingJson = await shippingResp.Content.ReadAsStringAsync();
+                    Console.WriteLine($"[shipping-cost] {meliItemId} body: {shippingJson.Substring(0, Math.Min(200, shippingJson.Length))}");
                     using var shippingDoc = JsonDocument.Parse(shippingJson);
                     if (shippingDoc.RootElement.TryGetProperty("coverage", out var coverage)
                         && coverage.TryGetProperty("all_country", out var allCountry)
@@ -1900,10 +1903,27 @@ public class MeliItemService
                         && listCost.ValueKind == JsonValueKind.Number)
                     {
                         result.ShippingCost = listCost.GetDecimal();
+                        Console.WriteLine($"[shipping-cost] {meliItemId} ✓ set ShippingCost = {result.ShippingCost}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[shipping-cost] {meliItemId} ⚠ no encontró coverage.all_country.list_cost en la respuesta");
                     }
                 }
+                else
+                {
+                    var err = await shippingResp.Content.ReadAsStringAsync();
+                    Console.WriteLine($"[shipping-cost] {meliItemId} ❌ error {(int)shippingResp.StatusCode}: {err.Substring(0, Math.Min(300, err.Length))}");
+                }
             }
-            catch { /* Shipping cost is optional */ }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[shipping-cost] {meliItemId} ❌ EXCEPTION: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+        else
+        {
+            Console.WriteLine($"[shipping-cost] {meliItemId} skip (FreeShipping=false)");
         }
 
 
