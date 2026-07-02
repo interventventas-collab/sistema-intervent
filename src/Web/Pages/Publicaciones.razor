@@ -4505,24 +4505,35 @@
             }
             vanACambiar++;
 
-            // Comisión total efectiva: usar SaleFeeAmountReal cacheado (si hay + precio no cambió),
-            // sino fallback 30% aprox.
-            decimal saleFeePct;
-            if (it.SaleFeeAmountReal.HasValue && it.SaleFeeAmountReal.Value > 0 && it.Price > 0)
-                saleFeePct = it.SaleFeeAmountReal.Value / it.Price;
+            // Comisión desglosada: parte % + cargo FIJO. Prioridad al desglose real (SaleFeePercentageFee
+            // + SaleFeeFixedFee), fallback al SaleFeeAmount total como % puro, y último recurso 30%.
+            decimal pctPart, fixedPart;
+            if (it.SaleFeePercentageFee.HasValue && it.SaleFeePercentageFee.Value > 0)
+            {
+                pctPart = it.SaleFeePercentageFee.Value / 100m;
+                fixedPart = it.SaleFeeFixedFee ?? 0m;
+            }
+            else if (it.SaleFeeAmountReal.HasValue && it.SaleFeeAmountReal.Value > 0 && it.Price > 0)
+            {
+                pctPart = it.SaleFeeAmountReal.Value / it.Price;
+                fixedPart = 0m;
+            }
             else
-                saleFeePct = 0.30m;
+            {
+                pctPart = 0.30m;
+                fixedPart = 0m;
+            }
 
             decimal netoSinIvaNec = costo.Value * (1m + bulkGananciaPct / 100m);
             decimal netoConIvaNec = netoSinIvaNec * (1m + IvaAlicuota);
-            decimal denom = 1m - saleFeePct;
+            decimal denom = 1m - pctPart;
             if (denom <= 0.05m)
             {
                 if (filas.Count < 20)
                     filas.Add(new BulkPreviewRow(it.Title, costo, it.Price, null, null, null, false, false));
                 continue;
             }
-            decimal precioNuevo = netoConIvaNec / denom;
+            decimal precioNuevo = (netoConIvaNec + fixedPart) / denom;
             if (!string.IsNullOrEmpty(redondeo))
                 precioNuevo = AplicarRedondeoUp(precioNuevo, redondeo);
             precioNuevo = Math.Round(precioNuevo, 0);
@@ -4533,8 +4544,8 @@
                 && Math.Abs(precioNuevo - it.Price) > 0.5m;
             if (cruzaUmbral) { cruzan++; idsQueCruzan.Add(id); }
 
-            // Ganancia y margen resultantes.
-            decimal netoConIvaResult = precioNuevo * (1m - saleFeePct);
+            // Ganancia y margen resultantes con el precio final (aplica la misma fórmula desglosada).
+            decimal netoConIvaResult = precioNuevo * (1m - pctPart) - fixedPart;
             decimal netoSinIvaResult = netoConIvaResult / (1m + IvaAlicuota);
             decimal gananciaResult = Math.Round(netoSinIvaResult - costo.Value, 0);
             decimal margenPctResult = costo.Value > 0 ? Math.Round(gananciaResult / costo.Value * 100m, 1) : 0m;

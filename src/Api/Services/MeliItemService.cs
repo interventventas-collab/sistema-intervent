@@ -80,7 +80,8 @@ public class MeliItemService
                 null,  // PrecioOtroConIvaCalc — se completa abajo en memoria
                 null,  // 2026-06-01: ProductCost — se completa abajo en memoria
                 i.CatalogListing,  // 2026-06-12: publicacion de catalogo
-                i.SaleFeeAmount, i.SaleFeePriceSnapshot, i.SaleFeeCapturedAt  // 2026-06-19: comision real cacheada
+                i.SaleFeeAmount, i.SaleFeePriceSnapshot, i.SaleFeeCapturedAt,  // 2026-06-19: comision real cacheada
+                i.SaleFeePercentageFee, i.SaleFeeFixedFee, i.SaleFeeFinancingFee  // 2026-07-02: desglose
                 ))
             .ToListAsync();
 
@@ -551,7 +552,8 @@ public class MeliItemService
         null, // PrecioOtroConIvaCalc
         null, // ProductCost
         item.CatalogListing, // 2026-06-12
-        item.SaleFeeAmount, item.SaleFeePriceSnapshot, item.SaleFeeCapturedAt); // 2026-06-19
+        item.SaleFeeAmount, item.SaleFeePriceSnapshot, item.SaleFeeCapturedAt, // 2026-06-19
+        item.SaleFeePercentageFee, item.SaleFeeFixedFee, item.SaleFeeFinancingFee); // 2026-07-02
 
     public async Task<int> DeleteItemsAsync(List<int> ids)
     {

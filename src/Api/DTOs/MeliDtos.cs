@@ -182,7 +182,11 @@ public record MeliItemDto(
     // 2026-06-19: sale_fee real cacheado (lo que MeLi cobra). Si null, el frontend usa la formula simple.
     decimal? SaleFeeAmountReal = null,
     decimal? SaleFeePriceSnapshot = null,
-    DateTime? SaleFeeCapturedAt = null
+    DateTime? SaleFeeCapturedAt = null,
+    // 2026-07-02: desglose para que el modal masivo separe cargo fijo del %.
+    decimal? SaleFeePercentageFee = null,
+    decimal? SaleFeeFixedFee = null,
+    decimal? SaleFeeFinancingFee = null
 );
 
 public record MeliItemsResponse(List<MeliItemDto> Items, int Total);
