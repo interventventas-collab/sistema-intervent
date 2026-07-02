@@ -148,18 +148,47 @@
                     </div>
 
                     <div class="form-row">
-                        <div class="form-group" style="flex: 2;">
+                        <div class="form-group" style="flex: 2; position: relative;">
                             <label class="form-label">Cliente *</label>
-                            <div style="display: flex; gap: 0.4rem;">
-                                <select class="form-input" @bind="formClienteId" @bind:after="OnClienteChanged" style="flex: 1;">
-                                    <option value="0">— Elegí un cliente —</option>
-                                    @foreach (var c in clientes ?? new())
-                                    {
-                                        <option value="@c.Id">@c.Nombre @(string.IsNullOrEmpty(c.Empresa) ? "" : $"({c.Empresa})")</option>
-                                    }
-                                </select>
-                                <button class="btn btn-secondary" type="button" @onclick="() => showQuickClient = true" title="Crear cliente nuevo en el momento">+ Nuevo</button>
-                            </div>
+                            @if (formClienteId > 0)
+                            {
+                                var sel = ClienteSel();
+                                <div style="display:flex; gap:0.4rem; align-items:center;">
+                                    <div class="form-input" style="flex:1; background:#f0fdf4; border-color:#86efac; display:flex; justify-content:space-between; align-items:center;">
+                                        <span><strong>@(sel?.Nombre ?? "Cliente")</strong> @(string.IsNullOrEmpty(sel?.RazonSocial) ? "" : $"· {sel!.RazonSocial}")</span>
+                                        <button type="button" class="btn-icon" style="color:#dc2626;" title="Cambiar cliente" @onclick="LimpiarCliente">✕</button>
+                                    </div>
+                                    <button class="btn btn-secondary" type="button" @onclick="() => showQuickClient = true" title="Crear cliente nuevo">+ Nuevo</button>
+                                </div>
+                            }
+                            else
+                            {
+                                <div style="display:flex; gap:0.4rem;">
+                                    <input class="form-input" style="flex:1;" placeholder="Buscá por nombre, código o CUIT..."
+                                           @bind="clienteSearch" @bind:event="oninput" />
+                                    <button class="btn btn-secondary" type="button" @onclick="() => showQuickClient = true" title="Crear cliente nuevo en el momento">+ Nuevo</button>
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(clienteSearch) && clienteSearch.Trim().Length >= 2)
+                                {
+                                    var res = ClientesFiltrados();
+                                    <div style="border:1px solid #d1d5db; border-radius:8px; max-height:220px; overflow-y:auto; margin-top:0.25rem; background:white; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
+                                        @if (res.Count == 0)
+                                        {
+                                            <div style="padding:0.6rem; color:#9ca3af; font-size:0.85rem;">Sin resultados. Tocá "+ Nuevo" para crearlo.</div>
+                                        }
+                                        @foreach (var c in res)
+                                        {
+                                            <div style="padding:0.5rem 0.7rem; cursor:pointer; border-bottom:1px solid #f3f4f6;" @onclick="() => ElegirCliente(c.Id)"
+                                                 onmouseover="this.style.background='#f5f3ff'" onmouseout="this.style.background='white'">
+                                                <strong>@c.Nombre</strong>
+                                                <span style="font-size:0.78rem; color:#6b7280;">
+                                                    @(c.CodigoInterno.HasValue ? $" · #{c.CodigoInterno}" : "") @(string.IsNullOrEmpty(c.Cuit) ? "" : $" · {c.Cuit}") @(string.IsNullOrEmpty(c.Telefono) ? "" : $" · {c.Telefono}")
+                                                </span>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            }
                         </div>
                     </div>
 
@@ -500,9 +529,9 @@
                         <div style="font-weight: 700; font-size: 1.05rem;">@printReserva.ClienteNombre</div>
                         @if (cli is not null)
                         {
-                            @if (!string.IsNullOrEmpty(cli.DniCuit))
+                            @if (!string.IsNullOrEmpty(cli.Cuit))
                             {
-                                <div style="font-size: 0.85rem;">DNI/CUIT: <strong>@cli.DniCuit</strong></div>
+                                <div style="font-size: 0.85rem;">DNI/CUIT: <strong>@cli.Cuit</strong></div>
                             }
                             @if (!string.IsNullOrEmpty(cli.Telefono))
                             {
@@ -756,7 +785,34 @@
     [SupplyParameterFromQuery(Name = "newDate")] public string? NewDateParam { get; set; }
 
     private List<AlqReservaDto>? reservas;
-    private List<AlqClienteDto>? clientes;
+    private List<CafeClienteDto>? clientes;
+    private string clienteSearch = "";
+    private CafeClienteDto? ClienteSel() => clientes?.FirstOrDefault(x => x.Id == formClienteId);
+
+    private List<CafeClienteDto> ClientesFiltrados()
+    {
+        if (clientes is null) return new();
+        var q = clienteSearch.Trim().ToLowerInvariant();
+        return clientes.Where(c =>
+                (c.Nombre?.ToLowerInvariant().Contains(q) ?? false)
+                || (c.Cuit?.ToLowerInvariant().Contains(q) ?? false)
+                || (c.CodigoInterno?.ToString().Contains(q) ?? false)
+                || (c.Telefono?.Contains(q) ?? false))
+            .Take(15).ToList();
+    }
+
+    private void ElegirCliente(int id)
+    {
+        formClienteId = id;
+        clienteSearch = "";
+        OnClienteChanged();
+    }
+
+    private void LimpiarCliente()
+    {
+        formClienteId = 0;
+        clienteSearch = "";
+    }
     private List<AlqEquipoDto>? equipos;
     private List<AlqDisponibilidadDto>? disponibilidad;
     private List<RepartidorDto> repartidores = new();
@@ -881,11 +937,12 @@
     {
         try
         {
-            var tClientes = Api.GetAlqClientesAsync();
+            // 2026-07-02: alquileres usa la base de clientes GENERAL (unificada con ventas).
+            var tClientes = Api.GetCafeClientesAsync();
             var tEquipos = Api.GetAlqEquiposAsync();
             var tReps = Api.GetRepartidoresAsync();
             await Task.WhenAll(tClientes, tEquipos, tReps);
-            clientes = tClientes.Result ?? new();
+            clientes = (tClientes.Result ?? new()).Where(c => c.IsActive).ToList();
             equipos = tEquipos.Result ?? new();
             repartidores = tReps.Result ?? new();
         }
@@ -968,15 +1025,11 @@
         }
     }
 
-    private static string ArmarDireccion(AlqClienteDto c)
+    private static string ArmarDireccion(CafeClienteDto c)
     {
         var partes = new List<string>();
-        if (!string.IsNullOrWhiteSpace(c.DireccionDefault)) partes.Add(c.DireccionDefault);
-        var pisoDepto = "";
-        if (!string.IsNullOrWhiteSpace(c.Piso)) pisoDepto += $"P. {c.Piso}";
-        if (!string.IsNullOrWhiteSpace(c.Depto)) pisoDepto += (pisoDepto.Length > 0 ? " " : "") + $"Depto {c.Depto}";
-        if (pisoDepto.Length > 0) partes.Add(pisoDepto);
-        if (!string.IsNullOrWhiteSpace(c.Barrio)) partes.Add(c.Barrio);
+        var dir = !string.IsNullOrWhiteSpace(c.DomicilioEntrega) ? c.DomicilioEntrega : c.Direccion;
+        if (!string.IsNullOrWhiteSpace(dir)) partes.Add(dir!);
         if (!string.IsNullOrWhiteSpace(c.EntreCalles)) partes.Add($"e/ {c.EntreCalles}");
         return string.Join(" · ", partes);
     }
@@ -1070,13 +1123,13 @@
         if (string.IsNullOrWhiteSpace(quickNombre)) { ToastService.Error("Falta el nombre"); return; }
         try
         {
-            var nuevo = await Api.CreateAlqClienteAsync(new CreateAlqClienteRequest
+            var nuevo = await Api.CreateCafeClienteAsync(new CreateCafeClienteRequest
             {
-                Nombre = quickNombre, DniCuit = quickDniCuit, Telefono = quickTelefono,
-                DireccionDefault = quickDireccion
+                Nombre = quickNombre, Cuit = quickDniCuit, Telefono = quickTelefono,
+                Direccion = quickDireccion
             });
             if (nuevo is null) { ToastService.Error("No se pudo crear"); return; }
-            clientes = await Api.GetAlqClientesAsync() ?? new();
+            clientes = (await Api.GetCafeClientesAsync() ?? new()).Where(c => c.IsActive).ToList();
             formClienteId = nuevo.Id;
             OnClienteChanged();
             quickNombre = ""; quickDniCuit = ""; quickTelefono = ""; quickDireccion = "";

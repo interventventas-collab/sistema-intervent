@@ -13,10 +13,11 @@ public class AlqReserva
     [Required, MaxLength(20)]
     public string Numero { get; set; } = string.Empty;
 
+    // 2026-07-02: ClienteId apunta a la base de clientes GENERAL (Cafe_Clientes), unificado con ventas.
     public int ClienteId { get; set; }
 
     [ForeignKey(nameof(ClienteId))]
-    public AlqCliente? ClienteNav { get; set; }
+    public CafeCliente? ClienteNav { get; set; }
 
     public DateTime FechaEntrega { get; set; }
     public DateTime FechaRetiro { get; set; }

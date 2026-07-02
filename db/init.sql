@@ -5215,3 +5215,14 @@ BEGIN
     );
 END
 GO
+-- 2026-07-02: Alquileres usa la base de clientes GENERAL (Cafe_Clientes), unificado con ventas.
+-- Cambia el vínculo de Alq_Reservas.ClienteId (antes -> Alq_Clientes) a Cafe_Clientes.
+-- (La migración de datos de clientes viejos de alquiler se corre aparte, una sola vez por entorno.)
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_AlqReservas_Cliente')
+    ALTER TABLE Alq_Reservas DROP CONSTRAINT FK_AlqReservas_Cliente;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_AlqReservas_CafeCliente')
+   AND OBJECT_ID('Cafe_Clientes') IS NOT NULL
+    ALTER TABLE Alq_Reservas ADD CONSTRAINT FK_AlqReservas_CafeCliente
+        FOREIGN KEY (ClienteId) REFERENCES Cafe_Clientes(Id);
+GO
