@@ -2927,6 +2927,22 @@
                     var saltadasPI = preview.SaltadasPrecioIndependiente;
                     var vanACambiar = preview.VanACambiar;
                 }
+                @* 2026-07-01: aviso rojo si hay publis que cruzarían el umbral de envío. *@
+                @if (preview.CruzanUmbral > 0)
+                {
+                    <div style="background:#fef2f2; border:2px solid #dc2626; border-radius:6px; padding:0.65rem 0.85rem; margin-bottom:0.75rem; font-size:0.85rem; color:#991b1b;">
+                        <strong>⚠ @preview.CruzanUmbral @(preview.CruzanUmbral == 1 ? "publicación cruza" : "publicaciones cruzan") el umbral de envío ($@UMBRAL_ENVIO_APROX.ToString("N0"))</strong>
+                        <div style="margin:0.3rem 0 0.5rem 0;">
+                            El precio nuevo cambia de régimen: MeLi te empieza (o deja) a cobrar el envío gratis (~$50k+). El masivo no calcula bien estos casos.
+                            <strong>Trabajálas de a una desde la ficha.</strong>
+                        </div>
+                        <button class="btn btn-sm" @onclick="DestildarCrucesUmbral"
+                                style="background:#dc2626; color:white; border:1px solid #991b1b; font-weight:600;">
+                            🚫 Destildar las @preview.CruzanUmbral que cruzan
+                        </button>
+                    </div>
+                }
+
                 <div style="background:#f3f4f6; border-radius:6px; padding:0.5rem 0.75rem; margin-bottom:0.5rem; font-size:0.85rem;">
                     <strong>@vanACambiar</strong> se van a modificar
                     @if (saltadasPI > 0)
@@ -2952,8 +2968,13 @@
                                 @foreach (var row in preview.Filas)
                                 {
                                     var color = row.Delta > 0 ? "#065f46" : row.Delta < 0 ? "#991b1b" : "#6b7280";
-                                    <tr style="border-bottom:1px solid #f3f4f6;">
+                                    var rowBg = row.CruzaUmbral ? "background:#fef2f2;" : "";
+                                    <tr style="border-bottom:1px solid #f3f4f6; @rowBg">
                                         <td style="padding:0.35rem 0.6rem;">
+                                            @if (row.CruzaUmbral)
+                                            {
+                                                <span style="margin-right:0.35rem; color:#dc2626; font-weight:700;" title="Cruza el umbral $@UMBRAL_ENVIO_APROX.ToString("N0") — hay que trabajarla individual">⚠</span>
+                                            }
                                             @Truncate(row.Titulo, 55)
                                             @if (row.EsPrecioIndep)
                                             {
@@ -2992,14 +3013,14 @@
                 </button>
                 <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
                     <button class="btn btn-secondary btn-sm" @onclick="CerrarBulkAjusteModal" disabled="@bulkGuardando">Cancelar</button>
-                    <button class="btn btn-sm" @onclick="() => GuardarBulkAjuste(publicarEnMeli: false)" disabled="@(bulkGuardando || !PuedeGuardarBulk())"
+                    <button class="btn btn-sm" @onclick="() => GuardarBulkAjuste(publicarEnMeli: false)" disabled="@(bulkGuardando || !PuedeGuardarBulk() || preview.CruzanUmbral > 0)"
                             style="background:#16a34a; color:white; border:1px solid #15803d; font-weight:600;"
-                            title="Guarda el ajuste en tu base. MeLi sigue con los precios viejos hasta que decidas publicarlos.">
+                            title="@(preview.CruzanUmbral > 0 ? "Destildá primero las que cruzan el umbral (botón rojo arriba)" : "Guarda el ajuste en tu base. MeLi sigue con los precios viejos hasta que decidas publicarlos.")">
                         @(bulkGuardando && !bulkPublicarEnMeli ? "Guardando..." : "Solo guardar")
                     </button>
-                    <button class="btn btn-sm" @onclick="() => GuardarBulkAjuste(publicarEnMeli: true)" disabled="@(bulkGuardando || !PuedeGuardarBulk())"
+                    <button class="btn btn-sm" @onclick="() => GuardarBulkAjuste(publicarEnMeli: true)" disabled="@(bulkGuardando || !PuedeGuardarBulk() || preview.CruzanUmbral > 0)"
                             style="background:#ea580c; color:white; border:1px solid #c2410c; font-weight:600;"
-                            title="Guarda el ajuste Y lo publica en MercadoLibre. Los precios cambian ya para los compradores.">
+                            title="@(preview.CruzanUmbral > 0 ? "Destildá primero las que cruzan el umbral (botón rojo arriba)" : "Guarda el ajuste Y lo publica en MercadoLibre. Los precios cambian ya para los compradores.")">
                         @(bulkGuardando && bulkPublicarEnMeli ? "Publicando en MeLi..." : "🚀 Guardar y publicar en MeLi")
                     </button>
                 </div>
@@ -3467,8 +3488,12 @@
     private bool bulkGuardando;
     private bool bulkPublicarEnMeli;  // 2026-07-01: flag para saber si el usuario apretó "Solo guardar" o "Guardar y publicar"
 
-    public record BulkPreviewRow(string Titulo, decimal PrecioAhora, decimal PrecioNuevo, decimal Delta, bool EsPrecioIndep);
-    public record BulkPreviewResult(List<BulkPreviewRow> Filas, int VanACambiar, int SaltadasPrecioIndependiente);
+    public record BulkPreviewRow(string Titulo, decimal PrecioAhora, decimal PrecioNuevo, decimal Delta, bool EsPrecioIndep, bool CruzaUmbral);
+    public record BulkPreviewResult(List<BulkPreviewRow> Filas, int VanACambiar, int SaltadasPrecioIndependiente, int CruzanUmbral, List<int> IdsQueCruzan);
+
+    /// <summary>2026-07-01: umbral de precio donde MeLi te obliga a ofrecer envío gratis. Cruzar este umbral
+    /// cambia dramáticamente el costo (aparecen ~$50k+ de envío) y el masivo no lo maneja bien.</summary>
+    private const decimal UMBRAL_ENVIO_APROX = 33_000m;
 
     // 2026-07-01: Fase C — estado del modal de push masivo.
     private bool showBulkPushModal;
@@ -4402,10 +4427,12 @@
     private BulkPreviewResult GetBulkPreview()
     {
         var filas = new List<BulkPreviewRow>();
+        var idsQueCruzan = new List<int>();
         int vanACambiar = 0;
         int saltadasPI = 0;
-        if (items is null) return new BulkPreviewResult(filas, 0, 0);
-        if (!PuedeGuardarBulk()) return new BulkPreviewResult(filas, 0, 0);
+        int cruzan = 0;
+        if (items is null) return new BulkPreviewResult(filas, 0, 0, 0, idsQueCruzan);
+        if (!PuedeGuardarBulk()) return new BulkPreviewResult(filas, 0, 0, 0, idsQueCruzan);
 
         bool redondeoTocado = bulkAjusteRedondeoOpt != "__nochange";
         string? redondeoNuevo = string.IsNullOrEmpty(bulkAjusteRedondeoOpt) || bulkAjusteRedondeoOpt == "__nochange"
@@ -4423,11 +4450,10 @@
                 continue;
             }
             vanACambiar++;
-            if (filas.Count >= 20) continue;
 
             // Ajuste ACTUAL
             var ajActual = GetAjuste(it);
-            decimal precioAhora = CalcularPrecioConAjuste(it) ?? (it.PrecioOtroConIvaCalc ?? it.Price);
+            decimal precioAhora = it.Price;  // precio REAL en MeLi (para detectar cruce del umbral)
 
             // Ajuste NUEVO (patch: solo se sobrescriben los campos con valor)
             var pctNuevo = bulkAjustePct ?? (ajActual.DeltaPct ?? 0m);
@@ -4443,14 +4469,36 @@
                     precioNuevo = AplicarRedondeoUp(precioNuevo, redNuevo);
             }
 
+            // 2026-07-01: detectar si el ajuste hace CRUZAR el umbral (cambia el régimen de envío).
+            // Si el precio actual y el nuevo están en distintos lados del umbral → cruce peligroso.
+            bool cruzaUmbral = (precioAhora < UMBRAL_ENVIO_APROX) != (precioNuevo < UMBRAL_ENVIO_APROX)
+                && Math.Abs(precioNuevo - precioAhora) > 0.5m;
+            if (cruzaUmbral)
+            {
+                cruzan++;
+                idsQueCruzan.Add(id);
+            }
+
+            if (filas.Count >= 20) continue;
             filas.Add(new BulkPreviewRow(
                 it.Title,
                 Math.Round(precioAhora, 0),
                 Math.Round(precioNuevo, 0),
                 Math.Round(precioNuevo - precioAhora, 0),
-                false));
+                false,
+                cruzaUmbral));
         }
-        return new BulkPreviewResult(filas, vanACambiar, saltadasPI);
+        return new BulkPreviewResult(filas, vanACambiar, saltadasPI, cruzan, idsQueCruzan);
+    }
+
+    /// <summary>2026-07-01: destilda las publis que cruzarían el umbral. El usuario después las trabaja
+    /// de a una desde la ficha (donde el cálculo considera el cambio de régimen de envío correctamente).</summary>
+    private void DestildarCrucesUmbral()
+    {
+        var prev = GetBulkPreview();
+        foreach (var id in prev.IdsQueCruzan) selectedItems.Remove(id);
+        ToastService.Info($"Destildé {prev.IdsQueCruzan.Count} publis que cruzarían el umbral. Trabajálas de a una desde la ficha.");
+        StateHasChanged();
     }
 
     private async Task GuardarBulkAjuste(bool publicarEnMeli)
