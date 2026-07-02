@@ -4470,8 +4470,10 @@
             }
 
             // 2026-07-01: detectar si el ajuste hace CRUZAR el umbral (cambia el régimen de envío).
-            // Si el precio actual y el nuevo están en distintos lados del umbral → cruce peligroso.
-            bool cruzaUmbral = (precioAhora < UMBRAL_ENVIO_APROX) != (precioNuevo < UMBRAL_ENVIO_APROX)
+            // Solo importa si la publi OFRECE envío gratis (Full/Flex). En ME1 el cliente paga
+            // el envío directo, MeLi nunca cobra el envío al vendedor → el umbral no cambia nada.
+            bool cruzaUmbral = it.FreeShipping
+                && (precioAhora < UMBRAL_ENVIO_APROX) != (precioNuevo < UMBRAL_ENVIO_APROX)
                 && Math.Abs(precioNuevo - precioAhora) > 0.5m;
             if (cruzaUmbral)
             {
