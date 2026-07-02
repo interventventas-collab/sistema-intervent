@@ -1,0 +1,56 @@
+@inject ApiClient Api
+@inject NavigationManager Nav
+@implements IDisposable
+
+@*
+   2026-07-02: Globito de mensajes sin leer del chat interno.
+   - Polling cada 15s a /api/chat/no-leidos
+   - Al tocar el ícono, va a la pantalla /chat
+*@
+
+@if (canShow)
+{
+    <button class="topbar-bell" @onclick="IrAlChat" title="@(total > 0 ? $"{total} mensajes sin leer" : "Chat interno")">
+        <i class="fa-solid fa-comments"></i>
+        @if (total > 0)
+        {
+            <span class="topbar-bell-badge topbar-bell-badge-pulse">@(total > 99 ? "99+" : total.ToString())</span>
+        }
+    </button>
+}
+
+@code {
+    private int total;
+    private bool canShow = true;
+    private int consecutiveErrors;
+    private System.Threading.Timer? timer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await PollOnce();
+        timer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(PollOnce);
+        }, null, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
+    }
+
+    private async Task PollOnce()
+    {
+        try
+        {
+            var r = await Api.GetChatNoLeidosAsync();
+            consecutiveErrors = 0;
+            total = r?.Total ?? 0;
+            StateHasChanged();
+        }
+        catch
+        {
+            consecutiveErrors++;
+            if (consecutiveErrors >= 3) canShow = false;
+        }
+    }
+
+    private void IrAlChat() => Nav.NavigateTo("/chat");
+
+    public void Dispose() => timer?.Dispose();
+}

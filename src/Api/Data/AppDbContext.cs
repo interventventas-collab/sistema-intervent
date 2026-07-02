@@ -77,6 +77,9 @@ public class AppDbContext : DbContext
     public DbSet<VaultEntry> VaultEntries => Set<VaultEntry>();
     // Postits del dashboard
     public DbSet<Postit> Postits => Set<Postit>();
+    // Chat interno entre usuarios (2026-07-02)
+    public DbSet<ChatMensaje> ChatMensajes => Set<ChatMensaje>();
+    public DbSet<ChatLectura> ChatLecturas => Set<ChatLectura>();
     // Visibilidad granular del sidebar por rol — admin controla qué ven los demás (2026-05-28)
     public DbSet<MenuVisibility> MenuVisibility => Set<MenuVisibility>();
     // Modulo Cafe (independiente)
