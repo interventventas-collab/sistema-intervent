@@ -2138,6 +2138,161 @@ public class MeliController : ControllerBase
         return Ok(new BulkAjusteResponse(modificados, saltadosPI, noEncontrados));
     }
 
+    // 2026-07-01: masivo POR GANANCIA — pide un % de ganancia sobre costo, el sistema calcula
+    // el precio necesario POR PUBLI usando SU costo + SU comisión + envío + IVA (misma lógica que
+    // el bloque "¿Qué querés ganar?" de la ficha individual, aplicada a las N tildadas).
+    public record BulkPrecioPorGananciaRequest(
+        List<int> ItemIds,
+        decimal GananciaPct,          // ej: 30 = quiero ganar 30% sobre costo
+        string? Redondeo,             // null / "" / "99" / "999" / "000"
+        bool IncluirPrecioIndependiente,
+        bool PublicarEnMeli);
+
+    public record BulkPrecioPorGananciaDetail(
+        int ItemId, string MeliItemId, string Titulo,
+        decimal? Costo, decimal? PrecioBase, decimal? PrecioActual, decimal? PrecioNuevo,
+        decimal? GananciaEstimada, decimal? MargenPct,
+        bool Guardado, bool PusheadoOk, string? Mensaje);
+
+    public record BulkPrecioPorGananciaResponse(
+        int Total, int Guardados, int Pusheados,
+        int SinCosto, int SaltadosPrecioIndep, int Errores,
+        List<BulkPrecioPorGananciaDetail> Detalles);
+
+    [HttpPost("items/bulk-precio-por-ganancia")]
+    public async Task<IActionResult> BulkPrecioPorGanancia(
+        [FromBody] BulkPrecioPorGananciaRequest req,
+        [FromServices] Api.Data.AppDbContext db,
+        [FromServices] MeliPricePushService pushSvc,
+        CancellationToken ct)
+    {
+        if (req.ItemIds is null || req.ItemIds.Count == 0)
+            return BadRequest(new { error = "No hay publicaciones seleccionadas." });
+
+        var items = await db.MeliItems
+            .Where(i => req.ItemIds.Contains(i.Id))
+            .ToListAsync(ct);
+
+        var meliItemIds = items.Select(i => i.MeliItemId).ToList();
+        var configs = await db.MeliItemSyncConfigs
+            .Where(c => meliItemIds.Contains(c.MeliItemId))
+            .ToDictionaryAsync(c => c.MeliItemId, c => c, ct);
+
+        var detalles = new List<BulkPrecioPorGananciaDetail>();
+        int guardados = 0, pusheados = 0, sinCosto = 0, saltadosPI = 0, errores = 0;
+        string? redondeo = string.IsNullOrEmpty(req.Redondeo) ? null : req.Redondeo;
+        var ahora = DateTime.UtcNow;
+
+        foreach (var it in items)
+        {
+            if (ct.IsCancellationRequested) break;
+
+            if (!configs.TryGetValue(it.MeliItemId, out var cfg))
+            {
+                cfg = new MeliItemSyncConfig { MeliItemId = it.MeliItemId };
+                db.MeliItemSyncConfigs.Add(cfg);
+                configs[it.MeliItemId] = cfg;
+            }
+
+            if (cfg.PrecioIndependiente && !req.IncluirPrecioIndependiente)
+            {
+                saltadosPI++;
+                detalles.Add(new BulkPrecioPorGananciaDetail(it.Id, it.MeliItemId, it.Title,
+                    null, null, it.Price, null, null, null, false, false, "Precio independiente — se saltó"));
+                continue;
+            }
+
+            // 1) Precio base del sistema
+            var (precioBase, hasBase) = await pushSvc.CalcularPrecioBaseAsync(it, ct);
+            if (!hasBase)
+            {
+                errores++;
+                detalles.Add(new BulkPrecioPorGananciaDetail(it.Id, it.MeliItemId, it.Title,
+                    null, null, it.Price, null, null, null, false, false, "Sin precio base del sistema (falta PrecioOtro)"));
+                continue;
+            }
+
+            // 2) Costo del producto
+            var costo = await pushSvc.CalcularCostoTotalAsync(it, ct);
+            if (costo is null || costo.Value <= 0)
+            {
+                sinCosto++;
+                detalles.Add(new BulkPrecioPorGananciaDetail(it.Id, it.MeliItemId, it.Title,
+                    null, precioBase, it.Price, null, null, null, false, false, "Sin costo cargado en el sistema"));
+                continue;
+            }
+
+            // 3) Comisión efectiva total (SaleFee real / precio actual). Fallback 30% si no hay.
+            decimal saleFeePct;
+            if (it.SaleFeeAmount.HasValue && it.SaleFeeAmount.Value > 0 && it.Price > 0)
+                saleFeePct = it.SaleFeeAmount.Value / it.Price;
+            else
+                saleFeePct = 0.30m;
+
+            // 4) Precio necesario para ganar req.GananciaPct sobre costo (misma lógica que la ficha):
+            //    netoSinIvaNecesario = costo × (1 + gan%/100)
+            //    netoConIvaNecesario = netoSinIva × 1.21
+            //    precio = netoConIva / (1 - comisiónPct)
+            decimal netoSinIvaNec = costo.Value * (1 + req.GananciaPct / 100m);
+            decimal netoConIvaNec = netoSinIvaNec * 1.21m;
+            decimal denom = 1m - saleFeePct;
+            if (denom <= 0.05m)
+            {
+                errores++;
+                detalles.Add(new BulkPrecioPorGananciaDetail(it.Id, it.MeliItemId, it.Title,
+                    costo, precioBase, it.Price, null, null, null, false, false, "Comisión demasiado alta — no hay precio posible"));
+                continue;
+            }
+            decimal precioNuevo = netoConIvaNec / denom;
+            if (!string.IsNullOrEmpty(redondeo))
+                precioNuevo = AplicarRedondeoUpHelper(precioNuevo, redondeo);
+            precioNuevo = Math.Round(precioNuevo, 2);
+
+            // 5) Guardar como AjustePct=0, AjusteFijo=(precioNuevo - precioBase), Redondeo.
+            //    Al pushear con MeliPricePushService, se recalcula: precioBase + ajusteFijo → redondeo → MeLi.
+            cfg.AjustePct = 0m;
+            cfg.AjusteFijo = Math.Round(precioNuevo - precioBase, 2);
+            cfg.AjusteRedondeo = redondeo;
+            cfg.UpdatedAt = ahora;
+            guardados++;
+
+            // 6) Ganancia y margen estimados con el precio nuevo (para el reporte al frontend).
+            decimal netoConIvaResult = precioNuevo * (1m - saleFeePct);
+            decimal netoSinIvaResult = netoConIvaResult / 1.21m;
+            decimal gananciaEst = Math.Round(netoSinIvaResult - costo.Value, 2);
+            decimal margenPct = costo.Value > 0 ? Math.Round(gananciaEst / costo.Value * 100m, 1) : 0m;
+
+            var det = new BulkPrecioPorGananciaDetail(it.Id, it.MeliItemId, it.Title,
+                costo, precioBase, it.Price, precioNuevo, gananciaEst, margenPct, true, false, null);
+            detalles.Add(det);
+        }
+        await db.SaveChangesAsync(ct);
+
+        // 7) Si el usuario pidió publicar en MeLi, iterar y pushear con throttle.
+        if (req.PublicarEnMeli)
+        {
+            for (int i = 0; i < detalles.Count; i++)
+            {
+                var d = detalles[i];
+                if (!d.Guardado) continue;
+                try
+                {
+                    var r = await pushSvc.PushPrecioForItemAsync(d.ItemId, markAsClaimed: true, ct);
+                    if (r.Ok) pusheados++; else errores++;
+                    detalles[i] = d with { PusheadoOk = r.Ok, Mensaje = r.Ok ? null : r.Message };
+                }
+                catch (Exception ex)
+                {
+                    errores++;
+                    detalles[i] = d with { PusheadoOk = false, Mensaje = ex.Message };
+                }
+                await Task.Delay(200, ct);  // no saturar MeLi
+            }
+        }
+
+        return Ok(new BulkPrecioPorGananciaResponse(items.Count, guardados, pusheados, sinCosto, saltadosPI, errores, detalles));
+    }
+
     // 2026-07-01: Fase C — push masivo de precios a MeLi. Solo pushea las que tienen ajuste cargado.
     public record BulkPushPrecioRequest(List<int> ItemIds);
     public record BulkPushPrecioDetail(int ItemId, string MeliItemId, bool Ok, string Message, decimal? PushedPrice);
