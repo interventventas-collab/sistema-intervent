@@ -1809,6 +1809,11 @@ public class MeliItemService
             queryParams += $"&category_id={item.CategoryId}";
         if (!string.IsNullOrEmpty(item.ListingTypeId))
             queryParams += $"&listing_type_id={item.ListingTypeId}";
+        // 2026-07-01: FIX crítico — sin installment_tag MeLi devolvía el cargo por cuotas del default
+        // (6 cuotas). Publis con 3, 6, 9, 12 cuotas mostraban todas el mismo costo por cuotas y por
+        // ende el mismo margen/ganancia. Ahora cada modalidad trae su costo real.
+        if (!string.IsNullOrEmpty(item.InstallmentTag))
+            queryParams += $"&installment_tag={item.InstallmentTag}";
 
         var url = $"https://api.mercadolibre.com/sites/MLA/listing_prices?{queryParams}";
         var resp = await http.GetAsync(url);
