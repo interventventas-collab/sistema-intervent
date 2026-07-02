@@ -269,19 +269,21 @@
                             <label class="form-label">Email</label>
                             <input class="form-input" type="email" @bind="formEmail" placeholder="email@ejemplo.com" />
                         </div>
+                    </div>
+                    <div class="form-row">
                         <div class="form-group" style="flex: 1;">
                             <label class="form-label">Teléfono</label>
                             <input class="form-input" @bind="formTelefono" placeholder="Ej: 5491141234567" />
-                            <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">
-                                💡 Para que el link de WhatsApp del comprobante funcione, cargá el número en <strong>formato internacional sin el +</strong>
-                                (ej: <code>5491141234567</code> = 54 + 9 + 11 + número). El icono 📱 que aparece en el PDF abre WhatsApp directo a este número.
-                            </p>
                         </div>
                         <div class="form-group" style="flex: 1;">
                             <label class="form-label">Teléfono 2</label>
                             <input class="form-input" @bind="formTelefono2" placeholder="Teléfono alternativo (opcional)" />
                         </div>
                     </div>
+                    <p style="font-size: 0.72rem; color: #6b7280; margin: -0.3rem 0 0.6rem;">
+                        💡 Para que el link de WhatsApp del comprobante funcione, cargá el número en <strong>formato internacional sin el +</strong>
+                        (ej: <code>5491141234567</code> = 54 + 9 + 11 + número). El icono 📱 que aparece en el PDF abre WhatsApp directo a este número.
+                    </p>
                     <div class="form-group">
                         <label class="form-label">Domicilio de entrega</label>
                         <input class="form-input" @bind="formDomicilioEntrega" placeholder="Donde se entregan los pedidos (si difiere del fiscal)" />
