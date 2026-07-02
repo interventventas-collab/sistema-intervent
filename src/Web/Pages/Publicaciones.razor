@@ -202,16 +202,11 @@
             {
                 <div class="bulk-actions-bar">
                     <span><strong>@selectedItems.Count</strong> publicaciones seleccionadas</span>
-                    @* 2026-07-01: Fase B — ajuste masivo (%/$/redondeo). NO pushea a MeLi, solo guarda en DB. *@
+                    @* 2026-07-01: modal unificado (Fase B + C). Al pie 2 botones: solo guardar o guardar+publicar. *@
                     <button class="btn btn-sm" @onclick="AbrirBulkAjusteModal"
-                            style="background:#16a34a; color:white; border:1px solid #15803d; font-weight:600;">
-                        ⚡ Cargar ajuste en lote
-                    </button>
-                    @* 2026-07-01: Fase C — pushear a MeLi los ajustes ya cargados. Toca precios REALES. *@
-                    <button class="btn btn-sm" @onclick="AbrirBulkPushModal"
-                            style="background:#ea580c; color:white; border:1px solid #c2410c; font-weight:600;"
-                            title="Envía a MeLi los precios de las publis tildadas que tengan ajuste cargado">
-                        🚀 Pushear precios a MeLi
+                            style="background:#16a34a; color:white; border:1px solid #15803d; font-weight:600;"
+                            title="Modificar precios de las publis tildadas: ver preview y elegir si solo guardás o publicás en MeLi ya">
+                        💵 Ajustar precios en lote
                     </button>
                     <button class="btn btn-primary btn-sm" @onclick="BulkCreateProducts">
                         <i class="fa-solid fa-box"></i> Crear productos
@@ -443,10 +438,15 @@
                                 var isExpanded = expandedGroups.Contains(grp.Key);
                                 @* 2026-07-01: click en padre de familia expande/colapsa en vez de abrir ficha
                                    — el padre es un contenedor visual, las variantes hijas tienen la info operable. *@
-                                <tr class="clickable-row @(selectedItems.Contains(item.Id) ? "row-selected" : "")" style="@CatalogRowStyle(item)"
+                                @* 2026-07-01: padre familia tildado = todas las hijas tildadas. Antes solo se tildaba
+                                   la variante representante y las hermanas quedaban sin ajuste — bug de UX. *@
+                                var checkedThisRow = grp.IsFamily
+                                    ? grp.Variants.Count > 0 && grp.Variants.All(v => selectedItems.Contains(v.Id))
+                                    : selectedItems.Contains(item.Id);
+                                <tr class="clickable-row @(checkedThisRow ? "row-selected" : "")" style="@CatalogRowStyle(item)"
                                     @onclick="() => { if (grp.IsFamily) ToggleGroupExpand(grp.Key); else OpenItemModal(item); }"
                                     title="@(grp.IsFamily ? "Click para ver las variantes de la familia" : "Click para abrir la ficha")">
-                                    <td class="td-checkbox" @onclick:stopPropagation="true"><input type="checkbox" checked="@selectedItems.Contains(item.Id)" @onchange="() => ToggleSelectItem(item.Id)" /></td>
+                                    <td class="td-checkbox" @onclick:stopPropagation="true"><input type="checkbox" checked="@checkedThisRow" @onchange="() => ToggleSelectRow(grp)" /></td>
                                     <td style="text-align: center;">
                                         @if (!string.IsNullOrEmpty(item.Thumbnail))
                                         {
@@ -2867,22 +2867,25 @@
 
 
 @* ═══════════════════════════════════════════════════════════════════════════
-   2026-07-01: Modal de AJUSTE MASIVO (Fase B). Aplica %/$/Redondeo a las publis
-   tildadas y guarda en MeliItem_SyncConfig. NO pushea a MeLi — eso es Fase C.
-   Preview se calcula 100% en frontend (rápido, sin trip al servidor).
+   2026-07-01: Modal UNIFICADO "Ajustar precios en lote" (fusión Fase B + C).
+   Aplica %/$/Redondeo a las publis tildadas y AL PIE del modal el usuario elige:
+   - "Solo guardar" (queda en base, MeLi sigue igual)
+   - "🚀 Guardar y publicar en MeLi" (guarda + pushea en un solo paso)
+   Preview se calcula 100% en frontend.
    ═══════════════════════════════════════════════════════════════════════════ *@
 @if (showBulkAjusteModal)
 {
     <div class="modal-overlay" @onclick="CerrarBulkAjusteModal">
         <div class="modal-card modal-wide" @onclick:stopPropagation="true">
             <div class="modal-header" style="background:#16a34a; color:white;">
-                <h4 style="margin:0;">⚡ Cargar ajuste en lote a @selectedItems.Count publicaciones</h4>
+                <h4 style="margin:0;">💵 Ajustar precios en lote — @selectedItems.Count publicaciones</h4>
                 <button class="modal-close" @onclick="CerrarBulkAjusteModal" style="color:white;">&times;</button>
             </div>
             <div class="modal-body">
                 <div style="background:#dbeafe; border:1px solid #3b82f6; border-radius:6px; padding:0.6rem 0.8rem; margin-bottom:1rem; font-size:0.85rem; color:#1e40af;">
-                    <strong>Este paso guarda el ajuste en tu base pero NO pushea a MercadoLibre.</strong>
-                    Después de guardar podés revisar publi por publi. Recién con el botón 💵 (individual) o el push masivo (Fase C) sale a MeLi.
+                    Cargá el ajuste que querés aplicar. Al pie tenés dos opciones:
+                    <strong>"Solo guardar"</strong> (queda en tu base, MeLi sigue con los precios viejos hasta que decidas)
+                    o <strong>"🚀 Guardar y publicar en MeLi"</strong> (los precios cambian YA en MercadoLibre).
                 </div>
 
                 <div style="display:grid; grid-template-columns: 1fr 1fr 1.2fr; gap:0.75rem; margin-bottom:1rem;">
@@ -2981,17 +2984,23 @@
                     </div>
                 }
             </div>
-            <div class="modal-footer" style="display:flex; justify-content:space-between; gap:0.5rem;">
+            <div class="modal-footer" style="display:flex; justify-content:space-between; gap:0.5rem; flex-wrap:wrap;">
                 <button class="btn btn-sm" @onclick="BorrarBulkAjuste" disabled="@bulkGuardando"
                         style="background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; font-weight:600;"
                         title="Vaciar los 3 campos de ajuste (%/$/redondeo) de las publis tildadas">
                     🗑 Borrar ajuste de las @selectedItems.Count
                 </button>
-                <div style="display:flex; gap:0.5rem;">
+                <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
                     <button class="btn btn-secondary btn-sm" @onclick="CerrarBulkAjusteModal" disabled="@bulkGuardando">Cancelar</button>
-                    <button class="btn btn-sm" @onclick="GuardarBulkAjuste" disabled="@(bulkGuardando || !PuedeGuardarBulk())"
-                            style="background:#16a34a; color:white; border:1px solid #15803d; font-weight:600;">
-                        @(bulkGuardando ? "Guardando..." : "Guardar en base (no pushear todavía)")
+                    <button class="btn btn-sm" @onclick="() => GuardarBulkAjuste(publicarEnMeli: false)" disabled="@(bulkGuardando || !PuedeGuardarBulk())"
+                            style="background:#16a34a; color:white; border:1px solid #15803d; font-weight:600;"
+                            title="Guarda el ajuste en tu base. MeLi sigue con los precios viejos hasta que decidas publicarlos.">
+                        @(bulkGuardando && !bulkPublicarEnMeli ? "Guardando..." : "Solo guardar")
+                    </button>
+                    <button class="btn btn-sm" @onclick="() => GuardarBulkAjuste(publicarEnMeli: true)" disabled="@(bulkGuardando || !PuedeGuardarBulk())"
+                            style="background:#ea580c; color:white; border:1px solid #c2410c; font-weight:600;"
+                            title="Guarda el ajuste Y lo publica en MercadoLibre. Los precios cambian ya para los compradores.">
+                        @(bulkGuardando && bulkPublicarEnMeli ? "Publicando en MeLi..." : "🚀 Guardar y publicar en MeLi")
                     </button>
                 </div>
             </div>
@@ -3456,6 +3465,7 @@
     private string bulkAjusteRedondeoOpt = "__nochange";  // "__nochange" / "" / "99" / "999" / "000"
     private bool bulkIncluirPrecioIndep;
     private bool bulkGuardando;
+    private bool bulkPublicarEnMeli;  // 2026-07-01: flag para saber si el usuario apretó "Solo guardar" o "Guardar y publicar"
 
     public record BulkPreviewRow(string Titulo, decimal PrecioAhora, decimal PrecioNuevo, decimal Delta, bool EsPrecioIndep);
     public record BulkPreviewResult(List<BulkPreviewRow> Filas, int VanACambiar, int SaltadasPrecioIndependiente);
@@ -4339,6 +4349,24 @@
 
     private void ClearSelection() => selectedItems.Clear();
 
+    /// <summary>2026-07-01: tildar el checkbox de un padre familia = tildar todas las variantes hijas
+    /// (antes solo se tildaba la variante representante y las hermanas quedaban sin ajuste).</summary>
+    private void ToggleSelectRow(GroupedRow grp)
+    {
+        if (grp.IsFamily && grp.Variants.Count > 0)
+        {
+            bool allTildadas = grp.Variants.All(v => selectedItems.Contains(v.Id));
+            if (allTildadas)
+                foreach (var v in grp.Variants) selectedItems.Remove(v.Id);
+            else
+                foreach (var v in grp.Variants) selectedItems.Add(v.Id);
+        }
+        else
+        {
+            ToggleSelectItem(grp.Item.Id);
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════
     // 2026-07-01: Fase B — Ajuste masivo (%/$/redondeo) para publis tildadas.
     // Solo guarda en MeliItem_SyncConfig — NO pushea a MeLi.
@@ -4425,10 +4453,11 @@
         return new BulkPreviewResult(filas, vanACambiar, saltadasPI);
     }
 
-    private async Task GuardarBulkAjuste()
+    private async Task GuardarBulkAjuste(bool publicarEnMeli)
     {
         if (!PuedeGuardarBulk() || bulkGuardando) return;
         bulkGuardando = true;
+        bulkPublicarEnMeli = publicarEnMeli;
         StateHasChanged();
 
         bool redondeoTocado = bulkAjusteRedondeoOpt != "__nochange";
@@ -4446,23 +4475,58 @@
             IncluirPrecioIndependiente: bulkIncluirPrecioIndep);
 
         var (resp, err) = await Api.BulkAjustePrecioAsync(req);
-        bulkGuardando = false;
 
         if (resp is null)
         {
+            bulkGuardando = false;
             ToastService.Error("No se pudo guardar: " + (err ?? "Error"));
             StateHasChanged();
             return;
         }
 
-        string msg = $"✓ {resp.Modificados} publicaciones actualizadas (sin pushear a MeLi todavía)";
-        if (resp.SaltadosPrecioIndependiente > 0)
-            msg += $" · {resp.SaltadosPrecioIndependiente} saltadas por precio independiente";
-        ToastService.Success(msg);
+        // 2026-07-01: mantengo la selección tildada (antes se limpiaba y confundía).
+        // El usuario decide cuándo deseleccionar con el botón "Deseleccionar" de la barra.
+        if (!publicarEnMeli)
+        {
+            // Modo "Solo guardar": queda en base, no toca MeLi.
+            bulkGuardando = false;
+            string msg = $"✓ {resp.Modificados} publicaciones actualizadas en tu base (MeLi sigue con los precios viejos)";
+            if (resp.SaltadosPrecioIndependiente > 0)
+                msg += $" · {resp.SaltadosPrecioIndependiente} saltadas por precio independiente";
+            ToastService.Success(msg);
+            showBulkAjusteModal = false;
+            ajustesPrecio.Clear();
+            await LoadItems();
+            return;
+        }
+
+        // Modo "Guardar y publicar en MeLi": pusheamos ya lo recién guardado.
+        var (pushResp, pushErr) = await Api.BulkPushPrecioAsync(selectedItems.ToList());
+        bulkGuardando = false;
+
+        if (pushResp is null)
+        {
+            ToastService.Warning($"✓ Guardadas OK en tu base, pero falló el push a MeLi: {pushErr ?? "Error"}. Podés reintentar publicándolas después.");
+            showBulkAjusteModal = false;
+            ajustesPrecio.Clear();
+            await LoadItems();
+            return;
+        }
+
+        string pushMsg = $"✅ {pushResp.Pusheados} precios publicados en MeLi";
+        if (pushResp.SinAjuste > 0) pushMsg += $" · {pushResp.SinAjuste} sin ajuste (saltadas)";
+        if (pushResp.Errores > 0)
+        {
+            pushMsg += $" · ⚠ {pushResp.Errores} con error";
+            ToastService.Warning(pushMsg);
+        }
+        else
+        {
+            ToastService.Success(pushMsg);
+        }
+
         showBulkAjusteModal = false;
-        // Limpiar cache de ajustes en memoria para que se re-hidraten del DTO refrescado
         ajustesPrecio.Clear();
-        selectedItems.Clear();
         await LoadItems();
     }
 
@@ -4499,7 +4563,7 @@
         ToastService.Success(msg);
         showBulkAjusteModal = false;
         ajustesPrecio.Clear();
-        selectedItems.Clear();
+        // 2026-07-01: mantengo la selección tildada — el usuario decide cuándo destildar.
         await LoadItems();
     }
 
