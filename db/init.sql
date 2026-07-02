@@ -5184,3 +5184,46 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='EntreCalles' AND Object_ID=OBJECT_ID('Cafe_Clientes'))
     ALTER TABLE Cafe_Clientes ADD EntreCalles NVARCHAR(200) NULL;
 GO
+
+-- 2026-07-02: Chat interno entre usuarios del sistema.
+-- Un canal "Grupo general" (ParaUserId NULL) + mensajes privados uno-a-uno (ParaUserId = destinatario).
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Chat_Mensajes' AND xtype='U')
+BEGIN
+    CREATE TABLE Chat_Mensajes (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        DeUserId INT NOT NULL,                 -- quien lo envió
+        DeNombre NVARCHAR(120) NULL,           -- nombre para mostrar (guardado al enviar)
+        ParaUserId INT NULL,                   -- NULL = Grupo general; con valor = mensaje privado a ese usuario
+        Cuerpo NVARCHAR(MAX) NOT NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+    CREATE INDEX IX_ChatMensajes_Para ON Chat_Mensajes(ParaUserId, CreatedAt DESC);
+    CREATE INDEX IX_ChatMensajes_De ON Chat_Mensajes(DeUserId, CreatedAt DESC);
+END
+GO
+
+-- Control de "hasta dónde leyó" cada usuario en cada conversación.
+-- Conversacion = 'grupo'  ó  'u:{idDelOtroUsuario}'.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Chat_Lecturas' AND xtype='U')
+BEGIN
+    CREATE TABLE Chat_Lecturas (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        UserId INT NOT NULL,
+        Conversacion NVARCHAR(40) NOT NULL,
+        LastReadAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT UQ_ChatLecturas UNIQUE (UserId, Conversacion)
+    );
+END
+GO
+
+-- 2026-07-02: Alquileres usa la base de clientes GENERAL (Cafe_Clientes), unificado con ventas.
+-- Cambia el vínculo de Alq_Reservas.ClienteId (antes -> Alq_Clientes) a Cafe_Clientes.
+-- (La migración de datos de clientes viejos de alquiler se corre aparte, una sola vez por entorno.)
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_AlqReservas_Cliente')
+    ALTER TABLE Alq_Reservas DROP CONSTRAINT FK_AlqReservas_Cliente;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_AlqReservas_CafeCliente')
+   AND OBJECT_ID('Cafe_Clientes') IS NOT NULL
+    ALTER TABLE Alq_Reservas ADD CONSTRAINT FK_AlqReservas_CafeCliente
+        FOREIGN KEY (ClienteId) REFERENCES Cafe_Clientes(Id);
+GO

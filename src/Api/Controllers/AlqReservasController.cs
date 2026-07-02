@@ -234,7 +234,7 @@ public class AlqReservasController : ControllerBase
         if (req.Items is null || req.Items.Count == 0)
             return BadRequest(new { error = "Agregá al menos un equipo a la reserva" });
 
-        var cliente = await _db.AlqClientes.FindAsync(req.ClienteId);
+        var cliente = await _db.CafeClientes.FindAsync(req.ClienteId);
         if (cliente is null) return BadRequest(new { error = "Cliente no encontrado" });
 
         // Consolidar items por EquipoId (sumar cantidades si vinieron repetidos)
