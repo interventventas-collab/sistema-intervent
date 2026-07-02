@@ -665,19 +665,20 @@
 
     private string modoEdicion = ""; // "" | "entrada" | "salida"
 
-    /// <summary>Setea la hora de entrada con la hora actual del celular, redondeada al 5 minuto.</summary>
+    /// <summary>2026-07-02: setea la hora de entrada con la hora EXACTA del momento (con minutos,
+    /// sin redondear). Igual que el kiosco.</summary>
     private void MarcarEntradaAhora()
     {
         var ahora = DateTime.UtcNow.AddHours(-3);
-        formHoraEntrada = $"{ahora.Hour:D2}:{(ahora.Minute / 30) * 30:D2}";
+        formHoraEntrada = $"{ahora.Hour:D2}:{ahora.Minute:D2}";
         RecalcularHorasExtras();
     }
 
-    /// <summary>Idem para salida.</summary>
+    /// <summary>Idem para salida — hora exacta con minutos.</summary>
     private void MarcarSalidaAhora()
     {
         var ahora = DateTime.UtcNow.AddHours(-3);
-        formHoraSalida = $"{ahora.Hour:D2}:{(ahora.Minute / 30) * 30:D2}";
+        formHoraSalida = $"{ahora.Hour:D2}:{ahora.Minute:D2}";
         RecalcularHorasExtras();
     }
 
