@@ -277,15 +277,9 @@
     {
         try
         {
-            await JS.InvokeVoidAsync("eval",
-                $@"(function(){{
-                    var btn=document.getElementById('{ToggleId}');
-                    if(!btn) return;
-                    var card=btn.closest('.dashboard-detail-card');
-                    if(!card) return;
-                    card.style.zIndex='{(menuOpen ? "50" : "auto")}';
-                    card.style.position='relative';
-                }})()");
+            var zVal = menuOpen ? "50" : "auto";
+            var js = "(function(){var btn=document.getElementById('" + ToggleId + "');if(!btn)return;var card=btn.closest('.dashboard-detail-card');if(!card)return;card.style.zIndex='" + zVal + "';card.style.position='relative';})()";
+            await JS.InvokeVoidAsync("eval", js);
         }
         catch { }
     }
