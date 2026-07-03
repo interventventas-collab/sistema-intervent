@@ -6451,7 +6451,10 @@
             addFormato = addItemModalFormato;
             addMolienda = addItemModalMolienda;
             addEnvase = addItemModalEnvase;
-            await AddItem();
+            // 2026-07-03: skipDomReRead=true asi AddItem NO relee molienda/envase
+            // del <select> inline (que sigue con los defaults viejos) y respeta lo
+            // elegido en el modal.
+            await AddItem(skipDomReRead: true);
         }
         else if (addItemModalMode == "COMBO")
         {
@@ -6532,7 +6535,7 @@
         await AddCombo();
     }
 
-    private async Task AddItem()
+    private async Task AddItem(bool skipDomReRead = false)
     {
         if (addProductoId <= 0 || addCantidad <= 0) return;
         var p = productos?.FirstOrDefault(x => x.Id == addProductoId);
@@ -6545,7 +6548,10 @@
         // 2026-06-09 fix defensivo: garantizar que addMolienda/addEnvase reflejen el
         // valor REAL del DOM. Cuando el usuario navega con teclado (Enter), a veces
         // el @bind del <select> no commitea su onchange antes de que se dispare AddItem.
-        if (esCafe)
+        // 2026-07-03: skipDomReRead=true cuando venimos del modal Agregar producto
+        // (los valores ya vienen seteados desde el modal y no hay que pisar con el DOM
+        // del formulario inline, que tiene los defaults viejos).
+        if (esCafe && !skipDomReRead)
         {
             try
             {
