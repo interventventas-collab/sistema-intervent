@@ -2679,18 +2679,27 @@ async function runShellSaldo({ usuario, password, gmailUser, gmailPass }) {
   }
 
   shellState.step = 'Buscando el saldo disponible...';
-  await sleep(2000);
+  await sleep(2500);
   let saldoText = null;
   try {
-    const userIcon = page.locator('header button, header a, [class*="user" i], [aria-label*="usuario" i]').last();
-    await userIcon.click({ timeout: 6000 }).catch(() => {});
-    await sleep(1200);
-    const saldoLink = page.locator('text=/Saldo Cuenta/i').first();
-    await saldoLink.click({ timeout: 6000 }).catch(() => {});
-    await sleep(2500);
-    const cuerpo = (await page.locator('body').innerText({ timeout: 3000 })) || '';
-    const m = cuerpo.match(/Disponible[^\d\-]*([\-]?[\d.\,]+)/i);
-    if (m) saldoText = m[1];
+    // Abrir el menú de usuario (el link con el email) para exponer "Saldo Cuenta".
+    const menuTriggers = [
+      page.locator('a:has-text("intervent.ventas"), a:has-text("@")').first(),
+      page.locator('[class*="user-menu"], [class*="userMenu"], [class*="avatar"], header .dropdown-toggle').first(),
+    ];
+    for (const t of menuTriggers) {
+      try { if (await t.isVisible().catch(() => false)) { await t.click({ timeout: 3000 }).catch(() => {}); await sleep(700); break; } } catch {}
+    }
+    // Click en "Saldo Cuenta" (#btnBalance). force: aunque esté en un menú colapsado.
+    try { await page.locator('#btnBalance').click({ timeout: 6000, force: true }); }
+    catch { try { await page.getByText('Saldo Cuenta', { exact: false }).first().click({ timeout: 4000, force: true }); } catch {} }
+    // El saldo carga por AJAX: reintentar leer "Disponible $X" unos segundos.
+    for (let i = 0; i < 8 && !saldoText; i++) {
+      await sleep(1500);
+      const cuerpo = (await page.locator('body').innerText({ timeout: 3000 }).catch(() => '')) || '';
+      const m = cuerpo.match(/Disponible[^0-9\-]*([\-]?\$?\s*[\d.]+,\d{2})/i);
+      if (m) saldoText = m[1].replace(/[\$\s]/g, '');
+    }
   } catch {}
 
   if (!saldoText) {
