@@ -2681,28 +2681,35 @@ async function runShellSaldo({ usuario, password, gmailUser, gmailPass }) {
   shellState.step = 'Buscando el saldo disponible...';
   await sleep(2500);
   let saldoText = null;
+  const leerDisponible = async () => {
+    const cuerpo = (await page.locator('body').innerText({ timeout: 3000 }).catch(() => '')) || '';
+    const m = cuerpo.match(/Disponible[^0-9\-]*([\-]?\$?\s*[\d][\d.,]*)/i);
+    return m ? m[1].replace(/[\$\s]/g, '') : null;
+  };
   try {
-    // Abrir el menú de usuario (el link con el email) para exponer "Saldo Cuenta".
-    const menuTriggers = [
-      page.locator('a:has-text("intervent.ventas"), a:has-text("@")').first(),
-      page.locator('[class*="user-menu"], [class*="userMenu"], [class*="avatar"], header .dropdown-toggle').first(),
-    ];
-    for (const t of menuTriggers) {
-      try { if (await t.isVisible().catch(() => false)) { await t.click({ timeout: 3000 }).catch(() => {}); await sleep(700); break; } } catch {}
+    // "Saldo Cuenta" (#btnBalance) vive en el menú de usuario. Disparamos su handler
+    // directo por JS (funciona aunque el menú esté colapsado).
+    try { await page.evaluate(() => { const b = document.getElementById('btnBalance'); if (b) b.click(); }); } catch {}
+    await sleep(2500);
+    saldoText = await leerDisponible();
+    if (!saldoText) {
+      // Plan B: abrir el menú de usuario (email/avatar) y clickear visible.
+      const trg = page.locator('a:has-text("intervent"), [class*="avatar"], [class*="user"]').first();
+      try { if (await trg.isVisible().catch(() => false)) { await trg.click({ timeout: 3000 }).catch(() => {}); await sleep(800); } } catch {}
+      await page.locator('#btnBalance').click({ timeout: 4000, force: true }).catch(() => {});
     }
-    // Click en "Saldo Cuenta" (#btnBalance). force: aunque esté en un menú colapsado.
-    try { await page.locator('#btnBalance').click({ timeout: 6000, force: true }); }
-    catch { try { await page.getByText('Saldo Cuenta', { exact: false }).first().click({ timeout: 4000, force: true }); } catch {} }
-    // El saldo carga por AJAX: reintentar leer "Disponible $X" unos segundos.
-    for (let i = 0; i < 8 && !saldoText; i++) {
-      await sleep(1500);
-      const cuerpo = (await page.locator('body').innerText({ timeout: 3000 }).catch(() => '')) || '';
-      const m = cuerpo.match(/Disponible[^0-9\-]*([\-]?\$?\s*[\d.]+,\d{2})/i);
-      if (m) saldoText = m[1].replace(/[\$\s]/g, '');
-    }
+    for (let i = 0; i < 8 && !saldoText; i++) { await sleep(1500); saldoText = await leerDisponible(); }
   } catch {}
 
   if (!saldoText) {
+    // Log del contexto para ajustar sin ir a ciegas.
+    try {
+      const cuerpo = (await page.locator('body').innerText({ timeout: 3000 }).catch(() => '')) || '';
+      const low = cuerpo.toLowerCase();
+      const idx = low.indexOf('disponible') >= 0 ? low.indexOf('disponible') : low.indexOf('saldo');
+      const snip = idx >= 0 ? cuerpo.slice(Math.max(0, idx - 40), idx + 90) : ('NO aparece disponible/saldo. Inicio: ' + cuerpo.replace(/\s+/g, ' ').slice(0, 220));
+      console.log('[shell][SALDO] no leí el número. Contexto:', snip.replace(/\s+/g, ' '));
+    } catch {}
     await dumpShellDiag(page, 'saldo');
     shellState.result = { ok: true, loggedIn: true, saldo: null, error: 'Entré y usé el token, pero no pude leer el número del saldo. Ajustar selector (ver diagnóstico).' };
     await sleep(12000); return;
