@@ -1,49 +1,61 @@
 @inject ApiClient Api
 @inject ToastService Toast
 
-@* 2026-07-03 (v2): overlay para personalizar tarjetas del dashboard con imagen de
-   fondo + comentario editable. Rediseñado tras el bardo del v1 que rompio prod:
-   - NO hace fetch propio (recibe el diccionario Settings del padre via parametro)
-   - NO usa JS.eval para chequear si la imagen existe (usa <img onerror>)
-   - Defensivo: si algo falla, no rompe la card ni el dashboard
-   - La card padre necesita position:relative *@
+@* 2026-07-03 v3: overlay compacto. Un solo boton "⋯" siempre visible arriba a la
+   derecha; al tocarlo se despliega un menu con Subir foto / Agregar nota /
+   Quitar foto + hint de formato. La card queda limpia. *@
 
-<div class="cco-root @(hideImage ? "" : "cco-may-have-image")">
+<div class="cco-root">
     @if (!hideImage)
     {
-        <img src="@ImgUrl"
-             class="cco-bg-img"
+        <img src="@ImgUrl" class="cco-bg-img"
              onload="this.closest('.cco-root').classList.add('cco-image-loaded');"
-             onerror="this.style.display='none'; this.closest('.cco-root').classList.remove('cco-may-have-image');"
+             onerror="this.style.display='none'; this.closest('.cco-root').classList.remove('cco-image-loaded');"
              alt="" />
         <div class="cco-bg-tint"></div>
     }
 
-    @* InputFile en primer plano, oculto pero clickeable. La label lo dispara via for=.
-       onclick nativo: el <label for=> activa el input y dispara un click sintetico
-       que bubbles a la card padre y le hace navegar. Con stopPropagation aca, cortamos
-       ese burbujeo antes de que llegue al padre. *@
+    @* InputFile aparte, oculto pero clickeable via label. onclick nativo para frenar bubble a la card. *@
     <InputFile id="@FileInputId" class="cco-hidden-file" OnChange="OnBgPicked"
                accept=".png,.jpg,.jpeg,.webp"
                onclick="event.stopPropagation();" />
 
-    <div class="cco-controls" @onclick="NoOp" @onclick:stopPropagation="true">
-        <label class="cco-btn cco-btn-foto" for="@FileInputId"
-               title="Subir imagen de fondo"
-               @onclick="NoOp" @onclick:stopPropagation="true">
-            <span>📷 Foto</span>
-        </label>
-        <button type="button" class="cco-btn cco-btn-danger cco-btn-only-if-image" @onclick="OnDeleteBg" @onclick:stopPropagation="true" title="Quitar imagen">
-            <span>🗑 Borrar foto</span>
-        </button>
-        @if (!editing && string.IsNullOrWhiteSpace(comment))
-        {
-            <button type="button" class="cco-btn cco-btn-nota" @onclick="StartEdit" @onclick:stopPropagation="true" title="Agregar nota">
-                <span>📝 Nota</span>
+    <button type="button" class="cco-toggle" @onclick="ToggleMenu" @onclick:stopPropagation="true"
+            title="Personalizar tarjeta" aria-label="Personalizar tarjeta">
+        <span>⋯</span>
+    </button>
+
+    @if (menuOpen)
+    {
+        <div class="cco-menu" @onclick="NoOp" @onclick:stopPropagation="true">
+            <div class="cco-menu-title">Personalizar tarjeta</div>
+            <label class="cco-menu-item" for="@FileInputId" @onclick="NoOp" @onclick:stopPropagation="true">
+                <span class="cco-menu-icon">📷</span>
+                <span>@(hasImage ? "Cambiar foto de fondo" : "Subir foto de fondo")</span>
+            </label>
+            <button type="button" class="cco-menu-item" @onclick="StartEdit" @onclick:stopPropagation="true">
+                <span class="cco-menu-icon">📝</span>
+                <span>@(string.IsNullOrWhiteSpace(comment) ? "Agregar nota" : "Editar nota")</span>
             </button>
-        }
-    </div>
-    <div class="cco-hint">PNG · JPG · WEBP · máx 10 MB · ideal ~600×300 px</div>
+            <button type="button" class="cco-menu-item cco-menu-item-danger cco-menu-item-only-if-image"
+                    @onclick="OnDeleteBg" @onclick:stopPropagation="true">
+                <span class="cco-menu-icon">🗑</span>
+                <span>Quitar foto</span>
+            </button>
+            @if (!string.IsNullOrWhiteSpace(comment))
+            {
+                <button type="button" class="cco-menu-item cco-menu-item-danger"
+                        @onclick="ClearComment" @onclick:stopPropagation="true">
+                    <span class="cco-menu-icon">🗑</span>
+                    <span>Quitar nota</span>
+                </button>
+            }
+            <div class="cco-menu-hint">
+                Foto: PNG · JPG · WEBP<br />
+                Máx 10 MB · ideal ~600×300 px
+            </div>
+        </div>
+    }
 
     @if (editing || !string.IsNullOrWhiteSpace(comment))
     {
@@ -61,9 +73,6 @@
             else
             {
                 <span class="cco-text" @onclick="StartEdit" @onclick:stopPropagation="true" title="Click para editar">@comment</span>
-                <button class="cco-btn cco-btn-sm cco-btn-danger" @onclick="ClearComment" @onclick:stopPropagation="true" title="Quitar nota">
-                    <span>✕</span>
-                </button>
             }
         </div>
     }
@@ -76,10 +85,6 @@
         pointer-events: none;
         border-radius: inherit;
         overflow: hidden;
-        /* SIN z-index a proposito: si le pongo uno se crea un stacking context
-           que atrapa a los botones adentro y quedan tapados por el contenido
-           de la card (que tiene z-index:1 mas abajo). Sin z-index aca, los
-           botones (z-index:3) flotan directamente en el contexto de la card. */
     }
     .cco-bg-img {
         position: absolute;
@@ -89,25 +94,11 @@
         object-fit: cover;
         opacity: 1;
     }
-    /* Tinte muy suave para que los numeros/textos negros de la card sigan
-       legibles, sin que la foto se pierda. Antes tenia 85% de blanco al fondo
-       y practicamente tapaba la imagen. */
     .cco-bg-tint {
         position: absolute;
         inset: 0;
         background: rgba(255, 255, 255, 0.35);
     }
-    .cco-controls {
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        display: flex;
-        gap: 6px;
-        pointer-events: auto;
-        z-index: 3;
-    }
-    /* Input file oculto pero clickeable via label for=. NO usamos display:none
-       porque algunos browsers no dejan que el label lo dispare estando asi. */
     .cco-hidden-file {
         position: absolute;
         left: -9999px;
@@ -116,61 +107,85 @@
         opacity: 0;
         pointer-events: none;
     }
-    .cco-btn {
-        height: 32px;
-        padding: 0 12px;
+    .cco-toggle {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: 28px;
+        height: 28px;
+        padding: 0;
         border-radius: 8px;
-        border: 1.5px solid rgba(0,0,0,0.12);
+        border: 0.5px solid rgba(0,0,0,0.10);
+        background: rgba(255,255,255,0.85);
+        color: #6b7280;
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 1;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        font-size: 13px;
-        font-weight: 600;
-        line-height: 1;
-        white-space: nowrap;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.12);
-        transition: transform 0.06s ease, box-shadow 0.12s ease;
+        pointer-events: auto;
+        z-index: 3;
+        transition: background 0.12s ease, color 0.12s ease;
     }
-    .cco-btn:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0,0,0,0.18); }
-    .cco-btn:active { transform: translateY(0); box-shadow: 0 1px 3px rgba(0,0,0,0.10); }
-    .cco-btn-foto {
-        background: #dbeafe;
-        color: #1e3a8a;
-        border-color: #60a5fa;
+    .cco-toggle:hover {
+        background: white;
+        color: #1f2937;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.10);
     }
-    .cco-btn-foto:hover { background: #bfdbfe; }
-    .cco-btn-nota {
-        background: #fef3c7;
-        color: #78350f;
-        border-color: #f59e0b;
-    }
-    .cco-btn-nota:hover { background: #fde68a; }
-    .cco-btn-danger {
-        background: #fee2e2;
-        color: #7f1d1d;
-        border-color: #ef4444;
-    }
-    .cco-btn-danger:hover { background: #fecaca; }
-    .cco-btn-sm { height: 24px; padding: 0 8px; font-size: 11px; }
-    /* Hint del formato/tamaño debajo de los botones. Chiquito, gris, no distrae.
-       Siempre visible (era hover only) para que el usuario sepa que subir. */
-    .cco-hint {
+    .cco-menu {
         position: absolute;
         top: 46px;
-        right: 8px;
-        font-size: 10px;
-        color: rgba(31, 41, 55, 0.72);
-        background: rgba(255, 255, 255, 0.92);
-        padding: 2px 8px;
-        border-radius: 6px;
-        pointer-events: none;
-        z-index: 3;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        right: 10px;
+        min-width: 220px;
+        background: white;
+        border: 0.5px solid rgba(0,0,0,0.10);
+        border-radius: 10px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.08);
+        overflow: hidden;
+        pointer-events: auto;
+        z-index: 4;
     }
-    /* "Borrar foto" solo visible cuando la imagen efectivamente cargo. */
-    .cco-btn-only-if-image { display: none; }
-    .cco-image-loaded .cco-btn-only-if-image { display: inline-flex; }
+    .cco-menu-title {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #6b7280;
+        font-weight: 600;
+        padding: 12px 14px 8px;
+        border-bottom: 0.5px solid #e5e7eb;
+    }
+    .cco-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 10px 14px;
+        border: none;
+        border-top: 0.5px solid #f3f4f6;
+        background: transparent;
+        color: #1f2937;
+        font-size: 13px;
+        text-align: left;
+        cursor: pointer;
+    }
+    .cco-menu-item:first-of-type { border-top: none; }
+    .cco-menu-item:hover { background: #f9fafb; }
+    .cco-menu-icon { font-size: 15px; width: 18px; text-align: center; }
+    .cco-menu-item-danger { color: #b91c1c; }
+    .cco-menu-item-danger:hover { background: #fef2f2; }
+    /* "Quitar foto" solo aparece cuando el <img> cargo bien (clase agregada por onload). */
+    .cco-menu-item-only-if-image { display: none; }
+    .cco-image-loaded .cco-menu-item-only-if-image { display: flex; }
+    .cco-menu-hint {
+        font-size: 10px;
+        color: #6b7280;
+        padding: 8px 14px 12px;
+        border-top: 0.5px solid #e5e7eb;
+        background: #f9fafb;
+        line-height: 1.5;
+    }
     .cco-comment {
         position: absolute;
         left: 0; right: 0; bottom: 0;
@@ -178,7 +193,7 @@
         background: rgba(17, 24, 39, 0.72);
         color: white;
         font-size: 12px;
-        padding: 4px 10px;
+        padding: 4px 12px;
         display: flex;
         align-items: center;
         gap: 6px;
@@ -202,7 +217,7 @@
         outline: none;
         padding: 0;
     }
-    /* Hijos de las cards que NO son este overlay: por encima del overlay bg. */
+    /* Hijos de las cards que NO son este overlay: por encima del bg del overlay. */
     .dashboard-detail-card > *:not(.cco-root),
     .mac-card > *:not(.cco-root) {
         position: relative;
@@ -212,28 +227,20 @@
 
 @code {
     [Parameter, EditorRequired] public string CardKey { get; set; } = "";
-    // Id del <input type=file> — la <label for=…> lo dispara sin necesidad de estar
-    // anidada. Cada card tiene su input propio para no colisionar.
-    private string FileInputId => $"cco-file-{CardKey}";
-    /// <summary>Diccionario de settings global cargado desde el Dashboard padre.
-    /// Sirve como cache para NO hacer llamadas por cada card. Si es null, el
-    /// overlay simplemente no muestra comentario inicial (el usuario puede agregar
-    /// uno nuevo y se guarda igual).</summary>
     [Parameter] public Dictionary<string, string>? Settings { get; set; }
 
     private string comment = "";
     private string commentEdit = "";
     private bool editing;
+    private bool menuOpen;
     private ElementReference inputRef;
-    private long imgVersion = 0;
-    private bool hideImage; // true cuando el usuario borra la imagen manualmente
+    private long imgVersion;
+    private bool hideImage;
+
     private string BgKey => $"dashcard-bg-{CardKey}";
     private string CommentKey => $"dashcard-cmt-{CardKey}";
     private string ImgUrl => $"/api/branding/{BgKey}?v={imgVersion}";
-
-    /// <summary>Si el img no fallo en cargar, hay imagen. En v2 no hacemos HEAD:
-    /// el <img onerror> se auto-oculta si no existe. Este flag se usa solo para
-    /// decidir si mostrar el boton "Quitar imagen".</summary>
+    private string FileInputId => $"cco-file-{CardKey}";
     private bool hasImage => !hideImage;
 
     protected override void OnParametersSet()
@@ -242,15 +249,20 @@
         {
             if (Settings is not null && Settings.TryGetValue(CommentKey, out var v))
                 comment = v ?? "";
-            imgVersion = imgVersion == 0 ? DateTimeOffset.UtcNow.ToUnixTimeSeconds() : imgVersion;
+            if (imgVersion == 0) imgVersion = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         }
-        catch { /* jamas romper el render de la card por esto */ }
+        catch { }
+    }
+
+    private void ToggleMenu()
+    {
+        menuOpen = !menuOpen;
     }
 
     private async Task OnBgPicked(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
     {
+        menuOpen = false;
         if (e.File is null) return;
-        // 2026-07-03: validar del lado del cliente ANTES de subir para dar feedback claro.
         const long maxBytes = 10L * 1024 * 1024;
         var permitidos = new[] { ".png", ".jpg", ".jpeg", ".webp" };
         var ext = System.IO.Path.GetExtension(e.File.Name)?.ToLowerInvariant() ?? "";
@@ -279,6 +291,7 @@
 
     private async Task OnDeleteBg()
     {
+        menuOpen = false;
         try
         {
             await Api.DeleteBrandingImageAsync(BgKey);
@@ -291,6 +304,7 @@
 
     private async Task StartEdit()
     {
+        menuOpen = false;
         editing = true;
         commentEdit = comment;
         StateHasChanged();
@@ -316,6 +330,7 @@
 
     private async Task ClearComment()
     {
+        menuOpen = false;
         try
         {
             await Api.UpdateSettingAsync(CommentKey, "");
@@ -332,6 +347,5 @@
         else if (e.Key == "Escape") { editing = false; StateHasChanged(); }
     }
 
-    // Handler vacio para que @onclick:stopPropagation actue.
     private void NoOp() { }
 }
