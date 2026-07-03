@@ -192,24 +192,28 @@
                         </div>
                     </div>
 
-                    <div class="form-group" style="background:#f5f3ff; border:1px solid #ddd6fe; border-radius:8px; padding:0.6rem 0.8rem; margin-bottom:0.6rem;">
-                        <label class="form-label" style="color:#6d28d9; font-weight:700;">📅 Fecha del evento (la fiesta)</label>
-                        <input class="form-input" type="date" @bind="formFechaEvento" style="max-width:220px;" />
-                        <div style="font-size:0.72rem; color:#7c3aed; margin-top:0.2rem;">El día del evento en sí. Ej: evento domingo 10 → entrega sábado 9, retiro lunes 11.</div>
+                    @* Fechas en línea: entrega · EVENTO (destacada, única obligatoria) · retiro *@
+                    <div class="form-row" style="align-items: flex-end;">
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label" style="font-size:0.8rem; color:#6b7280;">Fecha de entrega <span style="font-weight:400; color:#9ca3af;">· opcional</span></label>
+                            <input class="form-input" type="date" @bind="formFechaEntrega" @bind:after="RefreshDisponibilidad" />
+                        </div>
+                        <div class="form-group" style="flex: 1.4; background:#f5f3ff; border:2px solid #c4b5fd; border-radius:10px; padding:0.45rem 0.7rem;">
+                            <label class="form-label" style="color:#6d28d9; font-weight:700; margin-bottom:0.2rem;">📅 Fecha del evento *</label>
+                            <input class="form-input" type="date" @bind="formFechaEvento" @bind:after="OnEventoChanged"
+                                   style="font-size:1.05rem; font-weight:700; color:#5b21b6;" />
+                            <div style="font-size:0.68rem; color:#7c3aed; margin-top:0.2rem;">La fecha importante · única obligatoria. Entrega y retiro se completan solas.</div>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label" style="font-size:0.8rem; color:#6b7280;">Fecha de retiro <span style="font-weight:400; color:#9ca3af;">· opcional</span></label>
+                            <input class="form-input" type="date" @bind="formFechaRetiro" @bind:after="RefreshDisponibilidad" />
+                        </div>
                     </div>
 
                     <div class="form-row">
                         <div class="form-group" style="flex: 1;">
-                            <label class="form-label">Fecha entrega *</label>
-                            <input class="form-input" type="date" @bind="formFechaEntrega" @bind:after="OnFechasChanged" />
-                        </div>
-                        <div class="form-group" style="flex: 1;">
-                            <label class="form-label">Fecha retiro *</label>
-                            <input class="form-input" type="date" @bind="formFechaRetiro" @bind:after="OnFechasChanged" />
-                        </div>
-                        <div class="form-group" style="flex: 1;">
                             <label class="form-label">Horario evento</label>
-                            <div style="display: flex; gap: 0.3rem; align-items: center;">
+                            <div style="display: flex; gap: 0.3rem; align-items: center; max-width: 260px;">
                                 <input class="form-input" type="text" placeholder="HH:mm" maxlength="5" @bind="formHoraInicio" style="flex: 1;" />
                                 <span style="color: #6b7280;">a</span>
                                 <input class="form-input" type="text" placeholder="HH:mm" maxlength="5" @bind="formHoraFin" style="flex: 1;" />
@@ -845,9 +849,24 @@
     private int? editingId;
     private string editingNumero = "";
     private int formClienteId;
-    private DateTime formFechaEntrega = DateTime.Today;
-    private DateTime formFechaRetiro = DateTime.Today.AddDays(1);
+    private DateTime? formFechaEntrega;
+    private DateTime? formFechaRetiro;
     private DateTime? formFechaEvento;
+
+    // Fechas efectivas: si no cargaste entrega/retiro, se derivan del evento (día antes / día después).
+    private DateTime EntregaEff() => formFechaEntrega ?? formFechaEvento?.AddDays(-1) ?? DateTime.Today;
+    private DateTime RetiroEff() => formFechaRetiro ?? formFechaEvento?.AddDays(1) ?? EntregaEff().AddDays(1);
+
+    private async Task OnEventoChanged()
+    {
+        // Al elegir el evento, autocompletar entrega/retiro si están vacías (editables).
+        if (formFechaEvento.HasValue)
+        {
+            formFechaEntrega ??= formFechaEvento.Value.AddDays(-1);
+            formFechaRetiro ??= formFechaEvento.Value.AddDays(1);
+        }
+        await RefreshDisponibilidad();
+    }
     private string formHoraInicio = "";
     private string formHoraFin = "";
     private string formDireccionEvento = "";
@@ -917,9 +936,8 @@
         {
             if (clientes is null || equipos is null) await LoadCatalogos();
             await ShowCreate();
-            formFechaEntrega = d.Date;
-            formFechaRetiro = d.Date.AddDays(1);
-            await RefreshDisponibilidad();
+            formFechaEvento = d.Date;
+            await OnEventoChanged();
             deepLinkApplied = true;
             Nav.NavigateTo("/alquileres/reservas", replace: true);
         }
@@ -989,14 +1007,17 @@
 
     private async Task RefreshDisponibilidad()
     {
-        if (formFechaEntrega == default || formFechaRetiro == default || formFechaRetiro < formFechaEntrega)
+        // Necesitamos al menos el evento (o entrega/retiro) para calcular disponibilidad.
+        if (!formFechaEvento.HasValue && !formFechaEntrega.HasValue && !formFechaRetiro.HasValue)
         {
             disponibilidad = null;
             return;
         }
+        var ent = EntregaEff(); var ret = RetiroEff();
+        if (ret < ent) { disponibilidad = null; return; }
         try
         {
-            disponibilidad = await Api.GetAlqDisponibilidadAsync(formFechaEntrega, formFechaRetiro, editingId) ?? new();
+            disponibilidad = await Api.GetAlqDisponibilidadAsync(ent, ret, editingId) ?? new();
         }
         catch { disponibilidad = null; }
     }
@@ -1006,11 +1027,6 @@
         if (disponibilidad is null) return null;
         var d = disponibilidad.FirstOrDefault(x => x.EquipoId == equipoId);
         return d?.Disponible;
-    }
-
-    private async Task OnFechasChanged()
-    {
-        await RefreshDisponibilidad();
     }
 
     private void OnClienteChanged()
@@ -1074,8 +1090,8 @@
     {
         formClienteId = 0;
         formFechaEvento = null;
-        formFechaEntrega = DateTime.Today;
-        formFechaRetiro = DateTime.Today.AddDays(1);
+        formFechaEntrega = null;
+        formFechaRetiro = null;
         formHoraInicio = ""; formHoraFin = "";
         formDireccionEvento = "";
         formDescuento = 0m; formSena = 0m;
@@ -1143,7 +1159,8 @@
     {
         formError = null;
         if (formClienteId <= 0) { formError = "Tenés que elegir un cliente"; return; }
-        if (formFechaRetiro < formFechaEntrega) { formError = "La fecha de retiro no puede ser anterior a la de entrega"; return; }
+        if (!formFechaEvento.HasValue) { formError = "Poné la fecha del evento"; return; }
+        if (RetiroEff() < EntregaEff()) { formError = "La fecha de retiro no puede ser anterior a la de entrega"; return; }
         if (formItems.Count == 0) { formError = "Agregá al menos un equipo"; return; }
         if (formItems.Any(i => i.Cantidad <= 0)) { formError = "Las cantidades deben ser mayores a 0"; return; }
 
@@ -1155,8 +1172,8 @@
                 var updated = await Api.UpdateAlqReservaAsync(editingId.Value, new UpdateAlqReservaRequest
                 {
                     ClienteId = formClienteId,
-                    FechaEntrega = formFechaEntrega,
-                    FechaRetiro = formFechaRetiro,
+                    FechaEntrega = EntregaEff(),
+                    FechaRetiro = RetiroEff(),
                     FechaEvento = formFechaEvento,
                     FechaEventoSet = true,
                     HoraInicio = formHoraInicio,
@@ -1177,8 +1194,8 @@
                 var created = await Api.CreateAlqReservaAsync(new CreateAlqReservaRequest
                 {
                     ClienteId = formClienteId,
-                    FechaEntrega = formFechaEntrega,
-                    FechaRetiro = formFechaRetiro,
+                    FechaEntrega = EntregaEff(),
+                    FechaRetiro = RetiroEff(),
                     FechaEvento = formFechaEvento,
                     HoraInicio = formHoraInicio,
                     HoraFin = formHoraFin,
