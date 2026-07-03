@@ -1,5 +1,6 @@
 @inject ApiClient Api
 @inject ToastService Toast
+@inject IJSRuntime JS
 
 @* 2026-07-03 v3: overlay compacto. Un solo boton "⋯" siempre visible arriba a la
    derecha; al tocarlo se despliega un menu con Subir foto / Agregar nota /
@@ -8,11 +9,13 @@
 <div class="cco-root">
     @if (!hideImage)
     {
-        <img src="@ImgUrl" class="cco-bg-img"
-             onload="this.closest('.cco-root').classList.add('cco-image-loaded');"
-             onerror="this.style.display='none'; this.closest('.cco-root').classList.remove('cco-image-loaded');"
-             alt="" />
-        <div class="cco-bg-tint"></div>
+        <div class="cco-bg-wrap">
+            <img src="@ImgUrl" class="cco-bg-img"
+                 onload="this.closest('.cco-root').classList.add('cco-image-loaded');"
+                 onerror="this.style.display='none'; this.closest('.cco-root').classList.remove('cco-image-loaded');"
+                 alt="" />
+            <div class="cco-bg-tint"></div>
+        </div>
     }
 
     @* InputFile aparte, oculto pero clickeable via label. onclick nativo para frenar bubble a la card. *@
@@ -20,7 +23,7 @@
                accept=".png,.jpg,.jpeg,.webp"
                onclick="event.stopPropagation();" />
 
-    <button type="button" class="cco-toggle" @onclick="ToggleMenu" @onclick:stopPropagation="true"
+    <button type="button" class="cco-toggle" id="@ToggleId" @onclick="ToggleMenu" @onclick:stopPropagation="true"
             title="Personalizar tarjeta" aria-label="Personalizar tarjeta">
         <span>⋯</span>
     </button>
@@ -79,12 +82,19 @@
 </div>
 
 <style>
+    /* Root SIN overflow:hidden asi el menu desplegable puede escapar. La foto
+       (que si necesita clip) va en un wrapper propio con overflow:hidden. */
     .cco-root {
         position: absolute;
         inset: 0;
         pointer-events: none;
         border-radius: inherit;
+    }
+    .cco-bg-wrap {
+        position: absolute;
+        inset: 0;
         overflow: hidden;
+        border-radius: inherit;
     }
     .cco-bg-img {
         position: absolute;
@@ -241,6 +251,7 @@
     private string CommentKey => $"dashcard-cmt-{CardKey}";
     private string ImgUrl => $"/api/branding/{BgKey}?v={imgVersion}";
     private string FileInputId => $"cco-file-{CardKey}";
+    private string ToggleId => $"cco-toggle-{CardKey}";
     private bool hasImage => !hideImage;
 
     protected override void OnParametersSet()
@@ -254,14 +265,41 @@
         catch { }
     }
 
-    private void ToggleMenu()
+    private async Task ToggleMenu()
     {
         menuOpen = !menuOpen;
+        await ApplyCardZIndex();
+    }
+
+    /// <summary>Eleva la card por encima de las hermanas mientras el menu esta abierto
+    /// (asi el desplegable no queda tapado por la card de abajo). Al cerrarse resetea.</summary>
+    private async Task ApplyCardZIndex()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("eval",
+                $@"(function(){{
+                    var btn=document.getElementById('{ToggleId}');
+                    if(!btn) return;
+                    var card=btn.closest('.dashboard-detail-card');
+                    if(!card) return;
+                    card.style.zIndex='{(menuOpen ? "50" : "auto")}';
+                    card.style.position='relative';
+                }})()");
+        }
+        catch { }
+    }
+
+    private async Task CloseMenu()
+    {
+        if (!menuOpen) return;
+        await CloseMenu();
+        await ApplyCardZIndex();
     }
 
     private async Task OnBgPicked(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
     {
-        menuOpen = false;
+        await CloseMenu();
         if (e.File is null) return;
         const long maxBytes = 10L * 1024 * 1024;
         var permitidos = new[] { ".png", ".jpg", ".jpeg", ".webp" };
@@ -291,7 +329,7 @@
 
     private async Task OnDeleteBg()
     {
-        menuOpen = false;
+        await CloseMenu();
         try
         {
             await Api.DeleteBrandingImageAsync(BgKey);
@@ -304,7 +342,7 @@
 
     private async Task StartEdit()
     {
-        menuOpen = false;
+        await CloseMenu();
         editing = true;
         commentEdit = comment;
         StateHasChanged();
@@ -330,7 +368,7 @@
 
     private async Task ClearComment()
     {
-        menuOpen = false;
+        await CloseMenu();
         try
         {
             await Api.UpdateSettingAsync(CommentKey, "");
