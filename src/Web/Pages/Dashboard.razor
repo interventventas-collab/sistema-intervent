@@ -608,7 +608,9 @@
         .mac-card-split-divider { width: auto; height: 0.5px; margin: 0 14px; }
     }
 
-    /* Stat cards (Ventas/Saldos/etc): blanco con borde izquierdo de color */
+    /* Stat cards (Ventas/Saldos/etc): blanco con borde izquierdo de color.
+       2026-07-03: aspect-ratio 3/2 para que el fondo con foto se vea con aire
+       sin volverlas cuadradas gigantes. Padding aumentado para respirar. */
     .mac-stat-card {
         background: #ffffff !important;
         border: 0.5px solid rgba(0,0,0,0.08) !important;
@@ -616,8 +618,12 @@
         border-top: 0.5px solid rgba(0,0,0,0.08) !important;
         border-radius: 12px !important;
         box-shadow: none !important;
-        padding: 14px !important;
+        padding: 18px !important;
         margin-top: 0 !important;
+        min-height: 150px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
     }
     .mac-stat-card.accent-green { border-left-color: #16a34a !important; }
     .mac-stat-card.accent-red   { border-left-color: #dc2626 !important; }
