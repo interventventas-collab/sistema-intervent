@@ -68,7 +68,10 @@
         pointer-events: none;
         border-radius: inherit;
         overflow: hidden;
-        z-index: 0;
+        /* SIN z-index a proposito: si le pongo uno se crea un stacking context
+           que atrapa a los botones adentro y quedan tapados por el contenido
+           de la card (que tiene z-index:1 mas abajo). Sin z-index aca, los
+           botones (z-index:3) flotan directamente en el contexto de la card. */
     }
     .cco-bg-img {
         position: absolute;
