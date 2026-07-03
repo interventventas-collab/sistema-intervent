@@ -192,21 +192,21 @@
                         </div>
                     </div>
 
-                    @* Fechas en línea: entrega · EVENTO (destacada, única obligatoria) · retiro *@
-                    <div class="form-row" style="align-items: flex-end;">
-                        <div class="form-group" style="flex: 1;">
+                    @* Fechas en línea (grilla 3 columnas fijas): entrega · EVENTO (destacada, única obligatoria) · retiro *@
+                    <div class="alq-fechas-grid">
+                        <div style="display:flex; flex-direction:column;">
                             <label class="form-label" style="font-size:0.8rem; color:#6b7280;">Fecha de entrega <span style="font-weight:400; color:#9ca3af;">· opcional</span></label>
-                            <input class="form-input" type="date" @bind="formFechaEntrega" @bind:after="RefreshDisponibilidad" />
+                            <input class="form-input" type="date" @bind="formFechaEntrega" @bind:after="RefreshDisponibilidad" style="margin-top:auto;" />
                         </div>
-                        <div class="form-group" style="flex: 1.4; background:#f5f3ff; border:2px solid #c4b5fd; border-radius:10px; padding:0.45rem 0.7rem;">
-                            <label class="form-label" style="color:#6d28d9; font-weight:700; margin-bottom:0.2rem;">📅 Fecha del evento *</label>
+                        <div style="display:flex; flex-direction:column; background:#f5f3ff; border:2px solid #c4b5fd; border-radius:10px; padding:0.4rem 0.6rem;">
+                            <label class="form-label" style="color:#6d28d9; font-weight:700; margin-bottom:0.3rem;">📅 Fecha del evento *</label>
                             <input class="form-input" type="date" @bind="formFechaEvento" @bind:after="OnEventoChanged"
                                    style="font-size:1.05rem; font-weight:700; color:#5b21b6;" />
-                            <div style="font-size:0.68rem; color:#7c3aed; margin-top:0.2rem;">La fecha importante · única obligatoria. Entrega y retiro se completan solas.</div>
+                            <div style="font-size:0.68rem; color:#7c3aed; margin-top:0.3rem;">La importante · única obligatoria. Entrega y retiro se completan solas.</div>
                         </div>
-                        <div class="form-group" style="flex: 1;">
+                        <div style="display:flex; flex-direction:column;">
                             <label class="form-label" style="font-size:0.8rem; color:#6b7280;">Fecha de retiro <span style="font-weight:400; color:#9ca3af;">· opcional</span></label>
-                            <input class="form-input" type="date" @bind="formFechaRetiro" @bind:after="RefreshDisponibilidad" />
+                            <input class="form-input" type="date" @bind="formFechaRetiro" @bind:after="RefreshDisponibilidad" style="margin-top:auto;" />
                         </div>
                     </div>
 
@@ -442,6 +442,16 @@
 @if (printReserva is not null)
 {
     <style>
+        .alq-fechas-grid {
+            display: grid;
+            grid-template-columns: 1fr 1.3fr 1fr;
+            gap: 14px;
+            align-items: stretch;
+            margin-bottom: 0.75rem;
+        }
+        @@media (max-width: 720px) {
+            .alq-fechas-grid { grid-template-columns: 1fr; }
+        }
         @@media print {
             @@page { size: A4; margin: 12mm; }
             html, body { background: white !important; margin: 0 !important; padding: 0 !important; }
