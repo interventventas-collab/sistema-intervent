@@ -28,29 +28,34 @@
                 <i class="ti ti-trash"></i>
             </button>
         }
-    </div>
-
-    <div class="cco-comment @(editing ? "cco-comment-editing" : "")">
-        @if (editing)
+        @if (!editing && string.IsNullOrWhiteSpace(comment))
         {
-            <input type="text" class="cco-input"
-                   @bind="commentEdit" @bind:event="oninput"
-                   @onblur="SaveComment"
-                   @onkeydown="OnKeyComment"
-                   @ref="inputRef" />
-        }
-        else if (!string.IsNullOrWhiteSpace(comment))
-        {
-            <span class="cco-text" @onclick="StartEdit" title="Click para editar">@comment</span>
-            <button class="cco-btn cco-btn-sm" @onclick="ClearComment" title="Quitar comentario">
-                <i class="ti ti-x"></i>
+            <button class="cco-btn" @onclick="StartEdit" title="Agregar nota">
+                <i class="ti ti-note"></i>
             </button>
         }
-        else
-        {
-            <span class="cco-placeholder" @onclick="StartEdit">+ Agregar nota</span>
-        }
     </div>
+
+    @if (editing || !string.IsNullOrWhiteSpace(comment))
+    {
+        <div class="cco-comment @(editing ? "cco-comment-editing" : "")">
+            @if (editing)
+            {
+                <input type="text" class="cco-input"
+                       @bind="commentEdit" @bind:event="oninput"
+                       @onblur="SaveComment"
+                       @onkeydown="OnKeyComment"
+                       @ref="inputRef" />
+            }
+            else
+            {
+                <span class="cco-text" @onclick="StartEdit" title="Click para editar">@comment</span>
+                <button class="cco-btn cco-btn-sm" @onclick="ClearComment" title="Quitar nota">
+                    <i class="ti ti-x"></i>
+                </button>
+            }
+        </div>
+    }
 </div>
 
 <style>
@@ -131,16 +136,6 @@
         overflow: hidden;
         text-overflow: ellipsis;
     }
-    .cco-placeholder {
-        flex: 1;
-        cursor: text;
-        color: rgba(255,255,255,0.85);
-        font-style: italic;
-        font-size: 11px;
-        opacity: 0.75;
-        transition: opacity 0.15s ease;
-    }
-    .cco-root:hover .cco-placeholder { opacity: 1; }
     .cco-input {
         flex: 1;
         background: transparent;
@@ -149,11 +144,6 @@
         font-size: 12px;
         outline: none;
         padding: 0;
-    }
-    /* Cuando NO hay comentario aun, mostrar la banda con transparencia mas suave
-       para que se vea que se puede escribir sin distraer del contenido. */
-    .cco-comment:not(.cco-comment-editing):has(.cco-placeholder) {
-        background: rgba(17, 24, 39, 0.35);
     }
 </style>
 
