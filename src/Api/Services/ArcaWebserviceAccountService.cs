@@ -37,6 +37,7 @@ public class ArcaWebserviceAccountService
         a.FilePath,
         a.Password,
         a.Environment,
+        a.PtoVta,
         a.ExpiresAt,
         a.IsActive,
         a.CreatedAt,
@@ -73,7 +74,7 @@ public class ArcaWebserviceAccountService
 
     public async Task<(bool ok, string? error, ArcaWebserviceAccountDto? dto)> CreateAsync(
         string cuitRaw, string? alias, string? password, string? environment,
-        string originalFileName, byte[] fileBytes)
+        string originalFileName, byte[] fileBytes, int? ptoVta = null)
     {
         // ---- Validaciones ----
         var cuit = NormalizeCuit(cuitRaw);
@@ -131,6 +132,7 @@ public class ArcaWebserviceAccountService
             FilePath = relPath,
             Password = string.IsNullOrEmpty(password) ? null : password,
             Environment = env,
+            PtoVta = ptoVta.HasValue && ptoVta.Value > 0 ? ptoVta.Value : 2,
             ExpiresAt = expires,
             IsActive = true,
             CreatedAt = DateTime.UtcNow
@@ -155,6 +157,9 @@ public class ArcaWebserviceAccountService
 
         if (req.Environment is not null)
             entity.Environment = NormalizeEnvironment(req.Environment);
+
+        if (req.PtoVta.HasValue && req.PtoVta.Value > 0)
+            entity.PtoVta = req.PtoVta.Value;
 
         if (req.IsActive.HasValue)
             entity.IsActive = req.IsActive.Value;

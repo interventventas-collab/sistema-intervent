@@ -75,6 +75,7 @@ public record ArcaWebserviceAccountDto(
     string FilePath,
     string? Password,
     string Environment,
+    int PtoVta,
     DateTime? ExpiresAt,
     bool IsActive,
     DateTime CreatedAt,
@@ -90,6 +91,8 @@ public class UpdateArcaWebserviceAccountRequest
     public string? Password { get; set; }
     [MaxLength(20)]
     public string? Environment { get; set; }
+    /// <summary>Punto de venta AFIP. Si viene null, no se toca.</summary>
+    public int? PtoVta { get; set; }
     public bool? IsActive { get; set; }
 }
 

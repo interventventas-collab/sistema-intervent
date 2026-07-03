@@ -23,7 +23,9 @@
     <InputFile id="@FileInputId" class="cco-hidden-file" OnChange="OnBgPicked" accept=".png,.jpg,.jpeg,.webp" />
 
     <div class="cco-controls" @onclick="NoOp" @onclick:stopPropagation="true">
-        <label class="cco-btn cco-btn-foto" for="@FileInputId" title="Subir imagen de fondo" @onclick="NoOp" @onclick:stopPropagation="true">
+        <label class="cco-btn cco-btn-foto" for="@FileInputId"
+               title="Subir imagen de fondo (recomendado ~600x300 px, se recorta al tamaño de la card)"
+               @onclick="NoOp" @onclick:stopPropagation="true">
             <span>📷 Foto</span>
         </label>
         <button type="button" class="cco-btn cco-btn-danger cco-btn-only-if-image" @onclick="OnDeleteBg" @onclick:stopPropagation="true" title="Quitar imagen">
@@ -79,12 +81,15 @@
         width: 100%;
         height: 100%;
         object-fit: cover;
-        opacity: 0.55;
+        opacity: 1;
     }
+    /* Tinte muy suave para que los numeros/textos negros de la card sigan
+       legibles, sin que la foto se pierda. Antes tenia 85% de blanco al fondo
+       y practicamente tapaba la imagen. */
     .cco-bg-tint {
         position: absolute;
         inset: 0;
-        background: linear-gradient(180deg, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0.85) 100%);
+        background: rgba(255, 255, 255, 0.35);
     }
     .cco-controls {
         position: absolute;

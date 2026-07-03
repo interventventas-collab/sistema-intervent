@@ -135,6 +135,14 @@ public class CafeVenta
     /// <summary>Punto de venta usado para emitir (ej: 2).</summary>
     public int? ArcaPtoVta { get; set; }
 
+    /// <summary>
+    /// Certificado/CUIT (ArcaWebserviceAccount) con el que se emitió esta factura.
+    /// NULL = se usó el CUIT del negocio por default (comportamiento histórico,
+    /// una sola sociedad). Se guarda para saber con qué empresa se facturó y para
+    /// que la Nota de Crédito use el mismo CUIT que la factura original.
+    /// </summary>
+    public int? ArcaWebserviceAccountId { get; set; }
+
     /// <summary>Número de comprobante asignado por ARCA (correlativo).</summary>
     public int? ArcaCbteNro { get; set; }
 

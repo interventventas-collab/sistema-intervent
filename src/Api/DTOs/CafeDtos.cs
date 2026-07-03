@@ -417,7 +417,9 @@ public record CafeVentaDto(
     DateTime? ConceptoServDesde = null,
     DateTime? ConceptoServHasta = null,
     // 2026-07-02: link de Google Maps propio de la venta (override del domicilio de entrega)
-    string? MapeoLink = null);
+    string? MapeoLink = null,
+    // 2026-07-03: con que certificado/CUIT se emitio (multi-sociedad). Null = CUIT del negocio por default.
+    int? ArcaWebserviceAccountId = null);
 
 public class CafeCotizarItemRequest
 {
@@ -537,6 +539,9 @@ public class CreateCafeVentaRequest
     public string? MapeoLink { get; set; }
     /// <summary>2026-07-02: si es true, ademas guarda el link en la ficha del cliente (para futuras entregas).</summary>
     public bool GuardarMapeoEnCliente { get; set; }
+    /// <summary>2026-07-03: certificado/CUIT con el que se factura (multi-sociedad). Null = CUIT del
+    /// negocio por default. Solo aplica a FA/FB/FC.</summary>
+    public int? ArcaWebserviceAccountId { get; set; }
 }
 
 public class UpdateCafeVentaFlagsRequest

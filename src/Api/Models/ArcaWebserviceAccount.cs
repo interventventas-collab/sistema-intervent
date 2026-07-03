@@ -44,6 +44,13 @@ public class ArcaWebserviceAccount
     [Required, MaxLength(20)]
     public string Environment { get; set; } = "production";
 
+    /// <summary>
+    /// Punto de venta AFIP habilitado para este CUIT/certificado. Cada sociedad
+    /// tiene su propio punto de venta para factura electrónica. Default 2 (el que
+    /// usaba el Café históricamente cuando había un solo CUIT).
+    /// </summary>
+    public int PtoVta { get; set; } = 2;
+
     /// <summary>Vencimiento del certificado leído del .pfx. NULL si no se pudo parsear.</summary>
     public DateTime? ExpiresAt { get; set; }
 

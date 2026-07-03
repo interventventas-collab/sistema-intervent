@@ -224,6 +224,7 @@ BEGIN
         FilePath NVARCHAR(500) NOT NULL,
         Password NVARCHAR(500) NULL,
         Environment NVARCHAR(20) NOT NULL DEFAULT 'production',
+        PtoVta INT NOT NULL DEFAULT 2,
         ExpiresAt DATETIME2 NULL,
         IsActive BIT NOT NULL DEFAULT 1,
         CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
@@ -242,6 +243,13 @@ IF EXISTS (SELECT * FROM sysobjects WHERE name='ArcaWebserviceAccounts' AND xtyp
 BEGIN
     ALTER TABLE ArcaWebserviceAccounts ADD Environment NVARCHAR(20) NOT NULL DEFAULT 'production';
 END
+GO
+
+-- Migracion: punto de venta por certificado. Antes el PtoVta estaba fijo en 2
+-- para todo el Cafe; ahora cada CUIT/certificado puede tener el suyo (asi se
+-- puede facturar con varias sociedades, cada una con su punto de venta AFIP).
+IF COL_LENGTH('ArcaWebserviceAccounts','PtoVta') IS NULL
+    ALTER TABLE ArcaWebserviceAccounts ADD PtoVta INT NOT NULL DEFAULT 2;
 GO
 
 -- ArcaCsrRequests — pedidos de CSR temporales del wizard de generacion de
@@ -2153,6 +2161,11 @@ IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='VentaOrigenNcId' AND Object
 GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='NotaCreditoVentaId' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
     ALTER TABLE Cafe_Ventas ADD NotaCreditoVentaId INT NULL;
+GO
+-- 2026-07-03: con que certificado/CUIT se emitio la factura (multi-sociedad).
+-- NULL = se uso el CUIT del negocio por default (comportamiento historico).
+IF COL_LENGTH('Cafe_Ventas','ArcaWebserviceAccountId') IS NULL
+    ALTER TABLE Cafe_Ventas ADD ArcaWebserviceAccountId INT NULL;
 GO
 
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_VentaItems' AND xtype='U')
