@@ -19,6 +19,15 @@ public class SaveGaliciaAccountRequest
     public bool IsActive { get; set; } = true;
 }
 
+public class GaliciaSincronizarResultDto
+{
+    public bool Ok { get; set; }
+    public int Nuevos { get; set; }
+    public int SinCambios { get; set; }
+    public string? Error { get; set; }
+    public List<string>? Detalles { get; set; }
+}
+
 public class GaliciaTestStatusDto
 {
     public bool Running { get; set; }

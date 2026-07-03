@@ -55,6 +55,31 @@ public class GaliciaScrapingService
         }
     }
 
+    /// <summary>Inicia login + descarga de movimientos (CSV). El CSV vuelve en el status → result.csvBase64.</summary>
+    public async Task<(bool ok, string? error)> StartMovimientosAsync(string usuario, string password)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/galicia/movimientos/start", new { usuario, password });
+            if (resp.IsSuccessStatusCode) return (true, null);
+
+            var content = await resp.Content.ReadAsStringAsync();
+            try
+            {
+                using var doc = JsonDocument.Parse(content);
+                if (doc.RootElement.TryGetProperty("error", out var err))
+                    return (false, err.GetString());
+            }
+            catch { }
+            return (false, $"HTTP {(int)resp.StatusCode}: {content}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error iniciando descarga movimientos Galicia");
+            return (false, "Servicio Playwright no disponible: " + ex.Message);
+        }
+    }
+
     public async Task<GaliciaTestStatusDto> GetStatusAsync()
     {
         try
@@ -106,4 +131,5 @@ public class GaliciaTestResultDto
     public bool? LoggedIn { get; set; }
     public bool? NeedsToken { get; set; }
     public string? Url { get; set; }
+    public string? CsvBase64 { get; set; }
 }

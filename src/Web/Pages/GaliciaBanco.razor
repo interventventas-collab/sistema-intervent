@@ -130,6 +130,57 @@
                 }
             }
         </div>
+
+        @* ═══════════ Traer movimientos (Paso 2) ═══════════ *@
+        <div class="card" style="padding:1.1rem; margin-top:1.2rem; border:1px solid #e5e7eb; border-radius:10px;">
+            <h3 style="margin-top:0;">Traer movimientos y saldo</h3>
+            <p style="color:#6b7280; font-size:0.85rem;">
+                El robot entra, baja el extracto (CSV) y lo carga en <strong>Extracto de Banco</strong>.
+                Con eso, el <strong>saldo</strong> y las <strong>transferencias para cobranzas</strong> quedan al día solos.
+                Tarda cerca de un minuto — no cierres esta pantalla.
+            </p>
+
+            <button class="btn btn-primary" @onclick="Sincronizar"
+                    disabled="@(sincronizando || testRunning || account?.HasPassword != true)">
+                @(sincronizando ? "Trayendo… (esperá ~1 min)" : "⬇ Traer movimientos ahora")
+            </button>
+
+            @if (sincronizando)
+            {
+                <div style="display:flex; align-items:center; gap:0.8rem; padding:0.7rem 0.9rem; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; margin:1rem 0;">
+                    <div style="width:22px; height:22px; border:3px solid #bfdbfe; border-top-color:#1d4ed8; border-radius:50%; animation:spin 1s linear infinite; flex-shrink:0;"></div>
+                    <div>
+                        <strong style="color:#1e3a8a;">@syncStep</strong>
+                        <div style="font-size:0.75rem; color:#6b7280;">El robot está trabajando — abajo ves lo que ve.</div>
+                    </div>
+                </div>
+                @if (!string.IsNullOrEmpty(screenshotUrl))
+                {
+                    <div style="background:#1f2937; border-radius:8px; padding:0.5rem; text-align:center;">
+                        <img src="@screenshotUrl" alt="Lo que ve el navegador"
+                             style="max-width:100%; max-height:55vh; border-radius:4px;"
+                             onerror="this.style.visibility='hidden'" onload="this.style.visibility='visible'" />
+                    </div>
+                }
+            }
+
+            @if (!sincronizando && syncResult is not null)
+            {
+                @if (syncResult.Ok)
+                {
+                    <div style="padding:0.8rem; margin-top:1rem; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; color:#166534;">
+                        <strong>✅ ¡Listo!</strong> Se trajeron <strong>@syncResult.Nuevos</strong> movimientos nuevos
+                        (@syncResult.SinCambios ya estaban). El saldo del dashboard ya quedó actualizado.
+                    </div>
+                }
+                else
+                {
+                    <div style="padding:0.8rem; margin-top:1rem; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; color:#991b1b;">
+                        <strong>❌ No se pudo:</strong> @syncResult.Error
+                    </div>
+                }
+            }
+        </div>
     }
 </div>
 
@@ -147,6 +198,11 @@
     private Web.Models.GaliciaTestResultDto? testResult;
     private string screenshotUrl = "";
     private CancellationTokenSource? pollCts;
+
+    private bool sincronizando;
+    private string syncStep = "";
+    private Web.Models.GaliciaSincronizarResultDto? syncResult;
+    private CancellationTokenSource? syncPollCts;
 
     private bool ScreenshotVisible =>
         testRunning && !string.IsNullOrEmpty(testStep)
@@ -248,5 +304,54 @@
         }, token);
     }
 
-    public void Dispose() => pollCts?.Cancel();
+    private async Task Sincronizar()
+    {
+        syncResult = null;
+        syncStep = "Iniciando…";
+        sincronizando = true;
+        StateHasChanged();
+
+        // Mientras el robot trabaja, refrescamos la foto y el paso en vivo.
+        syncPollCts?.Cancel();
+        syncPollCts = new CancellationTokenSource();
+        var token = syncPollCts.Token;
+        _ = Task.Run(async () =>
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(1500, token);
+                    if (token.IsCancellationRequested) break;
+                    var st = await Api.GetGaliciaTestStatusAsync();
+                    if (st is not null) syncStep = st.Step;
+                    screenshotUrl = $"/api/galicia/test/screenshot?t={DateTimeOffset.Now.ToUnixTimeMilliseconds()}";
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch (TaskCanceledException) { break; }
+                catch { }
+            }
+        }, token);
+
+        try
+        {
+            syncResult = await Api.SincronizarGaliciaAsync();
+        }
+        catch (Exception ex)
+        {
+            syncResult = new Web.Models.GaliciaSincronizarResultDto { Ok = false, Error = ex.Message };
+        }
+        finally
+        {
+            syncPollCts?.Cancel();
+            sincronizando = false;
+            StateHasChanged();
+        }
+    }
+
+    public void Dispose()
+    {
+        pollCts?.Cancel();
+        syncPollCts?.Cancel();
+    }
 }

@@ -4040,6 +4040,10 @@ public class ApiClient
     public async Task<Web.Models.GaliciaTestStatusDto?> GetGaliciaTestStatusAsync()
         => await GetAsync<Web.Models.GaliciaTestStatusDto>("/api/galicia/test/status");
 
+    /// <summary>Sincroniza movimientos (robot baja CSV + importa). Puede tardar ~1 min.</summary>
+    public async Task<Web.Models.GaliciaSincronizarResultDto?> SincronizarGaliciaAsync()
+        => await PostAsync<Web.Models.GaliciaSincronizarResultDto>("/api/galicia/sincronizar", new { });
+
     private class GaliciaOkResp { public bool Ok { get; set; } }
 
     private async Task<T?> GetAsync<T>(string url)

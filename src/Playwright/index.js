@@ -2204,6 +2204,37 @@ app.post('/galicia/test/start', async (req, res) => {
     });
 });
 
+// POST /galicia/movimientos/start - body: { usuario, password }
+//   Login + navegar a Movimientos + descargar CSV. El CSV vuelve en result.csvBase64.
+app.post('/galicia/movimientos/start', async (req, res) => {
+  if (galiciaState.running) {
+    return res.status(409).json({ error: 'Ya hay una operación de Galicia en curso' });
+  }
+  const { usuario, password } = req.body || {};
+  if (!usuario || !password) {
+    return res.status(400).json({ error: 'Faltan usuario y/o clave' });
+  }
+  galiciaState.running = true;
+  galiciaState.step = 'Iniciando...';
+  galiciaState.result = null;
+  galiciaState.startedAt = Date.now();
+  res.json({ ok: true });
+
+  runGaliciaMovimientos({ usuario, password })
+    .catch(async (err) => {
+      console.error('[galicia] error inesperado (movimientos):', err);
+      galiciaState.result = { ok: false, error: err?.message || 'Error desconocido' };
+    })
+    .finally(async () => {
+      await closeGaliciaBrowserSafely();
+      galiciaState.running = false;
+      if (!galiciaState.result) {
+        galiciaState.result = { ok: false, error: 'Operación interrumpida' };
+      }
+      galiciaState.step = galiciaState.result?.ok ? 'Listo' : 'Error';
+    });
+});
+
 app.get('/galicia/test/status', (req, res) => {
   res.json({
     running: galiciaState.running,
@@ -2229,7 +2260,9 @@ app.get('/galicia/test/screenshot', async (req, res) => {
   }
 });
 
-async function runGaliciaLogin({ usuario, password, submit }) {
+// Lanza un browser aislado, abre el login y completa usuario + clave (sin enviar).
+// Devuelve la page lista para apretar Ingresar.
+async function galiciaOpenAndFill(usuario, password) {
   galiciaState.step = 'Abriendo navegador...';
   const browser = await chromium.launch({
     headless: true,
@@ -2250,11 +2283,9 @@ async function runGaliciaLogin({ usuario, password, submit }) {
     waitUntil: 'domcontentloaded',
     timeout: 40000,
   });
-  // La página es una SPA: dale tiempo a renderizar el formulario.
-  await sleep(3000);
+  await sleep(3000); // SPA: dar tiempo a renderizar
 
-  // Asegurar el formulario COMPLETO (usuario + clave). Si hay usuario recordado,
-  // Galicia muestra solo la clave — clickeamos "Cambiar de usuario".
+  // Asegurar el formulario COMPLETO. Si hay usuario recordado, muestra solo la clave.
   const userInput = page.locator('#userInput');
   if (!(await userInput.isVisible().catch(() => false))) {
     const cambiar = page.locator('text=Cambiar de usuario').first();
@@ -2267,8 +2298,7 @@ async function runGaliciaLogin({ usuario, password, submit }) {
   await userInput.waitFor({ state: 'visible', timeout: 20000 });
 
   // IMPORTANTE: escribir letra por letra (pressSequentially), NO fill().
-  // El SPA de Galicia mantiene "Ingresar" deshabilitado hasta detectar tipeo real;
-  // fill() setea el valor pero no dispara la validación → el botón queda bloqueado.
+  // El SPA mantiene "Ingresar" deshabilitado hasta detectar tipeo real.
   galiciaState.step = `Ingresando usuario ${usuario}...`;
   await userInput.click({ timeout: 8000 });
   await userInput.fill('');
@@ -2280,16 +2310,12 @@ async function runGaliciaLogin({ usuario, password, submit }) {
     await passField.fill('');
     await passField.pressSequentially(password, { delay: 45, timeout: 20000 });
   }
-  await sleep(600); // darle un instante al SPA para habilitar el botón
+  await sleep(600);
+  return page;
+}
 
-  if (!submit) {
-    // Modo "ver login": no enviamos. Dejamos la foto disponible unos segundos.
-    galiciaState.step = 'Formulario completado SIN enviar. Mirá la foto.';
-    galiciaState.result = { ok: true, submitted: false, url: page.url() };
-    await sleep(20000);
-    return;
-  }
-
+// Aprieta "Ingresar" y verifica. Devuelve { loggedIn, needsToken, error, url }.
+async function galiciaSubmitLogin(page) {
   galiciaState.step = 'Ingresando (apretando "Ingresar")...';
   const btnIngresar = page.getByRole('button', { name: 'Ingresar' }).first();
   try { await btnIngresar.waitFor({ state: 'visible', timeout: 8000 }); } catch {}
@@ -2298,12 +2324,9 @@ async function runGaliciaLogin({ usuario, password, submit }) {
     await btnIngresar.click({ timeout: 12000 });
     clicked = true;
   } catch {
-    // Fallback: enviar el formulario con Enter desde el campo de la clave.
     try { await page.locator('#userPassword').press('Enter'); clicked = true; } catch {}
   }
-  if (!clicked) {
-    throw new Error('No se pudo apretar "Ingresar" (el botón no se habilitó).');
-  }
+  if (!clicked) return { error: 'No se pudo apretar "Ingresar" (el botón no se habilitó).' };
 
   galiciaState.step = 'Verificando ingreso...';
   await page.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
@@ -2313,37 +2336,112 @@ async function runGaliciaLogin({ usuario, password, submit }) {
   let visibleText = '';
   try { visibleText = ((await page.locator('body').innerText({ timeout: 3000 })) || '').replace(/\s+/g, ' ').trim(); } catch {}
   const low = visibleText.toLowerCase();
-
-  // ¿Login rechazado? (sigue en /login con mensaje de error)
   const stillOnLogin = url.includes('/login');
+
   const errorHints = ['incorrecta', 'incorrecto', 'inválid', 'invalid', 'bloque', 'no coincide', 'reintent'];
   if (stillOnLogin && errorHints.some((h) => low.includes(h))) {
-    const snippet = visibleText.slice(0, 200);
-    galiciaState.result = { ok: false, error: `Ingreso rechazado. El banco dijo: "${snippet}"`, url };
-    return;
+    return { error: `Ingreso rechazado. El banco dijo: "${visibleText.slice(0, 200)}"`, url };
   }
-
-  // ¿Pidió token / segundo factor?
   const tokenHints = ['token', 'código de verificación', 'codigo de verificacion', 'segundo factor',
     'verificación en dos pasos', 'verificacion en dos pasos', 'ingresá el código', 'ingresa el codigo', 'otp'];
-  const needsToken = tokenHints.some((h) => low.includes(h));
-  if (needsToken) {
+  if (tokenHints.some((h) => low.includes(h))) {
+    return { needsToken: true, url };
+  }
+  if (!stillOnLogin) return { loggedIn: true, url };
+  return { error: 'No se pudo confirmar el ingreso (quedó en la pantalla de login).', url };
+}
+
+async function runGaliciaLogin({ usuario, password, submit }) {
+  const page = await galiciaOpenAndFill(usuario, submit ? password : '');
+
+  if (!submit) {
+    galiciaState.step = 'Formulario completado SIN enviar. Mirá la foto.';
+    galiciaState.result = { ok: true, submitted: false, url: page.url() };
+    await sleep(20000);
+    return;
+  }
+
+  const r = await galiciaSubmitLogin(page);
+  if (r.error) { galiciaState.result = { ok: false, error: r.error, url: r.url }; return; }
+  if (r.needsToken) {
     galiciaState.step = 'El banco pidió un código de seguridad.';
-    galiciaState.result = { ok: true, submitted: true, loggedIn: false, needsToken: true, url };
+    galiciaState.result = { ok: true, submitted: true, loggedIn: false, needsToken: true, url: r.url };
     await sleep(15000);
     return;
   }
+  galiciaState.step = '¡Entró! Sesión iniciada.';
+  galiciaState.result = { ok: true, submitted: true, loggedIn: true, needsToken: false, url: r.url };
+  await sleep(15000);
+}
 
-  // Si ya no estamos en /login, asumimos ingreso exitoso.
-  if (!stillOnLogin) {
-    galiciaState.step = '¡Entró! Sesión iniciada.';
-    galiciaState.result = { ok: true, submitted: true, loggedIn: true, needsToken: false, url };
-    await sleep(15000);
+async function runGaliciaMovimientos({ usuario, password }) {
+  const page = await galiciaOpenAndFill(usuario, password);
+  const r = await galiciaSubmitLogin(page);
+  if (r.error) { galiciaState.result = { ok: false, error: r.error, url: r.url }; return; }
+  if (r.needsToken) {
+    galiciaState.result = { ok: true, loggedIn: false, needsToken: true, url: r.url };
+    await sleep(8000);
     return;
   }
 
-  // Caso ambiguo: seguimos en /login sin mensaje claro.
-  galiciaState.result = { ok: false, error: 'No se pudo confirmar el ingreso (quedó en la pantalla de login).', url };
+  // Ir a la cuenta y abrir Movimientos.
+  galiciaState.step = 'Abriendo Cuentas...';
+  await page.goto('https://empresas.bancogalicia.com.ar/cuentas', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+  await sleep(4500);
+
+  galiciaState.step = 'Abriendo movimientos de la cuenta...';
+  // Click en la primera fila de cuenta (la que tiene "N° ####"). Si falla, navegación directa.
+  const cuentaRow = page.locator('text=/N°\\s*\\d{5,}/').first();
+  try {
+    await cuentaRow.click({ timeout: 8000 });
+  } catch {
+    await page.goto('https://empresas.bancogalicia.com.ar/cuentas/movimientos', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+  }
+  await sleep(5000);
+
+  // Abrir el menú de descarga y elegir .CSV.
+  galiciaState.step = 'Buscando el botón de descarga...';
+  const csvOption = page.getByText('.CSV', { exact: true }).first();
+  const triggers = [
+    page.getByRole('button', { name: /descargar/i }).first(),
+    page.locator('[aria-label*="escargar"]').first(),
+    page.locator('[title*="escargar"]').first(),
+    // El ícono ⬇ está en la barra de "Movimientos", junto a "Filtros".
+    page.locator('button:has(svg), a:has(svg)').last(),
+  ];
+  let menuOpen = false;
+  for (const t of triggers) {
+    try {
+      if (!(await t.isVisible().catch(() => false))) continue;
+      await t.click({ timeout: 4000 });
+      await sleep(1000);
+      if (await csvOption.isVisible().catch(() => false)) { menuOpen = true; break; }
+    } catch {}
+  }
+  if (!menuOpen) {
+    galiciaState.result = { ok: false, loggedIn: true, error: 'Entré y llegué a movimientos, pero no encontré el botón de descarga CSV. Hay que ajustar el selector.', url: page.url() };
+    await sleep(12000);
+    return;
+  }
+
+  galiciaState.step = 'Descargando CSV...';
+  let csvBase64 = null;
+  try {
+    const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
+    await csvOption.click({ timeout: 5000 });
+    const download = await downloadPromise;
+    const filePath = await download.path();
+    const buf = fs.readFileSync(filePath);
+    csvBase64 = buf.toString('base64');
+  } catch (err) {
+    galiciaState.result = { ok: false, loggedIn: true, error: 'No se pudo descargar el CSV: ' + (err?.message || err), url: page.url() };
+    await sleep(10000);
+    return;
+  }
+
+  galiciaState.step = '¡Movimientos descargados!';
+  galiciaState.result = { ok: true, loggedIn: true, csvBase64, url: page.url() };
+  await sleep(4000);
 }
 
 // --- Start ---
