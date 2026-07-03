@@ -280,6 +280,7 @@ public class AlqReservasController : ControllerBase
             HoraInicio = NormHora(req.HoraInicio),
             HoraFin = NormHora(req.HoraFin),
             DireccionEvento = string.IsNullOrWhiteSpace(req.DireccionEvento) ? null : req.DireccionEvento.Trim(),
+            MapeoLink = string.IsNullOrWhiteSpace(req.MapeoLink) ? null : req.MapeoLink.Trim(),
             Descuento = Math.Max(0m, req.Descuento),
             Sena = Math.Max(0m, req.Sena),
             MontoTotal = total,
@@ -294,6 +295,14 @@ public class AlqReservasController : ControllerBase
             }).ToList()
         };
         _db.AlqReservas.Add(reserva);
+
+        // Si pidió guardar el link tambien en la ficha del cliente (para futuras entregas)
+        if (req.GuardarMapeoEnCliente && !string.IsNullOrWhiteSpace(req.MapeoLink))
+        {
+            cliente.MapeoLink = req.MapeoLink.Trim();
+            cliente.MapeoLat = null; cliente.MapeoLng = null; // se re-resuelven del nuevo link cuando corresponda
+        }
+
         await _db.SaveChangesAsync();
 
         // Recargo con includes para devolver el DTO completo
@@ -323,6 +332,12 @@ public class AlqReservasController : ControllerBase
         if (req.HoraInicio is not null) reserva.HoraInicio = NormHora(req.HoraInicio);
         if (req.HoraFin is not null) reserva.HoraFin = NormHora(req.HoraFin);
         if (req.DireccionEvento is not null) reserva.DireccionEvento = string.IsNullOrWhiteSpace(req.DireccionEvento) ? null : req.DireccionEvento.Trim();
+        if (req.MapeoLink is not null) reserva.MapeoLink = string.IsNullOrWhiteSpace(req.MapeoLink) ? null : req.MapeoLink.Trim();
+        if (req.GuardarMapeoEnCliente && !string.IsNullOrWhiteSpace(req.MapeoLink))
+        {
+            var cli = await _db.CafeClientes.FindAsync(reserva.ClienteId);
+            if (cli is not null) { cli.MapeoLink = req.MapeoLink.Trim(); cli.MapeoLat = null; cli.MapeoLng = null; }
+        }
         if (req.Descuento.HasValue) reserva.Descuento = Math.Max(0m, req.Descuento.Value);
         if (req.Sena.HasValue) reserva.Sena = Math.Max(0m, req.Sena.Value);
         if (req.Notas is not null) reserva.Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim();
@@ -544,6 +559,7 @@ public class AlqReservasController : ControllerBase
             i.Id, i.EquipoId, i.EquipoNav?.Sku ?? "—", i.EquipoNav?.Nombre ?? "—",
             i.Cantidad, i.PrecioUnitario)).ToList(),
         r.FechaEvento,
+        r.MapeoLink,
         r.PublicToken, r.MontoCobrado,
         r.EntregadoPorRepartidorId, r.EntregadoPorRepartidor?.Nombre, r.EntregadoAt, r.ComentarioEntrega,
         r.RetiradoPorRepartidorId, r.RetiradoPorRepartidor?.Nombre, r.RetiradoAt, r.ComentarioRetiro,

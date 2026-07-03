@@ -5227,3 +5227,9 @@ IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_AlqReservas_CafeC
     ALTER TABLE Alq_Reservas ADD CONSTRAINT FK_AlqReservas_CafeCliente
         FOREIGN KEY (ClienteId) REFERENCES Cafe_Clientes(Id);
 GO
+
+-- 2026-07-02: Link de Google Maps del lugar del evento en cada reserva de alquiler.
+-- Prioridad al mostrarlo al repartidor: el de la reserva; si no tiene, el del cliente (Cafe_Clientes.MapeoLink).
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='MapeoLink' AND Object_ID=OBJECT_ID('Alq_Reservas'))
+    ALTER TABLE Alq_Reservas ADD MapeoLink NVARCHAR(500) NULL;
+GO

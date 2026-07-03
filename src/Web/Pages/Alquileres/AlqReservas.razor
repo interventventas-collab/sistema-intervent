@@ -225,6 +225,33 @@
                         <label class="form-label">Dirección del evento</label>
                         <input class="form-input" @bind="formDireccionEvento" placeholder="Se autocompleta con la del cliente. Editala si el evento es en otra dirección." />
                     </div>
+
+                    @* Link de Google Maps del lugar del evento *@
+                    <div class="form-group" style="margin-top: 0.5rem;">
+                        <label class="form-label">📍 Ubicación en Google Maps <span style="font-weight:400; color:#9ca3af;">· opcional</span></label>
+                        <div style="display:flex; gap:0.4rem; align-items:center;">
+                            <input class="form-input" @bind="formMapeoLink" @bind:event="oninput" style="flex:1;"
+                                   placeholder="Pegá acá el link de Maps del lugar (ej: https://maps.app.goo.gl/...)" />
+                            @if (!string.IsNullOrWhiteSpace(formMapeoLink))
+                            {
+                                <a href="@formMapeoLink" target="_blank" rel="noopener"
+                                   style="text-decoration:none; white-space:nowrap; padding:0.55rem 0.8rem; background:#ede9fe; color:#5b21b6; border-radius:8px; font-weight:700; font-size:0.85rem;">
+                                    🗺 Probar
+                                </a>
+                            }
+                            else
+                            {
+                                <span style="white-space:nowrap; padding:0.55rem 0.8rem; background:#f3f4f6; color:#9ca3af; border-radius:8px; font-weight:700; font-size:0.85rem;">🗺 Probar</span>
+                            }
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(formMapeoLink))
+                        {
+                            <label style="display:flex; align-items:center; gap:0.4rem; margin-top:0.4rem; font-size:0.82rem; color:#374151; cursor:pointer;">
+                                <input type="checkbox" @bind="formGuardarMapeoEnCliente" />
+                                Guardar también en la ficha del cliente <span style="color:#9ca3af;">(para las próximas entregas)</span>
+                            </label>
+                        }
+                    </div>
                 </div>
 
                 @* ═══════════════ 2. EQUIPOS ═══════════════ *@
@@ -880,6 +907,8 @@
     private string formHoraInicio = "";
     private string formHoraFin = "";
     private string formDireccionEvento = "";
+    private string formMapeoLink = "";
+    private bool formGuardarMapeoEnCliente;
     private decimal formDescuento;
     private decimal formSena;
     private bool formUsarPrecios;
@@ -1041,14 +1070,14 @@
 
     private void OnClienteChanged()
     {
-        if (formClienteId > 0 && string.IsNullOrWhiteSpace(formDireccionEvento))
-        {
-            var c = clientes?.FirstOrDefault(x => x.Id == formClienteId);
-            if (c is not null)
-            {
-                formDireccionEvento = ArmarDireccion(c);
-            }
-        }
+        if (formClienteId <= 0) return;
+        var c = clientes?.FirstOrDefault(x => x.Id == formClienteId);
+        if (c is null) return;
+        if (string.IsNullOrWhiteSpace(formDireccionEvento))
+            formDireccionEvento = ArmarDireccion(c);
+        // Autocompletar el link de Maps con el del cliente (si tiene y el form está vacío)
+        if (string.IsNullOrWhiteSpace(formMapeoLink) && !string.IsNullOrWhiteSpace(c.MapeoLink))
+            formMapeoLink = c.MapeoLink;
     }
 
     private static string ArmarDireccion(CafeClienteDto c)
@@ -1079,6 +1108,11 @@
         formHoraInicio = r.HoraInicio ?? "";
         formHoraFin = r.HoraFin ?? "";
         formDireccionEvento = r.DireccionEvento ?? "";
+        // Link de Maps: el propio de la reserva; si no tiene, el del cliente
+        formMapeoLink = !string.IsNullOrWhiteSpace(r.MapeoLink)
+            ? r.MapeoLink!
+            : (clientes?.FirstOrDefault(x => x.Id == r.ClienteId)?.MapeoLink ?? "");
+        formGuardarMapeoEnCliente = false;
         formDescuento = r.Descuento;
         formSena = r.Sena;
         formEstado = r.Estado;
@@ -1104,6 +1138,7 @@
         formFechaRetiro = null;
         formHoraInicio = ""; formHoraFin = "";
         formDireccionEvento = "";
+        formMapeoLink = ""; formGuardarMapeoEnCliente = false;
         formDescuento = 0m; formSena = 0m;
         formUsarPrecios = false; formTotalManual = 0m;
         formEstado = "reservado";
@@ -1194,6 +1229,8 @@
                     MontoTotalManual = formUsarPrecios ? (decimal?)null : Math.Max(0m, formTotalManual),
                     Estado = formEstado,
                     Notas = formNotas,
+                    MapeoLink = formMapeoLink,
+                    GuardarMapeoEnCliente = formGuardarMapeoEnCliente,
                     Items = formItems
                 });
                 if (updated is null) { formError = "No se pudo actualizar"; return; }
@@ -1215,6 +1252,8 @@
                     MontoTotalManual = formUsarPrecios ? (decimal?)null : Math.Max(0m, formTotalManual),
                     Estado = formEstado,
                     Notas = formNotas,
+                    MapeoLink = formMapeoLink,
+                    GuardarMapeoEnCliente = formGuardarMapeoEnCliente,
                     Items = formItems
                 });
                 if (created is null) { formError = "No se pudo crear"; return; }
