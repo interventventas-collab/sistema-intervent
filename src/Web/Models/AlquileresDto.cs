@@ -115,6 +115,7 @@ public class AlqReservaDto
     public string? HoraInicio { get; set; }
     public string? HoraFin { get; set; }
     public string? DireccionEvento { get; set; }
+    public string? MapeoLink { get; set; }
     public decimal MontoTotal { get; set; }
     public decimal Descuento { get; set; }
     public decimal Sena { get; set; }
@@ -160,6 +161,8 @@ public class CreateAlqReservaRequest
     public decimal? MontoTotalManual { get; set; }
     public string? Estado { get; set; }
     public string? Notas { get; set; }
+    public string? MapeoLink { get; set; }
+    public bool GuardarMapeoEnCliente { get; set; }
     public List<CreateAlqReservaItemRequest> Items { get; set; } = new();
 }
 
@@ -200,6 +203,8 @@ public class UpdateAlqReservaRequest
     public decimal? MontoTotalManual { get; set; }
     public string? Estado { get; set; }
     public string? Notas { get; set; }
+    public string? MapeoLink { get; set; }
+    public bool GuardarMapeoEnCliente { get; set; }
     public List<CreateAlqReservaItemRequest>? Items { get; set; }
 }
 

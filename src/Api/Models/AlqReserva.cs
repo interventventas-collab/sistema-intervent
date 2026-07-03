@@ -34,6 +34,10 @@ public class AlqReserva
     [MaxLength(300)]
     public string? DireccionEvento { get; set; }
 
+    /// <summary>Link de Google Maps del lugar del evento (pin exacto). Opcional. 2026-07-02.</summary>
+    [MaxLength(500)]
+    public string? MapeoLink { get; set; }
+
     [Column(TypeName = "decimal(10,7)")]
     public decimal? LatitudEvento { get; set; }
 

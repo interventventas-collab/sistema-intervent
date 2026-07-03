@@ -175,7 +175,9 @@ public class AlqRepartidorPublicController : ControllerBase
         DateTime? EntregadoAt, DateTime? RetiradoAt,
         List<ItemDto> Items,
         // true si está entregado pero falta retirar Y ya toca (fecha de retiro llegó o se re-escaneó)
-        bool ParaRetiro = false);
+        bool ParaRetiro = false,
+        // Link de Maps efectivo: el de la reserva o, si no tiene, el del cliente. 2026-07-02
+        string? MapeoLink = null);
 
     /// <summary>Lista de reservas de alquiler asignadas al repartidor (enlace fijo por su token publico).
     /// Asignacion estilo ventas: dueño = repartidor del ultimo escaneo 'cargado'. Sin PIN para mirar.</summary>
@@ -228,7 +230,8 @@ public class AlqRepartidorPublicController : ControllerBase
                     entregado, retirado, cargadoAt,
                     x.EntregadoAt, x.RetiradoAt,
                     x.Items.Select(i => new ItemDto(i.Cantidad, i.EquipoNav?.Sku ?? "—", i.EquipoNav?.Nombre ?? "—")).ToList(),
-                    paraRetiro);
+                    paraRetiro,
+                    string.IsNullOrWhiteSpace(x.MapeoLink) ? x.ClienteNav?.MapeoLink : x.MapeoLink);
             })
             .OrderBy(x => x.Entregado && x.Retirado)        // pendientes arriba
             .ThenBy(x => x.FechaEntrega)

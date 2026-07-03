@@ -293,6 +293,7 @@
                     {
                         <div style="margin-top:0.4rem; font-size:0.85rem; color:#374151;">📍 @a.Direccion</div>
                     }
+                    @RenderAlqChips(a)
                     <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
                         <div style="flex:1; background:#f9fafb; border-radius:6px; padding:0.4rem; text-align:center;">
                             <div style="font-size:0.62rem; color:#6b7280; text-transform:uppercase; font-weight:700;">Entrega</div>
@@ -641,7 +642,8 @@
             {
                 <div style="font-size:0.85rem; color:#374151; margin-bottom:0.5rem;">📍 @alqDetalle.Direccion</div>
             }
-            <div style="display:flex; gap:0.5rem; margin-bottom:0.6rem;">
+            @RenderAlqChips(alqDetalle)
+            <div style="display:flex; gap:0.5rem; margin:0.5rem 0 0.6rem;">
                 <div style="flex:1; background:#f9fafb; border-radius:6px; padding:0.4rem; text-align:center;">
                     <div style="font-size:0.62rem; color:#6b7280; text-transform:uppercase; font-weight:700;">Entrega</div>
                     <div style="font-weight:800;">@alqDetalle.FechaEntrega.ToString("dd/MM")</div>
@@ -850,7 +852,9 @@
         string ClienteNombre, string? ClienteTelefono, string? Direccion,
         DateTime FechaEntrega, DateTime FechaRetiro,
         decimal MontoTotal, decimal Saldo, bool Entregado, bool Retirado, DateTime CargadoAt,
-        DateTime? EntregadoAt, DateTime? RetiradoAt, List<AlqEquipoDet>? Items, bool ParaRetiro = false);
+        DateTime? EntregadoAt, DateTime? RetiradoAt, List<AlqEquipoDet>? Items, bool ParaRetiro = false,
+        // 2026-07-02: link de Maps efectivo (reserva o cliente). Botón 🗺 Maps en la tarjeta.
+        string? MapeoLink = null);
     public record AlqCobroItem(int ReservaId, decimal Importe, string Estado, DateTime FechaCobro);
     public record MisAlquileresResp(int RepartidorId, string Nombre, List<AlqReservaItem> Reservas, List<AlqCobroItem>? Cobros);
 
@@ -1545,6 +1549,47 @@
         if (!digits.StartsWith("54")) digits = "54" + digits;
         return digits;
     }
+
+    // ===== Alquileres: link de Maps/Waze del lugar del evento =====
+    // Prioridad: MapeoLink cargado (en la reserva o el cliente) > búsqueda por dirección.
+    private string AlqMapsUrl(AlqReservaItem a)
+    {
+        if (!string.IsNullOrWhiteSpace(a.MapeoLink)) return a.MapeoLink!;
+        var q = (a.Direccion ?? "").Trim();
+        return $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString(q)}";
+    }
+    private string AlqWazeUrl(AlqReservaItem a)
+    {
+        var q = (a.Direccion ?? "").Trim();
+        return $"https://www.waze.com/ul?q={Uri.EscapeDataString(q)}&navigate=yes";
+    }
+
+    private RenderFragment RenderAlqChips(AlqReservaItem a) => __builder =>
+    {
+        var phone = PhoneDigits(a.ClienteTelefono);
+        var tieneLink = !string.IsNullOrWhiteSpace(a.MapeoLink);
+        var tieneDir = !string.IsNullOrWhiteSpace(a.Direccion);
+        if (phone is null && !tieneLink && !tieneDir) return;
+
+        <div style="display:flex; flex-wrap:wrap; gap:0.4rem; margin:0.5rem 0 0.1rem;">
+            @if (phone is not null)
+            {
+                <a href="@($"https://wa.me/{phone}")" target="_blank" rel="noopener"
+                   style="text-decoration:none; padding:0.3rem 0.55rem; background:#dcfce7; color:#15803d; border-radius:6px; font-size:0.78rem; font-weight:700;">💬 WhatsApp</a>
+            }
+            @if (tieneLink || tieneDir)
+            {
+                <a href="@AlqMapsUrl(a)" target="_blank" rel="noopener"
+                   style="text-decoration:none; padding:0.3rem 0.55rem; background:@(tieneLink ? "#ede9fe" : "#fef3c7"); color:@(tieneLink ? "#5b21b6" : "#92400e"); border-radius:6px; font-size:0.78rem; font-weight:700;"
+                   title="@(tieneLink ? "Ubicación exacta cargada en la reserva" : "Búsqueda por la dirección escrita (puede ser aproximada)")">🗺 Maps</a>
+                @if (tieneDir)
+                {
+                    <a href="@AlqWazeUrl(a)" target="_blank" rel="noopener"
+                       style="text-decoration:none; padding:0.3rem 0.55rem; background:#cffafe; color:#0e7490; border-radius:6px; font-size:0.78rem; font-weight:700;">🧭 Waze</a>
+                }
+            }
+        </div>
+    };
 
     // Prioridad: coords exactas (capturadas) > MapeoLink manual (pegado en ficha) > buscar por direccion.
     private string GmapsUrl(PedidoDto p)

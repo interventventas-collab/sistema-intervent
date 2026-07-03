@@ -84,6 +84,8 @@ public record AlqReservaDto(
     DateTime CreatedAt, DateTime? UpdatedAt,
     List<AlqReservaItemDto> Items,
     DateTime? FechaEvento = null,
+    // Link de Google Maps del lugar del evento (propio de la reserva). 2026-07-02
+    string? MapeoLink = null,
     // ===== QR + Repartidor (2026-06-26) =====
     string? PublicToken = null,
     decimal MontoCobrado = 0,
@@ -116,6 +118,10 @@ public class CreateAlqReservaRequest
     public decimal? MontoTotalManual { get; set; }
     public string? Estado { get; set; }
     public string? Notas { get; set; }
+    /// <summary>Link de Google Maps del lugar del evento. Se guarda en la reserva.</summary>
+    public string? MapeoLink { get; set; }
+    /// <summary>Si es true, ademas guarda el link en la ficha del cliente (para futuras entregas).</summary>
+    public bool GuardarMapeoEnCliente { get; set; }
     public List<CreateAlqReservaItemRequest> Items { get; set; } = new();
 }
 
@@ -135,6 +141,10 @@ public class UpdateAlqReservaRequest
     public decimal? MontoTotalManual { get; set; }
     public string? Estado { get; set; }
     public string? Notas { get; set; }
+    /// <summary>Link de Google Maps del lugar del evento. Se guarda en la reserva.</summary>
+    public string? MapeoLink { get; set; }
+    /// <summary>Si es true, ademas guarda el link en la ficha del cliente (para futuras entregas).</summary>
+    public bool GuardarMapeoEnCliente { get; set; }
     public List<CreateAlqReservaItemRequest>? Items { get; set; }
 }
 
