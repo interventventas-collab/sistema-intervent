@@ -18,20 +18,20 @@
     }
 
     <div class="cco-controls" @onclick:stopPropagation="true">
-        <label class="cco-btn" title="Cambiar imagen de fondo" @onclick:stopPropagation="true">
-            <i class="ti ti-camera"></i>
+        <label class="cco-btn cco-btn-foto" title="Cambiar imagen de fondo" @onclick:stopPropagation="true">
+            <span>📷 Foto</span>
             <InputFile OnChange="OnBgPicked" accept=".png,.jpg,.jpeg,.webp" style="display:none;" />
         </label>
         @if (bgExists)
         {
-            <button class="cco-btn" @onclick="OnDeleteBg" @onclick:stopPropagation="true" title="Quitar imagen">
-                <i class="ti ti-trash"></i>
+            <button class="cco-btn cco-btn-danger" @onclick="OnDeleteBg" @onclick:stopPropagation="true" title="Quitar imagen">
+                <span>🗑</span>
             </button>
         }
         @if (!editing && string.IsNullOrWhiteSpace(comment))
         {
-            <button class="cco-btn" @onclick="StartEdit" @onclick:stopPropagation="true" title="Agregar nota">
-                <i class="ti ti-note"></i>
+            <button class="cco-btn cco-btn-nota" @onclick="StartEdit" @onclick:stopPropagation="true" title="Agregar nota">
+                <span>📝 Nota</span>
             </button>
         }
     </div>
@@ -42,6 +42,7 @@
             @if (editing)
             {
                 <input type="text" class="cco-input"
+                       placeholder="Escribí tu nota y apretá Enter…"
                        @bind="commentEdit" @bind:event="oninput"
                        @onblur="SaveComment"
                        @onkeydown="OnKeyComment"
@@ -51,8 +52,8 @@
             else
             {
                 <span class="cco-text" @onclick="StartEdit" @onclick:stopPropagation="true" title="Click para editar">@comment</span>
-                <button class="cco-btn cco-btn-sm" @onclick="ClearComment" @onclick:stopPropagation="true" title="Quitar nota">
-                    <i class="ti ti-x"></i>
+                <button class="cco-btn cco-btn-sm cco-btn-danger" @onclick="ClearComment" @onclick:stopPropagation="true" title="Quitar nota">
+                    <span>✕</span>
                 </button>
             }
         </div>
@@ -92,29 +93,47 @@
         top: 6px;
         right: 6px;
         display: flex;
-        gap: 4px;
+        gap: 5px;
         pointer-events: auto;
-        opacity: 0.55;
+        opacity: 0.85;
         transition: opacity 0.15s ease;
         z-index: 3;
     }
     .cco-root:hover .cco-controls { opacity: 1; }
     .cco-btn {
-        width: 26px;
-        height: 26px;
+        height: 24px;
+        padding: 0 8px;
         border-radius: 6px;
-        border: none;
-        background: rgba(255,255,255,0.85);
-        color: #1f2937;
+        border: 1px solid rgba(0,0,0,0.08);
         display: inline-flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        font-size: 14px;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+        font-size: 11px;
+        font-weight: 500;
+        line-height: 1;
+        white-space: nowrap;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.10);
     }
-    .cco-btn:hover { background: white; }
-    .cco-btn-sm { width: 20px; height: 20px; font-size: 11px; }
+    .cco-btn-foto {
+        background: #eff6ff;
+        color: #1e40af;
+        border-color: #93c5fd;
+    }
+    .cco-btn-foto:hover { background: #dbeafe; }
+    .cco-btn-nota {
+        background: #fef3c7;
+        color: #92400e;
+        border-color: #fcd34d;
+    }
+    .cco-btn-nota:hover { background: #fde68a; }
+    .cco-btn-danger {
+        background: #fee2e2;
+        color: #991b1b;
+        border-color: #fca5a5;
+    }
+    .cco-btn-danger:hover { background: #fecaca; }
+    .cco-btn-sm { height: 20px; padding: 0 5px; font-size: 10px; }
     .cco-comment {
         position: absolute;
         left: 0; right: 0; bottom: 0;
