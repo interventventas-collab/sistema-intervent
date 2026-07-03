@@ -1,0 +1,357 @@
+@page "/integraciones/galicia"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@implements IDisposable
+
+<div class="view-header">
+    <h2>🏦 Banco Galicia — conexión automática</h2>
+</div>
+
+<div style="max-width: 760px;">
+
+    <p style="color:#6b7280; font-size:0.9rem; margin-bottom:1rem;">
+        Acá se cargan el usuario y la clave del <strong>Office Banking (empresas)</strong> para que el
+        robot pueda entrar solo y, más adelante, traer el saldo y los movimientos. La clave se guarda
+        protegida y se usa solo para entrar al banco.
+    </p>
+
+    @if (cargando)
+    {
+        <p>Cargando…</p>
+    }
+    else
+    {
+        @* ═══════════ Formulario de credenciales ═══════════ *@
+        <div class="card" style="padding:1.1rem; margin-bottom:1.2rem; border:1px solid #e5e7eb; border-radius:10px;">
+            <h3 style="margin-top:0;">Datos de acceso</h3>
+
+            <div class="form-group">
+                <label>Usuario del Office Banking</label>
+                <input class="form-control" @bind="usuario" placeholder="ej: intervent25" />
+            </div>
+
+            <div class="form-group">
+                <label>Clave @(account?.HasPassword == true ? "(dejá vacío para no cambiarla)" : "")</label>
+                <input class="form-control" type="password" @bind="password"
+                       placeholder="@(account?.HasPassword == true ? "•••••••• (ya guardada)" : "Escribí la clave")" />
+            </div>
+
+            <div class="form-group">
+                <label>Alias (opcional)</label>
+                <input class="form-control" @bind="alias" placeholder="ej: PALANICA HERMANOS SRL" />
+            </div>
+
+            <button class="btn btn-primary" @onclick="Guardar" disabled="@guardando">
+                @(guardando ? "Guardando…" : "Guardar datos")
+            </button>
+            @if (account?.UpdatedAt is not null)
+            {
+                <span style="color:#6b7280; font-size:0.8rem; margin-left:0.6rem;">
+                    Última actualización: @account.UpdatedAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                </span>
+            }
+        </div>
+
+        @* ═══════════ Prueba de conexión ═══════════ *@
+        <div class="card" style="padding:1.1rem; border:1px solid #e5e7eb; border-radius:10px;">
+            <h3 style="margin-top:0;">Probar la conexión</h3>
+            <p style="color:#6b7280; font-size:0.85rem;">
+                <strong>Ver login</strong> abre el banco y completa los datos <em>sin</em> apretar Ingresar
+                (no gasta intentos). <strong>Probar entrar</strong> sí aprieta Ingresar e informa si entró
+                o si el banco pidió un código.
+            </p>
+
+            <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+                <button class="btn btn-secondary" @onclick="() => IniciarPrueba(false)"
+                        disabled="@(testRunning || account is null)">
+                    👁 Ver login (sin enviar)
+                </button>
+                <button class="btn btn-primary" @onclick="() => IniciarPrueba(true)"
+                        disabled="@(testRunning || account is null || account?.HasPassword != true)">
+                    🔑 Probar entrar
+                </button>
+            </div>
+
+            @if (account is null)
+            {
+                <p style="color:#b45309; font-size:0.85rem; margin-top:0.6rem;">Guardá primero el usuario y la clave.</p>
+            }
+
+            @* Corriendo: spinner + paso + foto en vivo *@
+            @if (testRunning)
+            {
+                <div style="display:flex; align-items:center; gap:0.8rem; padding:0.7rem 0.9rem; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; margin:1rem 0;">
+                    <div style="width:22px; height:22px; border:3px solid #bfdbfe; border-top-color:#1d4ed8; border-radius:50%; animation:spin 1s linear infinite; flex-shrink:0;"></div>
+                    <div>
+                        <strong style="color:#1e3a8a;">@testStep</strong>
+                        <div style="font-size:0.75rem; color:#6b7280;">El navegador del servidor está trabajando — abajo ves lo que ve.</div>
+                    </div>
+                </div>
+
+                @if (ScreenshotVisible)
+                {
+                    <div style="background:#1f2937; border-radius:8px; padding:0.5rem; text-align:center;">
+                        <img src="@screenshotUrl" alt="Lo que ve el navegador"
+                             style="max-width:100%; max-height:60vh; border-radius:4px;"
+                             onerror="this.style.visibility='hidden'" onload="this.style.visibility='visible'" />
+                    </div>
+                }
+            }
+
+            @* Resultado *@
+            @if (!testRunning && testResult is not null)
+            {
+                @if (!testResult.Ok)
+                {
+                    <div style="padding:0.8rem; margin-top:1rem; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; color:#991b1b;">
+                        <strong>❌ Falló:</strong> @testResult.Error
+                    </div>
+                }
+                else if (testResult.NeedsToken == true)
+                {
+                    <div style="padding:0.8rem; margin-top:1rem; background:#fffbeb; border:1px solid #fde68a; border-radius:8px; color:#92400e;">
+                        <strong>⚠️ El banco pidió un código de seguridad.</strong>
+                        <div style="margin-top:0.3rem;">Significa que desde el servidor pide token. Vamos a tener que resolverlo con el paso semi-automático.</div>
+                    </div>
+                }
+                else if (testResult.LoggedIn == true)
+                {
+                    <div style="padding:0.8rem; margin-top:1rem; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; color:#166534;">
+                        <strong>✅ ¡Entró! El robot pudo iniciar sesión desde el servidor.</strong>
+                        <div style="margin-top:0.3rem;">Ahora sí podemos seguir con la descarga automática de movimientos.</div>
+                    </div>
+                }
+                else if (testResult.Submitted == false)
+                {
+                    <div style="padding:0.8rem; margin-top:1rem; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; color:#1e3a8a;">
+                        <strong>👁 Login abierto y datos completados</strong> (sin enviar). Si la foto se ve bien, el robot llega al formulario correctamente.
+                    </div>
+                }
+            }
+        </div>
+
+        @* ═══════════ Traer movimientos (Paso 2) ═══════════ *@
+        <div class="card" style="padding:1.1rem; margin-top:1.2rem; border:1px solid #e5e7eb; border-radius:10px;">
+            <h3 style="margin-top:0;">Traer movimientos y saldo</h3>
+            <p style="color:#6b7280; font-size:0.85rem;">
+                El robot entra, baja el extracto (CSV) y lo carga en <strong>Extracto de Banco</strong>.
+                Con eso, el <strong>saldo</strong> y las <strong>transferencias para cobranzas</strong> quedan al día solos.
+                Tarda cerca de un minuto — no cierres esta pantalla.
+            </p>
+
+            <button class="btn btn-primary" @onclick="Sincronizar"
+                    disabled="@(sincronizando || testRunning || account?.HasPassword != true)">
+                @(sincronizando ? "Trayendo… (esperá ~1 min)" : "⬇ Traer movimientos ahora")
+            </button>
+
+            @if (sincronizando)
+            {
+                <div style="display:flex; align-items:center; gap:0.8rem; padding:0.7rem 0.9rem; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; margin:1rem 0;">
+                    <div style="width:22px; height:22px; border:3px solid #bfdbfe; border-top-color:#1d4ed8; border-radius:50%; animation:spin 1s linear infinite; flex-shrink:0;"></div>
+                    <div>
+                        <strong style="color:#1e3a8a;">@syncStep</strong>
+                        <div style="font-size:0.75rem; color:#6b7280;">El robot está trabajando — abajo ves lo que ve.</div>
+                    </div>
+                </div>
+                @if (!string.IsNullOrEmpty(screenshotUrl))
+                {
+                    <div style="background:#1f2937; border-radius:8px; padding:0.5rem; text-align:center;">
+                        <img src="@screenshotUrl" alt="Lo que ve el navegador"
+                             style="max-width:100%; max-height:55vh; border-radius:4px;"
+                             onerror="this.style.visibility='hidden'" onload="this.style.visibility='visible'" />
+                    </div>
+                }
+            }
+
+            @if (!sincronizando && syncResult is not null)
+            {
+                @if (syncResult.Ok)
+                {
+                    <div style="padding:0.8rem; margin-top:1rem; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; color:#166534;">
+                        <strong>✅ ¡Listo!</strong> Se trajeron <strong>@syncResult.Nuevos</strong> movimientos nuevos
+                        (@syncResult.SinCambios ya estaban). El saldo del dashboard ya quedó actualizado.
+                    </div>
+                }
+                else
+                {
+                    <div style="padding:0.8rem; margin-top:1rem; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; color:#991b1b;">
+                        <strong>❌ No se pudo:</strong> @syncResult.Error
+                    </div>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private bool cargando = true;
+    private Web.Models.GaliciaAccountDto? account;
+
+    private string usuario = "";
+    private string password = "";
+    private string alias = "";
+    private bool guardando;
+
+    private bool testRunning;
+    private string testStep = "";
+    private Web.Models.GaliciaTestResultDto? testResult;
+    private string screenshotUrl = "";
+    private CancellationTokenSource? pollCts;
+
+    private bool sincronizando;
+    private string syncStep = "";
+    private Web.Models.GaliciaSincronizarResultDto? syncResult;
+    private CancellationTokenSource? syncPollCts;
+
+    private bool ScreenshotVisible =>
+        testRunning && !string.IsNullOrEmpty(testStep)
+        && !testStep.StartsWith("Iniciando", StringComparison.OrdinalIgnoreCase)
+        && !testStep.StartsWith("Abriendo navegador", StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarCuenta();
+    }
+
+    private async Task CargarCuenta()
+    {
+        cargando = true;
+        try
+        {
+            account = await Api.GetGaliciaAccountAsync();
+            if (account is not null)
+            {
+                usuario = account.Usuario;
+                alias = account.Alias ?? "";
+            }
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo cargar: " + ex.Message); }
+        finally { cargando = false; }
+    }
+
+    private async Task Guardar()
+    {
+        if (string.IsNullOrWhiteSpace(usuario)) { ToastService.Error("Poné el usuario"); return; }
+        guardando = true;
+        try
+        {
+            var req = new Web.Models.SaveGaliciaAccountRequest
+            {
+                Usuario = usuario.Trim(),
+                Password = string.IsNullOrWhiteSpace(password) ? null : password,
+                Alias = string.IsNullOrWhiteSpace(alias) ? null : alias.Trim(),
+                IsActive = true
+            };
+            account = await Api.SaveGaliciaAccountAsync(req);
+            password = "";
+            ToastService.Success("Datos guardados");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo guardar: " + ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private async Task IniciarPrueba(bool submit)
+    {
+        testResult = null;
+        testStep = "Iniciando…";
+        testRunning = true;
+        StateHasChanged();
+        try
+        {
+            await Api.StartGaliciaTestAsync(submit);
+            StartPolling();
+        }
+        catch (Exception ex)
+        {
+            testRunning = false;
+            ToastService.Error("No se pudo iniciar: " + ex.Message);
+        }
+    }
+
+    private void StartPolling()
+    {
+        pollCts?.Cancel();
+        pollCts = new CancellationTokenSource();
+        var token = pollCts.Token;
+        _ = Task.Run(async () =>
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(1200, token);
+                    if (token.IsCancellationRequested) break;
+
+                    var st = await Api.GetGaliciaTestStatusAsync();
+                    if (st is not null)
+                    {
+                        testStep = st.Step;
+                        screenshotUrl = $"/api/galicia/test/screenshot?t={DateTimeOffset.Now.ToUnixTimeMilliseconds()}";
+                        if (!st.Running)
+                        {
+                            testRunning = false;
+                            testResult = st.Result;
+                            await InvokeAsync(StateHasChanged);
+                            break;
+                        }
+                    }
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch (TaskCanceledException) { break; }
+                catch { /* seguimos */ }
+            }
+        }, token);
+    }
+
+    private async Task Sincronizar()
+    {
+        syncResult = null;
+        syncStep = "Iniciando…";
+        sincronizando = true;
+        StateHasChanged();
+
+        // Mientras el robot trabaja, refrescamos la foto y el paso en vivo.
+        syncPollCts?.Cancel();
+        syncPollCts = new CancellationTokenSource();
+        var token = syncPollCts.Token;
+        _ = Task.Run(async () =>
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(1500, token);
+                    if (token.IsCancellationRequested) break;
+                    var st = await Api.GetGaliciaTestStatusAsync();
+                    if (st is not null) syncStep = st.Step;
+                    screenshotUrl = $"/api/galicia/test/screenshot?t={DateTimeOffset.Now.ToUnixTimeMilliseconds()}";
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch (TaskCanceledException) { break; }
+                catch { }
+            }
+        }, token);
+
+        try
+        {
+            syncResult = await Api.SincronizarGaliciaAsync();
+        }
+        catch (Exception ex)
+        {
+            syncResult = new Web.Models.GaliciaSincronizarResultDto { Ok = false, Error = ex.Message };
+        }
+        finally
+        {
+            syncPollCts?.Cancel();
+            sincronizando = false;
+            StateHasChanged();
+        }
+    }
+
+    public void Dispose()
+    {
+        pollCts?.Cancel();
+        syncPollCts?.Cancel();
+    }
+}

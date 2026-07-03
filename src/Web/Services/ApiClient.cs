@@ -4026,6 +4026,26 @@ public class ApiClient
             _navigation.NavigateTo("/login", forceLoad: true);
     }
 
+    // --- Banco Galicia (scraping Office Banking empresas) ---
+    public async Task<Web.Models.GaliciaAccountDto?> GetGaliciaAccountAsync()
+        => await GetAsync<Web.Models.GaliciaAccountDto>("/api/galicia/account");
+
+    public async Task<Web.Models.GaliciaAccountDto?> SaveGaliciaAccountAsync(Web.Models.SaveGaliciaAccountRequest req)
+        => await PutAsync<Web.Models.GaliciaAccountDto>("/api/galicia/account", req);
+
+    /// <summary>Dispara la prueba de login. submit=false abre el form sin enviar. Lanza excepción con el error si falla.</summary>
+    public async Task StartGaliciaTestAsync(bool submit)
+        => await PostAsync<GaliciaOkResp>("/api/galicia/test", new { submit });
+
+    public async Task<Web.Models.GaliciaTestStatusDto?> GetGaliciaTestStatusAsync()
+        => await GetAsync<Web.Models.GaliciaTestStatusDto>("/api/galicia/test/status");
+
+    /// <summary>Sincroniza movimientos (robot baja CSV + importa). Puede tardar ~1 min.</summary>
+    public async Task<Web.Models.GaliciaSincronizarResultDto?> SincronizarGaliciaAsync()
+        => await PostAsync<Web.Models.GaliciaSincronizarResultDto>("/api/galicia/sincronizar", new { });
+
+    private class GaliciaOkResp { public bool Ok { get; set; } }
+
     private async Task<T?> GetAsync<T>(string url)
     {
         await SetAuthHeaderAsync();

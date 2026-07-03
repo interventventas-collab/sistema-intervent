@@ -156,6 +156,23 @@ BEGIN
 END
 GO
 
+-- GaliciaAccounts table — credenciales del Office Banking (empresas) de Banco Galicia
+-- para login automatizado por scraping. Se usa una sola fila (una empresa). La clave
+-- se guarda en texto porque el robot Playwright la usa en runtime.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='GaliciaAccounts' AND xtype='U')
+BEGIN
+    CREATE TABLE GaliciaAccounts (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        Usuario NVARCHAR(100) NOT NULL,
+        Password NVARCHAR(MAX) NOT NULL,
+        Alias NVARCHAR(100) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL
+    );
+END
+GO
+
 -- ArcaWebserviceAccounts table — certificados .pfx para autenticarse contra
 -- los webservices de ARCA. Cada CUIT puede tener varios certificados (distintos
 -- alias/ambientes). El archivo .pfx vive en disco bajo "Certificados ARCA/<cuit>/".
