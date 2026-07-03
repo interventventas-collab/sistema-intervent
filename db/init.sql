@@ -5184,3 +5184,34 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='EntreCalles' AND Object_ID=OBJECT_ID('Cafe_Clientes'))
     ALTER TABLE Cafe_Clientes ADD EntreCalles NVARCHAR(200) NULL;
 GO
+
+-- 2026-07-02: Chat interno entre usuarios del sistema.
+-- Un canal "Grupo general" (ParaUserId NULL) + mensajes privados uno-a-uno (ParaUserId = destinatario).
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Chat_Mensajes' AND xtype='U')
+BEGIN
+    CREATE TABLE Chat_Mensajes (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        DeUserId INT NOT NULL,                 -- quien lo envió
+        DeNombre NVARCHAR(120) NULL,           -- nombre para mostrar (guardado al enviar)
+        ParaUserId INT NULL,                   -- NULL = Grupo general; con valor = mensaje privado a ese usuario
+        Cuerpo NVARCHAR(MAX) NOT NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+    CREATE INDEX IX_ChatMensajes_Para ON Chat_Mensajes(ParaUserId, CreatedAt DESC);
+    CREATE INDEX IX_ChatMensajes_De ON Chat_Mensajes(DeUserId, CreatedAt DESC);
+END
+GO
+
+-- Control de "hasta dónde leyó" cada usuario en cada conversación.
+-- Conversacion = 'grupo'  ó  'u:{idDelOtroUsuario}'.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Chat_Lecturas' AND xtype='U')
+BEGIN
+    CREATE TABLE Chat_Lecturas (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        UserId INT NOT NULL,
+        Conversacion NVARCHAR(40) NOT NULL,
+        LastReadAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT UQ_ChatLecturas UNIQUE (UserId, Conversacion)
+    );
+END
+GO
