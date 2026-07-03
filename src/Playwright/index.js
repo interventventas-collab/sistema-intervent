@@ -2266,12 +2266,21 @@ async function runGaliciaLogin({ usuario, password, submit }) {
   }
   await userInput.waitFor({ state: 'visible', timeout: 20000 });
 
+  // IMPORTANTE: escribir letra por letra (pressSequentially), NO fill().
+  // El SPA de Galicia mantiene "Ingresar" deshabilitado hasta detectar tipeo real;
+  // fill() setea el valor pero no dispara la validación → el botón queda bloqueado.
   galiciaState.step = `Ingresando usuario ${usuario}...`;
-  await userInput.fill(usuario, { timeout: 8000 });
+  await userInput.click({ timeout: 8000 });
+  await userInput.fill('');
+  await userInput.pressSequentially(usuario, { delay: 45, timeout: 20000 });
   if (password) {
     galiciaState.step = 'Ingresando clave...';
-    await page.locator('#userPassword').fill(password, { timeout: 8000 });
+    const passField = page.locator('#userPassword');
+    await passField.click({ timeout: 8000 });
+    await passField.fill('');
+    await passField.pressSequentially(password, { delay: 45, timeout: 20000 });
   }
+  await sleep(600); // darle un instante al SPA para habilitar el botón
 
   if (!submit) {
     // Modo "ver login": no enviamos. Dejamos la foto disponible unos segundos.
@@ -2282,7 +2291,19 @@ async function runGaliciaLogin({ usuario, password, submit }) {
   }
 
   galiciaState.step = 'Ingresando (apretando "Ingresar")...';
-  await page.locator('button[type="submit"]').first().click({ timeout: 8000 });
+  const btnIngresar = page.getByRole('button', { name: 'Ingresar' }).first();
+  try { await btnIngresar.waitFor({ state: 'visible', timeout: 8000 }); } catch {}
+  let clicked = false;
+  try {
+    await btnIngresar.click({ timeout: 12000 });
+    clicked = true;
+  } catch {
+    // Fallback: enviar el formulario con Enter desde el campo de la clave.
+    try { await page.locator('#userPassword').press('Enter'); clicked = true; } catch {}
+  }
+  if (!clicked) {
+    throw new Error('No se pudo apretar "Ingresar" (el botón no se habilitó).');
+  }
 
   galiciaState.step = 'Verificando ingreso...';
   await page.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
