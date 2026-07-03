@@ -2526,14 +2526,23 @@ async function leerOtpShellDesdeGmail(gmailUser, gmailPass, sinceEpochMs) {
   let simpleParser;
   try { simpleParser = require('mailparser').simpleParser; } catch { simpleParser = null; }
 
+  const esCodigo = (t) => t && /[A-Z]/.test(t) && /[0-9]/.test(t);
   const extraerCodigo = (txt) => {
     if (!txt) return null;
-    const tokens = txt.toUpperCase().match(/\b[A-Z0-9]{6}\b/g) || [];
-    let c = tokens.find(t => /[A-Z]/.test(t) && /[0-9]/.test(t));
+    // Sacar colores hex (#3B3D40) para que no se confundan con el token.
+    const T = txt.toUpperCase().replace(/#\s*[0-9A-F]{3,8}\b/g, ' ');
+    // 1) Preferir el token que aparece JUSTO DESPUÉS de una palabra clave.
+    const kw = /(OTP|C[ÓO]DIGO|CODIGO|VERIFICACI[ÓO]N|VERIFICACION|TOKEN|SOLO USO)[^A-Z0-9]{0,60}([A-Z0-9]{6})\b/;
+    const mk = T.match(kw);
+    if (mk && esCodigo(mk[2])) return mk[2];
+    // 2) Fallback: primer token de 6 con letra + dígito.
+    const tokens = T.match(/\b[A-Z0-9]{6}\b/g) || [];
+    const c = tokens.find(esCodigo);
     if (c) return c;
-    const junto = txt.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    // 3) Último recurso: forma espaciada "Q 4 4 7 2 N".
+    const junto = T.replace(/[^A-Z0-9]/g, '');
     const m = junto.match(/[A-Z0-9]{6}/g) || [];
-    return m.find(t => /[A-Z]/.test(t) && /[0-9]/.test(t)) || null;
+    return (m.find(esCodigo)) || null;
   };
 
   const client = new ImapFlow({ host: 'imap.gmail.com', port: 993, secure: true, auth: { user: gmailUser, pass: gmailPass }, logger: false });
@@ -2552,12 +2561,25 @@ async function leerOtpShellDesdeGmail(gmailUser, gmailPass, sinceEpochMs) {
             const msg = await client.fetchOne(uid, { source: true, internalDate: true }, { uid: true });
             if (!msg) continue;
             if (msg.internalDate && msg.internalDate.getTime() < sinceEpochMs - 90000) continue;
-            let contenido = msg.source ? msg.source.toString() : '';
+            let contenido = '';
             if (simpleParser && msg.source) {
-              try { const p = await simpleParser(msg.source); contenido = (p.text || '') + ' ' + (p.html || '') + ' ' + (p.subject || ''); } catch {}
+              try {
+                const p = await simpleParser(msg.source);
+                // El texto plano primero (sin CSS). Luego el html limpiado de estilos/etiquetas.
+                let htmlLimpio = '';
+                if (p.html) {
+                  htmlLimpio = p.html
+                    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+                    .replace(/style\s*=\s*"[^"]*"/gi, ' ')
+                    .replace(/#\s*[0-9a-fA-F]{3,8}\b/g, ' ')
+                    .replace(/<[^>]+>/g, ' ');
+                }
+                contenido = (p.text || '') + '  ⁣  ' + htmlLimpio + '  ' + (p.subject || '');
+              } catch {}
             }
+            if (!contenido && msg.source) contenido = msg.source.toString().replace(/#\s*[0-9a-fA-F]{3,8}\b/g, ' ');
             const c = extraerCodigo(contenido);
-            if (c) { code = c; break; }
+            if (c) { console.log('[shell][OTP] código extraído del mail:', c); code = c; break; }
           }
         }
       } finally { lock.release(); }
