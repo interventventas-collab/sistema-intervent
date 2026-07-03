@@ -17,8 +17,8 @@
         <div class="cco-bg-tint"></div>
     }
 
-    <div class="cco-controls" @onclick:stopPropagation="true">
-        <label class="cco-btn cco-btn-foto" title="Cambiar imagen de fondo" @onclick:stopPropagation="true">
+    <div class="cco-controls" @onclick="NoOp" @onclick:stopPropagation="true">
+        <label class="cco-btn cco-btn-foto" title="Cambiar imagen de fondo" @onclick="NoOp" @onclick:stopPropagation="true">
             <span>📷 Foto</span>
             <InputFile OnChange="OnBgPicked" accept=".png,.jpg,.jpeg,.webp" style="display:none;" />
         </label>
@@ -38,7 +38,7 @@
 
     @if (editing || !string.IsNullOrWhiteSpace(comment))
     {
-        <div class="cco-comment @(editing ? "cco-comment-editing" : "")" @onclick:stopPropagation="true">
+        <div class="cco-comment @(editing ? "cco-comment-editing" : "")" @onclick="NoOp" @onclick:stopPropagation="true">
             @if (editing)
             {
                 <input type="text" class="cco-input"
@@ -280,4 +280,10 @@
         if (e.Key == "Enter") { await SaveComment(); }
         else if (e.Key == "Escape") { editing = false; StateHasChanged(); }
     }
+
+    // 2026-07-03: handler vacio para que @onclick:stopPropagation efectivamente
+    // capture el evento antes de que llegue a la card padre (que tiene su propia
+    // navegacion en @onclick). Sin @onclick propio en el elemento, el modifier
+    // stopPropagation no se aplica.
+    private void NoOp() { }
 }
