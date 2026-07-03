@@ -7217,6 +7217,12 @@
                 return;
             }
 
+            // 2026-07-03: recargar la LISTA de ventas AHORA, antes del PDF/envios/catalogos.
+            // Antes esto corria al final y el usuario veia la lista vieja durante segundos.
+            // Load() es rapido (paginado); LoadCatalogos() sigue quedando al final (5-9 MB).
+            await Load();
+            StateHasChanged();
+
             // ════════ ABRIR EL PDF EN UNA PESTAÑA NUEVA ════════
             // Si era una venta nueva (no edicion), abrimos directamente la URL publica
             // del PDF en otra pestaña. Usamos la URL publica (con token) para que cuando
