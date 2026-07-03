@@ -26,6 +26,12 @@ public class ExtractoBancoImportService
     {
         var errores = new List<string>();
 
+        // El CSV del Galicia viene con BOM al inicio (U+FEFF). Si no se saca, la
+        // primera columna queda como "﻿Fecha" y no matchea "Fecha".
+        // (El importador por upload lo saca vía StreamReader detectEncoding; acá,
+        // como recibimos el texto ya decodificado, lo removemos a mano.)
+        allText = allText.TrimStart('﻿', '￾', '​');
+
         // Detectar separador (puede ser ; , o tab segun region)
         char sep = ',';
         var firstLine = allText.Split('\n').FirstOrDefault() ?? "";

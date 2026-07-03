@@ -2400,25 +2400,44 @@ async function runGaliciaMovimientos({ usuario, password }) {
   await sleep(5000);
 
   // Abrir el menú de descarga y elegir .CSV.
-  galiciaState.step = 'Buscando el botón de descarga...';
-  const csvOption = page.getByText('.CSV', { exact: true }).first();
+  // El trigger es un dropdown con clase "download-button" (clase "download-b..." +
+  // "brk-dropdown"); las opciones son elementos con title ".CSV"/".PDF"/etc.
+  galiciaState.step = 'Abriendo el menú de descarga...';
+  const csvOption = page.locator('[title=".CSV"]').first();
   const triggers = [
-    page.getByRole('button', { name: /descargar/i }).first(),
-    page.locator('[aria-label*="escargar"]').first(),
-    page.locator('[title*="escargar"]').first(),
-    // El ícono ⬇ está en la barra de "Movimientos", junto a "Filtros".
-    page.locator('button:has(svg), a:has(svg)').last(),
+    page.locator('[class*="download-b"]').first(),
+    page.locator('[class*="brk-dropdown"][class*="download"]').first(),
+    page.locator('[class*="brk-dropdown"]').last(),
   ];
   let menuOpen = false;
   for (const t of triggers) {
     try {
       if (!(await t.isVisible().catch(() => false))) continue;
-      await t.click({ timeout: 4000 });
-      await sleep(1000);
+      await t.click({ timeout: 5000 });
+      await sleep(1200);
       if (await csvOption.isVisible().catch(() => false)) { menuOpen = true; break; }
     } catch {}
   }
   if (!menuOpen) {
+    // Diagnóstico: dumpear los botones/clickables de la página al log del server
+    // para poder identificar el selector correcto del botón de descarga.
+    try {
+      const diag = await page.evaluate(() => {
+        const els = [...document.querySelectorAll('button, [role="button"], a, [class*="download" i], [class*="descarg" i]')];
+        return els.slice(0, 80).map((e, i) => {
+          const t = (e.innerText || '').trim().replace(/\s+/g, ' ').slice(0, 22);
+          const al = e.getAttribute('aria-label') || '';
+          const ti = e.getAttribute('title') || '';
+          const id = e.id || '';
+          const cl = (typeof e.className === 'string' ? e.className : '').slice(0, 40);
+          const svg = e.querySelector('svg') ? 'SVG' : '';
+          return `#${i}[${[t, al && 'aria:' + al, ti && 'title:' + ti, id && 'id:' + id, svg, cl].filter(Boolean).join(' | ')}]`;
+        }).join('\n');
+      });
+      console.log('[galicia][DIAG] botones en /cuentas/movimientos:\n' + diag);
+    } catch (e) {
+      console.log('[galicia][DIAG] no se pudo dumpear la página:', e?.message);
+    }
     galiciaState.result = { ok: false, loggedIn: true, error: 'Entré y llegué a movimientos, pero no encontré el botón de descarga CSV. Hay que ajustar el selector.', url: page.url() };
     await sleep(12000);
     return;
@@ -2433,6 +2452,12 @@ async function runGaliciaMovimientos({ usuario, password }) {
     const filePath = await download.path();
     const buf = fs.readFileSync(filePath);
     csvBase64 = buf.toString('base64');
+    // Diagnóstico: nombre del archivo + primeras líneas, al log del server.
+    try {
+      const nombre = download.suggestedFilename();
+      const preview = buf.toString('utf8').slice(0, 800).replace(/\n/g, ' \\n ');
+      console.log(`[galicia][CSV] archivo="${nombre}" bytes=${buf.length} preview: ${preview}`);
+    } catch {}
   } catch (err) {
     galiciaState.result = { ok: false, loggedIn: true, error: 'No se pudo descargar el CSV: ' + (err?.message || err), url: page.url() };
     await sleep(10000);
