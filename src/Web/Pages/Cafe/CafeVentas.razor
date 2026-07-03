@@ -3597,7 +3597,8 @@
                     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.4rem;">
                         <div>
                             <label style="font-size:0.72rem; color:#6b7280; font-weight:600;">Formato</label>
-                            <select class="form-input" @bind="addItemModalFormato" style="font-size:0.85rem; padding:0.35rem 0.4rem; margin-top:0.15rem;">
+                            <select class="form-input" @bind="addItemModalFormato" @bind:after="AplicarDefaultEnvaseModal"
+                                    style="font-size:0.85rem; padding:0.35rem 0.4rem; margin-top:0.15rem;">
                                 <option value="1KG">1 kg</option>
                                 <option value="MEDIO">1/2 kg</option>
                                 <option value="CUARTO">1/4 kg</option>
@@ -4255,6 +4256,16 @@
         if (AddProductoCategoria != "CAFE") return;
         if (addFormato == "MEDIO" || addFormato == "CUARTO") addEnvase = "DOY_PACK";
         else if (addFormato == "1KG") addEnvase = "NEGRO";
+    }
+
+    /// <summary>2026-07-02: misma regla que OnAddFormatoChanged pero para el modal
+    /// "Agregar producto". Cuando el operador cambia el formato en el select del modal,
+    /// se auto-ajusta el envase (1/4 y 1/2 kg -> DOY_PACK, 1 kg -> NEGRO).</summary>
+    private void AplicarDefaultEnvaseModal()
+    {
+        if (addItemModalCategoria != "CAFE") return;
+        if (addItemModalFormato == "MEDIO" || addItemModalFormato == "CUARTO") addItemModalEnvase = "DOY_PACK";
+        else if (addItemModalFormato == "1KG") addItemModalEnvase = "NEGRO";
     }
     private string productoSearch = "";
     private bool productoSearchOpen;
@@ -6052,6 +6063,7 @@
         addItemModalFormato = !string.IsNullOrEmpty(fmt) ? fmt : (p.Categoria == "CAFE" ? "1KG" : "UNIT");
         addItemModalMolienda = DefaultMolienda(prodId) ?? "EN GRANOS";
         addItemModalEnvase = "NEGRO";
+        AplicarDefaultEnvaseModal(); // 2026-07-02: 1/4 y 1/2 kg -> DOY_PACK
         StateHasChanged();
         await Task.Delay(40);
         try { await JS.InvokeVoidAsync("eval", "document.getElementById('add-item-cant')?.select()"); } catch { }
@@ -6355,6 +6367,7 @@
         addItemModalFormato = p.Categoria == "CAFE" ? "1KG" : "UNIT";
         addItemModalMolienda = DefaultMolienda(id) ?? "EN GRANOS";
         addItemModalEnvase = "NEGRO";
+        AplicarDefaultEnvaseModal(); // 2026-07-02: 1/4 y 1/2 kg -> DOY_PACK
         StateHasChanged();
         await Task.Delay(40);
         try { await JS.InvokeVoidAsync("eval", "document.getElementById('add-item-cant')?.select()"); } catch { }
