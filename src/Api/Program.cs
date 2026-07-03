@@ -122,6 +122,9 @@ builder.Services.AddScoped<GaliciaAccountService>();
 builder.Services.AddSingleton<GaliciaScrapingService>();
 builder.Services.AddScoped<ExtractoBancoImportService>();
 builder.Services.AddScoped<GaliciaSyncService>();
+builder.Services.AddScoped<ShellAccountService>();
+builder.Services.AddSingleton<ShellScrapingService>();
+builder.Services.AddScoped<ShellSyncService>();
 builder.Services.AddScoped<ArcaWebserviceAccountService>();
 builder.Services.AddSingleton<ArcaWsTokenCache>();
 builder.Services.AddScoped<ArcaWsService>();
@@ -148,6 +151,7 @@ builder.Services.AddScoped<MeliPricePushService>();
 builder.Services.AddScoped<MeliFullStockSyncService>();
 builder.Services.AddHostedService<MeliAutoSyncBackgroundService>();
 builder.Services.AddHostedService<GaliciaAutoSyncBackgroundService>();
+builder.Services.AddHostedService<ShellAutoSyncBackgroundService>();
 // 2026-06-12: reactivado. Solo LECTURA informativa: pobla Cafe_StockPorDeposito[Full MeLi]
 // con lo que MeLi reporta en su bodega. No toca stock propio (9 de Abril) ni pushes.
 // Lo usan /cafe/stock-comparado, /cafe/stock-masivo y el cartelito "Stock Full" de la ficha.

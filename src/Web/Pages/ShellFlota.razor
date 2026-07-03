@@ -1,0 +1,258 @@
+@page "/integraciones/shell"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@implements IDisposable
+
+<div class="view-header">
+    <h2>⛽ Shell Flota — saldo disponible</h2>
+</div>
+
+<div style="max-width: 760px;">
+
+    <p style="color:#6b7280; font-size:0.9rem; margin-bottom:1rem;">
+        Acá se cargan el usuario y la clave de <strong>Shell Flota</strong> para que el robot lea solo el
+        <strong>saldo disponible</strong>. El login pide un código por mail: el robot lo lee solo de tu casilla
+        de Gmail (la que ya tenés conectada en Integraciones → Email).
+    </p>
+
+    @if (cargando)
+    {
+        <p>Cargando…</p>
+    }
+    else
+    {
+        @* Saldo actual *@
+        @if (account is not null && !string.IsNullOrEmpty(account.LastSaldo))
+        {
+            <div style="padding:1rem 1.2rem; margin-bottom:1.2rem; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px;">
+                <div style="font-size:0.8rem; color:#166534;">Saldo disponible</div>
+                <div style="font-size:1.6rem; font-weight:700; color:#166534;">$@account.LastSaldo</div>
+                @if (account.LastSaldoAt.HasValue)
+                {
+                    <div style="font-size:0.78rem; color:#6b7280;">Actualizado: @account.LastSaldoAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                }
+            </div>
+        }
+
+        @* Datos de acceso *@
+        <div class="card" style="padding:1.1rem; margin-bottom:1.2rem; border:1px solid #e5e7eb; border-radius:10px;">
+            <h3 style="margin-top:0;">Datos de acceso</h3>
+            <div class="form-group">
+                <label>Usuario de Shell Flota</label>
+                <input class="form-control" @bind="usuario" placeholder="ej: gppalanica001" />
+            </div>
+            <div class="form-group">
+                <label>Clave @(account?.HasPassword == true ? "(dejá vacío para no cambiarla)" : "")</label>
+                <input class="form-control" type="password" @bind="password"
+                       placeholder="@(account?.HasPassword == true ? "•••••••• (ya guardada)" : "Escribí la clave")" />
+            </div>
+            <div class="form-group">
+                <label>Alias (opcional)</label>
+                <input class="form-control" @bind="alias" placeholder="ej: PALANICA HERMANOS SRL" />
+            </div>
+            <button class="btn btn-primary" @onclick="Guardar" disabled="@guardando">
+                @(guardando ? "Guardando…" : "Guardar datos")
+            </button>
+        </div>
+
+        @* Leer saldo ahora *@
+        <div class="card" style="padding:1.1rem; margin-bottom:1.2rem; border:1px solid #e5e7eb; border-radius:10px;">
+            <h3 style="margin-top:0;">Leer el saldo ahora</h3>
+            <p style="color:#6b7280; font-size:0.85rem;">
+                El robot entra, lee el código del mail solo y trae el saldo. Tarda 1 a 3 minutos (por el mail) — no cierres la pantalla.
+            </p>
+            <button class="btn btn-primary" @onclick="LeerSaldo" disabled="@(leyendo || account?.HasPassword != true)">
+                @(leyendo ? "Leyendo… (puede tardar unos minutos)" : "🔄 Leer saldo ahora")
+            </button>
+            @if (account is null)
+            {
+                <p style="color:#b45309; font-size:0.85rem; margin-top:0.6rem;">Guardá primero el usuario y la clave.</p>
+            }
+
+            @if (leyendo)
+            {
+                <div style="display:flex; align-items:center; gap:0.8rem; padding:0.7rem 0.9rem; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; margin:1rem 0;">
+                    <div style="width:22px; height:22px; border:3px solid #bfdbfe; border-top-color:#1d4ed8; border-radius:50%; animation:spin 1s linear infinite; flex-shrink:0;"></div>
+                    <div>
+                        <strong style="color:#1e3a8a;">@leerStep</strong>
+                        <div style="font-size:0.75rem; color:#6b7280;">El robot está trabajando — abajo ves lo que ve.</div>
+                    </div>
+                </div>
+                @if (!string.IsNullOrEmpty(screenshotUrl))
+                {
+                    <div style="background:#1f2937; border-radius:8px; padding:0.5rem; text-align:center;">
+                        <img src="@screenshotUrl" alt="Lo que ve el navegador" style="max-width:100%; max-height:55vh; border-radius:4px;"
+                             onerror="this.style.visibility='hidden'" onload="this.style.visibility='visible'" />
+                    </div>
+                }
+            }
+
+            @if (!leyendo && leerResult is not null)
+            {
+                @if (leerResult.Ok)
+                {
+                    <div style="padding:0.8rem; margin-top:1rem; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; color:#166534;">
+                        <strong>✅ Saldo leído:</strong> $@leerResult.Saldo
+                    </div>
+                }
+                else
+                {
+                    <div style="padding:0.8rem; margin-top:1rem; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; color:#991b1b;">
+                        <strong>❌ No se pudo:</strong> @leerResult.Error
+                    </div>
+                }
+            }
+        </div>
+
+        @* Automático *@
+        <div class="card" style="padding:1.1rem; border:1px solid #e5e7eb; border-radius:10px;">
+            <h3 style="margin-top:0;">Leer automático (sin apretar nada)</h3>
+            <p style="color:#6b7280; font-size:0.85rem;">
+                Prendé esto y elegí a qué horas leer el saldo solo. Horarios de Argentina.
+            </p>
+            <label style="display:flex; align-items:center; gap:0.5rem; font-weight:600; cursor:pointer;">
+                <input type="checkbox" @bind="autoEnabled" /> Activar el automático
+            </label>
+            @if (autoEnabled)
+            {
+                <div style="margin-top:0.8rem;">
+                    <div style="font-size:0.85rem; color:#374151; margin-bottom:0.3rem;">Horarios:</div>
+                    @for (int i = 0; i < horarios.Count; i++)
+                    {
+                        var idx = i;
+                        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.4rem;">
+                            <input type="time" @bind="horarios[idx]" style="padding:0.3rem 0.5rem; border:1px solid #d1d5db; border-radius:6px;" />
+                            <button class="btn btn-secondary" style="padding:0.2rem 0.6rem;" @onclick="() => horarios.RemoveAt(idx)">✕</button>
+                        </div>
+                    }
+                    <button class="btn btn-secondary" style="padding:0.3rem 0.7rem;" @onclick="() => horarios.Add(new TimeOnly(8, 0))">+ Agregar horario</button>
+                    <div style="font-size:0.78rem; color:#6b7280; margin-top:0.4rem;">Sugerencia: los mismos que el banco (ej: 08:00, 12:00, 18:00, 22:00).</div>
+                </div>
+            }
+            <div style="margin-top:1rem;">
+                <button class="btn btn-primary" @onclick="Guardar" disabled="@guardando">
+                    @(guardando ? "Guardando…" : "Guardar horarios")
+                </button>
+            </div>
+            @if (account?.AutoSyncEnabled == true && !string.IsNullOrEmpty(account.AutoSyncTimes))
+            {
+                <div style="padding:0.7rem 0.9rem; margin-top:1rem; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; color:#166534; font-size:0.85rem;">
+                    ✅ Automático <strong>activo</strong> — lee a las <strong>@account.AutoSyncTimes</strong> (hora Argentina).
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private bool cargando = true;
+    private Web.Models.ShellAccountDto? account;
+    private string usuario = "";
+    private string password = "";
+    private string alias = "";
+    private bool guardando;
+    private bool autoEnabled;
+    private List<TimeOnly> horarios = new();
+
+    private bool leyendo;
+    private string leerStep = "";
+    private Web.Models.ShellSincronizarResultDto? leerResult;
+    private string screenshotUrl = "";
+    private CancellationTokenSource? pollCts;
+
+    protected override async Task OnInitializedAsync() => await CargarCuenta();
+
+    private async Task CargarCuenta()
+    {
+        cargando = true;
+        try
+        {
+            account = await Api.GetShellAccountAsync();
+            if (account is not null)
+            {
+                usuario = account.Usuario;
+                alias = account.Alias ?? "";
+                autoEnabled = account.AutoSyncEnabled;
+                horarios = new List<TimeOnly>();
+                if (!string.IsNullOrWhiteSpace(account.AutoSyncTimes))
+                    foreach (var s in account.AutoSyncTimes.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                        if (TimeOnly.TryParseExact(s.Trim(), "HH:mm", null, System.Globalization.DateTimeStyles.None, out var t))
+                            horarios.Add(t);
+            }
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo cargar: " + ex.Message); }
+        finally { cargando = false; }
+    }
+
+    private async Task Guardar()
+    {
+        if (string.IsNullOrWhiteSpace(usuario)) { ToastService.Error("Poné el usuario"); return; }
+        guardando = true;
+        try
+        {
+            var horariosLimpios = horarios.Distinct().OrderBy(t => t).Select(t => t.ToString("HH\\:mm")).ToList();
+            var req = new Web.Models.SaveShellAccountRequest
+            {
+                Usuario = usuario.Trim(),
+                Password = string.IsNullOrWhiteSpace(password) ? null : password,
+                Alias = string.IsNullOrWhiteSpace(alias) ? null : alias.Trim(),
+                IsActive = true,
+                AutoSyncEnabled = autoEnabled,
+                AutoSyncTimes = horariosLimpios.Count > 0 ? string.Join(",", horariosLimpios) : null
+            };
+            account = await Api.SaveShellAccountAsync(req);
+            password = "";
+            ToastService.Success("Datos guardados");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo guardar: " + ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private async Task LeerSaldo()
+    {
+        leerResult = null;
+        leerStep = "Iniciando…";
+        leyendo = true;
+        StateHasChanged();
+
+        pollCts?.Cancel();
+        pollCts = new CancellationTokenSource();
+        var token = pollCts.Token;
+        _ = Task.Run(async () =>
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(1500, token);
+                    if (token.IsCancellationRequested) break;
+                    var st = await Api.GetShellTestStatusAsync();
+                    if (st is not null) leerStep = st.Step;
+                    screenshotUrl = $"/api/shell/test/screenshot?t={DateTimeOffset.Now.ToUnixTimeMilliseconds()}";
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch (TaskCanceledException) { break; }
+                catch { }
+            }
+        }, token);
+
+        try
+        {
+            leerResult = await Api.SincronizarShellAsync();
+            if (leerResult is not null && leerResult.Ok) await CargarCuenta();
+        }
+        catch (Exception ex)
+        {
+            leerResult = new Web.Models.ShellSincronizarResultDto { Ok = false, Error = ex.Message };
+        }
+        finally
+        {
+            pollCts?.Cancel();
+            leyendo = false;
+            StateHasChanged();
+        }
+    }
+
+    public void Dispose() => pollCts?.Cancel();
+}

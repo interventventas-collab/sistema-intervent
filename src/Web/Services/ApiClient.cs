@@ -10,6 +10,9 @@ namespace Web.Services;
 public class ApiClient
 {
     private readonly HttpClient _http;
+    // Cliente con timeout largo para operaciones lentas (ej: leer saldo de Shell,
+    // que espera el token del mail). Mismo origen → la cookie de auth viaja igual.
+    private readonly HttpClient _httpLong;
     private readonly AuthService _authService;
     private readonly NavigationManager _navigation;
     private readonly OperatorService _operator;
@@ -23,6 +26,7 @@ public class ApiClient
     public ApiClient(HttpClient http, AuthService authService, NavigationManager navigation, OperatorService op)
     {
         _http = http;
+        _httpLong = new HttpClient { BaseAddress = http.BaseAddress, Timeout = TimeSpan.FromMinutes(4) };
         _authService = authService;
         _navigation = navigation;
         _operator = op;
@@ -4045,6 +4049,25 @@ public class ApiClient
         => await PostAsync<Web.Models.GaliciaSincronizarResultDto>("/api/galicia/sincronizar", new { });
 
     private class GaliciaOkResp { public bool Ok { get; set; } }
+
+    // --- Shell Flota (saldo disponible) ---
+    public async Task<Web.Models.ShellAccountDto?> GetShellAccountAsync()
+        => await GetAsync<Web.Models.ShellAccountDto>("/api/shell/account");
+
+    public async Task<Web.Models.ShellAccountDto?> SaveShellAccountAsync(Web.Models.SaveShellAccountRequest req)
+        => await PutAsync<Web.Models.ShellAccountDto>("/api/shell/account", req);
+
+    public async Task<Web.Models.ShellTestStatusDto?> GetShellTestStatusAsync()
+        => await GetAsync<Web.Models.ShellTestStatusDto>("/api/shell/test/status");
+
+    /// <summary>Lee el saldo ahora. Usa el cliente de timeout largo (el mail tarda). La cookie de auth viaja sola.</summary>
+    public async Task<Web.Models.ShellSincronizarResultDto?> SincronizarShellAsync()
+    {
+        var resp = await _httpLong.PostAsJsonAsync("/api/shell/sincronizar", new { });
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return null; }
+        await ThrowIfErrorAsync(resp);
+        return await resp.Content.ReadFromJsonAsync<Web.Models.ShellSincronizarResultDto>();
+    }
 
     private async Task<T?> GetAsync<T>(string url)
     {
