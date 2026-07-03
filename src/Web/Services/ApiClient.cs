@@ -2306,6 +2306,18 @@ public class ApiClient
         }
     }
 
+    /// <summary>2026-07-03: borra una imagen de branding (usada por el overlay de personalizacion de cards del dashboard).</summary>
+    public async Task DeleteBrandingImageAsync(string key)
+    {
+        await SetAuthHeaderAsync();
+        var response = await _http.DeleteAsync($"/api/branding/{Uri.EscapeDataString(key)}");
+        if (!response.IsSuccessStatusCode && (int)response.StatusCode != 404)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            throw new InvalidOperationException(string.IsNullOrEmpty(error) ? response.ReasonPhrase : error);
+        }
+    }
+
     // --- Stock batches (lotes con vencimiento) ---
     public async Task<List<StockBatchDto>?> GetStockBatchesAsync(int productId)
         => await GetAsync<List<StockBatchDto>>($"/api/products/{productId}/stock-batches");

@@ -1793,7 +1793,7 @@
                     </div>
                     @* 2026-06-17 v3: SEGUNDA FILA — botón Agregar (50%) + chip de precio en vivo (50%). Grid CSS para garantizar 50/50. *@
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; align-items: stretch; margin-top: 0.5rem;">
-                        <button class="btn btn-primary" type="button" @onclick="AddItem" style="padding: 0.6rem; font-size: 0.95rem; font-weight: 700;">+ Agregar</button>
+                        <button class="btn btn-primary" type="button" @onclick="@(() => AddItem())" style="padding: 0.6rem; font-size: 0.95rem; font-weight: 700;">+ Agregar</button>
                         <div style="background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%); border: 1.5px solid #2563eb; border-radius: 4px; padding: 0.4rem 0.8rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; box-sizing: border-box;">
                             <span style="color: #1e3a8a; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;">💰 Precio</span>
                             @if (AddPrecioPreview > 0)
@@ -6451,7 +6451,10 @@
             addFormato = addItemModalFormato;
             addMolienda = addItemModalMolienda;
             addEnvase = addItemModalEnvase;
-            await AddItem();
+            // 2026-07-03: skipDomReRead=true asi AddItem NO relee molienda/envase
+            // del <select> inline (que sigue con los defaults viejos) y respeta lo
+            // elegido en el modal.
+            await AddItem(skipDomReRead: true);
         }
         else if (addItemModalMode == "COMBO")
         {
@@ -6532,7 +6535,7 @@
         await AddCombo();
     }
 
-    private async Task AddItem()
+    private async Task AddItem(bool skipDomReRead = false)
     {
         if (addProductoId <= 0 || addCantidad <= 0) return;
         var p = productos?.FirstOrDefault(x => x.Id == addProductoId);
@@ -6545,7 +6548,10 @@
         // 2026-06-09 fix defensivo: garantizar que addMolienda/addEnvase reflejen el
         // valor REAL del DOM. Cuando el usuario navega con teclado (Enter), a veces
         // el @bind del <select> no commitea su onchange antes de que se dispare AddItem.
-        if (esCafe)
+        // 2026-07-03: skipDomReRead=true cuando venimos del modal Agregar producto
+        // (los valores ya vienen seteados desde el modal y no hay que pisar con el DOM
+        // del formulario inline, que tiene los defaults viejos).
+        if (esCafe && !skipDomReRead)
         {
             try
             {
@@ -7216,6 +7222,12 @@
                 Navigation.NavigateTo($"/cafe/tesoreria/cobranzas?cliente={v.ClienteId!.Value}&venta={v.Id}");
                 return;
             }
+
+            // 2026-07-03: recargar la LISTA de ventas AHORA, antes del PDF/envios/catalogos.
+            // Antes esto corria al final y el usuario veia la lista vieja durante segundos.
+            // Load() es rapido (paginado); LoadCatalogos() sigue quedando al final (5-9 MB).
+            await Load();
+            StateHasChanged();
 
             // ════════ ABRIR EL PDF EN UNA PESTAÑA NUEVA ════════
             // Si era una venta nueva (no edicion), abrimos directamente la URL publica

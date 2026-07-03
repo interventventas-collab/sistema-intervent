@@ -1,0 +1,273 @@
+@inject ApiClient Api
+@inject IJSRuntime JS
+@inject ToastService Toast
+
+@* 2026-07-03: overlay que se inserta dentro de una card del dashboard para:
+   - Poner una imagen de fondo (a full card, con leve oscurecido)
+   - Editar un comentario inline abajo (en banda semitransparente)
+   - Icono camara arriba-derecha para subir/cambiar imagen
+   - Icono papelera para borrar imagen o comentario
+   La card padre necesita position:relative para que el overlay se posicione bien.
+   Todo es GLOBAL (todos los usuarios ven lo mismo) y CUALQUIER usuario puede editar. *@
+
+<div class="cco-root">
+    @if (!string.IsNullOrEmpty(bgUrlWithVersion))
+    {
+        <div class="cco-bg" style="background-image: url('@bgUrlWithVersion');"></div>
+        <div class="cco-bg-tint"></div>
+    }
+
+    <div class="cco-controls">
+        <label class="cco-btn" title="Cambiar imagen de fondo">
+            <i class="ti ti-camera"></i>
+            <InputFile OnChange="OnBgPicked" accept=".png,.jpg,.jpeg,.webp" style="display:none;" />
+        </label>
+        @if (bgExists)
+        {
+            <button class="cco-btn" @onclick="OnDeleteBg" title="Quitar imagen">
+                <i class="ti ti-trash"></i>
+            </button>
+        }
+    </div>
+
+    <div class="cco-comment @(editing ? "cco-comment-editing" : "")">
+        @if (editing)
+        {
+            <input type="text" class="cco-input"
+                   @bind="commentEdit" @bind:event="oninput"
+                   @onblur="SaveComment"
+                   @onkeydown="OnKeyComment"
+                   @ref="inputRef" />
+        }
+        else if (!string.IsNullOrWhiteSpace(comment))
+        {
+            <span class="cco-text" @onclick="StartEdit" title="Click para editar">@comment</span>
+            <button class="cco-btn cco-btn-sm" @onclick="ClearComment" title="Quitar comentario">
+                <i class="ti ti-x"></i>
+            </button>
+        }
+        else
+        {
+            <span class="cco-placeholder" @onclick="StartEdit">+ Agregar nota</span>
+        }
+    </div>
+</div>
+
+<style>
+    .cco-root {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        border-radius: inherit;
+        overflow: hidden;
+        z-index: 0;
+    }
+    /* Que el contenido normal de la card se pinte por encima del overlay bg.
+       Aplico a los hijos directos de la card que NO son el overlay. */
+    .dashboard-detail-card > *:not(.cco-root),
+    .mac-card > *:not(.cco-root) {
+        position: relative;
+        z-index: 1;
+    }
+    .cco-bg {
+        position: absolute;
+        inset: 0;
+        background-size: cover;
+        background-position: center;
+        opacity: 0.55;
+    }
+    .cco-bg-tint {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0.85) 100%);
+    }
+    .cco-controls {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        display: flex;
+        gap: 4px;
+        pointer-events: auto;
+        opacity: 0;
+        transition: opacity 0.15s ease;
+        z-index: 3;
+    }
+    .cco-root:hover .cco-controls { opacity: 1; }
+    .cco-btn {
+        width: 26px;
+        height: 26px;
+        border-radius: 6px;
+        border: none;
+        background: rgba(255,255,255,0.85);
+        color: #1f2937;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 14px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+    }
+    .cco-btn:hover { background: white; }
+    .cco-btn-sm { width: 20px; height: 20px; font-size: 11px; }
+    .cco-comment {
+        position: absolute;
+        left: 0; right: 0; bottom: 0;
+        min-height: 24px;
+        background: rgba(17, 24, 39, 0.72);
+        color: white;
+        font-size: 12px;
+        padding: 4px 10px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        pointer-events: auto;
+        z-index: 2;
+    }
+    .cco-comment-editing { background: rgba(17, 24, 39, 0.95); }
+    .cco-text {
+        flex: 1;
+        cursor: text;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .cco-placeholder {
+        flex: 1;
+        cursor: text;
+        color: rgba(255,255,255,0.55);
+        font-style: italic;
+        font-size: 11px;
+        opacity: 0;
+        transition: opacity 0.15s ease;
+    }
+    .cco-root:hover .cco-placeholder { opacity: 1; }
+    .cco-input {
+        flex: 1;
+        background: transparent;
+        border: none;
+        color: white;
+        font-size: 12px;
+        outline: none;
+        padding: 0;
+    }
+    /* Cuando NO hay ni imagen ni comentario, ocultar la banda inferior por completo
+       — solo aparece el placeholder cuando el usuario pasa el mouse por encima. */
+    .cco-comment:not(.cco-comment-editing):has(.cco-placeholder) {
+        background: transparent;
+    }
+</style>
+
+@code {
+    [Parameter, EditorRequired] public string CardKey { get; set; } = "";
+
+    private string? bgUrl;
+    private long bgVersion = 0;
+    private bool bgExists;
+    private string comment = "";
+    private string commentEdit = "";
+    private bool editing;
+    private ElementReference inputRef;
+
+    private string? bgUrlWithVersion => bgExists ? $"{bgUrl}?v={bgVersion}" : null;
+
+    private string BgKey => $"dashcard-bg-{CardKey}";
+    private string CommentSettingKey => $"dashcard-cmt-{CardKey}";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CardKey)) return;
+        bgUrl = $"/api/branding/{BgKey}";
+        bgVersion = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        // Chequear si la imagen existe (HEAD request de facto: HTTP client hace GET pero
+        // toleramos el 404 sin mostrar toast).
+        bgExists = await ImageExistsAsync(bgUrl);
+        // Cargar comentario desde AppSettings
+        try
+        {
+            var all = await Api.GetSettingsAsync();
+            comment = all is not null && all.TryGetValue(CommentSettingKey, out var v) ? v : "";
+        }
+        catch { comment = ""; }
+    }
+
+    private async Task<bool> ImageExistsAsync(string url)
+    {
+        try
+        {
+            return await JS.InvokeAsync<bool>("eval", $@"
+                (async () => {{
+                    try {{ const r = await fetch('{url}', {{ method: 'HEAD' }}); return r.ok; }}
+                    catch (e) {{ return false; }}
+                }})()");
+        }
+        catch { return false; }
+    }
+
+    private async Task OnBgPicked(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    {
+        if (e.File is null) return;
+        try
+        {
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            await Api.UploadBrandingImageAsync(BgKey, stream, e.File.Name, e.File.ContentType);
+            bgVersion = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            bgExists = true;
+            Toast.Success("Fondo actualizado ✓");
+            StateHasChanged();
+        }
+        catch (Exception ex) { Toast.Error("No se pudo subir la imagen: " + ex.Message); }
+    }
+
+    private async Task OnDeleteBg()
+    {
+        try
+        {
+            await Api.DeleteBrandingImageAsync(BgKey);
+            bgExists = false;
+            Toast.Success("Fondo quitado");
+            StateHasChanged();
+        }
+        catch (Exception ex) { Toast.Error("No se pudo borrar: " + ex.Message); }
+    }
+
+    private async Task StartEdit()
+    {
+        editing = true;
+        commentEdit = comment;
+        StateHasChanged();
+        await Task.Delay(30);
+        try { await inputRef.FocusAsync(); } catch { }
+    }
+
+    private async Task SaveComment()
+    {
+        if (!editing) return;
+        var newVal = (commentEdit ?? "").Trim();
+        if (newVal == comment) { editing = false; return; }
+        try
+        {
+            await Api.UpdateSettingAsync(CommentSettingKey, newVal);
+            comment = newVal;
+        }
+        catch (Exception ex) { Toast.Error("No se pudo guardar el comentario: " + ex.Message); }
+        editing = false;
+        StateHasChanged();
+    }
+
+    private async Task ClearComment()
+    {
+        try
+        {
+            await Api.UpdateSettingAsync(CommentSettingKey, "");
+            comment = "";
+            StateHasChanged();
+        }
+        catch (Exception ex) { Toast.Error("No se pudo quitar: " + ex.Message); }
+    }
+
+    private async Task OnKeyComment(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") { await SaveComment(); }
+        else if (e.Key == "Escape") { editing = false; StateHasChanged(); }
+    }
+}
