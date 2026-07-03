@@ -167,9 +167,24 @@ BEGIN
         Password NVARCHAR(MAX) NOT NULL,
         Alias NVARCHAR(100) NULL,
         IsActive BIT NOT NULL DEFAULT 1,
+        AutoSyncEnabled BIT NOT NULL DEFAULT 0,
+        AutoSyncTimes NVARCHAR(200) NULL,
+        LastAutoSyncAt DATETIME2 NULL,
         CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
         UpdatedAt DATETIME2 NULL
     );
+END
+GO
+
+-- Migración: agregar columnas de auto-sync si la tabla ya existía sin ellas.
+IF EXISTS (SELECT * FROM sysobjects WHERE name='GaliciaAccounts' AND xtype='U')
+BEGIN
+    IF COL_LENGTH('GaliciaAccounts','AutoSyncEnabled') IS NULL
+        ALTER TABLE GaliciaAccounts ADD AutoSyncEnabled BIT NOT NULL DEFAULT 0;
+    IF COL_LENGTH('GaliciaAccounts','AutoSyncTimes') IS NULL
+        ALTER TABLE GaliciaAccounts ADD AutoSyncTimes NVARCHAR(200) NULL;
+    IF COL_LENGTH('GaliciaAccounts','LastAutoSyncAt') IS NULL
+        ALTER TABLE GaliciaAccounts ADD LastAutoSyncAt DATETIME2 NULL;
 END
 GO
 

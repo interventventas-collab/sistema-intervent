@@ -16,16 +16,14 @@ public class GaliciaController : ControllerBase
 {
     private readonly GaliciaAccountService _service;
     private readonly GaliciaScrapingService _scraping;
-    private readonly ExtractoBancoImportService _importService;
-    private readonly ILogger<GaliciaController> _logger;
+    private readonly GaliciaSyncService _syncService;
 
     public GaliciaController(GaliciaAccountService service, GaliciaScrapingService scraping,
-        ExtractoBancoImportService importService, ILogger<GaliciaController> logger)
+        GaliciaSyncService syncService)
     {
         _service = service;
         _scraping = scraping;
-        _importService = importService;
-        _logger = logger;
+        _syncService = syncService;
     }
 
     /// <summary>Devuelve la cuenta cargada (sin la clave), o null si no hay.</summary>
@@ -82,46 +80,8 @@ public class GaliciaController : ControllerBase
     [HttpPost("sincronizar")]
     public async Task<IActionResult> Sincronizar()
     {
-        var dto = await _service.GetAsync();
-        if (dto is null || !dto.HasPassword)
-            return BadRequest(new SincronizarResultDto(false, 0, 0, "Cargá primero el usuario y la clave", null));
-        var password = await _service.GetPasswordAsync();
-        if (string.IsNullOrEmpty(password))
-            return BadRequest(new SincronizarResultDto(false, 0, 0, "No se pudo leer la clave", null));
-
-        var (ok, error) = await _scraping.StartMovimientosAsync(dto.Usuario, password);
-        if (!ok) return BadRequest(new SincronizarResultDto(false, 0, 0, error, null));
-
-        // Esperar al robot (polling server-side, máx ~85s para no pasar el timeout del navegador).
-        GaliciaTestResultDto? result = null;
-        for (int i = 0; i < 57; i++)
-        {
-            await Task.Delay(1500);
-            var st = await _scraping.GetStatusAsync();
-            if (!st.Running) { result = st.Result; break; }
-        }
-        if (result is null)
-            return Ok(new SincronizarResultDto(false, 0, 0, "El robot tardó demasiado. Probá de nuevo.", null));
-        if (!result.Ok || string.IsNullOrEmpty(result.CsvBase64))
-        {
-            var msg = result.NeedsToken == true
-                ? "El banco pidió un código de seguridad (token). No se pudo bajar automático."
-                : (result.Error ?? "No se pudo descargar el extracto.");
-            return Ok(new SincronizarResultDto(false, 0, 0, msg, null));
-        }
-
-        try
-        {
-            var bytes = Convert.FromBase64String(result.CsvBase64);
-            var texto = System.Text.Encoding.UTF8.GetString(bytes);
-            var res = await _importService.ImportCsvTextAsync(texto, $"Galicia-auto-{DateTime.Now:yyyyMMdd-HHmm}.csv");
-            return Ok(new SincronizarResultDto(true, res.Nuevos, res.SinCambios, null, res.Errores));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error importando CSV de Galicia");
-            return Ok(new SincronizarResultDto(false, 0, 0, "Bajó el archivo pero falló al importarlo: " + ex.Message, null));
-        }
+        var r = await _syncService.SincronizarAsync();
+        return Ok(new SincronizarResultDto(r.Ok, r.Nuevos, r.SinCambios, r.Error, r.Detalles));
     }
 }
 
