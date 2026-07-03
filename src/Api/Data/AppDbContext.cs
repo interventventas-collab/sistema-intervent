@@ -17,6 +17,7 @@ public class AppDbContext : DbContext
     public DbSet<ArcaCsrRequest> ArcaCsrRequests => Set<ArcaCsrRequest>();
     public DbSet<ArcaEmisor> ArcaEmisores => Set<ArcaEmisor>();
     public DbSet<GaliciaAccount> GaliciaAccounts => Set<GaliciaAccount>();
+    public DbSet<ShellAccount> ShellAccounts => Set<ShellAccount>();
     public DbSet<MeliOrder> MeliOrders => Set<MeliOrder>();
     public DbSet<MeliItem> MeliItems => Set<MeliItem>();
     public DbSet<MeliCambioDetectado> MeliCambiosDetectados => Set<MeliCambioDetectado>();

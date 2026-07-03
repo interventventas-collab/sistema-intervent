@@ -2469,6 +2469,195 @@ async function runGaliciaMovimientos({ usuario, password }) {
   await sleep(4000);
 }
 
+// ============================================================
+// SHELL FLOTA — login (usuario + clave) + token OTP por mail (leído por IMAP
+// del Gmail ya conectado) + lectura del "Saldo disponible". Mismo patrón que
+// Galicia; la pieza nueva es leer el código del mail solo.
+// ============================================================
+
+const shellState = {
+  browser: null, context: null, page: null,
+  running: false, step: 'Iniciando...', result: null, startedAt: null,
+};
+
+async function closeShellBrowserSafely() {
+  try { if (shellState.page && !shellState.page.isClosed()) await shellState.page.close().catch(() => {}); } catch {}
+  try { if (shellState.context) await shellState.context.close().catch(() => {}); } catch {}
+  try { if (shellState.browser) await shellState.browser.close().catch(() => {}); } catch {}
+  shellState.page = null; shellState.context = null; shellState.browser = null;
+}
+
+// POST /shell/saldo/start - body: { usuario, password, gmailUser, gmailPass }
+app.post('/shell/saldo/start', async (req, res) => {
+  if (shellState.running) return res.status(409).json({ error: 'Ya hay una operación de Shell en curso' });
+  const { usuario, password, gmailUser, gmailPass } = req.body || {};
+  if (!usuario || !password) return res.status(400).json({ error: 'Faltan usuario y/o clave de Shell' });
+  if (!gmailUser || !gmailPass) return res.status(400).json({ error: 'Falta la conexión de mail (Gmail) para leer el token' });
+  shellState.running = true; shellState.step = 'Iniciando...'; shellState.result = null; shellState.startedAt = Date.now();
+  res.json({ ok: true });
+
+  runShellSaldo({ usuario, password, gmailUser, gmailPass })
+    .catch(async (err) => { console.error('[shell] error inesperado:', err); shellState.result = { ok: false, error: err?.message || 'Error desconocido' }; })
+    .finally(async () => {
+      await closeShellBrowserSafely();
+      shellState.running = false;
+      if (!shellState.result) shellState.result = { ok: false, error: 'Operación interrumpida' };
+      shellState.step = shellState.result?.ok ? 'Listo' : 'Error';
+    });
+});
+
+app.get('/shell/test/status', (req, res) => {
+  res.json({ running: shellState.running, step: shellState.step, result: shellState.result });
+});
+
+app.get('/shell/test/screenshot', async (req, res) => {
+  try {
+    if (!shellState.page || shellState.page.isClosed()) return res.status(404).send('Sin página activa');
+    const buffer = await shellState.page.screenshot({ type: 'png', fullPage: false }).catch(() => null);
+    if (!buffer) return res.status(404).send('No se pudo capturar');
+    res.set('Content-Type', 'image/png'); res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.send(buffer);
+  } catch (err) { res.status(500).send('Error: ' + err.message); }
+});
+
+// Lee el último token OTP de Shell desde Gmail por IMAP. Pollea hasta ~90s.
+async function leerOtpShellDesdeGmail(gmailUser, gmailPass, sinceEpochMs) {
+  const { ImapFlow } = require('imapflow');
+  let simpleParser;
+  try { simpleParser = require('mailparser').simpleParser; } catch { simpleParser = null; }
+
+  const extraerCodigo = (txt) => {
+    if (!txt) return null;
+    const tokens = txt.toUpperCase().match(/\b[A-Z0-9]{6}\b/g) || [];
+    let c = tokens.find(t => /[A-Z]/.test(t) && /[0-9]/.test(t));
+    if (c) return c;
+    const junto = txt.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const m = junto.match(/[A-Z0-9]{6}/g) || [];
+    return m.find(t => /[A-Z]/.test(t) && /[0-9]/.test(t)) || null;
+  };
+
+  const client = new ImapFlow({ host: 'imap.gmail.com', port: 993, secure: true, auth: { user: gmailUser, pass: gmailPass }, logger: false });
+  await client.connect();
+  let code = null;
+  try {
+    for (let intento = 0; intento < 20 && !code; intento++) {
+      const lock = await client.getMailboxLock('INBOX');
+      try {
+        const desde = new Date(sinceEpochMs - 120000);
+        let ids = [];
+        try { ids = await client.search({ from: 'shellflota', since: desde }, { uid: true }); } catch {}
+        if (ids && ids.length) {
+          const ultimos = ids.slice(-3).reverse();
+          for (const uid of ultimos) {
+            const msg = await client.fetchOne(uid, { source: true, internalDate: true }, { uid: true });
+            if (!msg) continue;
+            if (msg.internalDate && msg.internalDate.getTime() < sinceEpochMs - 90000) continue;
+            let contenido = msg.source ? msg.source.toString() : '';
+            if (simpleParser && msg.source) {
+              try { const p = await simpleParser(msg.source); contenido = (p.text || '') + ' ' + (p.html || '') + ' ' + (p.subject || ''); } catch {}
+            }
+            const c = extraerCodigo(contenido);
+            if (c) { code = c; break; }
+          }
+        }
+      } finally { lock.release(); }
+      if (!code) await sleep(4500);
+    }
+  } finally { await client.logout().catch(() => {}); }
+  return code;
+}
+
+async function dumpShellDiag(page, etiqueta) {
+  try {
+    const diag = await page.evaluate(() => {
+      const els = [...document.querySelectorAll('input, button, a, [role="button"]')];
+      return els.slice(0, 60).map((e, i) => {
+        const t = (e.innerText || e.value || '').trim().replace(/\s+/g, ' ').slice(0, 20);
+        return `#${i}[${[e.tagName, e.type && 'type:' + e.type, e.id && 'id:' + e.id, e.name && 'name:' + e.name, e.placeholder && 'ph:' + e.placeholder, t].filter(Boolean).join(' | ')}]`;
+      }).join('\n');
+    });
+    console.log(`[shell][DIAG ${etiqueta}] url=${page.url()}\n${diag}`);
+  } catch (e) { console.log('[shell][DIAG] no pude dumpear:', e?.message); }
+}
+
+async function runShellSaldo({ usuario, password, gmailUser, gmailPass }) {
+  shellState.step = 'Abriendo navegador...';
+  const browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled'] });
+  const context = await browser.newContext({ userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', viewport: { width: 1280, height: 800 } });
+  const page = await context.newPage();
+  shellState.browser = browser; shellState.context = context; shellState.page = page;
+
+  shellState.step = 'Abriendo login de Shell Flota...';
+  await page.goto('https://shellflota.mundonectar.com/GeneralLogin/Login.aspx', { waitUntil: 'domcontentloaded', timeout: 40000 });
+  await sleep(2500);
+
+  shellState.step = 'Ingresando usuario y clave...';
+  const userField = page.locator('input[type="text"]:visible, input:not([type]):visible').first();
+  const passField = page.locator('input[type="password"]:visible').first();
+  try {
+    await userField.click({ timeout: 8000 }); await userField.fill(''); await userField.pressSequentially(usuario, { delay: 40 });
+    await passField.click({ timeout: 8000 }); await passField.fill(''); await passField.pressSequentially(password, { delay: 40 });
+  } catch (e) {
+    await dumpShellDiag(page, 'login');
+    shellState.result = { ok: false, error: 'No encontré los campos de usuario/clave de Shell. Hay que ajustar el selector.' }; await sleep(12000); return;
+  }
+
+  const loginAt = Date.now();
+  shellState.step = 'Ingresando (ENTRAR)...';
+  const btnEntrar = page.locator('button:has-text("Entrar"), input[type="submit"], [value="ENTRAR" i], a:has-text("Entrar")').first();
+  try { await btnEntrar.click({ timeout: 8000 }); }
+  catch { try { await passField.press('Enter'); } catch {} }
+  await sleep(4000);
+
+  let txt = ''; try { txt = ((await page.locator('body').innerText({ timeout: 3000 })) || '').toLowerCase(); } catch {}
+  if (txt.includes('incorrecta') || txt.includes('incorrecto') || txt.includes('bloquear')) {
+    shellState.result = { ok: false, error: 'Shell rechazó el usuario o la clave.' }; await sleep(8000); return;
+  }
+
+  shellState.step = 'Esperando el token en el mail...';
+  await dumpShellDiag(page, 'otp');
+  let code = null;
+  try { code = await leerOtpShellDesdeGmail(gmailUser, gmailPass, loginAt); }
+  catch (e) { shellState.result = { ok: false, error: 'No pude leer el mail (IMAP): ' + (e?.message || e) }; await sleep(10000); return; }
+  if (!code) { shellState.result = { ok: false, error: 'No llegó (o no pude leer) el código del mail en el tiempo esperado.' }; await sleep(10000); return; }
+
+  shellState.step = `Ingresando el código ${code}...`;
+  const otpField = page.locator('input[type="text"]:visible, input[type="tel"]:visible, input:not([type]):visible').first();
+  try {
+    await otpField.click({ timeout: 8000 }); await otpField.fill(''); await otpField.pressSequentially(code, { delay: 60 });
+  } catch {
+    shellState.result = { ok: false, loggedIn: false, error: `Leí el código (${code}) pero no encontré dónde escribirlo. Ajustar selector.` }; await sleep(10000); return;
+  }
+  const btnOtp = page.locator('button:has-text("Continuar"), button:has-text("Verificar"), button:has-text("Ingresar"), input[type="submit"], button:has-text("Entrar")').first();
+  try { await btnOtp.click({ timeout: 6000 }); } catch { try { await otpField.press('Enter'); } catch {} }
+  await sleep(5000);
+
+  shellState.step = 'Buscando el saldo disponible...';
+  await sleep(2000);
+  let saldoText = null;
+  try {
+    const userIcon = page.locator('header button, header a, [class*="user" i], [aria-label*="usuario" i]').last();
+    await userIcon.click({ timeout: 6000 }).catch(() => {});
+    await sleep(1200);
+    const saldoLink = page.locator('text=/Saldo Cuenta/i').first();
+    await saldoLink.click({ timeout: 6000 }).catch(() => {});
+    await sleep(2500);
+    const cuerpo = (await page.locator('body').innerText({ timeout: 3000 })) || '';
+    const m = cuerpo.match(/Disponible[^\d\-]*([\-]?[\d.\,]+)/i);
+    if (m) saldoText = m[1];
+  } catch {}
+
+  if (!saldoText) {
+    await dumpShellDiag(page, 'saldo');
+    shellState.result = { ok: true, loggedIn: true, saldo: null, error: 'Entré y usé el token, pero no pude leer el número del saldo. Ajustar selector (ver diagnóstico).' };
+    await sleep(12000); return;
+  }
+
+  shellState.step = '¡Saldo leído!';
+  shellState.result = { ok: true, loggedIn: true, saldo: saldoText };
+  await sleep(4000);
+}
+
 // --- Start ---
 app.listen(PORT, () => {
   console.log(`[wa] servicio Playwright escuchando en :${PORT}`);

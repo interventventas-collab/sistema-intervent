@@ -188,6 +188,28 @@ BEGIN
 END
 GO
 
+-- ShellAccounts table — credenciales de Shell Flota + último saldo disponible leído.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ShellAccounts' AND xtype='U')
+BEGIN
+    CREATE TABLE ShellAccounts (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        Usuario NVARCHAR(100) NOT NULL,
+        Password NVARCHAR(MAX) NOT NULL,
+        Alias NVARCHAR(100) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        LastSaldo NVARCHAR(50) NULL,
+        LastSaldoAt DATETIME2 NULL,
+        LastSyncOk BIT NOT NULL DEFAULT 0,
+        LastError NVARCHAR(500) NULL,
+        AutoSyncEnabled BIT NOT NULL DEFAULT 0,
+        AutoSyncTimes NVARCHAR(200) NULL,
+        LastAutoSyncAt DATETIME2 NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL
+    );
+END
+GO
+
 -- ArcaWebserviceAccounts table — certificados .pfx para autenticarse contra
 -- los webservices de ARCA. Cada CUIT puede tener varios certificados (distintos
 -- alias/ambientes). El archivo .pfx vive en disco bajo "Certificados ARCA/<cuit>/".

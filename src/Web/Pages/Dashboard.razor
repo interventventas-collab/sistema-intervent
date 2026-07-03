@@ -908,16 +908,28 @@
         }
     </div>
 
-    @* Shell Flota — placeholder, esperando API *@
-    <div class="dashboard-detail-card mac-stat-card accent-amber" style="position:relative;" title="Próximamente — cuando tengamos la API de Shell, este recuadro mostrará los datos de la flota.">
+    @* Shell Flota — saldo disponible (robot lee el saldo solo) *@
+    <div class="dashboard-detail-card mac-stat-card accent-amber" style="cursor:pointer;" @onclick='() => Navigation.NavigateTo("/integraciones/shell")' title="Ir a Shell Flota">
         <div class="mac-card-header">
             <div class="mac-card-iconbox" style="background:#faeeda; color:#d97706;">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
             </div>
             <span class="mac-card-eyebrow" style="color:#3f3f46;">Shell Flota</span>
-            <span style="margin-left:auto; background:#fef3c7; color:#92400e; font-size:0.65rem; padding:1px 7px; border-radius:8px; font-weight:500; text-transform:uppercase; letter-spacing:0.04em;">En obra</span>
         </div>
-        <div class="mac-card-sub" style="margin-top:8px;">Esperando API de Shell para integrar</div>
+        @if (shellSaldo is null || string.IsNullOrEmpty(shellSaldo.LastSaldo))
+        {
+            <div class="mac-card-bignum" style="font-size:1rem;">Configurar →</div>
+            <div class="mac-card-sub">Cargá la clave para ver el saldo</div>
+        }
+        else
+        {
+            <div class="mac-card-bignum">$@shellSaldo.LastSaldo</div>
+            <div class="mac-card-sub">saldo disponible</div>
+            @if (shellSaldo.LastSaldoAt.HasValue)
+            {
+                <div class="mac-card-sub" style="font-style:italic; margin-top:2px;">Actualizado @FormatearUltimaActualizacion(shellSaldo.LastSaldoAt.Value)</div>
+            }
+        }
     </div>
 
     @* Saldo banco Galicia *@
@@ -995,6 +1007,7 @@
     private System.Threading.Timer? alqResumenTimer;
     private AlqDashboardResumen? alqResumen;
     private Web.Models.SaldoBancoDto? saldoBanco;
+    private Web.Models.ShellAccountDto? shellSaldo;
     private Web.Models.FilesStatsDto? docStats;
 
     // 2026-06-25: dashboard nuevo — equipo en vivo + resumen del día
@@ -1150,6 +1163,8 @@
             saldoBanco = await Api.GetSaldoBancoAsync();
         }
         catch { /* idem, opcional */ }
+        try { shellSaldo = await Api.GetShellAccountAsync(); }
+        catch { /* opcional */ }
         StateHasChanged();
     }
 
