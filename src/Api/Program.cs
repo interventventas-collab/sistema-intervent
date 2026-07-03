@@ -118,6 +118,8 @@ builder.Services.AddHttpClient();
 builder.Services.AddScoped<MeliAccountService>();
 builder.Services.AddScoped<ArcaAccountService>();
 builder.Services.AddSingleton<ArcaScrapingService>();
+builder.Services.AddScoped<GaliciaAccountService>();
+builder.Services.AddSingleton<GaliciaScrapingService>();
 builder.Services.AddScoped<ArcaWebserviceAccountService>();
 builder.Services.AddSingleton<ArcaWsTokenCache>();
 builder.Services.AddScoped<ArcaWsService>();

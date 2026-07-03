@@ -2139,6 +2139,192 @@ async function tryRestoreSession() {
   }
 }
 
+// ============================================================
+// BANCO GALICIA — Office Banking empresas.
+// Login + (más adelante) descarga de movimientos. Mismo patrón que ARCA:
+// browser aislado, single-run concurrente (409 si hay otro), status + screenshot en vivo.
+// El formulario limpio tiene: input#userInput (usuario), input#userPassword (clave),
+// botón submit "Ingresar". Si hay cookie de "usuario recordado" muestra solo la clave;
+// en ese caso clickeamos "Cambiar de usuario" para tener el form completo.
+// ============================================================
+
+const galiciaState = {
+  browser: null,
+  context: null,
+  page: null,
+  running: false,
+  step: 'Iniciando...',
+  result: null,
+  startedAt: null,
+};
+
+async function closeGaliciaBrowserSafely() {
+  try { if (galiciaState.page && !galiciaState.page.isClosed()) await galiciaState.page.close().catch(() => {}); } catch {}
+  try { if (galiciaState.context) await galiciaState.context.close().catch(() => {}); } catch {}
+  try { if (galiciaState.browser) await galiciaState.browser.close().catch(() => {}); } catch {}
+  galiciaState.page = null;
+  galiciaState.context = null;
+  galiciaState.browser = null;
+}
+
+// POST /galicia/test/start - body: { usuario, password, submit? }
+//   submit === false  => solo abre el login, completa los campos y saca foto SIN enviar
+//                        (sirve para verificar sin arriesgar el bloqueo por intentos).
+//   submit !== false  => además aprieta "Ingresar" e informa si entró o si pidió token.
+app.post('/galicia/test/start', async (req, res) => {
+  if (galiciaState.running) {
+    return res.status(409).json({ error: 'Ya hay una prueba de Galicia en curso' });
+  }
+  const { usuario, password, submit } = req.body || {};
+  if (!usuario) {
+    return res.status(400).json({ error: 'Falta el usuario' });
+  }
+  const doSubmit = submit !== false;
+  if (doSubmit && !password) {
+    return res.status(400).json({ error: 'Falta la clave para probar el ingreso' });
+  }
+  galiciaState.running = true;
+  galiciaState.step = 'Iniciando...';
+  galiciaState.result = null;
+  galiciaState.startedAt = Date.now();
+  res.json({ ok: true });
+
+  runGaliciaLogin({ usuario, password, submit: doSubmit })
+    .catch(async (err) => {
+      console.error('[galicia] error inesperado:', err);
+      galiciaState.result = { ok: false, error: err?.message || 'Error desconocido' };
+    })
+    .finally(async () => {
+      await closeGaliciaBrowserSafely();
+      galiciaState.running = false;
+      if (!galiciaState.result) {
+        galiciaState.result = { ok: false, error: 'Prueba interrumpida' };
+      }
+      galiciaState.step = galiciaState.result?.ok ? 'Listo' : 'Error';
+    });
+});
+
+app.get('/galicia/test/status', (req, res) => {
+  res.json({
+    running: galiciaState.running,
+    step: galiciaState.step,
+    result: galiciaState.result,
+  });
+});
+
+app.get('/galicia/test/screenshot', async (req, res) => {
+  try {
+    if (!galiciaState.page || galiciaState.page.isClosed()) {
+      return res.status(404).send('Sin página activa');
+    }
+    const buffer = await galiciaState.page.screenshot({ type: 'png', fullPage: false }).catch(() => null);
+    if (!buffer) return res.status(404).send('No se pudo capturar');
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    res.send(buffer);
+  } catch (err) {
+    res.status(500).send('Error: ' + err.message);
+  }
+});
+
+async function runGaliciaLogin({ usuario, password, submit }) {
+  galiciaState.step = 'Abriendo navegador...';
+  const browser = await chromium.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled'],
+  });
+  const context = await browser.newContext({
+    userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    viewport: { width: 1280, height: 800 },
+    acceptDownloads: true,
+  });
+  const page = await context.newPage();
+  galiciaState.browser = browser;
+  galiciaState.context = context;
+  galiciaState.page = page;
+
+  galiciaState.step = 'Abriendo login de Office Banking...';
+  await page.goto('https://empresas.bancogalicia.com.ar/login', {
+    waitUntil: 'domcontentloaded',
+    timeout: 40000,
+  });
+  // La página es una SPA: dale tiempo a renderizar el formulario.
+  await sleep(3000);
+
+  // Asegurar el formulario COMPLETO (usuario + clave). Si hay usuario recordado,
+  // Galicia muestra solo la clave — clickeamos "Cambiar de usuario".
+  const userInput = page.locator('#userInput');
+  if (!(await userInput.isVisible().catch(() => false))) {
+    const cambiar = page.locator('text=Cambiar de usuario').first();
+    if (await cambiar.isVisible().catch(() => false)) {
+      galiciaState.step = 'Abriendo formulario de usuario...';
+      await cambiar.click().catch(() => {});
+      await sleep(1500);
+    }
+  }
+  await userInput.waitFor({ state: 'visible', timeout: 20000 });
+
+  galiciaState.step = `Ingresando usuario ${usuario}...`;
+  await userInput.fill(usuario, { timeout: 8000 });
+  if (password) {
+    galiciaState.step = 'Ingresando clave...';
+    await page.locator('#userPassword').fill(password, { timeout: 8000 });
+  }
+
+  if (!submit) {
+    // Modo "ver login": no enviamos. Dejamos la foto disponible unos segundos.
+    galiciaState.step = 'Formulario completado SIN enviar. Mirá la foto.';
+    galiciaState.result = { ok: true, submitted: false, url: page.url() };
+    await sleep(20000);
+    return;
+  }
+
+  galiciaState.step = 'Ingresando (apretando "Ingresar")...';
+  await page.locator('button[type="submit"]').first().click({ timeout: 8000 });
+
+  galiciaState.step = 'Verificando ingreso...';
+  await page.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
+  await sleep(4000);
+
+  const url = page.url();
+  let visibleText = '';
+  try { visibleText = ((await page.locator('body').innerText({ timeout: 3000 })) || '').replace(/\s+/g, ' ').trim(); } catch {}
+  const low = visibleText.toLowerCase();
+
+  // ¿Login rechazado? (sigue en /login con mensaje de error)
+  const stillOnLogin = url.includes('/login');
+  const errorHints = ['incorrecta', 'incorrecto', 'inválid', 'invalid', 'bloque', 'no coincide', 'reintent'];
+  if (stillOnLogin && errorHints.some((h) => low.includes(h))) {
+    const snippet = visibleText.slice(0, 200);
+    galiciaState.result = { ok: false, error: `Ingreso rechazado. El banco dijo: "${snippet}"`, url };
+    return;
+  }
+
+  // ¿Pidió token / segundo factor?
+  const tokenHints = ['token', 'código de verificación', 'codigo de verificacion', 'segundo factor',
+    'verificación en dos pasos', 'verificacion en dos pasos', 'ingresá el código', 'ingresa el codigo', 'otp'];
+  const needsToken = tokenHints.some((h) => low.includes(h));
+  if (needsToken) {
+    galiciaState.step = 'El banco pidió un código de seguridad.';
+    galiciaState.result = { ok: true, submitted: true, loggedIn: false, needsToken: true, url };
+    await sleep(15000);
+    return;
+  }
+
+  // Si ya no estamos en /login, asumimos ingreso exitoso.
+  if (!stillOnLogin) {
+    galiciaState.step = '¡Entró! Sesión iniciada.';
+    galiciaState.result = { ok: true, submitted: true, loggedIn: true, needsToken: false, url };
+    await sleep(15000);
+    return;
+  }
+
+  // Caso ambiguo: seguimos en /login sin mensaje claro.
+  galiciaState.result = { ok: false, error: 'No se pudo confirmar el ingreso (quedó en la pantalla de login).', url };
+}
+
 // --- Start ---
 app.listen(PORT, () => {
   console.log(`[wa] servicio Playwright escuchando en :${PORT}`);

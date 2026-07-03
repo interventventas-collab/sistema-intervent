@@ -942,6 +942,10 @@
                 <div class="mac-card-sub" style="font-style:italic; margin-top:2px;">Última actualización @FormatearUltimaActualizacion(saldoBanco.UltimoImportadoAt.Value)</div>
             }
         }
+        <div style="margin-top:6px;">
+            <span @onclick='() => Navigation.NavigateTo("/integraciones/galicia")' @onclick:stopPropagation="true"
+                  style="color:#2563eb; text-decoration:underline; font-size:0.75rem; cursor:pointer;">⚙ Conexión automática</span>
+        </div>
     </div>
 </div>
 
