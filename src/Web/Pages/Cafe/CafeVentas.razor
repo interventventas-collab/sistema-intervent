@@ -1080,6 +1080,24 @@
                                 </div>
                             }
                         </div>
+
+                        @* 2026-07-03: multi-sociedad — con qué empresa/CUIT se factura.
+                           Solo se muestra cuando hay más de un certificado cargado (si hay uno solo,
+                           se usa ese y no molestamos al operador con un desplegable de una opción). *@
+                        @if (arcaAccounts.Count > 1)
+                        {
+                            <div style="display: grid; grid-template-columns: 1fr; gap: 0.6rem; margin-top: 0.4rem;">
+                                <div class="form-group" style="margin: 0;">
+                                    <label class="form-label" style="font-size: 0.66rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">🏢 ¿Con qué empresa facturás? <span style="color:#dc2626;">*</span></label>
+                                    <select class="form-input" @bind="formArcaAccountId">
+                                        @foreach (var acc in arcaAccounts)
+                                        {
+                                            <option value="@acc.Id">@ArcaAccountLabel(acc)</option>
+                                        }
+                                    </select>
+                                </div>
+                            </div>
+                        }
                     }
                 }
 
@@ -4162,6 +4180,9 @@
     private int formConcepto = 1;
     private DateTime? formConceptoServDesde;
     private DateTime? formConceptoServHasta;
+    // 2026-07-03: multi-sociedad — con qué certificado/CUIT se factura. null = default (CUIT del negocio).
+    private int? formArcaAccountId;
+    private List<ArcaWebserviceAccountDto> arcaAccounts = new();
     // 2026-07-02: link de Google Maps del domicilio de entrega (override por venta) + guardar en cliente
     private string formMapeoLink = "";
     private bool formGuardarMapeoEnCliente;
@@ -5454,6 +5475,10 @@
     /// esa tiene prioridad (no la pisamos) — fix 2026-05-19 para no romper OnClienteChanged.</summary>
     private void OnTipoComprobanteChanged()
     {
+        // Al pasar a factura, asegurar que haya una empresa emisora elegida (default = CUIT del negocio).
+        if (formTipoComprobante is "FA" or "FB" or "FC")
+            EnsureDefaultArcaAccount();
+
         formCondicionPago = formTipoComprobante switch
         {
             "FA" or "FB" or "FC" => "TRANSFERENCIA",
@@ -5485,6 +5510,45 @@
             formConceptoServDesde ??= formFecha;
             formConceptoServHasta ??= formFecha;
         }
+    }
+
+    /// <summary>2026-07-03: etiqueta para el desplegable "¿Con qué empresa facturás?".
+    /// Ej: "PALANICA HERMANOS SRL — 30-71721214-9 (Pto vta 2)".</summary>
+    private string ArcaAccountLabel(ArcaWebserviceAccountDto acc)
+    {
+        var nombre = !string.IsNullOrWhiteSpace(acc.Alias) ? acc.Alias! : $"CUIT {acc.Cuit}";
+        var cuitFmt = acc.Cuit.Length == 11 ? $"{acc.Cuit[..2]}-{acc.Cuit[2..10]}-{acc.Cuit[10..]}" : acc.Cuit;
+        var homo = acc.Environment == "homologation" ? " · PRUEBA" : "";
+        return $"{nombre} — {cuitFmt} (Pto vta {acc.PtoVta}){homo}";
+    }
+
+    /// <summary>Si todavía no hay empresa emisora elegida, selecciona por default la que coincide
+    /// con el CUIT del negocio (comportamiento histórico); si no encuentra, la primera activa.</summary>
+    private void EnsureDefaultArcaAccount()
+    {
+        if (arcaAccounts.Count == 0) return;
+        // Si ya hay una elegida y sigue siendo válida (activa), la respetamos.
+        if (formArcaAccountId.HasValue && arcaAccounts.Any(a => a.Id == formArcaAccountId.Value))
+            return;
+
+        var negocioCuit = new string((settings?.NegocioCuit ?? "").Where(char.IsDigit).ToArray());
+        var porDefecto = arcaAccounts.FirstOrDefault(a => a.Cuit == negocioCuit)
+                         ?? arcaAccounts.FirstOrDefault(a => a.Environment == "production")
+                         ?? arcaAccounts.First();
+        formArcaAccountId = porDefecto.Id;
+    }
+
+    /// <summary>Carga las cuentas ARCA activas para el selector "¿Con qué empresa facturás?".
+    /// Best-effort: si falla, el selector no aparece y se factura con el default del backend.</summary>
+    private async Task LoadArcaAccountsAsync()
+    {
+        try
+        {
+            var todas = await Api.GetArcaWebserviceAccountsAsync();
+            arcaAccounts = (todas ?? new()).Where(a => a.IsActive)
+                .OrderBy(a => a.Alias ?? a.Cuit).ThenBy(a => a.Id).ToList();
+        }
+        catch { arcaAccounts = new(); }
     }
 
     /// <summary>Marca o desmarca los 3 canales de envio al cliente. Si los 3 ya estan

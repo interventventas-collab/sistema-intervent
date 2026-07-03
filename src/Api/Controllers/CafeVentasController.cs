@@ -304,7 +304,8 @@ public class CafeVentasController : ControllerBase
         v.Concepto,
         v.ConceptoServDesde,
         v.ConceptoServHasta,
-        v.MapeoLink);
+        v.MapeoLink,
+        v.ArcaWebserviceAccountId);
 
     [HttpGet]
     public async Task<IActionResult> GetAll(
@@ -862,10 +863,20 @@ public class CafeVentasController : ControllerBase
     [NonAction]
     public byte[] BuildArcaPdf(CafeVenta v, CafeSetting cfg)
     {
-        var ficha = _emisorService.GetEntityByCuitAsync(cfg?.NegocioCuit ?? "").GetAwaiter().GetResult();
+        // El emisor del PDF debe ser el CUIT con el que se FACTURÓ (no el CUIT del negocio por default),
+        // así una factura emitida con la sociedad de hecho sale con SUS datos y su QR de AFIP.
+        var cuitEmisorPdf = cfg?.NegocioCuit ?? "";
+        if (v.ArcaWebserviceAccountId.HasValue && v.ArcaWebserviceAccountId.Value > 0)
+        {
+            var cuenta = _db.ArcaWebserviceAccounts
+                .FirstOrDefault(a => a.Id == v.ArcaWebserviceAccountId.Value);
+            if (cuenta is not null) cuitEmisorPdf = cuenta.Cuit;
+        }
+
+        var ficha = _emisorService.GetEntityByCuitAsync(cuitEmisorPdf).GetAwaiter().GetResult();
         var emisor = new PdfEmisor
         {
-            Cuit = ficha?.Cuit ?? new string((cfg?.NegocioCuit ?? "").Where(char.IsDigit).ToArray()),
+            Cuit = ficha?.Cuit ?? new string((cuitEmisorPdf ?? "").Where(char.IsDigit).ToArray()),
             RazonSocial = ficha?.RazonSocial ?? cfg?.NegocioRazonSocial ?? cfg?.NegocioNombre ?? "—",
             CondicionIva = ficha?.CondicionIva ?? "Responsable Inscripto",
             Domicilio = ficha?.Domicilio ?? cfg?.NegocioDireccion,
@@ -1425,7 +1436,10 @@ public class CafeVentasController : ControllerBase
             ConceptoServDesde = req.ConceptoServDesde,
             ConceptoServHasta = req.ConceptoServHasta,
             // 2026-07-02: link de Maps del domicilio de entrega (override propio de la venta)
-            MapeoLink = string.IsNullOrWhiteSpace(req.MapeoLink) ? null : req.MapeoLink.Trim()
+            MapeoLink = string.IsNullOrWhiteSpace(req.MapeoLink) ? null : req.MapeoLink.Trim(),
+            // 2026-07-03: certificado/CUIT elegido para facturar (multi-sociedad). Null = default.
+            ArcaWebserviceAccountId = req.ArcaWebserviceAccountId.HasValue && req.ArcaWebserviceAccountId.Value > 0
+                ? req.ArcaWebserviceAccountId.Value : null
         };
 
         // 2026-07-02: si pidió guardar el link también en la ficha del cliente (para futuras ventas)
@@ -1624,30 +1638,53 @@ public class CafeVentasController : ControllerBase
     {
         try
         {
-            // 1. Resolver el CUIT del emisor (del CafeSetting)
+            // 1. Resolver el certificado/CUIT con el que se factura.
+            //    - Si la venta trae ArcaWebserviceAccountId (el operador eligió una sociedad en
+            //      el selector "¿Con qué facturás?"), usamos ESE certificado.
+            //    - Si no, fallback al comportamiento histórico: el CUIT del negocio (CafeSetting).
             var cfg = await _db.CafeSettings.FindAsync(1);
-            var cuitEmisor = cfg?.NegocioCuit;
-            if (string.IsNullOrWhiteSpace(cuitEmisor))
+            ArcaWebserviceAccount? arcaAccount;
+
+            if (venta.ArcaWebserviceAccountId.HasValue && venta.ArcaWebserviceAccountId.Value > 0)
             {
-                venta.ArcaEstado = "pendiente";
-                venta.ArcaError = "Falta cargar el CUIT en Café → Configuración del negocio.";
-                await _db.SaveChangesAsync();
-                return;
+                arcaAccount = await _db.ArcaWebserviceAccounts
+                    .FirstOrDefaultAsync(a => a.Id == venta.ArcaWebserviceAccountId.Value && a.IsActive);
+                if (arcaAccount is null)
+                {
+                    venta.ArcaEstado = "pendiente";
+                    venta.ArcaError = "El certificado ARCA elegido para facturar no existe o está desactivado. Revisá Integraciones → ARCA (webservice).";
+                    await _db.SaveChangesAsync();
+                    return;
+                }
+            }
+            else
+            {
+                var cuitEmisor = cfg?.NegocioCuit;
+                if (string.IsNullOrWhiteSpace(cuitEmisor))
+                {
+                    venta.ArcaEstado = "pendiente";
+                    venta.ArcaError = "Falta cargar el CUIT en Café → Configuración del negocio.";
+                    await _db.SaveChangesAsync();
+                    return;
+                }
+
+                var cuitDigits = new string(cuitEmisor.Where(char.IsDigit).ToArray());
+                arcaAccount = await _db.ArcaWebserviceAccounts
+                    .Where(a => a.Cuit == cuitDigits && a.IsActive)
+                    .OrderByDescending(a => a.Environment == "production")
+                    .FirstOrDefaultAsync();
+                if (arcaAccount is null)
+                {
+                    venta.ArcaEstado = "pendiente";
+                    venta.ArcaError = $"No hay un certificado ARCA activo para el CUIT {cuitDigits}. Cargá uno en Integraciones → ARCA (webservice).";
+                    await _db.SaveChangesAsync();
+                    return;
+                }
             }
 
-            // 2. Buscar el certificado ARCA activo para ese CUIT
-            var cuitDigits = new string(cuitEmisor.Where(char.IsDigit).ToArray());
-            var arcaAccount = await _db.ArcaWebserviceAccounts
-                .Where(a => a.Cuit == cuitDigits && a.IsActive)
-                .OrderByDescending(a => a.Environment == "production")
-                .FirstOrDefaultAsync();
-            if (arcaAccount is null)
-            {
-                venta.ArcaEstado = "pendiente";
-                venta.ArcaError = $"No hay un certificado ARCA activo para el CUIT {cuitDigits}. Cargá uno en Integraciones → ARCA (webservice).";
-                await _db.SaveChangesAsync();
-                return;
-            }
+            // Dejar registrado en la venta con qué certificado se emitió (aunque haya sido el default),
+            // así la Nota de Crédito usa el mismo CUIT y el PDF muestra el emisor correcto.
+            venta.ArcaWebserviceAccountId = arcaAccount.Id;
 
             // 3. Mapear tipo de comprobante: FA→1, FB→6, FC→11
             int cbteTipo = venta.TipoComprobante switch
@@ -1747,7 +1784,7 @@ public class CafeVentasController : ControllerBase
             // 6. Armar el request y llamar al ArcaInvoiceService
             var req = new EmitirComprobanteRequest
             {
-                PtoVta = 2, // PtoVta fijo para Café (configurable después si hace falta)
+                PtoVta = arcaAccount.PtoVta, // punto de venta propio del CUIT/certificado elegido
                 CbteTipo = cbteTipo,
                 Concepto = venta.Concepto, // 2026-06-23: 1=Productos / 2=Servicios / 3=Mixto
                 DocTipo = docTipo,
@@ -1872,6 +1909,8 @@ public class CafeVentasController : ControllerBase
             TipoComprobante = tipoNuevo,
             CondicionIva = req.CondicionIva ?? original.CondicionIva,
             CondicionPago = original.CondicionPago,
+            // Sociedad/CUIT elegido para facturar (si no viene, hereda el de la proforma o el default).
+            ArcaWebserviceAccountId = req.ArcaWebserviceAccountId ?? original.ArcaWebserviceAccountId,
         };
 
         // 2026-06-18 — La X / PRO ya tenia su stock descontado al crearse. Si vamos a crear una FA
@@ -1979,9 +2018,14 @@ public class CafeVentasController : ControllerBase
             _ => (0, "")
         };
 
-        // Cargar cuenta ARCA activa
-        var arcaAccount = await _db.ArcaWebserviceAccounts
-            .FirstOrDefaultAsync(a => a.IsActive);
+        // Cargar la cuenta ARCA. La NC DEBE emitirse con el MISMO CUIT que la factura
+        // original (si se facturó con la sociedad de hecho, la NC va contra ese CUIT).
+        // Fallback a la primera activa solo para facturas viejas sin cuenta registrada.
+        ArcaWebserviceAccount? arcaAccount = null;
+        if (original.ArcaWebserviceAccountId.HasValue && original.ArcaWebserviceAccountId.Value > 0)
+            arcaAccount = await _db.ArcaWebserviceAccounts
+                .FirstOrDefaultAsync(a => a.Id == original.ArcaWebserviceAccountId.Value && a.IsActive);
+        arcaAccount ??= await _db.ArcaWebserviceAccounts.FirstOrDefaultAsync(a => a.IsActive);
         if (arcaAccount is null) return BadRequest(new { error = "No hay cuenta ARCA configurada" });
 
         // ----- Generar numero de comprobante interno (independiente de ARCA) -----
@@ -2012,6 +2056,7 @@ public class CafeVentasController : ControllerBase
             Estado = "emitido",
             Observaciones = string.IsNullOrWhiteSpace(req?.Motivo) ? null : req!.Motivo!.Trim(),
             VentaOrigenNcId = original.Id,
+            ArcaWebserviceAccountId = arcaAccount.Id,
             CreatedAt = DateTime.UtcNow,
             // 2026-06-23: la NC hereda el concepto del comprobante original
             Concepto = original.Concepto,

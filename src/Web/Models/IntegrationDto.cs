@@ -148,6 +148,8 @@ public class ArcaWebserviceAccountDto
     public string FilePath { get; set; } = "";
     public string? Password { get; set; }
     public string Environment { get; set; } = "production";
+    /// <summary>Punto de venta AFIP propio de este CUIT/certificado (default 2).</summary>
+    public int PtoVta { get; set; } = 2;
     public DateTime? ExpiresAt { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -160,6 +162,8 @@ public class UpdateArcaWebserviceAccountRequest
     /// <summary>Si null no toca la pass; si "" la blanquea.</summary>
     public string? Password { get; set; }
     public string? Environment { get; set; }
+    /// <summary>Punto de venta AFIP. Si null, no se toca.</summary>
+    public int? PtoVta { get; set; }
     public bool? IsActive { get; set; }
 }
 

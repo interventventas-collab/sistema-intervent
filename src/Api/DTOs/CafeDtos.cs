@@ -998,4 +998,6 @@ public class ConvertirAFacturaRequest
     public string TipoFactura { get; set; } = "FB";
     /// <summary>Condición IVA del receptor. Si null, se hereda de la proforma.</summary>
     public string? CondicionIva { get; set; }
+    /// <summary>2026-07-03: certificado/CUIT con el que se factura (multi-sociedad). Null = default.</summary>
+    public int? ArcaWebserviceAccountId { get; set; }
 }

@@ -443,6 +443,8 @@ public class CafeVentaDto
     public int? ArcaCbteNro { get; set; }
     public int? ArcaCbteTipoNum { get; set; }
     public string? ArcaError { get; set; }
+    /// <summary>2026-07-03: certificado/CUIT con el que se emitió (multi-sociedad). Null = default.</summary>
+    public int? ArcaWebserviceAccountId { get; set; }
     /// <summary>Si esta venta nació de otra (típicamente una proforma convertida a factura), Id origen.</summary>
     public int? OrigenVentaId { get; set; }
     /// <summary>Si esta proforma fue convertida a factura, Id de la factura resultante.</summary>
@@ -689,6 +691,8 @@ public class CreateCafeVentaRequest
     public string? MapeoLink { get; set; }
     /// <summary>2026-07-02: si true, además guarda el link en la ficha del cliente (para futuras entregas).</summary>
     public bool GuardarMapeoEnCliente { get; set; }
+    /// <summary>2026-07-03: certificado/CUIT con el que se factura (multi-sociedad). Null = default.</summary>
+    public int? ArcaWebserviceAccountId { get; set; }
 }
 
 public class UpdateCafeVentaFlagsRequest

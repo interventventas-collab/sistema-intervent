@@ -19,8 +19,13 @@
         <div class="cco-bg-tint"></div>
     }
 
-    @* InputFile en primer plano, oculto pero clickeable. La label lo dispara via for=. *@
-    <InputFile id="@FileInputId" class="cco-hidden-file" OnChange="OnBgPicked" accept=".png,.jpg,.jpeg,.webp" />
+    @* InputFile en primer plano, oculto pero clickeable. La label lo dispara via for=.
+       onclick nativo: el <label for=> activa el input y dispara un click sintetico
+       que bubbles a la card padre y le hace navegar. Con stopPropagation aca, cortamos
+       ese burbujeo antes de que llegue al padre. *@
+    <InputFile id="@FileInputId" class="cco-hidden-file" OnChange="OnBgPicked"
+               accept=".png,.jpg,.jpeg,.webp"
+               onclick="event.stopPropagation();" />
 
     <div class="cco-controls" @onclick="NoOp" @onclick:stopPropagation="true">
         <label class="cco-btn cco-btn-foto" for="@FileInputId"

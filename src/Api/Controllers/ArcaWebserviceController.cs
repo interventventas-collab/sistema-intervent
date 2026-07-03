@@ -95,6 +95,7 @@ public class ArcaWebserviceController : ControllerBase
         [FromForm] string? alias,
         [FromForm] string? password,
         [FromForm] string? environment,
+        [FromForm] int? ptoVta,
         IFormFile? file)
     {
         if (file is null || file.Length == 0)
@@ -107,7 +108,7 @@ public class ArcaWebserviceController : ControllerBase
             bytes = ms.ToArray();
         }
 
-        var (ok, error, dto) = await _service.CreateAsync(cuit, alias, password, environment, file.FileName, bytes);
+        var (ok, error, dto) = await _service.CreateAsync(cuit, alias, password, environment, file.FileName, bytes, ptoVta);
         if (!ok) return BadRequest(new { error });
         return Ok(dto);
     }
