@@ -5233,3 +5233,9 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='MapeoLink' AND Object_ID=OBJECT_ID('Alq_Reservas'))
     ALTER TABLE Alq_Reservas ADD MapeoLink NVARCHAR(500) NULL;
 GO
+
+-- 2026-07-02: Cafe_Ventas — link de Google Maps del domicilio de entrega (override por venta).
+-- Prioridad al mostrarlo al repartidor: venta.MapeoLink -> cliente.MapeoLink -> búsqueda por dirección.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='MapeoLink' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD MapeoLink NVARCHAR(500) NULL;
+GO

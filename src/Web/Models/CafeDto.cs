@@ -491,6 +491,8 @@ public class CafeVentaDto
     public DateTime? ConceptoServDesde { get; set; }
     /// <summary>Solo aplica si Concepto in (2,3). Fin del periodo de prestacion.</summary>
     public DateTime? ConceptoServHasta { get; set; }
+    /// <summary>2026-07-02: link de Google Maps propio de la venta (override del domicilio de entrega).</summary>
+    public string? MapeoLink { get; set; }
 }
 
 /// <summary>Tarjeta de venta en el tablero /cafe/preparacion. Trae solo lo que el
@@ -683,6 +685,10 @@ public class CreateCafeVentaRequest
     public int Concepto { get; set; } = 1;
     public DateTime? ConceptoServDesde { get; set; }
     public DateTime? ConceptoServHasta { get; set; }
+    /// <summary>2026-07-02: link de Google Maps del domicilio de entrega. Se guarda en la venta.</summary>
+    public string? MapeoLink { get; set; }
+    /// <summary>2026-07-02: si true, además guarda el link en la ficha del cliente (para futuras entregas).</summary>
+    public bool GuardarMapeoEnCliente { get; set; }
 }
 
 public class UpdateCafeVentaFlagsRequest
@@ -728,6 +734,10 @@ public class UpdateCafeVentaRequest
     public int? Concepto { get; set; }
     public DateTime? ConceptoServDesde { get; set; }
     public DateTime? ConceptoServHasta { get; set; }
+    /// <summary>2026-07-02: link de Google Maps del domicilio de entrega. Se guarda en la venta.</summary>
+    public string? MapeoLink { get; set; }
+    /// <summary>2026-07-02: si true, además guarda el link en la ficha del cliente (para futuras entregas).</summary>
+    public bool GuardarMapeoEnCliente { get; set; }
 }
 
 public class DeleteCafeVentaRequest

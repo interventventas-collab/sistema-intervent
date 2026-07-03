@@ -52,6 +52,11 @@ public class CafeVenta
     [MaxLength(20)]
     public string? ClienteCpSnapshot { get; set; }
 
+    /// <summary>Link de Google Maps del domicilio de entrega (pin exacto). Opcional. 2026-07-02.
+    /// Prioridad al mostrarlo al repartidor: venta.MapeoLink → cliente.MapeoLink → búsqueda por dirección.</summary>
+    [MaxLength(500)]
+    public string? MapeoLink { get; set; }
+
     [Column(TypeName = "decimal(18,2)")] public decimal Subtotal { get; set; }
     [Column(TypeName = "decimal(18,2)")] public decimal Descuento { get; set; }
     [Column(TypeName = "decimal(18,2)")] public decimal Total { get; set; }

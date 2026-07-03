@@ -303,7 +303,8 @@ public class CafeVentasController : ControllerBase
         // 2026-06-23: Concepto AFIP
         v.Concepto,
         v.ConceptoServDesde,
-        v.ConceptoServHasta);
+        v.ConceptoServHasta,
+        v.MapeoLink);
 
     [HttpGet]
     public async Task<IActionResult> GetAll(
@@ -1422,8 +1423,17 @@ public class CafeVentasController : ControllerBase
             // 2026-06-23: Concepto AFIP. Default 1 (Productos). Si 2 o 3, se mandan fechas a ARCA al emitir.
             Concepto = req.Concepto is 1 or 2 or 3 ? req.Concepto : 1,
             ConceptoServDesde = req.ConceptoServDesde,
-            ConceptoServHasta = req.ConceptoServHasta
+            ConceptoServHasta = req.ConceptoServHasta,
+            // 2026-07-02: link de Maps del domicilio de entrega (override propio de la venta)
+            MapeoLink = string.IsNullOrWhiteSpace(req.MapeoLink) ? null : req.MapeoLink.Trim()
         };
+
+        // 2026-07-02: si pidió guardar el link también en la ficha del cliente (para futuras ventas)
+        if (req.GuardarMapeoEnCliente && !string.IsNullOrWhiteSpace(req.MapeoLink) && req.ClienteId.HasValue && req.ClienteId.Value > 0)
+        {
+            var cliMapeo = await _db.CafeClientes.FindAsync(req.ClienteId.Value);
+            if (cliMapeo is not null) { cliMapeo.MapeoLink = req.MapeoLink.Trim(); cliMapeo.MapeoLat = null; cliMapeo.MapeoLng = null; }
+        }
 
         // 2026-06-01 — Cargar info de productos "shell" para decremento correcto
         // (productos linkeados a MeLi via componentes: decrementar componentes en lugar del shell vacío).
@@ -2435,6 +2445,17 @@ public class CafeVentasController : ControllerBase
             v.Concepto = req.Concepto.Value;
         if (req.ConceptoServDesde.HasValue) v.ConceptoServDesde = req.ConceptoServDesde.Value;
         if (req.ConceptoServHasta.HasValue) v.ConceptoServHasta = req.ConceptoServHasta.Value;
+        // 2026-07-02: link de Maps de la venta + opcional guardar en la ficha del cliente
+        if (req.MapeoLink is not null) v.MapeoLink = string.IsNullOrWhiteSpace(req.MapeoLink) ? null : req.MapeoLink.Trim();
+        if (req.GuardarMapeoEnCliente && !string.IsNullOrWhiteSpace(req.MapeoLink))
+        {
+            var cliMapeoId = req.ClienteId is > 0 ? req.ClienteId.Value : v.ClienteId;
+            if (cliMapeoId is > 0)
+            {
+                var cliMapeo = await _db.CafeClientes.FindAsync(cliMapeoId.Value);
+                if (cliMapeo is not null) { cliMapeo.MapeoLink = req.MapeoLink.Trim(); cliMapeo.MapeoLat = null; cliMapeo.MapeoLng = null; }
+            }
+        }
 
         // Cliente: si mandaron ClienteId valido > 0, vinculo al cliente y refresco snapshot.
         // Si mandaron 0 o null + override, dejo como manual (consumidor final / nombre libre).

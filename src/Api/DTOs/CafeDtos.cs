@@ -415,7 +415,9 @@ public record CafeVentaDto(
     // 2026-06-23: Concepto AFIP. 1=Productos, 2=Servicios, 3=Productos y Servicios.
     int Concepto = 1,
     DateTime? ConceptoServDesde = null,
-    DateTime? ConceptoServHasta = null);
+    DateTime? ConceptoServHasta = null,
+    // 2026-07-02: link de Google Maps propio de la venta (override del domicilio de entrega)
+    string? MapeoLink = null);
 
 public class CafeCotizarItemRequest
 {
@@ -531,6 +533,10 @@ public class CreateCafeVentaRequest
     public DateTime? ConceptoServDesde { get; set; }
     /// <summary>Solo aplica si Concepto in (2,3). Fin periodo de prestacion.</summary>
     public DateTime? ConceptoServHasta { get; set; }
+    /// <summary>2026-07-02: link de Google Maps del domicilio de entrega. Se guarda en la venta.</summary>
+    public string? MapeoLink { get; set; }
+    /// <summary>2026-07-02: si es true, ademas guarda el link en la ficha del cliente (para futuras entregas).</summary>
+    public bool GuardarMapeoEnCliente { get; set; }
 }
 
 public class UpdateCafeVentaFlagsRequest
@@ -581,6 +587,10 @@ public class UpdateCafeVentaRequest
     public int? Concepto { get; set; }
     public DateTime? ConceptoServDesde { get; set; }
     public DateTime? ConceptoServHasta { get; set; }
+    /// <summary>2026-07-02: link de Google Maps del domicilio de entrega. Se guarda en la venta.</summary>
+    public string? MapeoLink { get; set; }
+    /// <summary>2026-07-02: si es true, ademas guarda el link en la ficha del cliente (para futuras entregas).</summary>
+    public bool GuardarMapeoEnCliente { get; set; }
 }
 
 public class DeleteCafeVentaRequest
