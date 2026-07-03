@@ -8,27 +8,25 @@
    - Defensivo: si algo falla, no rompe la card ni el dashboard
    - La card padre necesita position:relative *@
 
-<div class="cco-root">
+<div class="cco-root @(hideImage ? "" : "cco-may-have-image")">
     @if (!hideImage)
     {
         <img src="@ImgUrl"
              class="cco-bg-img"
-             onerror="this.style.display='none'; this.classList.add('cco-bg-hidden');"
+             onload="this.closest('.cco-root').classList.add('cco-image-loaded');"
+             onerror="this.style.display='none'; this.closest('.cco-root').classList.remove('cco-may-have-image');"
              alt="" />
         <div class="cco-bg-tint"></div>
     }
 
     <div class="cco-controls" @onclick="NoOp" @onclick:stopPropagation="true">
-        <label class="cco-btn cco-btn-foto" title="Cambiar imagen de fondo" @onclick="NoOp" @onclick:stopPropagation="true">
+        <label class="cco-btn cco-btn-foto" title="Subir imagen de fondo" @onclick="NoOp" @onclick:stopPropagation="true">
             <span>📷 Foto</span>
             <InputFile OnChange="OnBgPicked" accept=".png,.jpg,.jpeg,.webp" style="display:none;" />
         </label>
-        @if (hasImage)
-        {
-            <button class="cco-btn cco-btn-danger" @onclick="OnDeleteBg" @onclick:stopPropagation="true" title="Quitar imagen">
-                <span>🗑</span>
-            </button>
-        }
+        <button class="cco-btn cco-btn-danger cco-btn-only-if-image" @onclick="OnDeleteBg" @onclick:stopPropagation="true" title="Quitar imagen">
+            <span>🗑 Borrar foto</span>
+        </button>
         @if (!editing && string.IsNullOrWhiteSpace(comment))
         {
             <button class="cco-btn cco-btn-nota" @onclick="StartEdit" @onclick:stopPropagation="true" title="Agregar nota">
@@ -85,50 +83,53 @@
     }
     .cco-controls {
         position: absolute;
-        top: 6px;
-        right: 6px;
+        top: 8px;
+        right: 8px;
         display: flex;
-        gap: 5px;
+        gap: 6px;
         pointer-events: auto;
-        opacity: 0.85;
-        transition: opacity 0.15s ease;
         z-index: 3;
     }
-    .cco-root:hover .cco-controls { opacity: 1; }
     .cco-btn {
-        height: 24px;
-        padding: 0 8px;
-        border-radius: 6px;
-        border: 1px solid rgba(0,0,0,0.08);
+        height: 32px;
+        padding: 0 12px;
+        border-radius: 8px;
+        border: 1.5px solid rgba(0,0,0,0.12);
         display: inline-flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        font-size: 11px;
-        font-weight: 500;
+        font-size: 13px;
+        font-weight: 600;
         line-height: 1;
         white-space: nowrap;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.10);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+        transition: transform 0.06s ease, box-shadow 0.12s ease;
     }
+    .cco-btn:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0,0,0,0.18); }
+    .cco-btn:active { transform: translateY(0); box-shadow: 0 1px 3px rgba(0,0,0,0.10); }
     .cco-btn-foto {
-        background: #eff6ff;
-        color: #1e40af;
-        border-color: #93c5fd;
+        background: #dbeafe;
+        color: #1e3a8a;
+        border-color: #60a5fa;
     }
-    .cco-btn-foto:hover { background: #dbeafe; }
+    .cco-btn-foto:hover { background: #bfdbfe; }
     .cco-btn-nota {
         background: #fef3c7;
-        color: #92400e;
-        border-color: #fcd34d;
+        color: #78350f;
+        border-color: #f59e0b;
     }
     .cco-btn-nota:hover { background: #fde68a; }
     .cco-btn-danger {
         background: #fee2e2;
-        color: #991b1b;
-        border-color: #fca5a5;
+        color: #7f1d1d;
+        border-color: #ef4444;
     }
     .cco-btn-danger:hover { background: #fecaca; }
-    .cco-btn-sm { height: 20px; padding: 0 5px; font-size: 10px; }
+    .cco-btn-sm { height: 24px; padding: 0 8px; font-size: 11px; }
+    /* "Borrar foto" solo visible cuando la imagen efectivamente cargo. */
+    .cco-btn-only-if-image { display: none; }
+    .cco-image-loaded .cco-btn-only-if-image { display: inline-flex; }
     .cco-comment {
         position: absolute;
         left: 0; right: 0; bottom: 0;
