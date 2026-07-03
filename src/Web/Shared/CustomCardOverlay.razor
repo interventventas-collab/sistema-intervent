@@ -1,0 +1,277 @@
+@inject ApiClient Api
+@inject ToastService Toast
+
+@* 2026-07-03 (v2): overlay para personalizar tarjetas del dashboard con imagen de
+   fondo + comentario editable. Rediseñado tras el bardo del v1 que rompio prod:
+   - NO hace fetch propio (recibe el diccionario Settings del padre via parametro)
+   - NO usa JS.eval para chequear si la imagen existe (usa <img onerror>)
+   - Defensivo: si algo falla, no rompe la card ni el dashboard
+   - La card padre necesita position:relative *@
+
+<div class="cco-root">
+    @if (!hideImage)
+    {
+        <img src="@ImgUrl"
+             class="cco-bg-img"
+             onerror="this.style.display='none'; this.classList.add('cco-bg-hidden');"
+             alt="" />
+        <div class="cco-bg-tint"></div>
+    }
+
+    <div class="cco-controls" @onclick="NoOp" @onclick:stopPropagation="true">
+        <label class="cco-btn cco-btn-foto" title="Cambiar imagen de fondo" @onclick="NoOp" @onclick:stopPropagation="true">
+            <span>📷 Foto</span>
+            <InputFile OnChange="OnBgPicked" accept=".png,.jpg,.jpeg,.webp" style="display:none;" />
+        </label>
+        @if (hasImage)
+        {
+            <button class="cco-btn cco-btn-danger" @onclick="OnDeleteBg" @onclick:stopPropagation="true" title="Quitar imagen">
+                <span>🗑</span>
+            </button>
+        }
+        @if (!editing && string.IsNullOrWhiteSpace(comment))
+        {
+            <button class="cco-btn cco-btn-nota" @onclick="StartEdit" @onclick:stopPropagation="true" title="Agregar nota">
+                <span>📝 Nota</span>
+            </button>
+        }
+    </div>
+
+    @if (editing || !string.IsNullOrWhiteSpace(comment))
+    {
+        <div class="cco-comment @(editing ? "cco-comment-editing" : "")" @onclick="NoOp" @onclick:stopPropagation="true">
+            @if (editing)
+            {
+                <input type="text" class="cco-input"
+                       placeholder="Escribí tu nota y apretá Enter…"
+                       @bind="commentEdit" @bind:event="oninput"
+                       @onblur="SaveComment"
+                       @onkeydown="OnKeyComment"
+                       @onclick:stopPropagation="true"
+                       @ref="inputRef" />
+            }
+            else
+            {
+                <span class="cco-text" @onclick="StartEdit" @onclick:stopPropagation="true" title="Click para editar">@comment</span>
+                <button class="cco-btn cco-btn-sm cco-btn-danger" @onclick="ClearComment" @onclick:stopPropagation="true" title="Quitar nota">
+                    <span>✕</span>
+                </button>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .cco-root {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        border-radius: inherit;
+        overflow: hidden;
+        z-index: 0;
+    }
+    .cco-bg-img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        opacity: 0.55;
+    }
+    .cco-bg-tint {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0.85) 100%);
+    }
+    .cco-controls {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        display: flex;
+        gap: 5px;
+        pointer-events: auto;
+        opacity: 0.85;
+        transition: opacity 0.15s ease;
+        z-index: 3;
+    }
+    .cco-root:hover .cco-controls { opacity: 1; }
+    .cco-btn {
+        height: 24px;
+        padding: 0 8px;
+        border-radius: 6px;
+        border: 1px solid rgba(0,0,0,0.08);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 11px;
+        font-weight: 500;
+        line-height: 1;
+        white-space: nowrap;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.10);
+    }
+    .cco-btn-foto {
+        background: #eff6ff;
+        color: #1e40af;
+        border-color: #93c5fd;
+    }
+    .cco-btn-foto:hover { background: #dbeafe; }
+    .cco-btn-nota {
+        background: #fef3c7;
+        color: #92400e;
+        border-color: #fcd34d;
+    }
+    .cco-btn-nota:hover { background: #fde68a; }
+    .cco-btn-danger {
+        background: #fee2e2;
+        color: #991b1b;
+        border-color: #fca5a5;
+    }
+    .cco-btn-danger:hover { background: #fecaca; }
+    .cco-btn-sm { height: 20px; padding: 0 5px; font-size: 10px; }
+    .cco-comment {
+        position: absolute;
+        left: 0; right: 0; bottom: 0;
+        min-height: 24px;
+        background: rgba(17, 24, 39, 0.72);
+        color: white;
+        font-size: 12px;
+        padding: 4px 10px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        pointer-events: auto;
+        z-index: 2;
+    }
+    .cco-comment-editing { background: rgba(17, 24, 39, 0.95); }
+    .cco-text {
+        flex: 1;
+        cursor: text;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .cco-input {
+        flex: 1;
+        background: transparent;
+        border: none;
+        color: white;
+        font-size: 12px;
+        outline: none;
+        padding: 0;
+    }
+    /* Hijos de las cards que NO son este overlay: por encima del overlay bg. */
+    .dashboard-detail-card > *:not(.cco-root),
+    .mac-card > *:not(.cco-root) {
+        position: relative;
+        z-index: 1;
+    }
+</style>
+
+@code {
+    [Parameter, EditorRequired] public string CardKey { get; set; } = "";
+    /// <summary>Diccionario de settings global cargado desde el Dashboard padre.
+    /// Sirve como cache para NO hacer llamadas por cada card. Si es null, el
+    /// overlay simplemente no muestra comentario inicial (el usuario puede agregar
+    /// uno nuevo y se guarda igual).</summary>
+    [Parameter] public Dictionary<string, string>? Settings { get; set; }
+
+    private string comment = "";
+    private string commentEdit = "";
+    private bool editing;
+    private ElementReference inputRef;
+    private long imgVersion = 0;
+    private bool hideImage; // true cuando el usuario borra la imagen manualmente
+    private string BgKey => $"dashcard-bg-{CardKey}";
+    private string CommentKey => $"dashcard-cmt-{CardKey}";
+    private string ImgUrl => $"/api/branding/{BgKey}?v={imgVersion}";
+
+    /// <summary>Si el img no fallo en cargar, hay imagen. En v2 no hacemos HEAD:
+    /// el <img onerror> se auto-oculta si no existe. Este flag se usa solo para
+    /// decidir si mostrar el boton "Quitar imagen".</summary>
+    private bool hasImage => !hideImage;
+
+    protected override void OnParametersSet()
+    {
+        try
+        {
+            if (Settings is not null && Settings.TryGetValue(CommentKey, out var v))
+                comment = v ?? "";
+            imgVersion = imgVersion == 0 ? DateTimeOffset.UtcNow.ToUnixTimeSeconds() : imgVersion;
+        }
+        catch { /* jamas romper el render de la card por esto */ }
+    }
+
+    private async Task OnBgPicked(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    {
+        if (e.File is null) return;
+        try
+        {
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            await Api.UploadBrandingImageAsync(BgKey, stream, e.File.Name, e.File.ContentType);
+            imgVersion = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            hideImage = false;
+            Toast.Success("Fondo actualizado ✓");
+            StateHasChanged();
+        }
+        catch (Exception ex) { Toast.Error("No se pudo subir la imagen: " + ex.Message); }
+    }
+
+    private async Task OnDeleteBg()
+    {
+        try
+        {
+            await Api.DeleteBrandingImageAsync(BgKey);
+            hideImage = true;
+            Toast.Success("Fondo quitado");
+            StateHasChanged();
+        }
+        catch (Exception ex) { Toast.Error("No se pudo borrar: " + ex.Message); }
+    }
+
+    private async Task StartEdit()
+    {
+        editing = true;
+        commentEdit = comment;
+        StateHasChanged();
+        await Task.Delay(30);
+        try { await inputRef.FocusAsync(); } catch { }
+    }
+
+    private async Task SaveComment()
+    {
+        if (!editing) return;
+        var newVal = (commentEdit ?? "").Trim();
+        if (newVal == comment) { editing = false; StateHasChanged(); return; }
+        try
+        {
+            await Api.UpdateSettingAsync(CommentKey, newVal);
+            comment = newVal;
+            if (Settings is not null) Settings[CommentKey] = newVal;
+        }
+        catch (Exception ex) { Toast.Error("No se pudo guardar el comentario: " + ex.Message); }
+        editing = false;
+        StateHasChanged();
+    }
+
+    private async Task ClearComment()
+    {
+        try
+        {
+            await Api.UpdateSettingAsync(CommentKey, "");
+            comment = "";
+            if (Settings is not null) Settings[CommentKey] = "";
+            StateHasChanged();
+        }
+        catch (Exception ex) { Toast.Error("No se pudo quitar: " + ex.Message); }
+    }
+
+    private async Task OnKeyComment(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") { await SaveComment(); }
+        else if (e.Key == "Escape") { editing = false; StateHasChanged(); }
+    }
+
+    // Handler vacio para que @onclick:stopPropagation actue.
+    private void NoOp() { }
+}
