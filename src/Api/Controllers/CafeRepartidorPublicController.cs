@@ -404,9 +404,11 @@ public class CafeRepartidorPublicController : ControllerBase
                 // 2026-06-11: campos para accesos rápidos del repartidor
                 ClienteId = x.v.ClienteId,
                 ClienteTelefono = (x.c != null ? x.c.Telefono : null) ?? x.v.ClienteTelefonoSnapshot,
-                ClienteLat = x.c != null ? x.c.MapeoLat : null,
-                ClienteLng = x.c != null ? x.c.MapeoLng : null,
-                ClienteMapeoLink = x.c != null ? x.c.MapeoLink : null,
+                // 2026-07-02: si la venta tiene su propio link de Maps (override), gana sobre el del
+                // cliente — y anulamos las coords del cliente para que ese link no sea pisado por el pin fijo.
+                ClienteLat = (x.v.MapeoLink != null && x.v.MapeoLink != "") ? (decimal?)null : (x.c != null ? x.c.MapeoLat : null),
+                ClienteLng = (x.v.MapeoLink != null && x.v.MapeoLink != "") ? (decimal?)null : (x.c != null ? x.c.MapeoLng : null),
+                ClienteMapeoLink = (x.v.MapeoLink != null && x.v.MapeoLink != "") ? x.v.MapeoLink : (x.c != null ? x.c.MapeoLink : null),
                 // 2026-06-22: flag para mostrar modal de firma al confirmar entrega
                 x.v.SolicitarFirmaEntrega
             })
