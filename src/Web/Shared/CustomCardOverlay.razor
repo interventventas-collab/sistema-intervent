@@ -29,7 +29,7 @@
 
     <div class="cco-controls" @onclick="NoOp" @onclick:stopPropagation="true">
         <label class="cco-btn cco-btn-foto" for="@FileInputId"
-               title="Subir imagen de fondo (recomendado ~600x300 px, se recorta al tamaño de la card)"
+               title="Subir imagen de fondo"
                @onclick="NoOp" @onclick:stopPropagation="true">
             <span>📷 Foto</span>
         </label>
@@ -43,6 +43,7 @@
             </button>
         }
     </div>
+    <div class="cco-hint">PNG · JPG · WEBP · máx 10 MB · ideal ~600×300 px</div>
 
     @if (editing || !string.IsNullOrWhiteSpace(comment))
     {
@@ -152,6 +153,22 @@
     }
     .cco-btn-danger:hover { background: #fecaca; }
     .cco-btn-sm { height: 24px; padding: 0 8px; font-size: 11px; }
+    /* Hint del formato/tamaño debajo de los botones. Chiquito, gris, no distrae. */
+    .cco-hint {
+        position: absolute;
+        top: 46px;
+        right: 8px;
+        font-size: 10px;
+        color: rgba(31, 41, 55, 0.65);
+        background: rgba(255, 255, 255, 0.9);
+        padding: 2px 8px;
+        border-radius: 6px;
+        pointer-events: none;
+        z-index: 3;
+        opacity: 0;
+        transition: opacity 0.15s ease;
+    }
+    .cco-root:hover .cco-hint { opacity: 1; }
     /* "Borrar foto" solo visible cuando la imagen efectivamente cargo. */
     .cco-btn-only-if-image { display: none; }
     .cco-image-loaded .cco-btn-only-if-image { display: inline-flex; }
@@ -234,9 +251,24 @@
     private async Task OnBgPicked(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
     {
         if (e.File is null) return;
+        // 2026-07-03: validar del lado del cliente ANTES de subir para dar feedback claro.
+        const long maxBytes = 10L * 1024 * 1024;
+        var permitidos = new[] { ".png", ".jpg", ".jpeg", ".webp" };
+        var ext = System.IO.Path.GetExtension(e.File.Name)?.ToLowerInvariant() ?? "";
+        if (!permitidos.Contains(ext))
+        {
+            Toast.Error($"Formato no permitido ({ext}). Usá PNG, JPG o WEBP.");
+            return;
+        }
+        if (e.File.Size > maxBytes)
+        {
+            var mb = e.File.Size / (1024d * 1024d);
+            Toast.Error($"El archivo pesa {mb:F1} MB. El máximo es 10 MB.");
+            return;
+        }
         try
         {
-            using var stream = e.File.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            using var stream = e.File.OpenReadStream(maxAllowedSize: maxBytes);
             await Api.UploadBrandingImageAsync(BgKey, stream, e.File.Name, e.File.ContentType);
             imgVersion = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             hideImage = false;

@@ -3180,6 +3180,18 @@
                         </select>
                     </div>
                 </div>
+                @if (arcaAccounts.Count > 1)
+                {
+                    <div class="form-group" style="margin-top: 0.6rem;">
+                        <label class="form-label">🏢 ¿Con qué empresa facturás?</label>
+                        <select class="form-input" @bind="convertirArcaAccountId">
+                            @foreach (var acc in arcaAccounts)
+                            {
+                                <option value="@acc.Id">@ArcaAccountLabel(acc)</option>
+                            }
+                        </select>
+                    </div>
+                }
                 @if (!string.IsNullOrEmpty(convertirError))
                 {
                     <div class="form-error" style="margin-top: 0.6rem;">@convertirError</div>
@@ -5071,6 +5083,8 @@
             productos = (await Api.GetCafeProductosAsync())?.Where(p => p.IsActive).ToList() ?? new();
             combos = (await Api.GetCafeCombosAsync(activos: true)) ?? new();
             settings = await Api.GetCafeSettingsAsync();
+            // 2026-07-03: cuentas ARCA para el selector "¿Con qué empresa facturás?" (multi-sociedad).
+            await LoadArcaAccountsAsync();
         }
         catch { }
     }
@@ -5189,6 +5203,7 @@
         formFecha = DateTime.Today; formDescuento = 0; formObservaciones = "";
         formTipoComprobante = "X"; formCondicionIva = "CF"; formCondicionPago = "EFECTIVO";
         formConcepto = 1; formConceptoServDesde = null; formConceptoServHasta = null;
+        formArcaAccountId = null; // multi-sociedad: se define al pasar a factura (EnsureDefaultArcaAccount)
         formMapeoLink = ""; formGuardarMapeoEnCliente = false;
         formItems = new(); cotizacion = null;
         addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
@@ -5530,12 +5545,19 @@
         // Si ya hay una elegida y sigue siendo válida (activa), la respetamos.
         if (formArcaAccountId.HasValue && arcaAccounts.Any(a => a.Id == formArcaAccountId.Value))
             return;
+        formArcaAccountId = DefaultArcaAccountId();
+    }
 
+    /// <summary>Id de la empresa emisora por default: la que coincide con el CUIT del negocio;
+    /// si no, la primera de producción; si no, la primera. Null si no hay cuentas cargadas.</summary>
+    private int? DefaultArcaAccountId()
+    {
+        if (arcaAccounts.Count == 0) return null;
         var negocioCuit = new string((settings?.NegocioCuit ?? "").Where(char.IsDigit).ToArray());
         var porDefecto = arcaAccounts.FirstOrDefault(a => a.Cuit == negocioCuit)
                          ?? arcaAccounts.FirstOrDefault(a => a.Environment == "production")
                          ?? arcaAccounts.First();
-        formArcaAccountId = porDefecto.Id;
+        return porDefecto.Id;
     }
 
     /// <summary>Carga las cuentas ARCA activas para el selector "¿Con qué empresa facturás?".
@@ -5748,6 +5770,7 @@
     private CafeVentaDto? convirtiendo;
     private string convertirTipoFactura = "FB";
     private string convertirCondIva = "RI";
+    private int? convertirArcaAccountId;
     private bool convirtiendoLoading;
     private string? convertirError;
     // 2026-06-18: cuando este flag esta en true, DoConvertirAFactura primero guarda
@@ -5762,6 +5785,8 @@
         convertirTipoFactura = "FB";
         // La condición IVA del receptor: si la venta original tiene una válida la usamos, sino RI default
         convertirCondIva = !string.IsNullOrWhiteSpace(v.CondicionIva) && v.CondicionIva != "CF" ? v.CondicionIva : "RI";
+        // Multi-sociedad: heredar la empresa de la proforma si tenía; sino el default (CUIT del negocio).
+        convertirArcaAccountId = v.ArcaWebserviceAccountId ?? DefaultArcaAccountId();
         convertirError = null;
     }
 
@@ -5798,6 +5823,8 @@
         convertirCondIva = !string.IsNullOrWhiteSpace(formCondicionIva) && formCondicionIva != "CF"
             ? formCondicionIva
             : "RI";
+        // Multi-sociedad: usar la empresa elegida en el form (o el default).
+        convertirArcaAccountId = formArcaAccountId ?? DefaultArcaAccountId();
         convertirError = null;
     }
 
@@ -5851,7 +5878,8 @@
             var nuevaVenta = await Api.ConvertirCafeVentaAFacturaAsync(convirtiendo.Id, new ConvertirAFacturaRequest
             {
                 TipoFactura = convertirTipoFactura,
-                CondicionIva = convertirCondIva
+                CondicionIva = convertirCondIva,
+                ArcaWebserviceAccountId = convertirArcaAccountId
             });
             if (nuevaVenta is null) { convertirError = "No se pudo convertir."; return; }
 
@@ -7038,7 +7066,8 @@
                 ComentarioArmado = formComentarioArmado,
                 Concepto = formConcepto,
                 ConceptoServDesde = formConcepto != 1 ? formConceptoServDesde : null,
-                ConceptoServHasta = formConcepto != 1 ? formConceptoServHasta : null
+                ConceptoServHasta = formConcepto != 1 ? formConceptoServHasta : null,
+                ArcaWebserviceAccountId = formTipoComprobante is "FA" or "FB" or "FC" ? formArcaAccountId : null
             });
             if (bytes is null)
             {
@@ -7229,7 +7258,9 @@
                     ConceptoServDesde = formConcepto != 1 ? formConceptoServDesde : null,
                     ConceptoServHasta = formConcepto != 1 ? formConceptoServHasta : null,
                     MapeoLink = string.IsNullOrWhiteSpace(formMapeoLink) ? null : formMapeoLink.Trim(),
-                    GuardarMapeoEnCliente = formGuardarMapeoEnCliente
+                    GuardarMapeoEnCliente = formGuardarMapeoEnCliente,
+                    // 2026-07-03: con qué empresa se factura (solo aplica a FA/FB/FC).
+                    ArcaWebserviceAccountId = formTipoComprobante is "FA" or "FB" or "FC" ? formArcaAccountId : null
                 });
                 if (v is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success($"Venta {v.Numero} emitida — Total ${v.Total:N2}");
@@ -7732,6 +7763,9 @@
         formConcepto = v.Concepto is 1 or 2 or 3 ? v.Concepto : 1;
         formConceptoServDesde = v.ConceptoServDesde;
         formConceptoServHasta = v.ConceptoServHasta;
+        // 2026-07-03: restaurar con qué empresa se facturó; si no tenía y es factura, poner el default.
+        formArcaAccountId = v.ArcaWebserviceAccountId;
+        if (formTipoComprobante is "FA" or "FB" or "FC") EnsureDefaultArcaAccount();
         // 2026-07-02: link de Maps propio de la venta; si no tiene, el del cliente
         formMapeoLink = !string.IsNullOrWhiteSpace(v.MapeoLink)
             ? v.MapeoLink!

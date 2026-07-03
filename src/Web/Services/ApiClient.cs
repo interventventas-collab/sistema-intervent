@@ -2627,7 +2627,7 @@ public class ApiClient
         => await GetAsync<List<ArcaWebserviceAccountDto>>("/api/arca-webservice/accounts");
 
     public async Task<(bool ok, string? error, ArcaWebserviceAccountDto? dto)> UploadArcaWebserviceAccountAsync(
-        string cuit, string? alias, string? password, string environment, Stream fileStream, string fileName)
+        string cuit, string? alias, string? password, string environment, Stream fileStream, string fileName, int? ptoVta = null)
     {
         await SetAuthHeaderAsync();
         using var content = new MultipartFormDataContent();
@@ -2638,6 +2638,7 @@ public class ApiClient
         if (!string.IsNullOrEmpty(alias)) content.Add(new StringContent(alias), "alias");
         if (!string.IsNullOrEmpty(password)) content.Add(new StringContent(password), "password");
         content.Add(new StringContent(string.IsNullOrEmpty(environment) ? "production" : environment), "environment");
+        if (ptoVta.HasValue && ptoVta.Value > 0) content.Add(new StringContent(ptoVta.Value.ToString()), "ptoVta");
 
         var response = await _http.PostAsync("/api/arca-webservice/accounts", content);
         if (response.StatusCode == HttpStatusCode.Unauthorized)

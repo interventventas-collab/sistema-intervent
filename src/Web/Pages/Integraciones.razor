@@ -587,6 +587,7 @@
                                     <th>Alias</th>
                                     <th>Archivo</th>
                                     <th>Ambiente</th>
+                                    <th>Pto vta</th>
                                     <th>Vencimiento</th>
                                     <th>Estado</th>
                                     <th>Cargado</th>
@@ -608,6 +609,7 @@
                                                 @(ambienteEsHom ? "Homologación" : "Producción")
                                             </span>
                                         </td>
+                                        <td><strong>@c.PtoVta</strong></td>
                                         <td><span style="color: @vencColor; font-weight: 600;">@vencTexto</span></td>
                                         <td>
                                             <span class="status-badge @(c.IsActive ? "status-active" : "status-inactive")">
@@ -1735,6 +1737,12 @@
                         <option value="homologation">Homologación</option>
                     </select>
                 </div>
+                <div class="form-group">
+                    <label class="form-label">Punto de venta AFIP *</label>
+                    <input type="number" class="form-input" min="1" @bind="arcaWsFormPtoVta"
+                           placeholder="Ej: 2" />
+                    <span class="input-hint">El punto de venta que este CUIT tiene habilitado en AFIP para factura electrónica. Cada empresa/CUIT usa el suyo.</span>
+                </div>
 
                 @if (!arcaWsIsEditing)
                 {
@@ -2811,6 +2819,7 @@
     private string arcaWsFormAlias = "";
     private string arcaWsFormPassword = "";
     private string arcaWsFormEnvironment = "production";
+    private int arcaWsFormPtoVta = 2;                      // punto de venta AFIP del CUIT/certificado
     private bool arcaWsFormIsActive = true;
     private bool arcaWsShowPassword;                       // toggle del ojito 👁
     private IBrowserFile? arcaWsSelectedFile;
@@ -4775,6 +4784,7 @@
         arcaWsFormAlias = "";
         arcaWsFormPassword = "";
         arcaWsFormEnvironment = "production";
+        arcaWsFormPtoVta = 2;
         arcaWsFormIsActive = true;
         arcaWsShowPassword = false;
         arcaWsSelectedFile = null;
@@ -4791,6 +4801,7 @@
         arcaWsFormAlias = c.Alias ?? "";
         arcaWsFormPassword = c.Password ?? "";  // precargada
         arcaWsFormEnvironment = string.IsNullOrEmpty(c.Environment) ? "production" : c.Environment;
+        arcaWsFormPtoVta = c.PtoVta > 0 ? c.PtoVta : 2;
         arcaWsFormIsActive = c.IsActive;
         arcaWsShowPassword = false;
         arcaWsSelectedFile = null;
@@ -4863,7 +4874,8 @@
                     arcaWsFormPassword,
                     arcaWsFormEnvironment,
                     stream,
-                    arcaWsSelectedFile.Name);
+                    arcaWsSelectedFile.Name,
+                    arcaWsFormPtoVta);
                 if (!ok)
                 {
                     arcaWsCertError = error ?? "No se pudo cargar el certificado";
@@ -4894,6 +4906,7 @@
                     Alias = arcaWsFormAlias,
                     Password = arcaWsFormPassword, // si lo dejás igual a lo precargado, igual va; el back acepta ""/null como "no tocar" según convenga
                     Environment = arcaWsFormEnvironment,
+                    PtoVta = arcaWsFormPtoVta > 0 ? arcaWsFormPtoVta : null,
                     IsActive = arcaWsFormIsActive
                 });
                 if (updated is null)

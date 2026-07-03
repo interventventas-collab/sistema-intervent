@@ -580,6 +580,8 @@ public class ConvertirAFacturaRequest
 {
     public string TipoFactura { get; set; } = "FB";
     public string? CondicionIva { get; set; }
+    /// <summary>2026-07-03: certificado/CUIT con el que se factura (multi-sociedad). Null = default.</summary>
+    public int? ArcaWebserviceAccountId { get; set; }
 }
 
 public class CafeCotizarItemRequest
