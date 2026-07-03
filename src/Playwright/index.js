@@ -2526,23 +2526,25 @@ async function leerOtpShellDesdeGmail(gmailUser, gmailPass, sinceEpochMs) {
   let simpleParser;
   try { simpleParser = require('mailparser').simpleParser; } catch { simpleParser = null; }
 
-  const esCodigo = (t) => t && /[A-Z]/.test(t) && /[0-9]/.test(t);
+  const esCodigo = (t) => t && t.length === 6 && /[A-Z]/.test(t) && /[0-9]/.test(t);
   const extraerCodigo = (txt) => {
     if (!txt) return null;
     // Sacar colores hex (#3B3D40) para que no se confundan con el token.
     const T = txt.toUpperCase().replace(/#\s*[0-9A-F]{3,8}\b/g, ' ');
-    // 1) Preferir el token que aparece JUSTO DESPUÉS de una palabra clave.
-    const kw = /(OTP|C[ÓO]DIGO|CODIGO|VERIFICACI[ÓO]N|VERIFICACION|TOKEN|SOLO USO)[^A-Z0-9]{0,60}([A-Z0-9]{6})\b/;
-    const mk = T.match(kw);
-    if (mk && esCodigo(mk[2])) return mk[2];
-    // 2) Fallback: primer token de 6 con letra + dígito.
+    // El código de Shell viene ESPACIADO ("J O N R Q 5"), justo después de "(OTP):".
+    // Estrategia: ubicar la palabra clave, tomar lo que sigue, sacar TODO lo no-alfanumérico
+    // (junta las letras espaciadas) y quedarnos con los primeros 6 caracteres.
+    const kws = ['(OTP)', 'OTP)', 'OTP', 'UN SOLO USO', 'SOLO USO', 'CODIGO TOKEN', 'CÓDIGO TOKEN', 'VERIFICACION', 'VERIFICACIÓN'];
+    for (const kw of kws) {
+      const pos = T.indexOf(kw);
+      if (pos < 0) continue;
+      const after = T.slice(pos + kw.length, pos + kw.length + 60).replace(/[^A-Z0-9]/g, '');
+      const cand = after.slice(0, 6);
+      if (esCodigo(cand)) return cand;
+    }
+    // Fallback: token contiguo de 6 (letra+dígito).
     const tokens = T.match(/\b[A-Z0-9]{6}\b/g) || [];
-    const c = tokens.find(esCodigo);
-    if (c) return c;
-    // 3) Último recurso: forma espaciada "Q 4 4 7 2 N".
-    const junto = T.replace(/[^A-Z0-9]/g, '');
-    const m = junto.match(/[A-Z0-9]{6}/g) || [];
-    return (m.find(esCodigo)) || null;
+    return tokens.find(esCodigo) || null;
   };
 
   const client = new ImapFlow({ host: 'imap.gmail.com', port: 993, secure: true, auth: { user: gmailUser, pass: gmailPass }, logger: false });
@@ -2552,20 +2554,24 @@ async function leerOtpShellDesdeGmail(gmailUser, gmailPass, sinceEpochMs) {
     for (let intento = 0; intento < 20 && !code; intento++) {
       const lock = await client.getMailboxLock('INBOX');
       try {
-        const desde = new Date(sinceEpochMs - 120000);
+        const desde = new Date(sinceEpochMs - 90000);
         let ids = [];
         try { ids = await client.search({ from: 'shellflota', since: desde }, { uid: true }); } catch {}
         if (ids && ids.length) {
-          const ultimos = ids.slice(-3).reverse();
-          for (const uid of ultimos) {
-            const msg = await client.fetchOne(uid, { source: true, internalDate: true }, { uid: true });
-            if (!msg) continue;
-            if (msg.internalDate && msg.internalDate.getTime() < sinceEpochMs - 90000) continue;
+          // Pueden acumularse varios mails de token en la casilla. Elegimos el MÁS NUEVO
+          // que haya llegado DESPUÉS de este login (descarta OTP de intentos anteriores).
+          let mejor = null;
+          for (const uid of ids.slice(-8)) {
+            const m = await client.fetchOne(uid, { source: true, internalDate: true }, { uid: true });
+            if (!m || !m.internalDate) continue;
+            if (m.internalDate.getTime() < sinceEpochMs - 20000) continue; // OTP viejo → descartar
+            if (!mejor || m.internalDate > mejor.internalDate) mejor = m;
+          }
+          if (mejor && mejor.source) {
             let contenido = '';
-            if (simpleParser && msg.source) {
+            if (simpleParser) {
               try {
-                const p = await simpleParser(msg.source);
-                // El texto plano primero (sin CSS). Luego el html limpiado de estilos/etiquetas.
+                const p = await simpleParser(mejor.source);
                 let htmlLimpio = '';
                 if (p.html) {
                   htmlLimpio = p.html
@@ -2577,9 +2583,9 @@ async function leerOtpShellDesdeGmail(gmailUser, gmailPass, sinceEpochMs) {
                 contenido = (p.text || '') + '  ⁣  ' + htmlLimpio + '  ' + (p.subject || '');
               } catch {}
             }
-            if (!contenido && msg.source) contenido = msg.source.toString().replace(/#\s*[0-9a-fA-F]{3,8}\b/g, ' ');
+            if (!contenido) contenido = mejor.source.toString().replace(/#\s*[0-9a-fA-F]{3,8}\b/g, ' ');
             const c = extraerCodigo(contenido);
-            if (c) { console.log('[shell][OTP] código extraído del mail:', c); code = c; break; }
+            if (c) { console.log('[shell][OTP] código extraído (mail más nuevo ' + mejor.internalDate.toISOString() + '):', c); code = c; }
           }
         }
       } finally { lock.release(); }
