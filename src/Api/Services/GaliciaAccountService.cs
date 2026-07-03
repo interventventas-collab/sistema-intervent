@@ -16,13 +16,16 @@ public class GaliciaAccountService
     public GaliciaAccountService(AppDbContext db) { _db = db; }
 
     public record GaliciaAccountDto(int Id, string Usuario, string? Alias, bool HasPassword,
-        bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
+        bool IsActive, bool AutoSyncEnabled, string? AutoSyncTimes, DateTime? LastAutoSyncAt,
+        DateTime CreatedAt, DateTime? UpdatedAt);
 
-    public record SaveGaliciaAccountRequest(string Usuario, string? Password, string? Alias, bool IsActive);
+    public record SaveGaliciaAccountRequest(string Usuario, string? Password, string? Alias, bool IsActive,
+        bool AutoSyncEnabled = false, string? AutoSyncTimes = null);
 
     private static GaliciaAccountDto Map(GaliciaAccount a) => new(
         a.Id, a.Usuario, string.IsNullOrEmpty(a.Alias) ? null : a.Alias,
-        !string.IsNullOrEmpty(a.Password), a.IsActive, a.CreatedAt, a.UpdatedAt);
+        !string.IsNullOrEmpty(a.Password), a.IsActive, a.AutoSyncEnabled, a.AutoSyncTimes, a.LastAutoSyncAt,
+        a.CreatedAt, a.UpdatedAt);
 
     /// <summary>Devuelve la cuenta principal (la primera), o null si no hay ninguna cargada.</summary>
     public async Task<GaliciaAccountDto?> GetAsync()
@@ -36,6 +39,19 @@ public class GaliciaAccountService
     {
         var a = await _db.GaliciaAccounts.OrderBy(x => x.Id).FirstOrDefaultAsync();
         return a?.Password;
+    }
+
+    /// <summary>Entidad cruda (para el job de auto-sync). Incluye clave — no exponer al frontend.</summary>
+    public async Task<GaliciaAccount?> GetEntityAsync()
+        => await _db.GaliciaAccounts.OrderBy(x => x.Id).FirstOrDefaultAsync();
+
+    /// <summary>Marca la última corrida automática (UTC).</summary>
+    public async Task MarcarAutoSyncAsync(DateTime whenUtc)
+    {
+        var a = await _db.GaliciaAccounts.OrderBy(x => x.Id).FirstOrDefaultAsync();
+        if (a is null) return;
+        a.LastAutoSyncAt = whenUtc;
+        await _db.SaveChangesAsync();
     }
 
     /// <summary>
@@ -58,6 +74,8 @@ public class GaliciaAccountService
                 Password = req.Password,
                 Alias = string.IsNullOrWhiteSpace(req.Alias) ? null : req.Alias.Trim(),
                 IsActive = req.IsActive,
+                AutoSyncEnabled = req.AutoSyncEnabled,
+                AutoSyncTimes = NormTimes(req.AutoSyncTimes),
                 CreatedAt = DateTime.UtcNow
             };
             _db.GaliciaAccounts.Add(a);
@@ -68,9 +86,34 @@ public class GaliciaAccountService
             if (!string.IsNullOrWhiteSpace(req.Password)) a.Password = req.Password;
             a.Alias = string.IsNullOrWhiteSpace(req.Alias) ? null : req.Alias.Trim();
             a.IsActive = req.IsActive;
+            a.AutoSyncEnabled = req.AutoSyncEnabled;
+            a.AutoSyncTimes = NormTimes(req.AutoSyncTimes);
             a.UpdatedAt = DateTime.UtcNow;
         }
         await _db.SaveChangesAsync();
         return (true, null, Map(a));
+    }
+
+    /// <summary>Normaliza "HH:mm,HH:mm,...": valida cada hora, deja las válidas ordenadas y sin repetir.</summary>
+    private static string? NormTimes(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var valid = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(s => TimeSpan.TryParseExact(s, "hh\\:mm", System.Globalization.CultureInfo.InvariantCulture, out _))
+            .Distinct()
+            .OrderBy(s => s)
+            .ToList();
+        return valid.Count == 0 ? null : string.Join(",", valid);
+    }
+
+    /// <summary>Parsea "HH:mm,..." a lista de TimeSpan (para el job). Ignora inválidos.</summary>
+    public static List<TimeSpan> ParseTimes(string? raw)
+    {
+        var result = new List<TimeSpan>();
+        if (string.IsNullOrWhiteSpace(raw)) return result;
+        foreach (var s in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            if (TimeSpan.TryParseExact(s, "hh\\:mm", System.Globalization.CultureInfo.InvariantCulture, out var t))
+                result.Add(t);
+        return result;
     }
 }

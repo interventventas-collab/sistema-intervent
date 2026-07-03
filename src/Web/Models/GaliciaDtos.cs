@@ -7,6 +7,9 @@ public class GaliciaAccountDto
     public string? Alias { get; set; }
     public bool HasPassword { get; set; }
     public bool IsActive { get; set; }
+    public bool AutoSyncEnabled { get; set; }
+    public string? AutoSyncTimes { get; set; }
+    public DateTime? LastAutoSyncAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }
@@ -17,6 +20,8 @@ public class SaveGaliciaAccountRequest
     public string? Password { get; set; }
     public string? Alias { get; set; }
     public bool IsActive { get; set; } = true;
+    public bool AutoSyncEnabled { get; set; } = false;
+    public string? AutoSyncTimes { get; set; }
 }
 
 public class GaliciaSincronizarResultDto

@@ -181,6 +181,56 @@
                 }
             }
         </div>
+
+        @* ═══════════ Automático (horarios elegidos por el usuario) ═══════════ *@
+        <div class="card" style="padding:1.1rem; margin-top:1.2rem; border:1px solid #e5e7eb; border-radius:10px;">
+            <h3 style="margin-top:0;">Traer automático (sin apretar nada)</h3>
+            <p style="color:#6b7280; font-size:0.85rem;">
+                Prendé esto y elegí a qué horas querés que el robot traiga los movimientos solo.
+                Los horarios son de Argentina. El botón manual de arriba sigue funcionando siempre.
+            </p>
+
+            <label style="display:flex; align-items:center; gap:0.5rem; font-weight:600; cursor:pointer;">
+                <input type="checkbox" @bind="autoEnabled" />
+                Activar el automático
+            </label>
+
+            @if (autoEnabled)
+            {
+                <div style="margin-top:0.8rem;">
+                    <div style="font-size:0.85rem; color:#374151; margin-bottom:0.3rem;">Horarios:</div>
+                    @for (int i = 0; i < horarios.Count; i++)
+                    {
+                        var idx = i;
+                        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.4rem;">
+                            <input type="time" @bind="horarios[idx]" style="padding:0.3rem 0.5rem; border:1px solid #d1d5db; border-radius:6px;" />
+                            <button class="btn btn-secondary" style="padding:0.2rem 0.6rem;" @onclick="() => horarios.RemoveAt(idx)">✕</button>
+                        </div>
+                    }
+                    <button class="btn btn-secondary" style="padding:0.3rem 0.7rem;" @onclick="() => horarios.Add(new TimeOnly(8, 0))">+ Agregar horario</button>
+                    <div style="font-size:0.78rem; color:#6b7280; margin-top:0.4rem;">
+                        Sugerencia: mañana, mediodía y tarde (ej: 08:00, 13:00, 19:00).
+                    </div>
+                </div>
+            }
+
+            <div style="margin-top:1rem;">
+                <button class="btn btn-primary" @onclick="Guardar" disabled="@guardando">
+                    @(guardando ? "Guardando…" : "Guardar horarios")
+                </button>
+            </div>
+
+            @if (account?.AutoSyncEnabled == true && !string.IsNullOrEmpty(account.AutoSyncTimes))
+            {
+                <div style="padding:0.7rem 0.9rem; margin-top:1rem; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; color:#166534; font-size:0.85rem;">
+                    ✅ Automático <strong>activo</strong> — corre a las <strong>@account.AutoSyncTimes</strong> (hora Argentina).
+                    @if (account.LastAutoSyncAt.HasValue)
+                    {
+                        <span> Última corrida automática: @account.LastAutoSyncAt.Value.ToLocalTime().ToString("dd/MM HH:mm").</span>
+                    }
+                </div>
+            }
+        </div>
     }
 </div>
 
@@ -192,6 +242,8 @@
     private string password = "";
     private string alias = "";
     private bool guardando;
+    private bool autoEnabled;
+    private List<TimeOnly> horarios = new();
 
     private bool testRunning;
     private string testStep = "";
@@ -224,6 +276,12 @@
             {
                 usuario = account.Usuario;
                 alias = account.Alias ?? "";
+                autoEnabled = account.AutoSyncEnabled;
+                horarios = new List<TimeOnly>();
+                if (!string.IsNullOrWhiteSpace(account.AutoSyncTimes))
+                    foreach (var s in account.AutoSyncTimes.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                        if (TimeOnly.TryParseExact(s.Trim(), "HH:mm", null, System.Globalization.DateTimeStyles.None, out var t))
+                            horarios.Add(t);
             }
         }
         catch (Exception ex) { ToastService.Error("No se pudo cargar: " + ex.Message); }
@@ -236,12 +294,19 @@
         guardando = true;
         try
         {
+            var horariosLimpios = horarios
+                .Distinct()
+                .OrderBy(t => t)
+                .Select(t => t.ToString("HH\\:mm"))
+                .ToList();
             var req = new Web.Models.SaveGaliciaAccountRequest
             {
                 Usuario = usuario.Trim(),
                 Password = string.IsNullOrWhiteSpace(password) ? null : password,
                 Alias = string.IsNullOrWhiteSpace(alias) ? null : alias.Trim(),
-                IsActive = true
+                IsActive = true,
+                AutoSyncEnabled = autoEnabled,
+                AutoSyncTimes = horariosLimpios.Count > 0 ? string.Join(",", horariosLimpios) : null
             };
             account = await Api.SaveGaliciaAccountAsync(req);
             password = "";

@@ -30,6 +30,17 @@ public class GaliciaAccount
     public string? Alias { get; set; }
 
     public bool IsActive { get; set; } = true;
+
+    /// <summary>Si está prendido, el robot trae los movimientos solo en los horarios de abajo.</summary>
+    public bool AutoSyncEnabled { get; set; } = false;
+
+    /// <summary>Horarios (hora local Argentina) separados por coma, formato "HH:mm". Ej: "08:00,13:00,19:00".</summary>
+    [MaxLength(200)]
+    public string? AutoSyncTimes { get; set; }
+
+    /// <summary>Última corrida automática exitosa (UTC), para no repetir en el mismo horario.</summary>
+    public DateTime? LastAutoSyncAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }
