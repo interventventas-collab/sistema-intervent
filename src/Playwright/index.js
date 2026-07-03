@@ -2572,7 +2572,9 @@ async function dumpShellDiag(page, etiqueta) {
     const diag = await page.evaluate(() => {
       const els = [...document.querySelectorAll('input, button, a, [role="button"]')];
       return els.slice(0, 60).map((e, i) => {
-        const t = (e.innerText || e.value || '').trim().replace(/\s+/g, ' ').slice(0, 20);
+        // No dumpear valores tipeados (evita loguear clave/código): solo texto de botones/links.
+        const esInputDato = e.tagName === 'INPUT' && e.type !== 'submit' && e.type !== 'button';
+        const t = esInputDato ? '' : (e.innerText || e.value || '').trim().replace(/\s+/g, ' ').slice(0, 20);
         return `#${i}[${[e.tagName, e.type && 'type:' + e.type, e.id && 'id:' + e.id, e.name && 'name:' + e.name, e.placeholder && 'ph:' + e.placeholder, t].filter(Boolean).join(' | ')}]`;
       }).join('\n');
     });
@@ -2592,8 +2594,9 @@ async function runShellSaldo({ usuario, password, gmailUser, gmailPass }) {
   await sleep(2500);
 
   shellState.step = 'Ingresando usuario y clave...';
-  const userField = page.locator('input[type="text"]:visible, input:not([type]):visible').first();
-  const passField = page.locator('input[type="password"]:visible').first();
+  // Selectores exactos de Shell (ASP.NET): #UserName + #frmLogin_Password + #LoginImageButton (ENTRAR).
+  const userField = page.locator('#UserName');
+  const passField = page.locator('#frmLogin_Password');
   try {
     await userField.click({ timeout: 8000 }); await userField.fill(''); await userField.pressSequentially(usuario, { delay: 40 });
     await passField.click({ timeout: 8000 }); await passField.fill(''); await passField.pressSequentially(password, { delay: 40 });
@@ -2604,7 +2607,7 @@ async function runShellSaldo({ usuario, password, gmailUser, gmailPass }) {
 
   const loginAt = Date.now();
   shellState.step = 'Ingresando (ENTRAR)...';
-  const btnEntrar = page.locator('button:has-text("Entrar"), input[type="submit"], [value="ENTRAR" i], a:has-text("Entrar")').first();
+  const btnEntrar = page.locator('#LoginImageButton');
   try { await btnEntrar.click({ timeout: 8000 }); }
   catch { try { await passField.press('Enter'); } catch {} }
   await sleep(4000);
@@ -2621,16 +2624,31 @@ async function runShellSaldo({ usuario, password, gmailUser, gmailPass }) {
   catch (e) { shellState.result = { ok: false, error: 'No pude leer el mail (IMAP): ' + (e?.message || e) }; await sleep(10000); return; }
   if (!code) { shellState.result = { ok: false, error: 'No llegó (o no pude leer) el código del mail en el tiempo esperado.' }; await sleep(10000); return; }
 
-  shellState.step = `Ingresando el código ${code}...`;
-  const otpField = page.locator('input[type="text"]:visible, input[type="tel"]:visible, input:not([type]):visible').first();
+  shellState.step = 'Ingresando el código del mail...';
+  // Shell pide el código en 6 casillas separadas: #otp1..#otp6, un carácter cada una.
+  const chars = code.split('');
   try {
-    await otpField.click({ timeout: 8000 }); await otpField.fill(''); await otpField.pressSequentially(code, { delay: 60 });
+    await page.locator('#otp1').waitFor({ state: 'visible', timeout: 10000 });
+    for (let i = 0; i < 6; i++) {
+      const box = page.locator(`#otp${i + 1}`);
+      await box.click({ timeout: 5000 });
+      await box.fill('');
+      await box.pressSequentially(chars[i] || '', { delay: 80 });
+    }
   } catch {
-    shellState.result = { ok: false, loggedIn: false, error: `Leí el código (${code}) pero no encontré dónde escribirlo. Ajustar selector.` }; await sleep(10000); return;
+    await dumpShellDiag(page, 'otp-fields');
+    shellState.result = { ok: false, error: `Leí el código (${code}) pero no pude escribirlo en las casillas. Ajustar.` }; await sleep(10000); return;
   }
-  const btnOtp = page.locator('button:has-text("Continuar"), button:has-text("Verificar"), button:has-text("Ingresar"), input[type="submit"], button:has-text("Entrar")').first();
-  try { await btnOtp.click({ timeout: 6000 }); } catch { try { await otpField.press('Enter'); } catch {} }
-  await sleep(5000);
+  // Confirmar con el mismo botón ENTRAR.
+  try { await page.locator('#LoginImageButton').click({ timeout: 6000 }); } catch { try { await page.locator('#otp6').press('Enter'); } catch {} }
+  await page.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
+  await sleep(6000);
+
+  // ¿Rechazó el token? (seguimos en Login.aspx con mensaje)
+  let txt2 = ''; try { txt2 = ((await page.locator('body').innerText({ timeout: 3000 })) || '').toLowerCase(); } catch {}
+  if (page.url().includes('Login.aspx') && (txt2.includes('incorrecto') || txt2.includes('inválid') || txt2.includes('invalid') || txt2.includes('venci') || txt2.includes('expir'))) {
+    shellState.result = { ok: false, error: `El código (${code}) no fue aceptado (¿venció o mal leído?).` }; await sleep(10000); return;
+  }
 
   shellState.step = 'Buscando el saldo disponible...';
   await sleep(2000);
