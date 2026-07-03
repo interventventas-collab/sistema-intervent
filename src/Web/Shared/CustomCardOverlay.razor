@@ -88,7 +88,7 @@
         display: flex;
         gap: 4px;
         pointer-events: auto;
-        opacity: 0;
+        opacity: 0.55;
         transition: opacity 0.15s ease;
         z-index: 3;
     }
@@ -134,10 +134,10 @@
     .cco-placeholder {
         flex: 1;
         cursor: text;
-        color: rgba(255,255,255,0.55);
+        color: rgba(255,255,255,0.85);
         font-style: italic;
         font-size: 11px;
-        opacity: 0;
+        opacity: 0.75;
         transition: opacity 0.15s ease;
     }
     .cco-root:hover .cco-placeholder { opacity: 1; }
@@ -150,10 +150,10 @@
         outline: none;
         padding: 0;
     }
-    /* Cuando NO hay ni imagen ni comentario, ocultar la banda inferior por completo
-       — solo aparece el placeholder cuando el usuario pasa el mouse por encima. */
+    /* Cuando NO hay comentario aun, mostrar la banda con transparencia mas suave
+       para que se vea que se puede escribir sin distraer del contenido. */
     .cco-comment:not(.cco-comment-editing):has(.cco-placeholder) {
-        background: transparent;
+        background: rgba(17, 24, 39, 0.35);
     }
 </style>
 
