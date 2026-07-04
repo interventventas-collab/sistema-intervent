@@ -94,7 +94,20 @@ public record AlqReservaDto(
     int? RetiradoPorRepartidorId = null, string? RetiradoPorRepartidorNombre = null,
     DateTime? RetiradoAt = null, string? ComentarioRetiro = null,
     // Repartidor asignado actualmente (ultimo 'cargado' en Alq_QrEscaneos), aunque no haya entregado todavia
-    int? AsignadoARepartidorId = null, string? AsignadoARepartidorNombre = null);
+    int? AsignadoARepartidorId = null, string? AsignadoARepartidorNombre = null,
+    // ===== ARCA — facturación de la reserva (2026-07-04) =====
+    string TipoComprobante = "X",
+    string CondicionIva = "CF",
+    int Concepto = 2,
+    string ArcaEstado = "no_aplica",
+    string? ArcaCae = null,
+    DateTime? ArcaCaeVto = null,
+    int? ArcaPtoVta = null,
+    int? ArcaWebserviceAccountId = null,
+    int? ArcaCbteNro = null,
+    int? ArcaCbteTipoNum = null,
+    string? ArcaError = null,
+    decimal? ArcaImpTotal = null);
 
 public class CreateAlqReservaItemRequest
 {
@@ -123,6 +136,12 @@ public class CreateAlqReservaRequest
     /// <summary>Si es true, ademas guarda el link en la ficha del cliente (para futuras entregas).</summary>
     public bool GuardarMapeoEnCliente { get; set; }
     public List<CreateAlqReservaItemRequest> Items { get; set; } = new();
+    // ===== ARCA — facturación (2026-07-04). Todos opcionales; si TipoComprobante="X" no se factura. =====
+    public string? TipoComprobante { get; set; }
+    public string? CondicionIva { get; set; }
+    public int? Concepto { get; set; }
+    /// <summary>Certificado/CUIT con el que se factura (multi-empresa). Null = default del negocio.</summary>
+    public int? ArcaWebserviceAccountId { get; set; }
 }
 
 public class UpdateAlqReservaRequest
@@ -146,6 +165,11 @@ public class UpdateAlqReservaRequest
     /// <summary>Si es true, ademas guarda el link en la ficha del cliente (para futuras entregas).</summary>
     public bool GuardarMapeoEnCliente { get; set; }
     public List<CreateAlqReservaItemRequest>? Items { get; set; }
+    // ===== ARCA — facturación (2026-07-04) =====
+    public string? TipoComprobante { get; set; }
+    public string? CondicionIva { get; set; }
+    public int? Concepto { get; set; }
+    public int? ArcaWebserviceAccountId { get; set; }
 }
 
 // ===== Disponibilidad =====

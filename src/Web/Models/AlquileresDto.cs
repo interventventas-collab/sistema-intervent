@@ -138,6 +138,20 @@ public class AlqReservaDto
     public string? ComentarioRetiro { get; set; }
     public int? AsignadoARepartidorId { get; set; }
     public string? AsignadoARepartidorNombre { get; set; }
+
+    // ===== ARCA — facturación (2026-07-04) =====
+    public string TipoComprobante { get; set; } = "X";
+    public string CondicionIva { get; set; } = "CF";
+    public int Concepto { get; set; } = 2;
+    public string ArcaEstado { get; set; } = "no_aplica";
+    public string? ArcaCae { get; set; }
+    public DateTime? ArcaCaeVto { get; set; }
+    public int? ArcaPtoVta { get; set; }
+    public int? ArcaWebserviceAccountId { get; set; }
+    public int? ArcaCbteNro { get; set; }
+    public int? ArcaCbteTipoNum { get; set; }
+    public string? ArcaError { get; set; }
+    public decimal? ArcaImpTotal { get; set; }
 }
 
 public class CreateAlqReservaItemRequest
@@ -164,6 +178,11 @@ public class CreateAlqReservaRequest
     public string? MapeoLink { get; set; }
     public bool GuardarMapeoEnCliente { get; set; }
     public List<CreateAlqReservaItemRequest> Items { get; set; } = new();
+    // ===== ARCA — facturación (2026-07-04) =====
+    public string? TipoComprobante { get; set; }
+    public string? CondicionIva { get; set; }
+    public int? Concepto { get; set; }
+    public int? ArcaWebserviceAccountId { get; set; }
 }
 
 // ===== Resumen dashboard (2026-06-26) =====
@@ -206,6 +225,11 @@ public class UpdateAlqReservaRequest
     public string? MapeoLink { get; set; }
     public bool GuardarMapeoEnCliente { get; set; }
     public List<CreateAlqReservaItemRequest>? Items { get; set; }
+    // ===== ARCA — facturación (2026-07-04) =====
+    public string? TipoComprobante { get; set; }
+    public string? CondicionIva { get; set; }
+    public int? Concepto { get; set; }
+    public int? ArcaWebserviceAccountId { get; set; }
 }
 
 public class AlqDisponibilidadDto

@@ -15,9 +15,10 @@ public class AlqReservasController : ControllerBase
     private readonly AppDbContext _db;
     private readonly Api.Services.QrRepartidorService _qr;
     private readonly Api.Services.AlqReservaPdfService _pdf;
+    private readonly Api.Services.ArcaInvoiceService _arca;
     private static readonly string[] EstadosValidos = { "reservado", "confirmado", "entregado", "finalizado", "cancelado" };
 
-    public AlqReservasController(AppDbContext db, Api.Services.QrRepartidorService qr, Api.Services.AlqReservaPdfService pdf) { _db = db; _qr = qr; _pdf = pdf; }
+    public AlqReservasController(AppDbContext db, Api.Services.QrRepartidorService qr, Api.Services.AlqReservaPdfService pdf, Api.Services.ArcaInvoiceService arca) { _db = db; _qr = qr; _pdf = pdf; _arca = arca; }
 
     /// <summary>PDF descargable del comprobante de la reserva (como el de ventas). Pedido 2026-06-29.</summary>
     [HttpGet("{id:int}/pdf")]
@@ -286,6 +287,11 @@ public class AlqReservasController : ControllerBase
             MontoTotal = total,
             Estado = estado,
             Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim(),
+            // ARCA (2026-07-04): configuración de facturación (la emisión es aparte, por botón).
+            TipoComprobante = NormTipoComprobante(req.TipoComprobante),
+            CondicionIva = NormCondIva(req.CondicionIva),
+            Concepto = (req.Concepto is 1 or 2 or 3) ? req.Concepto.Value : 2,
+            ArcaWebserviceAccountId = req.ArcaWebserviceAccountId is > 0 ? req.ArcaWebserviceAccountId : null,
             CreatedAt = DateTime.UtcNow,
             Items = consolidados.Select(i => new AlqReservaItem
             {
@@ -341,6 +347,15 @@ public class AlqReservasController : ControllerBase
         if (req.Descuento.HasValue) reserva.Descuento = Math.Max(0m, req.Descuento.Value);
         if (req.Sena.HasValue) reserva.Sena = Math.Max(0m, req.Sena.Value);
         if (req.Notas is not null) reserva.Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim();
+        // ARCA (2026-07-04): configuración de facturación. No se toca si la reserva YA fue autorizada (tiene CAE).
+        if (reserva.ArcaEstado != "autorizado")
+        {
+            if (req.TipoComprobante is not null) reserva.TipoComprobante = NormTipoComprobante(req.TipoComprobante);
+            if (req.CondicionIva is not null) reserva.CondicionIva = NormCondIva(req.CondicionIva);
+            if (req.Concepto is 1 or 2 or 3) reserva.Concepto = req.Concepto.Value;
+            if (req.ArcaWebserviceAccountId.HasValue)
+                reserva.ArcaWebserviceAccountId = req.ArcaWebserviceAccountId.Value > 0 ? req.ArcaWebserviceAccountId.Value : null;
+        }
         if (req.Estado is not null)
         {
             var ne = NormalizarEstado(req.Estado);
@@ -563,7 +578,173 @@ public class AlqReservasController : ControllerBase
         r.PublicToken, r.MontoCobrado,
         r.EntregadoPorRepartidorId, r.EntregadoPorRepartidor?.Nombre, r.EntregadoAt, r.ComentarioEntrega,
         r.RetiradoPorRepartidorId, r.RetiradoPorRepartidor?.Nombre, r.RetiradoAt, r.ComentarioRetiro,
-        asignadoId, asignadoNombre);
+        asignadoId, asignadoNombre,
+        // ARCA (2026-07-04)
+        r.TipoComprobante, r.CondicionIva, r.Concepto,
+        r.ArcaEstado, r.ArcaCae, r.ArcaCaeVto, r.ArcaPtoVta,
+        r.ArcaWebserviceAccountId, r.ArcaCbteNro, r.ArcaCbteTipoNum,
+        r.ArcaError, r.ArcaImpTotal);
+
+    private static string NormTipoComprobante(string? t)
+    {
+        var v = (t ?? "").Trim().ToUpperInvariant();
+        return v is "FA" or "FB" or "FC" or "X" ? v : "X";
+    }
+
+    private static string NormCondIva(string? c)
+    {
+        var v = (c ?? "").Trim().ToUpperInvariant();
+        return v is "CF" or "RI" or "MO" or "EX" ? v : "CF";
+    }
+
+    public class EmitirArcaReservaRequest
+    {
+        /// <summary>Certificado/CUIT con el que se factura. Si null, usa el guardado en la reserva o el default.</summary>
+        public int? ArcaWebserviceAccountId { get; set; }
+    }
+
+    /// <summary>
+    /// 2026-07-04 — Emite la reserva como factura electrónica AFIP, reusando el mismo motor que Café.
+    /// El alquiler se factura como Servicio (Concepto 2) con período = FechaEntrega→FechaRetiro.
+    /// Los equipos van como renglones de la factura. El total prorratea para coincidir con MontoTotal.
+    /// NO tira excepción: si ARCA rechaza, deja la reserva "pendiente" con el error.
+    /// </summary>
+    [HttpPost("{id:int}/emitir-arca")]
+    public async Task<IActionResult> EmitirArca(int id, [FromBody] EmitirArcaReservaRequest? body)
+    {
+        var r = await _db.AlqReservas
+            .Include(x => x.ClienteNav)
+            .Include(x => x.Items).ThenInclude(i => i.EquipoNav)
+            .FirstOrDefaultAsync(x => x.Id == id);
+        if (r is null) return NotFound(new { error = "Reserva no encontrada" });
+        if (r.ArcaEstado == "autorizado" && !string.IsNullOrEmpty(r.ArcaCae))
+            return BadRequest(new { error = $"Esta reserva ya está facturada (CAE {r.ArcaCae}). Para corregir, se emite una Nota de Crédito." });
+        if (r.TipoComprobante is not ("FA" or "FB" or "FC"))
+            return BadRequest(new { error = "Elegí un tipo de factura (A, B o C) en la reserva antes de emitir." });
+
+        // Permitir override de empresa en el momento de emitir; si no, usar la guardada.
+        if (body?.ArcaWebserviceAccountId is > 0) r.ArcaWebserviceAccountId = body.ArcaWebserviceAccountId;
+
+        // 1. Resolver certificado/CUIT (igual que Café: elegido o fallback al CUIT del negocio).
+        Api.Models.ArcaWebserviceAccount? arcaAccount;
+        if (r.ArcaWebserviceAccountId is > 0)
+        {
+            arcaAccount = await _db.ArcaWebserviceAccounts
+                .FirstOrDefaultAsync(a => a.Id == r.ArcaWebserviceAccountId!.Value && a.IsActive);
+            if (arcaAccount is null)
+                return BadRequest(new { error = "El certificado ARCA elegido no existe o está desactivado." });
+        }
+        else
+        {
+            var cfg = await _db.CafeSettings.FindAsync(1);
+            var cuitDigits = new string((cfg?.NegocioCuit ?? "").Where(char.IsDigit).ToArray());
+            if (cuitDigits.Length != 11) return BadRequest(new { error = "Elegí con qué empresa facturar (o cargá el CUIT del negocio)." });
+            arcaAccount = await _db.ArcaWebserviceAccounts
+                .Where(a => a.Cuit == cuitDigits && a.IsActive)
+                .OrderByDescending(a => a.Environment == "production").FirstOrDefaultAsync();
+            if (arcaAccount is null) return BadRequest(new { error = $"No hay certificado ARCA activo para el CUIT {cuitDigits}." });
+        }
+        r.ArcaWebserviceAccountId = arcaAccount.Id;
+
+        int cbteTipo = r.TipoComprobante switch { "FA" => 1, "FB" => 6, "FC" => 11, _ => 0 };
+
+        // 2. Receptor (cliente de Cafe_Clientes). CUIT → DocTipo 80, sino Consumidor Final (99/0).
+        var cuitCli = new string((r.ClienteNav?.Cuit ?? "").Where(char.IsDigit).ToArray());
+        int docTipo = cuitCli.Length == 11 ? 80 : 99;
+        string docNro = cuitCli.Length == 11 ? cuitCli : "0";
+
+        // Condición IVA del receptor: la de la reserva, o la del cliente si la tiene cargada.
+        var condIva = r.CondicionIva;
+        if (!string.IsNullOrEmpty(r.ClienteNav?.CondicionIvaDefault)) condIva = r.ClienteNav!.CondicionIvaDefault!;
+        r.CondicionIva = condIva;
+        int condIvaReceptor = condIva switch { "RI" => 1, "EX" => 4, "CF" => 5, "MO" => 6, _ => 5 };
+
+        // 3. Items: un renglón por equipo. Prorrateo para que el total AFIP == MontoTotal de la reserva
+        //    (contempla descuento global y total manual).
+        decimal subtotalItems = r.Items.Sum(i => i.Cantidad * i.PrecioUnitario);
+        decimal factor = (subtotalItems > 0m && r.MontoTotal > 0m) ? (r.MontoTotal / subtotalItems) : 1m;
+        var items = new List<EmitirComprobanteItemDto>();
+        foreach (var it in r.Items)
+        {
+            var pu = factor != 1m
+                ? Math.Round(it.PrecioUnitario * factor, 2, MidpointRounding.AwayFromZero)
+                : it.PrecioUnitario;
+            items.Add(new EmitirComprobanteItemDto
+            {
+                Descripcion = it.EquipoNav?.Nombre ?? "Alquiler",
+                Cantidad = it.Cantidad,
+                PrecioUnitario = pu,
+                AlicIvaId = 5, // 21%
+            });
+        }
+        if (items.Count == 0)
+            return BadRequest(new { error = "La reserva no tiene equipos para facturar." });
+
+        // 4. Fechas. Emisión = hoy (ART). Servicio = entrega→retiro. FchVtoPago nunca anterior a la emisión.
+        var fechaEmision = DateTime.UtcNow.AddHours(-3).Date;
+        DateTime? servDesde = r.Concepto != 1 ? r.FechaEntrega : null;
+        DateTime? servHasta = r.Concepto != 1 ? r.FechaRetiro : null;
+        DateTime? vtoPago = r.Concepto != 1 ? (r.FechaRetiro >= fechaEmision ? r.FechaRetiro : fechaEmision) : null;
+
+        var req = new EmitirComprobanteRequest
+        {
+            PtoVta = arcaAccount.PtoVta,
+            CbteTipo = cbteTipo,
+            Concepto = r.Concepto,
+            DocTipo = docTipo,
+            DocNro = docNro,
+            ReceptorNombre = r.ClienteNav?.RazonSocial ?? r.ClienteNav?.Nombre ?? "Consumidor Final",
+            ReceptorDomicilio = r.ClienteNav?.Direccion,
+            CondicionIVAReceptorId = condIvaReceptor,
+            Items = items,
+            Fecha = fechaEmision,
+            FchServDesde = servDesde,
+            FchServHasta = servHasta,
+            FchVtoPago = vtoPago,
+        };
+
+        // 5. Emitir + persistir.
+        try
+        {
+            var res = await _arca.EmitirComprobanteAsync(arcaAccount.Id, req);
+            if (res.Success)
+            {
+                r.ArcaEstado = "autorizado";
+                r.ArcaCae = res.Cae;
+                if (DateTime.TryParseExact(res.CaeVto, "yyyyMMdd",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var caeVto))
+                    r.ArcaCaeVto = caeVto;
+                r.ArcaPtoVta = res.PtoVta;
+                r.ArcaCbteNro = res.CbteNro;
+                r.ArcaCbteTipoNum = res.CbteTipo;
+                r.ArcaImpNeto = res.ImpNeto;
+                r.ArcaImpIVA = res.ImpIVA;
+                r.ArcaImpTotal = res.ImpTotal;
+                r.ArcaError = null;
+            }
+            else
+            {
+                r.ArcaEstado = "pendiente";
+                r.ArcaError = res.Error ?? "ARCA rechazó la factura.";
+            }
+        }
+        catch (Exception ex)
+        {
+            r.ArcaEstado = "pendiente";
+            r.ArcaError = "Error inesperado: " + ex.Message;
+        }
+        r.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        var saved = await _db.AlqReservas
+            .Include(x => x.ClienteNav)
+            .Include(x => x.EntregadoPorRepartidor).Include(x => x.RetiradoPorRepartidor)
+            .Include(x => x.Items).ThenInclude(i => i.EquipoNav)
+            .FirstAsync(x => x.Id == r.Id);
+        if (r.ArcaEstado == "autorizado") return Ok(Map(saved));
+        return BadRequest(new { error = r.ArcaError, reserva = Map(saved) });
+    }
 
     /// <summary>Dado un set de reservas, devuelve el repartidor "dueño" actual de cada una
     /// (el del ultimo escaneo 'cargado' en Alq_QrEscaneos). Igual regla que ventas.</summary>

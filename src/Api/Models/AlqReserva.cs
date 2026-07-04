@@ -82,6 +82,47 @@ public class AlqReserva
     [MaxLength(500)]
     public string? ComentarioRetiro { get; set; }
 
+    // ============================================================
+    // ARCA — facturación electrónica de la reserva (2026-07-04)
+    // Mismo esquema que CafeVenta. Aditivo: una reserva sin facturar queda en "no_aplica".
+    // ============================================================
+    /// <summary>Tipo de comprobante: "X" (sin facturar/remito) | FA | FB | FC.</summary>
+    [MaxLength(10)]
+    public string TipoComprobante { get; set; } = "X";
+
+    /// <summary>Condición IVA del cliente receptor: CF | RI | MO | EX.</summary>
+    [MaxLength(20)]
+    public string CondicionIva { get; set; } = "CF";
+
+    /// <summary>Concepto AFIP: 1=Productos, 2=Servicios (default alquiler), 3=Mixto.</summary>
+    public int Concepto { get; set; } = 2;
+
+    /// <summary>"no_aplica" (X) | "pendiente" | "autorizado" | "rechazado".</summary>
+    [MaxLength(20)]
+    public string ArcaEstado { get; set; } = "no_aplica";
+
+    [MaxLength(20)]
+    public string? ArcaCae { get; set; }
+    public DateTime? ArcaCaeVto { get; set; }
+    public int? ArcaPtoVta { get; set; }
+
+    /// <summary>Certificado/CUIT (ArcaWebserviceAccount) con el que se emitió.</summary>
+    public int? ArcaWebserviceAccountId { get; set; }
+
+    public int? ArcaCbteNro { get; set; }
+    /// <summary>1=FA, 6=FB, 11=FC.</summary>
+    public int? ArcaCbteTipoNum { get; set; }
+
+    [MaxLength(1000)]
+    public string? ArcaError { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? ArcaImpNeto { get; set; }
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? ArcaImpIVA { get; set; }
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? ArcaImpTotal { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 

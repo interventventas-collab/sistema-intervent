@@ -5195,6 +5195,41 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='MontoCobrado' AND Object_ID
     ALTER TABLE Alq_Reservas ADD MontoCobrado DECIMAL(18,2) NOT NULL CONSTRAINT DF_AlqReservas_MontoCobrado DEFAULT 0;
 GO
 
+-- 2026-07-04: facturación electrónica AFIP de las reservas (mismo esquema que Cafe_Ventas).
+-- Todas las columnas son opcionales/con default → una reserva sin facturar queda en "no_aplica".
+IF COL_LENGTH('Alq_Reservas','TipoComprobante') IS NULL
+    ALTER TABLE Alq_Reservas ADD TipoComprobante NVARCHAR(10) NOT NULL CONSTRAINT DF_AlqReservas_TipoComprobante DEFAULT 'X';
+GO
+IF COL_LENGTH('Alq_Reservas','CondicionIva') IS NULL
+    ALTER TABLE Alq_Reservas ADD CondicionIva NVARCHAR(20) NOT NULL CONSTRAINT DF_AlqReservas_CondicionIva DEFAULT 'CF';
+GO
+IF COL_LENGTH('Alq_Reservas','Concepto') IS NULL
+    ALTER TABLE Alq_Reservas ADD Concepto INT NOT NULL CONSTRAINT DF_AlqReservas_Concepto DEFAULT 2;
+GO
+IF COL_LENGTH('Alq_Reservas','ArcaEstado') IS NULL
+    ALTER TABLE Alq_Reservas ADD ArcaEstado NVARCHAR(20) NOT NULL CONSTRAINT DF_AlqReservas_ArcaEstado DEFAULT 'no_aplica';
+GO
+IF COL_LENGTH('Alq_Reservas','ArcaCae') IS NULL ALTER TABLE Alq_Reservas ADD ArcaCae NVARCHAR(20) NULL;
+GO
+IF COL_LENGTH('Alq_Reservas','ArcaCaeVto') IS NULL ALTER TABLE Alq_Reservas ADD ArcaCaeVto DATETIME2 NULL;
+GO
+IF COL_LENGTH('Alq_Reservas','ArcaPtoVta') IS NULL ALTER TABLE Alq_Reservas ADD ArcaPtoVta INT NULL;
+GO
+IF COL_LENGTH('Alq_Reservas','ArcaWebserviceAccountId') IS NULL ALTER TABLE Alq_Reservas ADD ArcaWebserviceAccountId INT NULL;
+GO
+IF COL_LENGTH('Alq_Reservas','ArcaCbteNro') IS NULL ALTER TABLE Alq_Reservas ADD ArcaCbteNro INT NULL;
+GO
+IF COL_LENGTH('Alq_Reservas','ArcaCbteTipoNum') IS NULL ALTER TABLE Alq_Reservas ADD ArcaCbteTipoNum INT NULL;
+GO
+IF COL_LENGTH('Alq_Reservas','ArcaError') IS NULL ALTER TABLE Alq_Reservas ADD ArcaError NVARCHAR(1000) NULL;
+GO
+IF COL_LENGTH('Alq_Reservas','ArcaImpNeto') IS NULL ALTER TABLE Alq_Reservas ADD ArcaImpNeto DECIMAL(18,2) NULL;
+GO
+IF COL_LENGTH('Alq_Reservas','ArcaImpIVA') IS NULL ALTER TABLE Alq_Reservas ADD ArcaImpIVA DECIMAL(18,2) NULL;
+GO
+IF COL_LENGTH('Alq_Reservas','ArcaImpTotal') IS NULL ALTER TABLE Alq_Reservas ADD ArcaImpTotal DECIMAL(18,2) NULL;
+GO
+
 -- Escaneos de QR de reservas por repartidor. Asignacion estilo ventas:
 -- "el ultimo que escanea se lo queda" (dueño = repartidor del ultimo 'cargado').
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Alq_QrEscaneos' AND xtype='U')

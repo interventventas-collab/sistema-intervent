@@ -106,6 +106,14 @@
                                 <td style="text-align: right; color: @(saldo > 0 ? "#dc2626" : "#059669"); font-weight: 600;">$@FormatMoney(saldo)</td>
                                 <td>@EstadoBadge(r.Estado)</td>
                                 <td class="actions-cell" @onclick:stopPropagation="true">
+                                    @if (r.ArcaEstado == "autorizado" && !string.IsNullOrEmpty(r.ArcaCae))
+                                    {
+                                        <span style="font-size: 0.68rem; background:#dcfce7; color:#166534; padding:0.15rem 0.4rem; border-radius:999px; font-weight:700;" title="@($"CAE {r.ArcaCae} · Comp. {r.ArcaPtoVta:D5}-{r.ArcaCbteNro:D8}")">✅ Facturada</span>
+                                    }
+                                    else if (r.TipoComprobante is "FA" or "FB" or "FC")
+                                    {
+                                        <button class="btn-icon" style="color: #059669;" @onclick="() => EmitirArca(r)" disabled="@(emitiendoId == r.Id)" title="Emitir factura AFIP (CAE)">@(emitiendoId == r.Id ? "…" : "💳")</button>
+                                    }
                                     <button class="btn-icon" style="color: #7c3aed;" @onclick="() => ShowAsignar(r)" title="Asignar a repartidor">🚚</button>
                                     <button class="btn-icon" style="color: #1d4ed8;" @onclick="() => ShowPrint(r)" title="Ver / imprimir / PDF">🖨</button>
                                     <button class="btn-icon btn-edit" @onclick="() => ShowEdit(r)" title="Editar / Ver">@SvgIcons.Edit</button>
@@ -414,6 +422,85 @@
                             </div>
                         </div>
                     </div>
+                </div>
+
+                @* ═══════════════ 4. FACTURACIÓN AFIP (2026-07-04) ═══════════════ *@
+                <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 0.75rem; margin-top: 0.6rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                        <span style="background: #0284c7; color: white; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.78rem;">4</span>
+                        <strong>Facturación AFIP</strong>
+                        <span style="font-size: 0.72rem; color: #64748b;">(opcional — dejá "X" si no facturás)</span>
+                    </div>
+
+                    @if (formArcaEstado == "autorizado" && !string.IsNullOrEmpty(formArcaCae))
+                    {
+                        <div style="font-size: 0.85rem; color: #166534; background:#dcfce7; border:1px solid #86efac; border-radius:6px; padding:0.4rem 0.6rem;">
+                            ✅ Ya facturada — CAE @formArcaCae · Comp. @(formArcaPtoVta?.ToString("D5"))-@(formArcaCbteNro?.ToString("D8"))
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="form-row">
+                            <div class="form-group" style="flex:1;">
+                                <label class="form-label">Tipo de comprobante</label>
+                                <select class="form-input" @bind="formTipoComprobante" @bind:after="OnTipoComprobanteChanged">
+                                    <option value="X">X — Sin facturar (remito interno)</option>
+                                    @if (EmisorEsRI(formArcaAccountId))
+                                    {
+                                        <option value="FA">Factura A</option>
+                                        <option value="FB">Factura B</option>
+                                    }
+                                    else
+                                    {
+                                        <option value="FC">Factura C · Monotributo</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex:1;">
+                                <label class="form-label">Condición IVA del cliente</label>
+                                <select class="form-input" @bind="formCondicionIva">
+                                    <option value="CF">Consumidor final</option>
+                                    <option value="RI">Responsable Inscripto</option>
+                                    <option value="MO">Monotributo</option>
+                                    <option value="EX">Exento</option>
+                                </select>
+                            </div>
+                        </div>
+                        @if (formTipoComprobante is "FA" or "FB" or "FC")
+                        {
+                            <div class="form-row">
+                                @if (arcaAccounts.Count > 1)
+                                {
+                                    <div class="form-group" style="flex:1.6;">
+                                        <label class="form-label">🏢 ¿Con qué empresa facturás?</label>
+                                        <select class="form-input" @bind="formArcaAccountId" @bind:after="OnArcaAccountChanged">
+                                            @foreach (var acc in arcaAccounts)
+                                            {
+                                                <option value="@acc.Id">@ArcaAccountLabel(acc)</option>
+                                            }
+                                        </select>
+                                    </div>
+                                }
+                                <div class="form-group" style="flex:1;">
+                                    <label class="form-label">Concepto AFIP</label>
+                                    <select class="form-input" @bind="formConcepto">
+                                        <option value="2">🛠️ Servicios (alquiler)</option>
+                                        <option value="1">📦 Productos</option>
+                                        <option value="3">Mixto</option>
+                                    </select>
+                                </div>
+                            </div>
+                            @if (formArcaEstado == "pendiente" && !string.IsNullOrEmpty(formArcaError))
+                            {
+                                <div style="font-size: 0.78rem; color:#92400e; background:#fef3c7; border:1px solid #fcd34d; border-radius:6px; padding:0.35rem 0.55rem; margin-top:0.3rem;">
+                                    ⚠️ Último intento rechazado: @formArcaError
+                                </div>
+                            }
+                            <div style="font-size: 0.72rem; color:#64748b; margin-top:0.35rem;">
+                                💡 Guardá la reserva y después tocá <strong>💳 Facturar</strong> en la lista para emitir el CAE.
+                            </div>
+                        }
+                    }
                 </div>
             </div>
             <div class="modal-footer">
@@ -909,6 +996,95 @@
     private string formDireccionEvento = "";
     private string formMapeoLink = "";
     private bool formGuardarMapeoEnCliente;
+
+    // ===== ARCA — facturación de la reserva (2026-07-04) =====
+    private string formTipoComprobante = "X";
+    private string formCondicionIva = "CF";
+    private int formConcepto = 2;
+    private int? formArcaAccountId;
+    private string formArcaEstado = "no_aplica";
+    private string? formArcaCae;
+    private string? formArcaError;
+    private int? formArcaPtoVta;
+    private int? formArcaCbteNro;
+    private List<ArcaWebserviceAccountDto> arcaAccounts = new();
+    private int? emitiendoId;
+
+    private async Task LoadArcaAccountsAsync()
+    {
+        try
+        {
+            var todas = await Api.GetArcaWebserviceAccountsAsync();
+            arcaAccounts = (todas ?? new()).Where(a => a.IsActive)
+                .OrderBy(a => a.Alias ?? a.Cuit).ThenBy(a => a.Id).ToList();
+        }
+        catch { arcaAccounts = new(); }
+    }
+
+    private string ArcaAccountLabel(ArcaWebserviceAccountDto acc)
+    {
+        var nombre = !string.IsNullOrWhiteSpace(acc.Alias) ? acc.Alias! : $"CUIT {acc.Cuit}";
+        var cuitFmt = acc.Cuit.Length == 11 ? $"{acc.Cuit[..2]}-{acc.Cuit[2..10]}-{acc.Cuit[10..]}" : acc.Cuit;
+        return $"{nombre} — {cuitFmt} (Pto vta {acc.PtoVta})";
+    }
+
+    /// <summary>True si el emisor elegido es Responsable Inscripto (→ A/B). Monotributo/Exento → false (→ C).
+    /// Sin empresa o sin condición → asumimos RI.</summary>
+    private bool EmisorEsRI(int? accId)
+    {
+        if (!accId.HasValue) return true;
+        var acc = arcaAccounts.FirstOrDefault(a => a.Id == accId.Value);
+        var cond = acc?.CondicionIva;
+        if (string.IsNullOrWhiteSpace(cond)) return true;
+        return cond.Contains("inscripto", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private int? DefaultArcaAccountId()
+    {
+        if (arcaAccounts.Count == 0) return null;
+        // Preferimos producción; el operador elige después la que quiera.
+        var def = arcaAccounts.FirstOrDefault(a => a.Environment == "production") ?? arcaAccounts.First();
+        return def.Id;
+    }
+
+    private void EnsureDefaultArcaAccount()
+    {
+        if (arcaAccounts.Count == 0) return;
+        if (formArcaAccountId.HasValue && arcaAccounts.Any(a => a.Id == formArcaAccountId.Value)) return;
+        formArcaAccountId = DefaultArcaAccountId();
+    }
+
+    private void OnTipoComprobanteChanged()
+    {
+        if (formTipoComprobante is "FA" or "FB" or "FC")
+            EnsureDefaultArcaAccount();
+    }
+
+    private void OnArcaAccountChanged()
+    {
+        if (formTipoComprobante is not ("FA" or "FB" or "FC")) return;
+        var esRI = EmisorEsRI(formArcaAccountId);
+        if (esRI && formTipoComprobante == "FC") formTipoComprobante = "FB";
+        else if (!esRI && formTipoComprobante is "FA" or "FB") formTipoComprobante = "FC";
+    }
+
+    private async Task EmitirArca(AlqReservaDto r)
+    {
+        if (r.TipoComprobante is not ("FA" or "FB" or "FC"))
+        {
+            ToastService.Error("Elegí un tipo de factura (A, B o C) en la reserva antes de emitir.");
+            return;
+        }
+        emitiendoId = r.Id;
+        try
+        {
+            var (ok, error) = await Api.EmitirArcaReservaAsync(r.Id, r.ArcaWebserviceAccountId);
+            if (ok) ToastService.Success($"Factura emitida — reserva {r.Numero}");
+            else ToastService.Error(error ?? "No se pudo facturar");
+            await Load();
+        }
+        finally { emitiendoId = null; }
+    }
     private decimal formDescuento;
     private decimal formSena;
     private bool formUsarPrecios;
@@ -951,7 +1127,7 @@
     protected override async Task OnInitializedAsync()
     {
         // 2026-06-26: cargar todo en paralelo (antes era secuencial y se sentía lento).
-        await Task.WhenAll(Load(), LoadCatalogos());
+        await Task.WhenAll(Load(), LoadCatalogos(), LoadArcaAccountsAsync());
     }
 
     protected override async Task OnParametersSetAsync()
@@ -1117,6 +1293,17 @@
         formSena = r.Sena;
         formEstado = r.Estado;
         formNotas = r.Notas ?? "";
+        // ARCA — cargar la config de facturación de la reserva
+        formTipoComprobante = string.IsNullOrWhiteSpace(r.TipoComprobante) ? "X" : r.TipoComprobante;
+        formCondicionIva = string.IsNullOrWhiteSpace(r.CondicionIva) ? "CF" : r.CondicionIva;
+        formConcepto = r.Concepto is 1 or 2 or 3 ? r.Concepto : 2;
+        formArcaAccountId = r.ArcaWebserviceAccountId;
+        formArcaEstado = r.ArcaEstado ?? "no_aplica";
+        formArcaCae = r.ArcaCae;
+        formArcaError = r.ArcaError;
+        formArcaPtoVta = r.ArcaPtoVta;
+        formArcaCbteNro = r.ArcaCbteNro;
+        if (formTipoComprobante is "FA" or "FB" or "FC") EnsureDefaultArcaAccount();
         formItems = r.Items.Select(i => new CreateAlqReservaItemRequest
         {
             EquipoId = i.EquipoId,
@@ -1146,6 +1333,10 @@
         formItems = new();
         addCantidad = 1; addEquipoId = 0;
         formError = null;
+        // ARCA — sin facturar por default
+        formTipoComprobante = "X"; formCondicionIva = "CF"; formConcepto = 2;
+        formArcaAccountId = null; formArcaEstado = "no_aplica";
+        formArcaCae = null; formArcaError = null; formArcaPtoVta = null; formArcaCbteNro = null;
     }
 
     private void CloseForm() { showForm = false; formError = null; }
@@ -1231,7 +1422,12 @@
                     Notas = formNotas,
                     MapeoLink = formMapeoLink,
                     GuardarMapeoEnCliente = formGuardarMapeoEnCliente,
-                    Items = formItems
+                    Items = formItems,
+                    // ARCA — config de facturación (la emisión es aparte, por botón)
+                    TipoComprobante = formTipoComprobante,
+                    CondicionIva = formCondicionIva,
+                    Concepto = formConcepto,
+                    ArcaWebserviceAccountId = formTipoComprobante is "FA" or "FB" or "FC" ? formArcaAccountId : null
                 });
                 if (updated is null) { formError = "No se pudo actualizar"; return; }
                 ToastService.Success($"Reserva {updated.Numero} actualizada");
@@ -1254,7 +1450,12 @@
                     Notas = formNotas,
                     MapeoLink = formMapeoLink,
                     GuardarMapeoEnCliente = formGuardarMapeoEnCliente,
-                    Items = formItems
+                    Items = formItems,
+                    // ARCA — config de facturación (la emisión es aparte, por botón)
+                    TipoComprobante = formTipoComprobante,
+                    CondicionIva = formCondicionIva,
+                    Concepto = formConcepto,
+                    ArcaWebserviceAccountId = formTipoComprobante is "FA" or "FB" or "FC" ? formArcaAccountId : null
                 });
                 if (created is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success($"Reserva {created.Numero} creada");

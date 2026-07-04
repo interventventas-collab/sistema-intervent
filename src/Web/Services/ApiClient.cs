@@ -265,6 +265,22 @@ public class ApiClient
     public async Task<AlqReservaDto?> UpdateAlqReservaAsync(int id, UpdateAlqReservaRequest request)
         => await PutAsync<AlqReservaDto>($"/api/alquileres/reservas/{id}", request);
 
+    /// <summary>2026-07-04: emite la reserva como factura AFIP. Devuelve (ok, error).
+    /// Opcionalmente permite override de la empresa emisora en el momento.</summary>
+    public async Task<(bool ok, string? error)> EmitirArcaReservaAsync(int id, int? arcaWebserviceAccountId = null)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/alquileres/reservas/{id}/emitir-arca",
+            new { arcaWebserviceAccountId });
+        if (resp.IsSuccessStatusCode) return (true, null);
+        try
+        {
+            var err = await resp.Content.ReadFromJsonAsync<ErrorResp>();
+            return (false, err?.Error ?? "No se pudo facturar");
+        }
+        catch { return (false, "No se pudo facturar"); }
+    }
+
     /// <summary>Elimina una reserva. Requiere clave del usuario y falla si tiene cobranzas.
     /// Devuelve (ok, mensajeDeError).</summary>
     public async Task<(bool ok, string? error)> DeleteAlqReservaAsync(int id, string password)
