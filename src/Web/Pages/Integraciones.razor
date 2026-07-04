@@ -1248,7 +1248,7 @@
                         <option value="">— Elegí un CUIT —</option>
                         @foreach (var cuit in arcaEmisorCuitsDisponibles)
                         {
-                            <option value="@cuit">@FormatCuit(cuit)</option>
+                            <option value="@cuit">@FormatCuit(cuit)@AliasDeCuitSuffix(cuit)</option>
                         }
                     </select>
                     <span class="input-hint">Los CUITs se toman de los certificados que tenés cargados.</span>
@@ -2884,6 +2884,17 @@
     private string? arcaEmisorError;
     private List<string> arcaEmisorCuitsDisponibles = new();
     private string arcaEmisorCuitSelected = "";
+
+    /// <summary>2026-07-04: nombre de la empresa/persona de un CUIT (alias del certificado cargado),
+    /// para mostrarlo al lado del CUIT en el desplegable. Ej: " — GABRIEL PALANICA".</summary>
+    private string AliasDeCuitSuffix(string cuit)
+    {
+        var alias = (arcaWsCerts ?? new())
+            .Where(c => c.Cuit == cuit && !string.IsNullOrWhiteSpace(c.Alias))
+            .Select(c => c.Alias)
+            .FirstOrDefault();
+        return string.IsNullOrWhiteSpace(alias) ? "" : $" — {alias}";
+    }
     private UpsertArcaEmisorRequest arcaEmisorForm = new();
     private DateTime? arcaEmisorFormInicioAct;
     private ArcaEmisorDto? arcaEmisorActual;
