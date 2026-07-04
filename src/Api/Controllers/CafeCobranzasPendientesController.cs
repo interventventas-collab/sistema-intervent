@@ -318,13 +318,17 @@ public class CafeCobranzasPendientesController : ControllerBase
         if (p.MarcadoEntregado && p.Venta is not null)
         {
             p.Venta.EntregadoPorRepartidorId = p.RepartidorId;
-            p.Venta.EntregadoAt = DateTime.UtcNow;
+            // 2026-07-03 FIX BUG: usar la fecha en que el repartidor marco entregado
+            // desde su celu (p.CreatedAt), NO el momento en que el admin aprueba.
+            // Antes se pisaba con DateTime.UtcNow y se perdia la fecha real de la
+            // entrega. Ejemplo: repartidor entrega 02/07 18:33, admin aprueba
+            // 03/07 08:26, y el sistema marcaba 03/07 08:26 como "Entregada".
+            p.Venta.EntregadoAt = p.CreatedAt;
             if (p.Venta.EstadoPreparacion != null)
             {
                 var estadoAntApr1 = p.Venta.EstadoPreparacion;
                 p.Venta.EstadoPreparacion = "ENTREGADO";
                 p.Venta.PreparacionUpdatedAt = DateTime.UtcNow;
-                // 2026-06-09 log
                 _db.CafeVentaPreparacionLogs.Add(new Models.CafeVentaPreparacionLog
                 {
                     VentaId = p.Venta.Id, EstadoAnterior = estadoAntApr1, EstadoNuevo = "ENTREGADO",
@@ -404,7 +408,9 @@ public class CafeCobranzasPendientesController : ControllerBase
         if (p.MarcadoEntregado)
         {
             p.Venta.EntregadoPorRepartidorId = p.RepartidorId;
-            p.Venta.EntregadoAt = DateTime.UtcNow;
+            // 2026-07-03 FIX BUG: usar la fecha en que el repartidor marco "entregado"
+            // desde su celu (p.CreatedAt), NO cuando el admin aprueba.
+            p.Venta.EntregadoAt = p.CreatedAt;
             if (p.Venta.EstadoPreparacion != null)
             {
                 var estadoAntApr2 = p.Venta.EstadoPreparacion;
