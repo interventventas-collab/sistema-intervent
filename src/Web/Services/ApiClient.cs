@@ -2270,7 +2270,12 @@ public class ApiClient
         int NomEmpleadoId, string Nombre, string? ApodoKiosko, string? ApodoRepartidor,
         string Estado, string? HoraEntrada, string? HoraSalida, string? Trabajado,
         decimal PorRendir, decimal Pagado, decimal LeDebo, bool TieneRepartidor,
-        decimal PorRendirVentas = 0, decimal PorRendirAlquiler = 0);
+        decimal PorRendirVentas = 0, decimal PorRendirAlquiler = 0,
+        // 2026-07-04: carga del repartidor para la card del dashboard.
+        // Ventas asignadas via QR y aun sin entregar / ya entregadas hoy por este repartidor.
+        int VentasPendientes = 0, int VentasEntregadasHoy = 0,
+        // Alquileres entregados/retirados HOY por este repartidor.
+        int AlqEntregadosHoy = 0, int AlqRetiradosHoy = 0);
     public record DashboardEquipoResumen(int Trabajando, int Salio, int SinFichar, int NoFicha);
     public record DashboardEquipoResponse(List<DashboardEquipoItem> Items, DashboardEquipoResumen Resumen, DateTime Fecha);
 
