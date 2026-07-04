@@ -311,6 +311,167 @@
     </div>
 }
 
+@* === Fila de KPIs financieros: Shell + Galicia + Ventas del mes + Saldos + Alquileres + Doc ===
+   2026-06-22: rediseño Mac — blanco con borde izquierdo de color, icono pastel, tipografia limpia.
+   2026-07-04: MOVIDO ARRIBA de "Resumen del día" (pedido Osmar). Antes venia despues de
+   postits/balanza/stock y quedaba muy abajo. *@
+<div class="dashboard-cards-row">
+    @* 2026-07-04: Shell Flota + Saldo Banco Galicia van PRIMERO. *@
+    @* Shell Flota — saldo disponible (robot lee el saldo solo) *@
+    <div class="dashboard-detail-card mac-stat-card accent-amber" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/integraciones/shell")' title="Ir a Shell Flota">
+        <CustomCardOverlay CardKey="shell-flota" Settings="@cardCustomSettings" />
+        <div class="mac-card-header">
+            <div class="mac-card-iconbox" style="background:#FBCE07;">
+                <svg viewBox="0 0 32 32" width="19" height="19" fill="#ED1C24"><path d="M16 28c-5.7 0-9.8-4.1-10.6-9.5-.3-1.8-.1-3.3.6-3.3.5 0 .7.7.9 1.8.1-2.2.6-3.6 1.3-3.6.5 0 .9 1.1 1.1 2.8.3-2.2.8-3.5 1.6-3.5.6 0 1 1.3 1.1 3.1.4-2.1 1-3.3 1.9-3.3.9 0 1.5 1.2 1.9 3.3.1-1.8.5-3.1 1.1-3.1.8 0 1.3 1.3 1.6 3.5.2-1.7.6-2.8 1.1-2.8.7 0 1.2 1.4 1.3 3.6.2-1.1.4-1.8.9-1.8.7 0 .9 1.5.6 3.3C25.8 23.9 21.7 28 16 28z"/></svg>
+            </div>
+            <span class="mac-card-eyebrow" style="color:#3f3f46;">Shell Flota</span>
+        </div>
+        <button class="dash-eye-btn" @onclick="@(() => ToggleSaldoVisible("shell"))" @onclick:stopPropagation="true"
+                title="@(SaldoOculto("shell") ? "Mostrar saldo" : "Ocultar saldo")">
+            @(SaldoOculto("shell") ? "🙈" : "👁")
+        </button>
+        @if (shellSaldo is null || string.IsNullOrEmpty(shellSaldo.LastSaldo))
+        {
+            <div class="mac-card-bignum" style="font-size:1rem;">Configurar →</div>
+            <div class="mac-card-sub">Cargá la clave para ver el saldo</div>
+        }
+        else
+        {
+            <div class="mac-card-bignum">@(SaldoOculto("shell") ? "$ ••••••" : $"${shellSaldo.LastSaldo}")</div>
+            <div class="mac-card-sub">saldo disponible</div>
+            @if (shellSaldo.LastSaldoAt.HasValue)
+            {
+                <div class="mac-card-sub" style="font-style:italic; margin-top:2px;">Actualizado @FormatearUltimaActualizacion(shellSaldo.LastSaldoAt.Value)</div>
+            }
+        }
+    </div>
+
+    @* Saldo banco Galicia *@
+    <div class="dashboard-detail-card mac-stat-card accent-blue" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/extracto-banco")' title="Ir al extracto bancario">
+        <CustomCardOverlay CardKey="saldo-banco-galicia" Settings="@cardCustomSettings" />
+        <div class="mac-card-header">
+            <div class="mac-card-iconbox" style="background:#EC6E1B;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>
+            </div>
+            <span class="mac-card-eyebrow" style="color:#3f3f46;">Saldo Banco Galicia</span>
+        </div>
+        <button class="dash-eye-btn" @onclick="@(() => ToggleSaldoVisible("galicia"))" @onclick:stopPropagation="true"
+                title="@(SaldoOculto("galicia") ? "Mostrar saldo" : "Ocultar saldo")">
+            @(SaldoOculto("galicia") ? "🙈" : "👁")
+        </button>
+        @if (saldoBanco is null || saldoBanco.CantidadMovimientos == 0)
+        {
+            <div class="mac-card-bignum" style="font-size:1rem;">Subí el extracto →</div>
+            <div class="mac-card-sub">Click para importar</div>
+        }
+        else
+        {
+            <div class="mac-card-bignum">@(SaldoOculto("galicia") ? "$ ••••••" : $"${FormatMoney(saldoBanco.Saldo)}")</div>
+            <div class="mac-card-sub">al @saldoBanco.UltimaFecha.ToString("dd/MM/yyyy")</div>
+            @if (saldoBanco.UltimoImportadoAt.HasValue)
+            {
+                <div class="mac-card-sub" style="font-style:italic; margin-top:2px;">Última actualización @FormatearUltimaActualizacion(saldoBanco.UltimoImportadoAt.Value)</div>
+            }
+        }
+        <div style="margin-top:6px;">
+            <span @onclick='() => Navigation.NavigateTo("/integraciones/galicia")' @onclick:stopPropagation="true"
+                  style="color:#2563eb; text-decoration:underline; font-size:0.75rem; cursor:pointer;">⚙ Conexión automática</span>
+        </div>
+    </div>
+
+    @* Ventas del mes *@
+    <div class="dashboard-detail-card mac-stat-card accent-green" style="position:relative;">
+        <CustomCardOverlay CardKey="ventas-del-mes" Settings="@cardCustomSettings" />
+        <div class="mac-card-header">
+            <div class="mac-card-iconbox" style="background:#eaf3de; color:#16a34a;">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+            </div>
+            <span class="mac-card-eyebrow" style="color:#3f3f46;">Ventas del mes</span>
+        </div>
+        @if (salesSummary is null)
+        {
+            <div class="mac-card-sub">Cargando…</div>
+        }
+        else
+        {
+            <div class="mac-card-bignum">$@FormatMoney(salesSummary.MonthlySalesTotal)</div>
+            <div class="mac-card-sub">@salesSummary.MonthlySalesCount comprobante@(salesSummary.MonthlySalesCount == 1 ? "" : "s") en @salesSummary.PeriodStart.ToString("MMMM", new System.Globalization.CultureInfo("es-AR"))</div>
+        }
+    </div>
+
+    @* Saldos de clientes *@
+    <div class="dashboard-detail-card mac-stat-card accent-red" style="position:relative;">
+        <CustomCardOverlay CardKey="saldos-clientes" Settings="@cardCustomSettings" />
+        <div class="mac-card-header">
+            <div class="mac-card-iconbox" style="background:#fceaea; color:#dc2626;">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            </div>
+            <span class="mac-card-eyebrow" style="color:#3f3f46;">Saldos de clientes</span>
+        </div>
+        @if (salesSummary is null)
+        {
+            <div class="mac-card-sub">Cargando…</div>
+        }
+        else
+        {
+            <div class="mac-card-bignum">$@FormatMoney(salesSummary.ClientBalanceTotal)</div>
+            <div class="mac-card-sub">@salesSummary.ClientsWithBalance cliente@(salesSummary.ClientsWithBalance == 1 ? "" : "s") · @salesSummary.ClientBalanceCount sin pagar</div>
+        }
+    </div>
+
+    @* Alquileres en calle — 2026-06-26 *@
+    <div class="dashboard-detail-card mac-stat-card accent-purple" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/alquileres/reservas")' title="Ir a Reservas de alquileres">
+        <CustomCardOverlay CardKey="alquileres-en-calle" Settings="@cardCustomSettings" />
+        <div class="mac-card-header">
+            <div class="mac-card-iconbox" style="background:#ede9fe; color:#7c3aed;">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+            </div>
+            <span class="mac-card-eyebrow" style="color:#3f3f46;">Alquileres en calle</span>
+        </div>
+        @if (alqResumen is null)
+        {
+            <div class="mac-card-sub">Cargando…</div>
+        }
+        else
+        {
+            <div class="mac-card-bignum">@alqResumen.EnCalle <span style="font-size:0.85rem; font-weight:400; color:#6b7280;">afuera</span></div>
+            <div class="mac-card-sub">$@FormatMoney(alqResumen.MontoEnCalle) en equipos</div>
+            <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
+                <span style="font-size:0.72rem; font-weight:700; padding:0.12rem 0.5rem; border-radius:999px; background:#ffedd5; color:#9a3412;">🔙 A retirar hoy: @alqResumen.ARetirarHoy</span>
+                @if (alqResumen.Vencidos > 0)
+                {
+                    <span style="font-size:0.72rem; font-weight:700; padding:0.12rem 0.5rem; border-radius:999px; background:#fee2e2; color:#b91c1c;">⚠ Vencidos: @alqResumen.Vencidos</span>
+                }
+                <span style="font-size:0.72rem; font-weight:600; padding:0.12rem 0.5rem; border-radius:999px; background:#f3f4f6; color:#374151;">Hoy: @alqResumen.EntregasHoy entregas</span>
+            </div>
+        }
+    </div>
+
+    @* Documentación importante — acceso directo + stats *@
+    <div class="dashboard-detail-card mac-stat-card accent-purple" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/documentacion")' title="Ir a Documentación importante">
+        <CustomCardOverlay CardKey="documentacion" Settings="@cardCustomSettings" />
+        <div class="mac-card-header">
+            <div class="mac-card-iconbox" style="background:#ede9fe; color:#7c3aed;">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+            </div>
+            <span class="mac-card-eyebrow" style="color:#3f3f46;">Documentación</span>
+        </div>
+        @if (docStats is null)
+        {
+            <div class="mac-card-sub">Cargando…</div>
+        }
+        else
+        {
+            <div class="mac-card-bignum" style="font-size:1.3rem;">@docStats.Folders <span class="mac-card-unit">carpetas</span> · @docStats.Files <span class="mac-card-unit">archivos</span></div>
+            <div class="mac-card-sub">@(docStats.Files == 0 ? "Subí tus primeros archivos →" : "")</div>
+            @if (docStats.LastUploadAt.HasValue)
+            {
+                <div class="mac-card-sub" style="font-style:italic; margin-top:2px;">Última subida @FormatearUltimaActualizacion(docStats.LastUploadAt.Value)</div>
+            }
+        }
+    </div>
+</div>
+
 @* ═══ Card: resumen del día (cheques + saldo Galicia + preguntas MeLi) ═══ *@
 <div class="dash-card">
     <div class="dash-card-title">
@@ -348,7 +509,9 @@
             }
             else
             {
-                <div class="dash-resumen-big">$@FormatMoney(saldoBanco.Saldo)</div>
+                @* 2026-07-04: mismo estado que la card grande — si el ojito de la card Galicia
+                   está tapado, aca tambien tapamos el numero. *@
+                <div class="dash-resumen-big">@(SaldoOculto("galicia") ? "$ ••••••" : $"${FormatMoney(saldoBanco.Saldo)}")</div>
                 <div class="dash-resumen-line"><span>al @saldoBanco.UltimaFecha.ToString("dd/MM/yyyy")</span><span>@(saldoBanco.UltimoImportadoAt is null ? "" : $"act. {FormatearUltimaActualizacion(saldoBanco.UltimoImportadoAt.Value)}")</span></div>
             }
         </div>
@@ -559,9 +722,9 @@
     .dash-chip-blue   { background: #dbeafe; color: #1e40af; border-color: #93c5fd; }
     .dash-chip-purple { background: #f3e8ff; color: #6b21a8; border-color: #d8b4fe; }
 
-    /* 2026-07-04: ojito para ocultar el saldo. Botón chico arriba a la derecha del header
-       de la card. Se mantiene el color del emoji para que se vea igual en dark/light. */
-    .dash-eye-btn { margin-left:auto; background:transparent; border:none; cursor:pointer; padding:2px 6px; border-radius:6px; font-size:0.95rem; line-height:1; opacity:0.6; transition:opacity 0.15s, background 0.15s; }
+    /* 2026-07-04: ojito para ocultar el saldo. Absolute para no chocar con el "..." del
+       CustomCardOverlay (que está en top:10 right:10). Queda a la izquierda de ese botón. */
+    .dash-eye-btn { position:absolute; top:10px; right:44px; background:transparent; border:none; cursor:pointer; padding:2px 6px; border-radius:6px; font-size:1rem; line-height:1; opacity:0.7; transition:opacity 0.15s, background 0.15s; z-index:5; }
     .dash-eye-btn:hover { opacity:1; background:rgba(0,0,0,0.05); }
 
     /* 2026-07-04: filtro de empleados visibles en "Equipo trabajando ahora".
@@ -929,163 +1092,6 @@
     }
     .cafe-frikaf-upload-btn:hover { background: white; transform: scale(1.1); }
 </style>
-
-@* === Fila de KPIs financieros: Ventas del mes / Saldos clientes / Cuentas a pagar ===
-   2026-06-22: rediseño Mac — blanco con borde izquierdo de color, icono pastel, tipografia limpia. *@
-<div class="dashboard-cards-row">
-    @* 2026-07-04: Shell Flota + Saldo Banco Galicia van PRIMERO (pedido de Osmar).
-       Osmar quiere ver primero los saldos financieros cuando abre el dashboard. *@
-    @* Shell Flota — saldo disponible (robot lee el saldo solo) *@
-    <div class="dashboard-detail-card mac-stat-card accent-amber" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/integraciones/shell")' title="Ir a Shell Flota">
-        <CustomCardOverlay CardKey="shell-flota" Settings="@cardCustomSettings" />
-        <div class="mac-card-header">
-            <div class="mac-card-iconbox" style="background:#FBCE07;">
-                <svg viewBox="0 0 32 32" width="19" height="19" fill="#ED1C24"><path d="M16 28c-5.7 0-9.8-4.1-10.6-9.5-.3-1.8-.1-3.3.6-3.3.5 0 .7.7.9 1.8.1-2.2.6-3.6 1.3-3.6.5 0 .9 1.1 1.1 2.8.3-2.2.8-3.5 1.6-3.5.6 0 1 1.3 1.1 3.1.4-2.1 1-3.3 1.9-3.3.9 0 1.5 1.2 1.9 3.3.1-1.8.5-3.1 1.1-3.1.8 0 1.3 1.3 1.6 3.5.2-1.7.6-2.8 1.1-2.8.7 0 1.2 1.4 1.3 3.6.2-1.1.4-1.8.9-1.8.7 0 .9 1.5.6 3.3C25.8 23.9 21.7 28 16 28z"/></svg>
-            </div>
-            <span class="mac-card-eyebrow" style="color:#3f3f46;">Shell Flota</span>
-            <button class="dash-eye-btn" @onclick="@(() => ToggleSaldoVisible("shell"))" @onclick:stopPropagation="true"
-                    title="@(SaldoOculto("shell") ? "Mostrar saldo" : "Ocultar saldo")">
-                @(SaldoOculto("shell") ? "🙈" : "👁")
-            </button>
-        </div>
-        @if (shellSaldo is null || string.IsNullOrEmpty(shellSaldo.LastSaldo))
-        {
-            <div class="mac-card-bignum" style="font-size:1rem;">Configurar →</div>
-            <div class="mac-card-sub">Cargá la clave para ver el saldo</div>
-        }
-        else
-        {
-            <div class="mac-card-bignum">@(SaldoOculto("shell") ? "$ ••••••" : $"${shellSaldo.LastSaldo}")</div>
-            <div class="mac-card-sub">saldo disponible</div>
-            @if (shellSaldo.LastSaldoAt.HasValue)
-            {
-                <div class="mac-card-sub" style="font-style:italic; margin-top:2px;">Actualizado @FormatearUltimaActualizacion(shellSaldo.LastSaldoAt.Value)</div>
-            }
-        }
-    </div>
-
-    @* Saldo banco Galicia *@
-    <div class="dashboard-detail-card mac-stat-card accent-blue" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/extracto-banco")' title="Ir al extracto bancario">
-        <CustomCardOverlay CardKey="saldo-banco-galicia" Settings="@cardCustomSettings" />
-        <div class="mac-card-header">
-            <div class="mac-card-iconbox" style="background:#EC6E1B;">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>
-            </div>
-            <span class="mac-card-eyebrow" style="color:#3f3f46;">Saldo Banco Galicia</span>
-            <button class="dash-eye-btn" @onclick="@(() => ToggleSaldoVisible("galicia"))" @onclick:stopPropagation="true"
-                    title="@(SaldoOculto("galicia") ? "Mostrar saldo" : "Ocultar saldo")">
-                @(SaldoOculto("galicia") ? "🙈" : "👁")
-            </button>
-        </div>
-        @if (saldoBanco is null || saldoBanco.CantidadMovimientos == 0)
-        {
-            <div class="mac-card-bignum" style="font-size:1rem;">Subí el extracto →</div>
-            <div class="mac-card-sub">Click para importar</div>
-        }
-        else
-        {
-            <div class="mac-card-bignum">@(SaldoOculto("galicia") ? "$ ••••••" : $"${FormatMoney(saldoBanco.Saldo)}")</div>
-            <div class="mac-card-sub">al @saldoBanco.UltimaFecha.ToString("dd/MM/yyyy")</div>
-            @if (saldoBanco.UltimoImportadoAt.HasValue)
-            {
-                <div class="mac-card-sub" style="font-style:italic; margin-top:2px;">Última actualización @FormatearUltimaActualizacion(saldoBanco.UltimoImportadoAt.Value)</div>
-            }
-        }
-        <div style="margin-top:6px;">
-            <span @onclick='() => Navigation.NavigateTo("/integraciones/galicia")' @onclick:stopPropagation="true"
-                  style="color:#2563eb; text-decoration:underline; font-size:0.75rem; cursor:pointer;">⚙ Conexión automática</span>
-        </div>
-    </div>
-
-    @* Ventas del mes *@
-    <div class="dashboard-detail-card mac-stat-card accent-green" style="position:relative;">
-        <div class="mac-card-header">
-            <div class="mac-card-iconbox" style="background:#eaf3de; color:#16a34a;">
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-            </div>
-            <span class="mac-card-eyebrow" style="color:#3f3f46;">Ventas del mes</span>
-        </div>
-        @if (salesSummary is null)
-        {
-            <div class="mac-card-sub">Cargando…</div>
-        }
-        else
-        {
-            <div class="mac-card-bignum">$@FormatMoney(salesSummary.MonthlySalesTotal)</div>
-            <div class="mac-card-sub">@salesSummary.MonthlySalesCount comprobante@(salesSummary.MonthlySalesCount == 1 ? "" : "s") en @salesSummary.PeriodStart.ToString("MMMM", new System.Globalization.CultureInfo("es-AR"))</div>
-        }
-    </div>
-
-    @* Saldos de clientes *@
-    <div class="dashboard-detail-card mac-stat-card accent-red" style="position:relative;">
-        <div class="mac-card-header">
-            <div class="mac-card-iconbox" style="background:#fceaea; color:#dc2626;">
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-            </div>
-            <span class="mac-card-eyebrow" style="color:#3f3f46;">Saldos de clientes</span>
-        </div>
-        @if (salesSummary is null)
-        {
-            <div class="mac-card-sub">Cargando…</div>
-        }
-        else
-        {
-            <div class="mac-card-bignum">$@FormatMoney(salesSummary.ClientBalanceTotal)</div>
-            <div class="mac-card-sub">@salesSummary.ClientsWithBalance cliente@(salesSummary.ClientsWithBalance == 1 ? "" : "s") · @salesSummary.ClientBalanceCount sin pagar</div>
-        }
-    </div>
-
-    @* Alquileres en calle — 2026-06-26 *@
-    <div class="dashboard-detail-card mac-stat-card accent-purple" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/alquileres/reservas")' title="Ir a Reservas de alquileres">
-        <div class="mac-card-header">
-            <div class="mac-card-iconbox" style="background:#ede9fe; color:#7c3aed;">
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-            </div>
-            <span class="mac-card-eyebrow" style="color:#3f3f46;">Alquileres en calle</span>
-        </div>
-        @if (alqResumen is null)
-        {
-            <div class="mac-card-sub">Cargando…</div>
-        }
-        else
-        {
-            <div class="mac-card-bignum">@alqResumen.EnCalle <span style="font-size:0.85rem; font-weight:400; color:#6b7280;">afuera</span></div>
-            <div class="mac-card-sub">$@FormatMoney(alqResumen.MontoEnCalle) en equipos</div>
-            <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
-                <span style="font-size:0.72rem; font-weight:700; padding:0.12rem 0.5rem; border-radius:999px; background:#ffedd5; color:#9a3412;">🔙 A retirar hoy: @alqResumen.ARetirarHoy</span>
-                @if (alqResumen.Vencidos > 0)
-                {
-                    <span style="font-size:0.72rem; font-weight:700; padding:0.12rem 0.5rem; border-radius:999px; background:#fee2e2; color:#b91c1c;">⚠ Vencidos: @alqResumen.Vencidos</span>
-                }
-                <span style="font-size:0.72rem; font-weight:600; padding:0.12rem 0.5rem; border-radius:999px; background:#f3f4f6; color:#374151;">Hoy: @alqResumen.EntregasHoy entregas</span>
-            </div>
-        }
-    </div>
-
-    @* Documentación importante — acceso directo + stats *@
-    <div class="dashboard-detail-card mac-stat-card accent-purple" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/documentacion")' title="Ir a Documentación importante">
-        <div class="mac-card-header">
-            <div class="mac-card-iconbox" style="background:#ede9fe; color:#7c3aed;">
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
-            </div>
-            <span class="mac-card-eyebrow" style="color:#3f3f46;">Documentación</span>
-        </div>
-        @if (docStats is null)
-        {
-            <div class="mac-card-sub">Cargando…</div>
-        }
-        else
-        {
-            <div class="mac-card-bignum" style="font-size:1.3rem;">@docStats.Folders <span class="mac-card-unit">carpetas</span> · @docStats.Files <span class="mac-card-unit">archivos</span></div>
-            <div class="mac-card-sub">@(docStats.Files == 0 ? "Subí tus primeros archivos →" : "")</div>
-            @if (docStats.LastUploadAt.HasValue)
-            {
-                <div class="mac-card-sub" style="font-style:italic; margin-top:2px;">Última subida @FormatearUltimaActualizacion(docStats.LastUploadAt.Value)</div>
-            }
-        }
-    </div>
-
-</div>
 
 @* === Cheques por pagar — calendario visual === *@
 <ChequesPorPagarCalendario />
