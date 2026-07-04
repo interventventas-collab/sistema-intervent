@@ -472,6 +472,10 @@ public class CafeVentaDto
     public int? EntregadoPorRepartidorId { get; set; }
     public string? EntregadoPorRepartidorNombre { get; set; }
     public DateTime? EntregadoAt { get; set; }
+    /// <summary>2026-07-03: monto cobrado en la calle por el repartidor cuando entregó
+    /// (suma de las CafeCobranzasPendientes de esta venta no rechazadas). Null si no cobró.
+    /// Se muestra en el chip verde de entrega para saber cuánta plata trae el repartidor.</summary>
+    public decimal? CobradoEnEntrega { get; set; }
     /// <summary>ID del archivo en Google Drive cuando se subió el PDF del comprobante. Null si nunca se subió.</summary>
     public string? DriveFileId { get; set; }
     /// <summary>Cuándo se subió el PDF a Google Drive. Null si nunca se subió.</summary>

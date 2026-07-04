@@ -240,7 +240,8 @@ public class CafeVentasController : ControllerBase
 
     private static CafeVentaDto Map(CafeVenta v, bool esSaldoMigracion = false, string? entregadoPorRepartidorNombre = null,
         string? escaneadoPorRepartidorNombre = null, DateTime? escaneadoAt = null,
-        int? clienteCodigoInterno = null) => new(
+        int? clienteCodigoInterno = null,
+        decimal? cobradoEnEntrega = null) => new(
         v.Id, v.Numero, v.Fecha,
         v.ClienteId, v.ClienteNombreSnapshot, v.ClienteTipoSnapshot, v.ClienteTelefonoSnapshot,
         clienteCodigoInterno,  // 2026-06-08: codigo interno del cliente
@@ -305,7 +306,8 @@ public class CafeVentasController : ControllerBase
         v.ConceptoServDesde,
         v.ConceptoServHasta,
         v.MapeoLink,
-        v.ArcaWebserviceAccountId);
+        v.ArcaWebserviceAccountId,
+        cobradoEnEntrega);
 
     [HttpGet]
     public async Task<IActionResult> GetAll(
@@ -372,11 +374,23 @@ public class CafeVentasController : ControllerBase
                 .Select(c => new { c.Id, c.CodigoInterno })
                 .ToDictionaryAsync(c => c.Id, c => c.CodigoInterno);
 
+        // 2026-07-03: precargar cuanta plata trajo el repartidor por cada venta (suma de
+        // CafeCobranzasPendientes no rechazadas). Se muestra como "💰 Cobró $X" en el chip
+        // verde de entrega. RECHAZADA se excluye porque el admin la rechazo (no es plata).
+        var cobradoDict = ventaIds.Count == 0
+            ? new Dictionary<int, decimal>()
+            : await _db.CafeCobranzasPendientes
+                .Where(p => ventaIds.Contains(p.VentaId) && p.Estado != "RECHAZADA")
+                .GroupBy(p => p.VentaId)
+                .Select(g => new { VentaId = g.Key, Total = g.Sum(x => x.Importe) })
+                .ToDictionaryAsync(x => x.VentaId, x => x.Total);
+
         return Ok(list.Select(v => Map(v, migrSet.Contains(v.Id),
             v.EntregadoPorRepartidorId.HasValue && repsDict.TryGetValue(v.EntregadoPorRepartidorId.Value, out var nm) ? nm : null,
             escDic.TryGetValue(v.Id, out var esc) ? esc.Nombre : null,
             escDic.TryGetValue(v.Id, out var esc2) ? esc2.CreatedAt : (DateTime?)null,
-            v.ClienteId.HasValue && codigosDict.TryGetValue(v.ClienteId.Value, out var ci) ? ci : null
+            v.ClienteId.HasValue && codigosDict.TryGetValue(v.ClienteId.Value, out var ci) ? ci : null,
+            cobradoDict.TryGetValue(v.Id, out var cob) ? cob : (decimal?)null
         )).ToList());
     }
 
