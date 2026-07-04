@@ -1817,7 +1817,12 @@ public class CafeVentasController : ControllerBase
                 // Si el usuario marca Servicios/Mixto y no carga fechas, usamos la fecha de la venta.
                 FchServDesde = venta.Concepto != 1 ? (venta.ConceptoServDesde ?? venta.Fecha) : null,
                 FchServHasta = venta.Concepto != 1 ? (venta.ConceptoServHasta ?? venta.Fecha) : null,
-                FchVtoPago = venta.Concepto != 1 ? (venta.ConceptoServHasta ?? venta.Fecha) : null,
+                // FchVtoPago (vencimiento de pago) NO puede ser anterior a la fecha del comprobante (ARCA [10036]).
+                // Si el período de servicio terminó en el pasado, usamos la fecha del comprobante.
+                FchVtoPago = venta.Concepto != 1
+                    ? (venta.ConceptoServHasta.HasValue && venta.ConceptoServHasta.Value >= venta.Fecha
+                        ? venta.ConceptoServHasta.Value : venta.Fecha)
+                    : null,
             };
 
             var resultado = await _arcaInvoiceService.EmitirComprobanteAsync(arcaAccount.Id, req);
@@ -2154,7 +2159,11 @@ public class CafeVentasController : ControllerBase
             // 2026-06-23: si la NC es de servicios/mixto, mandar fechas de prestacion al SOAP.
             FchServDesde = nc.Concepto != 1 ? (nc.ConceptoServDesde ?? nc.Fecha) : null,
             FchServHasta = nc.Concepto != 1 ? (nc.ConceptoServHasta ?? nc.Fecha) : null,
-            FchVtoPago = nc.Concepto != 1 ? (nc.ConceptoServHasta ?? nc.Fecha) : null,
+            // Igual que en la emisión: FchVtoPago no puede ser anterior a la fecha del comprobante (ARCA [10036]).
+            FchVtoPago = nc.Concepto != 1
+                ? (nc.ConceptoServHasta.HasValue && nc.ConceptoServHasta.Value >= nc.Fecha
+                    ? nc.ConceptoServHasta.Value : nc.Fecha)
+                : null,
         };
 
         // ----- Emitir contra ARCA -----
