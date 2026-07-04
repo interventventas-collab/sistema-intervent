@@ -2282,6 +2282,16 @@ public class ApiClient
     public async Task<DashboardEquipoResponse?> GetDashboardEquipoAsync()
         => await GetAsync<DashboardEquipoResponse>("/api/dashboard/equipo-dia");
 
+    // 2026-07-04: historial de ventas por mes para el mini gráfico en la card "Ventas del mes".
+    public record MonthlySalesPointDto(
+        int Year, int Month, string MonthLabel,
+        decimal TotalGeneral, int TotalCount,
+        decimal CotizacionesTotal, int CotizacionesCount,
+        decimal FacturasConIva, decimal FacturasSinIva, int FacturasCount);
+
+    public async Task<List<MonthlySalesPointDto>?> GetMonthlySalesHistoryAsync(int months = 12)
+        => await GetAsync<List<MonthlySalesPointDto>>($"/api/dashboard/monthly-sales-history?months={months}");
+
     public record DashboardResumenDiaDto(
         int ChequesHoyCantidad, decimal ChequesHoyImporte,
         int ChequesProxima7DiasCantidad, decimal ChequesProxima7DiasImporte,

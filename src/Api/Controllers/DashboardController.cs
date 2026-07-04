@@ -185,6 +185,100 @@ public class DashboardController : ControllerBase
         });
     }
 
+    /// <summary>
+    /// 2026-07-04: Historial de ventas de los últimos N meses (default 12) para el mini
+    /// gráfico de la card "Ventas del mes". Por cada mes devuelve el desglose entre
+    /// cotizaciones (X/PRO — sin IVA por definición) y facturas (FA/FB/FC — con y sin IVA).
+    ///
+    /// Para "sin IVA" de facturas: preferimos ArcaImpNeto (autoritativo, lo que ARCA registró).
+    /// Cuando es null (facturas viejas pre-2026-05-15) hacemos fallback a Subtotal - Descuento.
+    /// </summary>
+    public record MonthlySalesPointDto(
+        int Year, int Month, string MonthLabel,
+        decimal TotalGeneral, int TotalCount,
+        decimal CotizacionesTotal, int CotizacionesCount,
+        decimal FacturasConIva, decimal FacturasSinIva, int FacturasCount);
+
+    [HttpGet("monthly-sales-history")]
+    public async Task<IActionResult> GetMonthlySalesHistory([FromQuery] int months = 12)
+    {
+        if (months < 1) months = 1;
+        if (months > 24) months = 24;
+
+        var arNow = DateTime.UtcNow.AddHours(-3);
+        var startMonth = new DateTime(arNow.Year, arNow.Month, 1).AddMonths(-(months - 1));
+        var startMonthUtc = startMonth.AddHours(3); // 00:00 ART → 03:00 UTC (aprox — sirve para filtro)
+
+        // Traemos los campos minimos que necesitamos para calcular todo en memoria.
+        var raw = await _db.CafeVentas
+            .Where(v => v.Estado != "anulado" && v.Fecha >= startMonth)
+            .Select(v => new
+            {
+                v.Fecha,
+                v.TipoComprobante,
+                v.Total,
+                v.Subtotal,
+                v.Descuento,
+                v.ArcaImpNeto,
+                v.ArcaImpTotal
+            })
+            .ToListAsync();
+
+        var esFactura = new HashSet<string> { "FA", "FB", "FC" };
+        var esCotiz = new HashSet<string> { "X", "PRO" };
+        var cultura = new System.Globalization.CultureInfo("es-AR");
+
+        var byMonth = raw
+            .GroupBy(v => new { v.Fecha.Year, v.Fecha.Month })
+            .ToDictionary(g => (g.Key.Year, g.Key.Month), g => g.ToList());
+
+        var result = new List<MonthlySalesPointDto>();
+        for (int i = 0; i < months; i++)
+        {
+            var m = startMonth.AddMonths(i);
+            var key = (m.Year, m.Month);
+            byMonth.TryGetValue(key, out var ventas);
+            ventas ??= new();
+
+            decimal totalGeneral = 0m;
+            int totalCount = 0;
+            decimal cotizTotal = 0m;
+            int cotizCount = 0;
+            decimal facConIva = 0m;
+            decimal facSinIva = 0m;
+            int facCount = 0;
+
+            foreach (var v in ventas)
+            {
+                totalGeneral += v.Total;
+                totalCount++;
+                var tc = (v.TipoComprobante ?? "").ToUpperInvariant();
+                if (esCotiz.Contains(tc))
+                {
+                    cotizTotal += v.Total;
+                    cotizCount++;
+                }
+                else if (esFactura.Contains(tc))
+                {
+                    // Preferimos ArcaImpTotal (con IVA autoritativo). Fallback: Total.
+                    facConIva += v.ArcaImpTotal ?? v.Total;
+                    // Preferimos ArcaImpNeto. Fallback: Subtotal - Descuento.
+                    facSinIva += v.ArcaImpNeto ?? (v.Subtotal - v.Descuento);
+                    facCount++;
+                }
+            }
+
+            var label = m.ToString("MMM yyyy", cultura);
+            result.Add(new MonthlySalesPointDto(
+                m.Year, m.Month, label,
+                totalGeneral, totalCount,
+                cotizTotal, cotizCount,
+                facConIva, facSinIva, facCount));
+        }
+
+        return Ok(result);
+    }
+
     // ════════════════════════════════════════════════════════════════════════════════
     // 2026-06-25: Dashboard NUEVO — el "Equipo trabajando ahora" y el "Resumen del día"
     // ════════════════════════════════════════════════════════════════════════════════

@@ -379,7 +379,7 @@
         </div>
     </div>
 
-    @* Ventas del mes *@
+    @* Ventas del mes — con mini gráfico de 12 meses navegable *@
     <div class="dashboard-detail-card mac-stat-card accent-green" style="position:relative;">
         <CustomCardOverlay CardKey="ventas-del-mes" Settings="@cardCustomSettings" />
         <div class="mac-card-header">
@@ -392,14 +392,88 @@
                 title="@(SaldoOculto("ventas-mes") ? "Mostrar por 5 min" : "Ocultar")">
             @(SaldoOculto("ventas-mes") ? "🙈" : "👁")
         </button>
-        @if (salesSummary is null)
+        @{
+            // 2026-07-04: si hay historial y hay un mes seleccionado, mostramos ese en el numero grande.
+            // Si no, fallback al salesSummary del mes actual.
+            var pSel = (monthlyHistory is { Count: > 0 } && selectedMonthIdx is int i && i >= 0 && i < monthlyHistory.Count)
+                ? monthlyHistory[i] : null;
+            var esMesActual = (pSel is not null && monthlyHistory is not null && selectedMonthIdx == monthlyHistory.Count - 1);
+            decimal bigNum = pSel?.TotalGeneral ?? salesSummary?.MonthlySalesTotal ?? 0m;
+            int bigCount = pSel?.TotalCount ?? salesSummary?.MonthlySalesCount ?? 0;
+            string bigLbl = pSel?.MonthLabel ?? (salesSummary is not null ? salesSummary.PeriodStart.ToString("MMM yyyy", new System.Globalization.CultureInfo("es-AR")) : "");
+        }
+        @if (salesSummary is null && monthlyHistory is null)
         {
             <div class="mac-card-sub">Cargando…</div>
         }
         else
         {
-            <div class="mac-card-bignum">@(SaldoOculto("ventas-mes") ? "$ ••••••" : $"${FormatMoney(salesSummary.MonthlySalesTotal)}")</div>
-            <div class="mac-card-sub">@salesSummary.MonthlySalesCount comprobante@(salesSummary.MonthlySalesCount == 1 ? "" : "s") en @salesSummary.PeriodStart.ToString("MMMM", new System.Globalization.CultureInfo("es-AR"))</div>
+            <div class="mac-card-bignum">@(SaldoOculto("ventas-mes") ? "$ ••••••" : $"${FormatMoney(bigNum)}")</div>
+            <div class="mac-card-sub">
+                <span style="color:@(esMesActual ? "#16a34a" : "#6b7280"); font-weight:@(esMesActual ? "600" : "400");">@bigLbl</span>
+                · @bigCount comprobante@(bigCount == 1 ? "" : "s")
+            </div>
+
+            @if (monthlyHistory is { Count: > 0 } && !SaldoOculto("ventas-mes"))
+            {
+                var maxVal = monthlyHistory.Max(x => x.TotalGeneral);
+                if (maxVal <= 0) maxVal = 1;
+                <div class="dash-vm-chart">
+                    <div class="dash-vm-chart-title">
+                        <span>Últimos 12 meses</span>
+                        <span style="color:#9ca3af;">tocá una barra</span>
+                    </div>
+                    <div class="dash-vm-bars">
+                        @for (int idx = 0; idx < monthlyHistory.Count; idx++)
+                        {
+                            var localIdx = idx;
+                            var p = monthlyHistory[localIdx];
+                            var heightPct = (int)(p.TotalGeneral / maxVal * 100m);
+                            if (heightPct < 4 && p.TotalGeneral > 0) heightPct = 4;
+                            var esActual = localIdx == monthlyHistory.Count - 1;
+                            var esSel = localIdx == selectedMonthIdx;
+                            var cls = "dash-vm-bar"
+                                + (esActual ? " dash-vm-bar-actual" : "")
+                                + (esSel ? " dash-vm-bar-sel" : "");
+                            <button class="@cls" style="height:@(heightPct)%;"
+                                    @onclick="@(() => { selectedMonthIdx = localIdx; })"
+                                    @onclick:stopPropagation="true"
+                                    @onmouseover="@(() => hoveredMonthIdx = localIdx)"
+                                    @onmouseout="@(() => hoveredMonthIdx = null)">
+                            </button>
+                        }
+                    </div>
+                    <div class="dash-vm-months">
+                        @foreach (var p in monthlyHistory)
+                        {
+                            var mLabel = p.MonthLabel.Length >= 3 ? p.MonthLabel.Substring(0, 3) : p.MonthLabel;
+                            <span>@mLabel</span>
+                        }
+                    </div>
+                    @if (hoveredMonthIdx is int h && h >= 0 && h < monthlyHistory.Count)
+                    {
+                        var ph = monthlyHistory[h];
+                        <div class="dash-vm-tooltip">
+                            <div class="dash-vm-tt-title">@ph.MonthLabel</div>
+                            <div class="dash-vm-tt-row"><span>Total</span><b>$@FormatMoney(ph.TotalGeneral)</b></div>
+                            <div class="dash-vm-tt-sep"></div>
+                            @if (ph.CotizacionesCount > 0)
+                            {
+                                <div class="dash-vm-tt-row"><span>📝 Cotizaciones (@ph.CotizacionesCount)</span><b>$@FormatMoney(ph.CotizacionesTotal)</b></div>
+                            }
+                            @if (ph.FacturasCount > 0)
+                            {
+                                <div class="dash-vm-tt-row"><span>🧾 Facturas (@ph.FacturasCount) con IVA</span><b>$@FormatMoney(ph.FacturasConIva)</b></div>
+                                <div class="dash-vm-tt-row" style="opacity:.85;"><span style="padding-left:14px;">sin IVA</span><b>$@FormatMoney(ph.FacturasSinIva)</b></div>
+                            }
+                            @if (ph.CotizacionesCount == 0 && ph.FacturasCount == 0)
+                            {
+                                <div class="dash-vm-tt-row" style="color:#9ca3af;">Sin ventas</div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
         }
     </div>
 
@@ -729,6 +803,24 @@
     .dash-chip-ok     { background: #dcfce7; color: #166534; border-color: #86efac; }
     .dash-chip-blue   { background: #dbeafe; color: #1e40af; border-color: #93c5fd; }
     .dash-chip-purple { background: #f3e8ff; color: #6b21a8; border-color: #d8b4fe; }
+
+    /* 2026-07-04: mini gráfico de 12 meses en la card "Ventas del mes".
+       Barras clickeables + tooltip flotante con desglose cotizaciones / facturas. */
+    .dash-vm-chart { margin-top:10px; padding-top:8px; border-top:1px dashed #e5e7eb; position:relative; }
+    .dash-vm-chart-title { display:flex; justify-content:space-between; font-size:0.6rem; color:#9ca3af; text-transform:uppercase; letter-spacing:.04em; margin-bottom:5px; }
+    .dash-vm-bars { display:flex; align-items:flex-end; gap:2px; height:44px; padding:0 1px; }
+    .dash-vm-bar { flex:1; background:#dcfce7; border:none; border-radius:2px 2px 0 0; cursor:pointer; padding:0; transition:background 0.12s, transform 0.08s; min-height:2px; }
+    .dash-vm-bar:hover { background:#86efac; transform:translateY(-1px); }
+    .dash-vm-bar-actual { background:#4ade80; }
+    .dash-vm-bar-sel    { background:#16a34a !important; box-shadow:0 0 0 2px #86efac; }
+    .dash-vm-months { display:flex; justify-content:space-between; font-size:0.55rem; color:#9ca3af; margin-top:3px; padding:0 1px; text-transform:lowercase; }
+    .dash-vm-months span { flex:1; text-align:center; }
+    /* Tooltip flotante: aparece encima del gráfico, no depende del navegador. */
+    .dash-vm-tooltip { position:absolute; left:50%; bottom:calc(100% - 4px); transform:translateX(-50%); background:#1f2937; color:#f9fafb; padding:8px 10px; border-radius:6px; font-size:0.72rem; line-height:1.4; box-shadow:0 4px 12px rgba(0,0,0,0.25); z-index:20; white-space:nowrap; pointer-events:none; min-width:220px; }
+    .dash-vm-tt-title { font-weight:700; text-transform:capitalize; color:#fff; margin-bottom:5px; padding-bottom:4px; border-bottom:1px solid #374151; }
+    .dash-vm-tt-row { display:flex; justify-content:space-between; gap:12px; font-variant-numeric:tabular-nums; }
+    .dash-vm-tt-row b { color:#fff; font-weight:600; }
+    .dash-vm-tt-sep { height:6px; }
 
     /* 2026-07-04: ojito para ocultar el saldo. Absolute para no chocar con el "..." del
        CustomCardOverlay (que está en top:10 right:10). Queda a la izquierda de ese botón.
@@ -1418,8 +1510,22 @@
         catch { /* idem, opcional */ }
         try { shellSaldo = await Api.GetShellAccountAsync(); }
         catch { /* opcional */ }
+        // 2026-07-04: historial 12 meses para el mini gráfico. Fire-and-forget.
+        try
+        {
+            monthlyHistory = await Api.GetMonthlySalesHistoryAsync(12);
+            // Por default seleccionamos el mes actual (último item del array).
+            if (monthlyHistory is { Count: > 0 } && selectedMonthIdx is null)
+                selectedMonthIdx = monthlyHistory.Count - 1;
+        }
+        catch { /* opcional */ }
         StateHasChanged();
     }
+
+    // 2026-07-04: estado del mini gráfico de "Ventas del mes".
+    private List<ApiClient.MonthlySalesPointDto>? monthlyHistory;
+    private int? selectedMonthIdx;     // índice del mes actualmente visible en el número grande
+    private int? hoveredMonthIdx;      // índice del mes con hover (para tooltip)
 
     private async Task LoadDocStatsAsync()
     {
