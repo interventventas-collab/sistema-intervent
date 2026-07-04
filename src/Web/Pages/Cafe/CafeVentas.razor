@@ -1078,6 +1078,24 @@
                         </div>
                     </div>
 
+                    @* 2026-07-04: empresa emisora SIEMPRE visible (pedido de Osmar), preseleccionada con el
+                       negocio (PALANICA HERMANOS SRL). Elegir la empresa primero filtra el tipo de comprobante
+                       (RI → A/B, Monotributo → C). Solo aparece si hay más de un certificado cargado. *@
+                    @if (arcaAccounts.Count > 1)
+                    {
+                        <div style="display: grid; grid-template-columns: 1fr; gap: 0.6rem; margin-top: 0.4rem;">
+                            <div class="form-group" style="margin: 0;">
+                                <label class="form-label" style="font-size: 0.66rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">🏢 ¿Con qué empresa facturás?</label>
+                                <select class="form-input" @bind="formArcaAccountId" @bind:after="OnArcaAccountChanged">
+                                    @foreach (var acc in arcaAccounts)
+                                    {
+                                        <option value="@acc.Id">@ArcaAccountLabel(acc)</option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                    }
+
                     @* AFIP Concepto solo cuando aplica — fila separada chiquita debajo *@
                     @if (formTipoComprobante is "FA" or "FB" or "FC")
                     {
@@ -1102,24 +1120,6 @@
                                 </div>
                             }
                         </div>
-
-                        @* 2026-07-03: multi-sociedad — con qué empresa/CUIT se factura.
-                           Solo se muestra cuando hay más de un certificado cargado (si hay uno solo,
-                           se usa ese y no molestamos al operador con un desplegable de una opción). *@
-                        @if (arcaAccounts.Count > 1)
-                        {
-                            <div style="display: grid; grid-template-columns: 1fr; gap: 0.6rem; margin-top: 0.4rem;">
-                                <div class="form-group" style="margin: 0;">
-                                    <label class="form-label" style="font-size: 0.66rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">🏢 ¿Con qué empresa facturás? <span style="color:#dc2626;">*</span></label>
-                                    <select class="form-input" @bind="formArcaAccountId" @bind:after="OnArcaAccountChanged">
-                                        @foreach (var acc in arcaAccounts)
-                                        {
-                                            <option value="@acc.Id">@ArcaAccountLabel(acc)</option>
-                                        }
-                                    </select>
-                                </div>
-                            </div>
-                        }
                     }
                 }
 
@@ -5225,7 +5225,8 @@
         formFecha = DateTime.Today; formDescuento = 0; formObservaciones = "";
         formTipoComprobante = "X"; formCondicionIva = "CF"; formCondicionPago = "EFECTIVO";
         formConcepto = 1; formConceptoServDesde = null; formConceptoServHasta = null;
-        formArcaAccountId = null; // multi-sociedad: se define al pasar a factura (EnsureDefaultArcaAccount)
+        formArcaAccountId = null;
+        EnsureDefaultArcaAccount(); // multi-sociedad: preseleccionar el negocio (PALANICA HERMANOS SRL) de entrada
         formMapeoLink = ""; formGuardarMapeoEnCliente = false;
         formItems = new(); cotizacion = null;
         addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
@@ -5621,6 +5622,8 @@
             var todas = await Api.GetArcaWebserviceAccountsAsync();
             arcaAccounts = (todas ?? new()).Where(a => a.IsActive)
                 .OrderBy(a => a.Alias ?? a.Cuit).ThenBy(a => a.Id).ToList();
+            // Si el modal ya está abierto sin empresa elegida, preseleccionar el negocio ahora que cargaron.
+            if (showForm && !formArcaAccountId.HasValue) EnsureDefaultArcaAccount();
         }
         catch { arcaAccounts = new(); }
     }
