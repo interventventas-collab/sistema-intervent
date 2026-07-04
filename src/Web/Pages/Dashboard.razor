@@ -388,13 +388,17 @@
             </div>
             <span class="mac-card-eyebrow" style="color:#3f3f46;">Ventas del mes</span>
         </div>
+        <button class="dash-eye-btn" @onclick="@(() => ToggleSaldoVisible("ventas-mes"))" @onclick:stopPropagation="true"
+                title="@(SaldoOculto("ventas-mes") ? "Mostrar por 5 min" : "Ocultar")">
+            @(SaldoOculto("ventas-mes") ? "🙈" : "👁")
+        </button>
         @if (salesSummary is null)
         {
             <div class="mac-card-sub">Cargando…</div>
         }
         else
         {
-            <div class="mac-card-bignum">$@FormatMoney(salesSummary.MonthlySalesTotal)</div>
+            <div class="mac-card-bignum">@(SaldoOculto("ventas-mes") ? "$ ••••••" : $"${FormatMoney(salesSummary.MonthlySalesTotal)}")</div>
             <div class="mac-card-sub">@salesSummary.MonthlySalesCount comprobante@(salesSummary.MonthlySalesCount == 1 ? "" : "s") en @salesSummary.PeriodStart.ToString("MMMM", new System.Globalization.CultureInfo("es-AR"))</div>
         }
     </div>
@@ -408,13 +412,17 @@
             </div>
             <span class="mac-card-eyebrow" style="color:#3f3f46;">Saldos de clientes</span>
         </div>
+        <button class="dash-eye-btn" @onclick="@(() => ToggleSaldoVisible("saldos-clientes"))" @onclick:stopPropagation="true"
+                title="@(SaldoOculto("saldos-clientes") ? "Mostrar por 5 min" : "Ocultar")">
+            @(SaldoOculto("saldos-clientes") ? "🙈" : "👁")
+        </button>
         @if (salesSummary is null)
         {
             <div class="mac-card-sub">Cargando…</div>
         }
         else
         {
-            <div class="mac-card-bignum">$@FormatMoney(salesSummary.ClientBalanceTotal)</div>
+            <div class="mac-card-bignum">@(SaldoOculto("saldos-clientes") ? "$ ••••••" : $"${FormatMoney(salesSummary.ClientBalanceTotal)}")</div>
             <div class="mac-card-sub">@salesSummary.ClientsWithBalance cliente@(salesSummary.ClientsWithBalance == 1 ? "" : "s") · @salesSummary.ClientBalanceCount sin pagar</div>
         }
     </div>
@@ -723,9 +731,10 @@
     .dash-chip-purple { background: #f3e8ff; color: #6b21a8; border-color: #d8b4fe; }
 
     /* 2026-07-04: ojito para ocultar el saldo. Absolute para no chocar con el "..." del
-       CustomCardOverlay (que está en top:10 right:10). Queda a la izquierda de ese botón. */
-    .dash-eye-btn { position:absolute; top:10px; right:44px; background:transparent; border:none; cursor:pointer; padding:2px 6px; border-radius:6px; font-size:1rem; line-height:1; opacity:0.7; transition:opacity 0.15s, background 0.15s; z-index:5; }
-    .dash-eye-btn:hover { opacity:1; background:rgba(0,0,0,0.05); }
+       CustomCardOverlay (que está en top:10 right:10). Queda a la izquierda de ese botón.
+       v2: emoji más grande (1.6rem) para que el 🙈 se vea claro. */
+    .dash-eye-btn { position:absolute; top:6px; right:44px; background:transparent; border:none; cursor:pointer; padding:2px 6px; border-radius:6px; font-size:1.6rem; line-height:1; opacity:0.85; transition:opacity 0.15s, background 0.15s; z-index:5; }
+    .dash-eye-btn:hover { opacity:1; background:rgba(0,0,0,0.05); transform:scale(1.05); }
 
     /* 2026-07-04: filtro de empleados visibles en "Equipo trabajando ahora".
        Panel flotante con checkbox por empleado. */
@@ -1233,21 +1242,24 @@
         _ = LoadUiPrefsAsync();
     }
 
-    // ══ 2026-07-04: preferencias de UI persistidas en localStorage ══════════════════════
-    // Saldos ocultos: set con claves ("galicia" | "shell") — cuando la clave está, muestra ••••••
-    private HashSet<string> saldosOcultos = new();
+    // ══ 2026-07-04 v2: comportamiento del ojito ═════════════════════════════════════════
+    // Los saldos SIEMPRE arrancan OCULTOS al abrir el dashboard (por seguridad, pedido Osmar).
+    // Al tocar el ojito para mostrar → visible por 5 minutos → se vuelve a ocultar solo.
+    // NO se persiste en localStorage: si volves a entrar, arranca tapado siempre.
+    // Claves conocidas: "shell" | "galicia" | "ventas-mes" | "saldos-clientes".
+    private HashSet<string> saldosMostrados = new();
+    private Dictionary<string, System.Threading.Timer> saldoAutoHideTimers = new();
+    private const int SaldoAutoHideSeconds = 300; // 5 minutos
+
     // Empleados ocultos del bloque "Equipo trabajando ahora": set de NomEmpleadoId.
+    // ESTO SI persiste en localStorage porque es una preferencia (no es sensible).
     private HashSet<int> empleadosOcultos = new();
-    // Panel del filtro de empleados abierto/cerrado.
     private bool empFilterOpen = false;
 
     private async Task LoadUiPrefsAsync()
     {
         try
         {
-            var so = await JS.InvokeAsync<string?>("localStorage.getItem", "dash-saldos-ocultos");
-            if (!string.IsNullOrWhiteSpace(so))
-                saldosOcultos = so.Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
             var eo = await JS.InvokeAsync<string?>("localStorage.getItem", "dash-empleados-ocultos");
             if (!string.IsNullOrWhiteSpace(eo))
                 empleadosOcultos = eo.Split(',', StringSplitOptions.RemoveEmptyEntries)
@@ -1257,22 +1269,49 @@
         catch { /* localStorage puede fallar en SSR o navegación temprana; no es crítico */ }
     }
 
-    private async Task PersistirSaldosOcultosAsync()
-    {
-        try { await JS.InvokeVoidAsync("localStorage.setItem", "dash-saldos-ocultos", string.Join(",", saldosOcultos)); }
-        catch { }
-    }
     private async Task PersistirEmpleadosOcultosAsync()
     {
         try { await JS.InvokeVoidAsync("localStorage.setItem", "dash-empleados-ocultos", string.Join(",", empleadosOcultos)); }
         catch { }
     }
 
-    private bool SaldoOculto(string key) => saldosOcultos.Contains(key);
-    private async Task ToggleSaldoVisible(string key)
+    // Oculto = NO está en el set de mostrados (default).
+    private bool SaldoOculto(string key) => !saldosMostrados.Contains(key);
+
+    // Toggle: si oculto → mostrar y armar timer 5min. Si mostrado → ocultar y cancelar timer.
+    private void ToggleSaldoVisible(string key)
     {
-        if (!saldosOcultos.Add(key)) saldosOcultos.Remove(key);
-        await PersistirSaldosOcultosAsync();
+        if (saldosMostrados.Contains(key))
+        {
+            saldosMostrados.Remove(key);
+            CancelarAutoHideTimer(key);
+        }
+        else
+        {
+            saldosMostrados.Add(key);
+            ArmarAutoHideTimer(key);
+        }
+    }
+
+    private void ArmarAutoHideTimer(string key)
+    {
+        CancelarAutoHideTimer(key);
+        var t = new System.Threading.Timer(_ => InvokeAsync(() =>
+        {
+            saldosMostrados.Remove(key);
+            CancelarAutoHideTimer(key);
+            StateHasChanged();
+        }), null, TimeSpan.FromSeconds(SaldoAutoHideSeconds), Timeout.InfiniteTimeSpan);
+        saldoAutoHideTimers[key] = t;
+    }
+
+    private void CancelarAutoHideTimer(string key)
+    {
+        if (saldoAutoHideTimers.TryGetValue(key, out var t))
+        {
+            t.Dispose();
+            saldoAutoHideTimers.Remove(key);
+        }
     }
 
     private bool EmpVisible(int id) => !empleadosOcultos.Contains(id);
@@ -1529,6 +1568,9 @@
         alqResumenTimer?.Dispose();
         equipoTimer?.Dispose();
         resumenDiaTimer?.Dispose();
+        // 2026-07-04: liberar timers del auto-hide de saldos (5min)
+        foreach (var t in saldoAutoHideTimers.Values) t.Dispose();
+        saldoAutoHideTimers.Clear();
         Company.OnChange -= OnCompanyChanged;
     }
 
