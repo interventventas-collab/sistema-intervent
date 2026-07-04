@@ -92,7 +92,23 @@ public class CafeCobranzasController : ControllerBase
         // Si hay varias cajas distintas → "MIXTO". Si no hay medios → null.
         string? FormaPago = null,
         // Detalle textual para el tooltip cuando es MIXTO (ej: "Efectivo $50.000 · Transferencia $238.000").
-        string? FormaPagoDetalle = null);
+        string? FormaPagoDetalle = null,
+        // 2026-07-03: chips ricos de comprobantes (numero interno + numero de factura ARCA cuando aplica).
+        List<CobranzaComprobanteChip>? ComprobantesInfo = null,
+        // 2026-07-03: trazabilidad — quien creo la cobranza (desde audit).
+        string? CargoPorNombre = null,
+        // Si vino de una pendiente cargada por repartidor, quien la cargo + cuando + quien y cuando aprobo.
+        string? RepartidorNombre = null,
+        DateTime? RepartidorCobroAt = null,
+        string? AproboPorNombre = null,
+        DateTime? AproboAt = null);
+
+    public record CobranzaComprobanteChip(
+        string Numero,               // ej "CAFE-2026-0888"
+        string? TipoComprobante,     // FA/FB/FC/X/PRO/NCA/NCB/NCC
+        int? ArcaPtoVta,             // ej 2
+        int? ArcaCbteNro             // ej 3421
+    );
 
     public record CobranzaDetalleDto(
         int Id, string Numero, DateTime Fecha, int? ClienteId, string ClienteNombre,
@@ -297,6 +313,16 @@ public class CafeCobranzasController : ControllerBase
                     .Where(cc => cc.Venta != null)
                     .Select(cc => cc.Venta!.Numero)
                     .ToList(),
+                // 2026-07-03: info rica de cada comprobante (numero interno + factura ARCA cuando aplica).
+                ComprobantesRich = c.Comprobantes
+                    .Where(cc => cc.Venta != null)
+                    .Select(cc => new {
+                        Numero = cc.Venta!.Numero,
+                        TipoComprobante = cc.Venta.TipoComprobante,
+                        ArcaPtoVta = cc.Venta.ArcaPtoVta,
+                        ArcaCbteNro = cc.Venta.ArcaCbteNro
+                    })
+                    .ToList(),
                 // 2026-06-22: medios para calcular forma de pago resumida.
                 Medios = c.Medios.Select(m => new {
                     Tipo = m.Caja != null ? m.Caja.Tipo : "OTRO",
@@ -306,6 +332,33 @@ public class CafeCobranzasController : ControllerBase
                 c.Total, c.Retenciones, c.Estado
             })
             .ToListAsync();
+
+        // 2026-07-03: trazabilidad — quien cargo/aprobo cada cobranza.
+        // Dos fuentes: (a) AuditLogs para "CargoPor" (siempre presente),
+        //             (b) Cafe_CobranzasPendientes para el par repartidor+admin cuando la cobranza vino del flujo mobile.
+        var cobIds = rows.Select(r => r.Id).ToList();
+        var cobIdStr = cobIds.Select(id => id.ToString()).ToList();
+        var auditCreadas = await _db.AuditLogs
+            .Where(a => a.EntityType == "CafeCobranza" && a.Action == "CREATE" && cobIdStr.Contains(a.EntityId))
+            .GroupBy(a => a.EntityId)
+            .Select(g => new { EntityId = g.Key, UserName = g.OrderBy(a => a.CreatedAt).Select(a => a.UserName).FirstOrDefault() })
+            .ToListAsync();
+        var creadaMap = auditCreadas.ToDictionary(x => x.EntityId, x => x.UserName);
+
+        var pendientesLink = await _db.CafeCobranzasPendientes
+            .Include(p => p.Repartidor)
+            .Where(p => p.CobranzaCreadaId != null && cobIds.Contains(p.CobranzaCreadaId!.Value))
+            .Select(p => new {
+                CobranzaId = p.CobranzaCreadaId!.Value,
+                RepartidorNombre = p.Repartidor != null ? p.Repartidor.Nombre : null,
+                p.CreatedAt,
+                p.RevisadaPor,
+                p.RevisadaAt
+            })
+            .ToListAsync();
+        var pendMap = pendientesLink
+            .GroupBy(x => x.CobranzaId)
+            .ToDictionary(g => g.Key, g => g.OrderBy(x => x.CreatedAt).First());
 
         var list = rows.Select(r =>
         {
@@ -326,6 +379,19 @@ public class CafeCobranzasController : ControllerBase
                         $"{TipoToLabel(m.Tipo)} ${m.Importe:N0}"));
                 }
             }
+            // Chips ricos: agrupamos por numero de venta y quedamos con el TipoComprobante mas informativo.
+            var chips = r.ComprobantesRich
+                .GroupBy(x => x.Numero)
+                .Select(g => {
+                    var first = g.First();
+                    return new CobranzaComprobanteChip(first.Numero, first.TipoComprobante, first.ArcaPtoVta, first.ArcaCbteNro);
+                })
+                .OrderBy(x => x.Numero)
+                .ToList();
+
+            creadaMap.TryGetValue(r.Id.ToString(), out var cargoPor);
+            pendMap.TryGetValue(r.Id, out var pend);
+
             return new CobranzaListDto(
                 r.Id, r.Numero, r.Fecha, r.ClienteId,
                 r.ClienteNombreReal ?? (!string.IsNullOrWhiteSpace(r.VentaSnapshot) ? r.VentaSnapshot + " (ocasional)" : "—"),
@@ -335,7 +401,13 @@ public class CafeCobranzasController : ControllerBase
                 string.IsNullOrWhiteSpace(r.ClienteFantasia) ? null : r.ClienteFantasia,
                 string.IsNullOrWhiteSpace(r.ClienteEntrega) ? null : r.ClienteEntrega,
                 formaPago,
-                formaDetalle);
+                formaDetalle,
+                chips,
+                cargoPor,
+                pend?.RepartidorNombre,
+                pend?.CreatedAt,
+                pend?.RevisadaPor,
+                pend?.RevisadaAt);
         }).ToList();
         return Ok(list);
     }
