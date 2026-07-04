@@ -487,6 +487,21 @@ public class CobranzaListDto
     public string? ClienteEntrega { get; set; }
     public string? FormaPago { get; set; }
     public string? FormaPagoDetalle { get; set; }
+    // 2026-07-03: chips ricos + trazabilidad.
+    public List<CobranzaComprobanteChip>? ComprobantesInfo { get; set; }
+    public string? CargoPorNombre { get; set; }
+    public string? RepartidorNombre { get; set; }
+    public DateTime? RepartidorCobroAt { get; set; }
+    public string? AproboPorNombre { get; set; }
+    public DateTime? AproboAt { get; set; }
+}
+
+public class CobranzaComprobanteChip
+{
+    public string Numero { get; set; } = "";
+    public string? TipoComprobante { get; set; }
+    public int? ArcaPtoVta { get; set; }
+    public int? ArcaCbteNro { get; set; }
 }
 
 public class CobranzaDetalleDto

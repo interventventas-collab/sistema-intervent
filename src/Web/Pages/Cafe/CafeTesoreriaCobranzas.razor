@@ -87,71 +87,129 @@
         }
         else
         {
-            <table class="table table-compact">
-                <thead>
-                    <tr>
-                        <th>Número</th>
-                        <th>Fecha</th>
-                        <th>Cliente</th>
-                        <th style="text-align:right;">Retenciones</th>
-                        <th style="text-align:right;">Total</th>
-                        <th>F. Pago</th>
-                        <th>Estado</th>
-                        <th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var c in cobranzasFiltradas)
-                    {
-                        <tr style="@(c.Estado == "ANULADA" ? "opacity:0.5; text-decoration:line-through;" : "")">
-                            <td><b>@c.Numero</b></td>
-                            <td>@c.Fecha.ToArTime().ToString("dd/MM/yyyy")</td>
-                            <td>
-                                @* 2026-06-22: celda enriquecida estilo "ficha". Nombre + #cod en una linea,
-                                   Razón Social/Fantasía en otra, Domicilio entrega en otra, chips de comprobantes abajo. *@
-                                <div style="font-weight:600;">
-                                    @c.ClienteNombre
-                                    @if (c.ClienteCodigo.HasValue)
+            @* 2026-07-03: rediseño card-row para maximizar trazabilidad y usar mejor el espacio.
+               5 columnas: [Nº+Fecha] · [Cliente+Chips CAFE+Factura] · [Trazabilidad quien cargó/aprobó] · [Total+F.Pago] · [Estado+Acciones] *@
+            <div style="display:flex; flex-direction:column; gap:.5rem;">
+                @foreach (var c in cobranzasFiltradas)
+                {
+                    var esAnulada = c.Estado == "ANULADA";
+                    <div style="display:grid; grid-template-columns:130px 1fr 240px 160px 150px; gap:.9rem; align-items:start; padding:.75rem 1rem; background:#fff; border:1px solid #e5e7eb; border-left:4px solid @(esAnulada ? "#dc2626" : "#16a34a"); border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,.03); @(esAnulada ? "opacity:.55;" : "")">
+
+                        @* --- Col 1: número + fecha --- *@
+                        <div>
+                            <div style="font-weight:700; font-family:monospace; color:#111827; font-size:.95rem; @(esAnulada ? "text-decoration:line-through;" : "")">@c.Numero</div>
+                            <div style="color:#6b7280; font-size:.78rem; margin-top:.15rem;">📅 @c.Fecha.ToArTime().ToString("dd/MM/yyyy")</div>
+                        </div>
+
+                        @* --- Col 2: cliente + fantasía + entrega + chips de comprobantes --- *@
+                        <div style="min-width:0;">
+                            <div style="font-weight:600; color:#111827;">
+                                @c.ClienteNombre
+                                @if (c.ClienteCodigo.HasValue)
+                                {
+                                    <span style="color:#9ca3af; font-weight:400; margin-left:.3rem; font-size:.85em;">· #@c.ClienteCodigo</span>
+                                }
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(c.ClienteFantasia))
+                            {
+                                <div style="font-size:0.75rem; color:#6b7280;" title="Razón social / Nombre fantasía">🏷️ @c.ClienteFantasia</div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(c.ClienteEntrega))
+                            {
+                                <div style="font-size:0.75rem; color:#6b7280;" title="Dirección de entrega">📍 @c.ClienteEntrega</div>
+                            }
+                            @* 2026-07-03: chips ricos por venta — código interno + factura ARCA cuando aplica. *@
+                            @if (c.ComprobantesInfo is { Count: > 0 })
+                            {
+                                <div style="display:flex; flex-wrap:wrap; gap:.3rem; margin-top:.4rem;">
+                                    @foreach (var ci in c.ComprobantesInfo)
                                     {
-                                        <span style="color:#9ca3af; font-weight:400; margin-left:.3rem;">· #@c.ClienteCodigo</span>
+                                        <span style="display:inline-flex; align-items:center; gap:.2rem; font-size:0.7rem; padding:.1rem .4rem; background:#f3f4f6; color:#374151; border:1px solid #d1d5db; border-radius:4px; font-family:monospace;" title="Nº comprobante interno">
+                                            <span>📄</span><span>@ci.Numero</span>
+                                        </span>
+                                        @if (EsFacturaArca(ci) && ci.ArcaPtoVta.HasValue && ci.ArcaCbteNro.HasValue)
+                                        {
+                                            <span style="display:inline-flex; align-items:center; gap:.2rem; font-size:0.7rem; padding:.1rem .4rem; background:#f5f3ff; color:#5b21b6; border:1px solid #ddd6fe; border-radius:4px; font-family:monospace; font-weight:600;" title="Factura autorizada por ARCA">
+                                                <span>🧾</span><span>@FacturaLabel(ci)</span>
+                                            </span>
+                                        }
                                     }
                                 </div>
-                                @if (!string.IsNullOrWhiteSpace(c.ClienteFantasia))
+                            }
+                            else if (c.Comprobantes is { Count: > 0 })
+                            {
+                                @* fallback backward-compat cuando no vino ComprobantesInfo (API vieja) *@
+                                <div style="display:flex; flex-wrap:wrap; gap:.2rem; margin-top:.25rem;">
+                                    @foreach (var nro in c.Comprobantes)
+                                    {
+                                        <span style="font-size:0.7rem; padding:.05rem .35rem; background:#eef2ff; color:#3730a3; border:1px solid #c7d2fe; border-radius:4px; font-family:monospace;">@nro</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+
+                        @* --- Col 3: trazabilidad quien cobró/aprobó --- *@
+                        <div style="font-size:.75rem; display:flex; flex-direction:column; gap:.3rem;">
+                            @if (!string.IsNullOrWhiteSpace(c.RepartidorNombre))
+                            {
+                                <div style="background:#fef3c7; border:1px solid #fde68a; border-radius:4px; padding:.25rem .4rem;" title="Cobrada en la calle por el repartidor">
+                                    <div style="color:#92400e; font-weight:600;">🚚 Cobró @c.RepartidorNombre</div>
+                                    @if (c.RepartidorCobroAt.HasValue)
+                                    {
+                                        <div style="color:#78350f; font-size:.7rem;">@FormatearFechaHora(c.RepartidorCobroAt.Value)</div>
+                                    }
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(c.AproboPorNombre))
                                 {
-                                    <div style="font-size:0.75rem; color:#6b7280;" title="Razón social / Nombre fantasía">🏷️ @c.ClienteFantasia</div>
-                                }
-                                @if (!string.IsNullOrWhiteSpace(c.ClienteEntrega))
-                                {
-                                    <div style="font-size:0.75rem; color:#6b7280;" title="Dirección de entrega">📍 @c.ClienteEntrega</div>
-                                }
-                                @* 2026-06-19: chips con los comprobantes imputados. Permite ver de un vistazo
-                                   que ventas pagó esa cobranza, especialmente útil cuando son 2+. *@
-                                @if (c.Comprobantes is { Count: > 0 })
-                                {
-                                    <div style="display:flex; flex-wrap:wrap; gap:.2rem; margin-top:.25rem;">
-                                        @foreach (var nro in c.Comprobantes)
+                                    var deltaTxt = (c.RepartidorCobroAt.HasValue && c.AproboAt.HasValue) ? DeltaHoras(c.RepartidorCobroAt.Value, c.AproboAt.Value) : null;
+                                    <div style="background:#dcfce7; border:1px solid #86efac; border-radius:4px; padding:.25rem .4rem;" title="Aprobada en el sistema por admin">
+                                        <div style="color:#166534; font-weight:600;">✓ Aprobó @c.AproboPorNombre</div>
+                                        @if (c.AproboAt.HasValue)
                                         {
-                                            <span style="font-size:0.7rem; padding:.05rem .35rem; background:#eef2ff; color:#3730a3; border:1px solid #c7d2fe; border-radius:4px; font-family:monospace;">@nro</span>
+                                            <div style="color:#14532d; font-size:.7rem;">
+                                                @FormatearFechaHora(c.AproboAt.Value)
+                                                @if (!string.IsNullOrWhiteSpace(deltaTxt))
+                                                {
+                                                    <span style="color:#065f46;"> · @deltaTxt</span>
+                                                }
+                                            </div>
                                         }
                                     </div>
                                 }
-                            </td>
-                            <td style="text-align:right;">@(c.Retenciones > 0 ? $"${c.Retenciones:N2}" : "—")</td>
-                            <td style="text-align:right; font-weight:600;">$@c.Total.ToString("N2")</td>
-                            <td>
-                                @* 2026-06-22: chip con forma de pago. Si fue MIXTO, tooltip muestra el desglose. *@
-                                @if (!string.IsNullOrWhiteSpace(c.FormaPago))
-                                {
-                                    var (bg, fg, br) = FormaPagoColor(c.FormaPago);
-                                    <span title="@(c.FormaPagoDetalle ?? c.FormaPago)" style="font-size:0.72rem; padding:.1rem .45rem; background:@bg; color:@fg; border:1px solid @br; border-radius:4px; white-space:nowrap;">@c.FormaPago</span>
-                                }
-                                else
-                                {
-                                    <span style="color:#9ca3af;">—</span>
-                                }
-                            </td>
-                            <td><span class="badge @(c.Estado == "VIGENTE" ? "badge-success" : "badge-danger")">@c.Estado</span></td>
-                            <td>
+                            }
+                            else if (!string.IsNullOrWhiteSpace(c.CargoPorNombre))
+                            {
+                                <div style="background:#e0e7ff; border:1px solid #c7d2fe; border-radius:4px; padding:.25rem .4rem;" title="Cargada manualmente desde el sistema">
+                                    <div style="color:#3730a3; font-weight:600;">✎ Cargó @c.CargoPorNombre</div>
+                                    <div style="color:#312e81; font-size:.7rem;">admin</div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div style="color:#9ca3af; font-style:italic;">— sin trazabilidad —</div>
+                            }
+                        </div>
+
+                        @* --- Col 4: total + forma de pago + retenciones --- *@
+                        <div style="text-align:right;">
+                            <div style="font-weight:700; color:#16a34a; font-size:1.05rem;">$@c.Total.ToString("N2")</div>
+                            @if (!string.IsNullOrWhiteSpace(c.FormaPago))
+                            {
+                                var (bg, fg, br) = FormaPagoColor(c.FormaPago);
+                                <div style="margin-top:.25rem;">
+                                    <span title="@(c.FormaPagoDetalle ?? c.FormaPago)" style="display:inline-block; font-size:0.7rem; padding:.1rem .45rem; background:@bg; color:@fg; border:1px solid @br; border-radius:4px; white-space:nowrap;">@c.FormaPago</span>
+                                </div>
+                            }
+                            @if (c.Retenciones > 0)
+                            {
+                                <div style="margin-top:.2rem; font-size:.7rem; color:#6b7280;">Ret: $@c.Retenciones.ToString("N2")</div>
+                            }
+                        </div>
+
+                        @* --- Col 5: estado + acciones --- *@
+                        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:.4rem;">
+                            <span class="badge @(c.Estado == "VIGENTE" ? "badge-success" : "badge-danger")">@c.Estado</span>
+                            <div style="display:flex; gap:.15rem; flex-wrap:wrap; justify-content:flex-end;">
                                 <a class="btn-icon" href="@Api.GetCobranzaPdfUrl(c.Id)" target="_blank" title="Imprimir recibo PDF">📄</a>
                                 <button class="btn-icon" @onclick="() => AbrirAdjuntos(c)" title="Adjuntos (comprobante de retención, transferencia)">📎</button>
                                 @if (c.Estado == "VIGENTE")
@@ -163,11 +221,11 @@
                                 {
                                     <button class="btn-icon" @onclick="() => AbrirEliminar(c)" title="Eliminar definitivamente (requiere clave)" style="color:#b91c1c;">🗑</button>
                                 }
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
             @* Totales del filtro actual *@
             <div style="background:#f9fafb; border-top:1px solid #e5e7eb; padding:0.6rem 1rem; display:flex; gap:1rem; flex-wrap:wrap; font-size:0.85rem; color:#4b5563;">
                 <div>📊 <strong>@cobranzasFiltradas.Count</strong> cobranza(s)</div>
@@ -857,6 +915,42 @@
         "MIXTO" => ("#f3e8ff", "#6b21a8", "#d8b4fe"),
         _ => ("#f3f4f6", "#374151", "#d1d5db")
     };
+
+    // 2026-07-03: chip factura ARCA solo si tipo es FA/FB/FC (Factura A/B/C).
+    // NC (Nota de Crédito) también sale por ARCA pero visualmente ya se distingue por el color rojo de la venta.
+    private static bool EsFacturaArca(CobranzaComprobanteChip ci)
+    {
+        var t = (ci.TipoComprobante ?? "").Trim().ToUpperInvariant();
+        return t == "FA" || t == "FB" || t == "FC";
+    }
+
+    // Formato: "FA A 0002-00003421" — el usuario está acostumbrado a este formato de comprobante ARCA.
+    private static string FacturaLabel(CobranzaComprobanteChip ci)
+    {
+        var t = (ci.TipoComprobante ?? "").Trim().ToUpperInvariant();
+        var letra = t switch { "FA" => "A", "FB" => "B", "FC" => "C", _ => "?" };
+        return $"F{letra} {ci.ArcaPtoVta:D4}-{ci.ArcaCbteNro:D8}";
+    }
+
+    // 2026-07-03: fecha+hora corta en horario ARG. Si es hoy, mostramos "hoy HH:mm".
+    private static string FormatearFechaHora(DateTime utc)
+    {
+        var ar = utc.ToArTime();
+        var hoyAr = DateTime.UtcNow.ToArTime().Date;
+        if (ar.Date == hoyAr) return $"hoy {ar:HH:mm}";
+        if (ar.Date == hoyAr.AddDays(-1)) return $"ayer {ar:HH:mm}";
+        return ar.ToString("dd/MM HH:mm");
+    }
+
+    // 2026-07-03: delta entre carga del repartidor y aprobación del admin.
+    // Ej: "+14h", "+2d", "+3m". Ayuda a detectar aprobaciones muy demoradas.
+    private static string DeltaHoras(DateTime desde, DateTime hasta)
+    {
+        var diff = hasta - desde;
+        if (diff.TotalMinutes < 60) return $"+{(int)diff.TotalMinutes}m";
+        if (diff.TotalHours < 48) return $"+{(int)diff.TotalHours}h";
+        return $"+{(int)diff.TotalDays}d";
+    }
 
     private List<CobranzaListDto>? cobranzas;
     private bool loading = true;
