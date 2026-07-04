@@ -159,6 +159,16 @@ public class MeliWebhookController : ControllerBase
                                 }
                                 ok = true;
                                 break;
+                            case "shipments":
+                                {
+                                    // 2026-07-04: al toque de que el chofer marca entregado en la app oficial de
+                                    // Flex (o cambia cualquier estado del envio), MeLi nos avisa por aca y
+                                    // re-sincronizamos ese envio para reflejarlo sin esperar al refresh periodico.
+                                    var shipmentSvc = sp.GetRequiredService<MeliShipmentService>();
+                                    await HandleShipmentWebhookAsync(shipmentSvc, resource, bgLogger);
+                                    ok = true;
+                                    break;
+                                }
                             default:
                                 bgLogger.LogInformation("[MeLi webhook] topic ignorado: {Topic} {Resource}", topic, resource);
                                 ok = true;
@@ -252,6 +262,33 @@ public class MeliWebhookController : ControllerBase
                 logger.LogWarning(ex, "[MeLi webhook] push stock post-orden fallo (no fatal)");
             }
         }
+    }
+
+    /// <summary>Handler para topic shipments: extrae el shipment_id del resource y re-sincroniza ese envio.
+    /// Es la base del "reparto en vivo": cuando el chofer marca entregado en la app oficial de Flex,
+    /// MeLi dispara este webhook y actualizamos el MeliShipment local (status/substatus/DateDelivered)
+    /// al instante, en vez de esperar la barrida periodica. Reusa SyncSingleShipmentAsync (aditivo).</summary>
+    private static async Task HandleShipmentWebhookAsync(
+        MeliShipmentService shipmentSvc,
+        string? resource,
+        ILogger<MeliWebhookController> logger)
+    {
+        if (string.IsNullOrEmpty(resource))
+        {
+            logger.LogWarning("[MeLi webhook] shipments sin resource");
+            return;
+        }
+
+        // resource = "/shipments/47446540758" → extraer el id final.
+        var parts = resource.Trim('/').Split('/');
+        if (parts.Length < 2 || !long.TryParse(parts[parts.Length - 1], out var shipmentId))
+        {
+            logger.LogWarning("[MeLi webhook] shipments resource invalido: {Resource}", resource);
+            return;
+        }
+
+        var ok = await shipmentSvc.SyncSingleShipmentAsync(shipmentId);
+        logger.LogInformation("[MeLi webhook] shipment {ShipmentId} re-sincronizado (ok={Ok})", shipmentId, ok);
     }
 
     private static string Trim(string s, int max) => string.IsNullOrEmpty(s) ? s : (s.Length > max ? s.Substring(0, max) : s);
