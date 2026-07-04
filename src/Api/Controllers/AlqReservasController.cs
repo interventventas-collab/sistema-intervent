@@ -287,6 +287,7 @@ public class AlqReservasController : ControllerBase
             MontoTotal = total,
             Estado = estado,
             Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim(),
+            FormaPago = string.IsNullOrWhiteSpace(req.FormaPago) ? null : req.FormaPago.Trim(),
             // ARCA (2026-07-04): configuración de facturación (la emisión es aparte, por botón).
             TipoComprobante = NormTipoComprobante(req.TipoComprobante),
             CondicionIva = NormCondIva(req.CondicionIva),
@@ -347,6 +348,7 @@ public class AlqReservasController : ControllerBase
         if (req.Descuento.HasValue) reserva.Descuento = Math.Max(0m, req.Descuento.Value);
         if (req.Sena.HasValue) reserva.Sena = Math.Max(0m, req.Sena.Value);
         if (req.Notas is not null) reserva.Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim();
+        if (req.FormaPago is not null) reserva.FormaPago = string.IsNullOrWhiteSpace(req.FormaPago) ? null : req.FormaPago.Trim();
         // ARCA (2026-07-04): configuración de facturación. No se toca si la reserva YA fue autorizada (tiene CAE).
         if (reserva.ArcaEstado != "autorizado")
         {
@@ -583,7 +585,7 @@ public class AlqReservasController : ControllerBase
         r.TipoComprobante, r.CondicionIva, r.Concepto,
         r.ArcaEstado, r.ArcaCae, r.ArcaCaeVto, r.ArcaPtoVta,
         r.ArcaWebserviceAccountId, r.ArcaCbteNro, r.ArcaCbteTipoNum,
-        r.ArcaError, r.ArcaImpTotal);
+        r.ArcaError, r.ArcaImpTotal, r.FormaPago);
 
     private static string NormTipoComprobante(string? t)
     {

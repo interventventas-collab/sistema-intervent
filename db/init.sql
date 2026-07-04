@@ -3454,8 +3454,10 @@ BEGIN
     );
 END
 GO
--- Seed: deposito principal (idempotente)
-IF NOT EXISTS (SELECT 1 FROM Cafe_Depositos WHERE Nombre='Depósito Principal')
+-- Seed: deposito principal (idempotente). Solo se siembra si la tabla está VACÍA.
+-- (Antes chequeaba por Nombre='Depósito Principal', pero más abajo se renombra a '9 de Abril';
+--  en re-runs volvía a insertarlo y el rename chocaba con el UNIQUE de '9 de Abril'.)
+IF NOT EXISTS (SELECT 1 FROM Cafe_Depositos)
     INSERT INTO Cafe_Depositos (Nombre, IsDefault, Orden, Notas) VALUES ('Depósito Principal', 1, 1, 'Depósito por defecto. Todo el stock se carga aquí salvo que se elija otro.');
 GO
 
@@ -5228,6 +5230,9 @@ GO
 IF COL_LENGTH('Alq_Reservas','ArcaImpIVA') IS NULL ALTER TABLE Alq_Reservas ADD ArcaImpIVA DECIMAL(18,2) NULL;
 GO
 IF COL_LENGTH('Alq_Reservas','ArcaImpTotal') IS NULL ALTER TABLE Alq_Reservas ADD ArcaImpTotal DECIMAL(18,2) NULL;
+GO
+-- 2026-07-04: forma de pago de la reserva.
+IF COL_LENGTH('Alq_Reservas','FormaPago') IS NULL ALTER TABLE Alq_Reservas ADD FormaPago NVARCHAR(30) NULL;
 GO
 
 -- Escaneos de QR de reservas por repartidor. Asignacion estilo ventas:

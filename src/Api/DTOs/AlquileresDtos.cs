@@ -107,7 +107,8 @@ public record AlqReservaDto(
     int? ArcaCbteNro = null,
     int? ArcaCbteTipoNum = null,
     string? ArcaError = null,
-    decimal? ArcaImpTotal = null);
+    decimal? ArcaImpTotal = null,
+    string? FormaPago = null);
 
 public class CreateAlqReservaItemRequest
 {
@@ -142,6 +143,7 @@ public class CreateAlqReservaRequest
     public int? Concepto { get; set; }
     /// <summary>Certificado/CUIT con el que se factura (multi-empresa). Null = default del negocio.</summary>
     public int? ArcaWebserviceAccountId { get; set; }
+    public string? FormaPago { get; set; }
 }
 
 public class UpdateAlqReservaRequest
@@ -170,6 +172,7 @@ public class UpdateAlqReservaRequest
     public string? CondicionIva { get; set; }
     public int? Concepto { get; set; }
     public int? ArcaWebserviceAccountId { get; set; }
+    public string? FormaPago { get; set; }
 }
 
 // ===== Disponibilidad =====

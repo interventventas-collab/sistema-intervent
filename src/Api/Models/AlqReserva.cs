@@ -59,6 +59,10 @@ public class AlqReserva
     [MaxLength(1000)]
     public string? Notas { get; set; }
 
+    /// <summary>Forma de pago de la reserva (Efectivo, Transferencia, etc.). 2026-07-04.</summary>
+    [MaxLength(30)]
+    public string? FormaPago { get; set; }
+
     // ===== QR + Repartidor (2026-06-26) =====
     /// <summary>Token publico para el QR del comprobante: lleva a /alquiler/{token}.</summary>
     [MaxLength(64)]

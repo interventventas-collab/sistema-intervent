@@ -45,7 +45,7 @@ services:
       - ./db/init.sql:/init.sql
     networks:
       - aiml-net
-    entrypoint: ["sh", "-c", "/opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P \"$$SA_PASSWORD\" -C -i /init.sql"]
+    entrypoint: ["sh", "-c", "/opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P \"$$SA_PASSWORD\" -C -I -i /init.sql"]
     restart: "no"
 
   # --- Backend API (.NET 8) ---
