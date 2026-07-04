@@ -4428,8 +4428,10 @@ IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_StockMov_Auditori
 GO
 
 -- 2026-05-25: Depósito Full + LogisticType en órdenes MeLi (para descontar bien Full vs propio)
--- Renombrar Depósito Principal → 9 de Abril (era nombre genérico)
-UPDATE Cafe_Depositos SET Nombre = '9 de Abril' WHERE Nombre = 'Depósito Principal';
+-- Renombrar Depósito Principal → 9 de Abril (era nombre genérico).
+-- Solo si NO existe ya un '9 de Abril' (evita chocar con el UNIQUE si quedó un 'Depósito Principal' duplicado).
+IF NOT EXISTS (SELECT 1 FROM Cafe_Depositos WHERE Nombre = '9 de Abril')
+    UPDATE Cafe_Depositos SET Nombre = '9 de Abril' WHERE Nombre = 'Depósito Principal';
 -- Crear depósito virtual Full MeLi (solo-lectura; se sincroniza desde MeLi)
 IF NOT EXISTS (SELECT 1 FROM Cafe_Depositos WHERE Nombre = 'Full MeLi')
     INSERT INTO Cafe_Depositos (Nombre, IsDefault, IsActive, Orden) VALUES ('Full MeLi', 0, 1, 99);
