@@ -419,7 +419,10 @@ public record CafeVentaDto(
     // 2026-07-02: link de Google Maps propio de la venta (override del domicilio de entrega)
     string? MapeoLink = null,
     // 2026-07-03: con que certificado/CUIT se emitio (multi-sociedad). Null = CUIT del negocio por default.
-    int? ArcaWebserviceAccountId = null);
+    int? ArcaWebserviceAccountId = null,
+    // 2026-07-03: monto cobrado en la calle por el repartidor cuando entrego (suma de
+    // CafeCobranzasPendientes no rechazadas para esta venta). Null si no cobro.
+    decimal? CobradoEnEntrega = null);
 
 public class CafeCotizarItemRequest
 {
