@@ -79,7 +79,10 @@ public record ArcaWebserviceAccountDto(
     DateTime? ExpiresAt,
     bool IsActive,
     DateTime CreatedAt,
-    DateTime? UpdatedAt
+    DateTime? UpdatedAt,
+    // 2026-07-04: condición IVA del emisor (de ArcaEmisor por CUIT). Se usa en el front para
+    // mostrar solo los comprobantes válidos: RI → A/B, Monotributo/Exento → C.
+    string? CondicionIva = null
 );
 
 /// <summary>Body de update — solo los campos editables (no FileName ni Cuit ni FilePath).</summary>

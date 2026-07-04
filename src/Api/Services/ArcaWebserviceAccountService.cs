@@ -63,7 +63,17 @@ public class ArcaWebserviceAccountService
         var list = await _db.ArcaWebserviceAccounts
             .OrderBy(a => a.Cuit).ThenBy(a => a.Alias).ThenBy(a => a.Id)
             .ToListAsync();
-        return list.Select(Map).ToList();
+        // Condición IVA por CUIT (de la ficha de empresa emisora). Sirve para que el front
+        // muestre solo los comprobantes válidos según la empresa (RI → A/B, Monotributo/Exento → C).
+        var cuits = list.Select(a => a.Cuit).Distinct().ToList();
+        var condPorCuit = await _db.ArcaEmisores
+            .Where(e => cuits.Contains(e.Cuit))
+            .ToDictionaryAsync(e => e.Cuit, e => e.CondicionIva);
+        return list.Select(a =>
+        {
+            var dto = Map(a);
+            return condPorCuit.TryGetValue(a.Cuit, out var ci) ? dto with { CondicionIva = ci } : dto;
+        }).ToList();
     }
 
     public async Task<ArcaWebserviceAccountDto?> GetByIdAsync(int id)

@@ -1037,9 +1037,17 @@
                             <select class="form-input" @bind="formTipoComprobante" @bind:after="OnTipoComprobanteChanged">
                                 <option value="X">X — Cotización / Remito interno (sin IVA)</option>
                                 <option value="PRO">📋 PRESUPUESTO — Proforma con IVA (NO descuenta stock)</option>
-                                <option value="FA">Factura A — emite por ARCA (con CAE)</option>
-                                <option value="FB">Factura B — emite por ARCA (con CAE)</option>
-                                <option value="FC">Factura C — emite por ARCA (con CAE) · Monotributo</option>
+                                @* 2026-07-04: los comprobantes se filtran según la empresa emisora elegida.
+                                   Responsable Inscripto → A/B. Monotributo/Exento → C. *@
+                                @if (EmisorEsResponsableInscripto(formArcaAccountId))
+                                {
+                                    <option value="FA">Factura A — emite por ARCA (con CAE)</option>
+                                    <option value="FB">Factura B — emite por ARCA (con CAE)</option>
+                                }
+                                else
+                                {
+                                    <option value="FC">Factura C — emite por ARCA (con CAE) · Monotributo</option>
+                                }
                             </select>
                         </div>
                         <div class="form-group" style="margin: 0;">
@@ -1103,7 +1111,7 @@
                             <div style="display: grid; grid-template-columns: 1fr; gap: 0.6rem; margin-top: 0.4rem;">
                                 <div class="form-group" style="margin: 0;">
                                     <label class="form-label" style="font-size: 0.66rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">🏢 ¿Con qué empresa facturás? <span style="color:#dc2626;">*</span></label>
-                                    <select class="form-input" @bind="formArcaAccountId">
+                                    <select class="form-input" @bind="formArcaAccountId" @bind:after="OnArcaAccountChanged">
                                         @foreach (var acc in arcaAccounts)
                                         {
                                             <option value="@acc.Id">@ArcaAccountLabel(acc)</option>
@@ -5549,6 +5557,36 @@
         var cuitFmt = acc.Cuit.Length == 11 ? $"{acc.Cuit[..2]}-{acc.Cuit[2..10]}-{acc.Cuit[10..]}" : acc.Cuit;
         var homo = acc.Environment == "homologation" ? " · PRUEBA" : "";
         return $"{nombre} — {cuitFmt} (Pto vta {acc.PtoVta}){homo}";
+    }
+
+    /// <summary>2026-07-04: true si la empresa emisora elegida es Responsable Inscripto (→ Factura A/B).
+    /// Monotributo / Exento → false (→ Factura C). Si no hay empresa elegida o no tiene condición cargada,
+    /// asumimos RI (comportamiento histórico: mostrar A/B).</summary>
+    private bool EmisorEsResponsableInscripto(int? accId)
+    {
+        if (!accId.HasValue) return true;
+        var acc = arcaAccounts.FirstOrDefault(a => a.Id == accId.Value);
+        var cond = acc?.CondicionIva;
+        if (string.IsNullOrWhiteSpace(cond)) return true;
+        return cond.Contains("inscripto", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>2026-07-04: al cambiar la empresa en "¿Con qué empresa facturás?", ajustar el tipo de
+    /// comprobante si quedó incompatible (un RI no puede emitir C; un Monotributo solo emite C).</summary>
+    private void OnArcaAccountChanged()
+    {
+        if (formTipoComprobante is not ("FA" or "FB" or "FC")) return;
+        var esRI = EmisorEsResponsableInscripto(formArcaAccountId);
+        if (esRI && formTipoComprobante == "FC")
+        {
+            formTipoComprobante = "FB";
+            OnTipoComprobanteChanged();
+        }
+        else if (!esRI && formTipoComprobante is "FA" or "FB")
+        {
+            formTipoComprobante = "FC";
+            OnTipoComprobanteChanged();
+        }
     }
 
     /// <summary>Si todavía no hay empresa emisora elegida, selecciona por default la que coincide

@@ -150,6 +150,8 @@ public class ArcaWebserviceAccountDto
     public string Environment { get; set; } = "production";
     /// <summary>Punto de venta AFIP propio de este CUIT/certificado (default 2).</summary>
     public int PtoVta { get; set; } = 2;
+    /// <summary>Condición IVA del emisor (de la ficha por CUIT). RI → A/B, Monotributo/Exento → C.</summary>
+    public string? CondicionIva { get; set; }
     public DateTime? ExpiresAt { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
