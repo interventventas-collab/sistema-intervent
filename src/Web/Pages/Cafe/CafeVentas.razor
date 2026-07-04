@@ -7841,6 +7841,9 @@
         formItems = v.Items.Select(i => new CafeCotizarItemRequest
         {
             ProductoId = i.ProductoId ?? 0,
+            // 2026-07-04: preservar el ServicioId al editar — sin esto, un ítem de Servicio quedaba
+            // como "producto 0" y salía "Producto no encontrado / $0".
+            ServicioId = i.ServicioId,
             EsConceptoLibre = i.EsConceptoLibre,
             DescripcionLibre = i.EsConceptoLibre ? i.ProductoNombre : null,
             Formato = i.Formato,

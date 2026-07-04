@@ -263,7 +263,8 @@ public class CafeVentasController : ControllerBase
             // de combos en memoria; los PDFs hacen una query puntual al generar el documento.
             i.ComboOrigenId,
             i.ComboOrigenNav?.Nombre,
-            i.ComboOrigenNav?.Sku)).ToList(),
+            i.ComboOrigenNav?.Sku,
+            i.ServicioId)).ToList(),
         v.ClienteRazonSocialSnapshot,
         v.ClienteDomicilioEntregaSnapshot,
         v.ClienteComentariosComprobante,

@@ -359,7 +359,11 @@ public record CafeVentaItemDto(
     // el agrupado igual funciona (usa "Combo" como fallback).
     int? ComboOrigenId = null,
     string? ComboOrigenNombre = null,
-    string? ComboOrigenSku = null);
+    string? ComboOrigenSku = null,
+    // 2026-07-04: si el ítem es un Servicio del catálogo (Cafe_Servicios), su Id. Se necesita
+    // para que al ver/editar la venta el ítem se muestre bien (nombre + precio) y no como
+    // "Producto no encontrado".
+    int? ServicioId = null);
 
 public record CafeVentaDto(
     int Id, string Numero, DateTime Fecha,

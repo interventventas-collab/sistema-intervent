@@ -391,6 +391,9 @@ public class CafeVentaItemDto
     public string? ComboOrigenNombre { get; set; }
     /// <summary>SKU del combo origen (puede ser null si el combo no tiene SKU).</summary>
     public string? ComboOrigenSku { get; set; }
+    /// <summary>2026-07-04: si el ítem es un Servicio del catálogo, su Id. Necesario para que al
+    /// ver/editar la venta el servicio se muestre bien (nombre + precio) y no como "Producto no encontrado".</summary>
+    public int? ServicioId { get; set; }
 }
 
 public class CafeVentaDto
