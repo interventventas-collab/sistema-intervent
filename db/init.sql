@@ -210,6 +210,33 @@ BEGIN
 END
 GO
 
+-- MpAccounts table — cuenta de Mercado Pago conectada por API oficial. Guarda el
+-- Access Token de produccion (APP_USR-...) + ultimo saldo leido. Etapa 1: solo saldo.
+-- Pedido de Osmar 2026-07-04.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='MpAccounts' AND xtype='U')
+BEGIN
+    CREATE TABLE MpAccounts (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        AccessToken NVARCHAR(MAX) NOT NULL,
+        Alias NVARCHAR(100) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        MpUserId BIGINT NULL,
+        Nickname NVARCHAR(120) NULL,
+        SiteId NVARCHAR(10) NULL,
+        LastSaldoDisponible DECIMAL(18,2) NULL,
+        LastSaldoTotal DECIMAL(18,2) NULL,
+        LastSaldoAt DATETIME2 NULL,
+        LastSyncOk BIT NOT NULL DEFAULT 0,
+        LastError NVARCHAR(500) NULL,
+        AutoSyncEnabled BIT NOT NULL DEFAULT 0,
+        AutoSyncTimes NVARCHAR(200) NULL,
+        LastAutoSyncAt DATETIME2 NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL
+    );
+END
+GO
+
 -- ArcaWebserviceAccounts table — certificados .pfx para autenticarse contra
 -- los webservices de ARCA. Cada CUIT puede tener varios certificados (distintos
 -- alias/ambientes). El archivo .pfx vive en disco bajo "Certificados ARCA/<cuit>/".

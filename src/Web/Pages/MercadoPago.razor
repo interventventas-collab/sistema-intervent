@@ -1,0 +1,231 @@
+@page "/integraciones/mercadopago"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="view-header">
+    <h2>💳 Mercado Pago — saldo</h2>
+</div>
+
+<div style="max-width: 760px;">
+
+    <p style="color:#6b7280; font-size:0.9rem; margin-bottom:1rem;">
+        Conectá tu cuenta de <strong>Mercado Pago</strong> por la conexión oficial (no hace falta ningún robot).
+        Con el <strong>Access Token</strong> el sistema lee el <strong>saldo</strong> de tu cuenta y lo muestra en el dashboard.
+        Esta es la primera etapa: de a poco vamos sumando movimientos, ventas cobradas y conciliación.
+    </p>
+
+    @if (cargando)
+    {
+        <p>Cargando…</p>
+    }
+    else
+    {
+        @* Saldo actual *@
+        @if (account is not null && account.LastSaldoDisponible.HasValue)
+        {
+            <div style="padding:1rem 1.2rem; margin-bottom:1.2rem; background:#e7f2ff; border:1px solid #b6dcff; border-radius:10px;">
+                <div style="font-size:0.8rem; color:#0b5cad;">Saldo disponible@(string.IsNullOrEmpty(account.Nickname) ? "" : $" · {account.Nickname}")</div>
+                <div style="font-size:1.6rem; font-weight:700; color:#0b5cad;">$@Fmt(account.LastSaldoDisponible)</div>
+                @if (account.LastSaldoTotal.HasValue && account.LastSaldoTotal != account.LastSaldoDisponible)
+                {
+                    <div style="font-size:0.82rem; color:#6b7280;">Total en la cuenta: $@Fmt(account.LastSaldoTotal)</div>
+                }
+                @if (account.LastSaldoAt.HasValue)
+                {
+                    <div style="font-size:0.78rem; color:#6b7280;">Actualizado: @account.LastSaldoAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                }
+            </div>
+        }
+        else if (account is not null && !string.IsNullOrEmpty(account.LastError))
+        {
+            <div style="padding:0.8rem 1rem; margin-bottom:1.2rem; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; color:#991b1b; font-size:0.86rem;">
+                <strong>Última lectura falló:</strong> @account.LastError
+            </div>
+        }
+
+        @* Cómo sacar el token (ayuda) *@
+        <details style="margin-bottom:1.2rem; background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:0.8rem 1rem;">
+            <summary style="cursor:pointer; font-weight:600; color:#374151;">¿Dónde saco el Access Token?</summary>
+            <ol style="margin:0.7rem 0 0 1.1rem; color:#4b5563; font-size:0.86rem; line-height:1.7;">
+                <li>Entrá a <strong>mercadopago.com.ar/developers</strong> con tu usuario de Mercado Pago.</li>
+                <li>Andá a <strong>"Tus integraciones"</strong> → creá una aplicación (o usá una que ya tengas).</li>
+                <li>En <strong>Credenciales de producción</strong> copiá el <strong>"Access Token"</strong> (empieza con <code>APP_USR-</code>).</li>
+                <li>Pegalo acá abajo y tocá <strong>Guardar</strong>.</li>
+            </ol>
+        </details>
+
+        @* Datos de acceso *@
+        <div class="card" style="padding:1.1rem; margin-bottom:1.2rem; border:1px solid #e5e7eb; border-radius:10px;">
+            <h3 style="margin-top:0;">Conexión</h3>
+            <div class="form-group">
+                <label>Access Token @(account?.HasToken == true ? "(dejá vacío para no cambiarlo)" : "")</label>
+                <input class="form-control" type="password" @bind="accessToken"
+                       placeholder="@(account?.HasToken == true ? "•••••••• (ya guardado)" : "APP_USR-...")" />
+            </div>
+            <div class="form-group">
+                <label>Alias (opcional)</label>
+                <input class="form-control" @bind="alias" placeholder="ej: Mercado Pago Palanica" />
+            </div>
+            <button class="btn btn-primary" @onclick="Guardar" disabled="@guardando">
+                @(guardando ? "Guardando…" : "Guardar")
+            </button>
+        </div>
+
+        @* Leer saldo ahora *@
+        <div class="card" style="padding:1.1rem; margin-bottom:1.2rem; border:1px solid #e5e7eb; border-radius:10px;">
+            <h3 style="margin-top:0;">Leer el saldo ahora</h3>
+            <p style="color:#6b7280; font-size:0.85rem;">
+                Consulta la API de Mercado Pago al instante y trae el saldo. Es rápido (unos segundos).
+            </p>
+            <button class="btn btn-primary" @onclick="LeerSaldo" disabled="@(leyendo || account?.HasToken != true)">
+                @(leyendo ? "Leyendo…" : "🔄 Leer saldo ahora")
+            </button>
+            @if (account is null)
+            {
+                <p style="color:#b45309; font-size:0.85rem; margin-top:0.6rem;">Guardá primero el Access Token.</p>
+            }
+
+            @if (!leyendo && leerResult is not null)
+            {
+                @if (leerResult.Ok)
+                {
+                    <div style="padding:0.8rem; margin-top:1rem; background:#e7f2ff; border:1px solid #b6dcff; border-radius:8px; color:#0b5cad;">
+                        <strong>✅ Saldo leído:</strong> $@Fmt(leerResult.Disponible) disponible
+                    </div>
+                }
+                else
+                {
+                    <div style="padding:0.8rem; margin-top:1rem; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; color:#991b1b;">
+                        <strong>❌ No se pudo:</strong> @leerResult.Error
+                    </div>
+                }
+            }
+        </div>
+
+        @* Automático *@
+        <div class="card" style="padding:1.1rem; border:1px solid #e5e7eb; border-radius:10px;">
+            <h3 style="margin-top:0;">Leer automático (sin apretar nada)</h3>
+            <p style="color:#6b7280; font-size:0.85rem;">
+                Prendé esto y elegí a qué horas leer el saldo solo. Horarios de Argentina.
+            </p>
+            <label style="display:flex; align-items:center; gap:0.5rem; font-weight:600; cursor:pointer;">
+                <input type="checkbox" @bind="autoEnabled" /> Activar el automático
+            </label>
+            @if (autoEnabled)
+            {
+                <div style="margin-top:0.8rem;">
+                    <div style="font-size:0.85rem; color:#374151; margin-bottom:0.3rem;">Horarios:</div>
+                    @for (int i = 0; i < horarios.Count; i++)
+                    {
+                        var idx = i;
+                        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.4rem;">
+                            <input type="time" @bind="horarios[idx]" style="padding:0.3rem 0.5rem; border:1px solid #d1d5db; border-radius:6px;" />
+                            <button class="btn btn-secondary" style="padding:0.2rem 0.6rem;" @onclick="() => horarios.RemoveAt(idx)">✕</button>
+                        </div>
+                    }
+                    <button class="btn btn-secondary" style="padding:0.3rem 0.7rem;" @onclick="() => horarios.Add(new TimeOnly(8, 0))">+ Agregar horario</button>
+                    <div style="font-size:0.78rem; color:#6b7280; margin-top:0.4rem;">Sugerencia: los mismos que el banco (ej: 08:00, 12:00, 18:00, 22:00).</div>
+                </div>
+            }
+            <div style="margin-top:1rem;">
+                <button class="btn btn-primary" @onclick="Guardar" disabled="@guardando">
+                    @(guardando ? "Guardando…" : "Guardar horarios")
+                </button>
+            </div>
+            @if (account?.AutoSyncEnabled == true && !string.IsNullOrEmpty(account.AutoSyncTimes))
+            {
+                <div style="padding:0.7rem 0.9rem; margin-top:1rem; background:#e7f2ff; border:1px solid #b6dcff; border-radius:8px; color:#0b5cad; font-size:0.85rem;">
+                    ✅ Automático <strong>activo</strong> — lee a las <strong>@account.AutoSyncTimes</strong> (hora Argentina).
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private bool cargando = true;
+    private Web.Models.MpAccountDto? account;
+    private string accessToken = "";
+    private string alias = "";
+    private bool guardando;
+    private bool autoEnabled;
+    private List<TimeOnly> horarios = new();
+
+    private bool leyendo;
+    private Web.Models.MpSincronizarResultDto? leerResult;
+
+    private static readonly System.Globalization.CultureInfo ArCulture = new("es-AR");
+    private static string Fmt(decimal? v) => v.HasValue ? v.Value.ToString("N2", ArCulture) : "0,00";
+
+    protected override async Task OnInitializedAsync() => await CargarCuenta();
+
+    private async Task CargarCuenta()
+    {
+        cargando = true;
+        try
+        {
+            account = await Api.GetMpAccountAsync();
+            if (account is not null)
+            {
+                alias = account.Alias ?? "";
+                autoEnabled = account.AutoSyncEnabled;
+                horarios = new List<TimeOnly>();
+                if (!string.IsNullOrWhiteSpace(account.AutoSyncTimes))
+                    foreach (var s in account.AutoSyncTimes.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                        if (TimeOnly.TryParseExact(s.Trim(), "HH:mm", null, System.Globalization.DateTimeStyles.None, out var t))
+                            horarios.Add(t);
+            }
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo cargar: " + ex.Message); }
+        finally { cargando = false; }
+    }
+
+    private async Task Guardar()
+    {
+        if ((account is null || !account.HasToken) && string.IsNullOrWhiteSpace(accessToken))
+        {
+            ToastService.Error("Pegá el Access Token de Mercado Pago");
+            return;
+        }
+        guardando = true;
+        try
+        {
+            var horariosLimpios = horarios.Distinct().OrderBy(t => t).Select(t => t.ToString("HH\\:mm")).ToList();
+            var req = new Web.Models.SaveMpAccountRequest
+            {
+                AccessToken = string.IsNullOrWhiteSpace(accessToken) ? null : accessToken.Trim(),
+                Alias = string.IsNullOrWhiteSpace(alias) ? null : alias.Trim(),
+                IsActive = true,
+                AutoSyncEnabled = autoEnabled,
+                AutoSyncTimes = horariosLimpios.Count > 0 ? string.Join(",", horariosLimpios) : null
+            };
+            account = await Api.SaveMpAccountAsync(req);
+            accessToken = "";
+            ToastService.Success("Datos guardados");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo guardar: " + ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private async Task LeerSaldo()
+    {
+        leerResult = null;
+        leyendo = true;
+        StateHasChanged();
+        try
+        {
+            leerResult = await Api.SincronizarMpAsync();
+            if (leerResult is not null && leerResult.Ok) await CargarCuenta();
+        }
+        catch (Exception ex)
+        {
+            leerResult = new Web.Models.MpSincronizarResultDto { Ok = false, Error = ex.Message };
+        }
+        finally
+        {
+            leyendo = false;
+            StateHasChanged();
+        }
+    }
+}

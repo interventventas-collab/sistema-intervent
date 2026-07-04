@@ -4124,6 +4124,22 @@ public class ApiClient
         return await resp.Content.ReadFromJsonAsync<Web.Models.ShellSincronizarResultDto>();
     }
 
+    // --- Mercado Pago (API oficial — saldo) ---
+    public async Task<Web.Models.MpAccountDto?> GetMpAccountAsync()
+        => await GetAsync<Web.Models.MpAccountDto>("/api/mercadopago/account");
+
+    public async Task<Web.Models.MpAccountDto?> SaveMpAccountAsync(Web.Models.SaveMpAccountRequest req)
+        => await PutAsync<Web.Models.MpAccountDto>("/api/mercadopago/account", req);
+
+    /// <summary>Lee el saldo de Mercado Pago ahora (llamada HTTP directa a la API oficial, rapida).</summary>
+    public async Task<Web.Models.MpSincronizarResultDto?> SincronizarMpAsync()
+    {
+        var resp = await _http.PostAsJsonAsync("/api/mercadopago/sincronizar", new { });
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return null; }
+        await ThrowIfErrorAsync(resp);
+        return await resp.Content.ReadFromJsonAsync<Web.Models.MpSincronizarResultDto>();
+    }
+
     private async Task<T?> GetAsync<T>(string url)
     {
         await SetAuthHeaderAsync();

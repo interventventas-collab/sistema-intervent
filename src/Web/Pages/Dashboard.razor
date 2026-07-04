@@ -379,6 +379,34 @@
         </div>
     </div>
 
+    @* Saldo Mercado Pago (API oficial — saldo disponible) — 2026-07-04 *@
+    <div class="dashboard-detail-card mac-stat-card accent-blue" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/integraciones/mercadopago")' title="Ir a Mercado Pago">
+        <div class="mac-card-header">
+            <div class="mac-card-iconbox" style="background:#009EE3;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            </div>
+            <span class="mac-card-eyebrow" style="color:#3f3f46;">Saldo Mercado Pago</span>
+        </div>
+        <button class="dash-eye-btn" @onclick="@(() => ToggleSaldoVisible("mercadopago"))" @onclick:stopPropagation="true"
+                title="@(SaldoOculto("mercadopago") ? "Mostrar saldo" : "Ocultar saldo")">
+            @(SaldoOculto("mercadopago") ? "🙈" : "👁")
+        </button>
+        @if (mpSaldo is null || !mpSaldo.LastSaldoDisponible.HasValue)
+        {
+            <div class="mac-card-bignum" style="font-size:1rem;">Conectar →</div>
+            <div class="mac-card-sub">Pegá el token para ver el saldo</div>
+        }
+        else
+        {
+            <div class="mac-card-bignum">@(SaldoOculto("mercadopago") ? "$ ••••••" : $"${FormatMoney(mpSaldo.LastSaldoDisponible.Value)}")</div>
+            <div class="mac-card-sub">saldo disponible</div>
+            @if (mpSaldo.LastSaldoAt.HasValue)
+            {
+                <div class="mac-card-sub" style="font-style:italic; margin-top:2px;">Actualizado @FormatearUltimaActualizacion(mpSaldo.LastSaldoAt.Value)</div>
+            }
+        }
+    </div>
+
     @* Ventas del mes — con mini gráfico de 12 meses navegable *@
     <div class="dashboard-detail-card mac-stat-card accent-green" style="position:relative;">
         <CustomCardOverlay CardKey="ventas-del-mes" Settings="@cardCustomSettings" />
@@ -1241,6 +1269,7 @@
     private AlqDashboardResumen? alqResumen;
     private Web.Models.SaldoBancoDto? saldoBanco;
     private Web.Models.ShellAccountDto? shellSaldo;
+    private Web.Models.MpAccountDto? mpSaldo;
     private Web.Models.FilesStatsDto? docStats;
 
     // 2026-06-25: dashboard nuevo — equipo en vivo + resumen del día
@@ -1509,6 +1538,8 @@
         }
         catch { /* idem, opcional */ }
         try { shellSaldo = await Api.GetShellAccountAsync(); }
+        catch { /* opcional */ }
+        try { mpSaldo = await Api.GetMpAccountAsync(); }
         catch { /* opcional */ }
         // 2026-07-04: historial 12 meses para el mini gráfico. Fire-and-forget.
         try
