@@ -194,7 +194,10 @@ public class DashboardController : ControllerBase
         string Estado, string? HoraEntrada, string? HoraSalida, string? Trabajado,
         decimal PorRendir, decimal Pagado, decimal LeDebo, bool TieneRepartidor,
         // 2026-06-26: desglose para mandar al admin a la pantalla de aprobación correcta.
-        decimal PorRendirVentas = 0, decimal PorRendirAlquiler = 0);
+        decimal PorRendirVentas = 0, decimal PorRendirAlquiler = 0,
+        // 2026-07-04: carga operativa del repartidor (entregas + alquileres del dia).
+        int VentasPendientes = 0, int VentasEntregadasHoy = 0,
+        int AlqEntregadosHoy = 0, int AlqRetiradosHoy = 0);
 
     // 2026-06-25: orden fijo pedido por Osmar — repartidores primero (alexis, walter,
     // benjamin, gonzalo, rodrigo), después oficina (osmar, german, gabriel, miguel).
@@ -252,6 +255,57 @@ public class DashboardController : ControllerBase
             .GroupBy(p => p.RepartidorId)
             .Select(g => new { RepartidorId = g.Key, Total = g.Sum(x => x.Importe) })
             .ToListAsync();
+        // 2026-07-04: contadores de carga por repartidor para el card del dashboard.
+        // Ventas pendientes = escaneadas via QR por el repartidor pero aun sin entregar.
+        // Ventas/Alquileres entregados-retirados HOY = fecha ART entre 00:00 y 23:59.
+        var hoyUtcDesde = hoy.AddHours(3);       // 00:00 ART -> 03:00 UTC
+        var hoyUtcHasta = hoyUtcDesde.AddDays(1);
+
+        var ventasPendByRep = new Dictionary<int, int>();
+        var ventasEntHoyByRep = new Dictionary<int, int>();
+        var alqEntByRep = new Dictionary<int, int>();
+        var alqRetByRep = new Dictionary<int, int>();
+
+        if (repIds.Count > 0)
+        {
+            // Ventas asignadas (QR) sin entregar aun.
+            var pendRows = await _db.CafeQrEscaneos
+                .Where(e => e.Accion == "cargado" && repIds.Contains(e.RepartidorId))
+                .Select(e => new { e.RepartidorId, e.VentaId })
+                .Distinct()
+                .Join(_db.CafeVentas, x => x.VentaId, v => v.Id,
+                    (x, v) => new { x.RepartidorId, v.EntregadoAt, v.Estado })
+                .Where(x => x.EntregadoAt == null && x.Estado != "anulado")
+                .GroupBy(x => x.RepartidorId)
+                .Select(g => new { RepartidorId = g.Key, Cnt = g.Count() })
+                .ToListAsync();
+            foreach (var r in pendRows) ventasPendByRep[r.RepartidorId] = r.Cnt;
+
+            var ventasHoyRows = await _db.CafeVentas
+                .Where(v => v.EntregadoPorRepartidorId != null && repIds.Contains(v.EntregadoPorRepartidorId!.Value)
+                    && v.EntregadoAt != null && v.EntregadoAt >= hoyUtcDesde && v.EntregadoAt < hoyUtcHasta)
+                .GroupBy(v => v.EntregadoPorRepartidorId!.Value)
+                .Select(g => new { RepartidorId = g.Key, Cnt = g.Count() })
+                .ToListAsync();
+            foreach (var r in ventasHoyRows) ventasEntHoyByRep[r.RepartidorId] = r.Cnt;
+
+            var alqEntRows = await _db.AlqReservas
+                .Where(r => r.EntregadoPorRepartidorId != null && repIds.Contains(r.EntregadoPorRepartidorId!.Value)
+                    && r.EntregadoAt != null && r.EntregadoAt >= hoyUtcDesde && r.EntregadoAt < hoyUtcHasta)
+                .GroupBy(r => r.EntregadoPorRepartidorId!.Value)
+                .Select(g => new { RepartidorId = g.Key, Cnt = g.Count() })
+                .ToListAsync();
+            foreach (var r in alqEntRows) alqEntByRep[r.RepartidorId] = r.Cnt;
+
+            var alqRetRows = await _db.AlqReservas
+                .Where(r => r.RetiradoPorRepartidorId != null && repIds.Contains(r.RetiradoPorRepartidorId!.Value)
+                    && r.RetiradoAt != null && r.RetiradoAt >= hoyUtcDesde && r.RetiradoAt < hoyUtcHasta)
+                .GroupBy(r => r.RetiradoPorRepartidorId!.Value)
+                .Select(g => new { RepartidorId = g.Key, Cnt = g.Count() })
+                .ToListAsync();
+            foreach (var r in alqRetRows) alqRetByRep[r.RepartidorId] = r.Cnt;
+        }
+
         var liqsDelMes = await _db.NomLiquidaciones.Where(l => l.Anio == anio && l.Mes == mes).ToListAsync();
         var liqIds = liqsDelMes.Select(l => l.Id).ToList();
         var pagosDelMes = await _db.NomPagos.Where(p => liqIds.Contains(p.LiquidacionId)).ToListAsync();
@@ -310,6 +364,7 @@ public class DashboardController : ControllerBase
             }
 
             decimal porRendir = 0m, porRendirVentas = 0m, porRendirAlq = 0m;
+            int ventasPend = 0, ventasEntHoy = 0, alqEntHoy = 0, alqRetHoy = 0;
             bool tieneRepartidor = repByEmp.TryGetValue(e.Id, out var rep);
             if (tieneRepartidor && rep != null)
             {
@@ -317,6 +372,10 @@ public class DashboardController : ControllerBase
                 if (pendByRep.TryGetValue(rep.Id, out var monto)) porRendir = monto;
                 pendVentasByRep.TryGetValue(rep.Id, out porRendirVentas);
                 pendAlqByRep.TryGetValue(rep.Id, out porRendirAlq);
+                ventasPendByRep.TryGetValue(rep.Id, out ventasPend);
+                ventasEntHoyByRep.TryGetValue(rep.Id, out ventasEntHoy);
+                alqEntByRep.TryGetValue(rep.Id, out alqEntHoy);
+                alqRetByRep.TryGetValue(rep.Id, out alqRetHoy);
             }
 
             decimal neto = 0m, pagado = 0m;
@@ -332,7 +391,8 @@ public class DashboardController : ControllerBase
                 e.Id, e.Nombre, apodoKiosko, apodoRepartidor,
                 estado, horaEntrada, horaSalida, trabajado,
                 porRendir, pagado, leDebo, tieneRepartidor,
-                porRendirVentas, porRendirAlq);
+                porRendirVentas, porRendirAlq,
+                ventasPend, ventasEntHoy, alqEntHoy, alqRetHoy);
         })
         .OrderBy(x => OrdenPersonalizado(x.Nombre))
         .ThenBy(x => x.Nombre)
