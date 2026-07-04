@@ -32,10 +32,10 @@
     {
         <div class="cco-menu" @onclick="NoOp" @onclick:stopPropagation="true">
             <div class="cco-menu-title">Personalizar tarjeta</div>
-            <label class="cco-menu-item" for="@FileInputId" @onclick="NoOp" @onclick:stopPropagation="true">
+            <button type="button" class="cco-menu-item" @onclick="OpenFilePicker" @onclick:stopPropagation="true">
                 <span class="cco-menu-icon">📷</span>
                 <span>@(hasImage ? "Cambiar foto de fondo" : "Subir foto de fondo")</span>
-            </label>
+            </button>
             <button type="button" class="cco-menu-item" @onclick="StartEdit" @onclick:stopPropagation="true">
                 <span class="cco-menu-icon">📝</span>
                 <span>@(string.IsNullOrWhiteSpace(comment) ? "Agregar nota" : "Editar nota")</span>
@@ -263,6 +263,20 @@
             if (imgVersion == 0) imgVersion = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         }
         catch { }
+    }
+
+    /// <summary>2026-07-04: en vez de depender de <label for=...> (que no siempre
+    /// activa el InputFile hidden dentro de un componente Blazor), disparamos el
+    /// picker programaticamente con JS. Es la forma mas confiable.</summary>
+    private async Task OpenFilePicker()
+    {
+        await CloseMenu();
+        try
+        {
+            var js = "var el=document.getElementById('" + FileInputId + "'); if(el){el.click();}";
+            await JS.InvokeVoidAsync("eval", js);
+        }
+        catch (Exception ex) { Toast.Error("No se pudo abrir el selector: " + ex.Message); }
     }
 
     private async Task ToggleMenu()
