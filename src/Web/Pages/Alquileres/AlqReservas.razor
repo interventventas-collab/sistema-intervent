@@ -109,6 +109,7 @@
                                     @if (r.ArcaEstado == "autorizado" && !string.IsNullOrEmpty(r.ArcaCae))
                                     {
                                         <span style="font-size: 0.68rem; background:#dcfce7; color:#166534; padding:0.15rem 0.4rem; border-radius:999px; font-weight:700;" title="@($"CAE {r.ArcaCae} · Comp. {r.ArcaPtoVta:D5}-{r.ArcaCbteNro:D8}")">✅ Facturada</span>
+                                        <button class="btn-icon" style="color: #0f766e;" @onclick="() => DescargarFacturaPdf(r.Id)" disabled="@descargandoPdf" title="Descargar la FACTURA legal (con CAE)">🧾</button>
                                     }
                                     else if (r.TipoComprobante is "FA" or "FB" or "FC")
                                     {
@@ -1569,6 +1570,22 @@
                 await JS.InvokeVoidAsync("downloadFile", $"Reserva-{numero}.pdf", "application/pdf", Convert.ToBase64String(bytes));
             else
                 ToastService.Error("No se pudo generar el PDF" + (string.IsNullOrEmpty(error) ? "" : $": {error}"));
+        }
+        catch (Exception ex) { ToastService.Error("Error al descargar: " + ex.Message); }
+        finally { descargandoPdf = false; }
+    }
+
+    /// <summary>2026-07-04: descarga la FACTURA AFIP (sobria, con CAE) de una reserva facturada.</summary>
+    private async Task DescargarFacturaPdf(int id)
+    {
+        descargandoPdf = true;
+        try
+        {
+            var (bytes, error) = await Api.GetAlqFacturaPdfAsync(id);
+            if (bytes is not null)
+                await JS.InvokeVoidAsync("downloadFile", $"Factura-{id}.pdf", "application/pdf", Convert.ToBase64String(bytes));
+            else
+                ToastService.Error("No se pudo generar la factura" + (string.IsNullOrEmpty(error) ? "" : $": {error}"));
         }
         catch (Exception ex) { ToastService.Error("Error al descargar: " + ex.Message); }
         finally { descargandoPdf = false; }

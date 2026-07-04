@@ -108,6 +108,8 @@ public class AlqReserva
     [MaxLength(20)]
     public string? ArcaCae { get; set; }
     public DateTime? ArcaCaeVto { get; set; }
+    /// <summary>Fecha de emisión que ARCA registró (para el PDF y el QR fiscal).</summary>
+    public DateTime? ArcaFecha { get; set; }
     public int? ArcaPtoVta { get; set; }
 
     /// <summary>Certificado/CUIT (ArcaWebserviceAccount) con el que se emitió.</summary>

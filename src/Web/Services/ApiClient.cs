@@ -332,6 +332,17 @@ public class ApiClient
         return (null, $"Error {(int)resp.StatusCode}");
     }
 
+    /// <summary>2026-07-04: PDF de la FACTURA AFIP (sobria, con CAE) de una reserva facturada.</summary>
+    public async Task<(byte[]? bytes, string? error)> GetAlqFacturaPdfAsync(int id)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync($"/api/alquileres/reservas/{id}/factura-pdf");
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return (null, "Sesión expirada"); }
+        if (resp.IsSuccessStatusCode) return (await resp.Content.ReadAsByteArrayAsync(), null);
+        try { var err = await resp.Content.ReadFromJsonAsync<ErrorResp>(); return (null, err?.Error ?? $"Error {(int)resp.StatusCode}"); }
+        catch { return (null, $"Error {(int)resp.StatusCode}"); }
+    }
+
     // ===== Alquileres: Repartidor / Cobranzas pendientes (2026-06-26) =====
     /// <summary>URL (relativa) del PNG del QR de la reserva, para usar directo en un &lt;img src&gt;.</summary>
     public string AlqReservaQrUrl(int reservaId) => $"/api/alquileres/reservas/{reservaId}/qr";

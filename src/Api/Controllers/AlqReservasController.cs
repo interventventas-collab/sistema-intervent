@@ -1,6 +1,7 @@
 using Api.Data;
 using Api.DTOs;
 using Api.Models;
+using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -16,9 +17,11 @@ public class AlqReservasController : ControllerBase
     private readonly Api.Services.QrRepartidorService _qr;
     private readonly Api.Services.AlqReservaPdfService _pdf;
     private readonly Api.Services.ArcaInvoiceService _arca;
+    private readonly Api.Services.ArcaInvoicePdfService _arcaPdf;
+    private readonly Api.Services.ArcaEmisorService _emisor;
     private static readonly string[] EstadosValidos = { "reservado", "confirmado", "entregado", "finalizado", "cancelado" };
 
-    public AlqReservasController(AppDbContext db, Api.Services.QrRepartidorService qr, Api.Services.AlqReservaPdfService pdf, Api.Services.ArcaInvoiceService arca) { _db = db; _qr = qr; _pdf = pdf; _arca = arca; }
+    public AlqReservasController(AppDbContext db, Api.Services.QrRepartidorService qr, Api.Services.AlqReservaPdfService pdf, Api.Services.ArcaInvoiceService arca, Api.Services.ArcaInvoicePdfService arcaPdf, Api.Services.ArcaEmisorService emisor) { _db = db; _qr = qr; _pdf = pdf; _arca = arca; _arcaPdf = arcaPdf; _emisor = emisor; }
 
     /// <summary>PDF descargable del comprobante de la reserva (como el de ventas). Pedido 2026-06-29.</summary>
     [HttpGet("{id:int}/pdf")]
@@ -717,6 +720,11 @@ public class AlqReservasController : ControllerBase
                     System.Globalization.CultureInfo.InvariantCulture,
                     System.Globalization.DateTimeStyles.None, out var caeVto))
                     r.ArcaCaeVto = caeVto;
+                if (DateTime.TryParseExact(res.Fecha, "yyyyMMdd",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var fEmi))
+                    r.ArcaFecha = fEmi;
+                else r.ArcaFecha = fechaEmision;
                 r.ArcaPtoVta = res.PtoVta;
                 r.ArcaCbteNro = res.CbteNro;
                 r.ArcaCbteTipoNum = res.CbteTipo;
@@ -746,6 +754,118 @@ public class AlqReservasController : ControllerBase
             .FirstAsync(x => x.Id == r.Id);
         if (r.ArcaEstado == "autorizado") return Ok(Map(saved));
         return BadRequest(new { error = r.ArcaError, reserva = Map(saved) });
+    }
+
+    /// <summary>2026-07-04 — PDF de la FACTURA AFIP de una reserva facturada (formato sobrio, con CAE + QR fiscal).
+    /// Documento APARTE del comprobante de reserva (ese lleva el QR del repartidor + datos de logística).</summary>
+    [HttpGet("{id:int}/factura-pdf")]
+    public async Task<IActionResult> FacturaPdf(int id)
+    {
+        var r = await _db.AlqReservas
+            .Include(x => x.ClienteNav)
+            .Include(x => x.Items).ThenInclude(i => i.EquipoNav)
+            .FirstOrDefaultAsync(x => x.Id == id);
+        if (r is null) return NotFound(new { error = "Reserva no encontrada" });
+        if (r.ArcaEstado != "autorizado" || string.IsNullOrEmpty(r.ArcaCae))
+            return BadRequest(new { error = "Esta reserva todavía no está facturada." });
+        var bytes = BuildFacturaPdf(r);
+        var letra = ArcaInvoicePdfService.LetraDelTipo(r.ArcaCbteTipoNum ?? 0);
+        return File(bytes, "application/pdf", $"Factura-{letra}-{r.ArcaPtoVta:D5}-{r.ArcaCbteNro:D8}.pdf");
+    }
+
+    /// <summary>Arma el PDF de factura AFIP (sobrio) a partir de la reserva facturada. Reutiliza
+    /// el mismo generador que Café, pero SIN QR de repartidor ni datos de logística.</summary>
+    private byte[] BuildFacturaPdf(AlqReserva r)
+    {
+        // Emisor: el CUIT con el que se facturó (o el del negocio como fallback).
+        var cuitEmisor = "";
+        var cuenta = r.ArcaWebserviceAccountId is > 0
+            ? _db.ArcaWebserviceAccounts.FirstOrDefault(a => a.Id == r.ArcaWebserviceAccountId!.Value)
+            : null;
+        if (cuenta is not null) cuitEmisor = cuenta.Cuit;
+        else cuitEmisor = _db.CafeSettings.Find(1)?.NegocioCuit ?? "";
+
+        var ficha = _emisor.GetEntityByCuitAsync(cuitEmisor).GetAwaiter().GetResult();
+        var emisor = new PdfEmisor
+        {
+            Cuit = ficha?.Cuit ?? new string((cuitEmisor ?? "").Where(char.IsDigit).ToArray()),
+            RazonSocial = ficha?.RazonSocial ?? "—",
+            CondicionIva = ficha?.CondicionIva ?? "Responsable Inscripto",
+            Domicilio = ficha?.Domicilio,
+            IIBBTipo = ficha?.IIBBTipo,
+            IIBBNumero = ficha?.IIBBNumero,
+            InicioActividades = ficha?.InicioActividades,
+            LogoBytes = _emisor.TryGetLogoBytes(ficha?.LogoPath),
+            Telefono = ficha?.Telefono, Telefono2 = ficha?.Telefono2,
+            Email = ficha?.Email, Web = ficha?.Web, Web2 = ficha?.Web2,
+            BancoNombre = ficha?.BancoNombre, BancoCbu = ficha?.BancoCbu, BancoAlias = ficha?.BancoAlias,
+        };
+
+        var letra = ArcaInvoicePdfService.LetraDelTipo(r.ArcaCbteTipoNum ?? 0);
+        decimal neto = r.ArcaImpNeto ?? r.MontoTotal;
+        decimal ivaImporte = r.ArcaImpIVA ?? 0m;
+        decimal total = r.ArcaImpTotal ?? r.MontoTotal;
+
+        var comp = new PdfComprobante
+        {
+            CbteTipoNro = r.ArcaCbteTipoNum ?? 0,
+            CbteTipoNombre = ArcaWsService.NombreCbte(r.ArcaCbteTipoNum ?? 0),
+            PtoVta = r.ArcaPtoVta ?? 0,
+            CbteNro = r.ArcaCbteNro ?? 0,
+            NumeroInterno = r.Numero,
+            Fecha = (r.ArcaFecha ?? DateTime.UtcNow.AddHours(-3)).ToString("yyyyMMdd"),
+            Concepto = r.Concepto,
+            ImpNeto = neto,
+            ImpTotal = total,
+            Cae = r.ArcaCae,
+            CaeVto = r.ArcaCaeVto?.ToString("yyyyMMdd") ?? "",
+            CondicionPago = r.FormaPago,
+            // FACTURA SOBRIA: sin QrRepartidorBytes ni datos de logística (esos van en el comprobante de reserva).
+        };
+
+        // Renglones = equipos, prorrateados para sumar el neto que registró ARCA.
+        decimal subtotalItems = r.Items.Sum(i => i.Cantidad * i.PrecioUnitario);
+        decimal factor = subtotalItems > 0m ? neto / subtotalItems : 1m;
+        foreach (var it in r.Items)
+        {
+            var pu = factor != 1m
+                ? Math.Round(it.PrecioUnitario * factor, 2, MidpointRounding.AwayFromZero)
+                : it.PrecioUnitario;
+            comp.Items.Add(new PdfItem
+            {
+                Descripcion = it.EquipoNav?.Nombre ?? "Alquiler",
+                Sku = it.EquipoNav?.Sku,
+                Producto = it.EquipoNav?.Nombre ?? "Alquiler",
+                Formato = "",
+                Cantidad = it.Cantidad,
+                PrecioUnitario = pu,
+                AlicPct = letra == "C" ? 0m : 21m,
+            });
+        }
+        if (letra is "A" or "B")
+            comp.IvasDesglosados.Add(new PdfIvaDesglose { Pct = 21m, Importe = ivaImporte });
+
+        var cuitCli = new string((r.ClienteNav?.Cuit ?? "").Where(char.IsDigit).ToArray());
+        var receptor = new PdfReceptor
+        {
+            DocTipo = cuitCli.Length == 11 ? 80 : 99,
+            DocNro = cuitCli.Length == 11 ? cuitCli : "0",
+            Nombre = r.ClienteNav?.RazonSocial ?? r.ClienteNav?.Nombre ?? "Consumidor Final",
+            Domicilio = r.ClienteNav?.Direccion,
+            CondicionIvaId = r.CondicionIva switch { "RI" => 1, "EX" => 4, "MO" => 6, "CF" => 5, _ => 5 },
+            CondicionVenta = r.FormaPago switch
+            {
+                "EFECTIVO" => "Efectivo",
+                "TRANSFERENCIA" => "Transferencia",
+                "MERCADOPAGO" => "Mercado Pago",
+                "DEBITO" => "Débito",
+                "CREDITO" => "Crédito",
+                "CHEQUE" => "Cheque",
+                _ => null
+            },
+        };
+
+        return _arcaPdf.GenerarPdfBytes(emisor, comp, receptor, false);
     }
 
     /// <summary>Dado un set de reservas, devuelve el repartidor "dueño" actual de cada una

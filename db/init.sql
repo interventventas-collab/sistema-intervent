@@ -5217,6 +5217,8 @@ IF COL_LENGTH('Alq_Reservas','ArcaCae') IS NULL ALTER TABLE Alq_Reservas ADD Arc
 GO
 IF COL_LENGTH('Alq_Reservas','ArcaCaeVto') IS NULL ALTER TABLE Alq_Reservas ADD ArcaCaeVto DATETIME2 NULL;
 GO
+IF COL_LENGTH('Alq_Reservas','ArcaFecha') IS NULL ALTER TABLE Alq_Reservas ADD ArcaFecha DATETIME2 NULL;
+GO
 IF COL_LENGTH('Alq_Reservas','ArcaPtoVta') IS NULL ALTER TABLE Alq_Reservas ADD ArcaPtoVta INT NULL;
 GO
 IF COL_LENGTH('Alq_Reservas','ArcaWebserviceAccountId') IS NULL ALTER TABLE Alq_Reservas ADD ArcaWebserviceAccountId INT NULL;
