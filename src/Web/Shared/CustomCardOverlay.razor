@@ -309,6 +309,7 @@
             Toast.Error($"El archivo pesa {mb:F1} MB. El máximo es 10 MB.");
             return;
         }
+        Toast.Info($"Subiendo imagen ({e.File.Size / 1024} KB)…");
         try
         {
             using var stream = e.File.OpenReadStream(maxAllowedSize: maxBytes);
