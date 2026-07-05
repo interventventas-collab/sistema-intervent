@@ -237,6 +237,36 @@ BEGIN
 END
 GO
 
+-- Mp_Pagos table — cobros recibidos por Mercado Pago (API /v1/payments/search).
+-- "Lo cobrado por MP": ingresos a la cuenta, para ver y conciliar. Pedido 2026-07-05.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Mp_Pagos')
+BEGIN
+    CREATE TABLE Mp_Pagos (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        MpPaymentId BIGINT NOT NULL,
+        Fecha DATETIME2 NOT NULL,
+        Estado NVARCHAR(30) NULL,
+        EstadoDetalle NVARCHAR(50) NULL,
+        Monto DECIMAL(18,2) NOT NULL DEFAULT 0,
+        MontoNeto DECIMAL(18,2) NULL,
+        Descripcion NVARCHAR(300) NULL,
+        PayerEmail NVARCHAR(200) NULL,
+        PayerNombre NVARCHAR(200) NULL,
+        MedioPago NVARCHAR(50) NULL,
+        TipoOperacion NVARCHAR(50) NULL,
+        ReferenciaExterna NVARCHAR(200) NULL,
+        VentaIdAsociada INT NULL,
+        CobranzaUsadaId INT NULL,
+        AsociadoPor NVARCHAR(120) NULL,
+        AsociadoAt DATETIME2 NULL,
+        ImportadoAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE()
+    );
+    CREATE UNIQUE INDEX UX_Mp_Pagos_MpPaymentId ON Mp_Pagos(MpPaymentId);
+    CREATE INDEX IX_Mp_Pagos_Fecha ON Mp_Pagos(Fecha DESC);
+END
+GO
+
 -- ArcaWebserviceAccounts table — certificados .pfx para autenticarse contra
 -- los webservices de ARCA. Cada CUIT puede tener varios certificados (distintos
 -- alias/ambientes). El archivo .pfx vive en disco bajo "Certificados ARCA/<cuit>/".

@@ -76,7 +76,9 @@
         <div class="card" style="padding:1.1rem; margin-bottom:1.2rem; border:1px solid #e5e7eb; border-radius:10px;">
             <h3 style="margin-top:0;">Leer el saldo ahora</h3>
             <p style="color:#6b7280; font-size:0.85rem;">
-                Consulta la API de Mercado Pago al instante y trae el saldo. Es rápido (unos segundos).
+                Consulta la API de Mercado Pago al instante. <strong>Ojo:</strong> Mercado Pago dejó de permitir
+                el saldo directo para las cuentas nuevas (puede dar error). El saldo real completo va a llegar por
+                los "Reportes" (lo estamos armando). Mientras tanto, mirá los <strong>cobros recibidos</strong> más abajo.
             </p>
             <button class="btn btn-primary" @onclick="LeerSaldo" disabled="@(leyendo || account?.HasToken != true)">
                 @(leyendo ? "Leyendo…" : "🔄 Leer saldo ahora")
@@ -100,6 +102,83 @@
                         <strong>❌ No se pudo:</strong> @leerResult.Error
                     </div>
                 }
+            }
+        </div>
+
+        @* Cobros recibidos (Parte A) *@
+        <div class="card" style="padding:1.1rem; margin-bottom:1.2rem; border:1px solid #e5e7eb; border-radius:10px;">
+            <h3 style="margin-top:0;">Cobros recibidos por Mercado Pago</h3>
+            <p style="color:#6b7280; font-size:0.85rem;">
+                Trae los pagos que entraron a tu cuenta (ventas cobradas por Mercado Pago). Elegí el período y tocá el botón.
+            </p>
+            <div style="display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap;">
+                <select class="form-control" style="max-width:200px;" @bind="pagosDias">
+                    <option value="7">Últimos 7 días</option>
+                    <option value="30">Últimos 30 días</option>
+                    <option value="90">Últimos 90 días</option>
+                    <option value="180">Últimos 180 días</option>
+                    <option value="365">Último año</option>
+                </select>
+                <button class="btn btn-primary" @onclick="TraerCobros" disabled="@(trayendoPagos || account?.HasToken != true)">
+                    @(trayendoPagos ? "Trayendo…" : "🔄 Traer cobros")
+                </button>
+            </div>
+            @if (account is null)
+            {
+                <p style="color:#b45309; font-size:0.85rem; margin-top:0.6rem;">Guardá primero el Access Token.</p>
+            }
+
+            @if (!trayendoPagos && pagosResult is not null)
+            {
+                @if (pagosResult.Ok)
+                {
+                    <div style="padding:0.7rem 0.9rem; margin-top:0.9rem; background:#e7f2ff; border:1px solid #b6dcff; border-radius:8px; color:#0b5cad; font-size:0.88rem;">
+                        ✅ Listo: <strong>@pagosResult.Nuevos</strong> cobros nuevos (@pagosResult.TotalTraidos revisados).
+                    </div>
+                }
+                else
+                {
+                    <div style="padding:0.7rem 0.9rem; margin-top:0.9rem; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; color:#991b1b; font-size:0.88rem;">
+                        ❌ @pagosResult.Error
+                    </div>
+                }
+            }
+
+            @if (resumenPagos is not null && resumenPagos.Cantidad > 0)
+            {
+                <div style="display:flex; gap:1.5rem; margin-top:1rem; flex-wrap:wrap;">
+                    <div><div style="font-size:0.75rem; color:#6b7280;">Cobros aprobados</div><div style="font-size:1.2rem; font-weight:700;">@resumenPagos.Cantidad</div></div>
+                    <div><div style="font-size:0.75rem; color:#6b7280;">Total bruto</div><div style="font-size:1.2rem; font-weight:700; color:#166534;">$@Fmt(resumenPagos.TotalBruto)</div></div>
+                    <div><div style="font-size:0.75rem; color:#6b7280;">Total neto (con comisión)</div><div style="font-size:1.2rem; font-weight:700; color:#0b5cad;">$@Fmt(resumenPagos.TotalNeto)</div></div>
+                </div>
+            }
+
+            @if (pagos is not null && pagos.Count > 0)
+            {
+                <div style="overflow-x:auto; margin-top:1rem;">
+                    <table class="data-table" style="width:100%; font-size:0.85rem;">
+                        <thead>
+                            <tr><th>Fecha</th><th>Quién pagó</th><th>Medio</th><th style="text-align:right;">Monto</th><th style="text-align:right;">Neto</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var p in pagos)
+                            {
+                                <tr>
+                                    <td>@p.Fecha.ToLocalTime().ToString("dd/MM/yy HH:mm")</td>
+                                    <td>@(string.IsNullOrEmpty(p.PayerNombre) ? (p.PayerEmail ?? "—") : p.PayerNombre)</td>
+                                    <td>@(p.MedioPago ?? "—")</td>
+                                    <td style="text-align:right; font-weight:600;">$@Fmt(p.Monto)</td>
+                                    <td style="text-align:right; color:#6b7280;">@(p.MontoNeto.HasValue ? "$" + Fmt(p.MontoNeto) : "—")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div style="font-size:0.75rem; color:#6b7280; margin-top:0.4rem;">Mostrando hasta 500 cobros aprobados del período.</div>
+            }
+            else if (pagos is not null && !trayendoPagos)
+            {
+                <p style="color:#6b7280; font-size:0.85rem; margin-top:0.8rem;">Todavía no hay cobros guardados. Tocá "Traer cobros".</p>
             }
         </div>
 
@@ -155,10 +234,52 @@
     private bool leyendo;
     private Web.Models.MpSincronizarResultDto? leerResult;
 
+    // Cobros recibidos (Parte A)
+    private int pagosDias = 30;
+    private bool trayendoPagos;
+    private Web.Models.MpSyncPagosResultDto? pagosResult;
+    private List<Web.Models.MpPagoDto>? pagos;
+    private Web.Models.MpPagosResumenDto? resumenPagos;
+
     private static readonly System.Globalization.CultureInfo ArCulture = new("es-AR");
     private static string Fmt(decimal? v) => v.HasValue ? v.Value.ToString("N2", ArCulture) : "0,00";
 
-    protected override async Task OnInitializedAsync() => await CargarCuenta();
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarCuenta();
+        await CargarPagos();
+    }
+
+    private async Task CargarPagos()
+    {
+        try
+        {
+            pagos = await Api.GetMpPagosAsync();
+            resumenPagos = await Api.GetMpPagosResumenAsync();
+        }
+        catch { /* opcional */ }
+    }
+
+    private async Task TraerCobros()
+    {
+        pagosResult = null;
+        trayendoPagos = true;
+        StateHasChanged();
+        try
+        {
+            pagosResult = await Api.SincronizarMpPagosAsync(pagosDias);
+            if (pagosResult is not null && pagosResult.Ok) await CargarPagos();
+        }
+        catch (Exception ex)
+        {
+            pagosResult = new Web.Models.MpSyncPagosResultDto { Ok = false, Error = ex.Message };
+        }
+        finally
+        {
+            trayendoPagos = false;
+            StateHasChanged();
+        }
+    }
 
     private async Task CargarCuenta()
     {

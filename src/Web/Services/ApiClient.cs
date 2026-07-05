@@ -4140,6 +4140,34 @@ public class ApiClient
         return await resp.Content.ReadFromJsonAsync<Web.Models.MpSincronizarResultDto>();
     }
 
+    /// <summary>Trae los cobros de MP de los últimos N días y los guarda. Usa timeout largo (varias páginas).</summary>
+    public async Task<Web.Models.MpSyncPagosResultDto?> SincronizarMpPagosAsync(int dias = 30)
+    {
+        var resp = await _httpLong.PostAsync($"/api/mercadopago/pagos/sincronizar?dias={dias}", null);
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return null; }
+        await ThrowIfErrorAsync(resp);
+        return await resp.Content.ReadFromJsonAsync<Web.Models.MpSyncPagosResultDto>();
+    }
+
+    public async Task<List<Web.Models.MpPagoDto>?> GetMpPagosAsync(DateTime? desde = null, DateTime? hasta = null, string? estado = "approved")
+    {
+        var qs = new List<string>();
+        if (desde.HasValue) qs.Add($"desde={desde.Value:yyyy-MM-dd}");
+        if (hasta.HasValue) qs.Add($"hasta={hasta.Value:yyyy-MM-dd}");
+        if (!string.IsNullOrEmpty(estado)) qs.Add($"estado={estado}");
+        var url = "/api/mercadopago/pagos" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<List<Web.Models.MpPagoDto>>(url);
+    }
+
+    public async Task<Web.Models.MpPagosResumenDto?> GetMpPagosResumenAsync(DateTime? desde = null, DateTime? hasta = null)
+    {
+        var qs = new List<string>();
+        if (desde.HasValue) qs.Add($"desde={desde.Value:yyyy-MM-dd}");
+        if (hasta.HasValue) qs.Add($"hasta={hasta.Value:yyyy-MM-dd}");
+        var url = "/api/mercadopago/pagos/resumen" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<Web.Models.MpPagosResumenDto>(url);
+    }
+
     private async Task<T?> GetAsync<T>(string url)
     {
         await SetAuthHeaderAsync();
