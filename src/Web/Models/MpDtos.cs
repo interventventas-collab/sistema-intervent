@@ -110,3 +110,13 @@ public class MpMovResumenDto
     public DateTime? Desde { get; set; }
     public DateTime? Hasta { get; set; }
 }
+
+public class MpDashboardDto
+{
+    public bool Conectada { get; set; }
+    public decimal CobradoNeto30 { get; set; }
+    public decimal CobradoBruto30 { get; set; }
+    public int CantCobros30 { get; set; }
+    public decimal NetoMov30 { get; set; }
+    public DateTime? UltimoDato { get; set; }
+}

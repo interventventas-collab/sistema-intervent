@@ -109,6 +109,34 @@ public class MpController : ControllerBase
     }
 
     // ─────────────────────────────────────────────────────────────
+    // Resumen para la tarjeta del dashboard
+    // ─────────────────────────────────────────────────────────────
+    public record MpDashboardDto(bool Conectada, decimal CobradoNeto30, decimal CobradoBruto30,
+        int CantCobros30, decimal NetoMov30, DateTime? UltimoDato);
+
+    /// <summary>Resumen de los últimos 30 días para la tarjeta del dashboard (lee lo ya guardado, rápido).</summary>
+    [HttpGet("dashboard")]
+    public async Task<IActionResult> Dashboard()
+    {
+        var cuenta = await _service.GetAsync();
+        var conectada = cuenta is not null && cuenta.HasToken;
+        var desde = DateTime.UtcNow.Date.AddDays(-30);
+
+        var cobros = _db.MpPagos.Where(p => p.Estado == "approved" && p.Fecha >= desde);
+        var cantCobros = await cobros.CountAsync();
+        var cobradoBruto = cantCobros == 0 ? 0m : await cobros.SumAsync(p => p.Monto);
+        var cobradoNeto = cantCobros == 0 ? 0m : await cobros.SumAsync(p => p.MontoNeto ?? p.Monto);
+        DateTime? ultCobro = cantCobros == 0 ? null : await cobros.MaxAsync(p => (DateTime?)p.Fecha);
+
+        var movs = _db.MpMovimientos.Where(m => m.Fecha >= desde);
+        var netoMov = await movs.AnyAsync() ? await movs.SumAsync(m => m.MontoNeto) : 0m;
+        DateTime? ultMov = await movs.AnyAsync() ? await movs.MaxAsync(m => (DateTime?)m.Fecha) : null;
+
+        DateTime? ultimo = new[] { ultCobro, ultMov }.Where(d => d.HasValue).Max();
+        return Ok(new MpDashboardDto(conectada, cobradoNeto, cobradoBruto, cantCobros, netoMov, ultimo));
+    }
+
+    // ─────────────────────────────────────────────────────────────
     // Movimientos por Reportes "Dinero en la cuenta" — Parte B
     // ─────────────────────────────────────────────────────────────
     public record SyncMovResultDto(bool Ok, int Nuevos, int TotalFilas, string? Error, bool EnProceso);

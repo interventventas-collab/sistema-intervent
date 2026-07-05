@@ -4168,6 +4168,10 @@ public class ApiClient
         return await GetAsync<Web.Models.MpPagosResumenDto>(url);
     }
 
+    /// <summary>Resumen de MP (últimos 30 días) para la tarjeta del dashboard. Lee lo guardado, rápido.</summary>
+    public async Task<Web.Models.MpDashboardDto?> GetMpDashboardAsync()
+        => await GetAsync<Web.Models.MpDashboardDto>("/api/mercadopago/dashboard");
+
     // --- Movimientos por reportes (Parte B) ---
     /// <summary>Pide el reporte de movimientos a MP y lo procesa. Timeout largo (asincrónico, MP tarda).</summary>
     public async Task<Web.Models.MpSyncMovResultDto?> SincronizarMpMovimientosAsync(int dias = 30)
