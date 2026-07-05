@@ -58,14 +58,14 @@ public class MpController : ControllerBase
     // ─────────────────────────────────────────────────────────────
     // Cobros recibidos por Mercado Pago (/v1/payments/search) — Parte A
     // ─────────────────────────────────────────────────────────────
-    public record SyncPagosResultDto(bool Ok, int Nuevos, int Actualizados, int TotalTraidos, string? Error);
+    public record SyncPagosResultDto(bool Ok, int Nuevos, int Actualizados, int TotalTraidos, string? Error, bool Truncado);
 
     /// <summary>Trae los cobros de los últimos N días desde Mercado Pago y los guarda (dedup).</summary>
     [HttpPost("pagos/sincronizar")]
     public async Task<IActionResult> SincronizarPagos([FromQuery] int dias = 30)
     {
         var r = await _pagosService.SincronizarAsync(dias);
-        return Ok(new SyncPagosResultDto(r.Ok, r.Nuevos, r.Actualizados, r.TotalTraidos, r.Error));
+        return Ok(new SyncPagosResultDto(r.Ok, r.Nuevos, r.Actualizados, r.TotalTraidos, r.Error, r.Truncado));
     }
 
     public record MpPagoDto(int Id, long MpPaymentId, DateTime Fecha, string? Estado, string? EstadoDetalle,

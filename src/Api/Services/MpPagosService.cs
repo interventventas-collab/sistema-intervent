@@ -29,7 +29,7 @@ public class MpPagosService
         _logger = logger;
     }
 
-    public record SyncPagosResult(bool Ok, int Nuevos, int Actualizados, int TotalTraidos, string? Error);
+    public record SyncPagosResult(bool Ok, int Nuevos, int Actualizados, int TotalTraidos, string? Error, bool Truncado = false);
 
     /// <summary>Sincroniza los pagos de los últimos <paramref name="dias"/> días (máx 365).</summary>
     public async Task<SyncPagosResult> SincronizarAsync(int dias = 30)
@@ -48,7 +48,9 @@ public class MpPagosService
         int nuevos = 0, actualizados = 0, total = 0;
         int offset = 0;
         const int limit = 50;
-        const int maxPaginas = 40; // tope de seguridad (2000 pagos)
+        // MP no pagina más allá de offset 10.000, así que 200 páginas es el máximo real.
+        const int maxPaginas = 200; // tope de seguridad (10.000 pagos)
+        bool completo = false;      // true si terminamos porque no había más (no por el tope)
 
         // IDs ya existentes para no consultar 1x1.
         var existentes = await _db.MpPagos.ToDictionaryAsync(p => p.MpPaymentId, p => p);
@@ -127,11 +129,13 @@ public class MpPagosService
 
                 var totalDisponible = ReadPagingTotal(root);
                 offset += limit;
-                if (enPagina < limit) break;                 // última página
-                if (totalDisponible.HasValue && offset >= totalDisponible.Value) break;
+                if (enPagina < limit) { completo = true; break; }                 // última página
+                if (totalDisponible.HasValue && offset >= totalDisponible.Value) { completo = true; break; }
             }
 
-            return new SyncPagosResult(true, nuevos, actualizados, total, null);
+            // Si salimos por el tope (no porque se acabaron), avisamos que quedó truncado.
+            var truncado = !completo;
+            return new SyncPagosResult(true, nuevos, actualizados, total, null, truncado);
         }
         catch (Exception ex)
         {

@@ -46,6 +46,7 @@ public class MpSyncPagosResultDto
     public int Actualizados { get; set; }
     public int TotalTraidos { get; set; }
     public string? Error { get; set; }
+    public bool Truncado { get; set; }
 }
 
 public class MpPagoDto
