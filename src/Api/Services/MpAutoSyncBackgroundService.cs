@@ -55,12 +55,29 @@ public class MpAutoSyncBackgroundService : BackgroundService
         var lastArg = acc.LastAutoSyncAt?.AddHours(ARG_OFFSET_HOURS);
         if (lastArg.HasValue && lastArg.Value >= dueArg) return;
 
-        _logger.LogInformation("[MP auto] Leyendo saldo del horario {Hora} (ARG)...", vencidos.Max());
+        _logger.LogInformation("[MP auto] Corriendo sincronización del horario {Hora} (ARG)...", vencidos.Max());
         await accounts.MarcarAutoSyncAsync(DateTime.UtcNow);
 
-        var sync = scope.ServiceProvider.GetRequiredService<MpSyncService>();
-        var r = await sync.SincronizarAsync();
-        if (r.Ok) _logger.LogInformation("[MP auto] OK — disponible {Saldo}", r.Disponible);
-        else _logger.LogWarning("[MP auto] No se pudo: {Err}", r.Error);
+        // 1) Cobros de los últimos 7 días (dedup — acumula los nuevos, bajo el tope de 10k).
+        try
+        {
+            var pagos = scope.ServiceProvider.GetRequiredService<MpPagosService>();
+            var rp = await pagos.SincronizarAsync(7);
+            if (rp.Ok) _logger.LogInformation("[MP auto] Cobros OK — {N} nuevos", rp.Nuevos);
+            else _logger.LogWarning("[MP auto] Cobros: {Err}", rp.Error);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "[MP auto] error en cobros"); }
+
+        // 2) Movimientos (reporte). El servicio procesa el reporte listo del run anterior
+        //    y pide uno fresco; así 2x/día se mantiene al día sin esperas.
+        try
+        {
+            var reportes = scope.ServiceProvider.GetRequiredService<MpReportesService>();
+            var rm = await reportes.SincronizarAsync(7);
+            if (rm.Ok && !rm.EnProceso) _logger.LogInformation("[MP auto] Movimientos OK — {N} nuevos", rm.Nuevos);
+            else if (rm.EnProceso) _logger.LogInformation("[MP auto] Movimientos: reporte pedido, se procesa en la próxima corrida");
+            else _logger.LogWarning("[MP auto] Movimientos: {Err}", rm.Error);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "[MP auto] error en movimientos"); }
     }
 }
