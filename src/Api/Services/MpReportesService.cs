@@ -62,35 +62,39 @@ public class MpReportesService
 
         try
         {
-            // 1) Snapshot de reportes ya existentes (para detectar el nuevo).
-            var antes = (await ListarReportesAsync(http)).Select(r => r.File).ToHashSet();
+            // 1) Listar reportes que MP ya tenga generados (listos, con archivo).
+            var reportes = (await ListarReportesAsync(http))
+                .Where(r => EstaListo(r.Status))
+                .OrderByDescending(r => ParseDate(r.Created ?? "") ?? DateTime.MinValue)
+                .ToList();
 
-            // 2) Crear el reporte.
-            var (okCreate, errCreate) = await CrearReporteAsync(http, beginIso, endIso);
-            if (!okCreate) return new SyncResult(false, 0, 0, errCreate, false);
-
-            // 3) Pollear hasta que aparezca un archivo nuevo listo (~2,5 min máx).
-            string? fileName = null;
-            for (int intento = 0; intento < 28; intento++)
+            // 2) Buscar el más reciente que TODAVÍA no procesamos (dedup por ReporteArchivo).
+            string? pendiente = null;
+            foreach (var r in reportes)
             {
-                await Task.Delay(5000);
-                var actuales = await ListarReportesAsync(http);
-                var nuevo = actuales.FirstOrDefault(r => !antes.Contains(r.File) && EstaListo(r.Status));
-                if (nuevo is not null) { fileName = nuevo.File; break; }
+                var yaProcesado = await _db.MpMovimientos.AnyAsync(m => m.ReporteArchivo == r.File);
+                if (!yaProcesado) { pendiente = r.File; break; }
             }
 
-            if (fileName is null)
-                return new SyncResult(true, 0, 0,
-                    "El reporte se está generando en Mercado Pago (puede tardar unos minutos). Volvé a tocar 'Actualizar movimientos' en un rato.", true);
+            if (pendiente is not null)
+            {
+                // 3a) Hay un reporte nuevo listo: bajarlo y procesarlo (rápido, sin esperar).
+                var csv = await DescargarAsync(http, pendiente);
+                if (string.IsNullOrWhiteSpace(csv))
+                    return new SyncResult(false, 0, 0, "El reporte está listo pero no se pudo descargar el archivo.", false);
 
-            // 4) Bajar y procesar.
-            var csv = await DescargarAsync(http, fileName);
-            if (string.IsNullOrWhiteSpace(csv))
-                return new SyncResult(false, 0, 0, "El reporte se generó pero no se pudo descargar el archivo.", false);
+                var (nuevos, total) = await ProcesarCsvAsync(csv, pendiente);
+                _logger.LogInformation("[MP reportes] {File}: {Nuevos} nuevos de {Total} filas", pendiente, nuevos, total);
+                // Pedimos uno fresco para la próxima vez (no esperamos).
+                await CrearReporteAsync(http, beginIso, endIso);
+                return new SyncResult(true, nuevos, total, null, false);
+            }
 
-            var (nuevos, total) = await ProcesarCsvAsync(csv, fileName);
-            _logger.LogInformation("[MP reportes] {File}: {Nuevos} nuevos de {Total} filas", fileName, nuevos, total);
-            return new SyncResult(true, nuevos, total, null, false);
+            // 3b) No hay ninguno nuevo listo: pedimos uno y avisamos que se está generando.
+            var (okCreate, errCreate) = await CrearReporteAsync(http, beginIso, endIso);
+            if (!okCreate) return new SyncResult(false, 0, 0, errCreate, false);
+            return new SyncResult(true, 0, 0,
+                "Le pedí el reporte a Mercado Pago y se está generando (puede tardar 1-3 minutos por el volumen de tu cuenta). Volvé a tocar 'Actualizar movimientos' en un ratito y lo traigo.", true);
         }
         catch (Exception ex)
         {
