@@ -267,6 +267,39 @@ BEGIN
 END
 GO
 
+-- Mp_Movimientos table — movimientos de la cuenta de MP traídos del Reporte oficial
+-- "Dinero en la cuenta" (settlement report). SETTLEMENT_NET_AMOUNT = impacto real en saldo.
+-- Parte B. Pedido 2026-07-05.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Mp_Movimientos')
+BEGIN
+    CREATE TABLE Mp_Movimientos (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        SourceId NVARCHAR(60) NULL,
+        Fecha DATETIME2 NOT NULL,
+        FechaLiquidacion DATETIME2 NULL,
+        TipoTransaccion NVARCHAR(60) NULL,
+        Descripcion NVARCHAR(300) NULL,
+        MontoBruto DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Comision DECIMAL(18,2) NOT NULL DEFAULT 0,
+        MontoNeto DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Moneda NVARCHAR(10) NULL,
+        MedioPago NVARCHAR(60) NULL,
+        ReferenciaExterna NVARCHAR(200) NULL,
+        OrderId NVARCHAR(60) NULL,
+        HashUnico NVARCHAR(80) NOT NULL,
+        VentaIdAsociada INT NULL,
+        CobranzaUsadaId INT NULL,
+        AsociadoPor NVARCHAR(120) NULL,
+        AsociadoAt DATETIME2 NULL,
+        ReporteArchivo NVARCHAR(200) NULL,
+        ImportadoAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE()
+    );
+    CREATE UNIQUE INDEX UX_Mp_Movimientos_Hash ON Mp_Movimientos(HashUnico);
+    CREATE INDEX IX_Mp_Movimientos_Fecha ON Mp_Movimientos(Fecha DESC);
+END
+GO
+
 -- ArcaWebserviceAccounts table — certificados .pfx para autenticarse contra
 -- los webservices de ARCA. Cada CUIT puede tener varios certificados (distintos
 -- alias/ambientes). El archivo .pfx vive en disco bajo "Certificados ARCA/<cuit>/".

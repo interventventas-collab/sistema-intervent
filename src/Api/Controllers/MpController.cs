@@ -19,14 +19,16 @@ public class MpController : ControllerBase
     private readonly MpAccountService _service;
     private readonly MpSyncService _syncService;
     private readonly MpPagosService _pagosService;
+    private readonly MpReportesService _reportesService;
     private readonly AppDbContext _db;
 
     public MpController(MpAccountService service, MpSyncService syncService,
-        MpPagosService pagosService, AppDbContext db)
+        MpPagosService pagosService, MpReportesService reportesService, AppDbContext db)
     {
         _service = service;
         _syncService = syncService;
         _pagosService = pagosService;
+        _reportesService = reportesService;
         _db = db;
     }
 
@@ -104,5 +106,57 @@ public class MpController : ControllerBase
         var neto = cant == 0 ? 0m : await q.SumAsync(p => p.MontoNeto ?? p.Monto);
         DateTime? ultimo = cant == 0 ? null : await q.MaxAsync(p => (DateTime?)p.Fecha);
         return Ok(new MpPagosResumenDto(cant, bruto, neto, ultimo));
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Movimientos por Reportes "Dinero en la cuenta" — Parte B
+    // ─────────────────────────────────────────────────────────────
+    public record SyncMovResultDto(bool Ok, int Nuevos, int TotalFilas, string? Error, bool EnProceso);
+
+    /// <summary>Pide el reporte de movimientos a MP, espera a que se genere y lo procesa.
+    /// Puede tardar (asincrónico); si aún no está listo devuelve EnProceso=true.</summary>
+    [HttpPost("movimientos/sincronizar")]
+    public async Task<IActionResult> SincronizarMovimientos([FromQuery] int dias = 30)
+    {
+        var r = await _reportesService.SincronizarAsync(dias);
+        return Ok(new SyncMovResultDto(r.Ok, r.Nuevos, r.TotalFilas, r.Error, r.EnProceso));
+    }
+
+    public record MpMovimientoDto(int Id, string? SourceId, DateTime Fecha, string? TipoTransaccion,
+        string? Descripcion, decimal MontoBruto, decimal Comision, decimal MontoNeto, string? Moneda,
+        string? MedioPago, string? ReferenciaExterna, int? VentaIdAsociada);
+
+    [HttpGet("movimientos")]
+    public async Task<IActionResult> ListarMovimientos([FromQuery] DateTime? desde = null, [FromQuery] DateTime? hasta = null)
+    {
+        var q = _db.MpMovimientos.AsQueryable();
+        if (desde.HasValue) { var d = desde.Value.Date; q = q.Where(m => m.Fecha >= d); }
+        if (hasta.HasValue) { var h = hasta.Value.Date.AddDays(1); q = q.Where(m => m.Fecha < h); }
+        var l = await q.OrderByDescending(m => m.Fecha).Take(1000)
+            .Select(m => new MpMovimientoDto(m.Id, m.SourceId, m.Fecha, m.TipoTransaccion, m.Descripcion,
+                m.MontoBruto, m.Comision, m.MontoNeto, m.Moneda, m.MedioPago, m.ReferenciaExterna, m.VentaIdAsociada))
+            .ToListAsync();
+        return Ok(l);
+    }
+
+    public record MpMovResumenDto(int Cantidad, decimal TotalIngresos, decimal TotalEgresos,
+        decimal TotalComisiones, decimal NetoPeriodo, DateTime? Desde, DateTime? Hasta);
+
+    /// <summary>Resumen de movimientos: ingresos (neto+), egresos (neto-), comisiones y neto del período.</summary>
+    [HttpGet("movimientos/resumen")]
+    public async Task<IActionResult> ResumenMovimientos([FromQuery] DateTime? desde = null, [FromQuery] DateTime? hasta = null)
+    {
+        var q = _db.MpMovimientos.AsQueryable();
+        if (desde.HasValue) { var d = desde.Value.Date; q = q.Where(m => m.Fecha >= d); }
+        if (hasta.HasValue) { var h = hasta.Value.Date.AddDays(1); q = q.Where(m => m.Fecha < h); }
+        var cant = await q.CountAsync();
+        if (cant == 0) return Ok(new MpMovResumenDto(0, 0, 0, 0, 0, null, null));
+        var ingresos = await q.Where(m => m.MontoNeto > 0).SumAsync(m => m.MontoNeto);
+        var egresos = await q.Where(m => m.MontoNeto < 0).SumAsync(m => m.MontoNeto);
+        var comisiones = await q.SumAsync(m => m.Comision);
+        var neto = await q.SumAsync(m => m.MontoNeto);
+        var min = await q.MinAsync(m => (DateTime?)m.Fecha);
+        var max = await q.MaxAsync(m => (DateTime?)m.Fecha);
+        return Ok(new MpMovResumenDto(cant, ingresos, egresos, comisiones, neto, min, max));
     }
 }

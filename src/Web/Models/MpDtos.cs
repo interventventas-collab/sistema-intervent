@@ -73,3 +73,40 @@ public class MpPagosResumenDto
     public decimal TotalNeto { get; set; }
     public DateTime? UltimoCobroAt { get; set; }
 }
+
+// --- Movimientos por reportes (Parte B) ---
+public class MpSyncMovResultDto
+{
+    public bool Ok { get; set; }
+    public int Nuevos { get; set; }
+    public int TotalFilas { get; set; }
+    public string? Error { get; set; }
+    public bool EnProceso { get; set; }
+}
+
+public class MpMovimientoDto
+{
+    public int Id { get; set; }
+    public string? SourceId { get; set; }
+    public DateTime Fecha { get; set; }
+    public string? TipoTransaccion { get; set; }
+    public string? Descripcion { get; set; }
+    public decimal MontoBruto { get; set; }
+    public decimal Comision { get; set; }
+    public decimal MontoNeto { get; set; }
+    public string? Moneda { get; set; }
+    public string? MedioPago { get; set; }
+    public string? ReferenciaExterna { get; set; }
+    public int? VentaIdAsociada { get; set; }
+}
+
+public class MpMovResumenDto
+{
+    public int Cantidad { get; set; }
+    public decimal TotalIngresos { get; set; }
+    public decimal TotalEgresos { get; set; }
+    public decimal TotalComisiones { get; set; }
+    public decimal NetoPeriodo { get; set; }
+    public DateTime? Desde { get; set; }
+    public DateTime? Hasta { get; set; }
+}

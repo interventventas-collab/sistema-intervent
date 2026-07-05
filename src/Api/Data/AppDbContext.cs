@@ -20,6 +20,7 @@ public class AppDbContext : DbContext
     public DbSet<ShellAccount> ShellAccounts => Set<ShellAccount>();
     public DbSet<MpAccount> MpAccounts => Set<MpAccount>();
     public DbSet<MpPago> MpPagos => Set<MpPago>();
+    public DbSet<MpMovimiento> MpMovimientos => Set<MpMovimiento>();
     public DbSet<MeliOrder> MeliOrders => Set<MeliOrder>();
     public DbSet<MeliItem> MeliItems => Set<MeliItem>();
     public DbSet<MeliCambioDetectado> MeliCambiosDetectados => Set<MeliCambioDetectado>();

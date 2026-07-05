@@ -128,6 +128,7 @@ builder.Services.AddScoped<ShellSyncService>();
 builder.Services.AddScoped<MpAccountService>();
 builder.Services.AddScoped<MpSyncService>();
 builder.Services.AddScoped<MpPagosService>();
+builder.Services.AddScoped<MpReportesService>();
 builder.Services.AddScoped<ArcaWebserviceAccountService>();
 builder.Services.AddSingleton<ArcaWsTokenCache>();
 builder.Services.AddScoped<ArcaWsService>();

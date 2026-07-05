@@ -4168,6 +4168,34 @@ public class ApiClient
         return await GetAsync<Web.Models.MpPagosResumenDto>(url);
     }
 
+    // --- Movimientos por reportes (Parte B) ---
+    /// <summary>Pide el reporte de movimientos a MP y lo procesa. Timeout largo (asincrónico, MP tarda).</summary>
+    public async Task<Web.Models.MpSyncMovResultDto?> SincronizarMpMovimientosAsync(int dias = 30)
+    {
+        var resp = await _httpLong.PostAsync($"/api/mercadopago/movimientos/sincronizar?dias={dias}", null);
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return null; }
+        await ThrowIfErrorAsync(resp);
+        return await resp.Content.ReadFromJsonAsync<Web.Models.MpSyncMovResultDto>();
+    }
+
+    public async Task<List<Web.Models.MpMovimientoDto>?> GetMpMovimientosAsync(DateTime? desde = null, DateTime? hasta = null)
+    {
+        var qs = new List<string>();
+        if (desde.HasValue) qs.Add($"desde={desde.Value:yyyy-MM-dd}");
+        if (hasta.HasValue) qs.Add($"hasta={hasta.Value:yyyy-MM-dd}");
+        var url = "/api/mercadopago/movimientos" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<List<Web.Models.MpMovimientoDto>>(url);
+    }
+
+    public async Task<Web.Models.MpMovResumenDto?> GetMpMovimientosResumenAsync(DateTime? desde = null, DateTime? hasta = null)
+    {
+        var qs = new List<string>();
+        if (desde.HasValue) qs.Add($"desde={desde.Value:yyyy-MM-dd}");
+        if (hasta.HasValue) qs.Add($"hasta={hasta.Value:yyyy-MM-dd}");
+        var url = "/api/mercadopago/movimientos/resumen" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<Web.Models.MpMovResumenDto>(url);
+    }
+
     private async Task<T?> GetAsync<T>(string url)
     {
         await SetAuthHeaderAsync();

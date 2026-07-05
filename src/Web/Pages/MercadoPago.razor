@@ -188,6 +188,88 @@
             }
         </div>
 
+        @* Movimientos por reportes (Parte B) *@
+        <div class="card" style="padding:1.1rem; margin-bottom:1.2rem; border:1px solid #e5e7eb; border-radius:10px;">
+            <h3 style="margin-top:0;">Movimientos de la cuenta (saldo / dinero)</h3>
+            <p style="color:#6b7280; font-size:0.85rem;">
+                Trae el detalle de <strong>todo lo que entra y sale</strong> de tu cuenta (ventas, retiros, comisiones)
+                usando el reporte oficial de Mercado Pago. Sumando el neto tenés el <strong>panorama del dinero</strong>.
+                <br/>⏳ El reporte lo genera Mercado Pago y <strong>puede tardar 1-3 minutos</strong>: tocá el botón y esperá; si no está listo, volvé a tocarlo en un ratito.
+            </p>
+            <div style="display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap;">
+                <select class="form-control" style="max-width:200px;" @bind="movDias">
+                    <option value="7">Últimos 7 días</option>
+                    <option value="15">Últimos 15 días</option>
+                    <option value="30">Últimos 30 días</option>
+                    <option value="60">Últimos 60 días</option>
+                </select>
+                <button class="btn btn-primary" @onclick="ActualizarMovimientos" disabled="@(actualizandoMov || account?.HasToken != true)">
+                    @(actualizandoMov ? "Generando y trayendo… (puede tardar)" : "🔄 Actualizar movimientos")
+                </button>
+            </div>
+            @if (account is null)
+            {
+                <p style="color:#b45309; font-size:0.85rem; margin-top:0.6rem;">Guardá primero el Access Token.</p>
+            }
+
+            @if (!actualizandoMov && movResult is not null)
+            {
+                @if (movResult.EnProceso)
+                {
+                    <div style="padding:0.7rem 0.9rem; margin-top:0.9rem; background:#fffbeb; border:1px solid #fde68a; border-radius:8px; color:#92400e; font-size:0.86rem;">
+                        ⏳ @movResult.Error
+                    </div>
+                }
+                else if (movResult.Ok)
+                {
+                    <div style="padding:0.7rem 0.9rem; margin-top:0.9rem; background:#e7f2ff; border:1px solid #b6dcff; border-radius:8px; color:#0b5cad; font-size:0.88rem;">
+                        ✅ Listo: <strong>@movResult.Nuevos</strong> movimientos nuevos (@movResult.TotalFilas filas en el reporte).
+                    </div>
+                }
+                else
+                {
+                    <div style="padding:0.7rem 0.9rem; margin-top:0.9rem; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; color:#991b1b; font-size:0.88rem;">
+                        ❌ @movResult.Error
+                    </div>
+                }
+            }
+
+            @if (resumenMov is not null && resumenMov.Cantidad > 0)
+            {
+                <div style="display:flex; gap:1.5rem; margin-top:1rem; flex-wrap:wrap;">
+                    <div><div style="font-size:0.75rem; color:#6b7280;">Ingresos</div><div style="font-size:1.15rem; font-weight:700; color:#166534;">$@Fmt(resumenMov.TotalIngresos)</div></div>
+                    <div><div style="font-size:0.75rem; color:#6b7280;">Egresos</div><div style="font-size:1.15rem; font-weight:700; color:#991b1b;">$@Fmt(resumenMov.TotalEgresos)</div></div>
+                    <div><div style="font-size:0.75rem; color:#6b7280;">Comisiones</div><div style="font-size:1.15rem; font-weight:700; color:#92400e;">$@Fmt(resumenMov.TotalComisiones)</div></div>
+                    <div style="border-left:2px solid #e5e7eb; padding-left:1.2rem;"><div style="font-size:0.75rem; color:#6b7280;">Neto del período</div><div style="font-size:1.3rem; font-weight:800; color:#0b5cad;">$@Fmt(resumenMov.NetoPeriodo)</div></div>
+                </div>
+            }
+
+            @if (movimientos is not null && movimientos.Count > 0)
+            {
+                <div style="overflow-x:auto; margin-top:1rem;">
+                    <table class="data-table" style="width:100%; font-size:0.85rem;">
+                        <thead>
+                            <tr><th>Fecha</th><th>Tipo</th><th>Detalle</th><th style="text-align:right;">Bruto</th><th style="text-align:right;">Comisión</th><th style="text-align:right;">Neto</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var m in movimientos)
+                            {
+                                <tr>
+                                    <td>@m.Fecha.ToLocalTime().ToString("dd/MM/yy")</td>
+                                    <td>@(m.TipoTransaccion ?? "—")</td>
+                                    <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@(m.Descripcion ?? "—")</td>
+                                    <td style="text-align:right;">$@Fmt(m.MontoBruto)</td>
+                                    <td style="text-align:right; color:#92400e;">$@Fmt(m.Comision)</td>
+                                    <td style="text-align:right; font-weight:600; color:@(m.MontoNeto < 0 ? "#991b1b" : "#166534");">$@Fmt(m.MontoNeto)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div style="font-size:0.75rem; color:#6b7280; margin-top:0.4rem;">Mostrando hasta 1000 movimientos.</div>
+            }
+        </div>
+
         @* Automático *@
         <div class="card" style="padding:1.1rem; border:1px solid #e5e7eb; border-radius:10px;">
             <h3 style="margin-top:0;">Leer automático (sin apretar nada)</h3>
@@ -247,6 +329,13 @@
     private List<Web.Models.MpPagoDto>? pagos;
     private Web.Models.MpPagosResumenDto? resumenPagos;
 
+    // Movimientos por reportes (Parte B)
+    private int movDias = 30;
+    private bool actualizandoMov;
+    private Web.Models.MpSyncMovResultDto? movResult;
+    private List<Web.Models.MpMovimientoDto>? movimientos;
+    private Web.Models.MpMovResumenDto? resumenMov;
+
     private static readonly System.Globalization.CultureInfo ArCulture = new("es-AR");
     private static string Fmt(decimal? v) => v.HasValue ? v.Value.ToString("N2", ArCulture) : "0,00";
 
@@ -254,6 +343,38 @@
     {
         await CargarCuenta();
         await CargarPagos();
+        await CargarMovimientos();
+    }
+
+    private async Task CargarMovimientos()
+    {
+        try
+        {
+            movimientos = await Api.GetMpMovimientosAsync();
+            resumenMov = await Api.GetMpMovimientosResumenAsync();
+        }
+        catch { /* opcional */ }
+    }
+
+    private async Task ActualizarMovimientos()
+    {
+        movResult = null;
+        actualizandoMov = true;
+        StateHasChanged();
+        try
+        {
+            movResult = await Api.SincronizarMpMovimientosAsync(movDias);
+            if (movResult is not null && movResult.Ok && !movResult.EnProceso) await CargarMovimientos();
+        }
+        catch (Exception ex)
+        {
+            movResult = new Web.Models.MpSyncMovResultDto { Ok = false, Error = ex.Message };
+        }
+        finally
+        {
+            actualizandoMov = false;
+            StateHasChanged();
+        }
     }
 
     private async Task CargarPagos()
