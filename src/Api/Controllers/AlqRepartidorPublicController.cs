@@ -55,7 +55,7 @@ public class AlqRepartidorPublicController : ControllerBase
         Math.Max(0m, r.MontoTotal - r.Sena - r.MontoCobrado),
         r.EntregadoPorRepartidorId.HasValue, r.EntregadoPorRepartidor?.Nombre, r.EntregadoAt, r.ComentarioEntrega,
         r.RetiradoPorRepartidorId.HasValue, r.RetiradoPorRepartidor?.Nombre, r.RetiradoAt, r.ComentarioRetiro,
-        r.Items.Select(i => new ItemDto(i.Cantidad, i.EquipoNav?.Sku ?? "—", i.EquipoNav?.Nombre ?? "—")).ToList());
+        r.Items.Select(i => new ItemDto(i.Cantidad, i.EquipoId.HasValue ? (i.EquipoNav?.Sku ?? "—") : "", i.EquipoId.HasValue ? (i.EquipoNav?.Nombre ?? "—") : (i.Descripcion ?? "—"))).ToList());
 
     public record AccionRequest(
         int RepartidorId, string Pin,
@@ -229,7 +229,7 @@ public class AlqRepartidorPublicController : ControllerBase
                     x.MontoTotal, Math.Max(0m, x.MontoTotal - x.Sena - x.MontoCobrado),
                     entregado, retirado, cargadoAt,
                     x.EntregadoAt, x.RetiradoAt,
-                    x.Items.Select(i => new ItemDto(i.Cantidad, i.EquipoNav?.Sku ?? "—", i.EquipoNav?.Nombre ?? "—")).ToList(),
+                    x.Items.Select(i => new ItemDto(i.Cantidad, i.EquipoId.HasValue ? (i.EquipoNav?.Sku ?? "—") : "", i.EquipoId.HasValue ? (i.EquipoNav?.Nombre ?? "—") : (i.Descripcion ?? "—"))).ToList(),
                     paraRetiro,
                     string.IsNullOrWhiteSpace(x.MapeoLink) ? x.ClienteNav?.MapeoLink : x.MapeoLink);
             })

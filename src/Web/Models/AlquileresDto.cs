@@ -95,11 +95,13 @@ public class UpdateAlqClienteRequest
 public class AlqReservaItemDto
 {
     public int Id { get; set; }
-    public int EquipoId { get; set; }
+    public int? EquipoId { get; set; }
     public string EquipoSku { get; set; } = "";
     public string EquipoNombre { get; set; } = "";
     public int Cantidad { get; set; }
     public decimal PrecioUnitario { get; set; }
+    /// <summary>true si es un item de "descripción libre" (texto, sin equipo del catálogo).</summary>
+    public bool EsLibre { get; set; }
 }
 
 public class AlqReservaDto
@@ -157,7 +159,8 @@ public class AlqReservaDto
 
 public class CreateAlqReservaItemRequest
 {
-    public int EquipoId { get; set; }
+    public int? EquipoId { get; set; }
+    public string? Descripcion { get; set; }
     public int Cantidad { get; set; }
     public decimal PrecioUnitario { get; set; }
 }

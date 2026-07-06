@@ -241,13 +241,21 @@ public class AlqReservasController : ControllerBase
         var cliente = await _db.CafeClientes.FindAsync(req.ClienteId);
         if (cliente is null) return BadRequest(new { error = "Cliente no encontrado" });
 
-        // Consolidar items por EquipoId (sumar cantidades si vinieron repetidos)
+        // Separar items del catálogo (con EquipoId) de los items de "descripción libre" (texto).
+        // Consolidar los del catálogo por EquipoId; los libres pasan tal cual (con descripción no vacía).
         var consolidados = req.Items
-            .GroupBy(i => i.EquipoId)
+            .Where(i => i.EquipoId is > 0)
+            .GroupBy(i => i.EquipoId!.Value)
             .Select(g => new { EquipoId = g.Key, Cantidad = g.Sum(x => x.Cantidad), PrecioUnitario = g.First().PrecioUnitario })
             .ToList();
+        var libres = req.Items
+            .Where(i => (i.EquipoId is null or <= 0) && !string.IsNullOrWhiteSpace(i.Descripcion))
+            .Select(i => new { Descripcion = i.Descripcion!.Trim(), Cantidad = i.Cantidad, PrecioUnitario = i.PrecioUnitario })
+            .ToList();
+        if (consolidados.Count == 0 && libres.Count == 0)
+            return BadRequest(new { error = "Agregá al menos un equipo o una descripción a la reserva" });
 
-        // Validar disponibilidad por equipo en el rango
+        // Validar disponibilidad por equipo en el rango (los items libres no descuentan stock)
         foreach (var it in consolidados)
         {
             if (it.Cantidad <= 0) return BadRequest(new { error = "Las cantidades deben ser mayores a 0" });
@@ -265,10 +273,11 @@ public class AlqReservasController : ControllerBase
                 });
             }
         }
+        if (libres.Any(l => l.Cantidad <= 0)) return BadRequest(new { error = "Las cantidades deben ser mayores a 0" });
 
         // Estado y subtotal
         var estado = NormalizarEstado(req.Estado) ?? "reservado";
-        var subtotal = consolidados.Sum(i => i.Cantidad * i.PrecioUnitario);
+        var subtotal = consolidados.Sum(i => i.Cantidad * i.PrecioUnitario) + libres.Sum(i => i.Cantidad * i.PrecioUnitario);
         var total = req.MontoTotalManual.HasValue
             ? Math.Max(0m, req.MontoTotalManual.Value)
             : Math.Max(0m, subtotal - Math.Max(0m, req.Descuento));
@@ -302,7 +311,13 @@ public class AlqReservasController : ControllerBase
                 EquipoId = i.EquipoId,
                 Cantidad = i.Cantidad,
                 PrecioUnitario = i.PrecioUnitario
-            }).ToList()
+            }).Concat(libres.Select(l => new AlqReservaItem
+            {
+                EquipoId = null,
+                Descripcion = l.Descripcion,
+                Cantidad = l.Cantidad,
+                PrecioUnitario = l.PrecioUnitario
+            })).ToList()
         };
         _db.AlqReservas.Add(reserva);
 
@@ -381,12 +396,17 @@ public class AlqReservasController : ControllerBase
         // Si vienen items, reemplazar todos. Validar disponibilidad excluyendo esta reserva.
         if (req.Items is not null)
         {
-            if (req.Items.Count == 0) return BadRequest(new { error = "La reserva debe tener al menos un equipo" });
-
             var consolidados = req.Items
-                .GroupBy(i => i.EquipoId)
+                .Where(i => i.EquipoId is > 0)
+                .GroupBy(i => i.EquipoId!.Value)
                 .Select(g => new { EquipoId = g.Key, Cantidad = g.Sum(x => x.Cantidad), PrecioUnitario = g.First().PrecioUnitario })
                 .ToList();
+            var libres = req.Items
+                .Where(i => (i.EquipoId is null or <= 0) && !string.IsNullOrWhiteSpace(i.Descripcion))
+                .Select(i => new { Descripcion = i.Descripcion!.Trim(), Cantidad = i.Cantidad, PrecioUnitario = i.PrecioUnitario })
+                .ToList();
+            if (consolidados.Count == 0 && libres.Count == 0)
+                return BadRequest(new { error = "La reserva debe tener al menos un equipo o una descripción" });
 
             foreach (var it in consolidados)
             {
@@ -405,6 +425,7 @@ public class AlqReservasController : ControllerBase
                     });
                 }
             }
+            if (libres.Any(l => l.Cantidad <= 0)) return BadRequest(new { error = "Las cantidades deben ser mayores a 0" });
 
             _db.AlqReservaItems.RemoveRange(reserva.Items);
             reserva.Items = consolidados.Select(i => new AlqReservaItem
@@ -412,8 +433,14 @@ public class AlqReservasController : ControllerBase
                 EquipoId = i.EquipoId,
                 Cantidad = i.Cantidad,
                 PrecioUnitario = i.PrecioUnitario
-            }).ToList();
-            var subtotal = consolidados.Sum(i => i.Cantidad * i.PrecioUnitario);
+            }).Concat(libres.Select(l => new AlqReservaItem
+            {
+                EquipoId = null,
+                Descripcion = l.Descripcion,
+                Cantidad = l.Cantidad,
+                PrecioUnitario = l.PrecioUnitario
+            })).ToList();
+            var subtotal = consolidados.Sum(i => i.Cantidad * i.PrecioUnitario) + libres.Sum(i => i.Cantidad * i.PrecioUnitario);
             reserva.MontoTotal = req.MontoTotalManual.HasValue
                 ? Math.Max(0m, req.MontoTotalManual.Value)
                 : Math.Max(0m, subtotal - reserva.Descuento);
@@ -576,8 +603,10 @@ public class AlqReservasController : ControllerBase
         r.Estado, r.Notas,
         r.CreatedAt, r.UpdatedAt,
         r.Items.Select(i => new AlqReservaItemDto(
-            i.Id, i.EquipoId, i.EquipoNav?.Sku ?? "—", i.EquipoNav?.Nombre ?? "—",
-            i.Cantidad, i.PrecioUnitario)).ToList(),
+            i.Id, i.EquipoId,
+            i.EquipoId.HasValue ? (i.EquipoNav?.Sku ?? "—") : "",
+            i.EquipoId.HasValue ? (i.EquipoNav?.Nombre ?? "—") : (i.Descripcion ?? "—"),
+            i.Cantidad, i.PrecioUnitario, EsLibre: !i.EquipoId.HasValue)).ToList(),
         r.FechaEvento,
         r.MapeoLink,
         r.PublicToken, r.MontoCobrado,

@@ -284,6 +284,7 @@
                             <label class="form-label" style="font-size: 0.75rem;">Seleccioná un equipo</label>
                             <select class="form-input" @bind="addEquipoId">
                                 <option value="0">— Tipeá o elegí un equipo —</option>
+                                <option value="-1">✏️ Descripción libre (texto)…</option>
                                 @foreach (var e in equipos ?? new())
                                 {
                                     var disp = DisponibleDe(e.Id);
@@ -297,6 +298,18 @@
                             <button class="btn btn-primary" type="button" @onclick="AddItem" style="width: 100%;">+ Agregar</button>
                         </div>
                     </div>
+
+                    @* 2026-07-06: campo de texto para el item de "descripción libre" *@
+                    @if (addEquipoId == -1)
+                    {
+                        <div class="form-row" style="align-items: end; margin-top: 0.4rem;">
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label" style="font-size: 0.75rem; color:#6d28d9;">✏️ Escribí la descripción (ej: "Flete especial", "Mantelería")</label>
+                                <input class="form-input" @bind="addDescripcionLibre" @bind:event="oninput"
+                                       placeholder="Texto libre del ítem" @onkeydown="@(e => { if (e.Key == "Enter") AddItem(); })" />
+                            </div>
+                        </div>
+                    }
 
                     @if (formItems.Count == 0)
                     {
@@ -326,20 +339,28 @@
                                     {
                                         var i = idx;
                                         var it = formItems[i];
-                                        var eq = equipos?.FirstOrDefault(x => x.Id == it.EquipoId);
+                                        var esLibre = !it.EquipoId.HasValue;
+                                        var eq = it.EquipoId.HasValue ? equipos?.FirstOrDefault(x => x.Id == it.EquipoId.Value) : null;
                                         var subtotal = it.Cantidad * it.PrecioUnitario;
-                                        var disp = DisponibleDe(it.EquipoId);
+                                        var disp = it.EquipoId.HasValue ? DisponibleDe(it.EquipoId.Value) : null;
                                         var excedido = disp.HasValue && it.Cantidad > disp.Value;
                                         <tr style="@(excedido ? "background: #fef2f2;" : "")">
                                             <td>
                                                 <input class="form-input" type="number" min="1" @bind="it.Cantidad" style="text-align: right; padding: 0.25rem;" />
                                             </td>
-                                            <td style="font-family: monospace;">@(eq?.Sku ?? "—")</td>
+                                            <td style="font-family: monospace;">@(esLibre ? "✏️" : (eq?.Sku ?? "—"))</td>
                                             <td>
-                                                <strong>@(eq?.Nombre ?? "—")</strong>
-                                                @if (excedido)
+                                                @if (esLibre)
                                                 {
-                                                    <div style="color: #dc2626; font-size: 0.72rem; font-weight: 600;">⚠ Excede disponible (@disp.Value)</div>
+                                                    <input class="form-input" @bind="it.Descripcion" placeholder="Descripción" style="padding: 0.25rem; font-weight: 600;" />
+                                                }
+                                                else
+                                                {
+                                                    <strong>@(eq?.Nombre ?? "—")</strong>
+                                                    @if (excedido)
+                                                    {
+                                                        <div style="color: #dc2626; font-size: 0.72rem; font-weight: 600;">⚠ Excede disponible (@disp.Value)</div>
+                                                    }
                                                 }
                                             </td>
                                             @if (formUsarPrecios)
@@ -1110,6 +1131,8 @@
     // Add item state
     private int addCantidad = 1;
     private int addEquipoId;
+    // 2026-07-06: descripción libre (texto) — cuando addEquipoId == -1 se agrega un item sin equipo del catálogo
+    private string addDescripcionLibre = "";
 
     // Quick client
     private bool showQuickClient;
@@ -1325,6 +1348,7 @@
         formItems = r.Items.Select(i => new CreateAlqReservaItemRequest
         {
             EquipoId = i.EquipoId,
+            Descripcion = i.EsLibre ? i.EquipoNombre : null,
             Cantidad = i.Cantidad,
             PrecioUnitario = i.PrecioUnitario
         }).ToList();
@@ -1349,7 +1373,7 @@
         formEstado = "reservado";
         formNotas = "";
         formItems = new();
-        addCantidad = 1; addEquipoId = 0;
+        addCantidad = 1; addEquipoId = 0; addDescripcionLibre = "";
         formError = null;
         // ARCA — sin facturar por default
         formTipoComprobante = "X"; formCondicionIva = "CF"; formConcepto = 2; formFormaPago = "";
@@ -1361,7 +1385,24 @@
 
     private void AddItem()
     {
-        if (addEquipoId <= 0 || addCantidad <= 0) return;
+        if (addCantidad <= 0) return;
+
+        // Ítem de "descripción libre" (texto, sin equipo del catálogo)
+        if (addEquipoId == -1)
+        {
+            if (string.IsNullOrWhiteSpace(addDescripcionLibre)) return;
+            formItems.Add(new CreateAlqReservaItemRequest
+            {
+                EquipoId = null,
+                Descripcion = addDescripcionLibre.Trim(),
+                Cantidad = addCantidad,
+                PrecioUnitario = 0m
+            });
+            addCantidad = 1; addEquipoId = 0; addDescripcionLibre = "";
+            return;
+        }
+
+        if (addEquipoId <= 0) return;
         var eq = equipos?.FirstOrDefault(x => x.Id == addEquipoId);
         if (eq is null) return;
 

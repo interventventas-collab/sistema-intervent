@@ -134,8 +134,8 @@ public class AlqReservaPdfService
                         foreach (var i in r.Items)
                         {
                             table.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(4).Text(i.Cantidad.ToString()).FontSize(9);
-                            table.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(4).Text(i.EquipoNav?.Sku ?? "—").FontSize(9);
-                            table.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(4).Text(i.EquipoNav?.Nombre ?? "—").FontSize(9);
+                            table.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(4).Text(i.EquipoId.HasValue ? (i.EquipoNav?.Sku ?? "—") : "").FontSize(9);
+                            table.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(4).Text(i.EquipoId.HasValue ? (i.EquipoNav?.Nombre ?? "—") : (i.Descripcion ?? "—")).FontSize(9);
                             if (conPrecios)
                             {
                                 table.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(4).AlignRight().Text(Money(i.PrecioUnitario)).FontSize(9);

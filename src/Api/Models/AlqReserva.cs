@@ -147,10 +147,15 @@ public class AlqReservaItem
     [ForeignKey(nameof(ReservaId))]
     public AlqReserva? ReservaNav { get; set; }
 
-    public int EquipoId { get; set; }
+    // 2026-07-06: nullable — un item puede ser de "descripción libre" (texto), sin equipo del catálogo.
+    public int? EquipoId { get; set; }
 
     [ForeignKey(nameof(EquipoId))]
     public AlqEquipo? EquipoNav { get; set; }
+
+    /// <summary>Texto libre cuando el item NO es un equipo del catálogo (ej: "Flete especial", "Mantelería"). 2026-07-06.</summary>
+    [MaxLength(300)]
+    public string? Descripcion { get; set; }
 
     public int Cantidad { get; set; }
 
