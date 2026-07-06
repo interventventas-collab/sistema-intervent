@@ -104,10 +104,17 @@ public class ArcaInvoicePdfService
                                         if (!string.IsNullOrEmpty(tagLabel))
                                             t.Span(tagLabel).FontSize(8).FontColor(Colors.Grey.Darken1);
                                     }
-                                    t.Span("   ·   ").FontSize(9).FontColor(Colors.Grey.Darken1);
-                                    t.Span($"{NombreDocTipo(receptor.DocTipo)}: ").SemiBold().FontSize(9);
-                                    t.Span(receptor.DocTipo == 80 ? FormatCuit(receptor.DocNro) : (receptor.DocNro ?? "—")).FontSize(9);
                                 });
+                                // 2026-07-06: CUIT/DNI en su PROPIA línea (antes iba pegado al nombre y, con
+                                // nombres largos, el número se partía feo al renglón siguiente).
+                                if (!string.IsNullOrWhiteSpace(receptor.DocNro))
+                                {
+                                    cr.Item().Text(t =>
+                                    {
+                                        t.Span($"{NombreDocTipo(receptor.DocTipo)}: ").SemiBold().FontSize(9);
+                                        t.Span(receptor.DocTipo == 80 ? FormatCuit(receptor.DocNro) : receptor.DocNro!).FontSize(9);
+                                    });
+                                }
                                 if (!string.IsNullOrEmpty(receptor.Domicilio))
                                     cr.Item().Text($"Domicilio: {receptor.Domicilio}").FontSize(9);
                                 cr.Item().Text(t =>
