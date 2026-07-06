@@ -11,7 +11,9 @@ public record ChatConversacionesDto(
     List<ChatUsuarioDto> Usuarios);
 
 /// <summary>Un mensaje ya listo para pintar en pantalla.</summary>
-public record ChatMensajeDto(int Id, int DeUserId, string DeNombre, int? ParaUserId, string Cuerpo, DateTime CreatedAt, bool Mio);
+public record ChatMensajeDto(int Id, int DeUserId, string DeNombre, int? ParaUserId, string Cuerpo, DateTime CreatedAt, bool Mio,
+    // 2026-07-06: adjunto opcional. AdjuntoTipo: "image"|"audio"|"file". AdjuntoDisponible=false si el archivo ya se limpió (vencido).
+    string? AdjuntoTipo = null, string? AdjuntoNombre = null, bool AdjuntoDisponible = false);
 
 /// <summary>Contadores para el globito de aviso.</summary>
 public record ChatNoLeidosDto(int Total, int Grupo, int Directos);

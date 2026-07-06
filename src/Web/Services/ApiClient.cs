@@ -739,6 +739,24 @@ public class ApiClient
     public async Task<ChatMensajeDto?> EnviarChatAsync(EnviarChatRequest request)
         => await PostAsync<ChatMensajeDto>("/api/chat/enviar", request);
 
+    /// <summary>2026-07-06: enviar un mensaje con adjunto (foto/archivo/audio) por multipart.</summary>
+    public async Task<ChatMensajeDto?> EnviarChatAdjuntoAsync(int? paraUserId, string? cuerpo, string? firma,
+        Stream fileStream, string fileName, string contentType)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        var sc = new StreamContent(fileStream);
+        if (!string.IsNullOrEmpty(contentType))
+            sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+        content.Add(sc, "archivo", string.IsNullOrEmpty(fileName) ? "adjunto" : fileName);
+        if (paraUserId.HasValue) content.Add(new StringContent(paraUserId.Value.ToString()), "paraUserId");
+        if (!string.IsNullOrWhiteSpace(cuerpo)) content.Add(new StringContent(cuerpo), "cuerpo");
+        if (!string.IsNullOrWhiteSpace(firma)) content.Add(new StringContent(firma), "firma");
+        var resp = await _http.PostAsync("/api/chat/enviar-adjunto", content);
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadFromJsonAsync<ChatMensajeDto>();
+    }
+
     public async Task<ChatNoLeidosDto?> GetChatNoLeidosAsync()
         => await GetAsync<ChatNoLeidosDto>("/api/chat/no-leidos");
 

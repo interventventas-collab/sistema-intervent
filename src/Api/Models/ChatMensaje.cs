@@ -20,8 +20,22 @@ public class ChatMensaje
     /// <summary>NULL = Grupo general. Con valor = mensaje privado a ese usuario.</summary>
     public int? ParaUserId { get; set; }
 
-    [Required]
+    /// <summary>Texto del mensaje. Puede ir vacío si el mensaje es solo un adjunto.</summary>
     public string Cuerpo { get; set; } = string.Empty;
+
+    // 2026-07-06: adjunto opcional (foto / archivo / audio). El archivo físico vive en el
+    // volumen /data/files/chat/. Un job lo borra a los X días (config); el mensaje queda.
+    /// <summary>Nombre del archivo guardado en el volumen (interno). Null = sin adjunto.</summary>
+    [MaxLength(255)]
+    public string? AdjuntoArchivo { get; set; }
+
+    /// <summary>Nombre original del archivo, para mostrar y descargar.</summary>
+    [MaxLength(255)]
+    public string? AdjuntoNombre { get; set; }
+
+    /// <summary>Tipo: "image" | "audio" | "file".</summary>
+    [MaxLength(20)]
+    public string? AdjuntoTipo { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

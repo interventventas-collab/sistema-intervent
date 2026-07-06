@@ -1,6 +1,7 @@
 @page "/chat"
 @attribute [Authorize]
 @using Web.Models
+@using Microsoft.AspNetCore.Components.Forms
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject IJSRuntime JS
@@ -112,7 +113,29 @@
                                 {
                                     <div class="chat-bubble-autor">@m.DeNombre</div>
                                 }
-                                <div class="chat-bubble-texto">@m.Cuerpo</div>
+                                @if (m.AdjuntoTipo is not null)
+                                {
+                                    @if (!m.AdjuntoDisponible)
+                                    {
+                                        <div class="chat-adj-venc">📎 archivo vencido</div>
+                                    }
+                                    else if (m.AdjuntoTipo == "image")
+                                    {
+                                        <a href="/api/chat/adjunto/@m.Id" target="_blank"><img class="chat-adj-img" src="/api/chat/adjunto/@m.Id" alt="@m.AdjuntoNombre" /></a>
+                                    }
+                                    else if (m.AdjuntoTipo == "audio")
+                                    {
+                                        <audio class="chat-adj-audio" controls src="/api/chat/adjunto/@m.Id"></audio>
+                                    }
+                                    else
+                                    {
+                                        <a class="chat-adj-file" href="/api/chat/adjunto/@m.Id" target="_blank">📎 @(m.AdjuntoNombre ?? "archivo")</a>
+                                    }
+                                }
+                                @if (!string.IsNullOrWhiteSpace(m.Cuerpo))
+                                {
+                                    <div class="chat-bubble-texto">@m.Cuerpo</div>
+                                }
                                 <div class="chat-bubble-hora">@Hora(m.CreatedAt)</div>
                             </div>
                         </div>
@@ -121,6 +144,11 @@
             </div>
 
             <div class="chat-input">
+                <label class="chat-attach-btn" title="Adjuntar foto o archivo">
+                    📎
+                    <InputFile OnChange="OnAdjuntoElegido" style="display:none"
+                               accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip,.rar" disabled="@enviando" />
+                </label>
                 <input class="chat-input-box" @bind="draft" @bind:event="oninput"
                        @onkeydown="OnKeyDown" placeholder="Escribí un mensaje..." disabled="@enviando" />
                 <button class="chat-send-btn" @onclick="Enviar" disabled="@(enviando || string.IsNullOrWhiteSpace(draft))">
@@ -267,6 +295,15 @@
     .chat-bubble-texto { color: #1f2937; white-space: pre-wrap; }
     .chat-bubble-hora { font-size: 0.65rem; color: #9ca3af; text-align: right; margin-top: 0.15rem; }
 
+    /* Adjuntos (foto/archivo/audio) */
+    .chat-attach-btn { flex-shrink: 0; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #6b7280; font-size: 1.2rem; border-radius: 50%; }
+    .chat-attach-btn:hover { background: #f3f4f6; color: #374151; }
+    .chat-adj-img { max-width: 220px; max-height: 220px; border-radius: 8px; display: block; cursor: pointer; margin-bottom: 0.2rem; }
+    .chat-adj-audio { max-width: 250px; height: 40px; margin-bottom: 0.2rem; }
+    .chat-adj-file { color: #4f46e5; font-size: 0.9rem; text-decoration: none; word-break: break-word; display: inline-block; margin-bottom: 0.2rem; }
+    .chat-adj-file:hover { text-decoration: underline; }
+    .chat-adj-venc { color: #9ca3af; font-size: 0.8rem; font-style: italic; margin-bottom: 0.2rem; }
+
     .chat-input {
         display: flex; gap: 0.5rem;
         padding: 0.7rem;
@@ -400,6 +437,32 @@
             }
         }
         catch (Exception ex) { ToastService.Error("No se pudo enviar: " + ex.Message); }
+        finally { enviando = false; }
+    }
+
+    // 2026-07-06: enviar una foto/archivo como adjunto en la conversación abierta.
+    private async Task OnAdjuntoElegido(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null || sel is null || enviando) return;
+        const long max = 25L * 1024 * 1024;
+        if (file.Size > max) { ToastService.Error("El archivo es muy grande (máximo 25 MB)"); return; }
+        enviando = true;
+        try
+        {
+            int? para = sel == "grupo" ? null : int.Parse(sel[2..]);
+            using var stream = file.OpenReadStream(maxAllowedSize: max);
+            var msg = await Api.EnviarChatAdjuntoAsync(para, null, Operator.Current, stream, file.Name, file.ContentType);
+            if (msg is not null)
+            {
+                mensajes.Add(msg);
+                lastMsgId = msg.Id;
+                await ScrollAbajo();
+                await RefrescarConvs();
+            }
+            else ToastService.Error("No se pudo enviar el archivo");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo enviar el archivo: " + ex.Message); }
         finally { enviando = false; }
     }
 
