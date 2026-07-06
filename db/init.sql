@@ -5465,3 +5465,11 @@ GO
 IF EXISTS (SELECT 1 FROM sys.columns WHERE Name='EquipoId' AND Object_ID=OBJECT_ID('Alq_ReservaItems') AND is_nullable=0)
     ALTER TABLE Alq_ReservaItems ALTER COLUMN EquipoId INT NULL;
 GO
+
+-- 2026-07-06: Alq_Reservas — factura resumida (un solo renglón con el resumen de equipos + total).
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='FacturaResumida' AND Object_ID=OBJECT_ID('Alq_Reservas'))
+    ALTER TABLE Alq_Reservas ADD FacturaResumida BIT NOT NULL CONSTRAINT DF_AlqReservas_FacturaResumida DEFAULT 0;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='ResumenDescripcion' AND Object_ID=OBJECT_ID('Alq_Reservas'))
+    ALTER TABLE Alq_Reservas ADD ResumenDescripcion NVARCHAR(500) NULL;
+GO

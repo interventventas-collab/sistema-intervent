@@ -109,7 +109,10 @@ public record AlqReservaDto(
     int? ArcaCbteTipoNum = null,
     string? ArcaError = null,
     decimal? ArcaImpTotal = null,
-    string? FormaPago = null);
+    string? FormaPago = null,
+    // 2026-07-06: factura en un solo renglón (resumen de equipos)
+    bool FacturaResumida = false,
+    string? ResumenDescripcion = null);
 
 public class CreateAlqReservaItemRequest
 {
@@ -148,6 +151,9 @@ public class CreateAlqReservaRequest
     /// <summary>Certificado/CUIT con el que se factura (multi-empresa). Null = default del negocio.</summary>
     public int? ArcaWebserviceAccountId { get; set; }
     public string? FormaPago { get; set; }
+    /// <summary>2026-07-06: factura en un solo renglón (resumen de equipos + total).</summary>
+    public bool FacturaResumida { get; set; }
+    public string? ResumenDescripcion { get; set; }
 }
 
 public class UpdateAlqReservaRequest
@@ -177,6 +183,9 @@ public class UpdateAlqReservaRequest
     public int? Concepto { get; set; }
     public int? ArcaWebserviceAccountId { get; set; }
     public string? FormaPago { get; set; }
+    /// <summary>2026-07-06: factura en un solo renglón (resumen de equipos + total).</summary>
+    public bool FacturaResumida { get; set; }
+    public string? ResumenDescripcion { get; set; }
 }
 
 // ===== Disponibilidad =====

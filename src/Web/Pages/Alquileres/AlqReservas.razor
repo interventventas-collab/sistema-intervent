@@ -527,6 +527,26 @@
                                     </select>
                                 </div>
                             </div>
+
+                            @* 2026-07-06: factura en un solo renglón (resumen de equipos) *@
+                            <div style="margin-top:0.5rem; background:#f5f3ff; border:1px solid #ddd6fe; border-radius:8px; padding:0.5rem 0.7rem;">
+                                <label style="display:flex; align-items:center; gap:0.45rem; font-size:0.85rem; cursor:pointer; color:#374151;">
+                                    <input type="checkbox" @bind="formFacturaResumida" />
+                                    <strong>🧾 Facturar en un solo renglón (resumen)</strong>
+                                </label>
+                                @if (formFacturaResumida)
+                                {
+                                    <div style="margin-top:0.45rem;">
+                                        <label class="form-label" style="font-size:0.72rem;">Texto del renglón <span style="color:#9ca3af;">· si lo dejás vacío se arma solo con los equipos</span></label>
+                                        <input class="form-input" @bind="formResumenDescripcion" placeholder="@ResumenAuto()" />
+                                        <div style="font-size:0.72rem; color:#6d28d9; margin-top:0.3rem;">
+                                            En la factura va a salir 1 renglón:<br />
+                                            <strong>@(string.IsNullOrWhiteSpace(formResumenDescripcion) ? ResumenAuto() : formResumenDescripcion)</strong>
+                                            &nbsp;—&nbsp; Total: <strong>$@FormatMoney(Total)</strong>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
                             @if (formArcaEstado == "pendiente" && !string.IsNullOrEmpty(formArcaError))
                             {
                                 <div style="font-size: 0.78rem; color:#92400e; background:#fef3c7; border:1px solid #fcd34d; border-radius:6px; padding:0.35rem 0.55rem; margin-top:0.3rem;">
@@ -1033,6 +1053,24 @@
     private string formDireccionEvento = "";
     private string formMapeoLink = "";
     private bool formGuardarMapeoEnCliente;
+    // 2026-07-06: factura en un solo renglón (resumen de equipos)
+    private bool formFacturaResumida;
+    private string formResumenDescripcion = "";
+
+    /// <summary>Arma el texto resumen automático a partir de los equipos cargados: "180 SILLAS + 38 MESA...".</summary>
+    private string ResumenAuto()
+    {
+        if (formItems is null || formItems.Count == 0) return "Alquiler de equipos para el evento";
+        var partes = formItems.Select(i =>
+        {
+            var nombre = i.EquipoId.HasValue
+                ? (equipos?.FirstOrDefault(e => e.Id == i.EquipoId.Value)?.Nombre ?? "")
+                : (i.Descripcion ?? "");
+            return $"{i.Cantidad} {nombre}".Trim();
+        }).Where(s => !string.IsNullOrWhiteSpace(s));
+        var txt = string.Join(" + ", partes);
+        return string.IsNullOrWhiteSpace(txt) ? "Alquiler de equipos para el evento" : txt;
+    }
 
     // ===== ARCA — facturación de la reserva (2026-07-04) =====
     private string formTipoComprobante = "X";
@@ -1343,6 +1381,8 @@
         formCondicionIva = string.IsNullOrWhiteSpace(r.CondicionIva) ? "CF" : r.CondicionIva;
         formConcepto = r.Concepto is 1 or 2 or 3 ? r.Concepto : 2;
         formFormaPago = r.FormaPago ?? "";
+        formFacturaResumida = r.FacturaResumida;
+        formResumenDescripcion = r.ResumenDescripcion ?? "";
         formArcaAccountId = r.ArcaWebserviceAccountId;
         formArcaEstado = r.ArcaEstado ?? "no_aplica";
         formArcaCae = r.ArcaCae;
@@ -1391,6 +1431,7 @@
         formError = null;
         // ARCA — sin facturar por default
         formTipoComprobante = "X"; formCondicionIva = "CF"; formConcepto = 2; formFormaPago = "";
+        formFacturaResumida = false; formResumenDescripcion = "";
         formArcaAccountId = null; formArcaEstado = "no_aplica";
         formArcaCae = null; formArcaError = null; formArcaPtoVta = null; formArcaCbteNro = null;
         // Dejar una empresa por defecto seleccionada (el selector es visible desde el arranque si hay >1)
@@ -1503,7 +1544,9 @@
                     CondicionIva = formCondicionIva,
                     Concepto = formConcepto,
                     ArcaWebserviceAccountId = formTipoComprobante is "FA" or "FB" or "FC" ? formArcaAccountId : null,
-                    FormaPago = string.IsNullOrEmpty(formFormaPago) ? null : formFormaPago
+                    FormaPago = string.IsNullOrEmpty(formFormaPago) ? null : formFormaPago,
+                    FacturaResumida = formFacturaResumida,
+                    ResumenDescripcion = string.IsNullOrWhiteSpace(formResumenDescripcion) ? null : formResumenDescripcion
                 });
                 if (updated is null) { formError = "No se pudo actualizar"; return; }
                 ToastService.Success($"Reserva {updated.Numero} actualizada");
@@ -1532,7 +1575,9 @@
                     CondicionIva = formCondicionIva,
                     Concepto = formConcepto,
                     ArcaWebserviceAccountId = formTipoComprobante is "FA" or "FB" or "FC" ? formArcaAccountId : null,
-                    FormaPago = string.IsNullOrEmpty(formFormaPago) ? null : formFormaPago
+                    FormaPago = string.IsNullOrEmpty(formFormaPago) ? null : formFormaPago,
+                    FacturaResumida = formFacturaResumida,
+                    ResumenDescripcion = string.IsNullOrWhiteSpace(formResumenDescripcion) ? null : formResumenDescripcion
                 });
                 if (created is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success($"Reserva {created.Numero} creada");

@@ -155,6 +155,8 @@ public class AlqReservaDto
     public string? ArcaError { get; set; }
     public decimal? ArcaImpTotal { get; set; }
     public string? FormaPago { get; set; }
+    public bool FacturaResumida { get; set; }
+    public string? ResumenDescripcion { get; set; }
 }
 
 public class CreateAlqReservaItemRequest
@@ -188,6 +190,8 @@ public class CreateAlqReservaRequest
     public int? Concepto { get; set; }
     public int? ArcaWebserviceAccountId { get; set; }
     public string? FormaPago { get; set; }
+    public bool FacturaResumida { get; set; }
+    public string? ResumenDescripcion { get; set; }
 }
 
 // ===== Resumen dashboard (2026-06-26) =====
@@ -236,6 +240,8 @@ public class UpdateAlqReservaRequest
     public int? Concepto { get; set; }
     public int? ArcaWebserviceAccountId { get; set; }
     public string? FormaPago { get; set; }
+    public bool FacturaResumida { get; set; }
+    public string? ResumenDescripcion { get; set; }
 }
 
 public class AlqDisponibilidadDto

@@ -305,6 +305,8 @@ public class AlqReservasController : ControllerBase
             CondicionIva = NormCondIva(req.CondicionIva),
             Concepto = (req.Concepto is 1 or 2 or 3) ? req.Concepto.Value : 2,
             ArcaWebserviceAccountId = req.ArcaWebserviceAccountId is > 0 ? req.ArcaWebserviceAccountId : null,
+            FacturaResumida = req.FacturaResumida,
+            ResumenDescripcion = string.IsNullOrWhiteSpace(req.ResumenDescripcion) ? null : req.ResumenDescripcion.Trim(),
             CreatedAt = DateTime.UtcNow,
             Items = consolidados.Select(i => new AlqReservaItem
             {
@@ -375,6 +377,8 @@ public class AlqReservasController : ControllerBase
             if (req.Concepto is 1 or 2 or 3) reserva.Concepto = req.Concepto.Value;
             if (req.ArcaWebserviceAccountId.HasValue)
                 reserva.ArcaWebserviceAccountId = req.ArcaWebserviceAccountId.Value > 0 ? req.ArcaWebserviceAccountId.Value : null;
+            reserva.FacturaResumida = req.FacturaResumida;
+            reserva.ResumenDescripcion = string.IsNullOrWhiteSpace(req.ResumenDescripcion) ? null : req.ResumenDescripcion.Trim();
         }
         if (req.Estado is not null)
         {
@@ -617,7 +621,21 @@ public class AlqReservasController : ControllerBase
         r.TipoComprobante, r.CondicionIva, r.Concepto,
         r.ArcaEstado, r.ArcaCae, r.ArcaCaeVto, r.ArcaPtoVta,
         r.ArcaWebserviceAccountId, r.ArcaCbteNro, r.ArcaCbteTipoNum,
-        r.ArcaError, r.ArcaImpTotal, r.FormaPago);
+        r.ArcaError, r.ArcaImpTotal, r.FormaPago,
+        r.FacturaResumida, r.ResumenDescripcion);
+
+    /// <summary>Texto del renglón resumen de una factura resumida. Si la reserva tiene ResumenDescripcion
+    /// cargado a mano se usa ese; sino se arma juntando los equipos: "180 SILLAS + 38 MESA...".</summary>
+    private static string BuildResumen(AlqReserva r)
+    {
+        if (!string.IsNullOrWhiteSpace(r.ResumenDescripcion)) return r.ResumenDescripcion!.Trim();
+        var partes = r.Items
+            .Select(i => $"{i.Cantidad} {(i.EquipoId.HasValue ? (i.EquipoNav?.Nombre ?? "") : (i.Descripcion ?? ""))}".Trim())
+            .Where(s => !string.IsNullOrWhiteSpace(s));
+        var txt = string.Join(" + ", partes);
+        if (string.IsNullOrWhiteSpace(txt)) txt = "Alquiler de equipos para el evento";
+        return txt.Length > 500 ? txt.Substring(0, 500) : txt;
+    }
 
     private static string NormTipoComprobante(string? t)
     {
@@ -693,23 +711,39 @@ public class AlqReservasController : ControllerBase
         r.CondicionIva = condIva;
         int condIvaReceptor = condIva switch { "RI" => 1, "EX" => 4, "CF" => 5, "MO" => 6, _ => 5 };
 
-        // 3. Items: un renglón por equipo. Prorrateo para que el total AFIP == MontoTotal de la reserva
-        //    (contempla descuento global y total manual).
-        decimal subtotalItems = r.Items.Sum(i => i.Cantidad * i.PrecioUnitario);
-        decimal factor = (subtotalItems > 0m && r.MontoTotal > 0m) ? (r.MontoTotal / subtotalItems) : 1m;
+        // 3. Items para AFIP.
         var items = new List<EmitirComprobanteItemDto>();
-        foreach (var it in r.Items)
+        if (r.FacturaResumida)
         {
-            var pu = factor != 1m
-                ? Math.Round(it.PrecioUnitario * factor, 2, MidpointRounding.AwayFromZero)
-                : it.PrecioUnitario;
+            // UN SOLO renglón: descripción resumen + el total de la reserva. Esto además hace que
+            // el importe AFIP sea siempre el MontoTotal (aunque los equipos estén sin precio / total a mano).
             items.Add(new EmitirComprobanteItemDto
             {
-                Descripcion = it.EquipoNav?.Nombre ?? "Alquiler",
-                Cantidad = it.Cantidad,
-                PrecioUnitario = pu,
+                Descripcion = BuildResumen(r),
+                Cantidad = 1,
+                PrecioUnitario = r.MontoTotal,
                 AlicIvaId = 5, // 21%
             });
+        }
+        else
+        {
+            // Un renglón por equipo. Prorrateo para que el total AFIP == MontoTotal de la reserva
+            // (contempla descuento global y total manual).
+            decimal subtotalItems = r.Items.Sum(i => i.Cantidad * i.PrecioUnitario);
+            decimal factor = (subtotalItems > 0m && r.MontoTotal > 0m) ? (r.MontoTotal / subtotalItems) : 1m;
+            foreach (var it in r.Items)
+            {
+                var pu = factor != 1m
+                    ? Math.Round(it.PrecioUnitario * factor, 2, MidpointRounding.AwayFromZero)
+                    : it.PrecioUnitario;
+                items.Add(new EmitirComprobanteItemDto
+                {
+                    Descripcion = it.EquipoId.HasValue ? (it.EquipoNav?.Nombre ?? "Alquiler") : (it.Descripcion ?? "Alquiler"),
+                    Cantidad = it.Cantidad,
+                    PrecioUnitario = pu,
+                    AlicIvaId = 5, // 21%
+                });
+            }
         }
         if (items.Count == 0)
             return BadRequest(new { error = "La reserva no tiene equipos para facturar." });
@@ -852,24 +886,41 @@ public class AlqReservasController : ControllerBase
             // FACTURA SOBRIA: sin QrRepartidorBytes ni datos de logística (esos van en el comprobante de reserva).
         };
 
-        // Renglones = equipos, prorrateados para sumar el neto que registró ARCA.
-        decimal subtotalItems = r.Items.Sum(i => i.Cantidad * i.PrecioUnitario);
-        decimal factor = subtotalItems > 0m ? neto / subtotalItems : 1m;
-        foreach (var it in r.Items)
+        if (r.FacturaResumida)
         {
-            var pu = factor != 1m
-                ? Math.Round(it.PrecioUnitario * factor, 2, MidpointRounding.AwayFromZero)
-                : it.PrecioUnitario;
+            // UN SOLO renglón: el resumen de equipos + el neto (el total va abajo).
             comp.Items.Add(new PdfItem
             {
-                Descripcion = it.EquipoNav?.Nombre ?? "Alquiler",
-                Sku = it.EquipoNav?.Sku,
-                Producto = it.EquipoNav?.Nombre ?? "Alquiler",
+                Descripcion = BuildResumen(r),
+                Sku = null,
+                Producto = BuildResumen(r),
                 Formato = "",
-                Cantidad = it.Cantidad,
-                PrecioUnitario = pu,
+                Cantidad = 1,
+                PrecioUnitario = neto,
                 AlicPct = letra == "C" ? 0m : 21m,
             });
+        }
+        else
+        {
+            // Renglones = equipos, prorrateados para sumar el neto que registró ARCA.
+            decimal subtotalItems = r.Items.Sum(i => i.Cantidad * i.PrecioUnitario);
+            decimal factor = subtotalItems > 0m ? neto / subtotalItems : 1m;
+            foreach (var it in r.Items)
+            {
+                var pu = factor != 1m
+                    ? Math.Round(it.PrecioUnitario * factor, 2, MidpointRounding.AwayFromZero)
+                    : it.PrecioUnitario;
+                comp.Items.Add(new PdfItem
+                {
+                    Descripcion = it.EquipoId.HasValue ? (it.EquipoNav?.Nombre ?? "Alquiler") : (it.Descripcion ?? "Alquiler"),
+                    Sku = it.EquipoId.HasValue ? it.EquipoNav?.Sku : null,
+                    Producto = it.EquipoId.HasValue ? (it.EquipoNav?.Nombre ?? "Alquiler") : (it.Descripcion ?? "Alquiler"),
+                    Formato = "",
+                    Cantidad = it.Cantidad,
+                    PrecioUnitario = pu,
+                    AlicPct = letra == "C" ? 0m : 21m,
+                });
+            }
         }
         if (letra is "A" or "B")
             comp.IvasDesglosados.Add(new PdfIvaDesglose { Pct = 21m, Importe = ivaImporte });
