@@ -90,7 +90,9 @@ public class AssistantService
                 ["max_tokens"] = 1024,
                 ["system"] = SystemPrompt(),
                 ["tools"] = ToolDefinitions(),
-                ["messages"] = messages
+                // Clonamos messages: en la 2da vuelta (tool-use) no se puede reasignar
+                // el MISMO nodo como hijo de otro requestBody (JsonNode solo admite un padre).
+                ["messages"] = JsonNode.Parse(messages.ToJsonString())!
             };
 
             using var content = new StringContent(requestBody.ToJsonString(), Encoding.UTF8, "application/json");
