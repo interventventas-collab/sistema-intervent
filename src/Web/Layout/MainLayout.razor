@@ -432,7 +432,7 @@
 
 @if (!IsEmbedded)
 {
-<aside class="sidebar @(sidebarOpen ? "open" : "") @(sidebarCollapsed ? "collapsed" : "") @(IsDevEnvironment ? "sidebar-dev" : "sidebar-prod")" id="sidebar">
+<aside class="sidebar @(sidebarOpen ? "open" : "") @(sidebarCollapsed ? "collapsed" : "") @(IsDevEnvironment ? "sidebar-dev" : "sidebar-prod") @(HasPerm("deposito") ? "sidebar-with-chat" : "")" id="sidebar">
     @if (IsDevEnvironment)
     {
         <div class="dev-environment-banner" title="Estás en el entorno de DESARROLLO. Los datos NO son los de producción.">
@@ -968,6 +968,12 @@
             </NavGroup>
         }
     </nav>
+    @* 2026-07-06: chat del equipo embebido en el menú, SOLO para el usuario Depósito
+       (menú corto con espacio libre). Siempre a la vista en cualquier pantalla. *@
+    @if (HasPerm("deposito"))
+    {
+        <SidebarChat />
+    }
     <div class="sidebar-user">
         <div class="sidebar-user-avatar">@SvgIcons.User</div>
         <div class="sidebar-user-info">
