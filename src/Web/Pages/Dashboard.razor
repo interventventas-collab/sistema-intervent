@@ -121,16 +121,8 @@
     }
     else if (equipoResp is not null && equipoResp.Items.Count > 0)
     {
-        @* 2026-07-06: rediseño. Separamos a los que están fichados AHORA (tarjetas
-           grandes con su carga del día) de los demás (tira compacta de 1 línea).
-           Así no se pierde lo importante entre 8 "no ficha". Listas calculadas en @code. *@
-        <div class="dash-equipo-seclabel">Activos ahora · @EquipoActivos.Count</div>
-        @if (EquipoActivos.Count == 0)
-        {
-            <div class="dash-card-sub">Nadie fichado en este momento.</div>
-        }
         <div class="dash-equipo-grid">
-            @foreach (var emp in EquipoActivos)
+            @foreach (var emp in equipoResp.Items.Where(x => EmpVisible(x.NomEmpleadoId)))
             {
                 <button class="dash-emp-tile dash-emp-tile-btn" @onclick="() => OpenEmpDetalle(emp)" title="Ver detalle">
                     <div class="dash-emp-head">
@@ -207,23 +199,6 @@
                 </button>
             }
         </div>
-
-        @* Otros del equipo: no fichados / ya salieron / oficina. Tira compacta,
-           1 línea cada uno, clickeable para ver el detalle igual que las tarjetas. *@
-        @if (EquipoOtros.Count > 0)
-        {
-            <div class="dash-equipo-seclabel" style="margin-top:14px;">Otros del equipo · @EquipoOtros.Count</div>
-            <div class="dash-equipo-otros">
-                @foreach (var emp in EquipoOtros)
-                {
-                    <button class="dash-emp-row" @onclick="() => OpenEmpDetalle(emp)" title="Ver detalle">
-                        <div class="dash-emp-avatar sm" style="background:@OperatorService.ShortBgColor(emp.ApodoKiosko ?? emp.Nombre);">@AvatarLabel(emp)</div>
-                        <span class="dash-emp-row-name">@ShortName(emp.Nombre)</span>
-                        <span class="dash-emp-row-status"><span class="dash-dot" style="background:@EstadoColor(emp.Estado);"></span>@EstadoTexto(emp)</span>
-                    </button>
-                }
-            </div>
-        }
     }
     else
     {
@@ -910,16 +885,6 @@
     .dash-emp-filter-row:hover { background:#f9fafb; border-radius:4px; }
     .dash-emp-filter-row input { cursor:pointer; }
 
-    /* 2026-07-06: rediseño — "Activos ahora" (tarjetas grandes) vs "Otros del equipo"
-       (tira compacta de 1 línea). Los títulos de sección + la tira de otros. */
-    .dash-equipo-seclabel { font-size:0.62rem; color:#9ca3af; text-transform:uppercase; letter-spacing:0.04em; margin:0 0 7px; font-weight:500; }
-    .dash-equipo-otros { display:flex; flex-direction:column; gap:1px; background:rgba(0,0,0,0.06); border:0.5px solid rgba(0,0,0,0.08); border-radius:10px; overflow:hidden; }
-    .dash-emp-row { display:flex; align-items:center; gap:9px; background:#ffffff; border:none; width:100%; text-align:left; font:inherit; padding:7px 11px; cursor:pointer; transition:background 0.12s; }
-    .dash-emp-row:hover { background:#f9fafb; }
-    .dash-emp-avatar.sm { width:26px; height:26px; font-size:0.68rem; }
-    .dash-emp-row-name { font-size:0.85rem; color:#1f2937; flex:1; font-weight:500; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .dash-emp-row-status { font-size:0.72rem; color:#6b7280; display:inline-flex; align-items:center; gap:5px; font-variant-numeric:tabular-nums; white-space:nowrap; }
-
     /* Modal detalle empleado */
     .dash-detalle-block { background: #ffffff; border: 0.5px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 12px 14px; }
     .dash-detalle-label { font-size: 0.68rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -1331,15 +1296,6 @@
     private ApiClient.DashboardResumenDiaDto? resumenDia;
     private System.Threading.Timer? resumenDiaTimer;
     private ApiClient.DashboardEquipoItem? empDetalle;
-
-    // 2026-07-06: rediseño del card "Equipo trabajando ahora".
-    // Activos = fichados AHORA (estado "trabajando"), van en tarjetas grandes.
-    // Otros = el resto (ya salieron / sin fichar / oficina), van en tira compacta.
-    // Ambas respetan el filtro de empleados ocultos (EmpVisible).
-    private List<ApiClient.DashboardEquipoItem> EquipoActivos =>
-        (equipoResp?.Items ?? new()).Where(x => EmpVisible(x.NomEmpleadoId) && x.Estado == "trabajando").ToList();
-    private List<ApiClient.DashboardEquipoItem> EquipoOtros =>
-        (equipoResp?.Items ?? new()).Where(x => EmpVisible(x.NomEmpleadoId) && x.Estado != "trabajando").ToList();
 
     private void OpenEmpDetalle(ApiClient.DashboardEquipoItem emp)
     {
