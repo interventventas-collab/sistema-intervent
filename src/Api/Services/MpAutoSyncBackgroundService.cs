@@ -62,7 +62,8 @@ public class MpAutoSyncBackgroundService : BackgroundService
         try
         {
             var pagos = scope.ServiceProvider.GetRequiredService<MpPagosService>();
-            var rp = await pagos.SincronizarAsync(7);
+            // 12 días para capturar mejor la plata "por acreditarse" (MP retiene hasta ~14 días).
+            var rp = await pagos.SincronizarAsync(12);
             if (rp.Ok) _logger.LogInformation("[MP auto] Cobros OK — {N} nuevos", rp.Nuevos);
             else _logger.LogWarning("[MP auto] Cobros: {Err}", rp.Error);
         }

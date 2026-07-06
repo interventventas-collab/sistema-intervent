@@ -84,11 +84,23 @@
             @if (mpDash?.DisponibleEstimado is not null)
             {
                 <div style="padding:0.9rem 1.1rem; margin-bottom:0.9rem; background:#e7f2ff; border:1px solid #b6dcff; border-radius:10px;">
-                    <div style="font-size:0.8rem; color:#0b5cad;">Disponible estimado ahora</div>
-                    <div style="font-size:1.7rem; font-weight:800; color:#0b5cad;">$@Fmt(mpDash.DisponibleEstimado)</div>
+                    <div style="display:flex; gap:2rem; flex-wrap:wrap; align-items:flex-end;">
+                        <div>
+                            <div style="font-size:0.8rem; color:#166534;">💵 Disponible para usar (estimado)</div>
+                            <div style="font-size:1.6rem; font-weight:800; color:#166534;">$@Fmt(mpDash.DisponibleEstimado)</div>
+                        </div>
+                        <div>
+                            <div style="font-size:0.8rem; color:#92400e;">🕒 Por acreditarse</div>
+                            <div style="font-size:1.6rem; font-weight:800; color:#92400e;">$@Fmt(mpDash.PorAcreditarse)</div>
+                        </div>
+                        <div style="border-left:2px solid #b6dcff; padding-left:1.5rem;">
+                            <div style="font-size:0.8rem; color:#0b5cad;">💰 Total en Mercado Pago</div>
+                            <div style="font-size:1.8rem; font-weight:900; color:#0b5cad;">$@Fmt(mpDash.DisponibleEstimado + mpDash.PorAcreditarse)</div>
+                        </div>
+                    </div>
                     @if (mpDash.SaldoInicial is not null && mpDash.SaldoInicialFecha is not null)
                     {
-                        <div style="font-size:0.76rem; color:#6b7280;">Base: $@Fmt(mpDash.SaldoInicial) puesto el @mpDash.SaldoInicialFecha.Value.ToLocalTime().ToString("dd/MM/yy HH:mm") + movimientos posteriores</div>
+                        <div style="font-size:0.76rem; color:#6b7280; margin-top:0.6rem;">Disponible = base $@Fmt(mpDash.SaldoInicial) (puesto el @mpDash.SaldoInicialFecha.Value.ToLocalTime().ToString("dd/MM/yy HH:mm")) + movimientos. "Por acreditarse" es aproximado (lo que MP retiene de tus cobros).</div>
                     }
                 </div>
             }

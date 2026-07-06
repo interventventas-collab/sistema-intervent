@@ -128,4 +128,5 @@ public class MpDashboardDto
     public decimal? DisponibleEstimado { get; set; }
     public decimal? SaldoInicial { get; set; }
     public DateTime? SaldoInicialFecha { get; set; }
+    public decimal PorAcreditarse { get; set; }
 }

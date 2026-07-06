@@ -128,7 +128,8 @@ public class MpController : ControllerBase
     public record MpDashboardDto(bool Conectada, decimal CobradoNeto30, decimal CobradoBruto30,
         int CantCobros30, decimal NetoMov30, DateTime? UltimoDato,
         decimal Liberado30, decimal Pendiente30,
-        decimal? DisponibleEstimado, decimal? SaldoInicial, DateTime? SaldoInicialFecha);
+        decimal? DisponibleEstimado, decimal? SaldoInicial, DateTime? SaldoInicialFecha,
+        decimal PorAcreditarse);
 
     /// <summary>Resumen de los últimos 30 días para la tarjeta del dashboard (lee lo ya guardado, rápido).</summary>
     [HttpGet("dashboard")]
@@ -146,6 +147,10 @@ public class MpController : ControllerBase
         // Ya liberado (disponible aprox) vs pendiente de liberar (money_release_status).
         var liberado = cantCobros == 0 ? 0m : await cobros.Where(p => p.EstadoLiberacion == "released").SumAsync(p => p.MontoNeto ?? p.Monto);
         var pendiente = cantCobros == 0 ? 0m : await cobros.Where(p => p.EstadoLiberacion == "pending").SumAsync(p => p.MontoNeto ?? p.Monto);
+        // "Por acreditarse" = TODO lo pendiente de liberar que tengamos guardado (sin límite de 30 días:
+        // la plata retenida es reciente igual, y así captura todo lo que tenemos). ≈ el "A cobrar" de MP.
+        var porAcreditarse = await _db.MpPagos.Where(p => p.Estado == "approved" && p.EstadoLiberacion == "pending")
+            .SumAsync(p => (decimal?)(p.MontoNeto ?? p.Monto)) ?? 0m;
 
         var movs = _db.MpMovimientos.Where(m => m.Fecha >= desde);
         var netoMov = await movs.AnyAsync() ? await movs.SumAsync(m => m.MontoNeto) : 0m;
@@ -166,7 +171,7 @@ public class MpController : ControllerBase
 
         DateTime? ultimo = new[] { ultCobro, ultMov }.Where(d => d.HasValue).Max();
         return Ok(new MpDashboardDto(conectada, cobradoNeto, cobradoBruto, cantCobros, netoMov, ultimo,
-            liberado, pendiente, disponibleEst, cuenta?.SaldoInicial, cuenta?.SaldoInicialFecha));
+            liberado, pendiente, disponibleEst, cuenta?.SaldoInicial, cuenta?.SaldoInicialFecha, porAcreditarse));
     }
 
     // ─────────────────────────────────────────────────────────────

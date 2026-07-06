@@ -404,12 +404,12 @@
         else if (mpDash.DisponibleEstimado is not null)
         {
             <div class="mac-card-bignum">@(SaldoOculto("mercadopago") ? "$ ••••••" : $"${FormatMoney(mpDash.DisponibleEstimado.Value)}")</div>
-            <div class="mac-card-sub">disponible (estimado)</div>
-            @if (mpDash.Pendiente30 > 0)
+            <div class="mac-card-sub">disponible para usar (est.)</div>
+            @if (mpDash.PorAcreditarse > 0)
             {
-                <div class="mac-card-sub" style="margin-top:2px; color:#92400e;">🕒 por liberarse: @(SaldoOculto("mercadopago") ? "$ ••••" : $"${FormatMoney(mpDash.Pendiente30)}")</div>
+                <div class="mac-card-sub" style="margin-top:2px; color:#92400e;">🕒 por acreditarse: @(SaldoOculto("mercadopago") ? "$ ••••" : $"${FormatMoney(mpDash.PorAcreditarse)}")</div>
             }
-            <div class="mac-card-sub" style="margin-top:2px;">cobrado 30d: @(SaldoOculto("mercadopago") ? "$ ••••" : $"${FormatMoney(mpDash.CobradoNeto30)}")</div>
+            <div class="mac-card-sub" style="margin-top:2px; font-weight:600; color:#0b5cad;">💰 total: @(SaldoOculto("mercadopago") ? "$ ••••" : $"${FormatMoney(mpDash.DisponibleEstimado.Value + mpDash.PorAcreditarse)}")</div>
         }
         else
         {
