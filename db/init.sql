@@ -782,6 +782,13 @@ BEGIN
 END
 GO
 
+-- 2026-07-06: cada cuántos días se borran los adjuntos viejos del chat (1 mes por default).
+IF NOT EXISTS (SELECT * FROM AppSettings WHERE [Key] = 'chat.adjuntos.dias')
+BEGIN
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('chat.adjuntos.dias', '30');
+END
+GO
+
 -- ============================================================
 -- Backups
 -- ============================================================

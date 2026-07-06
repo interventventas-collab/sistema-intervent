@@ -166,6 +166,8 @@ builder.Services.AddHostedService<MeliPricePushBackgroundService>();
 builder.Services.AddHostedService<ContabiliumNightlySnapshotService>();
 builder.Services.AddScoped<CafePreciosFuturosService>();
 builder.Services.AddHostedService<CafePreciosFuturosBackgroundService>();
+// 2026-07-06: limpieza diaria de adjuntos viejos del chat (default 30 días, config en AppSettings)
+builder.Services.AddHostedService<Api.BackgroundJobs.ChatAdjuntosCleanupService>();
 builder.Services.AddScoped<QrRepartidorService>();
 builder.Services.AddScoped<CafeReciboCobranzaPdfService>();
 // 2026-06-22: Recibo de entrega PDF (cuando el repartidor confirma entrega)
