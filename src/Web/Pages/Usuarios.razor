@@ -83,12 +83,21 @@
                     <div class="form-error">@formError</div>
                 }
 
+                @* 2026-07-06: el "Usuario" (login) ahora se puede editar también, no solo al crear.
+                   La contraseña sigue solo al crear (para cambiarla se usa el botón 🔑). *@
+                <div class="form-group">
+                    <label class="form-label">Usuario</label>
+                    @if (isEditing)
+                    {
+                        <input class="form-input" @bind="formUsername" placeholder="Nombre de usuario" />
+                    }
+                    else
+                    {
+                        <input class="form-input" @bind="newUser.Username" placeholder="Nombre de usuario" />
+                    }
+                </div>
                 @if (!isEditing)
                 {
-                    <div class="form-group">
-                        <label class="form-label">Usuario</label>
-                        <input class="form-input" @bind="newUser.Username" placeholder="Nombre de usuario" />
-                    </div>
                     <div class="form-group">
                         <label class="form-label">Contrasena</label>
                         <input class="form-input" type="password" @bind="newUser.Password" placeholder="Minimo 6 caracteres" />
@@ -215,6 +224,7 @@
     // Form fields
     private CreateUserRequest newUser = new();
     private int? editingUserId;
+    private string formUsername = "";
     private string formFirstName = "";
     private string formLastName = "";
     private string formEmail = "";
@@ -315,6 +325,7 @@
     {
         isEditing = true;
         editingUserId = user.Id;
+        formUsername = user.Username;
         formFirstName = user.FirstName ?? "";
         formLastName = user.LastName ?? "";
         formEmail = user.Email;
@@ -347,13 +358,14 @@
                     Email = formEmail,
                     Phone = formPhone,
                     RoleId = formRoleId,
-                    IsActive = formIsActive
+                    IsActive = formIsActive,
+                    Username = formUsername
                 };
 
                 var result = await Api.UpdateUserAsync(editingUserId.Value, update);
                 if (result is null)
                 {
-                    formError = "Error al actualizar. Verificar que el email no este en uso.";
+                    formError = "Error al actualizar. Verificar que el email y el usuario no esten ya en uso por otra cuenta.";
                     isSaving = false;
                     return;
                 }

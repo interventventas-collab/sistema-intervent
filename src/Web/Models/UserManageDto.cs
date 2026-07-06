@@ -33,4 +33,5 @@ public class UpdateUserRequest
     public string? Phone { get; set; }
     public int? RoleId { get; set; }
     public bool? IsActive { get; set; }
+    public string? Username { get; set; }
 }
