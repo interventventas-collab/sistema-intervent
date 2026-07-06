@@ -72,6 +72,8 @@ public class MpPagosResumenDto
     public decimal TotalBruto { get; set; }
     public decimal TotalNeto { get; set; }
     public DateTime? UltimoCobroAt { get; set; }
+    public decimal Liberado { get; set; }
+    public decimal Pendiente { get; set; }
 }
 
 // --- Movimientos por reportes (Parte B) ---
@@ -119,4 +121,6 @@ public class MpDashboardDto
     public int CantCobros30 { get; set; }
     public decimal NetoMov30 { get; set; }
     public DateTime? UltimoDato { get; set; }
+    public decimal Liberado30 { get; set; }
+    public decimal Pendiente30 { get; set; }
 }

@@ -156,7 +156,10 @@
                     <div><div style="font-size:0.75rem; color:#6b7280;">Cobros aprobados</div><div style="font-size:1.2rem; font-weight:700;">@resumenPagos.Cantidad</div></div>
                     <div><div style="font-size:0.75rem; color:#6b7280;">Total bruto</div><div style="font-size:1.2rem; font-weight:700; color:#166534;">$@Fmt(resumenPagos.TotalBruto)</div></div>
                     <div><div style="font-size:0.75rem; color:#6b7280;">Total neto (con comisión)</div><div style="font-size:1.2rem; font-weight:700; color:#0b5cad;">$@Fmt(resumenPagos.TotalNeto)</div></div>
+                    <div style="border-left:2px solid #e5e7eb; padding-left:1.2rem;"><div style="font-size:0.75rem; color:#166534;">💚 Ya liberado (disponible)</div><div style="font-size:1.2rem; font-weight:800; color:#166534;">$@Fmt(resumenPagos.Liberado)</div></div>
+                    <div><div style="font-size:0.75rem; color:#92400e;">🕒 Por liberarse</div><div style="font-size:1.2rem; font-weight:800; color:#92400e;">$@Fmt(resumenPagos.Pendiente)</div></div>
                 </div>
+                <div style="font-size:0.72rem; color:#9ca3af; margin-top:0.4rem;">"Ya liberado" es la plata de estos cobros que Mercado Pago ya te habilitó; "Por liberarse" es la que todavía está retenida y te cae en unos días. (Aproximado: no descuenta lo que ya retiraste al banco.)</div>
             }
 
             @if (pagos is not null && pagos.Count > 0)

@@ -405,6 +405,10 @@
         {
             <div class="mac-card-bignum">@(SaldoOculto("mercadopago") ? "$ ••••••" : $"${FormatMoney(mpDash.CobradoNeto30)}")</div>
             <div class="mac-card-sub">cobrado neto · últimos 30 días</div>
+            @if (mpDash.Pendiente30 > 0)
+            {
+                <div class="mac-card-sub" style="margin-top:2px; color:#92400e;">🕒 por liberarse: @(SaldoOculto("mercadopago") ? "$ ••••" : $"${FormatMoney(mpDash.Pendiente30)}")</div>
+            }
             <div class="mac-card-sub" style="margin-top:2px;">@mpDash.CantCobros30 cobros@(mpDash.UltimoDato.HasValue ? " · al " + mpDash.UltimoDato.Value.ToLocalTime().ToString("dd/MM") : "")</div>
         }
     </div>

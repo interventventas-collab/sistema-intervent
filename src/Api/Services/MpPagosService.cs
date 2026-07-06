@@ -91,13 +91,18 @@ public class MpPagosService
                     var medio = ReadString(r, "payment_method_id");
                     var tipoOp = ReadString(r, "operation_type");
                     var extRef = ReadString(r, "external_reference");
+                    var releaseStatus = ReadString(r, "money_release_status");
+                    var releaseDate = ReadDate(r, "money_release_date");
 
                     if (existentes.TryGetValue(mpId.Value, out var ya))
                     {
-                        // Actualizar campos que cambian (estado, neto).
+                        // Actualizar campos que cambian (estado, neto, y sobre todo la liberación:
+                        // un cobro pasa de "pending" a "released" con los días).
                         ya.Estado = estado; ya.EstadoDetalle = estadoDet;
                         ya.Monto = monto; ya.MontoNeto = neto;
                         ya.Fecha = fecha;
+                        ya.EstadoLiberacion = Trunc(releaseStatus, 20);
+                        ya.FechaLiberacion = releaseDate;
                         actualizados++;
                     }
                     else
@@ -116,6 +121,8 @@ public class MpPagosService
                             MedioPago = Trunc(medio, 50),
                             TipoOperacion = Trunc(tipoOp, 50),
                             ReferenciaExterna = Trunc(extRef, 200),
+                            EstadoLiberacion = Trunc(releaseStatus, 20),
+                            FechaLiberacion = releaseDate,
                             ImportadoAt = DateTime.UtcNow,
                             CreatedAt = DateTime.UtcNow
                         };

@@ -92,7 +92,8 @@ public class MpController : ControllerBase
         return Ok(l);
     }
 
-    public record MpPagosResumenDto(int Cantidad, decimal TotalBruto, decimal TotalNeto, DateTime? UltimoCobroAt);
+    public record MpPagosResumenDto(int Cantidad, decimal TotalBruto, decimal TotalNeto, DateTime? UltimoCobroAt,
+        decimal Liberado, decimal Pendiente);
 
     /// <summary>Resumen de cobros aprobados en un período (para tarjetas/resúmenes).</summary>
     [HttpGet("pagos/resumen")]
@@ -104,15 +105,18 @@ public class MpController : ControllerBase
         var cant = await q.CountAsync();
         var bruto = cant == 0 ? 0m : await q.SumAsync(p => p.Monto);
         var neto = cant == 0 ? 0m : await q.SumAsync(p => p.MontoNeto ?? p.Monto);
+        var liberado = cant == 0 ? 0m : await q.Where(p => p.EstadoLiberacion == "released").SumAsync(p => p.MontoNeto ?? p.Monto);
+        var pendiente = cant == 0 ? 0m : await q.Where(p => p.EstadoLiberacion == "pending").SumAsync(p => p.MontoNeto ?? p.Monto);
         DateTime? ultimo = cant == 0 ? null : await q.MaxAsync(p => (DateTime?)p.Fecha);
-        return Ok(new MpPagosResumenDto(cant, bruto, neto, ultimo));
+        return Ok(new MpPagosResumenDto(cant, bruto, neto, ultimo, liberado, pendiente));
     }
 
     // ─────────────────────────────────────────────────────────────
     // Resumen para la tarjeta del dashboard
     // ─────────────────────────────────────────────────────────────
     public record MpDashboardDto(bool Conectada, decimal CobradoNeto30, decimal CobradoBruto30,
-        int CantCobros30, decimal NetoMov30, DateTime? UltimoDato);
+        int CantCobros30, decimal NetoMov30, DateTime? UltimoDato,
+        decimal Liberado30, decimal Pendiente30);
 
     /// <summary>Resumen de los últimos 30 días para la tarjeta del dashboard (lee lo ya guardado, rápido).</summary>
     [HttpGet("dashboard")]
@@ -127,13 +131,16 @@ public class MpController : ControllerBase
         var cobradoBruto = cantCobros == 0 ? 0m : await cobros.SumAsync(p => p.Monto);
         var cobradoNeto = cantCobros == 0 ? 0m : await cobros.SumAsync(p => p.MontoNeto ?? p.Monto);
         DateTime? ultCobro = cantCobros == 0 ? null : await cobros.MaxAsync(p => (DateTime?)p.Fecha);
+        // Ya liberado (disponible aprox) vs pendiente de liberar (money_release_status).
+        var liberado = cantCobros == 0 ? 0m : await cobros.Where(p => p.EstadoLiberacion == "released").SumAsync(p => p.MontoNeto ?? p.Monto);
+        var pendiente = cantCobros == 0 ? 0m : await cobros.Where(p => p.EstadoLiberacion == "pending").SumAsync(p => p.MontoNeto ?? p.Monto);
 
         var movs = _db.MpMovimientos.Where(m => m.Fecha >= desde);
         var netoMov = await movs.AnyAsync() ? await movs.SumAsync(m => m.MontoNeto) : 0m;
         DateTime? ultMov = await movs.AnyAsync() ? await movs.MaxAsync(m => (DateTime?)m.Fecha) : null;
 
         DateTime? ultimo = new[] { ultCobro, ultMov }.Where(d => d.HasValue).Max();
-        return Ok(new MpDashboardDto(conectada, cobradoNeto, cobradoBruto, cantCobros, netoMov, ultimo));
+        return Ok(new MpDashboardDto(conectada, cobradoNeto, cobradoBruto, cantCobros, netoMov, ultimo, liberado, pendiente));
     }
 
     // ─────────────────────────────────────────────────────────────

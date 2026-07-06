@@ -56,6 +56,14 @@ public class MpPago
     [MaxLength(50)]
     public string? MedioPago { get; set; }
 
+    /// <summary>Estado de liberación del dinero (money_release_status): released = ya disponible,
+    /// pending = todavía retenido por MP. Sirve para el "disponible aproximado".</summary>
+    [MaxLength(20)]
+    public string? EstadoLiberacion { get; set; }
+
+    /// <summary>Fecha en que el dinero se libera/liberó (money_release_date).</summary>
+    public DateTime? FechaLiberacion { get; set; }
+
     /// <summary>Tipo de operacion (operation_type: regular_payment, pos_payment, etc).</summary>
     [MaxLength(50)]
     public string? TipoOperacion { get; set; }

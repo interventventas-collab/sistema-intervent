@@ -267,6 +267,14 @@ BEGIN
 END
 GO
 
+-- Migración 2026-07-05: estado de liberación del dinero (disponible aprox).
+IF COL_LENGTH('Mp_Pagos','EstadoLiberacion') IS NULL
+    ALTER TABLE Mp_Pagos ADD EstadoLiberacion NVARCHAR(20) NULL;
+GO
+IF COL_LENGTH('Mp_Pagos','FechaLiberacion') IS NULL
+    ALTER TABLE Mp_Pagos ADD FechaLiberacion DATETIME2 NULL;
+GO
+
 -- Mp_Movimientos table — movimientos de la cuenta de MP traídos del Reporte oficial
 -- "Dinero en la cuenta" (settlement report). SETTLEMENT_NET_AMOUNT = impacto real en saldo.
 -- Parte B. Pedido 2026-07-05.
