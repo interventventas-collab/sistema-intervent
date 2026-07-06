@@ -237,6 +237,14 @@ BEGIN
 END
 GO
 
+-- Migración 2026-07-05: saldo disponible "estimado" (punto de partida manual + movimientos).
+IF COL_LENGTH('MpAccounts','SaldoInicial') IS NULL
+    ALTER TABLE MpAccounts ADD SaldoInicial DECIMAL(18,2) NULL;
+GO
+IF COL_LENGTH('MpAccounts','SaldoInicialFecha') IS NULL
+    ALTER TABLE MpAccounts ADD SaldoInicialFecha DATETIME2 NULL;
+GO
+
 -- Mp_Pagos table — cobros recibidos por Mercado Pago (API /v1/payments/search).
 -- "Lo cobrado por MP": ingresos a la cuenta, para ver y conciliar. Pedido 2026-07-05.
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Mp_Pagos')

@@ -114,9 +114,21 @@ public class MpController : ControllerBase
     // ─────────────────────────────────────────────────────────────
     // Resumen para la tarjeta del dashboard
     // ─────────────────────────────────────────────────────────────
+    public record SetSaldoInicialRequest(decimal Monto);
+
+    /// <summary>Guarda el disponible real que el usuario copia de la app de MP (punto de partida).</summary>
+    [HttpPut("saldo-inicial")]
+    public async Task<IActionResult> SetSaldoInicial([FromBody] SetSaldoInicialRequest req)
+    {
+        var (ok, error) = await _service.SetSaldoInicialAsync(req.Monto);
+        if (!ok) return BadRequest(new { error });
+        return Ok(new { ok = true });
+    }
+
     public record MpDashboardDto(bool Conectada, decimal CobradoNeto30, decimal CobradoBruto30,
         int CantCobros30, decimal NetoMov30, DateTime? UltimoDato,
-        decimal Liberado30, decimal Pendiente30);
+        decimal Liberado30, decimal Pendiente30,
+        decimal? DisponibleEstimado, decimal? SaldoInicial, DateTime? SaldoInicialFecha);
 
     /// <summary>Resumen de los últimos 30 días para la tarjeta del dashboard (lee lo ya guardado, rápido).</summary>
     [HttpGet("dashboard")]
@@ -139,8 +151,22 @@ public class MpController : ControllerBase
         var netoMov = await movs.AnyAsync() ? await movs.SumAsync(m => m.MontoNeto) : 0m;
         DateTime? ultMov = await movs.AnyAsync() ? await movs.MaxAsync(m => (DateTime?)m.Fecha) : null;
 
+        // Disponible estimado = saldo inicial (cargado a mano) + movimientos netos posteriores
+        // a esa fecha. Usa la fecha de liberación (cuando la plata realmente cae al disponible),
+        // con fallback a la fecha del movimiento.
+        decimal? disponibleEst = null;
+        if (cuenta?.SaldoInicial.HasValue == true && cuenta.SaldoInicialFecha.HasValue)
+        {
+            var t = cuenta.SaldoInicialFecha.Value;
+            var delta = await _db.MpMovimientos
+                .Where(m => (m.FechaLiquidacion ?? m.Fecha) > t)
+                .SumAsync(m => (decimal?)m.MontoNeto) ?? 0m;
+            disponibleEst = cuenta.SaldoInicial.Value + delta;
+        }
+
         DateTime? ultimo = new[] { ultCobro, ultMov }.Where(d => d.HasValue).Max();
-        return Ok(new MpDashboardDto(conectada, cobradoNeto, cobradoBruto, cantCobros, netoMov, ultimo, liberado, pendiente));
+        return Ok(new MpDashboardDto(conectada, cobradoNeto, cobradoBruto, cantCobros, netoMov, ultimo,
+            liberado, pendiente, disponibleEst, cuenta?.SaldoInicial, cuenta?.SaldoInicialFecha));
     }
 
     // ─────────────────────────────────────────────────────────────

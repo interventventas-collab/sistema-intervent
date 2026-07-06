@@ -4172,6 +4172,14 @@ public class ApiClient
     public async Task<Web.Models.MpDashboardDto?> GetMpDashboardAsync()
         => await GetAsync<Web.Models.MpDashboardDto>("/api/mercadopago/dashboard");
 
+    /// <summary>Guarda el disponible real (copiado de la app de MP) como punto de partida del estimado.</summary>
+    public async Task<bool> SetMpSaldoInicialAsync(decimal monto)
+    {
+        var resp = await _http.PutAsJsonAsync("/api/mercadopago/saldo-inicial", new { monto });
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return false; }
+        return resp.IsSuccessStatusCode;
+    }
+
     // --- Movimientos por reportes (Parte B) ---
     /// <summary>Pide el reporte de movimientos a MP y lo procesa. Timeout largo (asincrónico, MP tarda).</summary>
     public async Task<Web.Models.MpSyncMovResultDto?> SincronizarMpMovimientosAsync(int dias = 30)

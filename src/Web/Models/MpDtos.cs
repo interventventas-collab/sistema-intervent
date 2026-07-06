@@ -19,6 +19,8 @@ public class MpAccountDto
     public DateTime? LastAutoSyncAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
+    public decimal? SaldoInicial { get; set; }
+    public DateTime? SaldoInicialFecha { get; set; }
 }
 
 public class SaveMpAccountRequest
@@ -123,4 +125,7 @@ public class MpDashboardDto
     public DateTime? UltimoDato { get; set; }
     public decimal Liberado30 { get; set; }
     public decimal Pendiente30 { get; set; }
+    public decimal? DisponibleEstimado { get; set; }
+    public decimal? SaldoInicial { get; set; }
+    public DateTime? SaldoInicialFecha { get; set; }
 }

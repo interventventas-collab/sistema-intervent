@@ -19,7 +19,8 @@ public class MpAccountService
         decimal? LastSaldoDisponible, decimal? LastSaldoTotal, DateTime? LastSaldoAt,
         bool LastSyncOk, string? LastError,
         bool AutoSyncEnabled, string? AutoSyncTimes, DateTime? LastAutoSyncAt,
-        DateTime CreatedAt, DateTime? UpdatedAt);
+        DateTime CreatedAt, DateTime? UpdatedAt,
+        decimal? SaldoInicial, DateTime? SaldoInicialFecha);
 
     public record SaveMpAccountRequest(string? AccessToken, string? Alias, bool IsActive,
         bool AutoSyncEnabled = false, string? AutoSyncTimes = null);
@@ -30,7 +31,8 @@ public class MpAccountService
         a.MpUserId, a.Nickname, a.SiteId,
         a.LastSaldoDisponible, a.LastSaldoTotal, a.LastSaldoAt,
         a.LastSyncOk, a.LastError,
-        a.AutoSyncEnabled, a.AutoSyncTimes, a.LastAutoSyncAt, a.CreatedAt, a.UpdatedAt);
+        a.AutoSyncEnabled, a.AutoSyncTimes, a.LastAutoSyncAt, a.CreatedAt, a.UpdatedAt,
+        a.SaldoInicial, a.SaldoInicialFecha);
 
     public async Task<MpAccountDto?> GetAsync()
     {
@@ -73,6 +75,18 @@ public class MpAccountService
         if (a is null) return;
         a.LastAutoSyncAt = whenUtc;
         await _db.SaveChangesAsync();
+    }
+
+    /// <summary>Setea el "saldo inicial" (disponible real que el usuario copia de la app de MP)
+    /// con la fecha/hora actual. A partir de ahí el disponible estimado le suma los movimientos.</summary>
+    public async Task<(bool ok, string? error)> SetSaldoInicialAsync(decimal monto)
+    {
+        var a = await _db.MpAccounts.OrderBy(x => x.Id).FirstOrDefaultAsync();
+        if (a is null) return (false, "No hay cuenta de Mercado Pago cargada");
+        a.SaldoInicial = monto;
+        a.SaldoInicialFecha = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return (true, null);
     }
 
     public async Task<(bool ok, string? error, MpAccountDto? dto)> SaveAsync(SaveMpAccountRequest req)

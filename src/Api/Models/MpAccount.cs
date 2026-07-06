@@ -49,6 +49,13 @@ public class MpAccount
     [MaxLength(500)]
     public string? LastError { get; set; }
 
+    // --- Saldo disponible "estimado": punto de partida manual + movimientos ---
+    // El usuario pega el disponible real de la app de MP una vez; el sistema le suma los
+    // movimientos posteriores. Se recalibra re-cargando el número real cada tanto.
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? SaldoInicial { get; set; }
+    public DateTime? SaldoInicialFecha { get; set; }
+
     // --- Automatico (mismos horarios configurables que Galicia/Shell) ---
     public bool AutoSyncEnabled { get; set; } = false;
     [MaxLength(200)]

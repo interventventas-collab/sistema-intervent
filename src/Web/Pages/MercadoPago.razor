@@ -72,6 +72,39 @@
             </button>
         </div>
 
+        @* Saldo disponible estimado (punto de partida manual + movimientos) *@
+        <div class="card" style="padding:1.1rem; margin-bottom:1.2rem; border:1px solid #b6dcff; border-radius:10px; background:#f5faff;">
+            <h3 style="margin-top:0;">💵 Saldo disponible (estimado)</h3>
+            <p style="color:#6b7280; font-size:0.85rem;">
+                Como Mercado Pago no deja leer el disponible automático, lo hacemos así: entrá a la app de MP,
+                mirá el <strong>"Disponible"</strong> y pegá ese número acá <strong>una vez</strong>. El sistema le va
+                sumando los movimientos que entran, así se mantiene aproximado. Cada tanto, volvé a poner el número real para recalibrar.
+            </p>
+
+            @if (mpDash?.DisponibleEstimado is not null)
+            {
+                <div style="padding:0.9rem 1.1rem; margin-bottom:0.9rem; background:#e7f2ff; border:1px solid #b6dcff; border-radius:10px;">
+                    <div style="font-size:0.8rem; color:#0b5cad;">Disponible estimado ahora</div>
+                    <div style="font-size:1.7rem; font-weight:800; color:#0b5cad;">$@Fmt(mpDash.DisponibleEstimado)</div>
+                    @if (mpDash.SaldoInicial is not null && mpDash.SaldoInicialFecha is not null)
+                    {
+                        <div style="font-size:0.76rem; color:#6b7280;">Base: $@Fmt(mpDash.SaldoInicial) puesto el @mpDash.SaldoInicialFecha.Value.ToLocalTime().ToString("dd/MM/yy HH:mm") + movimientos posteriores</div>
+                    }
+                </div>
+            }
+
+            <div style="display:flex; gap:0.6rem; align-items:flex-end; flex-wrap:wrap;">
+                <div>
+                    <label style="font-size:0.82rem; color:#374151;">Disponible real de la app de MP</label>
+                    <input class="form-control" type="number" step="0.01" @bind="saldoInicialInput" placeholder="Ej: 23000317.20" style="max-width:220px;" />
+                </div>
+                <button class="btn btn-primary" @onclick="GuardarSaldoInicial" disabled="@(guardandoSaldo || account?.HasToken != true)">
+                    @(guardandoSaldo ? "Guardando…" : (mpDash?.SaldoInicial is not null ? "Recalibrar" : "Guardar punto de partida"))
+                </button>
+            </div>
+            <div style="font-size:0.74rem; color:#9ca3af; margin-top:0.4rem;">Poné el número tal cual lo ves en Mercado Pago (sin el signo $). Es un estimado — no reemplaza al de la app, pero te da una idea al toque.</div>
+        </div>
+
         @* Leer saldo ahora *@
         <div class="card" style="padding:1.1rem; margin-bottom:1.2rem; border:1px solid #e5e7eb; border-radius:10px;">
             <h3 style="margin-top:0;">Leer el saldo ahora</h3>
@@ -339,6 +372,11 @@
     private List<Web.Models.MpMovimientoDto>? movimientos;
     private Web.Models.MpMovResumenDto? resumenMov;
 
+    // Saldo disponible estimado
+    private Web.Models.MpDashboardDto? mpDash;
+    private decimal? saldoInicialInput;
+    private bool guardandoSaldo;
+
     private static readonly System.Globalization.CultureInfo ArCulture = new("es-AR");
     private static string Fmt(decimal? v) => v.HasValue ? v.Value.ToString("N2", ArCulture) : "0,00";
 
@@ -347,6 +385,31 @@
         await CargarCuenta();
         await CargarPagos();
         await CargarMovimientos();
+        await CargarDash();
+    }
+
+    private async Task CargarDash()
+    {
+        try { mpDash = await Api.GetMpDashboardAsync(); }
+        catch { /* opcional */ }
+    }
+
+    private async Task GuardarSaldoInicial()
+    {
+        if (saldoInicialInput is null || saldoInicialInput < 0)
+        {
+            ToastService.Error("Poné el número del disponible que ves en Mercado Pago");
+            return;
+        }
+        guardandoSaldo = true;
+        try
+        {
+            var ok = await Api.SetMpSaldoInicialAsync(saldoInicialInput.Value);
+            if (ok) { ToastService.Success("Punto de partida guardado"); saldoInicialInput = null; await CargarDash(); }
+            else ToastService.Error("No se pudo guardar");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo guardar: " + ex.Message); }
+        finally { guardandoSaldo = false; }
     }
 
     private async Task CargarMovimientos()
