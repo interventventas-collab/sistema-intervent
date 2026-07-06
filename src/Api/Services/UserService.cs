@@ -106,6 +106,16 @@ public class UserService
             user.Email = request.Email;
         }
 
+        // 2026-07-06: permitir cambiar el nombre de usuario (login) al editar, con validación
+        // de que no exista otro igual. Antes solo se podía al crear.
+        if (!string.IsNullOrWhiteSpace(request.Username) && request.Username.Trim() != user.Username)
+        {
+            var nuevoUsername = request.Username.Trim();
+            if (await _db.Users.AnyAsync(u => u.Username == nuevoUsername && u.Id != id))
+                return null;
+            user.Username = nuevoUsername;
+        }
+
         if (request.RoleId.HasValue && request.RoleId.Value != user.RoleId)
         {
             var role = await _db.Roles.FindAsync(request.RoleId.Value);

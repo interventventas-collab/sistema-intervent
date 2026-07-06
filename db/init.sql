@@ -736,6 +736,16 @@ BEGIN
 END
 GO
 
+-- 2026-07-06: permiso "compartido" (Carpeta compartida) para admin y deposito.
+-- Idempotente y por nombre de rol: no rompe si el rol no existe todavia.
+DECLARE @adminId INT = (SELECT Id FROM Roles WHERE Name = 'admin');
+DECLARE @depId   INT = (SELECT Id FROM Roles WHERE Name = 'deposito');
+IF @adminId IS NOT NULL AND NOT EXISTS (SELECT 1 FROM RolePermissions WHERE RoleId = @adminId AND MenuKey = 'compartido')
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (@adminId, 'compartido');
+IF @depId IS NOT NULL AND NOT EXISTS (SELECT 1 FROM RolePermissions WHERE RoleId = @depId AND MenuKey = 'compartido')
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (@depId, 'compartido');
+GO
+
 -- App Settings table
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='AppSettings' AND xtype='U')
 BEGIN

@@ -432,7 +432,7 @@
 
 @if (!IsEmbedded)
 {
-<aside class="sidebar @(sidebarOpen ? "open" : "") @(sidebarCollapsed ? "collapsed" : "") @(IsDevEnvironment ? "sidebar-dev" : "sidebar-prod")" id="sidebar">
+<aside class="sidebar @(sidebarOpen ? "open" : "") @(sidebarCollapsed ? "collapsed" : "") @(IsDevEnvironment ? "sidebar-dev" : "sidebar-prod") @(HasPerm("deposito") ? "sidebar-with-chat" : "")" id="sidebar">
     @if (IsDevEnvironment)
     {
         <div class="dev-environment-banner" title="Estás en el entorno de DESARROLLO. Los datos NO son los de producción.">
@@ -519,6 +519,15 @@
         @* ═════════════ CHAT INTERNO (visible para todos los usuarios) ═════════════ *@
         <NavItem Href="/chat" Label="💬 Chat" Icon="@SvgIcons.Users"
                  IsActive="@IsActive("/chat")" OnClick="@(() => NavigateTo("/chat"))" />
+
+        @* ═════════════ CARPETA COMPARTIDA (2026-07-06) ═════════════
+           Carpeta de archivos compartida entre admin y depósito (permiso "compartido").
+           Top-level para que la vean tambien los usuarios de depósito (no ven el grupo Café). *@
+        @if (HasPerm("compartido"))
+        {
+            <NavItem Href="/compartido" Label="📂 Compartido" Icon="@SvgIcons.Folder"
+                     IsActive="@IsActive("/compartido")" OnClick="@(() => NavigateTo("/compartido"))" />
+        }
 
         @* ═════════════ 1B. CAFE (modulo independiente, debajo de Dashboard) ═════════════
            Negocio de venta de cafe e insumos, totalmente aislado del resto del ERP. *@
@@ -959,6 +968,12 @@
             </NavGroup>
         }
     </nav>
+    @* 2026-07-06: chat del equipo embebido en el menú, SOLO para el usuario Depósito
+       (menú corto con espacio libre). Siempre a la vista en cualquier pantalla. *@
+    @if (HasPerm("deposito"))
+    {
+        <SidebarChat />
+    }
     <div class="sidebar-user">
         <div class="sidebar-user-avatar">@SvgIcons.User</div>
         <div class="sidebar-user-info">
@@ -1908,6 +1923,7 @@
     private static readonly Dictionary<string, string> RouteToMenuKey = new()
     {
         { "", "dashboard" },
+        { "compartido", "compartido" },
         { "publicaciones", "publicaciones" },
         { "ordenes", "ordenes" },
         { "mapeo", "mapeo" },

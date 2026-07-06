@@ -21,4 +21,9 @@ public class EnviarChatRequest
     /// <summary>NULL = Grupo general. Con valor = privado a ese usuario.</summary>
     public int? ParaUserId { get; set; }
     public string Cuerpo { get; set; } = string.Empty;
+
+    /// <summary>2026-07-06: firma del operador activo (Osmar/Germán/Gabriel/...). Si viene,
+    /// se usa como nombre a mostrar del mensaje, así se ve QUIÉN escribió aunque varios
+    /// compartan la misma cuenta (PIN por operador). Si es null, se usa el nombre de la cuenta.</summary>
+    public string? Firma { get; set; }
 }

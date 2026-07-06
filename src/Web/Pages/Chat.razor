@@ -4,6 +4,7 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject IJSRuntime JS
+@inject OperatorService Operator
 @implements IDisposable
 
 <div class="chat-wrap">
@@ -104,7 +105,10 @@
                     {
                         <div class="chat-msg @(m.Mio ? "mio" : "otro")">
                             <div class="chat-bubble">
-                                @if (!m.Mio && sel == "grupo")
+                                @* 2026-07-06: firma del operador visible en TODOS los mensajes que la tengan
+                                   (grupo y privados, propios y ajenos), así se ve quién escribió aunque
+                                   compartan la cuenta admin. *@
+                                @if (!string.IsNullOrWhiteSpace(m.DeNombre))
                                 {
                                     <div class="chat-bubble-autor">@m.DeNombre</div>
                                 }
@@ -385,7 +389,7 @@
         try
         {
             int? para = sel == "grupo" ? null : int.Parse(sel[2..]);
-            var msg = await Api.EnviarChatAsync(new EnviarChatRequest { ParaUserId = para, Cuerpo = texto });
+            var msg = await Api.EnviarChatAsync(new EnviarChatRequest { ParaUserId = para, Cuerpo = texto, Firma = Operator.Current });
             if (msg is not null)
             {
                 mensajes.Add(msg);

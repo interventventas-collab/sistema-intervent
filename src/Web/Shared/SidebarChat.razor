@@ -1,0 +1,195 @@
+@* 2026-07-06: Chat del equipo EMBEBIDO en el menú lateral. Idea de Osmar: para el
+   usuario Depósito (menú corto, con espacio libre) el chat vive siempre a la vista
+   dentro del sidebar, en cualquier pantalla, sin tocar el área de trabajo.
+   Reusa el chat existente: conversación "grupo" (Grupo general). Refresca cada 6s. *@
+@inject ApiClient Api
+@inject IJSRuntime JS
+@inject OperatorService Operator
+@implements IDisposable
+
+<div class="sbchat">
+    <div class="sbchat-head">
+        <span class="sbchat-title">💬 Chat del equipo</span>
+        <span class="sbchat-live"><span class="sbchat-dot"></span>en vivo</span>
+    </div>
+    <div class="sbchat-msgs" id="sbchat-msgs">
+        @if (cargando && mensajes.Count == 0)
+        {
+            <div class="sbchat-empty">Cargando…</div>
+        }
+        else if (mensajes.Count == 0)
+        {
+            <div class="sbchat-empty">Sin mensajes todavía.<br />¡Escribí el primero! 👋</div>
+        }
+        else
+        {
+            @foreach (var m in mensajes)
+            {
+                <div class="sbchat-msg @(m.Mio ? "mio" : "otro")">
+                    @if (!string.IsNullOrWhiteSpace(m.DeNombre))
+                    {
+                        <div class="sbchat-autor">@m.DeNombre</div>
+                    }
+                    <div class="sbchat-burbuja">@m.Cuerpo</div>
+                    <div class="sbchat-hora">@m.CreatedAt.ToLocalTime().ToString("HH:mm")</div>
+                </div>
+            }
+        }
+    </div>
+    <div class="sbchat-input">
+        <input class="sbchat-box" @bind="draft" @bind:event="oninput" @onkeydown="OnKey"
+               placeholder="Mensaje…" disabled="@enviando" />
+        <button class="sbchat-send" @onclick="Enviar" disabled="@(enviando || string.IsNullOrWhiteSpace(draft))"
+                title="Enviar">@(enviando ? "…" : "➤")</button>
+    </div>
+</div>
+
+@code {
+    private List<ChatMensajeDto> mensajes = new();
+    private string draft = "";
+    private bool enviando;
+    private bool cargando = true;
+    private int lastId = 0;
+    private System.Threading.Timer? timer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Cargar();
+        cargando = false;
+        // Refresco "en vivo" cada 6 segundos (igual patrón que el chat grande).
+        timer = new System.Threading.Timer(async _ => await InvokeAsync(Poll), null,
+            TimeSpan.FromSeconds(6), TimeSpan.FromSeconds(6));
+        await ScrollAbajo();
+    }
+
+    private async Task Cargar()
+    {
+        try
+        {
+            var msgs = await Api.GetChatMensajesAsync("grupo");
+            if (msgs is not null)
+            {
+                mensajes = msgs;
+                lastId = msgs.Count > 0 ? msgs[^1].Id : 0;
+            }
+        }
+        catch { /* si falla la red, dejamos lo que había; reintenta en el próximo poll */ }
+    }
+
+    private async Task Poll()
+    {
+        try
+        {
+            var msgs = await Api.GetChatMensajesAsync("grupo");
+            if (msgs is null) return;
+            var nuevoUltimo = msgs.Count > 0 ? msgs[^1].Id : 0;
+            var hayNuevos = nuevoUltimo != lastId || msgs.Count != mensajes.Count;
+            mensajes = msgs;
+            if (hayNuevos)
+            {
+                lastId = nuevoUltimo;
+                StateHasChanged();
+                await ScrollAbajo();
+            }
+        }
+        catch { }
+    }
+
+    private async Task Enviar()
+    {
+        var texto = (draft ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(texto) || enviando) return;
+        enviando = true;
+        try
+        {
+            var msg = await Api.EnviarChatAsync(new EnviarChatRequest { ParaUserId = null, Cuerpo = texto, Firma = Operator.Current });
+            if (msg is not null)
+            {
+                mensajes.Add(msg);
+                lastId = msg.Id;
+                draft = "";
+                await ScrollAbajo();
+            }
+        }
+        catch { /* silencioso: el mensaje no se mandó, el usuario reintenta */ }
+        finally { enviando = false; StateHasChanged(); }
+    }
+
+    private async Task OnKey(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Enviar();
+    }
+
+    private async Task ScrollAbajo()
+    {
+        try { await Task.Yield(); await JS.InvokeVoidAsync("chatScrollToBottom", "sbchat-msgs"); }
+        catch { }
+    }
+
+    public void Dispose() => timer?.Dispose();
+}
+
+<style>
+    /* Chat embebido en el sidebar (tema oscuro). Prefijo .sbchat propio para no chocar
+       con los estilos del chat grande (.chat-*). */
+    .sbchat {
+        flex: 1 1 auto;
+        min-height: 170px;
+        margin: 6px 8px 4px;
+        display: flex;
+        flex-direction: column;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(93,202,165,0.30);
+        border-radius: 10px;
+        overflow: hidden;
+    }
+    .sbchat-head {
+        display: flex; align-items: center; gap: 6px;
+        padding: 7px 10px;
+        background: rgba(29,158,117,0.16);
+        flex-shrink: 0;
+    }
+    .sbchat-title { color: #eaeaf2; font-size: 0.72rem; font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sbchat-live { display: inline-flex; align-items: center; gap: 3px; font-size: 0.6rem; color: #5dcaa5; white-space: nowrap; }
+    .sbchat-dot { width: 6px; height: 6px; background: #1d9e75; border-radius: 50%; display: inline-block; animation: sbchat-pulse 1.6s ease-in-out infinite; }
+    @@keyframes sbchat-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+    .sbchat-msgs {
+        flex: 1 1 auto;
+        overflow-y: auto;
+        padding: 8px;
+        display: flex; flex-direction: column; gap: 6px;
+        min-height: 0;
+    }
+    .sbchat-msgs::-webkit-scrollbar { width: 5px; }
+    .sbchat-msgs::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+    .sbchat-empty { color: #8f8f9e; font-size: 0.68rem; text-align: center; margin: auto 0; line-height: 1.5; }
+
+    .sbchat-msg { display: flex; flex-direction: column; max-width: 92%; }
+    .sbchat-msg.otro { align-self: flex-start; align-items: flex-start; }
+    .sbchat-msg.mio { align-self: flex-end; align-items: flex-end; }
+    .sbchat-autor { font-size: 0.58rem; color: #8f8f9e; margin: 0 0 2px 3px; }
+    .sbchat-burbuja { font-size: 0.72rem; line-height: 1.35; padding: 5px 8px; border-radius: 9px; word-break: break-word; }
+    .sbchat-msg.otro .sbchat-burbuja { background: #2a2a3d; color: #e6e6ef; border-bottom-left-radius: 2px; }
+    .sbchat-msg.mio .sbchat-burbuja { background: #1d9e75; color: #ffffff; border-bottom-right-radius: 2px; }
+    .sbchat-hora { font-size: 0.55rem; color: #8f8f9e; margin: 2px 3px 0; }
+
+    .sbchat-input { display: flex; gap: 5px; padding: 6px; border-top: 1px solid rgba(255,255,255,0.08); flex-shrink: 0; }
+    .sbchat-box {
+        flex: 1; min-width: 0; height: 28px; border: none; border-radius: 13px;
+        background: #2a2a3d; color: #eaeaf2; font-size: 0.7rem; padding: 0 10px; outline: none;
+    }
+    .sbchat-box::placeholder { color: #8f8f9e; }
+    .sbchat-send {
+        width: 28px; height: 28px; flex-shrink: 0; border: none; border-radius: 50%;
+        background: #1d9e75; color: #fff; font-size: 0.75rem; cursor: pointer; line-height: 1;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .sbchat-send:disabled { opacity: 0.45; cursor: default; }
+    .sbchat-send:not(:disabled):hover { background: #17845f; }
+
+    /* Cuando hay chat en el sidebar, el menú deja de estirarse para que el chat ocupe
+       el espacio libre de abajo. Se desactiva si el sidebar está colapsado. */
+    .sidebar-with-chat:not(.collapsed) .sidebar-nav { flex: 0 1 auto; }
+    .sidebar.collapsed .sbchat { display: none; }
+</style>

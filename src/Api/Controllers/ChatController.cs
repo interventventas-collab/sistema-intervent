@@ -176,10 +176,16 @@ public class ChatController : ControllerBase
             if (!existe) return BadRequest(new { error = "El destinatario no existe" });
         }
 
+        // 2026-07-06: si viene firma del operador (Osmar/Germán/Gabriel/...), esa es el
+        // nombre a mostrar — así se ve quién escribió aunque compartan la cuenta. Si no, el nombre de la cuenta.
+        var firma = (req.Firma ?? "").Trim();
+        var deNombre = string.IsNullOrWhiteSpace(firma) ? NombreDe(yo) : firma;
+        if (deNombre.Length > 120) deNombre = deNombre[..120];
+
         var msg = new ChatMensaje
         {
             DeUserId = meId.Value,
-            DeNombre = NombreDe(yo),
+            DeNombre = deNombre,
             ParaUserId = req.ParaUserId,
             Cuerpo = cuerpo,
             CreatedAt = DateTime.UtcNow

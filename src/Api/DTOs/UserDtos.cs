@@ -31,5 +31,6 @@ public record UpdateUserRequest(
     [EmailAddress][MaxLength(255)] string? Email,
     [MaxLength(50)] string? Phone,
     int? RoleId,
-    bool? IsActive
+    bool? IsActive,
+    [MaxLength(100)] string? Username = null
 );

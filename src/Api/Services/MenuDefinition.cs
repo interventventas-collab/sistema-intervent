@@ -67,6 +67,7 @@ public static class MenuDefinition
             new MenuItem("integraciones", "Integraciones", "/integraciones"),
             new MenuItem("procesos", "Procesos", "/procesos"),
             new MenuItem("archivos", "Archivos", "/archivos"),
+            new MenuItem("compartido", "Compartido (carpeta común)", "/compartido"),
             new MenuItem("auditoria", "Auditoria", "/auditoria"),
             new MenuItem("backups", "Backups", "/backups"),
             new MenuItem("vault", "Bóveda de contraseñas", "/vault")

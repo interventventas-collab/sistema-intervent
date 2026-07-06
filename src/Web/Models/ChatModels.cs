@@ -40,4 +40,8 @@ public class EnviarChatRequest
 {
     public int? ParaUserId { get; set; }
     public string Cuerpo { get; set; } = "";
+
+    /// <summary>2026-07-06: firma del operador activo (Osmar/Germán/Gabriel). Se usa como
+    /// nombre a mostrar para que se vea quién escribió aunque compartan la cuenta admin.</summary>
+    public string? Firma { get; set; }
 }
