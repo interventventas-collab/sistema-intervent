@@ -124,6 +124,33 @@ else
         </div>
     </div>
 
+    <!-- ========== SECCION: CHAT INTERNO ========== -->
+    <div class="config-card-collapsible" style="margin-top: 1.5rem;">
+        <div class="config-card-header" @onclick="() => sectionChat = !sectionChat">
+            <div class="config-card-header-left">
+                @SvgIcons.Users
+                <span class="config-card-header-title">Chat interno</span>
+            </div>
+            <div class="config-card-header-right">
+                <span class="config-section-chevron @(sectionChat ? "open" : "")">@SvgIcons.ChevronRight</span>
+            </div>
+        </div>
+        <div class="config-card-body @(sectionChat ? "expanded" : "")">
+            <div class="config-marca-form">
+                <div class="config-marca-field">
+                    <label class="config-marca-label">Borrar fotos, archivos y audios del chat después de (días)</label>
+                    <input type="number" min="1" max="3650" class="form-input" style="max-width: 160px;" @bind="chatDiasInput" />
+                    <span class="text-muted" style="font-size: 0.75rem;">Los mensajes de texto quedan siempre; solo se borran los archivos y audios para no llenar el espacio. Por defecto: 30 días (1 mes).</span>
+                </div>
+                <div style="margin-top: 1rem;">
+                    <button class="btn btn-primary" @onclick="SaveChatSettings" disabled="@savingChat">
+                        @(savingChat ? "Guardando..." : "Guardar")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- ========== SECCION 2: SERVICIOS DEL ENTORNO ========== -->
     @if (systemInfo is not null)
     {
@@ -542,6 +569,9 @@ else
     // Collapsible sections (all collapsed by default)
     private bool sectionMarca;
     private bool sectionServicios;
+    private bool sectionChat;
+    private string chatDiasInput = "30";
+    private bool savingChat;
     private bool sectionServidor;
     private bool sectionChangelog;
     private Web.Models.ChangelogResponse? changelogData;
@@ -587,7 +617,25 @@ else
         sidebarColorInput = BrandSettings.SidebarBgColor;
         logoPreview = BrandSettings.BrandLogo;
 
+        // 2026-07-06: días de retención de los adjuntos del chat (limpieza automática).
+        chatDiasInput = await Api.GetSettingAsync("chat.adjuntos.dias") ?? "30";
+
         loading = false;
+    }
+
+    private async Task SaveChatSettings()
+    {
+        savingChat = true;
+        try
+        {
+            if (!int.TryParse((chatDiasInput ?? "").Trim(), out var n) || n < 1) n = 30;
+            if (n > 3650) n = 3650;
+            chatDiasInput = n.ToString();
+            var ok = await Api.UpdateSettingAsync("chat.adjuntos.dias", n.ToString());
+            if (ok) Toast.Success($"Guardado: los adjuntos del chat se borran después de {n} días");
+            else Toast.Error("No se pudo guardar");
+        }
+        finally { savingChat = false; }
     }
 
     private async Task OnPrimaryColorChange(ChangeEventArgs e)
