@@ -1080,8 +1080,10 @@
     private int? DefaultArcaAccountId()
     {
         if (arcaAccounts.Count == 0) return null;
-        // Preferimos producción; el operador elige después la que quiera.
-        var def = arcaAccounts.FirstOrDefault(a => a.Environment == "production") ?? arcaAccounts.First();
+        // 2026-07-06: default preferido = PALANICA HERMANOS. Sino, una de producción; sino, la primera.
+        var def = arcaAccounts.FirstOrDefault(a => (a.Alias ?? "").Contains("palanica hermanos", StringComparison.OrdinalIgnoreCase))
+                  ?? arcaAccounts.FirstOrDefault(a => a.Environment == "production")
+                  ?? arcaAccounts.First();
         return def.Id;
     }
 
@@ -1349,6 +1351,14 @@
         formArcaCbteNro = r.ArcaCbteNro;
         // Si la reserva no tenía empresa (ej: sin facturar), dejar el default seleccionado igual
         EnsureDefaultArcaAccount();
+        // 2026-07-06: traer SIEMPRE la condición IVA de la ficha del cliente (ej: Exento), salvo que
+        // la reserva ya esté facturada (con CAE la condición queda fija).
+        if (formArcaEstado != "autorizado")
+        {
+            var cliEdit = clientes?.FirstOrDefault(x => x.Id == r.ClienteId);
+            if (cliEdit is not null && !string.IsNullOrWhiteSpace(cliEdit.CondicionIvaDefault))
+                formCondicionIva = cliEdit.CondicionIvaDefault!;
+        }
         formItems = r.Items.Select(i => new CreateAlqReservaItemRequest
         {
             EquipoId = i.EquipoId,
