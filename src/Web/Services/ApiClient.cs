@@ -3659,6 +3659,18 @@ public class ApiClient
         return result != null;
     }
 
+    /// <summary>2026-07-06: lee el valor de un setting por su key (null si no existe).</summary>
+    public async Task<string?> GetSettingAsync(string key)
+    {
+        try
+        {
+            var r = await GetAsync<SettingKvDto>($"/api/settings/{Uri.EscapeDataString(key)}");
+            return r?.Value;
+        }
+        catch { return null; }
+    }
+    private class SettingKvDto { public string? Key { get; set; } public string? Value { get; set; } }
+
     public async Task<string?> UploadLogoAsync(byte[] fileBytes, string fileName, string contentType)
     {
         try
