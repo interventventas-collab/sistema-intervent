@@ -5456,3 +5456,12 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='MapeoLink' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
     ALTER TABLE Cafe_Ventas ADD MapeoLink NVARCHAR(500) NULL;
 GO
+
+-- 2026-07-06: Alq_ReservaItems — permitir items de "descripción libre" (texto sin equipo del catálogo).
+-- EquipoId pasa a NULLable y se agrega Descripcion. El FK sigue existiendo (los NULL no lo violan).
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='Descripcion' AND Object_ID=OBJECT_ID('Alq_ReservaItems'))
+    ALTER TABLE Alq_ReservaItems ADD Descripcion NVARCHAR(300) NULL;
+GO
+IF EXISTS (SELECT 1 FROM sys.columns WHERE Name='EquipoId' AND Object_ID=OBJECT_ID('Alq_ReservaItems') AND is_nullable=0)
+    ALTER TABLE Alq_ReservaItems ALTER COLUMN EquipoId INT NULL;
+GO

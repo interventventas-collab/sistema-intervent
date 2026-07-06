@@ -71,7 +71,8 @@ public class UpdateAlqClienteRequest
 }
 
 // ===== Reservas =====
-public record AlqReservaItemDto(int Id, int EquipoId, string EquipoSku, string EquipoNombre, int Cantidad, decimal PrecioUnitario);
+// EquipoId null + EsLibre=true => item de "descripción libre" (texto). EquipoNombre trae la descripción.
+public record AlqReservaItemDto(int Id, int? EquipoId, string EquipoSku, string EquipoNombre, int Cantidad, decimal PrecioUnitario, bool EsLibre = false);
 
 public record AlqReservaDto(
     int Id, string Numero,
@@ -112,7 +113,10 @@ public record AlqReservaDto(
 
 public class CreateAlqReservaItemRequest
 {
-    public int EquipoId { get; set; }
+    /// <summary>Null cuando es un item de "descripción libre" (texto). Sino, el equipo del catálogo.</summary>
+    public int? EquipoId { get; set; }
+    /// <summary>Texto libre cuando EquipoId es null (ej: "Flete especial").</summary>
+    public string? Descripcion { get; set; }
     public int Cantidad { get; set; }
     public decimal PrecioUnitario { get; set; }
 }
