@@ -462,6 +462,21 @@
                     }
                     else
                     {
+                        @* 2026-07-06: elegir la empresa PRIMERO, así el tipo de comprobante ya ofrece A/B o C según corresponda *@
+                        @if (arcaAccounts.Count > 1)
+                        {
+                            <div class="form-row">
+                                <div class="form-group" style="flex:1;">
+                                    <label class="form-label">🏢 ¿Con qué empresa facturás?</label>
+                                    <select class="form-input" @bind="formArcaAccountId" @bind:after="OnArcaAccountChanged">
+                                        @foreach (var acc in arcaAccounts)
+                                        {
+                                            <option value="@acc.Id">@ArcaAccountLabel(acc)</option>
+                                        }
+                                    </select>
+                                </div>
+                            </div>
+                        }
                         <div class="form-row">
                             <div class="form-group" style="flex:1;">
                                 <label class="form-label">Tipo de comprobante</label>
@@ -503,18 +518,6 @@
                         @if (formTipoComprobante is "FA" or "FB" or "FC")
                         {
                             <div class="form-row">
-                                @if (arcaAccounts.Count > 1)
-                                {
-                                    <div class="form-group" style="flex:1.6;">
-                                        <label class="form-label">🏢 ¿Con qué empresa facturás?</label>
-                                        <select class="form-input" @bind="formArcaAccountId" @bind:after="OnArcaAccountChanged">
-                                            @foreach (var acc in arcaAccounts)
-                                            {
-                                                <option value="@acc.Id">@ArcaAccountLabel(acc)</option>
-                                            }
-                                        </select>
-                                    </div>
-                                }
                                 <div class="form-group" style="flex:1;">
                                     <label class="form-label">Concepto AFIP</label>
                                     <select class="form-input" @bind="formConcepto">
@@ -1344,7 +1347,8 @@
         formArcaError = r.ArcaError;
         formArcaPtoVta = r.ArcaPtoVta;
         formArcaCbteNro = r.ArcaCbteNro;
-        if (formTipoComprobante is "FA" or "FB" or "FC") EnsureDefaultArcaAccount();
+        // Si la reserva no tenía empresa (ej: sin facturar), dejar el default seleccionado igual
+        EnsureDefaultArcaAccount();
         formItems = r.Items.Select(i => new CreateAlqReservaItemRequest
         {
             EquipoId = i.EquipoId,
@@ -1379,6 +1383,8 @@
         formTipoComprobante = "X"; formCondicionIva = "CF"; formConcepto = 2; formFormaPago = "";
         formArcaAccountId = null; formArcaEstado = "no_aplica";
         formArcaCae = null; formArcaError = null; formArcaPtoVta = null; formArcaCbteNro = null;
+        // Dejar una empresa por defecto seleccionada (el selector es visible desde el arranque si hay >1)
+        EnsureDefaultArcaAccount();
     }
 
     private void CloseForm() { showForm = false; formError = null; }
