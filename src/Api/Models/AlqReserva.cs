@@ -101,6 +101,14 @@ public class AlqReserva
     /// <summary>Concepto AFIP: 1=Productos, 2=Servicios (default alquiler), 3=Mixto.</summary>
     public int Concepto { get; set; } = 2;
 
+    /// <summary>2026-07-06: si es true, la factura sale en UN SOLO renglón (resumen de los equipos) + el total,
+    /// en vez del desglose por equipo. También hace que el total AFIP sea el MontoTotal de la reserva.</summary>
+    public bool FacturaResumida { get; set; }
+
+    /// <summary>Texto del renglón resumen. Si está vacío se arma solo con los equipos ("180 SILLAS + 38 MESA...").</summary>
+    [MaxLength(500)]
+    public string? ResumenDescripcion { get; set; }
+
     /// <summary>"no_aplica" (X) | "pendiente" | "autorizado" | "rechazado".</summary>
     [MaxLength(20)]
     public string ArcaEstado { get; set; } = "no_aplica";
