@@ -105,7 +105,10 @@
                     {
                         <div class="chat-msg @(m.Mio ? "mio" : "otro")">
                             <div class="chat-bubble">
-                                @if (!m.Mio && sel == "grupo")
+                                @* 2026-07-06: firma del operador visible en TODOS los mensajes que la tengan
+                                   (grupo y privados, propios y ajenos), así se ve quién escribió aunque
+                                   compartan la cuenta admin. *@
+                                @if (!string.IsNullOrWhiteSpace(m.DeNombre))
                                 {
                                     <div class="chat-bubble-autor">@m.DeNombre</div>
                                 }

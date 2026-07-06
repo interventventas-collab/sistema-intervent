@@ -26,7 +26,7 @@
             @foreach (var m in mensajes)
             {
                 <div class="sbchat-msg @(m.Mio ? "mio" : "otro")">
-                    @if (!m.Mio)
+                    @if (!string.IsNullOrWhiteSpace(m.DeNombre))
                     {
                         <div class="sbchat-autor">@m.DeNombre</div>
                     }
