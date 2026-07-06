@@ -1,0 +1,217 @@
+/* ============================================================
+   MOBILE.CSS — Optimizaciones SOLO para celular
+   ------------------------------------------------------------
+   2026-07-06. Archivo separado a proposito: TODO lo de aca vive
+   dentro de @media (max-width: ...), asi la version de ESCRITORIO
+   no cambia en nada. Si algo no gusta, se saca este archivo del
+   index.html y listo — no toca app.css ni las pantallas.
+
+   Objetivo: que usar el sistema desde el celular sea comodo.
+   Foco pedido por el usuario: Ventas / Cobranzas, tablas que se
+   desbordan, menu/botones, formularios/modales y "todo se ve chico".
+   ============================================================ */
+
+
+/* ============================================================
+   1. TABLAS QUE SE DESBORDAN
+   ------------------------------------------------------------
+   Las tablas grandes (ventas, cobranzas, publicaciones) siguen
+   con scroll horizontal (no las rompemos apilandolas a ciegas),
+   pero lo hacemos comodo: scroll suave con el dedo, una sombra
+   al costado que AVISA que hay mas columnas, y la columna de
+   acciones deja de forzar 260px fijos.
+   ============================================================ */
+@media (max-width: 768px) {
+
+  /* Scroll con inercia (estilo app nativa) + la barra mas visible */
+  .table-responsive {
+    -webkit-overflow-scrolling: touch;
+    /* Sombra sutil a la derecha: pista visual de "hay mas para el costado".
+       Es un degrade fijo al borde derecho del contenedor. */
+    background:
+      linear-gradient(to right, transparent, transparent),
+      linear-gradient(to left, rgba(0,0,0,0.06), transparent);
+    background-position: left center, right center;
+    background-repeat: no-repeat;
+    background-size: 20px 100%, 24px 100%;
+    background-attachment: local, scroll;
+    /* En el celular liberamos mas alto para la tabla (el header ocupa poco) */
+    max-height: calc(100vh - 200px);
+  }
+
+  /* La columna de acciones NO fuerza 260px: se ajusta a lo que necesite */
+  .actions-cell {
+    width: auto !important;
+    max-width: none !important;
+  }
+
+  /* Un pelin mas de aire vertical en las celdas: mas facil de leer y tocar */
+  .data-table tbody td {
+    padding-top: 0.6rem;
+    padding-bottom: 0.6rem;
+  }
+
+  /* Los botones dentro de las tablas, tamaño "dedo" */
+  .data-table .btn,
+  .data-table button.icon-btn,
+  .actions-cell .btn,
+  .actions-cell button {
+    min-height: 36px;
+    min-width: 36px;
+  }
+}
+
+
+/* ============================================================
+   2. MENU / TOPBAR / BOTONES — comodo para el dedo
+   ------------------------------------------------------------
+   Los botones y chips de la barra de arriba se amontonan en el
+   celular. Los dejamos scrollear en fila (no se cortan) y con
+   tamaño minimo tocable.
+   ============================================================ */
+@media (max-width: 640px) {
+
+  /* Botones en general: altura minima tocable (recomendacion ~44px) */
+  .btn {
+    min-height: 40px;
+  }
+  .btn.btn-sm {
+    min-height: 34px;
+  }
+
+  /* Grupos de chips/botones de filtro (rango de fechas, tabs de la vista):
+     que se pueda scrollear de costado en vez de romper el layout. */
+  .rango-chips,
+  .filter-chips,
+  .view-header-actions,
+  .toolbar-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 0.4rem;
+    padding-bottom: 0.25rem;
+  }
+  .rango-chips > *,
+  .filter-chips > *,
+  .view-header-actions > *,
+  .toolbar-actions > * {
+    flex: 0 0 auto;
+  }
+
+  /* El boton hamburguesa del menu, bien tocable */
+  .topbar-menu-btn {
+    min-width: 42px;
+    min-height: 42px;
+  }
+}
+
+
+/* ============================================================
+   3. FORMULARIOS Y MODALES — que entren bien en la pantalla
+   ------------------------------------------------------------
+   El modal (Nueva Venta, cobros, etc) aprovecha todo el ancho,
+   los pares de campos que van lado a lado se apilan, y el pie
+   con los botones "Guardar/Cancelar" queda SIEMPRE visible
+   (pegado abajo) para no tener que scrollear a buscarlo.
+   ============================================================ */
+@media (max-width: 640px) {
+
+  /* El modal usa casi toda la pantalla */
+  .modal-card {
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0.4rem !important;
+    max-height: 96vh;
+  }
+  .modal-small,
+  .modal-medium,
+  .modal-wide {
+    max-width: 100% !important;
+  }
+
+  /* Header del modal pegado arriba al scrollear */
+  .modal-header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    padding: 1rem 1.1rem;
+  }
+
+  /* Pie con botones pegado abajo y SIEMPRE a la vista */
+  .modal-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    background: var(--card-bg, #fff);
+    /* que los botones ocupen el ancho y sean faciles de apretar */
+    flex-wrap: wrap;
+  }
+  .modal-footer .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .modal-body {
+    padding: 1.1rem;
+  }
+
+  /* Campos que van de a dos por fila -> se apilan uno abajo del otro */
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  /* Los botones de "guardar/cancelar" al pie del form, a lo ancho */
+  .form-actions {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .form-actions .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+}
+
+/* Evitar el "zoom automatico" molesto de iPhone al tocar un campo:
+   cualquier input < 16px hace que Safari haga zoom. Forzamos 16px
+   en los campos (solo afecta el foco en el celular, se ve igual). */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+
+/* ============================================================
+   4. "TODO SE VE CHICO" — recuperar espacio y aire
+   ------------------------------------------------------------
+   En pantallas muy chicas achicamos margenes/padding grandes
+   para que el contenido util ocupe mas, sin encoger el texto.
+   ============================================================ */
+@media (max-width: 480px) {
+
+  /* Menos padding del area de contenido: mas espacio real */
+  .content {
+    padding: 0.75rem;
+  }
+
+  /* Tarjetas/paneles con menos padding interno */
+  .card,
+  .panel,
+  .view-panel {
+    padding: 0.9rem;
+  }
+
+  /* Titulos de seccion un toque mas compactos */
+  .view-header {
+    gap: 0.5rem;
+  }
+
+  /* Tablas: mantener el texto legible (no achicar de mas) */
+  .data-table {
+    font-size: 0.82rem;
+  }
+}
