@@ -4,6 +4,7 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject IJSRuntime JS
+@inject OperatorService Operator
 @implements IDisposable
 
 <div class="chat-wrap">
@@ -385,7 +386,7 @@
         try
         {
             int? para = sel == "grupo" ? null : int.Parse(sel[2..]);
-            var msg = await Api.EnviarChatAsync(new EnviarChatRequest { ParaUserId = para, Cuerpo = texto });
+            var msg = await Api.EnviarChatAsync(new EnviarChatRequest { ParaUserId = para, Cuerpo = texto, Firma = Operator.Current });
             if (msg is not null)
             {
                 mensajes.Add(msg);

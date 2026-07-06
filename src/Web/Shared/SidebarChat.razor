@@ -4,6 +4,7 @@
    Reusa el chat existente: conversación "grupo" (Grupo general). Refresca cada 6s. *@
 @inject ApiClient Api
 @inject IJSRuntime JS
+@inject OperatorService Operator
 @implements IDisposable
 
 <div class="sbchat">
@@ -101,7 +102,7 @@
         enviando = true;
         try
         {
-            var msg = await Api.EnviarChatAsync(new EnviarChatRequest { ParaUserId = null, Cuerpo = texto });
+            var msg = await Api.EnviarChatAsync(new EnviarChatRequest { ParaUserId = null, Cuerpo = texto, Firma = Operator.Current });
             if (msg is not null)
             {
                 mensajes.Add(msg);
