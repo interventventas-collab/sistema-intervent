@@ -1533,6 +1533,62 @@
                 if (el) el.scrollTop = el.scrollHeight;
             } catch (e) {}
         };
+
+        // 2026-07-06: grabar audio (nota de voz) y subirlo como adjunto del chat.
+        // Usa MediaRecorder. Sube directo al endpoint por fetch (la cookie httpOnly viaja sola).
+        window.chatAudio = (function () {
+            var rec = null, chunks = [], stream = null;
+            function pickMime() {
+                var opts = ['audio/webm', 'audio/ogg', 'audio/mp4'];
+                for (var i = 0; i < opts.length; i++) {
+                    try { if (window.MediaRecorder && MediaRecorder.isTypeSupported(opts[i])) return opts[i]; } catch (e) {}
+                }
+                return '';
+            }
+            return {
+                // Devuelve true si arrancó a grabar; false si no hay micrófono o lo rechazaron.
+                start: async function () {
+                    try {
+                        if (!navigator.mediaDevices || !window.MediaRecorder) return false;
+                        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                        chunks = [];
+                        var mime = pickMime();
+                        rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+                        rec.ondataavailable = function (e) { if (e.data && e.data.size > 0) chunks.push(e.data); };
+                        rec.start();
+                        return true;
+                    } catch (e) { console.warn('chatAudio.start', e); try { if (stream) stream.getTracks().forEach(t => t.stop()); } catch (_) {} return false; }
+                },
+                // Para de grabar y sube. Devuelve true si el server respondió ok.
+                stopAndSend: function (paraUserId, firma) {
+                    return new Promise(function (resolve) {
+                        if (!rec) { resolve(false); return; }
+                        rec.onstop = async function () {
+                            try {
+                                var type = rec.mimeType || 'audio/webm';
+                                var blob = new Blob(chunks, { type: type });
+                                if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+                                rec = null;
+                                if (!blob.size) { resolve(false); return; }
+                                var ext = type.indexOf('ogg') >= 0 ? 'ogg' : (type.indexOf('mp4') >= 0 ? 'm4a' : 'webm');
+                                var fd = new FormData();
+                                fd.append('archivo', blob, 'audio_' + Date.now() + '.' + ext);
+                                if (paraUserId !== null && paraUserId !== undefined && paraUserId !== '') fd.append('paraUserId', paraUserId);
+                                if (firma) fd.append('firma', firma);
+                                var res = await fetch('/api/chat/enviar-adjunto', { method: 'POST', credentials: 'same-origin', body: fd });
+                                resolve(res.ok);
+                            } catch (e) { console.warn('chatAudio.send', e); resolve(false); }
+                        };
+                        try { rec.stop(); } catch (e) { resolve(false); }
+                    });
+                },
+                cancel: function () {
+                    try { if (rec && rec.state !== 'inactive') rec.stop(); } catch (e) {}
+                    try { if (stream) stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+                    rec = null; chunks = [];
+                }
+            };
+        })();
         // Sonidito corto al recibir un mensaje nuevo (reusa Web Audio).
         window.chatDing = function () {
             try {

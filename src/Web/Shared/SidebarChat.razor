@@ -62,15 +62,25 @@
         }
     </div>
     <div class="sbchat-input">
-        <label class="sbchat-attach" title="Adjuntar foto o archivo">
-            📎
-            <InputFile OnChange="OnAdjuntoElegido" style="display:none"
-                       accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip,.rar" disabled="@enviando" />
-        </label>
-        <input class="sbchat-box" @bind="draft" @bind:event="oninput" @onkeydown="OnKey"
-               placeholder="Mensaje…" disabled="@enviando" />
-        <button class="sbchat-send" @onclick="Enviar" disabled="@(enviando || string.IsNullOrWhiteSpace(draft))"
-                title="Enviar">@(enviando ? "…" : "➤")</button>
+        @if (grabando)
+        {
+            <button class="sbchat-attach" title="Cancelar" @onclick="CancelarGrabar">✕</button>
+            <div class="sbchat-grabando"><span class="sbchat-rec-dot"></span> Grabando…</div>
+            <button class="sbchat-send" title="Enviar audio" @onclick="ToggleGrabar" disabled="@enviando">➤</button>
+        }
+        else
+        {
+            <label class="sbchat-attach" title="Adjuntar foto o archivo">
+                📎
+                <InputFile OnChange="OnAdjuntoElegido" style="display:none"
+                           accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip,.rar" disabled="@enviando" />
+            </label>
+            <button class="sbchat-attach" title="Grabar audio" @onclick="ToggleGrabar" disabled="@enviando">🎤</button>
+            <input class="sbchat-box" @bind="draft" @bind:event="oninput" @onkeydown="OnKey"
+                   placeholder="Mensaje…" disabled="@enviando" />
+            <button class="sbchat-send" @onclick="Enviar" disabled="@(enviando || string.IsNullOrWhiteSpace(draft))"
+                    title="Enviar">@(enviando ? "…" : "➤")</button>
+        }
     </div>
 </div>
 
@@ -148,6 +158,36 @@
     private async Task OnKey(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
     {
         if (e.Key == "Enter") await Enviar();
+    }
+
+    // 2026-07-06: grabar y enviar audio (nota de voz).
+    private bool grabando;
+
+    private async Task ToggleGrabar()
+    {
+        if (!grabando)
+        {
+            var ok = await JS.InvokeAsync<bool>("chatAudio.start");
+            if (ok) { grabando = true; StateHasChanged(); }
+        }
+        else
+        {
+            grabando = false;
+            enviando = true; StateHasChanged();
+            try
+            {
+                var ok = await JS.InvokeAsync<bool>("chatAudio.stopAndSend", (object?)null, Operator.Current);
+                if (ok) { await Cargar(); await ScrollAbajo(); }
+            }
+            catch { }
+            finally { enviando = false; StateHasChanged(); }
+        }
+    }
+
+    private async Task CancelarGrabar()
+    {
+        try { await JS.InvokeVoidAsync("chatAudio.cancel"); } catch { }
+        grabando = false; StateHasChanged();
     }
 
     // 2026-07-06: subir foto/archivo como adjunto del chat del equipo.
@@ -251,6 +291,8 @@
     .sbchat-adj-file:hover { text-decoration: underline; }
     .sbchat-adj-venc { color: #8f8f9e; font-size: 0.68rem; font-style: italic; }
     .sbchat-burbuja-txt { margin-top: 4px; }
+    .sbchat-grabando { flex: 1; display: flex; align-items: center; gap: 6px; color: #f0a5a5; font-size: 0.72rem; }
+    .sbchat-rec-dot { width: 9px; height: 9px; background: #e24b4a; border-radius: 50%; display: inline-block; animation: sbchat-pulse 1s ease-in-out infinite; }
 
     /* Cuando hay chat en el sidebar, el menú deja de estirarse para que el chat ocupe
        el espacio libre de abajo. Se desactiva si el sidebar está colapsado. */

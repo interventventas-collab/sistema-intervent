@@ -144,16 +144,26 @@
             </div>
 
             <div class="chat-input">
-                <label class="chat-attach-btn" title="Adjuntar foto o archivo">
-                    📎
-                    <InputFile OnChange="OnAdjuntoElegido" style="display:none"
-                               accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip,.rar" disabled="@enviando" />
-                </label>
-                <input class="chat-input-box" @bind="draft" @bind:event="oninput"
-                       @onkeydown="OnKeyDown" placeholder="Escribí un mensaje..." disabled="@enviando" />
-                <button class="chat-send-btn" @onclick="Enviar" disabled="@(enviando || string.IsNullOrWhiteSpace(draft))">
-                    @(enviando ? "..." : "➤")
-                </button>
+                @if (grabando)
+                {
+                    <button class="chat-attach-btn" title="Cancelar" @onclick="CancelarGrabar">✕</button>
+                    <div class="chat-grabando"><span class="chat-rec-dot"></span> Grabando… tocá ➤ para enviar</div>
+                    <button class="chat-send-btn" @onclick="ToggleGrabar" disabled="@enviando" title="Enviar audio">➤</button>
+                }
+                else
+                {
+                    <label class="chat-attach-btn" title="Adjuntar foto o archivo">
+                        📎
+                        <InputFile OnChange="OnAdjuntoElegido" style="display:none"
+                                   accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip,.rar" disabled="@enviando" />
+                    </label>
+                    <button class="chat-attach-btn" title="Grabar audio" @onclick="ToggleGrabar" disabled="@enviando">🎤</button>
+                    <input class="chat-input-box" @bind="draft" @bind:event="oninput"
+                           @onkeydown="OnKeyDown" placeholder="Escribí un mensaje..." disabled="@enviando" />
+                    <button class="chat-send-btn" @onclick="Enviar" disabled="@(enviando || string.IsNullOrWhiteSpace(draft))">
+                        @(enviando ? "..." : "➤")
+                    </button>
+                }
             </div>
         }
     </div>
@@ -303,6 +313,9 @@
     .chat-adj-file { color: #4f46e5; font-size: 0.9rem; text-decoration: none; word-break: break-word; display: inline-block; margin-bottom: 0.2rem; }
     .chat-adj-file:hover { text-decoration: underline; }
     .chat-adj-venc { color: #9ca3af; font-size: 0.8rem; font-style: italic; margin-bottom: 0.2rem; }
+    .chat-grabando { flex: 1; display: flex; align-items: center; gap: 8px; color: #b91c1c; font-size: 0.9rem; padding: 0 0.5rem; }
+    .chat-rec-dot { width: 11px; height: 11px; background: #dc2626; border-radius: 50%; display: inline-block; animation: chat-rec-blink 1s ease-in-out infinite; }
+    @@keyframes chat-rec-blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
 
     .chat-input {
         display: flex; gap: 0.5rem;
@@ -438,6 +451,40 @@
         }
         catch (Exception ex) { ToastService.Error("No se pudo enviar: " + ex.Message); }
         finally { enviando = false; }
+    }
+
+    // 2026-07-06: grabar y enviar audio (nota de voz) en la conversación abierta.
+    private bool grabando;
+
+    private async Task ToggleGrabar()
+    {
+        if (sel is null) return;
+        if (!grabando)
+        {
+            var ok = await JS.InvokeAsync<bool>("chatAudio.start");
+            if (ok) { grabando = true; StateHasChanged(); }
+            else ToastService.Error("No se pudo acceder al micrófono. Revisá los permisos del navegador.");
+        }
+        else
+        {
+            grabando = false;
+            enviando = true; StateHasChanged();
+            try
+            {
+                int? para = sel == "grupo" ? null : int.Parse(sel[2..]);
+                var ok = await JS.InvokeAsync<bool>("chatAudio.stopAndSend", (object?)para, Operator.Current);
+                if (ok) { await CargarMensajes(scroll: true, ding: false); await RefrescarConvs(); }
+                else ToastService.Error("No se pudo enviar el audio");
+            }
+            catch (Exception ex) { ToastService.Error("No se pudo enviar el audio: " + ex.Message); }
+            finally { enviando = false; StateHasChanged(); }
+        }
+    }
+
+    private async Task CancelarGrabar()
+    {
+        try { await JS.InvokeVoidAsync("chatAudio.cancel"); } catch { }
+        grabando = false; StateHasChanged();
     }
 
     // 2026-07-06: enviar una foto/archivo como adjunto en la conversación abierta.
