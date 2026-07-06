@@ -27,6 +27,11 @@ public class ChatMensajeDto
     public string Cuerpo { get; set; } = "";
     public DateTime CreatedAt { get; set; }
     public bool Mio { get; set; }
+
+    // 2026-07-06: adjunto opcional (foto/archivo/audio).
+    public string? AdjuntoTipo { get; set; }        // "image" | "audio" | "file"
+    public string? AdjuntoNombre { get; set; }
+    public bool AdjuntoDisponible { get; set; }     // false = ya se limpió (vencido)
 }
 
 public class ChatNoLeidosDto

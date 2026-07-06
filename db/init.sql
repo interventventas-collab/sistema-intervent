@@ -5429,6 +5429,17 @@ BEGIN
 END
 GO
 
+-- 2026-07-06: adjuntos del chat (foto/archivo/audio). Idempotente para DBs existentes.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id=OBJECT_ID('Chat_Mensajes') AND name='AdjuntoArchivo')
+    ALTER TABLE Chat_Mensajes ADD AdjuntoArchivo NVARCHAR(255) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id=OBJECT_ID('Chat_Mensajes') AND name='AdjuntoNombre')
+    ALTER TABLE Chat_Mensajes ADD AdjuntoNombre NVARCHAR(255) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id=OBJECT_ID('Chat_Mensajes') AND name='AdjuntoTipo')
+    ALTER TABLE Chat_Mensajes ADD AdjuntoTipo NVARCHAR(20) NULL;
+GO
+
 -- Control de "hasta dónde leyó" cada usuario en cada conversación.
 -- Conversacion = 'grupo'  ó  'u:{idDelOtroUsuario}'.
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Chat_Lecturas' AND xtype='U')
