@@ -520,6 +520,15 @@
         <NavItem Href="/chat" Label="💬 Chat" Icon="@SvgIcons.Users"
                  IsActive="@IsActive("/chat")" OnClick="@(() => NavigateTo("/chat"))" />
 
+        @* ═════════════ CARPETA COMPARTIDA (2026-07-06) ═════════════
+           Carpeta de archivos compartida entre admin y depósito (permiso "compartido").
+           Top-level para que la vean tambien los usuarios de depósito (no ven el grupo Café). *@
+        @if (HasPerm("compartido"))
+        {
+            <NavItem Href="/compartido" Label="📂 Compartido" Icon="@SvgIcons.Folder"
+                     IsActive="@IsActive("/compartido")" OnClick="@(() => NavigateTo("/compartido"))" />
+        }
+
         @* ═════════════ 1B. CAFE (modulo independiente, debajo de Dashboard) ═════════════
            Negocio de venta de cafe e insumos, totalmente aislado del resto del ERP. *@
         @* ═════════════ MENÚ REDUCIDO PARA USUARIOS DE DEPÓSITO Y OFICINA ═════════════
@@ -1908,6 +1917,7 @@
     private static readonly Dictionary<string, string> RouteToMenuKey = new()
     {
         { "", "dashboard" },
+        { "compartido", "compartido" },
         { "publicaciones", "publicaciones" },
         { "ordenes", "ordenes" },
         { "mapeo", "mapeo" },

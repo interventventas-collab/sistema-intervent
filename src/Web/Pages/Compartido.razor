@@ -1,0 +1,809 @@
+@page "/compartido"
+@attribute [Authorize]
+@implements IDisposable
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@using Web.Models
+
+@* ════════════════════════════════════════════════════════════════════════════
+   Pantalla 'Documentación importante' — pedido del usuario 2026-05-19, refinada
+   2026-05-20: vista estilo Google Drive con grilla de cards, drag-and-drop nativo
+   (arrastrar desde el explorador del SO), subir carpeta entera con estructura.
+   Carpeta raíz fija en el storage: 'Documentacion-Importante'.
+   ════════════════════════════════════════════════════════════════════════════ *@
+
+<style>
+    .doc-wrap { max-width: 1200px; margin: 0 auto; padding: 0.5rem; }
+    .doc-header { text-align: center; margin-bottom: 1rem; }
+    .doc-header h1 { font-size: 1.6rem; font-weight: 800; margin: 0 0 0.3rem; color: #1f2937; }
+    .doc-header p { color: #6b7280; margin: 0; font-size: 0.92rem; }
+
+    /* Barra superior con breadcrumb + botones de accion */
+    .doc-toolbar { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.8rem;
+                   padding: 0.6rem 0.9rem; background: white; border-radius: 10px;
+                   box-shadow: 0 1px 4px rgba(0,0,0,0.06); border-left: 4px solid #1d4ed8; }
+    .doc-breadcrumb { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; flex: 1; font-size: 0.95rem; min-width: 200px; }
+    .doc-breadcrumb a { color: #1d4ed8; text-decoration: none; font-weight: 600; cursor: pointer; padding: 0.2rem 0.4rem; border-radius: 4px; transition: background 0.12s; }
+    .doc-breadcrumb a:hover { background: #dbeafe; }
+    .doc-breadcrumb .sep { color: #9ca3af; }
+    .doc-breadcrumb .current { color: #1f2937; font-weight: 700; padding: 0.2rem 0.4rem; }
+
+    .doc-toolbar-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+    .btn-toolbar { padding: 0.5rem 0.85rem; font-size: 0.88rem; font-weight: 600; border-radius: 7px;
+                   border: 1px solid #d1d5db; background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
+                   color: #374151; cursor: pointer; display: inline-flex; align-items: center; gap: 0.35rem;
+                   transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+                   box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+    .btn-toolbar:hover:not(:disabled) { background: white; transform: translateY(-1px); box-shadow: 0 3px 8px rgba(0,0,0,0.08); border-color: #9ca3af; }
+    .btn-toolbar.primary { background: linear-gradient(180deg, #1d4ed8 0%, #1e40af 100%); color: white; border-color: #1e40af; }
+    .btn-toolbar.primary:hover:not(:disabled) { background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%); }
+    .btn-toolbar.success { background: linear-gradient(180deg, #16a34a 0%, #15803d 100%); color: white; border-color: #15803d; }
+    .btn-toolbar.success:hover:not(:disabled) { background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%); }
+    .btn-toolbar:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    /* Drop zone global — cubre toda la pantalla cuando arrastrás desde el explorador */
+    .drop-zone { position: relative; min-height: 200px; padding: 0.5rem; border-radius: 12px; transition: all 0.15s; }
+    .drop-zone.dragging { background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); outline: 3px dashed #1d4ed8; outline-offset: -8px; }
+    .drop-zone.dragging::before { content: '📥 Soltá acá para subir'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                                  font-size: 2rem; font-weight: 800; color: #1e3a8a; z-index: 10; pointer-events: none;
+                                  background: rgba(255,255,255,0.9); padding: 1rem 2rem; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
+
+    /* Banner de progreso de subida */
+    .upload-progress { padding: 0.7rem 1rem; background: linear-gradient(90deg, #dcfce7 0%, #bbf7d0 100%);
+                       border: 1px solid #16a34a; border-radius: 8px; margin-bottom: 0.8rem; color: #14532d;
+                       font-weight: 600; display: flex; align-items: center; gap: 0.5rem; }
+
+    /* Seccion (Carpetas / Archivos) */
+    .doc-seccion-titulo { font-size: 0.78rem; color: #6b7280; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+                          margin: 1.2rem 0 0.5rem; padding: 0 0.2rem; display: flex; align-items: center; gap: 0.4rem; }
+    .doc-seccion-titulo .count { background: #e5e7eb; color: #4b5563; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.7rem; font-weight: 700; }
+
+    /* Grilla de cards estilo Google Drive */
+    .doc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0.7rem; }
+
+    .doc-card { background: white; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+                padding: 0.9rem 0.7rem; display: flex; flex-direction: column; align-items: center;
+                text-align: center; cursor: pointer; transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+                position: relative; border: 1px solid #f3f4f6; overflow: hidden; min-height: 150px; }
+    .doc-card:hover { transform: translateY(-3px) scale(1.04); box-shadow: 0 8px 20px rgba(0,0,0,0.12); z-index: 2; border-color: #d1d5db; }
+    .doc-card.viejo { border: 2px solid #fb923c; background: linear-gradient(180deg, #fff7ed 0%, #ffedd5 100%); }
+    .doc-card.viejo:hover { box-shadow: 0 8px 20px rgba(251,146,60,0.30); }
+
+    .doc-card.carpeta { background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%); border: 1px solid #fde68a; }
+    .doc-card.carpeta:hover { background: linear-gradient(180deg, #fef3c7 0%, #fde68a 100%); border-color: #f59e0b; }
+
+    .doc-icon { font-size: 3.2rem; line-height: 1; margin-bottom: 0.3rem; transition: transform 0.12s ease; }
+    .doc-card:hover .doc-icon { transform: scale(1.1); }
+    /* 2026-07-06: miniatura real de la foto (mismo alto que el iconito, recortada). */
+    .doc-thumb { width: 100%; height: 3.2rem; margin-bottom: 0.3rem; display: flex; align-items: center; justify-content: center; transition: transform 0.12s ease; }
+    .doc-thumb img { max-width: 100%; max-height: 3.2rem; object-fit: contain; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.12); }
+    .doc-card:hover .doc-thumb { transform: scale(1.1); }
+    .doc-icon.tipo-pdf { color: #dc2626; }
+    .doc-icon.tipo-xls { color: #16a34a; }
+    .doc-icon.tipo-doc { color: #2563eb; }
+    .doc-icon.tipo-img { color: #db2777; }
+    .doc-icon.tipo-zip { color: #7c3aed; }
+
+    .doc-nombre { font-size: 0.85rem; font-weight: 700; color: #1f2937; margin: 0.1rem 0;
+                  word-break: break-word; line-height: 1.25; max-height: 2.5em; overflow: hidden; }
+    .doc-meta { font-size: 0.7rem; color: #6b7280; margin-top: 0.15rem; line-height: 1.4; }
+    .doc-meta .chip { display: inline-block; background: #f3f4f6; padding: 0.05rem 0.35rem; border-radius: 4px; font-weight: 600; margin: 0 0.1rem; }
+    .doc-meta .viejo-warn { background: #fed7aa; color: #9a3412; padding: 0.1rem 0.4rem; border-radius: 4px; font-weight: 700; margin-top: 0.2rem; display: inline-block; font-size: 0.62rem; }
+
+    /* Bandeja de acciones en la parte BAJA de la card que se desliza al hacer hover.
+       Antes estaba arriba a la derecha pero tapaba el icono. */
+    .doc-card-actions { position: absolute; left: 0; right: 0; bottom: 0; display: flex;
+                        gap: 0.3rem; justify-content: center; padding: 0.4rem 0.5rem;
+                        background: rgba(255, 255, 255, 0.96);
+                        border-top: 1px solid rgba(0, 0, 0, 0.08);
+                        border-radius: 0 0 12px 12px;
+                        opacity: 0; transform: translateY(100%);
+                        transition: opacity 0.15s ease, transform 0.18s ease; }
+    .doc-card:hover .doc-card-actions { opacity: 1; transform: translateY(0); }
+    .doc-card-actions a, .doc-card-actions button { width: 32px; height: 32px; padding: 0;
+                  border-radius: 7px; border: 1px solid #d1d5db; background: white; color: #374151;
+                  cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+                  text-decoration: none; font-size: 1rem; font-weight: 700; box-shadow: 0 2px 4px rgba(0,0,0,0.12); transition: all 0.12s; }
+    /* Cada accion con su color distintivo para que se reconozca a primer vistazo */
+    .doc-card-actions .act-color { background: #fce7f3; border-color: #f9a8d4; color: #be185d; }
+    .doc-card-actions .act-color:hover { background: #fbcfe8; border-color: #db2777; transform: scale(1.15); }
+    .doc-card-actions .act-rename { background: #dbeafe; border-color: #93c5fd; color: #1e40af; }
+    .doc-card-actions .act-rename:hover { background: #bfdbfe; border-color: #1d4ed8; transform: scale(1.15); }
+    .doc-card-actions .act-download { background: #dcfce7; border-color: #86efac; color: #15803d; }
+    .doc-card-actions .act-download:hover { background: #bbf7d0; border-color: #15803d; transform: scale(1.15); }
+    .doc-card-actions .btn-borrar { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; }
+    .doc-card-actions .btn-borrar:hover { background: #fecaca; border-color: #dc2626; transform: scale(1.15); color: #991b1b; }
+
+    /* Variantes de color para cards — aplican un fondo gradiente sutil */
+    .doc-card.color-amarillo { background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%); border-color: #fde68a; }
+    .doc-card.color-amarillo:hover { background: linear-gradient(180deg, #fef3c7 0%, #fde68a 100%); border-color: #f59e0b; }
+    .doc-card.color-azul { background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%); border-color: #bfdbfe; }
+    .doc-card.color-azul:hover { background: linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%); border-color: #1d4ed8; }
+    .doc-card.color-verde { background: linear-gradient(180deg, #f0fdf4 0%, #dcfce7 100%); border-color: #bbf7d0; }
+    .doc-card.color-verde:hover { background: linear-gradient(180deg, #dcfce7 0%, #bbf7d0 100%); border-color: #15803d; }
+    .doc-card.color-rojo { background: linear-gradient(180deg, #fef2f2 0%, #fee2e2 100%); border-color: #fecaca; }
+    .doc-card.color-rojo:hover { background: linear-gradient(180deg, #fee2e2 0%, #fecaca 100%); border-color: #b91c1c; }
+    .doc-card.color-morado { background: linear-gradient(180deg, #faf5ff 0%, #ede9fe 100%); border-color: #ddd6fe; }
+    .doc-card.color-morado:hover { background: linear-gradient(180deg, #ede9fe 0%, #ddd6fe 100%); border-color: #7c3aed; }
+    .doc-card.color-naranja { background: linear-gradient(180deg, #fff7ed 0%, #ffedd5 100%); border-color: #fed7aa; }
+    .doc-card.color-naranja:hover { background: linear-gradient(180deg, #ffedd5 0%, #fed7aa 100%); border-color: #ea580c; }
+    .doc-card.color-gris { background: linear-gradient(180deg, #f9fafb 0%, #f3f4f6 100%); border-color: #e5e7eb; }
+    .doc-card.color-gris:hover { background: linear-gradient(180deg, #f3f4f6 0%, #e5e7eb 100%); border-color: #6b7280; }
+    .doc-card.color-blanco { background: white; border-color: #e5e7eb; }
+    .doc-card.color-blanco:hover { background: #f9fafb; border-color: #9ca3af; }
+
+    /* Rename inline */
+    .doc-rename-input { font-size: 0.85rem; font-weight: 700; color: #1f2937; text-align: center;
+                        padding: 0.2rem 0.4rem; border: 2px solid #1d4ed8; border-radius: 5px; outline: none; width: 100%; }
+
+    /* Popup de personalizacion (color + emoji) */
+    .doc-customize-popup { position: fixed; z-index: 9999; background: white; border: 1px solid #d1d5db;
+                          border-radius: 10px; box-shadow: 0 12px 28px rgba(0,0,0,0.18); padding: 0.7rem;
+                          min-width: 260px; max-width: 320px; animation: fadeIn 0.12s ease; }
+    .doc-customize-popup .titulo { font-size: 0.72rem; font-weight: 700; color: #6b7280; text-transform: uppercase;
+                                   letter-spacing: 0.05em; margin-bottom: 0.35rem; }
+    .doc-customize-popup .color-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 0.3rem; margin-bottom: 0.6rem; }
+    .doc-customize-popup .color-btn { width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
+                                      border: 2px solid transparent; transition: all 0.1s; }
+    .doc-customize-popup .color-btn:hover { transform: scale(1.15); }
+    .doc-customize-popup .color-btn.activo { border-color: #1f2937; transform: scale(1.15); }
+    .doc-customize-popup .emoji-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 0.3rem; margin-bottom: 0.4rem; }
+    .doc-customize-popup .emoji-btn { font-size: 1.3rem; padding: 0.2rem; cursor: pointer; border-radius: 6px;
+                                      border: 2px solid transparent; background: #f9fafb; line-height: 1; transition: all 0.1s; }
+    .doc-customize-popup .emoji-btn:hover { background: #f3f4f6; transform: scale(1.15); }
+    .doc-customize-popup .emoji-btn.activo { border-color: #1d4ed8; background: #dbeafe; }
+    .doc-customize-popup .reset-btn { width: 100%; padding: 0.35rem; font-size: 0.78rem; font-weight: 600;
+                                      background: #f3f4f6; color: #4b5563; border: 1px solid #e5e7eb;
+                                      border-radius: 6px; cursor: pointer; transition: all 0.1s; }
+    .doc-customize-popup .reset-btn:hover { background: #e5e7eb; }
+
+    .vacio { background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%); border: 2px dashed #d1d5db;
+             padding: 3rem 1rem; border-radius: 12px; text-align: center; color: #6b7280; }
+    .vacio strong { font-size: 1.1rem; color: #374151; }
+
+    @@media (max-width: 640px) {
+        .doc-grid { grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); gap: 0.5rem; }
+        .doc-icon { font-size: 2.6rem; }
+        .doc-card { min-height: 130px; padding: 0.7rem 0.5rem; }
+    }
+</style>
+
+<div class="doc-wrap">
+    <div class="doc-header">
+        <h1>📂 Compartido</h1>
+        <p>Carpeta compartida del equipo. Todos los que tienen acceso pueden subir, ver y eliminar archivos.</p>
+    </div>
+
+    <div class="doc-toolbar">
+        @if (!string.Equals(currentPath, CarpetaFija, StringComparison.OrdinalIgnoreCase))
+        {
+            <button class="btn-toolbar" @onclick="VolverAtras" title="Subir un nivel"
+                    style="background: linear-gradient(180deg,#f9fafb,#f3f4f6);">
+                ↑ Subir
+            </button>
+        }
+        <div class="doc-breadcrumb">
+            <a @onclick="@(() => IrA(CarpetaFija))">📑 Documentación</a>
+            @foreach (var seg in SegmentosBreadcrumb())
+            {
+                <span class="sep">/</span>
+                @if (seg.esActual)
+                {
+                    <span class="current">@seg.nombre</span>
+                }
+                else
+                {
+                    <a @onclick="@(() => IrA(seg.path))">@seg.nombre</a>
+                }
+            }
+        </div>
+        <div class="doc-toolbar-actions">
+            <button class="btn-toolbar primary" @onclick="@(() => mostrarNuevaCarpeta = true)" title="Crear una subcarpeta acá">
+                📁 Nueva carpeta
+            </button>
+            <label class="btn-toolbar success" title="Subir archivos sueltos (PDF, imagen, Word, Excel, etc)">
+                ⬆ Subir archivos
+                <InputFile OnChange="OnFilesSelected" multiple style="display: none;" />
+            </label>
+            <button class="btn-toolbar" @onclick="PickFolder" title="Subir una carpeta entera del disco — mantiene la estructura adentro">
+                📂 Subir carpeta
+            </button>
+        </div>
+    </div>
+
+    @if (uploading)
+    {
+        <div class="upload-progress">
+            ⏳ <span>Subiendo... @uploadStatus</span>
+        </div>
+    }
+
+    @* Drop zone: arrastrá archivos o carpetas desde el explorador de Windows acá *@
+    <div class="drop-zone @(isDragging ? "dragging" : "")"
+         @ref="dropZoneRef"
+         @ondragover:preventDefault="true" @ondragover:stopPropagation="true"
+         @ondrop:preventDefault="true" @ondrop:stopPropagation="true">
+
+        @if (loading)
+        {
+            <p style="text-align: center; padding: 2rem; color: #6b7280;">⏳ Cargando...</p>
+        }
+        else if (carpetas.Count == 0 && archivos.Count == 0)
+        {
+            <div class="vacio">
+                <div style="font-size: 3rem;">📂</div>
+                <strong>Carpeta vacía</strong>
+                <p style="margin: 0.4rem 0 0; font-size: 0.88rem;">
+                    Arrastrá archivos o carpetas desde el explorador,<br/>
+                    o usá los botones de arriba.
+                </p>
+            </div>
+        }
+        else
+        {
+            @if (carpetas.Count > 0)
+            {
+                <div class="doc-seccion-titulo">📁 Carpetas <span class="count">@carpetas.Count</span></div>
+                <div class="doc-grid">
+                    @foreach (var c in carpetas.OrderBy(x => x.Name))
+                    {
+                        var cId = c.Path;
+                        var clrClass = ClaseColor(c.Color, esCarpeta: true);
+                        <div class="doc-card carpeta @clrClass" @onclick="@(() => IrA(c.Path))" title="Abrir @c.Name">
+                            <div class="doc-card-actions">
+                                <button class="act-color" id="@($"cust-{cId.GetHashCode():X}")" @onclick:stopPropagation="true" @onclick="@(() => AbrirCustomize(c))" title="Cambiar color e icono">🎨</button>
+                                <button class="act-rename" @onclick:stopPropagation="true" @onclick="@(() => EmpezarRename(c))" title="Renombrar carpeta">✏</button>
+                                <button class="btn-borrar" @onclick:stopPropagation="true" @onclick="@(() => ConfirmarBorrar(c))" title="Borrar carpeta (y todo lo de adentro)">🗑</button>
+                            </div>
+                            <div class="doc-icon">@(c.IconEmoji ?? "📁")</div>
+                            @if (renamingPath == c.Path)
+                            {
+                                <input class="doc-rename-input" @bind="renameNewName" @bind:event="oninput"
+                                       @onclick:stopPropagation="true"
+                                       @onkeydown="@(async e => { if (e.Key == "Enter") await GuardarRename(); else if (e.Key == "Escape") CancelarRename(); })"
+                                       @onblur="@(async () => await GuardarRename())"
+                                       @ref="renameInputRef" />
+                            }
+                            else
+                            {
+                                <div class="doc-nombre">@c.Name</div>
+                                <div class="doc-meta">Carpeta</div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+            @if (archivos.Count > 0)
+            {
+                <div class="doc-seccion-titulo">📄 Archivos <span class="count">@archivos.Count</span></div>
+                <div class="doc-grid">
+                    @foreach (var f in archivos.OrderByDescending(x => x.ModifiedAt))
+                    {
+                        var diasViejo = (int)Math.Floor((DateTime.UtcNow - f.ModifiedAt).TotalDays);
+                        var esViejo = diasViejo > 90;
+                        var (icono, claseTipo) = IconoYClaseArchivo(f.Name);
+                        var clrClass = ClaseColor(f.Color, esCarpeta: false);
+                        var iconoFinal = f.IconEmoji ?? icono;
+                        var fId = f.Path;
+                        <div class="doc-card @clrClass @(esViejo ? "viejo" : "")" style="text-decoration: none; color: inherit;" title="@f.Name">
+                            <div class="doc-card-actions">
+                                <button class="act-color" id="@($"cust-{fId.GetHashCode():X}")" @onclick:stopPropagation="true" @onclick="@(() => AbrirCustomize(f))" title="Cambiar color e icono">🎨</button>
+                                <button class="act-rename" @onclick:stopPropagation="true" @onclick="@(() => EmpezarRename(f))" title="Renombrar archivo">✏</button>
+                                <a class="act-download" href="@DownloadUrl(f.Path)" target="_blank" @onclick:stopPropagation="true" title="Descargar">⬇</a>
+                                <button class="btn-borrar" @onclick:stopPropagation="true" @onclick="@(() => ConfirmarBorrar(f))" title="Borrar">🗑</button>
+                            </div>
+                            <a href="@DownloadUrl(f.Path)" target="_blank" style="text-decoration: none; color: inherit; display: contents;">
+                                @if (claseTipo == "tipo-img" && f.IconEmoji is null)
+                                {
+                                    @* 2026-07-06: miniatura real de la foto. Solo para imagenes y si el
+                                       usuario no puso un emoji propio. La cookie httpOnly viaja sola en el <img>. *@
+                                    <div class="doc-thumb"><img src="@DownloadUrl(f.Path)" alt="@f.Name" loading="lazy" /></div>
+                                }
+                                else
+                                {
+                                    <div class="doc-icon @claseTipo">@iconoFinal</div>
+                                }
+                            </a>
+                            @if (renamingPath == f.Path)
+                            {
+                                <input class="doc-rename-input" @bind="renameNewName" @bind:event="oninput"
+                                       @onclick:stopPropagation="true"
+                                       @onkeydown="@(async e => { if (e.Key == "Enter") await GuardarRename(); else if (e.Key == "Escape") CancelarRename(); })"
+                                       @onblur="@(async () => await GuardarRename())"
+                                       @ref="renameInputRef" />
+                            }
+                            else
+                            {
+                                <a href="@DownloadUrl(f.Path)" target="_blank" style="text-decoration: none; color: inherit; display: contents;">
+                                    <div class="doc-nombre">@f.Name</div>
+                                </a>
+                                <div class="doc-meta">
+                                    <span class="chip">@FormatSize(f.Size)</span>
+                                    <div style="margin-top: 0.15rem;">@FechaCorta(f.ModifiedAt)</div>
+                                    @if (esViejo)
+                                    {
+                                        <div><span class="viejo-warn">⚠ +3 meses</span></div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@* Popup customizar (color + emoji) *@
+@if (customizing is not null)
+{
+    <div style="position: fixed; inset: 0; z-index: 9998; background: transparent;" @onclick="CerrarCustomize"></div>
+    <div id="doc-customize-popup" class="doc-customize-popup">
+        <div class="titulo">🎨 Color</div>
+        <div class="color-grid">
+            @foreach (var c in ColoresDisponibles)
+            {
+                var bg = MuestraColor(c);
+                var activo = (customizing.Color ?? "") == c;
+                <div class="color-btn @(activo ? "activo" : "")" style="background: @bg;"
+                     @onclick="@(async () => await AplicarColor(c))" title="@c"></div>
+            }
+        </div>
+        <div class="titulo">🔣 Icono @(customizing.IsFolder ? "(cambia el 📁)" : "(cambia el del tipo de archivo)")</div>
+        <div class="emoji-grid">
+            @foreach (var e in customizing.IsFolder ? EmojisCarpetas : EmojisArchivos)
+            {
+                var activo = (customizing.IconEmoji ?? "") == e;
+                <button class="emoji-btn @(activo ? "activo" : "")" @onclick="@(async () => await AplicarEmoji(e))">@e</button>
+            }
+        </div>
+        <button class="reset-btn" @onclick="@(async () => await ResetCustomize())">🔄 Volver al default</button>
+    </div>
+}
+
+@* Modal Nueva carpeta *@
+@if (mostrarNuevaCarpeta)
+{
+    <div class="modal-overlay" style="z-index: 9100;" @onclick="@(() => mostrarNuevaCarpeta = false)">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 420px;">
+            <div class="modal-header" style="background: #1d4ed8; color: white;">
+                <h4 style="margin: 0;">📁 Nueva carpeta</h4>
+                <button class="btn-close" @onclick="@(() => mostrarNuevaCarpeta = false)" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 1rem 1.2rem;">
+                <label style="font-size: 0.85rem; font-weight: 600;">Nombre de la carpeta</label>
+                <input class="form-input" @bind="nuevaCarpetaNombre" @bind:event="oninput"
+                       @onkeydown="@(async e => { if (e.Key == "Enter") await CrearCarpeta(); })"
+                       placeholder="Ej: Cheques, Constancias, Contratos…" style="margin-top: 0.3rem;" />
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="@(() => mostrarNuevaCarpeta = false)">Cancelar</button>
+                <button class="btn btn-primary" disabled="@(string.IsNullOrWhiteSpace(nuevaCarpetaNombre))" @onclick="CrearCarpeta">Crear</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* Modal confirmacion borrar *@
+@if (aBorrar is not null)
+{
+    <div class="modal-overlay" style="z-index: 9100;" @onclick="@(() => aBorrar = null)">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 420px;">
+            <div class="modal-header" style="background: #b91c1c; color: white;">
+                <h4 style="margin: 0;">🗑 Borrar @(aBorrar.IsFolder ? "carpeta" : "documento")</h4>
+                <button class="btn-close" @onclick="@(() => aBorrar = null)" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 1rem 1.2rem;">
+                <p>¿Seguro que querés borrar <strong>@aBorrar.Name</strong>?</p>
+                @if (aBorrar.IsFolder)
+                {
+                    <p style="font-size: 0.85rem; color: #b91c1c; font-weight: 600;">⚠ También se borra TODO lo que tenga adentro.</p>
+                }
+                <p style="font-size: 0.8rem; color: #6b7280;">Esta acción no se puede deshacer.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="@(() => aBorrar = null)">Cancelar</button>
+                <button class="btn btn-danger" @onclick="BorrarConfirmado">Sí, borrar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private const string CarpetaFija = "Compartido";
+
+    private List<FileEntryDto> archivos = new();
+    private List<FileEntryDto> carpetas = new();
+    private bool loading = true;
+    private bool uploading;
+    private string uploadStatus = "";
+    private FileEntryDto? aBorrar;
+    private string currentPath = CarpetaFija;
+    private bool mostrarNuevaCarpeta;
+    private string nuevaCarpetaNombre = "";
+    private bool isDragging;
+    private ElementReference dropZoneRef;
+    private DotNetObjectReference<Compartido>? selfRef;
+
+    // Rename inline
+    private string? renamingPath;
+    private string renameNewName = "";
+    private ElementReference renameInputRef;
+    private bool renameJustOpened;
+
+    // Popup customize (color + emoji)
+    private FileEntryDto? customizing;
+    private static readonly string[] ColoresDisponibles = new[] { "amarillo", "azul", "verde", "rojo", "morado", "naranja", "gris", "blanco" };
+    private static readonly string[] EmojisCarpetas = new[] { "📁", "📋", "💰", "📊", "🏢", "📦", "🔧", "📞", "💼", "📚", "⭐", "🎯", "🛠", "🏷", "📅", "🎁" };
+    private static readonly string[] EmojisArchivos = new[] { "📄", "📕", "📗", "📘", "📙", "🖼", "🗜", "📝", "🎬", "🎵", "⭐", "🎯", "📌", "💡", "⚠", "✅" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await AsegurarCarpetaAsync();
+        await Cargar();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            selfRef = DotNetObjectReference.Create(this);
+            try { await JS.InvokeVoidAsync("docDriveInit", dropZoneRef, selfRef); }
+            catch { /* helper opcional, no rompemos si no esta */ }
+        }
+        // Focusear el input al abrir el rename inline.
+        if (renameJustOpened && renamingPath is not null)
+        {
+            renameJustOpened = false;
+            try { await renameInputRef.FocusAsync(); } catch { }
+        }
+    }
+
+    public void Dispose()
+    {
+        try { selfRef?.Dispose(); } catch { }
+    }
+
+    [JSInvokable]
+    public void OnDragEnter() { isDragging = true; StateHasChanged(); }
+    [JSInvokable]
+    public void OnDragLeave() { isDragging = false; StateHasChanged(); }
+
+    /// <summary>JS llama esto con la lista de archivos (con webkitRelativePath si vienen de carpeta).
+    /// Cada item: { name, relativePath, size, content (base64) }.</summary>
+    [JSInvokable]
+    public async Task OnFilesDropped(DroppedFile[] files)
+    {
+        isDragging = false;
+        if (files == null || files.Length == 0) { StateHasChanged(); return; }
+        await SubirArchivosConPaths(files);
+    }
+
+    public record DroppedFile(string name, string? relativePath, long size, string content);
+
+    /// <summary>Procesa archivos con paths relativos: crea subcarpetas y sube cada uno.
+    /// Si relativePath es "carpeta/sub/archivo.pdf", crea carpeta y sub dentro del currentPath.</summary>
+    private async Task SubirArchivosConPaths(DroppedFile[] files)
+    {
+        uploading = true;
+        uploadStatus = $"0 de {files.Length}";
+        StateHasChanged();
+
+        var carpetasCreadas = new HashSet<string>();
+        int ok = 0, fail = 0;
+        for (int i = 0; i < files.Length; i++)
+        {
+            var f = files[i];
+            uploadStatus = $"{i + 1} de {files.Length} — {f.name}";
+            StateHasChanged();
+
+            // Determinar carpeta destino: si relativePath tiene subdirs, crear las que falten.
+            var destFolder = currentPath;
+            var rel = f.relativePath ?? f.name;
+            var parts = rel.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+            for (int p = 0; p < parts.Length - 1; p++)
+            {
+                var subName = parts[p];
+                var key = destFolder + "/" + subName;
+                if (!carpetasCreadas.Contains(key))
+                {
+                    try { await Api.CreateFolderAsync(destFolder, subName); } catch { /* ya existe */ }
+                    carpetasCreadas.Add(key);
+                }
+                destFolder = key;
+            }
+            try
+            {
+                var bytes = Convert.FromBase64String(f.content);
+                using var ms = new MemoryStream(bytes);
+                var result = await Api.UploadFilesAsync(destFolder, new[] { (f.name, (Stream)ms, (long)bytes.Length) });
+                if (result is not null && result.Any(r => r.Success)) ok++;
+                else fail++;
+            }
+            catch { fail++; }
+        }
+
+        uploading = false;
+        uploadStatus = "";
+        if (ok > 0) ToastService.Success($"📤 {ok} archivo{(ok == 1 ? "" : "s")} subido{(ok == 1 ? "" : "s")}");
+        if (fail > 0) ToastService.Error($"⚠ {fail} archivo{(fail == 1 ? "" : "s")} falló");
+        await Cargar();
+    }
+
+    /// <summary>Botón "Subir carpeta": invoca un input HTML5 con webkitdirectory via JS y procesa los archivos resultantes.</summary>
+    private async Task PickFolder()
+    {
+        try
+        {
+            if (selfRef is null) return;
+            await JS.InvokeVoidAsync("docDrivePickFolder", selfRef);
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task AsegurarCarpetaAsync()
+    {
+        try { await Api.CreateFolderAsync("", CarpetaFija); } catch { }
+    }
+
+    private async Task Cargar()
+    {
+        loading = true;
+        try
+        {
+            var resp = await Api.ListFilesAsync(currentPath);
+            var entries = resp?.Entries ?? new();
+            archivos = entries.Where(e => !e.IsFolder).ToList();
+            carpetas = entries.Where(e => e.IsFolder).ToList();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { loading = false; }
+    }
+
+    private async Task IrA(string path)
+    {
+        currentPath = path;
+        await Cargar();
+    }
+
+    /// <summary>Boton "← Volver". Si estamos en una subcarpeta, sube un nivel; si estamos en la raiz,
+    /// usa history.back() para volver a la pantalla anterior del sitio (o al dashboard como fallback).</summary>
+    private async Task VolverAtras()
+    {
+        if (!string.Equals(currentPath, CarpetaFija, StringComparison.OrdinalIgnoreCase))
+        {
+            // Subir un nivel en la jerarquia de carpetas.
+            var idx = currentPath.LastIndexOf('/');
+            var parent = idx > 0 ? currentPath.Substring(0, idx) : CarpetaFija;
+            await IrA(parent);
+        }
+        else
+        {
+            try { await JS.InvokeVoidAsync("history.back"); }
+            catch { }
+        }
+    }
+
+    private IEnumerable<(string nombre, string path, bool esActual)> SegmentosBreadcrumb()
+    {
+        if (string.Equals(currentPath, CarpetaFija, StringComparison.OrdinalIgnoreCase)) yield break;
+        var rest = currentPath.Substring(CarpetaFija.Length).TrimStart('/');
+        var partes = rest.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var acumulado = CarpetaFija;
+        for (int i = 0; i < partes.Length; i++)
+        {
+            acumulado = acumulado + "/" + partes[i];
+            yield return (partes[i], acumulado, i == partes.Length - 1);
+        }
+    }
+
+    private async Task CrearCarpeta()
+    {
+        var nombre = (nuevaCarpetaNombre ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(nombre)) return;
+        try
+        {
+            await Api.CreateFolderAsync(currentPath, nombre);
+            ToastService.Success($"📁 Carpeta '{nombre}' creada");
+            mostrarNuevaCarpeta = false;
+            nuevaCarpetaNombre = "";
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task OnFilesSelected(InputFileChangeEventArgs e)
+    {
+        var files = e.GetMultipleFiles(50);
+        if (files.Count == 0) return;
+        uploading = true;
+        uploadStatus = $"0 de {files.Count}";
+        StateHasChanged();
+        try
+        {
+            var streams = new List<Stream>();
+            var items = new List<(string name, Stream stream, long size)>();
+            int idx = 0;
+            foreach (var f in files)
+            {
+                idx++;
+                uploadStatus = $"{idx} de {files.Count} — {f.Name}";
+                StateHasChanged();
+                var s = f.OpenReadStream(100 * 1024 * 1024); // 100 MB
+                streams.Add(s);
+                items.Add((f.Name, s, f.Size));
+            }
+            var result = await Api.UploadFilesAsync(currentPath, items);
+            foreach (var s in streams) try { s.Dispose(); } catch { }
+            var ok = result?.Count(r => r.Success) ?? 0;
+            var fail = result?.Count(r => !r.Success) ?? 0;
+            if (ok > 0) ToastService.Success($"📤 {ok} archivo{(ok == 1 ? "" : "s")} subido{(ok == 1 ? "" : "s")}");
+            if (fail > 0) ToastService.Error($"⚠ {fail} archivo{(fail == 1 ? "" : "s")} falló{(fail == 1 ? "" : "ron")}");
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error("Error subiendo: " + ex.Message); }
+        finally { uploading = false; uploadStatus = ""; }
+    }
+
+    private void ConfirmarBorrar(FileEntryDto f) => aBorrar = f;
+
+    private async Task BorrarConfirmado()
+    {
+        if (aBorrar is null) return;
+        try
+        {
+            await Api.DeleteFilesAsync(new[] { aBorrar.Path });
+            ToastService.Success("Borrado");
+            aBorrar = null;
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    // ===== Rename inline =====
+    private void EmpezarRename(FileEntryDto f)
+    {
+        renamingPath = f.Path;
+        renameNewName = f.Name;
+        renameJustOpened = true;
+        CerrarCustomize();
+    }
+
+    private void CancelarRename()
+    {
+        renamingPath = null;
+        renameNewName = "";
+    }
+
+    private async Task GuardarRename()
+    {
+        if (renamingPath is null) return;
+        var nuevo = (renameNewName ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(nuevo)) { CancelarRename(); return; }
+        try
+        {
+            var ok = await Api.RenameFileAsync(renamingPath, nuevo);
+            if (ok)
+            {
+                ToastService.Success("Renombrado");
+                renamingPath = null;
+                renameNewName = "";
+                await Cargar();
+            }
+            else ToastService.Error("No se pudo renombrar");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    // ===== Customize (color + emoji) =====
+    private async Task AbrirCustomize(FileEntryDto f)
+    {
+        customizing = f;
+        // Posicionar el popup cerca del boton que lo abrio.
+        await Task.Yield();
+        try { await JS.InvokeVoidAsync("docDrivePositionCustomize", $"cust-{f.Path.GetHashCode():X}", "doc-customize-popup"); }
+        catch { }
+    }
+
+    private void CerrarCustomize() { customizing = null; }
+
+    private async Task AplicarColor(string color)
+    {
+        if (customizing is null) return;
+        var path = customizing.Path;
+        var emoji = customizing.IconEmoji;
+        try
+        {
+            await Api.SetFileMetaAsync(path, color, emoji);
+            await Cargar();
+            customizing = (carpetas.Concat(archivos)).FirstOrDefault(x => x.Path == path);
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task AplicarEmoji(string emoji)
+    {
+        if (customizing is null) return;
+        var path = customizing.Path;
+        var color = customizing.Color;
+        try
+        {
+            await Api.SetFileMetaAsync(path, color, emoji);
+            await Cargar();
+            customizing = (carpetas.Concat(archivos)).FirstOrDefault(x => x.Path == path);
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task ResetCustomize()
+    {
+        if (customizing is null) return;
+        var path = customizing.Path;
+        try
+        {
+            await Api.SetFileMetaAsync(path, null, null);
+            ToastService.Success("Vuelto al default");
+            customizing = null;
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private static string ClaseColor(string? color, bool esCarpeta)
+    {
+        if (string.IsNullOrEmpty(color))
+            return esCarpeta ? "" : "color-blanco";
+        return "color-" + color.ToLowerInvariant();
+    }
+
+    private static string MuestraColor(string color) => color switch
+    {
+        "amarillo" => "linear-gradient(180deg, #fffbeb, #fde68a)",
+        "azul" => "linear-gradient(180deg, #eff6ff, #bfdbfe)",
+        "verde" => "linear-gradient(180deg, #f0fdf4, #bbf7d0)",
+        "rojo" => "linear-gradient(180deg, #fef2f2, #fecaca)",
+        "morado" => "linear-gradient(180deg, #faf5ff, #ddd6fe)",
+        "naranja" => "linear-gradient(180deg, #fff7ed, #fed7aa)",
+        "gris" => "linear-gradient(180deg, #f9fafb, #e5e7eb)",
+        "blanco" => "white",
+        _ => "white"
+    };
+
+    private static string DownloadUrl(string path) => $"/api/files/download?path={Uri.EscapeDataString(path)}";
+
+    private static (string icono, string clase) IconoYClaseArchivo(string nombre)
+    {
+        var ext = System.IO.Path.GetExtension(nombre).ToLowerInvariant();
+        return ext switch
+        {
+            ".pdf" => ("📕", "tipo-pdf"),
+            ".doc" or ".docx" => ("📘", "tipo-doc"),
+            ".xls" or ".xlsx" or ".csv" => ("📗", "tipo-xls"),
+            ".jpg" or ".jpeg" or ".png" or ".gif" or ".webp" or ".bmp" => ("🖼", "tipo-img"),
+            ".zip" or ".rar" or ".7z" => ("🗜", "tipo-zip"),
+            ".ppt" or ".pptx" => ("📙", "tipo-doc"),
+            ".txt" or ".md" => ("📝", ""),
+            ".mp4" or ".mov" or ".avi" => ("🎬", ""),
+            ".mp3" or ".wav" => ("🎵", ""),
+            _ => ("📄", "")
+        };
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:N1} KB";
+        return $"{bytes / 1024.0 / 1024.0:N1} MB";
+    }
+
+    private static string FechaCorta(DateTime utc)
+    {
+        var local = utc.ToArTime();
+        var dias = (int)Math.Floor((DateTime.Now - local).TotalDays);
+        if (dias == 0) return "hoy";
+        if (dias == 1) return "ayer";
+        if (dias < 7) return $"hace {dias} días";
+        return local.ToString("dd/MM/yyyy");
+    }
+}
