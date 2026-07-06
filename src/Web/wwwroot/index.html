@@ -22,7 +22,22 @@
         </div>
     </div>
 
-    <script src="_framework/blazor.webassembly.js"></script>
+    <script src="_framework/blazor.webassembly.js" autostart="false"></script>
+    <script>
+        // 2026-07-06: cache-busting de los archivos de Blazor. A cada archivo le pegamos
+        // su hash de contenido como ?v=... en la URL. Cuando hago un deploy nuevo, el hash
+        // cambia -> la URL cambia -> el navegador lo trata como archivo nuevo y lo baja
+        // fresco, en vez de servir la version vieja "pegada" de su cache. Asi el usuario
+        // SIEMPRE ve lo ultimo con un F5 normal, sin limpiar cache ni ir a incognito.
+        // Dejamos 'dotnetjs' sin tocar (su carga es especial y no cambia con mis cambios).
+        Blazor.start({
+            loadBootResource: function (type, name, defaultUri, integrity) {
+                if (type === 'dotnetjs' || !integrity) return defaultUri;
+                var v = integrity.replace(/[^a-zA-Z0-9]/g, '').substring(0, 20);
+                return defaultUri + (defaultUri.indexOf('?') >= 0 ? '&' : '?') + 'v=' + v;
+            }
+        });
+    </script>
     <script src="js/webauthn-helper.js"></script>
     <script src="js/firma-canvas.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
