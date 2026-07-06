@@ -170,7 +170,7 @@
                             <tr><th>Fecha</th><th>Quién pagó</th><th>Medio</th><th style="text-align:right;">Monto</th><th style="text-align:right;">Neto</th></tr>
                         </thead>
                         <tbody>
-                            @foreach (var p in pagos)
+                            @foreach (var p in pagos.Take(15))
                             {
                                 <tr>
                                     <td>@p.Fecha.ToLocalTime().ToString("dd/MM/yy HH:mm")</td>
@@ -183,7 +183,7 @@
                         </tbody>
                     </table>
                 </div>
-                <div style="font-size:0.75rem; color:#6b7280; margin-top:0.4rem;">Mostrando hasta 500 cobros aprobados del período.</div>
+                <div style="font-size:0.75rem; color:#6b7280; margin-top:0.4rem;">Mostrando los <strong>últimos 15</strong> cobros. El total de todos está arriba en el resumen (@resumenPagos?.Cantidad cobros).</div>
             }
             else if (pagos is not null && !trayendoPagos)
             {
@@ -255,7 +255,7 @@
                             <tr><th>Fecha</th><th>Tipo</th><th>Detalle</th><th style="text-align:right;">Bruto</th><th style="text-align:right;">Comisión</th><th style="text-align:right;">Neto</th></tr>
                         </thead>
                         <tbody>
-                            @foreach (var m in movimientos)
+                            @foreach (var m in movimientos.Take(15))
                             {
                                 <tr>
                                     <td>@m.Fecha.ToLocalTime().ToString("dd/MM/yy")</td>
@@ -269,7 +269,7 @@
                         </tbody>
                     </table>
                 </div>
-                <div style="font-size:0.75rem; color:#6b7280; margin-top:0.4rem;">Mostrando hasta 1000 movimientos.</div>
+                <div style="font-size:0.75rem; color:#6b7280; margin-top:0.4rem;">Mostrando los <strong>últimos 15</strong> movimientos. El total está arriba en el resumen.</div>
             }
         </div>
 
