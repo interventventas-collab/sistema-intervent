@@ -157,6 +157,15 @@
     @* 2026-06-22: banner unificado para gestionar el RANGO de ventas cargadas. Solo aparece
        cuando NO estamos en paginado por default (es decir, hay filtros + rango activo, o el
        usuario eligio ver todas). Ofrece chips para cambiar de rango facil. *@
+    @if (busquedaServidorActiva)
+    {
+        <div style="background: #f0fdf4; border-bottom: 1px solid #bbf7d0; padding: 0.65rem 1rem; display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap;">
+            <span style="font-size: 0.85rem; color: #166534; font-weight: 500;">
+                🔍 Buscando "@filtroCliente" en TODO el historial — @(ventas?.Count ?? 0) resultado(s)@(ventas?.Count >= 500 ? " (mostrando los primeros 500)" : "").
+            </span>
+            <button class="rango-chip-volver" @onclick="LimpiarFiltros" title="Limpiar la búsqueda y volver al listado">↶ Volver al listado</button>
+        </div>
+    }
     @if (rangoUltimosDias.HasValue || traerTodoActivo)
     {
         <div style="background: #eff6ff; border-bottom: 1px solid #bfdbfe; padding: 0.65rem 1rem; display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap;">
@@ -180,7 +189,9 @@
         </div>
     }
     @* ─── Barra de filtros ─── *@
-    @if (ventas is not null && ventas.Count > 0)
+    @* 2026-07-07: mostrar la barra tambien durante una busqueda de servidor aunque de 0 resultados,
+       para no dejar al usuario sin el buscador (podria querer corregir el texto). *@
+    @if ((ventas is not null && ventas.Count > 0) || busquedaServidorActiva)
     {
         <div style="background: #f9fafb; border-bottom: 1px solid #e5e7eb; padding: 0.6rem 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: end;">
             <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 130px;">
@@ -198,7 +209,7 @@
             <div style="display: flex; flex-direction: column; gap: 0.15rem; flex: 1; min-width: 200px;">
                 <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Buscar venta</label>
                 <input class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.85rem;"
-                       @bind="filtroCliente" @bind:event="oninput"
+                       @bind="filtroCliente" @bind:event="oninput" @bind:after="OnBuscarClienteInput"
                        placeholder="🔍 Nº venta, código, nombre, CUIT, tel, email, dirección, localidad, CP..." />
             </div>
             <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 120px;">
@@ -4040,7 +4051,11 @@
             IEnumerable<CafeVentaDto> q = ventas;
             if (filtroFechaDesde.HasValue) q = q.Where(v => v.Fecha.Date >= filtroFechaDesde.Value.Date);
             if (filtroFechaHasta.HasValue) q = q.Where(v => v.Fecha.Date <= filtroFechaHasta.Value.Date);
-            if (!string.IsNullOrWhiteSpace(filtroCliente))
+            // 2026-07-07: si la busqueda de texto la resolvio el servidor (todo el historial), NO la
+            // repetimos en memoria — el front podria no tener cargado el cliente (email/codigo) y
+            // ocultaria resultados validos que el servidor si encontro. Los demas filtros (tipo,
+            // estado, etc.) si se siguen aplicando sobre lo que trajo el servidor.
+            if (!busquedaServidorActiva && !string.IsNullOrWhiteSpace(filtroCliente))
             {
                 var t = filtroCliente.Trim();
                 bool h(string? s) => s.MatchesSearch(t);
@@ -4108,12 +4123,29 @@
         || filtroSaldo != "TODOS"
         || filtroRepartidor != "TODOS";   // 2026-06-08
 
-    private void LimpiarFiltros()
+    // 2026-07-07: filtros SIN contar el texto de "Buscar venta". El buscador de texto ahora
+    // va al servidor (busca en todo el historial), asi que NO debe disparar el auto-ampliado a
+    // 30 dias. Los demas filtros (tipo/estado/etc.) siguen filtrando en memoria y por eso si
+    // necesitan ampliar el rango cargado.
+    private bool HayFiltrosNoTextoActivos =>
+        filtroFechaDesde.HasValue || filtroFechaHasta.HasValue
+        || filtroTipo != "TODOS" || filtroEstado != "TODOS" || filtroCae != "TODOS"
+        || filtroSaldo != "TODOS"
+        || filtroRepartidor != "TODOS";
+
+    private async Task LimpiarFiltros()
     {
         filtroFechaDesde = null; filtroFechaHasta = null;
         filtroCliente = ""; filtroTipo = "TODOS"; filtroEstado = "TODOS"; filtroCae = "TODOS";
         filtroSaldo = "TODOS";
         filtroRepartidor = "TODOS";   // 2026-06-08
+        // Si venimos de una busqueda de servidor, volver al listado paginado normal.
+        if (busquedaServidorActiva)
+        {
+            busquedaServidorActiva = false;
+            rangoUltimosDias = null; traerTodoActivo = false; pageOffset = 0;
+            await Load();
+        }
     }
     private List<CafeClienteDto>? clientes;
     private List<CafeProductoDto>? productos;
@@ -4799,8 +4831,12 @@
         // un tipo, etc.) y estamos en modo paginado, automaticamente cargamos los ultimos 30
         // dias para que el filtro busque en un rango razonable y no solo en las 50 de la pagina.
         // Si los 30 dias no alcanzan, el banner ofrece ampliar a 60/180/365/todas.
-        var filtrosActivosAhora = HayFiltrosActivos;
-        if (filtrosActivosAhora && !_filtrosEstabanActivos && !traerTodoActivo && !rangoUltimosDias.HasValue && totalVentas > pageSize)
+        // 2026-07-07: el auto-ampliado a 30 dias ahora SOLO mira los filtros que se resuelven en
+        // memoria (tipo/estado/fecha/etc.). El buscador de texto ya trae del servidor todo el
+        // historial que coincide, asi que no dispara esto (ni pisa la busqueda de servidor).
+        var filtrosActivosAhora = HayFiltrosNoTextoActivos;
+        if (filtrosActivosAhora && !_filtrosEstabanActivos && !busquedaServidorActiva
+            && !traerTodoActivo && !rangoUltimosDias.HasValue && totalVentas > pageSize)
         {
             _filtrosEstabanActivos = true;
             await CargarUltimosDias(30);
@@ -5200,11 +5236,66 @@
         loading = false;
     }
 
+    // 2026-07-07: busqueda de texto contra el servidor (todo el historial), con debounce.
+    private bool busquedaServidorActiva = false;
+    private System.Threading.CancellationTokenSource? _searchCts;
+
+    /// <summary>Se dispara en cada tecla del buscador. Espera ~450ms a que el usuario termine de
+    /// tipear y recien ahi va al servidor a buscar en TODAS las ventas. Si el texto queda vacio,
+    /// vuelve al listado paginado normal.</summary>
+    private async Task OnBuscarClienteInput()
+    {
+        _searchCts?.Cancel();
+        var cts = new System.Threading.CancellationTokenSource();
+        _searchCts = cts;
+        var term = (filtroCliente ?? "").Trim();
+        try { await Task.Delay(450, cts.Token); }
+        catch (TaskCanceledException) { return; }
+        if (cts.IsCancellationRequested) return;
+        await EjecutarBusquedaServidor(term);
+    }
+
+    /// <summary>Trae del servidor las ventas que coinciden con el texto (todo el historial, hasta
+    /// 500). Si el texto esta vacio y veniamos de una busqueda, vuelve al listado paginado.</summary>
+    private async Task EjecutarBusquedaServidor(string term)
+    {
+        if (string.IsNullOrWhiteSpace(term))
+        {
+            if (busquedaServidorActiva)
+            {
+                busquedaServidorActiva = false;
+                rangoUltimosDias = null; traerTodoActivo = false; pageOffset = 0;
+                await Load();
+            }
+            return;
+        }
+        busquedaServidorActiva = true;
+        // No queremos que el auto-ampliado ni el modo rango/paginado interfieran con la busqueda.
+        rangoUltimosDias = null; traerTodoActivo = false;
+        loading = true;
+        StateHasChanged();
+        try
+        {
+            ventas = await Api.BuscarCafeVentasAsync(term) ?? new();
+            totalVentas = ventas.Count;
+            try
+            {
+                var saldos = await Api.GetVentasSaldosAsync();
+                saldosPorVenta = (saldos ?? new()).ToDictionary(s => s.VentaId, s => s.Saldo);
+            }
+            catch { saldosPorVenta = new(); }
+        }
+        catch { ToastService.Error("Error al buscar ventas"); }
+        loading = false;
+        StateHasChanged();
+    }
+
     /// <summary>2026-06-22: ampliar la carga a los ultimos N dias para poder buscar/filtrar
     /// en ese rango sin tener que traer todo el historico. Usado por los botones rapidos
     /// del banner amarillo cuando hay filtros activos y la pagina actual no alcanza.</summary>
     private async Task CargarUltimosDias(int dias)
     {
+        busquedaServidorActiva = false;
         traerTodoActivo = false;
         rangoUltimosDias = dias;
         pageOffset = 0;
@@ -5229,6 +5320,7 @@
     /// <summary>2026-06-22: trae las ventas sin paginar para poder filtrar/buscar en todas.</summary>
     private async Task VerTodas()
     {
+        busquedaServidorActiva = false;
         traerTodoActivo = true;
         rangoUltimosDias = null;
         pageOffset = 0;
@@ -5238,6 +5330,7 @@
     /// <summary>2026-06-22: vuelve al modo paginado (caso default).</summary>
     private async Task VolverAPaginado()
     {
+        busquedaServidorActiva = false;
         traerTodoActivo = false;
         rangoUltimosDias = null;
         pageOffset = 0;

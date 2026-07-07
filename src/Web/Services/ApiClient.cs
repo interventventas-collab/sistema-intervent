@@ -950,6 +950,16 @@ public class ApiClient
         return await GetAsync<List<CafeVentaDto>>(url);
     }
 
+    /// <summary>2026-07-07: busca ventas por texto libre en TODO el historial (nombre, nro, CUIT,
+    /// telefono, direccion, etc.). El backend ignora paginacion y fechas, y devuelve hasta 500
+    /// coincidencias. Usado por el buscador del listado para que encuentre clientes viejos sin
+    /// tener que ampliar el rango a mano.</summary>
+    public async Task<List<CafeVentaDto>?> BuscarCafeVentasAsync(string search)
+    {
+        var url = "/api/cafe/ventas?search=" + Uri.EscapeDataString(search);
+        return await GetAsync<List<CafeVentaDto>>(url);
+    }
+
     /// <summary>2026-06-22: variante paginada. Devuelve (lista, totalCount). totalCount viene en
     /// el header X-Total-Count del response. Si se pasan fechas, el backend ignora la paginacion
     /// y trae todo el rango (totalCount queda = lista.Count en ese caso).</summary>
