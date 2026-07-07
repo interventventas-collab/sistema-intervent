@@ -1097,7 +1097,9 @@
                         <div style="display: grid; grid-template-columns: 1fr; gap: 0.6rem; margin-top: 0.4rem;">
                             <div class="form-group" style="margin: 0;">
                                 <label class="form-label" style="font-size: 0.66rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">🏢 ¿Con qué empresa facturás?</label>
-                                <select class="form-input" @bind="formArcaAccountId" @bind:after="OnArcaAccountChanged">
+                                @* 2026-07-07: doble-check al cambiar la empresa emisora (pedido de Osmar). Usamos
+                                   value+onchange en vez de @bind para poder revertir si el usuario cancela. *@
+                                <select class="form-input" value="@formArcaAccountId" @onchange="OnArcaAccountSelectChanged">
                                     @foreach (var acc in arcaAccounts)
                                     {
                                         <option value="@acc.Id">@ArcaAccountLabel(acc)</option>
@@ -5697,6 +5699,43 @@
         var cond = acc?.CondicionIva;
         if (string.IsNullOrWhiteSpace(cond)) return true;
         return cond.Contains("inscripto", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>2026-07-07: doble-check al cambiar la empresa emisora en el form de venta. Pide
+    /// confirmación (pedido de Osmar, para no facturar con la sociedad equivocada). Si el operador
+    /// cancela, revierte la selección al valor anterior. Si confirma, aplica y ajusta el tipo de
+    /// comprobante segun corresponda. NO se dispara en cambios programáticos (default/duplicado/edición),
+    /// solo cuando el usuario toca el desplegable.</summary>
+    private async Task OnArcaAccountSelectChanged(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var nuevoId)) return;
+        var anterior = formArcaAccountId;
+        if (anterior.HasValue && anterior.Value == nuevoId) return; // no cambió
+        var accNueva = arcaAccounts.FirstOrDefault(a => a.Id == nuevoId);
+        var accAnterior = anterior.HasValue ? arcaAccounts.FirstOrDefault(a => a.Id == anterior.Value) : null;
+        // Solo confirmamos si YA había una empresa elegida (cambiar de una a otra). La primera
+        // selección desde vacío no necesita doble-check.
+        if (accAnterior is not null)
+        {
+            var msg = $"¿Seguro que querés cambiar la empresa con la que facturás?\n\n"
+                    + $"De:  {ArcaAccountLabel(accAnterior)}\n"
+                    + $"A:    {(accNueva is not null ? ArcaAccountLabel(accNueva) : "?")}\n\n"
+                    + "Revisá que sea la correcta antes de emitir.";
+            var ok = await JS.InvokeAsync<bool>("confirm", msg);
+            if (!ok)
+            {
+                // Revertir: toggle a null y de vuelta al anterior para forzar que el <select> del DOM
+                // vuelva a mostrar la empresa original (si seteo el mismo valor Blazor no repinta el DOM).
+                formArcaAccountId = null;
+                StateHasChanged();
+                await Task.Yield();
+                formArcaAccountId = anterior;
+                StateHasChanged();
+                return;
+            }
+        }
+        formArcaAccountId = nuevoId;
+        OnArcaAccountChanged();
     }
 
     /// <summary>2026-07-04: al cambiar la empresa en "¿Con qué empresa facturás?", ajustar el tipo de
