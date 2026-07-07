@@ -207,6 +207,8 @@
                                         @(c.EsCompuesto ? "🟣" : "🟠")
                                     </button>
                                     <button class="btn-icon btn-edit" @onclick="() => ShowEdit(c)" title="Editar">✎</button>
+                                    <button class="btn-icon" style="color:#2563eb;" @onclick="() => PushComboSkuToMeli(c)" disabled="@pushingMeliSku"
+                                            title="Mandar el código '@c.Sku' a las publicaciones de MercadoLibre de este producto">📤</button>
                                     <button class="btn-icon" style="color:#7c3aed;" @onclick="() => ShowCreateSimilar(c)" title="Crear similar (duplica este combo y le cambiás los componentes)">📋</button>
                                     <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(c)" title="Eliminar">🗑</button>
                                 </td>
@@ -788,6 +790,27 @@
     private bool loading = true;
     private string filtroTexto = "";
     private bool modoEdicion;
+    private bool pushingMeliSku;
+
+    // 2026-07-06: aplica el código de este compuesto a sus publicaciones de MercadoLibre.
+    private async Task PushComboSkuToMeli(CafeComboDto c)
+    {
+        if (pushingMeliSku) return;
+        if (string.IsNullOrWhiteSpace(c.Sku)) { ToastService.Error("Este producto no tiene código cargado."); return; }
+        pushingMeliSku = true;
+        try
+        {
+            var r = await Api.RenameComboMeliSkuAsync(c.Id);
+            if (r is null) { ToastService.Error("No se pudo mandar el código a MeLi."); return; }
+            if (r.Value.total == 0)
+                ToastService.Info($"'{c.Sku}' no tiene publicaciones de MercadoLibre vinculadas.");
+            else if (r.Value.ok == r.Value.total)
+                ToastService.Success($"Código '{r.Value.newSku}' aplicado a {r.Value.ok} publicación(es) de MeLi.");
+            else
+                ToastService.Warning($"Código '{r.Value.newSku}' aplicado a {r.Value.ok} de {r.Value.total}. Revisá las que fallaron.");
+        }
+        finally { pushingMeliSku = false; }
+    }
 
     private async Task GuardarNombreCombo(CafeComboDto c, string? nuevo)
     {
