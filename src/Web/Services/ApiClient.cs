@@ -398,6 +398,14 @@ public class ApiClient
         return resp.IsSuccessStatusCode;
     }
 
+    /// <summary>Devuelve una cobranza de alquiler RECHAZADA a PENDIENTE (se rechazó por error).</summary>
+    public async Task<bool> RestaurarAlqCobranzaAsync(int id, string? operador)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/alquileres/cobranzas-pendientes/{id}/restaurar", new { operador });
+        return resp.IsSuccessStatusCode;
+    }
+
     /// <summary>Asigna una reserva a un repartidor desde el panel admin (o la deja sin asignar si es null).</summary>
     public async Task<bool> AsignarRepartoAlqAsync(int reservaId, int? nuevoRepartidorId)
     {
