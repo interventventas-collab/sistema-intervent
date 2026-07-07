@@ -766,6 +766,27 @@
                             <p style="font-size: 0.7rem; color: #065f46; margin: 0.35rem 0 0; font-style: italic;">Sin packs cargados.</p>
                         }
                     </div>
+                    @* ════════════ Formato por defecto en ventas (2026-07-07) ════════════ *@
+                    @if (formCategoria == "OTROS")
+                    {
+                        <div style="background: #eef2ff; border: 1px solid #6366f1; border-radius: 6px; padding: 0.6rem 0.8rem; margin-top: 0.5rem;">
+                            <h4 style="margin: 0 0 0.3rem; font-size: 0.85rem; color: #3730a3;">🎯 Formato por defecto en ventas — opcional</h4>
+                            <p style="font-size: 0.7rem; color: #3730a3; margin: 0 0 0.5rem;">
+                                Cuando cargues este producto en una venta, ya va a salir con este formato puesto (igual lo podés cambiar en el momento). Ideal para lo que casi nunca se vende suelto, como los vasos por pack o bulto.
+                            </p>
+                            <select class="form-input" @bind="formFormatoPorDefecto" style="max-width: 280px; font-size: 0.9rem; font-weight: 600;">
+                                <option value="UNIT">Suelto (por unidad)</option>
+                                @foreach (var pk in formPacks.Where(p => p.Cantidad.HasValue && p.Cantidad.Value > 0))
+                                {
+                                    <option value="@($"PACK_{pk.Cantidad!.Value}")">@(string.IsNullOrWhiteSpace(pk.Nombre) ? $"Pack x {pk.Cantidad!.Value}" : pk.Nombre)</option>
+                                }
+                                @if (formUxB.HasValue && formUxB.Value > 0)
+                                {
+                                    <option value="BULTO">Bulto x @formUxB.Value</option>
+                                }
+                            </select>
+                        </div>
+                    }
                     @* === PANEL VISUAL DE STOCK (2026-05-25) === *@
                     @if (isEditing && stockDetail is not null)
                     {
@@ -1331,6 +1352,9 @@
     // Precio del bulto completo (descuento por volumen, SOLO OTROS):
     private decimal? formPrecioBulto;
     private decimal? formPrecioBultoOtro;
+    // 2026-07-07: formato que sale por defecto al cargar el producto en una venta (SOLO OTROS).
+    // "UNIT" = Suelto (default), "PACK_{N}" = un pack prearmado, "BULTO".
+    private string formFormatoPorDefecto = "UNIT";
     // Packs prearmados del producto (Pack x N, SOLO OTROS).
     private List<PackEditor> formPacks = new();
 
@@ -1875,6 +1899,7 @@
         formPrecioOtro = null; formPrecioBar = null;
         formSinPrecioBar = false; // 2026-06-10
         formPrecioBulto = null; formPrecioBultoOtro = null;
+        formFormatoPorDefecto = "UNIT"; // 2026-07-07
         formPacks = new();
         formMargenOtro = null; formMargenBar = null;
         // Precios futuros
@@ -1954,6 +1979,7 @@
         formUxB = p.UxB;
         formPrecioBulto = p.PrecioBulto;
         formPrecioBultoOtro = p.PrecioBultoOtro;
+        formFormatoPorDefecto = string.IsNullOrWhiteSpace(p.FormatoPorDefecto) ? "UNIT" : p.FormatoPorDefecto!;
         // Packs (solo OTROS — para CAFE la lista llega vacia y la UI no se renderiza)
         formPacks = p.Packs?
             .OrderBy(pk => pk.SortOrder).ThenBy(pk => pk.Cantidad)
@@ -2010,6 +2036,7 @@
         formUxB = p.UxB;
         formPrecioBulto = p.PrecioBulto;
         formPrecioBultoOtro = p.PrecioBultoOtro;
+        formFormatoPorDefecto = string.IsNullOrWhiteSpace(p.FormatoPorDefecto) ? "UNIT" : p.FormatoPorDefecto!;
         // Packs: copiamos el patron (cantidad + override) pero sin Id (son packs nuevos)
         formPacks = p.Packs?
             .OrderBy(pk => pk.SortOrder).ThenBy(pk => pk.Cantidad)
@@ -2035,6 +2062,20 @@
     private void AgregarPack()
     {
         formPacks.Add(new PackEditor { SortOrder = formPacks.Count });
+    }
+
+    /// <summary>2026-07-07: valida el formato por defecto elegido contra lo que realmente existe
+    /// en el producto. Si apunta a un pack que se borró o a Bulto sin UxB, vuelve a "UNIT" (Suelto)
+    /// para no guardar un default inválido. Solo aplica a OTROS.</summary>
+    private string FormatoDefaultValidado()
+    {
+        if (formCategoria != "OTROS") return "UNIT";
+        var f = formFormatoPorDefecto;
+        if (string.IsNullOrWhiteSpace(f) || f == "UNIT") return "UNIT";
+        if (f == "BULTO") return (formUxB.HasValue && formUxB.Value > 0) ? "BULTO" : "UNIT";
+        if (f.StartsWith("PACK_") && int.TryParse(f.AsSpan("PACK_".Length), out var n) && n > 0)
+            return formPacks.Any(pk => pk.Cantidad == n) ? f : "UNIT";
+        return "UNIT";
     }
 
     private async Task Save()
@@ -2113,6 +2154,9 @@
                     PrecioBultoOtro = formCategoria == "OTROS" ? formPrecioBultoOtro : null,
                     ClearPrecioBulto = formCategoria == "OTROS" && !formPrecioBulto.HasValue,
                     ClearPrecioBultoOtro = formCategoria == "OTROS" && !formPrecioBultoOtro.HasValue,
+                    // 2026-07-07: formato por defecto al vender (validado). "UNIT" → limpiar (Suelto).
+                    FormatoPorDefecto = formCategoria == "OTROS" ? FormatoDefaultValidado() : null,
+                    ClearFormatoPorDefecto = formCategoria != "OTROS" || FormatoDefaultValidado() == "UNIT",
                     // Precios futuros (cambio programado)
                     FechaAplicaPreciosFuturos = formFechaAplicaPreciosFuturos,
                     ClearFechaAplicaPreciosFuturos = !formFechaAplicaPreciosFuturos.HasValue,
@@ -2172,6 +2216,8 @@
                     // Precio del bulto (descuento por volumen, SOLO OTROS):
                     PrecioBulto = formCategoria == "OTROS" ? formPrecioBulto : null,
                     PrecioBultoOtro = formCategoria == "OTROS" ? formPrecioBultoOtro : null,
+                    // 2026-07-07: formato por defecto al vender (validado, solo OTROS).
+                    FormatoPorDefecto = formCategoria == "OTROS" ? FormatoDefaultValidado() : null,
                     // Packs prearmados (solo OTROS).
                     // 2026-06-04: si Cantidad esta cargada pero Nombre vacio, auto-generar "Pack x N"
                     // (antes se descartaba silenciosamente y el usuario no sabia por que no se guardaba).

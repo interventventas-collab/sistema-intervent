@@ -120,7 +120,10 @@ public record CafeProductoDto(
     decimal? MultiplicadorOem = null,
     // 2026-06-10: si true, el producto NO tiene precio diferenciado para BAR — todos los
     // clientes (BAR y OTRO) pagan el PrecioOtro. Default false (comportamiento legacy).
-    bool SinPrecioBar = false);
+    bool SinPrecioBar = false,
+    // 2026-07-07: formato que sale PREDETERMINADO al cargar el producto en una venta
+    // (null/"UNIT" = Suelto; "PACK_{N}" = un pack; "BULTO"; o CAFE "1KG"/"MEDIO"/"CUARTO").
+    string? FormatoPorDefecto = null);
 
 public record CafeProductoPackDto(
     int Id, int Cantidad, string Nombre, decimal? PrecioOverride,
@@ -168,6 +171,8 @@ public class CreateCafeProductoRequest
     public decimal? PrecioBultoOtro { get; set; }
     /// <summary>2026-06-10: si true, todos los clientes pagan PrecioOtro (sin diferenciar BAR).</summary>
     public bool SinPrecioBar { get; set; } = false;
+    /// <summary>2026-07-07: formato por defecto al vender (null/"UNIT" = Suelto). Solo OTROS.</summary>
+    public string? FormatoPorDefecto { get; set; }
     /// <summary>Packs prearmados a crear junto con el producto. Opcional. Solo OTROS.</summary>
     public List<CafeProductoPackRequest>? Packs { get; set; }
 }
@@ -276,6 +281,10 @@ public class UpdateCafeProductoRequest
     public decimal? PrecioBultoOtro { get; set; }
     public bool ClearPrecioBulto { get; set; }
     public bool ClearPrecioBultoOtro { get; set; }
+    /// <summary>2026-07-07: formato por defecto al vender. Si ClearFormatoPorDefecto=true → null
+    /// (Suelto). Si trae valor → se guarda ese. Si ambos vacios/null → no cambia.</summary>
+    public string? FormatoPorDefecto { get; set; }
+    public bool ClearFormatoPorDefecto { get; set; }
 
     // Precios FUTUROS (cambio programado). Si vienen cargados, se guardan y se aplican
     // automaticamente cuando hoy >= FechaAplicaPreciosFuturos.
