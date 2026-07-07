@@ -6334,7 +6334,7 @@
         addItemModalSku = p.Sku ?? "";
         addItemModalCategoria = p.Categoria;
         addItemModalCantidad = 1;
-        addItemModalFormato = !string.IsNullOrEmpty(fmt) ? fmt : (p.Categoria == "CAFE" ? "1KG" : "UNIT");
+        addItemModalFormato = !string.IsNullOrEmpty(fmt) ? fmt : FormatoInicialProducto(p);
         addItemModalMolienda = DefaultMolienda(prodId) ?? "EN GRANOS";
         addItemModalEnvase = "NEGRO";
         AplicarDefaultEnvaseModal(); // 2026-07-02: 1/4 y 1/2 kg -> DOY_PACK
@@ -6619,7 +6619,7 @@
         if (addProductoId > 0)
         {
             var p = productos?.FirstOrDefault(x => x.Id == addProductoId);
-            if (p is not null) addFormato = p.Categoria == "CAFE" ? "1KG" : "UNIT";
+            if (p is not null) addFormato = FormatoInicialProducto(p);
         }
     }
 
@@ -6638,7 +6638,7 @@
         addItemModalSku = p.Sku ?? "";
         addItemModalCategoria = p.Categoria;
         addItemModalCantidad = 1;
-        addItemModalFormato = p.Categoria == "CAFE" ? "1KG" : "UNIT";
+        addItemModalFormato = FormatoInicialProducto(p);
         addItemModalMolienda = DefaultMolienda(id) ?? "EN GRANOS";
         addItemModalEnvase = "NEGRO";
         AplicarDefaultEnvaseModal(); // 2026-07-02: 1/4 y 1/2 kg -> DOY_PACK
@@ -8120,6 +8120,22 @@
             }
         }
         return res;
+    }
+
+    /// <summary>2026-07-07: formato con el que arranca un producto al cargarlo en la venta.
+    /// Café siempre 1 kg. Para OTROS usa el FormatoPorDefecto configurado en la ficha, pero validado
+    /// contra lo que el producto realmente tiene (pack activo / bulto con precio); si no aplica, Suelto.</summary>
+    private string FormatoInicialProducto(CafeProductoDto? p)
+    {
+        if (p is null) return "UNIT";
+        if (p.Categoria == "CAFE") return "1KG";
+        var f = p.FormatoPorDefecto;
+        if (string.IsNullOrWhiteSpace(f) || f == "UNIT") return "UNIT";
+        if (f == "BULTO")
+            return (p.UxB.HasValue && p.UxB.Value > 0 && (p.PrecioBulto.HasValue || p.PrecioBultoOtro.HasValue)) ? "BULTO" : "UNIT";
+        if (f.StartsWith("PACK_") && int.TryParse(f.AsSpan("PACK_".Length), out var n) && n > 0)
+            return (p.Packs?.Any(pk => pk.IsActive && pk.Cantidad == n) ?? false) ? f : "UNIT";
+        return "UNIT";
     }
 
     /// <summary>Precio unitario EFECTIVO para mostrar (subtotal / unidades_reales). Si el item es

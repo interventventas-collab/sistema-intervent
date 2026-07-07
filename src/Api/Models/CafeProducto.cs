@@ -89,6 +89,13 @@ public class CafeProducto
     [Column(TypeName = "decimal(18,2)")]
     public decimal? PrecioBultoOtro { get; set; }
 
+    /// <summary>2026-07-07: formato que sale PREDETERMINADO al cargar este producto en una venta.
+    /// Valores: null/"UNIT" = Suelto (default historico), "PACK_{N}" = un pack prearmado, "BULTO",
+    /// o para CAFE "1KG"/"MEDIO"/"CUARTO". Si apunta a un pack que ya no existe, el front vuelve a
+    /// Suelto. Pedido de Osmar: ej. los vasos casi siempre se venden por pack de 100, no por unidad.</summary>
+    [Column(TypeName = "nvarchar(20)")]
+    public string? FormatoPorDefecto { get; set; }
+
     // ─── Precios FUTUROS (cambio programado) — pedido del usuario 2026-05-20 ───
     // Permiten cargar los nuevos precios HOY pero que el sistema los use recien a partir
     // de FechaAplicaPreciosFuturos. Util para entregar la lista nueva al cliente con

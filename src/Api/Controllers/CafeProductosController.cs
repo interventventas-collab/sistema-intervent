@@ -80,7 +80,8 @@ public class CafeProductosController : ControllerBase
             .ToList() ?? new List<CafeProductoPackDto>(),
         StockMinimoMeLi: p.StockMinimoMeLi,
         MultiplicadorOem: p.MultiplicadorOem,
-        SinPrecioBar: p.SinPrecioBar);
+        SinPrecioBar: p.SinPrecioBar,
+        FormatoPorDefecto: p.FormatoPorDefecto);
 
     /// <summary>Búsqueda rápida (solo Id, Sku, Nombre, StockUnidades). Usado por la UI de
     /// edición de componentes MeLi en /cafe/skus-meli (selector de producto).</summary>
@@ -581,6 +582,9 @@ public class CafeProductosController : ControllerBase
             SinPrecioBar = cat == "OTROS" && req.SinPrecioBar,
             PrecioBulto = cat == "OTROS" ? req.PrecioBulto : null,
             PrecioBultoOtro = cat == "OTROS" ? req.PrecioBultoOtro : null,
+            // 2026-07-07: formato por defecto al vender. "UNIT"/vacio = Suelto (se guarda null).
+            FormatoPorDefecto = cat == "OTROS" && !string.IsNullOrWhiteSpace(req.FormatoPorDefecto)
+                && req.FormatoPorDefecto != "UNIT" ? req.FormatoPorDefecto : null,
             UxB = cat == "OTROS" ? req.UxB : null,
             OemId = cat == "OTROS" ? req.OemId : null,
             StockGramos = Math.Max(0m, req.StockGramos ?? 0m),
@@ -681,6 +685,11 @@ public class CafeProductosController : ControllerBase
         else if (req.ClearPrecioBulto) p.PrecioBulto = null;
         if (req.PrecioBultoOtro.HasValue) p.PrecioBultoOtro = req.PrecioBultoOtro.Value;
         else if (req.ClearPrecioBultoOtro) p.PrecioBultoOtro = null;
+        // 2026-07-07: formato por defecto al vender. ClearFormatoPorDefecto → Suelto (null);
+        // si trae un valor no vacio ni "UNIT" se guarda; sino no se toca.
+        if (req.ClearFormatoPorDefecto) p.FormatoPorDefecto = null;
+        else if (!string.IsNullOrWhiteSpace(req.FormatoPorDefecto))
+            p.FormatoPorDefecto = req.FormatoPorDefecto == "UNIT" ? null : req.FormatoPorDefecto;
         // Precios FUTUROS (cambio programado)
         if (req.FechaAplicaPreciosFuturos.HasValue) p.FechaAplicaPreciosFuturos = req.FechaAplicaPreciosFuturos.Value.Date;
         else if (req.ClearFechaAplicaPreciosFuturos) p.FechaAplicaPreciosFuturos = null;

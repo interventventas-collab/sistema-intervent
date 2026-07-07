@@ -5027,6 +5027,13 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='SinPrecioBar' AND object_id
     ALTER TABLE Cafe_Productos ADD SinPrecioBar BIT NOT NULL CONSTRAINT DF_CafeProductos_SinPrecioBar DEFAULT 0;
 GO
 
+-- 2026-07-07: formato que sale por defecto al cargar el producto en una venta.
+-- null/'UNIT' = Suelto; 'PACK_{N}' = un pack prearmado; 'BULTO'; o CAFE '1KG'/'MEDIO'/'CUARTO'.
+-- Pedido de Osmar: ej. los vasos casi siempre se venden por pack de 100, no por unidad.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='FormatoPorDefecto' AND object_id=OBJECT_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD FormatoPorDefecto NVARCHAR(20) NULL;
+GO
+
 -- 2026-06-10: URL web del producto Colombraro (de la lista oficial)
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='UrlWeb' AND object_id=OBJECT_ID('Cafe_Oems'))
     ALTER TABLE Cafe_Oems ADD UrlWeb NVARCHAR(500) NULL;

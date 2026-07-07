@@ -135,6 +135,8 @@ public class CafeProductoDto
     /// <summary>Precio del bulto completo (descuento por volumen, SOLO OTROS).</summary>
     public decimal? PrecioBulto { get; set; }
     public decimal? PrecioBultoOtro { get; set; }
+    /// <summary>2026-07-07: formato por defecto al vender (null/"UNIT" = Suelto).</summary>
+    public string? FormatoPorDefecto { get; set; }
     // Precios FUTUROS (cambio programado de precios — pedido 2026-05-20)
     public DateTime? FechaAplicaPreciosFuturos { get; set; }
     public decimal? PrecioPorKgFuturo { get; set; }
@@ -247,6 +249,8 @@ public class CreateCafeProductoRequest
     // Precio del bulto completo (descuento por volumen, SOLO OTROS):
     public decimal? PrecioBulto { get; set; }
     public decimal? PrecioBultoOtro { get; set; }
+    /// <summary>2026-07-07: formato por defecto al vender (null/"UNIT" = Suelto). Solo OTROS.</summary>
+    public string? FormatoPorDefecto { get; set; }
     /// <summary>Packs prearmados a crear junto con el producto. Opcional, solo OTROS.</summary>
     public List<CafeProductoPackRequest>? Packs { get; set; }
 }
@@ -289,6 +293,9 @@ public class UpdateCafeProductoRequest
     public decimal? PrecioBultoOtro { get; set; }
     public bool ClearPrecioBulto { get; set; }
     public bool ClearPrecioBultoOtro { get; set; }
+    /// <summary>2026-07-07: formato por defecto al vender. ClearFormatoPorDefecto=true → Suelto.</summary>
+    public string? FormatoPorDefecto { get; set; }
+    public bool ClearFormatoPorDefecto { get; set; }
 
     // Precios FUTUROS (cambio programado)
     public DateTime? FechaAplicaPreciosFuturos { get; set; }
