@@ -624,6 +624,27 @@
                     formCiudad = padron.Provincia!.Trim();
                 if (!string.IsNullOrWhiteSpace(padron.CondicionIva))
                     formCondicionIvaDefault = padron.CondicionIva!;
+
+                // Si ARCA trajo los datos pero NO la Condición de IVA (le pasa a algunas S.A.S.
+                // cuyo IVA la AFIP no expone por las vías que tenemos habilitadas), completamos
+                // solo ese campito con el plan B gratuito (cuitonline). No pisamos el resto,
+                // que ARCA ya trajo correcto.
+                if (string.IsNullOrWhiteSpace(formCondicionIvaDefault))
+                {
+                    try
+                    {
+                        var extra = await Api.LookupCuitAsync(clean);
+                        var ivaExtra = MapearIvaTexto(extra?.IvaCondition);
+                        if (ivaExtra is not null)
+                        {
+                            formCondicionIvaDefault = ivaExtra;
+                            ToastService.Success($"Padrón ARCA: {padron.RazonSocial} (Condición IVA completada con datos públicos)");
+                            return;
+                        }
+                    }
+                    catch { /* si el plan B falla, seguimos sin IVA (el usuario lo carga a mano) */ }
+                }
+
                 ToastService.Success($"Padrón ARCA: {padron.RazonSocial}");
                 return;
             }
@@ -644,18 +665,9 @@
             }
             if (!string.IsNullOrWhiteSpace(fallback.Address))
                 formDireccion = fallback.Address!.Trim();
-            if (!string.IsNullOrWhiteSpace(fallback.IvaCondition))
-            {
-                var t = fallback.IvaCondition!.Trim().ToUpperInvariant();
-                if (t.Contains("RESPONSABLE INSCRIPTO") || t == "RI")
-                    formCondicionIvaDefault = "RI";
-                else if (t.Contains("MONOTRIBUT"))
-                    formCondicionIvaDefault = "MO";
-                else if (t.Contains("EXENTO"))
-                    formCondicionIvaDefault = "EX";
-                else if (t.Contains("CONSUMIDOR FINAL") || t == "CF")
-                    formCondicionIvaDefault = "CF";
-            }
+            var ivaFallback = MapearIvaTexto(fallback.IvaCondition);
+            if (ivaFallback is not null)
+                formCondicionIvaDefault = ivaFallback;
             ToastService.Success($"Datos parciales (cuitonline): {fallback.Name}");
         }
         catch (Exception ex)
@@ -667,6 +679,19 @@
             buscandoCuit = false;
             StateHasChanged();
         }
+    }
+
+    /// <summary>Traduce el texto de condición de IVA (venga de ARCA o de cuitonline) a los
+    /// códigos del desplegable: RI / MO / EX / CF. Devuelve null si no reconoce el texto.</summary>
+    private static string? MapearIvaTexto(string? texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) return null;
+        var t = texto.Trim().ToUpperInvariant();
+        if (t.Contains("RESPONSABLE INSCRIPTO") || t == "RI") return "RI";
+        if (t.Contains("MONOTRIBUT")) return "MO";
+        if (t.Contains("EXENTO")) return "EX";
+        if (t.Contains("CONSUMIDOR FINAL") || t == "CF") return "CF";
+        return null;
     }
 
     private bool formIsActive = true;
