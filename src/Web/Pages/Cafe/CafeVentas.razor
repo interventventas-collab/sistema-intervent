@@ -4096,6 +4096,7 @@
     // Form state
     private bool showForm, saving, previewLoading;
     private bool showConfirmEmision; // doble-check antes de emitir contra ARCA
+    private bool _focusConfirmBtn;   // enfocar el boton "Emitir (Enter)" al abrir el modal de confirmacion
     private ElementReference clienteInputRef;
     private bool _focusClienteAtNextRender;
     private int clienteHighlight;
@@ -4788,6 +4789,12 @@
 
         if (showConfirmEmision)
         {
+            if (_focusConfirmBtn)
+            {
+                _focusConfirmBtn = false;
+                // Enfoca el botón "✓ Emitir (Enter)" así el Enter lo dispara directo.
+                try { await JS.InvokeVoidAsync("focusElementById", "confirm-emision-btn"); } catch { }
+            }
             try { await JS.InvokeVoidAsync("enableModalDrag", "#confirm-emision-modal"); }
             catch { /* si el helper no está cargado aún, lo intentamos el próximo render */ }
         }
@@ -7139,26 +7146,30 @@
         finally { previewLoading = false; }
     }
 
-    /// <summary>Doble-check antes de emitir: si es FA/FB/FC (genera CAE irreversible) muestra
-    /// un modal de confirmación con resumen. Si es X o PRO (interno, sin ARCA) o si está editando
-    /// una venta existente, salta el modal y guarda directo.</summary>
+    /// <summary>Doble-check antes de emitir: muestra un modal de confirmación con resumen que se
+    /// confirma con Enter y se cancela con Escape. Aplica a TODA emisión nueva, incluida la
+    /// cotización X y la PRO (pedido 2026-07-07). Si es FA/FB/FC el modal avisa que el CAE es
+    /// irreversible. Si está EDITANDO una venta existente ("Guardar cambios"), guarda directo.</summary>
     private void ConfirmarEmision()
     {
         if (formItems.Count == 0) { formError = "Agregá al menos un producto"; return; }
         if (cotizacion?.TodoOk != true) { formError = "Hay items con stock insuficiente o inválidos"; return; }
-        // Editando una venta existente o tipo interno (X / PRO) → no requiere doble-check.
-        var esArcaReal = formTipoComprobante is "FA" or "FB" or "FC";
-        if (editingVentaId.HasValue || !esArcaReal)
+        // Editando una venta existente → guardar directo (no es una emisión nueva).
+        if (editingVentaId.HasValue)
         {
             _ = Save();
             return;
         }
+        // Nueva emisión de cualquier tipo → doble-check. El modal enfoca el botón "Emitir (Enter)"
+        // así se confirma con Enter al toque (útil sobre todo viniendo del atajo Ctrl+Espacio).
         showConfirmEmision = true;
+        _focusConfirmBtn = true;
     }
 
     /// <summary>Confirma la emisión desde el modal de doble-check y dispara la emisión real.</summary>
     private async Task ConfirmarYEmitir()
     {
+        if (saving) return; // seguro anti doble-emisión (Enter puede llegar por 2 vías a la vez)
         showConfirmEmision = false;
         await Save();
     }
