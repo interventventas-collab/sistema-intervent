@@ -270,6 +270,79 @@ public class CafeCombosController : ControllerBase
         return Ok(new AplicarSugerenciasResult(aplicadas, fallidas));
     }
 
+    /// <summary>
+    /// 2026-07-06 — Aplica el SKU de ESTE combo/compuesto a TODAS sus publicaciones MeLi vinculadas
+    /// (por CafeComboId), pusheando seller_custom_field + attributes[SELLER_SKU] a MercadoLibre.
+    /// Sirve para que, después de renombrar el código en el sistema, el mismo código quede en MeLi
+    /// con un solo click. Mismo mecanismo que el rename de productos, pero para combos.
+    /// </summary>
+    [HttpPost("{id:int}/rename-meli-sku")]
+    public async Task<IActionResult> RenameMeliSku(int id,
+        [FromServices] MeliAccountService accountService,
+        [FromServices] System.Net.Http.IHttpClientFactory httpFactory)
+    {
+        var combo = await _db.CafeCombos.FirstOrDefaultAsync(c => c.Id == id);
+        if (combo is null) return NotFound(new { error = "Combo no encontrado" });
+        if (string.IsNullOrWhiteSpace(combo.Sku)) return BadRequest(new { error = "El combo no tiene SKU cargado." });
+
+        var newSku = combo.Sku.Trim().ToUpperInvariant();
+        var items = await _db.MeliItems.Include(i => i.MeliAccount)
+            .Where(i => i.CafeComboId == id && (i.Status == "active" || i.Status == "paused"))
+            .ToListAsync();
+
+        int ok = 0;
+        var details = new List<object>();
+        foreach (var item in items)
+        {
+            try
+            {
+                if (item.MeliAccount is null) { details.Add(new { item.MeliItemId, success = false, message = "sin cuenta" }); continue; }
+                if (string.Equals(item.Sku, newSku, StringComparison.OrdinalIgnoreCase))
+                { details.Add(new { item.MeliItemId, success = true, message = "ya tenia el SKU correcto", oldSku = item.Sku, newSku }); ok++; continue; }
+                var token = await accountService.GetValidTokenAsync(item.MeliAccount);
+                if (token is null) { details.Add(new { item.MeliItemId, success = false, message = "sin token" }); continue; }
+
+                var http = httpFactory.CreateClient();
+                http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                // Pushear ambos: seller_custom_field (legacy) + attributes[SELLER_SKU] (categorias nuevas).
+                var payload = new
+                {
+                    seller_custom_field = newSku,
+                    attributes = new[] { new { id = "SELLER_SKU", value_name = newSku } }
+                };
+                var json = System.Text.Json.JsonSerializer.Serialize(payload);
+                var content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                var resp = await http.PutAsync($"https://api.mercadolibre.com/items/{item.MeliItemId}", content);
+                if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized || resp.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                {
+                    var newTok = await accountService.GetValidTokenAsync(item.MeliAccount, forceRefresh: true);
+                    if (newTok is not null)
+                    {
+                        http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", newTok);
+                        content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                        resp = await http.PutAsync($"https://api.mercadolibre.com/items/{item.MeliItemId}", content);
+                    }
+                }
+                if (!resp.IsSuccessStatusCode)
+                {
+                    var body = await resp.Content.ReadAsStringAsync();
+                    details.Add(new { item.MeliItemId, success = false, message = $"http {(int)resp.StatusCode}: {body.Substring(0, Math.Min(body.Length, 200))}" });
+                    continue;
+                }
+                item.Sku = newSku;
+                item.UpdatedAt = DateTime.UtcNow;
+                ok++;
+                details.Add(new { item.MeliItemId, success = true, message = "renombrado", newSku });
+            }
+            catch (Exception ex)
+            {
+                details.Add(new { item.MeliItemId, success = false, message = ex.Message });
+            }
+        }
+        await _db.SaveChangesAsync();
+        return Ok(new { total = items.Count, ok, newSku });
+    }
+
     /// <summary>2026-06-18 — Extrae la "raíz" de codigo OEM del SKU del compuesto.
     /// Estrategia: ir probando candidatos de mas largo a mas corto y devolver el primero que sea util.
     /// Ej: C926NEG -> 926; C4300AZX10 -> 4300; X146X10 -> X146; 10KDOR -> 10KDOR (no se trimea sufijo si queda < 2 chars).

@@ -153,6 +153,18 @@ public class ApiClient
         return resp.IsSuccessStatusCode;
     }
 
+    // --- 2026-07-06: Aplicar el codigo del compuesto/combo a sus publicaciones MeLi ---
+    public async Task<(int total, int ok, string newSku)?> RenameComboMeliSkuAsync(int comboId)
+    {
+        var resp = await _http.PostAsync($"/api/cafe/combos/{comboId}/rename-meli-sku", null);
+        if (!resp.IsSuccessStatusCode) return null;
+        var el = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        int total = el.TryGetProperty("total", out var t) ? t.GetInt32() : 0;
+        int ok = el.TryGetProperty("ok", out var o) ? o.GetInt32() : 0;
+        string newSku = el.TryGetProperty("newSku", out var s) ? (s.GetString() ?? "") : "";
+        return (total, ok, newSku);
+    }
+
         // --- Item-Product Linking ---
     public async Task<MeliItemDto?> LinkItemToProductAsync(string meliItemId, int productId)
     {
