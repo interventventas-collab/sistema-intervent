@@ -462,9 +462,12 @@ public class CafeCotizarItemRequest
     public string? DescripcionOverride { get; set; }
 
     /// <summary>2026-06-08: Si este item proviene de un combo agregado a la venta (botón "Agregar combo"
-    /// o producto compuesto buscado por SKU), marca el ID del combo origen. Sólo presentación:
-    /// en el PDF/factura los items con mismo ComboOrigenId se agrupan en una sola línea con el
-    /// nombre del combo. En la pantalla de carga/edit y en /cafe/preparacion se siguen viendo desglosados.</summary>
+    /// o producto compuesto buscado por SKU), marca el ID del combo origen. En el PDF/factura los items
+    /// con mismo ComboOrigenId se agrupan en una sola línea con el nombre del combo. En la pantalla de
+    /// carga/edit y en /cafe/preparacion se siguen viendo desglosados.
+    /// 2026-07-06: además gobierna el PRECIO cuando el combo es un COMPUESTO con OEM: en ese caso el
+    /// precio sale del OEM del compuesto (una línea = la caja), y el resto de los componentes (la tapa)
+    /// van incluidos a $0. Ver CotizarInternoAsync en CafeVentasController.</summary>
     public int? ComboOrigenId { get; set; }
 }
 
