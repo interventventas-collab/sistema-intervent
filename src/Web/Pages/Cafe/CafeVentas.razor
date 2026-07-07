@@ -6130,6 +6130,11 @@
             formEnRadar = payload.EnRadar;
             formRetira = payload.Retira;
             formIsPaid = false; // empezás impago, el cobro de la nueva es independiente
+            // 2026-07-07: el duplicado es una venta NUEVA → arranca con la empresa emisora POR
+            // DEFECTO (PALANICA HERMANOS), NO la del comprobante original. Pedido de Osmar: siempre
+            // debe salir la predeterminada al duplicar (igual que en una venta nueva desde cero).
+            formArcaAccountId = null;
+            EnsureDefaultArcaAccount();
             // 2026-05-30: solo OSMAR arranca con "Enviar a IMPRIMIR PEDIDOS" tildado.
             envioDrive = string.Equals(Operator.Current ?? "", "OSMAR", StringComparison.OrdinalIgnoreCase);
             formError = null; showForm = true;
