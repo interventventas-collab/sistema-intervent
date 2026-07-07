@@ -2998,11 +2998,16 @@ public class CafeVentasController : ControllerBase
                         ? Math.Round(precioConIvaC / (1m + ivaOemC / 100m), 2, MidpointRounding.AwayFromZero)
                         : precioConIvaC;
 
-                    // La "caja" = el componente cuyo OEM coincide con el del compuesto.
-                    // Si ninguno coincide, cae a la primera línea del grupo.
+                    // La "caja" = el (único) componente cuyo OEM coincide con el del compuesto.
+                    // Si NINGÚN componente coincide (o coincide más de uno), NO tocamos el precio:
+                    // es un combo de varios productos DISTINTOS (no un caja+tapa) y se sigue
+                    // cotizando por suma de componentes, como siempre. Así este cambio afecta solo
+                    // al patrón caja+tapa (la caja cuelga del mismo OEM que el compuesto).
                     var lineas = grupo.ToList();
-                    var caja = lineas.FirstOrDefault(i =>
-                        oemPorProd.TryGetValue(i.ProductoId, out var oId) && oId == combo.OemId) ?? lineas[0];
+                    var cajas = lineas.Where(i =>
+                        oemPorProd.TryGetValue(i.ProductoId, out var oId) && oId == combo.OemId).ToList();
+                    if (cajas.Count != 1) continue;
+                    var caja = cajas[0];
 
                     foreach (var linea in lineas)
                         linea.PrecioUnitarioOverride = ReferenceEquals(linea, caja) ? precioSinIvaC : 0m;
