@@ -2073,7 +2073,34 @@
                                                     <div style="color: #b91c1c; font-size: 0.72rem; font-weight: 600; margin-top: 0.2rem;">⚠ @ci.Aviso</div>
                                                 }
                                             </td>
-                                            <td><span style="display:inline-block; padding:0.15rem 0.5rem; background:#f3f4f6; border:1px dashed #9ca3af; border-radius:12px; font-family:Georgia,serif; font-style:italic; font-size:0.85rem; color:#4b5563;">@FormatoParaMostrar(ci.ProductoId, ci.Formato)</span></td>
+                                            <td>
+                                                @* 2026-07-07: formato editable en la línea. Antes era un chip fijo:
+                                                   para cambiarlo había que borrar el renglón y recargarlo. Ahora es un
+                                                   dropdown (mismas opciones del form de arriba, según el producto).
+                                                   Solo para productos del catálogo — concepto libre/servicio (ProductoId 0)
+                                                   siguen mostrando el chip fijo. *@
+                                                @{
+                                                    var fmtOpts = FormatoOpcionesLinea(ci.ProductoId);
+                                                    var fmtEditable = fmtOpts.Count >= 2 && fmtOpts.Any(o => o.Value == ci.Formato);
+                                                }
+                                                @if (fmtEditable)
+                                                {
+                                                    <select class="form-input"
+                                                            style="padding:0.15rem 0.4rem; font-size:0.82rem; font-family:Georgia,serif; font-style:italic; background:#f3f4f6; border:1px dashed #9ca3af; border-radius:12px; color:#4b5563; max-width:135px;"
+                                                            value="@ci.Formato"
+                                                            @onchange="@(e => OnItemFormatoChanged(i, e.Value?.ToString()))"
+                                                            title="Formato de venta. Al cambiarlo se recalcula el precio del catálogo (se pierde el precio manual si lo habías pisado).">
+                                                        @foreach (var opt in fmtOpts)
+                                                        {
+                                                            <option value="@opt.Value">@opt.Label</option>
+                                                        }
+                                                    </select>
+                                                }
+                                                else
+                                                {
+                                                    <span style="display:inline-block; padding:0.15rem 0.5rem; background:#f3f4f6; border:1px dashed #9ca3af; border-radius:12px; font-family:Georgia,serif; font-style:italic; font-size:0.85rem; color:#4b5563;">@FormatoParaMostrar(ci.ProductoId, ci.Formato)</span>
+                                                }
+                                            </td>
                                             <td style="text-align: right;">
                                                 @* Precio unitario editable: input + indicador si está overridado.
                                                    IMPORTANTE: formatear con InvariantCulture (punto decimal) — los <input type="number">
@@ -6836,6 +6863,27 @@
         await Cotizar();
     }
 
+    /// <summary>2026-07-07: el operador cambia el formato (1 kg / 1/2 / 1/4 / Suelto / Pack / Bulto)
+    /// directamente en la línea ya cargada, sin borrarla y recargarla.
+    /// Opción A elegida por el usuario: al cambiar el formato el precio se recalcula desde el
+    /// catálogo, así que descartamos cualquier precio pisado a mano en esa línea (no tendría sentido
+    /// mantener el precio de 1 kg si ahora es 1/4). Además, para café replicamos la regla del form de
+    /// arriba: 1/4 y 1/2 kg van en doy pack; 1 kg vuelve a envase negro.</summary>
+    private async Task OnItemFormatoChanged(int idx, string? nuevoFormato)
+    {
+        if (idx < 0 || idx >= formItems.Count) return;
+        var f = string.IsNullOrWhiteSpace(nuevoFormato) ? "1KG" : nuevoFormato!;
+        formItems[idx].Formato = f;
+        formItems[idx].PrecioUnitarioOverride = null;
+        var cat = productos?.FirstOrDefault(p => p.Id == formItems[idx].ProductoId)?.Categoria;
+        if (cat == "CAFE")
+        {
+            if (f == "MEDIO" || f == "CUARTO") { formItems[idx].EsDoyPack = true; formItems[idx].EsEnvasePlateado = false; }
+            else if (f == "1KG") { formItems[idx].EsDoyPack = false; formItems[idx].EsEnvasePlateado = false; }
+        }
+        await Cotizar();
+    }
+
     /// <summary>El operador edita el nombre del producto en la línea (solo afecta esa venta, no el catálogo).
     /// Si vuelve a coincidir con el nombre original, se limpia el override.</summary>
     private void OnItemDescripcionChanged(int idx, string? value)
@@ -7946,6 +7994,39 @@
         if (formato != "BULTO") return FormatoLabel(formato);
         var uxb = productos?.FirstOrDefault(p => p.Id == productoId)?.UxB ?? 0;
         return uxb > 1 ? $"Bulto × {uxb}" : "Bulto";
+    }
+
+    /// <summary>2026-07-07: opciones de formato para el dropdown de la LÍNEA ya cargada.
+    /// Mismas opciones que el form de "agregar" de arriba, pero según el producto de la línea:
+    /// café = 1 kg / 1/2 kg / 1/4 kg; otros = Suelto + packs activos + bulto (si tiene).
+    /// Devuelve vacío/1 sola opción si el producto no está en el catálogo (concepto libre / servicio),
+    /// en cuyo caso la línea muestra el chip fijo en vez del dropdown.</summary>
+    private IReadOnlyList<(string Value, string Label)> FormatoOpcionesLinea(int productoId)
+    {
+        var res = new List<(string, string)>();
+        var p = productos?.FirstOrDefault(x => x.Id == productoId);
+        if (p is null) return res;
+        if (p.Categoria == "CAFE")
+        {
+            res.Add(("1KG", "1 kg"));
+            res.Add(("MEDIO", "1/2 kg"));
+            res.Add(("CUARTO", "1/4 kg"));
+        }
+        else
+        {
+            res.Add(("UNIT", "Suelto"));
+            if (p.Packs is not null)
+            {
+                foreach (var pack in p.Packs.Where(x => x.IsActive).OrderBy(x => x.SortOrder).ThenBy(x => x.Cantidad))
+                    res.Add(($"PACK_{pack.Cantidad}", pack.Nombre));
+            }
+            if (p.Categoria == "OTROS" && p.UxB.HasValue && p.UxB.Value > 0
+                && (p.PrecioBulto.HasValue || p.PrecioBultoOtro.HasValue))
+            {
+                res.Add(("BULTO", $"Bulto x {p.UxB.Value}"));
+            }
+        }
+        return res;
     }
 
     /// <summary>Precio unitario EFECTIVO para mostrar (subtotal / unidades_reales). Si el item es
