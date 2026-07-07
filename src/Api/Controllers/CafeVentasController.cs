@@ -2955,6 +2955,61 @@ public class CafeVentasController : ControllerBase
                 .ToDictionaryAsync(p => p.Id, p => (p.StockUnidades, p.Reserva));
         }
 
+        // ─────────────────────────────────────────────────────────────────────────────
+        // 2026-07-06 — COMPUESTO CON OEM = precio del PRODUCTO COMPLETO (no suma las partes).
+        // Osmar stockea la CAJA y la TAPA por separado (colores, roturas, el proveedor manda lo
+        // que quiere), así que el compuesto se arma como caja + tapa PARA DESCONTAR STOCK. Pero el
+        // PRECIO no se suma: sale del OEM del compuesto (ej. "caja con tapa" 9381 = $18.300), en una
+        // sola línea. Regla: en un compuesto con OEM, la CAJA (el componente cuyo OEM == OEM del
+        // compuesto) cobra el precio del OEM del compuesto; el resto (la tapa) va INCLUIDO = $0.
+        // Vendida por fuera del compuesto, la tapa cobra su precio normal.
+        var compuestoOrigenIds = items
+            .Where(i => i.ComboOrigenId.HasValue && i.ProductoId > 0)
+            .Select(i => i.ComboOrigenId!.Value).Distinct().ToList();
+        if (compuestoOrigenIds.Count > 0)
+        {
+            var compuestos = await _db.CafeCombos
+                .Include(c => c.OemNav)
+                .Where(c => compuestoOrigenIds.Contains(c.Id) && c.EsCompuesto && c.OemId != null)
+                .ToDictionaryAsync(c => c.Id);
+            if (compuestos.Count > 0)
+            {
+                var prodIdsComp = items
+                    .Where(i => i.ComboOrigenId.HasValue && compuestos.ContainsKey(i.ComboOrigenId!.Value) && i.ProductoId > 0)
+                    .Select(i => i.ProductoId).Distinct().ToList();
+                var oemPorProd = await _db.CafeProductos.AsNoTracking()
+                    .Where(p => prodIdsComp.Contains(p.Id))
+                    .Select(p => new { p.Id, p.OemId })
+                    .ToDictionaryAsync(p => p.Id, p => p.OemId);
+
+                foreach (var grupo in items
+                    .Where(i => i.ComboOrigenId.HasValue && compuestos.ContainsKey(i.ComboOrigenId!.Value))
+                    .GroupBy(i => i.ComboOrigenId!.Value))
+                {
+                    var combo = compuestos[grupo.Key];
+                    if (combo.OemNav?.PvpConIva is not decimal pvpOemC || pvpOemC <= 0m) continue;
+                    var multC = combo.MultiplicadorOem ?? 1m;
+                    if (multC <= 0m) multC = 1m;
+                    var ivaOemC = combo.OemNav.IvaPct ?? 21m;
+                    var precioConIvaC = pvpOemC * multC;
+                    // El OEM guarda el precio CON IVA; el pipeline trata PrecioUnitario como SIN IVA
+                    // (el IVA se suma después). Convertimos para no cobrar el IVA dos veces.
+                    var precioSinIvaC = ivaOemC > 0m
+                        ? Math.Round(precioConIvaC / (1m + ivaOemC / 100m), 2, MidpointRounding.AwayFromZero)
+                        : precioConIvaC;
+
+                    // La "caja" = el componente cuyo OEM coincide con el del compuesto.
+                    // Si ninguno coincide, cae a la primera línea del grupo.
+                    var lineas = grupo.ToList();
+                    var caja = lineas.FirstOrDefault(i =>
+                        oemPorProd.TryGetValue(i.ProductoId, out var oId) && oId == combo.OemId) ?? lineas[0];
+
+                    foreach (var linea in lineas)
+                        linea.PrecioUnitarioOverride = ReferenceEquals(linea, caja) ? precioSinIvaC : 0m;
+                }
+            }
+        }
+
         // NOTA: la matriz Cafe_ReglasPrecios fue deprecada el 2026-05-12.
         // Los descuentos automaticos se eliminaron — ahora cada producto tiene PrecioBar/PrecioOtro directos.
         // Si llega un descuento manual desde la UI (it.DescuentoPct), se aplica como descuento de linea
