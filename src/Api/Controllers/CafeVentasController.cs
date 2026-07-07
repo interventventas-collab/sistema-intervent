@@ -315,28 +315,58 @@ public class CafeVentasController : ControllerBase
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
         [FromQuery] int? limit = null,
-        [FromQuery] int offset = 0)
+        [FromQuery] int offset = 0,
+        [FromQuery] string? search = null)
     {
         var q = _db.CafeVentas.Include(v => v.Items).AsQueryable();
         if (from.HasValue) q = q.Where(v => v.Fecha >= from.Value.Date);
         if (to.HasValue) q = q.Where(v => v.Fecha <= to.Value.Date);
 
+        // 2026-07-07: busqueda por texto libre en TODO el historial (no solo la pagina/rango
+        // cargado). Matchea numero, nombre, razon social, CUIT, telefono, direccion, localidad,
+        // ciudad, CP, domicilio de entrega, y email/codigo del cliente vivo. SQL Server con
+        // collation CI hace el Contains case-insensitive igual que el filtro viejo en memoria.
+        // Cuando hay 'search' se ignora la paginacion y se devuelven hasta 500 coincidencias.
+        var searchTerm = search?.Trim();
+        bool haySearch = !string.IsNullOrWhiteSpace(searchTerm);
+        if (haySearch)
+        {
+            q = q.Where(v =>
+                (v.Numero != null && v.Numero.Contains(searchTerm!)) ||
+                (v.ClienteNombreSnapshot != null && v.ClienteNombreSnapshot.Contains(searchTerm!)) ||
+                (v.ClienteRazonSocialSnapshot != null && v.ClienteRazonSocialSnapshot.Contains(searchTerm!)) ||
+                (v.ClienteCuitSnapshot != null && v.ClienteCuitSnapshot.Contains(searchTerm!)) ||
+                (v.ClienteTelefonoSnapshot != null && v.ClienteTelefonoSnapshot.Contains(searchTerm!)) ||
+                (v.ClienteDireccionSnapshot != null && v.ClienteDireccionSnapshot.Contains(searchTerm!)) ||
+                (v.ClienteLocalidadSnapshot != null && v.ClienteLocalidadSnapshot.Contains(searchTerm!)) ||
+                (v.ClienteCiudadSnapshot != null && v.ClienteCiudadSnapshot.Contains(searchTerm!)) ||
+                (v.ClienteCpSnapshot != null && v.ClienteCpSnapshot.Contains(searchTerm!)) ||
+                (v.ClienteDomicilioEntregaSnapshot != null && v.ClienteDomicilioEntregaSnapshot.Contains(searchTerm!)) ||
+                (v.ClienteNav != null && (
+                    (v.ClienteNav.Email != null && v.ClienteNav.Email.Contains(searchTerm!)) ||
+                    (v.ClienteNav.Codigo != null && v.ClienteNav.Codigo.Contains(searchTerm!))
+                ))
+            );
+        }
+
         // 2026-06-22: paginacion server-side. Si limit es null, trae todo (caso historico y
         // para usos como exportar Excel). Si limit tiene valor, aplica Skip/Take y devuelve
         // el total count en el header X-Total-Count para que el frontend pueda mostrar el
-        // paginador. Cuando hay fechas, se ignora la paginacion (la query de rango ya filtra
-        // y el usuario espera ver todo lo que pidio para ese rango).
+        // paginador. Cuando hay fechas o busqueda, se ignora la paginacion (ya filtramos y
+        // el usuario espera ver todo lo que coincide).
         var ordered = q.OrderByDescending(v => v.Fecha).ThenByDescending(v => v.Id);
-        bool aplicarPaginacion = limit.HasValue && limit.Value > 0 && !from.HasValue && !to.HasValue;
+        bool aplicarPaginacion = limit.HasValue && limit.Value > 0 && !from.HasValue && !to.HasValue && !haySearch;
         if (aplicarPaginacion)
         {
             var totalCount = await q.CountAsync();
             Response.Headers["X-Total-Count"] = totalCount.ToString();
             Response.Headers["Access-Control-Expose-Headers"] = "X-Total-Count";
         }
-        var list = aplicarPaginacion
-            ? await ordered.Skip(Math.Max(0, offset)).Take(limit!.Value).ToListAsync()
-            : await ordered.ToListAsync();
+        var list = haySearch
+            ? await ordered.Take(500).ToListAsync()
+            : aplicarPaginacion
+                ? await ordered.Skip(Math.Max(0, offset)).Take(limit!.Value).ToListAsync()
+                : await ordered.ToListAsync();
         // Set de VentaIds asociados a saldos de migracion — para marcar visualmente esas ventas
         // como "🔄 Migración" en el listado del frontend.
         var migrIds = await _db.CafeSaldosMigracion
