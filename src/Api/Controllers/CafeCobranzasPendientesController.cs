@@ -452,6 +452,24 @@ public class CafeCobranzasPendientesController : ControllerBase
         return Ok();
     }
 
+    public record RestaurarRequest(string? Operador);
+
+    /// <summary>Devuelve una cobranza RECHAZADA a PENDIENTE (se rechazó por error). No crea
+    /// cobranza real ni mueve plata: solo la vuelve a la cola para revisarla de nuevo. Pedido 2026-07-07.</summary>
+    [HttpPost("{id:int}/restaurar")]
+    public async Task<IActionResult> Restaurar(int id, [FromBody] RestaurarRequest req)
+    {
+        var p = await _db.CafeCobranzasPendientes.FirstOrDefaultAsync(x => x.Id == id);
+        if (p is null) return NotFound();
+        if (p.Estado != "RECHAZADA") return BadRequest(new { error = $"Solo se puede restaurar una cobranza RECHAZADA (esta está {p.Estado})." });
+        p.Estado = "PENDIENTE";
+        p.RechazadaMotivo = null;
+        p.RevisadaPor = req.Operador;
+        p.RevisadaAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
     /// <summary>Arqueo del dia para un repartidor: muestra lo que cobro hoy (sumando aprobadas
     /// + pendientes), ordenado por venta. Sirve para que el repartidor rinda la plata.</summary>
     [HttpGet("arqueo/{repartidorId:int}")]

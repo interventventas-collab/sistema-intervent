@@ -1184,6 +1184,14 @@ public class ApiClient
         var resp = await _http.PostAsJsonAsync($"/api/cafe/cobranzas-pendientes/{id}/rechazar", req);
         return resp.IsSuccessStatusCode;
     }
+
+    /// <summary>Devuelve una cobranza de venta RECHAZADA a PENDIENTE (se rechazó por error).</summary>
+    public async Task<bool> RestaurarCobranzaPendienteAsync(int id, string? operador)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/cobranzas-pendientes/{id}/restaurar", new { operador });
+        return resp.IsSuccessStatusCode;
+    }
     public async Task<ArqueoDto?> GetArqueoRepartidorAsync(int repartidorId, DateTime? fecha = null)
     {
         var url = $"/api/cafe/cobranzas-pendientes/arqueo/{repartidorId}"

@@ -145,7 +145,13 @@
                 {
                     <div class="cp-actions">
                         <button class="cp-btn aprobar" @onclick="() => IrACobrar(c)" title="Te abre el modal de Nueva cobranza precargado con cliente + efectivo + importe — vos elegís a qué venta(s) imputar">💰 Procesar cobranza →</button>
-                        <button class="cp-btn rechazar" @onclick="() => Rechazar(c)">✗ Rechazar</button>
+                        <button class="cp-btn rechazar" @onclick="() => PedirRechazar(c)">✗ Rechazar</button>
+                    </div>
+                }
+                else if (c.Estado == "RECHAZADA")
+                {
+                    <div class="cp-actions">
+                        <button class="cp-btn" style="background:#e5e7eb; color:#374151;" @onclick="() => Restaurar(c)" title="Volver esta cobranza a Pendiente">↩ Restaurar</button>
                     </div>
                 }
             </div>
@@ -153,11 +159,40 @@
     }
 </div>
 
+@* Doble confirmación antes de rechazar una cobranza *@
+@if (rechazarTarget is not null)
+{
+    <div class="modal-overlay" @onclick="() => rechazarTarget = null">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background:#dc3545; color:white;">
+                <h4 style="margin:0;">✗ Rechazar cobranza</h4>
+                <button class="btn-close" style="color:white;" @onclick="() => rechazarTarget = null">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>¿Estás seguro que querés rechazar el cobro de <strong>$@rechazarTarget.Importe.ToString("N2")</strong> de <strong>@rechazarTarget.VentaNumero</strong> (@rechazarTarget.RepartidorNombre)?</p>
+                <label class="form-label">Motivo (opcional)</label>
+                <input class="form-input" @bind="rechazarMotivo" @bind:event="oninput" placeholder="Ej: se cargó por error" />
+                <p class="text-muted" style="font-size:0.85rem; margin-top:0.5rem;">Si te arrepentís, después la podés restaurar desde la solapa "Rechazadas".</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => rechazarTarget = null" disabled="@procesando">Cancelar</button>
+                <button class="btn btn-danger" disabled="@procesando" @onclick="ConfirmarRechazar">
+                    @(procesando ? "Rechazando..." : "Sí, rechazar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private List<CobranzaPendienteDto> lista = new();
     private bool loading = true;
+    private bool procesando;
     private string tab = "PENDIENTE";
     private int countPendientes;
+    // Rechazar con doble confirmación (modal)
+    private CobranzaPendienteDto? rechazarTarget;
+    private string rechazarMotivo = "";
     // 2026-06-10: filtros + descargas
     private List<RepartidorDto>? repartidores;
     private int filtroRepartidorId = 0;
@@ -248,14 +283,37 @@
         Navigation.NavigateTo($"/cafe/tesoreria/cobranzas?cliente={c.ClienteId.Value}&pendienteId={c.Id}");
     }
 
-    private async Task Rechazar(CobranzaPendienteDto c)
+    private void PedirRechazar(CobranzaPendienteDto c)
     {
-        var motivo = await JS.InvokeAsync<string>("prompt", $"Motivo del rechazo (opcional):");
+        rechazarTarget = c;
+        rechazarMotivo = "";
+    }
+
+    private async Task ConfirmarRechazar()
+    {
+        if (rechazarTarget is null) return;
+        procesando = true;
         try
         {
-            var ok = await Api.RechazarCobranzaPendienteAsync(c.Id, new RechazarCobranzaPendienteRequest { Motivo = motivo, Operador = Operator.Current });
-            if (ok) { ToastService.Info("Rechazada"); await Recargar(); }
+            var ok = await Api.RechazarCobranzaPendienteAsync(rechazarTarget.Id,
+                new RechazarCobranzaPendienteRequest { Motivo = rechazarMotivo, Operador = Operator.Current });
+            if (ok) { ToastService.Info("Rechazada"); rechazarTarget = null; await Recargar(); }
+            else ToastService.Error("No se pudo rechazar");
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { procesando = false; }
+    }
+
+    private async Task Restaurar(CobranzaPendienteDto c)
+    {
+        procesando = true;
+        try
+        {
+            var ok = await Api.RestaurarCobranzaPendienteAsync(c.Id, Operator.Current);
+            if (ok) { ToastService.Success("Restaurada — volvió a Pendientes"); await Recargar(); }
+            else ToastService.Error("No se pudo restaurar");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { procesando = false; }
     }
 }
