@@ -114,6 +114,24 @@ public class AlqCobranzasPendientesController : ControllerBase
         return Ok();
     }
 
+    public record RestaurarRequest(string? Operador);
+
+    /// <summary>Devuelve una cobranza RECHAZADA a PENDIENTE (se rechazó por error). No mueve saldos:
+    /// vuelve a la cola para que el admin la apruebe o rechace de nuevo. Pedido 2026-07-07.</summary>
+    [HttpPost("{id:int}/restaurar")]
+    public async Task<IActionResult> Restaurar(int id, [FromBody] RestaurarRequest req)
+    {
+        var p = await _db.AlqCobranzasPendientes.FirstOrDefaultAsync(x => x.Id == id);
+        if (p is null) return NotFound();
+        if (p.Estado != "RECHAZADA") return BadRequest(new { error = $"Solo se puede restaurar una cobranza RECHAZADA (esta está {p.Estado})." });
+        p.Estado = "PENDIENTE";
+        p.RechazadaMotivo = null;
+        p.RevisadaPor = req.Operador;
+        p.RevisadaAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
     public record AnularRequest(string? Password, string? Operador);
 
     /// <summary>Anula un cobro YA APROBADO (se cargó por error). Pide clave del usuario, revierte

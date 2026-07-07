@@ -46,7 +46,7 @@
                         <th>Marcó</th>
                         <th>Comentarios</th>
                         <th style="text-align:right;">Saldo reserva</th>
-                        @if (estadoActivo == "PENDIENTE") { <th></th> }
+                        @if (estadoActivo == "PENDIENTE" || estadoActivo == "RECHAZADA") { <th></th> }
                     </tr>
                 </thead>
                 <tbody>
@@ -69,7 +69,7 @@
                             {
                                 <td style="white-space:nowrap;">
                                     <button class="btn btn-sm btn-success" disabled="@procesando" @onclick="() => Aprobar(c)">✅ Aprobar</button>
-                                    <button class="btn btn-sm btn-danger" disabled="@procesando" @onclick="() => Rechazar(c)">✖ Rechazar</button>
+                                    <button class="btn btn-sm btn-danger" disabled="@procesando" @onclick="() => PedirRechazar(c)">✖ Rechazar</button>
                                 </td>
                             }
                             else if (estadoActivo == "APROBADA")
@@ -78,9 +78,15 @@
                                     <button class="btn btn-sm btn-danger" disabled="@procesando" @onclick="() => PedirAnular(c)" title="Anular esta cobranza (se cargó por error)">↩ Anular</button>
                                 </td>
                             }
-                            else if (c.Estado == "RECHAZADA" && !string.IsNullOrEmpty(c.RechazadaMotivo))
+                            else if (estadoActivo == "RECHAZADA")
                             {
-                                <td style="font-size:0.8rem; color:#991b1b;">@c.RechazadaMotivo</td>
+                                <td style="white-space:nowrap;">
+                                    @if (!string.IsNullOrEmpty(c.RechazadaMotivo))
+                                    {
+                                        <span style="font-size:0.8rem; color:#991b1b; margin-right:0.5rem;">@c.RechazadaMotivo</span>
+                                    }
+                                    <button class="btn btn-sm btn-secondary" disabled="@procesando" @onclick="() => Restaurar(c)" title="Volver esta cobranza a Pendiente">↩ Restaurar</button>
+                                </td>
                             }
                         </tr>
                     }
@@ -116,6 +122,29 @@
     </div>
 }
 
+@* Modal: doble confirmación antes de rechazar una cobranza pendiente *@
+@if (rechazarTarget is not null)
+{
+    <div class="modal-overlay" @onclick="() => rechazarTarget = null">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background:#dc3545; color:white;">
+                <h4 style="margin:0;">✖ Rechazar cobranza</h4>
+                <button class="btn-close" style="color:white;" @onclick="() => rechazarTarget = null">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>¿Estás seguro que querés rechazar el cobro de <strong>$@rechazarTarget.Importe.ToString("N2")</strong> de la reserva <strong>@rechazarTarget.ReservaNumero</strong> (@rechazarTarget.RepartidorNombre)?</p>
+                <p class="text-muted" style="font-size:0.85rem;">Si te arrepentís, después la podés restaurar desde la solapa "Rechazadas".</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => rechazarTarget = null" disabled="@procesando">Cancelar</button>
+                <button class="btn btn-danger" disabled="@procesando" @onclick="ConfirmarRechazar">
+                    @(procesando ? "Rechazando..." : "Sí, rechazar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private record Tab(string Key, string Label);
     private readonly Tab[] tabs = new[]
@@ -130,6 +159,9 @@
     private int countPendiente;
     private bool cargando = true;
     private bool procesando;
+
+    // Rechazar cobranza pendiente (doble confirmación)
+    private AlqCobranzaPendienteDto? rechazarTarget;
 
     // Anular cobranza aprobada
     private AlqCobranzaPendienteDto? anularTarget;
@@ -157,13 +189,25 @@
         else ToastService.Error("No se pudo aprobar");
     }
 
-    private async Task Rechazar(AlqCobranzaPendienteDto c)
+    private void PedirRechazar(AlqCobranzaPendienteDto c) => rechazarTarget = c;
+
+    private async Task ConfirmarRechazar()
+    {
+        if (rechazarTarget is null) return;
+        procesando = true;
+        var ok = await Api.RechazarAlqCobranzaAsync(rechazarTarget.Id, null, Operator.Current);
+        procesando = false;
+        if (ok) { ToastService.Success("Rechazada"); rechazarTarget = null; await Cargar(); }
+        else ToastService.Error("No se pudo rechazar");
+    }
+
+    private async Task Restaurar(AlqCobranzaPendienteDto c)
     {
         procesando = true;
-        var ok = await Api.RechazarAlqCobranzaAsync(c.Id, null, Operator.Current);
+        var ok = await Api.RestaurarAlqCobranzaAsync(c.Id, Operator.Current);
         procesando = false;
-        if (ok) { ToastService.Success("Rechazada"); await Cargar(); }
-        else ToastService.Error("No se pudo rechazar");
+        if (ok) { ToastService.Success($"Restaurada — volvió a Pendientes"); await Cargar(); }
+        else ToastService.Error("No se pudo restaurar");
     }
 
     private void PedirAnular(AlqCobranzaPendienteDto c) { anularTarget = c; anularPassword = ""; anularError = null; }
