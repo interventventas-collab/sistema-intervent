@@ -498,7 +498,14 @@ public class CafeCombosController : ControllerBase
         {
             var mult = c.MultiplicadorOem ?? 1m;
             if (mult <= 0m) mult = 1m;
-            var oemConIva = Math.Round((c.OemNav.PvpConIva ?? 0m) * mult, 2);
+            // 2026-07-08: en un PACK (X2, X3...) la "caja" (el componente cuyo OEM coincide con el del
+            // compuesto) viene con Cantidad > 1. El precio del OEM es UNITARIO, así que para mostrar el
+            // total del pack hay que multiplicarlo por esa cantidad. La venta ya cobra OEM × cantidadCaja
+            // (CafeVentasController), así que acá espejamos ese total. Para un compuesto suelto (caja qty 1)
+            // queda igual que antes.
+            var cantCaja = c.Items.FirstOrDefault(i => i.ProductoNav?.OemId == c.OemId)?.Cantidad ?? 1;
+            if (cantCaja <= 0) cantCaja = 1;
+            var oemConIva = Math.Round((c.OemNav.PvpConIva ?? 0m) * mult * cantCaja, 2);
             // OEM trae el PvpConIva. Mostramos el mismo precio para BAR y OTRO porque el OEM
             // representa el precio mayorista unico del armado de fabrica.
             precioBar = oemConIva;
