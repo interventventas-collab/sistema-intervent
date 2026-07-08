@@ -94,8 +94,10 @@ public record AlqReservaDto(
     DateTime? EntregadoAt = null, string? ComentarioEntrega = null,
     int? RetiradoPorRepartidorId = null, string? RetiradoPorRepartidorNombre = null,
     DateTime? RetiradoAt = null, string? ComentarioRetiro = null,
-    // Repartidor asignado actualmente (ultimo 'cargado' en Alq_QrEscaneos), aunque no haya entregado todavia
+    // Repartidor asignado para la ENTREGA (ultimo 'cargado' en Alq_QrEscaneos), aunque no haya entregado todavia
     int? AsignadoARepartidorId = null, string? AsignadoARepartidorNombre = null,
+    // Repartidor asignado para el RETIRO (ultimo 'cargado_retiro'). Se asigna aparte, una vez entregada. 2026-07-08
+    int? AsignadoRetiroARepartidorId = null, string? AsignadoRetiroARepartidorNombre = null,
     // ===== ARCA — facturación de la reserva (2026-07-04) =====
     string TipoComprobante = "X",
     string CondicionIva = "CF",
