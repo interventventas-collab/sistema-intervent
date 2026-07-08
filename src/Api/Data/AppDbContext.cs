@@ -29,6 +29,7 @@ public class AppDbContext : DbContext
     public DbSet<WhatsAppPedidosTelefono> WhatsAppPedidosTelefonos => Set<WhatsAppPedidosTelefono>();
     public DbSet<MeliQuestion> MeliQuestions => Set<MeliQuestion>();
     public DbSet<MeliShipment> MeliShipments => Set<MeliShipment>();
+    public DbSet<MeliFactura> MeliFacturas => Set<MeliFactura>();
     public DbSet<MapeoDriver> MapeoDrivers => Set<MapeoDriver>();
     public DbSet<MapeoFavorito> MapeoFavoritos => Set<MapeoFavorito>();
     public DbSet<MapeoStop> MapeoStops => Set<MapeoStop>();

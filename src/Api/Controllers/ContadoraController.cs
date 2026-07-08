@@ -37,4 +37,38 @@ public class ContadoraController : ControllerBase
         var nombre = $"ventas-por-jurisdiccion-{DateTime.Now:yyyy-MM-dd}.xlsx";
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", nombre);
     }
+
+    // ───────── Libro IVA Ventas (etapa 2) ─────────
+
+    /// <summary>Empresas (CUIT emisor) disponibles para el filtro.</summary>
+    [HttpGet("empresas")]
+    public async Task<ActionResult<List<ContadoraEmpresaDto>>> Empresas() => Ok(await _svc.GetEmpresasAsync());
+
+    /// <summary>Trae de MeLi las facturas de venta que faltan (por lote). El front llama hasta Pendientes=0.</summary>
+    [HttpPost("backfill-facturas")]
+    public async Task<ActionResult<ContadoraBackfillResultDto>> BackfillFacturas([FromQuery] int lote = 120)
+        => Ok(await _svc.BackfillFacturasAsync(lote));
+
+    /// <summary>Resumen del Libro IVA Ventas (por empresa + punto de venta + tipo) segun filtros.</summary>
+    [HttpGet("libro-iva")]
+    public async Task<ActionResult<ContadoraLibroIvaDto>> LibroIva([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta,
+        [FromQuery] string? empresa, [FromQuery] int? puntoVenta, [FromQuery] string? letra, [FromQuery] string? provincia, [FromQuery] string? search)
+        => Ok(await _svc.GetLibroIvaVentasAsync(desde, hasta, empresa, puntoVenta, letra, provincia, search));
+
+    /// <summary>Detalle: lista de facturas (paginada) segun filtros.</summary>
+    [HttpGet("facturas")]
+    public async Task<ActionResult<ContadoraFacturasPageDto>> Facturas([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta,
+        [FromQuery] string? empresa, [FromQuery] int? puntoVenta, [FromQuery] string? letra, [FromQuery] string? provincia,
+        [FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
+        => Ok(await _svc.GetFacturasAsync(desde, hasta, empresa, puntoVenta, letra, provincia, search, page, pageSize));
+
+    /// <summary>Descarga el Libro IVA Ventas en Excel (resumen + detalle) segun filtros.</summary>
+    [HttpGet("libro-iva/excel")]
+    public async Task<IActionResult> LibroIvaExcel([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta,
+        [FromQuery] string? empresa, [FromQuery] int? puntoVenta, [FromQuery] string? letra, [FromQuery] string? provincia, [FromQuery] string? search)
+    {
+        var bytes = await _svc.GenerarLibroIvaExcelAsync(desde, hasta, empresa, puntoVenta, letra, provincia, search);
+        var nombre = $"libro-iva-ventas-{DateTime.Now:yyyy-MM-dd}.xlsx";
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", nombre);
+    }
 }

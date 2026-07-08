@@ -5498,4 +5498,34 @@ public class ApiClient
 
     public async Task<ContadoraBackfillResultDto?> BackfillProvinciasAsync(int lote = 150)
         => await PostAsync<ContadoraBackfillResultDto>($"/api/contadora/backfill-provincias?lote={lote}", new { });
+
+    // ───────── Contadora etapa 2: Libro IVA Ventas ─────────
+    private static string ContadoraQs(DateTime? desde, DateTime? hasta, string? empresa, int? puntoVenta, string? letra, string? provincia, string? search)
+    {
+        var qs = new List<string>();
+        if (desde.HasValue) qs.Add($"desde={desde.Value:yyyy-MM-dd}");
+        if (hasta.HasValue) qs.Add($"hasta={hasta.Value:yyyy-MM-dd}");
+        if (!string.IsNullOrWhiteSpace(empresa)) qs.Add($"empresa={Uri.EscapeDataString(empresa)}");
+        if (puntoVenta.HasValue) qs.Add($"puntoVenta={puntoVenta.Value}");
+        if (!string.IsNullOrWhiteSpace(letra)) qs.Add($"letra={Uri.EscapeDataString(letra)}");
+        if (!string.IsNullOrWhiteSpace(provincia)) qs.Add($"provincia={Uri.EscapeDataString(provincia)}");
+        if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
+        return qs.Count > 0 ? "?" + string.Join("&", qs) : "";
+    }
+
+    public async Task<List<ContadoraEmpresaDto>?> GetContadoraEmpresasAsync()
+        => await GetAsync<List<ContadoraEmpresaDto>>("/api/contadora/empresas");
+
+    public async Task<ContadoraBackfillResultDto?> BackfillFacturasAsync(int lote = 120)
+        => await PostAsync<ContadoraBackfillResultDto>($"/api/contadora/backfill-facturas?lote={lote}", new { });
+
+    public async Task<ContadoraLibroIvaDto?> GetLibroIvaAsync(DateTime? desde, DateTime? hasta, string? empresa, int? puntoVenta, string? letra, string? provincia, string? search)
+        => await GetAsync<ContadoraLibroIvaDto>("/api/contadora/libro-iva" + ContadoraQs(desde, hasta, empresa, puntoVenta, letra, provincia, search));
+
+    public async Task<ContadoraFacturasPageDto?> GetContadoraFacturasAsync(DateTime? desde, DateTime? hasta, string? empresa, int? puntoVenta, string? letra, string? provincia, string? search, int page = 1, int pageSize = 50)
+    {
+        var qs = ContadoraQs(desde, hasta, empresa, puntoVenta, letra, provincia, search);
+        qs += (qs.Length > 0 ? "&" : "?") + $"page={page}&pageSize={pageSize}";
+        return await GetAsync<ContadoraFacturasPageDto>("/api/contadora/facturas" + qs);
+    }
 }

@@ -494,6 +494,36 @@ JOIN MeliShipments s ON s.MeliShipmentId = o.ShippingId
 WHERE o.ProvinciaDestino IS NULL AND s.State IS NOT NULL AND s.State <> '';
 GO
 
+-- 2026-07-08: MeliFacturas — facturas de venta emitidas por MeLi (Libro IVA Ventas del modulo Contadora).
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='MeliFacturas' AND xtype='U')
+BEGIN
+    CREATE TABLE MeliFacturas (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        MeliOrderId BIGINT NOT NULL,
+        MeliAccountId INT NOT NULL,
+        InvoiceId BIGINT NOT NULL DEFAULT 0,
+        EmisorCuit NVARCHAR(20) NULL,
+        EmisorNombre NVARCHAR(200) NULL,
+        PuntoVenta INT NULL,
+        NumeroComprobante BIGINT NULL,
+        FechaEmision DATETIME2 NULL,
+        Letra NVARCHAR(4) NULL,
+        ReceptorTaxType NVARCHAR(60) NULL,
+        ReceptorNombre NVARCHAR(200) NULL,
+        ReceptorDoc NVARCHAR(20) NULL,
+        Neto DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Iva DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Total DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Provincia NVARCHAR(120) NULL,
+        Status NVARCHAR(30) NULL,
+        SyncedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+    );
+    CREATE UNIQUE INDEX IX_MeliFacturas_OrderId ON MeliFacturas (MeliOrderId);
+    CREATE INDEX IX_MeliFacturas_Emisor ON MeliFacturas (EmisorCuit);
+    CREATE INDEX IX_MeliFacturas_Fecha ON MeliFacturas (FechaEmision);
+END
+GO
+
 -- MeliItems table
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='MeliItems' AND xtype='U')
 BEGIN
