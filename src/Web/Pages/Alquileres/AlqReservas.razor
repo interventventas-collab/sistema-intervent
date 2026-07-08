@@ -89,7 +89,7 @@
                                             @* ── ENTREGA ── *@
                                             @if (!r.EntregadoPorRepartidorId.HasValue && r.AsignadoARepartidorId.HasValue)
                                             {
-                                                <span style="font-size: 0.7rem; background: #ede9fe; color: #5b21b6; padding: 0.1rem 0.4rem; border-radius: 999px; font-weight: 700;">🚚 Entrega → @r.AsignadoARepartidorNombre</span>
+                                                <span style="font-size: 0.7rem; background: #ede9fe; color: #5b21b6; padding: 0.1rem 0.4rem; border-radius: 999px; font-weight: 700;">🚚 Entrega @r.AsignadoARepartidorNombre</span>
                                             }
                                             @if (r.EntregadoPorRepartidorId.HasValue)
                                             {
@@ -98,7 +98,7 @@
                                             @* ── RETIRO (solo una vez entregada y hasta que se retire) ── *@
                                             @if (enCalleRow && r.AsignadoRetiroARepartidorId.HasValue)
                                             {
-                                                <span style="font-size: 0.7rem; background: #ffedd5; color: #9a3412; padding: 0.1rem 0.4rem; border-radius: 999px; font-weight: 700;">🔙 Retiro → @r.AsignadoRetiroARepartidorNombre</span>
+                                                <span style="font-size: 0.7rem; background: #ffedd5; color: #9a3412; padding: 0.1rem 0.4rem; border-radius: 999px; font-weight: 700;">🔙 Retira @r.AsignadoRetiroARepartidorNombre</span>
                                             }
                                             else if (enCalleRow)
                                             {
