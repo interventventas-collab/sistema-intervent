@@ -400,13 +400,32 @@
                         <div style="font-size:0.64rem; letter-spacing:0.03em; color:#9ca3af; text-transform:uppercase; margin-bottom:7px;">Sin repartidor — asigná acá</div>
                         @foreach (var s in me1SinRepartidor.Take(4))
                         {
-                            <div style="display:flex; align-items:center; gap:7px; margin-bottom:7px;">
-                                <span style="flex-shrink:0; width:24px; height:24px; border-radius:50%; background:#e6f1fb; color:#185fa5; display:flex; align-items:center; justify-content:center; font-size:0.62rem; font-weight:600;">@Me1Initials(s)</span>
+                            <div style="display:flex; align-items:flex-start; gap:7px; margin-bottom:10px;">
+                                <span style="flex-shrink:0; width:24px; height:24px; border-radius:50%; background:#e6f1fb; color:#185fa5; display:flex; align-items:center; justify-content:center; font-size:0.62rem; font-weight:600; margin-top:1px;">@Me1Initials(s)</span>
                                 <div style="flex:1; min-width:0;">
-                                    <div style="font-size:0.76rem; font-weight:500; color:#111827; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">@(s.ReceiverName ?? s.BuyerNickname ?? "—")</div>
-                                    <div style="font-size:0.68rem; color:#9ca3af; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">@(s.City ?? s.AddressLine ?? "")</div>
+                                    <div style="font-size:0.76rem; font-weight:600; color:#111827;">@(s.ReceiverName ?? s.BuyerNickname ?? "—")</div>
+                                    <div style="display:flex; flex-wrap:wrap; gap:2px 8px; margin-top:1px;">
+                                        @if (!string.IsNullOrWhiteSpace(s.BuyerNickname))
+                                        {
+                                            <span style="font-size:0.68rem; color:#1d4ed8; font-family:monospace; cursor:pointer;" title="Tocá para copiar el usuario de MeLi"
+                                                  @onclick="@(() => CopiarAsync(s.BuyerNickname!, "Usuario de MeLi copiado"))">👤 @s.BuyerNickname 📋</span>
+                                        }
+                                        @if (s.MeliOrderId.HasValue)
+                                        {
+                                            <span style="font-size:0.68rem; color:#374151; font-family:monospace; cursor:pointer;" title="Tocá para copiar el N° de venta"
+                                                  @onclick="@(() => CopiarAsync(s.MeliOrderId!.Value.ToString(), "N° de venta copiado"))">🧾 @s.MeliOrderId 📋</span>
+                                        }
+                                    </div>
+                                    @if (!string.IsNullOrWhiteSpace(s.AddressLine) || !string.IsNullOrWhiteSpace(s.City))
+                                    {
+                                        <div style="font-size:0.68rem; color:#6b7280; margin-top:1px;">📍 @(s.AddressLine)@(string.IsNullOrWhiteSpace(s.City) ? "" : $", {s.City}")</div>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(s.ReceiverPhone))
+                                    {
+                                        <div style="font-size:0.68rem; color:#6b7280; margin-top:1px;">📞 @s.ReceiverPhone</div>
+                                    }
                                 </div>
-                                <select class="form-input" style="height:28px; font-size:0.72rem; max-width:110px; padding:0 5px;"
+                                <select class="form-input" style="flex-shrink:0; height:28px; font-size:0.72rem; max-width:105px; padding:0 5px;"
                                         value=""
                                         @onchange="@(e => OnAsignarMe1(s, e.Value?.ToString()))"
                                         disabled="@(me1BusyAsig == s.Id)">
@@ -1470,6 +1489,17 @@
         }
         catch (Exception ex) { ToastService.Error($"Error: {ex.Message}"); }
         finally { me1BusyAsig = null; }
+    }
+
+    // 2026-07-08: copiar al portapapeles (usa el helper global copyToClipboard de index.html, con fallback si no es HTTPS)
+    private async Task CopiarAsync(string texto, string mensaje)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("copyToClipboard", texto);
+            ToastService.Success($"📋 {mensaje}");
+        }
+        catch { ToastService.Error("No se pudo copiar"); }
     }
     private Web.Models.SaldoBancoDto? saldoBanco;
     private Web.Models.ShellAccountDto? shellSaldo;
