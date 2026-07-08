@@ -8,12 +8,16 @@
     .topstrip {
         display: flex;
         align-items: center;
+        justify-content: space-between;
         gap: 0.5rem;
         flex-wrap: wrap;
         padding: 0.4rem 1.5rem;
         background: var(--topbar-bg);
         border-bottom: 1px solid var(--border);
     }
+    /* Chips a la izquierda, iconos (buscar/sincronizar/campanas/WhatsApp/apps) a la derecha. */
+    .topstrip-chips { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+    .topstrip-icons { display: flex; align-items: center; gap: 0.15rem; flex-shrink: 0; margin-left: auto; }
     .topchip {
         display: inline-flex;
         align-items: center;
@@ -1104,6 +1108,7 @@
        Se movió acá lo que antes estaba suelto en la barra de menú y en la tira del dashboard,
        para que todo el resumen viva en una fila propia, sin encimarse con el menú. *@
     <div class="topstrip">
+        <div class="topstrip-chips">
         @* Empresa + usuario. Click = cambiar operador (pide PIN). Candado = bloquear ahora. *@
         <div class="topchip @(Operator.HasOperator ? "topchip-btn" : "")"
              @onclick="OnEmpresaChipClick"
@@ -1186,6 +1191,106 @@
                     </span>
                 }
             </span>
+        </div>
+        </div>
+
+        @* 2026-07-08: grupo de iconitos movido acá desde la barra de menú (descongestiona
+           esa fila). Misma lógica y mismos botones: Widgets/Apps, Buscar, Actualizar, campanas,
+           Chat, WhatsApp, e indicadores de subida/sincro. *@
+        <div class="topstrip-icons">
+            @* Widgets como dropdown (calc + post-its + zoom) *@
+            <div class="topbar-widgets-wrap">
+                <button class="topbar-square-btn topbar-widgets-btn @(showWidgetsDropdown ? "abierto" : "")"
+                        @onclick="ToggleWidgetsDropdown"
+                        title="Widgets (Calculadora, Post-its)"
+                        aria-label="Widgets">@SvgIcons.Apps</button>
+                @if (showWidgetsDropdown)
+                {
+                    <div class="topbar-widgets-menu" @onclick:stopPropagation="true">
+                        <div class="topbar-widgets-header">Widgets</div>
+                        <button class="topbar-widgets-item" @onclick="OpenCalculatorAndCloseWidgets">
+                            <span class="ico">@SvgIcons.Calculator</span>
+                            <div>
+                                <div class="label">Calculadora</div>
+                                <div class="desc">Se mueve por la pantalla</div>
+                            </div>
+                        </button>
+                        <button class="topbar-widgets-item" @onclick="OpenPostitsAndCloseWidgets">
+                            <span class="ico">@SvgIcons.Notes</span>
+                            <div>
+                                <div class="label">Post-its</div>
+                                <div class="desc">Mis notas flotantes</div>
+                            </div>
+                        </button>
+                        <div class="topbar-widgets-zoom">
+                            <span class="ico">🔍</span>
+                            <div class="meta">
+                                <div class="label">Zoom</div>
+                                <div class="desc">Agranda o achica todo el sistema</div>
+                            </div>
+                            <div class="ctrls">
+                                <button class="zbtn" @onclick="ZoomDecrement" title="Reducir zoom (Ctrl −)">−</button>
+                                <button class="zlvl" @onclick="ZoomReset" title="Volver a 100%">@zoomLevel%</button>
+                                <button class="zbtn" @onclick="ZoomIncrement" title="Aumentar zoom (Ctrl +)">+</button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+            <button class="topbar-square-btn" @onclick="OpenCommandPalette"
+                    title="Buscar pantalla rápido (Ctrl + K)"
+                    aria-label="Buscar pantalla">@SvgIcons.Search</button>
+            <button class="topbar-square-btn" @onclick="DoHardReload"
+                    title="Forzar recarga (limpia el cache del navegador). Usalo si un cambio nuevo no aparece."
+                    aria-label="Forzar recarga">@SvgIcons.Refresh</button>
+            @* 2026-06-08: ocultar campanas a deposito EXCEPTO Preguntas MeLi — el usuario
+               quiere que deposito vea las preguntas para responderlas. *@
+            @if (!IsRoleWithCustomSidebar())
+            {
+                <CobranzasPendientesBell />
+                <AlqCobranzasPendientesBell />
+            }
+            <ChatBell />
+            <MeliQuestionsBell />
+            @if (!IsRoleWithCustomSidebar())
+            {
+                <MeliCambiosBell />
+                <WhatsAppPedidosBell />
+            }
+            @if (UploadProgress.IsUploading)
+            {
+                <div class="topbar-upload-indicator" @onclick="() => UploadProgress.RequestReopen()" title="Ver detalle de subida">
+                    <span class="topbar-upload-spinner"></span>
+                    <span class="topbar-upload-text">Subiendo @UploadProgress.DoneCount/@UploadProgress.TotalCount</span>
+                    <div class="topbar-upload-bar">
+                        <div class="topbar-upload-bar-fill" style="width: @(UploadProgress.Percentage)%"></div>
+                    </div>
+                    <button class="topbar-upload-cancel" @onclick="CancelUpload" @onclick:stopPropagation="true" title="Cancelar subida"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            }
+            @if (SyncProgress.State.IsActive && !SyncProgress.State.ShowModal)
+            {
+                <div class="topbar-sync-indicator @(SyncProgress.State.Status)" @onclick="OpenSyncModal" title="@SyncProgress.State.Description">
+                    @if (SyncProgress.State.Status == "running")
+                    {
+                        <span class="topbar-sync-spinner"></span>
+                        <span class="topbar-sync-text">@SyncProgress.State.Percentage%</span>
+                        <div class="topbar-sync-bar">
+                            <div class="topbar-sync-bar-fill" style="width: @(SyncProgress.State.Percentage)%"></div>
+                        </div>
+                    }
+                    else if (SyncProgress.State.Status == "completed")
+                    {
+                        <span class="topbar-sync-text"><i class="fa-solid fa-circle-check"></i> Sincronizado</span>
+                        <button class="topbar-sync-dismiss" @onclick="DismissSync" @onclick:stopPropagation="true" title="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+                    }
+                    else if (SyncProgress.State.Status == "error")
+                    {
+                        <span class="topbar-sync-text"><i class="fa-solid fa-circle-xmark"></i> Error</span>
+                        <button class="topbar-sync-dismiss" @onclick="DismissSync" @onclick:stopPropagation="true" title="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+                    }
+                </div>
+            }
         </div>
     </div>
 
@@ -1358,102 +1463,9 @@
                     }
                 </button>
             }
-            @* 2026-06-29: Reemplazo de la capsula glass — Widgets como dropdown
-               (calc + post-its) + Buscar y Actualizar como cuadrados robustos sueltos. *@
-            <div class="topbar-widgets-wrap">
-                <button class="topbar-square-btn topbar-widgets-btn @(showWidgetsDropdown ? "abierto" : "")"
-                        @onclick="ToggleWidgetsDropdown"
-                        title="Widgets (Calculadora, Post-its)"
-                        aria-label="Widgets">@SvgIcons.Apps</button>
-                @if (showWidgetsDropdown)
-                {
-                    <div class="topbar-widgets-menu" @onclick:stopPropagation="true">
-                        <div class="topbar-widgets-header">Widgets</div>
-                        <button class="topbar-widgets-item" @onclick="OpenCalculatorAndCloseWidgets">
-                            <span class="ico">@SvgIcons.Calculator</span>
-                            <div>
-                                <div class="label">Calculadora</div>
-                                <div class="desc">Se mueve por la pantalla</div>
-                            </div>
-                        </button>
-                        <button class="topbar-widgets-item" @onclick="OpenPostitsAndCloseWidgets">
-                            <span class="ico">@SvgIcons.Notes</span>
-                            <div>
-                                <div class="label">Post-its</div>
-                                <div class="desc">Mis notas flotantes</div>
-                            </div>
-                        </button>
-                        <div class="topbar-widgets-zoom">
-                            <span class="ico">🔍</span>
-                            <div class="meta">
-                                <div class="label">Zoom</div>
-                                <div class="desc">Agranda o achica todo el sistema</div>
-                            </div>
-                            <div class="ctrls">
-                                <button class="zbtn" @onclick="ZoomDecrement" title="Reducir zoom (Ctrl −)">−</button>
-                                <button class="zlvl" @onclick="ZoomReset" title="Volver a 100%">@zoomLevel%</button>
-                                <button class="zbtn" @onclick="ZoomIncrement" title="Aumentar zoom (Ctrl +)">+</button>
-                            </div>
-                        </div>
-                    </div>
-                }
-            </div>
-            <button class="topbar-square-btn" @onclick="OpenCommandPalette"
-                    title="Buscar pantalla rápido (Ctrl + K)"
-                    aria-label="Buscar pantalla">@SvgIcons.Search</button>
-            <button class="topbar-square-btn" @onclick="DoHardReload"
-                    title="Forzar recarga (limpia el cache del navegador). Usalo si un cambio nuevo no aparece."
-                    aria-label="Forzar recarga">@SvgIcons.Refresh</button>
-            @* 2026-06-08: ocultar campanas a deposito EXCEPTO Preguntas MeLi — el usuario
-               quiere que deposito vea las preguntas para responderlas.
-               TODO mañana: revisar por qué MeliQuestionsBell no muestra preguntas que SÍ
-               entran a MeLi (el usuario reporta que entran preguntas pero acá no aparecen). *@
-            @if (!IsRoleWithCustomSidebar())
-            {
-                <CobranzasPendientesBell />
-                <AlqCobranzasPendientesBell />
-            }
-            <ChatBell />
-            <MeliQuestionsBell />
-            @if (!IsRoleWithCustomSidebar())
-            {
-                <MeliCambiosBell />
-                <WhatsAppPedidosBell />
-            }
-            @if (UploadProgress.IsUploading)
-            {
-                <div class="topbar-upload-indicator" @onclick="() => UploadProgress.RequestReopen()" title="Ver detalle de subida">
-                    <span class="topbar-upload-spinner"></span>
-                    <span class="topbar-upload-text">Subiendo @UploadProgress.DoneCount/@UploadProgress.TotalCount</span>
-                    <div class="topbar-upload-bar">
-                        <div class="topbar-upload-bar-fill" style="width: @(UploadProgress.Percentage)%"></div>
-                    </div>
-                    <button class="topbar-upload-cancel" @onclick="CancelUpload" @onclick:stopPropagation="true" title="Cancelar subida"><i class="fa-solid fa-xmark"></i></button>
-                </div>
-            }
-            @if (SyncProgress.State.IsActive && !SyncProgress.State.ShowModal)
-            {
-                <div class="topbar-sync-indicator @(SyncProgress.State.Status)" @onclick="OpenSyncModal" title="@SyncProgress.State.Description">
-                    @if (SyncProgress.State.Status == "running")
-                    {
-                        <span class="topbar-sync-spinner"></span>
-                        <span class="topbar-sync-text">@SyncProgress.State.Percentage%</span>
-                        <div class="topbar-sync-bar">
-                            <div class="topbar-sync-bar-fill" style="width: @(SyncProgress.State.Percentage)%"></div>
-                        </div>
-                    }
-                    else if (SyncProgress.State.Status == "completed")
-                    {
-                        <span class="topbar-sync-text"><i class="fa-solid fa-circle-check"></i> Sincronizado</span>
-                        <button class="topbar-sync-dismiss" @onclick="DismissSync" @onclick:stopPropagation="true" title="Cerrar"><i class="fa-solid fa-xmark"></i></button>
-                    }
-                    else if (SyncProgress.State.Status == "error")
-                    {
-                        <span class="topbar-sync-text"><i class="fa-solid fa-circle-xmark"></i> Error</span>
-                        <button class="topbar-sync-dismiss" @onclick="DismissSync" @onclick:stopPropagation="true" title="Cerrar"><i class="fa-solid fa-xmark"></i></button>
-                    }
-                </div>
-            }
+            @* 2026-07-08: el grupo de iconitos (Widgets/Apps, Buscar, Actualizar, campanas,
+               Chat, WhatsApp, indicadores de subida/sincro) se movió a la DERECHA de la fila
+               de chips de arriba (.topstrip-icons), para descongestionar esta barra de menú. *@
         </div>
     </header>
 }
