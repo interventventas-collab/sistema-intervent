@@ -479,6 +479,21 @@ JOIN MeliShipments s ON s.MeliShipmentId = o.ShippingId
 WHERE o.ShippingMode IS NULL AND s.Mode IS NOT NULL;
 GO
 
+-- 2026-07-08: ProvinciaDestino en MeliOrders para el modulo "Contadora" (ventas por jurisdiccion / IIBB).
+-- Guardamos la provincia en la ORDEN (no en MeliShipments) para no interferir con reparto/Flex/ME1.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('MeliOrders') AND name = 'ProvinciaDestino')
+BEGIN
+    ALTER TABLE MeliOrders ADD ProvinciaDestino NVARCHAR(120) NULL;
+END
+GO
+-- Prefill con la provincia que YA tenemos en MeliShipments (envios Flex/ME1 sincronizados).
+-- El resto de las ordenes lo completa el backfill de ContadoraService (consulta a MeLi shipments).
+UPDATE o SET o.ProvinciaDestino = s.State
+FROM MeliOrders o
+JOIN MeliShipments s ON s.MeliShipmentId = o.ShippingId
+WHERE o.ProvinciaDestino IS NULL AND s.State IS NOT NULL AND s.State <> '';
+GO
+
 -- MeliItems table
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='MeliItems' AND xtype='U')
 BEGIN

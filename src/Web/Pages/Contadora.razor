@@ -1,0 +1,240 @@
+@page "/contadora"
+@attribute [Authorize]
+@using Web.Models
+@inject ApiClient Api
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject ToastService ToastService
+
+<PageTitle>Contadora — Ventas por jurisdicción</PageTitle>
+
+<style>
+    .co-wrap { padding: 1rem; max-width: 900px; }
+    .co-card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 1.2rem; margin-bottom: 1rem; }
+    .co-title { font-size: 1.4rem; font-weight: 700; margin: 0 0 .3rem; }
+    .co-sub { color: #6b7280; margin: 0 0 1rem; font-size: .92rem; line-height: 1.4; }
+    .co-filtros { display: flex; gap: .8rem; align-items: flex-end; flex-wrap: wrap; }
+    .co-filtros label { display: block; font-size: .78rem; color: #6b7280; margin-bottom: .2rem; }
+    .co-filtros input { padding: .45rem .5rem; border: 1px solid #d1d5db; border-radius: 8px; }
+    .co-btn { padding: .5rem .9rem; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; }
+    .co-btn-primary { background: #2563eb; color: white; }
+    .co-btn-green { background: #16a34a; color: white; }
+    .co-btn-ghost { background: #f3f4f6; color: #374151; }
+    .co-btn:disabled { opacity: .5; cursor: default; }
+    table.co-tabla { width: 100%; border-collapse: collapse; }
+    table.co-tabla th, table.co-tabla td { padding: .5rem .6rem; border-bottom: 1px solid #f0f0f0; }
+    table.co-tabla th { text-align: left; color: #6b7280; font-size: .8rem; text-transform: uppercase; }
+    table.co-tabla td.num, table.co-tabla th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    table.co-tabla tr.tot td { font-weight: 700; border-top: 2px solid #e5e7eb; }
+    .co-alerta { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: .9rem 1rem; margin-bottom: 1rem; }
+    .co-bar { height: 10px; background: #e5e7eb; border-radius: 6px; overflow: hidden; margin-top: .5rem; }
+    .co-bar > div { height: 100%; background: #2563eb; transition: width .3s; }
+    .co-hint { color: #9ca3af; font-size: .82rem; }
+</style>
+
+<div class="co-wrap">
+    <div class="co-card">
+        <h1 class="co-title">🧾 Contadora — Ventas por jurisdicción</h1>
+        <p class="co-sub">
+            Este cuadro muestra <b>cuánto vendiste en cada provincia</b> (por destino de envío), con el
+            neto (sin IVA), el IVA al 21% y el total. Es lo que la contadora usa para <b>Ingresos Brutos</b>.
+            Los datos salen de tus ventas de <b>MercadoLibre</b>. Podés filtrar por fechas y descargar el Excel.
+        </p>
+
+        <div class="co-filtros">
+            <div>
+                <label>Desde</label>
+                <input type="date" @bind="desde" />
+            </div>
+            <div>
+                <label>Hasta</label>
+                <input type="date" @bind="hasta" />
+            </div>
+            <button class="co-btn co-btn-primary" @onclick="Cargar" disabled="@cargando">Aplicar</button>
+            <button class="co-btn co-btn-ghost" @onclick="LimpiarFiltro" disabled="@cargando">Todo el período</button>
+            <button class="co-btn co-btn-green" @onclick="DescargarExcel" disabled="@(cargando || descargando || cuadro is null || cuadro.Filas.Count == 0)">
+                @(descargando ? "Generando…" : "⬇ Descargar Excel")
+            </button>
+        </div>
+        @if (cuadro?.VentasDesde is not null)
+        {
+            <p class="co-hint" style="margin-top:.6rem;">
+                Ventas de MercadoLibre disponibles: @cuadro.VentasDesde.Value.ToString("dd/MM/yyyy") al @cuadro.VentasHasta!.Value.ToString("dd/MM/yyyy").
+            </p>
+        }
+    </div>
+
+    @if (cuadro is not null && cuadro.SinProvincia > 0)
+    {
+        <div class="co-alerta">
+            <div>
+                ⚠️ Hay <b>@cuadro.SinProvincia</b> venta(s) en este período a las que todavía les falta la provincia.
+                Tocá el botón para que el sistema se la pregunte a MercadoLibre (es solo lectura, tarda un rato).
+            </div>
+            @if (backfilling)
+            {
+                <div class="co-bar"><div style="width:@(ProgresoPct)%"></div></div>
+                <div class="co-hint" style="margin-top:.35rem;">Resolviendo… faltan @bfPendientes de @bfTotal.</div>
+            }
+            else
+            {
+                <button class="co-btn co-btn-primary" style="margin-top:.6rem;" @onclick="ActualizarProvincias">🔄 Traer provincias faltantes</button>
+            }
+        </div>
+    }
+
+    <div class="co-card">
+        @if (cargando)
+        {
+            <p>Cargando…</p>
+        }
+        else if (cuadro is null || cuadro.Filas.Count == 0)
+        {
+            <p class="co-hint">No hay ventas para mostrar en este período.</p>
+        }
+        else
+        {
+            <table class="co-tabla">
+                <thead>
+                    <tr>
+                        <th>Destino</th>
+                        <th class="num">Cantidad</th>
+                        <th class="num">Total Neto</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var f in cuadro.Filas)
+                    {
+                        <tr>
+                            <td>@DestinoLabel(f.Provincia)</td>
+                            <td class="num">@f.Cantidad</td>
+                            <td class="num">@Money(f.Neto)</td>
+                        </tr>
+                    }
+                    <tr class="tot">
+                        <td>TOTAL NETO</td>
+                        <td class="num">@cuadro.CantidadTotal</td>
+                        <td class="num">@Money(cuadro.NetoTotal)</td>
+                    </tr>
+                    <tr>
+                        <td>IVA 21%</td>
+                        <td></td>
+                        <td class="num">@Money(cuadro.IvaTotal)</td>
+                    </tr>
+                    <tr class="tot">
+                        <td>TOTAL c/IVA</td>
+                        <td></td>
+                        <td class="num">@Money(cuadro.TotalConIva)</td>
+                    </tr>
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    private ContadoraJurisdiccionDto? cuadro;
+    private DateTime? desde;
+    private DateTime? hasta;
+    private bool cargando;
+    private bool descargando;
+    private bool backfilling;
+    private int bfTotal;
+    private int bfPendientes;
+
+    private int ProgresoPct => bfTotal > 0 ? (int)((bfTotal - bfPendientes) * 100.0 / bfTotal) : 0;
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        if (cargando) return;
+        cargando = true;
+        try
+        {
+            cuadro = await Api.GetVentasJurisdiccionAsync(desde, hasta);
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo cargar: " + ex.Message); }
+        finally { cargando = false; }
+    }
+
+    private async Task LimpiarFiltro()
+    {
+        desde = null; hasta = null;
+        await Cargar();
+    }
+
+    private async Task ActualizarProvincias()
+    {
+        if (backfilling) return;
+        backfilling = true;
+        bfTotal = 0; bfPendientes = 0;
+        try
+        {
+            while (true)
+            {
+                var r = await Api.BackfillProvinciasAsync(150);
+                if (r is null) { ToastService.Error("No se pudo actualizar."); break; }
+                if (bfTotal == 0) bfTotal = r.PendientesAntes;
+                bfPendientes = r.Pendientes;
+                StateHasChanged();
+
+                if (r.Pendientes == 0) break;
+                if (r.Resueltos == 0) // no hubo avance (token vencido o solo errores) → cortar para no colgarse
+                {
+                    if (!string.IsNullOrEmpty(r.Mensaje)) ToastService.Error(r.Mensaje);
+                    else ToastService.Warning("Quedaron ventas sin poder resolver. Probá de nuevo más tarde.");
+                    break;
+                }
+            }
+            await Cargar();
+            ToastService.Success("Provincias actualizadas.");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { backfilling = false; }
+    }
+
+    private async Task DescargarExcel()
+    {
+        if (descargando) return;
+        descargando = true;
+        try
+        {
+            var url = "api/contadora/jurisdiccion/excel";
+            var qs = new List<string>();
+            if (desde.HasValue) qs.Add($"desde={desde.Value:yyyy-MM-dd}");
+            if (hasta.HasValue) qs.Add($"hasta={hasta.Value:yyyy-MM-dd}");
+            if (qs.Count > 0) url += "?" + string.Join("&", qs);
+
+            var resp = await Http.GetAsync(url);
+            if (!resp.IsSuccessStatusCode) { ToastService.Error("No se pudo generar el Excel"); return; }
+            var bytes = await resp.Content.ReadAsByteArrayAsync();
+            var filename = $"ventas-por-jurisdiccion-{DateTime.Now:yyyy-MM-dd}.xlsx";
+            await JS.InvokeVoidAsync("downloadBytesAsFile", filename,
+                Convert.ToBase64String(bytes),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            ToastService.Success("Excel descargado");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { descargando = false; }
+    }
+
+    private static string DestinoLabel(string prov)
+        => prov.StartsWith("(") ? prov : $"Argentina - {prov}";
+
+    // Formato de pesos estilo AR (1.234.567,89) sin depender de la cultura cargada.
+    private static string Money(decimal v)
+    {
+        var neg = v < 0; v = Math.Abs(v);
+        var s = v.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+        var parts = s.Split('.');
+        var intp = parts[0]; var dec = parts[1];
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < intp.Length; i++)
+        {
+            if (i > 0 && (intp.Length - i) % 3 == 0) sb.Append('.');
+            sb.Append(intp[i]);
+        }
+        return (neg ? "-" : "") + sb.ToString() + "," + dec;
+    }
+}
