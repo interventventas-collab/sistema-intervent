@@ -5519,6 +5519,13 @@ public class ApiClient
     public async Task<ContadoraBackfillResultDto?> BackfillFacturasAsync(int lote = 120)
         => await PostAsync<ContadoraBackfillResultDto>($"/api/contadora/backfill-facturas?lote={lote}", new { });
 
+    /// <summary>Dispara el robot en el servidor (provincias + facturas). Corre en segundo plano.</summary>
+    public async Task<bool> RunContadoraRobotAsync()
+    {
+        try { await PostAsync<object>("/api/contadora/run-robot", new { }); return true; }
+        catch { return false; }
+    }
+
     public async Task<ContadoraLibroIvaDto?> GetLibroIvaAsync(DateTime? desde, DateTime? hasta, string? empresa, int? puntoVenta, string? letra, string? provincia, string? search)
         => await GetAsync<ContadoraLibroIvaDto>("/api/contadora/libro-iva" + ContadoraQs(desde, hasta, empresa, puntoVenta, letra, provincia, search));
 

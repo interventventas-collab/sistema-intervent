@@ -16,7 +16,17 @@ namespace Api.Controllers;
 public class ContadoraController : ControllerBase
 {
     private readonly ContadoraService _svc;
-    public ContadoraController(ContadoraService svc) { _svc = svc; }
+    private readonly ContadoraAutoBackfillService _robot;
+    public ContadoraController(ContadoraService svc, ContadoraAutoBackfillService robot) { _svc = svc; _robot = robot; }
+
+    /// <summary>Dispara el robot en el SERVIDOR (provincias + facturas) y contesta al instante.
+    /// Corre en segundo plano; el usuario puede cerrar la pestaña. Vuelve a consultar el cuadro para ver el avance.</summary>
+    [HttpPost("run-robot")]
+    public IActionResult RunRobot()
+    {
+        _ = Task.Run(() => _robot.RunOnceManualAsync());
+        return Ok(new { ok = true });
+    }
 
     /// <summary>Cuadro de ventas por jurisdiccion para el rango [desde, hasta] (por fecha de venta).</summary>
     [HttpGet("jurisdiccion")]
