@@ -5485,4 +5485,17 @@ public class ApiClient
         }
         catch (Exception ex) { return (false, ex.Message); }
     }
+
+    // ───────── Contadora: ventas por jurisdiccion (Ingresos Brutos) ─────────
+    public async Task<ContadoraJurisdiccionDto?> GetVentasJurisdiccionAsync(DateTime? desde, DateTime? hasta)
+    {
+        var qs = new List<string>();
+        if (desde.HasValue) qs.Add($"desde={desde.Value:yyyy-MM-dd}");
+        if (hasta.HasValue) qs.Add($"hasta={hasta.Value:yyyy-MM-dd}");
+        var url = "/api/contadora/jurisdiccion" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<ContadoraJurisdiccionDto>(url);
+    }
+
+    public async Task<ContadoraBackfillResultDto?> BackfillProvinciasAsync(int lote = 150)
+        => await PostAsync<ContadoraBackfillResultDto>($"/api/contadora/backfill-provincias?lote={lote}", new { });
 }

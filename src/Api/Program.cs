@@ -182,6 +182,7 @@ builder.Services.AddScoped<MeliOrderService>();
 builder.Services.AddScoped<MeliItemService>();
 builder.Services.AddScoped<MeliQuestionService>();
 builder.Services.AddScoped<MeliShipmentService>();
+builder.Services.AddScoped<ContadoraService>();
 builder.Services.AddScoped<ContabiliumStagingService>();
 builder.Services.AddScoped<CafeKitService>();
 builder.Services.AddScoped<ContabiliumCotejoService>();

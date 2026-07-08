@@ -1013,7 +1013,10 @@
         @if (HasPerm("usuarios") || HasPerm("roles") || HasPerm("integraciones") || HasPerm("procesos") || HasPerm("archivos") || HasPerm("auditoria") || HasPerm("backups") || HasPerm("vault"))
         {
             <NavGroup Label="Administración" Icon="@SvgIcons.Admin"
-                      HasActiveChild="@(IsActive("/usuarios") || IsActive("/roles") || IsActive("/integraciones") || IsActive("/procesos") || IsActive("/archivos") || IsActive("/auditoria") || IsActive("/backups") || IsActive("/config") || IsActive("/vault"))">
+                      HasActiveChild="@(IsActive("/contadora") || IsActive("/usuarios") || IsActive("/roles") || IsActive("/integraciones") || IsActive("/procesos") || IsActive("/archivos") || IsActive("/auditoria") || IsActive("/backups") || IsActive("/config") || IsActive("/vault"))">
+                @* 2026-07-08: Modulo Contadora — cuadro de ventas por jurisdiccion (Ingresos Brutos) *@
+                <NavItem Href="/contadora" Label="🧾 Contadora" Icon="@SvgIcons.Database"
+                         IsActive="@IsActive("/contadora")" OnClick="@(() => NavigateTo("/contadora"))" />
                 @if (HasPerm("usuarios"))
                 {
                     <NavItem Href="/usuarios" Label="Usuarios" Icon="@SvgIcons.Users"

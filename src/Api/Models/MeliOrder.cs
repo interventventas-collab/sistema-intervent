@@ -37,6 +37,13 @@ public class MeliOrder
     [MaxLength(40)]
     public string? LogisticType { get; set; }
 
+    /// <summary>2026-07-08: Provincia de destino del envio (receiver_address.state.name de MeLi).
+    /// Alimenta el modulo "Contadora" (cuadro de ventas por jurisdiccion / Ingresos Brutos).
+    /// Se completa con el backfill de ContadoraService; null = todavia no resuelta.
+    /// NO se usa la tabla MeliShipments para esto asi no interferimos con reparto/Flex/ME1.</summary>
+    [MaxLength(120)]
+    public string? ProvinciaDestino { get; set; }
+
     public bool StockDiscounted { get; set; } = false;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
