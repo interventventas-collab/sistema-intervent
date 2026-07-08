@@ -8,6 +8,7 @@ public class AppDbContext : DbContext
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
     public DbSet<User> Users => Set<User>();
+    public DbSet<UserNoticeDismissal> UserNoticeDismissals => Set<UserNoticeDismissal>();
     public DbSet<CafeOperadorPin> CafeOperadoresPin => Set<CafeOperadorPin>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Integration> Integrations => Set<Integration>();

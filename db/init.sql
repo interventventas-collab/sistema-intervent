@@ -5508,3 +5508,16 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='ResumenDescripcion' AND Object_ID=OBJECT_ID('Alq_Reservas'))
     ALTER TABLE Alq_Reservas ADD ResumenDescripcion NVARCHAR(500) NULL;
 GO
+
+-- 2026-07-08: avisos/novedades ocultados por cada usuario ("No volver a mostrar"), por cuenta.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='User_NoticeDismissals' AND xtype='U')
+BEGIN
+    CREATE TABLE User_NoticeDismissals (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        UserId INT NOT NULL,
+        NoticeKey NVARCHAR(80) NOT NULL,
+        DismissedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT UQ_UserNoticeDismissals UNIQUE (UserId, NoticeKey)
+    );
+END
+GO
