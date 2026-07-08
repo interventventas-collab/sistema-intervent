@@ -136,7 +136,7 @@ public class AlqReservasController : ControllerBase
         return Ok(list.Select(r =>
         {
             asignados.TryGetValue(r.Id, out var a);
-            return Map(r, a.Id == 0 ? (int?)null : a.Id, a.Nombre);
+            return Map(r, a.EId, a.EN, a.RId, a.RN);
         }).ToList());
     }
 
@@ -152,7 +152,7 @@ public class AlqReservasController : ControllerBase
         if (r is null) return NotFound(new { error = "Reserva no encontrada" });
         var asign = await CalcularAsignadosAsync(new List<int> { r.Id });
         asign.TryGetValue(r.Id, out var aa);
-        return Ok(Map(r, aa.Id == 0 ? (int?)null : aa.Id, aa.Nombre));
+        return Ok(Map(r, aa.EId, aa.EN, aa.RId, aa.RN));
     }
 
     public record AsignarRepartoRequest(int? NuevoRepartidorId);
@@ -166,8 +166,14 @@ public class AlqReservasController : ControllerBase
         var r = await _db.AlqReservas.FirstOrDefaultAsync(x => x.Id == id);
         if (r is null) return NotFound(new { error = "Reserva no encontrada" });
 
+        // Dos etapas independientes: si la reserva TODAVIA no se entregó, lo que se asigna es la ENTREGA
+        // (accion 'cargado'); si ya se entregó, lo que se asigna es el RETIRO (accion 'cargado_retiro').
+        // Así el repartidor que entregó se desvincula al entregar y el retiro es "otra historia". 2026-07-08
+        var esRetiro = r.EntregadoPorRepartidorId.HasValue;
+        var accion = esRetiro ? "cargado_retiro" : "cargado";
+
         var existentes = await _db.AlqQrEscaneos
-            .Where(e => e.ReservaId == id && e.Accion == "cargado").ToListAsync();
+            .Where(e => e.ReservaId == id && e.Accion == accion).ToListAsync();
         _db.AlqQrEscaneos.RemoveRange(existentes);
 
         string mensaje;
@@ -179,15 +185,15 @@ public class AlqReservasController : ControllerBase
             {
                 ReservaId = id,
                 RepartidorId = rep.Id,
-                Accion = "cargado",
+                Accion = accion,
                 CreatedAt = DateTime.UtcNow,
                 Ip = "admin-asignar"
             });
-            mensaje = $"Reserva asignada a {rep.Nombre}";
+            mensaje = esRetiro ? $"Retiro asignado a {rep.Nombre}" : $"Entrega asignada a {rep.Nombre}";
         }
         else
         {
-            mensaje = "Reserva sin asignar (que nadie la tenga)";
+            mensaje = esRetiro ? "Retiro sin asignar (que nadie lo tenga)" : "Entrega sin asignar (que nadie la tenga)";
         }
 
         await _db.SaveChangesAsync();
@@ -598,7 +604,8 @@ public class AlqReservasController : ControllerBase
         return v.Length > 8 ? v.Substring(0, 8) : v;
     }
 
-    private static AlqReservaDto Map(AlqReserva r, int? asignadoId = null, string? asignadoNombre = null) => new(
+    private static AlqReservaDto Map(AlqReserva r, int? asignadoId = null, string? asignadoNombre = null,
+        int? asignadoRetiroId = null, string? asignadoRetiroNombre = null) => new(
         r.Id, r.Numero,
         r.ClienteId, r.ClienteNav?.Nombre ?? "—", r.ClienteNav?.Telefono,
         r.FechaEntrega, r.FechaRetiro, r.HoraInicio, r.HoraFin,
@@ -617,6 +624,7 @@ public class AlqReservasController : ControllerBase
         r.EntregadoPorRepartidorId, r.EntregadoPorRepartidor?.Nombre, r.EntregadoAt, r.ComentarioEntrega,
         r.RetiradoPorRepartidorId, r.RetiradoPorRepartidor?.Nombre, r.RetiradoAt, r.ComentarioRetiro,
         asignadoId, asignadoNombre,
+        asignadoRetiroId, asignadoRetiroNombre,
         // ARCA (2026-07-04)
         r.TipoComprobante, r.CondicionIva, r.Concepto,
         r.ArcaEstado, r.ArcaCae, r.ArcaCaeVto, r.ArcaPtoVta,
@@ -950,23 +958,37 @@ public class AlqReservasController : ControllerBase
 
     /// <summary>Dado un set de reservas, devuelve el repartidor "dueño" actual de cada una
     /// (el del ultimo escaneo 'cargado' en Alq_QrEscaneos). Igual regla que ventas.</summary>
-    private async Task<Dictionary<int, (int Id, string Nombre)>> CalcularAsignadosAsync(List<int> reservaIds)
+    /// <summary>Calcula, por reserva, el repartidor asignado para la ENTREGA (ultimo 'cargado')
+    /// y el asignado para el RETIRO (ultimo 'cargado_retiro'). Son dos etapas independientes:
+    /// cuando la reserva se entrega, el repartidor de entrega se desvincula y el retiro se asigna aparte. 2026-07-08</summary>
+    private async Task<Dictionary<int, (int? EId, string? EN, int? RId, string? RN)>> CalcularAsignadosAsync(List<int> reservaIds)
     {
-        var res = new Dictionary<int, (int, string)>();
+        var res = new Dictionary<int, (int?, string?, int?, string?)>();
         if (reservaIds.Count == 0) return res;
         var escaneos = await _db.AlqQrEscaneos
-            .Where(e => reservaIds.Contains(e.ReservaId) && e.Accion == "cargado")
-            .Select(e => new { e.ReservaId, e.RepartidorId, e.CreatedAt, e.Id })
+            .Where(e => reservaIds.Contains(e.ReservaId) && (e.Accion == "cargado" || e.Accion == "cargado_retiro"))
+            .Select(e => new { e.ReservaId, e.RepartidorId, e.Accion, e.CreatedAt, e.Id })
             .ToListAsync();
-        var owners = escaneos
-            .GroupBy(e => e.ReservaId)
-            .ToDictionary(g => g.Key, g => g.OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.Id).First().RepartidorId);
-        if (owners.Count == 0) return res;
-        var repIds = owners.Values.Distinct().ToList();
+        if (escaneos.Count == 0) return res;
+
+        var repIds = escaneos.Select(e => e.RepartidorId).Distinct().ToList();
         var reps = await _db.CafeRepartidores.Where(r => repIds.Contains(r.Id))
             .ToDictionaryAsync(r => r.Id, r => r.Nombre);
-        foreach (var kv in owners)
-            if (reps.TryGetValue(kv.Value, out var nombre)) res[kv.Key] = (kv.Value, nombre);
+
+        int? UltimoDueno(int reservaId, string accion) => escaneos
+            .Where(e => e.ReservaId == reservaId && e.Accion == accion)
+            .OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.Id)
+            .Select(e => (int?)e.RepartidorId).FirstOrDefault();
+
+        foreach (var rid in reservaIds.Distinct())
+        {
+            var eId = UltimoDueno(rid, "cargado");
+            var rId = UltimoDueno(rid, "cargado_retiro");
+            if (eId is null && rId is null) continue;
+            string? en = eId.HasValue && reps.TryGetValue(eId.Value, out var n1) ? n1 : null;
+            string? rn = rId.HasValue && reps.TryGetValue(rId.Value, out var n2) ? n2 : null;
+            res[rid] = (eId, en, rId, rn);
+        }
         return res;
     }
 }

@@ -80,16 +80,29 @@
                                     {
                                         <div style="font-size: 0.78rem; color: #6b7280;">@r.ClienteTelefono</div>
                                     }
+                                    @{
+                                        var enCalleRow = r.EntregadoPorRepartidorId.HasValue && !r.RetiradoPorRepartidorId.HasValue;
+                                    }
                                     @if (r.EntregadoPorRepartidorId.HasValue || r.RetiradoPorRepartidorId.HasValue || r.AsignadoARepartidorId.HasValue)
                                     {
                                         <div style="margin-top: 0.2rem; display: flex; gap: 0.25rem; flex-wrap: wrap;">
-                                            @if (r.AsignadoARepartidorId.HasValue && !r.EntregadoPorRepartidorId.HasValue)
+                                            @* ── ENTREGA ── *@
+                                            @if (!r.EntregadoPorRepartidorId.HasValue && r.AsignadoARepartidorId.HasValue)
                                             {
-                                                <span style="font-size: 0.7rem; background: #ede9fe; color: #5b21b6; padding: 0.1rem 0.4rem; border-radius: 999px; font-weight: 700;">🚚 Asignado a @r.AsignadoARepartidorNombre</span>
+                                                <span style="font-size: 0.7rem; background: #ede9fe; color: #5b21b6; padding: 0.1rem 0.4rem; border-radius: 999px; font-weight: 700;">🚚 Entrega → @r.AsignadoARepartidorNombre</span>
                                             }
                                             @if (r.EntregadoPorRepartidorId.HasValue)
                                             {
                                                 <span style="font-size: 0.7rem; background: #dcfce7; color: #166534; padding: 0.1rem 0.4rem; border-radius: 999px; font-weight: 700;">✅ Entregó @r.EntregadoPorRepartidorNombre</span>
+                                            }
+                                            @* ── RETIRO (solo una vez entregada y hasta que se retire) ── *@
+                                            @if (enCalleRow && r.AsignadoRetiroARepartidorId.HasValue)
+                                            {
+                                                <span style="font-size: 0.7rem; background: #ffedd5; color: #9a3412; padding: 0.1rem 0.4rem; border-radius: 999px; font-weight: 700;">🔙 Retiro → @r.AsignadoRetiroARepartidorNombre</span>
+                                            }
+                                            else if (enCalleRow)
+                                            {
+                                                <span style="font-size: 0.7rem; background: #fee2e2; color: #b91c1c; padding: 0.1rem 0.4rem; border-radius: 999px; font-weight: 700;">🔴 Retiro sin asignar</span>
                                             }
                                             @if (r.RetiradoPorRepartidorId.HasValue)
                                             {
@@ -911,22 +924,39 @@
     <div class="modal-overlay" @onclick="() => showAsignar = false">
         <div class="modal-card modal-small" @onclick:stopPropagation="true">
             <div class="modal-header">
-                <h4 style="margin: 0;">🚚 Asignar reparto</h4>
+                <h4 style="margin: 0;">@(AsignarEsRetiro ? "🔙 Asignar quién retira" : "🚚 Asignar quién entrega")</h4>
                 <button class="btn-close" @onclick="() => showAsignar = false">&times;</button>
             </div>
             <div class="modal-body">
                 <p style="font-size: 0.9rem; color: #6b7280; margin-top: 0;">
                     Reserva <strong>@reservaAsignar.Numero</strong>
-                    @if (reservaAsignar.AsignadoARepartidorId.HasValue)
+                    @if (AsignarEsRetiro)
                     {
-                        <text>— ahora la tiene <strong>@reservaAsignar.AsignadoARepartidorNombre</strong></text>
+                        @if (reservaAsignar.AsignadoRetiroARepartidorId.HasValue)
+                        {
+                            <text>— el retiro lo tiene <strong>@reservaAsignar.AsignadoRetiroARepartidorNombre</strong></text>
+                        }
+                        else
+                        {
+                            <text>— el retiro <strong>todavía no está asignado</strong></text>
+                        }
+                    }
+                    else if (reservaAsignar.AsignadoARepartidorId.HasValue)
+                    {
+                        <text>— la entrega la tiene <strong>@reservaAsignar.AsignadoARepartidorNombre</strong></text>
                     }
                     else
                     {
                         <text>— todavía no tiene repartidor asignado</text>
                     }
                 </p>
-                <label class="form-label">¿A quién se la pasás?</label>
+                @if (AsignarEsRetiro)
+                {
+                    <div style="font-size: 0.78rem; color: #6b7280; background:#f9fafb; border:1px solid #f3f4f6; border-radius:8px; padding:0.4rem 0.55rem; margin-bottom:0.6rem;">
+                        Ya la entregó <strong>@reservaAsignar.EntregadoPorRepartidorNombre</strong> y quedó desvinculado. Elegí quién va a ir a <strong>retirar</strong> los equipos.
+                    </div>
+                }
+                <label class="form-label">¿Quién @(AsignarEsRetiro ? "retira" : "entrega")?</label>
                 <select class="form-input" @bind="asignarRepartidorId">
                     <option value="0">— Sin asignar (que nadie la tenga) —</option>
                     @foreach (var rep in repartidores.Where(x => x.IsActive))
@@ -1263,22 +1293,31 @@
     }
 
     // ===== Asignar reparto =====
+    // Etapa que se está asignando: si la reserva ya se entregó, lo que se asigna es el RETIRO.
+    private bool AsignarEsRetiro => reservaAsignar?.EntregadoPorRepartidorId.HasValue == true;
+
     private void ShowAsignar(AlqReservaDto r)
     {
         reservaAsignar = r;
-        asignarRepartidorId = r.AsignadoARepartidorId ?? 0;
+        // Preseleccionar según la etapa: entrega o retiro tienen cada uno su propio asignado.
+        asignarRepartidorId = (r.EntregadoPorRepartidorId.HasValue
+            ? r.AsignadoRetiroARepartidorId
+            : r.AsignadoARepartidorId) ?? 0;
         showAsignar = true;
     }
 
     private async Task ConfirmarAsignar()
     {
         if (reservaAsignar is null) return;
+        var esRetiro = AsignarEsRetiro;
         asignando = true;
         var ok = await Api.AsignarRepartoAlqAsync(reservaAsignar.Id, asignarRepartidorId == 0 ? (int?)null : asignarRepartidorId);
         asignando = false;
         if (ok)
         {
-            ToastService.Success(asignarRepartidorId == 0 ? "Reserva sin asignar" : "Reserva asignada");
+            ToastService.Success(asignarRepartidorId == 0
+                ? (esRetiro ? "Retiro sin asignar" : "Entrega sin asignar")
+                : (esRetiro ? "Retiro asignado" : "Entrega asignada"));
             showAsignar = false;
             await Load();
         }

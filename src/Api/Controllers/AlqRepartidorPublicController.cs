@@ -188,51 +188,81 @@ public class AlqRepartidorPublicController : ControllerBase
         if (rep is null) return NotFound(new { error = "Enlace invalido o repartidor inactivo" });
 
         var desde = DateTime.UtcNow.AddDays(-Math.Max(1, dias));
-        var reservaIds = await _db.AlqQrEscaneos
-            .Where(e => e.RepartidorId == rep.Id && e.Accion == "cargado" && e.CreatedAt >= desde)
+
+        // ENTREGA y RETIRO son dos etapas con dueño propio (2026-07-08):
+        //   - dueño de entrega = ultimo escaneo 'cargado'
+        //   - dueño de retiro  = ultimo escaneo 'cargado_retiro'
+        // Este repartidor ve una reserva si: le toca entregarla, le toca retirarla, o él mismo la
+        // entregó/retiró (para que le quede en su historial de "Entregadas", igual que en ventas).
+        var idsScan = await _db.AlqQrEscaneos
+            .Where(e => e.RepartidorId == rep.Id
+                        && (e.Accion == "cargado" || e.Accion == "cargado_retiro")
+                        && e.CreatedAt >= desde)
             .Select(e => e.ReservaId).Distinct().ToListAsync();
-        if (reservaIds.Count == 0)
+        var idsHechos = await _db.AlqReservas
+            .Where(x => (x.EntregadoPorRepartidorId == rep.Id && x.EntregadoAt >= desde)
+                     || (x.RetiradoPorRepartidorId == rep.Id && x.RetiradoAt >= desde))
+            .Select(x => x.Id).ToListAsync();
+        var candidatos = idsScan.Union(idsHechos).Distinct().ToList();
+        if (candidatos.Count == 0)
             return Ok(new { repartidorId = rep.Id, nombre = rep.Nombre, reservas = new List<MisReservaDto>() });
 
-        // Dueño actual de cada reserva = repartidor del ultimo 'cargado'
-        var duenios = await _db.AlqQrEscaneos
-            .Where(e => reservaIds.Contains(e.ReservaId) && e.Accion == "cargado")
-            .Select(e => new { e.ReservaId, e.RepartidorId, e.CreatedAt, e.Id })
+        // Todos los escaneos de asignacion de esas reservas (para saber el dueño actual de cada etapa).
+        var escaneos = await _db.AlqQrEscaneos
+            .Where(e => candidatos.Contains(e.ReservaId) && (e.Accion == "cargado" || e.Accion == "cargado_retiro"))
+            .Select(e => new { e.ReservaId, e.RepartidorId, e.Accion, e.CreatedAt, e.Id })
             .ToListAsync();
-        var duenioActual = duenios
-            .GroupBy(e => e.ReservaId)
-            .ToDictionary(g => g.Key, g => g.OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.Id).First());
-
-        var mias = reservaIds.Where(id => duenioActual.TryGetValue(id, out var d) && d.RepartidorId == rep.Id).ToList();
+        int? DuenoDe(int reservaId, string accion) => escaneos
+            .Where(e => e.ReservaId == reservaId && e.Accion == accion)
+            .OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.Id)
+            .Select(e => (int?)e.RepartidorId).FirstOrDefault();
+        DateTime? UltimoCargadoRetiro(int reservaId) => escaneos
+            .Where(e => e.ReservaId == reservaId && e.Accion == "cargado_retiro")
+            .OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.Id)
+            .Select(e => (DateTime?)e.CreatedAt).FirstOrDefault();
 
         var reservas = await _db.AlqReservas
             .Include(x => x.ClienteNav)
             .Include(x => x.Items).ThenInclude(i => i.EquipoNav)
-            .Where(x => mias.Contains(x.Id))
+            .Where(x => candidatos.Contains(x.Id))
             .ToListAsync();
 
-        var hoyAr = DateTime.UtcNow.AddHours(-3).Date;
-        var list = reservas
-            .Select(x =>
-            {
-                var cargadoAt = duenioActual.TryGetValue(x.Id, out var d) ? d.CreatedAt : x.CreatedAt;
-                var entregado = x.EntregadoPorRepartidorId.HasValue;
-                var retirado = x.RetiradoPorRepartidorId.HasValue;
-                // "Para retirar" = entregado, falta retiro, y ya toca: o llegó la fecha de retiro,
-                // o el repartidor re-escaneó el QR después de haber entregado.
-                var paraRetiro = entregado && !retirado &&
-                    (x.FechaRetiro.Date <= hoyAr || (x.EntregadoAt.HasValue && cargadoAt > x.EntregadoAt.Value));
-                return new MisReservaDto(
-                    x.Id, x.Numero, x.PublicToken ?? "", x.Estado,
-                    x.ClienteNav?.Nombre ?? "—", x.ClienteNav?.Telefono, x.DireccionEvento,
-                    x.FechaEntrega, x.FechaRetiro,
-                    x.MontoTotal, Math.Max(0m, x.MontoTotal - x.Sena - x.MontoCobrado),
-                    entregado, retirado, cargadoAt,
-                    x.EntregadoAt, x.RetiradoAt,
-                    x.Items.Select(i => new ItemDto(i.Cantidad, i.EquipoId.HasValue ? (i.EquipoNav?.Sku ?? "—") : "", i.EquipoId.HasValue ? (i.EquipoNav?.Nombre ?? "—") : (i.Descripcion ?? "—"))).ToList(),
-                    paraRetiro,
-                    string.IsNullOrWhiteSpace(x.MapeoLink) ? x.ClienteNav?.MapeoLink : x.MapeoLink);
-            })
+        var list = new List<MisReservaDto>();
+        foreach (var x in reservas)
+        {
+            var entregado = x.EntregadoPorRepartidorId.HasValue;
+            var retirado = x.RetiradoPorRepartidorId.HasValue;
+            var duenoEntrega = DuenoDe(x.Id, "cargado");
+            var duenoRetiro = DuenoDe(x.Id, "cargado_retiro");
+            var hizoEntrega = x.EntregadoPorRepartidorId == rep.Id;
+            var hizoRetiro = x.RetiradoPorRepartidorId == rep.Id;
+
+            // ¿Qué le toca a ESTE repartidor con esta reserva?
+            var pendienteEntrega = !entregado && duenoEntrega == rep.Id;   // aún no entregada y es suya
+            var pendienteRetiro = entregado && !retirado && duenoRetiro == rep.Id;  // ya entregada, le toca retirar
+            // Se la mostramos si le toca hacer algo, o si él la trabajó (queda en su historial).
+            if (!(pendienteEntrega || pendienteRetiro || hizoEntrega || hizoRetiro)) continue;
+
+            // "Para retirar" SOLO si a él le toca el retiro (no al que entregó: ese ya se desvinculó).
+            var paraRetiro = pendienteRetiro;
+            // En SU vista, EntregadoAt/RetiradoAt solo si lo hizo él → así "Entregadas" muestra lo suyo
+            // y no lo que hizo otro repartidor sobre la misma reserva.
+            var entregadoAtMio = hizoEntrega ? x.EntregadoAt : (DateTime?)null;
+            var retiradoAtMio = hizoRetiro ? x.RetiradoAt : (DateTime?)null;
+            var cargadoAt = UltimoCargadoRetiro(x.Id) ?? x.CreatedAt;
+
+            list.Add(new MisReservaDto(
+                x.Id, x.Numero, x.PublicToken ?? "", x.Estado,
+                x.ClienteNav?.Nombre ?? "—", x.ClienteNav?.Telefono, x.DireccionEvento,
+                x.FechaEntrega, x.FechaRetiro,
+                x.MontoTotal, Math.Max(0m, x.MontoTotal - x.Sena - x.MontoCobrado),
+                entregado, retirado, cargadoAt,
+                entregadoAtMio, retiradoAtMio,
+                x.Items.Select(i => new ItemDto(i.Cantidad, i.EquipoId.HasValue ? (i.EquipoNav?.Sku ?? "—") : "", i.EquipoId.HasValue ? (i.EquipoNav?.Nombre ?? "—") : (i.Descripcion ?? "—"))).ToList(),
+                paraRetiro,
+                string.IsNullOrWhiteSpace(x.MapeoLink) ? x.ClienteNav?.MapeoLink : x.MapeoLink));
+        }
+        list = list
             .OrderBy(x => x.Entregado && x.Retirado)        // pendientes arriba
             .ThenBy(x => x.FechaEntrega)
             .ToList();

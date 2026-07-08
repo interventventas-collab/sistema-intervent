@@ -140,6 +140,9 @@ public class AlqReservaDto
     public string? ComentarioRetiro { get; set; }
     public int? AsignadoARepartidorId { get; set; }
     public string? AsignadoARepartidorNombre { get; set; }
+    // Repartidor asignado para el RETIRO (aparte de la entrega). 2026-07-08
+    public int? AsignadoRetiroARepartidorId { get; set; }
+    public string? AsignadoRetiroARepartidorNombre { get; set; }
 
     // ===== ARCA — facturación (2026-07-04) =====
     public string TipoComprobante { get; set; } = "X";
