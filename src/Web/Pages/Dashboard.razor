@@ -311,10 +311,135 @@
     </div>
 }
 
-@* === Fila de KPIs financieros: Shell + Galicia + Ventas del mes + Saldos + Alquileres + Doc ===
+@* === 2026-07-08: Fila de 3 cards operativas (Preparación + Alquileres en calle + me1) ===
+   Pedido Osmar: van entre "Equipo trabajando ahora" y las cards financieras. Cuadradas y algo altas. *@
+<div class="dashboard-tres-cards">
+
+    @* Preparación de pedidos — resumen de /cafe/preparacion *@
+    <div class="dashboard-detail-card mac-stat-card accent-blue tres-card" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/cafe/preparacion")' title="Ir a Preparación de pedidos">
+        <div>
+            <div class="mac-card-header">
+                <div class="mac-card-iconbox" style="background:#eef2ff; color:#4f46e5;">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+                </div>
+                <span class="mac-card-eyebrow">Preparación de pedidos</span>
+            </div>
+            @if (prepParaArmar is null)
+            {
+                <div class="mac-card-sub">Cargando…</div>
+            }
+            else
+            {
+                <div class="mac-card-bignum">@prepParaArmar <span style="font-size:0.85rem; font-weight:400; color:#6b7280;">para armar</span></div>
+                <div class="mac-card-sub">pedidos subidos, esperando armado</div>
+                <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap;">
+                    <span style="font-size:0.72rem; font-weight:700; padding:0.12rem 0.5rem; border-radius:999px; background:#dcfce7; color:#166534;">✅ @prepArmadosHoy ya armados hoy</span>
+                </div>
+            }
+        </div>
+        <div class="tres-card-foot">Ver preparación ›</div>
+    </div>
+
+    @* Alquileres en calle — movida acá desde la fila financiera *@
+    <div class="dashboard-detail-card mac-stat-card accent-purple tres-card" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/alquileres/reservas")' title="Ir a Reservas de alquileres">
+        <div>
+            <div class="mac-card-header">
+                <div class="mac-card-iconbox" style="background:#ede9fe; color:#7c3aed;">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                </div>
+                <span class="mac-card-eyebrow">Alquileres en calle</span>
+            </div>
+            @if (alqResumen is null)
+            {
+                <div class="mac-card-sub">Cargando…</div>
+            }
+            else
+            {
+                <div class="mac-card-bignum">@alqResumen.EnCalle <span style="font-size:0.85rem; font-weight:400; color:#6b7280;">afuera</span></div>
+                <div class="mac-card-sub">$@FormatMoney(alqResumen.MontoEnCalle) en equipos</div>
+                <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap;">
+                    <span style="font-size:0.72rem; font-weight:700; padding:0.12rem 0.5rem; border-radius:999px; background:#ffedd5; color:#9a3412;">🔙 A retirar hoy: @alqResumen.ARetirarHoy</span>
+                    @if (alqResumen.Vencidos > 0)
+                    {
+                        <span style="font-size:0.72rem; font-weight:700; padding:0.12rem 0.5rem; border-radius:999px; background:#fee2e2; color:#b91c1c;">⚠ Vencidos: @alqResumen.Vencidos</span>
+                    }
+                    <span style="font-size:0.72rem; font-weight:600; padding:0.12rem 0.5rem; border-radius:999px; background:#f3f4f6; color:#374151;">Hoy: @alqResumen.EntregasHoy entregas</span>
+                </div>
+            }
+        </div>
+        <div class="tres-card-foot">Ver alquileres ›</div>
+    </div>
+
+    @* me1 · Entregas — resumen + asignar repartidor desde la card *@
+    <div class="dashboard-detail-card mac-stat-card accent-blue tres-card" style="position:relative;">
+        <div>
+            <div class="mac-card-header">
+                <div class="mac-card-iconbox" style="background:#e6f1fb; color:#185fa5;">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                </div>
+                <span class="mac-card-eyebrow">me1 · Entregas</span>
+            </div>
+            @if (me1List is null)
+            {
+                <div class="mac-card-sub">Cargando…</div>
+            }
+            else
+            {
+                <div class="mac-card-bignum">@me1EnCamino <span style="font-size:0.85rem; font-weight:400; color:#6b7280;">en camino</span></div>
+                <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
+                    <span style="font-size:0.72rem; font-weight:600; padding:0.12rem 0.5rem; border-radius:999px; background:#f1efe8; color:#444441;">@me1Pendientes pendientes</span>
+                    @if (me1NoEntregados > 0)
+                    {
+                        <span style="font-size:0.72rem; font-weight:700; padding:0.12rem 0.5rem; border-radius:999px; background:#fcebeb; color:#a32d2d;">@me1NoEntregados no entregados</span>
+                    }
+                </div>
+
+                @if (me1SinRepartidor.Count > 0)
+                {
+                    <div style="margin-top:12px; padding-top:10px; border-top:0.5px solid #eef0f2;">
+                        <div style="font-size:0.64rem; letter-spacing:0.03em; color:#9ca3af; text-transform:uppercase; margin-bottom:7px;">Sin repartidor — asigná acá</div>
+                        @foreach (var s in me1SinRepartidor.Take(4))
+                        {
+                            <div style="display:flex; align-items:center; gap:7px; margin-bottom:7px;">
+                                <span style="flex-shrink:0; width:24px; height:24px; border-radius:50%; background:#e6f1fb; color:#185fa5; display:flex; align-items:center; justify-content:center; font-size:0.62rem; font-weight:600;">@Me1Initials(s)</span>
+                                <div style="flex:1; min-width:0;">
+                                    <div style="font-size:0.76rem; font-weight:500; color:#111827; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">@(s.ReceiverName ?? s.BuyerNickname ?? "—")</div>
+                                    <div style="font-size:0.68rem; color:#9ca3af; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">@(s.City ?? s.AddressLine ?? "")</div>
+                                </div>
+                                <select class="form-input" style="height:28px; font-size:0.72rem; max-width:110px; padding:0 5px;"
+                                        value=""
+                                        @onchange="@(e => OnAsignarMe1(s, e.Value?.ToString()))"
+                                        disabled="@(me1BusyAsig == s.Id)">
+                                    <option value="">Asignar…</option>
+                                    @foreach (var r in me1Repartidores)
+                                    {
+                                        <option value="@r.Id">@r.Nombre</option>
+                                    }
+                                </select>
+                            </div>
+                        }
+                        @if (me1SinRepartidor.Count > 4)
+                        {
+                            <div style="font-size:0.68rem; color:#9ca3af;">+@(me1SinRepartidor.Count - 4) más en la pantalla</div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div style="margin-top:12px; font-size:0.74rem; color:#16a34a;">✅ Todos con repartidor asignado</div>
+                }
+            }
+        </div>
+        <div class="tres-card-foot" style="cursor:pointer;" @onclick='() => Navigation.NavigateTo("/meli/me1/entregas")'>Ver todos los envíos me1 ›</div>
+    </div>
+
+</div>
+
+@* === Fila de KPIs financieros: Shell + Galicia + Ventas del mes + Saldos + Doc ===
    2026-06-22: rediseño Mac — blanco con borde izquierdo de color, icono pastel, tipografia limpia.
    2026-07-04: MOVIDO ARRIBA de "Resumen del día" (pedido Osmar). Antes venia despues de
-   postits/balanza/stock y quedaba muy abajo. *@
+   postits/balanza/stock y quedaba muy abajo.
+   2026-07-08: la card "Alquileres en calle" se movió a la fila de 3 cards de arriba. *@
 <div class="dashboard-cards-row">
     @* 2026-07-04: Shell Flota + Saldo Banco Galicia van PRIMERO. *@
     @* Shell Flota — saldo disponible (robot lee el saldo solo) *@
@@ -542,34 +667,6 @@
         {
             <div class="mac-card-bignum">@(SaldoOculto("saldos-clientes") ? "$ ••••••" : $"${FormatMoney(salesSummary.ClientBalanceTotal)}")</div>
             <div class="mac-card-sub">@salesSummary.ClientsWithBalance cliente@(salesSummary.ClientsWithBalance == 1 ? "" : "s") · @salesSummary.ClientBalanceCount sin pagar</div>
-        }
-    </div>
-
-    @* Alquileres en calle — 2026-06-26 *@
-    <div class="dashboard-detail-card mac-stat-card accent-purple" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/alquileres/reservas")' title="Ir a Reservas de alquileres">
-        <CustomCardOverlay CardKey="alquileres-en-calle" Settings="@cardCustomSettings" />
-        <div class="mac-card-header">
-            <div class="mac-card-iconbox" style="background:#ede9fe; color:#7c3aed;">
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-            </div>
-            <span class="mac-card-eyebrow" style="color:#3f3f46;">Alquileres en calle</span>
-        </div>
-        @if (alqResumen is null)
-        {
-            <div class="mac-card-sub">Cargando…</div>
-        }
-        else
-        {
-            <div class="mac-card-bignum">@alqResumen.EnCalle <span style="font-size:0.85rem; font-weight:400; color:#6b7280;">afuera</span></div>
-            <div class="mac-card-sub">$@FormatMoney(alqResumen.MontoEnCalle) en equipos</div>
-            <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
-                <span style="font-size:0.72rem; font-weight:700; padding:0.12rem 0.5rem; border-radius:999px; background:#ffedd5; color:#9a3412;">🔙 A retirar hoy: @alqResumen.ARetirarHoy</span>
-                @if (alqResumen.Vencidos > 0)
-                {
-                    <span style="font-size:0.72rem; font-weight:700; padding:0.12rem 0.5rem; border-radius:999px; background:#fee2e2; color:#b91c1c;">⚠ Vencidos: @alqResumen.Vencidos</span>
-                }
-                <span style="font-size:0.72rem; font-weight:600; padding:0.12rem 0.5rem; border-radius:999px; background:#f3f4f6; color:#374151;">Hoy: @alqResumen.EntregasHoy entregas</span>
-            </div>
         }
     </div>
 
@@ -1040,6 +1137,24 @@
         flex-direction: column;
         justify-content: space-between;
     }
+    /* 2026-07-08: fila de 3 cards operativas (cuadradas, un poco mas altas) */
+    .dashboard-tres-cards {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1.5rem;
+        margin-top: 1.5rem;
+    }
+    @@media (max-width: 900px) {
+        .dashboard-tres-cards { grid-template-columns: 1fr; }
+    }
+    .tres-card { min-height: 236px; }
+    .tres-card-foot {
+        font-size: 0.75rem;
+        color: #2563eb;
+        margin-top: 12px;
+        font-weight: 500;
+    }
+
     .mac-stat-card.accent-green { border-left-color: #16a34a !important; }
     .mac-stat-card.accent-red   { border-left-color: #dc2626 !important; }
     .mac-stat-card.accent-purple{ border-left-color: #7c3aed !important; }
@@ -1283,6 +1398,79 @@
     private SalesSummaryDto? salesSummary;
     private System.Threading.Timer? alqResumenTimer;
     private AlqDashboardResumen? alqResumen;
+
+    // 2026-07-08: datos de las 3 cards operativas nuevas (Preparación + me1)
+    private System.Threading.Timer? tresCardsTimer;
+    private int? prepParaArmar;
+    private int? prepArmadosHoy;
+    private List<MeliMe1ShipmentDto>? me1List;
+    private List<RepartidorDto> me1Repartidores = new();
+    private int? me1BusyAsig;
+
+    private static bool Me1EsPendiente(MeliMe1ShipmentDto s)
+        => s.Status != "delivered" && s.Status != "not_delivered" && s.Status != "cancelled";
+    private int me1EnCamino => me1List?.Count(s => s.Status == "shipped") ?? 0;
+    private int me1Pendientes => me1List?.Count(Me1EsPendiente) ?? 0;
+    private int me1NoEntregados => me1List?.Count(s => s.Status == "not_delivered") ?? 0;
+    private List<MeliMe1ShipmentDto> me1SinRepartidor =>
+        me1List?.Where(s => Me1EsPendiente(s) && s.RepartidorAsignadoId == null).ToList() ?? new();
+
+    private static string Me1Initials(MeliMe1ShipmentDto s)
+    {
+        var name = s.ReceiverName ?? s.BuyerNickname ?? "?";
+        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return "?";
+        if (parts.Length == 1) return parts[0].Substring(0, Math.Min(2, parts[0].Length)).ToUpperInvariant();
+        return (parts[0].Substring(0, 1) + parts[1].Substring(0, 1)).ToUpperInvariant();
+    }
+
+    private async Task LoadPrepResumenAsync()
+    {
+        try
+        {
+            var para = await Api.GetCafePreparacionAsync(7);
+            var arm = await Api.GetCafePreparacionArmadosAsync("hoy");
+            prepParaArmar = para?.Count ?? 0;
+            prepArmadosHoy = arm?.Count ?? 0;
+            StateHasChanged();
+        }
+        catch { /* si falla, la card queda en "Cargando…" y reintenta en la proxima vuelta */ }
+    }
+
+    private async Task LoadMe1CardAsync()
+    {
+        try
+        {
+            if (me1Repartidores.Count == 0)
+            {
+                var reps = await Api.GetRepartidoresAsync();
+                me1Repartidores = (reps ?? new()).Where(r => r.IsActive).ToList();
+            }
+            me1List = await Api.GetMeliMe1ShipmentsAsync("todos") ?? new();
+            StateHasChanged();
+        }
+        catch { /* idem */ }
+    }
+
+    private async Task OnAsignarMe1(MeliMe1ShipmentDto s, string? value)
+    {
+        int? repId = int.TryParse(value, out var v) ? v : (int?)null;
+        if (repId is null) return;
+        me1BusyAsig = s.Id;
+        try
+        {
+            var ok = await Api.AsignarRepartidorMe1Async(s.Id, repId);
+            if (ok)
+            {
+                s.RepartidorAsignadoId = repId;
+                s.RepartidorAsignadoNombre = me1Repartidores.FirstOrDefault(r => r.Id == repId)?.Nombre;
+                ToastService.Success($"✓ Asignado a {s.RepartidorAsignadoNombre}");
+            }
+            else ToastService.Error("No se pudo asignar el repartidor");
+        }
+        catch (Exception ex) { ToastService.Error($"Error: {ex.Message}"); }
+        finally { me1BusyAsig = null; }
+    }
     private Web.Models.SaldoBancoDto? saldoBanco;
     private Web.Models.ShellAccountDto? shellSaldo;
     private Web.Models.MpAccountDto? mpSaldo;
@@ -1361,6 +1549,15 @@
         _ = LoadAlqResumenAsync();
         alqResumenTimer = new System.Threading.Timer(_ => InvokeAsync(LoadAlqResumenAsync), null,
             TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
+
+        // 2026-07-08: cards nuevas Preparación + me1 (refrescan cada 60s)
+        _ = LoadPrepResumenAsync();
+        _ = LoadMe1CardAsync();
+        tresCardsTimer = new System.Threading.Timer(_ => InvokeAsync(async () =>
+        {
+            await LoadPrepResumenAsync();
+            await LoadMe1CardAsync();
+        }), null, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
 
         // 2026-06-25: equipo trabajando ahora (refresca cada 30s) + resumen del día (cada 60s)
         _ = LoadEquipoAsync();
@@ -1722,6 +1919,7 @@
         coffeeTimer?.Dispose();
         salesSummaryTimer?.Dispose();
         alqResumenTimer?.Dispose();
+        tresCardsTimer?.Dispose();
         equipoTimer?.Dispose();
         resumenDiaTimer?.Dispose();
         // 2026-07-04: liberar timers del auto-hide de saldos (5min)
