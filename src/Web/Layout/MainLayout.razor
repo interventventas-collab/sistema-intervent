@@ -142,6 +142,32 @@
     .topbar-action-primary:hover { background: #1f2937; }
     .topbar-action-primary:active { transform: scale(0.97); }
 
+    /* 2026-07-08: tres accesos rapidos con color por modulo (Venta / Alquiler / Cobranza) */
+    .tb-nuevo-group { display: inline-flex; align-items: center; gap: 0.4rem; }
+    .tb-nuevo {
+        border: none; color: white; height: 40px;
+        padding: 0 0.7rem; border-radius: 6px;
+        font-family: inherit; font-size: 0.82rem; font-weight: 600;
+        cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem;
+        line-height: 1; white-space: nowrap;
+        transition: background 0.12s ease, transform 0.06s ease;
+    }
+    .tb-nuevo:active { transform: scale(0.97); }
+    .tb-nuevo .ic { font-size: 1rem; }
+    .tb-nuevo .keys { display: inline-flex; gap: 3px; }
+    .tb-nuevo .kbd {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.64rem; font-weight: 700;
+        padding: 1px 4px; border-radius: 3px; background: rgba(255,255,255,0.2);
+    }
+    .tb-nuevo-venta { background: #111827; } .tb-nuevo-venta:hover { background: #1f2937; }
+    .tb-nuevo-alq   { background: #2563eb; } .tb-nuevo-alq:hover   { background: #1d4ed8; }
+    .tb-nuevo-cob   { background: #059669; } .tb-nuevo-cob:hover   { background: #047857; }
+    /* Pantallas chicas: solo el icono (en el celu no hay teclado fisico) */
+    @@media (max-width: 900px) {
+        .tb-nuevo .lbl, .tb-nuevo .keys { display: none; }
+        .tb-nuevo { padding: 0 0.55rem; }
+    }
+
     /* Accion secundaria — borde fino, fondo blanco */
     .topbar-action-secondary {
         background: white;
@@ -1171,14 +1197,28 @@
                 @* Separador visual entre navegacion y acciones primarias *@
                 <div class="topbar-divider-modern"></div>
 
-                @* ACCIONES PRIMARIAS — Nueva Venta es la principal (oscura). Nueva Cobranza la sigue (borde fino) *@
-                <button class="topbar-action-primary"
-                        @onclick="OpenNuevaVentaShortcut"
-                        title="Cargar una venta nueva (atajo)"
-                        aria-label="Nueva venta">
-                    @SvgIcons.Plus
-                    <span>Nueva venta</span>
-                </button>
+                @* ACCIONES PRIMARIAS — 2026-07-08: tres accesos rapidos con color por modulo.
+                   Venta (oscuro), Alquiler (azul), Cobranza (verde). Cada uno muestra su atajo de teclado. *@
+                <div class="tb-nuevo-group">
+                    <button class="tb-nuevo tb-nuevo-venta" @onclick='() => NuevoRapido("venta")'
+                            title="Nueva venta — atajo: apretá N y después V" aria-label="Nueva venta">
+                        <span class="ic" aria-hidden="true">🛒</span>
+                        <span class="lbl">Venta</span>
+                        <span class="keys"><span class="kbd">N</span><span class="kbd">V</span></span>
+                    </button>
+                    <button class="tb-nuevo tb-nuevo-alq" @onclick='() => NuevoRapido("alquiler")'
+                            title="Nueva reserva de alquiler — atajo: apretá N y después A" aria-label="Nueva reserva de alquiler">
+                        <span class="ic" aria-hidden="true">📅</span>
+                        <span class="lbl">Alquiler</span>
+                        <span class="keys"><span class="kbd">N</span><span class="kbd">A</span></span>
+                    </button>
+                    <button class="tb-nuevo tb-nuevo-cob" @onclick='() => NuevoRapido("cobranza")'
+                            title="Nueva cobranza — atajo: apretá N y después C" aria-label="Nueva cobranza">
+                        <span class="ic" aria-hidden="true">💵</span>
+                        <span class="lbl">Cobranza</span>
+                        <span class="keys"><span class="kbd">N</span><span class="kbd">C</span></span>
+                    </button>
+                </div>
                 @* 2026-06-29: el boton 'Cobranzas' suelto se movio al dropdown Ventas (abajo de Ventas) *@
                 @* 2026-06-19: boton WhatsApp llamativo verde — chat Twilio para pedidos de hermanos/empleados *@
                 @* 2026-06-23: si Playwright esta linked -> va al chat. Si NO -> abre modal QR directo. *@
@@ -1898,7 +1938,23 @@
     [JSInvokable]
     public Task HandleNuevoShortcut(string action)
     {
-        switch (action)
+        if (action == "help")
+        {
+            showShortcutsHelp = !showShortcutsHelp;
+            InvokeAsync(StateHasChanged);
+        }
+        else
+        {
+            NuevoRapido(action);
+        }
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Abre el formulario de creación según el tipo. Lo usan tanto los tres botones
+    /// de la barra como los atajos de teclado (N+V / N+A / N+C).</summary>
+    private void NuevoRapido(string tipo)
+    {
+        switch (tipo)
         {
             case "venta":
                 OpenNuevaVentaShortcut();
@@ -1909,12 +1965,7 @@
             case "cobranza":
                 Navigation.NavigateTo("/cafe/tesoreria/cobranzas?nueva=1");
                 break;
-            case "help":
-                showShortcutsHelp = !showShortcutsHelp;
-                InvokeAsync(StateHasChanged);
-                break;
         }
-        return Task.CompletedTask;
     }
 
     /// <summary>Atajo del FAB "Nueva Venta": si ya estamos en /cafe/ventas, emitimos
