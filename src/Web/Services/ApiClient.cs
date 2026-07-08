@@ -2366,6 +2366,10 @@ public class ApiClient
     public async Task<CoffeeStockKgDto?> GetCoffeeStockKgAsync()
         => await GetAsync<CoffeeStockKgDto>("/api/dashboard/coffee-stock-kg");
 
+    /// <summary>2026-07-08: espacio en disco del servidor (lo registra el robot de las 2 AM).</summary>
+    public async Task<DiskUsageDto?> GetDiskUsageAsync()
+        => await GetAsync<DiskUsageDto>("/api/dashboard/disk-usage");
+
     /// <summary>Resumen financiero (ventas del mes + saldos a cobrar de clientes).</summary>
     public async Task<SalesSummaryDto?> GetSalesSummaryAsync()
         => await GetAsync<SalesSummaryDto>("/api/dashboard/sales-summary");

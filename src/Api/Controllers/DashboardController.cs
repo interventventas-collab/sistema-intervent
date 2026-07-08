@@ -137,6 +137,24 @@ public class DashboardController : ControllerBase
     }
 
     /// <summary>
+    /// 2026-07-08: Espacio en disco del servidor para el chip del dashboard.
+    /// La API a propósito NO ve el disco del host (el container no monta /proc por
+    /// seguridad), así que NO lo calcula acá. El robot de limpieza de las 2 AM
+    /// (/usr/local/bin/docker-cache-cleanup.sh) mide el disco por fuera y lo guarda en
+    /// AppSettings['system.disk.stats'] como JSON ({totalGb,usedGb,freeGb,pct,at}).
+    /// Este endpoint solo devuelve ese JSON tal cual (o null si todavía no se registró).
+    /// </summary>
+    [HttpGet("disk-usage")]
+    public async Task<IActionResult> GetDiskUsage()
+    {
+        var s = await _db.AppSettings.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Key == "system.disk.stats");
+        if (s is null || string.IsNullOrWhiteSpace(s.Value))
+            return Ok((object?)null);
+        return Content(s.Value, "application/json");
+    }
+
+    /// <summary>
     /// Resumen financiero del dashboard, vinculado al módulo Café (Cafe_Ventas):
     /// - Ventas del mes en curso (suma de Total + cantidad de comprobantes,
     ///   incluye cotización/proforma/FA/FB/FC, excluye anuladas).

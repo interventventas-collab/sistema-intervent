@@ -1252,7 +1252,9 @@ button {
 .topbar-actions {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  /* 2026-07-08: se subió el gap (0.5→0.65rem) para dar más aire entre los items del
+     menú, ahora que se les sacó el grupo de iconitos y el badge de Cheches. */
+  gap: 0.65rem;
   /* 2026-06-29: cuando se agranda la fuente o se hace Ctrl+ los items hacen wrap
      a la siguiente linea en lugar de quedar ocultos detras del viewport. */
   flex-wrap: wrap;

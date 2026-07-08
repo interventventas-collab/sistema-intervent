@@ -22,51 +22,9 @@
 {
 @* 2026-06-22: rediseño Mac/iOS — tarjetas blancas, bordes finos, iconos SVG uniformes.
    Las acciones y dropdowns NO cambian: misma logica, mismas rutas. *@
-@* 2026-06-25: cards "Operador", "Hora" y "Dólar" grandes se sacaron del dashboard.
-   El nombre del operador y la hora viven ahora en el topbar; el dólar va en el strip mini
-   de arriba. Lo que importa al arrancar el día (equipo + cheques + Meli) sube de prioridad. *@
-
-@* ═══ Strip mini de stats: dólar + balanza + stock (compacto, ocupa 1 línea) ═══ *@
-<div class="dash-strip">
-    <div class="dash-strip-item">
-        <div class="dash-strip-ico" style="background:#eaf3de; color:#16a34a;">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
-        </div>
-        <div class="dash-strip-body">
-            <span class="dash-strip-label">Dólar BNA @(dolar?.Fecha is null ? "" : "· " + dolar.Fecha)</span>
-            @if (dolar is not null && dolar.Compra is not null && dolar.Venta is not null)
-            {
-                <span class="dash-strip-value">
-                    <span style="color:#16a34a;">$@FormatMoney(dolar.Compra.Value)</span>
-                    <span style="color:#9ca3af; margin:0 4px;">/</span>
-                    <span style="color:#dc2626;">$@FormatMoney(dolar.Venta.Value)</span>
-                </span>
-            }
-            else
-            {
-                <span class="dash-strip-value" style="color:#9ca3af;">…</span>
-            }
-        </div>
-    </div>
-    <div class="dash-strip-item">
-        <div class="dash-strip-ico" style="background:#faeeda; color:#d97706;">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20h10"/><path d="M6 6l6-1l6 1"/><path d="M12 3v17"/><path d="M9 12L6 6l-3 6a3 3 0 006 0z"/><path d="M21 12l-3-6l-3 6a3 3 0 006 0z"/></svg>
-        </div>
-        <div class="dash-strip-body">
-            <span class="dash-strip-label">Balanza @(coffeeKg is not null ? coffeeKg.PeriodStart.ToString("MMM", new System.Globalization.CultureInfo("es-AR")) : "")</span>
-            <span class="dash-strip-value">@(coffeeKg is null ? "…" : $"{FormatKg(coffeeKg.KgTotal)} kg")</span>
-        </div>
-    </div>
-    <div class="dash-strip-item">
-        <div class="dash-strip-ico" style="background:#eaf3de; color:#16a34a;">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0022 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/></svg>
-        </div>
-        <div class="dash-strip-body">
-            <span class="dash-strip-label">Stock total @(coffeeStock is null ? "" : $"· {coffeeStock.VariedadesConStock}/{coffeeStock.Variedades} variedades")</span>
-            <span class="dash-strip-value">@(coffeeStock is null ? "…" : $"{FormatKg(coffeeStock.KgTotal)} kg")</span>
-        </div>
-    </div>
-</div>
+@* 2026-07-08: la tira mini (dólar + disco) se movió a la fila de chips de arriba de todo
+   (MainLayout .topstrip), junto con empresa/usuario y el reloj. El dashboard arranca directo
+   en el contenido. Balanza y Stock ya viven en su tarjeta detallada más abajo. *@
 
 @* ═══ Card: equipo trabajando ahora ═══ *@
 <div class="dash-card">
@@ -1011,12 +969,6 @@
 
 <style>
     /* ═══════════════ 2026-06-25 — Dashboard nuevo: strip mini + equipo + resumen ═══════════════ */
-    .dash-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 14px; }
-    .dash-strip-item { background: #ffffff; border: 0.5px solid rgba(0,0,0,0.08); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; }
-    .dash-strip-ico { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .dash-strip-body { display: flex; flex-direction: column; min-width: 0; }
-    .dash-strip-label { font-size: 0.68rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; }
-    .dash-strip-value { font-size: 0.95rem; font-weight: 500; color: #1f2937; font-variant-numeric: tabular-nums; }
 
     .dash-card { background: #ffffff; border: 0.5px solid rgba(0,0,0,0.08); border-radius: 14px; padding: 14px 16px; margin-bottom: 14px; }
     .dash-card-title { display: flex; align-items: center; gap: 8px; font-size: 0.95rem; font-weight: 500; margin: 0 0 12px; color: #1f2937; }
@@ -1506,12 +1458,10 @@
         && !userPermissions.Contains("oficina");
 
     // Widgets nuevos
-    private DolarBnaDto? dolar;
-    private bool dolarLoading = true;
+    // 2026-07-08: dólar y disco se movieron a los chips de arriba (MainLayout .topstrip).
     private DateTime arTime;
     private DateTime esTime;
     private System.Threading.Timer? clockTimer;
-    private System.Threading.Timer? quoteTimer;
     private System.Threading.Timer? coffeeTimer;
     private CoffeeMonthlyKgDto? coffeeKg;
     // 2026-06-05: histórico balanza (tooltip al hover)
@@ -1764,10 +1714,7 @@
             StateHasChanged();
         }), null, 1000, 1000);
 
-        // Cargar cotizacion dolar BNA y refrescar cada 5 minutos.
-        _ = LoadDolarAsync();
-        quoteTimer = new System.Threading.Timer(_ => InvokeAsync(LoadDolarAsync), null,
-            TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
+        // 2026-07-08: dólar BNA y disco se cargan ahora en MainLayout (chips de arriba).
 
         // Contador de café FRIKAF vendido en el mes: cargar y refrescar cada 30 segundos
         _ = LoadCoffeeKgAsync();
@@ -1924,20 +1871,6 @@
         var nowUtc = DateTime.UtcNow;
         arTime = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, ArgentinaTz);
         esTime = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, SpainTz);
-    }
-
-    private async Task LoadDolarAsync()
-    {
-        try
-        {
-            dolar = await Api.GetDolarBnaAsync();
-        }
-        catch (Exception ex)
-        {
-            dolar = new DolarBnaDto { Error = ex.Message };
-        }
-        dolarLoading = false;
-        StateHasChanged();
     }
 
     private async Task LoadCoffeeKgAsync()
@@ -2160,7 +2093,6 @@
     public void Dispose()
     {
         clockTimer?.Dispose();
-        quoteTimer?.Dispose();
         coffeeTimer?.Dispose();
         salesSummaryTimer?.Dispose();
         alqResumenTimer?.Dispose();
