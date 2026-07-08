@@ -302,9 +302,10 @@ public class ContadoraService
     private static void ParseFactura(JsonElement root, MeliFactura fac)
     {
         fac.Status = GetStr(root, "status") ?? "authorized";
-        if (root.TryGetProperty("id", out var idEl) && idEl.TryGetInt64(out var invId)) fac.InvoiceId = invId;
-        if (root.TryGetProperty("invoice_series", out var se) && se.TryGetInt32(out var serie)) fac.PuntoVenta = serie;
-        if (root.TryGetProperty("invoice_number", out var nu) && nu.TryGetInt64(out var num)) fac.NumeroComprobante = num;
+        fac.InvoiceId = LongOf(root, "id") ?? 0;
+        var serie = LongOf(root, "invoice_series");
+        if (serie.HasValue) fac.PuntoVenta = (int)serie.Value;
+        fac.NumeroComprobante = LongOf(root, "invoice_number");
         if (root.TryGetProperty("issued_date", out var isd) && isd.ValueKind == JsonValueKind.String
             && DateTime.TryParse(isd.GetString(), null, System.Globalization.DateTimeStyles.AdjustToUniversal, out var fe))
             fac.FechaEmision = fe;
@@ -328,7 +329,7 @@ public class ContadoraService
         fac.Letra = (tt.Contains("RESPONSABLE") || tt.Contains("INSCRIPTO")) ? "A" : "B";
 
         // Importes desde fiscal_data.fiscal_amounts.
-        if (root.TryGetProperty("amount", out var am) && am.TryGetDecimal(out var total)) fac.Total = total;
+        fac.Total = DecProp(root, "amount") ?? 0m;
         decimal iva = 0m; decimal? neto = null;
         if (root.TryGetProperty("fiscal_data", out var fd) && fd.TryGetProperty("fiscal_amounts", out var fa)
             && fa.ValueKind == JsonValueKind.Array)
@@ -337,10 +338,8 @@ public class ContadoraService
             {
                 var name = GetStr(el, "name");
                 if (!el.TryGetProperty("attributes", out var at)) continue;
-                if (name == "IVA" && at.TryGetProperty("viva", out var viva) && viva.TryGetDecimal(out var vivaV))
-                    iva += vivaV;
-                else if (name == "original_value" && at.TryGetProperty("value", out var ov) && ov.TryGetDecimal(out var ovV))
-                    neto = ovV;
+                if (name == "IVA") iva += DecProp(at, "viva") ?? 0m;
+                else if (name == "original_value") neto = DecProp(at, "value");
             }
         }
         fac.Iva = iva;
@@ -352,6 +351,25 @@ public class ContadoraService
 
     private static string? GetStr(JsonElement el, string prop)
         => el.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
+    /// <summary>Lee un entero largo que MeLi puede mandar como numero O como texto.</summary>
+    private static long? LongOf(JsonElement el, string prop)
+    {
+        if (!el.TryGetProperty(prop, out var v)) return null;
+        if (v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out var n)) return n;
+        if (v.ValueKind == JsonValueKind.String && long.TryParse(v.GetString(), out var s)) return s;
+        return null;
+    }
+
+    /// <summary>Lee un decimal que MeLi puede mandar como numero O como texto.</summary>
+    private static decimal? DecProp(JsonElement el, string prop)
+    {
+        if (!el.TryGetProperty(prop, out var v)) return null;
+        if (v.ValueKind == JsonValueKind.Number && v.TryGetDecimal(out var n)) return n;
+        if (v.ValueKind == JsonValueKind.String && decimal.TryParse(v.GetString(),
+                System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var s)) return s;
+        return null;
+    }
 
     /// <summary>Empresas (CUIT emisor) que aparecen en las facturas bajadas, para el filtro "por empresa".</summary>
     public async Task<List<ContadoraEmpresaDto>> GetEmpresasAsync()
