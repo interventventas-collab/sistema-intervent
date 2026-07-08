@@ -355,12 +355,12 @@
     private async Task TraerFacturas()
     {
         if (bfIva) return;
-        bfIva = true; bfTot = 0; bfPend = 0;
+        bfIva = true; bfTot = iva?.Pendientes ?? 0; bfPend = bfTot;
         try
         {
             while (true)
             {
-                var r = await Api.BackfillFacturasAsync(120);
+                var r = await Api.BackfillFacturasAsync(40);
                 if (r is null) { ToastService.Error("No se pudo actualizar."); break; }
                 if (bfTot == 0) bfTot = r.PendientesAntes;
                 bfPend = r.Pendientes; StateHasChanged();
