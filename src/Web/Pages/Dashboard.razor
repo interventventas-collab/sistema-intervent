@@ -316,13 +316,15 @@
 <div class="dashboard-tres-cards">
 
     @* Preparación de pedidos — resumen de /cafe/preparacion *@
-    <div class="dashboard-detail-card mac-stat-card accent-blue tres-card" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/cafe/preparacion")' title="Ir a Preparación de pedidos">
+    <div class="dashboard-detail-card mac-stat-card accent-blue tres-card @(prepOpen ? "" : "tres-collapsed")" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/cafe/preparacion")' title="Ir a Preparación de pedidos">
         <div>
             <div class="mac-card-header">
                 <div class="mac-card-iconbox" style="background:#eef2ff; color:#4f46e5;">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
                 </div>
                 <span class="mac-card-eyebrow">Preparación de pedidos</span>
+                <button class="tres-toggle" @onclick:stopPropagation="true" @onclick='() => ToggleCard("prep")'
+                        title="@(prepOpen ? "Plegar" : "Desplegar")" aria-label="@(prepOpen ? "Plegar" : "Desplegar")">@(prepOpen ? "▾" : "▸")</button>
             </div>
             @if (prepParaArmar is null)
             {
@@ -335,19 +337,44 @@
                 <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap;">
                     <span style="font-size:0.72rem; font-weight:700; padding:0.12rem 0.5rem; border-radius:999px; background:#dcfce7; color:#166534;">✅ @prepArmadosHoy ya armados hoy</span>
                 </div>
+                @if (prepOpen && prepList is not null && prepList.Count > 0)
+                {
+                    <div class="tres-detalle">
+                        <div class="tres-detalle-hd">Para armar</div>
+                        @foreach (var p in prepList.Take(5))
+                        {
+                            <div class="tres-row">
+                                <span class="tres-row-main">
+                                    <span class="tres-row-t">@p.ClienteNombre</span>
+                                    <span class="tres-row-s">@p.Numero</span>
+                                </span>
+                                <span class="tres-row-val">$@FormatMoney(p.Total)</span>
+                            </div>
+                        }
+                        @if (prepList.Count > 5)
+                        {
+                            <div class="tres-more">+@(prepList.Count - 5) más</div>
+                        }
+                    </div>
+                }
             }
         </div>
-        <div class="tres-card-foot">Ver preparación ›</div>
+        @if (prepOpen)
+        {
+            <div class="tres-card-foot">Ver preparación ›</div>
+        }
     </div>
 
     @* Alquileres en calle — movida acá desde la fila financiera *@
-    <div class="dashboard-detail-card mac-stat-card accent-purple tres-card" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/alquileres/reservas")' title="Ir a Reservas de alquileres">
+    <div class="dashboard-detail-card mac-stat-card accent-purple tres-card @(alqOpen ? "" : "tres-collapsed")" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/alquileres/reservas")' title="Ir a Reservas de alquileres">
         <div>
             <div class="mac-card-header">
                 <div class="mac-card-iconbox" style="background:#ede9fe; color:#7c3aed;">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
                 </div>
                 <span class="mac-card-eyebrow">Alquileres en calle</span>
+                <button class="tres-toggle" @onclick:stopPropagation="true" @onclick='() => ToggleCard("alq")'
+                        title="@(alqOpen ? "Plegar" : "Desplegar")" aria-label="@(alqOpen ? "Plegar" : "Desplegar")">@(alqOpen ? "▾" : "▸")</button>
             </div>
             @if (alqResumen is null)
             {
@@ -365,19 +392,45 @@
                     }
                     <span style="font-size:0.72rem; font-weight:600; padding:0.12rem 0.5rem; border-radius:999px; background:#f3f4f6; color:#374151;">Hoy: @alqResumen.EntregasHoy entregas</span>
                 </div>
+                @if (alqOpen && alqEnCalleList is not null && alqEnCalleList.Count > 0)
+                {
+                    <div class="tres-detalle">
+                        <div class="tres-detalle-hd">En calle</div>
+                        @foreach (var r in alqEnCalleList.Take(5))
+                        {
+                            var tag = AlqRetiroTag(r);
+                            <div class="tres-row">
+                                <span class="tres-row-main">
+                                    <span class="tres-row-t">@r.ClienteNombre</span>
+                                    <span class="tres-row-s">@r.Numero</span>
+                                </span>
+                                <span style="font-size:0.62rem; font-weight:700; padding:0.1rem 0.45rem; border-radius:999px; white-space:nowrap; background:@tag.bg; color:@tag.txt;">@tag.label</span>
+                            </div>
+                        }
+                        @if (alqEnCalleList.Count > 5)
+                        {
+                            <div class="tres-more">+@(alqEnCalleList.Count - 5) más</div>
+                        }
+                    </div>
+                }
             }
         </div>
-        <div class="tres-card-foot">Ver alquileres ›</div>
+        @if (alqOpen)
+        {
+            <div class="tres-card-foot">Ver alquileres ›</div>
+        }
     </div>
 
     @* me1 · Entregas — resumen + asignar repartidor desde la card *@
-    <div class="dashboard-detail-card mac-stat-card accent-blue tres-card" style="position:relative;">
+    <div class="dashboard-detail-card mac-stat-card accent-blue tres-card @(me1Open ? "" : "tres-collapsed")" style="position:relative;">
         <div>
             <div class="mac-card-header">
                 <div class="mac-card-iconbox" style="background:#e6f1fb; color:#185fa5;">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
                 </div>
                 <span class="mac-card-eyebrow">me1 · Entregas</span>
+                <button class="tres-toggle" @onclick:stopPropagation="true" @onclick='() => ToggleCard("me1")'
+                        title="@(me1Open ? "Plegar" : "Desplegar")" aria-label="@(me1Open ? "Plegar" : "Desplegar")">@(me1Open ? "▾" : "▸")</button>
             </div>
             @if (me1List is null)
             {
@@ -394,7 +447,7 @@
                     }
                 </div>
 
-                @if (me1SinRepartidor.Count > 0)
+                @if (me1Open && me1SinRepartidor.Count > 0)
                 {
                     <div style="margin-top:12px; padding-top:10px; border-top:0.5px solid #eef0f2;">
                         <div style="font-size:0.64rem; letter-spacing:0.03em; color:#9ca3af; text-transform:uppercase; margin-bottom:7px;">Sin repartidor — asigná acá</div>
@@ -449,13 +502,16 @@
                         }
                     </div>
                 }
-                else
+                else if (me1Open)
                 {
                     <div style="margin-top:12px; font-size:0.74rem; color:#16a34a;">✅ Todos con repartidor asignado</div>
                 }
             }
         </div>
-        <div class="tres-card-foot" style="cursor:pointer;" @onclick='() => Navigation.NavigateTo("/meli/me1/entregas")'>Ver todos los envíos me1 ›</div>
+        @if (me1Open)
+        {
+            <div class="tres-card-foot" style="cursor:pointer;" @onclick='() => Navigation.NavigateTo("/meli/me1/entregas")'>Ver todos los envíos me1 ›</div>
+        }
     </div>
 
 </div>
@@ -1173,12 +1229,29 @@
         .dashboard-tres-cards { grid-template-columns: 1fr; }
     }
     .tres-card { min-height: 236px; }
+    .tres-card.tres-collapsed { min-height: 0; }
     .tres-card-foot {
         font-size: 0.75rem;
         color: #2563eb;
         margin-top: 12px;
         font-weight: 500;
     }
+    /* 2026-07-08: plegar/desplegar cards + detalle (listita) */
+    .tres-toggle {
+        margin-left: auto; border: 1px solid #e5e7eb; background: #fff; border-radius: 6px;
+        width: 22px; height: 22px; color: #6b7280; cursor: pointer; font-size: 0.7rem; line-height: 1;
+        display: inline-flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0;
+    }
+    .tres-toggle:hover { background: #f3f4f6; }
+    .tres-detalle { border-top: 1px solid #eef0f2; padding-top: 10px; margin-top: 12px; }
+    .tres-detalle-hd { font-size: 0.6rem; letter-spacing: 0.03em; color: #9ca3af; text-transform: uppercase; margin-bottom: 8px; }
+    .tres-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f3f4f6; }
+    .tres-row:last-child { border-bottom: none; }
+    .tres-row-main { flex: 1; min-width: 0; }
+    .tres-row-t { display: block; font-size: 0.75rem; font-weight: 600; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tres-row-s { display: block; font-size: 0.68rem; color: #9ca3af; }
+    .tres-row-val { font-size: 0.75rem; font-weight: 600; color: #111827; white-space: nowrap; }
+    .tres-more { font-size: 0.68rem; color: #9ca3af; margin-top: 6px; }
 
     .mac-stat-card.accent-green { border-left-color: #16a34a !important; }
     .mac-stat-card.accent-red   { border-left-color: #dc2626 !important; }
@@ -1428,9 +1501,58 @@
     private System.Threading.Timer? tresCardsTimer;
     private int? prepParaArmar;
     private int? prepArmadosHoy;
+    private List<CafePreparacionVentaDto>? prepList;         // detalle "para armar" al desplegar
+    private List<AlqReservaDto>? alqEnCalleList;             // detalle "en calle" al desplegar
+    // 2026-07-08: plegar/desplegar cada card (arrancan desplegadas; se recuerda por navegador)
+    private bool prepOpen = true, alqOpen = true, me1Open = true;
+    private bool tresCollapseCargado;
     private List<MeliMe1ShipmentDto>? me1List;
     private List<RepartidorDto> me1Repartidores = new();
     private int? me1BusyAsig;
+
+    /// <summary>Etiqueta del retiro de un alquiler en calle: vencido (rojo), hoy (naranja) o próximo (gris).</summary>
+    private (string bg, string txt, string label) AlqRetiroTag(AlqReservaDto r)
+    {
+        var hoy = DateTime.Today;
+        if (r.FechaRetiro.Date < hoy) return ("#fee2e2", "#b91c1c", $"Vencido {r.FechaRetiro:dd/MM}");
+        if (r.FechaRetiro.Date == hoy) return ("#ffedd5", "#9a3412", "Retira hoy");
+        return ("#f3f4f6", "#374151", $"Retira {r.FechaRetiro:dd/MM}");
+    }
+
+    /// <summary>Pliega/despliega una card y recuerda el estado en el navegador de cada usuario.</summary>
+    private async Task ToggleCard(string which)
+    {
+        string key; bool val;
+        switch (which)
+        {
+            case "prep": prepOpen = !prepOpen; key = "dash.prepOpen"; val = prepOpen; break;
+            case "alq": alqOpen = !alqOpen; key = "dash.alqOpen"; val = alqOpen; break;
+            default: me1Open = !me1Open; key = "dash.me1Open"; val = me1Open; break;
+        }
+        try { await JS.InvokeVoidAsync("localStorage.setItem", key, val ? "1" : "0"); } catch { }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !tresCollapseCargado)
+        {
+            tresCollapseCargado = true;
+            try
+            {
+                prepOpen = await LeerPlegadoAsync("dash.prepOpen");
+                alqOpen = await LeerPlegadoAsync("dash.alqOpen");
+                me1Open = await LeerPlegadoAsync("dash.me1Open");
+                StateHasChanged();
+            }
+            catch { /* si el navegador bloquea localStorage, quedan desplegadas por default */ }
+        }
+    }
+
+    private async Task<bool> LeerPlegadoAsync(string key)
+    {
+        var v = await JS.InvokeAsync<string?>("localStorage.getItem", key);
+        return v != "0";   // default (null) = desplegada
+    }
 
     private static bool Me1EsPendiente(MeliMe1ShipmentDto s)
         => s.Status != "delivered" && s.Status != "not_delivered" && s.Status != "cancelled";
@@ -1480,6 +1602,7 @@
             var arm = await Api.GetCafePreparacionArmadosAsync("hoy");
             prepParaArmar = para?.Count ?? 0;
             prepArmadosHoy = arm?.Count ?? 0;
+            prepList = para;
             StateHasChanged();
         }
         catch { /* si falla, la card queda en "Cargando…" y reintenta en la proxima vuelta */ }
@@ -1790,6 +1913,12 @@
         try
         {
             alqResumen = await Api.GetAlqResumenDashboardAsync();
+            // Detalle "en calle" (entregado y sin retirar), ordenado por fecha de retiro (lo más urgente primero).
+            var entregadas = await Api.GetAlqReservasAsync(estado: "entregado");
+            alqEnCalleList = entregadas
+                ?.Where(r => r.EntregadoPorRepartidorId.HasValue && !r.RetiradoPorRepartidorId.HasValue)
+                .OrderBy(r => r.FechaRetiro)
+                .ToList();
             StateHasChanged();
         }
         catch { }
