@@ -115,13 +115,16 @@ public class MeliMe1Controller : ControllerBase
         }));
     }
 
-    public record SyncMe1Request(int Days = 30, int MaxOrders = 300);
+    public record SyncMe1Request(int Days = 45, int MaxOrders = 300);
 
-    /// <summary>Trae los envios ME1 mas recientes de MeLi y los guarda localmente.</summary>
+    /// <summary>Trae los envios ME1 y los guarda localmente.
+    /// 2026-07-08: usa SyncMe1FromOrdersAsync (basado en la tabla local de ordenes), que revisa
+    /// TODAS las ventas ME1 del rango sin el viejo tope de 300 ventas escaneadas. Con ~90-100
+    /// ventas/dia, el metodo viejo (SyncMe1Async) solo cubria ~3 dias reales.</summary>
     [HttpPost("sync")]
     public async Task<IActionResult> Sync([FromBody] SyncMe1Request? req)
     {
-        var r = await _service.SyncMe1Async(req?.Days ?? 30, req?.MaxOrders ?? 300);
+        var r = await _service.SyncMe1FromOrdersAsync(req?.Days ?? 45);
         return Ok(new { totalSynced = r.TotalSynced, totalMe1 = r.TotalFlex, totalErrors = r.TotalErrors, errores = r.Errors });
     }
 

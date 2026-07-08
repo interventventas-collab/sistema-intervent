@@ -83,6 +83,54 @@ public class MeliShipmentService
     }
 
     /// <summary>
+    /// 2026-07-08: Sincroniza ME1 de forma LIVIANA y COMPLETA usando la tabla local MeliOrders
+    /// (que el robot de ordenes ya mantiene al dia, con la columna ShippingMode ya cargada).
+    ///
+    /// El metodo viejo (SyncMe1Async) escaneaba las ~300 ventas mas recientes de MeLi y bajaba
+    /// CADA envio para recien ahi ver si era ME1. Problema: con ~90-100 ventas/dia, 300 ventas
+    /// cubren solo ~3 dias, y las ME1 mas viejas quedaban ciegas (ej. la del 3/7 que reporto Osmar).
+    ///
+    /// Este metodo, en cambio:
+    ///   1) Filtra directo las ordenes con ShippingMode='me1' de los ultimos N dias que todavia
+    ///      no tenemos cargadas (o cuyo envio no esta en estado final) y baja SOLO esos envios.
+    ///   2) Ademas refresca TODOS los ME1 pendientes ya cargados, sin importar la fecha, para
+    ///      captar transiciones despachado->entregado de envios viejos.
+    /// Como ME1 es una fraccion chica del total (la mayoria es me2/Flex), toca muy pocos envios.
+    /// </summary>
+    public async Task<MeliShipmentSyncResult> SyncMe1FromOrdersAsync(int daysBack = 7)
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-daysBack);
+
+        // 1) Ordenes ME1 recientes cuyo envio falta o no esta en estado final.
+        var fromOrders = await (
+            from o in _db.MeliOrders
+            where o.ShippingMode == "me1" && o.ShippingId != null && o.DateCreated >= cutoff
+            join s in _db.MeliShipments on o.ShippingId equals s.MeliShipmentId into gj
+            from s in gj.DefaultIfEmpty()
+            where s == null || (s.Status != "delivered" && s.Status != "not_delivered" && s.Status != "cancelled")
+            select o.ShippingId!.Value
+        ).Distinct().ToListAsync();
+
+        // 2) ME1 ya cargados pero pendientes: refrescar estado sin importar la fecha.
+        var pendingLocal = await _db.MeliShipments
+            .Where(s => s.Mode == "me1" && s.Status != null
+                        && s.Status != "delivered" && s.Status != "not_delivered" && s.Status != "cancelled")
+            .Select(s => s.MeliShipmentId)
+            .ToListAsync();
+
+        var shippingIds = fromOrders.Concat(pendingLocal).Distinct().ToList();
+
+        int synced = 0, errors = 0;
+        var errList = new List<string>();
+        foreach (var shipId in shippingIds)
+        {
+            try { if (await SyncSingleShipmentAsync(shipId)) synced++; }
+            catch (Exception ex) { errors++; errList.Add($"ship {shipId}: {ex.Message}"); }
+        }
+        return new MeliShipmentSyncResult(synced, synced, errors, errList);
+    }
+
+    /// <summary>
     /// Recorre los shipments locales con estado no terminal y los re-consulta uno por uno a MeLi.
     /// Sirve para captar transiciones tipo "shipped → delivered" que pasaron en MeLi después del último sync.
     /// </summary>
