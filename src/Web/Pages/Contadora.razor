@@ -6,16 +6,19 @@
 @inject IJSRuntime JS
 @inject ToastService ToastService
 
-<PageTitle>Contadora — Ventas por jurisdicción</PageTitle>
+<PageTitle>Contadora</PageTitle>
 
 <style>
-    .co-wrap { padding: 1rem; max-width: 900px; }
+    .co-wrap { padding: 1rem; max-width: 1050px; }
     .co-card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 1.2rem; margin-bottom: 1rem; }
     .co-title { font-size: 1.4rem; font-weight: 700; margin: 0 0 .3rem; }
     .co-sub { color: #6b7280; margin: 0 0 1rem; font-size: .92rem; line-height: 1.4; }
-    .co-filtros { display: flex; gap: .8rem; align-items: flex-end; flex-wrap: wrap; }
-    .co-filtros label { display: block; font-size: .78rem; color: #6b7280; margin-bottom: .2rem; }
-    .co-filtros input { padding: .45rem .5rem; border: 1px solid #d1d5db; border-radius: 8px; }
+    .co-tabs { display: flex; gap: .4rem; margin-bottom: 1rem; }
+    .co-tab { padding: .55rem 1rem; border-radius: 10px; border: 1px solid #e5e7eb; background: #f9fafb; cursor: pointer; font-weight: 600; color: #374151; }
+    .co-tab.act { background: #2563eb; color: white; border-color: #2563eb; }
+    .co-filtros { display: flex; gap: .7rem; align-items: flex-end; flex-wrap: wrap; }
+    .co-filtros label { display: block; font-size: .75rem; color: #6b7280; margin-bottom: .2rem; }
+    .co-filtros input, .co-filtros select { padding: .45rem .5rem; border: 1px solid #d1d5db; border-radius: 8px; }
     .co-btn { padding: .5rem .9rem; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; }
     .co-btn-primary { background: #2563eb; color: white; }
     .co-btn-green { background: #16a34a; color: white; }
@@ -23,195 +26,379 @@
     .co-btn:disabled { opacity: .5; cursor: default; }
     table.co-tabla { width: 100%; border-collapse: collapse; }
     table.co-tabla th, table.co-tabla td { padding: .5rem .6rem; border-bottom: 1px solid #f0f0f0; }
-    table.co-tabla th { text-align: left; color: #6b7280; font-size: .8rem; text-transform: uppercase; }
+    table.co-tabla th { text-align: left; color: #6b7280; font-size: .78rem; text-transform: uppercase; }
     table.co-tabla td.num, table.co-tabla th.num { text-align: right; font-variant-numeric: tabular-nums; }
     table.co-tabla tr.tot td { font-weight: 700; border-top: 2px solid #e5e7eb; }
+    table.co-tabla tr.click { cursor: pointer; }
+    table.co-tabla tr.click:hover { background: #f8fafc; }
     .co-alerta { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: .9rem 1rem; margin-bottom: 1rem; }
     .co-bar { height: 10px; background: #e5e7eb; border-radius: 6px; overflow: hidden; margin-top: .5rem; }
     .co-bar > div { height: 100%; background: #2563eb; transition: width .3s; }
     .co-hint { color: #9ca3af; font-size: .82rem; }
+    .co-chip { display:inline-block; padding:.1rem .5rem; border-radius:6px; background:#eef2ff; color:#3730a3; font-size:.78rem; font-weight:600; }
 </style>
 
 <div class="co-wrap">
     <div class="co-card">
-        <h1 class="co-title">🧾 Contadora — Ventas por jurisdicción</h1>
-        <p class="co-sub">
-            Este cuadro muestra <b>cuánto vendiste en cada provincia</b> (por destino de envío), con el
-            neto (sin IVA), el IVA al 21% y el total. Es lo que la contadora usa para <b>Ingresos Brutos</b>.
-            Los datos salen de tus ventas de <b>MercadoLibre</b>. Podés filtrar por fechas y descargar el Excel.
-        </p>
-
-        <div class="co-filtros">
-            <div>
-                <label>Desde</label>
-                <input type="date" @bind="desde" />
-            </div>
-            <div>
-                <label>Hasta</label>
-                <input type="date" @bind="hasta" />
-            </div>
-            <button class="co-btn co-btn-primary" @onclick="Cargar" disabled="@cargando">Aplicar</button>
-            <button class="co-btn co-btn-ghost" @onclick="LimpiarFiltro" disabled="@cargando">Todo el período</button>
-            <button class="co-btn co-btn-green" @onclick="DescargarExcel" disabled="@(cargando || descargando || cuadro is null || cuadro.Filas.Count == 0)">
-                @(descargando ? "Generando…" : "⬇ Descargar Excel")
-            </button>
+        <h1 class="co-title">🧾 Contadora</h1>
+        <p class="co-sub">Cuadros de ventas para tu contadora, sacados de MercadoLibre. Todo se puede filtrar y descargar en Excel.</p>
+        <div class="co-tabs">
+            <div class="co-tab @(tab == "jur" ? "act" : "")" @onclick="@(() => SetTab("jur"))">🗺 Por jurisdicción (IIBB)</div>
+            <div class="co-tab @(tab == "iva" ? "act" : "")" @onclick="@(() => SetTab("iva"))">📒 Libro IVA Ventas</div>
         </div>
-        @if (cuadro?.VentasDesde is not null)
-        {
-            <p class="co-hint" style="margin-top:.6rem;">
-                Ventas de MercadoLibre disponibles: @cuadro.VentasDesde.Value.ToString("dd/MM/yyyy") al @cuadro.VentasHasta!.Value.ToString("dd/MM/yyyy").
-            </p>
-        }
     </div>
 
-    @if (cuadro is not null && cuadro.SinProvincia > 0)
+    @if (tab == "jur")
     {
-        <div class="co-alerta">
-            <div>
-                ⚠️ Hay <b>@cuadro.SinProvincia</b> venta(s) en este período a las que todavía les falta la provincia.
-                Tocá el botón para que el sistema se la pregunte a MercadoLibre (es solo lectura, tarda un rato).
+        @* ══════════ VISTA POR JURISDICCIÓN ══════════ *@
+        <div class="co-card">
+            <p class="co-sub">Cuánto vendiste en cada provincia (por destino de envío), con neto, IVA 21% y total. Es lo que la contadora usa para <b>Ingresos Brutos</b>.</p>
+            <div class="co-filtros">
+                <div><label>Desde</label><input type="date" @bind="jDesde" /></div>
+                <div><label>Hasta</label><input type="date" @bind="jHasta" /></div>
+                <button class="co-btn co-btn-primary" @onclick="CargarJur" disabled="@cargando">Aplicar</button>
+                <button class="co-btn co-btn-ghost" @onclick="@(() => { jDesde = null; jHasta = null; _ = CargarJur(); })" disabled="@cargando">Todo</button>
+                <button class="co-btn co-btn-green" @onclick="DescargarExcelJur" disabled="@(cargando || descargando || jur is null || jur.Filas.Count == 0)">@(descargando ? "Generando…" : "⬇ Excel")</button>
             </div>
-            @if (backfilling)
+            @if (jur?.VentasDesde is not null)
             {
-                <div class="co-bar"><div style="width:@(ProgresoPct)%"></div></div>
-                <div class="co-hint" style="margin-top:.35rem;">Resolviendo… faltan @bfPendientes de @bfTotal.</div>
+                <p class="co-hint" style="margin-top:.6rem;">Ventas de MeLi disponibles: @jur.VentasDesde.Value.ToString("dd/MM/yyyy") al @jur.VentasHasta!.Value.ToString("dd/MM/yyyy").</p>
             }
+        </div>
+
+        @if (jur is not null && jur.SinProvincia > 0)
+        {
+            <div class="co-alerta">
+                <div>⚠️ Hay <b>@jur.SinProvincia</b> venta(s) sin provincia en este período. Tocá el botón para traerla de MercadoLibre (solo lectura, tarda un rato).</div>
+                @if (bfJur)
+                {
+                    <div class="co-bar"><div style="width:@ProgJur%"></div></div>
+                    <div class="co-hint" style="margin-top:.35rem;">Resolviendo… faltan @bfPend de @bfTot.</div>
+                }
+                else
+                {
+                    <button class="co-btn co-btn-primary" style="margin-top:.6rem;" @onclick="TraerProvincias">🔄 Traer provincias faltantes</button>
+                }
+            </div>
+        }
+
+        <div class="co-card">
+            @if (cargando) { <p>Cargando…</p> }
+            else if (jur is null || jur.Filas.Count == 0) { <p class="co-hint">No hay ventas para mostrar.</p> }
             else
             {
-                <button class="co-btn co-btn-primary" style="margin-top:.6rem;" @onclick="ActualizarProvincias">🔄 Traer provincias faltantes</button>
+                <table class="co-tabla">
+                    <thead><tr><th>Destino</th><th class="num">Cantidad</th><th class="num">Total Neto</th></tr></thead>
+                    <tbody>
+                        @foreach (var f in jur.Filas)
+                        {
+                            <tr><td>@DestinoLabel(f.Provincia)</td><td class="num">@f.Cantidad</td><td class="num">@Money(f.Neto)</td></tr>
+                        }
+                        <tr class="tot"><td>TOTAL NETO</td><td class="num">@jur.CantidadTotal</td><td class="num">@Money(jur.NetoTotal)</td></tr>
+                        <tr><td>IVA 21%</td><td></td><td class="num">@Money(jur.IvaTotal)</td></tr>
+                        <tr class="tot"><td>TOTAL c/IVA</td><td></td><td class="num">@Money(jur.TotalConIva)</td></tr>
+                    </tbody>
+                </table>
             }
         </div>
     }
+    else
+    {
+        @* ══════════ VISTA LIBRO IVA VENTAS ══════════ *@
+        <div class="co-card">
+            <p class="co-sub">Todas las facturas de venta que emite MercadoLibre, por <b>empresa</b> y <b>punto de venta</b>, con neto e IVA. Es el <b>Libro IVA Ventas</b>. Podés filtrar y ver el detalle factura por factura.</p>
+            <div class="co-filtros">
+                <div>
+                    <label>Empresa</label>
+                    <select @bind="fEmpresa">
+                        <option value="">Todas</option>
+                        @foreach (var e in empresas)
+                        {
+                            <option value="@e.Cuit">@e.Nombre</option>
+                        }
+                    </select>
+                </div>
+                <div><label>Desde</label><input type="date" @bind="iDesde" /></div>
+                <div><label>Hasta</label><input type="date" @bind="iHasta" /></div>
+                <div><label>Pto venta</label><input type="number" style="width:90px;" @bind="fPtoVenta" /></div>
+                <div>
+                    <label>Tipo</label>
+                    <select @bind="fLetra"><option value="">Todos</option><option value="A">A</option><option value="B">B</option></select>
+                </div>
+                <div><label>Provincia</label><input type="text" style="width:130px;" placeholder="ej: Córdoba" @bind="fProvincia" /></div>
+                <div><label>Buscar</label><input type="text" style="width:150px;" placeholder="cliente / nº / doc" @bind="fSearch" /></div>
+                <button class="co-btn co-btn-primary" @onclick="CargarIva" disabled="@cargandoIva">Aplicar</button>
+                <button class="co-btn co-btn-ghost" @onclick="LimpiarIva" disabled="@cargandoIva">Limpiar</button>
+                <button class="co-btn co-btn-green" @onclick="DescargarExcelIva" disabled="@(cargandoIva || descargando || iva is null || iva.Filas.Count == 0)">@(descargando ? "Generando…" : "⬇ Excel")</button>
+            </div>
+        </div>
 
-    <div class="co-card">
-        @if (cargando)
+        @if (iva is not null && iva.Pendientes > 0)
         {
-            <p>Cargando…</p>
+            <div class="co-alerta">
+                <div>⚠️ Faltan bajar <b>@iva.Pendientes</b> factura(s) de MercadoLibre. Tocá el botón para traerlas (solo lectura, tarda un rato).</div>
+                @if (bfIva)
+                {
+                    <div class="co-bar"><div style="width:@ProgIva%"></div></div>
+                    <div class="co-hint" style="margin-top:.35rem;">Bajando facturas… faltan @bfPend de @bfTot.</div>
+                }
+                else
+                {
+                    <button class="co-btn co-btn-primary" style="margin-top:.6rem;" @onclick="TraerFacturas">🔄 Traer facturas faltantes</button>
+                }
+            </div>
         }
-        else if (cuadro is null || cuadro.Filas.Count == 0)
-        {
-            <p class="co-hint">No hay ventas para mostrar en este período.</p>
-        }
-        else
-        {
-            <table class="co-tabla">
-                <thead>
-                    <tr>
-                        <th>Destino</th>
-                        <th class="num">Cantidad</th>
-                        <th class="num">Total Neto</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var f in cuadro.Filas)
-                    {
-                        <tr>
-                            <td>@DestinoLabel(f.Provincia)</td>
-                            <td class="num">@f.Cantidad</td>
-                            <td class="num">@Money(f.Neto)</td>
+
+        <div class="co-card">
+            @if (cargandoIva) { <p>Cargando…</p> }
+            else if (iva is null || iva.Filas.Count == 0) { <p class="co-hint">No hay facturas para mostrar con estos filtros.</p> }
+            else
+            {
+                <table class="co-tabla">
+                    <thead><tr><th>Empresa</th><th class="num">Pto vta</th><th>Tipo</th><th class="num">Cant.</th><th class="num">Neto</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
+                    <tbody>
+                        @foreach (var f in iva.Filas)
+                        {
+                            <tr>
+                                <td>@f.EmpresaNombre</td>
+                                <td class="num">@f.PuntoVenta</td>
+                                <td>@f.Letra</td>
+                                <td class="num">@f.Cantidad</td>
+                                <td class="num">@Money(f.Neto)</td>
+                                <td class="num">@Money(f.Iva)</td>
+                                <td class="num">@Money(f.Total)</td>
+                            </tr>
+                        }
+                        <tr class="tot">
+                            <td>TOTALES</td><td></td><td></td>
+                            <td class="num">@iva.CantidadTotal</td>
+                            <td class="num">@Money(iva.NetoTotal)</td>
+                            <td class="num">@Money(iva.IvaTotal)</td>
+                            <td class="num">@Money(iva.TotalTotal)</td>
                         </tr>
+                    </tbody>
+                </table>
+                @if (iva.SinFactura > 0)
+                {
+                    <p class="co-hint" style="margin-top:.5rem;">@iva.SinFactura venta(s) no tienen factura en MercadoLibre (no se cuentan acá).</p>
+                }
+                <div style="margin-top:.9rem;">
+                    <button class="co-btn co-btn-ghost" @onclick="ToggleDetalle">@(verDetalle ? "▲ Ocultar detalle" : "▼ Ver detalle (factura por factura)")</button>
+                </div>
+            }
+        </div>
+
+        @if (verDetalle && facturas is not null)
+        {
+            <div class="co-card">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem;">
+                    <b>Detalle</b>
+                    <span class="co-chip">@facturas.Total factura(s)</span>
+                </div>
+                @if (facturas.Items.Count == 0) { <p class="co-hint">Sin resultados.</p> }
+                else
+                {
+                    <div style="overflow-x:auto;">
+                        <table class="co-tabla">
+                            <thead><tr><th>Fecha</th><th>Empresa</th><th class="num">Pto vta</th><th class="num">Número</th><th>Tipo</th><th>Cliente</th><th>Provincia</th><th class="num">Neto</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
+                            <tbody>
+                                @foreach (var f in facturas.Items)
+                                {
+                                    <tr>
+                                        <td>@f.FechaEmision?.ToString("dd/MM/yyyy")</td>
+                                        <td>@f.EmpresaNombre</td>
+                                        <td class="num">@f.PuntoVenta</td>
+                                        <td class="num">@f.NumeroComprobante</td>
+                                        <td>@f.Letra</td>
+                                        <td>@f.ReceptorNombre</td>
+                                        <td>@f.Provincia</td>
+                                        <td class="num">@Money(f.Neto)</td>
+                                        <td class="num">@Money(f.Iva)</td>
+                                        <td class="num">@Money(f.Total)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    @if (Paginas > 1)
+                    {
+                        <div style="margin-top:.7rem;display:flex;gap:.5rem;align-items:center;">
+                            <button class="co-btn co-btn-ghost" @onclick="@(() => IrPagina(detPage - 1))" disabled="@(detPage <= 1)">◀</button>
+                            <span class="co-hint">Página @detPage de @Paginas</span>
+                            <button class="co-btn co-btn-ghost" @onclick="@(() => IrPagina(detPage + 1))" disabled="@(detPage >= Paginas)">▶</button>
+                        </div>
                     }
-                    <tr class="tot">
-                        <td>TOTAL NETO</td>
-                        <td class="num">@cuadro.CantidadTotal</td>
-                        <td class="num">@Money(cuadro.NetoTotal)</td>
-                    </tr>
-                    <tr>
-                        <td>IVA 21%</td>
-                        <td></td>
-                        <td class="num">@Money(cuadro.IvaTotal)</td>
-                    </tr>
-                    <tr class="tot">
-                        <td>TOTAL c/IVA</td>
-                        <td></td>
-                        <td class="num">@Money(cuadro.TotalConIva)</td>
-                    </tr>
-                </tbody>
-            </table>
+                }
+            </div>
         }
-    </div>
+    }
 </div>
 
 @code {
-    private ContadoraJurisdiccionDto? cuadro;
-    private DateTime? desde;
-    private DateTime? hasta;
-    private bool cargando;
-    private bool descargando;
-    private bool backfilling;
-    private int bfTotal;
-    private int bfPendientes;
+    private string tab = "jur";
 
-    private int ProgresoPct => bfTotal > 0 ? (int)((bfTotal - bfPendientes) * 100.0 / bfTotal) : 0;
+    // Jurisdicción
+    private ContadoraJurisdiccionDto? jur;
+    private DateTime? jDesde, jHasta;
 
-    protected override async Task OnInitializedAsync() => await Cargar();
+    // IVA Ventas
+    private ContadoraLibroIvaDto? iva;
+    private ContadoraFacturasPageDto? facturas;
+    private List<ContadoraEmpresaDto> empresas = new();
+    private string? fEmpresa, fLetra, fProvincia, fSearch;
+    private int? fPtoVenta;
+    private DateTime? iDesde, iHasta;
+    private bool verDetalle;
+    private int detPage = 1;
+    private bool empresasCargadas;
+    private int Paginas => facturas is null ? 1 : (int)Math.Ceiling(facturas.Total / (double)facturas.PageSize);
 
-    private async Task Cargar()
+    private bool cargando, cargandoIva, descargando;
+    private bool bfJur, bfIva;
+    private int bfTot, bfPend;
+    private int ProgJur => bfTot > 0 ? (int)((bfTot - bfPend) * 100.0 / bfTot) : 0;
+    private int ProgIva => bfTot > 0 ? (int)((bfTot - bfPend) * 100.0 / bfTot) : 0;
+
+    protected override async Task OnInitializedAsync() => await CargarJur();
+
+    private async Task SetTab(string t)
+    {
+        tab = t;
+        if (t == "iva")
+        {
+            if (!empresasCargadas) { empresas = await Api.GetContadoraEmpresasAsync() ?? new(); empresasCargadas = true; }
+            if (iva is null) await CargarIva();
+        }
+    }
+
+    // ───── Jurisdicción ─────
+    private async Task CargarJur()
     {
         if (cargando) return;
         cargando = true;
-        try
-        {
-            cuadro = await Api.GetVentasJurisdiccionAsync(desde, hasta);
-        }
+        try { jur = await Api.GetVentasJurisdiccionAsync(jDesde, jHasta); }
         catch (Exception ex) { ToastService.Error("No se pudo cargar: " + ex.Message); }
         finally { cargando = false; }
     }
 
-    private async Task LimpiarFiltro()
+    private async Task TraerProvincias()
     {
-        desde = null; hasta = null;
-        await Cargar();
-    }
-
-    private async Task ActualizarProvincias()
-    {
-        if (backfilling) return;
-        backfilling = true;
-        bfTotal = 0; bfPendientes = 0;
+        if (bfJur) return;
+        bfJur = true; bfTot = 0; bfPend = 0;
         try
         {
             while (true)
             {
                 var r = await Api.BackfillProvinciasAsync(150);
                 if (r is null) { ToastService.Error("No se pudo actualizar."); break; }
-                if (bfTotal == 0) bfTotal = r.PendientesAntes;
-                bfPendientes = r.Pendientes;
-                StateHasChanged();
-
+                if (bfTot == 0) bfTot = r.PendientesAntes;
+                bfPend = r.Pendientes; StateHasChanged();
                 if (r.Pendientes == 0) break;
-                if (r.Resueltos == 0) // no hubo avance (token vencido o solo errores) → cortar para no colgarse
-                {
-                    if (!string.IsNullOrEmpty(r.Mensaje)) ToastService.Error(r.Mensaje);
-                    else ToastService.Warning("Quedaron ventas sin poder resolver. Probá de nuevo más tarde.");
-                    break;
-                }
+                if (r.Resueltos == 0) { ToastService.Warning(r.Mensaje ?? "Quedaron ventas sin resolver."); break; }
             }
-            await Cargar();
+            await CargarJur();
             ToastService.Success("Provincias actualizadas.");
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
-        finally { backfilling = false; }
+        finally { bfJur = false; }
     }
 
-    private async Task DescargarExcel()
+    private async Task DescargarExcelJur()
+        => await Descargar("api/contadora/jurisdiccion/excel" + QsJur(), $"ventas-por-jurisdiccion-{DateTime.Now:yyyy-MM-dd}.xlsx");
+
+    private string QsJur()
+    {
+        var qs = new List<string>();
+        if (jDesde.HasValue) qs.Add($"desde={jDesde.Value:yyyy-MM-dd}");
+        if (jHasta.HasValue) qs.Add($"hasta={jHasta.Value:yyyy-MM-dd}");
+        return qs.Count > 0 ? "?" + string.Join("&", qs) : "";
+    }
+
+    // ───── IVA Ventas ─────
+    private async Task CargarIva()
+    {
+        if (cargandoIva) return;
+        cargandoIva = true;
+        try
+        {
+            iva = await Api.GetLibroIvaAsync(iDesde, iHasta, fEmpresa, fPtoVenta, fLetra, fProvincia, fSearch);
+            if (verDetalle) { detPage = 1; await CargarFacturas(); }
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo cargar: " + ex.Message); }
+        finally { cargandoIva = false; }
+    }
+
+    private async Task LimpiarIva()
+    {
+        fEmpresa = null; fLetra = null; fProvincia = null; fSearch = null; fPtoVenta = null; iDesde = null; iHasta = null;
+        await CargarIva();
+    }
+
+    private async Task ToggleDetalle()
+    {
+        verDetalle = !verDetalle;
+        if (verDetalle) { detPage = 1; await CargarFacturas(); }
+    }
+
+    private async Task CargarFacturas()
+    {
+        try { facturas = await Api.GetContadoraFacturasAsync(iDesde, iHasta, fEmpresa, fPtoVenta, fLetra, fProvincia, fSearch, detPage, 50); }
+        catch (Exception ex) { ToastService.Error("No se pudo cargar el detalle: " + ex.Message); }
+    }
+
+    private async Task IrPagina(int p)
+    {
+        detPage = p;
+        await CargarFacturas();
+    }
+
+    private async Task TraerFacturas()
+    {
+        if (bfIva) return;
+        bfIva = true; bfTot = 0; bfPend = 0;
+        try
+        {
+            while (true)
+            {
+                var r = await Api.BackfillFacturasAsync(120);
+                if (r is null) { ToastService.Error("No se pudo actualizar."); break; }
+                if (bfTot == 0) bfTot = r.PendientesAntes;
+                bfPend = r.Pendientes; StateHasChanged();
+                if (r.Pendientes == 0) break;
+                if (r.Resueltos == 0) { ToastService.Warning(r.Mensaje ?? "Quedaron facturas sin bajar."); break; }
+            }
+            await CargarIva();
+            ToastService.Success("Facturas actualizadas.");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { bfIva = false; }
+    }
+
+    private async Task DescargarExcelIva()
+    {
+        var qs = new List<string>();
+        if (iDesde.HasValue) qs.Add($"desde={iDesde.Value:yyyy-MM-dd}");
+        if (iHasta.HasValue) qs.Add($"hasta={iHasta.Value:yyyy-MM-dd}");
+        if (!string.IsNullOrWhiteSpace(fEmpresa)) qs.Add($"empresa={Uri.EscapeDataString(fEmpresa)}");
+        if (fPtoVenta.HasValue) qs.Add($"puntoVenta={fPtoVenta.Value}");
+        if (!string.IsNullOrWhiteSpace(fLetra)) qs.Add($"letra={fLetra}");
+        if (!string.IsNullOrWhiteSpace(fProvincia)) qs.Add($"provincia={Uri.EscapeDataString(fProvincia)}");
+        if (!string.IsNullOrWhiteSpace(fSearch)) qs.Add($"search={Uri.EscapeDataString(fSearch)}");
+        var url = "api/contadora/libro-iva/excel" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        await Descargar(url, $"libro-iva-ventas-{DateTime.Now:yyyy-MM-dd}.xlsx");
+    }
+
+    // ───── común ─────
+    private async Task Descargar(string url, string filename)
     {
         if (descargando) return;
         descargando = true;
         try
         {
-            var url = "api/contadora/jurisdiccion/excel";
-            var qs = new List<string>();
-            if (desde.HasValue) qs.Add($"desde={desde.Value:yyyy-MM-dd}");
-            if (hasta.HasValue) qs.Add($"hasta={hasta.Value:yyyy-MM-dd}");
-            if (qs.Count > 0) url += "?" + string.Join("&", qs);
-
             var resp = await Http.GetAsync(url);
             if (!resp.IsSuccessStatusCode) { ToastService.Error("No se pudo generar el Excel"); return; }
             var bytes = await resp.Content.ReadAsByteArrayAsync();
-            var filename = $"ventas-por-jurisdiccion-{DateTime.Now:yyyy-MM-dd}.xlsx";
-            await JS.InvokeVoidAsync("downloadBytesAsFile", filename,
-                Convert.ToBase64String(bytes),
+            await JS.InvokeVoidAsync("downloadBytesAsFile", filename, Convert.ToBase64String(bytes),
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
             ToastService.Success("Excel descargado");
         }
@@ -219,22 +406,19 @@
         finally { descargando = false; }
     }
 
-    private static string DestinoLabel(string prov)
-        => prov.StartsWith("(") ? prov : $"Argentina - {prov}";
+    private static string DestinoLabel(string prov) => prov.StartsWith("(") ? prov : $"Argentina - {prov}";
 
-    // Formato de pesos estilo AR (1.234.567,89) sin depender de la cultura cargada.
     private static string Money(decimal v)
     {
         var neg = v < 0; v = Math.Abs(v);
         var s = v.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
         var parts = s.Split('.');
-        var intp = parts[0]; var dec = parts[1];
         var sb = new System.Text.StringBuilder();
-        for (int i = 0; i < intp.Length; i++)
+        for (int i = 0; i < parts[0].Length; i++)
         {
-            if (i > 0 && (intp.Length - i) % 3 == 0) sb.Append('.');
-            sb.Append(intp[i]);
+            if (i > 0 && (parts[0].Length - i) % 3 == 0) sb.Append('.');
+            sb.Append(parts[0][i]);
         }
-        return (neg ? "-" : "") + sb.ToString() + "," + dec;
+        return (neg ? "-" : "") + sb.ToString() + "," + parts[1];
     }
 }
