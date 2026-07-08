@@ -422,6 +422,30 @@ public class ApiClient
         return resp.IsSuccessStatusCode;
     }
 
+    // --- Avisos / novedades (globito de bienvenida) ---
+    public async Task<bool> GetWelcomeNoticeAsync()
+    {
+        try
+        {
+            var r = await GetAsync<WelcomeNoticeStatus>("/api/notices/welcome");
+            return r?.Show ?? false;
+        }
+        catch { return false; }
+    }
+
+    public async Task<bool> DismissWelcomeNoticeAsync()
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _http.PostAsync("/api/notices/welcome/dismiss", null);
+            return resp.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
+
+    public record WelcomeNoticeStatus(bool Show);
+
     // --- Nominas: Empleados ---
     public async Task<List<NomEmpleadoDto>?> GetNomEmpleadosAsync()
         => await GetAsync<List<NomEmpleadoDto>>("/api/nominas/empleados");
