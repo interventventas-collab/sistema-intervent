@@ -23,12 +23,13 @@ public class ContadoraService
     private readonly AppDbContext _db;
     private readonly IHttpClientFactory _httpFactory;
     private readonly MeliAccountService _accountService;
+    private readonly ILogger<ContadoraService> _logger;
     private const decimal IvaAlicuota = 0.21m;
     private const string SinDato = "(sin dato)";
 
-    public ContadoraService(AppDbContext db, IHttpClientFactory httpFactory, MeliAccountService accountService)
+    public ContadoraService(AppDbContext db, IHttpClientFactory httpFactory, MeliAccountService accountService, ILogger<ContadoraService> logger)
     {
-        _db = db; _httpFactory = httpFactory; _accountService = accountService;
+        _db = db; _httpFactory = httpFactory; _accountService = accountService; _logger = logger;
     }
 
     /// <summary>Normaliza el nombre de la provincia como lo espera la contadora.</summary>
@@ -280,7 +281,14 @@ public class ContadoraService
                 await _db.SaveChangesAsync();
                 res.Resueltos++;
             }
-            catch { res.Errores++; }
+            catch (Exception ex)
+            {
+                res.Errores++;
+                // Descartar la entidad no guardada para que no rompa el proximo SaveChanges del mismo contexto.
+                _db.ChangeTracker.Clear();
+                if (res.Mensaje is null) res.Mensaje = ex.GetBaseException().Message;
+                _logger.LogError(ex, "[Contadora] Error bajando factura de orden {Order}", par.MeliOrderId);
+            }
             await Task.Delay(120);
         }
 
