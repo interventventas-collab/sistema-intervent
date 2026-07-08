@@ -522,36 +522,7 @@
    postits/balanza/stock y quedaba muy abajo.
    2026-07-08: la card "Alquileres en calle" se movió a la fila de 3 cards de arriba. *@
 <div class="dashboard-cards-row">
-    @* 2026-07-04: Shell Flota + Saldo Banco Galicia van PRIMERO. *@
-    @* Shell Flota — saldo disponible (robot lee el saldo solo) *@
-    <div class="dashboard-detail-card mac-stat-card accent-amber" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/integraciones/shell")' title="Ir a Shell Flota">
-        <CustomCardOverlay CardKey="shell-flota" Settings="@cardCustomSettings" />
-        <div class="mac-card-header">
-            <div class="mac-card-iconbox" style="background:#FBCE07;">
-                <svg viewBox="0 0 32 32" width="19" height="19" fill="#ED1C24"><path d="M16 28c-5.7 0-9.8-4.1-10.6-9.5-.3-1.8-.1-3.3.6-3.3.5 0 .7.7.9 1.8.1-2.2.6-3.6 1.3-3.6.5 0 .9 1.1 1.1 2.8.3-2.2.8-3.5 1.6-3.5.6 0 1 1.3 1.1 3.1.4-2.1 1-3.3 1.9-3.3.9 0 1.5 1.2 1.9 3.3.1-1.8.5-3.1 1.1-3.1.8 0 1.3 1.3 1.6 3.5.2-1.7.6-2.8 1.1-2.8.7 0 1.2 1.4 1.3 3.6.2-1.1.4-1.8.9-1.8.7 0 .9 1.5.6 3.3C25.8 23.9 21.7 28 16 28z"/></svg>
-            </div>
-            <span class="mac-card-eyebrow" style="color:#3f3f46;">Shell Flota</span>
-        </div>
-        <button class="dash-eye-btn" @onclick="@(() => ToggleSaldoVisible("shell"))" @onclick:stopPropagation="true"
-                title="@(SaldoOculto("shell") ? "Mostrar saldo" : "Ocultar saldo")">
-            @(SaldoOculto("shell") ? "🙈" : "👁")
-        </button>
-        @if (shellSaldo is null || string.IsNullOrEmpty(shellSaldo.LastSaldo))
-        {
-            <div class="mac-card-bignum" style="font-size:1rem;">Configurar →</div>
-            <div class="mac-card-sub">Cargá la clave para ver el saldo</div>
-        }
-        else
-        {
-            <div class="mac-card-bignum">@(SaldoOculto("shell") ? "$ ••••••" : $"${shellSaldo.LastSaldo}")</div>
-            <div class="mac-card-sub">saldo disponible</div>
-            @if (shellSaldo.LastSaldoAt.HasValue)
-            {
-                <div class="mac-card-sub" style="font-style:italic; margin-top:2px;">Actualizado @FormatearUltimaActualizacion(shellSaldo.LastSaldoAt.Value)</div>
-            }
-        }
-    </div>
-
+    @* 2026-07-08: Galicia + Cheques por pagar arriba (tesorería); Shell bajó un nivel. Pedido Osmar. *@
     @* Saldo banco Galicia *@
     <div class="dashboard-detail-card mac-stat-card accent-blue" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/extracto-banco")' title="Ir al extracto bancario">
         <CustomCardOverlay CardKey="saldo-banco-galicia" Settings="@cardCustomSettings" />
@@ -583,6 +554,76 @@
             <span @onclick='() => Navigation.NavigateTo("/integraciones/galicia")' @onclick:stopPropagation="true"
                   style="color:#2563eb; text-decoration:underline; font-size:0.75rem; cursor:pointer;">⚙ Conexión automática</span>
         </div>
+    </div>
+
+    @* Cheques por pagar — próximos a pagar (misma data que el botón de la topbar) *@
+    <div class="dashboard-detail-card mac-stat-card accent-amber" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/cheques-banco")' title="Ir a Cheques del banco">
+        <div class="mac-card-header">
+            <div class="mac-card-iconbox" style="background:#fef3c7; color:#b45309;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="11" y2="15"/></svg>
+            </div>
+            <span class="mac-card-eyebrow" style="color:#3f3f46;">Cheques por pagar</span>
+        </div>
+        @if (chequesProximos is null)
+        {
+            <div class="mac-card-sub">Cargando…</div>
+        }
+        else if (chequesProximos.Count == 0)
+        {
+            <div class="mac-card-bignum" style="font-size:1rem;">Sin próximos</div>
+            <div class="mac-card-sub">No hay cheques emitidos por pagar</div>
+        }
+        else
+        {
+            <div class="mac-card-bignum">@chequesProximos.Count <span style="font-size:0.85rem; font-weight:400; color:#6b7280;">próximos</span></div>
+            <div class="mac-card-sub">Total: $@FormatMoney(ChequesTotal)</div>
+            <div class="tres-detalle">
+                @foreach (var c in chequesProximos.Take(5))
+                {
+                    <div class="tres-row">
+                        <span style="text-align:center; flex-shrink:0; width:30px;">
+                            <span style="display:block; font-size:0.55rem; color:#9ca3af; letter-spacing:0.04em;">@MesAbrevCheque(c.FechaPago)</span>
+                            <span style="display:block; font-size:0.9rem; font-weight:600; line-height:1; color:#111827;">@(c.FechaPago?.Day.ToString("00") ?? "—")</span>
+                        </span>
+                        <span class="tres-row-main">
+                            <span class="tres-row-t">@(string.IsNullOrWhiteSpace(c.ContraparteNombre) ? "(sin contraparte)" : c.ContraparteNombre)</span>
+                            <span class="tres-row-s">Cheque #@c.Numero</span>
+                        </span>
+                        <span class="tres-row-val">$@FormatMoney(c.Importe)</span>
+                    </div>
+                }
+            </div>
+        }
+        <div class="tres-card-foot">Ver todos ›</div>
+    </div>
+
+    @* Shell Flota — saldo disponible (robot lee el saldo solo). 2026-07-08: bajó un nivel *@
+    <div class="dashboard-detail-card mac-stat-card accent-amber" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/integraciones/shell")' title="Ir a Shell Flota">
+        <CustomCardOverlay CardKey="shell-flota" Settings="@cardCustomSettings" />
+        <div class="mac-card-header">
+            <div class="mac-card-iconbox" style="background:#FBCE07;">
+                <svg viewBox="0 0 32 32" width="19" height="19" fill="#ED1C24"><path d="M16 28c-5.7 0-9.8-4.1-10.6-9.5-.3-1.8-.1-3.3.6-3.3.5 0 .7.7.9 1.8.1-2.2.6-3.6 1.3-3.6.5 0 .9 1.1 1.1 2.8.3-2.2.8-3.5 1.6-3.5.6 0 1 1.3 1.1 3.1.4-2.1 1-3.3 1.9-3.3.9 0 1.5 1.2 1.9 3.3.1-1.8.5-3.1 1.1-3.1.8 0 1.3 1.3 1.6 3.5.2-1.7.6-2.8 1.1-2.8.7 0 1.2 1.4 1.3 3.6.2-1.1.4-1.8.9-1.8.7 0 .9 1.5.6 3.3C25.8 23.9 21.7 28 16 28z"/></svg>
+            </div>
+            <span class="mac-card-eyebrow" style="color:#3f3f46;">Shell Flota</span>
+        </div>
+        <button class="dash-eye-btn" @onclick="@(() => ToggleSaldoVisible("shell"))" @onclick:stopPropagation="true"
+                title="@(SaldoOculto("shell") ? "Mostrar saldo" : "Ocultar saldo")">
+            @(SaldoOculto("shell") ? "🙈" : "👁")
+        </button>
+        @if (shellSaldo is null || string.IsNullOrEmpty(shellSaldo.LastSaldo))
+        {
+            <div class="mac-card-bignum" style="font-size:1rem;">Configurar →</div>
+            <div class="mac-card-sub">Cargá la clave para ver el saldo</div>
+        }
+        else
+        {
+            <div class="mac-card-bignum">@(SaldoOculto("shell") ? "$ ••••••" : $"${shellSaldo.LastSaldo}")</div>
+            <div class="mac-card-sub">saldo disponible</div>
+            @if (shellSaldo.LastSaldoAt.HasValue)
+            {
+                <div class="mac-card-sub" style="font-style:italic; margin-top:2px;">Actualizado @FormatearUltimaActualizacion(shellSaldo.LastSaldoAt.Value)</div>
+            }
+        }
     </div>
 
     @* Saldo Mercado Pago (API oficial — saldo disponible) — 2026-07-04 *@
@@ -1503,6 +1544,20 @@
     private int? prepArmadosHoy;
     private List<CafePreparacionVentaDto>? prepList;         // detalle "para armar" al desplegar
     private List<AlqReservaDto>? alqEnCalleList;             // detalle "en calle" al desplegar
+    // 2026-07-08: card "Cheques por pagar" (misma data que el botón de la topbar)
+    private List<ApiClient.ChequeProximoDto>? chequesProximos;
+    private decimal ChequesTotal => chequesProximos?.Sum(c => c.Importe) ?? 0m;
+    private static string MesAbrevCheque(DateTime? f)
+    {
+        if (f is null) return "—";
+        string[] m = { "ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC" };
+        return m[f.Value.Month - 1];
+    }
+    private async Task LoadChequesAsync()
+    {
+        try { chequesProximos = await Api.GetChequesProximosPagarAsync(5); StateHasChanged(); }
+        catch { }
+    }
     // 2026-07-08: plegar/desplegar cada card (arrancan desplegadas; se recuerda por navegador)
     private bool prepOpen = true, alqOpen = true, me1Open = true;
     private bool tresCollapseCargado;
@@ -1735,10 +1790,12 @@
         // 2026-07-08: cards nuevas Preparación + me1 (refrescan cada 60s)
         _ = LoadPrepResumenAsync();
         _ = LoadMe1CardAsync();
+        _ = LoadChequesAsync();
         tresCardsTimer = new System.Threading.Timer(_ => InvokeAsync(async () =>
         {
             await LoadPrepResumenAsync();
             await LoadMe1CardAsync();
+            await LoadChequesAsync();
         }), null, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
 
         // 2026-06-25: equipo trabajando ahora (refresca cada 30s) + resumen del día (cada 60s)
