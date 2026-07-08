@@ -69,15 +69,14 @@
         @if (jur is not null && jur.SinProvincia > 0)
         {
             <div class="co-alerta">
-                <div>⚠️ Hay <b>@jur.SinProvincia</b> venta(s) sin provincia en este período. Tocá el botón para traerla de MercadoLibre (solo lectura, tarda un rato).</div>
-                @if (bfJur)
+                <div>⚠️ Hay <b>@jur.SinProvincia</b> venta(s) sin provincia en este período.</div>
+                @if (robotLanzado)
                 {
-                    <div class="co-bar"><div style="width:@ProgJur%"></div></div>
-                    <div class="co-hint" style="margin-top:.35rem;">Resolviendo… faltan @bfPend de @bfTot.</div>
+                    <div class="co-hint" style="margin-top:.4rem;">🤖 El servidor está actualizando en segundo plano. Podés cerrar la pestaña. En unos minutos volvé y tocá <b>Aplicar</b>.</div>
                 }
                 else
                 {
-                    <button class="co-btn co-btn-primary" style="margin-top:.6rem;" @onclick="TraerProvincias">🔄 Traer provincias faltantes</button>
+                    <button class="co-btn co-btn-primary" style="margin-top:.6rem;" @onclick="LanzarRobot">🔄 Traer faltantes (en el servidor)</button>
                 }
             </div>
         }
@@ -136,15 +135,14 @@
         @if (iva is not null && iva.Pendientes > 0)
         {
             <div class="co-alerta">
-                <div>⚠️ Faltan bajar <b>@iva.Pendientes</b> factura(s) de MercadoLibre. Tocá el botón para traerlas (solo lectura, tarda un rato).</div>
-                @if (bfIva)
+                <div>⚠️ Faltan bajar <b>@iva.Pendientes</b> factura(s) de MercadoLibre.</div>
+                @if (robotLanzado)
                 {
-                    <div class="co-bar"><div style="width:@ProgIva%"></div></div>
-                    <div class="co-hint" style="margin-top:.35rem;">Bajando facturas… faltan @bfPend de @bfTot.</div>
+                    <div class="co-hint" style="margin-top:.4rem;">🤖 El servidor está actualizando en segundo plano. Podés cerrar la pestaña. En unos minutos volvé y tocá <b>Aplicar</b>.</div>
                 }
                 else
                 {
-                    <button class="co-btn co-btn-primary" style="margin-top:.6rem;" @onclick="TraerFacturas">🔄 Traer facturas faltantes</button>
+                    <button class="co-btn co-btn-primary" style="margin-top:.6rem;" @onclick="LanzarRobot">🔄 Traer facturas faltantes (en el servidor)</button>
                 }
             </div>
         }
@@ -254,10 +252,7 @@
     private int Paginas => facturas is null ? 1 : (int)Math.Ceiling(facturas.Total / (double)facturas.PageSize);
 
     private bool cargando, cargandoIva, descargando;
-    private bool bfJur, bfIva;
-    private int bfTot, bfPend;
-    private int ProgJur => bfTot > 0 ? (int)((bfTot - bfPend) * 100.0 / bfTot) : 0;
-    private int ProgIva => bfTot > 0 ? (int)((bfTot - bfPend) * 100.0 / bfTot) : 0;
+    private bool robotLanzado;
 
     protected override async Task OnInitializedAsync() => await CargarJur();
 
@@ -281,26 +276,15 @@
         finally { cargando = false; }
     }
 
-    private async Task TraerProvincias()
+    private async Task LanzarRobot()
     {
-        if (bfJur) return;
-        bfJur = true; bfTot = 0; bfPend = 0;
-        try
+        var ok = await Api.RunContadoraRobotAsync();
+        if (ok)
         {
-            while (true)
-            {
-                var r = await Api.BackfillProvinciasAsync(150);
-                if (r is null) { ToastService.Error("No se pudo actualizar."); break; }
-                if (bfTot == 0) bfTot = r.PendientesAntes;
-                bfPend = r.Pendientes; StateHasChanged();
-                if (r.Pendientes == 0) break;
-                if (r.Resueltos == 0) { ToastService.Warning(r.Mensaje ?? "Quedaron ventas sin resolver."); break; }
-            }
-            await CargarJur();
-            ToastService.Success("Provincias actualizadas.");
+            robotLanzado = true;
+            ToastService.Success("El servidor empezó a actualizar en segundo plano.");
         }
-        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
-        finally { bfJur = false; }
+        else ToastService.Error("No se pudo iniciar el robot.");
     }
 
     private async Task DescargarExcelJur()
@@ -350,28 +334,6 @@
     {
         detPage = p;
         await CargarFacturas();
-    }
-
-    private async Task TraerFacturas()
-    {
-        if (bfIva) return;
-        bfIva = true; bfTot = iva?.Pendientes ?? 0; bfPend = bfTot;
-        try
-        {
-            while (true)
-            {
-                var r = await Api.BackfillFacturasAsync(40);
-                if (r is null) { ToastService.Error("No se pudo actualizar."); break; }
-                if (bfTot == 0) bfTot = r.PendientesAntes;
-                bfPend = r.Pendientes; StateHasChanged();
-                if (r.Pendientes == 0) break;
-                if (r.Resueltos == 0) { ToastService.Warning(r.Mensaje ?? "Quedaron facturas sin bajar."); break; }
-            }
-            await CargarIva();
-            ToastService.Success("Facturas actualizadas.");
-        }
-        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
-        finally { bfIva = false; }
     }
 
     private async Task DescargarExcelIva()
