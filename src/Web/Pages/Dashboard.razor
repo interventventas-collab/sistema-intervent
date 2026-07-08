@@ -22,58 +22,9 @@
 {
 @* 2026-06-22: rediseño Mac/iOS — tarjetas blancas, bordes finos, iconos SVG uniformes.
    Las acciones y dropdowns NO cambian: misma logica, mismas rutas. *@
-@* 2026-06-25: cards "Operador", "Hora" y "Dólar" grandes se sacaron del dashboard.
-   El nombre del operador y la hora viven ahora en el topbar; el dólar va en el strip mini
-   de arriba. Lo que importa al arrancar el día (equipo + cheques + Meli) sube de prioridad. *@
-
-@* ═══ Strip mini de stats: dólar + balanza + stock (compacto, ocupa 1 línea) ═══ *@
-<div class="dash-strip">
-    <div class="dash-strip-item">
-        <div class="dash-strip-ico" style="background:#eaf3de; color:#16a34a;">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
-        </div>
-        <div class="dash-strip-body">
-            <span class="dash-strip-label">Dólar BNA @(dolar?.Fecha is null ? "" : "· " + dolar.Fecha)</span>
-            @if (dolar is not null && dolar.Compra is not null && dolar.Venta is not null)
-            {
-                <span class="dash-strip-value">
-                    <span style="color:#16a34a;">$@FormatMoney(dolar.Compra.Value)</span>
-                    <span style="color:#9ca3af; margin:0 4px;">/</span>
-                    <span style="color:#dc2626;">$@FormatMoney(dolar.Venta.Value)</span>
-                </span>
-            }
-            else
-            {
-                <span class="dash-strip-value" style="color:#9ca3af;">…</span>
-            }
-        </div>
-    </div>
-    @* 2026-07-08: Balanza y Stock salían acá Y en la tarjeta detallada de abajo (duplicado).
-       Se sacaron de la tira; ahora viven solo abajo. En su lugar va el chip de Disco. *@
-    <div class="dash-strip-item">
-        <div class="dash-strip-ico" style="background:#e6f1fb; color:#185fa5;">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
-        </div>
-        <div class="dash-strip-body">
-            <span class="dash-strip-label">Disco servidor @(diskUsage?.At is null ? "" : "· " + diskUsage.At)</span>
-            @if (diskUsage is null)
-            {
-                <span class="dash-strip-value" style="color:#9ca3af;">…</span>
-            }
-            else
-            {
-                var diskColor = diskUsage.Pct >= 85 ? "#dc2626" : diskUsage.Pct >= 70 ? "#d97706" : "#16a34a";
-                <span class="dash-strip-value" style="display:flex; align-items:center; gap:8px;">
-                    <span>@diskUsage.FreeGb GB libres <span style="color:#9ca3af; font-weight:400;">de @diskUsage.TotalGb</span></span>
-                    <span style="width:44px; height:6px; border-radius:4px; background:#e5e7eb; overflow:hidden; display:inline-block;">
-                        <span style="display:block; width:@(diskUsage.Pct)%; height:100%; background:@diskColor;"></span>
-                    </span>
-                    <span style="font-size:0.72rem; color:@diskColor;">@diskUsage.Pct%</span>
-                </span>
-            }
-        </div>
-    </div>
-</div>
+@* 2026-07-08: la tira mini (dólar + disco) se movió a la fila de chips de arriba de todo
+   (MainLayout .topstrip), junto con empresa/usuario y el reloj. El dashboard arranca directo
+   en el contenido. Balanza y Stock ya viven en su tarjeta detallada más abajo. *@
 
 @* ═══ Card: equipo trabajando ahora ═══ *@
 <div class="dash-card">
@@ -1018,12 +969,6 @@
 
 <style>
     /* ═══════════════ 2026-06-25 — Dashboard nuevo: strip mini + equipo + resumen ═══════════════ */
-    .dash-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 14px; }
-    .dash-strip-item { background: #ffffff; border: 0.5px solid rgba(0,0,0,0.08); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; }
-    .dash-strip-ico { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .dash-strip-body { display: flex; flex-direction: column; min-width: 0; }
-    .dash-strip-label { font-size: 0.68rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; }
-    .dash-strip-value { font-size: 0.95rem; font-weight: 500; color: #1f2937; font-variant-numeric: tabular-nums; }
 
     .dash-card { background: #ffffff; border: 0.5px solid rgba(0,0,0,0.08); border-radius: 14px; padding: 14px 16px; margin-bottom: 14px; }
     .dash-card-title { display: flex; align-items: center; gap: 8px; font-size: 0.95rem; font-weight: 500; margin: 0 0 12px; color: #1f2937; }
@@ -1513,13 +1458,10 @@
         && !userPermissions.Contains("oficina");
 
     // Widgets nuevos
-    private DolarBnaDto? dolar;
-    private bool dolarLoading = true;
-    private DiskUsageDto? diskUsage; // 2026-07-08: chip de disco del servidor (lo registra el robot de las 2 AM)
+    // 2026-07-08: dólar y disco se movieron a los chips de arriba (MainLayout .topstrip).
     private DateTime arTime;
     private DateTime esTime;
     private System.Threading.Timer? clockTimer;
-    private System.Threading.Timer? quoteTimer;
     private System.Threading.Timer? coffeeTimer;
     private CoffeeMonthlyKgDto? coffeeKg;
     // 2026-06-05: histórico balanza (tooltip al hover)
@@ -1772,13 +1714,7 @@
             StateHasChanged();
         }), null, 1000, 1000);
 
-        // Cargar cotizacion dolar BNA y refrescar cada 5 minutos.
-        _ = LoadDolarAsync();
-        quoteTimer = new System.Threading.Timer(_ => InvokeAsync(LoadDolarAsync), null,
-            TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
-
-        // 2026-07-08: espacio en disco del servidor (chip de la tira). Cambia 1 vez al día.
-        _ = LoadDiskUsageAsync();
+        // 2026-07-08: dólar BNA y disco se cargan ahora en MainLayout (chips de arriba).
 
         // Contador de café FRIKAF vendido en el mes: cargar y refrescar cada 30 segundos
         _ = LoadCoffeeKgAsync();
@@ -1935,35 +1871,6 @@
         var nowUtc = DateTime.UtcNow;
         arTime = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, ArgentinaTz);
         esTime = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, SpainTz);
-    }
-
-    private async Task LoadDolarAsync()
-    {
-        try
-        {
-            dolar = await Api.GetDolarBnaAsync();
-        }
-        catch (Exception ex)
-        {
-            dolar = new DolarBnaDto { Error = ex.Message };
-        }
-        dolarLoading = false;
-        StateHasChanged();
-    }
-
-    // 2026-07-08: espacio en disco del servidor. Dato que deja el robot de las 2 AM en
-    // AppSettings. Cambia una vez por día, así que alcanza con cargarlo al abrir el dashboard.
-    private async Task LoadDiskUsageAsync()
-    {
-        try
-        {
-            diskUsage = await Api.GetDiskUsageAsync();
-        }
-        catch
-        {
-            // si falla, el chip muestra "…" y no rompe el dashboard
-        }
-        StateHasChanged();
     }
 
     private async Task LoadCoffeeKgAsync()
@@ -2186,7 +2093,6 @@
     public void Dispose()
     {
         clockTimer?.Dispose();
-        quoteTimer?.Dispose();
         coffeeTimer?.Dispose();
         salesSummaryTimer?.Dispose();
         alqResumenTimer?.Dispose();

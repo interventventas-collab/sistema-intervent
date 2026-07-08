@@ -1,6 +1,51 @@
 @inherits LayoutComponentBase
 
 <style>
+    /* 2026-07-08: fila superior de "chips" (arriba de la barra de menú).
+       Empresa+Usuario · Reloj · Dólar · Disco. Se sacaron de la barra de menú y de
+       la tira del dashboard para que todo el resumen viva arriba de todo, en una fila
+       aparte y sin encimarse con el menú. En pantallas chicas hace wrap (bajan solos). */
+    .topstrip {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        padding: 0.4rem 1.5rem;
+        background: var(--topbar-bg);
+        border-bottom: 1px solid var(--border);
+    }
+    .topchip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: #fff;
+        border: 0.5px solid var(--border);
+        border-radius: 10px;
+        padding: 0.3rem 0.7rem;
+        line-height: 1.15;
+    }
+    .topchip-ico {
+        width: 26px; height: 26px;
+        border-radius: 7px;
+        display: inline-flex; align-items: center; justify-content: center;
+        flex-shrink: 0;
+    }
+    .topchip-ico svg { width: 15px; height: 15px; }
+    .topchip-label { font-size: 0.66rem; color: #6b7280; }
+    .topchip-value { font-size: 0.82rem; font-weight: 500; color: #1f2937; font-variant-numeric: tabular-nums; }
+    .topchip-btn { cursor: pointer; }
+    .topchip-btn:hover { background: #f9fafb; border-color: #9ca3af; }
+    .topchip-lock {
+        border: none; background: transparent; cursor: pointer;
+        padding: 2px; border-radius: 6px; display: inline-flex; color: #b45309;
+    }
+    .topchip-lock:hover { background: #fef3c7; }
+    /* En celu, el dólar y el disco se esconden para no amontonar (lo importante
+       —empresa/usuario y hora— queda siempre). */
+    @@media (max-width: 640px) {
+        .topchip-secondary { display: none; }
+    }
+
     /* 2026-05-28: botón para abrir herramientas flotantes (calculadora + post-its). */
     .topbar-tool-btn {
         background: transparent;
@@ -1055,6 +1100,95 @@
 <main class="main-wrapper @(sidebarCollapsed ? "main-collapsed" : "") @(IsEmbedded ? "main-embedded" : "")">
 @if (!IsEmbedded)
 {
+    @* 2026-07-08: fila de chips arriba de todo (empresa/usuario · reloj · dólar · disco).
+       Se movió acá lo que antes estaba suelto en la barra de menú y en la tira del dashboard,
+       para que todo el resumen viva en una fila propia, sin encimarse con el menú. *@
+    <div class="topstrip">
+        @* Empresa + usuario. Click = cambiar operador (pide PIN). Candado = bloquear ahora. *@
+        <div class="topchip @(Operator.HasOperator ? "topchip-btn" : "")"
+             @onclick="OnEmpresaChipClick"
+             title="@(Operator.HasOperator ? "Cambiar operador (pide PIN)" : "")">
+            <span class="topchip-ico" style="background:#eef2ff; color:#4338ca;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4l7 4v14"/><path d="M9 9h.01M9 12h.01M9 15h.01M15 9h.01M15 12h.01M15 15h.01"/></svg>
+            </span>
+            <span>
+                <span class="topchip-value" style="display:block;">@BrandSettings.BrandName</span>
+                @if (Operator.HasOperator)
+                {
+                    <span class="topchip-label" style="display:inline-flex; align-items:center; gap:3px;">
+                        <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        @Operator.Current
+                    </span>
+                }
+            </span>
+            @if (Operator.HasOperator && requierePinLock)
+            {
+                <button class="topchip-lock" @onclick="OnBloquearAhoraClick" @onclick:stopPropagation="true"
+                        title="Bloquear ahora (vuelve a pedir PIN)">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                </button>
+            }
+        </div>
+
+        @* Reloj *@
+        <div class="topchip" title="Hora Argentina">
+            <span class="topchip-ico" style="background:#eef2ff; color:#4338ca;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            </span>
+            <span>
+                <span class="topchip-value" style="display:block;">@_arNow.ToString("HH:mm")</span>
+                <span class="topchip-label" style="text-transform:capitalize;">@_arNow.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-AR"))</span>
+            </span>
+        </div>
+
+        @* Dólar BNA (se esconde en celu para no amontonar) *@
+        <div class="topchip topchip-secondary" title="Dólar BNA">
+            <span class="topchip-ico" style="background:#eaf3de; color:#3B6D11;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+            </span>
+            <span>
+                <span class="topchip-label" style="display:block;">Dólar BNA@(_dolar?.Fecha is null ? "" : " · " + _dolar.Fecha)</span>
+                @if (_dolar is not null && _dolar.Compra is not null && _dolar.Venta is not null)
+                {
+                    <span class="topchip-value">
+                        <span style="color:#16a34a;">$@_dolar.Compra.Value.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</span>
+                        <span style="color:#9ca3af;"> / </span>
+                        <span style="color:#dc2626;">$@_dolar.Venta.Value.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</span>
+                    </span>
+                }
+                else
+                {
+                    <span class="topchip-value" style="color:#9ca3af;">…</span>
+                }
+            </span>
+        </div>
+
+        @* Disco del servidor (se esconde en celu). Dato que deja el robot de las 2 AM. *@
+        <div class="topchip topchip-secondary" title="Espacio en disco del servidor">
+            <span class="topchip-ico" style="background:#e6f1fb; color:#185fa5;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
+            </span>
+            <span>
+                <span class="topchip-label" style="display:block;">Disco@(_disk?.At is null ? "" : " · " + _disk.At)</span>
+                @if (_disk is null)
+                {
+                    <span class="topchip-value" style="color:#9ca3af;">…</span>
+                }
+                else
+                {
+                    var dColor = _disk.Pct >= 85 ? "#dc2626" : _disk.Pct >= 70 ? "#d97706" : "#16a34a";
+                    <span class="topchip-value" style="display:inline-flex; align-items:center; gap:6px;">
+                        <span>@_disk.FreeGb GB<span style="color:#9ca3af; font-weight:400;"> de @_disk.TotalGb</span></span>
+                        <span style="width:34px; height:5px; border-radius:4px; background:#e5e7eb; overflow:hidden; display:inline-block;">
+                            <span style="display:block; width:@(_disk.Pct)%; height:100%; background:@dColor;"></span>
+                        </span>
+                        <span style="font-size:0.7rem; color:@dColor;">@_disk.Pct%</span>
+                    </span>
+                }
+            </span>
+        </div>
+    </div>
+
     @* Banner rojo de WhatsApp desvinculado removido 2026-06-24: el boton gris con punto rojo
        en la topbar (ver waDesvinculado en linea ~1033) ya avisa el estado sin ocupar espacio. *@
     <header class="topbar">
@@ -1063,42 +1197,8 @@
                 @SvgIcons.Menu
             </button>
             <BackButton />
-            @* Selector de empresa desactivado — el sistema funciona sin filtro por empresa.
-               Si en algun momento querés volver a habilitarlo, cambiá ENABLE_COMPANY_SELECTOR a true. *@
-            @{ const bool ENABLE_COMPANY_SELECTOR = false; }
-            @if (ENABLE_COMPANY_SELECTOR)
-            {
-                <button class="topbar-company-btn" @onclick="() => showCompanyModal = true" title="Cambiar empresa de trabajo">
-                    <span class="topbar-company-name">@(Company.HasCompany ? Company.CurrentDisplayName : BrandSettings.BrandName)</span>
-                    <span class="topbar-company-chevron">@SvgIcons.ChevronRight</span>
-                </button>
-            }
-            else
-            {
-                <span class="topbar-company-name" style="font-weight: 700; padding: 0.4rem 0.6rem;">@BrandSettings.BrandName</span>
-            }
-            @if (Operator.HasOperator)
-            {
-                <button class="btn btn-secondary" style="margin-left: 0.8rem; font-size: 0.78rem; padding: 0.25rem 0.6rem;"
-                        @onclick="OnCambiarOperadorClick" title="Cambiar operador (pide PIN)">
-                    👤 @Operator.Current
-                </button>
-                @* 2026-06-24: Boton para bloquear la sesion manualmente. Util cuando el operador
-                   se va un rato y quiere que el proximo que use la PC tenga que poner el PIN. *@
-                @if (requierePinLock)
-                {
-                    <button class="btn btn-secondary" style="margin-left: 0.3rem; font-size: 0.78rem; padding: 0.25rem 0.55rem;"
-                            @onclick="OnBloquearAhoraClick" title="Bloquear ahora (vuelve a pedir PIN)">
-                        🔒
-                    </button>
-                }
-            }
-            @* 2026-06-25: reloj chiquito en el topbar (se sacó la card grande del dashboard).
-               Muestra día + hora AR. Se refresca cada 30s via timer del MainLayout. *@
-            <span title="Hora Argentina" style="margin-left:0.7rem; display:inline-flex; flex-direction:column; align-items:flex-start; line-height:1.15; font-variant-numeric:tabular-nums;">
-                <span style="font-size:0.8rem; font-weight:500; color:#1f2937;">@_arNow.ToString("HH:mm")</span>
-                <span style="font-size:0.65rem; color:#6b7280; text-transform:capitalize;">@_arNow.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-AR"))</span>
-            </span>
+            @* 2026-07-08: empresa, usuario, candado y reloj se movieron a la fila de chips
+               de arriba (.topstrip, ver arriba del <header>). Acá quedan solo el menú y Volver. *@
         </div>
         <div class="topbar-actions">
             @* Atajos del modulo Cafe — stack vertical para que entren varios sin agrandar el topbar.
@@ -1746,6 +1846,25 @@
     // 2026-06-25: reloj chiquito del topbar (reemplaza al card grande del dashboard).
     private System.Threading.Timer? _clockTimer;
     private DateTime _arNow = DateTime.UtcNow.AddHours(-3);
+
+    // 2026-07-08: datos de los chips de la fila superior (antes vivían en el Dashboard).
+    // El dólar refresca cada 5 min; el disco cambia 1x/día (lo deja el robot de las 2 AM).
+    private DolarBnaDto? _dolar;
+    private DiskUsageDto? _disk;
+    private System.Threading.Timer? _topChipsTimer;
+
+    /// <summary>Click en el chip Empresa/Usuario: si hay operador, ofrece cambiarlo (pide PIN).</summary>
+    private async Task OnEmpresaChipClick()
+    {
+        if (Operator.HasOperator) await OnCambiarOperadorClick();
+    }
+
+    private async Task LoadTopChipsAsync()
+    {
+        try { _dolar = await Api.GetDolarBnaAsync(); } catch { /* deja el valor previo */ }
+        try { _disk = await Api.GetDiskUsageAsync(); } catch { /* deja el valor previo */ }
+        await InvokeAsync(StateHasChanged);
+    }
     private bool mostrarPinLock => requierePinLock && !Operator.IsValidated;
     /// <summary>2026-06-15: aplica a admin/oficina/cafe. Deposito-only queda exento
     /// para no romper su flujo (cargan stock, no ventas con identidad).</summary>
@@ -2272,6 +2391,11 @@
             _arNow = DateTime.UtcNow.AddHours(-3);
             StateHasChanged();
         }), null, 30000, 30000);
+
+        // 2026-07-08: dólar + disco de los chips de arriba. Carga inicial + refresco cada 5 min.
+        _ = LoadTopChipsAsync();
+        _topChipsTimer = new System.Threading.Timer(_ => InvokeAsync(LoadTopChipsAsync), null,
+            TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
     }
 
     protected override void OnAfterRender(bool firstRender)
@@ -2504,6 +2628,7 @@
         try { cmdPalRef?.Dispose(); } catch { }
         try { _pinLockTimer?.Dispose(); } catch { }
         try { _clockTimer?.Dispose(); } catch { }
+        try { _topChipsTimer?.Dispose(); } catch { }
         try { _waStatusTimer?.Dispose(); } catch { }
         SyncProgress.OnChange -= OnSyncProgressChanged;
         UploadProgress.OnChanged -= OnUploadProgressChanged;
