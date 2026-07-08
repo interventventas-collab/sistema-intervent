@@ -422,6 +422,55 @@
                 }
             });
         };
+
+        // 2026-07-08: Atajos "N y despues la inicial" para crear rapido, desde cualquier pantalla:
+        //   N + V -> Nueva Venta | N + A -> Nueva reserva de Alquiler | N + C -> Nueva Cobranza
+        //   ?     -> muestra la ayuda de atajos
+        // Solo se activan cuando NO estas escribiendo en un campo (input/textarea/select/editable),
+        // y nunca pisan atajos del sistema (Ctrl/Alt/Cmd).
+        window.registerNuevoShortcuts = function (dotnetRef) {
+            window.__nuevoRef = dotnetRef;
+            if (window.__nuevoKeyBound) return;
+            window.__nuevoKeyBound = true;
+            var waitingN = false;
+            var timer = null;
+            function isTyping() {
+                var el = document.activeElement;
+                if (!el) return false;
+                var tag = el.tagName;
+                return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+            }
+            function clearWait() { waitingN = false; if (timer) { clearTimeout(timer); timer = null; } }
+            document.addEventListener('keydown', function (e) {
+                if (e.ctrlKey || e.altKey || e.metaKey) { clearWait(); return; }
+                if (isTyping()) { clearWait(); return; }
+                // Ayuda con "?"
+                if (e.key === '?') {
+                    e.preventDefault();
+                    if (window.__nuevoRef) window.__nuevoRef.invokeMethodAsync('HandleNuevoShortcut', 'help');
+                    return;
+                }
+                var k = e.key ? e.key.toLowerCase() : '';
+                if (!waitingN) {
+                    if (k === 'n') {
+                        waitingN = true;
+                        if (timer) clearTimeout(timer);
+                        timer = setTimeout(clearWait, 1200);
+                    }
+                    return;
+                }
+                // Ya apretaste N: esta es la segunda tecla
+                clearWait();
+                var action = null;
+                if (k === 'v') action = 'venta';
+                else if (k === 'a') action = 'alquiler';
+                else if (k === 'c') action = 'cobranza';
+                if (action) {
+                    e.preventDefault();
+                    if (window.__nuevoRef) window.__nuevoRef.invokeMethodAsync('HandleNuevoShortcut', action);
+                }
+            });
+        };
     </script>
     <script>
         // Focusea un elemento por ID. Usado por la pantalla de Nueva Venta para

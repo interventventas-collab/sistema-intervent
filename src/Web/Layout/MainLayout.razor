@@ -1600,6 +1600,46 @@
     </style>
 }
 
+@* ═══════════ Ayuda de atajos de teclado (se abre con "?") ═══════════ *@
+@if (showShortcutsHelp)
+{
+    <div class="modal-overlay" @onclick="() => showShortcutsHelp = false" style="z-index: 4000;">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h4 style="margin: 0;">⌨️ Atajos de teclado</h4>
+                <button class="btn-close" @onclick="() => showShortcutsHelp = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.85rem; color: #6b7280; margin-top: 0;">
+                    Apretá <kbd style="@KbdStyle">N</kbd> y enseguida la inicial. Funciona desde cualquier pantalla
+                    (siempre que no estés escribiendo en un casillero).
+                </p>
+                <table style="width: 100%; font-size: 0.9rem; border-collapse: collapse;">
+                    <tr style="border-bottom: 1px solid #f3f4f6;">
+                        <td style="padding: 0.5rem 0;"><kbd style="@KbdStyle">N</kbd> <kbd style="@KbdStyle">V</kbd></td>
+                        <td style="padding: 0.5rem 0;">🧾 Nueva Venta</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #f3f4f6;">
+                        <td style="padding: 0.5rem 0;"><kbd style="@KbdStyle">N</kbd> <kbd style="@KbdStyle">A</kbd></td>
+                        <td style="padding: 0.5rem 0;">📅 Nueva reserva de Alquiler</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #f3f4f6;">
+                        <td style="padding: 0.5rem 0;"><kbd style="@KbdStyle">N</kbd> <kbd style="@KbdStyle">C</kbd></td>
+                        <td style="padding: 0.5rem 0;">💵 Nueva Cobranza</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 0.5rem 0;"><kbd style="@KbdStyle">Ctrl</kbd> <kbd style="@KbdStyle">K</kbd></td>
+                        <td style="padding: 0.5rem 0;">🔎 Buscador rápido</td>
+                    </tr>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showShortcutsHelp = false">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     // 2026-06-23: estado del WhatsApp Web vía Playwright. Polling cada 60s.
     // Si la sesión se cae mostramos banner rojo y el botón verde se pone gris.
@@ -1846,6 +1886,35 @@
     public async Task TriggerCommandPalette()
     {
         await OpenCommandPalette();
+    }
+
+    // 2026-07-08: Atajos "N + inicial" para crear rápido desde cualquier pantalla.
+    private bool showShortcutsHelp;
+    private const string KbdStyle = "display:inline-block; min-width:1.4rem; text-align:center; padding:0.1rem 0.4rem; font-family:monospace; font-size:0.8rem; font-weight:700; color:#374151; background:#f3f4f6; border:1px solid #d1d5db; border-bottom-width:2px; border-radius:5px;";
+
+    /// <summary>Recibe la acción del atajo de teclado (N+V / N+A / N+C / ?) y la ejecuta.
+    /// Venta reusa el mismo camino que el botón "+ Nueva venta". Alquiler y Cobranza navegan
+    /// a su pantalla con el query que auto-abre el formulario. "help" muestra la ayuda.</summary>
+    [JSInvokable]
+    public Task HandleNuevoShortcut(string action)
+    {
+        switch (action)
+        {
+            case "venta":
+                OpenNuevaVentaShortcut();
+                break;
+            case "alquiler":
+                Navigation.NavigateTo($"/alquileres/reservas?nueva={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}");
+                break;
+            case "cobranza":
+                Navigation.NavigateTo("/cafe/tesoreria/cobranzas?nueva=1");
+                break;
+            case "help":
+                showShortcutsHelp = !showShortcutsHelp;
+                InvokeAsync(StateHasChanged);
+                break;
+        }
+        return Task.CompletedTask;
     }
 
     /// <summary>Atajo del FAB "Nueva Venta": si ya estamos en /cafe/ventas, emitimos
@@ -2198,6 +2267,8 @@
             try
             {
                 await JS.InvokeVoidAsync("registerCommandPaletteShortcut", cmdPalRef);
+                // 2026-07-08: atajos "N + inicial" (N V / N A / N C) y "?" de ayuda.
+                await JS.InvokeVoidAsync("registerNuevoShortcuts", cmdPalRef);
             }
             catch { /* navegador viejo o JS bloqueado */ }
         }
