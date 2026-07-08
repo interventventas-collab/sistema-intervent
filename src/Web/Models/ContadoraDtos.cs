@@ -85,3 +85,84 @@ public class ContadoraFacturasPageDto
     public int Page { get; set; }
     public int PageSize { get; set; }
 }
+
+// ───────── Importacion del reporte oficial de MeLi (con notas de credito) ─────────
+
+public class ContadoraImportArchivoDto
+{
+    public string Archivo { get; set; } = "";
+    public bool Ok { get; set; } = true;
+    public string? Error { get; set; }
+    public string? EmpresaCuit { get; set; }
+    public int Facturas { get; set; }
+    public int NotasCredito { get; set; }
+    public int Nuevos { get; set; }
+    public int Actualizados { get; set; }
+    public DateTime? PeriodoDesde { get; set; }
+    public DateTime? PeriodoHasta { get; set; }
+    public decimal NetoNeto { get; set; }
+    public decimal IvaNeto { get; set; }
+    public decimal TotalNeto { get; set; }
+}
+
+public class ContadoraImportResultDto
+{
+    public bool Ok { get; set; } = true;
+    public string? Mensaje { get; set; }
+    public List<ContadoraImportArchivoDto> Archivos { get; set; } = new();
+    public int FilasLeidas { get; set; }
+    public int Nuevos { get; set; }
+    public int Actualizados { get; set; }
+    public int Facturas { get; set; }
+    public int NotasCredito { get; set; }
+    public int Omitidos { get; set; }
+}
+
+public class ContadoraReporteResumenDto
+{
+    public List<LibroIvaResumenRowDto> Filas { get; set; } = new();
+    public int CantidadFacturas { get; set; }
+    public int CantidadNotasCredito { get; set; }
+    public decimal NetoTotal { get; set; }
+    public decimal IvaTotal { get; set; }
+    public decimal TotalTotal { get; set; }
+    public bool SinDatos { get; set; }
+}
+
+public class ContadoraCargaDto
+{
+    public int Anio { get; set; }
+    public int Mes { get; set; }
+    public string? EmpresaCuit { get; set; }
+    public int Facturas { get; set; }
+    public int NotasCredito { get; set; }
+    public decimal NetoNeto { get; set; }
+    public decimal IvaNeto { get; set; }
+    public decimal TotalNeto { get; set; }
+}
+
+public class ContadoraComprobanteDto
+{
+    public string IdComprobante { get; set; } = "";
+    public string? EmpresaCuit { get; set; }
+    public bool EsNotaCredito { get; set; }
+    public string? TipoComprobante { get; set; }
+    public int? PuntoVenta { get; set; }
+    public long? NumeroComprobante { get; set; }
+    public DateTime? FechaEmision { get; set; }
+    public string? Letra { get; set; }
+    public string? ReceptorNombre { get; set; }
+    public string? ReceptorDoc { get; set; }
+    public string? Provincia { get; set; }
+    public decimal Neto { get; set; }
+    public decimal Iva { get; set; }
+    public decimal Total { get; set; }
+}
+
+public class ContadoraComprobantesPageDto
+{
+    public List<ContadoraComprobanteDto> Items { get; set; } = new();
+    public int Total { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+}

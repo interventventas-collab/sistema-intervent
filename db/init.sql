@@ -524,6 +524,55 @@ BEGIN
 END
 GO
 
+-- 2026-07-08: ContadoraComprobantes — comprobantes (facturas + notas de credito) IMPORTADOS del
+-- Excel oficial de MeLi "Reporte de facturas y notas de creditos". Incluye NC (que restan) y el
+-- neto/IVA discriminado. Clave anti-duplicados: IdComprobante (unico).
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ContadoraComprobantes' AND xtype='U')
+BEGIN
+    CREATE TABLE ContadoraComprobantes (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        Origen NVARCHAR(30) NOT NULL DEFAULT 'MELI_REPORTE',
+        EmisorCuit NVARCHAR(20) NULL,
+        IdComprobante NVARCHAR(40) NOT NULL,
+        NumeroVenta BIGINT NULL,
+        NumeroEnvio BIGINT NULL,
+        TipoOperacion NVARCHAR(30) NULL,
+        TipoComprobante NVARCHAR(40) NULL,
+        EsNotaCredito BIT NOT NULL DEFAULT 0,
+        Letra NVARCHAR(4) NULL,
+        PuntoVenta INT NULL,
+        NumeroComprobante BIGINT NULL,
+        Cae NVARCHAR(30) NULL,
+        FechaEmision DATETIME2 NULL,
+        Estado NVARCHAR(30) NULL,
+        ReceptorTipoDoc NVARCHAR(20) NULL,
+        ReceptorDoc NVARCHAR(30) NULL,
+        ReceptorCondIva NVARCHAR(80) NULL,
+        ReceptorNombre NVARCHAR(200) NULL,
+        Provincia NVARCHAR(120) NULL,
+        ProvinciaEnvio NVARCHAR(120) NULL,
+        NetoGravado DECIMAL(18,2) NOT NULL DEFAULT 0,
+        BaseIva105 DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Iva105 DECIMAL(18,2) NOT NULL DEFAULT 0,
+        BaseIva21 DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Iva21 DECIMAL(18,2) NOT NULL DEFAULT 0,
+        EnvioNeto DECIMAL(18,2) NOT NULL DEFAULT 0,
+        EnvioIva DECIMAL(18,2) NOT NULL DEFAULT 0,
+        EnvioTotal DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Conceptos DECIMAL(18,2) NOT NULL DEFAULT 0,
+        OtrosImpuestos DECIMAL(18,2) NOT NULL DEFAULT 0,
+        NoGravado DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Exento DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Total DECIMAL(18,2) NOT NULL DEFAULT 0,
+        ArchivoOrigen NVARCHAR(255) NULL,
+        ImportadoEn DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+    );
+    CREATE UNIQUE INDEX IX_ContadoraComprobantes_IdComp ON ContadoraComprobantes (IdComprobante);
+    CREATE INDEX IX_ContadoraComprobantes_Emisor ON ContadoraComprobantes (EmisorCuit);
+    CREATE INDEX IX_ContadoraComprobantes_Fecha ON ContadoraComprobantes (FechaEmision);
+END
+GO
+
 -- MeliItems table
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='MeliItems' AND xtype='U')
 BEGIN

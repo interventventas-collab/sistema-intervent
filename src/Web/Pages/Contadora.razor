@@ -45,6 +45,7 @@
         <div class="co-tabs">
             <div class="co-tab @(tab == "jur" ? "act" : "")" @onclick="@(() => SetTab("jur"))">🗺 Por jurisdicción (IIBB)</div>
             <div class="co-tab @(tab == "iva" ? "act" : "")" @onclick="@(() => SetTab("iva"))">📒 Libro IVA Ventas</div>
+            <div class="co-tab @(tab == "rep" ? "act" : "")" @onclick="@(() => SetTab("rep"))">📥 Reporte MeLi (con NC)</div>
         </div>
     </div>
 
@@ -101,7 +102,7 @@
             }
         </div>
     }
-    else
+    else if (tab == "iva")
     {
         @* ══════════ VISTA LIBRO IVA VENTAS ══════════ *@
         <div class="co-card">
@@ -230,6 +231,184 @@
             </div>
         }
     }
+    else
+    {
+        @* ══════════ VISTA REPORTE MELI IMPORTADO (con notas de crédito) ══════════ *@
+        <div class="co-card">
+            <p class="co-sub">
+                El <b>Libro IVA Ventas</b> hecho con el reporte oficial que bajás de MercadoLibre
+                (Facturación → Descargar reporte). Es idéntico al que conoce tu contadora: trae las
+                <b>notas de crédito que restan</b> y el neto/IVA discriminado, por <b>empresa</b>.
+            </p>
+            <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:.9rem 1rem;">
+                <b>Cómo cargar los meses:</b>
+                <ol style="margin:.4rem 0 .6rem 1.1rem;padding:0;color:#374151;font-size:.9rem;line-height:1.5;">
+                    <li>Subí los Excel a la Carpeta Compartida → carpeta <b>facturas meli</b>.</li>
+                    <li>Volvé acá y tocá <b>“Importar los de la carpeta”</b>. Podés reimportar cuantas veces quieras: no se duplica.</li>
+                </ol>
+                <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;">
+                    <button class="co-btn co-btn-primary" @onclick="ImportarCarpeta" disabled="@importando">
+                        @(importando ? "Importando…" : "📥 Importar los de la carpeta \"facturas meli\"")
+                    </button>
+                    <label class="co-btn co-btn-ghost" style="margin:0;">
+                        …o elegir archivos
+                        <InputFile OnChange="OnArchivosSeleccionados" multiple accept=".xlsx" style="display:none;" />
+                    </label>
+                </div>
+            </div>
+
+            @if (importResult is not null)
+            {
+                <div class="co-alerta" style="@(importResult.Ok ? "background:#f0fdf4;border-color:#bbf7d0;" : "")margin-top:.9rem;">
+                    <div><b>@(importResult.Ok ? "✅ " : "⚠️ ")@importResult.Mensaje</b></div>
+                    @foreach (var a in importResult.Archivos)
+                    {
+                        <div class="co-hint" style="margin-top:.3rem;">
+                            @if (a.Ok)
+                            {
+                                <text>📄 @a.Archivo — @a.Facturas facturas, @a.NotasCredito NC (@a.Nuevos nuevos, @a.Actualizados actualizados)@(a.PeriodoDesde is not null ? $" · {a.PeriodoDesde:dd/MM/yyyy} a {a.PeriodoHasta:dd/MM/yyyy}" : "")</text>
+                            }
+                            else
+                            {
+                                <text>❌ @a.Archivo — @a.Error</text>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        @if (repCargas.Count > 0)
+        {
+            <div class="co-card">
+                <b>Meses cargados</b>
+                <table class="co-tabla" style="margin-top:.5rem;">
+                    <thead><tr><th>Mes</th><th>Empresa (CUIT)</th><th class="num">Facturas</th><th class="num">Notas de créd.</th><th class="num">Neto</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
+                    <tbody>
+                        @foreach (var c in repCargas)
+                        {
+                            <tr>
+                                <td>@MesLabel(c.Anio, c.Mes)</td>
+                                <td>@c.EmpresaCuit</td>
+                                <td class="num">@c.Facturas</td>
+                                <td class="num">@c.NotasCredito</td>
+                                <td class="num">@Money(c.NetoNeto)</td>
+                                <td class="num">@Money(c.IvaNeto)</td>
+                                <td class="num">@Money(c.TotalNeto)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <div class="co-card">
+            <div class="co-filtros">
+                <div>
+                    <label>Empresa</label>
+                    <select @bind="rEmpresa">
+                        <option value="">Todas</option>
+                        @foreach (var e in repEmpresas)
+                        {
+                            <option value="@e.Cuit">@e.Nombre</option>
+                        }
+                    </select>
+                </div>
+                <div><label>Desde</label><input type="date" @bind="rDesde" /></div>
+                <div><label>Hasta</label><input type="date" @bind="rHasta" /></div>
+                <div><label>Pto venta</label><input type="number" style="width:90px;" @bind="rPtoVenta" /></div>
+                <div>
+                    <label>Tipo</label>
+                    <select @bind="rLetra"><option value="">Todos</option><option value="A">A</option><option value="B">B</option></select>
+                </div>
+                <div><label>Provincia</label><input type="text" style="width:130px;" placeholder="ej: Córdoba" @bind="rProvincia" /></div>
+                <div><label>Buscar</label><input type="text" style="width:150px;" placeholder="cliente / nº / doc" @bind="rSearch" /></div>
+                <button class="co-btn co-btn-primary" @onclick="CargarRep" disabled="@cargandoRep">Aplicar</button>
+                <button class="co-btn co-btn-ghost" @onclick="LimpiarRep" disabled="@cargandoRep">Limpiar</button>
+                <button class="co-btn co-btn-green" @onclick="DescargarExcelRep" disabled="@(cargandoRep || descargando || rep is null || rep.Filas.Count == 0)">@(descargando ? "Generando…" : "⬇ Excel")</button>
+            </div>
+        </div>
+
+        <div class="co-card">
+            @if (cargandoRep) { <p>Cargando…</p> }
+            else if (rep is null || rep.SinDatos) { <p class="co-hint">Todavía no importaste ningún reporte. Subí los Excel a la carpeta y tocá “Importar los de la carpeta”.</p> }
+            else if (rep.Filas.Count == 0) { <p class="co-hint">No hay comprobantes para mostrar con estos filtros.</p> }
+            else
+            {
+                <table class="co-tabla">
+                    <thead><tr><th>Empresa (CUIT)</th><th class="num">Pto vta</th><th>Tipo</th><th class="num">Cant.</th><th class="num">Neto</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
+                    <tbody>
+                        @foreach (var f in rep.Filas)
+                        {
+                            <tr>
+                                <td>@f.EmpresaCuit</td>
+                                <td class="num">@f.PuntoVenta</td>
+                                <td>@f.Letra</td>
+                                <td class="num">@f.Cantidad</td>
+                                <td class="num">@Money(f.Neto)</td>
+                                <td class="num">@Money(f.Iva)</td>
+                                <td class="num">@Money(f.Total)</td>
+                            </tr>
+                        }
+                        <tr class="tot">
+                            <td>TOTALES</td><td></td><td></td>
+                            <td class="num">@(rep.CantidadFacturas + rep.CantidadNotasCredito)</td>
+                            <td class="num">@Money(rep.NetoTotal)</td>
+                            <td class="num">@Money(rep.IvaTotal)</td>
+                            <td class="num">@Money(rep.TotalTotal)</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p class="co-hint" style="margin-top:.5rem;">Incluye @rep.CantidadFacturas factura(s) y @rep.CantidadNotasCredito nota(s) de crédito (las NC ya están restadas en los totales).</p>
+                <div style="margin-top:.9rem;">
+                    <button class="co-btn co-btn-ghost" @onclick="ToggleDetalleRep">@(verDetalleRep ? "▲ Ocultar detalle" : "▼ Ver detalle (comprobante por comprobante)")</button>
+                </div>
+            }
+        </div>
+
+        @if (verDetalleRep && repComps is not null)
+        {
+            <div class="co-card">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem;">
+                    <b>Detalle</b>
+                    <span class="co-chip">@repComps.Total comprobante(s)</span>
+                </div>
+                @if (repComps.Items.Count == 0) { <p class="co-hint">Sin resultados.</p> }
+                else
+                {
+                    <div style="overflow-x:auto;">
+                        <table class="co-tabla">
+                            <thead><tr><th>Fecha</th><th>Comprobante</th><th class="num">Pto vta</th><th class="num">Número</th><th>Cliente</th><th>Provincia</th><th class="num">Neto</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
+                            <tbody>
+                                @foreach (var f in repComps.Items)
+                                {
+                                    <tr style="@(f.EsNotaCredito ? "color:#b91c1c;" : "")">
+                                        <td>@f.FechaEmision?.ToString("dd/MM/yyyy")</td>
+                                        <td>@f.TipoComprobante</td>
+                                        <td class="num">@f.PuntoVenta</td>
+                                        <td class="num">@f.NumeroComprobante</td>
+                                        <td>@f.ReceptorNombre</td>
+                                        <td>@f.Provincia</td>
+                                        <td class="num">@Money(f.Neto)</td>
+                                        <td class="num">@Money(f.Iva)</td>
+                                        <td class="num">@Money(f.Total)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    @if (RepPaginas > 1)
+                    {
+                        <div style="margin-top:.7rem;display:flex;gap:.5rem;align-items:center;">
+                            <button class="co-btn co-btn-ghost" @onclick="@(() => IrPaginaRep(repPage - 1))" disabled="@(repPage <= 1)">◀</button>
+                            <span class="co-hint">Página @repPage de @RepPaginas</span>
+                            <button class="co-btn co-btn-ghost" @onclick="@(() => IrPaginaRep(repPage + 1))" disabled="@(repPage >= RepPaginas)">▶</button>
+                        </div>
+                    }
+                }
+            </div>
+        }
+    }
 </div>
 
 @code {
@@ -251,6 +430,19 @@
     private bool empresasCargadas;
     private int Paginas => facturas is null ? 1 : (int)Math.Ceiling(facturas.Total / (double)facturas.PageSize);
 
+    // Reporte MeLi importado (con NC)
+    private ContadoraReporteResumenDto? rep;
+    private ContadoraComprobantesPageDto? repComps;
+    private List<ContadoraCargaDto> repCargas = new();
+    private List<ContadoraEmpresaDto> repEmpresas = new();
+    private ContadoraImportResultDto? importResult;
+    private string? rEmpresa, rLetra, rProvincia, rSearch;
+    private int? rPtoVenta;
+    private DateTime? rDesde, rHasta;
+    private bool cargandoRep, importando, verDetalleRep, repInit;
+    private int repPage = 1;
+    private int RepPaginas => repComps is null ? 1 : (int)Math.Ceiling(repComps.Total / (double)repComps.PageSize);
+
     private bool cargando, cargandoIva, descargando;
     private bool robotLanzado;
 
@@ -263,6 +455,11 @@
         {
             if (!empresasCargadas) { empresas = await Api.GetContadoraEmpresasAsync() ?? new(); empresasCargadas = true; }
             if (iva is null) await CargarIva();
+        }
+        else if (t == "rep" && !repInit)
+        {
+            repInit = true;
+            await RecargarRep();
         }
     }
 
@@ -367,6 +564,106 @@
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { descargando = false; }
     }
+
+    // ───── Reporte MeLi importado (con NC) ─────
+    private async Task RecargarRep()
+    {
+        repEmpresas = await Api.GetContadoraReporteEmpresasAsync() ?? new();
+        repCargas = await Api.GetContadoraReporteCargasAsync() ?? new();
+        await CargarRep();
+    }
+
+    private async Task CargarRep()
+    {
+        if (cargandoRep) return;
+        cargandoRep = true;
+        try
+        {
+            rep = await Api.GetContadoraReporteResumenAsync(rDesde, rHasta, rEmpresa, rPtoVenta, rLetra, rProvincia, rSearch);
+            if (verDetalleRep) { repPage = 1; await CargarComps(); }
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo cargar: " + ex.Message); }
+        finally { cargandoRep = false; }
+    }
+
+    private async Task LimpiarRep()
+    {
+        rEmpresa = null; rLetra = null; rProvincia = null; rSearch = null; rPtoVenta = null; rDesde = null; rHasta = null;
+        await CargarRep();
+    }
+
+    private async Task ToggleDetalleRep()
+    {
+        verDetalleRep = !verDetalleRep;
+        if (verDetalleRep) { repPage = 1; await CargarComps(); }
+    }
+
+    private async Task CargarComps()
+    {
+        try { repComps = await Api.GetContadoraReporteComprobantesAsync(rDesde, rHasta, rEmpresa, rPtoVenta, rLetra, rProvincia, rSearch, repPage, 50); }
+        catch (Exception ex) { ToastService.Error("No se pudo cargar el detalle: " + ex.Message); }
+    }
+
+    private async Task IrPaginaRep(int p) { repPage = p; await CargarComps(); }
+
+    private async Task ImportarCarpeta()
+    {
+        if (importando) return;
+        importando = true; importResult = null;
+        try
+        {
+            importResult = await Api.ImportarReporteCarpetaAsync();
+            if (importResult is not null && importResult.Ok)
+            {
+                ToastService.Success(importResult.Mensaje ?? "Importado.");
+                await RecargarRep();
+            }
+            else ToastService.Error(importResult?.Mensaje ?? "No se pudo importar.");
+        }
+        catch (Exception ex) { ToastService.Error("Error al importar: " + ex.Message); }
+        finally { importando = false; }
+    }
+
+    private async Task OnArchivosSeleccionados(InputFileChangeEventArgs e)
+    {
+        if (importando) return;
+        importando = true; importResult = null;
+        try
+        {
+            var archivos = new List<(string, Stream)>();
+            foreach (var f in e.GetMultipleFiles(20))
+            {
+                var ms = new MemoryStream();
+                await f.OpenReadStream(50_000_000).CopyToAsync(ms);
+                ms.Position = 0;
+                archivos.Add((f.Name, ms));
+            }
+            var (result, error) = await Api.ImportarReporteArchivosAsync(archivos);
+            if (error is not null) { ToastService.Error(error); return; }
+            importResult = result;
+            if (result is not null && result.Ok) { ToastService.Success(result.Mensaje ?? "Importado."); await RecargarRep(); }
+            else ToastService.Error(result?.Mensaje ?? "No se pudo importar.");
+        }
+        catch (Exception ex) { ToastService.Error("Error al importar: " + ex.Message); }
+        finally { importando = false; }
+    }
+
+    private async Task DescargarExcelRep()
+    {
+        var qs = new List<string>();
+        if (rDesde.HasValue) qs.Add($"desde={rDesde.Value:yyyy-MM-dd}");
+        if (rHasta.HasValue) qs.Add($"hasta={rHasta.Value:yyyy-MM-dd}");
+        if (!string.IsNullOrWhiteSpace(rEmpresa)) qs.Add($"empresa={Uri.EscapeDataString(rEmpresa)}");
+        if (rPtoVenta.HasValue) qs.Add($"puntoVenta={rPtoVenta.Value}");
+        if (!string.IsNullOrWhiteSpace(rLetra)) qs.Add($"letra={rLetra}");
+        if (!string.IsNullOrWhiteSpace(rProvincia)) qs.Add($"provincia={Uri.EscapeDataString(rProvincia)}");
+        if (!string.IsNullOrWhiteSpace(rSearch)) qs.Add($"search={Uri.EscapeDataString(rSearch)}");
+        var url = "api/contadora/reporte/excel" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        await Descargar(url, $"libro-iva-ventas-meli-{DateTime.Now:yyyy-MM-dd}.xlsx");
+    }
+
+    private static readonly string[] Meses = { "", "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre" };
+    private static string MesLabel(int anio, int mes) => (mes >= 1 && mes <= 12 ? Meses[mes] : mes.ToString()) + " " + anio;
 
     private static string DestinoLabel(string prov) => prov.StartsWith("(") ? prov : $"Argentina - {prov}";
 
