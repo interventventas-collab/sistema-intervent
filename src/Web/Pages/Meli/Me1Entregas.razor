@@ -5,17 +5,18 @@
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.6rem;">
-        <h3 style="margin: 0;">🏎 me1 · Entregas (@shipments.Count)</h3>
-        <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
-            <button class="btn @(filter == "todos" ? "btn-primary" : "btn-secondary")" @onclick='() => SetFilter("todos")'>Todos</button>
-            <button class="btn @(filter == "pendientes" ? "btn-primary" : "btn-secondary")" @onclick='() => SetFilter("pendientes")'>Pendientes</button>
-            <button class="btn @(filter == "entregados" ? "btn-primary" : "btn-secondary")" @onclick='() => SetFilter("entregados")'>Entregados</button>
-            <button class="btn @(filter == "no_entregados" ? "btn-primary" : "btn-secondary")" @onclick='() => SetFilter("no_entregados")'>No entregados</button>
-            <button class="btn btn-secondary" @onclick="SyncFromMeli" disabled="@isSyncing" title="Trae envios ME1 nuevos desde MercadoLibre">
-                @(isSyncing ? "Sincronizando..." : "🔄 Sincronizar con MeLi")
-            </button>
+        <div style="display: flex; align-items: center; gap: 0.6rem;">
+            <span style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 8px; background: #e6f1fb; color: #185fa5; font-size: 1.15rem;">🏎</span>
+            <div>
+                <h3 style="margin: 0; line-height: 1.1;">me1 · Entregas <span style="color: #9ca3af; font-weight: 500;">(@Visible.Count())</span></h3>
+                <div style="font-size: 0.75rem; color: #9ca3af;">envios manuales de MercadoLibre</div>
+            </div>
         </div>
+        <button class="btn btn-secondary" @onclick="SyncFromMeli" disabled="@isSyncing" title="Trae envios ME1 nuevos desde MercadoLibre">
+            @(isSyncing ? "Sincronizando..." : "🔄 Sincronizar con MeLi")
+        </button>
     </div>
+
     @* 2026-06-08: importar un envío puntual por número de ORDEN MeLi cuando el sync masivo no la trae *@
     <div style="padding: 0.6rem 1rem; background: #fef3c7; border-bottom: 1px solid #fde68a; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
         <span style="font-size: 0.85rem; color: #78350f; font-weight: 600;">🔍 ¿No aparece un envío?</span>
@@ -34,135 +35,154 @@
             </span>
         }
     </div>
+
+    @* 2026-07-08: buscador (venta, envio, comprador, direccion) — filtra al instante, del lado del navegador. *@
+    <div style="padding: 0.8rem 1rem 0.4rem;">
+        <div style="position: relative; max-width: 520px;">
+            <span style="position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%); color: #9ca3af;">🔎</span>
+            <input type="text" class="form-input" style="width: 100%; padding: 0.55rem 0.6rem 0.55rem 2.1rem; font-size: 0.9rem;"
+                   @bind="searchText" @bind:event="oninput"
+                   placeholder="Buscar por N° de venta, N° de envío, comprador o dirección…" />
+            @if (!string.IsNullOrWhiteSpace(searchText))
+            {
+                <button @onclick="@(() => searchText = "")" title="Limpiar"
+                        style="position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); border: none; background: transparent; color: #9ca3af; cursor: pointer; font-size: 1rem;">✕</button>
+            }
+        </div>
+    </div>
+
+    @* 2026-07-08: filtros como chips con contador + el nuevo "En camino" *@
+    <div style="display: flex; gap: 0.5rem; padding: 0.6rem 1rem 0.9rem; flex-wrap: wrap; border-bottom: 1px solid #eef0f2;">
+        @foreach (var c in Chips)
+        {
+            var active = filter == c.Key;
+            <button @onclick="@(() => SetFilter(c.Key))"
+                    style="display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.82rem; padding: 0.4rem 0.8rem; border-radius: 999px; cursor: pointer;
+                           background: @(active ? c.Bg : "#fff");
+                           border: @(active ? $"1.5px solid {c.Border}" : "1px solid #e5e7eb");
+                           color: @(active ? c.Txt : "#6b7280"); font-weight: @(active ? "600" : "500");">
+                <span style="width: 8px; height: 8px; border-radius: 50%; background: @c.Dot;"></span>
+                @c.Label <b style="font-weight: 600;">@c.Count</b>
+            </button>
+        }
+    </div>
+
     <div class="card-body" style="padding: 0;">
         @if (isLoading)
         {
             <p class="text-muted" style="padding: 1.5rem;">Cargando envios ME1...</p>
         }
-        else if (shipments.Count == 0)
+        else if (!Visible.Any())
         {
-            <div style="padding: 1.5rem; text-align: center; color: #6b7280;">
-                <p style="margin: 0 0 0.6rem;">No hay envios ME1 cargados con este filtro.</p>
-                <p style="font-size: 0.85rem; margin: 0;">Hace clic en <b>"Sincronizar con MeLi"</b> arriba a la derecha para traer los envios manuales de los ultimos 30 dias.</p>
+            <div style="padding: 1.8rem 1.5rem; text-align: center; color: #6b7280;">
+                @if (!string.IsNullOrWhiteSpace(searchText))
+                {
+                    <p style="margin: 0;">No hay envios que coincidan con <b>"@searchText"</b>.</p>
+                    <p style="font-size: 0.85rem; margin: 0.4rem 0 0;">Probá con otro dato, o buscá el N° de venta en el recuadro amarillo de arriba.</p>
+                }
+                else
+                {
+                    <p style="margin: 0 0 0.4rem;">No hay envios ME1 con este filtro.</p>
+                    <p style="font-size: 0.85rem; margin: 0;">El sistema los trae solo cada hora. Tambien podés apretar <b>"Sincronizar con MeLi"</b>.</p>
+                }
             </div>
         }
         else
         {
-            <div style="overflow-x: auto;">
-                <table class="table table-compact">
-                    <thead>
-                        <tr>
-                            <th>Comprador</th>
-                            <th>Producto</th>
-                            <th style="text-align: right;">Total</th>
-                            <th>Despachado</th>
-                            <th>Tracking</th>
-                            <th style="min-width: 230px;">Estado en MeLi</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var s in shipments)
+            @foreach (var s in Visible)
+            {
+                var isFinal = s.Status == "delivered" || s.Status == "not_delivered" || s.Status == "cancelled";
+                var (bBg, bTxt, bLabel) = BadgeStyle(s);
+                var rowBg = s.Status switch
+                {
+                    "delivered" => "#f7fdf9",
+                    "not_delivered" => "#fdf6f6",
+                    _ => "#fff"
+                };
+                <div style="display: flex; gap: 0.9rem; align-items: flex-start; padding: 0.85rem 1rem; border-bottom: 1px solid #f1f2f4; background: @rowBg;">
+                    <div style="flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%; background: #e6f1fb; color: #185fa5; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: 600;">
+                        @Initials(s)
+                    </div>
+
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="font-size: 0.9rem; font-weight: 600; color: #111827;">@(s.ReceiverName ?? s.BuyerNickname ?? "—")</div>
+                        @if (!string.IsNullOrWhiteSpace(s.BuyerNickname))
                         {
-                            var key = s.Id;
-                            var rowStyle = s.Status switch
-                            {
-                                "delivered" => "background: #f0fdf4;",
-                                "not_delivered" => "background: #fef2f2;",
-                                _ => ""
-                            };
-                            <tr style="@rowStyle">
-                                <td>
-                                    <div style="font-weight: 600;">@(s.ReceiverName ?? s.BuyerNickname ?? "—")</div>
-                                    @if (!string.IsNullOrWhiteSpace(s.BuyerNickname))
-                                    {
-                                        <div style="font-size: 0.72rem; color: #1d4ed8; font-family: monospace;">👤 @s.BuyerNickname</div>
-                                    }
-                                    @if (!string.IsNullOrWhiteSpace(s.AddressLine))
-                                    {
-                                        <div style="font-size: 0.78rem; color: #6b7280;">@s.AddressLine, @s.City</div>
-                                    }
-                                    @* 2026-06-17: asignacion de repartidor — el repartidor vera la ME1 en su /mis-pedidos. *@
-                                    @{
-                                        var isFinalAsig = s.Status == "delivered" || s.Status == "not_delivered" || s.Status == "cancelled";
-                                    }
-                                    @if (!isFinalAsig)
-                                    {
-                                        <div style="margin-top: 0.4rem; display: flex; align-items: center; gap: 0.3rem;">
-                                            <span style="font-size: 0.72rem; color: #6b7280;">🚚</span>
-                                            <select class="form-input" style="padding: 0.2rem 0.35rem; font-size: 0.78rem; max-width: 180px;"
-                                                    value="@(s.RepartidorAsignadoId?.ToString() ?? "")"
-                                                    @onchange="@(e => OnRepartidorChange(s, e.Value?.ToString()))"
-                                                    disabled="@(busyAsig == s.Id)">
-                                                <option value="">— Asignar repartidor —</option>
-                                                @foreach (var r in repartidores)
-                                                {
-                                                    <option value="@r.Id">@r.Nombre</option>
-                                                }
-                                            </select>
-                                        </div>
-                                    }
-                                    else if (!string.IsNullOrEmpty(s.EntregadoPorRepartidorNombre))
-                                    {
-                                        <div style="margin-top: 0.4rem; font-size: 0.74rem; color: #15803d;">
-                                            ✅ Entregó @s.EntregadoPorRepartidorNombre
-                                        </div>
-                                    }
-                                </td>
-                                <td>
-                                    <div style="font-size: 0.85rem;">@(s.ItemsSummary ?? "—")</div>
-                                    <div style="font-size: 0.75rem; color: #9ca3af;">
-                                        @if (s.MeliOrderId.HasValue)
-                                        {
-                                            <span>Venta #@s.MeliOrderId · </span>
-                                        }
-                                        Envio #@s.MeliShipmentId
-                                    </div>
-                                </td>
-                                <td style="text-align: right; font-weight: 600;">
-                                    @(s.OrderTotal.HasValue ? $"${s.OrderTotal.Value:N0}" : "—")
-                                </td>
-                                <td style="font-size: 0.82rem;">
-                                    @(s.DateShipped.HasValue ? s.DateShipped.Value.ToArTime().ToString("dd/MM HH:mm") : "—")
-                                </td>
-                                <td style="font-size: 0.82rem;">@(s.TrackingNumber ?? "—")</td>
-                                <td>
-                                    @{
-                                        var isFinal = s.Status == "delivered" || s.Status == "not_delivered" || s.Status == "cancelled";
-                                    }
-                                    @if (isFinal)
-                                    {
-                                        <span class="badge @(s.Status == "delivered" ? "badge-success" : "badge-danger")">
-                                            @StatusLabel(s.Status, s.Substatus) · final
-                                        </span>
-                                    }
-                                    else
-                                    {
-                                        <div style="display: flex; flex-direction: column; gap: 0.2rem;">
-                                            <div style="font-size: 0.75rem; color: #6b7280;">Actual: <b>@StatusLabel(s.Status, s.Substatus)</b></div>
-                                            <select class="form-input" style="padding: 0.3rem 0.4rem; font-size: 0.85rem;"
-                                                    value=""
-                                                    @onchange="@(e => OnStateChange(s, e.Value?.ToString()))"
-                                                    disabled="@(busyRow == key)">
-                                                <option value="">— Cambiar a... —</option>
-                                                @if (CurrentKey(s) != "shipped|null")
-                                                {
-                                                    <option value="shipped|null">📦 Marcar Despachado</option>
-                                                }
-                                                @if (CurrentKey(s) != "shipped|out_for_delivery")
-                                                {
-                                                    <option value="shipped|out_for_delivery">🚚 Salio a entregar</option>
-                                                }
-                                                <option value="delivered|null">✅ Marcar Entregado (final)</option>
-                                                <option value="not_delivered|returning_to_sender">❌ No entregado (final)</option>
-                                            </select>
-                                        </div>
-                                    }
-                                </td>
-                            </tr>
+                            <div style="font-size: 0.72rem; color: #1d4ed8; font-family: monospace;">👤 @s.BuyerNickname</div>
                         }
-                    </tbody>
-                </table>
-            </div>
+                        <div style="font-size: 0.8rem; color: #6b7280; margin-top: 0.1rem;">
+                            @(s.ItemsSummary ?? "—")@(string.IsNullOrWhiteSpace(s.AddressLine) ? "" : $" · {s.AddressLine}, {s.City}")
+                        </div>
+                        <div style="font-size: 0.7rem; color: #9ca3af; font-family: monospace; margin-top: 0.15rem;">
+                            @if (s.MeliOrderId.HasValue)
+                            {
+                                <span>Venta #@s.MeliOrderId · </span>
+                            }
+                            Envío #@s.MeliShipmentId
+                            @if (s.DateShipped.HasValue)
+                            {
+                                <span> · Despachado @s.DateShipped.Value.ToArTime().ToString("dd/MM HH:mm")</span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(s.TrackingNumber))
+                            {
+                                <span> · Tracking @s.TrackingNumber</span>
+                            }
+                        </div>
+
+                        @* Asignacion de repartidor (solo si no esta finalizado) o quien entrego *@
+                        @if (!isFinal)
+                        {
+                            <div style="margin-top: 0.4rem; display: flex; align-items: center; gap: 0.3rem;">
+                                <span style="font-size: 0.72rem; color: #6b7280;">🚚</span>
+                                <select class="form-input" style="padding: 0.2rem 0.35rem; font-size: 0.78rem; max-width: 190px;"
+                                        value="@(s.RepartidorAsignadoId?.ToString() ?? "")"
+                                        @onchange="@(e => OnRepartidorChange(s, e.Value?.ToString()))"
+                                        disabled="@(busyAsig == s.Id)">
+                                    <option value="">— Asignar repartidor —</option>
+                                    @foreach (var r in repartidores)
+                                    {
+                                        <option value="@r.Id">@r.Nombre</option>
+                                    }
+                                </select>
+                            </div>
+                        }
+                        else if (!string.IsNullOrEmpty(s.EntregadoPorRepartidorNombre))
+                        {
+                            <div style="margin-top: 0.35rem; font-size: 0.75rem; color: #15803d;">
+                                ✅ Entregó @s.EntregadoPorRepartidorNombre
+                            </div>
+                        }
+                    </div>
+
+                    <div style="flex-shrink: 0; text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 0.35rem; min-width: 150px;">
+                        <div style="font-size: 0.95rem; font-weight: 700; color: #111827;">
+                            @(s.OrderTotal.HasValue ? $"${s.OrderTotal.Value:N0}" : "—")
+                        </div>
+                        <span style="display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.76rem; font-weight: 600; padding: 0.2rem 0.6rem; border-radius: 999px; background: @bBg; color: @bTxt;">
+                            @bLabel@(isFinal ? " · final" : "")
+                        </span>
+                        @if (!isFinal)
+                        {
+                            <select class="form-input" style="padding: 0.3rem 0.4rem; font-size: 0.8rem; max-width: 190px;"
+                                    value=""
+                                    @onchange="@(e => OnStateChange(s, e.Value?.ToString()))"
+                                    disabled="@(busyRow == s.Id)">
+                                <option value="">— Cambiar estado… —</option>
+                                @if (CurrentKey(s) != "shipped|null")
+                                {
+                                    <option value="shipped|null">📦 Marcar Despachado</option>
+                                }
+                                @if (CurrentKey(s) != "shipped|out_for_delivery")
+                                {
+                                    <option value="shipped|out_for_delivery">🚚 Salio a entregar</option>
+                                }
+                                <option value="delivered|null">✅ Marcar Entregado (final)</option>
+                                <option value="not_delivered|returning_to_sender">❌ No entregado (final)</option>
+                            </select>
+                        }
+                    </div>
+                </div>
+            }
         }
     </div>
 </div>
@@ -214,10 +234,13 @@
 }
 
 @code {
-    private List<MeliMe1ShipmentDto> shipments = new();
+    // 2026-07-08: la pantalla se trae TODAS las ME1 una vez (allShipments) y filtra en el navegador
+    // (estado + buscador). La lista es chica, asi que es instantaneo y no recarga.
+    private List<MeliMe1ShipmentDto> allShipments = new();
     private bool isLoading = true;
     private bool isSyncing = false;
-    private string filter = "pendientes";
+    private string filter = "todos";
+    private string searchText = "";
     private int? busyRow;
 
     // 2026-06-17: asignacion de repartidor a envios ME1.
@@ -235,6 +258,78 @@
     private bool isSubmitting;
     private string commentInput = "";
     private string trackingInput = "";
+
+    private static bool EsPendiente(MeliMe1ShipmentDto s)
+        => s.Status != "delivered" && s.Status != "not_delivered" && s.Status != "cancelled";
+
+    // Contadores por estado (para los chips)
+    private int countTotal => allShipments.Count;
+    private int countPendientes => allShipments.Count(EsPendiente);
+    private int countEnCamino => allShipments.Count(s => s.Status == "shipped");
+    private int countEntregados => allShipments.Count(s => s.Status == "delivered");
+    private int countNoEntregados => allShipments.Count(s => s.Status == "not_delivered");
+
+    // Definicion de los chips de filtro (clave, etiqueta, color del punto, y colores cuando esta activo)
+    private record ChipDef(string Key, string Label, string Dot, string Bg, string Border, string Txt, int Count);
+    private IEnumerable<ChipDef> Chips => new[]
+    {
+        new ChipDef("todos", "Todos", "#185fa5", "#e6f1fb", "#85b7eb", "#0c447c", countTotal),
+        new ChipDef("pendientes", "Pendientes", "#888780", "#f1efe8", "#b4b2a9", "#444441", countPendientes),
+        new ChipDef("despachado", "En camino", "#ba7517", "#faeeda", "#ef9f27", "#854f0b", countEnCamino),
+        new ChipDef("entregados", "Entregados", "#639922", "#eaf3de", "#97c459", "#3b6d11", countEntregados),
+        new ChipDef("no_entregados", "No entregados", "#e24b4a", "#fcebeb", "#f09595", "#a32d2d", countNoEntregados),
+    };
+
+    // Lista visible = filtro por estado + buscador
+    private IEnumerable<MeliMe1ShipmentDto> Visible
+    {
+        get
+        {
+            IEnumerable<MeliMe1ShipmentDto> q = allShipments;
+            q = filter switch
+            {
+                "pendientes" => q.Where(EsPendiente),
+                "despachado" => q.Where(s => s.Status == "shipped"),
+                "entregados" => q.Where(s => s.Status == "delivered"),
+                "no_entregados" => q.Where(s => s.Status == "not_delivered"),
+                _ => q
+            };
+
+            if (!string.IsNullOrWhiteSpace(searchText))
+            {
+                var t = searchText.Trim().ToLowerInvariant();
+                bool Has(string? v) => !string.IsNullOrEmpty(v) && v.ToLowerInvariant().Contains(t);
+                q = q.Where(s =>
+                    (s.MeliOrderId?.ToString().Contains(t) ?? false) ||
+                    s.MeliShipmentId.ToString().Contains(t) ||
+                    Has(s.TrackingNumber) || Has(s.BuyerNickname) || Has(s.ReceiverName) ||
+                    Has(s.AddressLine) || Has(s.City) || Has(s.ZipCode));
+            }
+            return q;
+        }
+    }
+
+    private static string Initials(MeliMe1ShipmentDto s)
+    {
+        var name = s.ReceiverName ?? s.BuyerNickname ?? "?";
+        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return "?";
+        if (parts.Length == 1) return parts[0].Substring(0, Math.Min(2, parts[0].Length)).ToUpperInvariant();
+        return (parts[0].Substring(0, 1) + parts[1].Substring(0, 1)).ToUpperInvariant();
+    }
+
+    // Estilo del cartelito de estado (fondo, texto, etiqueta)
+    private static (string bg, string txt, string label) BadgeStyle(MeliMe1ShipmentDto s) => s.Status switch
+    {
+        "delivered" => ("#eaf3de", "#3b6d11", "✅ Entregado"),
+        "not_delivered" => ("#fcebeb", "#a32d2d", "❌ No entregado"),
+        "cancelled" => ("#f1efe8", "#5f5e5a", "🚫 Cancelado"),
+        "shipped" when s.Substatus == "out_for_delivery" => ("#faeeda", "#854f0b", "🚚 Salió a entregar"),
+        "shipped" => ("#faeeda", "#854f0b", "📦 En camino"),
+        "ready_to_ship" => ("#e6f1fb", "#185fa5", "📋 Listo p/ despachar"),
+        "pending" => ("#e6f1fb", "#185fa5", "⏳ Pendiente"),
+        _ => ("#f1efe8", "#5f5e5a", s.Status ?? "—")
+    };
 
     protected override async Task OnInitializedAsync()
     {
@@ -280,18 +375,16 @@
         isLoading = true;
         try
         {
-            var list = await Api.GetMeliMe1ShipmentsAsync(filter);
-            shipments = list ?? new();
+            var list = await Api.GetMeliMe1ShipmentsAsync("todos");
+            allShipments = list ?? new();
         }
         catch (Exception ex) { ToastService.Error($"Error cargando envios: {ex.Message}"); }
         finally { isLoading = false; }
     }
 
-    private async Task SetFilter(string f)
+    private void SetFilter(string f)
     {
-        if (filter == f) return;
         filter = f;
-        await LoadAsync();
     }
 
     private async Task SyncFromMeli()
@@ -299,7 +392,7 @@
         isSyncing = true;
         try
         {
-            var r = await Api.SyncMeliMe1ShipmentsAsync(30, 300);
+            var r = await Api.SyncMeliMe1ShipmentsAsync(45, 300);
             if (r is null) { ToastService.Error("No se pudo sincronizar con MeLi"); return; }
             ToastService.Success($"Sincronizacion lista: {r.TotalMe1} envios ME1 traidos");
             await LoadAsync();
