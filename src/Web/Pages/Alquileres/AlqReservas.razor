@@ -998,6 +998,9 @@
 @code {
     [SupplyParameterFromQuery(Name = "openId")] public int? OpenIdParam { get; set; }
     [SupplyParameterFromQuery(Name = "newDate")] public string? NewDateParam { get; set; }
+    // Atajo de teclado "N + A": ?nueva=<timestamp> abre +Nueva Reserva desde cualquier pantalla. 2026-07-08
+    [SupplyParameterFromQuery(Name = "nueva")] public string? NuevaParam { get; set; }
+    private string? lastNuevaHandled;
 
     private List<AlqReservaDto>? reservas;
     private List<CafeClienteDto>? clientes;
@@ -1242,6 +1245,14 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        // Atajo "N + A": abrir +Nueva Reserva. Dedup por el valor del query para no reabrir al refrescar.
+        if (!string.IsNullOrWhiteSpace(NuevaParam) && NuevaParam != lastNuevaHandled)
+        {
+            lastNuevaHandled = NuevaParam;
+            if (clientes is null || equipos is null) await LoadCatalogos();
+            await ShowCreate();
+            return;
+        }
         if (deepLinkApplied) return;
         // Si venimos del calendario con ?openId=N => abrir esa reserva en edicion
         if (OpenIdParam.HasValue && OpenIdParam.Value > 0)
