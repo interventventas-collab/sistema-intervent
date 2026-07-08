@@ -403,7 +403,10 @@
                             <div style="display:flex; align-items:flex-start; gap:7px; margin-bottom:10px;">
                                 <span style="flex-shrink:0; width:24px; height:24px; border-radius:50%; background:#e6f1fb; color:#185fa5; display:flex; align-items:center; justify-content:center; font-size:0.62rem; font-weight:600; margin-top:1px;">@Me1Initials(s)</span>
                                 <div style="flex:1; min-width:0;">
-                                    <div style="font-size:0.76rem; font-weight:600; color:#111827;">@(s.ReceiverName ?? s.BuyerNickname ?? "—")</div>
+                                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                        <span style="font-size:0.76rem; font-weight:600; color:#111827;">@(s.ReceiverName ?? s.BuyerNickname ?? "—")</span>
+                                        <span style="font-size:0.63rem; font-weight:600; padding:0.05rem 0.4rem; border-radius:999px; background:@(Me1Badge(s).bg); color:@(Me1Badge(s).txt); white-space:nowrap;">@(Me1Badge(s).label)</span>
+                                    </div>
                                     <div style="display:flex; flex-wrap:wrap; gap:2px 8px; margin-top:1px;">
                                         @if (!string.IsNullOrWhiteSpace(s.BuyerNickname))
                                         {
@@ -418,7 +421,10 @@
                                     </div>
                                     @if (!string.IsNullOrWhiteSpace(s.AddressLine) || !string.IsNullOrWhiteSpace(s.City))
                                     {
-                                        <div style="font-size:0.68rem; color:#6b7280; margin-top:1px;">📍 @(s.AddressLine)@(string.IsNullOrWhiteSpace(s.City) ? "" : $", {s.City}")</div>
+                                        <div style="font-size:0.68rem; color:#6b7280; margin-top:1px;">
+                                            📍 @(s.AddressLine)@(string.IsNullOrWhiteSpace(s.City) ? "" : $", {s.City}")
+                                            <a href="@Me1MapsUrl(s)" target="_blank" rel="noopener" title="Ver el domicilio en Google Maps" style="text-decoration:none; cursor:pointer; margin-left:2px;">🗺</a>
+                                        </div>
                                     }
                                     @if (!string.IsNullOrWhiteSpace(s.ReceiverPhone))
                                     {
@@ -1441,6 +1447,29 @@
         if (parts.Length == 0) return "?";
         if (parts.Length == 1) return parts[0].Substring(0, Math.Min(2, parts[0].Length)).ToUpperInvariant();
         return (parts[0].Substring(0, 1) + parts[1].Substring(0, 1)).ToUpperInvariant();
+    }
+
+    // 2026-07-08: cartelito de estado del envio (fondo, texto, etiqueta) para la card del dashboard
+    private static (string bg, string txt, string label) Me1Badge(MeliMe1ShipmentDto s) => s.Status switch
+    {
+        "delivered" => ("#eaf3de", "#3b6d11", "✅ Entregado"),
+        "not_delivered" => ("#fcebeb", "#a32d2d", "❌ No entregado"),
+        "cancelled" => ("#f1efe8", "#5f5e5a", "🚫 Cancelado"),
+        "shipped" when s.Substatus == "out_for_delivery" => ("#faeeda", "#854f0b", "🚚 Salió a entregar"),
+        "shipped" => ("#faeeda", "#854f0b", "📦 En camino"),
+        "ready_to_ship" => ("#e6f1fb", "#185fa5", "📋 Listo p/ despachar"),
+        "handling" => ("#e6f1fb", "#185fa5", "⏳ En preparación"),
+        "pending" => ("#e6f1fb", "#185fa5", "⏳ Pendiente"),
+        _ => ("#f1efe8", "#5f5e5a", s.Status ?? "—")
+    };
+
+    // 2026-07-08: link a Google Maps armado con la direccion del envio (no necesita configurar nada)
+    private static string Me1MapsUrl(MeliMe1ShipmentDto s)
+    {
+        var partes = new[] { s.AddressLine, s.City, s.State, "Argentina" }
+            .Where(x => !string.IsNullOrWhiteSpace(x));
+        var q = Uri.EscapeDataString(string.Join(", ", partes));
+        return $"https://www.google.com/maps/search/?api=1&query={q}";
     }
 
     private async Task LoadPrepResumenAsync()
