@@ -81,4 +81,56 @@ public class ContadoraController : ControllerBase
         var nombre = $"libro-iva-ventas-{DateTime.Now:yyyy-MM-dd}.xlsx";
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", nombre);
     }
+
+    // ───────── Importacion del reporte oficial de MeLi (etapa 3, con notas de credito) ─────────
+
+    /// <summary>Importa uno o varios Excel de reporte de MeLi subidos por el usuario.</summary>
+    [HttpPost("importar-reporte")]
+    [RequestSizeLimit(80_000_000)]
+    public async Task<ActionResult<ContadoraImportResultDto>> ImportarReporte([FromForm] List<IFormFile> archivos)
+    {
+        if (archivos == null || archivos.Count == 0)
+            return Ok(new ContadoraImportResultDto { Ok = false, Mensaje = "No se recibio ningun archivo." });
+        var items = new List<(string, Stream)>();
+        foreach (var f in archivos) items.Add((f.FileName, f.OpenReadStream()));
+        return Ok(await _svc.ImportarReporteArchivosAsync(items));
+    }
+
+    /// <summary>Importa todos los .xlsx que esten en una subcarpeta de la Carpeta Compartida
+    /// (por defecto "Compartido/facturas meli"). Comodo: el usuario sube ahi y aprieta un boton.</summary>
+    [HttpPost("importar-reporte-carpeta")]
+    public async Task<ActionResult<ContadoraImportResultDto>> ImportarReporteCarpeta([FromQuery] string? subcarpeta)
+        => Ok(await _svc.ImportarReporteCarpetaAsync(string.IsNullOrWhiteSpace(subcarpeta) ? "Compartido/facturas meli" : subcarpeta));
+
+    /// <summary>Empresas (CUIT) presentes en los comprobantes importados.</summary>
+    [HttpGet("reporte/empresas")]
+    public async Task<ActionResult<List<ContadoraEmpresaDto>>> ReporteEmpresas() => Ok(await _svc.GetReporteEmpresasAsync());
+
+    /// <summary>Resumen del Libro IVA Ventas desde el reporte importado (NC restan).</summary>
+    [HttpGet("reporte/resumen")]
+    public async Task<ActionResult<ContadoraReporteResumenDto>> ReporteResumen([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta,
+        [FromQuery] string? empresa, [FromQuery] int? puntoVenta, [FromQuery] string? letra, [FromQuery] string? provincia, [FromQuery] string? search)
+        => Ok(await _svc.GetReporteResumenAsync(desde, hasta, empresa, puntoVenta, letra, provincia, search));
+
+    /// <summary>Meses ya cargados.</summary>
+    [HttpGet("reporte/cargas")]
+    public async Task<ActionResult<List<ContadoraCargaDto>>> ReporteCargas([FromQuery] string? empresa)
+        => Ok(await _svc.GetReporteCargasAsync(empresa));
+
+    /// <summary>Detalle paginado de comprobantes importados.</summary>
+    [HttpGet("reporte/comprobantes")]
+    public async Task<ActionResult<ContadoraComprobantesPageDto>> ReporteComprobantes([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta,
+        [FromQuery] string? empresa, [FromQuery] int? puntoVenta, [FromQuery] string? letra, [FromQuery] string? provincia,
+        [FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
+        => Ok(await _svc.GetReporteComprobantesAsync(desde, hasta, empresa, puntoVenta, letra, provincia, search, page, pageSize));
+
+    /// <summary>Descarga el Libro IVA Ventas (importado) en Excel.</summary>
+    [HttpGet("reporte/excel")]
+    public async Task<IActionResult> ReporteExcel([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta,
+        [FromQuery] string? empresa, [FromQuery] int? puntoVenta, [FromQuery] string? letra, [FromQuery] string? provincia, [FromQuery] string? search)
+    {
+        var bytes = await _svc.GenerarReporteExcelAsync(desde, hasta, empresa, puntoVenta, letra, provincia, search);
+        var nombre = $"libro-iva-ventas-meli-{DateTime.Now:yyyy-MM-dd}.xlsx";
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", nombre);
+    }
 }

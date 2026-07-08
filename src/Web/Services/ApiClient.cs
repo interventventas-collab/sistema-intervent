@@ -5535,4 +5535,50 @@ public class ApiClient
         qs += (qs.Length > 0 ? "&" : "?") + $"page={page}&pageSize={pageSize}";
         return await GetAsync<ContadoraFacturasPageDto>("/api/contadora/facturas" + qs);
     }
+
+    // ───────── Contadora etapa 3: importar reporte oficial de MeLi (con notas de credito) ─────────
+
+    /// <summary>Importa los .xlsx que ya estan en la subcarpeta de la Carpeta Compartida.</summary>
+    public async Task<ContadoraImportResultDto?> ImportarReporteCarpetaAsync(string? subcarpeta = null)
+    {
+        var url = "/api/contadora/importar-reporte-carpeta" + (string.IsNullOrWhiteSpace(subcarpeta) ? "" : "?subcarpeta=" + Uri.EscapeDataString(subcarpeta));
+        return await PostAsync<ContadoraImportResultDto>(url, new { });
+    }
+
+    /// <summary>Importa archivos de reporte subidos por el usuario (multipart).</summary>
+    public async Task<(ContadoraImportResultDto? result, string? error)> ImportarReporteArchivosAsync(IEnumerable<(string name, Stream stream)> archivos)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        foreach (var f in archivos)
+        {
+            var sc = new StreamContent(f.stream);
+            sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            content.Add(sc, "archivos", f.name);
+        }
+        var resp = await _http.PostAsync("/api/contadora/importar-reporte", content);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var body = await resp.Content.ReadAsStringAsync();
+            return (null, $"HTTP {(int)resp.StatusCode}: {body}");
+        }
+        var data = await resp.Content.ReadFromJsonAsync<ContadoraImportResultDto>();
+        return (data, null);
+    }
+
+    public async Task<ContadoraReporteResumenDto?> GetContadoraReporteResumenAsync(DateTime? desde, DateTime? hasta, string? empresa, int? puntoVenta, string? letra, string? provincia, string? search)
+        => await GetAsync<ContadoraReporteResumenDto>("/api/contadora/reporte/resumen" + ContadoraQs(desde, hasta, empresa, puntoVenta, letra, provincia, search));
+
+    public async Task<List<ContadoraCargaDto>?> GetContadoraReporteCargasAsync(string? empresa = null)
+        => await GetAsync<List<ContadoraCargaDto>>("/api/contadora/reporte/cargas" + (string.IsNullOrWhiteSpace(empresa) ? "" : "?empresa=" + Uri.EscapeDataString(empresa)));
+
+    public async Task<List<ContadoraEmpresaDto>?> GetContadoraReporteEmpresasAsync()
+        => await GetAsync<List<ContadoraEmpresaDto>>("/api/contadora/reporte/empresas");
+
+    public async Task<ContadoraComprobantesPageDto?> GetContadoraReporteComprobantesAsync(DateTime? desde, DateTime? hasta, string? empresa, int? puntoVenta, string? letra, string? provincia, string? search, int page = 1, int pageSize = 50)
+    {
+        var qs = ContadoraQs(desde, hasta, empresa, puntoVenta, letra, provincia, search);
+        qs += (qs.Length > 0 ? "&" : "?") + $"page={page}&pageSize={pageSize}";
+        return await GetAsync<ContadoraComprobantesPageDto>("/api/contadora/reporte/comprobantes" + qs);
+    }
 }

@@ -30,6 +30,7 @@ public class AppDbContext : DbContext
     public DbSet<MeliQuestion> MeliQuestions => Set<MeliQuestion>();
     public DbSet<MeliShipment> MeliShipments => Set<MeliShipment>();
     public DbSet<MeliFactura> MeliFacturas => Set<MeliFactura>();
+    public DbSet<ContadoraComprobante> ContadoraComprobantes => Set<ContadoraComprobante>();
     public DbSet<MapeoDriver> MapeoDrivers => Set<MapeoDriver>();
     public DbSet<MapeoFavorito> MapeoFavoritos => Set<MapeoFavorito>();
     public DbSet<MapeoStop> MapeoStops => Set<MapeoStop>();
@@ -230,6 +231,27 @@ public class AppDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(o => o.MeliAccountId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ContadoraComprobante>(entity =>
+        {
+            // ID del comprobante de MeLi es unico -> clave anti-duplicados al re-importar.
+            entity.HasIndex(c => c.IdComprobante).IsUnique();
+            entity.HasIndex(c => c.EmisorCuit);
+            entity.HasIndex(c => c.FechaEmision);
+            entity.Property(c => c.NetoGravado).HasColumnType("decimal(18,2)");
+            entity.Property(c => c.BaseIva105).HasColumnType("decimal(18,2)");
+            entity.Property(c => c.Iva105).HasColumnType("decimal(18,2)");
+            entity.Property(c => c.BaseIva21).HasColumnType("decimal(18,2)");
+            entity.Property(c => c.Iva21).HasColumnType("decimal(18,2)");
+            entity.Property(c => c.EnvioNeto).HasColumnType("decimal(18,2)");
+            entity.Property(c => c.EnvioIva).HasColumnType("decimal(18,2)");
+            entity.Property(c => c.EnvioTotal).HasColumnType("decimal(18,2)");
+            entity.Property(c => c.Conceptos).HasColumnType("decimal(18,2)");
+            entity.Property(c => c.OtrosImpuestos).HasColumnType("decimal(18,2)");
+            entity.Property(c => c.NoGravado).HasColumnType("decimal(18,2)");
+            entity.Property(c => c.Exento).HasColumnType("decimal(18,2)");
+            entity.Property(c => c.Total).HasColumnType("decimal(18,2)");
         });
 
         modelBuilder.Entity<MeliItem>(entity =>
