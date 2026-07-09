@@ -111,11 +111,24 @@
                 <b>facturas que hace el sistema</b> por AFIP (mostrador/mayorista), todo junto, por <b>empresa</b>,
                 con las <b>notas de crédito que restan</b>. Podés ver todo junto o filtrar por origen.
             </p>
-            <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:.9rem 1rem;">
-                <b>MercadoLibre</b> — subí los Excel a la Carpeta Compartida → carpeta <b>facturas meli</b> y tocá “Importar los de la carpeta” (no se duplica).
+            <div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:.9rem 1rem;">
+                <b>⭐ AFIP (fuente oficial — recomendado)</b> — subí el <b>"Mis Comprobantes → Emitidos"</b> de AFIP (todos tus puntos de venta, todas las ventas) a la Carpeta Compartida → carpeta <b>facturas meli</b> (puede ser en una subcarpeta). Es la lista completa y oficial; se cruza con MeLi por número para traer la provincia y <b>no contar dos veces</b>.
                 <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-top:.5rem;">
-                    <button class="co-btn co-btn-primary" @onclick="ImportarCarpeta" disabled="@importando">
-                        @(importando ? "Importando…" : "📥 Importar los de la carpeta \"facturas meli\"")
+                    <button class="co-btn co-btn-primary" @onclick="ImportarVentasAfip" disabled="@importando">
+                        @(importando ? "Importando…" : "📥 Importar ventas de AFIP (de la carpeta)")
+                    </button>
+                    <label class="co-btn co-btn-ghost" style="margin:0;">
+                        …o elegir archivos
+                        <InputFile OnChange="OnVentasAfipSeleccionadas" multiple accept=".xlsx,.csv" style="display:none;" />
+                    </label>
+                </div>
+            </div>
+
+            <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:.9rem 1rem;margin-top:.7rem;">
+                <b>MercadoLibre</b> — subí los Excel a la Carpeta Compartida → carpeta <b>facturas meli</b> y tocá “Importar los de la carpeta” (no se duplica). Trae la <b>provincia</b> de cada venta (para IIBB) y sirve de doble-check contra AFIP.
+                <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-top:.5rem;">
+                    <button class="co-btn co-btn-ghost" @onclick="ImportarCarpeta" disabled="@importando">
+                        @(importando ? "Importando…" : "📥 Importar reportes de MeLi")
                     </button>
                     <label class="co-btn co-btn-ghost" style="margin:0;">
                         …o elegir archivos
@@ -123,9 +136,9 @@
                     </label>
                 </div>
                 <div style="border-top:1px dashed #bae6fd;margin:.7rem 0;"></div>
-                <b>Sistema (AFIP)</b> — las facturas propias ya están en el sistema; con este botón las traés al Libro IVA. Se mantiene solo, pero podés forzarlo cuando quieras.
+                <b>Sistema (AFIP)</b> — las facturas propias que emite el sistema. Se mantiene solo, pero podés forzarlo cuando quieras.
                 <div style="margin-top:.5rem;">
-                    <button class="co-btn co-btn-green" @onclick="SincronizarSistema" disabled="@importando">
+                    <button class="co-btn co-btn-ghost" @onclick="SincronizarSistema" disabled="@importando">
                         @(importando ? "Actualizando…" : "🔄 Actualizar facturas del sistema")
                     </button>
                 </div>
@@ -181,9 +194,10 @@
                 <div>
                     <label>Origen</label>
                     <select @bind="rOrigen">
-                        <option value="">Todos</option>
+                        <option value="">Todos (sin duplicar)</option>
+                        <option value="AFIP_EMITIDOS">AFIP (oficial)</option>
                         <option value="MELI_REPORTE">MercadoLibre</option>
-                        <option value="SISTEMA">Sistema (AFIP)</option>
+                        <option value="SISTEMA">Sistema</option>
                     </select>
                 </div>
                 <div>
@@ -576,6 +590,44 @@
                 archivos.Add((f.Name, ms));
             }
             var (result, error) = await Api.ImportarReporteArchivosAsync(archivos);
+            if (error is not null) { ToastService.Error(error); return; }
+            importResult = result;
+            if (result is not null && result.Ok) { ToastService.Success(result.Mensaje ?? "Importado."); await RecargarRep(); }
+            else ToastService.Error(result?.Mensaje ?? "No se pudo importar.");
+        }
+        catch (Exception ex) { ToastService.Error("Error al importar: " + ex.Message); }
+        finally { importando = false; }
+    }
+
+    private async Task ImportarVentasAfip()
+    {
+        if (importando) return;
+        importando = true; importResult = null;
+        try
+        {
+            importResult = await Api.ImportarVentasAfipCarpetaAsync();
+            if (importResult is not null && importResult.Ok) { ToastService.Success(importResult.Mensaje ?? "Importado."); await RecargarRep(); }
+            else ToastService.Error(importResult?.Mensaje ?? "No se pudo importar.");
+        }
+        catch (Exception ex) { ToastService.Error("Error al importar: " + ex.Message); }
+        finally { importando = false; }
+    }
+
+    private async Task OnVentasAfipSeleccionadas(InputFileChangeEventArgs e)
+    {
+        if (importando) return;
+        importando = true; importResult = null;
+        try
+        {
+            var archivos = new List<(string, Stream)>();
+            foreach (var f in e.GetMultipleFiles(20))
+            {
+                var ms = new MemoryStream();
+                await f.OpenReadStream(50_000_000).CopyToAsync(ms);
+                ms.Position = 0;
+                archivos.Add((f.Name, ms));
+            }
+            var (result, error) = await Api.ImportarVentasAfipArchivosAsync(archivos);
             if (error is not null) { ToastService.Error(error); return; }
             importResult = result;
             if (result is not null && result.Ok) { ToastService.Success(result.Mensaje ?? "Importado."); await RecargarRep(); }
