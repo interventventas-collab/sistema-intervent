@@ -5636,6 +5636,15 @@ public class ApiClient
     public async Task<ContadoraPdfResultDto?> RevisarCorreoAsync()
         => await PostAsync<ContadoraPdfResultDto>("/api/contadora/revisar-correo", new { });
 
+    /// <summary>Baja de MercadoLibre las facturas de compra y las matchea. Cliente de timeout largo (baja varios PDF).</summary>
+    public async Task<ContadoraPdfResultDto?> BajarFacturasMeliAsync()
+    {
+        var resp = await _httpLong.PostAsJsonAsync("/api/contadora/bajar-facturas-meli", new { });
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return null; }
+        await ThrowIfErrorAsync(resp);
+        return await resp.Content.ReadFromJsonAsync<ContadoraPdfResultDto>();
+    }
+
     public async Task<(ContadoraImportResultDto? result, string? error)> ImportarVentasAfipArchivosAsync(IEnumerable<(string name, Stream stream)> archivos)
     {
         await SetAuthHeaderAsync();

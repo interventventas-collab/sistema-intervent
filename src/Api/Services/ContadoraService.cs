@@ -91,6 +91,86 @@ public class ContadoraService
         return res;
     }
 
+    private const string CarpetaMeli = "Compartido/facturas recibidas/meli";
+
+    /// <summary>Baja de MercadoLibre las facturas de COMPRA (PDF real con QR de AFIP) de las últimas compras del
+    /// usuario, usando la cuenta MeLi conectada (rol comprador), las guarda en la carpeta y las matchea por QR.
+    /// Lleva un registro (_bajadas.txt) para no volver a bajar las que ya trajo. Devuelve el resumen.</summary>
+    public async Task<ContadoraPdfResultDto> BajarFacturasMeliAsync(int maxCompras = 150)
+    {
+        var res = new ContadoraPdfResultDto();
+        var accounts = await _accountService.GetAllAccountEntitiesAsync();
+        if (accounts.Count == 0) { res.Ok = false; res.Mensaje = "No hay ninguna cuenta de MercadoLibre conectada."; return res; }
+
+        // Carpeta destino + registro de órdenes ya bajadas (para no repetir).
+        var carpetaFull = _storage.ResolveSafe(CarpetaMeli);
+        Directory.CreateDirectory(carpetaFull);
+        var ledgerFull = Path.Combine(carpetaFull, "_bajadas.txt");
+        var yaBajadas = File.Exists(ledgerFull)
+            ? new HashSet<string>(await File.ReadAllLinesAsync(ledgerFull))
+            : new HashSet<string>();
+
+        var http = _httpFactory.CreateClient();
+        int comprasVistas = 0, pdfNuevos = 0;
+
+        foreach (var acc in accounts)
+        {
+            var token = await _accountService.GetValidTokenAsync(acc);
+            if (token is null) continue;
+            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            // Listar las compras (rol comprador), de la más nueva a la más vieja, paginado.
+            var orderIds = new List<long>();
+            for (int offset = 0; offset < maxCompras; offset += 50)
+            {
+                var url = $"https://api.mercadolibre.com/orders/search?buyer={acc.MeliUserId}&sort=date_desc&offset={offset}&limit=50";
+                HttpResponseMessage r;
+                try { r = await http.GetAsync(url); } catch { break; }
+                if (!r.IsSuccessStatusCode) break;
+                using var doc = JsonDocument.Parse(await r.Content.ReadAsStringAsync());
+                if (!doc.RootElement.TryGetProperty("results", out var arr) || arr.GetArrayLength() == 0) break;
+                foreach (var o in arr.EnumerateArray())
+                    if (o.TryGetProperty("id", out var idEl) && idEl.TryGetInt64(out var oid)) orderIds.Add(oid);
+                if (arr.GetArrayLength() < 50) break;
+            }
+
+            comprasVistas += orderIds.Count;
+
+            foreach (var oid in orderIds)
+            {
+                var key = acc.MeliUserId + ":" + oid;
+                if (yaBajadas.Contains(key)) continue;
+
+                byte[] bytes;
+                try
+                {
+                    var pdfUrl = $"https://api.mercadolibre.com/invoices/io/documents/stream/order/{oid}/pdf";
+                    var pr = await http.GetAsync(pdfUrl);
+                    if (!pr.IsSuccessStatusCode) continue; // sin factura disponible todavía → se reintenta la próxima
+                    bytes = await pr.Content.ReadAsByteArrayAsync();
+                }
+                catch { continue; }
+
+                // Confirmar que es un PDF de verdad (no un JSON de error con 200).
+                if (bytes.Length < 5 || bytes[0] != (byte)'%' || bytes[1] != (byte)'P' || bytes[2] != (byte)'D' || bytes[3] != (byte)'F') continue;
+
+                var destFull = Path.Combine(carpetaFull, $"meli-order-{oid}.pdf");
+                await File.WriteAllBytesAsync(destFull, bytes);
+                yaBajadas.Add(key);
+                await File.AppendAllTextAsync(ledgerFull, key + Environment.NewLine);
+                pdfNuevos++;
+            }
+
+            http.DefaultRequestHeaders.Authorization = null;
+        }
+
+        // Matchear por QR todo lo que haya en la carpeta (lo nuevo de MeLi + lo que hubiera suelto).
+        var proc = await ProcesarFacturasPdfAsync(CarpetaFacturas);
+        proc.Mensaje = $"MercadoLibre: miré {comprasVistas} compras, bajé {pdfNuevos} factura(s) nueva(s). {proc.Mensaje}";
+        _logger.LogInformation("[Contadora] MeLi compras: {Msg}", proc.Mensaje);
+        return proc;
+    }
+
     /// <summary>Procesa los PDF de facturas de una carpeta: lee el QR de AFIP de cada uno, lo matchea con la venta o
     /// compra que corresponde (por CUIT emisor + punto de venta + número; si falla, por CUIT + importe) y le adjunta
     /// el PDF. Los que matchean se mueven a la subcarpeta "adjuntadas". Devuelve un resumen.</summary>
