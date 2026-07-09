@@ -18,9 +18,12 @@ public class ContadoraComprobante
 {
     public int Id { get; set; }
 
-    /// <summary>Origen del dato. Por ahora siempre "MELI_REPORTE".</summary>
+    /// <summary>Origen del dato: "MELI_REPORTE" (Excel de MeLi) o "SISTEMA" (facturas propias por AFIP).</summary>
     [MaxLength(30)]
     public string Origen { get; set; } = "MELI_REPORTE";
+
+    /// <summary>Concepto AFIP: 1=Productos, 2=Servicios, 3=Productos y Servicios. MeLi = 1 (productos).</summary>
+    public int? Concepto { get; set; }
 
     /// <summary>CUIT del vendedor/emisor (viene en el encabezado del reporte) = la EMPRESA.</summary>
     [MaxLength(20)]

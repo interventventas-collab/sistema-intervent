@@ -102,35 +102,39 @@ public class ContadoraController : ControllerBase
     public async Task<ActionResult<ContadoraImportResultDto>> ImportarReporteCarpeta([FromQuery] string? subcarpeta)
         => Ok(await _svc.ImportarReporteCarpetaAsync(string.IsNullOrWhiteSpace(subcarpeta) ? "Compartido/facturas meli" : subcarpeta));
 
+    /// <summary>Trae al Libro IVA las facturas que emite nuestro sistema por AFIP (Cafe_Ventas con CAE). NC restan.</summary>
+    [HttpPost("sincronizar-sistema")]
+    public async Task<ActionResult<ContadoraImportResultDto>> SincronizarSistema() => Ok(await _svc.SincronizarSistemaAsync());
+
     /// <summary>Empresas (CUIT) presentes en los comprobantes importados.</summary>
     [HttpGet("reporte/empresas")]
     public async Task<ActionResult<List<ContadoraEmpresaDto>>> ReporteEmpresas() => Ok(await _svc.GetReporteEmpresasAsync());
 
-    /// <summary>Resumen del Libro IVA Ventas desde el reporte importado (NC restan).</summary>
+    /// <summary>Resumen del Libro IVA Ventas desde el reporte importado (NC restan). origen: MELI_REPORTE | SISTEMA | (vacio = todo).</summary>
     [HttpGet("reporte/resumen")]
     public async Task<ActionResult<ContadoraReporteResumenDto>> ReporteResumen([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta,
-        [FromQuery] string? empresa, [FromQuery] int? puntoVenta, [FromQuery] string? letra, [FromQuery] string? provincia, [FromQuery] string? search)
-        => Ok(await _svc.GetReporteResumenAsync(desde, hasta, empresa, puntoVenta, letra, provincia, search));
+        [FromQuery] string? empresa, [FromQuery] int? puntoVenta, [FromQuery] string? letra, [FromQuery] string? provincia, [FromQuery] string? search, [FromQuery] string? origen)
+        => Ok(await _svc.GetReporteResumenAsync(desde, hasta, empresa, puntoVenta, letra, provincia, search, origen));
 
     /// <summary>Meses ya cargados.</summary>
     [HttpGet("reporte/cargas")]
-    public async Task<ActionResult<List<ContadoraCargaDto>>> ReporteCargas([FromQuery] string? empresa)
-        => Ok(await _svc.GetReporteCargasAsync(empresa));
+    public async Task<ActionResult<List<ContadoraCargaDto>>> ReporteCargas([FromQuery] string? empresa, [FromQuery] string? origen)
+        => Ok(await _svc.GetReporteCargasAsync(empresa, origen));
 
     /// <summary>Detalle paginado de comprobantes importados.</summary>
     [HttpGet("reporte/comprobantes")]
     public async Task<ActionResult<ContadoraComprobantesPageDto>> ReporteComprobantes([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta,
         [FromQuery] string? empresa, [FromQuery] int? puntoVenta, [FromQuery] string? letra, [FromQuery] string? provincia,
-        [FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
-        => Ok(await _svc.GetReporteComprobantesAsync(desde, hasta, empresa, puntoVenta, letra, provincia, search, page, pageSize));
+        [FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, [FromQuery] string? origen = null)
+        => Ok(await _svc.GetReporteComprobantesAsync(desde, hasta, empresa, puntoVenta, letra, provincia, search, page, pageSize, origen));
 
     /// <summary>Descarga el Libro IVA Ventas (importado) en Excel.</summary>
     [HttpGet("reporte/excel")]
     public async Task<IActionResult> ReporteExcel([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta,
-        [FromQuery] string? empresa, [FromQuery] int? puntoVenta, [FromQuery] string? letra, [FromQuery] string? provincia, [FromQuery] string? search)
+        [FromQuery] string? empresa, [FromQuery] int? puntoVenta, [FromQuery] string? letra, [FromQuery] string? provincia, [FromQuery] string? search, [FromQuery] string? origen)
     {
-        var bytes = await _svc.GenerarReporteExcelAsync(desde, hasta, empresa, puntoVenta, letra, provincia, search);
-        var nombre = $"libro-iva-ventas-meli-{DateTime.Now:yyyy-MM-dd}.xlsx";
+        var bytes = await _svc.GenerarReporteExcelAsync(desde, hasta, empresa, puntoVenta, letra, provincia, search, origen);
+        var nombre = $"libro-iva-ventas-{DateTime.Now:yyyy-MM-dd}.xlsx";
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", nombre);
     }
 }

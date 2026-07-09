@@ -45,7 +45,7 @@
         <div class="co-tabs">
             <div class="co-tab @(tab == "jur" ? "act" : "")" @onclick="@(() => SetTab("jur"))">🗺 Por jurisdicción (IIBB)</div>
             <div class="co-tab @(tab == "iva" ? "act" : "")" @onclick="@(() => SetTab("iva"))">📒 Libro IVA Ventas</div>
-            <div class="co-tab @(tab == "rep" ? "act" : "")" @onclick="@(() => SetTab("rep"))">📥 Reporte MeLi (con NC)</div>
+            <div class="co-tab @(tab == "rep" ? "act" : "")" @onclick="@(() => SetTab("rep"))">📥 Libro IVA (MeLi + sistema)</div>
         </div>
     </div>
 
@@ -236,17 +236,13 @@
         @* ══════════ VISTA REPORTE MELI IMPORTADO (con notas de crédito) ══════════ *@
         <div class="co-card">
             <p class="co-sub">
-                El <b>Libro IVA Ventas</b> hecho con el reporte oficial que bajás de MercadoLibre
-                (Facturación → Descargar reporte). Es idéntico al que conoce tu contadora: trae las
-                <b>notas de crédito que restan</b> y el neto/IVA discriminado, por <b>empresa</b>.
+                El <b>Libro IVA Ventas</b> completo: las ventas de <b>MercadoLibre</b> (del reporte oficial) y las
+                <b>facturas que hace el sistema</b> por AFIP (mostrador/mayorista), todo junto, por <b>empresa</b>,
+                con las <b>notas de crédito que restan</b>. Podés ver todo junto o filtrar por origen.
             </p>
             <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:.9rem 1rem;">
-                <b>Cómo cargar los meses:</b>
-                <ol style="margin:.4rem 0 .6rem 1.1rem;padding:0;color:#374151;font-size:.9rem;line-height:1.5;">
-                    <li>Subí los Excel a la Carpeta Compartida → carpeta <b>facturas meli</b>.</li>
-                    <li>Volvé acá y tocá <b>“Importar los de la carpeta”</b>. Podés reimportar cuantas veces quieras: no se duplica.</li>
-                </ol>
-                <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;">
+                <b>MercadoLibre</b> — subí los Excel a la Carpeta Compartida → carpeta <b>facturas meli</b> y tocá “Importar los de la carpeta” (no se duplica).
+                <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-top:.5rem;">
                     <button class="co-btn co-btn-primary" @onclick="ImportarCarpeta" disabled="@importando">
                         @(importando ? "Importando…" : "📥 Importar los de la carpeta \"facturas meli\"")
                     </button>
@@ -254,6 +250,13 @@
                         …o elegir archivos
                         <InputFile OnChange="OnArchivosSeleccionados" multiple accept=".xlsx" style="display:none;" />
                     </label>
+                </div>
+                <div style="border-top:1px dashed #bae6fd;margin:.7rem 0;"></div>
+                <b>Sistema (AFIP)</b> — las facturas propias ya están en el sistema; con este botón las traés al Libro IVA. Se mantiene solo, pero podés forzarlo cuando quieras.
+                <div style="margin-top:.5rem;">
+                    <button class="co-btn co-btn-green" @onclick="SincronizarSistema" disabled="@importando">
+                        @(importando ? "Actualizando…" : "🔄 Actualizar facturas del sistema")
+                    </button>
                 </div>
             </div>
 
@@ -304,6 +307,14 @@
 
         <div class="co-card">
             <div class="co-filtros">
+                <div>
+                    <label>Origen</label>
+                    <select @bind="rOrigen">
+                        <option value="">Todos</option>
+                        <option value="MELI_REPORTE">MercadoLibre</option>
+                        <option value="SISTEMA">Sistema (AFIP)</option>
+                    </select>
+                </div>
                 <div>
                     <label>Empresa</label>
                     <select @bind="rEmpresa">
@@ -378,17 +389,18 @@
                 {
                     <div style="overflow-x:auto;">
                         <table class="co-tabla">
-                            <thead><tr><th>Fecha</th><th>Comprobante</th><th class="num">Pto vta</th><th class="num">Número</th><th>Cliente</th><th>Provincia</th><th class="num">Neto</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
+                            <thead><tr><th>Fecha</th><th>Origen</th><th>Comprobante</th><th>Concepto</th><th class="num">Pto vta</th><th class="num">Número</th><th>Cliente</th><th class="num">Neto</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
                             <tbody>
                                 @foreach (var f in repComps.Items)
                                 {
                                     <tr style="@(f.EsNotaCredito ? "color:#b91c1c;" : "")">
                                         <td>@f.FechaEmision?.ToString("dd/MM/yyyy")</td>
+                                        <td>@(f.Origen == "SISTEMA" ? "Sistema" : "MeLi")</td>
                                         <td>@f.TipoComprobante</td>
+                                        <td>@f.Concepto</td>
                                         <td class="num">@f.PuntoVenta</td>
                                         <td class="num">@f.NumeroComprobante</td>
                                         <td>@f.ReceptorNombre</td>
-                                        <td>@f.Provincia</td>
                                         <td class="num">@Money(f.Neto)</td>
                                         <td class="num">@Money(f.Iva)</td>
                                         <td class="num">@Money(f.Total)</td>
@@ -436,7 +448,7 @@
     private List<ContadoraCargaDto> repCargas = new();
     private List<ContadoraEmpresaDto> repEmpresas = new();
     private ContadoraImportResultDto? importResult;
-    private string? rEmpresa, rLetra, rProvincia, rSearch;
+    private string? rEmpresa, rLetra, rProvincia, rSearch, rOrigen;
     private int? rPtoVenta;
     private DateTime? rDesde, rHasta;
     private bool cargandoRep, importando, verDetalleRep, repInit;
@@ -569,7 +581,7 @@
     private async Task RecargarRep()
     {
         repEmpresas = await Api.GetContadoraReporteEmpresasAsync() ?? new();
-        repCargas = await Api.GetContadoraReporteCargasAsync() ?? new();
+        repCargas = await Api.GetContadoraReporteCargasAsync(rEmpresa, rOrigen) ?? new();
         await CargarRep();
     }
 
@@ -579,7 +591,8 @@
         cargandoRep = true;
         try
         {
-            rep = await Api.GetContadoraReporteResumenAsync(rDesde, rHasta, rEmpresa, rPtoVenta, rLetra, rProvincia, rSearch);
+            rep = await Api.GetContadoraReporteResumenAsync(rDesde, rHasta, rEmpresa, rPtoVenta, rLetra, rProvincia, rSearch, rOrigen);
+            repCargas = await Api.GetContadoraReporteCargasAsync(rEmpresa, rOrigen) ?? new();
             if (verDetalleRep) { repPage = 1; await CargarComps(); }
         }
         catch (Exception ex) { ToastService.Error("No se pudo cargar: " + ex.Message); }
@@ -588,8 +601,22 @@
 
     private async Task LimpiarRep()
     {
-        rEmpresa = null; rLetra = null; rProvincia = null; rSearch = null; rPtoVenta = null; rDesde = null; rHasta = null;
+        rEmpresa = null; rLetra = null; rProvincia = null; rSearch = null; rPtoVenta = null; rDesde = null; rHasta = null; rOrigen = null;
         await CargarRep();
+    }
+
+    private async Task SincronizarSistema()
+    {
+        if (importando) return;
+        importando = true; importResult = null;
+        try
+        {
+            importResult = await Api.SincronizarSistemaAsync();
+            if (importResult is not null && importResult.Ok) { ToastService.Success(importResult.Mensaje ?? "Actualizado."); await RecargarRep(); }
+            else ToastService.Error(importResult?.Mensaje ?? "No se pudo actualizar.");
+        }
+        catch (Exception ex) { ToastService.Error("Error al actualizar: " + ex.Message); }
+        finally { importando = false; }
     }
 
     private async Task ToggleDetalleRep()
@@ -600,7 +627,7 @@
 
     private async Task CargarComps()
     {
-        try { repComps = await Api.GetContadoraReporteComprobantesAsync(rDesde, rHasta, rEmpresa, rPtoVenta, rLetra, rProvincia, rSearch, repPage, 50); }
+        try { repComps = await Api.GetContadoraReporteComprobantesAsync(rDesde, rHasta, rEmpresa, rPtoVenta, rLetra, rProvincia, rSearch, repPage, 50, rOrigen); }
         catch (Exception ex) { ToastService.Error("No se pudo cargar el detalle: " + ex.Message); }
     }
 
@@ -658,8 +685,9 @@
         if (!string.IsNullOrWhiteSpace(rLetra)) qs.Add($"letra={rLetra}");
         if (!string.IsNullOrWhiteSpace(rProvincia)) qs.Add($"provincia={Uri.EscapeDataString(rProvincia)}");
         if (!string.IsNullOrWhiteSpace(rSearch)) qs.Add($"search={Uri.EscapeDataString(rSearch)}");
+        if (!string.IsNullOrWhiteSpace(rOrigen)) qs.Add($"origen={rOrigen}");
         var url = "api/contadora/reporte/excel" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
-        await Descargar(url, $"libro-iva-ventas-meli-{DateTime.Now:yyyy-MM-dd}.xlsx");
+        await Descargar(url, $"libro-iva-ventas-{DateTime.Now:yyyy-MM-dd}.xlsx");
     }
 
     private static readonly string[] Meses = { "", "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre" };

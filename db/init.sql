@@ -532,6 +532,7 @@ BEGIN
     CREATE TABLE ContadoraComprobantes (
         Id INT PRIMARY KEY IDENTITY(1,1),
         Origen NVARCHAR(30) NOT NULL DEFAULT 'MELI_REPORTE',
+        Concepto INT NULL,
         EmisorCuit NVARCHAR(20) NULL,
         IdComprobante NVARCHAR(40) NOT NULL,
         NumeroVenta BIGINT NULL,
@@ -571,6 +572,11 @@ BEGIN
     CREATE INDEX IX_ContadoraComprobantes_Emisor ON ContadoraComprobantes (EmisorCuit);
     CREATE INDEX IX_ContadoraComprobantes_Fecha ON ContadoraComprobantes (FechaEmision);
 END
+GO
+
+-- 2026-07-08: columna Concepto (Productos/Servicios/Ambos) en ContadoraComprobantes (idempotente).
+IF COL_LENGTH('ContadoraComprobantes', 'Concepto') IS NULL
+    ALTER TABLE ContadoraComprobantes ADD Concepto INT NULL;
 GO
 
 -- MeliItems table
