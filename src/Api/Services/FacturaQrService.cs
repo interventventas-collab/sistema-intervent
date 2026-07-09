@@ -35,15 +35,14 @@ public class FacturaQrService
     /// grande y se detecta aunque en la hoja completa sea chico.</summary>
     public FacturaQrData? LeerQrDePdf(byte[] pdf)
     {
+        // 1) Camino rápido: PDFium + ZXing (hoja entera y recortes), sin procesos externos.
         try
         {
             foreach (var bmp in PDFtoImage.Conversion.ToImages(pdf, options: new(Dpi: 300)))
             {
                 using (bmp)
                 {
-                    // 1) Hoja completa.
                     var url = DecodeAfipQr(bmp);
-                    // 2) Recortes candidatos (el QR de AFIP va abajo, casi siempre a la izquierda).
                     if (url == null)
                     {
                         foreach (var (x0, y0, x1, y1) in Regiones)
@@ -54,13 +53,17 @@ public class FacturaQrService
                             if (url != null) break;
                         }
                     }
-                    // 3) Último recurso: zbar (más potente que ZXing para QR densos como los de Contabilium).
-                    if (url == null) url = DecodeConZbar(bmp);
                     if (url != null) return ParseAfipUrl(url);
                 }
             }
         }
-        catch (Exception ex) { _logger.LogWarning(ex, "[FacturaQr] No pude leer el QR del PDF"); }
+        catch (Exception ex) { _logger.LogWarning(ex, "[FacturaQr] Falló el camino ZXing"); }
+
+        // 2) Respaldo robusto: poppler (pdftoppm) + zbar sobre el PDF original. Lee muchos QR que
+        //    el renderizador propio (PDFium) no logra leer bien.
+        try { var u = DecodeConPopplerZbar(pdf); if (u != null) return ParseAfipUrl(u); }
+        catch (Exception ex) { _logger.LogWarning(ex, "[FacturaQr] Falló el respaldo poppler+zbar"); }
+
         return null;
     }
 
@@ -73,35 +76,46 @@ public class FacturaQrService
         (0.20, 0.55, 0.80, 1.00), // abajo-centro (algunos formatos)
     };
 
-    /// <summary>Decodifica el QR con zbar (zbarimg), que es más robusto que ZXing con QR densos.
-    /// Renderiza el bitmap a PNG en un archivo temporal y lo pasa a zbarimg. Devuelve la URL de AFIP o null.</summary>
-    private string? DecodeConZbar(SKBitmap bmp)
+    /// <summary>Respaldo robusto: renderiza el PDF con poppler (pdftoppm) a PNG y decodifica el QR con zbar
+    /// (zbarimg). Es la combinación que lee bien casi todos los QR (incluidos los densos que PDFium no logra).</summary>
+    private string? DecodeConPopplerZbar(byte[] pdf)
     {
-        string? tmp = null;
+        var dir = Path.Combine(Path.GetTempPath(), "qr-" + Guid.NewGuid().ToString("N"));
         try
         {
-            tmp = Path.Combine(Path.GetTempPath(), "qr-" + Guid.NewGuid().ToString("N") + ".png");
-            using (var img = SKImage.FromBitmap(bmp))
-            using (var data = img.Encode(SKEncodedImageFormat.Png, 90))
-            using (var fs = File.OpenWrite(tmp))
-                data.SaveTo(fs);
+            Directory.CreateDirectory(dir);
+            var pdfPath = Path.Combine(dir, "f.pdf");
+            File.WriteAllBytes(pdfPath, pdf);
 
-            var psi = new System.Diagnostics.ProcessStartInfo("zbarimg", $"--quiet --raw \"{tmp}\"")
-            { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
-            using var p = System.Diagnostics.Process.Start(psi);
-            if (p == null) return null;
-            var outp = p.StandardOutput.ReadToEnd();
-            _ = p.StandardError.ReadToEnd(); // vaciar stderr (zbarimg escribe avisos de dbus) para no bloquear
-            if (!p.WaitForExit(15000)) { try { p.Kill(); } catch { } return null; }
-            foreach (var line in outp.Split('\n'))
+            // pdftoppm genera un PNG por página: pag-1.png, pag-2.png, …
+            if (!Correr("pdftoppm", $"-png -r 300 \"{pdfPath}\" \"{Path.Combine(dir, "pag")}\"", out _)) return null;
+
+            foreach (var png in Directory.EnumerateFiles(dir, "pag*.png").OrderBy(f => f))
             {
-                var t = line.Trim();
-                if (EsQrFiscal(t)) return t;
+                if (!Correr("zbarimg", $"--quiet --raw \"{png}\"", out var outp)) continue;
+                foreach (var line in outp.Split('\n'))
+                {
+                    var t = line.Trim();
+                    if (EsQrFiscal(t)) return t;
+                }
             }
             return null;
         }
-        catch (Exception ex) { _logger.LogWarning(ex, "[FacturaQr] Falló el lector zbar"); return null; }
-        finally { if (tmp != null) { try { File.Delete(tmp); } catch { } } }
+        finally { try { Directory.Delete(dir, recursive: true); } catch { } }
+    }
+
+    /// <summary>Corre un proceso y devuelve su salida estándar. true si terminó bien a tiempo.</summary>
+    private static bool Correr(string cmd, string args, out string stdout)
+    {
+        stdout = "";
+        var psi = new System.Diagnostics.ProcessStartInfo(cmd, args)
+        { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+        using var p = System.Diagnostics.Process.Start(psi);
+        if (p == null) return false;
+        stdout = p.StandardOutput.ReadToEnd();
+        _ = p.StandardError.ReadToEnd(); // vaciar stderr (avisos de dbus de zbarimg) para no bloquear
+        if (!p.WaitForExit(30000)) { try { p.Kill(); } catch { } return false; }
+        return true;
     }
 
     private static SKBitmap? Recortar(SKBitmap b, double fx0, double fy0, double fx1, double fy1)
@@ -132,9 +146,13 @@ public class FacturaQrService
         return (t != null && EsQrFiscal(t)) ? t : null;
     }
 
-    /// <summary>True si el texto es el QR fiscal de una factura. Acepta el dominio viejo (afip.gob.ar)
-    /// y el nuevo (arca.gob.ar) — AFIP pasó a llamarse ARCA y las facturas nuevas traen ese dominio.</summary>
-    private static bool EsQrFiscal(string t) => t.Contains("/fe/qr", StringComparison.OrdinalIgnoreCase)
+    /// <summary>True si el texto es el QR fiscal de una factura (una URL de AFIP/ARCA con el payload ?p=BASE64).
+    /// Hay varios formatos de URL según quién generó la factura, todos con el mismo payload:
+    ///   • https://www.afip.gob.ar/fe/qr/?p=...              (estándar)
+    ///   • https://www.arca.gob.ar/fe/qr/?p=...              (AFIP pasó a llamarse ARCA)
+    ///   • https://serviciosweb.afip.gob.ar/genericos/comprobantes/cae.aspx?p=...   (formato alternativo)
+    /// Por eso alcanza con: es una URL de afip/arca.gob.ar y trae "p=".</summary>
+    private static bool EsQrFiscal(string t) => t.Contains("p=", StringComparison.OrdinalIgnoreCase)
         && (t.Contains("afip.gob.ar", StringComparison.OrdinalIgnoreCase) || t.Contains("arca.gob.ar", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Parsea la URL del QR de AFIP (…/fe/qr/?p=BASE64) y saca los datos de la factura.</summary>
