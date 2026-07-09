@@ -110,6 +110,10 @@ public class ContadoraController : ControllerBase
     [HttpGet("reporte/empresas")]
     public async Task<ActionResult<List<ContadoraEmpresaDto>>> ReporteEmpresas() => Ok(await _svc.GetReporteEmpresasAsync());
 
+    /// <summary>Provincias presentes en los comprobantes importados (para el desplegable del filtro).</summary>
+    [HttpGet("reporte/provincias")]
+    public async Task<ActionResult<List<string>>> ReporteProvincias() => Ok(await _svc.GetReporteProvinciasAsync());
+
     /// <summary>Resumen del Libro IVA Ventas desde el reporte importado (NC restan). origen: MELI_REPORTE | SISTEMA | (vacio = todo).</summary>
     [HttpGet("reporte/resumen")]
     public async Task<ActionResult<ContadoraReporteResumenDto>> ReporteResumen([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta,

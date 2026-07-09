@@ -41,11 +41,10 @@
 <div class="co-wrap">
     <div class="co-card">
         <h1 class="co-title">🧾 Contadora</h1>
-        <p class="co-sub">Cuadros de ventas para tu contadora, sacados de MercadoLibre. Todo se puede filtrar y descargar en Excel.</p>
+        <p class="co-sub">Cuadros de ventas para tu contadora (MercadoLibre + facturas del sistema). Todo se puede filtrar y descargar en Excel.</p>
         <div class="co-tabs">
             <div class="co-tab @(tab == "jur" ? "act" : "")" @onclick="@(() => SetTab("jur"))">🗺 Por jurisdicción (IIBB)</div>
-            <div class="co-tab @(tab == "iva" ? "act" : "")" @onclick="@(() => SetTab("iva"))">📒 Libro IVA Ventas</div>
-            <div class="co-tab @(tab == "rep" ? "act" : "")" @onclick="@(() => SetTab("rep"))">📥 Libro IVA (MeLi + sistema)</div>
+            <div class="co-tab @(tab == "rep" ? "act" : "")" @onclick="@(() => SetTab("rep"))">📒 Libro IVA Ventas</div>
         </div>
     </div>
 
@@ -101,135 +100,6 @@
                 </table>
             }
         </div>
-    }
-    else if (tab == "iva")
-    {
-        @* ══════════ VISTA LIBRO IVA VENTAS ══════════ *@
-        <div class="co-card">
-            <p class="co-sub">Todas las facturas de venta que emite MercadoLibre, por <b>empresa</b> y <b>punto de venta</b>, con neto e IVA. Es el <b>Libro IVA Ventas</b>. Podés filtrar y ver el detalle factura por factura.</p>
-            <div class="co-filtros">
-                <div>
-                    <label>Empresa</label>
-                    <select @bind="fEmpresa">
-                        <option value="">Todas</option>
-                        @foreach (var e in empresas)
-                        {
-                            <option value="@e.Cuit">@e.Nombre</option>
-                        }
-                    </select>
-                </div>
-                <div><label>Desde</label><input type="date" @bind="iDesde" /></div>
-                <div><label>Hasta</label><input type="date" @bind="iHasta" /></div>
-                <div><label>Pto venta</label><input type="number" style="width:90px;" @bind="fPtoVenta" /></div>
-                <div>
-                    <label>Tipo</label>
-                    <select @bind="fLetra"><option value="">Todos</option><option value="A">A</option><option value="B">B</option></select>
-                </div>
-                <div><label>Provincia</label><input type="text" style="width:130px;" placeholder="ej: Córdoba" @bind="fProvincia" /></div>
-                <div><label>Buscar</label><input type="text" style="width:150px;" placeholder="cliente / nº / doc" @bind="fSearch" /></div>
-                <button class="co-btn co-btn-primary" @onclick="CargarIva" disabled="@cargandoIva">Aplicar</button>
-                <button class="co-btn co-btn-ghost" @onclick="LimpiarIva" disabled="@cargandoIva">Limpiar</button>
-                <button class="co-btn co-btn-green" @onclick="DescargarExcelIva" disabled="@(cargandoIva || descargando || iva is null || iva.Filas.Count == 0)">@(descargando ? "Generando…" : "⬇ Excel")</button>
-            </div>
-        </div>
-
-        @if (iva is not null && iva.Pendientes > 0)
-        {
-            <div class="co-alerta">
-                <div>⚠️ Faltan bajar <b>@iva.Pendientes</b> factura(s) de MercadoLibre.</div>
-                @if (robotLanzado)
-                {
-                    <div class="co-hint" style="margin-top:.4rem;">🤖 El servidor está actualizando en segundo plano. Podés cerrar la pestaña. En unos minutos volvé y tocá <b>Aplicar</b>.</div>
-                }
-                else
-                {
-                    <button class="co-btn co-btn-primary" style="margin-top:.6rem;" @onclick="LanzarRobot">🔄 Traer facturas faltantes (en el servidor)</button>
-                }
-            </div>
-        }
-
-        <div class="co-card">
-            @if (cargandoIva) { <p>Cargando…</p> }
-            else if (iva is null || iva.Filas.Count == 0) { <p class="co-hint">No hay facturas para mostrar con estos filtros.</p> }
-            else
-            {
-                <table class="co-tabla">
-                    <thead><tr><th>Empresa</th><th class="num">Pto vta</th><th>Tipo</th><th class="num">Cant.</th><th class="num">Neto</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
-                    <tbody>
-                        @foreach (var f in iva.Filas)
-                        {
-                            <tr>
-                                <td>@f.EmpresaNombre</td>
-                                <td class="num">@f.PuntoVenta</td>
-                                <td>@f.Letra</td>
-                                <td class="num">@f.Cantidad</td>
-                                <td class="num">@Money(f.Neto)</td>
-                                <td class="num">@Money(f.Iva)</td>
-                                <td class="num">@Money(f.Total)</td>
-                            </tr>
-                        }
-                        <tr class="tot">
-                            <td>TOTALES</td><td></td><td></td>
-                            <td class="num">@iva.CantidadTotal</td>
-                            <td class="num">@Money(iva.NetoTotal)</td>
-                            <td class="num">@Money(iva.IvaTotal)</td>
-                            <td class="num">@Money(iva.TotalTotal)</td>
-                        </tr>
-                    </tbody>
-                </table>
-                @if (iva.SinFactura > 0)
-                {
-                    <p class="co-hint" style="margin-top:.5rem;">@iva.SinFactura venta(s) no tienen factura en MercadoLibre (no se cuentan acá).</p>
-                }
-                <div style="margin-top:.9rem;">
-                    <button class="co-btn co-btn-ghost" @onclick="ToggleDetalle">@(verDetalle ? "▲ Ocultar detalle" : "▼ Ver detalle (factura por factura)")</button>
-                </div>
-            }
-        </div>
-
-        @if (verDetalle && facturas is not null)
-        {
-            <div class="co-card">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem;">
-                    <b>Detalle</b>
-                    <span class="co-chip">@facturas.Total factura(s)</span>
-                </div>
-                @if (facturas.Items.Count == 0) { <p class="co-hint">Sin resultados.</p> }
-                else
-                {
-                    <div style="overflow-x:auto;">
-                        <table class="co-tabla">
-                            <thead><tr><th>Fecha</th><th>Empresa</th><th class="num">Pto vta</th><th class="num">Número</th><th>Tipo</th><th>Cliente</th><th>Provincia</th><th class="num">Neto</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
-                            <tbody>
-                                @foreach (var f in facturas.Items)
-                                {
-                                    <tr>
-                                        <td>@f.FechaEmision?.ToString("dd/MM/yyyy")</td>
-                                        <td>@f.EmpresaNombre</td>
-                                        <td class="num">@f.PuntoVenta</td>
-                                        <td class="num">@f.NumeroComprobante</td>
-                                        <td>@f.Letra</td>
-                                        <td>@f.ReceptorNombre</td>
-                                        <td>@f.Provincia</td>
-                                        <td class="num">@Money(f.Neto)</td>
-                                        <td class="num">@Money(f.Iva)</td>
-                                        <td class="num">@Money(f.Total)</td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                    @if (Paginas > 1)
-                    {
-                        <div style="margin-top:.7rem;display:flex;gap:.5rem;align-items:center;">
-                            <button class="co-btn co-btn-ghost" @onclick="@(() => IrPagina(detPage - 1))" disabled="@(detPage <= 1)">◀</button>
-                            <span class="co-hint">Página @detPage de @Paginas</span>
-                            <button class="co-btn co-btn-ghost" @onclick="@(() => IrPagina(detPage + 1))" disabled="@(detPage >= Paginas)">▶</button>
-                        </div>
-                    }
-                }
-            </div>
-        }
     }
     else
     {
@@ -332,7 +202,16 @@
                     <label>Tipo</label>
                     <select @bind="rLetra"><option value="">Todos</option><option value="A">A</option><option value="B">B</option></select>
                 </div>
-                <div><label>Provincia</label><input type="text" style="width:130px;" placeholder="ej: Córdoba" @bind="rProvincia" /></div>
+                <div>
+                    <label>Provincia</label>
+                    <select @bind="rProvincia">
+                        <option value="">Todas</option>
+                        @foreach (var p in repProvincias)
+                        {
+                            <option value="@p">@p</option>
+                        }
+                    </select>
+                </div>
                 <div><label>Buscar</label><input type="text" style="width:150px;" placeholder="cliente / nº / doc" @bind="rSearch" /></div>
                 <button class="co-btn co-btn-primary" @onclick="CargarRep" disabled="@cargandoRep">Aplicar</button>
                 <button class="co-btn co-btn-ghost" @onclick="LimpiarRep" disabled="@cargandoRep">Limpiar</button>
@@ -430,23 +309,12 @@
     private ContadoraJurisdiccionDto? jur;
     private DateTime? jDesde, jHasta;
 
-    // IVA Ventas
-    private ContadoraLibroIvaDto? iva;
-    private ContadoraFacturasPageDto? facturas;
-    private List<ContadoraEmpresaDto> empresas = new();
-    private string? fEmpresa, fLetra, fProvincia, fSearch;
-    private int? fPtoVenta;
-    private DateTime? iDesde, iHasta;
-    private bool verDetalle;
-    private int detPage = 1;
-    private bool empresasCargadas;
-    private int Paginas => facturas is null ? 1 : (int)Math.Ceiling(facturas.Total / (double)facturas.PageSize);
-
-    // Reporte MeLi importado (con NC)
+    // Libro IVA Ventas (MeLi + sistema)
     private ContadoraReporteResumenDto? rep;
     private ContadoraComprobantesPageDto? repComps;
     private List<ContadoraCargaDto> repCargas = new();
     private List<ContadoraEmpresaDto> repEmpresas = new();
+    private List<string> repProvincias = new();
     private ContadoraImportResultDto? importResult;
     private string? rEmpresa, rLetra, rProvincia, rSearch, rOrigen;
     private int? rPtoVenta;
@@ -455,7 +323,7 @@
     private int repPage = 1;
     private int RepPaginas => repComps is null ? 1 : (int)Math.Ceiling(repComps.Total / (double)repComps.PageSize);
 
-    private bool cargando, cargandoIva, descargando;
+    private bool cargando, descargando;
     private bool robotLanzado;
 
     protected override async Task OnInitializedAsync() => await CargarJur();
@@ -463,12 +331,7 @@
     private async Task SetTab(string t)
     {
         tab = t;
-        if (t == "iva")
-        {
-            if (!empresasCargadas) { empresas = await Api.GetContadoraEmpresasAsync() ?? new(); empresasCargadas = true; }
-            if (iva is null) await CargarIva();
-        }
-        else if (t == "rep" && !repInit)
+        if (t == "rep" && !repInit)
         {
             repInit = true;
             await RecargarRep();
@@ -507,58 +370,6 @@
         return qs.Count > 0 ? "?" + string.Join("&", qs) : "";
     }
 
-    // ───── IVA Ventas ─────
-    private async Task CargarIva()
-    {
-        if (cargandoIva) return;
-        cargandoIva = true;
-        try
-        {
-            iva = await Api.GetLibroIvaAsync(iDesde, iHasta, fEmpresa, fPtoVenta, fLetra, fProvincia, fSearch);
-            if (verDetalle) { detPage = 1; await CargarFacturas(); }
-        }
-        catch (Exception ex) { ToastService.Error("No se pudo cargar: " + ex.Message); }
-        finally { cargandoIva = false; }
-    }
-
-    private async Task LimpiarIva()
-    {
-        fEmpresa = null; fLetra = null; fProvincia = null; fSearch = null; fPtoVenta = null; iDesde = null; iHasta = null;
-        await CargarIva();
-    }
-
-    private async Task ToggleDetalle()
-    {
-        verDetalle = !verDetalle;
-        if (verDetalle) { detPage = 1; await CargarFacturas(); }
-    }
-
-    private async Task CargarFacturas()
-    {
-        try { facturas = await Api.GetContadoraFacturasAsync(iDesde, iHasta, fEmpresa, fPtoVenta, fLetra, fProvincia, fSearch, detPage, 50); }
-        catch (Exception ex) { ToastService.Error("No se pudo cargar el detalle: " + ex.Message); }
-    }
-
-    private async Task IrPagina(int p)
-    {
-        detPage = p;
-        await CargarFacturas();
-    }
-
-    private async Task DescargarExcelIva()
-    {
-        var qs = new List<string>();
-        if (iDesde.HasValue) qs.Add($"desde={iDesde.Value:yyyy-MM-dd}");
-        if (iHasta.HasValue) qs.Add($"hasta={iHasta.Value:yyyy-MM-dd}");
-        if (!string.IsNullOrWhiteSpace(fEmpresa)) qs.Add($"empresa={Uri.EscapeDataString(fEmpresa)}");
-        if (fPtoVenta.HasValue) qs.Add($"puntoVenta={fPtoVenta.Value}");
-        if (!string.IsNullOrWhiteSpace(fLetra)) qs.Add($"letra={fLetra}");
-        if (!string.IsNullOrWhiteSpace(fProvincia)) qs.Add($"provincia={Uri.EscapeDataString(fProvincia)}");
-        if (!string.IsNullOrWhiteSpace(fSearch)) qs.Add($"search={Uri.EscapeDataString(fSearch)}");
-        var url = "api/contadora/libro-iva/excel" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
-        await Descargar(url, $"libro-iva-ventas-{DateTime.Now:yyyy-MM-dd}.xlsx");
-    }
-
     // ───── común ─────
     private async Task Descargar(string url, string filename)
     {
@@ -581,6 +392,7 @@
     private async Task RecargarRep()
     {
         repEmpresas = await Api.GetContadoraReporteEmpresasAsync() ?? new();
+        repProvincias = await Api.GetContadoraReporteProvinciasAsync() ?? new();
         repCargas = await Api.GetContadoraReporteCargasAsync(rEmpresa, rOrigen) ?? new();
         await CargarRep();
     }

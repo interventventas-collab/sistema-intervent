@@ -5581,6 +5581,9 @@ public class ApiClient
     public async Task<List<ContadoraEmpresaDto>?> GetContadoraReporteEmpresasAsync()
         => await GetAsync<List<ContadoraEmpresaDto>>("/api/contadora/reporte/empresas");
 
+    public async Task<List<string>?> GetContadoraReporteProvinciasAsync()
+        => await GetAsync<List<string>>("/api/contadora/reporte/provincias");
+
     /// <summary>Trae al Libro IVA las facturas propias del sistema (AFIP).</summary>
     public async Task<ContadoraImportResultDto?> SincronizarSistemaAsync()
         => await PostAsync<ContadoraImportResultDto>("/api/contadora/sincronizar-sistema", new { });
