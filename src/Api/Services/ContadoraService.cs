@@ -1348,8 +1348,9 @@ public class ContadoraService
     /// por eso hay que distinguirlas o se pisan.</summary>
     private static string ClaseComprobante(string? tipoComprobante, bool esNC)
     {
-        if (esNC) return "NC";
-        return Norm(tipoComprobante).Contains("debito") ? "ND" : "F";
+        var n = Norm(tipoComprobante);
+        string b = esNC ? "NC" : (n.Contains("debito") ? "ND" : "F");
+        return n.Contains("fce") ? b + "F" : b;   // FCE es un tipo aparte (numeración propia)
     }
 
     /// <summary>Clave que identifica un comprobante: punto de venta + letra + clase (F/ND/NC) + numero.
@@ -1675,10 +1676,14 @@ public class ContadoraService
         // Notas de debito: 2 (A), 7 (B), 12 (C), 52 (M), 202/207/212 (FCE) — NO son NC (suman como una factura).
         bool esND = codigo is "2" or "7" or "12" or "52" or "202" or "207" or "212" || (labelHint != null && Norm(labelHint).Contains("debito"));
 
+        // FCE (Factura de Crédito Electrónica MiPyME): tipo APARTE de la factura común, con numeración propia.
+        // Hay que marcarlo distinto para que una Factura A común y una FCE A con el mismo número no se pisen.
+        bool esFCE = codigo is "201" or "202" or "203" or "206" or "207" or "208" or "211" or "212" or "213";
+
         // Si el archivo trajo texto (Excel viejo), lo usamos; si no, armamos uno lindo desde el codigo.
         string label;
         if (!string.IsNullOrWhiteSpace(labelHint)) label = labelHint!.Trim();
-        else { var tipo = esNC ? "Nota de crédito" : esND ? "Nota de débito" : "Factura"; label = letra != null ? $"{tipo} {letra}" : $"Comprobante {codigo}"; }
+        else { var tipo = esNC ? "Nota de crédito" : esND ? "Nota de débito" : "Factura"; var suf = esFCE ? " FCE" : ""; label = letra != null ? $"{tipo}{suf} {letra}" : $"Comprobante {codigo}"; }
 
         // Si no lo pudimos deducir por codigo, probamos por el final del texto.
         if (letra == null && labelHint != null)
