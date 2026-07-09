@@ -599,7 +599,12 @@ public class ContadoraService
             for (int r = 1; r <= Math.Min(15, lastRow) && headerRow == 0; r++)
                 for (int c = 1; c <= lastCol; c++)
                     if (Norm(ws.Cell(r, c).GetString()) == "numero de venta") { headerRow = r; break; }
-            if (headerRow == 0) { a.Ok = false; a.Error = "No parece un reporte de MeLi (no encontre los titulos)."; return a; }
+            if (headerRow == 0)
+            {
+                // Puede ser el Excel de compras de AFIP (mismo directorio): lo ignoramos sin marcar error.
+                if (EsRecibidosAfip(ws, lastRow, lastCol)) { a.Ok = true; a.Error = "(archivo de compras AFIP, se ignora en ventas)"; return a; }
+                a.Ok = false; a.Error = "No parece un reporte de MeLi (no encontre los titulos)."; return a;
+            }
 
             // Mapa normalizado titulo -> columna.
             var map = new Dictionary<string, int>();
@@ -833,12 +838,257 @@ public class ContadoraService
         return res;
     }
 
+    // ═══════════════════ COMPRAS: importar "Mis Comprobantes Recibidos" de AFIP ═══════════════════
+
+    private static bool EsRecibidosAfip(IXLWorksheet ws, int lastRow, int lastCol)
+    {
+        for (int r = 1; r <= Math.Min(6, lastRow); r++)
+            for (int c = 1; c <= lastCol; c++)
+            {
+                var n = Norm(ws.Cell(r, c).GetString());
+                if (n == "denominacion emisor" || n.Contains("comprobantes recibidos")) return true;
+            }
+        return false;
+    }
+
+    /// <summary>Importa los "Mis Comprobantes Recibidos" de AFIP (Excel .xlsx o CSV) que esten en una subcarpeta
+    /// compartida, incluyendo las subcarpetas (por ej. "TODOS LOS AÑOS FACTURAS RECIBIDAS").</summary>
+    public async Task<ContadoraImportResultDto> ImportarComprasCarpetaAsync(string subcarpeta)
+    {
+        var res = new ContadoraImportResultDto();
+        string full;
+        try { full = _storage.ResolveSafe(subcarpeta); }
+        catch { res.Ok = false; res.Mensaje = "Carpeta invalida."; return res; }
+        if (!Directory.Exists(full)) { res.Ok = false; res.Mensaje = $"No existe la carpeta '{subcarpeta}'."; return res; }
+
+        var archivos = Directory.EnumerateFiles(full, "*.*", SearchOption.AllDirectories)
+            .Where(f => { var e = Path.GetExtension(f).ToLowerInvariant(); return e == ".xlsx" || e == ".csv"; })
+            .Where(f => !Path.GetFileName(f).StartsWith("~$")).OrderBy(f => f).ToList();
+        int reconocidos = 0;
+        foreach (var path in archivos)
+        {
+            using var fs = File.OpenRead(path);
+            var a = await ImportarUnRecibidoAsync(fs, Path.GetFileName(path));
+            if (a is null) continue; // no es un recibidos de AFIP, se ignora
+            reconocidos++;
+            AcumularArchivo(res, a);
+        }
+        if (reconocidos == 0) { res.Ok = false; res.Mensaje = "No encontre ningun 'Mis Comprobantes Recibidos' de AFIP (Excel o CSV) en la carpeta ni en sus subcarpetas."; return res; }
+        res.Mensaje = $"Compras importadas: {res.Facturas} comprobantes y {res.NotasCredito} NC ({res.Nuevos} nuevos, {res.Actualizados} actualizados).";
+        return res;
+    }
+
+    /// <summary>Importa archivos de compras subidos por el usuario.</summary>
+    public async Task<ContadoraImportResultDto> ImportarComprasArchivosAsync(IEnumerable<(string nombre, Stream contenido)> archivos)
+    {
+        var res = new ContadoraImportResultDto();
+        int reconocidos = 0;
+        foreach (var (nombre, contenido) in archivos)
+        {
+            var a = await ImportarUnRecibidoAsync(contenido, nombre);
+            if (a is null) { res.Archivos.Add(new ContadoraImportArchivoDto { Archivo = nombre, Ok = false, Error = "No es un 'Mis Comprobantes Recibidos' de AFIP." }); continue; }
+            reconocidos++;
+            AcumularArchivo(res, a);
+        }
+        if (reconocidos == 0) { res.Ok = false; res.Mensaje = "El archivo no parece un 'Mis Comprobantes Recibidos' de AFIP."; return res; }
+        res.Mensaje = $"Compras importadas: {res.Facturas} comprobantes y {res.NotasCredito} NC ({res.Nuevos} nuevos, {res.Actualizados} actualizados).";
+        return res;
+    }
+
+    /// <summary>Parsea un "Mis Comprobantes Recibidos" de AFIP (Excel .xlsx o CSV). Devuelve null si no es ese formato.</summary>
+    private async Task<ContadoraImportArchivoDto?> ImportarUnRecibidoAsync(Stream stream, string nombre)
+    {
+        var a = new ContadoraImportArchivoDto { Archivo = nombre };
+        List<ContadoraComprobante> parsed;
+        try
+        {
+            IGrid g;
+            var esCsv = Path.GetExtension(nombre).ToLowerInvariant() == ".csv";
+            XLWorkbook? wb = null;
+            if (esCsv) g = CsvGrid.Leer(stream);
+            else { wb = new XLWorkbook(stream); var ws = wb.Worksheets.OrderByDescending(w => w.LastRowUsed()?.RowNumber() ?? 0).First(); g = new XlsxGrid(ws); }
+
+            try
+            {
+                var lastRow = g.LastRow;
+                var lastCol = g.LastCol;
+
+                // ¿Es un "recibidos" de AFIP? Buscamos "Denominacion Emisor" o el titulo.
+                bool esRecibidos = false;
+                for (int r = 1; r <= Math.Min(6, lastRow) && !esRecibidos; r++)
+                    for (int c = 1; c <= lastCol; c++)
+                    {
+                        var n = Norm(g.Text(r, c));
+                        if (n == "denominacion emisor" || n.Contains("comprobantes recibidos")) { esRecibidos = true; break; }
+                    }
+                if (!esRecibidos) return null;
+
+                // Fila de titulos: la que tiene "Denominacion Emisor".
+                int headerRow = 0;
+                for (int r = 1; r <= Math.Min(8, lastRow) && headerRow == 0; r++)
+                    for (int c = 1; c <= lastCol; c++)
+                        if (Norm(g.Text(r, c)) == "denominacion emisor") { headerRow = r; break; }
+                if (headerRow == 0) { a.Ok = false; a.Error = "No encontre los titulos del reporte de AFIP."; return a; }
+
+                var map = new Dictionary<string, int>();
+                for (int c = 1; c <= lastCol; c++)
+                {
+                    var h = Norm(g.Text(headerRow, c));
+                    if (h.Length > 0 && !map.ContainsKey(h)) map[h] = c;
+                }
+                int Col(params string[] keys) { foreach (var k in keys) if (map.TryGetValue(k, out var c)) return c; return 0; }
+
+                // Nombres de columna: el Excel viejo (2021/2022) y el CSV nuevo (2023+) usan textos distintos.
+                int cFecha = Col("fecha", "fecha de emision"), cTipo = Col("tipo", "tipo de comprobante"), cPtoVta = Col("punto de venta"),
+                    cNumD = Col("numero desde", "nro. desde", "numero"), cCae = Col("cod. autorizacion", "codigo de autorizacion", "cae"),
+                    cDocEmisor = Col("nro. doc. emisor", "nro doc emisor"), cDenomEmisor = Col("denominacion emisor"),
+                    cDocReceptor = Col("nro. doc. receptor", "nro doc receptor"),
+                    cNetoTotal = Col("neto gravado total", "imp. neto gravado total", "imp. neto gravado"),
+                    cIva105 = Col("iva 10,5%", "iva 10.5%"), cTotalIva = Col("total iva"),
+                    cNoGrav = Col("neto no gravado", "imp. neto no gravado"), cExento = Col("op. exentas", "imp. op. exentas", "op exentas"),
+                    cOtros = Col("otros tributos"), cImpTotal = Col("imp. total", "imp total");
+
+                // CUIT de MI empresa = receptor. Si el CSV/Excel no trae titulo, lo saco de la 1ra fila con receptor.
+                string? miCuit = null;
+                for (int r = 1; r < headerRow && miCuit == null; r++)
+                    for (int c = 1; c <= lastCol; c++)
+                    {
+                        var t = g.Text(r, c);
+                        if (Norm(t).Contains("comprobantes recibidos")) { miCuit = SoloDigitos(t); break; }
+                    }
+
+                var porId = new Dictionary<string, ContadoraComprobante>();
+                for (int r = headerRow + 1; r <= lastRow; r++)
+                {
+                    var tipoRaw = cTipo > 0 ? g.Text(r, cTipo) : "";
+                    if (tipoRaw.Length == 0) continue;
+                    var codigo = tipoRaw.Split('-')[0].Trim();
+                    var labelHint = tipoRaw.Contains('-') ? tipoRaw[(tipoRaw.IndexOf('-') + 1)..].Trim() : null;
+                    var (letra, esNC, tipoLabel) = TipoInfo(codigo, labelHint);
+
+                    var receptor = cDocReceptor > 0 ? SoloDigitos(g.Text(r, cDocReceptor)) : null;
+                    var emisorMi = receptor ?? miCuit;
+                    if (miCuit == null) miCuit = receptor;
+                    var provCuit = cDocEmisor > 0 ? SoloDigitos(g.Text(r, cDocEmisor)) : null;  // proveedor que me facturo
+                    var cae = cCae > 0 ? SoloDigitos(g.Text(r, cCae)) : null;
+                    var pto = cPtoVta > 0 ? (int?)(g.Lng(r, cPtoVta) ?? 0) : null;
+                    var num = cNumD > 0 ? g.Lng(r, cNumD) : null;
+                    // OJO: el CAE de AFIP NO es unico por comprobante (una Factura y su Nota de Debito/Credito
+                    // pueden compartirlo, y los tiques no traen CAE). La clave real es proveedor+tipo+pto+numero.
+                    var id = $"COMPRA-{provCuit}-{codigo}-{pto}-{num}";
+
+                    var neto = g.Dec(r, cNetoTotal);
+                    var iva105 = g.Dec(r, cIva105);
+                    var ivaTotal = g.Dec(r, cTotalIva);
+                    var e = new ContadoraComprobante
+                    {
+                        Naturaleza = "COMPRA",
+                        Origen = "AFIP_RECIBIDOS",
+                        EmisorCuit = emisorMi,       // mi empresa (receptor)
+                        IdComprobante = id,
+                        TipoOperacion = esNC ? "Cancelacion" : "Compra",
+                        TipoComprobante = tipoLabel,
+                        EsNotaCredito = esNC,
+                        Letra = letra,
+                        PuntoVenta = pto,
+                        NumeroComprobante = num,
+                        Cae = cae,
+                        FechaEmision = cFecha > 0 ? g.Fecha(r, cFecha) : null,
+                        Estado = "Aprobada",
+                        ReceptorNombre = cDenomEmisor > 0 ? NullIfEmpty(g.Text(r, cDenomEmisor)) : null,  // proveedor
+                        ReceptorDoc = provCuit,
+                        NetoGravado = neto, BaseIva21 = neto,
+                        Iva105 = iva105,
+                        Iva21 = Math.Round(ivaTotal - iva105, 2), // el resto del IVA (21% + otras alicuotas) para que Iva21+Iva105 = IVA total
+                        NoGravado = g.Dec(r, cNoGrav), Exento = g.Dec(r, cExento), OtrosImpuestos = g.Dec(r, cOtros),
+                        Total = g.Dec(r, cImpTotal),
+                        ArchivoOrigen = nombre,
+                        ImportadoEn = DateTime.UtcNow
+                    };
+                    porId[id] = e;
+                }
+                a.EmpresaCuit = miCuit;
+                parsed = porId.Values.ToList();
+            }
+            finally { wb?.Dispose(); }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Contadora] Error leyendo recibidos AFIP {Archivo}", nombre);
+            a.Ok = false; a.Error = "No pude leer el archivo: " + ex.GetBaseException().Message;
+            return a;
+        }
+
+        var ids = parsed.Select(p => p.IdComprobante).ToList();
+        var existentes = new Dictionary<string, ContadoraComprobante>();
+        foreach (var chunk in Chunk(ids, 1000))
+            foreach (var f in await _db.ContadoraComprobantes.Where(c => chunk.Contains(c.IdComprobante)).ToListAsync())
+                existentes[f.IdComprobante] = f;
+
+        foreach (var p in parsed)
+        {
+            if (existentes.TryGetValue(p.IdComprobante, out var ex)) { CopiarCampos(p, ex); ex.Naturaleza = "COMPRA"; a.Actualizados++; }
+            else { _db.ContadoraComprobantes.Add(p); a.Nuevos++; }
+            int signo = p.EsNotaCredito ? -1 : 1;
+            if (p.EsNotaCredito) a.NotasCredito++; else a.Facturas++;
+            a.NetoNeto += signo * p.NetoGravado;
+            a.IvaNeto += signo * (p.Iva21 + p.Iva105);
+            a.TotalNeto += signo * p.Total;
+            if (p.FechaEmision.HasValue)
+            {
+                if (!a.PeriodoDesde.HasValue || p.FechaEmision < a.PeriodoDesde) a.PeriodoDesde = p.FechaEmision;
+                if (!a.PeriodoHasta.HasValue || p.FechaEmision > a.PeriodoHasta) a.PeriodoHasta = p.FechaEmision;
+            }
+        }
+        await _db.SaveChangesAsync();
+        _logger.LogInformation("[Contadora] Recibidos {Archivo}: {Fac} comp, {NC} NC, {N} nuevos, {A} act.", nombre, a.Facturas, a.NotasCredito, a.Nuevos, a.Actualizados);
+        return a;
+    }
+
+    // ═══════════════════ BALANZA DE IVA (ventas - compras) ═══════════════════
+
+    /// <summary>Balanza de IVA por mes: IVA de ventas (debito) - IVA de compras (credito) = saldo.</summary>
+    public async Task<ContadoraBalanzaDto> GetBalanzaAsync(DateTime? desde, DateTime? hasta, string? empresaCuit)
+    {
+        var q = _db.ContadoraComprobantes.AsQueryable();
+        if (desde.HasValue) q = q.Where(c => c.FechaEmision >= desde.Value);
+        if (hasta.HasValue) { var h = hasta.Value.Date.AddDays(1); q = q.Where(c => c.FechaEmision < h); }
+        if (!string.IsNullOrWhiteSpace(empresaCuit)) q = q.Where(c => c.EmisorCuit == empresaCuit);
+
+        var datos = await q.Where(c => c.FechaEmision != null)
+            .Select(c => new { c.Naturaleza, c.FechaEmision, c.EsNotaCredito, c.Iva21, c.Iva105 })
+            .ToListAsync();
+
+        var filas = datos
+            .GroupBy(x => new { x.FechaEmision!.Value.Year, x.FechaEmision!.Value.Month })
+            .Select(g =>
+            {
+                decimal ivaV = g.Where(x => x.Naturaleza == "VENTA").Sum(x => (x.EsNotaCredito ? -1 : 1) * (x.Iva21 + x.Iva105));
+                decimal ivaC = g.Where(x => x.Naturaleza == "COMPRA").Sum(x => (x.EsNotaCredito ? -1 : 1) * (x.Iva21 + x.Iva105));
+                return new ContadoraBalanzaMesDto
+                {
+                    Anio = g.Key.Year, Mes = g.Key.Month,
+                    IvaVentas = ivaV, IvaCompras = ivaC, Saldo = ivaV - ivaC
+                };
+            })
+            .OrderByDescending(f => f.Anio).ThenByDescending(f => f.Mes)
+            .ToList();
+
+        return new ContadoraBalanzaDto
+        {
+            Filas = filas,
+            IvaVentasTotal = filas.Sum(f => f.IvaVentas),
+            IvaComprasTotal = filas.Sum(f => f.IvaCompras),
+            SaldoTotal = filas.Sum(f => f.Saldo)
+        };
+    }
+
     // ── Consultas sobre los comprobantes importados (con NC restando) ──
 
     private IQueryable<ContadoraComprobante> FiltrarComprobantes(DateTime? desde, DateTime? hasta,
-        string? empresaCuit, int? puntoVenta, string? letra, string? provincia, string? search, string? origen = null)
+        string? empresaCuit, int? puntoVenta, string? letra, string? provincia, string? search, string? origen = null, string naturaleza = "VENTA")
     {
-        var q = _db.ContadoraComprobantes.AsQueryable();
+        var q = _db.ContadoraComprobantes.Where(c => c.Naturaleza == naturaleza);
         if (!string.IsNullOrWhiteSpace(origen)) q = q.Where(c => c.Origen == origen);
         if (desde.HasValue) q = q.Where(c => c.FechaEmision >= desde.Value);
         if (hasta.HasValue) { var h = hasta.Value.Date.AddDays(1); q = q.Where(c => c.FechaEmision < h); }
@@ -859,7 +1109,7 @@ public class ContadoraService
     /// <summary>Empresas (CUIT) que aparecen en los comprobantes importados, con su razon social si la conocemos.</summary>
     public async Task<List<ContadoraEmpresaDto>> GetReporteEmpresasAsync()
     {
-        var cuits = await _db.ContadoraComprobantes.Where(c => c.EmisorCuit != null)
+        var cuits = await _db.ContadoraComprobantes.Where(c => c.Naturaleza == "VENTA" && c.EmisorCuit != null)
             .Select(c => c.EmisorCuit!).Distinct().ToListAsync();
         var razon = await _db.ArcaEmisores.Where(e => cuits.Contains(e.Cuit))
             .ToDictionaryAsync(e => e.Cuit, e => e.RazonSocial);
@@ -876,19 +1126,19 @@ public class ContadoraService
     public async Task<List<string>> GetReporteProvinciasAsync()
     {
         return await _db.ContadoraComprobantes
-            .Where(c => c.Provincia != null && c.Provincia != "")
+            .Where(c => c.Naturaleza == "VENTA" && c.Provincia != null && c.Provincia != "")
             .Select(c => c.Provincia!)
             .Distinct().OrderBy(p => p).ToListAsync();
     }
 
     /// <summary>Resumen del Libro IVA Ventas desde los comprobantes importados (NC restan).</summary>
     public async Task<ContadoraReporteResumenDto> GetReporteResumenAsync(DateTime? desde, DateTime? hasta,
-        string? empresaCuit, int? puntoVenta, string? letra, string? provincia, string? search, string? origen = null)
+        string? empresaCuit, int? puntoVenta, string? letra, string? provincia, string? search, string? origen = null, string naturaleza = "VENTA")
     {
         var dto = new ContadoraReporteResumenDto();
-        dto.SinDatos = !await _db.ContadoraComprobantes.AnyAsync();
+        dto.SinDatos = !await _db.ContadoraComprobantes.AnyAsync(c => c.Naturaleza == naturaleza);
 
-        var datos = await FiltrarComprobantes(desde, hasta, empresaCuit, puntoVenta, letra, provincia, search, origen)
+        var datos = await FiltrarComprobantes(desde, hasta, empresaCuit, puntoVenta, letra, provincia, search, origen, naturaleza)
             .Select(c => new { c.EmisorCuit, c.PuntoVenta, c.Letra, c.EsNotaCredito, c.NetoGravado, c.Iva21, c.Iva105, c.Total })
             .ToListAsync();
 
@@ -919,7 +1169,7 @@ public class ContadoraService
     /// <summary>Meses cargados (para mostrar "lo que ya tengo importado").</summary>
     public async Task<List<ContadoraCargaDto>> GetReporteCargasAsync(string? empresaCuit, string? origen = null)
     {
-        var q = _db.ContadoraComprobantes.Where(c => c.FechaEmision != null);
+        var q = _db.ContadoraComprobantes.Where(c => c.Naturaleza == "VENTA" && c.FechaEmision != null);
         if (!string.IsNullOrWhiteSpace(empresaCuit)) q = q.Where(c => c.EmisorCuit == empresaCuit);
         if (!string.IsNullOrWhiteSpace(origen)) q = q.Where(c => c.Origen == origen);
         var datos = await q.Select(c => new { c.EmisorCuit, c.FechaEmision, c.EsNotaCredito, c.NetoGravado, c.Iva21, c.Iva105, c.Total }).ToListAsync();
@@ -941,11 +1191,11 @@ public class ContadoraService
 
     /// <summary>Detalle paginado de comprobantes importados (NC con importes en negativo).</summary>
     public async Task<ContadoraComprobantesPageDto> GetReporteComprobantesAsync(DateTime? desde, DateTime? hasta,
-        string? empresaCuit, int? puntoVenta, string? letra, string? provincia, string? search, int page = 1, int pageSize = 50, string? origen = null)
+        string? empresaCuit, int? puntoVenta, string? letra, string? provincia, string? search, int page = 1, int pageSize = 50, string? origen = null, string naturaleza = "VENTA")
     {
         if (page < 1) page = 1;
         if (pageSize < 1 || pageSize > 500) pageSize = 50;
-        var q = FiltrarComprobantes(desde, hasta, empresaCuit, puntoVenta, letra, provincia, search, origen);
+        var q = FiltrarComprobantes(desde, hasta, empresaCuit, puntoVenta, letra, provincia, search, origen, naturaleza);
         var total = await q.CountAsync();
         var raw = await q.OrderByDescending(c => c.FechaEmision).ThenByDescending(c => c.NumeroComprobante)
             .Skip((page - 1) * pageSize).Take(pageSize)
@@ -969,10 +1219,10 @@ public class ContadoraService
 
     /// <summary>Excel del Libro IVA Ventas (importado): hoja resumen + hoja detalle. NC en negativo.</summary>
     public async Task<byte[]> GenerarReporteExcelAsync(DateTime? desde, DateTime? hasta,
-        string? empresaCuit, int? puntoVenta, string? letra, string? provincia, string? search, string? origen = null)
+        string? empresaCuit, int? puntoVenta, string? letra, string? provincia, string? search, string? origen = null, string naturaleza = "VENTA")
     {
-        var resumen = await GetReporteResumenAsync(desde, hasta, empresaCuit, puntoVenta, letra, provincia, search, origen);
-        var detalle = await GetReporteComprobantesAsync(desde, hasta, empresaCuit, puntoVenta, letra, provincia, search, 1, 500, origen);
+        var resumen = await GetReporteResumenAsync(desde, hasta, empresaCuit, puntoVenta, letra, provincia, search, origen, naturaleza);
+        var detalle = await GetReporteComprobantesAsync(desde, hasta, empresaCuit, puntoVenta, letra, provincia, search, 1, 500, origen, naturaleza);
 
         using var wb = new XLWorkbook();
         var wr = wb.AddWorksheet("Resumen");
@@ -1104,5 +1354,141 @@ public class ContadoraService
         // es-AR: miles con punto, decimales con coma.
         if (s.Contains(',')) s = s.Replace(".", "").Replace(",", ".");
         return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : 0m;
+    }
+
+    /// <summary>Traduce el tipo de comprobante de AFIP (viene como "11 - Factura C" en el Excel viejo, o solo el
+    /// codigo "11" en el CSV) a (letra, esNotaCredito, etiqueta para mostrar).</summary>
+    private static (string? letra, bool esNC, string label) TipoInfo(string codigo, string? labelHint)
+    {
+        // Letra por codigo AFIP: A={1,2,3}, B={6,7,8}, C={11,12,13}, M={51,52,53}, Tiques {81,82,83}.
+        string? letra = codigo switch
+        {
+            "1" or "2" or "3" or "4" or "5" or "81" => "A",
+            "6" or "7" or "8" or "82" => "B",
+            "11" or "12" or "13" or "83" => "C",
+            "51" or "52" or "53" => "M",
+            _ => null
+        };
+        // Notas de credito de AFIP: 3 (A), 8 (B), 13 (C), 53 (M).
+        bool esNC = codigo is "3" or "8" or "13" or "53" || (labelHint != null && Norm(labelHint).Contains("credito"));
+        // Notas de debito: 2 (A), 7 (B), 12 (C), 52 (M) — NO son NC (suman como una factura).
+        bool esND = codigo is "2" or "7" or "12" or "52" || (labelHint != null && Norm(labelHint).Contains("debito"));
+
+        // Si el archivo trajo texto (Excel viejo), lo usamos; si no, armamos uno lindo desde el codigo.
+        string label;
+        if (!string.IsNullOrWhiteSpace(labelHint)) label = labelHint!.Trim();
+        else { var tipo = esNC ? "Nota de crédito" : esND ? "Nota de débito" : "Factura"; label = letra != null ? $"{tipo} {letra}" : $"Comprobante {codigo}"; }
+
+        // Si no lo pudimos deducir por codigo, probamos por el final del texto.
+        if (letra == null && labelHint != null)
+            letra = labelHint.TrimEnd().EndsWith("A") ? "A" : labelHint.TrimEnd().EndsWith("B") ? "B" : labelHint.TrimEnd().EndsWith("C") ? "C" : null;
+
+        return (letra, esNC, label);
+    }
+
+    // ═══════════ Grilla generica: misma logica de parseo para Excel (.xlsx) y CSV ═══════════
+
+    /// <summary>Abstraccion de una planilla (1-based). Permite parsear igual un Excel y un CSV.</summary>
+    private interface IGrid
+    {
+        int LastRow { get; }          // ultima fila con datos (1-based)
+        int LastCol { get; }          // ultima columna con datos (1-based)
+        string Text(int r, int c);    // texto de la celda (trim), "" si vacia/fuera de rango
+        decimal Dec(int r, int c);    // monto (acepta numero o "$1.234,56" es-AR)
+        long? Lng(int r, int c);
+        DateTime? Fecha(int r, int c);
+    }
+
+    private sealed class XlsxGrid : IGrid
+    {
+        private readonly IXLWorksheet _ws;
+        public XlsxGrid(IXLWorksheet ws) { _ws = ws; LastRow = ws.LastRowUsed()?.RowNumber() ?? 0; LastCol = ws.LastColumnUsed()?.ColumnNumber() ?? 0; }
+        public int LastRow { get; }
+        public int LastCol { get; }
+        public string Text(int r, int c) => (r <= 0 || c <= 0) ? "" : _ws.Cell(r, c).GetString().Trim();
+        public decimal Dec(int r, int c) => ContadoraService.Dec(_ws, r, c);
+        public long? Lng(int r, int c) => c <= 0 ? null : ContadoraService.Lng(_ws.Cell(r, c));
+        public DateTime? Fecha(int r, int c) => c <= 0 ? null : ContadoraService.Fecha(_ws.Cell(r, c));
+    }
+
+    private sealed class CsvGrid : IGrid
+    {
+        private readonly List<string[]> _rows;
+        private CsvGrid(List<string[]> rows) { _rows = rows; LastRow = rows.Count; LastCol = rows.Count == 0 ? 0 : rows.Max(x => x.Length); }
+        public int LastRow { get; }
+        public int LastCol { get; }
+
+        /// <summary>Lee un CSV de AFIP (separador ';', decimales es-AR, encoding utf-8 con BOM).</summary>
+        public static CsvGrid Leer(Stream stream)
+        {
+            string texto;
+            using (var ms = new MemoryStream())
+            {
+                stream.CopyTo(ms);
+                var bytes = ms.ToArray();
+                try { texto = new UTF8Encoding(false, true).GetString(bytes); }
+                catch { texto = Encoding.Latin1.GetString(bytes); }
+            }
+            if (texto.Length > 0 && texto[0] == '﻿') texto = texto[1..];
+            var rows = new List<string[]>();
+            foreach (var linea in texto.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n'))
+            {
+                if (linea.Length == 0 && rows.Count == 0) continue;
+                rows.Add(PartirLinea(linea));
+            }
+            // sacamos lineas finales totalmente vacias
+            while (rows.Count > 0 && rows[^1].All(string.IsNullOrWhiteSpace)) rows.RemoveAt(rows.Count - 1);
+            return new CsvGrid(rows);
+        }
+
+        // Separa por ';' respetando comillas dobles.
+        private static string[] PartirLinea(string linea)
+        {
+            var campos = new List<string>();
+            var sb = new StringBuilder();
+            bool enComillas = false;
+            for (int i = 0; i < linea.Length; i++)
+            {
+                var ch = linea[i];
+                if (ch == '"') { if (enComillas && i + 1 < linea.Length && linea[i + 1] == '"') { sb.Append('"'); i++; } else enComillas = !enComillas; }
+                else if (ch == ';' && !enComillas) { campos.Add(sb.ToString()); sb.Clear(); }
+                else sb.Append(ch);
+            }
+            campos.Add(sb.ToString());
+            return campos.ToArray();
+        }
+
+        private string Raw(int r, int c)
+        {
+            if (r <= 0 || c <= 0 || r > _rows.Count) return "";
+            var row = _rows[r - 1];
+            return c <= row.Length ? (row[c - 1] ?? "").Trim() : "";
+        }
+
+        public string Text(int r, int c) => Raw(r, c);
+
+        public decimal Dec(int r, int c)
+        {
+            var s = Raw(r, c);
+            if (s.Length == 0) return 0m;
+            s = s.Replace("$", "").Replace(" ", "").Trim();
+            if (s.Contains(',')) s = s.Replace(".", "").Replace(",", ".");
+            return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : 0m;
+        }
+
+        public long? Lng(int r, int c)
+        {
+            var s = SoloDigitos(Raw(r, c));
+            return s != null && long.TryParse(s, out var n) ? n : null;
+        }
+
+        public DateTime? Fecha(int r, int c)
+        {
+            var s = Raw(r, c);
+            if (s.Length == 0) return null;
+            string[] fmts = { "yyyy-MM-dd", "yyyy/MM/dd", "dd/MM/yyyy", "d/M/yyyy", "yyyy-MM-dd HH:mm:ss", "dd/MM/yyyy HH:mm:ss" };
+            if (DateTime.TryParseExact(s, fmts, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)) return d;
+            return DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d2) ? d2 : null;
+        }
     }
 }

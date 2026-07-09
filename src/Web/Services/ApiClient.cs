@@ -5594,4 +5594,53 @@ public class ApiClient
         qs += (qs.Length > 0 ? "&" : "?") + $"page={page}&pageSize={pageSize}";
         return await GetAsync<ContadoraComprobantesPageDto>("/api/contadora/reporte/comprobantes" + ConOrigen(qs, origen));
     }
+
+    // ───────── Contadora: COMPRAS (AFIP recibidos) + BALANZA ─────────
+
+    public async Task<ContadoraImportResultDto?> ImportarComprasCarpetaAsync(string? subcarpeta = null)
+        => await PostAsync<ContadoraImportResultDto>("/api/contadora/importar-compras-carpeta" + (string.IsNullOrWhiteSpace(subcarpeta) ? "" : "?subcarpeta=" + Uri.EscapeDataString(subcarpeta)), new { });
+
+    public async Task<(ContadoraImportResultDto? result, string? error)> ImportarComprasArchivosAsync(IEnumerable<(string name, Stream stream)> archivos)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        foreach (var f in archivos)
+        {
+            var sc = new StreamContent(f.stream);
+            sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            content.Add(sc, "archivos", f.name);
+        }
+        var resp = await _http.PostAsync("/api/contadora/importar-compras", content);
+        if (!resp.IsSuccessStatusCode) return (null, $"HTTP {(int)resp.StatusCode}: {await resp.Content.ReadAsStringAsync()}");
+        return (await resp.Content.ReadFromJsonAsync<ContadoraImportResultDto>(), null);
+    }
+
+    private static string ComprasQs(DateTime? desde, DateTime? hasta, string? empresa, string? search)
+    {
+        var qs = new List<string>();
+        if (desde.HasValue) qs.Add($"desde={desde.Value:yyyy-MM-dd}");
+        if (hasta.HasValue) qs.Add($"hasta={hasta.Value:yyyy-MM-dd}");
+        if (!string.IsNullOrWhiteSpace(empresa)) qs.Add($"empresa={Uri.EscapeDataString(empresa)}");
+        if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
+        return qs.Count > 0 ? "?" + string.Join("&", qs) : "";
+    }
+
+    public async Task<ContadoraReporteResumenDto?> GetContadoraComprasResumenAsync(DateTime? desde, DateTime? hasta, string? empresa, string? search)
+        => await GetAsync<ContadoraReporteResumenDto>("/api/contadora/compras/resumen" + ComprasQs(desde, hasta, empresa, search));
+
+    public async Task<ContadoraComprobantesPageDto?> GetContadoraComprasComprobantesAsync(DateTime? desde, DateTime? hasta, string? empresa, string? search, int page = 1, int pageSize = 50)
+    {
+        var qs = ComprasQs(desde, hasta, empresa, search);
+        qs += (qs.Length > 0 ? "&" : "?") + $"page={page}&pageSize={pageSize}";
+        return await GetAsync<ContadoraComprobantesPageDto>("/api/contadora/compras/comprobantes" + qs);
+    }
+
+    public async Task<ContadoraBalanzaDto?> GetContadoraBalanzaAsync(DateTime? desde, DateTime? hasta, string? empresa)
+    {
+        var qs = new List<string>();
+        if (desde.HasValue) qs.Add($"desde={desde.Value:yyyy-MM-dd}");
+        if (hasta.HasValue) qs.Add($"hasta={hasta.Value:yyyy-MM-dd}");
+        if (!string.IsNullOrWhiteSpace(empresa)) qs.Add($"empresa={Uri.EscapeDataString(empresa)}");
+        return await GetAsync<ContadoraBalanzaDto>("/api/contadora/balanza" + (qs.Count > 0 ? "?" + string.Join("&", qs) : ""));
+    }
 }

@@ -181,3 +181,22 @@ public class ContadoraComprobantesPageDto
     public int Page { get; set; }
     public int PageSize { get; set; }
 }
+
+// ───────── Balanza de IVA (ventas vs compras) ─────────
+
+public class ContadoraBalanzaMesDto
+{
+    public int Anio { get; set; }
+    public int Mes { get; set; }
+    public decimal IvaVentas { get; set; }   // IVA débito
+    public decimal IvaCompras { get; set; }  // IVA crédito
+    public decimal Saldo { get; set; }        // ventas - compras (>0 a pagar, <0 a favor)
+}
+
+public class ContadoraBalanzaDto
+{
+    public List<ContadoraBalanzaMesDto> Filas { get; set; } = new();
+    public decimal IvaVentasTotal { get; set; }
+    public decimal IvaComprasTotal { get; set; }
+    public decimal SaldoTotal { get; set; }
+}

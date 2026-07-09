@@ -18,7 +18,11 @@ public class ContadoraComprobante
 {
     public int Id { get; set; }
 
-    /// <summary>Origen del dato: "MELI_REPORTE" (Excel de MeLi) o "SISTEMA" (facturas propias por AFIP).</summary>
+    /// <summary>VENTA (IVA débito) o COMPRA (IVA crédito). Default VENTA.</summary>
+    [MaxLength(10)]
+    public string Naturaleza { get; set; } = "VENTA";
+
+    /// <summary>Origen del dato: "MELI_REPORTE", "SISTEMA" (ventas propias por AFIP) o "AFIP_RECIBIDOS" (compras).</summary>
     [MaxLength(30)]
     public string Origen { get; set; } = "MELI_REPORTE";
 
