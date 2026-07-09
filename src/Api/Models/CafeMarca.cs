@@ -27,6 +27,11 @@ public class CafeMarca
     /// <summary>Marcas propias (Frikaf) bloquean descuentos: siempre se cobra 100%.</summary>
     public bool BloqueaDescuento { get; set; } = false;
 
+    /// <summary>2026-07-09: si false, los productos de esta marca NO suman al reporte
+    /// "Valor de mi stock a costo". Sirve para marcas cuyo stock en realidad lo tiene el
+    /// proveedor (stock falso). Default true (suma). Editable desde /stock/valuacion.</summary>
+    public bool CuentaEnValuacion { get; set; } = true;
+
     /// <summary>% de margen sobre el costo para calcular el "PVP por %" de productos OTROS de esta marca.
     /// Default 100% (PVP = costo × 2).</summary>
     [System.ComponentModel.DataAnnotations.Schema.Column(TypeName = "decimal(7,2)")]
