@@ -795,8 +795,12 @@ public class ContadoraService
                 "NCA" => "Nota de Crédito A", "NCB" => "Nota de Crédito B", "NCC" => "Nota de Crédito C",
                 _ => tipo
             };
-            string? emisor = (v.ArcaWebserviceAccountId.HasValue && cuitPorAccount.TryGetValue(v.ArcaWebserviceAccountId.Value, out var cu) && !string.IsNullOrWhiteSpace(cu))
-                ? cu : CuitPorDefecto;
+            string? cuitReal = (v.ArcaWebserviceAccountId.HasValue && cuitPorAccount.TryGetValue(v.ArcaWebserviceAccountId.Value, out var cu) && !string.IsNullOrWhiteSpace(cu))
+                ? cu : null;
+            // PALANICA es Responsable Inscripto: SOLO emite A y B, nunca C. Una Factura/NC C es de otro CUIT
+            // (monotributo de los hermanos). Si no sabemos su CUIT real, la salteamos para NO colgarsela a PALANICA.
+            if (letra == "C" && (cuitReal == null || cuitReal == CuitPorDefecto)) continue;
+            string? emisor = cuitReal ?? CuitPorDefecto;
 
             var e = new ContadoraComprobante
             {
