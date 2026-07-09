@@ -45,6 +45,7 @@
         <div class="co-tabs">
             <div class="co-tab @(tab == "jur" ? "act" : "")" @onclick="@(() => SetTab("jur"))">🗺 Por jurisdicción (IIBB)</div>
             <div class="co-tab @(tab == "rep" ? "act" : "")" @onclick="@(() => SetTab("rep"))">📒 Libro IVA Ventas</div>
+            <div class="co-tab @(tab == "comp" ? "act" : "")" @onclick="@(() => SetTab("comp"))">📕 Libro IVA Compras</div>
             <div class="co-tab @(tab == "bal" ? "act" : "")" @onclick="@(() => SetTab("bal"))">⚖️ Balanza IVA</div>
             <div class="co-tab @(tab == "ctrl" ? "act" : "")" @onclick="@(() => SetTab("ctrl"))">🔎 Control (AFIP vs MeLi)</div>
         </div>
@@ -402,7 +403,7 @@
             }
         </div>
     }
-    else
+    else if (tab == "ctrl")
     {
         @* ══════════ CONTROL / DOBLE-CHECK (AFIP vs MeLi) ══════════ *@
         <div class="co-card">
@@ -480,6 +481,141 @@
             }
         </div>
     }
+    else
+    {
+        @* ══════════ LIBRO IVA COMPRAS (AFIP recibidos) ══════════ *@
+        <div class="co-card">
+            <p class="co-sub">
+                El <b>Libro IVA Compras</b>: todas las facturas que te emiten tus <b>proveedores</b> (de los “Comprobantes recibidos” de AFIP),
+                con el <b>IVA crédito</b>. Las notas de crédito <b>restan</b>.
+            </p>
+            <div style="background:#fefce8;border:1px solid #fde68a;border-radius:10px;padding:.9rem 1rem;">
+                <b>AFIP</b> — subí el <b>"Mis Comprobantes → Recibidos"</b> a la Carpeta Compartida → carpeta <b>facturas meli</b> (puede ser en una subcarpeta) y tocá el botón. No se duplica.
+                <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-top:.5rem;">
+                    <button class="co-btn co-btn-primary" @onclick="ImportarComprasCarpeta" disabled="@importandoCompras">
+                        @(importandoCompras ? "Importando…" : "📥 Importar compras de la carpeta")
+                    </button>
+                    <label class="co-btn co-btn-ghost" style="margin:0;">
+                        …o elegir archivos
+                        <InputFile OnChange="OnComprasSeleccionadas" multiple accept=".xlsx,.csv" style="display:none;" />
+                    </label>
+                </div>
+            </div>
+            @if (comprasResult is not null)
+            {
+                <div class="co-alerta" style="@(comprasResult.Ok ? "background:#f0fdf4;border-color:#bbf7d0;" : "")margin-top:.9rem;">
+                    <div><b>@(comprasResult.Ok ? "✅ " : "⚠️ ")@comprasResult.Mensaje</b></div>
+                </div>
+            }
+        </div>
+
+        <div class="co-card">
+            <div class="co-filtros">
+                <div><label>Desde</label><input type="date" @bind="kDesde" /></div>
+                <div><label>Hasta</label><input type="date" @bind="kHasta" /></div>
+                <div><label>Buscar</label><input type="text" style="width:170px;" placeholder="proveedor / nº / CUIT" @bind="kSearch" /></div>
+                <button class="co-btn co-btn-primary" @onclick="CargarCompras" disabled="@cargandoComp">Aplicar</button>
+                <button class="co-btn co-btn-ghost" @onclick="LimpiarCompras" disabled="@cargandoComp">Limpiar</button>
+                <button class="co-btn co-btn-green" @onclick="DescargarExcelCompras" disabled="@(cargandoComp || descargando || comp is null || comp.SinDatos)">@(descargando ? "Generando…" : "⬇ Excel")</button>
+            </div>
+        </div>
+
+        <div class="co-card">
+            @if (cargandoComp) { <p>Cargando…</p> }
+            else if (comp is null || comp.SinDatos) { <p class="co-hint">Todavía no importaste compras. Subí los “Comprobantes recibidos” de AFIP y tocá “Importar”.</p> }
+            else
+            {
+                <div style="display:flex;gap:.8rem;flex-wrap:wrap;margin-bottom:.8rem;">
+                    <div style="flex:1;min-width:140px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:.7rem 1rem;">
+                        <div class="co-hint">Comprobantes</div>
+                        <div style="font-size:1.2rem;font-weight:700;">@comp.CantidadFacturas <span class="co-hint" style="font-weight:400;">fac + @comp.CantidadNotasCredito NC</span></div>
+                    </div>
+                    <div style="flex:1;min-width:140px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:.7rem 1rem;">
+                        <div class="co-hint">Neto</div>
+                        <div style="font-size:1.2rem;font-weight:700;">@Money(comp.NetoTotal)</div>
+                    </div>
+                    <div style="flex:1;min-width:140px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:.7rem 1rem;">
+                        <div class="co-hint">IVA crédito</div>
+                        <div style="font-size:1.2rem;font-weight:700;color:#1d4ed8;">@Money(comp.IvaTotal)</div>
+                    </div>
+                    <div style="flex:1;min-width:140px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:.7rem 1rem;">
+                        <div class="co-hint">Total</div>
+                        <div style="font-size:1.2rem;font-weight:700;">@Money(comp.TotalTotal)</div>
+                    </div>
+                </div>
+
+                <table class="co-tabla">
+                    <thead><tr><th>Tipo</th><th class="num">Cant.</th><th class="num">Neto</th><th class="num">IVA crédito</th><th class="num">Total</th></tr></thead>
+                    <tbody>
+                        @foreach (var l in PorLetraCompras())
+                        {
+                            <tr>
+                                <td>Factura @l.Letra</td>
+                                <td class="num">@l.Cant</td>
+                                <td class="num">@Money(l.Neto)</td>
+                                <td class="num">@Money(l.Iva)</td>
+                                <td class="num">@Money(l.Total)</td>
+                            </tr>
+                        }
+                        <tr class="tot">
+                            <td>TOTALES</td>
+                            <td class="num">@(comp.CantidadFacturas + comp.CantidadNotasCredito)</td>
+                            <td class="num">@Money(comp.NetoTotal)</td>
+                            <td class="num">@Money(comp.IvaTotal)</td>
+                            <td class="num">@Money(comp.TotalTotal)</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p class="co-hint" style="margin-top:.5rem;">Solo las <b>Facturas A</b> dan IVA crédito computable; las B/C no discriminan IVA. Las NC ya están restadas.</p>
+                <div style="margin-top:.9rem;">
+                    <button class="co-btn co-btn-ghost" @onclick="ToggleDetalleCompras">@(verDetalleComp ? "▲ Ocultar detalle" : "▼ Ver detalle (comprobante por comprobante)")</button>
+                </div>
+            }
+        </div>
+
+        @if (verDetalleComp && compComps is not null)
+        {
+            <div class="co-card">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem;">
+                    <b>Detalle</b>
+                    <span class="co-chip">@compComps.Total comprobante(s)</span>
+                </div>
+                @if (compComps.Items.Count == 0) { <p class="co-hint">Sin resultados.</p> }
+                else
+                {
+                    <div style="overflow-x:auto;">
+                        <table class="co-tabla">
+                            <thead><tr><th>Fecha</th><th>Comprobante</th><th class="num">Pto vta</th><th class="num">Número</th><th>Proveedor</th><th>CUIT</th><th class="num">Neto</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
+                            <tbody>
+                                @foreach (var f in compComps.Items)
+                                {
+                                    <tr style="@(f.EsNotaCredito ? "color:#b91c1c;" : "")">
+                                        <td>@f.FechaEmision?.ToString("dd/MM/yyyy")</td>
+                                        <td>@f.TipoComprobante</td>
+                                        <td class="num">@f.PuntoVenta</td>
+                                        <td class="num">@f.NumeroComprobante</td>
+                                        <td>@f.ReceptorNombre</td>
+                                        <td>@f.ReceptorDoc</td>
+                                        <td class="num">@Money(f.Neto)</td>
+                                        <td class="num">@Money(f.Iva)</td>
+                                        <td class="num">@Money(f.Total)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    @if (CompPaginas > 1)
+                    {
+                        <div style="margin-top:.7rem;display:flex;gap:.5rem;align-items:center;">
+                            <button class="co-btn co-btn-ghost" @onclick="@(() => IrPaginaComp(compPage - 1))" disabled="@(compPage <= 1)">◀</button>
+                            <span class="co-hint">Página @compPage de @CompPaginas</span>
+                            <button class="co-btn co-btn-ghost" @onclick="@(() => IrPaginaComp(compPage + 1))" disabled="@(compPage >= CompPaginas)">▶</button>
+                        </div>
+                    }
+                }
+            </div>
+        }
+    }
 </div>
 
 @code {
@@ -514,6 +650,15 @@
     private DateTime? cDesde = new DateTime(DateTime.Today.Year, 1, 1), cHasta;
     private bool cargandoCtrl, ctrlInit;
 
+    // Libro IVA Compras (AFIP recibidos)
+    private ContadoraReporteResumenDto? comp;
+    private ContadoraComprobantesPageDto? compComps;
+    private DateTime? kDesde, kHasta;
+    private string? kSearch;
+    private bool cargandoComp, verDetalleComp, compInit;
+    private int compPage = 1;
+    private int CompPaginas => compComps is null ? 1 : (int)Math.Ceiling(compComps.Total / (double)compComps.PageSize);
+
     private bool cargando, descargando;
     private bool robotLanzado;
 
@@ -536,6 +681,11 @@
         {
             ctrlInit = true;
             await CargarControl();
+        }
+        if (t == "comp" && !compInit)
+        {
+            compInit = true;
+            await CargarCompras();
         }
     }
 
@@ -770,6 +920,55 @@
     {
         cDesde = null; cHasta = null;
         await CargarControl();
+    }
+
+    // ───── Libro IVA Compras ─────
+    private async Task CargarCompras()
+    {
+        if (cargandoComp) return;
+        cargandoComp = true;
+        try
+        {
+            comp = await Api.GetContadoraComprasResumenAsync(kDesde, kHasta, null, kSearch);
+            if (verDetalleComp) { compPage = 1; await CargarCompComps(); }
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo cargar: " + ex.Message); }
+        finally { cargandoComp = false; }
+    }
+
+    private async Task LimpiarCompras()
+    {
+        kDesde = null; kHasta = null; kSearch = null;
+        await CargarCompras();
+    }
+
+    private async Task ToggleDetalleCompras()
+    {
+        verDetalleComp = !verDetalleComp;
+        if (verDetalleComp) { compPage = 1; await CargarCompComps(); }
+    }
+
+    private async Task CargarCompComps()
+    {
+        try { compComps = await Api.GetContadoraComprasComprobantesAsync(kDesde, kHasta, null, kSearch, compPage, 50); }
+        catch (Exception ex) { ToastService.Error("No se pudo cargar el detalle: " + ex.Message); }
+    }
+
+    private async Task IrPaginaComp(int p) { compPage = p; await CargarCompComps(); }
+
+    private IEnumerable<(string Letra, int Cant, decimal Neto, decimal Iva, decimal Total)> PorLetraCompras()
+        => (comp?.Filas ?? new()).GroupBy(f => f.Letra ?? "—")
+            .Select(g => (Letra: g.Key, Cant: g.Sum(x => x.Cantidad), Neto: g.Sum(x => x.Neto), Iva: g.Sum(x => x.Iva), Total: g.Sum(x => x.Total)))
+            .OrderBy(x => x.Letra);
+
+    private async Task DescargarExcelCompras()
+    {
+        var qs = new List<string>();
+        if (kDesde.HasValue) qs.Add($"desde={kDesde.Value:yyyy-MM-dd}");
+        if (kHasta.HasValue) qs.Add($"hasta={kHasta.Value:yyyy-MM-dd}");
+        if (!string.IsNullOrWhiteSpace(kSearch)) qs.Add($"search={Uri.EscapeDataString(kSearch)}");
+        var url = "api/contadora/compras/excel" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        await Descargar(url, $"libro-iva-compras-{DateTime.Now:yyyy-MM-dd}.xlsx");
     }
 
     private async Task ImportarComprasCarpeta()
