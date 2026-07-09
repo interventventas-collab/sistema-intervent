@@ -56,11 +56,8 @@
         @* ══════════ VISTA POR JURISDICCIÓN ══════════ *@
         <div class="co-card">
             <p class="co-sub">Cuánto vendiste en cada provincia (por destino de envío), con neto, IVA 21% y total. Es lo que la contadora usa para <b>Ingresos Brutos</b>.</p>
-            <div class="co-filtros">
-                <div><label>Desde</label><input type="date" @bind="jDesde" /></div>
-                <div><label>Hasta</label><input type="date" @bind="jHasta" /></div>
-                <button class="co-btn co-btn-primary" @onclick="CargarJur" disabled="@cargando">Aplicar</button>
-                <button class="co-btn co-btn-ghost" @onclick="@(() => { jDesde = null; jHasta = null; _ = CargarJur(); })" disabled="@cargando">Todo</button>
+            <PeriodoSelector @bind-Desde="jDesde" @bind-Hasta="jHasta" OnAplicar="CargarJur" />
+            <div style="margin-top:.6rem;">
                 <button class="co-btn co-btn-green" @onclick="DescargarExcelJur" disabled="@(cargando || descargando || jur is null || jur.Filas.Count == 0)">@(descargando ? "Generando…" : "⬇ Excel")</button>
             </div>
             @if (jur?.VentasDesde is not null)
@@ -195,7 +192,8 @@
         }
 
         <div class="co-card">
-            <div class="co-filtros">
+            <PeriodoSelector @bind-Desde="rDesde" @bind-Hasta="rHasta" OnAplicar="CargarRep" />
+            <div class="co-filtros" style="margin-top:.7rem;">
                 <div>
                     <label>Origen</label>
                     <select @bind="rOrigen">
@@ -215,9 +213,6 @@
                         }
                     </select>
                 </div>
-                <div><label>Mes</label><input type="month" value="@rMes" @onchange="@(e => AplicarMesRep(e.Value?.ToString()))" /></div>
-                <div><label>Desde</label><input type="date" @bind="rDesde" /></div>
-                <div><label>Hasta</label><input type="date" @bind="rHasta" /></div>
                 <div><label>Pto venta</label><input type="number" style="width:90px;" @bind="rPtoVenta" /></div>
                 <div>
                     <label>Tipo</label>
@@ -365,12 +360,7 @@
         </div>
 
         <div class="co-card">
-            <div class="co-filtros">
-                <div><label>Desde</label><input type="date" @bind="bDesde" /></div>
-                <div><label>Hasta</label><input type="date" @bind="bHasta" /></div>
-                <button class="co-btn co-btn-primary" @onclick="CargarBalanza" disabled="@cargandoBal">Aplicar</button>
-                <button class="co-btn co-btn-ghost" @onclick="LimpiarBalanza" disabled="@cargandoBal">Limpiar</button>
-            </div>
+            <PeriodoSelector @bind-Desde="bDesde" @bind-Hasta="bHasta" OnAplicar="CargarBalanza" />
         </div>
 
         <div class="co-card">
@@ -415,12 +405,7 @@
                 <b>Control cruzado</b>: compara las ventas <b>oficiales de AFIP</b> contra las de <b>MercadoLibre / sistema</b>,
                 cruzando por punto de venta + letra + número. Sirve para <b>detectar que algo no cierre</b> en una fuente o la otra.
             </p>
-            <div class="co-filtros">
-                <div><label>Desde</label><input type="date" @bind="cDesde" /></div>
-                <div><label>Hasta</label><input type="date" @bind="cHasta" /></div>
-                <button class="co-btn co-btn-primary" @onclick="CargarControl" disabled="@cargandoCtrl">Aplicar</button>
-                <button class="co-btn co-btn-ghost" @onclick="LimpiarControl" disabled="@cargandoCtrl">Todo</button>
-            </div>
+            <PeriodoSelector @bind-Desde="cDesde" @bind-Hasta="cHasta" OnAplicar="CargarControl" />
         </div>
 
         <div class="co-card">
@@ -523,12 +508,10 @@
         </div>
 
         <div class="co-card">
-            <div class="co-filtros">
-                <div><label>Mes</label><input type="month" value="@kMes" @onchange="@(e => AplicarMesCompras(e.Value?.ToString()))" /></div>
-                <div><label>Desde</label><input type="date" @bind="kDesde" /></div>
-                <div><label>Hasta</label><input type="date" @bind="kHasta" /></div>
+            <PeriodoSelector @bind-Desde="kDesde" @bind-Hasta="kHasta" OnAplicar="CargarCompras" />
+            <div class="co-filtros" style="margin-top:.7rem;">
                 <div><label>Buscar</label><input type="text" style="width:170px;" placeholder="proveedor / nº / CUIT" @bind="kSearch" /></div>
-                <button class="co-btn co-btn-primary" @onclick="CargarCompras" disabled="@cargandoComp">Aplicar</button>
+                <button class="co-btn co-btn-primary" @onclick="CargarCompras" disabled="@cargandoComp">Buscar</button>
                 <button class="co-btn co-btn-ghost" @onclick="LimpiarCompras" disabled="@cargandoComp">Limpiar</button>
                 <button class="co-btn co-btn-green" @onclick="DescargarExcelCompras" disabled="@(cargandoComp || descargando || comp is null || comp.SinDatos)">@(descargando ? "Generando…" : "⬇ Excel")</button>
             </div>

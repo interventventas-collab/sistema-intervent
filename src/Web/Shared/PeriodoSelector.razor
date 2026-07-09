@@ -1,0 +1,127 @@
+@* Selector de período reutilizable: accesos rápidos + año/mes + rango exacto.
+   Reemplaza los filtros Mes/Desde/Hasta en las solapas de Contadora. *@
+<div class="ps-wrap">
+    <div class="ps-row">
+        <span class="ps-lbl">Período</span>
+        @foreach (var q in Chips)
+        {
+            <button type="button" class="ps-btn @(activo == q.Key ? "on" : "")" @onclick="@(() => AplicarChip(q.Key))">@q.Value</button>
+        }
+        <span class="ps-sum">@resumen</span>
+    </div>
+    <div class="ps-row">
+        <span class="ps-lbl">Mes</span>
+        <select class="ps-sel" @onchange="OnAnioChange">
+            @foreach (var y in Anios)
+            {
+                <option value="@y" selected="@(y == selAnio)">@y</option>
+            }
+        </select>
+        @for (int i = 0; i < 12; i++)
+        {
+            var m = i;
+            <button type="button" class="ps-btn ps-mes @(activo == $"m{m}" ? "on" : "")" @onclick="@(() => AplicarMes(m))">@Meses[m]</button>
+        }
+        <button type="button" class="ps-btn @(activo == "anio" ? "on" : "")" @onclick="AplicarAnioCompleto">Todo @selAnio</button>
+    </div>
+    <div class="ps-row">
+        <span class="ps-lbl">Días</span>
+        <input type="date" class="ps-date" @bind="d1" />
+        <span class="ps-arrow">→</span>
+        <input type="date" class="ps-date" @bind="d2" />
+        <button type="button" class="ps-btn" @onclick="AplicarCustom">Aplicar</button>
+    </div>
+</div>
+
+<style>
+    .ps-wrap { background: var(--color-surface, #f8fafc); border: 1px solid #e2e8f0; border-radius: 10px; padding: .7rem .9rem; display: flex; flex-direction: column; gap: .5rem; }
+    .ps-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .ps-lbl { font-size: 12px; color: #64748b; min-width: 48px; }
+    .ps-btn { font-size: 13px; padding: 5px 10px; border: 1px solid #cbd5e1; background: #fff; border-radius: 7px; cursor: pointer; color: #1e293b; line-height: 1; }
+    .ps-btn:hover { background: #f1f5f9; }
+    .ps-btn.on { background: #dbeafe; border-color: #93c5fd; color: #1d4ed8; font-weight: 600; }
+    .ps-mes { min-width: 40px; text-transform: capitalize; }
+    .ps-sel { font-size: 13px; padding: 4px 6px; border: 1px solid #cbd5e1; border-radius: 7px; background: #fff; }
+    .ps-date { font-size: 13px; padding: 3px 6px; border: 1px solid #cbd5e1; border-radius: 7px; }
+    .ps-arrow { color: #94a3b8; }
+    .ps-sum { margin-left: auto; background: #dbeafe; color: #1d4ed8; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 7px; }
+</style>
+
+@code {
+    [Parameter] public DateTime? Desde { get; set; }
+    [Parameter] public EventCallback<DateTime?> DesdeChanged { get; set; }
+    [Parameter] public DateTime? Hasta { get; set; }
+    [Parameter] public EventCallback<DateTime?> HastaChanged { get; set; }
+    [Parameter] public EventCallback OnAplicar { get; set; }
+
+    private static readonly string[] Meses = { "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic" };
+    private static readonly string[] MesLargo = { "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre" };
+    private static readonly Dictionary<string, string> Chips = new()
+    {
+        ["mes"] = "Este mes", ["mespas"] = "Mes pasado", ["d30"] = "Últimos 30 días",
+        ["d90"] = "Últimos 90 días", ["anioact"] = "Este año", ["aniopas"] = "Año pasado", ["todo"] = "Todo"
+    };
+
+    private int selAnio = DateTime.Today.Year;
+    private string activo = "";
+    private string resumen = "";
+    private DateTime? d1, d2;
+    private List<int> Anios => Enumerable.Range(0, 5).Select(i => DateTime.Today.Year - i).ToList();
+
+    protected override void OnInitialized()
+    {
+        // Refleja el rango que ya venía (o "Todo" si no hay).
+        d1 = Desde; d2 = Hasta;
+        if (Desde is null && Hasta is null) { activo = "todo"; resumen = "Todo el historial"; }
+        else resumen = Etiqueta(Desde, Hasta, "Rango");
+    }
+
+    private static string Fmt(DateTime? x) => x?.ToString("dd/MM/yyyy") ?? "";
+    private static string Etiqueta(DateTime? a, DateTime? b, string nombre)
+        => a is null && b is null ? nombre : $"{nombre} · {Fmt(a)} – {Fmt(b)}";
+
+    private async Task Set(DateTime? a, DateTime? b, string label, string act)
+    {
+        activo = act; resumen = label;
+        d1 = a; d2 = b;
+        await DesdeChanged.InvokeAsync(a);
+        await HastaChanged.InvokeAsync(b);
+        await OnAplicar.InvokeAsync();
+    }
+
+    private async Task AplicarChip(string q)
+    {
+        var hoy = DateTime.Today; var y = hoy.Year; var m = hoy.Month;
+        switch (q)
+        {
+            case "mes": await Set(new(y, m, 1), new DateTime(y, m, 1).AddMonths(1).AddDays(-1), Etiqueta(new(y, m, 1), new DateTime(y, m, 1).AddMonths(1).AddDays(-1), "Este mes"), q); break;
+            case "mespas": { var a = new DateTime(y, m, 1).AddMonths(-1); await Set(a, a.AddMonths(1).AddDays(-1), Etiqueta(a, a.AddMonths(1).AddDays(-1), "Mes pasado"), q); break; }
+            case "d30": await Set(hoy.AddDays(-30), hoy, Etiqueta(hoy.AddDays(-30), hoy, "Últimos 30 días"), q); break;
+            case "d90": await Set(hoy.AddDays(-90), hoy, Etiqueta(hoy.AddDays(-90), hoy, "Últimos 90 días"), q); break;
+            case "anioact": await Set(new(y, 1, 1), new(y, 12, 31), Etiqueta(new(y, 1, 1), new(y, 12, 31), "Este año"), q); break;
+            case "aniopas": await Set(new(y - 1, 1, 1), new(y - 1, 12, 31), Etiqueta(new(y - 1, 1, 1), new(y - 1, 12, 31), $"Año {y - 1}"), q); break;
+            case "todo": await Set(null, null, "Todo el historial", q); break;
+        }
+    }
+
+    private void OnAnioChange(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var y)) selAnio = y;
+    }
+
+    private async Task AplicarMes(int m)
+    {
+        var a = new DateTime(selAnio, m + 1, 1);
+        var b = a.AddMonths(1).AddDays(-1);
+        await Set(a, b, Etiqueta(a, b, $"{MesLargo[m]} {selAnio}"), $"m{m}");
+    }
+
+    private async Task AplicarAnioCompleto()
+        => await Set(new(selAnio, 1, 1), new(selAnio, 12, 31), Etiqueta(new(selAnio, 1, 1), new(selAnio, 12, 31), $"Todo {selAnio}"), "anio");
+
+    private async Task AplicarCustom()
+    {
+        if (d1 is null || d2 is null) return;
+        await Set(d1, d2, Etiqueta(d1, d2, "Personalizado"), "custom");
+    }
+}
