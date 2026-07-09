@@ -185,3 +185,30 @@ public class ContadoraBalanzaDto
     public decimal IvaComprasTotal { get; set; }
     public decimal SaldoTotal { get; set; }
 }
+
+public class ContadoraControlDto
+{
+    public int CoincidenCant { get; set; }
+    public decimal CoincidenIva { get; set; }
+    public int SoloAfipCant { get; set; }
+    public decimal SoloAfipIva { get; set; }
+    public int SoloMeliCant { get; set; }
+    public decimal SoloMeliIva { get; set; }
+    public int DifierenCant { get; set; }
+    public decimal DifierenIva { get; set; }
+    public List<ContadoraControlItemDto> Revisar { get; set; } = new();
+    public bool SinAfip { get; set; }
+}
+
+public class ContadoraControlItemDto
+{
+    public string Tipo { get; set; } = "";
+    public DateTime? Fecha { get; set; }
+    public int? PuntoVenta { get; set; }
+    public string? Letra { get; set; }
+    public long? Numero { get; set; }
+    public string? Cliente { get; set; }
+    public string? Fuente { get; set; }
+    public decimal IvaAfip { get; set; }
+    public decimal IvaOtro { get; set; }
+}

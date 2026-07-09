@@ -1149,13 +1149,13 @@ public class ContadoraService
         if (!string.IsNullOrWhiteSpace(empresaCuit)) q = q.Where(c => c.EmisorCuit == empresaCuit);
 
         var datos = await q.Where(c => c.FechaEmision != null)
-            .Select(c => new { c.Naturaleza, c.Origen, c.PuntoVenta, c.NumeroComprobante, c.FechaEmision, c.EsNotaCredito, c.Iva21, c.Iva105 })
+            .Select(c => new { c.Naturaleza, c.Origen, c.PuntoVenta, c.Letra, c.NumeroComprobante, c.FechaEmision, c.EsNotaCredito, c.Iva21, c.Iva105 })
             .ToListAsync();
 
         // Contar cada venta una sola vez: saco las de MeLi/sistema que ya estan en AFIP (gana AFIP).
         var afip = await ClavesVentasAfipAsync();
         if (afip.Count > 0)
-            datos = datos.Where(x => x.Naturaleza != "VENTA" || NoDuplicada(x.Origen, x.PuntoVenta, x.NumeroComprobante, afip)).ToList();
+            datos = datos.Where(x => x.Naturaleza != "VENTA" || NoDuplicada(x.Origen, x.PuntoVenta, x.Letra, x.EsNotaCredito, x.NumeroComprobante, afip)).ToList();
 
         var filas = datos
             .GroupBy(x => new { x.FechaEmision!.Value.Year, x.FechaEmision!.Value.Month })
@@ -1181,6 +1181,63 @@ public class ContadoraService
         };
     }
 
+    // ═══════════════════ CONTROL / doble-check (AFIP vs MeLi/sistema) ═══════════════════
+
+    /// <summary>Concilia las ventas de AFIP (oficial) contra las de MeLi/sistema, cruzando por punto de venta +
+    /// letra + numero. Devuelve cuantas coinciden, cuantas estan en una sola fuente, y cuales difieren en el monto.</summary>
+    public async Task<ContadoraControlDto> GetControlAsync(DateTime? desde, DateTime? hasta)
+    {
+        var dto = new ContadoraControlDto();
+        dto.SinAfip = !await _db.ContadoraComprobantes.AnyAsync(c => c.Origen == "AFIP_EMITIDOS");
+
+        var q = _db.ContadoraComprobantes.Where(c => c.Naturaleza == "VENTA");
+        if (desde.HasValue) q = q.Where(c => c.FechaEmision >= desde.Value);
+        if (hasta.HasValue) { var h = hasta.Value.Date.AddDays(1); q = q.Where(c => c.FechaEmision < h); }
+
+        var filas = await q.Select(c => new { c.Origen, c.PuntoVenta, c.Letra, c.EsNotaCredito, c.NumeroComprobante, c.FechaEmision, c.ReceptorNombre, c.Iva21, c.Iva105, c.EnvioIva }).ToListAsync();
+
+        // Agrupo por clave de comprobante y en cada grupo separo AFIP de la otra fuente (MeLi/sistema).
+        var grupos = filas.GroupBy(x => ClaveComprobante(x.PuntoVenta, x.Letra, x.EsNotaCredito, x.NumeroComprobante));
+        var revisar = new List<ContadoraControlItemDto>();
+        const decimal tol = 1m; // tolerancia de $1 por redondeos
+        foreach (var g in grupos)
+        {
+            var afip = g.FirstOrDefault(x => x.Origen == "AFIP_EMITIDOS");
+            var otro = g.FirstOrDefault(x => x.Origen == "MELI_REPORTE" || x.Origen == "SISTEMA");
+            var ivaA = afip is null ? 0m : (afip.EsNotaCredito ? -1 : 1) * (afip.Iva21 + afip.Iva105);
+            // MeLi informa el IVA del producto y el del envio por separado; AFIP los tiene juntos → sumo el envio para comparar igual.
+            var ivaO = otro is null ? 0m : (otro.EsNotaCredito ? -1 : 1) * (otro.Iva21 + otro.Iva105 + otro.EnvioIva);
+
+            if (afip != null && otro != null)
+            {
+                if (Math.Abs(ivaA - ivaO) <= tol) { dto.CoincidenCant++; dto.CoincidenIva += ivaA; }
+                else
+                {
+                    dto.DifierenCant++; dto.DifierenIva += ivaA;
+                    revisar.Add(new ContadoraControlItemDto
+                    {
+                        Tipo = "Difiere el monto", Fecha = afip.FechaEmision, PuntoVenta = afip.PuntoVenta, Letra = afip.Letra,
+                        Numero = afip.NumeroComprobante, Cliente = afip.ReceptorNombre,
+                        Fuente = otro.Origen == "SISTEMA" ? "Sistema" : "MercadoLibre", IvaAfip = ivaA, IvaOtro = ivaO
+                    });
+                }
+            }
+            else if (afip != null) { dto.SoloAfipCant++; dto.SoloAfipIva += ivaA; }
+            else if (otro != null)
+            {
+                dto.SoloMeliCant++; dto.SoloMeliIva += ivaO;
+                revisar.Add(new ContadoraControlItemDto
+                {
+                    Tipo = "Solo en MeLi/sistema", Fecha = otro.FechaEmision, PuntoVenta = otro.PuntoVenta, Letra = otro.Letra,
+                    Numero = otro.NumeroComprobante, Cliente = otro.ReceptorNombre,
+                    Fuente = otro.Origen == "SISTEMA" ? "Sistema" : "MercadoLibre", IvaAfip = 0m, IvaOtro = ivaO
+                });
+            }
+        }
+        dto.Revisar = revisar.OrderByDescending(r => r.Fecha).Take(300).ToList();
+        return dto;
+    }
+
     // ── Consultas sobre los comprobantes importados (con NC restando) ──
 
     private IQueryable<ContadoraComprobante> FiltrarComprobantes(DateTime? desde, DateTime? hasta,
@@ -1204,20 +1261,26 @@ public class ContadoraService
         return q;
     }
 
-    /// <summary>Claves "pto|numero" de las ventas oficiales de AFIP (emitidos). Sirven para NO contar dos veces:
+    /// <summary>Clave que identifica un comprobante: punto de venta + letra + tipo (factura/NC) + numero.
+    /// OJO: MeLi emite Factura A y Factura B en el mismo pto de venta con numeraciones separadas, por eso NO
+    /// alcanza con pto+numero; hay que sumar la letra y si es nota de credito.</summary>
+    private static string ClaveComprobante(int? pto, string? letra, bool esNC, long? num)
+        => $"{pto}|{letra}|{(esNC ? "NC" : "F")}|{num}";
+
+    /// <summary>Claves de las ventas oficiales de AFIP (emitidos). Sirven para NO contar dos veces:
     /// una venta que esta en AFIP y tambien en el reporte de MeLi / sistema, se cuenta una sola vez (gana AFIP).</summary>
     private async Task<HashSet<string>> ClavesVentasAfipAsync()
     {
         var l = await _db.ContadoraComprobantes
             .Where(c => c.Origen == "AFIP_EMITIDOS" && c.PuntoVenta != null && c.NumeroComprobante != null)
-            .Select(c => new { c.PuntoVenta, c.NumeroComprobante }).Distinct().ToListAsync();
-        return l.Select(x => $"{x.PuntoVenta}|{x.NumeroComprobante}").ToHashSet();
+            .Select(c => new { c.PuntoVenta, c.Letra, c.EsNotaCredito, c.NumeroComprobante }).Distinct().ToListAsync();
+        return l.Select(x => ClaveComprobante(x.PuntoVenta, x.Letra, x.EsNotaCredito, x.NumeroComprobante)).ToHashSet();
     }
 
-    /// <summary>Saca las filas de MeLi/sistema que ya estan en AFIP (misma pto+numero), para contar cada venta una vez.
+    /// <summary>Saca las filas de MeLi/sistema que ya estan en AFIP (misma clave), para contar cada venta una vez.
     /// Gana AFIP (fuente oficial). Solo aplica cuando NO se filtra por un origen puntual.</summary>
-    private static bool NoDuplicada(string? origen, int? pto, long? num, HashSet<string> afip)
-        => origen == "AFIP_EMITIDOS" || pto == null || num == null || !afip.Contains($"{pto}|{num}");
+    private static bool NoDuplicada(string? origen, int? pto, string? letra, bool esNC, long? num, HashSet<string> afip)
+        => origen == "AFIP_EMITIDOS" || pto == null || num == null || !afip.Contains(ClaveComprobante(pto, letra, esNC, num));
 
     /// <summary>Empresas (CUIT) que aparecen en los comprobantes importados, con su razon social si la conocemos.</summary>
     public async Task<List<ContadoraEmpresaDto>> GetReporteEmpresasAsync()
@@ -1259,7 +1322,7 @@ public class ContadoraService
         if (naturaleza == "VENTA" && string.IsNullOrWhiteSpace(origen))
         {
             var afip = await ClavesVentasAfipAsync();
-            if (afip.Count > 0) datos = datos.Where(x => NoDuplicada(x.Origen, x.PuntoVenta, x.NumeroComprobante, afip)).ToList();
+            if (afip.Count > 0) datos = datos.Where(x => NoDuplicada(x.Origen, x.PuntoVenta, x.Letra, x.EsNotaCredito, x.NumeroComprobante, afip)).ToList();
         }
 
         dto.Filas = datos

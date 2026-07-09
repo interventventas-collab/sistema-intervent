@@ -200,3 +200,32 @@ public class ContadoraBalanzaDto
     public decimal IvaComprasTotal { get; set; }
     public decimal SaldoTotal { get; set; }
 }
+
+// ───────── Control / doble-check (AFIP vs MeLi/sistema) ─────────
+
+public class ContadoraControlDto
+{
+    public int CoincidenCant { get; set; }   // en AFIP y en MeLi/sistema, montos iguales
+    public decimal CoincidenIva { get; set; }
+    public int SoloAfipCant { get; set; }     // en AFIP, no en MeLi (mostrador / meses sin reporte MeLi)
+    public decimal SoloAfipIva { get; set; }
+    public int SoloMeliCant { get; set; }     // en MeLi/sistema, no en AFIP (⚠️ a revisar)
+    public decimal SoloMeliIva { get; set; }
+    public int DifierenCant { get; set; }     // misma factura, IVA distinto (⚠️ a revisar)
+    public decimal DifierenIva { get; set; }
+    public List<ContadoraControlItemDto> Revisar { get; set; } = new();  // solo-MeLi + montos que difieren
+    public bool SinAfip { get; set; }         // true si todavia no se importaron ventas de AFIP
+}
+
+public class ContadoraControlItemDto
+{
+    public string Tipo { get; set; } = "";    // "Solo en MeLi", "Difiere el monto"
+    public DateTime? Fecha { get; set; }
+    public int? PuntoVenta { get; set; }
+    public string? Letra { get; set; }
+    public long? Numero { get; set; }
+    public string? Cliente { get; set; }
+    public string? Fuente { get; set; }        // MercadoLibre / Sistema
+    public decimal IvaAfip { get; set; }
+    public decimal IvaOtro { get; set; }
+}

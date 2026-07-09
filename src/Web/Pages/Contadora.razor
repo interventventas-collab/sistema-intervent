@@ -46,6 +46,7 @@
             <div class="co-tab @(tab == "jur" ? "act" : "")" @onclick="@(() => SetTab("jur"))">🗺 Por jurisdicción (IIBB)</div>
             <div class="co-tab @(tab == "rep" ? "act" : "")" @onclick="@(() => SetTab("rep"))">📒 Libro IVA Ventas</div>
             <div class="co-tab @(tab == "bal" ? "act" : "")" @onclick="@(() => SetTab("bal"))">⚖️ Balanza IVA</div>
+            <div class="co-tab @(tab == "ctrl" ? "act" : "")" @onclick="@(() => SetTab("ctrl"))">🔎 Control (AFIP vs MeLi)</div>
         </div>
     </div>
 
@@ -315,7 +316,7 @@
             </div>
         }
     }
-    else
+    else if (tab == "bal")
     {
         @* ══════════ BALANZA DE IVA (ventas vs compras) ══════════ *@
         <div class="co-card">
@@ -401,6 +402,84 @@
             }
         </div>
     }
+    else
+    {
+        @* ══════════ CONTROL / DOBLE-CHECK (AFIP vs MeLi) ══════════ *@
+        <div class="co-card">
+            <p class="co-sub">
+                <b>Control cruzado</b>: compara las ventas <b>oficiales de AFIP</b> contra las de <b>MercadoLibre / sistema</b>,
+                cruzando por punto de venta + letra + número. Sirve para <b>detectar que algo no cierre</b> en una fuente o la otra.
+            </p>
+            <div class="co-filtros">
+                <div><label>Desde</label><input type="date" @bind="cDesde" /></div>
+                <div><label>Hasta</label><input type="date" @bind="cHasta" /></div>
+                <button class="co-btn co-btn-primary" @onclick="CargarControl" disabled="@cargandoCtrl">Aplicar</button>
+                <button class="co-btn co-btn-ghost" @onclick="LimpiarControl" disabled="@cargandoCtrl">Todo</button>
+            </div>
+        </div>
+
+        <div class="co-card">
+            @if (cargandoCtrl) { <p>Cargando…</p> }
+            else if (ctrl is null) { <p class="co-hint">Elegí un período y tocá “Aplicar”.</p> }
+            else if (ctrl.SinAfip) { <p class="co-hint">Todavía no importaste ventas de AFIP. Subilas en la solapa “Libro IVA Ventas” para poder cruzar.</p> }
+            else
+            {
+                <div style="display:flex;gap:.8rem;flex-wrap:wrap;">
+                    <div style="flex:1;min-width:150px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:.8rem 1rem;">
+                        <div style="font-size:1.4rem;font-weight:700;color:#15803d;">@ctrl.CoincidenCant</div>
+                        <div>✅ Coinciden</div>
+                        <div class="co-hint">en AFIP y en MeLi, mismo monto</div>
+                    </div>
+                    <div style="flex:1;min-width:150px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:.8rem 1rem;">
+                        <div style="font-size:1.4rem;font-weight:700;color:#1d4ed8;">@ctrl.SoloAfipCant</div>
+                        <div>Solo en AFIP</div>
+                        <div class="co-hint">mostrador, u otros no facturados por MeLi</div>
+                    </div>
+                    <div style="flex:1;min-width:150px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:.8rem 1rem;">
+                        <div style="font-size:1.4rem;font-weight:700;color:#b91c1c;">@ctrl.SoloMeliCant</div>
+                        <div>⚠️ Solo en MeLi/sistema</div>
+                        <div class="co-hint">está en nuestros datos pero no en AFIP</div>
+                    </div>
+                    <div style="flex:1;min-width:150px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:.8rem 1rem;">
+                        <div style="font-size:1.4rem;font-weight:700;color:#b45309;">@ctrl.DifierenCant</div>
+                        <div>⚠️ Difiere el monto</div>
+                        <div class="co-hint">misma factura, IVA distinto</div>
+                    </div>
+                </div>
+
+                @if (ctrl.Revisar.Count == 0)
+                {
+                    <p class="co-hint" style="margin-top:1rem;">👍 No hay nada para revisar en este período: todo lo de MeLi/sistema está en AFIP y los montos coinciden.</p>
+                }
+                else
+                {
+                    <div style="margin-top:1rem;"><b>A revisar</b> <span class="co-chip">@ctrl.Revisar.Count</span></div>
+                    <div style="overflow-x:auto;margin-top:.4rem;">
+                        <table class="co-tabla">
+                            <thead><tr><th>Qué pasa</th><th>Fecha</th><th class="num">Pto vta</th><th>Tipo</th><th class="num">Número</th><th>Cliente</th><th>Fuente</th><th class="num">IVA AFIP</th><th class="num">IVA MeLi/sist.</th></tr></thead>
+                            <tbody>
+                                @foreach (var r in ctrl.Revisar)
+                                {
+                                    <tr>
+                                        <td style="@(r.Tipo.StartsWith("Solo") ? "color:#b91c1c;" : "color:#b45309;")">@r.Tipo</td>
+                                        <td>@r.Fecha?.ToString("dd/MM/yyyy")</td>
+                                        <td class="num">@r.PuntoVenta</td>
+                                        <td>@r.Letra</td>
+                                        <td class="num">@r.Numero</td>
+                                        <td>@r.Cliente</td>
+                                        <td>@r.Fuente</td>
+                                        <td class="num">@Money(r.IvaAfip)</td>
+                                        <td class="num">@Money(r.IvaOtro)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="co-hint" style="margin-top:.5rem;">Se muestran hasta 300 casos (los más nuevos). “Solo en MeLi/sistema” = está en nuestros datos pero no lo encontré en AFIP; conviene chequear que esa venta esté declarada.</p>
+                }
+            }
+        </div>
+    }
 </div>
 
 @code {
@@ -430,6 +509,11 @@
     private bool cargandoBal, importandoCompras, balInit;
     private ContadoraImportResultDto? comprasResult;
 
+    // Control / doble-check (AFIP vs MeLi)
+    private ContadoraControlDto? ctrl;
+    private DateTime? cDesde = new DateTime(DateTime.Today.Year, 1, 1), cHasta;
+    private bool cargandoCtrl, ctrlInit;
+
     private bool cargando, descargando;
     private bool robotLanzado;
 
@@ -447,6 +531,11 @@
         {
             balInit = true;
             await CargarBalanza();
+        }
+        if (t == "ctrl" && !ctrlInit)
+        {
+            ctrlInit = true;
+            await CargarControl();
         }
     }
 
@@ -666,6 +755,21 @@
     {
         bDesde = null; bHasta = null;
         await CargarBalanza();
+    }
+
+    private async Task CargarControl()
+    {
+        if (cargandoCtrl) return;
+        cargandoCtrl = true;
+        try { ctrl = await Api.GetContadoraControlAsync(cDesde, cHasta); }
+        catch (Exception ex) { ToastService.Error("No se pudo cargar el control: " + ex.Message); }
+        finally { cargandoCtrl = false; }
+    }
+
+    private async Task LimpiarControl()
+    {
+        cDesde = null; cHasta = null;
+        await CargarControl();
     }
 
     private async Task ImportarComprasCarpeta()
