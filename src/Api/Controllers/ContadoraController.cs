@@ -2,6 +2,7 @@ using Api.DTOs;
 using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Api.Controllers;
 
@@ -251,6 +252,24 @@ public class ContadoraController : ControllerBase
     /// <summary>Baja de MercadoLibre las facturas de compra (PDF real con QR) de las últimas compras y las matchea.</summary>
     [HttpPost("bajar-facturas-meli")]
     public async Task<ActionResult<ContadoraPdfResultDto>> BajarFacturasMeli() => Ok(await _svc.BajarFacturasMeliAsync());
+
+    /// <summary>Se pone al día con lo VIEJO de ARCA (últimos N meses, mes por mes, con IVA exacto) y cruza las
+    /// facturas de MeLi que esperaban. Corre en segundo plano (tarda); el avance se ve en Integraciones → ARCA.</summary>
+    [HttpPost("ponerse-al-dia-arca")]
+    public IActionResult PonerseAlDiaArca([FromServices] IServiceScopeFactory scopeFactory, [FromQuery] int meses = 12)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var svc = scope.ServiceProvider.GetRequiredService<ContadoraService>();
+                await svc.PonerseAlDiaArcaAsync(meses);
+            }
+            catch { /* queda logueado dentro del servicio */ }
+        });
+        return Ok(new { ok = true, mensaje = $"Arranqué a traer los últimos {meses} meses de ARCA. Podés ver el avance en Integraciones → ARCA. Puede tardar un rato." });
+    }
 
     /// <summary>Retenciones/percepciones de IVA cargadas por mes para una empresa.</summary>
     [HttpGet("retenciones")]

@@ -5645,6 +5645,10 @@ public class ApiClient
         return await resp.Content.ReadFromJsonAsync<ContadoraPdfResultDto>();
     }
 
+    /// <summary>Arranca (en segundo plano) la puesta al día de ARCA de los últimos N meses. Contesta al instante.</summary>
+    public async Task<bool> PonerseAlDiaArcaAsync(int meses = 12)
+        => await PostAsync<object>($"/api/contadora/ponerse-al-dia-arca?meses={meses}", new { }) is not null;
+
     public async Task<(ContadoraImportResultDto? result, string? error)> ImportarVentasAfipArchivosAsync(IEnumerable<(string name, Stream stream)> archivos)
     {
         await SetAuthHeaderAsync();

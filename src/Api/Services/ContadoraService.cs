@@ -32,14 +32,18 @@ public class ContadoraService
     private const string SinDato = "(sin dato)";
 
     private readonly ArcaScrapingService _arca;
+    private readonly ArcaAccountService _cuentasArca;
     private readonly FacturaQrService _qr;
     private readonly FacturasEmailService _email;
 
     public ContadoraService(AppDbContext db, IHttpClientFactory httpFactory, MeliAccountService accountService,
-        FileStorageService storage, ILogger<ContadoraService> logger, ArcaScrapingService arca, FacturaQrService qr, FacturasEmailService email)
+        FileStorageService storage, ILogger<ContadoraService> logger, ArcaScrapingService arca, ArcaAccountService cuentasArca, FacturaQrService qr, FacturasEmailService email)
     {
-        _db = db; _httpFactory = httpFactory; _accountService = accountService; _storage = storage; _logger = logger; _arca = arca; _qr = qr; _email = email;
+        _db = db; _httpFactory = httpFactory; _accountService = accountService; _storage = storage; _logger = logger; _arca = arca; _cuentasArca = cuentasArca; _qr = qr; _email = email;
     }
+
+    private const string CuitPalanica = "30717212149"; // el CUIT del Libro IVA
+    private static bool _backfillArcaCorriendo; // evita dos "ponerse al día" en paralelo
 
     private const string CarpetaFacturas = "Compartido/facturas recibidas";
 
@@ -169,6 +173,77 @@ public class ContadoraService
         proc.Mensaje = $"MercadoLibre: miré {comprasVistas} compras, bajé {pdfNuevos} factura(s) nueva(s). {proc.Mensaje}";
         _logger.LogInformation("[Contadora] MeLi compras: {Msg}", proc.Mensaje);
         return proc;
+    }
+
+    /// <summary>Entra a ARCA con la clave fiscal de PALANICA y baja + importa los comprobantes (emitidos + recibidos)
+    /// de un rango de fechas. Espera a que el scraper esté libre. Devuelve el resultado del import (o null si no pudo).</summary>
+    public async Task<ContadoraImportResultDto?> BajarDeArcaRangoAsync(RangoFechasRequest rango, CancellationToken ct = default)
+    {
+        var todas = await _cuentasArca.GetAllAsync();
+        var pal = todas.FirstOrDefault(a => a.IsActive && a.HasPassword
+            && new string((a.Cuit ?? "").Where(char.IsDigit).ToArray()) == CuitPalanica);
+        if (pal is null) { _logger.LogWarning("[Contadora] No hay cuenta ARCA de PALANICA activa con clave"); return null; }
+
+        // Esperar a que el scraper esté libre (hasta ~5 min).
+        for (int i = 0; i < 100; i++)
+        {
+            var s = await _arca.GetStatusAsync();
+            if (!s.Running) break;
+            try { await Task.Delay(TimeSpan.FromSeconds(3), ct); } catch { return null; }
+        }
+
+        var pass = await _cuentasArca.GetPasswordAsync(pal.Id);
+        if (string.IsNullOrEmpty(pass)) return null;
+
+        var (ok, err) = await _arca.StartComprobantesAsync(pal.Cuit, pal.CuitLogin, pass, rango);
+        if (!ok) { _logger.LogWarning("[Contadora] No se pudo iniciar ARCA: {Err}", err); return null; }
+
+        // Esperar a que termine el scrape (hasta ~5 min).
+        for (int i = 0; i < 100 && !ct.IsCancellationRequested; i++)
+        {
+            try { await Task.Delay(TimeSpan.FromSeconds(3), ct); } catch { break; }
+            var s = await _arca.GetStatusAsync();
+            if (!s.Running) break;
+        }
+        var fin = await _arca.GetStatusAsync();
+        if (fin.Running) { _logger.LogWarning("[Contadora] ARCA no terminó a tiempo"); return null; }
+
+        return await ImportarUltimoScrapeAfipAsync();
+    }
+
+    /// <summary>Se pone al día con lo VIEJO de ARCA: baja mes por mes los últimos N meses (emitidos + recibidos, con
+    /// el IVA exacto) y al terminar cruza las facturas de MeLi que estaban esperando. Va mes por mes para que ARCA
+    /// no corte el rango. Pensado para correr en segundo plano (tarda). El día a día lo mantiene el robot solo.</summary>
+    public async Task<ContadoraPdfResultDto> PonerseAlDiaArcaAsync(int meses, CancellationToken ct = default)
+    {
+        var res = new ContadoraPdfResultDto();
+        if (_backfillArcaCorriendo) { res.Ok = false; res.Mensaje = "Ya hay una puesta al día en curso."; return res; }
+        _backfillArcaCorriendo = true;
+        try
+        {
+            if (meses < 1) meses = 1; if (meses > 24) meses = 24;
+            var hoy = DateTime.Today;
+            int okMeses = 0;
+            for (int m = 0; m < meses && !ct.IsCancellationRequested; m++)
+            {
+                var primeroDeEsteMes = new DateTime(hoy.Year, hoy.Month, 1).AddMonths(-m);
+                var ini = primeroDeEsteMes;
+                var fin = primeroDeEsteMes.AddMonths(1).AddDays(-1);
+                if (fin > hoy) fin = hoy;
+                var rango = new RangoFechasRequest { Tipo = "custom", Desde = ini.ToString("yyyy-MM-dd"), Hasta = fin.ToString("yyyy-MM-dd") };
+                _logger.LogInformation("[Contadora] ARCA al día: bajando {Desde} → {Hasta}", rango.Desde, rango.Hasta);
+                var imp = await BajarDeArcaRangoAsync(rango, ct);
+                if (imp != null) okMeses++;
+            }
+            // Cruzar las facturas de MeLi (y sueltas) que estaban esperando la compra en el Libro.
+            var proc = await ProcesarFacturasPdfAsync(CarpetaFacturas);
+            res.Ok = true;
+            res.Total = proc.Total; res.Adjuntados = proc.Adjuntados; res.SinMatch = proc.SinMatch; res.SinQr = proc.SinQr;
+            res.Mensaje = $"ARCA al día: traje {okMeses} de {meses} meses. Después crucé las facturas: {proc.Adjuntados} pegadas, {proc.SinMatch} sin match, {proc.SinQr} sin QR.";
+            _logger.LogInformation("[Contadora] {Msg}", res.Mensaje);
+            return res;
+        }
+        finally { _backfillArcaCorriendo = false; }
     }
 
     /// <summary>Procesa los PDF de facturas de una carpeta: lee el QR de AFIP de cada uno, lo matchea con la venta o
