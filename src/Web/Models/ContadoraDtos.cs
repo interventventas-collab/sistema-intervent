@@ -168,3 +168,20 @@ public class ContadoraComprobantesPageDto
     public int Page { get; set; }
     public int PageSize { get; set; }
 }
+
+public class ContadoraBalanzaMesDto
+{
+    public int Anio { get; set; }
+    public int Mes { get; set; }
+    public decimal IvaVentas { get; set; }
+    public decimal IvaCompras { get; set; }
+    public decimal Saldo { get; set; }
+}
+
+public class ContadoraBalanzaDto
+{
+    public List<ContadoraBalanzaMesDto> Filas { get; set; } = new();
+    public decimal IvaVentasTotal { get; set; }
+    public decimal IvaComprasTotal { get; set; }
+    public decimal SaldoTotal { get; set; }
+}

@@ -531,6 +531,7 @@ IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ContadoraComprobantes' AND x
 BEGIN
     CREATE TABLE ContadoraComprobantes (
         Id INT PRIMARY KEY IDENTITY(1,1),
+        Naturaleza NVARCHAR(10) NOT NULL DEFAULT 'VENTA',
         Origen NVARCHAR(30) NOT NULL DEFAULT 'MELI_REPORTE',
         Concepto INT NULL,
         EmisorCuit NVARCHAR(20) NULL,
@@ -577,6 +578,11 @@ GO
 -- 2026-07-08: columna Concepto (Productos/Servicios/Ambos) en ContadoraComprobantes (idempotente).
 IF COL_LENGTH('ContadoraComprobantes', 'Concepto') IS NULL
     ALTER TABLE ContadoraComprobantes ADD Concepto INT NULL;
+GO
+
+-- 2026-07-08: columna Naturaleza (VENTA/COMPRA) para la balanza de IVA (idempotente).
+IF COL_LENGTH('ContadoraComprobantes', 'Naturaleza') IS NULL
+    ALTER TABLE ContadoraComprobantes ADD Naturaleza NVARCHAR(10) NOT NULL DEFAULT 'VENTA';
 GO
 
 -- MeliItems table

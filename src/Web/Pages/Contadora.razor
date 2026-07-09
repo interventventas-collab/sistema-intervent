@@ -45,6 +45,7 @@
         <div class="co-tabs">
             <div class="co-tab @(tab == "jur" ? "act" : "")" @onclick="@(() => SetTab("jur"))">🗺 Por jurisdicción (IIBB)</div>
             <div class="co-tab @(tab == "rep" ? "act" : "")" @onclick="@(() => SetTab("rep"))">📒 Libro IVA Ventas</div>
+            <div class="co-tab @(tab == "bal" ? "act" : "")" @onclick="@(() => SetTab("bal"))">⚖️ Balanza IVA</div>
         </div>
     </div>
 
@@ -101,7 +102,7 @@
             }
         </div>
     }
-    else
+    else if (tab == "rep")
     {
         @* ══════════ VISTA REPORTE MELI IMPORTADO (con notas de crédito) ══════════ *@
         <div class="co-card">
@@ -300,6 +301,92 @@
             </div>
         }
     }
+    else
+    {
+        @* ══════════ BALANZA DE IVA (ventas vs compras) ══════════ *@
+        <div class="co-card">
+            <p class="co-sub">
+                La <b>balanza de IVA</b>: el <b>IVA de las ventas</b> (débito) contra el <b>IVA de las compras</b> (crédito).
+                Si el saldo da <b>positivo</b>, es IVA <b>a pagar</b>; si da <b>negativo</b>, queda <b>saldo a favor</b>.
+            </p>
+            <div style="background:#fefce8;border:1px solid #fde68a;border-radius:10px;padding:.9rem 1rem;">
+                <b>Compras (AFIP)</b> — bajá de AFIP el Excel <b>“Mis Comprobantes → Recibidos”</b> con tu CUIT y subilo a la Carpeta
+                Compartida → carpeta <b>facturas meli</b>. Después tocá el botón (no se duplica).
+                <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-top:.5rem;">
+                    <button class="co-btn co-btn-primary" @onclick="ImportarComprasCarpeta" disabled="@importandoCompras">
+                        @(importandoCompras ? "Importando…" : "📥 Importar compras de la carpeta")
+                    </button>
+                    <label class="co-btn co-btn-ghost" style="margin:0;">
+                        …o elegir archivos
+                        <InputFile OnChange="OnComprasSeleccionadas" multiple accept=".xlsx" style="display:none;" />
+                    </label>
+                </div>
+            </div>
+
+            @if (comprasResult is not null)
+            {
+                <div class="co-alerta" style="@(comprasResult.Ok ? "background:#f0fdf4;border-color:#bbf7d0;" : "")margin-top:.9rem;">
+                    <div><b>@(comprasResult.Ok ? "✅ " : "⚠️ ")@comprasResult.Mensaje</b></div>
+                    @foreach (var a in comprasResult.Archivos)
+                    {
+                        <div class="co-hint" style="margin-top:.3rem;">
+                            @if (a.Ok)
+                            {
+                                <text>📄 @a.Archivo — @a.Facturas comprobante(s), @a.NotasCredito NC (@a.Nuevos nuevos, @a.Actualizados actualizados)@(a.PeriodoDesde is not null ? $" · {a.PeriodoDesde:dd/MM/yyyy} a {a.PeriodoHasta:dd/MM/yyyy}" : "")</text>
+                            }
+                            else
+                            {
+                                <text>❌ @a.Archivo — @a.Error</text>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="co-card">
+            <div class="co-filtros">
+                <div><label>Desde</label><input type="date" @bind="bDesde" /></div>
+                <div><label>Hasta</label><input type="date" @bind="bHasta" /></div>
+                <button class="co-btn co-btn-primary" @onclick="CargarBalanza" disabled="@cargandoBal">Aplicar</button>
+                <button class="co-btn co-btn-ghost" @onclick="LimpiarBalanza" disabled="@cargandoBal">Limpiar</button>
+            </div>
+        </div>
+
+        <div class="co-card">
+            @if (cargandoBal) { <p>Cargando…</p> }
+            else if (bal is null || bal.Filas.Count == 0) { <p class="co-hint">Todavía no hay datos para la balanza. Importá ventas (MeLi/Sistema) y compras (AFIP) para verla.</p> }
+            else
+            {
+                <table class="co-tabla">
+                    <thead><tr><th>Mes</th><th class="num">IVA Ventas (débito)</th><th class="num">IVA Compras (crédito)</th><th class="num">Saldo</th><th>Resultado</th></tr></thead>
+                    <tbody>
+                        @foreach (var f in bal.Filas)
+                        {
+                            <tr>
+                                <td>@MesLabel(f.Anio, f.Mes)</td>
+                                <td class="num">@Money(f.IvaVentas)</td>
+                                <td class="num">@Money(f.IvaCompras)</td>
+                                <td class="num" style="@(f.Saldo >= 0 ? "color:#b91c1c;font-weight:600;" : "color:#15803d;font-weight:600;")">@Money(f.Saldo)</td>
+                                <td>@(f.Saldo >= 0 ? "A pagar" : "A favor")</td>
+                            </tr>
+                        }
+                        <tr class="tot">
+                            <td>TOTALES</td>
+                            <td class="num">@Money(bal.IvaVentasTotal)</td>
+                            <td class="num">@Money(bal.IvaComprasTotal)</td>
+                            <td class="num" style="@(bal.SaldoTotal >= 0 ? "color:#b91c1c;" : "color:#15803d;")">@Money(bal.SaldoTotal)</td>
+                            <td>@(bal.SaldoTotal >= 0 ? "A pagar" : "A favor")</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p class="co-hint" style="margin-top:.5rem;">
+                    El IVA de ventas sale del Libro IVA Ventas (MeLi + Sistema). El IVA de compras sale de los “Comprobantes recibidos” de AFIP.
+                    Las notas de crédito ya están restadas en cada lado.
+                </p>
+            }
+        </div>
+    }
 </div>
 
 @code {
@@ -323,6 +410,12 @@
     private int repPage = 1;
     private int RepPaginas => repComps is null ? 1 : (int)Math.Ceiling(repComps.Total / (double)repComps.PageSize);
 
+    // Balanza de IVA + compras (AFIP recibidos)
+    private ContadoraBalanzaDto? bal;
+    private DateTime? bDesde, bHasta;
+    private bool cargandoBal, importandoCompras, balInit;
+    private ContadoraImportResultDto? comprasResult;
+
     private bool cargando, descargando;
     private bool robotLanzado;
 
@@ -335,6 +428,11 @@
         {
             repInit = true;
             await RecargarRep();
+        }
+        if (t == "bal" && !balInit)
+        {
+            balInit = true;
+            await CargarBalanza();
         }
     }
 
@@ -500,6 +598,64 @@
         if (!string.IsNullOrWhiteSpace(rOrigen)) qs.Add($"origen={rOrigen}");
         var url = "api/contadora/reporte/excel" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
         await Descargar(url, $"libro-iva-ventas-{DateTime.Now:yyyy-MM-dd}.xlsx");
+    }
+
+    // ───── Balanza de IVA + compras (AFIP recibidos) ─────
+    private async Task CargarBalanza()
+    {
+        if (cargandoBal) return;
+        cargandoBal = true;
+        try { bal = await Api.GetContadoraBalanzaAsync(bDesde, bHasta, null); }
+        catch (Exception ex) { ToastService.Error("No se pudo cargar la balanza: " + ex.Message); }
+        finally { cargandoBal = false; }
+    }
+
+    private async Task LimpiarBalanza()
+    {
+        bDesde = null; bHasta = null;
+        await CargarBalanza();
+    }
+
+    private async Task ImportarComprasCarpeta()
+    {
+        if (importandoCompras) return;
+        importandoCompras = true; comprasResult = null;
+        try
+        {
+            comprasResult = await Api.ImportarComprasCarpetaAsync();
+            if (comprasResult is not null && comprasResult.Ok)
+            {
+                ToastService.Success(comprasResult.Mensaje ?? "Importado.");
+                await CargarBalanza();
+            }
+            else ToastService.Error(comprasResult?.Mensaje ?? "No se pudo importar.");
+        }
+        catch (Exception ex) { ToastService.Error("Error al importar compras: " + ex.Message); }
+        finally { importandoCompras = false; }
+    }
+
+    private async Task OnComprasSeleccionadas(InputFileChangeEventArgs e)
+    {
+        if (importandoCompras) return;
+        importandoCompras = true; comprasResult = null;
+        try
+        {
+            var archivos = new List<(string, Stream)>();
+            foreach (var f in e.GetMultipleFiles(20))
+            {
+                var ms = new MemoryStream();
+                await f.OpenReadStream(50_000_000).CopyToAsync(ms);
+                ms.Position = 0;
+                archivos.Add((f.Name, ms));
+            }
+            var (result, error) = await Api.ImportarComprasArchivosAsync(archivos);
+            if (error is not null) { ToastService.Error(error); return; }
+            comprasResult = result;
+            if (result is not null && result.Ok) { ToastService.Success(result.Mensaje ?? "Importado."); await CargarBalanza(); }
+            else ToastService.Error(result?.Mensaje ?? "No se pudo importar.");
+        }
+        catch (Exception ex) { ToastService.Error("Error al importar compras: " + ex.Message); }
+        finally { importandoCompras = false; }
     }
 
     private static readonly string[] Meses = { "", "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre" };

@@ -141,4 +141,48 @@ public class ContadoraController : ControllerBase
         var nombre = $"libro-iva-ventas-{DateTime.Now:yyyy-MM-dd}.xlsx";
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", nombre);
     }
+
+    // ───────── COMPRAS (Mis Comprobantes Recibidos de AFIP) + BALANZA ─────────
+
+    /// <summary>Importa los "Mis Comprobantes Recibidos" de AFIP que esten en una subcarpeta compartida.</summary>
+    [HttpPost("importar-compras-carpeta")]
+    public async Task<ActionResult<ContadoraImportResultDto>> ImportarComprasCarpeta([FromQuery] string? subcarpeta)
+        => Ok(await _svc.ImportarComprasCarpetaAsync(string.IsNullOrWhiteSpace(subcarpeta) ? "Compartido/facturas meli" : subcarpeta));
+
+    /// <summary>Importa archivos de "Mis Comprobantes Recibidos" subidos por el usuario.</summary>
+    [HttpPost("importar-compras")]
+    [RequestSizeLimit(80_000_000)]
+    public async Task<ActionResult<ContadoraImportResultDto>> ImportarCompras([FromForm] List<IFormFile> archivos)
+    {
+        if (archivos == null || archivos.Count == 0)
+            return Ok(new ContadoraImportResultDto { Ok = false, Mensaje = "No se recibio ningun archivo." });
+        var items = new List<(string, Stream)>();
+        foreach (var f in archivos) items.Add((f.FileName, f.OpenReadStream()));
+        return Ok(await _svc.ImportarComprasArchivosAsync(items));
+    }
+
+    /// <summary>Resumen del Libro IVA Compras (NC restan).</summary>
+    [HttpGet("compras/resumen")]
+    public async Task<ActionResult<ContadoraReporteResumenDto>> ComprasResumen([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta,
+        [FromQuery] string? empresa, [FromQuery] string? search)
+        => Ok(await _svc.GetReporteResumenAsync(desde, hasta, empresa, null, null, null, search, null, "COMPRA"));
+
+    /// <summary>Detalle paginado de compras.</summary>
+    [HttpGet("compras/comprobantes")]
+    public async Task<ActionResult<ContadoraComprobantesPageDto>> ComprasComprobantes([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta,
+        [FromQuery] string? empresa, [FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
+        => Ok(await _svc.GetReporteComprobantesAsync(desde, hasta, empresa, null, null, null, search, page, pageSize, null, "COMPRA"));
+
+    /// <summary>Descarga el Libro IVA Compras en Excel.</summary>
+    [HttpGet("compras/excel")]
+    public async Task<IActionResult> ComprasExcel([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta, [FromQuery] string? empresa, [FromQuery] string? search)
+    {
+        var bytes = await _svc.GenerarReporteExcelAsync(desde, hasta, empresa, null, null, null, search, null, "COMPRA");
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"libro-iva-compras-{DateTime.Now:yyyy-MM-dd}.xlsx");
+    }
+
+    /// <summary>Balanza de IVA: por mes, IVA de ventas - IVA de compras = saldo.</summary>
+    [HttpGet("balanza")]
+    public async Task<ActionResult<ContadoraBalanzaDto>> Balanza([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta, [FromQuery] string? empresa)
+        => Ok(await _svc.GetBalanzaAsync(desde, hasta, empresa));
 }
