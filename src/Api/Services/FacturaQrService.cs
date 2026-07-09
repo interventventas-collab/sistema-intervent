@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using SkiaSharp;
 using ZXing;
@@ -28,16 +29,33 @@ public class FacturaQrService
         Options = new DecodingOptions { TryHarder = true, PossibleFormats = new List<BarcodeFormat> { BarcodeFormat.QR_CODE } }
     };
 
-    /// <summary>Devuelve los datos del QR de AFIP del PDF, o null si no lo encuentra.</summary>
+    /// <summary>Devuelve los datos del QR de AFIP del PDF, o null si no lo encuentra.
+    /// Estrategia: renderiza a 300 DPI y prueba primero la hoja entera; si no lo encuentra, recorta
+    /// las zonas donde AFIP suele poner el QR (abajo-izquierda / franja inferior), donde el QR queda
+    /// grande y se detecta aunque en la hoja completa sea chico.</summary>
     public FacturaQrData? LeerQrDePdf(byte[] pdf)
     {
         try
         {
-            foreach (var bmp in PDFtoImage.Conversion.ToImages(pdf, options: new(Dpi: 200)))
+            foreach (var bmp in PDFtoImage.Conversion.ToImages(pdf, options: new(Dpi: 300)))
             {
                 using (bmp)
                 {
+                    // 1) Hoja completa.
                     var url = DecodeAfipQr(bmp);
+                    // 2) Recortes candidatos (el QR de AFIP va abajo, casi siempre a la izquierda).
+                    if (url == null)
+                    {
+                        foreach (var (x0, y0, x1, y1) in Regiones)
+                        {
+                            using var crop = Recortar(bmp, x0, y0, x1, y1);
+                            if (crop == null) continue;
+                            url = DecodeAfipQr(crop);
+                            if (url != null) break;
+                        }
+                    }
+                    // 3) Último recurso: zbar (más potente que ZXing para QR densos como los de Contabilium).
+                    if (url == null) url = DecodeConZbar(bmp);
                     if (url != null) return ParseAfipUrl(url);
                 }
             }
@@ -46,10 +64,69 @@ public class FacturaQrService
         return null;
     }
 
+    // Zonas (en fracciones de la hoja) donde suele estar el QR de AFIP, de la más probable a la menos.
+    private static readonly (double, double, double, double)[] Regiones =
+    {
+        (0.00, 0.60, 0.45, 1.00), // abajo-izquierda (lo más común)
+        (0.00, 0.50, 0.55, 1.00), // abajo-izquierda más amplio
+        (0.00, 0.70, 1.00, 1.00), // franja inferior completa
+        (0.20, 0.55, 0.80, 1.00), // abajo-centro (algunos formatos)
+    };
+
+    /// <summary>Decodifica el QR con zbar (zbarimg), que es más robusto que ZXing con QR densos.
+    /// Renderiza el bitmap a PNG en un archivo temporal y lo pasa a zbarimg. Devuelve la URL de AFIP o null.</summary>
+    private string? DecodeConZbar(SKBitmap bmp)
+    {
+        string? tmp = null;
+        try
+        {
+            tmp = Path.Combine(Path.GetTempPath(), "qr-" + Guid.NewGuid().ToString("N") + ".png");
+            using (var img = SKImage.FromBitmap(bmp))
+            using (var data = img.Encode(SKEncodedImageFormat.Png, 90))
+            using (var fs = File.OpenWrite(tmp))
+                data.SaveTo(fs);
+
+            var psi = new System.Diagnostics.ProcessStartInfo("zbarimg", $"--quiet --raw \"{tmp}\"")
+            { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p == null) return null;
+            var outp = p.StandardOutput.ReadToEnd();
+            _ = p.StandardError.ReadToEnd(); // vaciar stderr (zbarimg escribe avisos de dbus) para no bloquear
+            if (!p.WaitForExit(15000)) { try { p.Kill(); } catch { } return null; }
+            foreach (var line in outp.Split('\n'))
+            {
+                var t = line.Trim();
+                if (t.Contains("afip.gob.ar/fe/qr", StringComparison.OrdinalIgnoreCase)) return t;
+            }
+            return null;
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "[FacturaQr] Falló el lector zbar"); return null; }
+        finally { if (tmp != null) { try { File.Delete(tmp); } catch { } } }
+    }
+
+    private static SKBitmap? Recortar(SKBitmap b, double fx0, double fy0, double fx1, double fy1)
+    {
+        int x = (int)(fx0 * b.Width), y = (int)(fy0 * b.Height);
+        int w = (int)((fx1 - fx0) * b.Width), h = (int)((fy1 - fy0) * b.Height);
+        if (w <= 8 || h <= 8) return null;
+        var crop = new SKBitmap(w, h, b.ColorType, b.AlphaType);
+        using var canvas = new SKCanvas(crop);
+        canvas.DrawBitmap(b, new SKRect(x, y, x + w, y + h), new SKRect(0, 0, w, h));
+        return crop;
+    }
+
     private static string? DecodeAfipQr(SKBitmap bmp)
     {
-        var fmt = bmp.ColorType == SKColorType.Rgba8888 ? RGBLuminanceSource.BitmapFormat.RGBA32 : RGBLuminanceSource.BitmapFormat.BGRA32;
-        var lum = new RGBLuminanceSource(bmp.Bytes, bmp.Width, bmp.Height, fmt);
+        // Construyo un buffer RGB24 desde los píxeles reales (sin depender del stride ni del orden BGRA/RGBA,
+        // que era lo que hacía fallar a ZXing en algunas facturas aunque el QR estuviera perfecto).
+        var px = bmp.Pixels;
+        var rgb = new byte[px.Length * 3];
+        for (int i = 0; i < px.Length; i++)
+        {
+            var c = px[i];
+            rgb[i * 3] = c.Red; rgb[i * 3 + 1] = c.Green; rgb[i * 3 + 2] = c.Blue;
+        }
+        var lum = new RGBLuminanceSource(rgb, bmp.Width, bmp.Height, RGBLuminanceSource.BitmapFormat.RGB24);
         var res = Reader.Decode(lum);
         var t = res?.Text;
         return (t != null && t.Contains("afip.gob.ar/fe/qr", StringComparison.OrdinalIgnoreCase)) ? t : null;
@@ -65,12 +142,34 @@ public class FacturaQrService
         try
         {
             var json = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(b64));
+            // Algunas facturas (ej. a consumidor final) generan JSON inválido con campos vacíos, tipo
+            // "nroDocRec":,  → lo saneo rellenando esos vacíos con null antes de parsear.
+            json = System.Text.RegularExpressions.Regex.Replace(json, @":\s*([,}])", ":null$1");
             using var doc = JsonDocument.Parse(json);
             var r = doc.RootElement;
-            string? S(string k) => r.TryGetProperty(k, out var v) ? v.ToString() : null;
-            long? L(string k) => r.TryGetProperty(k, out var v) && v.TryGetInt64(out var n) ? n : null;
-            int? I(string k) => r.TryGetProperty(k, out var v) && v.TryGetInt32(out var n) ? n : null;
-            decimal? D(string k) => r.TryGetProperty(k, out var v) && v.TryGetDecimal(out var n) ? n : null;
+            // Los campos del QR de AFIP a veces vienen como número y a veces como texto (según quién generó
+            // la factura). Estos helpers aceptan las dos formas y nunca tiran excepción.
+            long? L(string k)
+            {
+                if (!r.TryGetProperty(k, out var v)) return null;
+                if (v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out var n)) return n;
+                if (v.ValueKind == JsonValueKind.String && long.TryParse(v.GetString(), out var m)) return m;
+                return null;
+            }
+            int? I(string k)
+            {
+                if (!r.TryGetProperty(k, out var v)) return null;
+                if (v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var n)) return n;
+                if (v.ValueKind == JsonValueKind.String && int.TryParse(v.GetString(), out var m)) return m;
+                return null;
+            }
+            decimal? D(string k)
+            {
+                if (!r.TryGetProperty(k, out var v)) return null;
+                if (v.ValueKind == JsonValueKind.Number && v.TryGetDecimal(out var n)) return n;
+                if (v.ValueKind == JsonValueKind.String && decimal.TryParse(v.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var m)) return m;
+                return null;
+            }
             return new FacturaQrData
             {
                 Cuit = L("cuit")?.ToString(),
