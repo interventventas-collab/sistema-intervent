@@ -96,7 +96,7 @@ public class FacturaQrService
             foreach (var line in outp.Split('\n'))
             {
                 var t = line.Trim();
-                if (t.Contains("afip.gob.ar/fe/qr", StringComparison.OrdinalIgnoreCase)) return t;
+                if (EsQrFiscal(t)) return t;
             }
             return null;
         }
@@ -129,8 +129,13 @@ public class FacturaQrService
         var lum = new RGBLuminanceSource(rgb, bmp.Width, bmp.Height, RGBLuminanceSource.BitmapFormat.RGB24);
         var res = Reader.Decode(lum);
         var t = res?.Text;
-        return (t != null && t.Contains("afip.gob.ar/fe/qr", StringComparison.OrdinalIgnoreCase)) ? t : null;
+        return (t != null && EsQrFiscal(t)) ? t : null;
     }
+
+    /// <summary>True si el texto es el QR fiscal de una factura. Acepta el dominio viejo (afip.gob.ar)
+    /// y el nuevo (arca.gob.ar) — AFIP pasó a llamarse ARCA y las facturas nuevas traen ese dominio.</summary>
+    private static bool EsQrFiscal(string t) => t.Contains("/fe/qr", StringComparison.OrdinalIgnoreCase)
+        && (t.Contains("afip.gob.ar", StringComparison.OrdinalIgnoreCase) || t.Contains("arca.gob.ar", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Parsea la URL del QR de AFIP (…/fe/qr/?p=BASE64) y saca los datos de la factura.</summary>
     public static FacturaQrData? ParseAfipUrl(string url)
