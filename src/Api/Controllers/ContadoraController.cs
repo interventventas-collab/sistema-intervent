@@ -248,6 +248,10 @@ public class ContadoraController : ControllerBase
     [HttpPost("revisar-correo")]
     public async Task<ActionResult<ContadoraPdfResultDto>> RevisarCorreo() => Ok(await _svc.RevisarCorreoAsync());
 
+    /// <summary>Baja de MercadoLibre las facturas de compra (PDF real con QR) de las últimas compras y las matchea.</summary>
+    [HttpPost("bajar-facturas-meli")]
+    public async Task<ActionResult<ContadoraPdfResultDto>> BajarFacturasMeli() => Ok(await _svc.BajarFacturasMeliAsync());
+
     /// <summary>Retenciones/percepciones de IVA cargadas por mes para una empresa.</summary>
     [HttpGet("retenciones")]
     public async Task<ActionResult<List<ContadoraRetencionDto>>> Retenciones([FromQuery] string empresa)

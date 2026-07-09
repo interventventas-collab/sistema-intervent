@@ -519,9 +519,12 @@
             </div>
             <div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;padding:.9rem 1rem;margin-top:.7rem;">
                 <b>📎 Adjuntar los PDF de las facturas</b> — dejá los PDF (de MeLi, mail, WhatsApp) en la Carpeta Compartida → carpeta <b>facturas recibidas</b>. El sistema lee el <b>QR de AFIP</b> de cada uno y lo pega a la venta o compra que corresponde. Después aparece un <b>📎</b> para descargarla en el detalle.
-                <div style="margin-top:.5rem;">
+                <div style="margin-top:.5rem;display:flex;gap:.5rem;flex-wrap:wrap;">
                     <button class="co-btn co-btn-primary" @onclick="ProcesarPdfs" disabled="@procesandoPdf">
                         @(procesandoPdf ? "Procesando…" : "📎 Adjuntar facturas de la carpeta")
+                    </button>
+                    <button class="co-btn co-btn-green" @onclick="BajarFacturasMeli" disabled="@bajandoMeli" title="Baja de MercadoLibre las facturas de tus compras (PDF real con QR) y las pega solas">
+                        @(bajandoMeli ? "Bajando de MeLi…" : "🛒 Traer facturas de MercadoLibre")
                     </button>
                 </div>
             </div>
@@ -718,6 +721,7 @@
     private string? kSearch, kMes;
     private bool cargandoComp, verDetalleComp, compInit;
     private bool procesandoPdf;
+    private bool bajandoMeli;
     private ContadoraPdfResultDto? pdfResult;
 
     // ── Facturas por correo ──
@@ -1124,6 +1128,20 @@
         }
         catch (Exception ex) { ToastService.Error("Error al procesar PDFs: " + ex.Message); }
         finally { procesandoPdf = false; }
+    }
+
+    private async Task BajarFacturasMeli()
+    {
+        if (bajandoMeli) return;
+        bajandoMeli = true; pdfResult = null;
+        try
+        {
+            pdfResult = await Api.BajarFacturasMeliAsync();
+            if (pdfResult is not null && pdfResult.Ok) { ToastService.Success(pdfResult.Mensaje ?? "Listo."); if (verDetalleComp) await CargarCompComps(); }
+            else ToastService.Error(pdfResult?.Mensaje ?? "No se pudieron traer las facturas de MercadoLibre.");
+        }
+        catch (Exception ex) { ToastService.Error("Error trayendo facturas de MeLi: " + ex.Message); }
+        finally { bajandoMeli = false; }
     }
 
     private async Task CargarConfigCorreo()
