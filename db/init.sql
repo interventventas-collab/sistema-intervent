@@ -585,6 +585,11 @@ IF COL_LENGTH('ContadoraComprobantes', 'Naturaleza') IS NULL
     ALTER TABLE ContadoraComprobantes ADD Naturaleza NVARCHAR(10) NOT NULL DEFAULT 'VENTA';
 GO
 
+-- 2026-07-09: ruta al PDF de la factura adjunta (match por QR de AFIP), idempotente.
+IF COL_LENGTH('ContadoraComprobantes', 'PdfPath') IS NULL
+    ALTER TABLE ContadoraComprobantes ADD PdfPath NVARCHAR(500) NULL;
+GO
+
 -- MeliItems table
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='MeliItems' AND xtype='U')
 BEGIN

@@ -217,4 +217,18 @@ public class ContadoraController : ControllerBase
     [HttpPost("importar-scrape-afip")]
     public async Task<ActionResult<ContadoraImportResultDto>> ImportarScrapeAfip()
         => Ok(await _svc.ImportarUltimoScrapeAfipAsync());
+
+    /// <summary>Procesa los PDF de facturas de una carpeta: lee el QR y los adjunta a la venta/compra que corresponde.</summary>
+    [HttpPost("procesar-facturas-pdf")]
+    public async Task<ActionResult<ContadoraPdfResultDto>> ProcesarFacturasPdf([FromQuery] string? subcarpeta)
+        => Ok(await _svc.ProcesarFacturasPdfAsync(string.IsNullOrWhiteSpace(subcarpeta) ? "Compartido/facturas recibidas" : subcarpeta));
+
+    /// <summary>Descarga el PDF adjunto de un comprobante (venta o compra).</summary>
+    [HttpGet("factura-pdf")]
+    public async Task<IActionResult> FacturaPdf([FromQuery] string id)
+    {
+        var (bytes, nombre) = await _svc.GetFacturaPdfAsync(id);
+        if (bytes is null) return NotFound();
+        return File(bytes, "application/pdf", nombre ?? "factura.pdf");
+    }
 }

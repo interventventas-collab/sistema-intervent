@@ -32,11 +32,99 @@ public class ContadoraService
     private const string SinDato = "(sin dato)";
 
     private readonly ArcaScrapingService _arca;
+    private readonly FacturaQrService _qr;
 
     public ContadoraService(AppDbContext db, IHttpClientFactory httpFactory, MeliAccountService accountService,
-        FileStorageService storage, ILogger<ContadoraService> logger, ArcaScrapingService arca)
+        FileStorageService storage, ILogger<ContadoraService> logger, ArcaScrapingService arca, FacturaQrService qr)
     {
-        _db = db; _httpFactory = httpFactory; _accountService = accountService; _storage = storage; _logger = logger; _arca = arca;
+        _db = db; _httpFactory = httpFactory; _accountService = accountService; _storage = storage; _logger = logger; _arca = arca; _qr = qr;
+    }
+
+    /// <summary>Procesa los PDF de facturas de una carpeta: lee el QR de AFIP de cada uno, lo matchea con la venta o
+    /// compra que corresponde (por CUIT emisor + punto de venta + número; si falla, por CUIT + importe) y le adjunta
+    /// el PDF. Los que matchean se mueven a la subcarpeta "adjuntadas". Devuelve un resumen.</summary>
+    public async Task<ContadoraPdfResultDto> ProcesarFacturasPdfAsync(string subcarpeta)
+    {
+        var res = new ContadoraPdfResultDto();
+        string full;
+        try { full = _storage.ResolveSafe(subcarpeta); }
+        catch { res.Ok = false; res.Mensaje = "Carpeta inválida."; return res; }
+        if (!Directory.Exists(full)) { res.Ok = false; res.Mensaje = $"No existe la carpeta '{subcarpeta}'."; return res; }
+
+        var pdfs = Directory.EnumerateFiles(full, "*.pdf", SearchOption.AllDirectories)
+            .Where(f => !f.Replace('\\', '/').Contains("/adjuntadas/"))
+            .Where(f => !Path.GetFileName(f).StartsWith("~$")).OrderBy(f => f).ToList();
+
+        var destRel = subcarpeta.TrimEnd('/') + "/adjuntadas";
+        Directory.CreateDirectory(_storage.ResolveSafe(destRel));
+
+        foreach (var path in pdfs)
+        {
+            res.Total++;
+            try
+            {
+                var bytes = await File.ReadAllBytesAsync(path);
+                var qr = _qr.LeerQrDePdf(bytes);
+                if (qr?.Cuit == null) { res.SinQr++; res.NoMatch.Add(Path.GetFileName(path)); continue; }
+
+                var m = await MatchComprobanteAsync(qr);
+                if (m is null) { res.SinMatch++; res.NoMatch.Add($"{Path.GetFileName(path)} (QR: CUIT {qr.Cuit} PV{qr.PtoVta} N°{qr.NroCmp})"); continue; }
+
+                var nombre = $"{qr.Cuit}-{qr.PtoVta}-{qr.NroCmp}.pdf";
+                var relPdf = destRel + "/" + nombre;
+                var destFull = _storage.ResolveSafe(relPdf);
+                File.Copy(path, destFull, overwrite: true);
+                try { if (!string.Equals(Path.GetFullPath(path), Path.GetFullPath(destFull), StringComparison.OrdinalIgnoreCase)) File.Delete(path); } catch { }
+
+                m.PdfPath = relPdf;
+                res.Adjuntados++;
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "[Contadora] Error procesando PDF {Archivo}", path); res.NoMatch.Add(Path.GetFileName(path) + " (error al leer)"); }
+        }
+        await _db.SaveChangesAsync();
+        res.Mensaje = $"Facturas procesadas: {res.Adjuntados} adjuntadas de {res.Total} · {res.SinMatch} sin match · {res.SinQr} sin QR.";
+        _logger.LogInformation("[Contadora] PDFs: {Msg}", res.Mensaje);
+        return res;
+    }
+
+    /// <summary>Devuelve los bytes del PDF adjunto a un comprobante (para descargarlo), o null si no tiene.</summary>
+    public async Task<(byte[]? bytes, string? nombre)> GetFacturaPdfAsync(string idComprobante)
+    {
+        var rel = await _db.ContadoraComprobantes
+            .Where(c => c.IdComprobante == idComprobante && c.PdfPath != null)
+            .Select(c => c.PdfPath).FirstOrDefaultAsync();
+        if (string.IsNullOrEmpty(rel)) return (null, null);
+        string full;
+        try { full = _storage.ResolveSafe(rel); } catch { return (null, null); }
+        if (!File.Exists(full)) return (null, null);
+        return (await File.ReadAllBytesAsync(full), Path.GetFileName(full));
+    }
+
+    /// <summary>Busca el comprobante (venta o compra) que corresponde al QR: por pto+número+CUIT y, si no, por CUIT+importe.</summary>
+    private async Task<ContadoraComprobante?> MatchComprobanteAsync(FacturaQrData qr)
+    {
+        var cuit = qr.Cuit;
+        // Exacto: mismo punto de venta + número, y el CUIT del QR es el emisor (venta) o el proveedor (compra).
+        if (qr.PtoVta.HasValue && qr.NroCmp.HasValue)
+        {
+            var exact = await _db.ContadoraComprobantes
+                .Where(c => c.PuntoVenta == qr.PtoVta && c.NumeroComprobante == qr.NroCmp
+                    && (c.EmisorCuit == cuit || c.ReceptorDoc == cuit))
+                .OrderByDescending(c => c.Origen == "AFIP_EMITIDOS" || c.Origen == "AFIP_RECIBIDOS")
+                .FirstOrDefaultAsync();
+            if (exact != null) return exact;
+        }
+        // Red de seguridad: por CUIT + importe (tolerancia $1), si hay uno solo sin PDF todavía.
+        if (qr.Importe.HasValue)
+        {
+            var imp = qr.Importe.Value;
+            var cand = await _db.ContadoraComprobantes
+                .Where(c => (c.EmisorCuit == cuit || c.ReceptorDoc == cuit) && c.PdfPath == null
+                    && c.Total >= imp - 1m && c.Total <= imp + 1m)
+                .Take(2).ToListAsync();
+            if (cand.Count == 1) return cand[0];
+        }
+        return null;
     }
 
     /// <summary>Toma el CSV que el scraper de AFIP ya descargó (emitidos = ventas, recibidos = compras) en la última
@@ -1573,11 +1661,11 @@ public class ContadoraService
         var raw = await q.OrderByDescending(c => c.FechaEmision).ThenByDescending(c => c.NumeroComprobante)
             .Skip((page - 1) * pageSize).Take(pageSize)
             .Select(c => new { c.IdComprobante, c.Origen, c.Concepto, c.EmisorCuit, c.EsNotaCredito, c.TipoComprobante, c.PuntoVenta, c.NumeroComprobante,
-                c.FechaEmision, c.Letra, c.ReceptorNombre, c.ReceptorDoc, c.Provincia, c.NetoGravado, c.Iva21, c.Iva105, c.Total })
+                c.FechaEmision, c.Letra, c.ReceptorNombre, c.ReceptorDoc, c.Provincia, c.NetoGravado, c.Iva21, c.Iva105, c.Total, c.PdfPath })
             .ToListAsync();
         var items = raw.Select(c => new ContadoraComprobanteDto
         {
-            IdComprobante = c.IdComprobante, Origen = c.Origen, Concepto = ConceptoLabel(c.Concepto), EmpresaCuit = c.EmisorCuit, EsNotaCredito = c.EsNotaCredito,
+            IdComprobante = c.IdComprobante, Origen = c.Origen, Concepto = ConceptoLabel(c.Concepto), EmpresaCuit = c.EmisorCuit, EsNotaCredito = c.EsNotaCredito, TienePdf = c.PdfPath != null,
             TipoComprobante = c.TipoComprobante, PuntoVenta = c.PuntoVenta, NumeroComprobante = c.NumeroComprobante,
             FechaEmision = c.FechaEmision, Letra = c.Letra, ReceptorNombre = c.ReceptorNombre, ReceptorDoc = c.ReceptorDoc,
             Provincia = c.Provincia,

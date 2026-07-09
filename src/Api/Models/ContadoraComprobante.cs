@@ -99,4 +99,8 @@ public class ContadoraComprobante
     [MaxLength(255)]
     public string? ArchivoOrigen { get; set; }
     public DateTime ImportadoEn { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Ruta relativa (dentro de /data/files) al PDF de la factura, si lo tenemos adjunto.</summary>
+    [MaxLength(500)]
+    public string? PdfPath { get; set; }
 }
