@@ -730,6 +730,7 @@ public class ContadoraService
 
     private static void CopiarCampos(ContadoraComprobante src, ContadoraComprobante dst)
     {
+        dst.Origen = src.Origen; dst.Concepto = src.Concepto;
         dst.EmisorCuit = src.EmisorCuit; dst.NumeroVenta = src.NumeroVenta; dst.NumeroEnvio = src.NumeroEnvio;
         dst.TipoOperacion = src.TipoOperacion; dst.TipoComprobante = src.TipoComprobante; dst.EsNotaCredito = src.EsNotaCredito;
         dst.Letra = src.Letra; dst.PuntoVenta = src.PuntoVenta; dst.NumeroComprobante = src.NumeroComprobante;
@@ -743,12 +744,102 @@ public class ContadoraService
         dst.Exento = src.Exento; dst.Total = src.Total; dst.ArchivoOrigen = src.ArchivoOrigen; dst.ImportadoEn = src.ImportadoEn;
     }
 
+    /// <summary>CUIT por defecto cuando la factura del sistema no tiene certificado vinculado (operamos con un solo CUIT).</summary>
+    private const string CuitPorDefecto = "30717212149"; // PALANICA HERMANOS S.R.L.
+
+    /// <summary>
+    /// Sincroniza las facturas que emite NUESTRO sistema por AFIP (Cafe_Ventas con CAE) hacia
+    /// ContadoraComprobantes con Origen='SISTEMA', para que aparezcan en el mismo Libro IVA que las
+    /// de MeLi. Notas de credito restan. Todo interno (no depende de subir archivos). Idempotente:
+    /// clave IdComprobante = "SIS-{VentaId}"; reprocesar solo actualiza.
+    /// </summary>
+    public async Task<ContadoraImportResultDto> SincronizarSistemaAsync()
+    {
+        var res = new ContadoraImportResultDto();
+        var a = new ContadoraImportArchivoDto { Archivo = "Facturas del sistema (AFIP)" };
+
+        string[] fiscales = { "FA", "FB", "FC", "NCA", "NCB", "NCC" };
+        var ventas = await _db.CafeVentas
+            .Where(v => v.ArcaCae != null && v.Estado != "anulado" && fiscales.Contains(v.TipoComprobante))
+            .Select(v => new
+            {
+                v.Id, v.TipoComprobante, v.Concepto, v.ArcaPtoVta, v.ArcaCbteNro, v.ArcaCae, v.Fecha,
+                v.ArcaWebserviceAccountId, v.CondicionIva,
+                v.NombreReceptor, v.DniReceptor, v.ClienteRazonSocialSnapshot, v.ClienteNombreSnapshot, v.ClienteCuitSnapshot,
+                v.ArcaImpNeto, v.ArcaImpIVA, v.ArcaImpTotal
+            })
+            .ToListAsync();
+
+        // CUIT emisor por certificado.
+        var cuitPorAccount = await _db.ArcaWebserviceAccounts.ToDictionaryAsync(w => w.Id, w => w.Cuit);
+
+        var ids = ventas.Select(v => "SIS-" + v.Id).ToList();
+        var existentes = new Dictionary<string, ContadoraComprobante>();
+        foreach (var chunk in Chunk(ids, 1000))
+            foreach (var f in await _db.ContadoraComprobantes.Where(c => chunk.Contains(c.IdComprobante)).ToListAsync())
+                existentes[f.IdComprobante] = f;
+
+        foreach (var v in ventas)
+        {
+            var tipo = v.TipoComprobante;
+            var esNC = tipo.StartsWith("NC");
+            var letra = tipo.EndsWith("A") ? "A" : tipo.EndsWith("B") ? "B" : tipo.EndsWith("C") ? "C" : null;
+            string tipoLabel = tipo switch
+            {
+                "FA" => "Factura A", "FB" => "Factura B", "FC" => "Factura C",
+                "NCA" => "Nota de Crédito A", "NCB" => "Nota de Crédito B", "NCC" => "Nota de Crédito C",
+                _ => tipo
+            };
+            string? emisor = (v.ArcaWebserviceAccountId.HasValue && cuitPorAccount.TryGetValue(v.ArcaWebserviceAccountId.Value, out var cu) && !string.IsNullOrWhiteSpace(cu))
+                ? cu : CuitPorDefecto;
+
+            var e = new ContadoraComprobante
+            {
+                Origen = "SISTEMA",
+                Concepto = v.Concepto,
+                EmisorCuit = emisor,
+                IdComprobante = "SIS-" + v.Id,
+                TipoOperacion = esNC ? "Cancelacion" : "Venta",
+                TipoComprobante = tipoLabel,
+                EsNotaCredito = esNC,
+                Letra = letra,
+                PuntoVenta = v.ArcaPtoVta,
+                NumeroComprobante = v.ArcaCbteNro,
+                Cae = v.ArcaCae,
+                FechaEmision = v.Fecha,
+                Estado = "Aprobada",
+                ReceptorCondIva = v.CondicionIva,
+                ReceptorNombre = NullIfEmpty(v.NombreReceptor) ?? NullIfEmpty(v.ClienteRazonSocialSnapshot) ?? NullIfEmpty(v.ClienteNombreSnapshot),
+                ReceptorDoc = NullIfEmpty(v.DniReceptor) ?? NullIfEmpty(v.ClienteCuitSnapshot),
+                NetoGravado = v.ArcaImpNeto ?? 0m,
+                BaseIva21 = v.ArcaImpNeto ?? 0m,
+                Iva21 = v.ArcaImpIVA ?? 0m,   // el sistema guarda el IVA total (hoy 21%); FC = 0
+                Total = v.ArcaImpTotal ?? 0m,
+                ArchivoOrigen = "Sistema (AFIP)",
+                ImportadoEn = DateTime.UtcNow
+            };
+
+            if (existentes.TryGetValue(e.IdComprobante, out var ex)) { CopiarCampos(e, ex); ex.Origen = "SISTEMA"; ex.Concepto = e.Concepto; a.Actualizados++; }
+            else { _db.ContadoraComprobantes.Add(e); a.Nuevos++; }
+            if (esNC) a.NotasCredito++; else a.Facturas++;
+            int signo = esNC ? -1 : 1;
+            a.NetoNeto += signo * e.NetoGravado; a.IvaNeto += signo * e.Iva21; a.TotalNeto += signo * e.Total;
+        }
+        await _db.SaveChangesAsync();
+        a.EmpresaCuit = CuitPorDefecto;
+        AcumularArchivo(res, a);
+        res.Mensaje = $"Facturas del sistema: {a.Facturas} facturas y {a.NotasCredito} NC ({a.Nuevos} nuevas, {a.Actualizados} actualizadas).";
+        _logger.LogInformation("[Contadora] Sync sistema: {Fac} fac, {NC} NC, {N} nuevas, {A} act.", a.Facturas, a.NotasCredito, a.Nuevos, a.Actualizados);
+        return res;
+    }
+
     // ── Consultas sobre los comprobantes importados (con NC restando) ──
 
     private IQueryable<ContadoraComprobante> FiltrarComprobantes(DateTime? desde, DateTime? hasta,
-        string? empresaCuit, int? puntoVenta, string? letra, string? provincia, string? search)
+        string? empresaCuit, int? puntoVenta, string? letra, string? provincia, string? search, string? origen = null)
     {
         var q = _db.ContadoraComprobantes.AsQueryable();
+        if (!string.IsNullOrWhiteSpace(origen)) q = q.Where(c => c.Origen == origen);
         if (desde.HasValue) q = q.Where(c => c.FechaEmision >= desde.Value);
         if (hasta.HasValue) { var h = hasta.Value.Date.AddDays(1); q = q.Where(c => c.FechaEmision < h); }
         if (!string.IsNullOrWhiteSpace(empresaCuit)) q = q.Where(c => c.EmisorCuit == empresaCuit);
@@ -765,23 +856,30 @@ public class ContadoraService
         return q;
     }
 
-    /// <summary>Empresas (CUIT) que aparecen en los comprobantes importados.</summary>
+    /// <summary>Empresas (CUIT) que aparecen en los comprobantes importados, con su razon social si la conocemos.</summary>
     public async Task<List<ContadoraEmpresaDto>> GetReporteEmpresasAsync()
     {
-        return await _db.ContadoraComprobantes.Where(c => c.EmisorCuit != null)
-            .GroupBy(c => c.EmisorCuit!)
-            .Select(g => new ContadoraEmpresaDto { Cuit = g.Key, Nombre = g.Key })
-            .OrderBy(e => e.Cuit).ToListAsync();
+        var cuits = await _db.ContadoraComprobantes.Where(c => c.EmisorCuit != null)
+            .Select(c => c.EmisorCuit!).Distinct().ToListAsync();
+        var razon = await _db.ArcaEmisores.Where(e => cuits.Contains(e.Cuit))
+            .ToDictionaryAsync(e => e.Cuit, e => e.RazonSocial);
+        return cuits
+            .Select(c => new ContadoraEmpresaDto
+            {
+                Cuit = c,
+                Nombre = razon.TryGetValue(c, out var rs) && !string.IsNullOrWhiteSpace(rs) ? $"{rs} ({c})" : c
+            })
+            .OrderBy(e => e.Nombre).ToList();
     }
 
     /// <summary>Resumen del Libro IVA Ventas desde los comprobantes importados (NC restan).</summary>
     public async Task<ContadoraReporteResumenDto> GetReporteResumenAsync(DateTime? desde, DateTime? hasta,
-        string? empresaCuit, int? puntoVenta, string? letra, string? provincia, string? search)
+        string? empresaCuit, int? puntoVenta, string? letra, string? provincia, string? search, string? origen = null)
     {
         var dto = new ContadoraReporteResumenDto();
         dto.SinDatos = !await _db.ContadoraComprobantes.AnyAsync();
 
-        var datos = await FiltrarComprobantes(desde, hasta, empresaCuit, puntoVenta, letra, provincia, search)
+        var datos = await FiltrarComprobantes(desde, hasta, empresaCuit, puntoVenta, letra, provincia, search, origen)
             .Select(c => new { c.EmisorCuit, c.PuntoVenta, c.Letra, c.EsNotaCredito, c.NetoGravado, c.Iva21, c.Iva105, c.Total })
             .ToListAsync();
 
@@ -810,10 +908,11 @@ public class ContadoraService
     }
 
     /// <summary>Meses cargados (para mostrar "lo que ya tengo importado").</summary>
-    public async Task<List<ContadoraCargaDto>> GetReporteCargasAsync(string? empresaCuit)
+    public async Task<List<ContadoraCargaDto>> GetReporteCargasAsync(string? empresaCuit, string? origen = null)
     {
         var q = _db.ContadoraComprobantes.Where(c => c.FechaEmision != null);
         if (!string.IsNullOrWhiteSpace(empresaCuit)) q = q.Where(c => c.EmisorCuit == empresaCuit);
+        if (!string.IsNullOrWhiteSpace(origen)) q = q.Where(c => c.Origen == origen);
         var datos = await q.Select(c => new { c.EmisorCuit, c.FechaEmision, c.EsNotaCredito, c.NetoGravado, c.Iva21, c.Iva105, c.Total }).ToListAsync();
         return datos
             .GroupBy(x => new { x.EmisorCuit, x.FechaEmision!.Value.Year, x.FechaEmision!.Value.Month })
@@ -833,20 +932,20 @@ public class ContadoraService
 
     /// <summary>Detalle paginado de comprobantes importados (NC con importes en negativo).</summary>
     public async Task<ContadoraComprobantesPageDto> GetReporteComprobantesAsync(DateTime? desde, DateTime? hasta,
-        string? empresaCuit, int? puntoVenta, string? letra, string? provincia, string? search, int page = 1, int pageSize = 50)
+        string? empresaCuit, int? puntoVenta, string? letra, string? provincia, string? search, int page = 1, int pageSize = 50, string? origen = null)
     {
         if (page < 1) page = 1;
         if (pageSize < 1 || pageSize > 500) pageSize = 50;
-        var q = FiltrarComprobantes(desde, hasta, empresaCuit, puntoVenta, letra, provincia, search);
+        var q = FiltrarComprobantes(desde, hasta, empresaCuit, puntoVenta, letra, provincia, search, origen);
         var total = await q.CountAsync();
         var raw = await q.OrderByDescending(c => c.FechaEmision).ThenByDescending(c => c.NumeroComprobante)
             .Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(c => new { c.IdComprobante, c.EmisorCuit, c.EsNotaCredito, c.TipoComprobante, c.PuntoVenta, c.NumeroComprobante,
+            .Select(c => new { c.IdComprobante, c.Origen, c.Concepto, c.EmisorCuit, c.EsNotaCredito, c.TipoComprobante, c.PuntoVenta, c.NumeroComprobante,
                 c.FechaEmision, c.Letra, c.ReceptorNombre, c.ReceptorDoc, c.Provincia, c.NetoGravado, c.Iva21, c.Iva105, c.Total })
             .ToListAsync();
         var items = raw.Select(c => new ContadoraComprobanteDto
         {
-            IdComprobante = c.IdComprobante, EmpresaCuit = c.EmisorCuit, EsNotaCredito = c.EsNotaCredito,
+            IdComprobante = c.IdComprobante, Origen = c.Origen, Concepto = ConceptoLabel(c.Concepto), EmpresaCuit = c.EmisorCuit, EsNotaCredito = c.EsNotaCredito,
             TipoComprobante = c.TipoComprobante, PuntoVenta = c.PuntoVenta, NumeroComprobante = c.NumeroComprobante,
             FechaEmision = c.FechaEmision, Letra = c.Letra, ReceptorNombre = c.ReceptorNombre, ReceptorDoc = c.ReceptorDoc,
             Provincia = c.Provincia,
@@ -857,12 +956,14 @@ public class ContadoraService
         return new ContadoraComprobantesPageDto { Items = items, Total = total, Page = page, PageSize = pageSize };
     }
 
+    private static string? ConceptoLabel(int? c) => c switch { 1 => "Productos", 2 => "Servicios", 3 => "Productos y Servicios", _ => null };
+
     /// <summary>Excel del Libro IVA Ventas (importado): hoja resumen + hoja detalle. NC en negativo.</summary>
     public async Task<byte[]> GenerarReporteExcelAsync(DateTime? desde, DateTime? hasta,
-        string? empresaCuit, int? puntoVenta, string? letra, string? provincia, string? search)
+        string? empresaCuit, int? puntoVenta, string? letra, string? provincia, string? search, string? origen = null)
     {
-        var resumen = await GetReporteResumenAsync(desde, hasta, empresaCuit, puntoVenta, letra, provincia, search);
-        var detalle = await GetReporteComprobantesAsync(desde, hasta, empresaCuit, puntoVenta, letra, provincia, search, 1, 500);
+        var resumen = await GetReporteResumenAsync(desde, hasta, empresaCuit, puntoVenta, letra, provincia, search, origen);
+        var detalle = await GetReporteComprobantesAsync(desde, hasta, empresaCuit, puntoVenta, letra, provincia, search, 1, 500, origen);
 
         using var wb = new XLWorkbook();
         var wr = wb.AddWorksheet("Resumen");

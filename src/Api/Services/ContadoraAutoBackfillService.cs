@@ -51,6 +51,13 @@ public class ContadoraAutoBackfillService : BackgroundService
             _logger.LogInformation("[Contadora robot] Inicio backfill provincias + facturas");
             int prov = await LoopBackfill(ct, esFacturas: false);
             int fact = await LoopBackfill(ct, esFacturas: true);
+            // Sincroniza las facturas propias del sistema (AFIP) hacia el Libro IVA unificado.
+            using (var scope = _scopeFactory.CreateScope())
+            {
+                var svc = scope.ServiceProvider.GetRequiredService<ContadoraService>();
+                var r = await svc.SincronizarSistemaAsync();
+                _logger.LogInformation("[Contadora robot] Sistema: {Msg}", r.Mensaje);
+            }
             _logger.LogInformation("[Contadora robot] Fin. Provincias resueltas: {P}, facturas resueltas: {F}", prov, fact);
         }
         catch (Exception ex) { _logger.LogError(ex, "[Contadora robot] Error en la corrida"); }

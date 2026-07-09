@@ -144,6 +144,8 @@ public class ContadoraCargaDto
 public class ContadoraComprobanteDto
 {
     public string IdComprobante { get; set; } = "";
+    public string? Origen { get; set; }
+    public string? Concepto { get; set; }
     public string? EmpresaCuit { get; set; }
     public bool EsNotaCredito { get; set; }
     public string? TipoComprobante { get; set; }

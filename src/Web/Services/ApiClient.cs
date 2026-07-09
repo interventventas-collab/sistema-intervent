@@ -5566,19 +5566,29 @@ public class ApiClient
         return (data, null);
     }
 
-    public async Task<ContadoraReporteResumenDto?> GetContadoraReporteResumenAsync(DateTime? desde, DateTime? hasta, string? empresa, int? puntoVenta, string? letra, string? provincia, string? search)
-        => await GetAsync<ContadoraReporteResumenDto>("/api/contadora/reporte/resumen" + ContadoraQs(desde, hasta, empresa, puntoVenta, letra, provincia, search));
+    private static string ConOrigen(string qs, string? origen)
+        => string.IsNullOrWhiteSpace(origen) ? qs : qs + (qs.Length > 0 ? "&" : "?") + "origen=" + Uri.EscapeDataString(origen);
 
-    public async Task<List<ContadoraCargaDto>?> GetContadoraReporteCargasAsync(string? empresa = null)
-        => await GetAsync<List<ContadoraCargaDto>>("/api/contadora/reporte/cargas" + (string.IsNullOrWhiteSpace(empresa) ? "" : "?empresa=" + Uri.EscapeDataString(empresa)));
+    public async Task<ContadoraReporteResumenDto?> GetContadoraReporteResumenAsync(DateTime? desde, DateTime? hasta, string? empresa, int? puntoVenta, string? letra, string? provincia, string? search, string? origen = null)
+        => await GetAsync<ContadoraReporteResumenDto>("/api/contadora/reporte/resumen" + ConOrigen(ContadoraQs(desde, hasta, empresa, puntoVenta, letra, provincia, search), origen));
+
+    public async Task<List<ContadoraCargaDto>?> GetContadoraReporteCargasAsync(string? empresa = null, string? origen = null)
+    {
+        var qs = string.IsNullOrWhiteSpace(empresa) ? "" : "?empresa=" + Uri.EscapeDataString(empresa);
+        return await GetAsync<List<ContadoraCargaDto>>("/api/contadora/reporte/cargas" + ConOrigen(qs, origen));
+    }
 
     public async Task<List<ContadoraEmpresaDto>?> GetContadoraReporteEmpresasAsync()
         => await GetAsync<List<ContadoraEmpresaDto>>("/api/contadora/reporte/empresas");
 
-    public async Task<ContadoraComprobantesPageDto?> GetContadoraReporteComprobantesAsync(DateTime? desde, DateTime? hasta, string? empresa, int? puntoVenta, string? letra, string? provincia, string? search, int page = 1, int pageSize = 50)
+    /// <summary>Trae al Libro IVA las facturas propias del sistema (AFIP).</summary>
+    public async Task<ContadoraImportResultDto?> SincronizarSistemaAsync()
+        => await PostAsync<ContadoraImportResultDto>("/api/contadora/sincronizar-sistema", new { });
+
+    public async Task<ContadoraComprobantesPageDto?> GetContadoraReporteComprobantesAsync(DateTime? desde, DateTime? hasta, string? empresa, int? puntoVenta, string? letra, string? provincia, string? search, int page = 1, int pageSize = 50, string? origen = null)
     {
         var qs = ContadoraQs(desde, hasta, empresa, puntoVenta, letra, provincia, search);
         qs += (qs.Length > 0 ? "&" : "?") + $"page={page}&pageSize={pageSize}";
-        return await GetAsync<ContadoraComprobantesPageDto>("/api/contadora/reporte/comprobantes" + qs);
+        return await GetAsync<ContadoraComprobantesPageDto>("/api/contadora/reporte/comprobantes" + ConOrigen(qs, origen));
     }
 }
