@@ -1192,9 +1192,15 @@ public class ContadoraService
     public async Task<ContadoraControlDto> GetControlAsync(DateTime? desde, DateTime? hasta)
     {
         var dto = new ContadoraControlDto();
-        dto.SinAfip = !await _db.ContadoraComprobantes.AnyAsync(c => c.Origen == "AFIP_EMITIDOS");
+        // CUITs de los que TENEMOS AFIP (hoy solo PALANICA). El control solo puede comparar esos; las ventas de
+        // otros CUITs (ej. las Facturas C de los hermanos monotributo) tienen su propio AFIP que no tenemos, asi
+        // que NO se pueden marcar como "faltan en AFIP" — las dejamos afuera para no dar falsos positivos.
+        var cuitsAfip = await _db.ContadoraComprobantes
+            .Where(c => c.Origen == "AFIP_EMITIDOS" && c.EmisorCuit != null)
+            .Select(c => c.EmisorCuit!).Distinct().ToListAsync();
+        dto.SinAfip = cuitsAfip.Count == 0;
 
-        var q = _db.ContadoraComprobantes.Where(c => c.Naturaleza == "VENTA");
+        var q = _db.ContadoraComprobantes.Where(c => c.Naturaleza == "VENTA" && c.EmisorCuit != null && cuitsAfip.Contains(c.EmisorCuit));
         if (desde.HasValue) q = q.Where(c => c.FechaEmision >= desde.Value);
         if (hasta.HasValue) { var h = hasta.Value.Date.AddDays(1); q = q.Where(c => c.FechaEmision < h); }
 
