@@ -1428,12 +1428,17 @@ public class ContadoraService
         if (naturaleza == "VENTA" && string.IsNullOrWhiteSpace(origen))
             datos = DedupPorClave(datos, x => x.Origen, x => x.PuntoVenta, x => x.Letra, x => x.EsNotaCredito, x => x.NumeroComprobante);
 
+        // Razón social por CUIT (para mostrar el nombre y no solo el número).
+        var cuits = datos.Where(x => x.EmisorCuit != null).Select(x => x.EmisorCuit!).Distinct().ToList();
+        var razon = await _db.ArcaEmisores.Where(e => cuits.Contains(e.Cuit)).ToDictionaryAsync(e => e.Cuit, e => e.RazonSocial);
+        string? Nombre(string? cuit) => cuit != null && razon.TryGetValue(cuit, out var rs) && !string.IsNullOrWhiteSpace(rs) ? rs : cuit;
+
         dto.Filas = datos
             .GroupBy(x => new { x.EmisorCuit, x.PuntoVenta, x.Letra })
             .Select(g => new LibroIvaResumenRowDto
             {
                 EmpresaCuit = g.Key.EmisorCuit,
-                EmpresaNombre = g.Key.EmisorCuit,
+                EmpresaNombre = Nombre(g.Key.EmisorCuit),
                 PuntoVenta = g.Key.PuntoVenta,
                 Letra = g.Key.Letra,
                 Cantidad = g.Count(),

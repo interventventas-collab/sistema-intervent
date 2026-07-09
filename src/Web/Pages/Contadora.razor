@@ -215,6 +215,7 @@
                         }
                     </select>
                 </div>
+                <div><label>Mes</label><input type="month" value="@rMes" @onchange="@(e => AplicarMesRep(e.Value?.ToString()))" /></div>
                 <div><label>Desde</label><input type="date" @bind="rDesde" /></div>
                 <div><label>Hasta</label><input type="date" @bind="rHasta" /></div>
                 <div><label>Pto venta</label><input type="number" style="width:90px;" @bind="rPtoVenta" /></div>
@@ -246,12 +247,12 @@
             else
             {
                 <table class="co-tabla">
-                    <thead><tr><th>Empresa (CUIT)</th><th class="num">Pto vta</th><th>Tipo</th><th class="num">Cant.</th><th class="num">Neto</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
+                    <thead><tr><th>Empresa</th><th class="num">Pto vta</th><th>Tipo</th><th class="num">Cant.</th><th class="num">Neto</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
                     <tbody>
                         @foreach (var f in rep.Filas)
                         {
                             <tr>
-                                <td>@f.EmpresaCuit</td>
+                                <td>@f.EmpresaNombre @if (f.EmpresaNombre != f.EmpresaCuit) { <span class="co-hint">(@f.EmpresaCuit)</span> }</td>
                                 <td class="num">@f.PuntoVenta</td>
                                 <td>@f.Letra</td>
                                 <td class="num">@f.Cantidad</td>
@@ -514,6 +515,7 @@
 
         <div class="co-card">
             <div class="co-filtros">
+                <div><label>Mes</label><input type="month" value="@kMes" @onchange="@(e => AplicarMesCompras(e.Value?.ToString()))" /></div>
                 <div><label>Desde</label><input type="date" @bind="kDesde" /></div>
                 <div><label>Hasta</label><input type="date" @bind="kHasta" /></div>
                 <div><label>Buscar</label><input type="text" style="width:170px;" placeholder="proveedor / nº / CUIT" @bind="kSearch" /></div>
@@ -635,7 +637,7 @@
     private List<ContadoraEmpresaDto> repEmpresas = new();
     private List<string> repProvincias = new();
     private ContadoraImportResultDto? importResult;
-    private string? rEmpresa, rLetra, rProvincia, rSearch, rOrigen;
+    private string? rEmpresa, rLetra, rProvincia, rSearch, rOrigen, rMes;
     private int? rPtoVenta;
     private DateTime? rDesde, rHasta;
     private bool cargandoRep, importando, verDetalleRep, repInit;
@@ -657,7 +659,7 @@
     private ContadoraReporteResumenDto? comp;
     private ContadoraComprobantesPageDto? compComps;
     private DateTime? kDesde, kHasta;
-    private string? kSearch;
+    private string? kSearch, kMes;
     private bool cargandoComp, verDetalleComp, compInit;
     private int compPage = 1;
     private int CompPaginas => compComps is null ? 1 : (int)Math.Ceiling(compComps.Total / (double)compComps.PageSize);
@@ -767,8 +769,22 @@
 
     private async Task LimpiarRep()
     {
-        rEmpresa = null; rLetra = null; rProvincia = null; rSearch = null; rPtoVenta = null; rDesde = null; rHasta = null; rOrigen = null;
+        rEmpresa = null; rLetra = null; rProvincia = null; rSearch = null; rPtoVenta = null; rDesde = null; rHasta = null; rOrigen = null; rMes = null;
         await CargarRep();
+    }
+
+    // Convierte "yyyy-MM" a primer y último día del mes.
+    private static (DateTime? desde, DateTime? hasta) RangoDelMes(string? mes)
+    {
+        if (string.IsNullOrWhiteSpace(mes) || !DateTime.TryParse(mes + "-01", out var d)) return (null, null);
+        return (d, d.AddMonths(1).AddDays(-1));
+    }
+
+    private async Task AplicarMesRep(string? mes)
+    {
+        rMes = mes;
+        var (d, h) = RangoDelMes(rMes);
+        if (d.HasValue) { rDesde = d; rHasta = h; await CargarRep(); }
     }
 
     private async Task SincronizarMeliApi()
@@ -955,8 +971,15 @@
 
     private async Task LimpiarCompras()
     {
-        kDesde = null; kHasta = null; kSearch = null;
+        kDesde = null; kHasta = null; kSearch = null; kMes = null;
         await CargarCompras();
+    }
+
+    private async Task AplicarMesCompras(string? mes)
+    {
+        kMes = mes;
+        var (d, h) = RangoDelMes(kMes);
+        if (d.HasValue) { kDesde = d; kHasta = h; await CargarCompras(); }
     }
 
     private async Task ToggleDetalleCompras()
