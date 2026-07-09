@@ -207,4 +207,9 @@ public class ContadoraController : ControllerBase
     [HttpGet("control")]
     public async Task<ActionResult<ContadoraControlDto>> Control([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta)
         => Ok(await _svc.GetControlAsync(desde, hasta));
+
+    /// <summary>Vuelca al Libro IVA las facturas de MeLi ya bajadas por la API (ventas automáticas).</summary>
+    [HttpPost("sincronizar-meli-api")]
+    public async Task<ActionResult<ContadoraImportResultDto>> SincronizarMeliApi()
+        => Ok(await _svc.SincronizarMeliApiAsync());
 }

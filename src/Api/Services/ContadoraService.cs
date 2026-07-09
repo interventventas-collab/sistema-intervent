@@ -842,6 +842,78 @@ public class ContadoraService
         return res;
     }
 
+    /// <summary>Vuelca al Libro IVA Ventas las facturas de MercadoLibre que el robot ya bajó por la API
+    /// (tabla MeliFacturas), como Origen='MELI_API'. Así las ventas de MeLi entran SOLAS, sin subir el reporte.
+    /// OJO: la API de MeLi da facturas pero NO notas de crédito → para el total completo (con NC) manda AFIP,
+    /// que gana en la deduplicación cuando está cargado. MELI_API es la cifra automática del día a día.</summary>
+    public async Task<ContadoraImportResultDto> SincronizarMeliApiAsync()
+    {
+        var res = new ContadoraImportResultDto();
+        var a = new ContadoraImportArchivoDto { Archivo = "Ventas de MercadoLibre (API)" };
+
+        var facturas = await _db.MeliFacturas
+            .Where(f => f.Status != null && f.Status != "SIN_FACTURA"
+                && f.PuntoVenta != null && f.NumeroComprobante != null && f.EmisorCuit != null)
+            .Select(f => new
+            {
+                f.PuntoVenta, f.NumeroComprobante, f.FechaEmision, f.Letra, f.EmisorCuit,
+                f.ReceptorNombre, f.ReceptorDoc, f.ReceptorTaxType, f.Provincia, f.Neto, f.Iva, f.Total
+            })
+            .ToListAsync();
+
+        // Una fila por comprobante (pto+letra+numero). Si por algún motivo hay repetidos, me quedo con el último.
+        var porId = new Dictionary<string, ContadoraComprobante>();
+        foreach (var f in facturas)
+        {
+            var id = $"MAPI-{f.PuntoVenta}-{f.Letra}-{f.NumeroComprobante}";
+            porId[id] = new ContadoraComprobante
+            {
+                Naturaleza = "VENTA",
+                Origen = "MELI_API",
+                EmisorCuit = f.EmisorCuit,
+                IdComprobante = id,
+                TipoOperacion = "Venta",
+                TipoComprobante = "Factura " + (f.Letra ?? ""),
+                EsNotaCredito = false,
+                Letra = f.Letra,
+                PuntoVenta = f.PuntoVenta,
+                NumeroComprobante = f.NumeroComprobante,
+                FechaEmision = f.FechaEmision,
+                Estado = "Aprobada",
+                ReceptorCondIva = f.ReceptorTaxType,
+                ReceptorNombre = f.ReceptorNombre,
+                ReceptorDoc = f.ReceptorDoc,
+                Provincia = NormProv(f.Provincia),
+                NetoGravado = f.Neto, BaseIva21 = f.Neto,
+                Iva21 = f.Iva,   // IVA del producto (la API no separa el del envío; AFIP lo trae completo)
+                Total = f.Total,
+                ArchivoOrigen = "MercadoLibre (API)",
+                ImportadoEn = DateTime.UtcNow
+            };
+        }
+        var parsed = porId.Values.ToList();
+
+        var ids = parsed.Select(p => p.IdComprobante).ToList();
+        var existentes = new Dictionary<string, ContadoraComprobante>();
+        foreach (var chunk in Chunk(ids, 1000))
+            foreach (var f in await _db.ContadoraComprobantes.Where(c => chunk.Contains(c.IdComprobante)).ToListAsync())
+                existentes[f.IdComprobante] = f;
+
+        foreach (var p in parsed)
+        {
+            if (existentes.TryGetValue(p.IdComprobante, out var ex)) { CopiarCampos(p, ex); ex.Provincia = p.Provincia ?? ex.Provincia; a.Actualizados++; }
+            else { _db.ContadoraComprobantes.Add(p); a.Nuevos++; }
+            a.Facturas++;
+            a.NetoNeto += p.NetoGravado; a.IvaNeto += p.Iva21 + p.Iva105; a.TotalNeto += p.Total;
+        }
+        await _db.SaveChangesAsync();
+        a.EmpresaCuit = parsed.FirstOrDefault()?.EmisorCuit;
+        AcumularArchivo(res, a);
+        res.Mensaje = $"Ventas de MeLi (API): {a.Facturas} facturas ({a.Nuevos} nuevas, {a.Actualizados} actualizadas).";
+        _logger.LogInformation("[Contadora] Sync MeLi API: {Fac} fac, {N} nuevas, {A} act.", a.Facturas, a.Nuevos, a.Actualizados);
+        return res;
+    }
+
     // ═══════════════════ COMPRAS: importar "Mis Comprobantes Recibidos" de AFIP ═══════════════════
 
     private static bool EsRecibidosAfip(IXLWorksheet ws, int lastRow, int lastCol)
@@ -1156,10 +1228,10 @@ public class ContadoraService
             .Select(c => new { c.Naturaleza, c.Origen, c.PuntoVenta, c.Letra, c.NumeroComprobante, c.FechaEmision, c.EsNotaCredito, c.Iva21, c.Iva105 })
             .ToListAsync();
 
-        // Contar cada venta una sola vez: saco las de MeLi/sistema que ya estan en AFIP (gana AFIP).
-        var afip = await ClavesVentasAfipAsync();
-        if (afip.Count > 0)
-            datos = datos.Where(x => x.Naturaleza != "VENTA" || NoDuplicada(x.Origen, x.PuntoVenta, x.Letra, x.EsNotaCredito, x.NumeroComprobante, afip)).ToList();
+        // Contar cada venta una sola vez (AFIP > reporte MeLi/sistema > API MeLi). Las compras no se tocan.
+        var ventas = DedupPorClave(datos.Where(x => x.Naturaleza == "VENTA").ToList(),
+            x => x.Origen, x => x.PuntoVenta, x => x.Letra, x => x.EsNotaCredito, x => x.NumeroComprobante);
+        datos = ventas.Concat(datos.Where(x => x.Naturaleza != "VENTA")).ToList();
 
         var filas = datos
             .GroupBy(x => new { x.FechaEmision!.Value.Year, x.FechaEmision!.Value.Month })
@@ -1277,20 +1349,43 @@ public class ContadoraService
     private static string ClaveComprobante(int? pto, string? letra, bool esNC, long? num)
         => $"{pto}|{letra}|{(esNC ? "NC" : "F")}|{num}";
 
-    /// <summary>Claves de las ventas oficiales de AFIP (emitidos). Sirven para NO contar dos veces:
-    /// una venta que esta en AFIP y tambien en el reporte de MeLi / sistema, se cuenta una sola vez (gana AFIP).</summary>
-    private async Task<HashSet<string>> ClavesVentasAfipAsync()
+    /// <summary>Prioridad de cada fuente cuando la MISMA venta aparece en varias (menor = manda).
+    /// AFIP es lo oficial y completo (con NC) → gana. Después el reporte de MeLi / las del sistema.
+    /// La API de MeLi es la más automática pero no trae NC → va última.</summary>
+    private static int PrioridadOrigen(string? origen) => origen switch
     {
-        var l = await _db.ContadoraComprobantes
-            .Where(c => c.Origen == "AFIP_EMITIDOS" && c.PuntoVenta != null && c.NumeroComprobante != null)
-            .Select(c => new { c.PuntoVenta, c.Letra, c.EsNotaCredito, c.NumeroComprobante }).Distinct().ToListAsync();
-        return l.Select(x => ClaveComprobante(x.PuntoVenta, x.Letra, x.EsNotaCredito, x.NumeroComprobante)).ToHashSet();
-    }
+        "AFIP_EMITIDOS" => 1,
+        "MELI_REPORTE" => 2,
+        "SISTEMA" => 2,
+        "MELI_API" => 3,
+        _ => 4
+    };
 
-    /// <summary>Saca las filas de MeLi/sistema que ya estan en AFIP (misma clave), para contar cada venta una vez.
-    /// Gana AFIP (fuente oficial). Solo aplica cuando NO se filtra por un origen puntual.</summary>
-    private static bool NoDuplicada(string? origen, int? pto, string? letra, bool esNC, long? num, HashSet<string> afip)
-        => origen == "AFIP_EMITIDOS" || pto == null || num == null || !afip.Contains(ClaveComprobante(pto, letra, esNC, num));
+    /// <summary>Deja UNA sola fila por comprobante (pto+letra+NC+numero), la de mayor prioridad de fuente.
+    /// Así una venta que está en AFIP y también en MeLi/sistema se cuenta una vez. Las filas sin número
+    /// (no se pueden identificar) se dejan pasar tal cual.</summary>
+    private static List<T> DedupPorClave<T>(IEnumerable<T> rows, Func<T, string?> origen, Func<T, int?> pto,
+        Func<T, string?> letra, Func<T, bool> esNC, Func<T, long?> num)
+    {
+        var lista = rows.ToList();
+        var mejor = new Dictionary<string, int>();
+        foreach (var r in lista)
+        {
+            if (pto(r) == null || num(r) == null) continue;
+            var k = ClaveComprobante(pto(r), letra(r), esNC(r), num(r));
+            var p = PrioridadOrigen(origen(r));
+            if (!mejor.TryGetValue(k, out var m) || p < m) mejor[k] = p;
+        }
+        var visto = new HashSet<string>();
+        var salida = new List<T>();
+        foreach (var r in lista)
+        {
+            if (pto(r) == null || num(r) == null) { salida.Add(r); continue; }
+            var k = ClaveComprobante(pto(r), letra(r), esNC(r), num(r));
+            if (PrioridadOrigen(origen(r)) == mejor[k] && visto.Add(k)) salida.Add(r);
+        }
+        return salida;
+    }
 
     /// <summary>Empresas (CUIT) que aparecen en los comprobantes importados, con su razon social si la conocemos.</summary>
     public async Task<List<ContadoraEmpresaDto>> GetReporteEmpresasAsync()
@@ -1328,19 +1423,22 @@ public class ContadoraService
             .Select(c => new { c.Origen, c.EmisorCuit, c.PuntoVenta, c.NumeroComprobante, c.Letra, c.EsNotaCredito, c.NetoGravado, c.Iva21, c.Iva105, c.Total })
             .ToListAsync();
 
-        // Contar cada venta una sola vez: si el usuario NO filtro por un origen puntual, saco las de MeLi/sistema que ya estan en AFIP.
+        // Contar cada venta una sola vez: si el usuario NO filtro por un origen puntual, dejo una fila por
+        // comprobante (la de mayor prioridad: AFIP > reporte MeLi/sistema > API MeLi).
         if (naturaleza == "VENTA" && string.IsNullOrWhiteSpace(origen))
-        {
-            var afip = await ClavesVentasAfipAsync();
-            if (afip.Count > 0) datos = datos.Where(x => NoDuplicada(x.Origen, x.PuntoVenta, x.Letra, x.EsNotaCredito, x.NumeroComprobante, afip)).ToList();
-        }
+            datos = DedupPorClave(datos, x => x.Origen, x => x.PuntoVenta, x => x.Letra, x => x.EsNotaCredito, x => x.NumeroComprobante);
+
+        // Razón social por CUIT (para mostrar el nombre y no solo el número).
+        var cuits = datos.Where(x => x.EmisorCuit != null).Select(x => x.EmisorCuit!).Distinct().ToList();
+        var razon = await _db.ArcaEmisores.Where(e => cuits.Contains(e.Cuit)).ToDictionaryAsync(e => e.Cuit, e => e.RazonSocial);
+        string? Nombre(string? cuit) => cuit != null && razon.TryGetValue(cuit, out var rs) && !string.IsNullOrWhiteSpace(rs) ? rs : cuit;
 
         dto.Filas = datos
             .GroupBy(x => new { x.EmisorCuit, x.PuntoVenta, x.Letra })
             .Select(g => new LibroIvaResumenRowDto
             {
                 EmpresaCuit = g.Key.EmisorCuit,
-                EmpresaNombre = g.Key.EmisorCuit,
+                EmpresaNombre = Nombre(g.Key.EmisorCuit),
                 PuntoVenta = g.Key.PuntoVenta,
                 Letra = g.Key.Letra,
                 Cantidad = g.Count(),

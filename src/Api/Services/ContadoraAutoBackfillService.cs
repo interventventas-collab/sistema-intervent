@@ -58,6 +58,13 @@ public class ContadoraAutoBackfillService : BackgroundService
                 var r = await svc.SincronizarSistemaAsync();
                 _logger.LogInformation("[Contadora robot] Sistema: {Msg}", r.Mensaje);
             }
+            // Vuelca las facturas de MeLi (ya bajadas por la API) al Libro IVA Ventas → ventas automáticas.
+            using (var scope = _scopeFactory.CreateScope())
+            {
+                var svc = scope.ServiceProvider.GetRequiredService<ContadoraService>();
+                var r = await svc.SincronizarMeliApiAsync();
+                _logger.LogInformation("[Contadora robot] MeLi API: {Msg}", r.Mensaje);
+            }
             _logger.LogInformation("[Contadora robot] Fin. Provincias resueltas: {P}, facturas resueltas: {F}", prov, fact);
         }
         catch (Exception ex) { _logger.LogError(ex, "[Contadora robot] Error en la corrida"); }

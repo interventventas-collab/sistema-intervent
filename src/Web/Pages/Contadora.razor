@@ -127,10 +127,13 @@
             </div>
 
             <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:.9rem 1rem;margin-top:.7rem;">
-                <b>MercadoLibre</b> — subí los Excel a la Carpeta Compartida → carpeta <b>facturas meli</b> y tocá “Importar los de la carpeta” (no se duplica). Trae la <b>provincia</b> de cada venta (para IIBB) y sirve de doble-check contra AFIP.
+                <b>MercadoLibre</b> — las ventas de MeLi entran <b>solas</b> (el robot baja las facturas por la API y las trae con su provincia). También podés subir el reporte oficial de MeLi (trae las notas de crédito y sirve de doble-check).
                 <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-top:.5rem;">
+                    <button class="co-btn co-btn-ghost" @onclick="SincronizarMeliApi" disabled="@importando">
+                        @(importando ? "Actualizando…" : "🔄 Actualizar ventas de MeLi (ahora)")
+                    </button>
                     <button class="co-btn co-btn-ghost" @onclick="ImportarCarpeta" disabled="@importando">
-                        @(importando ? "Importando…" : "📥 Importar reportes de MeLi")
+                        @(importando ? "Importando…" : "📥 Importar reporte de MeLi")
                     </button>
                     <label class="co-btn co-btn-ghost" style="margin:0;">
                         …o elegir archivos
@@ -212,6 +215,7 @@
                         }
                     </select>
                 </div>
+                <div><label>Mes</label><input type="month" value="@rMes" @onchange="@(e => AplicarMesRep(e.Value?.ToString()))" /></div>
                 <div><label>Desde</label><input type="date" @bind="rDesde" /></div>
                 <div><label>Hasta</label><input type="date" @bind="rHasta" /></div>
                 <div><label>Pto venta</label><input type="number" style="width:90px;" @bind="rPtoVenta" /></div>
@@ -243,12 +247,12 @@
             else
             {
                 <table class="co-tabla">
-                    <thead><tr><th>Empresa (CUIT)</th><th class="num">Pto vta</th><th>Tipo</th><th class="num">Cant.</th><th class="num">Neto</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
+                    <thead><tr><th>Empresa</th><th class="num">Pto vta</th><th>Tipo</th><th class="num">Cant.</th><th class="num">Neto</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
                     <tbody>
                         @foreach (var f in rep.Filas)
                         {
                             <tr>
-                                <td>@f.EmpresaCuit</td>
+                                <td>@f.EmpresaNombre @if (f.EmpresaNombre != f.EmpresaCuit) { <span class="co-hint">(@f.EmpresaCuit)</span> }</td>
                                 <td class="num">@f.PuntoVenta</td>
                                 <td>@f.Letra</td>
                                 <td class="num">@f.Cantidad</td>
@@ -511,6 +515,7 @@
 
         <div class="co-card">
             <div class="co-filtros">
+                <div><label>Mes</label><input type="month" value="@kMes" @onchange="@(e => AplicarMesCompras(e.Value?.ToString()))" /></div>
                 <div><label>Desde</label><input type="date" @bind="kDesde" /></div>
                 <div><label>Hasta</label><input type="date" @bind="kHasta" /></div>
                 <div><label>Buscar</label><input type="text" style="width:170px;" placeholder="proveedor / nº / CUIT" @bind="kSearch" /></div>
@@ -632,7 +637,7 @@
     private List<ContadoraEmpresaDto> repEmpresas = new();
     private List<string> repProvincias = new();
     private ContadoraImportResultDto? importResult;
-    private string? rEmpresa, rLetra, rProvincia, rSearch, rOrigen;
+    private string? rEmpresa, rLetra, rProvincia, rSearch, rOrigen, rMes;
     private int? rPtoVenta;
     private DateTime? rDesde, rHasta;
     private bool cargandoRep, importando, verDetalleRep, repInit;
@@ -654,7 +659,7 @@
     private ContadoraReporteResumenDto? comp;
     private ContadoraComprobantesPageDto? compComps;
     private DateTime? kDesde, kHasta;
-    private string? kSearch;
+    private string? kSearch, kMes;
     private bool cargandoComp, verDetalleComp, compInit;
     private int compPage = 1;
     private int CompPaginas => compComps is null ? 1 : (int)Math.Ceiling(compComps.Total / (double)compComps.PageSize);
@@ -764,8 +769,36 @@
 
     private async Task LimpiarRep()
     {
-        rEmpresa = null; rLetra = null; rProvincia = null; rSearch = null; rPtoVenta = null; rDesde = null; rHasta = null; rOrigen = null;
+        rEmpresa = null; rLetra = null; rProvincia = null; rSearch = null; rPtoVenta = null; rDesde = null; rHasta = null; rOrigen = null; rMes = null;
         await CargarRep();
+    }
+
+    // Convierte "yyyy-MM" a primer y último día del mes.
+    private static (DateTime? desde, DateTime? hasta) RangoDelMes(string? mes)
+    {
+        if (string.IsNullOrWhiteSpace(mes) || !DateTime.TryParse(mes + "-01", out var d)) return (null, null);
+        return (d, d.AddMonths(1).AddDays(-1));
+    }
+
+    private async Task AplicarMesRep(string? mes)
+    {
+        rMes = mes;
+        var (d, h) = RangoDelMes(rMes);
+        if (d.HasValue) { rDesde = d; rHasta = h; await CargarRep(); }
+    }
+
+    private async Task SincronizarMeliApi()
+    {
+        if (importando) return;
+        importando = true; importResult = null;
+        try
+        {
+            importResult = await Api.SincronizarMeliApiAsync();
+            if (importResult is not null && importResult.Ok) { ToastService.Success(importResult.Mensaje ?? "Actualizado."); await RecargarRep(); }
+            else ToastService.Error(importResult?.Mensaje ?? "No se pudo actualizar.");
+        }
+        catch (Exception ex) { ToastService.Error("Error al actualizar: " + ex.Message); }
+        finally { importando = false; }
     }
 
     private async Task SincronizarSistema()
@@ -938,8 +971,15 @@
 
     private async Task LimpiarCompras()
     {
-        kDesde = null; kHasta = null; kSearch = null;
+        kDesde = null; kHasta = null; kSearch = null; kMes = null;
         await CargarCompras();
+    }
+
+    private async Task AplicarMesCompras(string? mes)
+    {
+        kMes = mes;
+        var (d, h) = RangoDelMes(kMes);
+        if (d.HasValue) { kDesde = d; kHasta = h; await CargarCompras(); }
     }
 
     private async Task ToggleDetalleCompras()
