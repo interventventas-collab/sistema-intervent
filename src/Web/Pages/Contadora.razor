@@ -505,6 +505,20 @@
                 </div>
             </div>
 
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:.9rem 1rem;margin-top:.7rem;">
+                <b>🗓️ Ponerse al día con ARCA (una sola vez)</b> — trae de ARCA las compras y ventas de los <b>últimos 12 meses</b> (mes por mes, con el IVA exacto) y después <b>cruza solas</b> las facturas de MercadoLibre que estaban esperando. El día a día ya lo mantiene el robot; esto es solo para ponerse al día con lo viejo. Tarda un rato — podés seguir el avance en <b>Integraciones → ARCA</b>.
+                <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-top:.5rem;">
+                    <label>Meses:
+                        <select @bind="mesesAlDia" style="width:70px;">
+                            <option value="3">3</option><option value="6">6</option><option value="12">12</option><option value="24">24</option>
+                        </select>
+                    </label>
+                    <button class="co-btn co-btn-green" @onclick="PonerseAlDiaArca" disabled="@poniendoAlDia">
+                        @(poniendoAlDia ? "Arrancando…" : "🗓️ Ponerse al día con ARCA")
+                    </button>
+                </div>
+            </div>
+
             <div style="background:#fefce8;border:1px solid #fde68a;border-radius:10px;padding:.9rem 1rem;margin-top:.7rem;">
                 <b>…o a mano</b> — subí el <b>"Mis Comprobantes → Recibidos"</b> a la Carpeta Compartida → carpeta <b>facturas meli</b> (puede ser en una subcarpeta) y tocá el botón. No se duplica.
                 <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-top:.5rem;">
@@ -722,6 +736,8 @@
     private bool cargandoComp, verDetalleComp, compInit;
     private bool procesandoPdf;
     private bool bajandoMeli;
+    private bool poniendoAlDia;
+    private int mesesAlDia = 12;
     private ContadoraPdfResultDto? pdfResult;
 
     // ── Facturas por correo ──
@@ -1128,6 +1144,20 @@
         }
         catch (Exception ex) { ToastService.Error("Error al procesar PDFs: " + ex.Message); }
         finally { procesandoPdf = false; }
+    }
+
+    private async Task PonerseAlDiaArca()
+    {
+        if (poniendoAlDia) return;
+        poniendoAlDia = true;
+        try
+        {
+            var ok = await Api.PonerseAlDiaArcaAsync(mesesAlDia);
+            if (ok) ToastService.Success($"Arranqué a traer los últimos {mesesAlDia} meses de ARCA. Puede tardar un rato — mirá el avance en Integraciones → ARCA. Cuando termine, las facturas se cruzan solas.");
+            else ToastService.Error("No se pudo arrancar la puesta al día.");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { poniendoAlDia = false; }
     }
 
     private async Task BajarFacturasMeli()
