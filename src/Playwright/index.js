@@ -1786,7 +1786,12 @@ async function runArcaComprobantes({ cuit, cuitLogin, password, rangoFechas }) {
     if (tipoRango === '30dias') return 'Últimos 30 Días';
     if (tipoRango === '60dias') return 'Últimos 60 Días';
     if (tipoRango === '90dias') return 'Últimos 90 Días';
-    return null; // custom
+    // Atajos del calendario de ARCA (mismo mecanismo que "Últimos 30 Días", que ya funciona).
+    if (tipoRango === 'estemes') return 'Este Mes';
+    if (tipoRango === 'mespasado') return 'Mes Pasado';
+    if (tipoRango === 'esteanio') return 'Este Año';
+    if (tipoRango === 'aniopasado') return 'Año Pasado';
+    return null; // custom (desde/hasta)
   })();
 
   // ---- Descargar Emitidos ----

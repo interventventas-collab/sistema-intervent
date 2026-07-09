@@ -150,6 +150,11 @@ public class CafeProducto
 
     public bool IsActive { get; set; } = true;
 
+    /// <summary>2026-07-09: si true, este producto puntual NO suma al reporte
+    /// "Valor de mi stock a costo", aunque su marca sí cuente. Para excepciones sueltas
+    /// de stock falso. Default false (suma). Editable desde /stock/valuacion.</summary>
+    public bool ExcluirDeValuacion { get; set; } = false;
+
     /// <summary>Si false, el producto NO se muestra en el buscador de productos del modal Nueva Venta.
     /// Util para productos que solo existen como componentes de combos MeLi (no se venden sueltos).
     /// Se setea automaticamente por el clone de Contabilium para componentes-solo. Default true.</summary>

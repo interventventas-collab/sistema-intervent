@@ -211,9 +211,9 @@ public class ContadoraService
         return await ImportarUltimoScrapeAfipAsync();
     }
 
-    /// <summary>Se pone al día con lo VIEJO de ARCA: baja mes por mes los últimos N meses (emitidos + recibidos, con
-    /// el IVA exacto) y al terminar cruza las facturas de MeLi que estaban esperando. Va mes por mes para que ARCA
-    /// no corte el rango. Pensado para correr en segundo plano (tarda). El día a día lo mantiene el robot solo.</summary>
+    /// <summary>Se pone al día con lo VIEJO de ARCA: baja "Año Pasado" + "Este Año" (emitidos + recibidos, con el IVA
+    /// exacto) y al terminar cruza las facturas de MeLi que estaban esperando. Usa los atajos de rango de ARCA
+    /// (mismo mecanismo que "Últimos 30 Días", probado). Corre en segundo plano. El día a día lo mantiene el robot.</summary>
     public async Task<ContadoraPdfResultDto> PonerseAlDiaArcaAsync(int meses, CancellationToken ct = default)
     {
         var res = new ContadoraPdfResultDto();
@@ -221,25 +221,22 @@ public class ContadoraService
         _backfillArcaCorriendo = true;
         try
         {
-            if (meses < 1) meses = 1; if (meses > 24) meses = 24;
-            var hoy = DateTime.Today;
-            int okMeses = 0;
-            for (int m = 0; m < meses && !ct.IsCancellationRequested; m++)
+            // ARCA tiene atajos ("Año Pasado" / "Este Año") que se clickean igual que "Últimos 30 Días" (mecanismo
+            // probado). Con esos dos cubrimos el año en curso + el anterior (el máximo de ARCA es 365 días por consulta).
+            var rangos = new (string tipo, string nombre)[] { ("aniopasado", "Año Pasado"), ("esteanio", "Este Año") };
+            int okRangos = 0;
+            foreach (var (tipo, nombre) in rangos)
             {
-                var primeroDeEsteMes = new DateTime(hoy.Year, hoy.Month, 1).AddMonths(-m);
-                var ini = primeroDeEsteMes;
-                var fin = primeroDeEsteMes.AddMonths(1).AddDays(-1);
-                if (fin > hoy) fin = hoy;
-                var rango = new RangoFechasRequest { Tipo = "custom", Desde = ini.ToString("yyyy-MM-dd"), Hasta = fin.ToString("yyyy-MM-dd") };
-                _logger.LogInformation("[Contadora] ARCA al día: bajando {Desde} → {Hasta}", rango.Desde, rango.Hasta);
-                var imp = await BajarDeArcaRangoAsync(rango, ct);
-                if (imp != null) okMeses++;
+                if (ct.IsCancellationRequested) break;
+                _logger.LogInformation("[Contadora] ARCA al día: bajando \"{Nombre}\"", nombre);
+                var imp = await BajarDeArcaRangoAsync(new RangoFechasRequest { Tipo = tipo }, ct);
+                if (imp != null) okRangos++;
             }
             // Cruzar las facturas de MeLi (y sueltas) que estaban esperando la compra en el Libro.
             var proc = await ProcesarFacturasPdfAsync(CarpetaFacturas);
             res.Ok = true;
             res.Total = proc.Total; res.Adjuntados = proc.Adjuntados; res.SinMatch = proc.SinMatch; res.SinQr = proc.SinQr;
-            res.Mensaje = $"ARCA al día: traje {okMeses} de {meses} meses. Después crucé las facturas: {proc.Adjuntados} pegadas, {proc.SinMatch} sin match, {proc.SinQr} sin QR.";
+            res.Mensaje = $"ARCA al día: traje {okRangos} de 2 períodos (este año + año pasado). Después crucé las facturas: {proc.Adjuntados} pegadas, {proc.SinMatch} sin match, {proc.SinQr} sin QR.";
             _logger.LogInformation("[Contadora] {Msg}", res.Mensaje);
             return res;
         }

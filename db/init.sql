@@ -2904,6 +2904,17 @@ IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'MargenPctSobreCosto' AND 
     ALTER TABLE Cafe_Marcas ADD MargenPctSobreCosto DECIMAL(7,2) NOT NULL DEFAULT 100;
 GO
 
+-- 2026-07-09: reporte "Valor de mi stock a costo".
+-- Cafe_Marcas.CuentaEnValuacion: si 0, los productos de esa marca NO suman al valor de stock
+-- (stock falso que en realidad tiene el proveedor). Default 1 (suma).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'CuentaEnValuacion' AND Object_ID = Object_ID('Cafe_Marcas'))
+    ALTER TABLE Cafe_Marcas ADD CuentaEnValuacion BIT NOT NULL DEFAULT 1;
+GO
+-- Cafe_Productos.ExcluirDeValuacion: excepcion por producto puntual (no suma aunque la marca si).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'ExcluirDeValuacion' AND Object_ID = Object_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD ExcluirDeValuacion BIT NOT NULL DEFAULT 0;
+GO
+
 -- Reglas de precios: matriz tipo cliente x categoria (CAFE/OTROS) -> % descuento.
 -- Opcionalmente con MarcaId para override puntual por marca.
 -- Aplica sobre Pvp1 (lista 100%) del producto. Reemplaza Cafe_DescuentosCliente y MargenPctSobreCosto.

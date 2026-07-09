@@ -4847,6 +4847,36 @@ public class ApiClient
         return await GetAsync<RankingResult>("/api/stock/reportes/ranking" + qs);
     }
 
+    // ===== 2026-07-09: Valor de mi stock a costo =====
+    public record ValuacionMarcaRow(int? MarcaId, string Marca, bool Cuenta, int Productos, decimal Valor);
+    public record ValuacionExcluidoRow(int ProductoId, string? Sku, string Nombre, string? Marca, decimal Valor);
+    public record ValuacionResult(
+        decimal TotalContado, int ProductosContados, int MarcasContadas,
+        decimal TotalNoContado,
+        List<ValuacionMarcaRow> Marcas,
+        List<ValuacionMarcaRow> MarcasExcluidas,
+        decimal ValorCafe, int ProductosCafe,
+        List<ValuacionExcluidoRow> ProductosExcluidos);
+    public record ValuacionProdRow(int Id, string? Sku, string Nombre, int Stock, decimal Costo, decimal Valor, bool Excluido);
+
+    public async Task<ValuacionResult?> GetValuacionAsync()
+        => await GetAsync<ValuacionResult>("/api/stock/valuacion");
+
+    public async Task<List<ValuacionProdRow>?> GetValuacionProductosAsync(int? marcaId)
+        => await GetAsync<List<ValuacionProdRow>>("/api/stock/valuacion/productos" + (marcaId.HasValue ? $"?marcaId={marcaId.Value}" : ""));
+
+    public async Task<bool> SetMarcaValuacionAsync(int marcaId, bool cuenta)
+    {
+        var r = await PutAsync<object>($"/api/stock/valuacion/marca/{marcaId}", new { cuenta });
+        return r is not null;
+    }
+
+    public async Task<bool> SetProductoValuacionAsync(int productoId, bool excluir)
+    {
+        var r = await PutAsync<object>($"/api/stock/valuacion/producto/{productoId}", new { excluir });
+        return r is not null;
+    }
+
     // ===== 2026-06-05: Validar clave para operador protegido (OSMAR) =====
     /// <summary>Devuelve true si la clave coincide con la de eliminar ventas (la misma se usa
     /// para activar OSMAR como operador). Si la clave es invalida o no esta configurada, false.</summary>

@@ -803,7 +803,7 @@
                    2026-06-09: Stock masivo + Historial stock vuelven aca tambien (ademas de Favoritos)
                    porque el usuario penso que Favoritos era solo acceso directo y no encontraba Stock. *@
                 <NavGroup Label="📦 Stock y compras" Icon="@SvgIcons.Store" FlyoutMode="true"
-                          HasActiveChild="@(IsActive("/cafe/compras") || IsActive("/cafe/depositos") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/historial-stock") || IsActive("/stock/reposicion") || IsActive("/stock/ranking"))">
+                          HasActiveChild="@(IsActive("/cafe/compras") || IsActive("/cafe/depositos") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/historial-stock") || IsActive("/stock/reposicion") || IsActive("/stock/ranking") || IsActive("/stock/valuacion"))">
                     <NavItem Href="/cafe/stock-masivo" Label="📦 Stock" Icon="@SvgIcons.Package"
                              IsActive="@(IsActive("/cafe/stock-masivo") || IsActive("/stock"))" OnClick="@(() => NavigateTo("/cafe/stock-masivo"))" />
                     <NavItem Href="/cafe/historial-stock" Label="📊 Historial stock" Icon="@SvgIcons.Tag"
@@ -816,6 +816,9 @@
                              IsActive="@IsActive("/stock/reposicion")" OnClick="@(() => NavigateTo("/stock/reposicion"))" />
                     <NavItem Href="/stock/ranking" Label="🏆 Ranking productos" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/stock/ranking")" OnClick="@(() => NavigateTo("/stock/ranking"))" />
+                    @* 2026-07-09: valor de stock a costo (con exclusión de stock falso por marca/producto) *@
+                    <NavItem Href="/stock/valuacion" Label="💰 Valor de stock" Icon="@SvgIcons.Database"
+                             IsActive="@IsActive("/stock/valuacion")" OnClick="@(() => NavigateTo("/stock/valuacion"))" />
                     <NavItem Href="/cafe/compras" Label="🛒 Compras" Icon="@SvgIcons.Folder"
                              IsActive="@IsActive("/cafe/compras")" OnClick="@(() => NavigateTo("/cafe/compras"))" />
                     @if (HasPerm("cafe-depositos"))

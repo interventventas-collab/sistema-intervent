@@ -1,0 +1,337 @@
+@page "/stock/valuacion"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@using System.Globalization
+@using System.Text
+
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+        <div>
+            <h3 style="margin:0;">💰 Valor de mi stock (a costo)</h3>
+            <p class="text-muted" style="margin:0.3rem 0 0; font-size:0.82rem;">
+                Cuánta plata tenés en mercadería: costo × cantidad de cada producto.
+                Destildá las marcas (o productos sueltos) cuyo stock en realidad lo tiene el proveedor.
+                El café no se cuenta (se muestra aparte). Lo que destildes queda guardado.
+            </p>
+        </div>
+        <div style="display:flex; gap:0.5rem;">
+            <button class="btn btn-secondary" @onclick="CargarAsync" disabled="@cargando">🔄 Actualizar</button>
+            <button class="btn btn-primary" @onclick="ExportarExcel" disabled="@(data is null)">📄 Exportar Excel</button>
+        </div>
+    </div>
+
+    <div class="card-body">
+        @if (cargando)
+        {
+            <p class="text-muted" style="padding:1.5rem;">Calculando el valor de tu stock...</p>
+        }
+        else if (data is null)
+        {
+            <p class="text-muted" style="padding:1.5rem;">No se pudo cargar. Tocá <strong>Actualizar</strong>.</p>
+        }
+        else
+        {
+            @* ===== Total grande ===== *@
+            <div style="background:linear-gradient(135deg,#065f46,#059669); color:#fff; border-radius:12px; padding:1.4rem 1.6rem; margin-bottom:1.2rem;">
+                <div style="font-size:0.85rem; opacity:0.9; text-transform:uppercase; letter-spacing:0.5px;">Tenés en mercadería (contando lo tuyo)</div>
+                <div style="font-size:2.4rem; font-weight:800; line-height:1.1; margin:0.2rem 0;">$@Money(data.TotalContado)</div>
+                <div style="font-size:0.85rem; opacity:0.9;">
+                    @data.ProductosContados productos · @data.MarcasContadas marcas
+                    @if (data.TotalNoContado > 0)
+                    {
+                        <span> · sin contar: <strong>$@Money(data.TotalNoContado)</strong> (stock del proveedor / café)</span>
+                    }
+                </div>
+            </div>
+
+            @* ===== Marcas que SÍ cuentan ===== *@
+            <h4 style="margin:0 0 0.5rem;">✅ Marcas que suman al total</h4>
+            @if (data.Marcas.Count == 0)
+            {
+                <p class="text-muted" style="font-size:0.85rem;">Ninguna marca está sumando ahora mismo.</p>
+            }
+            else
+            {
+                <div style="overflow-x:auto;">
+                    <table class="table" style="margin:0 0 1.2rem; font-size:0.88rem;">
+                        <thead>
+                            <tr>
+                                <th style="width:70px; text-align:center;">Cuenta</th>
+                                <th>Marca</th>
+                                <th style="text-align:right;">Productos</th>
+                                <th style="text-align:right;">Valor a costo</th>
+                                <th style="width:130px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var m in data.Marcas)
+                            {
+                                <tr>
+                                    <td style="text-align:center;">
+                                        @if (m.MarcaId.HasValue)
+                                        {
+                                            <input type="checkbox" checked="@true" title="Destildar: esta marca deja de sumar"
+                                                   @onchange="@(() => ToggleMarca(m.MarcaId!.Value, false))" style="width:18px; height:18px; cursor:pointer;" />
+                                        }
+                                        else
+                                        {
+                                            <span title="Sin marca: solo se puede excluir por producto">—</span>
+                                        }
+                                    </td>
+                                    <td><strong>@m.Marca</strong></td>
+                                    <td style="text-align:right;">@m.Productos</td>
+                                    <td style="text-align:right; font-weight:700;">$@Money(m.Valor)</td>
+                                    <td style="text-align:right;">
+                                        <button class="btn-shortcut" @onclick="@(() => ToggleExpand(m.MarcaId))">
+                                            @(EsExpandida(m.MarcaId) ? "▲ Ocultar" : "▼ Productos")
+                                        </button>
+                                    </td>
+                                </tr>
+                                @if (EsExpandida(m.MarcaId))
+                                {
+                                    <tr>
+                                        <td colspan="5" style="background:#f8fafc; padding:0.6rem 1rem;">
+                                            @{ var key = m.MarcaId ?? -1; }
+                                            @if (!productosPorMarca.TryGetValue(key, out var prods) || prods is null)
+                                            {
+                                                <span class="text-muted" style="font-size:0.82rem;">Cargando productos...</span>
+                                            }
+                                            else if (prods.Count == 0)
+                                            {
+                                                <span class="text-muted" style="font-size:0.82rem;">Sin productos con stock.</span>
+                                            }
+                                            else
+                                            {
+                                                <div style="font-size:0.78rem; color:#6b7280; margin-bottom:0.3rem;">
+                                                    Destildá los productos puntuales cuyo stock lo tiene el proveedor:
+                                                </div>
+                                                <table class="table" style="margin:0; font-size:0.82rem; background:#fff;">
+                                                    <thead>
+                                                        <tr>
+                                                            <th style="width:60px; text-align:center;">Suma</th>
+                                                            <th>SKU</th>
+                                                            <th>Producto</th>
+                                                            <th style="text-align:right;">Stock</th>
+                                                            <th style="text-align:right;">Costo</th>
+                                                            <th style="text-align:right;">Valor</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach (var p in prods)
+                                                        {
+                                                            <tr style="@(p.Excluido ? "opacity:0.5;" : "")">
+                                                                <td style="text-align:center;">
+                                                                    <input type="checkbox" checked="@(!p.Excluido)"
+                                                                           @onchange="@(e => ToggleProducto(key, p.Id, !(bool)(e.Value ?? false)))"
+                                                                           style="width:16px; height:16px; cursor:pointer;" />
+                                                                </td>
+                                                                <td><code>@(p.Sku ?? "—")</code></td>
+                                                                <td>@p.Nombre</td>
+                                                                <td style="text-align:right;">@p.Stock</td>
+                                                                <td style="text-align:right;">$@Money(p.Costo)</td>
+                                                                <td style="text-align:right; @(p.Excluido ? "text-decoration:line-through;" : "font-weight:600;")">$@Money(p.Valor)</td>
+                                                            </tr>
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+
+            @* ===== NO contado ===== *@
+            @if (data.MarcasExcluidas.Count > 0 || data.ValorCafe > 0 || data.ProductosExcluidos.Count > 0)
+            {
+                <h4 style="margin:0 0 0.5rem;">🚫 No contado (stock del proveedor / café)</h4>
+                <div style="border:1px solid #fde68a; background:#fffbeb; border-radius:8px; padding:0.8rem 1rem;">
+
+                    @if (data.MarcasExcluidas.Count > 0)
+                    {
+                        <div style="font-size:0.8rem; font-weight:600; color:#92400e; margin-bottom:0.3rem;">Marcas destildadas (volvé a tildar para sumarlas)</div>
+                        <table class="table" style="margin:0 0 0.9rem; font-size:0.86rem;">
+                            <tbody>
+                                @foreach (var m in data.MarcasExcluidas)
+                                {
+                                    <tr>
+                                        <td style="width:70px; text-align:center;">
+                                            <input type="checkbox" checked="@false" title="Volver a contar esta marca"
+                                                   @onchange="@(() => ToggleMarca(m.MarcaId!.Value, true))" style="width:18px; height:18px; cursor:pointer;" />
+                                        </td>
+                                        <td>@m.Marca</td>
+                                        <td style="text-align:right;">@m.Productos productos</td>
+                                        <td style="text-align:right; color:#92400e;">$@Money(m.Valor)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+
+                    @if (data.ValorCafe > 0)
+                    {
+                        <div style="font-size:0.86rem; margin-bottom:0.6rem;">
+                            ☕ <strong>Café:</strong> @data.ProductosCafe productos · valor informativo <strong>$@Money(data.ValorCafe)</strong>
+                            <span class="text-muted"> — no se cuenta (stock del proveedor).</span>
+                        </div>
+                    }
+
+                    @if (data.ProductosExcluidos.Count > 0)
+                    {
+                        <div style="font-size:0.8rem; font-weight:600; color:#92400e; margin:0.3rem 0;">Productos sueltos destildados</div>
+                        <table class="table" style="margin:0; font-size:0.84rem;">
+                            <tbody>
+                                @foreach (var p in data.ProductosExcluidos)
+                                {
+                                    <tr>
+                                        <td style="width:70px; text-align:center;">
+                                            <input type="checkbox" checked="@false" title="Volver a contar este producto"
+                                                   @onchange="@(() => ToggleProductoDirecto(p.ProductoId, false))" style="width:16px; height:16px; cursor:pointer;" />
+                                        </td>
+                                        <td><code>@(p.Sku ?? "—")</code></td>
+                                        <td>@p.Nombre</td>
+                                        <td style="color:#6b7280;">@(p.Marca ?? "—")</td>
+                                        <td style="text-align:right; color:#92400e;">$@Money(p.Valor)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            }
+        }
+    </div>
+</div>
+
+<style>
+.btn-shortcut {
+    background:#fff; border:1px solid #d1d5db; color:#374151;
+    padding:0.25rem 0.6rem; border-radius:6px; font-size:0.76rem; cursor:pointer;
+}
+.btn-shortcut:hover { background:#f3f4f6; }
+</style>
+
+@code {
+    private ApiClient.ValuacionResult? data;
+    private bool cargando;
+    // marcaId (o -1 = sin marca) -> productos cargados (null = todavía cargando)
+    private readonly Dictionary<int, List<ApiClient.ValuacionProdRow>?> productosPorMarca = new();
+    private readonly HashSet<int> expandidas = new();
+
+    private static readonly CultureInfo Ar = CultureInfo.GetCultureInfo("es-AR");
+    private static string Money(decimal v) => v.ToString("N0", Ar);
+
+    protected override async Task OnInitializedAsync() => await CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        cargando = true;
+        try
+        {
+            data = await Api.GetValuacionAsync();
+            // recargar los expanders abiertos para reflejar cambios
+            foreach (var key in expandidas.ToList())
+                await CargarProductos(key);
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { cargando = false; }
+    }
+
+    private bool EsExpandida(int? marcaId) => expandidas.Contains(marcaId ?? -1);
+
+    private async Task ToggleExpand(int? marcaId)
+    {
+        var key = marcaId ?? -1;
+        if (expandidas.Contains(key)) { expandidas.Remove(key); return; }
+        expandidas.Add(key);
+        if (!productosPorMarca.ContainsKey(key) || productosPorMarca[key] is null)
+            await CargarProductos(key);
+    }
+
+    private async Task CargarProductos(int key)
+    {
+        productosPorMarca[key] = null;
+        StateHasChanged();
+        int? marcaId = key == -1 ? null : key;
+        productosPorMarca[key] = await Api.GetValuacionProductosAsync(marcaId) ?? new();
+    }
+
+    private async Task ToggleMarca(int marcaId, bool cuenta)
+    {
+        try
+        {
+            var ok = await Api.SetMarcaValuacionAsync(marcaId, cuenta);
+            if (ok)
+            {
+                ToastService.Success(cuenta ? "Marca vuelta a contar" : "Marca destildada (no suma)");
+                await CargarAsync();
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task ToggleProducto(int key, int productoId, bool excluir)
+    {
+        try
+        {
+            var ok = await Api.SetProductoValuacionAsync(productoId, excluir);
+            if (ok)
+            {
+                // refrescar la lista de esa marca y los totales
+                await CargarProductos(key);
+                data = await Api.GetValuacionAsync();
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task ToggleProductoDirecto(int productoId, bool excluir)
+    {
+        try
+        {
+            var ok = await Api.SetProductoValuacionAsync(productoId, excluir);
+            if (ok) await CargarAsync();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task ExportarExcel()
+    {
+        if (data is null) return;
+        var sb = new StringBuilder();
+        sb.Append('﻿'); // BOM
+        sb.AppendLine($"VALOR DE STOCK A COSTO;;{DateTime.Today:dd/MM/yyyy}");
+        sb.AppendLine();
+        sb.AppendLine($"TOTAL CONTADO;{data.TotalContado.ToString("0.##", Ar)}");
+        sb.AppendLine($"NO CONTADO (proveedor/café);{data.TotalNoContado.ToString("0.##", Ar)}");
+        sb.AppendLine();
+        sb.AppendLine("MARCAS QUE SUMAN");
+        sb.AppendLine("Marca;Productos;Valor a costo");
+        foreach (var m in data.Marcas)
+            sb.AppendLine($"{Esc(m.Marca)};{m.Productos};{m.Valor.ToString("0.##", Ar)}");
+        if (data.MarcasExcluidas.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("MARCAS NO CONTADAS (stock del proveedor)");
+            sb.AppendLine("Marca;Productos;Valor a costo");
+            foreach (var m in data.MarcasExcluidas)
+                sb.AppendLine($"{Esc(m.Marca)};{m.Productos};{m.Valor.ToString("0.##", Ar)}");
+        }
+        if (data.ValorCafe > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"CAFE (no contado);{data.ProductosCafe};{data.ValorCafe.ToString("0.##", Ar)}");
+        }
+        var bytes = Encoding.UTF8.GetBytes(sb.ToString());
+        var fileName = $"Valor-Stock-{DateTime.Today:yyyy-MM-dd}.csv";
+        await JS.InvokeVoidAsync("downloadFile", fileName, "text/csv", Convert.ToBase64String(bytes));
+        ToastService.Success($"Archivo {fileName} descargado");
+    }
+
+    private static string Esc(string? s) => string.IsNullOrEmpty(s) ? "" : s.Replace(";", ",").Replace("\n", " ").Replace("\r", " ");
+}
