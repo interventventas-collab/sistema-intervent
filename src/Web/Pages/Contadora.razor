@@ -42,6 +42,17 @@
     <div class="co-card">
         <h1 class="co-title">🧾 Contadora</h1>
         <p class="co-sub">Cuadros de ventas para tu contadora (MercadoLibre + facturas del sistema). Todo se puede filtrar y descargar en Excel.</p>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:.7rem .9rem;margin:.4rem 0 .9rem;">
+            <span style="font-weight:600;color:#3730a3;"><i class="oi" aria-hidden="true"></i>🏢 Empresa:</span>
+            <select style="min-width:340px;font-size:14px;padding:6px 8px;border:1px solid #a5b4fc;border-radius:8px;" @bind="empresaSel" @bind:after="OnEmpresaChange">
+                @foreach (var e in empresasGlobal)
+                {
+                    <option value="@e.Cuit">@e.Nombre</option>
+                }
+                <option value="">— Todas (consolidado) —</option>
+            </select>
+            <span class="co-hint">Todo el módulo (ventas, compras, balanza, control) se muestra para esta empresa.</span>
+        </div>
         <div class="co-tabs">
             <div class="co-tab @(tab == "jur" ? "act" : "")" @onclick="@(() => SetTab("jur"))">🗺 Por jurisdicción (IIBB)</div>
             <div class="co-tab @(tab == "rep" ? "act" : "")" @onclick="@(() => SetTab("rep"))">📒 Libro IVA Ventas</div>
@@ -201,16 +212,6 @@
                         <option value="AFIP_EMITIDOS">AFIP (oficial)</option>
                         <option value="MELI_REPORTE">MercadoLibre</option>
                         <option value="SISTEMA">Sistema</option>
-                    </select>
-                </div>
-                <div>
-                    <label>Empresa</label>
-                    <select @bind="rEmpresa">
-                        <option value="">Todas</option>
-                        @foreach (var e in repEmpresas)
-                        {
-                            <option value="@e.Cuit">@e.Nombre</option>
-                        }
                     </select>
                 </div>
                 <div><label>Pto venta</label><input type="number" style="width:90px;" @bind="rPtoVenta" /></div>
@@ -659,7 +660,32 @@
     private bool cargando, descargando;
     private bool robotLanzado;
 
-    protected override async Task OnInitializedAsync() => await CargarJur();
+    // Empresa seleccionada (global, manda en todo el módulo). Arranca en PALANICA.
+    private const string CuitPalanica = "30717212149";
+    private string empresaSel = CuitPalanica;
+    private List<ContadoraEmpresaDto> empresasGlobal = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        empresasGlobal = await Api.GetContadoraReporteEmpresasAsync() ?? new();
+        // Si PALANICA no está en la lista (sin datos aún), caigo a la primera o a "Todas".
+        if (!empresasGlobal.Any(e => e.Cuit == empresaSel))
+            empresaSel = empresasGlobal.FirstOrDefault()?.Cuit ?? "";
+        await CargarJur();
+    }
+
+    // Al cambiar de empresa, recargo la solapa activa con el nuevo filtro.
+    private async Task OnEmpresaChange()
+    {
+        switch (tab)
+        {
+            case "rep": await CargarRep(); break;
+            case "comp": await CargarCompras(); break;
+            case "bal": await CargarBalanza(); break;
+            case "ctrl": await CargarControl(); break;
+            default: await CargarJur(); break;
+        }
+    }
 
     private async Task SetTab(string t)
     {
@@ -741,7 +767,7 @@
     {
         repEmpresas = await Api.GetContadoraReporteEmpresasAsync() ?? new();
         repProvincias = await Api.GetContadoraReporteProvinciasAsync() ?? new();
-        repCargas = await Api.GetContadoraReporteCargasAsync(rEmpresa, rOrigen) ?? new();
+        repCargas = await Api.GetContadoraReporteCargasAsync(empresaSel, rOrigen) ?? new();
         await CargarRep();
     }
 
@@ -751,8 +777,8 @@
         cargandoRep = true;
         try
         {
-            rep = await Api.GetContadoraReporteResumenAsync(rDesde, rHasta, rEmpresa, rPtoVenta, rLetra, rProvincia, rSearch, rOrigen);
-            repCargas = await Api.GetContadoraReporteCargasAsync(rEmpresa, rOrigen) ?? new();
+            rep = await Api.GetContadoraReporteResumenAsync(rDesde, rHasta, empresaSel, rPtoVenta, rLetra, rProvincia, rSearch, rOrigen);
+            repCargas = await Api.GetContadoraReporteCargasAsync(empresaSel, rOrigen) ?? new();
             if (verDetalleRep) { repPage = 1; await CargarComps(); }
         }
         catch (Exception ex) { ToastService.Error("No se pudo cargar: " + ex.Message); }
@@ -815,7 +841,7 @@
 
     private async Task CargarComps()
     {
-        try { repComps = await Api.GetContadoraReporteComprobantesAsync(rDesde, rHasta, rEmpresa, rPtoVenta, rLetra, rProvincia, rSearch, repPage, 50, rOrigen); }
+        try { repComps = await Api.GetContadoraReporteComprobantesAsync(rDesde, rHasta, empresaSel, rPtoVenta, rLetra, rProvincia, rSearch, repPage, 50, rOrigen); }
         catch (Exception ex) { ToastService.Error("No se pudo cargar el detalle: " + ex.Message); }
     }
 
@@ -906,7 +932,7 @@
         var qs = new List<string>();
         if (rDesde.HasValue) qs.Add($"desde={rDesde.Value:yyyy-MM-dd}");
         if (rHasta.HasValue) qs.Add($"hasta={rHasta.Value:yyyy-MM-dd}");
-        if (!string.IsNullOrWhiteSpace(rEmpresa)) qs.Add($"empresa={Uri.EscapeDataString(rEmpresa)}");
+        if (!string.IsNullOrWhiteSpace(empresaSel)) qs.Add($"empresa={Uri.EscapeDataString(empresaSel)}");
         if (rPtoVenta.HasValue) qs.Add($"puntoVenta={rPtoVenta.Value}");
         if (!string.IsNullOrWhiteSpace(rLetra)) qs.Add($"letra={rLetra}");
         if (!string.IsNullOrWhiteSpace(rProvincia)) qs.Add($"provincia={Uri.EscapeDataString(rProvincia)}");
@@ -921,7 +947,7 @@
     {
         if (cargandoBal) return;
         cargandoBal = true;
-        try { bal = await Api.GetContadoraBalanzaAsync(bDesde, bHasta, null); }
+        try { bal = await Api.GetContadoraBalanzaAsync(bDesde, bHasta, empresaSel); }
         catch (Exception ex) { ToastService.Error("No se pudo cargar la balanza: " + ex.Message); }
         finally { cargandoBal = false; }
     }
@@ -936,7 +962,7 @@
     {
         if (cargandoCtrl) return;
         cargandoCtrl = true;
-        try { ctrl = await Api.GetContadoraControlAsync(cDesde, cHasta); }
+        try { ctrl = await Api.GetContadoraControlAsync(cDesde, cHasta, empresaSel); }
         catch (Exception ex) { ToastService.Error("No se pudo cargar el control: " + ex.Message); }
         finally { cargandoCtrl = false; }
     }
@@ -954,7 +980,7 @@
         cargandoComp = true;
         try
         {
-            comp = await Api.GetContadoraComprasResumenAsync(kDesde, kHasta, null, kSearch);
+            comp = await Api.GetContadoraComprasResumenAsync(kDesde, kHasta, empresaSel, kSearch);
             if (verDetalleComp) { compPage = 1; await CargarCompComps(); }
         }
         catch (Exception ex) { ToastService.Error("No se pudo cargar: " + ex.Message); }
@@ -982,7 +1008,7 @@
 
     private async Task CargarCompComps()
     {
-        try { compComps = await Api.GetContadoraComprasComprobantesAsync(kDesde, kHasta, null, kSearch, compPage, 50); }
+        try { compComps = await Api.GetContadoraComprasComprobantesAsync(kDesde, kHasta, empresaSel, kSearch, compPage, 50); }
         catch (Exception ex) { ToastService.Error("No se pudo cargar el detalle: " + ex.Message); }
     }
 
@@ -998,6 +1024,7 @@
         var qs = new List<string>();
         if (kDesde.HasValue) qs.Add($"desde={kDesde.Value:yyyy-MM-dd}");
         if (kHasta.HasValue) qs.Add($"hasta={kHasta.Value:yyyy-MM-dd}");
+        if (!string.IsNullOrWhiteSpace(empresaSel)) qs.Add($"empresa={Uri.EscapeDataString(empresaSel)}");
         if (!string.IsNullOrWhiteSpace(kSearch)) qs.Add($"search={Uri.EscapeDataString(kSearch)}");
         var url = "api/contadora/compras/excel" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
         await Descargar(url, $"libro-iva-compras-{DateTime.Now:yyyy-MM-dd}.xlsx");

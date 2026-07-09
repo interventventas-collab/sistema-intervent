@@ -1316,7 +1316,7 @@ public class ContadoraService
 
     /// <summary>Concilia las ventas de AFIP (oficial) contra las de MeLi/sistema, cruzando por punto de venta +
     /// letra + numero. Devuelve cuantas coinciden, cuantas estan en una sola fuente, y cuales difieren en el monto.</summary>
-    public async Task<ContadoraControlDto> GetControlAsync(DateTime? desde, DateTime? hasta)
+    public async Task<ContadoraControlDto> GetControlAsync(DateTime? desde, DateTime? hasta, string? empresa = null)
     {
         var dto = new ContadoraControlDto();
         // CUITs de los que TENEMOS AFIP (hoy solo PALANICA). El control solo puede comparar esos; las ventas de
@@ -1325,9 +1325,18 @@ public class ContadoraService
         var cuitsAfip = await _db.ContadoraComprobantes
             .Where(c => c.Origen == "AFIP_EMITIDOS" && c.EmisorCuit != null)
             .Select(c => c.EmisorCuit!).Distinct().ToListAsync();
-        dto.SinAfip = cuitsAfip.Count == 0;
 
-        var q = _db.ContadoraComprobantes.Where(c => c.Naturaleza == "VENTA" && c.EmisorCuit != null && cuitsAfip.Contains(c.EmisorCuit));
+        var q = _db.ContadoraComprobantes.Where(c => c.Naturaleza == "VENTA" && c.EmisorCuit != null);
+        if (!string.IsNullOrWhiteSpace(empresa))
+        {
+            dto.SinAfip = !cuitsAfip.Contains(empresa); // esta empresa no tiene AFIP cargado → no se puede controlar
+            q = q.Where(c => c.EmisorCuit == empresa);
+        }
+        else
+        {
+            dto.SinAfip = cuitsAfip.Count == 0;
+            q = q.Where(c => cuitsAfip.Contains(c.EmisorCuit!));
+        }
         if (desde.HasValue) q = q.Where(c => c.FechaEmision >= desde.Value);
         if (hasta.HasValue) { var h = hasta.Value.Date.AddDays(1); q = q.Where(c => c.FechaEmision < h); }
 
@@ -1452,18 +1461,26 @@ public class ContadoraService
         return salida;
     }
 
-    /// <summary>Empresas (CUIT) que aparecen en los comprobantes importados, con su razon social si la conocemos.</summary>
+    /// <summary>Empresas (CUIT) que aparecen en los comprobantes (ventas y compras), con su razon social.
+    /// El nombre sale de ArcaEmisores.RazonSocial y, si no está, del alias de la cuenta ARCA (ArcaAccounts).</summary>
     public async Task<List<ContadoraEmpresaDto>> GetReporteEmpresasAsync()
     {
-        var cuits = await _db.ContadoraComprobantes.Where(c => c.Naturaleza == "VENTA" && c.EmisorCuit != null)
+        var cuits = await _db.ContadoraComprobantes.Where(c => c.EmisorCuit != null)
             .Select(c => c.EmisorCuit!).Distinct().ToListAsync();
         var razon = await _db.ArcaEmisores.Where(e => cuits.Contains(e.Cuit))
             .ToDictionaryAsync(e => e.Cuit, e => e.RazonSocial);
+        // Alias de las cuentas ARCA (para los CUITs que no están en ArcaEmisores, ej. monotributo de los hermanos).
+        var accs = await _db.ArcaAccounts.Select(a => new { a.Cuit, a.Alias }).ToListAsync();
+        var alias = new Dictionary<string, string?>();
+        foreach (var a in accs) { var d = SoloDigitos(a.Cuit); if (d != null && !alias.ContainsKey(d)) alias[d] = a.Alias; }
+
         return cuits
             .Select(c => new ContadoraEmpresaDto
             {
                 Cuit = c,
-                Nombre = razon.TryGetValue(c, out var rs) && !string.IsNullOrWhiteSpace(rs) ? $"{rs} ({c})" : c
+                Nombre = razon.TryGetValue(c, out var rs) && !string.IsNullOrWhiteSpace(rs) ? $"{rs} ({c})"
+                       : alias.TryGetValue(c, out var al) && !string.IsNullOrWhiteSpace(al) ? $"{al} ({c})"
+                       : c
             })
             .OrderBy(e => e.Nombre).ToList();
     }

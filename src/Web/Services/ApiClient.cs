@@ -5668,11 +5668,12 @@ public class ApiClient
         return await GetAsync<ContadoraBalanzaDto>("/api/contadora/balanza" + (qs.Count > 0 ? "?" + string.Join("&", qs) : ""));
     }
 
-    public async Task<ContadoraControlDto?> GetContadoraControlAsync(DateTime? desde, DateTime? hasta)
+    public async Task<ContadoraControlDto?> GetContadoraControlAsync(DateTime? desde, DateTime? hasta, string? empresa = null)
     {
         var qs = new List<string>();
         if (desde.HasValue) qs.Add($"desde={desde.Value:yyyy-MM-dd}");
         if (hasta.HasValue) qs.Add($"hasta={hasta.Value:yyyy-MM-dd}");
+        if (!string.IsNullOrWhiteSpace(empresa)) qs.Add($"empresa={Uri.EscapeDataString(empresa)}");
         return await GetAsync<ContadoraControlDto>("/api/contadora/control" + (qs.Count > 0 ? "?" + string.Join("&", qs) : ""));
     }
 }
