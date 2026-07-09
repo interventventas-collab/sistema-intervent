@@ -231,4 +231,27 @@ public class ContadoraController : ControllerBase
         if (bytes is null) return NotFound();
         return File(bytes, "application/pdf", nombre ?? "factura.pdf");
     }
+
+    /// <summary>Retenciones/percepciones de IVA cargadas por mes para una empresa.</summary>
+    [HttpGet("retenciones")]
+    public async Task<ActionResult<List<ContadoraRetencionDto>>> Retenciones([FromQuery] string empresa)
+        => Ok(await _svc.GetRetencionesAsync(empresa));
+
+    /// <summary>Carga/actualiza el total de retenciones de IVA de un mes.</summary>
+    [HttpPost("retenciones")]
+    public async Task<IActionResult> GuardarRetencion([FromBody] GuardarRetencionRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Empresa)) return BadRequest(new { error = "Falta la empresa." });
+        await _svc.GuardarRetencionAsync(req.Empresa, req.Anio, req.Mes, req.Monto, req.Nota);
+        return Ok(new { ok = true });
+    }
+}
+
+public class GuardarRetencionRequest
+{
+    public string Empresa { get; set; } = "";
+    public int Anio { get; set; }
+    public int Mes { get; set; }
+    public decimal Monto { get; set; }
+    public string? Nota { get; set; }
 }

@@ -370,8 +370,19 @@
             else if (bal is null || bal.Filas.Count == 0) { <p class="co-hint">Todavía no hay datos para la balanza. Importá ventas (MeLi/Sistema) y compras (AFIP) para verla.</p> }
             else
             {
+                <div style="display:flex;gap:.8rem;flex-wrap:wrap;margin-bottom:.9rem;">
+                    <div style="flex:1;min-width:160px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:.8rem 1rem;">
+                        <div class="co-hint">IVA a pagar en el período</div>
+                        <div style="font-size:1.3rem;font-weight:700;color:#b91c1c;">@Money(bal.APagarTotal)</div>
+                    </div>
+                    <div style="flex:1;min-width:160px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:.8rem 1rem;">
+                        <div class="co-hint">Saldo a favor disponible (al final)</div>
+                        <div style="font-size:1.3rem;font-weight:700;color:#15803d;">@Money(bal.SaldoFavorActual)</div>
+                    </div>
+                </div>
+                <div style="overflow-x:auto;">
                 <table class="co-tabla">
-                    <thead><tr><th>Mes</th><th class="num">IVA Ventas (débito)</th><th class="num">IVA Compras (crédito)</th><th class="num">Saldo</th><th>Resultado</th></tr></thead>
+                    <thead><tr><th>Mes</th><th class="num">IVA Ventas (débito)</th><th class="num">IVA Compras (crédito)</th><th class="num">Saldo técnico</th><th class="num">Retenciones</th><th class="num">A favor anterior</th><th class="num">A PAGAR / a favor</th></tr></thead>
                     <tbody>
                         @foreach (var f in bal.Filas)
                         {
@@ -379,22 +390,27 @@
                                 <td>@MesLabel(f.Anio, f.Mes)</td>
                                 <td class="num">@Money(f.IvaVentas)</td>
                                 <td class="num">@Money(f.IvaCompras)</td>
-                                <td class="num" style="@(f.Saldo >= 0 ? "color:#b91c1c;font-weight:600;" : "color:#15803d;font-weight:600;")">@Money(f.Saldo)</td>
-                                <td>@(f.Saldo >= 0 ? "A pagar" : "A favor")</td>
+                                <td class="num">@Money(f.Saldo)</td>
+                                <td class="num"><input type="number" step="0.01" value="@f.Retenciones" @onchange="@(e => GuardarRetencion(f, e.Value?.ToString()))" style="width:120px;text-align:right;padding:2px 4px;border:1px solid #d1d5db;border-radius:6px;" /></td>
+                                <td class="num" style="color:#15803d;">@(f.SaldoFavorAnterior > 0 ? Money(f.SaldoFavorAnterior) : "—")</td>
+                                <td class="num" style="font-weight:700;color:@(f.Posicion > 0 ? "#b91c1c" : "#15803d");">@Money(f.Posicion < 0 ? -f.Posicion : f.Posicion) @(f.Posicion > 0 ? "a pagar" : "a favor")</td>
                             </tr>
                         }
                         <tr class="tot">
                             <td>TOTALES</td>
                             <td class="num">@Money(bal.IvaVentasTotal)</td>
                             <td class="num">@Money(bal.IvaComprasTotal)</td>
-                            <td class="num" style="@(bal.SaldoTotal >= 0 ? "color:#b91c1c;" : "color:#15803d;")">@Money(bal.SaldoTotal)</td>
-                            <td>@(bal.SaldoTotal >= 0 ? "A pagar" : "A favor")</td>
+                            <td class="num">@Money(bal.SaldoTotal)</td>
+                            <td class="num">@Money(bal.RetencionesTotal)</td>
+                            <td></td>
+                            <td class="num" style="color:#b91c1c;">@Money(bal.APagarTotal) a pagar</td>
                         </tr>
                     </tbody>
                 </table>
+                </div>
                 <p class="co-hint" style="margin-top:.5rem;">
-                    El IVA de ventas sale del Libro IVA Ventas (MeLi + Sistema). El IVA de compras sale de los “Comprobantes recibidos” de AFIP.
-                    Las notas de crédito ya están restadas en cada lado.
+                    Es el mismo cálculo que el <b>F2051 de AFIP</b>: <b>Saldo técnico</b> (IVA ventas − IVA compras) <b>−</b> las <b>retenciones/percepciones</b> que te hacen (MercadoPago, bancos…) <b>−</b> el <b>saldo a favor</b> que venías arrastrando <b>=</b> lo que pagás o te queda a favor.
+                    Podés escribir las retenciones de cada mes en la columna (después las bajamos solas de AFIP). El arrastre arranca de cero al inicio del período que estés mirando.
                 </p>
             }
         </div>
@@ -978,6 +994,19 @@
     {
         bDesde = null; bHasta = null;
         await CargarBalanza();
+    }
+
+    private async Task GuardarRetencion(ContadoraBalanzaMesDto f, string? valor)
+    {
+        if (string.IsNullOrWhiteSpace(empresaSel)) { ToastService.Error("Elegí una empresa (arriba) para cargar retenciones."); return; }
+        if (!decimal.TryParse(valor, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var monto)) monto = 0m;
+        try
+        {
+            await Api.GuardarRetencionAsync(empresaSel, f.Anio, f.Mes, monto, null);
+            await CargarBalanza();   // recalcula posición + arrastre
+            ToastService.Success("Retenciones actualizadas.");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo guardar: " + ex.Message); }
     }
 
     private async Task CargarControl()

@@ -154,6 +154,14 @@ public class ContadoraCargaDto
     public decimal TotalNeto { get; set; }
 }
 
+public class ContadoraRetencionDto
+{
+    public int Anio { get; set; }
+    public int Mes { get; set; }
+    public decimal Monto { get; set; }
+    public string? Nota { get; set; }
+}
+
 public class ContadoraPdfResultDto
 {
     public bool Ok { get; set; } = true;
@@ -202,7 +210,11 @@ public class ContadoraBalanzaMesDto
     public int Mes { get; set; }
     public decimal IvaVentas { get; set; }   // IVA débito
     public decimal IvaCompras { get; set; }  // IVA crédito
-    public decimal Saldo { get; set; }        // ventas - compras (>0 a pagar, <0 a favor)
+    public decimal Saldo { get; set; }        // saldo técnico = ventas - compras (>0 a favor de ARCA)
+    // Posición real (como el F2051): saldo técnico - retenciones - saldo a favor arrastrado.
+    public decimal Retenciones { get; set; }          // retenciones/percepciones de IVA sufridas
+    public decimal SaldoFavorAnterior { get; set; }   // saldo a favor de meses anteriores aplicado
+    public decimal Posicion { get; set; }             // >0 = A PAGAR, <0 = a favor
 }
 
 public class ContadoraBalanzaDto
@@ -211,6 +223,9 @@ public class ContadoraBalanzaDto
     public decimal IvaVentasTotal { get; set; }
     public decimal IvaComprasTotal { get; set; }
     public decimal SaldoTotal { get; set; }
+    public decimal RetencionesTotal { get; set; }
+    public decimal APagarTotal { get; set; }      // suma de los meses que dieron a pagar
+    public decimal SaldoFavorActual { get; set; } // saldo a favor arrastrado al final (disponible)
 }
 
 // ───────── Control / doble-check (AFIP vs MeLi/sistema) ─────────

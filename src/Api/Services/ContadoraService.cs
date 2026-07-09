@@ -1362,12 +1362,12 @@ public class ContadoraService
     /// <summary>Balanza de IVA por mes: IVA de ventas (debito) - IVA de compras (credito) = saldo.</summary>
     public async Task<ContadoraBalanzaDto> GetBalanzaAsync(DateTime? desde, DateTime? hasta, string? empresaCuit)
     {
-        var q = _db.ContadoraComprobantes.AsQueryable();
-        if (desde.HasValue) q = q.Where(c => c.FechaEmision >= desde.Value);
-        if (hasta.HasValue) { var h = hasta.Value.Date.AddDays(1); q = q.Where(c => c.FechaEmision < h); }
+        // OJO: el arrastre de saldo a favor necesita TODA la historia, así que el débito/crédito lo calculo sobre
+        // todos los meses (el filtro de fechas se aplica solo para MOSTRAR, más abajo).
+        var q = _db.ContadoraComprobantes.Where(c => c.FechaEmision != null);
         if (!string.IsNullOrWhiteSpace(empresaCuit)) q = q.Where(c => c.EmisorCuit == empresaCuit);
 
-        var datos = await q.Where(c => c.FechaEmision != null)
+        var datos = await q
             .Select(c => new { c.Naturaleza, c.Origen, c.PuntoVenta, c.Letra, c.TipoComprobante, c.NumeroComprobante, c.FechaEmision, c.EsNotaCredito, c.Iva21, c.Iva105 })
             .ToListAsync();
 
@@ -1376,7 +1376,14 @@ public class ContadoraService
             x => x.Origen, x => x.PuntoVenta, x => x.Letra, x => x.TipoComprobante, x => x.EsNotaCredito, x => x.NumeroComprobante);
         datos = ventas.Concat(datos.Where(x => x.Naturaleza != "VENTA")).ToList();
 
-        var filas = datos
+        // Retenciones/percepciones por mes (solo si hay una empresa elegida; en "Todas" no se puede atribuir).
+        var rets = new Dictionary<(int, int), decimal>();
+        if (!string.IsNullOrWhiteSpace(empresaCuit))
+            rets = (await _db.ContadoraRetenciones.Where(r => r.EmpresaCuit == empresaCuit).ToListAsync())
+                .ToDictionary(r => (r.Anio, r.Mes), r => r.Monto);
+
+        // Un renglón por mes, en orden CRONOLÓGICO (para el arrastre).
+        var porMes = datos
             .GroupBy(x => new { x.FechaEmision!.Value.Year, x.FechaEmision!.Value.Month })
             .Select(g =>
             {
@@ -1385,19 +1392,75 @@ public class ContadoraService
                 return new ContadoraBalanzaMesDto
                 {
                     Anio = g.Key.Year, Mes = g.Key.Month,
-                    IvaVentas = ivaV, IvaCompras = ivaC, Saldo = ivaV - ivaC
+                    IvaVentas = ivaV, IvaCompras = ivaC, Saldo = ivaV - ivaC,
+                    Retenciones = rets.TryGetValue((g.Key.Year, g.Key.Month), out var rt) ? rt : 0m
                 };
             })
-            .OrderByDescending(f => f.Anio).ThenByDescending(f => f.Mes)
+            .OrderBy(f => f.Anio).ThenBy(f => f.Mes)
             .ToList();
+
+        // Filtro de fechas: el arrastre corre SOLO sobre los meses que se muestran (arranca de cero al inicio del
+        // período elegido). Así no se distorsiona por datos viejos incompletos; si venías con saldo a favor de antes,
+        // conviene empezar la vista en un mes donde AFIP diga "saldo a favor anterior = 0".
+        bool EnRango(ContadoraBalanzaMesDto f)
+        {
+            var ini = new DateTime(f.Anio, f.Mes, 1);
+            var fin = ini.AddMonths(1).AddDays(-1);
+            if (desde.HasValue && fin < desde.Value.Date) return false;
+            if (hasta.HasValue && ini > hasta.Value.Date) return false;
+            return true;
+        }
+        porMes = porMes.Where(EnRango).ToList();
+
+        // Arrastre igual que el F2051: saldo técnico a favor del contribuyente + saldo a favor de libre disponibilidad.
+        decimal tecnicoFavorPrev = 0m, libreDispPrev = 0m;
+        foreach (var m in porMes)
+        {
+            var saldoTecnico = m.Saldo - tecnicoFavorPrev; // >0 a favor de ARCA
+            m.SaldoFavorAnterior = libreDispPrev;
+            if (saldoTecnico >= 0)
+            {
+                var posicion = saldoTecnico - libreDispPrev - m.Retenciones;
+                m.Posicion = posicion;                       // >0 A PAGAR, <0 a favor
+                tecnicoFavorPrev = 0m;
+                libreDispPrev = posicion < 0 ? -posicion : 0m;
+            }
+            else
+            {
+                // crédito mayor que débito: el excedente técnico se arrastra; no paga; suma a favor.
+                tecnicoFavorPrev = -saldoTecnico;
+                libreDispPrev += m.Retenciones;
+                m.Posicion = -(m.SaldoFavorAnterior + m.Retenciones);
+            }
+        }
+
+        var filas = porMes.OrderByDescending(f => f.Anio).ThenByDescending(f => f.Mes).ToList();
 
         return new ContadoraBalanzaDto
         {
             Filas = filas,
             IvaVentasTotal = filas.Sum(f => f.IvaVentas),
             IvaComprasTotal = filas.Sum(f => f.IvaCompras),
-            SaldoTotal = filas.Sum(f => f.Saldo)
+            SaldoTotal = filas.Sum(f => f.Saldo),
+            RetencionesTotal = filas.Sum(f => f.Retenciones),
+            APagarTotal = filas.Where(f => f.Posicion > 0).Sum(f => f.Posicion),
+            SaldoFavorActual = libreDispPrev
         };
+    }
+
+    /// <summary>Retenciones/percepciones de IVA cargadas por mes para una empresa.</summary>
+    public async Task<List<ContadoraRetencionDto>> GetRetencionesAsync(string empresaCuit)
+        => (await _db.ContadoraRetenciones.Where(r => r.EmpresaCuit == empresaCuit)
+                .OrderByDescending(r => r.Anio).ThenByDescending(r => r.Mes).ToListAsync())
+            .Select(r => new ContadoraRetencionDto { Anio = r.Anio, Mes = r.Mes, Monto = r.Monto, Nota = r.Nota }).ToList();
+
+    /// <summary>Carga/actualiza el total de retenciones de IVA de un mes (upsert por empresa+año+mes).</summary>
+    public async Task GuardarRetencionAsync(string empresaCuit, int anio, int mes, decimal monto, string? nota)
+    {
+        var r = await _db.ContadoraRetenciones.FirstOrDefaultAsync(x => x.EmpresaCuit == empresaCuit && x.Anio == anio && x.Mes == mes);
+        if (r is null) { r = new ContadoraRetencion { EmpresaCuit = empresaCuit, Anio = anio, Mes = mes }; _db.ContadoraRetenciones.Add(r); }
+        r.Monto = monto; r.Nota = nota; r.ActualizadoEn = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
     }
 
     // ═══════════════════ CONTROL / doble-check (AFIP vs MeLi/sistema) ═══════════════════
