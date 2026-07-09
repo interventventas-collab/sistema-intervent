@@ -212,4 +212,9 @@ public class ContadoraController : ControllerBase
     [HttpPost("sincronizar-meli-api")]
     public async Task<ActionResult<ContadoraImportResultDto>> SincronizarMeliApi()
         => Ok(await _svc.SincronizarMeliApiAsync());
+
+    /// <summary>Importa el CSV que el scraper de AFIP bajó en la última corrida (compras + ventas).</summary>
+    [HttpPost("importar-scrape-afip")]
+    public async Task<ActionResult<ContadoraImportResultDto>> ImportarScrapeAfip()
+        => Ok(await _svc.ImportarUltimoScrapeAfipAsync());
 }

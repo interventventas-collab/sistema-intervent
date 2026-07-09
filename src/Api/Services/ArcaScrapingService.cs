@@ -129,6 +129,9 @@ public class ArcaTestResultDto
     // ----- action = "comprobantes" -----
     public List<ArcaComprobanteDto>? Emitidos { get; set; }
     public List<ArcaComprobanteDto>? Recibidos { get; set; }
+    /// <summary>CSV crudo (base64) de AFIP, para importarlo con el importador completo del Libro IVA.</summary>
+    public string? EmitidosCsv { get; set; }
+    public string? RecibidosCsv { get; set; }
     public string? RangoDesde { get; set; }
     public string? RangoHasta { get; set; }
 }
