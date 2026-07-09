@@ -54,21 +54,42 @@ public class ContadoraService
 
         if (!string.IsNullOrEmpty(r.RecibidosCsv))
         {
-            using var ms = new MemoryStream(Convert.FromBase64String(r.RecibidosCsv));
-            var comp = await ImportarComprasArchivosAsync(new[] { ("recibidos_afip.csv", (Stream)ms) });
+            var (bytes, nombre) = CsvDeAfip(r.RecibidosCsv, "recibidos_afip.csv");
+            using var ms = new MemoryStream(bytes);
+            var comp = await ImportarComprasArchivosAsync(new[] { (nombre, (Stream)ms) });
             partes.Add($"Compras: {comp.Facturas} fac + {comp.NotasCredito} NC ({comp.Nuevos} nuevas)");
             res.Archivos.AddRange(comp.Archivos);
         }
         if (!string.IsNullOrEmpty(r.EmitidosCsv))
         {
-            using var ms = new MemoryStream(Convert.FromBase64String(r.EmitidosCsv));
-            var vent = await ImportarVentasAfipArchivosAsync(new[] { ("emitidos_afip.csv", (Stream)ms) });
+            var (bytes, nombre) = CsvDeAfip(r.EmitidosCsv, "emitidos_afip.csv");
+            using var ms = new MemoryStream(bytes);
+            var vent = await ImportarVentasAfipArchivosAsync(new[] { (nombre, (Stream)ms) });
             partes.Add($"Ventas: {vent.Facturas} fac + {vent.NotasCredito} NC ({vent.Nuevos} nuevas)");
             res.Archivos.AddRange(vent.Archivos);
         }
         res.Mensaje = "Importado de AFIP → " + string.Join(" · ", partes);
         _logger.LogInformation("[Contadora] Import scrape AFIP: {Msg}", res.Mensaje);
         return res;
+    }
+
+    /// <summary>AFIP entrega el "CSV" dentro de un ZIP. Decodifica el base64 y, si es un ZIP (empieza con "PK"),
+    /// saca el archivo de adentro (csv o xlsx). Devuelve los bytes reales + el nombre con la extensión correcta.</summary>
+    private static (byte[] bytes, string nombre) CsvDeAfip(string base64, string nombreDefault)
+    {
+        var raw = Convert.FromBase64String(base64);
+        if (raw.Length < 4 || raw[0] != 'P' || raw[1] != 'K') return (raw, nombreDefault);
+        using var zip = new System.IO.Compression.ZipArchive(new MemoryStream(raw), System.IO.Compression.ZipArchiveMode.Read);
+        var entry = zip.Entries.FirstOrDefault(e => e.Name.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+                 ?? zip.Entries.FirstOrDefault(e => e.Name.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                 ?? zip.Entries.FirstOrDefault();
+        if (entry is null) return (raw, nombreDefault);
+        using var es = entry.Open();
+        using var outMs = new MemoryStream();
+        es.CopyTo(outMs);
+        var ext = Path.GetExtension(entry.Name);
+        var nombre = string.IsNullOrEmpty(ext) ? nombreDefault : Path.ChangeExtension(nombreDefault, ext.TrimStart('.'));
+        return (outMs.ToArray(), nombre);
     }
 
     /// <summary>Normaliza el nombre de la provincia como lo espera la contadora.</summary>
