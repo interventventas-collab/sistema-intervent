@@ -525,6 +525,33 @@
                     </button>
                 </div>
             </div>
+
+            <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:.9rem 1rem;margin-top:.7rem;">
+                <div style="cursor:pointer;" @onclick="() => mostrarCorreo = !mostrarCorreo">
+                    <b>📧 Facturas por correo (automático)</b>
+                    <span class="co-hint" style="margin-left:.4rem;">
+                        @if (correo is not null && correo.Activo && correo.TienePassword) { <span style="color:#16a34a;">● Activo</span> } else { <span style="color:#9ca3af;">● Sin configurar</span> }
+                        @(mostrarCorreo ? " ▲" : " ▼")
+                    </span>
+                    <div class="co-hint" style="margin-top:.2rem;">Reenviá (o hacé que lleguen solas) las facturas de proveedores a una casilla y el robot las baja y las pega solas, igual que el QR de la carpeta.</div>
+                </div>
+                @if (mostrarCorreo)
+                {
+                    <div style="margin-top:.7rem;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.6rem;">
+                        <div><label class="co-hint">Servidor (IMAP)</label><input type="text" style="width:100%;" @bind="correoHost" placeholder="imap.gmail.com" /></div>
+                        <div><label class="co-hint">Puerto</label><input type="number" style="width:100%;" @bind="correoPort" /></div>
+                        <div><label class="co-hint">Casilla (correo)</label><input type="text" style="width:100%;" @bind="correoUsuario" placeholder="intervent.facturacion@gmail.com" /></div>
+                        <div><label class="co-hint">Clave de aplicación @(correo?.TienePassword == true ? "(ya guardada — dejá en blanco para no cambiarla)" : "")</label><input type="password" style="width:100%;" @bind="correoPassword" placeholder="16 letras" autocomplete="new-password" /></div>
+                        <div><label class="co-hint">Etiqueta/Carpeta (opcional)</label><input type="text" style="width:100%;" @bind="correoCarpeta" placeholder="dejá en blanco = bandeja de entrada" /></div>
+                        <div style="display:flex;align-items:flex-end;"><label style="display:flex;align-items:center;gap:.4rem;"><input type="checkbox" @bind="correoActivo" /> Robot activo</label></div>
+                    </div>
+                    <div style="margin-top:.6rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">
+                        <button class="co-btn co-btn-primary" @onclick="GuardarCorreo" disabled="@guardandoCorreo">@(guardandoCorreo ? "Guardando…" : "Guardar datos del correo")</button>
+                        <button class="co-btn co-btn-green" @onclick="RevisarCorreo" disabled="@(revisandoCorreo || correo is null || !correo.TienePassword)">@(revisandoCorreo ? "Revisando…" : "📧 Revisar correo ahora")</button>
+                        @if (correo?.UltimaCorrida is not null) { <span class="co-hint">Última revisión: @correo.UltimaCorrida.Value.ToLocalTime().ToString("dd/MM HH:mm")</span> }
+                    </div>
+                }
+            </div>
             @if (comprasResult is not null)
             {
                 <div class="co-alerta" style="@(comprasResult.Ok ? "background:#f0fdf4;border-color:#bbf7d0;" : "")margin-top:.9rem;">
@@ -692,6 +719,18 @@
     private bool cargandoComp, verDetalleComp, compInit;
     private bool procesandoPdf;
     private ContadoraPdfResultDto? pdfResult;
+
+    // ── Facturas por correo ──
+    private ConfigCorreoDto? correo;
+    private bool mostrarCorreo;
+    private string correoHost = "imap.gmail.com";
+    private int correoPort = 993;
+    private string correoUsuario = "";
+    private string correoPassword = "";
+    private string correoCarpeta = "";
+    private bool correoActivo = true;
+    private bool guardandoCorreo;
+    private bool revisandoCorreo;
     private int compPage = 1;
     private int CompPaginas => compComps is null ? 1 : (int)Math.Ceiling(compComps.Total / (double)compComps.PageSize);
 
@@ -747,6 +786,7 @@
         {
             compInit = true;
             await CargarCompras();
+            await CargarConfigCorreo();
         }
     }
 
@@ -1084,6 +1124,54 @@
         }
         catch (Exception ex) { ToastService.Error("Error al procesar PDFs: " + ex.Message); }
         finally { procesandoPdf = false; }
+    }
+
+    private async Task CargarConfigCorreo()
+    {
+        try
+        {
+            correo = await Api.GetConfigCorreoAsync();
+            if (correo is not null)
+            {
+                correoHost = string.IsNullOrWhiteSpace(correo.Host) ? "imap.gmail.com" : correo.Host;
+                correoPort = correo.Port > 0 ? correo.Port : 993;
+                correoUsuario = correo.Usuario ?? "";
+                correoCarpeta = correo.Carpeta ?? "";
+                correoActivo = correo.Activo;
+            }
+        }
+        catch { /* la tabla puede no existir todavía en prod — se ignora */ }
+    }
+
+    private async Task GuardarCorreo()
+    {
+        if (guardandoCorreo) return;
+        guardandoCorreo = true;
+        try
+        {
+            var ok = await Api.GuardarConfigCorreoAsync(correoHost.Trim(), correoPort, correoUsuario.Trim(),
+                string.IsNullOrWhiteSpace(correoPassword) ? null : correoPassword.Trim().Replace(" ", ""),
+                string.IsNullOrWhiteSpace(correoCarpeta) ? null : correoCarpeta.Trim(), correoActivo);
+            if (ok) { ToastService.Success("Datos del correo guardados."); correoPassword = ""; await CargarConfigCorreo(); }
+            else ToastService.Error("No se pudo guardar.");
+        }
+        catch (Exception ex) { ToastService.Error("Error al guardar: " + ex.Message); }
+        finally { guardandoCorreo = false; }
+    }
+
+    private async Task RevisarCorreo()
+    {
+        if (revisandoCorreo) return;
+        revisandoCorreo = true; pdfResult = null;
+        try
+        {
+            pdfResult = await Api.RevisarCorreoAsync();
+            if (pdfResult is not null && pdfResult.Ok) { ToastService.Success(pdfResult.Mensaje ?? "Listo."); if (verDetalleComp) await CargarCompComps(); }
+            else ToastService.Error(pdfResult?.Mensaje ?? "No se pudo revisar el correo.");
+            await CargarConfigCorreo();
+        }
+        catch (Exception ex) { ToastService.Error("Error al revisar el correo: " + ex.Message); }
+        finally { revisandoCorreo = false; }
     }
 
     private IEnumerable<(string Letra, int Cant, decimal Neto, decimal Iva, decimal Total)> PorLetraCompras()

@@ -590,6 +590,21 @@ IF COL_LENGTH('ContadoraComprobantes', 'PdfPath') IS NULL
     ALTER TABLE ContadoraComprobantes ADD PdfPath NVARCHAR(500) NULL;
 GO
 
+-- 2026-07-09: config de la casilla de correo (IMAP) de facturas de proveedores.
+IF OBJECT_ID('ConfigCorreoFacturas','U') IS NULL
+CREATE TABLE ConfigCorreoFacturas (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    Host NVARCHAR(120) NOT NULL DEFAULT 'imap.gmail.com',
+    Port INT NOT NULL DEFAULT 993,
+    Usuario NVARCHAR(200) NOT NULL DEFAULT '',
+    Password NVARCHAR(300) NULL,
+    Carpeta NVARCHAR(120) NULL,
+    Activo BIT NOT NULL DEFAULT 1,
+    UltimaCorrida DATETIME2 NULL,
+    ActualizadoEn DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+GO
+
 -- 2026-07-09: retenciones/percepciones de IVA por mes y empresa (para el IVA "a pagar" real).
 IF OBJECT_ID('ContadoraRetenciones','U') IS NULL
 CREATE TABLE ContadoraRetenciones (

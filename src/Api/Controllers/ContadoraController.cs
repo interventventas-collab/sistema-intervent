@@ -232,6 +232,22 @@ public class ContadoraController : ControllerBase
         return File(bytes, "application/pdf", nombre ?? "factura.pdf");
     }
 
+    /// <summary>Config de la casilla de correo de facturas (sin la clave).</summary>
+    [HttpGet("config-correo")]
+    public async Task<IActionResult> GetConfigCorreo() => Ok(await _svc.GetConfigCorreoAsync());
+
+    /// <summary>Guarda la config del correo (host/usuario/clave/carpeta). Si la clave viene vacía, se conserva.</summary>
+    [HttpPost("config-correo")]
+    public async Task<IActionResult> GuardarConfigCorreo([FromBody] ConfigCorreoRequest req)
+    {
+        await _svc.GuardarConfigCorreoAsync(req.Host, req.Port, req.Usuario, req.Password, req.Carpeta, req.Activo);
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>Revisa la casilla ahora: baja los PDF adjuntos nuevos y los matchea.</summary>
+    [HttpPost("revisar-correo")]
+    public async Task<ActionResult<ContadoraPdfResultDto>> RevisarCorreo() => Ok(await _svc.RevisarCorreoAsync());
+
     /// <summary>Retenciones/percepciones de IVA cargadas por mes para una empresa.</summary>
     [HttpGet("retenciones")]
     public async Task<ActionResult<List<ContadoraRetencionDto>>> Retenciones([FromQuery] string empresa)
@@ -254,4 +270,14 @@ public class GuardarRetencionRequest
     public int Mes { get; set; }
     public decimal Monto { get; set; }
     public string? Nota { get; set; }
+}
+
+public class ConfigCorreoRequest
+{
+    public string Host { get; set; } = "imap.gmail.com";
+    public int Port { get; set; } = 993;
+    public string Usuario { get; set; } = "";
+    public string? Password { get; set; }
+    public string? Carpeta { get; set; }
+    public bool Activo { get; set; } = true;
 }

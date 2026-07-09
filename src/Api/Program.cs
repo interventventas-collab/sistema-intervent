@@ -183,6 +183,7 @@ builder.Services.AddScoped<MeliItemService>();
 builder.Services.AddScoped<MeliQuestionService>();
 builder.Services.AddScoped<MeliShipmentService>();
 builder.Services.AddSingleton<FacturaQrService>();
+builder.Services.AddScoped<FacturasEmailService>();
 builder.Services.AddScoped<ContadoraService>();
 builder.Services.AddSingleton<ContadoraAutoBackfillService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ContadoraAutoBackfillService>());
