@@ -205,8 +205,8 @@ public class ContadoraController : ControllerBase
 
     /// <summary>Control / doble-check: concilia ventas de AFIP contra MeLi/sistema.</summary>
     [HttpGet("control")]
-    public async Task<ActionResult<ContadoraControlDto>> Control([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta)
-        => Ok(await _svc.GetControlAsync(desde, hasta));
+    public async Task<ActionResult<ContadoraControlDto>> Control([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta, [FromQuery] string? empresa)
+        => Ok(await _svc.GetControlAsync(desde, hasta, empresa));
 
     /// <summary>Vuelca al Libro IVA las facturas de MeLi ya bajadas por la API (ventas automáticas).</summary>
     [HttpPost("sincronizar-meli-api")]
