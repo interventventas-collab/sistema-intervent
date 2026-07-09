@@ -5627,6 +5627,15 @@ public class ApiClient
     public async Task<ContadoraPdfResultDto?> ProcesarFacturasPdfAsync(string? subcarpeta = null)
         => await PostAsync<ContadoraPdfResultDto>("/api/contadora/procesar-facturas-pdf" + (string.IsNullOrWhiteSpace(subcarpeta) ? "" : "?subcarpeta=" + Uri.EscapeDataString(subcarpeta)), new { });
 
+    public async Task<ConfigCorreoDto?> GetConfigCorreoAsync()
+        => await GetAsync<ConfigCorreoDto>("/api/contadora/config-correo");
+
+    public async Task<bool> GuardarConfigCorreoAsync(string host, int port, string usuario, string? password, string? carpeta, bool activo)
+        => await PostAsync<object>("/api/contadora/config-correo", new { host, port, usuario, password, carpeta, activo }) is not null;
+
+    public async Task<ContadoraPdfResultDto?> RevisarCorreoAsync()
+        => await PostAsync<ContadoraPdfResultDto>("/api/contadora/revisar-correo", new { });
+
     public async Task<(ContadoraImportResultDto? result, string? error)> ImportarVentasAfipArchivosAsync(IEnumerable<(string name, Stream stream)> archivos)
     {
         await SetAuthHeaderAsync();

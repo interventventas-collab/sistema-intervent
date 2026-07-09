@@ -212,6 +212,17 @@ public class ContadoraRetencionDto
     public string? Nota { get; set; }
 }
 
+public class ConfigCorreoDto
+{
+    public string Host { get; set; } = "imap.gmail.com";
+    public int Port { get; set; } = 993;
+    public string Usuario { get; set; } = "";
+    public string? Carpeta { get; set; }
+    public bool Activo { get; set; } = true;
+    public bool TienePassword { get; set; }
+    public DateTime? UltimaCorrida { get; set; }
+}
+
 public class ContadoraControlDto
 {
     public int CoincidenCant { get; set; }

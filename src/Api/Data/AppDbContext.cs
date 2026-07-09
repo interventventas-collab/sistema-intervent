@@ -32,6 +32,7 @@ public class AppDbContext : DbContext
     public DbSet<MeliFactura> MeliFacturas => Set<MeliFactura>();
     public DbSet<ContadoraComprobante> ContadoraComprobantes => Set<ContadoraComprobante>();
     public DbSet<ContadoraRetencion> ContadoraRetenciones => Set<ContadoraRetencion>();
+    public DbSet<ConfigCorreoFacturas> ConfigCorreoFacturas => Set<ConfigCorreoFacturas>();
     public DbSet<MapeoDriver> MapeoDrivers => Set<MapeoDriver>();
     public DbSet<MapeoFavorito> MapeoFavoritos => Set<MapeoFavorito>();
     public DbSet<MapeoStop> MapeoStops => Set<MapeoStop>();

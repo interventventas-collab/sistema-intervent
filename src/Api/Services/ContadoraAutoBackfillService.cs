@@ -70,6 +70,13 @@ public class ContadoraAutoBackfillService : BackgroundService
                 var r = await svc.SincronizarMeliApiAsync();
                 _logger.LogInformation("[Contadora robot] MeLi API: {Msg}", r.Mensaje);
             }
+            // Revisa la casilla de correo: baja los PDF de facturas nuevos y los matchea con las ventas/compras.
+            using (var scope = _scopeFactory.CreateScope())
+            {
+                var svc = scope.ServiceProvider.GetRequiredService<ContadoraService>();
+                try { var r = await svc.RevisarCorreoAsync(); if (r.Ok || r.Adjuntados > 0) _logger.LogInformation("[Contadora robot] Correo: {Msg}", r.Mensaje); }
+                catch (Exception ex) { _logger.LogWarning(ex, "[Contadora robot] Error revisando el correo"); }
+            }
             // Baja de AFIP (emitidos + recibidos) con la clave fiscal de PALANICA e importa. A lo sumo 1x/día.
             if (incluirAfip) await CorrerAfipAsync(ct);
             _logger.LogInformation("[Contadora robot] Fin. Provincias resueltas: {P}, facturas resueltas: {F}", prov, fact);

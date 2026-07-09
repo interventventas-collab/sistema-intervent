@@ -33,11 +33,62 @@ public class ContadoraService
 
     private readonly ArcaScrapingService _arca;
     private readonly FacturaQrService _qr;
+    private readonly FacturasEmailService _email;
 
     public ContadoraService(AppDbContext db, IHttpClientFactory httpFactory, MeliAccountService accountService,
-        FileStorageService storage, ILogger<ContadoraService> logger, ArcaScrapingService arca, FacturaQrService qr)
+        FileStorageService storage, ILogger<ContadoraService> logger, ArcaScrapingService arca, FacturaQrService qr, FacturasEmailService email)
     {
-        _db = db; _httpFactory = httpFactory; _accountService = accountService; _storage = storage; _logger = logger; _arca = arca; _qr = qr;
+        _db = db; _httpFactory = httpFactory; _accountService = accountService; _storage = storage; _logger = logger; _arca = arca; _qr = qr; _email = email;
+    }
+
+    private const string CarpetaFacturas = "Compartido/facturas recibidas";
+
+    /// <summary>Config de la casilla de correo (SIN la clave). tienePassword indica si ya hay una guardada.</summary>
+    public async Task<object> GetConfigCorreoAsync()
+    {
+        var c = await _db.ConfigCorreoFacturas.OrderBy(x => x.Id).FirstOrDefaultAsync();
+        return new
+        {
+            host = c?.Host ?? "imap.gmail.com",
+            port = c?.Port ?? 993,
+            usuario = c?.Usuario ?? "",
+            carpeta = c?.Carpeta ?? "",
+            activo = c?.Activo ?? true,
+            tienePassword = !string.IsNullOrEmpty(c?.Password),
+            ultimaCorrida = c?.UltimaCorrida
+        };
+    }
+
+    /// <summary>Guarda la config del correo. Si password viene vacío, se conserva la que ya estaba.</summary>
+    public async Task GuardarConfigCorreoAsync(string host, int port, string usuario, string? password, string? carpeta, bool activo)
+    {
+        var c = await _db.ConfigCorreoFacturas.OrderBy(x => x.Id).FirstOrDefaultAsync();
+        if (c is null) { c = new ConfigCorreoFacturas(); _db.ConfigCorreoFacturas.Add(c); }
+        c.Host = string.IsNullOrWhiteSpace(host) ? "imap.gmail.com" : host.Trim();
+        c.Port = port > 0 ? port : 993;
+        c.Usuario = usuario?.Trim() ?? "";
+        if (!string.IsNullOrWhiteSpace(password)) c.Password = password.Trim();
+        c.Carpeta = string.IsNullOrWhiteSpace(carpeta) ? null : carpeta.Trim();
+        c.Activo = activo;
+        c.ActualizadoEn = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+    }
+
+    /// <summary>Revisa la casilla: baja los PDF adjuntos nuevos y los matchea con las ventas/compras. Devuelve el resumen.</summary>
+    public async Task<ContadoraPdfResultDto> RevisarCorreoAsync()
+    {
+        var c = await _db.ConfigCorreoFacturas.OrderBy(x => x.Id).FirstOrDefaultAsync();
+        if (c is null || !c.Activo || string.IsNullOrWhiteSpace(c.Usuario) || string.IsNullOrEmpty(c.Password))
+            return new ContadoraPdfResultDto { Ok = false, Mensaje = "El correo de facturas no está configurado o está desactivado." };
+
+        var (ok, pdfs, msg) = await _email.BajarAdjuntosAsync(c.Host, c.Port, c.Usuario, c.Password!, c.Carpeta, CarpetaFacturas);
+        c.UltimaCorrida = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        if (!ok) return new ContadoraPdfResultDto { Ok = false, Mensaje = msg };
+
+        var res = await ProcesarFacturasPdfAsync(CarpetaFacturas);
+        res.Mensaje = $"{msg} {res.Mensaje}";
+        return res;
     }
 
     /// <summary>Procesa los PDF de facturas de una carpeta: lee el QR de AFIP de cada uno, lo matchea con la venta o
