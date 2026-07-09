@@ -127,10 +127,13 @@
             </div>
 
             <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:.9rem 1rem;margin-top:.7rem;">
-                <b>MercadoLibre</b> — subí los Excel a la Carpeta Compartida → carpeta <b>facturas meli</b> y tocá “Importar los de la carpeta” (no se duplica). Trae la <b>provincia</b> de cada venta (para IIBB) y sirve de doble-check contra AFIP.
+                <b>MercadoLibre</b> — las ventas de MeLi entran <b>solas</b> (el robot baja las facturas por la API y las trae con su provincia). También podés subir el reporte oficial de MeLi (trae las notas de crédito y sirve de doble-check).
                 <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-top:.5rem;">
+                    <button class="co-btn co-btn-ghost" @onclick="SincronizarMeliApi" disabled="@importando">
+                        @(importando ? "Actualizando…" : "🔄 Actualizar ventas de MeLi (ahora)")
+                    </button>
                     <button class="co-btn co-btn-ghost" @onclick="ImportarCarpeta" disabled="@importando">
-                        @(importando ? "Importando…" : "📥 Importar reportes de MeLi")
+                        @(importando ? "Importando…" : "📥 Importar reporte de MeLi")
                     </button>
                     <label class="co-btn co-btn-ghost" style="margin:0;">
                         …o elegir archivos
@@ -766,6 +769,20 @@
     {
         rEmpresa = null; rLetra = null; rProvincia = null; rSearch = null; rPtoVenta = null; rDesde = null; rHasta = null; rOrigen = null;
         await CargarRep();
+    }
+
+    private async Task SincronizarMeliApi()
+    {
+        if (importando) return;
+        importando = true; importResult = null;
+        try
+        {
+            importResult = await Api.SincronizarMeliApiAsync();
+            if (importResult is not null && importResult.Ok) { ToastService.Success(importResult.Mensaje ?? "Actualizado."); await RecargarRep(); }
+            else ToastService.Error(importResult?.Mensaje ?? "No se pudo actualizar.");
+        }
+        catch (Exception ex) { ToastService.Error("Error al actualizar: " + ex.Message); }
+        finally { importando = false; }
     }
 
     private async Task SincronizarSistema()
