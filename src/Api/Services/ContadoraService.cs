@@ -1225,12 +1225,12 @@ public class ContadoraService
         if (!string.IsNullOrWhiteSpace(empresaCuit)) q = q.Where(c => c.EmisorCuit == empresaCuit);
 
         var datos = await q.Where(c => c.FechaEmision != null)
-            .Select(c => new { c.Naturaleza, c.Origen, c.PuntoVenta, c.Letra, c.NumeroComprobante, c.FechaEmision, c.EsNotaCredito, c.Iva21, c.Iva105 })
+            .Select(c => new { c.Naturaleza, c.Origen, c.PuntoVenta, c.Letra, c.TipoComprobante, c.NumeroComprobante, c.FechaEmision, c.EsNotaCredito, c.Iva21, c.Iva105 })
             .ToListAsync();
 
         // Contar cada venta una sola vez (AFIP > reporte MeLi/sistema > API MeLi). Las compras no se tocan.
         var ventas = DedupPorClave(datos.Where(x => x.Naturaleza == "VENTA").ToList(),
-            x => x.Origen, x => x.PuntoVenta, x => x.Letra, x => x.EsNotaCredito, x => x.NumeroComprobante);
+            x => x.Origen, x => x.PuntoVenta, x => x.Letra, x => x.TipoComprobante, x => x.EsNotaCredito, x => x.NumeroComprobante);
         datos = ventas.Concat(datos.Where(x => x.Naturaleza != "VENTA")).ToList();
 
         var filas = datos
@@ -1276,10 +1276,10 @@ public class ContadoraService
         if (desde.HasValue) q = q.Where(c => c.FechaEmision >= desde.Value);
         if (hasta.HasValue) { var h = hasta.Value.Date.AddDays(1); q = q.Where(c => c.FechaEmision < h); }
 
-        var filas = await q.Select(c => new { c.Origen, c.PuntoVenta, c.Letra, c.EsNotaCredito, c.NumeroComprobante, c.FechaEmision, c.ReceptorNombre, c.Iva21, c.Iva105, c.EnvioIva }).ToListAsync();
+        var filas = await q.Select(c => new { c.Origen, c.PuntoVenta, c.Letra, c.TipoComprobante, c.EsNotaCredito, c.NumeroComprobante, c.FechaEmision, c.ReceptorNombre, c.Iva21, c.Iva105, c.EnvioIva }).ToListAsync();
 
         // Agrupo por clave de comprobante y en cada grupo separo AFIP de la otra fuente (MeLi/sistema).
-        var grupos = filas.GroupBy(x => ClaveComprobante(x.PuntoVenta, x.Letra, x.EsNotaCredito, x.NumeroComprobante));
+        var grupos = filas.GroupBy(x => ClaveComprobante(x.PuntoVenta, x.Letra, ClaseComprobante(x.TipoComprobante, x.EsNotaCredito), x.NumeroComprobante));
         var revisar = new List<ContadoraControlItemDto>();
         const decimal tol = 1m; // tolerancia de $1 por redondeos
         foreach (var g in grupos)
@@ -1343,11 +1343,19 @@ public class ContadoraService
         return q;
     }
 
-    /// <summary>Clave que identifica un comprobante: punto de venta + letra + tipo (factura/NC) + numero.
-    /// OJO: MeLi emite Factura A y Factura B en el mismo pto de venta con numeraciones separadas, por eso NO
-    /// alcanza con pto+numero; hay que sumar la letra y si es nota de credito.</summary>
-    private static string ClaveComprobante(int? pto, string? letra, bool esNC, long? num)
-        => $"{pto}|{letra}|{(esNC ? "NC" : "F")}|{num}";
+    /// <summary>Clase del comprobante para la clave: F (factura/tique), ND (nota de débito), NC (nota de crédito).
+    /// OJO: una Factura A y una Nota de Débito A pueden tener el MISMO número (numeraciones separadas en AFIP),
+    /// por eso hay que distinguirlas o se pisan.</summary>
+    private static string ClaseComprobante(string? tipoComprobante, bool esNC)
+    {
+        if (esNC) return "NC";
+        return Norm(tipoComprobante).Contains("debito") ? "ND" : "F";
+    }
+
+    /// <summary>Clave que identifica un comprobante: punto de venta + letra + clase (F/ND/NC) + numero.
+    /// MeLi emite Factura A y B en el mismo pto de venta con numeraciones separadas, por eso NO alcanza con pto+numero.</summary>
+    private static string ClaveComprobante(int? pto, string? letra, string clase, long? num)
+        => $"{pto}|{letra}|{clase}|{num}";
 
     /// <summary>Prioridad de cada fuente cuando la MISMA venta aparece en varias (menor = manda).
     /// AFIP es lo oficial y completo (con NC) → gana. Después el reporte de MeLi / las del sistema.
@@ -1365,14 +1373,15 @@ public class ContadoraService
     /// Así una venta que está en AFIP y también en MeLi/sistema se cuenta una vez. Las filas sin número
     /// (no se pueden identificar) se dejan pasar tal cual.</summary>
     private static List<T> DedupPorClave<T>(IEnumerable<T> rows, Func<T, string?> origen, Func<T, int?> pto,
-        Func<T, string?> letra, Func<T, bool> esNC, Func<T, long?> num)
+        Func<T, string?> letra, Func<T, string?> tipoComp, Func<T, bool> esNC, Func<T, long?> num)
     {
         var lista = rows.ToList();
+        string Clave(T r) => ClaveComprobante(pto(r), letra(r), ClaseComprobante(tipoComp(r), esNC(r)), num(r));
         var mejor = new Dictionary<string, int>();
         foreach (var r in lista)
         {
             if (pto(r) == null || num(r) == null) continue;
-            var k = ClaveComprobante(pto(r), letra(r), esNC(r), num(r));
+            var k = Clave(r);
             var p = PrioridadOrigen(origen(r));
             if (!mejor.TryGetValue(k, out var m) || p < m) mejor[k] = p;
         }
@@ -1381,7 +1390,7 @@ public class ContadoraService
         foreach (var r in lista)
         {
             if (pto(r) == null || num(r) == null) { salida.Add(r); continue; }
-            var k = ClaveComprobante(pto(r), letra(r), esNC(r), num(r));
+            var k = Clave(r);
             if (PrioridadOrigen(origen(r)) == mejor[k] && visto.Add(k)) salida.Add(r);
         }
         return salida;
@@ -1420,13 +1429,13 @@ public class ContadoraService
         dto.SinDatos = !await _db.ContadoraComprobantes.AnyAsync(c => c.Naturaleza == naturaleza);
 
         var datos = await FiltrarComprobantes(desde, hasta, empresaCuit, puntoVenta, letra, provincia, search, origen, naturaleza)
-            .Select(c => new { c.Origen, c.EmisorCuit, c.PuntoVenta, c.NumeroComprobante, c.Letra, c.EsNotaCredito, c.NetoGravado, c.Iva21, c.Iva105, c.Total })
+            .Select(c => new { c.Origen, c.EmisorCuit, c.PuntoVenta, c.NumeroComprobante, c.Letra, c.TipoComprobante, c.EsNotaCredito, c.NetoGravado, c.Iva21, c.Iva105, c.Total })
             .ToListAsync();
 
         // Contar cada venta una sola vez: si el usuario NO filtro por un origen puntual, dejo una fila por
         // comprobante (la de mayor prioridad: AFIP > reporte MeLi/sistema > API MeLi).
         if (naturaleza == "VENTA" && string.IsNullOrWhiteSpace(origen))
-            datos = DedupPorClave(datos, x => x.Origen, x => x.PuntoVenta, x => x.Letra, x => x.EsNotaCredito, x => x.NumeroComprobante);
+            datos = DedupPorClave(datos, x => x.Origen, x => x.PuntoVenta, x => x.Letra, x => x.TipoComprobante, x => x.EsNotaCredito, x => x.NumeroComprobante);
 
         // Razón social por CUIT (para mostrar el nombre y no solo el número).
         var cuits = datos.Where(x => x.EmisorCuit != null).Select(x => x.EmisorCuit!).Distinct().ToList();
@@ -1651,19 +1660,20 @@ public class ContadoraService
     /// codigo "11" en el CSV) a (letra, esNotaCredito, etiqueta para mostrar).</summary>
     private static (string? letra, bool esNC, string label) TipoInfo(string codigo, string? labelHint)
     {
-        // Letra por codigo AFIP: A={1,2,3}, B={6,7,8}, C={11,12,13}, M={51,52,53}, Tiques {81,82,83}.
+        // Letra por codigo AFIP: A={1,2,3}, B={6,7,8}, C={11,12,13}, M={51,52,53}, Tiques {81,82,83},
+        // FCE MiPyME (Factura de Credito Electronica): A={201,202,203}, B={206,207,208}, C={211,212,213}.
         string? letra = codigo switch
         {
-            "1" or "2" or "3" or "4" or "5" or "81" => "A",
-            "6" or "7" or "8" or "82" => "B",
-            "11" or "12" or "13" or "83" => "C",
+            "1" or "2" or "3" or "4" or "5" or "81" or "201" or "202" or "203" => "A",
+            "6" or "7" or "8" or "82" or "206" or "207" or "208" => "B",
+            "11" or "12" or "13" or "83" or "211" or "212" or "213" => "C",
             "51" or "52" or "53" => "M",
             _ => null
         };
-        // Notas de credito de AFIP: 3 (A), 8 (B), 13 (C), 53 (M).
-        bool esNC = codigo is "3" or "8" or "13" or "53" || (labelHint != null && Norm(labelHint).Contains("credito"));
-        // Notas de debito: 2 (A), 7 (B), 12 (C), 52 (M) — NO son NC (suman como una factura).
-        bool esND = codigo is "2" or "7" or "12" or "52" || (labelHint != null && Norm(labelHint).Contains("debito"));
+        // Notas de credito de AFIP: 3 (A), 8 (B), 13 (C), 53 (M), 203/208/213 (FCE).
+        bool esNC = codigo is "3" or "8" or "13" or "53" or "203" or "208" or "213" || (labelHint != null && Norm(labelHint).Contains("credito"));
+        // Notas de debito: 2 (A), 7 (B), 12 (C), 52 (M), 202/207/212 (FCE) — NO son NC (suman como una factura).
+        bool esND = codigo is "2" or "7" or "12" or "52" or "202" or "207" or "212" || (labelHint != null && Norm(labelHint).Contains("debito"));
 
         // Si el archivo trajo texto (Excel viejo), lo usamos; si no, armamos uno lindo desde el codigo.
         string label;
