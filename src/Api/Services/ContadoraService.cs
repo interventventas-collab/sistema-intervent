@@ -895,11 +895,61 @@ public class ContadoraService
         return res;
     }
 
-    /// <summary>Parsea un "Mis Comprobantes Recibidos" de AFIP (Excel .xlsx o CSV). Devuelve null si no es ese formato.</summary>
-    private async Task<ContadoraImportArchivoDto?> ImportarUnRecibidoAsync(Stream stream, string nombre)
+    /// <summary>Importa los "Mis Comprobantes Emitidos" de AFIP (ventas, Excel o CSV) de una subcarpeta, incluyendo subcarpetas.</summary>
+    public async Task<ContadoraImportResultDto> ImportarVentasAfipCarpetaAsync(string subcarpeta)
+    {
+        var res = new ContadoraImportResultDto();
+        string full;
+        try { full = _storage.ResolveSafe(subcarpeta); }
+        catch { res.Ok = false; res.Mensaje = "Carpeta invalida."; return res; }
+        if (!Directory.Exists(full)) { res.Ok = false; res.Mensaje = $"No existe la carpeta '{subcarpeta}'."; return res; }
+
+        var archivos = Directory.EnumerateFiles(full, "*.*", SearchOption.AllDirectories)
+            .Where(f => { var e = Path.GetExtension(f).ToLowerInvariant(); return e == ".xlsx" || e == ".csv"; })
+            .Where(f => !Path.GetFileName(f).StartsWith("~$")).OrderBy(f => f).ToList();
+        int reconocidos = 0;
+        foreach (var path in archivos)
+        {
+            using var fs = File.OpenRead(path);
+            var a = await ImportarUnAfipAsync(fs, Path.GetFileName(path), esVenta: true);
+            if (a is null) continue; // no es un emitidos de AFIP, se ignora
+            reconocidos++;
+            AcumularArchivo(res, a);
+        }
+        if (reconocidos == 0) { res.Ok = false; res.Mensaje = "No encontre ningun 'Mis Comprobantes Emitidos' de AFIP (Excel o CSV) en la carpeta ni en sus subcarpetas."; return res; }
+        res.Mensaje = $"Ventas de AFIP importadas: {res.Facturas} comprobantes y {res.NotasCredito} NC ({res.Nuevos} nuevos, {res.Actualizados} actualizados).";
+        return res;
+    }
+
+    /// <summary>Importa archivos de ventas de AFIP (emitidos) subidos por el usuario.</summary>
+    public async Task<ContadoraImportResultDto> ImportarVentasAfipArchivosAsync(IEnumerable<(string nombre, Stream contenido)> archivos)
+    {
+        var res = new ContadoraImportResultDto();
+        int reconocidos = 0;
+        foreach (var (nombre, contenido) in archivos)
+        {
+            var a = await ImportarUnAfipAsync(contenido, nombre, esVenta: true);
+            if (a is null) { res.Archivos.Add(new ContadoraImportArchivoDto { Archivo = nombre, Ok = false, Error = "No es un 'Mis Comprobantes Emitidos' de AFIP." }); continue; }
+            reconocidos++;
+            AcumularArchivo(res, a);
+        }
+        if (reconocidos == 0) { res.Ok = false; res.Mensaje = "El archivo no parece un 'Mis Comprobantes Emitidos' de AFIP."; return res; }
+        res.Mensaje = $"Ventas de AFIP importadas: {res.Facturas} comprobantes y {res.NotasCredito} NC ({res.Nuevos} nuevos, {res.Actualizados} actualizados).";
+        return res;
+    }
+
+    private Task<ContadoraImportArchivoDto?> ImportarUnRecibidoAsync(Stream stream, string nombre)
+        => ImportarUnAfipAsync(stream, nombre, esVenta: false);
+
+    /// <summary>Parsea un "Mis Comprobantes" de AFIP (Excel .xlsx o CSV). esVenta=true → EMITIDOS (ventas, IVA débito),
+    /// esVenta=false → RECIBIDOS (compras, IVA crédito). Devuelve null si el archivo no es de ese tipo.</summary>
+    private async Task<ContadoraImportArchivoDto?> ImportarUnAfipAsync(Stream stream, string nombre, bool esVenta)
     {
         var a = new ContadoraImportArchivoDto { Archivo = nombre };
         List<ContadoraComprobante> parsed;
+        // En EMITIDOS la contraparte es el "Receptor" (cliente); en RECIBIDOS es el "Emisor" (proveedor).
+        var denomParty = esVenta ? "denominacion receptor" : "denominacion emisor";
+        var tituloEsperado = esVenta ? "comprobantes emitidos" : "comprobantes recibidos";
         try
         {
             IGrid g;
@@ -913,21 +963,21 @@ public class ContadoraService
                 var lastRow = g.LastRow;
                 var lastCol = g.LastCol;
 
-                // ¿Es un "recibidos" de AFIP? Buscamos "Denominacion Emisor" o el titulo.
-                bool esRecibidos = false;
-                for (int r = 1; r <= Math.Min(6, lastRow) && !esRecibidos; r++)
+                // ¿Es el tipo de archivo que pedimos (emitidos vs recibidos)? Lo distinguimos por la columna de la
+                // contraparte: "Denominacion Receptor" solo esta en emitidos, "Denominacion Emisor" solo en recibidos.
+                bool esEsperado = false;
+                for (int r = 1; r <= Math.Min(6, lastRow) && !esEsperado; r++)
                     for (int c = 1; c <= lastCol; c++)
                     {
                         var n = Norm(g.Text(r, c));
-                        if (n == "denominacion emisor" || n.Contains("comprobantes recibidos")) { esRecibidos = true; break; }
+                        if (n == denomParty || n.Contains(tituloEsperado)) { esEsperado = true; break; }
                     }
-                if (!esRecibidos) return null;
+                if (!esEsperado) return null;
 
-                // Fila de titulos: la que tiene "Denominacion Emisor".
                 int headerRow = 0;
                 for (int r = 1; r <= Math.Min(8, lastRow) && headerRow == 0; r++)
                     for (int c = 1; c <= lastCol; c++)
-                        if (Norm(g.Text(r, c)) == "denominacion emisor") { headerRow = r; break; }
+                        if (Norm(g.Text(r, c)) == denomParty) { headerRow = r; break; }
                 if (headerRow == 0) { a.Ok = false; a.Error = "No encontre los titulos del reporte de AFIP."; return a; }
 
                 var map = new Dictionary<string, int>();
@@ -941,21 +991,29 @@ public class ContadoraService
                 // Nombres de columna: el Excel viejo (2021/2022) y el CSV nuevo (2023+) usan textos distintos.
                 int cFecha = Col("fecha", "fecha de emision"), cTipo = Col("tipo", "tipo de comprobante"), cPtoVta = Col("punto de venta"),
                     cNumD = Col("numero desde", "nro. desde", "numero"), cCae = Col("cod. autorizacion", "codigo de autorizacion", "cae"),
-                    cDocEmisor = Col("nro. doc. emisor", "nro doc emisor"), cDenomEmisor = Col("denominacion emisor"),
-                    cDocReceptor = Col("nro. doc. receptor", "nro doc receptor"),
                     cNetoTotal = Col("neto gravado total", "imp. neto gravado total", "imp. neto gravado"),
                     cIva105 = Col("iva 10,5%", "iva 10.5%"), cTotalIva = Col("total iva"),
                     cNoGrav = Col("neto no gravado", "imp. neto no gravado"), cExento = Col("op. exentas", "imp. op. exentas", "op exentas"),
                     cOtros = Col("otros tributos"), cImpTotal = Col("imp. total", "imp total");
+                // La contraparte (cliente en ventas, proveedor en compras) y su documento.
+                int cDocParty = esVenta ? Col("nro. doc. receptor", "nro doc receptor") : Col("nro. doc. emisor", "nro doc emisor");
+                int cDenomParty = Col(denomParty);
+                // En recibidos MI CUIT esta en la columna Receptor; en emitidos no hay columna (soy el emisor) → lo saco del nombre del archivo.
+                int cMiCuitCol = esVenta ? 0 : Col("nro. doc. receptor", "nro doc receptor");
 
-                // CUIT de MI empresa = receptor. Si el CSV/Excel no trae titulo, lo saco de la 1ra fila con receptor.
+                // MI CUIT: en recibidos del titulo/columna receptor; en emitidos del nombre del archivo (…_30717212149_…), o el default.
                 string? miCuit = null;
                 for (int r = 1; r < headerRow && miCuit == null; r++)
                     for (int c = 1; c <= lastCol; c++)
                     {
                         var t = g.Text(r, c);
-                        if (Norm(t).Contains("comprobantes recibidos")) { miCuit = SoloDigitos(t); break; }
+                        if (Norm(t).Contains(tituloEsperado)) { miCuit = SoloDigitos(t); break; }
                     }
+                if (esVenta && string.IsNullOrEmpty(miCuit))
+                {
+                    var m = System.Text.RegularExpressions.Regex.Match(nombre, @"\b\d{11}\b");
+                    miCuit = m.Success ? m.Value : CuitPorDefecto;
+                }
 
                 var porId = new Dictionary<string, ContadoraComprobante>();
                 for (int r = headerRow + 1; r <= lastRow; r++)
@@ -966,27 +1024,26 @@ public class ContadoraService
                     var labelHint = tipoRaw.Contains('-') ? tipoRaw[(tipoRaw.IndexOf('-') + 1)..].Trim() : null;
                     var (letra, esNC, tipoLabel) = TipoInfo(codigo, labelHint);
 
-                    var receptor = cDocReceptor > 0 ? SoloDigitos(g.Text(r, cDocReceptor)) : null;
-                    var emisorMi = receptor ?? miCuit;
-                    if (miCuit == null) miCuit = receptor;
-                    var provCuit = cDocEmisor > 0 ? SoloDigitos(g.Text(r, cDocEmisor)) : null;  // proveedor que me facturo
+                    if (!esVenta && cMiCuitCol > 0 && miCuit == null) miCuit = SoloDigitos(g.Text(r, cMiCuitCol));
+                    var partyCuit = cDocParty > 0 ? SoloDigitos(g.Text(r, cDocParty)) : null;   // cliente (venta) / proveedor (compra)
+                    var emisorMi = esVenta ? (miCuit ?? CuitPorDefecto) : (cMiCuitCol > 0 ? SoloDigitos(g.Text(r, cMiCuitCol)) : null) ?? miCuit;
                     var cae = cCae > 0 ? SoloDigitos(g.Text(r, cCae)) : null;
                     var pto = cPtoVta > 0 ? (int?)(g.Lng(r, cPtoVta) ?? 0) : null;
                     var num = cNumD > 0 ? g.Lng(r, cNumD) : null;
-                    // OJO: el CAE de AFIP NO es unico por comprobante (una Factura y su Nota de Debito/Credito
-                    // pueden compartirlo, y los tiques no traen CAE). La clave real es proveedor+tipo+pto+numero.
-                    var id = $"COMPRA-{provCuit}-{codigo}-{pto}-{num}";
+                    // OJO: el CAE de AFIP NO es unico por comprobante (una Factura y su NC/ND lo comparten, y los tiques no traen).
+                    // Ventas: como soy el unico emisor, mi pto+numero+tipo es unico. Compras: la clave es proveedor+tipo+pto+numero.
+                    var id = esVenta ? $"VAFIP-{codigo}-{pto}-{num}" : $"COMPRA-{partyCuit}-{codigo}-{pto}-{num}";
 
                     var neto = g.Dec(r, cNetoTotal);
                     var iva105 = g.Dec(r, cIva105);
                     var ivaTotal = g.Dec(r, cTotalIva);
                     var e = new ContadoraComprobante
                     {
-                        Naturaleza = "COMPRA",
-                        Origen = "AFIP_RECIBIDOS",
-                        EmisorCuit = emisorMi,       // mi empresa (receptor)
+                        Naturaleza = esVenta ? "VENTA" : "COMPRA",
+                        Origen = esVenta ? "AFIP_EMITIDOS" : "AFIP_RECIBIDOS",
+                        EmisorCuit = emisorMi,       // mi empresa
                         IdComprobante = id,
-                        TipoOperacion = esNC ? "Cancelacion" : "Compra",
+                        TipoOperacion = esNC ? (esVenta ? "Nota de credito" : "Cancelacion") : (esVenta ? "Venta" : "Compra"),
                         TipoComprobante = tipoLabel,
                         EsNotaCredito = esNC,
                         Letra = letra,
@@ -995,8 +1052,8 @@ public class ContadoraService
                         Cae = cae,
                         FechaEmision = cFecha > 0 ? g.Fecha(r, cFecha) : null,
                         Estado = "Aprobada",
-                        ReceptorNombre = cDenomEmisor > 0 ? NullIfEmpty(g.Text(r, cDenomEmisor)) : null,  // proveedor
-                        ReceptorDoc = provCuit,
+                        ReceptorNombre = cDenomParty > 0 ? NullIfEmpty(g.Text(r, cDenomParty)) : null,  // cliente (venta) / proveedor (compra)
+                        ReceptorDoc = partyCuit,
                         NetoGravado = neto, BaseIva21 = neto,
                         Iva105 = iva105,
                         Iva21 = Math.Round(ivaTotal - iva105, 2), // el resto del IVA (21% + otras alicuotas) para que Iva21+Iva105 = IVA total
@@ -1007,18 +1064,23 @@ public class ContadoraService
                     };
                     porId[id] = e;
                 }
-                a.EmpresaCuit = miCuit;
+                a.EmpresaCuit = esVenta ? miCuit : (parsed0(porId) ?? miCuit);
                 parsed = porId.Values.ToList();
             }
             finally { wb?.Dispose(); }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[Contadora] Error leyendo recibidos AFIP {Archivo}", nombre);
+            _logger.LogError(ex, "[Contadora] Error leyendo AFIP {Tipo} {Archivo}", esVenta ? "emitidos" : "recibidos", nombre);
             a.Ok = false; a.Error = "No pude leer el archivo: " + ex.GetBaseException().Message;
             return a;
         }
 
+        // MATCH con MeLi: para las ventas de un punto de venta de MercadoLibre, traigo la PROVINCIA cruzando por
+        // punto de venta + numero contra lo que ya importe del reporte de MeLi (que si tiene la provincia).
+        if (esVenta) await CompletarProvinciaDesdeMeliAsync(parsed);
+
+        var natur = esVenta ? "VENTA" : "COMPRA";
         var ids = parsed.Select(p => p.IdComprobante).ToList();
         var existentes = new Dictionary<string, ContadoraComprobante>();
         foreach (var chunk in Chunk(ids, 1000))
@@ -1027,7 +1089,7 @@ public class ContadoraService
 
         foreach (var p in parsed)
         {
-            if (existentes.TryGetValue(p.IdComprobante, out var ex)) { CopiarCampos(p, ex); ex.Naturaleza = "COMPRA"; a.Actualizados++; }
+            if (existentes.TryGetValue(p.IdComprobante, out var ex)) { CopiarCampos(p, ex); ex.Naturaleza = natur; ex.Provincia = p.Provincia ?? ex.Provincia; a.Actualizados++; }
             else { _db.ContadoraComprobantes.Add(p); a.Nuevos++; }
             int signo = p.EsNotaCredito ? -1 : 1;
             if (p.EsNotaCredito) a.NotasCredito++; else a.Facturas++;
@@ -1041,8 +1103,39 @@ public class ContadoraService
             }
         }
         await _db.SaveChangesAsync();
-        _logger.LogInformation("[Contadora] Recibidos {Archivo}: {Fac} comp, {NC} NC, {N} nuevos, {A} act.", nombre, a.Facturas, a.NotasCredito, a.Nuevos, a.Actualizados);
+        _logger.LogInformation("[Contadora] AFIP {Tipo} {Archivo}: {Fac} comp, {NC} NC, {N} nuevos, {A} act.", esVenta ? "emitidos" : "recibidos", nombre, a.Facturas, a.NotasCredito, a.Nuevos, a.Actualizados);
         return a;
+    }
+
+    // Para compras: MI CUIT sale de la 1ra fila parseada si no lo saque del titulo.
+    private static string? parsed0(Dictionary<string, ContadoraComprobante> porId)
+        => porId.Values.FirstOrDefault()?.EmisorCuit;
+
+    /// <summary>Para las ventas de AFIP, completa la Provincia cruzando por punto de venta + numero contra los
+    /// comprobantes del reporte de MeLi (Origen='MELI_REPORTE'), que si traen la provincia de destino.</summary>
+    private async Task CompletarProvinciaDesdeMeliAsync(List<ContadoraComprobante> ventas)
+    {
+        var conNum = ventas.Where(v => v.PuntoVenta.HasValue && v.NumeroComprobante.HasValue).ToList();
+        if (conNum.Count == 0) return;
+        var ptos = conNum.Select(v => v.PuntoVenta!.Value).Distinct().ToList();
+        var nums = conNum.Select(v => v.NumeroComprobante!.Value).Distinct().ToList();
+
+        // Traigo del reporte de MeLi los (pto, numero, provincia) que caen en el rango, y armo el lookup.
+        var mapa = new Dictionary<(int, long), string>();
+        foreach (var chunk in Chunk(nums, 1000))
+        {
+            var filas = await _db.ContadoraComprobantes
+                .Where(c => c.Origen == "MELI_REPORTE" && c.Provincia != null
+                    && c.PuntoVenta != null && ptos.Contains(c.PuntoVenta.Value)
+                    && c.NumeroComprobante != null && chunk.Contains(c.NumeroComprobante.Value))
+                .Select(c => new { c.PuntoVenta, c.NumeroComprobante, c.Provincia })
+                .ToListAsync();
+            foreach (var f in filas)
+                mapa[(f.PuntoVenta!.Value, f.NumeroComprobante!.Value)] = f.Provincia!;
+        }
+        foreach (var v in conNum)
+            if (mapa.TryGetValue((v.PuntoVenta!.Value, v.NumeroComprobante!.Value), out var prov))
+                v.Provincia = prov;
     }
 
     // ═══════════════════ BALANZA DE IVA (ventas - compras) ═══════════════════
@@ -1056,8 +1149,13 @@ public class ContadoraService
         if (!string.IsNullOrWhiteSpace(empresaCuit)) q = q.Where(c => c.EmisorCuit == empresaCuit);
 
         var datos = await q.Where(c => c.FechaEmision != null)
-            .Select(c => new { c.Naturaleza, c.FechaEmision, c.EsNotaCredito, c.Iva21, c.Iva105 })
+            .Select(c => new { c.Naturaleza, c.Origen, c.PuntoVenta, c.NumeroComprobante, c.FechaEmision, c.EsNotaCredito, c.Iva21, c.Iva105 })
             .ToListAsync();
+
+        // Contar cada venta una sola vez: saco las de MeLi/sistema que ya estan en AFIP (gana AFIP).
+        var afip = await ClavesVentasAfipAsync();
+        if (afip.Count > 0)
+            datos = datos.Where(x => x.Naturaleza != "VENTA" || NoDuplicada(x.Origen, x.PuntoVenta, x.NumeroComprobante, afip)).ToList();
 
         var filas = datos
             .GroupBy(x => new { x.FechaEmision!.Value.Year, x.FechaEmision!.Value.Month })
@@ -1106,6 +1204,21 @@ public class ContadoraService
         return q;
     }
 
+    /// <summary>Claves "pto|numero" de las ventas oficiales de AFIP (emitidos). Sirven para NO contar dos veces:
+    /// una venta que esta en AFIP y tambien en el reporte de MeLi / sistema, se cuenta una sola vez (gana AFIP).</summary>
+    private async Task<HashSet<string>> ClavesVentasAfipAsync()
+    {
+        var l = await _db.ContadoraComprobantes
+            .Where(c => c.Origen == "AFIP_EMITIDOS" && c.PuntoVenta != null && c.NumeroComprobante != null)
+            .Select(c => new { c.PuntoVenta, c.NumeroComprobante }).Distinct().ToListAsync();
+        return l.Select(x => $"{x.PuntoVenta}|{x.NumeroComprobante}").ToHashSet();
+    }
+
+    /// <summary>Saca las filas de MeLi/sistema que ya estan en AFIP (misma pto+numero), para contar cada venta una vez.
+    /// Gana AFIP (fuente oficial). Solo aplica cuando NO se filtra por un origen puntual.</summary>
+    private static bool NoDuplicada(string? origen, int? pto, long? num, HashSet<string> afip)
+        => origen == "AFIP_EMITIDOS" || pto == null || num == null || !afip.Contains($"{pto}|{num}");
+
     /// <summary>Empresas (CUIT) que aparecen en los comprobantes importados, con su razon social si la conocemos.</summary>
     public async Task<List<ContadoraEmpresaDto>> GetReporteEmpresasAsync()
     {
@@ -1139,8 +1252,15 @@ public class ContadoraService
         dto.SinDatos = !await _db.ContadoraComprobantes.AnyAsync(c => c.Naturaleza == naturaleza);
 
         var datos = await FiltrarComprobantes(desde, hasta, empresaCuit, puntoVenta, letra, provincia, search, origen, naturaleza)
-            .Select(c => new { c.EmisorCuit, c.PuntoVenta, c.Letra, c.EsNotaCredito, c.NetoGravado, c.Iva21, c.Iva105, c.Total })
+            .Select(c => new { c.Origen, c.EmisorCuit, c.PuntoVenta, c.NumeroComprobante, c.Letra, c.EsNotaCredito, c.NetoGravado, c.Iva21, c.Iva105, c.Total })
             .ToListAsync();
+
+        // Contar cada venta una sola vez: si el usuario NO filtro por un origen puntual, saco las de MeLi/sistema que ya estan en AFIP.
+        if (naturaleza == "VENTA" && string.IsNullOrWhiteSpace(origen))
+        {
+            var afip = await ClavesVentasAfipAsync();
+            if (afip.Count > 0) datos = datos.Where(x => NoDuplicada(x.Origen, x.PuntoVenta, x.NumeroComprobante, afip)).ToList();
+        }
 
         dto.Filas = datos
             .GroupBy(x => new { x.EmisorCuit, x.PuntoVenta, x.Letra })

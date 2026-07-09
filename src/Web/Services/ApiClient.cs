@@ -5615,6 +5615,24 @@ public class ApiClient
         return (await resp.Content.ReadFromJsonAsync<ContadoraImportResultDto>(), null);
     }
 
+    public async Task<ContadoraImportResultDto?> ImportarVentasAfipCarpetaAsync(string? subcarpeta = null)
+        => await PostAsync<ContadoraImportResultDto>("/api/contadora/importar-ventas-afip-carpeta" + (string.IsNullOrWhiteSpace(subcarpeta) ? "" : "?subcarpeta=" + Uri.EscapeDataString(subcarpeta)), new { });
+
+    public async Task<(ContadoraImportResultDto? result, string? error)> ImportarVentasAfipArchivosAsync(IEnumerable<(string name, Stream stream)> archivos)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        foreach (var f in archivos)
+        {
+            var sc = new StreamContent(f.stream);
+            sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+            content.Add(sc, "archivos", f.name);
+        }
+        var resp = await _http.PostAsync("/api/contadora/importar-ventas-afip", content);
+        if (!resp.IsSuccessStatusCode) return (null, $"HTTP {(int)resp.StatusCode}: {await resp.Content.ReadAsStringAsync()}");
+        return (await resp.Content.ReadFromJsonAsync<ContadoraImportResultDto>(), null);
+    }
+
     private static string ComprasQs(DateTime? desde, DateTime? hasta, string? empresa, string? search)
     {
         var qs = new List<string>();

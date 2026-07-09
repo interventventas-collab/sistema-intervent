@@ -185,4 +185,21 @@ public class ContadoraController : ControllerBase
     [HttpGet("balanza")]
     public async Task<ActionResult<ContadoraBalanzaDto>> Balanza([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta, [FromQuery] string? empresa)
         => Ok(await _svc.GetBalanzaAsync(desde, hasta, empresa));
+
+    /// <summary>Importa los "Mis Comprobantes Emitidos" de AFIP (ventas) de una subcarpeta compartida.</summary>
+    [HttpPost("importar-ventas-afip-carpeta")]
+    public async Task<ActionResult<ContadoraImportResultDto>> ImportarVentasAfipCarpeta([FromQuery] string? subcarpeta)
+        => Ok(await _svc.ImportarVentasAfipCarpetaAsync(string.IsNullOrWhiteSpace(subcarpeta) ? "Compartido/facturas meli" : subcarpeta));
+
+    /// <summary>Importa archivos de "Mis Comprobantes Emitidos" (ventas AFIP) subidos por el usuario.</summary>
+    [HttpPost("importar-ventas-afip")]
+    [RequestSizeLimit(80_000_000)]
+    public async Task<ActionResult<ContadoraImportResultDto>> ImportarVentasAfip([FromForm] List<IFormFile> archivos)
+    {
+        if (archivos == null || archivos.Count == 0)
+            return Ok(new ContadoraImportResultDto { Ok = false, Mensaje = "No se recibio ningun archivo." });
+        var items = new List<(string, Stream)>();
+        foreach (var f in archivos) items.Add((f.FileName, f.OpenReadStream()));
+        return Ok(await _svc.ImportarVentasAfipArchivosAsync(items));
+    }
 }
