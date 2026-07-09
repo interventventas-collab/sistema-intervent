@@ -5621,6 +5621,9 @@ public class ApiClient
     public async Task<ContadoraImportResultDto?> SincronizarMeliApiAsync()
         => await PostAsync<ContadoraImportResultDto>("/api/contadora/sincronizar-meli-api", new { });
 
+    public async Task<ContadoraImportResultDto?> ImportarScrapeAfipAsync()
+        => await PostAsync<ContadoraImportResultDto>("/api/contadora/importar-scrape-afip", new { });
+
     public async Task<(ContadoraImportResultDto? result, string? error)> ImportarVentasAfipArchivosAsync(IEnumerable<(string name, Stream stream)> archivos)
     {
         await SetAuthHeaderAsync();

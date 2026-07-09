@@ -31,10 +31,44 @@ public class ContadoraService
     private const decimal IvaAlicuota = 0.21m;
     private const string SinDato = "(sin dato)";
 
+    private readonly ArcaScrapingService _arca;
+
     public ContadoraService(AppDbContext db, IHttpClientFactory httpFactory, MeliAccountService accountService,
-        FileStorageService storage, ILogger<ContadoraService> logger)
+        FileStorageService storage, ILogger<ContadoraService> logger, ArcaScrapingService arca)
     {
-        _db = db; _httpFactory = httpFactory; _accountService = accountService; _storage = storage; _logger = logger;
+        _db = db; _httpFactory = httpFactory; _accountService = accountService; _storage = storage; _logger = logger; _arca = arca;
+    }
+
+    /// <summary>Toma el CSV que el scraper de AFIP ya descargó (emitidos = ventas, recibidos = compras) en la última
+    /// corrida y lo importa con el importador completo del Libro IVA. Así las compras (y ventas) entran de AFIP sin
+    /// subir archivos a mano. Devuelve un resumen combinado.</summary>
+    public async Task<ContadoraImportResultDto> ImportarUltimoScrapeAfipAsync()
+    {
+        var status = await _arca.GetStatusAsync();
+        var r = status.Result;
+        if (r is null || (string.IsNullOrEmpty(r.RecibidosCsv) && string.IsNullOrEmpty(r.EmitidosCsv)))
+            return new ContadoraImportResultDto { Ok = false, Mensaje = "No hay una descarga de AFIP reciente para importar. Corré primero la bajada en Integraciones → ARCA." };
+
+        var res = new ContadoraImportResultDto { Ok = true };
+        var partes = new List<string>();
+
+        if (!string.IsNullOrEmpty(r.RecibidosCsv))
+        {
+            using var ms = new MemoryStream(Convert.FromBase64String(r.RecibidosCsv));
+            var comp = await ImportarComprasArchivosAsync(new[] { ("recibidos_afip.csv", (Stream)ms) });
+            partes.Add($"Compras: {comp.Facturas} fac + {comp.NotasCredito} NC ({comp.Nuevos} nuevas)");
+            res.Archivos.AddRange(comp.Archivos);
+        }
+        if (!string.IsNullOrEmpty(r.EmitidosCsv))
+        {
+            using var ms = new MemoryStream(Convert.FromBase64String(r.EmitidosCsv));
+            var vent = await ImportarVentasAfipArchivosAsync(new[] { ("emitidos_afip.csv", (Stream)ms) });
+            partes.Add($"Ventas: {vent.Facturas} fac + {vent.NotasCredito} NC ({vent.Nuevos} nuevas)");
+            res.Archivos.AddRange(vent.Archivos);
+        }
+        res.Mensaje = "Importado de AFIP → " + string.Join(" · ", partes);
+        _logger.LogInformation("[Contadora] Import scrape AFIP: {Msg}", res.Mensaje);
+        return res;
     }
 
     /// <summary>Normaliza el nombre de la provincia como lo espera la contadora.</summary>

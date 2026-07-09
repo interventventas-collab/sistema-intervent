@@ -493,10 +493,19 @@
                 El <b>Libro IVA Compras</b>: todas las facturas que te emiten tus <b>proveedores</b> (de los “Comprobantes recibidos” de AFIP),
                 con el <b>IVA crédito</b>. Las notas de crédito <b>restan</b>.
             </p>
-            <div style="background:#fefce8;border:1px solid #fde68a;border-radius:10px;padding:.9rem 1rem;">
-                <b>AFIP</b> — subí el <b>"Mis Comprobantes → Recibidos"</b> a la Carpeta Compartida → carpeta <b>facturas meli</b> (puede ser en una subcarpeta) y tocá el botón. No se duplica.
+            <div style="background:#ecfeff;border:1px solid #a5f3fc;border-radius:10px;padding:.9rem 1rem;">
+                <b>🤖 Bajar de AFIP automático</b> — primero corré la descarga en <b>Integraciones → ARCA</b> (entra a AFIP con tu clave y baja los comprobantes), y después tocá este botón para importarlo. Trae compras <b>y</b> ventas de una.
+                <div style="margin-top:.5rem;">
+                    <button class="co-btn co-btn-primary" @onclick="ImportarScrapeAfip" disabled="@importandoCompras">
+                        @(importandoCompras ? "Importando…" : "⬇️ Importar lo que bajó de AFIP")
+                    </button>
+                </div>
+            </div>
+
+            <div style="background:#fefce8;border:1px solid #fde68a;border-radius:10px;padding:.9rem 1rem;margin-top:.7rem;">
+                <b>…o a mano</b> — subí el <b>"Mis Comprobantes → Recibidos"</b> a la Carpeta Compartida → carpeta <b>facturas meli</b> (puede ser en una subcarpeta) y tocá el botón. No se duplica.
                 <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-top:.5rem;">
-                    <button class="co-btn co-btn-primary" @onclick="ImportarComprasCarpeta" disabled="@importandoCompras">
+                    <button class="co-btn co-btn-ghost" @onclick="ImportarComprasCarpeta" disabled="@importandoCompras">
                         @(importandoCompras ? "Importando…" : "📥 Importar compras de la carpeta")
                     </button>
                     <label class="co-btn co-btn-ghost" style="margin:0;">
@@ -1026,6 +1035,24 @@
             else ToastService.Error(comprasResult?.Mensaje ?? "No se pudo importar.");
         }
         catch (Exception ex) { ToastService.Error("Error al importar compras: " + ex.Message); }
+        finally { importandoCompras = false; }
+    }
+
+    private async Task ImportarScrapeAfip()
+    {
+        if (importandoCompras) return;
+        importandoCompras = true; comprasResult = null;
+        try
+        {
+            comprasResult = await Api.ImportarScrapeAfipAsync();
+            if (comprasResult is not null && comprasResult.Ok)
+            {
+                ToastService.Success(comprasResult.Mensaje ?? "Importado.");
+                await CargarCompras();
+            }
+            else ToastService.Error(comprasResult?.Mensaje ?? "No se pudo importar.");
+        }
+        catch (Exception ex) { ToastService.Error("Error al importar de AFIP: " + ex.Message); }
         finally { importandoCompras = false; }
     }
 

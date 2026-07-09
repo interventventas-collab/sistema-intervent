@@ -1822,6 +1822,10 @@ async function runArcaComprobantes({ cuit, cuitLogin, password, rangoFechas }) {
     ok: true,
     emitidos,
     recibidos,
+    // CSV crudo (base64) tal cual lo baja AFIP — el Libro IVA lo procesa con su importador completo
+    // (tipo de comprobante, punto de venta, numero, letra, IVA por alicuota, etc.).
+    emitidosCsv: emitidosBuf ? emitidosBuf.toString('base64') : null,
+    recibidosCsv: recibidosBuf ? recibidosBuf.toString('base64') : null,
     rangoDesde: isoDesde,
     rangoHasta: isoHasta,
   };
