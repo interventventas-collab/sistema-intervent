@@ -202,4 +202,9 @@ public class ContadoraController : ControllerBase
         foreach (var f in archivos) items.Add((f.FileName, f.OpenReadStream()));
         return Ok(await _svc.ImportarVentasAfipArchivosAsync(items));
     }
+
+    /// <summary>Control / doble-check: concilia ventas de AFIP contra MeLi/sistema.</summary>
+    [HttpGet("control")]
+    public async Task<ActionResult<ContadoraControlDto>> Control([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta)
+        => Ok(await _svc.GetControlAsync(desde, hasta));
 }
