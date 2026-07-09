@@ -154,11 +154,23 @@ public class ContadoraCargaDto
     public decimal TotalNeto { get; set; }
 }
 
+public class ContadoraPdfResultDto
+{
+    public bool Ok { get; set; } = true;
+    public string? Mensaje { get; set; }
+    public int Total { get; set; }
+    public int Adjuntados { get; set; }
+    public int SinMatch { get; set; }
+    public int SinQr { get; set; }
+    public List<string> NoMatch { get; set; } = new();
+}
+
 public class ContadoraComprobanteDto
 {
     public string IdComprobante { get; set; } = "";
     public string? Origen { get; set; }
     public string? Concepto { get; set; }
+    public bool TienePdf { get; set; }
     public string? EmpresaCuit { get; set; }
     public bool EsNotaCredito { get; set; }
     public string? TipoComprobante { get; set; }

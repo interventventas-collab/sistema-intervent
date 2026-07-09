@@ -285,7 +285,7 @@
                 {
                     <div style="overflow-x:auto;">
                         <table class="co-tabla">
-                            <thead><tr><th>Fecha</th><th>Origen</th><th>Comprobante</th><th>Concepto</th><th class="num">Pto vta</th><th class="num">Número</th><th>Cliente</th><th class="num">Neto</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
+                            <thead><tr><th>Fecha</th><th>Origen</th><th>Comprobante</th><th>Concepto</th><th class="num">Pto vta</th><th class="num">Número</th><th>Cliente</th><th class="num">Neto</th><th class="num">IVA</th><th class="num">Total</th><th>Factura</th></tr></thead>
                             <tbody>
                                 @foreach (var f in repComps.Items)
                                 {
@@ -300,6 +300,7 @@
                                         <td class="num">@Money(f.Neto)</td>
                                         <td class="num">@Money(f.Iva)</td>
                                         <td class="num">@Money(f.Total)</td>
+                                        <td>@PdfLink(f)</td>
                                     </tr>
                                 }
                             </tbody>
@@ -500,10 +501,28 @@
                     </label>
                 </div>
             </div>
+            <div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;padding:.9rem 1rem;margin-top:.7rem;">
+                <b>📎 Adjuntar los PDF de las facturas</b> — dejá los PDF (de MeLi, mail, WhatsApp) en la Carpeta Compartida → carpeta <b>facturas recibidas</b>. El sistema lee el <b>QR de AFIP</b> de cada uno y lo pega a la venta o compra que corresponde. Después aparece un <b>📎</b> para descargarla en el detalle.
+                <div style="margin-top:.5rem;">
+                    <button class="co-btn co-btn-primary" @onclick="ProcesarPdfs" disabled="@procesandoPdf">
+                        @(procesandoPdf ? "Procesando…" : "📎 Adjuntar facturas de la carpeta")
+                    </button>
+                </div>
+            </div>
             @if (comprasResult is not null)
             {
                 <div class="co-alerta" style="@(comprasResult.Ok ? "background:#f0fdf4;border-color:#bbf7d0;" : "")margin-top:.9rem;">
                     <div><b>@(comprasResult.Ok ? "✅ " : "⚠️ ")@comprasResult.Mensaje</b></div>
+                </div>
+            }
+            @if (pdfResult is not null)
+            {
+                <div class="co-alerta" style="background:#f5f3ff;border-color:#ddd6fe;margin-top:.9rem;">
+                    <div><b>📎 @pdfResult.Mensaje</b></div>
+                    @if (pdfResult.NoMatch.Count > 0)
+                    {
+                        <div class="co-hint" style="margin-top:.4rem;">No pude matchear (revisar): @string.Join(" · ", pdfResult.NoMatch.Take(10))@(pdfResult.NoMatch.Count > 10 ? "…" : "")</div>
+                    }
                 </div>
             }
         </div>
@@ -583,7 +602,7 @@
                 {
                     <div style="overflow-x:auto;">
                         <table class="co-tabla">
-                            <thead><tr><th>Fecha</th><th>Comprobante</th><th class="num">Pto vta</th><th class="num">Número</th><th>Proveedor</th><th>CUIT</th><th class="num">Neto</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
+                            <thead><tr><th>Fecha</th><th>Comprobante</th><th class="num">Pto vta</th><th class="num">Número</th><th>Proveedor</th><th>CUIT</th><th class="num">Neto</th><th class="num">IVA</th><th class="num">Total</th><th>Factura</th></tr></thead>
                             <tbody>
                                 @foreach (var f in compComps.Items)
                                 {
@@ -597,6 +616,7 @@
                                         <td class="num">@Money(f.Neto)</td>
                                         <td class="num">@Money(f.Iva)</td>
                                         <td class="num">@Money(f.Total)</td>
+                                        <td>@PdfLink(f)</td>
                                     </tr>
                                 }
                             </tbody>
@@ -654,6 +674,8 @@
     private DateTime? kDesde, kHasta;
     private string? kSearch, kMes;
     private bool cargandoComp, verDetalleComp, compInit;
+    private bool procesandoPdf;
+    private ContadoraPdfResultDto? pdfResult;
     private int compPage = 1;
     private int CompPaginas => compComps is null ? 1 : (int)Math.Ceiling(compComps.Total / (double)compComps.PageSize);
 
@@ -1013,6 +1035,27 @@
     }
 
     private async Task IrPaginaComp(int p) { compPage = p; await CargarCompComps(); }
+
+    private MarkupString PdfLink(ContadoraComprobanteDto f)
+    {
+        if (!f.TienePdf) return new MarkupString("<span style='color:#cbd5e1;'>—</span>");
+        var url = "api/contadora/factura-pdf?id=" + Uri.EscapeDataString(f.IdComprobante);
+        return new MarkupString($"<a href='{url}' target='_blank' title='Descargar factura' style='color:#7c3aed;font-weight:600;text-decoration:none;'>📎 Ver</a>");
+    }
+
+    private async Task ProcesarPdfs()
+    {
+        if (procesandoPdf) return;
+        procesandoPdf = true; pdfResult = null;
+        try
+        {
+            pdfResult = await Api.ProcesarFacturasPdfAsync();
+            if (pdfResult is not null && pdfResult.Ok) { ToastService.Success(pdfResult.Mensaje ?? "Listo."); if (verDetalleComp) await CargarCompComps(); }
+            else ToastService.Error(pdfResult?.Mensaje ?? "No se pudo procesar.");
+        }
+        catch (Exception ex) { ToastService.Error("Error al procesar PDFs: " + ex.Message); }
+        finally { procesandoPdf = false; }
+    }
 
     private IEnumerable<(string Letra, int Cant, decimal Neto, decimal Iva, decimal Total)> PorLetraCompras()
         => (comp?.Filas ?? new()).GroupBy(f => f.Letra ?? "—")

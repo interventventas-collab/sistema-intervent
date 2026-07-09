@@ -5624,6 +5624,9 @@ public class ApiClient
     public async Task<ContadoraImportResultDto?> ImportarScrapeAfipAsync()
         => await PostAsync<ContadoraImportResultDto>("/api/contadora/importar-scrape-afip", new { });
 
+    public async Task<ContadoraPdfResultDto?> ProcesarFacturasPdfAsync(string? subcarpeta = null)
+        => await PostAsync<ContadoraPdfResultDto>("/api/contadora/procesar-facturas-pdf" + (string.IsNullOrWhiteSpace(subcarpeta) ? "" : "?subcarpeta=" + Uri.EscapeDataString(subcarpeta)), new { });
+
     public async Task<(ContadoraImportResultDto? result, string? error)> ImportarVentasAfipArchivosAsync(IEnumerable<(string name, Stream stream)> archivos)
     {
         await SetAuthHeaderAsync();
