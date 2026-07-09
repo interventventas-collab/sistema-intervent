@@ -672,7 +672,7 @@ public class ContadoraService
                     ReceptorDoc = cNumDoc > 0 ? NullIfEmpty(ws.Cell(r, cNumDoc).GetString()) : null,
                     ReceptorCondIva = cCondIva > 0 ? NullIfEmpty(ws.Cell(r, cCondIva).GetString()) : null,
                     ReceptorNombre = cNombre > 0 ? NullIfEmpty(ws.Cell(r, cNombre).GetString()) : null,
-                    Provincia = cProv > 0 ? NullIfEmpty(ws.Cell(r, cProv).GetString()) : null,
+                    Provincia = NormProv(cProv > 0 ? ws.Cell(r, cProv).GetString() : null),
                     ProvinciaEnvio = cProvEnv > 0 ? NullIfEmpty(ws.Cell(r, cProvEnv).GetString()) : null,
                     NetoGravado = Dec(ws, r, cNeto), BaseIva105 = Dec(ws, r, cBase105), Iva105 = Dec(ws, r, cIva105),
                     BaseIva21 = Dec(ws, r, cBase21), Iva21 = Dec(ws, r, cIva21),
@@ -872,6 +872,15 @@ public class ContadoraService
             .OrderBy(e => e.Nombre).ToList();
     }
 
+    /// <summary>Provincias presentes en los comprobantes importados (para el desplegable del filtro).</summary>
+    public async Task<List<string>> GetReporteProvinciasAsync()
+    {
+        return await _db.ContadoraComprobantes
+            .Where(c => c.Provincia != null && c.Provincia != "")
+            .Select(c => c.Provincia!)
+            .Distinct().OrderBy(p => p).ToListAsync();
+    }
+
     /// <summary>Resumen del Libro IVA Ventas desde los comprobantes importados (NC restan).</summary>
     public async Task<ContadoraReporteResumenDto> GetReporteResumenAsync(DateTime? desde, DateTime? hasta,
         string? empresaCuit, int? puntoVenta, string? letra, string? provincia, string? search, string? origen = null)
@@ -1025,6 +1034,35 @@ public class ContadoraService
         var r = sb.ToString().Normalize(NormalizationForm.FormC);
         while (r.Contains("  ")) r = r.Replace("  ", " ");
         return r.Trim();
+    }
+
+    // Provincias canonicas (24 jurisdicciones AR) para unificar los nombres crudos de MeLi
+    // ("CORDOBA"/"Córdoba", "Capital Federal"/"CIUDAD AUTONOMA BUENOS AIRES", etc.).
+    private static readonly Dictionary<string, string> _provMap = BuildProvMap();
+    private static Dictionary<string, string> BuildProvMap()
+    {
+        var canon = new[]
+        {
+            "Buenos Aires", "Ciudad Autónoma de Buenos Aires", "Catamarca", "Chaco", "Chubut", "Córdoba",
+            "Corrientes", "Entre Ríos", "Formosa", "Jujuy", "La Pampa", "La Rioja", "Mendoza", "Misiones",
+            "Neuquén", "Río Negro", "Salta", "San Juan", "San Luis", "Santa Cruz", "Santa Fe",
+            "Santiago del Estero", "Tierra del Fuego", "Tucumán"
+        };
+        var d = new Dictionary<string, string>();
+        foreach (var c in canon) d[Norm(c)] = c;
+        foreach (var a in new[] { "capital federal", "ciudad autonoma buenos aires", "ciudad autonoma de buenos aires",
+            "ciudad de buenos aires", "caba", "c a b a" })
+            d[a] = "Ciudad Autónoma de Buenos Aires";
+        d["tierra del fuego antartida e islas del atlantico sur"] = "Tierra del Fuego";
+        return d;
+    }
+
+    /// <summary>Nombre unificado de la provincia. Si no la reconoce, la deja como vino.</summary>
+    private static string? NormProv(string? raw)
+    {
+        var t = raw?.Trim();
+        if (string.IsNullOrEmpty(t)) return null;
+        return _provMap.TryGetValue(Norm(t), out var c) ? c : t;
     }
 
     private static string? SoloDigitos(string? s)
