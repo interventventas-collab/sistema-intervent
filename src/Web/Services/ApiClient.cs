@@ -5671,6 +5671,15 @@ public class ApiClient
         return await GetAsync<ContadoraBalanzaDto>("/api/contadora/balanza" + (qs.Count > 0 ? "?" + string.Join("&", qs) : ""));
     }
 
+    public async Task<List<ContadoraRetencionDto>?> GetContadoraRetencionesAsync(string empresa)
+        => await GetAsync<List<ContadoraRetencionDto>>("/api/contadora/retenciones?empresa=" + Uri.EscapeDataString(empresa));
+
+    public async Task<bool> GuardarRetencionAsync(string empresa, int anio, int mes, decimal monto, string? nota)
+    {
+        var r = await PostAsync<object>("/api/contadora/retenciones", new { empresa, anio, mes, monto, nota });
+        return r is not null;
+    }
+
     public async Task<ContadoraControlDto?> GetContadoraControlAsync(DateTime? desde, DateTime? hasta, string? empresa = null)
     {
         var qs = new List<string>();

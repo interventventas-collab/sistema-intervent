@@ -590,6 +590,20 @@ IF COL_LENGTH('ContadoraComprobantes', 'PdfPath') IS NULL
     ALTER TABLE ContadoraComprobantes ADD PdfPath NVARCHAR(500) NULL;
 GO
 
+-- 2026-07-09: retenciones/percepciones de IVA por mes y empresa (para el IVA "a pagar" real).
+IF OBJECT_ID('ContadoraRetenciones','U') IS NULL
+CREATE TABLE ContadoraRetenciones (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    EmpresaCuit NVARCHAR(20) NOT NULL,
+    Anio INT NOT NULL,
+    Mes INT NOT NULL,
+    Monto DECIMAL(18,2) NOT NULL DEFAULT 0,
+    Nota NVARCHAR(300) NULL,
+    ActualizadoEn DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT UQ_ContadoraRetenciones UNIQUE (EmpresaCuit, Anio, Mes)
+);
+GO
+
 -- MeliItems table
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='MeliItems' AND xtype='U')
 BEGIN

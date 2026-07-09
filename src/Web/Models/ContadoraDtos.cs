@@ -188,6 +188,9 @@ public class ContadoraBalanzaMesDto
     public decimal IvaVentas { get; set; }
     public decimal IvaCompras { get; set; }
     public decimal Saldo { get; set; }
+    public decimal Retenciones { get; set; }
+    public decimal SaldoFavorAnterior { get; set; }
+    public decimal Posicion { get; set; }
 }
 
 public class ContadoraBalanzaDto
@@ -196,6 +199,17 @@ public class ContadoraBalanzaDto
     public decimal IvaVentasTotal { get; set; }
     public decimal IvaComprasTotal { get; set; }
     public decimal SaldoTotal { get; set; }
+    public decimal RetencionesTotal { get; set; }
+    public decimal APagarTotal { get; set; }
+    public decimal SaldoFavorActual { get; set; }
+}
+
+public class ContadoraRetencionDto
+{
+    public int Anio { get; set; }
+    public int Mes { get; set; }
+    public decimal Monto { get; set; }
+    public string? Nota { get; set; }
 }
 
 public class ContadoraControlDto
