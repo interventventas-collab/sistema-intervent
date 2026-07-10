@@ -52,16 +52,27 @@
                 <input type="number" min="1" max="31" step="1" @bind="form.Umbral" class="ma-num" placeholder="15" />
                 <span class="ma-frase-txt">de cada mes</span>
             }
-            else if (form.Tipo == "EMAIL_REMITENTE")
-            {
-                <textarea @bind="form.Remitente" class="ma-text" rows="3"
-                          style="width:100%; max-width:480px; resize:vertical;"
-                          placeholder="contadora@@estudio.com&#10;@@banco.com&#10;proveedor@@ejemplo.com"></textarea>
-            }
         </div>
         @if (form.Tipo == "EMAIL_REMITENTE")
         {
-            <div class="ma-hint" style="margin-bottom:12px;">Podés poner <strong>varios remitentes</strong>: uno por línea o separados por coma. Te avisa si entra un correo de cualquiera de ellos (solo de los que lleguen de ahora en adelante).</div>
+            <div class="ma-field">
+                <div class="ma-chips">
+                    @if (form.Remitentes.Count == 0)
+                    {
+                        <span class="ma-chips-empty">Todavía no agregaste ningún correo</span>
+                    }
+                    @foreach (var r in form.Remitentes)
+                    {
+                        <span class="ma-chip">@r<button type="button" class="ma-chip-x" title="Quitar" @onclick="@(() => QuitarRemitente(r))">×</button></span>
+                    }
+                </div>
+                <div class="ma-chip-add">
+                    <input type="text" @bind="form.RemitenteNuevo" @bind:event="oninput" @onkeydown="OnRemitenteKey"
+                           class="ma-text" style="max-width:300px;" placeholder="correo@@ejemplo.com" />
+                    <button type="button" class="btn-secondary" @onclick="AgregarRemitente">＋ Agregar</button>
+                </div>
+                <div class="ma-hint" style="margin-top:6px;">Agregá los correos de a uno (Enter o el botón ＋). Sacá cualquiera con la × sin tocar los demás. Te avisa si entra un mail de cualquiera (solo de los que lleguen de ahora en adelante).</div>
+            </div>
         }
         @if (form.Tipo == "EMAIL_REMITENTE" && (correoCfg is null || !correoCfg.Configurada))
         {
@@ -211,6 +222,12 @@ else
     .ma-card-roles { font-size: 0.75rem; color: #9ca3af; margin-top: 2px; }
     .ma-cfg-warn { background: #FEF3C7; color: #92400E; font-size: 0.8rem; padding: 8px 10px; border-radius: 8px; margin-bottom: 12px; }
     .ma-hint { font-size: 0.75rem; color: #6b7280; margin-top: 4px; }
+    .ma-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; min-height: 24px; }
+    .ma-chips-empty { font-size: 0.82rem; color: #9ca3af; font-style: italic; }
+    .ma-chip { display: inline-flex; align-items: center; gap: 6px; background: #E6F1FB; color: #185FA5; font-size: 0.82rem; padding: 4px 6px 4px 10px; border-radius: 999px; }
+    .ma-chip-x { border: none; background: rgba(24,95,165,0.15); color: #185FA5; width: 18px; height: 18px; border-radius: 50%; cursor: pointer; font-size: 0.9rem; line-height: 1; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+    .ma-chip-x:hover { background: #185FA5; color: #fff; }
+    .ma-chip-add { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .ma-correo-box { background: #F9FAFB; border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px 16px; margin-top: 1.5rem; }
     .ma-correo-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 0.9rem; color: #374151; }
     .ma-correo-form { margin-top: 14px; border-top: 1px solid #e5e7eb; padding-top: 14px; }
@@ -249,7 +266,8 @@ else
     {
         public string Tipo { get; set; } = "SHELL_BAJO";
         public decimal? Umbral { get; set; }
-        public string Remitente { get; set; } = "";
+        public List<string> Remitentes { get; set; } = new();
+        public string RemitenteNuevo { get; set; } = "";
         public string Mensaje { get; set; } = "";
         public bool VeAdmin { get; set; } = true;
         public bool VeOficina { get; set; } = true;
@@ -312,7 +330,9 @@ else
         {
             Tipo = a.Tipo,
             Umbral = a.Umbral,
-            Remitente = a.TextoParam ?? "",
+            Remitentes = string.IsNullOrWhiteSpace(a.TextoParam)
+                ? new()
+                : a.TextoParam.Split(new[] { ',', ';', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct().ToList(),
             Mensaje = a.Mensaje,
             VeAdmin = a.Roles.Contains("admin"),
             VeOficina = a.Roles.Contains("oficina"),
@@ -331,7 +351,27 @@ else
     {
         // Al cambiar de tipo, limpiamos los valores para no arrastrar un monto donde va un día o un correo.
         form.Umbral = null;
-        form.Remitente = "";
+        form.Remitentes = new();
+        form.RemitenteNuevo = "";
+    }
+
+    private void AgregarRemitente()
+    {
+        var v = form.RemitenteNuevo?.Trim();
+        if (string.IsNullOrWhiteSpace(v)) return;
+        // Por si pegó varios de una (con coma/espacio), los separo.
+        var partes = v.Split(new[] { ',', ';', '\n', '\r', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var p in partes)
+            if (!form.Remitentes.Contains(p, StringComparer.OrdinalIgnoreCase))
+                form.Remitentes.Add(p);
+        form.RemitenteNuevo = "";
+    }
+
+    private void QuitarRemitente(string r) => form.Remitentes.Remove(r);
+
+    private void OnRemitenteKey(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") AgregarRemitente();
     }
 
     private async Task Guardar()
@@ -339,7 +379,9 @@ else
         if (string.IsNullOrWhiteSpace(form.Mensaje)) { Toast.Error("Escribí el mensaje del aviso"); return; }
         if (form.Tipo == "EMAIL_REMITENTE")
         {
-            if (string.IsNullOrWhiteSpace(form.Remitente)) { Toast.Error("Escribí el correo del remitente a vigilar"); return; }
+            // Si quedó algo tipeado sin agregar, lo agregamos solo (para no perderlo).
+            if (!string.IsNullOrWhiteSpace(form.RemitenteNuevo)) AgregarRemitente();
+            if (form.Remitentes.Count == 0) { Toast.Error("Agregá al menos un correo a vigilar"); return; }
         }
         else
         {
@@ -354,7 +396,7 @@ else
         if (roles.Count == 0) { Toast.Error("Elegí al menos quién ve la alerta (Admin, Oficina o Depósito)"); return; }
 
         guardando = true;
-        var texto = form.Tipo == "EMAIL_REMITENTE" ? form.Remitente.Trim() : null;
+        var texto = form.Tipo == "EMAIL_REMITENTE" ? string.Join(",", form.Remitentes) : null;
         var req = new ApiClient.AlertaUpsertRequest(form.Tipo, form.Umbral, texto, form.Mensaje.Trim(),
             CanalCampanita: true, CanalWhatsApp: false, CanalCorreo: false, Activa: true, Roles: roles);
 
