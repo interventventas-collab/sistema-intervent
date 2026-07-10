@@ -54,9 +54,15 @@
             }
             else if (form.Tipo == "EMAIL_REMITENTE")
             {
-                <input type="text" @bind="form.Remitente" class="ma-text" style="max-width:280px;" placeholder="contadora@estudio.com" />
+                <textarea @bind="form.Remitente" class="ma-text" rows="3"
+                          style="width:100%; max-width:480px; resize:vertical;"
+                          placeholder="contadora@@estudio.com&#10;@@banco.com&#10;proveedor@@ejemplo.com"></textarea>
             }
         </div>
+        @if (form.Tipo == "EMAIL_REMITENTE")
+        {
+            <div class="ma-hint" style="margin-bottom:12px;">Podés poner <strong>varios remitentes</strong>: uno por línea o separados por coma. Te avisa si entra un correo de cualquiera de ellos (solo de los que lleguen de ahora en adelante).</div>
+        }
         @if (form.Tipo == "EMAIL_REMITENTE" && (correoCfg is null || !correoCfg.Configurada))
         {
             <div class="ma-cfg-warn">⚠️ Todavía no configuraste la casilla de correo (más abajo). Sin eso, esta alerta no puede vigilar el mail.</div>
@@ -432,8 +438,18 @@ else
             "BANCO_BAJO" => $"Si el Banco Galicia baja de {money} · por campanita",
             "CHEQUE_VENCE" => $"Si un cheque emitido vence en {(int)v} día(s) o menos · por campanita",
             "FECHA_MES" => $"El día {(int)v} de cada mes · por campanita",
-            "EMAIL_REMITENTE" => $"Si entra un correo de {a.TextoParam} · por campanita",
+            "EMAIL_REMITENTE" => $"Si entra un correo de: {FormatRemitentes(a.TextoParam)} · por campanita",
             _ => ""
         };
+    }
+
+    private static string FormatRemitentes(string? texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) return "(sin remitentes)";
+        var lista = texto
+            .Split(new[] { ',', ';', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct().ToList();
+        if (lista.Count <= 3) return string.Join(", ", lista);
+        return string.Join(", ", lista.Take(3)) + $" y {lista.Count - 3} más";
     }
 }
