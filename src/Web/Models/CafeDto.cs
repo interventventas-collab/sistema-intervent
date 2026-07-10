@@ -1053,6 +1053,23 @@ public class CafeOemDto
     public int VariantesCount { get; set; }
 }
 
+// 2026-07-10: producto (variante) vinculado a un OEM, para ver el impacto de un cambio de precio.
+public class CafeOemVarianteDto
+{
+    public int Id { get; set; }
+    public string? Sku { get; set; }
+    public string? Nombre { get; set; }
+    public string? Categoria { get; set; }
+    public string? Marca { get; set; }
+    public decimal Costo { get; set; }
+    public decimal? Pvp1 { get; set; }
+    public decimal? Pvp2 { get; set; }
+    public decimal? BarPctSobreCosto { get; set; }
+    public int? UxB { get; set; }
+    public decimal StockUnidades { get; set; }
+    public bool IsActive { get; set; }
+}
+
 // 2026-06-11: status del job masivo de scraping
 public class CafeOemScrapeMasivoStatusDto
 {
