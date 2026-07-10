@@ -33,6 +33,7 @@
                 <option value="BANCO_BAJO">🏦 el Banco Galicia baja de</option>
                 <option value="CHEQUE_VENCE">📄 un cheque emitido vence en</option>
                 <option value="FECHA_MES">📅 es el día del mes</option>
+                <option value="EMAIL_REMITENTE">📧 entra un correo de</option>
             </select>
 
             @if (form.Tipo is "SHELL_BAJO" or "BANCO_BAJO")
@@ -51,7 +52,15 @@
                 <input type="number" min="1" max="31" step="1" @bind="form.Umbral" class="ma-num" placeholder="15" />
                 <span class="ma-frase-txt">de cada mes</span>
             }
+            else if (form.Tipo == "EMAIL_REMITENTE")
+            {
+                <input type="text" @bind="form.Remitente" class="ma-text" style="max-width:280px;" placeholder="contadora@estudio.com" />
+            }
         </div>
+        @if (form.Tipo == "EMAIL_REMITENTE" && (correoCfg is null || !correoCfg.Configurada))
+        {
+            <div class="ma-cfg-warn">⚠️ Todavía no configuraste la casilla de correo (más abajo). Sin eso, esta alerta no puede vigilar el mail.</div>
+        }
 
         <div class="ma-field">
             <label class="ma-label">Con este mensaje</label>
@@ -126,6 +135,33 @@ else
     </div>
 }
 
+<div class="ma-correo-box">
+    <div class="ma-correo-head">
+        <span>📧 Casilla que reviso para las alertas de correo:
+            <strong>@(correoCfg?.Configurada == true ? correoCfg!.Usuario : "sin configurar")</strong>
+        </span>
+        <button class="btn-secondary" @onclick="AbrirCfgCorreo">@(correoCfg?.Configurada == true ? "Cambiar" : "Configurar")</button>
+    </div>
+    @if (mostrandoCfgCorreo)
+    {
+        <div class="ma-correo-form">
+            <div class="ma-field">
+                <label class="ma-label">Correo (Gmail)</label>
+                <input type="email" @bind="cfgUsuario" class="ma-text" placeholder="intervent.ventas@gmail.com" />
+            </div>
+            <div class="ma-field">
+                <label class="ma-label">Clave de aplicación de Google</label>
+                <input type="password" @bind="cfgPassword" class="ma-text" placeholder="@(correoCfg?.TieneClave == true ? "•••• (dejá vacío para no cambiarla)" : "pegá la clave de 16 letras")" />
+                <div class="ma-hint">Es una clave especial que genera Google (no tu contraseña normal). Se guarda protegida y nunca se muestra.</div>
+            </div>
+            <div class="ma-editor-actions">
+                <button class="btn-secondary" @onclick="() => mostrandoCfgCorreo = false">Cancelar</button>
+                <button class="btn-primary" @onclick="GuardarCfgCorreo" disabled="@guardandoCfg">@(guardandoCfg ? "Guardando..." : "Guardar casilla")</button>
+            </div>
+        </div>
+    }
+</div>
+
 <style>
     .ma-editor {
         background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
@@ -167,6 +203,11 @@ else
     .ma-card-msg { font-size: 1rem; font-weight: 600; color: #111827; }
     .ma-card-desc { font-size: 0.82rem; color: #6b7280; margin-top: 2px; }
     .ma-card-roles { font-size: 0.75rem; color: #9ca3af; margin-top: 2px; }
+    .ma-cfg-warn { background: #FEF3C7; color: #92400E; font-size: 0.8rem; padding: 8px 10px; border-radius: 8px; margin-bottom: 12px; }
+    .ma-hint { font-size: 0.75rem; color: #6b7280; margin-top: 4px; }
+    .ma-correo-box { background: #F9FAFB; border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px 16px; margin-top: 1.5rem; }
+    .ma-correo-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 0.9rem; color: #374151; }
+    .ma-correo-form { margin-top: 14px; border-top: 1px solid #e5e7eb; padding-top: 14px; }
     .ma-card-fired { font-size: 0.8rem; color: #991B1B; margin-top: 4px; font-weight: 600; }
     .ma-card-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
     .ma-icon-btn {
@@ -202,11 +243,19 @@ else
     {
         public string Tipo { get; set; } = "SHELL_BAJO";
         public decimal? Umbral { get; set; }
+        public string Remitente { get; set; } = "";
         public string Mensaje { get; set; } = "";
         public bool VeAdmin { get; set; } = true;
         public bool VeOficina { get; set; } = true;
         public bool VeDeposito { get; set; } = false;
     }
+
+    // Config de la casilla de correo (para alertas 📧)
+    private ApiClient.ConfigCorreoAlertasDto? correoCfg;
+    private bool mostrandoCfgCorreo;
+    private bool guardandoCfg;
+    private string cfgUsuario = "";
+    private string cfgPassword = "";
 
     protected override async Task OnInitializedAsync() => await Cargar();
 
@@ -214,7 +263,33 @@ else
     {
         loading = true;
         alertas = await Api.GetMisAlertasAsync();
+        correoCfg = await Api.GetConfigCorreoAlertasAsync();
         loading = false;
+    }
+
+    private void AbrirCfgCorreo()
+    {
+        cfgUsuario = correoCfg?.Usuario ?? "";
+        cfgPassword = "";
+        mostrandoCfgCorreo = true;
+    }
+
+    private async Task GuardarCfgCorreo()
+    {
+        if (string.IsNullOrWhiteSpace(cfgUsuario)) { Toast.Error("Escribí el correo (Gmail)"); return; }
+        if ((correoCfg is null || !correoCfg.TieneClave) && string.IsNullOrWhiteSpace(cfgPassword))
+        { Toast.Error("Pegá la clave de aplicación de Google"); return; }
+
+        guardandoCfg = true;
+        var (ok, err) = await Api.SaveConfigCorreoAlertasAsync(new ApiClient.ConfigCorreoAlertasRequest(
+            Host: "imap.gmail.com", Port: 993, Usuario: cfgUsuario.Trim(),
+            Password: string.IsNullOrWhiteSpace(cfgPassword) ? null : cfgPassword));
+        guardandoCfg = false;
+        if (!ok) { Toast.Error(err ?? "No se pudo guardar"); return; }
+        Toast.Success("Casilla de correo guardada");
+        cfgPassword = "";
+        mostrandoCfgCorreo = false;
+        correoCfg = await Api.GetConfigCorreoAlertasAsync();
     }
 
     private void NuevaAlerta()
@@ -231,6 +306,7 @@ else
         {
             Tipo = a.Tipo,
             Umbral = a.Umbral,
+            Remitente = a.TextoParam ?? "",
             Mensaje = a.Mensaje,
             VeAdmin = a.Roles.Contains("admin"),
             VeOficina = a.Roles.Contains("oficina"),
@@ -247,15 +323,23 @@ else
 
     private void OnTipoChanged()
     {
-        // Al cambiar de tipo, limpiamos el valor para no arrastrar un monto donde va un día.
+        // Al cambiar de tipo, limpiamos los valores para no arrastrar un monto donde va un día o un correo.
         form.Umbral = null;
+        form.Remitente = "";
     }
 
     private async Task Guardar()
     {
         if (string.IsNullOrWhiteSpace(form.Mensaje)) { Toast.Error("Escribí el mensaje del aviso"); return; }
-        if (form.Umbral is null || form.Umbral <= 0) { Toast.Error("Completá el valor (monto, días o día del mes)"); return; }
-        if (form.Tipo == "FECHA_MES" && (form.Umbral < 1 || form.Umbral > 31)) { Toast.Error("El día del mes va de 1 a 31"); return; }
+        if (form.Tipo == "EMAIL_REMITENTE")
+        {
+            if (string.IsNullOrWhiteSpace(form.Remitente)) { Toast.Error("Escribí el correo del remitente a vigilar"); return; }
+        }
+        else
+        {
+            if (form.Umbral is null || form.Umbral <= 0) { Toast.Error("Completá el valor (monto, días o día del mes)"); return; }
+            if (form.Tipo == "FECHA_MES" && (form.Umbral < 1 || form.Umbral > 31)) { Toast.Error("El día del mes va de 1 a 31"); return; }
+        }
 
         var roles = new List<string>();
         if (form.VeAdmin) roles.Add("admin");
@@ -264,7 +348,8 @@ else
         if (roles.Count == 0) { Toast.Error("Elegí al menos quién ve la alerta (Admin, Oficina o Depósito)"); return; }
 
         guardando = true;
-        var req = new ApiClient.AlertaUpsertRequest(form.Tipo, form.Umbral, form.Mensaje.Trim(),
+        var texto = form.Tipo == "EMAIL_REMITENTE" ? form.Remitente.Trim() : null;
+        var req = new ApiClient.AlertaUpsertRequest(form.Tipo, form.Umbral, texto, form.Mensaje.Trim(),
             CanalCampanita: true, CanalWhatsApp: false, CanalCorreo: false, Activa: true, Roles: roles);
 
         if (editandoId is null)
@@ -310,6 +395,7 @@ else
         "BANCO_BAJO" => "Poné plata en el banco",
         "CHEQUE_VENCE" => "Cubrí el cheque",
         "FECHA_MES" => "Pagar a la contadora",
+        "EMAIL_REMITENTE" => "Llegó un mail importante",
         _ => "Escribí el aviso"
     };
 
@@ -332,6 +418,7 @@ else
         "BANCO_BAJO" => "🏦",
         "CHEQUE_VENCE" => "📄",
         "FECHA_MES" => "📅",
+        "EMAIL_REMITENTE" => "📧",
         _ => "🔔"
     };
 
@@ -345,6 +432,7 @@ else
             "BANCO_BAJO" => $"Si el Banco Galicia baja de {money} · por campanita",
             "CHEQUE_VENCE" => $"Si un cheque emitido vence en {(int)v} día(s) o menos · por campanita",
             "FECHA_MES" => $"El día {(int)v} de cada mes · por campanita",
+            "EMAIL_REMITENTE" => $"Si entra un correo de {a.TextoParam} · por campanita",
             _ => ""
         };
     }

@@ -1199,11 +1199,13 @@ public class ApiClient
         => await GetAsync<List<ChequeProximoDto>>($"/api/cafe/cheques-banco/proximos-pagar?take={take}") ?? new();
 
     // 2026-07-10: Motor de alertas configurables ("Mis Alertas").
-    public record AlertaDto(int Id, string Tipo, decimal? Umbral, string Mensaje,
+    public record AlertaDto(int Id, string Tipo, decimal? Umbral, string? TextoParam, string Mensaje,
         bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool Activa, List<string> Roles,
         bool EstaDisparada, bool Vista, string? UltimoDetalle, DateTime? DisparadaAt);
-    public record AlertaUpsertRequest(string Tipo, decimal? Umbral, string Mensaje,
+    public record AlertaUpsertRequest(string Tipo, decimal? Umbral, string? TextoParam, string Mensaje,
         bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool Activa, List<string>? Roles);
+    public record ConfigCorreoAlertasDto(string? Host, int Port, string? Usuario, bool TieneClave, bool Configurada);
+    public record ConfigCorreoAlertasRequest(string? Host, int? Port, string? Usuario, string? Password);
     public record AlertaDisparadaDto(int Id, string Tipo, string Mensaje, string? Detalle, DateTime? DisparadaAt, bool Vista);
     public record AlertasBellDto(int NoVistas, List<AlertaDisparadaDto> Disparadas);
 
@@ -1256,6 +1258,20 @@ public class ApiClient
         await SetAuthHeaderAsync();
         var resp = await _http.PostAsync("/api/mis-alertas/marcar-vistas", null);
         return resp.IsSuccessStatusCode;
+    }
+
+    public async Task<ConfigCorreoAlertasDto?> GetConfigCorreoAlertasAsync()
+        => await GetAsync<ConfigCorreoAlertasDto>("/api/mis-alertas/config-correo");
+
+    public async Task<(bool ok, string? error)> SaveConfigCorreoAlertasAsync(ConfigCorreoAlertasRequest req)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _http.PostAsJsonAsync("/api/mis-alertas/config-correo", req);
+            return resp.IsSuccessStatusCode ? (true, null) : (false, await ExtraerError(resp));
+        }
+        catch (Exception ex) { return (false, ex.Message); }
     }
 
     private static async Task<string> ExtraerError(HttpResponseMessage resp)

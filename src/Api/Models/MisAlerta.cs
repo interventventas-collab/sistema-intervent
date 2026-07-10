@@ -14,6 +14,7 @@ namespace Api.Models;
 ///   - BANCO_BAJO   : el saldo del Banco Galicia bajo de {Umbral} pesos.
 ///   - CHEQUE_VENCE : hay un cheque EMITIDO (por pagar) que vence en {Umbral} dias o menos.
 ///   - FECHA_MES    : es el dia {Umbral} de cada mes (recordatorio: contadora, impuestos, etc).
+///   - EMAIL_REMITENTE : entró un correo NO leído de {TextoParam} a la casilla vigilada.
 ///
 /// El campo Umbral es multiuso segun el Tipo: monto (Shell/Banco), cantidad de dias (cheque)
 /// o numero de dia del mes 1..31 (fecha).
@@ -39,6 +40,11 @@ public class MisAlerta
     /// <summary>Multiuso segun Tipo: monto, cantidad de dias, o dia del mes.</summary>
     [Column(TypeName = "decimal(18,2)")]
     public decimal? Umbral { get; set; }
+
+    /// <summary>Parametro de texto para tipos que no usan numero. Hoy: EMAIL_REMITENTE guarda
+    /// aca el remitente a vigilar (ej "contadora@estudio.com" o "@estudio.com").</summary>
+    [MaxLength(300)]
+    public string? TextoParam { get; set; }
 
     [Required, MaxLength(300)]
     public string Mensaje { get; set; } = "";

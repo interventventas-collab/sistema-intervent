@@ -5699,3 +5699,8 @@ GO
 IF COL_LENGTH('Mis_Alertas','Alcance') IS NULL
     ALTER TABLE Mis_Alertas ADD Alcance NVARCHAR(100) NOT NULL CONSTRAINT DF_MisAlertas_Alcance DEFAULT 'admin,oficina';
 GO
+
+-- 2026-07-10: Mis_Alertas — tipo EMAIL_REMITENTE guarda el remitente a vigilar en TextoParam.
+IF COL_LENGTH('Mis_Alertas','TextoParam') IS NULL
+    ALTER TABLE Mis_Alertas ADD TextoParam NVARCHAR(300) NULL;
+GO
