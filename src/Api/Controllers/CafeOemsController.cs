@@ -206,6 +206,113 @@ public class CafeOemsController : ControllerBase
         return Ok(new { deleted = true, desvinculados = vinculados.Count });
     }
 
+    // 2026-07-10: fila ya parseada de un Excel de OEMs (usada por Import y por Preview).
+    private sealed class ParsedOemRow
+    {
+        public string Codigo = "";
+        public string? Titulo;
+        public string? Marca;
+        public decimal? Costo;
+        public decimal? Pvp;
+        public decimal? Iva;
+        public string? Barcode;
+        public int? Uxb;
+        public string? UrlWeb;
+    }
+
+    // 2026-07-10: lee el .xlsx y devuelve las filas parseadas. NO toca la base.
+    // Compartido por Import (aplica) y Preview (dry-run) para que no se desincronicen.
+    // 'error' != null => problema bloqueante (hoja vacia / falta columna codigo).
+    private static List<ParsedOemRow> ParseOemExcel(
+        Stream stream,
+        out bool tieneColumnaCosto,
+        out bool tieneColumnaPvp,
+        out int omitidos,
+        out string? error)
+    {
+        tieneColumnaCosto = false;
+        tieneColumnaPvp = false;
+        omitidos = 0;
+        error = null;
+        var filas = new List<ParsedOemRow>();
+
+        using var wb = new XLWorkbook(stream);
+        var ws = wb.Worksheets.First();
+        var range = ws.RangeUsed();
+        if (range is null) { error = "Hoja vacia"; return filas; }
+
+        // Header -> column index (1-based en ClosedXML)
+        var header = range.FirstRow();
+        var colIx = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var c in header.Cells())
+        {
+            var name = (c.GetString() ?? "").Trim().ToLowerInvariant();
+            if (!string.IsNullOrEmpty(name) && !colIx.ContainsKey(name))
+                colIx[name] = c.Address.ColumnNumber;
+        }
+
+        int? Find(params string[] names)
+        {
+            foreach (var n in names)
+                if (colIx.TryGetValue(n, out var idx)) return idx;
+            return null;
+        }
+
+        var cCodigo = Find("codigo_oem", "codigo", "oem");
+        var cTitulo = Find("titulo", "descripcion", "nombre");
+        var cMarca = Find("marca");
+        var cCosto = Find("precio_costo", "costo");
+        var cPvp = Find("precio_venta_con_iva", "pvp", "precio_venta");
+        var cIva = Find("iva", "iva_pct");
+        var cBarcode = Find("codigo_de_barras", "barcode", "codigo_barras", "ean");
+        var cUxB = Find("uxb", "u_x_b", "unidades_por_bulto", "unidad_por_bulto", "ud_x_bulto", "u_bulto");
+        var cUrlWeb = Find("web", "url", "url_web", "enlace", "link", "url_producto", "pagina_web");
+
+        if (cCodigo is null) { error = "Falta la columna 'codigo_oem' (o 'codigo'/'oem')"; return filas; }
+        tieneColumnaCosto = cCosto.HasValue;
+        tieneColumnaPvp = cPvp.HasValue;
+
+        int firstDataRow = header.RowNumber() + 1;
+        int lastRow = range.LastRow().RowNumber();
+
+        for (int r = firstDataRow; r <= lastRow; r++)
+        {
+            var row = ws.Row(r);
+            var codigo = (row.Cell(cCodigo.Value).GetString() ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(codigo)) { omitidos++; continue; }
+            // 2026-07-10: la fila de ejemplo de la plantilla arranca con "EJEMPLO" -> no se importa.
+            if (codigo.StartsWith("EJEMPLO", StringComparison.OrdinalIgnoreCase)) { omitidos++; continue; }
+
+            string? Get(int? col) => col is null ? null : (row.Cell(col.Value).IsEmpty() ? null : row.Cell(col.Value).GetString().Trim());
+            decimal? GetNum(int? col)
+            {
+                if (col is null) return null;
+                var cell = row.Cell(col.Value);
+                if (cell.IsEmpty()) return null;
+                if (cell.DataType == XLDataType.Number) return (decimal)cell.GetDouble();
+                var s = cell.GetString().Trim().Replace("$", "").Replace(" ", "").Replace(".", "").Replace(",", ".");
+                return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : null;
+            }
+
+            var uxbDec = GetNum(cUxB);
+            filas.Add(new ParsedOemRow
+            {
+                Codigo = codigo,
+                Titulo = Get(cTitulo),
+                Marca = Get(cMarca),
+                // Solo trae costo/pvp/iva si la COLUMNA existe (si no, queda null y no se pisa nada).
+                Costo = cCosto.HasValue ? GetNum(cCosto) : null,
+                Pvp = cPvp.HasValue ? GetNum(cPvp) : null,
+                Iva = cIva.HasValue ? GetNum(cIva) : null,
+                Barcode = Get(cBarcode),
+                Uxb = uxbDec.HasValue ? (int)uxbDec.Value : null,
+                UrlWeb = Get(cUrlWeb),
+            });
+        }
+
+        return filas;
+    }
+
     /// <summary>Importa una lista del proveedor desde un Excel (.xlsx).
     /// Columnas esperadas (case-insensitive, primera fila es el header):
     ///   codigo_oem, titulo, marca, precio_costo, precio_venta_con_iva, iva, codigo_de_barras
@@ -228,89 +335,28 @@ public class CafeOemsController : ControllerBase
         var oemsTocados = new HashSet<int>();
         try
         {
-            using var stream = file.OpenReadStream();
-            using var wb = new XLWorkbook(stream);
-            var ws = wb.Worksheets.First();
-            var range = ws.RangeUsed();
-            if (range is null)
-                return BadRequest(new { error = "Hoja vacia" });
-
-            // Header -> column index (1-based en ClosedXML)
-            var header = range.FirstRow();
-            var colIx = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            foreach (var c in header.Cells())
-            {
-                var name = (c.GetString() ?? "").Trim().ToLowerInvariant();
-                if (!string.IsNullOrEmpty(name) && !colIx.ContainsKey(name))
-                    colIx[name] = c.Address.ColumnNumber;
-            }
-
-            int? Find(params string[] names)
-            {
-                foreach (var n in names)
-                    if (colIx.TryGetValue(n, out var idx)) return idx;
-                return null;
-            }
-
-            var cCodigo = Find("codigo_oem", "codigo", "oem");
-            var cTitulo = Find("titulo", "descripcion", "nombre");
-            var cMarca = Find("marca");
-            var cCosto = Find("precio_costo", "costo");
-            var cPvp = Find("precio_venta_con_iva", "pvp", "precio_venta");
-            var cIva = Find("iva", "iva_pct");
-            var cBarcode = Find("codigo_de_barras", "barcode", "codigo_barras", "ean");
-            var cUxB = Find("uxb", "u_x_b", "unidades_por_bulto", "unidad_por_bulto", "ud_x_bulto", "u_bulto");
-            // 2026-06-10: detección de columna URL del producto en la web del proveedor
-            var cUrlWeb = Find("web", "url", "url_web", "enlace", "link", "url_producto", "pagina_web");
-
-            if (cCodigo is null) return BadRequest(new { error = "Falta la columna 'codigo_oem' (o 'codigo'/'oem')" });
+            List<ParsedOemRow> filas;
+            string? error;
+            using (var stream = file.OpenReadStream())
+                filas = ParseOemExcel(stream, out _, out _, out omitidos, out error);
+            if (error is not null) return BadRequest(new { error });
 
             // Cache existentes por codigo
             var existentes = await _db.CafeOems.ToDictionaryAsync(x => x.Codigo, x => x);
 
-            int firstDataRow = header.RowNumber() + 1;
-            int lastRow = range.LastRow().RowNumber();
-
-            for (int r = firstDataRow; r <= lastRow; r++)
+            foreach (var fila in filas)
             {
-                var row = ws.Row(r);
-                var codigo = (row.Cell(cCodigo.Value).GetString() ?? "").Trim();
-                if (string.IsNullOrWhiteSpace(codigo)) { omitidos++; continue; }
-
-                string? Get(int? col) => col is null ? null : (row.Cell(col.Value).IsEmpty() ? null : row.Cell(col.Value).GetString().Trim());
-                decimal? GetNum(int? col)
+                if (existentes.TryGetValue(fila.Codigo, out var existente))
                 {
-                    if (col is null) return null;
-                    var cell = row.Cell(col.Value);
-                    if (cell.IsEmpty()) return null;
-                    if (cell.DataType == XLDataType.Number) return (decimal)cell.GetDouble();
-                    var s = cell.GetString().Trim().Replace(".", "").Replace(",", ".");
-                    return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : null;
-                }
-
-                var titulo = Get(cTitulo);
-                var marca = Get(cMarca);
-                // 2026-06-11 FIX: solo pisar costo/pvp/iva si la COLUMNA existe en el Excel.
-                // Antes pisaba con 0/null cuando faltaba la columna y borraba precios validos.
-                var costo = cCosto.HasValue ? GetNum(cCosto) : null;
-                var pvp = cPvp.HasValue ? GetNum(cPvp) : null;
-                var iva = cIva.HasValue ? GetNum(cIva) : null;
-                var barcode = Get(cBarcode);
-                var uxbDec = GetNum(cUxB);
-                int? uxb = uxbDec.HasValue ? (int)uxbDec.Value : null;
-                var urlWeb = Get(cUrlWeb);  // 2026-06-10
-
-                if (existentes.TryGetValue(codigo, out var existente))
-                {
-                    existente.Descripcion = titulo ?? existente.Descripcion;
-                    existente.Marca = marca ?? existente.Marca;
-                    // Solo actualizar si la columna esta presente en el Excel (cCosto/cPvp/cIva no null)
-                    if (cCosto.HasValue && costo.HasValue) existente.Costo = costo.Value;
-                    if (cPvp.HasValue && pvp.HasValue) existente.PvpConIva = pvp.Value;
-                    if (cIva.HasValue && iva.HasValue) existente.IvaPct = iva.Value;
-                    existente.Barcode = barcode ?? existente.Barcode;
-                    existente.UxB = uxb ?? existente.UxB;
-                    existente.UrlWeb = urlWeb ?? existente.UrlWeb; // 2026-06-10
+                    existente.Descripcion = fila.Titulo ?? existente.Descripcion;
+                    existente.Marca = fila.Marca ?? existente.Marca;
+                    // Solo pisar costo/pvp/iva si vino valor (columna presente + celda con dato).
+                    if (fila.Costo.HasValue) existente.Costo = fila.Costo.Value;
+                    if (fila.Pvp.HasValue) existente.PvpConIva = fila.Pvp.Value;
+                    if (fila.Iva.HasValue) existente.IvaPct = fila.Iva.Value;
+                    existente.Barcode = fila.Barcode ?? existente.Barcode;
+                    existente.UxB = fila.Uxb ?? existente.UxB;
+                    existente.UrlWeb = fila.UrlWeb ?? existente.UrlWeb;
                     existente.Proveedor = prov;
                     existente.UpdatedAt = ahora;
                     existente.LastImportAt = ahora;
@@ -321,22 +367,22 @@ public class CafeOemsController : ControllerBase
                 {
                     var nuevo = new CafeOem
                     {
-                        Codigo = codigo,
-                        Descripcion = titulo,
-                        Marca = marca,
-                        Costo = costo ?? 0m,
-                        PvpConIva = pvp,
-                        IvaPct = iva,
-                        Barcode = barcode,
-                        UxB = uxb,
-                        UrlWeb = urlWeb,  // 2026-06-10
+                        Codigo = fila.Codigo,
+                        Descripcion = fila.Titulo,
+                        Marca = fila.Marca,
+                        Costo = fila.Costo ?? 0m,
+                        PvpConIva = fila.Pvp,
+                        IvaPct = fila.Iva,
+                        Barcode = fila.Barcode,
+                        UxB = fila.Uxb,
+                        UrlWeb = fila.UrlWeb,
                         Proveedor = prov,
                         IsActive = true,
                         CreatedAt = ahora,
                         LastImportAt = ahora
                     };
                     _db.CafeOems.Add(nuevo);
-                    existentes[codigo] = nuevo;  // por si aparece el mismo codigo dos veces en el excel
+                    existentes[fila.Codigo] = nuevo;  // por si aparece el mismo codigo dos veces en el excel
                     creados++;
                 }
             }
@@ -358,6 +404,153 @@ public class CafeOemsController : ControllerBase
             await _db.SaveChangesAsync();
 
         return Ok(new CafeOemImportResultDto(creados, actualizados, omitidos, prov, totalVariantesPropagadas, errores));
+    }
+
+    /// <summary>2026-07-10: vista previa (dry-run) de la importacion. NO aplica nada.
+    /// Muestra cuantos se crearian / actualizarian y los cambios de precio (viejo -> nuevo).</summary>
+    [HttpPost("import/preview")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(50_000_000)]
+    public async Task<IActionResult> ImportPreview([FromForm] IFormFile? file, [FromForm] string? proveedor = "COLOMBRARO")
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new { error = "Subi un archivo .xlsx" });
+
+        var prov = string.IsNullOrWhiteSpace(proveedor) ? "COLOMBRARO" : proveedor.Trim().ToUpperInvariant();
+        var errores = new List<string>();
+        bool tieneCosto, tienePvp;
+        int omitidos;
+        List<ParsedOemRow> filas;
+        try
+        {
+            using var stream = file.OpenReadStream();
+            filas = ParseOemExcel(stream, out tieneCosto, out tienePvp, out omitidos, out var error);
+            if (error is not null) return BadRequest(new { error });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message });
+        }
+
+        // Lectura de existentes sin trackear (no modificamos nada).
+        var existentes = await _db.CafeOems.AsNoTracking().ToDictionaryAsync(x => x.Codigo, x => x);
+
+        var creados = 0;
+        var actualizados = 0;
+        var cambios = new List<CafeOemImportCambioDto>();
+        foreach (var fila in filas)
+        {
+            existentes.TryGetValue(fila.Codigo, out var ex);
+            var esNuevo = ex is null;
+            if (esNuevo) creados++; else actualizados++;
+
+            decimal? costoViejo = ex?.Costo;
+            decimal? pvpViejo = ex?.PvpConIva;
+            decimal? costoNuevo = fila.Costo.HasValue ? fila.Costo : (esNuevo ? 0m : costoViejo);
+            decimal? pvpNuevo = fila.Pvp.HasValue ? fila.Pvp : pvpViejo;
+            var cambiaCosto = fila.Costo.HasValue && costoViejo != fila.Costo;
+            var cambiaPvp = fila.Pvp.HasValue && pvpViejo != fila.Pvp;
+
+            cambios.Add(new CafeOemImportCambioDto(
+                fila.Codigo,
+                fila.Titulo ?? ex?.Descripcion,
+                esNuevo,
+                costoViejo, costoNuevo,
+                pvpViejo, pvpNuevo,
+                cambiaCosto, cambiaPvp));
+        }
+
+        return Ok(new CafeOemImportPreviewDto(
+            creados, actualizados, omitidos, prov,
+            tieneCosto, tienePvp,
+            cambios, errores));
+    }
+
+    /// <summary>2026-07-10: descarga un Excel plantilla con todas las columnas posibles,
+    /// marcando cuales son obligatorias, para que el usuario lo complete y lo importe.</summary>
+    [HttpGet("plantilla")]
+    public IActionResult Plantilla()
+    {
+        // Columnas: nombre exacto que reconoce el importador + descripcion + obligatoriedad + ejemplo.
+        // nivel: 0 = obligatorio, 1 = recomendado (precios), 2 = opcional
+        var cols = new (string Header, int Nivel, string Ayuda, string Ejemplo)[]
+        {
+            ("codigo_oem",            0, "OBLIGATORIO. Codigo unico del proveedor. Por este campo se empareja/actualiza.", "9381"),
+            ("titulo",                2, "Descripcion del producto.", "COL BOX CUADRADO X 15 LTS"),
+            ("marca",                 2, "Marca del producto.", "COLOMBRARO"),
+            ("precio_costo",          1, "Costo SIN IVA. Complétalo para actualizar el costo.", "8232.75"),
+            ("precio_venta_con_iva",  1, "Precio publico CON IVA. Complétalo para actualizar el PVP.", "19500"),
+            ("iva",                   2, "% de IVA (solo el numero). Opcional.", "21"),
+            ("codigo_de_barras",      2, "Codigo de barras / EAN. Opcional.", "7790733093815"),
+            ("uxb",                   2, "Unidades por bulto. Opcional.", "6"),
+            ("web",                   2, "Link al producto en la web del proveedor. Opcional.", "https://colombraro.com.ar/..."),
+        };
+
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("OEMs");
+
+        // Colores por nivel de obligatoriedad
+        var cRojo = XLColor.FromHtml("#fecaca");    // obligatorio
+        var cAmar = XLColor.FromHtml("#fef08a");    // recomendado (precios)
+        var cGris = XLColor.FromHtml("#e5e7eb");    // opcional
+
+        for (int i = 0; i < cols.Length; i++)
+        {
+            var (headerName, nivel, ayuda, ejemplo) = cols[i];
+            var cell = ws.Cell(1, i + 1);
+            cell.Value = headerName;
+            cell.Style.Font.Bold = true;
+            cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            cell.Style.Fill.BackgroundColor = nivel == 0 ? cRojo : (nivel == 1 ? cAmar : cGris);
+            cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            var etiqueta = nivel == 0 ? "OBLIGATORIO" : (nivel == 1 ? "Recomendado (para actualizar precios)" : "Opcional");
+            cell.GetComment().AddText($"{etiqueta}. {ayuda}");
+
+            // Fila 2: ejemplo (arranca con EJEMPLO en el codigo -> el importador la ignora).
+            var ej = ws.Cell(2, i + 1);
+            ej.Value = i == 0 ? "EJEMPLO-9381" : ejemplo;
+            ej.Style.Font.Italic = true;
+            ej.Style.Font.FontColor = XLColor.FromHtml("#9ca3af");
+        }
+
+        ws.SheetView.FreezeRows(1);
+        ws.Columns().AdjustToContents();
+        foreach (var c in ws.Columns()) if (c.Width < 14) c.Width = 14;
+
+        // Hoja de instrucciones (el importador solo lee la primera hoja, esta la ignora).
+        var wsInfo = wb.Worksheets.Add("LEEME");
+        wsInfo.Cell(1, 1).Value = "COMO USAR ESTA PLANTILLA";
+        wsInfo.Cell(1, 1).Style.Font.Bold = true;
+        wsInfo.Cell(1, 1).Style.Font.FontSize = 14;
+        int rr = 3;
+        void Linea(string t, bool bold = false)
+        {
+            var cc = wsInfo.Cell(rr, 1);
+            cc.Value = t;
+            cc.Style.Font.Bold = bold;
+            rr++;
+        }
+        Linea("1) Completá los datos en la hoja 'OEMs', debajo de cada título. NO cambies los títulos.");
+        Linea("2) Borrá la fila de EJEMPLO (la que arranca con 'EJEMPLO-9381') antes de importar.");
+        Linea("   (Si te la olvidás, igual no se importa: el sistema ignora las filas que arrancan con EJEMPLO.)");
+        Linea("3) Guardá el archivo y subilo con el botón 'Importar Excel'.");
+        Linea("");
+        Linea("COLUMNAS", true);
+        foreach (var (headerName, nivel, ayuda, _) in cols)
+        {
+            var etiqueta = nivel == 0 ? "[OBLIGATORIO]" : (nivel == 1 ? "[Recomendado]" : "[Opcional]");
+            Linea($"• {headerName}  {etiqueta}  →  {ayuda}");
+        }
+        Linea("");
+        Linea("Los precios pueden ir con $ y puntos (ej: $ 19.500,00) o como número (19500). El sistema los entiende igual.");
+        Linea("Al importar: si el código ya existe se ACTUALIZA; si no existe se CREA. Nada se elimina.");
+        wsInfo.Columns().AdjustToContents();
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        return File(ms.ToArray(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "plantilla-oems.xlsx");
     }
 
     /// <summary>2026-06-11: scrapea la pagina del proveedor (URL del OEM) y guarda imagen, descripcion y ficha tecnica.</summary>

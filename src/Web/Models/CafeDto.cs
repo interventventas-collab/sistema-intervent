@@ -1340,6 +1340,32 @@ public class CafeOemImportResultDto
     public List<string> Errores { get; set; } = new();
 }
 
+// 2026-07-10: vista previa de importacion de OEMs (dry-run)
+public class CafeOemImportCambioDto
+{
+    public string Codigo { get; set; } = "";
+    public string? Descripcion { get; set; }
+    public bool EsNuevo { get; set; }
+    public decimal? CostoViejo { get; set; }
+    public decimal? CostoNuevo { get; set; }
+    public decimal? PvpViejo { get; set; }
+    public decimal? PvpNuevo { get; set; }
+    public bool CambiaCosto { get; set; }
+    public bool CambiaPvp { get; set; }
+}
+
+public class CafeOemImportPreviewDto
+{
+    public int Creados { get; set; }
+    public int Actualizados { get; set; }
+    public int Omitidos { get; set; }
+    public string? Proveedor { get; set; }
+    public bool TieneColumnaCosto { get; set; }
+    public bool TieneColumnaPvp { get; set; }
+    public List<CafeOemImportCambioDto> Cambios { get; set; } = new();
+    public List<string> Errores { get; set; } = new();
+}
+
 // === Descuentos por tipo de cliente y marca ===
 public class CafeDescuentoGrillaFila
 {

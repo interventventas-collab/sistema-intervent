@@ -20,6 +20,7 @@
                 <option value="">Todas las marcas</option>
                 @foreach (var m in marcasExistentes) { <option value="@m">@m</option> }
             </select>
+            <button class="btn" style="background: #0891b2; color: white; border: none;" @onclick="DescargarPlantilla" title="Baja un Excel vacío con las columnas correctas para completar">⬇️ Descargar plantilla</button>
             <button class="btn" style="background: #16a34a; color: white; border: none;" @onclick="OpenImport">📥 Importar Excel</button>
             <button class="btn" style="background: #2563eb; color: white; border: none;" @onclick="OpenScrapeMasivo" title="Trae imagen + descripción + ficha desde la web del proveedor">🌐 Traer info web masiva</button>
             <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo OEM</button>
@@ -347,25 +348,129 @@
                 <button class="btn-close" @onclick="CloseImport" style="color: white;">&times;</button>
             </div>
             <div class="modal-body">
-                @if (importResult is null)
+                @if (importResult is not null)
                 {
-                    <p style="font-size: 0.85rem; color: #4b5563;">
-                        Subí el Excel del proveedor (.xlsx). Las columnas esperadas son:
+                    @* ── Paso 3: resultado final ── *@
+                    <div style="background: #dcfce7; border: 1px solid #15803d; border-radius: 8px; padding: 0.8rem; margin-bottom: 0.6rem;">
+                        <h4 style="margin: 0 0 0.4rem; color: #15803d;">✓ Importación lista</h4>
+                        <ul style="margin: 0; padding-left: 1.2rem; font-size: 0.85rem;">
+                            <li><strong>@importResult.Creados</strong> nuevos</li>
+                            <li><strong>@importResult.Actualizados</strong> actualizados</li>
+                            @if (importResult.Omitidos > 0)
+                            {
+                                <li><strong>@importResult.Omitidos</strong> omitidos (filas vacías o de ejemplo)</li>
+                            }
+                            <li>Proveedor: <strong>@importResult.Proveedor</strong></li>
+                            @if (importResult.VariantesPropagadas > 0)
+                            {
+                                <li><strong>@importResult.VariantesPropagadas</strong> variante@(importResult.VariantesPropagadas == 1 ? "" : "s") con precios actualizados (propagación automática)</li>
+                            }
+                        </ul>
+                    </div>
+                    @if (importResult.Errores.Count > 0)
+                    {
+                        <div class="form-error">
+                            <strong>Errores:</strong>
+                            <ul style="margin: 0.3rem 0 0 1rem;">
+                                @foreach (var e in importResult.Errores) { <li>@e</li> }
+                            </ul>
+                        </div>
+                    }
+                }
+                else if (importPreview is not null)
+                {
+                    @* ── Paso 2: vista previa (nada aplicado todavía) ── *@
+                    <div style="background: #eff6ff; border: 1px solid #2563eb; border-radius: 8px; padding: 0.8rem; margin-bottom: 0.8rem;">
+                        <h4 style="margin: 0 0 0.4rem; color: #1d4ed8;">👁️ Vista previa — todavía NO se aplicó nada</h4>
+                        <ul style="margin: 0; padding-left: 1.2rem; font-size: 0.85rem;">
+                            <li>Se van a <strong>crear</strong> @importPreview.Creados OEM@(importPreview.Creados == 1 ? "" : "s") nuevo@(importPreview.Creados == 1 ? "" : "s")</li>
+                            <li>Se van a <strong>actualizar</strong> @importPreview.Actualizados OEM@(importPreview.Actualizados == 1 ? "" : "s") ya existente@(importPreview.Actualizados == 1 ? "" : "s")</li>
+                            @if (importPreview.Omitidos > 0)
+                            {
+                                <li>@importPreview.Omitidos fila@(importPreview.Omitidos == 1 ? "" : "s") omitida@(importPreview.Omitidos == 1 ? "" : "s") (vacías o de ejemplo)</li>
+                            }
+                        </ul>
+                    </div>
+                    @if (!importPreview.TieneColumnaCosto && !importPreview.TieneColumnaPvp)
+                    {
+                        <div style="background: #fef2f2; border: 1px solid #dc2626; border-radius: 8px; padding: 0.7rem; margin-bottom: 0.8rem; font-size: 0.82rem; color: #991b1b;">
+                            ⚠️ El Excel no tiene ninguna columna de precio reconocida (<code>precio_costo</code> / <code>precio_venta_con_iva</code>).
+                            Se van a tocar códigos y descripciones, pero <strong>los precios NO se van a cambiar</strong>.
+                            Si querías actualizar precios, bajá la plantilla y usá esos títulos.
+                        </div>
+                    }
+
+                    <p style="font-size: 0.82rem; color: #4b5563; margin: 0 0 0.4rem;">
+                        <strong>@CambiosRelevantes.Count</strong> fila@(CambiosRelevantes.Count == 1 ? "" : "s") con cambios de precio o nuevas
+                        (de @importPreview.Cambios.Count en total):
                     </p>
-                    <ul style="font-size: 0.78rem; color: #6b7280; margin: 0.4rem 0 0.8rem 1.2rem; padding: 0;">
-                        <li><code>codigo_oem</code> — código único del proveedor (obligatorio)</li>
-                        <li><code>titulo</code> — descripción</li>
-                        <li><code>marca</code></li>
-                        <li><code>precio_costo</code></li>
-                        <li><code>precio_venta_con_iva</code></li>
-                        <li><code>iva</code> — %</li>
-                        <li><code>codigo_de_barras</code></li>
-                        <li><code>url</code> / <code>web</code> / <code>enlace</code> — link al producto en la web del proveedor</li>
-                        <li><code>uxb</code> — unidades por bulto</li>
-                    </ul>
+                    <div style="max-height: 280px; overflow: auto; border: 1px solid #e5e7eb; border-radius: 8px;">
+                        <table class="data-table" style="font-size: 0.78rem;">
+                            <thead>
+                                <tr>
+                                    <th>Código</th>
+                                    <th>Descripción</th>
+                                    <th style="text-align: right;">Costo</th>
+                                    <th style="text-align: right;">PVP c/IVA</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var c in CambiosRelevantes.Take(500))
+                                {
+                                    <tr>
+                                        <td>
+                                            <strong>@c.Codigo</strong>
+                                            @if (c.EsNuevo) { <span style="background:#16a34a;color:white;border-radius:4px;padding:0 4px;font-size:0.68rem;margin-left:4px;">NUEVO</span> }
+                                        </td>
+                                        <td style="max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@c.Descripcion</td>
+                                        <td style="text-align: right;">
+                                            @if (c.CambiaCosto && !c.EsNuevo)
+                                            {
+                                                <span style="color:#9ca3af;text-decoration:line-through;">$@FormatMoney(c.CostoViejo ?? 0)</span>
+                                                <span> → <strong>$@FormatMoney(c.CostoNuevo ?? 0)</strong></span>
+                                            }
+                                            else if (c.EsNuevo && c.CostoNuevo.HasValue)
+                                            {
+                                                <strong>$@FormatMoney(c.CostoNuevo.Value)</strong>
+                                            }
+                                            else { <span style="color:#9ca3af;">=</span> }
+                                        </td>
+                                        <td style="text-align: right;">
+                                            @if (c.CambiaPvp && !c.EsNuevo)
+                                            {
+                                                <span style="color:#9ca3af;text-decoration:line-through;">$@FormatMoney(c.PvpViejo ?? 0)</span>
+                                                <span> → <strong style="color:#15803d;">$@FormatMoney(c.PvpNuevo ?? 0)</strong></span>
+                                            }
+                                            else if (c.EsNuevo && c.PvpNuevo.HasValue)
+                                            {
+                                                <strong style="color:#15803d;">$@FormatMoney(c.PvpNuevo.Value)</strong>
+                                            }
+                                            else { <span style="color:#9ca3af;">=</span> }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    @if (CambiosRelevantes.Count > 500)
+                    {
+                        <p style="font-size: 0.75rem; color: #6b7280; margin: 0.4rem 0 0;">Mostrando las primeras 500. Al confirmar se aplican todas.</p>
+                    }
+                    @if (!string.IsNullOrEmpty(importError))
+                    {
+                        <div class="form-error" style="margin-top: 0.6rem;">@importError</div>
+                    }
+                }
+                else
+                {
+                    @* ── Paso 1: elegir archivo ── *@
+                    <p style="font-size: 0.85rem; color: #4b5563;">
+                        Subí el Excel del proveedor (.xlsx). ¿No tenés el formato? Cerrá y tocá
+                        <strong>"⬇️ Descargar plantilla"</strong> para bajar el modelo con las columnas correctas.
+                    </p>
                     <p style="font-size: 0.78rem; color: #6b7280; margin-bottom: 0.8rem;">
                         <strong>Comportamiento:</strong> Si un código ya existe, se actualiza el costo / PVP / etc.
-                        Si no existe, se crea nuevo. <strong>Nada se elimina.</strong>
+                        Si no existe, se crea nuevo. <strong>Nada se elimina.</strong> Antes de aplicar vas a ver una vista previa.
                     </p>
                     <div class="form-group">
                         <label class="form-label">Proveedor (etiqueta para esta lista)</label>
@@ -386,46 +491,25 @@
                         <div class="form-error">@importError</div>
                     }
                 }
-                else
-                {
-                    <div style="background: #dcfce7; border: 1px solid #15803d; border-radius: 8px; padding: 0.8rem; margin-bottom: 0.6rem;">
-                        <h4 style="margin: 0 0 0.4rem; color: #15803d;">✓ Importación lista</h4>
-                        <ul style="margin: 0; padding-left: 1.2rem; font-size: 0.85rem;">
-                            <li><strong>@importResult.Creados</strong> nuevos</li>
-                            <li><strong>@importResult.Actualizados</strong> actualizados</li>
-                            @if (importResult.Omitidos > 0)
-                            {
-                                <li><strong>@importResult.Omitidos</strong> omitidos (filas vacías)</li>
-                            }
-                            <li>Proveedor: <strong>@importResult.Proveedor</strong></li>
-                            @if (importResult.VariantesPropagadas > 0)
-                            {
-                                <li><strong>@importResult.VariantesPropagadas</strong> variante@(importResult.VariantesPropagadas == 1 ? "" : "s") con precios actualizados (propagación automática)</li>
-                            }
-                        </ul>
-                    </div>
-                    @if (importResult.Errores.Count > 0)
-                    {
-                        <div class="form-error">
-                            <strong>Errores:</strong>
-                            <ul style="margin: 0.3rem 0 0 1rem;">
-                                @foreach (var e in importResult.Errores) { <li>@e</li> }
-                            </ul>
-                        </div>
-                    }
-                }
             </div>
             <div class="modal-footer">
-                @if (importResult is null)
+                @if (importResult is not null)
                 {
-                    <button class="btn btn-secondary" @onclick="CloseImport" disabled="@isImporting">Cancelar</button>
-                    <button class="btn" style="background: #16a34a; color: white; border: none;" @onclick="DoImport" disabled="@(isImporting || importFile is null)">
-                        @(isImporting ? "Importando..." : "📥 Importar")
+                    <button class="btn btn-primary" @onclick="CloseImport">Cerrar</button>
+                }
+                else if (importPreview is not null)
+                {
+                    <button class="btn btn-secondary" @onclick="VolverAElegirArchivo" disabled="@isImporting">← Volver</button>
+                    <button class="btn" style="background: #16a34a; color: white; border: none;" @onclick="DoImport" disabled="@isImporting">
+                        @(isImporting ? "Aplicando..." : "✓ Confirmar e importar")
                     </button>
                 }
                 else
                 {
-                    <button class="btn btn-primary" @onclick="CloseImport">Cerrar</button>
+                    <button class="btn btn-secondary" @onclick="CloseImport" disabled="@isPreviewing">Cancelar</button>
+                    <button class="btn" style="background: #2563eb; color: white; border: none;" @onclick="DoPreview" disabled="@(isPreviewing || importFile is null)">
+                        @(isPreviewing ? "Analizando..." : "👁️ Ver vista previa")
+                    </button>
                 }
             </div>
         </div>
@@ -516,10 +600,16 @@
     // Import
     private bool showImport;
     private bool isImporting;
+    private bool isPreviewing;
     private string? importError;
     private string importProveedor = "COLOMBRARO";
     private IBrowserFile? importFile;
+    private byte[]? importBytes;   // 2026-07-10: bytes del archivo leidos una vez (preview + import reusan)
+    private CafeOemImportPreviewDto? importPreview;
     private CafeOemImportResultDto? importResult;
+    // Filas nuevas o con cambio de precio (lo que le interesa ver al usuario en la previa).
+    private List<CafeOemImportCambioDto> CambiosRelevantes =>
+        importPreview?.Cambios.Where(c => c.EsNuevo || c.CambiaCosto || c.CambiaPvp).ToList() ?? new();
 
     // Delete
     private CafeOemDto? toDelete;
@@ -731,11 +821,27 @@
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); toDelete = null; }
     }
 
+    // ── Descargar plantilla ──
+    private async Task DescargarPlantilla()
+    {
+        try
+        {
+            var bytes = await Api.DownloadCafeOemTemplateAsync();
+            if (bytes is null) { ToastService.Error("No se pudo descargar la plantilla"); return; }
+            await JS.InvokeVoidAsync("downloadFile", "plantilla-oems.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                Convert.ToBase64String(bytes));
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
     // ── Import ──
     private void OpenImport()
     {
         showImport = true;
         importFile = null;
+        importBytes = null;
+        importPreview = null;
         importResult = null;
         importError = null;
         importProveedor = "COLOMBRARO";
@@ -743,9 +849,11 @@
 
     private void CloseImport()
     {
-        if (isImporting) return;
+        if (isImporting || isPreviewing) return;
         showImport = false;
         importFile = null;
+        importBytes = null;
+        importPreview = null;
         importResult = null;
         importError = null;
     }
@@ -753,18 +861,54 @@
     private void OnFileChange(InputFileChangeEventArgs e)
     {
         importFile = e.File;
+        importBytes = null;
+        importPreview = null;
         importError = null;
     }
 
-    private async Task DoImport()
+    private void VolverAElegirArchivo()
+    {
+        importPreview = null;
+        importError = null;
+    }
+
+    // Paso 2: genera la vista previa (dry-run). Lee el archivo UNA vez y lo bufferea.
+    private async Task DoPreview()
     {
         if (importFile is null) { importError = "Elegí un archivo .xlsx"; return; }
+        isPreviewing = true; importError = null;
+        try
+        {
+            if (importBytes is null)
+            {
+                using var src = importFile.OpenReadStream(maxAllowedSize: 100_000_000);
+                using var ms = new MemoryStream();
+                await src.CopyToAsync(ms);
+                importBytes = ms.ToArray();
+            }
+            using var stream = new MemoryStream(importBytes);
+            importPreview = await Api.PreviewCafeOemsAsync(stream, importFile.Name, importProveedor);
+        }
+        catch (Exception ex) { importError = ex.Message; }
+        finally { isPreviewing = false; }
+    }
+
+    // Paso 3: aplica de verdad (reusa los bytes ya leídos).
+    private async Task DoImport()
+    {
+        if (importBytes is null && importFile is null) { importError = "Elegí un archivo .xlsx"; return; }
         isImporting = true; importError = null;
         try
         {
-            // Hasta 100 MB
-            using var stream = importFile.OpenReadStream(maxAllowedSize: 100_000_000);
-            importResult = await Api.ImportCafeOemsAsync(stream, importFile.Name, importProveedor);
+            if (importBytes is null)
+            {
+                using var src = importFile!.OpenReadStream(maxAllowedSize: 100_000_000);
+                using var ms = new MemoryStream();
+                await src.CopyToAsync(ms);
+                importBytes = ms.ToArray();
+            }
+            using var stream = new MemoryStream(importBytes);
+            importResult = await Api.ImportCafeOemsAsync(stream, importFile?.Name ?? "oems.xlsx", importProveedor);
             var nProp = importResult?.VariantesPropagadas ?? 0;
             var msg = $"✓ {importResult?.Creados ?? 0} nuevos, {importResult?.Actualizados ?? 0} actualizados";
             if (nProp > 0) msg += $" · {nProp} variante{(nProp == 1 ? "" : "s")} con precios propagados";

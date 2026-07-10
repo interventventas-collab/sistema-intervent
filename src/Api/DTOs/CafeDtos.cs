@@ -844,6 +844,22 @@ public record CafeOemImportResultDto(
     int VariantesPropagadas,
     List<string> Errores);
 
+// 2026-07-10: vista previa de importacion de OEMs (dry-run, no aplica nada)
+public record CafeOemImportCambioDto(
+    string Codigo,
+    string? Descripcion,
+    bool EsNuevo,
+    decimal? CostoViejo, decimal? CostoNuevo,
+    decimal? PvpViejo, decimal? PvpNuevo,
+    bool CambiaCosto, bool CambiaPvp);
+
+public record CafeOemImportPreviewDto(
+    int Creados, int Actualizados, int Omitidos,
+    string? Proveedor,
+    bool TieneColumnaCosto, bool TieneColumnaPvp,
+    List<CafeOemImportCambioDto> Cambios,
+    List<string> Errores);
+
 // ===== Consultas (busqueda interna en lenguaje natural) =====
 public class CafeConsultaRequest
 {
