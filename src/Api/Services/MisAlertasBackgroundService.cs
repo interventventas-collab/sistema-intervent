@@ -157,19 +157,10 @@ public class MisAlertasBackgroundService : BackgroundService
         var s = new string(raw.Where(c => char.IsDigit(c) || c == ',' || c == '.' || c == '-').ToArray());
         if (string.IsNullOrEmpty(s)) return null;
 
-        var tienePunto = s.Contains('.');
-        var tieneComa = s.Contains(',');
-        if (tienePunto && tieneComa)
-        {
-            // Formato AR: "." son miles y "," es decimal -> 1.234,56
-            s = s.Replace(".", "").Replace(",", ".");
-        }
-        else if (tieneComa)
-        {
-            // Solo coma -> es el decimal.
-            s = s.Replace(",", ".");
-        }
-        // Solo punto (o ninguno): se deja tal cual.
+        // Formato argentino (la fuente es Shell/Edenred AR): el "." SIEMPRE separa miles y
+        // el "," es el decimal. Ej: "197.000" = 197000 ; "1.234.567,89" = 1234567.89.
+        // (Antes se dejaba "197.000" tal cual y decimal.TryParse invariant lo leia como 197.)
+        s = s.Replace(".", "").Replace(",", ".");
 
         return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : null;
     }

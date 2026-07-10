@@ -1,5 +1,6 @@
 @inject ApiClient Api
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 @implements IDisposable
 
 @* 2026-07-10 — Campanita del motor de alertas configurables ("Mis Alertas").
@@ -14,7 +15,7 @@
          @onmouseenter="OnHover"
          @onmouseleave="OnLeave"
          @onclick="@(() => Navigation.NavigateTo("/mis-alertas"))">
-        <div class="mab-badge" title="Tenés alertas — click para ver Mis Alertas">
+        <div class="mab-badge @(noVistas > 0 ? "mab-badge-blink" : "")" title="Tenés alertas — click para ver Mis Alertas">
             <span class="mab-icon">🔔</span>
             <span>Alertas</span>
             @if (noVistas > 0)
@@ -66,6 +67,12 @@
         transition: transform 0.15s;
     }
     .mab-badge:hover { transform: scale(1.06); }
+    /* Titila mientras haya alertas sin ver */
+    .mab-badge-blink { animation: mab-blink 1s ease-in-out infinite; }
+    @@keyframes mab-blink {
+        0%, 100% { background: #FAEEDA; box-shadow: 0 0 0 0 rgba(239,159,39,0.5); }
+        50%      { background: #FAC775; box-shadow: 0 0 0 6px rgba(239,159,39,0); }
+    }
     .mab-icon { font-size: 1rem; }
     .mab-num {
         background: #BA7517; color: white;
@@ -107,6 +114,7 @@
 @code {
     private List<ApiClient.AlertaDisparadaDto> disparadas = new();
     private int noVistas;
+    private int? prevNoVistas;   // para detectar alertas nuevas y sonar solo entonces
     private bool showDropdown;
     private System.Threading.Timer? timer;
 
@@ -123,6 +131,15 @@
             var r = await Api.GetAlertasDisparadasAsync();
             disparadas = r?.Disparadas ?? new();
             noVistas = r?.NoVistas ?? 0;
+
+            // Suena solo cuando ENTRA una alerta nueva (el contador sin ver subió).
+            // En la primera carga fijamos la línea de base sin sonar.
+            if (prevNoVistas.HasValue && noVistas > prevNoVistas.Value)
+            {
+                try { await JS.InvokeVoidAsync("playAlertaSound"); } catch { }
+            }
+            prevNoVistas = noVistas;
+
             StateHasChanged();
         }
         catch { /* no critico */ }
@@ -136,6 +153,7 @@
         {
             try { await Api.MarcarAlertasVistasAsync(); } catch { }
             noVistas = 0;
+            prevNoVistas = 0;
             StateHasChanged();
         }
     }
