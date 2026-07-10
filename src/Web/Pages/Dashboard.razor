@@ -592,6 +592,9 @@
             </div>
             <span class="mac-card-eyebrow" style="color:#3f3f46;">Mercado Pago</span>
         </div>
+        @* 2026-07-09: el "disponible estimado" quedó desfasado (saldo inicial viejo / posibles retiros
+           contados de más). Cartel temporal hasta reconciliarlo bien. *@
+        <div style="margin:2px 0 6px; padding:3px 8px; background:#fef3c7; color:#92400e; border-radius:6px; font-size:0.72rem; font-weight:600; display:inline-block;">🔧 En construcción — el disponible está en revisión</div>
         <button class="dash-eye-btn" @onclick="@(() => ToggleSaldoVisible("mercadopago"))" @onclick:stopPropagation="true"
                 title="@(SaldoOculto("mercadopago") ? "Mostrar" : "Ocultar")">
             @(SaldoOculto("mercadopago") ? "🙈" : "👁")
@@ -606,7 +609,7 @@
             <div class="mac-card-bignum" style="font-size:1rem;">Actualizar →</div>
             <div class="mac-card-sub">Entrá y tocá "Traer cobros"</div>
         }
-        else if (mpDash.DisponibleEstimado is not null)
+        else if (mpDash.DisponibleEstimado is not null && mpDash.DisponibleEstimado.Value >= 0)
         {
             <div class="mac-card-bignum">@(SaldoOculto("mercadopago") ? "$ ••••••" : $"${FormatMoney(mpDash.DisponibleEstimado.Value)}")</div>
             <div class="mac-card-sub">disponible para usar (est.)</div>
@@ -615,6 +618,16 @@
                 <div class="mac-card-sub" style="margin-top:2px; color:#92400e;">🕒 por acreditarse: @(SaldoOculto("mercadopago") ? "$ ••••" : $"${FormatMoney(mpDash.PorAcreditarse)}")</div>
             }
             <div class="mac-card-sub" style="margin-top:2px; font-weight:600; color:#0b5cad;">💰 total: @(SaldoOculto("mercadopago") ? "$ ••••" : $"${FormatMoney(mpDash.DisponibleEstimado.Value + mpDash.PorAcreditarse)}")</div>
+        }
+        else if (mpDash.DisponibleEstimado is not null)
+        {
+            @* Disponible estimado negativo → no tiene sentido, no lo muestro (ver cartel arriba). *@
+            <div class="mac-card-bignum" style="font-size:1rem; color:#92400e;">En revisión 🔧</div>
+            <div class="mac-card-sub">el disponible estimado quedó desfasado</div>
+            @if (mpDash.PorAcreditarse > 0)
+            {
+                <div class="mac-card-sub" style="margin-top:2px; color:#92400e;">🕒 por acreditarse: @(SaldoOculto("mercadopago") ? "$ ••••" : $"${FormatMoney(mpDash.PorAcreditarse)}")</div>
+            }
         }
         else
         {
