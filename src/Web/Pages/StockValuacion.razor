@@ -159,6 +159,7 @@
                     @if (data.MarcasExcluidas.Count > 0)
                     {
                         <div style="font-size:0.8rem; font-weight:600; color:#92400e; margin-bottom:0.3rem;">Marcas destildadas (volvé a tildar para sumarlas)</div>
+                        <div style="overflow-x:auto;">
                         <table class="table" style="margin:0 0 0.9rem; font-size:0.86rem;">
                             <tbody>
                                 @foreach (var m in data.MarcasExcluidas)
@@ -175,6 +176,7 @@
                                 }
                             </tbody>
                         </table>
+                        </div>
                     }
 
                     @if (data.ValorCafe > 0)
@@ -188,6 +190,7 @@
                     @if (data.ProductosExcluidos.Count > 0)
                     {
                         <div style="font-size:0.8rem; font-weight:600; color:#92400e; margin:0.3rem 0;">Productos sueltos destildados</div>
+                        <div style="overflow-x:auto;">
                         <table class="table" style="margin:0; font-size:0.84rem;">
                             <tbody>
                                 @foreach (var p in data.ProductosExcluidos)
@@ -205,6 +208,7 @@
                                 }
                             </tbody>
                         </table>
+                        </div>
                     }
                 </div>
             }
