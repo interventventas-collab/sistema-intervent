@@ -3369,6 +3369,10 @@
                                 <span style="color: #dc3545;"> con @SyncProgress.State.TotalErrors errores</span>
                             }
                         </p>
+                        @if (!string.IsNullOrWhiteSpace(SyncProgress.State.CurrentStep))
+                        {
+                            <p style="color: #888; margin: 0.5rem 0 0; font-size: 0.72rem; word-break: break-word; max-height: 120px; overflow: auto;">@SyncProgress.State.CurrentStep</p>
+                        }
                     </div>
                 }
                 else if (SyncProgress.State.Status == "error")
