@@ -2273,6 +2273,10 @@ public class ApiClient
         return null;
     }
 
+    // 2026-07-10: productos vinculados a un OEM (para ver el impacto de un cambio de precio).
+    public async Task<List<CafeOemVarianteDto>?> GetCafeOemVariantesAsync(int oemId)
+        => await GetAsync<List<CafeOemVarianteDto>>($"/api/cafe/oems/{oemId}/variantes");
+
     // 2026-07-10: descarga la plantilla Excel vacia para cargar OEMs.
     public async Task<byte[]?> DownloadCafeOemTemplateAsync()
     {

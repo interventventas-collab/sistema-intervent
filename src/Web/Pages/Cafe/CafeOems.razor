@@ -110,9 +110,10 @@
                                 <td style="text-align: center;">
                                     @if (o.VariantesCount > 0)
                                     {
-                                        <span style="background: #dcfce7; color: #15803d; padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.78rem; font-weight: 700;" title="Productos vinculados a este OEM">
-                                            @o.VariantesCount
-                                        </span>
+                                        <button style="background: #dcfce7; color: #15803d; padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.78rem; font-weight: 700; border: none; cursor: pointer;"
+                                                title="Ver los productos vinculados a este OEM y su precio" @onclick="() => OpenVariantes(o)">
+                                            @o.VariantesCount 👁️
+                                        </button>
                                     }
                                     else
                                     {
@@ -516,6 +517,69 @@
     </div>
 }
 
+@if (showVariantes && variantesOem is not null)
+{
+    <div class="modal-overlay" @onclick="CloseVariantes">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 780px;">
+            <div class="modal-header" style="background: #15803d; color: white;">
+                <h3 style="margin: 0;">🔗 Productos vinculados al OEM @variantesOem.Codigo</h3>
+                <button class="btn-close" @onclick="CloseVariantes" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.82rem; color: #4b5563; margin: 0 0 0.6rem;">
+                    @variantesOem.Descripcion
+                    <br />
+                    Precio del OEM: <strong style="color:#15803d;">@(variantesOem.PvpConIva.HasValue ? "$" + FormatMoney(variantesOem.PvpConIva.Value) : "—")</strong>
+                    · Costo: <strong>$@FormatMoney(variantesOem.Costo)</strong>.
+                    Estos son los productos que heredan ese precio:
+                </p>
+                @if (loadingVariantes)
+                {
+                    <p class="text-muted">Cargando...</p>
+                }
+                else if (variantesList is null || variantesList.Count == 0)
+                {
+                    <p class="text-muted">Este OEM no tiene productos vinculados.</p>
+                }
+                else
+                {
+                    <div class="table-responsive" style="max-height: 340px; overflow: auto;">
+                        <table class="data-table" style="font-size: 0.8rem;">
+                            <thead>
+                                <tr>
+                                    <th>SKU</th>
+                                    <th>Producto</th>
+                                    <th style="text-align: right;">Costo</th>
+                                    <th style="text-align: right;">PVP</th>
+                                    <th style="text-align: right;">Stock</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var v in variantesList)
+                                {
+                                    <tr style="@(v.IsActive ? "" : "opacity: 0.5;")">
+                                        <td><strong>@(v.Sku ?? "—")</strong></td>
+                                        <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@v.Nombre</td>
+                                        <td style="text-align: right;">$@FormatMoney(v.Costo)</td>
+                                        <td style="text-align: right; font-weight: 700; color: #15803d;">@(v.Pvp2.HasValue ? "$" + FormatMoney(v.Pvp2.Value) : "—")</td>
+                                        <td style="text-align: right; color: #6b7280;">@v.StockUnidades.ToString("0.##")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <p style="font-size: 0.75rem; color: #6b7280; margin: 0.5rem 0 0;">
+                        La columna <strong>PVP</strong> es el precio que ya tomó cada producto del OEM (después del último import).
+                    </p>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" @onclick="CloseVariantes">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
 @if (toDelete is not null)
 {
     <div class="modal-overlay" @onclick="() => toDelete = null">
@@ -610,6 +674,12 @@
     // Filas nuevas o con cambio de precio (lo que le interesa ver al usuario en la previa).
     private List<CafeOemImportCambioDto> CambiosRelevantes =>
         importPreview?.Cambios.Where(c => c.EsNuevo || c.CambiaCosto || c.CambiaPvp).ToList() ?? new();
+
+    // Variantes vinculadas (ver impacto de un cambio de precio)
+    private bool showVariantes;
+    private CafeOemDto? variantesOem;
+    private List<CafeOemVarianteDto>? variantesList;
+    private bool loadingVariantes;
 
     // Delete
     private CafeOemDto? toDelete;
@@ -833,6 +903,25 @@
                 Convert.ToBase64String(bytes));
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    // ── Variantes vinculadas ──
+    private async Task OpenVariantes(CafeOemDto o)
+    {
+        variantesOem = o;
+        showVariantes = true;
+        loadingVariantes = true;
+        variantesList = null;
+        try { variantesList = await Api.GetCafeOemVariantesAsync(o.Id); }
+        catch (Exception ex) { ToastService.Error("No se pudieron cargar las variantes: " + ex.Message); }
+        finally { loadingVariantes = false; }
+    }
+
+    private void CloseVariantes()
+    {
+        showVariantes = false;
+        variantesOem = null;
+        variantesList = null;
     }
 
     // ── Import ──
