@@ -3552,7 +3552,7 @@
     private bool filterStockPushOk = false;            // 🟢 pusheado reciente (<=7 dias)
     private bool filterStockPushViejo = false;         // 🟡 pusheado viejo (>7 dias)
     private bool filterUrgente = false;                // 🚨 stock=0 OR status=paused (urgente reponer)
-    private string? statusFilter = "active";           // 2026-06-16: toggle Activas/Pausadas/Todas. null = todas.
+    private string? statusFilter = null;               // 2026-07-10: arranca en "Todas" (antes "active" escondía las pausadas por default). null = todas.
 
     private async Task CambiarStatus(string? nuevoStatus)
     {
@@ -3803,10 +3803,9 @@
 
     // Checkbox filter state
     private string? activeFilterColumn;
-    private Dictionary<string, HashSet<string>> checkboxFilters = new()
-    {
-        ["estado"] = new HashSet<string> { "Activa" }
-    };
+    // 2026-07-10: SIN filtros de columna por default (antes ["estado"]={"Activa"} escondía las pausadas
+    // y confundía — un filtro aplicado por default que oculta datos es lo peor). Arranca todo limpio.
+    private Dictionary<string, HashSet<string>> checkboxFilters = new();
 
     // 2026-05-29: la migración one-time de localStorage -> DB ya se ejecutó en sesiones previas
     // (todos los ajustes que tenías en localStorage ya están en MeliItem_SyncConfig vía paso 2).
