@@ -886,6 +886,7 @@ public class MeliItemService
         // así que NO nos frenamos en la primera: recorremos todas y sumamos.
         int totalGuardadas = 0, variantesMax = 0;
         bool famEncontrada = false;
+        var diag = new System.Text.StringBuilder();
         foreach (var account in accounts)
         {
             var token = await _accountService.GetValidTokenAsync(account);
@@ -898,7 +899,10 @@ public class MeliItemService
             if (!famResp.IsSuccessStatusCode)
                 famResp = await http.GetAsync($"https://api.mercadolibre.com/user-products-families/{target}");
             if (!famResp.IsSuccessStatusCode)
+            {
+                diag.Append($"{account.Nickname}:fam{(int)famResp.StatusCode} ");
                 continue;
+            }
 
             var famDoc = JsonDocument.Parse(await famResp.Content.ReadAsStringAsync()).RootElement;
             var ups = new List<string>();
@@ -909,7 +913,7 @@ public class MeliItemService
                     if (u.TryGetProperty("id", out var uid)) { var s = uid.GetString(); if (!string.IsNullOrEmpty(s)) ups.Add(s); }
 
             string? famName = famDoc.TryGetProperty("family_name", out var fnEl) ? fnEl.GetString() : null;
-            if (ups.Count == 0) continue;
+            if (ups.Count == 0) { diag.Append($"{account.Nickname}:0ups "); continue; }
 
             famEncontrada = true;
             variantesMax = Math.Max(variantesMax, ups.Count);
@@ -918,6 +922,7 @@ public class MeliItemService
 
             // 2) Por cada User Product, buscar sus items en todos los estados, en ESTA cuenta
             var allIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var perStatus = new Dictionary<string, int>();
             foreach (var up in ups)
                 foreach (var st in statuses)
                 {
@@ -926,12 +931,21 @@ public class MeliItemService
                     if (!r.IsSuccessStatusCode) continue;
                     var d = JsonDocument.Parse(await r.Content.ReadAsStringAsync()).RootElement;
                     if (d.TryGetProperty("results", out var res))
-                        foreach (var id in res.EnumerateArray()) { var s = id.GetString(); if (!string.IsNullOrEmpty(s)) allIds.Add(s); }
+                    {
+                        int c = 0;
+                        foreach (var id in res.EnumerateArray()) { var s = id.GetString(); if (!string.IsNullOrEmpty(s)) allIds.Add(s); c++; }
+                        if (c > 0) perStatus[st] = perStatus.GetValueOrDefault(st) + c;
+                    }
                 }
 
-            // 3) Detalle + upsert; forzar family_id por si MeLi no lo trae en inactivas
+            // 3) Detalle + upsert; forzar family_id en lo traído
             var guardadas = await UpsertItemsByIdsAsync(account.Id, http, allIds.ToList(), target, famName, progressId);
             totalGuardadas += guardadas;
+
+            var upsShort = string.Join("|", ups.Select(u => u.Length > 6 ? u.Substring(u.Length - 6) : u));
+            var stStr = perStatus.Count > 0 ? string.Join(" ", perStatus.Select(kv => kv.Key + ":" + kv.Value)) : "sin items";
+            diag.Append($"{account.Nickname}:{ups.Count}ups[{upsShort}] {stStr} MLAs:{allIds.Count} guard:{guardadas}. ");
+
             if (progressId is not null)
             {
                 var tg = totalGuardadas;
@@ -939,16 +953,16 @@ public class MeliItemService
             }
         }
 
-        if (famEncontrada && totalGuardadas > 0)
+        if (famEncontrada)
         {
             if (progressId is not null)
             {
-                _syncProgress.Complete(progressId, $"Familia {target}: {totalGuardadas} publicaciones traídas ({variantesMax} variantes).");
+                _syncProgress.Complete(progressId, $"Familia {target}: {totalGuardadas} traídas ({variantesMax} variantes). DIAG → {diag}");
                 _syncProgress.Cleanup();
             }
-            return; // familia resuelta por la puerta directa
+            return; // familia resuelta por la puerta directa (mostramos DIAG en el cartel)
         }
-        // Si la API de familia no trajo nada, cae al respaldo (barrido por family_id).
+        // Si NINGUNA cuenta conoce la familia, cae al respaldo (barrido por family_id).
 
         // ===== Respaldo: barrido completo filtrando por family_id =====
         int encontradas = 0, sincronizadas = 0, revisadas = 0;
@@ -1055,8 +1069,8 @@ public class MeliItemService
             var rows = await _db.MeliItems.Where(m => brought.Contains(m.MeliItemId)).ToListAsync();
             foreach (var r in rows)
             {
-                if (string.IsNullOrEmpty(r.FamilyId)) r.FamilyId = familyId;
-                if (!string.IsNullOrEmpty(familyName) && string.IsNullOrEmpty(r.FamilyName)) r.FamilyName = familyName;
+                r.FamilyId = familyId;  // agrupar bajo el número que pidió el usuario
+                if (!string.IsNullOrEmpty(familyName)) r.FamilyName = familyName;
             }
             await _db.SaveChangesAsync();
         }
