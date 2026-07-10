@@ -6,6 +6,7 @@ using MailKit;
 using MailKit.Net.Imap;
 using MailKit.Search;
 using MailKit.Security;
+using MimeKit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -199,11 +200,15 @@ public class MisAlertasBackgroundService : BackgroundService
                     .ToList();
                 if (nuevos.Count == 0) return (false, null);
 
-                var asunto = nuevos[0].Envelope?.Subject ?? "";
+                var topEnv = nuevos[0].Envelope;
+                var asunto = string.IsNullOrWhiteSpace(topEnv?.Subject) ? "(sin asunto)" : topEnv!.Subject;
+                var mb = topEnv?.From?.Mailboxes?.FirstOrDefault();
+                var remitente = mb is null ? "" : (!string.IsNullOrWhiteSpace(mb.Name) ? mb.Name : (mb.Address ?? ""));
+
                 if (nuevos.Count == 1)
-                    return (true, string.IsNullOrWhiteSpace(asunto) ? "1 correo nuevo" : $"\"{asunto}\"");
-                return (true, $"{nuevos.Count} correos nuevos"
-                    + (string.IsNullOrWhiteSpace(asunto) ? "" : $" (último: \"{asunto}\")"));
+                    return (true, string.IsNullOrWhiteSpace(remitente) ? $"\"{asunto}\"" : $"De {remitente} · \"{asunto}\"");
+                var ultimo = string.IsNullOrWhiteSpace(remitente) ? $"\"{asunto}\"" : $"{remitente}: \"{asunto}\"";
+                return (true, $"{nuevos.Count} correos nuevos · último {ultimo}");
             }
             default:
                 return (false, null);
