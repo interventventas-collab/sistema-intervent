@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using Api.Data;
 using Api.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -236,9 +237,29 @@ public class MisAlertasController : ControllerBase
         var user = Get("alertas.imap.user");
         var pass = Get("alertas.imap.pass");
         if (!int.TryParse(Get("alertas.imap.port"), out var port) || port <= 0) port = 993;
-        var tieneClave = !string.IsNullOrWhiteSpace(pass);
-        var configurada = !string.IsNullOrWhiteSpace(user) && tieneClave;
-        return Ok(new ConfigCorreoDto(host, port, user, tieneClave, configurada));
+        // 1) Casilla propia cargada por el usuario.
+        if (!string.IsNullOrWhiteSpace(user) && !string.IsNullOrWhiteSpace(pass))
+            return Ok(new ConfigCorreoDto(host, port, user, true, true));
+
+        // 2) Reutilizo la casilla ya conectada del sistema (integración email-smtp).
+        var integ = await _db.Integrations.FirstOrDefaultAsync(x => x.Provider == "email-smtp");
+        if (integ is not null && !string.IsNullOrWhiteSpace(integ.AppSecret) && !string.IsNullOrWhiteSpace(integ.Settings))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(integ.Settings);
+                var root = doc.RootElement;
+                string? u = null;
+                if (root.TryGetProperty("username", out var un) && !string.IsNullOrWhiteSpace(un.GetString())) u = un.GetString();
+                else if (root.TryGetProperty("fromAddress", out var fa)) u = fa.GetString();
+                var ih = root.TryGetProperty("imapHost", out var h2) ? h2.GetString() : "imap.gmail.com";
+                var ip = root.TryGetProperty("imapPort", out var p2) && p2.TryGetInt32(out var ipv) ? ipv : 993;
+                if (!string.IsNullOrWhiteSpace(u))
+                    return Ok(new ConfigCorreoDto(ih, ip, u, true, true));
+            }
+            catch { }
+        }
+        return Ok(new ConfigCorreoDto(host, port, user, false, false));
     }
 
     [HttpPost("config-correo")]
