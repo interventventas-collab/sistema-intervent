@@ -175,21 +175,34 @@ public class MisAlertasBackgroundService : BackgroundService
             case "EMAIL_REMITENTE":
             {
                 if (emailInbox is null || string.IsNullOrWhiteSpace(a.TextoParam)) return (false, null);
-                // "Disparada" mientras haya un correo NO leído de ese remitente. Se apaga sola
-                // cuando lo leés en Gmail (no tocamos el estado leído/no-leído acá).
-                var query = SearchQuery.NotSeen.And(SearchQuery.FromContains(a.TextoParam.Trim()));
-                var uids = await emailInbox.SearchAsync(query);
+                // Uno o VARIOS remitentes (separados por coma, punto y coma o salto de línea).
+                var remitentes = a.TextoParam
+                    .Split(new[] { ',', ';', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                if (remitentes.Count == 0) return (false, null);
+
+                // De = (remitente1 OR remitente2 OR ...)
+                SearchQuery deQuien = SearchQuery.FromContains(remitentes[0]);
+                for (int i = 1; i < remitentes.Count; i++)
+                    deQuien = deQuien.Or(SearchQuery.FromContains(remitentes[i]));
+
+                var uids = await emailInbox.SearchAsync(SearchQuery.NotSeen.And(deQuien));
                 if (uids.Count == 0) return (false, null);
-                string asunto = "";
-                try
-                {
-                    var sums = await emailInbox.FetchAsync(uids, MessageSummaryItems.Envelope);
-                    asunto = sums.LastOrDefault()?.Envelope?.Subject ?? "";
-                }
-                catch { /* si no puedo leer el asunto, aviso igual */ }
-                if (uids.Count == 1)
+
+                // Solo los que LLEGARON después de crear la alerta (para no avisar de correos viejos
+                // sin leer). "Disparada" mientras siga sin leer; se apaga cuando lo abrís en Gmail.
+                var sums = await emailInbox.FetchAsync(uids, MessageSummaryItems.Envelope | MessageSummaryItems.InternalDate);
+                var nuevos = sums
+                    .Where(s => (s.InternalDate?.UtcDateTime ?? DateTime.MaxValue) >= a.CreatedAt)
+                    .OrderByDescending(s => s.InternalDate)
+                    .ToList();
+                if (nuevos.Count == 0) return (false, null);
+
+                var asunto = nuevos[0].Envelope?.Subject ?? "";
+                if (nuevos.Count == 1)
                     return (true, string.IsNullOrWhiteSpace(asunto) ? "1 correo nuevo" : $"\"{asunto}\"");
-                return (true, $"{uids.Count} correos nuevos"
+                return (true, $"{nuevos.Count} correos nuevos"
                     + (string.IsNullOrWhiteSpace(asunto) ? "" : $" (último: \"{asunto}\")"));
             }
             default:
