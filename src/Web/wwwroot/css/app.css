@@ -2195,6 +2195,11 @@ button {
 /* ============================================================
    RESPONSIVE - TABLET
    ============================================================ */
+/* 2026-07-09: botón de menú flotante. Oculto por defecto (en escritorio el menú
+   lateral siempre está visible). Se muestra fijo solo en pantallas angostas — ver
+   la regla dentro del @media (max-width: 768px) más abajo. */
+.floating-menu-btn { display: none; }
+
 @media (max-width: 768px) {
   .sidebar {
     transform: translateX(-100%);
@@ -2254,6 +2259,27 @@ button {
   .topbar-menu-btn {
     display: flex;
   }
+
+  /* Botón ☰ flotante fijo: siempre visible en la esquina inferior izquierda, aunque
+     una tabla ancha empuje la pantalla para el costado. Garantiza poder abrir el menú. */
+  .floating-menu-btn {
+    display: flex;
+    position: fixed;
+    bottom: 16px;
+    left: 16px;
+    width: 48px;
+    height: 48px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: none;
+    background: #0891b2;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+    z-index: 80;
+  }
+  .floating-menu-btn svg { width: 24px; height: 24px; }
 
   .content {
     padding: 1rem;

@@ -1492,6 +1492,17 @@
     <div class="sidebar-overlay visible" @onclick="CloseSidebar"></div>
 }
 
+@* 2026-07-09: botón de menú FLOTANTE fijo. Solo aparece en pantallas angostas (celular / zoom alto),
+   donde el menú lateral se esconde. Al ser position:fixed nunca se pierde de vista aunque una tabla
+   ancha empuje la pantalla para el costado — garantiza que siempre se pueda volver a abrir el menú.
+   Se oculta cuando el menú ya está abierto o en modo embebido. *@
+@if (!IsEmbedded && !sidebarOpen)
+{
+    <button class="floating-menu-btn" @onclick="ToggleSidebar" aria-label="Abrir menú" title="Abrir menú">
+        @SvgIcons.Menu
+    </button>
+}
+
 @* Modal de seleccion de empresa *@
 @if (showCompanyModal)
 {
