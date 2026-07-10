@@ -14,7 +14,14 @@
                 var isPublic = relPath.StartsWith("r/", StringComparison.OrdinalIgnoreCase)
                             || relPath.StartsWith("he/", StringComparison.OrdinalIgnoreCase)
                             || relPath.StartsWith("v/", StringComparison.OrdinalIgnoreCase)
-                            || relPath.StartsWith("stock/", StringComparison.OrdinalIgnoreCase)
+                            // OJO: /stock/ es publico SOLO para la carga de deposito por token
+                            // (/stock/{token} y /stock/v2/{token}). Las pantallas de ADMIN
+                            // /stock/reposicion, /stock/ranking y /stock/valuacion NO son publicas:
+                            // deben ir con MainLayout (menu + barra), sino quedan sin forma de volver.
+                            || (relPath.StartsWith("stock/", StringComparison.OrdinalIgnoreCase)
+                                && !relPath.StartsWith("stock/reposicion", StringComparison.OrdinalIgnoreCase)
+                                && !relPath.StartsWith("stock/ranking", StringComparison.OrdinalIgnoreCase)
+                                && !relPath.StartsWith("stock/valuacion", StringComparison.OrdinalIgnoreCase))
                             || relPath.StartsWith("pedidos/", StringComparison.OrdinalIgnoreCase)
                             || relPath.StartsWith("comprobante/", StringComparison.OrdinalIgnoreCase)
                             || relPath.StartsWith("panel-pagos/", StringComparison.OrdinalIgnoreCase)
