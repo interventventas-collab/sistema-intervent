@@ -618,6 +618,13 @@
         <NavItem Href="/chat" Label="💬 Chat" Icon="@SvgIcons.Users"
                  IsActive="@IsActive("/chat")" OnClick="@(() => NavigateTo("/chat"))" />
 
+        @* ═════════════ MIS ALERTAS (motor de alertas configurables, 2026-07-10) ═════════════ *@
+        @if (!IsRoleWithCustomSidebar())
+        {
+            <NavItem Href="/mis-alertas" Label="🔔 Mis Alertas" Icon="@SvgIcons.AlertCircle"
+                     IsActive="@IsActive("/mis-alertas")" OnClick="@(() => NavigateTo("/mis-alertas"))" />
+        }
+
         @* ═════════════ CARPETA COMPARTIDA (2026-07-06) ═════════════
            Carpeta de archivos compartida entre admin y depósito (permiso "compartido").
            Top-level para que la vean tambien los usuarios de depósito (no ven el grupo Café). *@
@@ -1262,6 +1269,7 @@
             {
                 <MeliCambiosBell />
                 <WhatsAppPedidosBell />
+                <MisAlertasBell />
             }
             @if (UploadProgress.IsUploading)
             {

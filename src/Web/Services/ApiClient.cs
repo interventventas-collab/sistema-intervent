@@ -1197,6 +1197,77 @@ public class ApiClient
         string? ContraparteNombre, string? Motivo, string Estado);
     public async Task<List<ChequeProximoDto>> GetChequesProximosPagarAsync(int take = 5)
         => await GetAsync<List<ChequeProximoDto>>($"/api/cafe/cheques-banco/proximos-pagar?take={take}") ?? new();
+
+    // 2026-07-10: Motor de alertas configurables ("Mis Alertas").
+    public record AlertaDto(int Id, string Tipo, decimal? Umbral, string Mensaje,
+        bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool Activa,
+        bool EstaDisparada, bool Vista, string? UltimoDetalle, DateTime? DisparadaAt);
+    public record AlertaUpsertRequest(string Tipo, decimal? Umbral, string Mensaje,
+        bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool Activa);
+    public record AlertaDisparadaDto(int Id, string Tipo, string Mensaje, string? Detalle, DateTime? DisparadaAt, bool Vista);
+    public record AlertasBellDto(int NoVistas, List<AlertaDisparadaDto> Disparadas);
+
+    public async Task<List<AlertaDto>?> GetMisAlertasAsync()
+        => await GetAsync<List<AlertaDto>>("/api/mis-alertas");
+
+    public async Task<(AlertaDto? alerta, string? error)> CrearAlertaAsync(AlertaUpsertRequest req)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _http.PostAsJsonAsync("/api/mis-alertas", req);
+            if (resp.IsSuccessStatusCode) return (await resp.Content.ReadFromJsonAsync<AlertaDto>(), null);
+            return (null, await ExtraerError(resp));
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    public async Task<(AlertaDto? alerta, string? error)> ActualizarAlertaAsync(int id, AlertaUpsertRequest req)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _http.PutAsJsonAsync($"/api/mis-alertas/{id}", req);
+            if (resp.IsSuccessStatusCode) return (await resp.Content.ReadFromJsonAsync<AlertaDto>(), null);
+            return (null, await ExtraerError(resp));
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    public async Task<bool> EliminarAlertaAsync(int id)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.DeleteAsync($"/api/mis-alertas/{id}");
+        return resp.IsSuccessStatusCode;
+    }
+
+    public async Task<bool> ToggleAlertaAsync(int id)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsync($"/api/mis-alertas/{id}/toggle", null);
+        return resp.IsSuccessStatusCode;
+    }
+
+    public async Task<AlertasBellDto?> GetAlertasDisparadasAsync()
+        => await GetAsync<AlertasBellDto>("/api/mis-alertas/disparadas");
+
+    public async Task<bool> MarcarAlertasVistasAsync()
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsync("/api/mis-alertas/marcar-vistas", null);
+        return resp.IsSuccessStatusCode;
+    }
+
+    private static async Task<string> ExtraerError(HttpResponseMessage resp)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            if (doc.RootElement.TryGetProperty("error", out var e)) return e.GetString() ?? "Error";
+        }
+        catch { }
+        return "Error";
+    }
     public async Task<bool> AprobarCobranzaPendienteAsync(int id, AprobarCobranzaPendienteRequest req)
     {
         await SetAuthHeaderAsync();

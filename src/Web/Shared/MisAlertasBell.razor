@@ -1,0 +1,155 @@
+@inject ApiClient Api
+@inject NavigationManager Navigation
+@implements IDisposable
+
+@* 2026-07-10 — Campanita del motor de alertas configurables ("Mis Alertas").
+   - Solo aparece cuando hay al menos una alerta disparada.
+   - Hover (mouse encima) → despliega el detalle y las marca como vistas (baja el contador).
+   - Click → te lleva a /mis-alertas.
+   Refresca cada 30 seg. *@
+
+@if (disparadas.Count > 0)
+{
+    <div class="mab-wrap"
+         @onmouseenter="OnHover"
+         @onmouseleave="OnLeave"
+         @onclick="@(() => Navigation.NavigateTo("/mis-alertas"))">
+        <div class="mab-badge" title="Tenés alertas — click para ver Mis Alertas">
+            <span class="mab-icon">🔔</span>
+            <span>Alertas</span>
+            @if (noVistas > 0)
+            {
+                <span class="mab-num">@noVistas</span>
+            }
+        </div>
+
+        @if (showDropdown)
+        {
+            <div class="mab-dropdown" @onclick:stopPropagation="true" @onclick="@(() => Navigation.NavigateTo("/mis-alertas"))">
+                <div class="mab-dd-header">
+                    <span>🔔 Alertas activas</span>
+                    <span class="mab-dd-count">@disparadas.Count</span>
+                </div>
+                <div class="mab-dd-list">
+                    @foreach (var a in disparadas)
+                    {
+                        <div class="mab-dd-row">
+                            <span class="mab-dd-emoji">@Emoji(a.Tipo)</span>
+                            <div class="mab-dd-mid">
+                                <div class="mab-dd-msg">@a.Mensaje</div>
+                                @if (!string.IsNullOrWhiteSpace(a.Detalle))
+                                {
+                                    <div class="mab-dd-sub">@a.Detalle</div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="mab-dd-footer">
+                    <span class="mab-dd-link">Ver Mis Alertas →</span>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+<style>
+    .mab-wrap { position: relative; display: inline-block; }
+    .mab-badge {
+        display: inline-flex; align-items: center; gap: 0.3rem;
+        padding: 0.35rem 0.7rem;
+        background: #FAEEDA; color: #633806;
+        border: 1px solid #EF9F27;
+        border-radius: 999px;
+        font-weight: 700; font-size: 0.85rem;
+        cursor: pointer; margin: 0 0.3rem;
+        transition: transform 0.15s;
+    }
+    .mab-badge:hover { transform: scale(1.06); }
+    .mab-icon { font-size: 1rem; }
+    .mab-num {
+        background: #BA7517; color: white;
+        font-size: 0.72rem; padding: 1px 6px;
+        border-radius: 6px; margin-left: 2px; font-weight: 800;
+    }
+    .mab-dropdown {
+        position: absolute; top: calc(100% + 6px); right: 0;
+        background: white; border: 1px solid #d1d5db; border-radius: 10px;
+        box-shadow: 0 6px 24px rgba(0,0,0,0.12);
+        width: 380px; max-width: 92vw; z-index: 9500;
+        cursor: pointer; overflow: hidden;
+    }
+    .mab-dd-header {
+        padding: 10px 14px 8px;
+        border-bottom: 1px solid #f3f4f6;
+        display: flex; align-items: center; justify-content: space-between;
+        font-size: 0.83rem; font-weight: 700; color: #111827;
+    }
+    .mab-dd-count { font-size: 0.7rem; color: #6b7280; font-weight: 600; }
+    .mab-dd-list { padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; }
+    .mab-dd-row {
+        display: flex; align-items: center; gap: 10px;
+        padding: 8px 8px; border-radius: 8px; background: #FFFBF3;
+    }
+    .mab-dd-emoji { font-size: 1.2rem; width: 24px; text-align: center; }
+    .mab-dd-mid { flex: 1; min-width: 0; }
+    .mab-dd-msg { font-size: 0.85rem; font-weight: 600; color: #111827; }
+    .mab-dd-sub { font-size: 0.72rem; color: #6b7280; }
+    .mab-dd-footer {
+        padding: 8px 14px;
+        border-top: 1px solid #f3f4f6;
+        display: flex; align-items: center; justify-content: flex-end;
+        font-size: 0.78rem;
+    }
+    .mab-dd-link { color: #BA7517; font-weight: 700; }
+</style>
+
+@code {
+    private List<ApiClient.AlertaDisparadaDto> disparadas = new();
+    private int noVistas;
+    private bool showDropdown;
+    private System.Threading.Timer? timer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Refresh();
+        timer = new System.Threading.Timer(async _ => await InvokeAsync(Refresh), null, 30_000, 30_000);
+    }
+
+    private async Task Refresh()
+    {
+        try
+        {
+            var r = await Api.GetAlertasDisparadasAsync();
+            disparadas = r?.Disparadas ?? new();
+            noVistas = r?.NoVistas ?? 0;
+            StateHasChanged();
+        }
+        catch { /* no critico */ }
+    }
+
+    private async Task OnHover()
+    {
+        showDropdown = true;
+        // Al abrir el detalle, las damos por vistas (baja el contador).
+        if (noVistas > 0)
+        {
+            try { await Api.MarcarAlertasVistasAsync(); } catch { }
+            noVistas = 0;
+            StateHasChanged();
+        }
+    }
+
+    private void OnLeave() { showDropdown = false; }
+
+    private static string Emoji(string tipo) => tipo switch
+    {
+        "SHELL_BAJO" => "⛽",
+        "BANCO_BAJO" => "🏦",
+        "CHEQUE_VENCE" => "📄",
+        "FECHA_MES" => "📅",
+        _ => "🔔"
+    };
+
+    public void Dispose() => timer?.Dispose();
+}
