@@ -5694,3 +5694,8 @@ CREATE TABLE Mis_Alertas (
     UpdatedAt DATETIME2 NULL
 );
 GO
+
+-- 2026-07-10: Mis_Alertas ahora son COMPARTIDAS por rol. Alcance = CSV de roles que la ven.
+IF COL_LENGTH('Mis_Alertas','Alcance') IS NULL
+    ALTER TABLE Mis_Alertas ADD Alcance NVARCHAR(100) NOT NULL CONSTRAINT DF_MisAlertas_Alcance DEFAULT 'admin,oficina';
+GO

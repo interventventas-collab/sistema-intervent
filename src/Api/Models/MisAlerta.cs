@@ -51,6 +51,12 @@ public class MisAlerta
     /// <summary>Interruptor prender/apagar sin borrar la regla.</summary>
     public bool Activa { get; set; } = true;
 
+    /// <summary>Quién ve la alerta: lista de roles separada por coma (admin, oficina, deposito).
+    /// Las alertas son COMPARTIDAS entre los roles marcados (no son por-usuario). Default:
+    /// "admin,oficina" (depósito queda afuera por ahora, pero el selector ya lo permite).</summary>
+    [MaxLength(100)]
+    public string Alcance { get; set; } = "admin,oficina";
+
     // --- Estado de disparo (lo maneja el robot) ---
     /// <summary>La condicion se esta cumpliendo ahora mismo.</summary>
     public bool EstaDisparada { get; set; } = false;

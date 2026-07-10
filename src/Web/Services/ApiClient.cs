@@ -1200,10 +1200,10 @@ public class ApiClient
 
     // 2026-07-10: Motor de alertas configurables ("Mis Alertas").
     public record AlertaDto(int Id, string Tipo, decimal? Umbral, string Mensaje,
-        bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool Activa,
+        bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool Activa, List<string> Roles,
         bool EstaDisparada, bool Vista, string? UltimoDetalle, DateTime? DisparadaAt);
     public record AlertaUpsertRequest(string Tipo, decimal? Umbral, string Mensaje,
-        bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool Activa);
+        bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool Activa, List<string>? Roles);
     public record AlertaDisparadaDto(int Id, string Tipo, string Mensaje, string? Detalle, DateTime? DisparadaAt, bool Vista);
     public record AlertasBellDto(int NoVistas, List<AlertaDisparadaDto> Disparadas);
 
