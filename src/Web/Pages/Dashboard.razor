@@ -628,6 +628,41 @@
         }
     </div>
 
+    @* Mercadería valorizada — mismo número que la pantalla /stock/valuacion (a costo, sin IVA). 2026-07-09 *@
+    <div class="dashboard-detail-card mac-stat-card accent-green" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/stock/valuacion")' title="Ir a Valor de stock">
+        <CustomCardOverlay CardKey="valor-stock" Settings="@cardCustomSettings" />
+        <div class="mac-card-header">
+            <div class="mac-card-iconbox" style="background:#065f46;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+            </div>
+            <span class="mac-card-eyebrow" style="color:#3f3f46;">Mercadería valorizada</span>
+        </div>
+        <button class="dash-eye-btn" @onclick="@(() => ToggleSaldoVisible("valorstock"))" @onclick:stopPropagation="true"
+                title="@(SaldoOculto("valorstock") ? "Mostrar" : "Ocultar")">
+            @(SaldoOculto("valorstock") ? "🙈" : "👁")
+        </button>
+        @if (valuacion is null)
+        {
+            <div class="mac-card-sub">Cargando…</div>
+        }
+        else if (SaldoOculto("valorstock"))
+        {
+            <div class="mac-card-bignum">$ ••••••</div>
+            <div class="mac-card-sub">a costo, sin IVA · tocá 👁 para ver</div>
+        }
+        else
+        {
+            <div class="mac-card-bignum">$@FormatMoney(valuacion.TotalContado)</div>
+            <div class="mac-card-sub" style="font-style:italic;">@NumeroEnLetras.PesosEnLetras(valuacion.TotalContado)</div>
+            <div class="mac-card-sub" style="margin-top:2px;">Con IVA: <strong>$@FormatMoney(valuacion.TotalContadoConIva)</strong></div>
+            <div class="mac-card-sub" style="margin-top:2px;">@valuacion.ProductosContados productos · @valuacion.MarcasContadas marcas</div>
+            @if (valuacion.TotalNoContado > 0)
+            {
+                <div class="mac-card-sub" style="margin-top:2px; color:#92400e;">sin contar: $@FormatMoney(valuacion.TotalNoContado) <span style="color:#9ca3af;">(proveedor/café)</span></div>
+            }
+        }
+    </div>
+
     @* Ventas del mes — con mini gráfico de 12 meses navegable *@
     <div class="dashboard-detail-card mac-stat-card accent-green" style="position:relative;">
         <CustomCardOverlay CardKey="ventas-del-mes" Settings="@cardCustomSettings" />
@@ -1660,6 +1695,8 @@
     }
     private Web.Models.SaldoBancoDto? saldoBanco;
     private Web.Models.ShellAccountDto? shellSaldo;
+    // 2026-07-09: card "Mercadería valorizada" — mismo número que la pantalla /stock/valuacion.
+    private ApiClient.ValuacionResult? valuacion;
     private Web.Models.MpAccountDto? mpSaldo;
     private Web.Models.MpDashboardDto? mpDash;
     private Web.Models.FilesStatsDto? docStats;
@@ -1934,6 +1971,9 @@
         try { mpSaldo = await Api.GetMpAccountAsync(); }
         catch { /* opcional */ }
         try { mpDash = await Api.GetMpDashboardAsync(); }
+        catch { /* opcional */ }
+        // 2026-07-09: valor de la mercadería a costo (mismo cálculo que /stock/valuacion).
+        try { valuacion = await Api.GetValuacionAsync(); }
         catch { /* opcional */ }
         // 2026-07-04: historial 12 meses para el mini gráfico. Fire-and-forget.
         try
