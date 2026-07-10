@@ -67,6 +67,15 @@
             </div>
         </div>
 
+        <div class="ma-field">
+            <label class="ma-label">¿Quién la ve?</label>
+            <div class="ma-roles">
+                <label class="ma-role"><input type="checkbox" @bind="form.VeAdmin" /> 👑 Admin</label>
+                <label class="ma-role"><input type="checkbox" @bind="form.VeOficina" /> 🏢 Oficina</label>
+                <label class="ma-role"><input type="checkbox" @bind="form.VeDeposito" /> 🏭 Depósito <em>(aún no lo ve en su menú)</em></label>
+            </div>
+        </div>
+
         <div class="ma-editor-actions">
             <button class="btn-secondary" @onclick="CancelarEditor">Cancelar</button>
             <button class="btn-primary" @onclick="Guardar" disabled="@guardando">@(guardando ? "Guardando..." : "Guardar alerta")</button>
@@ -98,6 +107,7 @@ else
                 <div class="ma-card-mid">
                     <div class="ma-card-msg">@a.Mensaje</div>
                     <div class="ma-card-desc">@Describir(a)</div>
+                    <div class="ma-card-roles">👁 La ven: @RolesTexto(a.Roles)</div>
                     @if (a.Activa && a.EstaDisparada)
                     {
                         <div class="ma-card-fired">🔴 Disparada ahora@(string.IsNullOrWhiteSpace(a.UltimoDetalle) ? "" : $" — {a.UltimoDetalle}")</div>
@@ -139,6 +149,10 @@ else
     .ma-canal-on { background: #E6F1FB; color: #185FA5; font-weight: 600; }
     .ma-canal-off { background: #f3f4f6; color: #9ca3af; }
     .ma-canal-off em { font-style: normal; font-size: 0.75rem; }
+    .ma-roles { display: flex; flex-wrap: wrap; gap: 14px; }
+    .ma-role { display: inline-flex; align-items: center; gap: 6px; font-size: 0.9rem; color: #374151; cursor: pointer; }
+    .ma-role input { width: 16px; height: 16px; }
+    .ma-role em { font-style: normal; font-size: 0.72rem; color: #9ca3af; }
     .ma-editor-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
 
     .ma-list { display: flex; flex-direction: column; gap: 10px; }
@@ -152,6 +166,7 @@ else
     .ma-card-mid { flex: 1; min-width: 0; }
     .ma-card-msg { font-size: 1rem; font-weight: 600; color: #111827; }
     .ma-card-desc { font-size: 0.82rem; color: #6b7280; margin-top: 2px; }
+    .ma-card-roles { font-size: 0.75rem; color: #9ca3af; margin-top: 2px; }
     .ma-card-fired { font-size: 0.8rem; color: #991B1B; margin-top: 4px; font-weight: 600; }
     .ma-card-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
     .ma-icon-btn {
@@ -188,6 +203,9 @@ else
         public string Tipo { get; set; } = "SHELL_BAJO";
         public decimal? Umbral { get; set; }
         public string Mensaje { get; set; } = "";
+        public bool VeAdmin { get; set; } = true;
+        public bool VeOficina { get; set; } = true;
+        public bool VeDeposito { get; set; } = false;
     }
 
     protected override async Task OnInitializedAsync() => await Cargar();
@@ -209,7 +227,15 @@ else
     private void Editar(ApiClient.AlertaDto a)
     {
         editandoId = a.Id;
-        form = new AlertaForm { Tipo = a.Tipo, Umbral = a.Umbral, Mensaje = a.Mensaje };
+        form = new AlertaForm
+        {
+            Tipo = a.Tipo,
+            Umbral = a.Umbral,
+            Mensaje = a.Mensaje,
+            VeAdmin = a.Roles.Contains("admin"),
+            VeOficina = a.Roles.Contains("oficina"),
+            VeDeposito = a.Roles.Contains("deposito")
+        };
         mostrandoEditor = true;
     }
 
@@ -231,9 +257,15 @@ else
         if (form.Umbral is null || form.Umbral <= 0) { Toast.Error("Completá el valor (monto, días o día del mes)"); return; }
         if (form.Tipo == "FECHA_MES" && (form.Umbral < 1 || form.Umbral > 31)) { Toast.Error("El día del mes va de 1 a 31"); return; }
 
+        var roles = new List<string>();
+        if (form.VeAdmin) roles.Add("admin");
+        if (form.VeOficina) roles.Add("oficina");
+        if (form.VeDeposito) roles.Add("deposito");
+        if (roles.Count == 0) { Toast.Error("Elegí al menos quién ve la alerta (Admin, Oficina o Depósito)"); return; }
+
         guardando = true;
         var req = new ApiClient.AlertaUpsertRequest(form.Tipo, form.Umbral, form.Mensaje.Trim(),
-            CanalCampanita: true, CanalWhatsApp: false, CanalCorreo: false, Activa: true);
+            CanalCampanita: true, CanalWhatsApp: false, CanalCorreo: false, Activa: true, Roles: roles);
 
         if (editandoId is null)
         {
@@ -280,6 +312,19 @@ else
         "FECHA_MES" => "Pagar a la contadora",
         _ => "Escribí el aviso"
     };
+
+    private static string RolesTexto(List<string> roles)
+    {
+        if (roles is null || roles.Count == 0) return "nadie";
+        var nombres = roles.Select(r => r switch
+        {
+            "admin" => "Admin",
+            "oficina" => "Oficina",
+            "deposito" => "Depósito",
+            _ => r
+        });
+        return string.Join(", ", nombres);
+    }
 
     private static string Emoji(string tipo) => tipo switch
     {
