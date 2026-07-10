@@ -2257,6 +2257,31 @@ public class ApiClient
         return null;
     }
 
+    // 2026-07-10: vista previa (dry-run) de la importacion de OEMs.
+    public async Task<CafeOemImportPreviewDto?> PreviewCafeOemsAsync(Stream fileStream, string fileName, string proveedor)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        var streamContent = new StreamContent(fileStream);
+        streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        content.Add(streamContent, "file", fileName);
+        content.Add(new StringContent(proveedor ?? ""), "proveedor");
+        var response = await _http.PostAsync("/api/cafe/oems/import/preview", content);
+        if (response.IsSuccessStatusCode)
+            return await response.Content.ReadFromJsonAsync<CafeOemImportPreviewDto>();
+        await ThrowIfErrorAsync(response);
+        return null;
+    }
+
+    // 2026-07-10: descarga la plantilla Excel vacia para cargar OEMs.
+    public async Task<byte[]?> DownloadCafeOemTemplateAsync()
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync("/api/cafe/oems/plantilla");
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadAsByteArrayAsync();
+    }
+
     // --- Brands ---
     public async Task<List<BrandDto>?> GetBrandsAsync()
         => await GetAsync<List<BrandDto>>("/api/brands");
