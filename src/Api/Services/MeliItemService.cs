@@ -863,9 +863,10 @@ public class MeliItemService
         return new MeliItemSyncByIdBatchResult(ids.Count, synced, errors, results);
     }
 
-    // 2026-07-10: trae TODA una familia (catálogo) por su número, en TODOS los estados
-    // (activas, pausadas, cerradas). MeLi no permite pedir una familia directo, así que
-    // barremos las publicaciones del vendedor y guardamos solo las de esa familia.
+    // 2026-07-10: trae TODA una familia por su número, en CUALQUIER estado (activa, pausada, inactiva/sin stock).
+    // Camino principal (confiable): API de familias de MeLi (User Products) → user_products_ids → items por UP.
+    // MeLi a las inactivas no las devuelve en el scan normal ni les pone family_id, por eso el barrido fallaba.
+    // Respaldo: si la API de familia no responde, barre las publicaciones y filtra por family_id.
     public async Task SyncFamilyAsync(string familyId, string? progressId = null)
     {
         var target = (familyId ?? "").Trim();
@@ -878,72 +879,96 @@ public class MeliItemService
         if (accounts.Count == 0)
             throw new Exception("No hay cuentas de MercadoLibre conectadas.");
 
-        var statuses = new[] { "active", "paused", "closed" };
-        int encontradas = 0, sincronizadas = 0, revisadas = 0;
+        var statuses = new[] { "active", "paused", "closed", "under_review", "inactive" };
 
+        // ===== Camino principal: API de familia (User Products) =====
         foreach (var account in accounts)
         {
             var token = await _accountService.GetValidTokenAsync(account);
             if (token is null) continue;
-
             var http = _httpFactory.CreateClient();
             http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-            // 1) Enumerar IDs del vendedor en TODOS los estados (scan)
+            // 1) Pedir la familia → user_products_ids
+            var famResp = await http.GetAsync($"https://api.mercadolibre.com/sites/MLA/user-products-families/{target}");
+            if (!famResp.IsSuccessStatusCode)
+                famResp = await http.GetAsync($"https://api.mercadolibre.com/user-products-families/{target}");
+            if (!famResp.IsSuccessStatusCode)
+                continue; // esta cuenta no conoce la familia; probar la siguiente
+
+            var famDoc = JsonDocument.Parse(await famResp.Content.ReadAsStringAsync()).RootElement;
+            var ups = new List<string>();
+            if (famDoc.TryGetProperty("user_products_ids", out var upsEl) && upsEl.ValueKind == JsonValueKind.Array)
+                foreach (var u in upsEl.EnumerateArray()) { var s = u.GetString(); if (!string.IsNullOrEmpty(s)) ups.Add(s); }
+            if (ups.Count == 0 && famDoc.TryGetProperty("user_products", out var upObjs) && upObjs.ValueKind == JsonValueKind.Array)
+                foreach (var u in upObjs.EnumerateArray())
+                    if (u.TryGetProperty("id", out var uid)) { var s = uid.GetString(); if (!string.IsNullOrEmpty(s)) ups.Add(s); }
+
+            string? famName = famDoc.TryGetProperty("family_name", out var fnEl) ? fnEl.GetString() : null;
+
+            if (ups.Count == 0) continue;
+
+            if (progressId is not null)
+                _syncProgress.Update(progressId, p => { p.CurrentStep = $"Familia {target}: {ups.Count} variantes, buscando publicaciones..."; });
+
+            // 2) Por cada User Product, buscar sus items en todos los estados
+            var allIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var up in ups)
+                foreach (var st in statuses)
+                {
+                    var url = $"https://api.mercadolibre.com/users/{account.MeliUserId}/items/search?user_product_id={up}&status={st}&limit=100";
+                    var r = await http.GetAsync(url);
+                    if (!r.IsSuccessStatusCode) continue;
+                    var d = JsonDocument.Parse(await r.Content.ReadAsStringAsync()).RootElement;
+                    if (d.TryGetProperty("results", out var res))
+                        foreach (var id in res.EnumerateArray()) { var s = id.GetString(); if (!string.IsNullOrEmpty(s)) allIds.Add(s); }
+                }
+
+            // 3) Detalle + upsert (todas son de la familia) y forzar el family_id por si MeLi no lo trae
+            var guardadas = await UpsertItemsByIdsAsync(account.Id, http, allIds.ToList(), target, famName, progressId);
+
+            if (progressId is not null)
+            {
+                _syncProgress.Complete(progressId, $"Familia {target}: {guardadas} publicaciones traídas ({ups.Count} variantes).");
+                _syncProgress.Cleanup();
+            }
+            return; // familia resuelta
+        }
+
+        // ===== Respaldo: barrido completo filtrando por family_id =====
+        int encontradas = 0, sincronizadas = 0, revisadas = 0;
+        foreach (var account in accounts)
+        {
+            var token = await _accountService.GetValidTokenAsync(account);
+            if (token is null) continue;
+            var http = _httpFactory.CreateClient();
+            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
             var allIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var st in statuses)
             {
-                string? scrollId = null;
-                bool first = true;
+                string? scrollId = null; bool first = true;
                 while (true)
                 {
                     var url = $"https://api.mercadolibre.com/users/{account.MeliUserId}/items/search?search_type=scan&limit=100&status={st}";
-                    if (!first && !string.IsNullOrEmpty(scrollId))
-                        url += $"&scroll_id={scrollId}";
-
+                    if (!first && !string.IsNullOrEmpty(scrollId)) url += $"&scroll_id={scrollId}";
                     var resp = await http.GetAsync(url);
-                    if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
-                        resp.StatusCode == System.Net.HttpStatusCode.Forbidden)
-                    {
-                        var nt = await _accountService.GetValidTokenAsync(account, forceRefresh: true);
-                        if (nt is not null)
-                        {
-                            token = nt;
-                            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-                            resp = await http.GetAsync(url);
-                        }
-                    }
                     if (!resp.IsSuccessStatusCode) break;
-
                     var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync()).RootElement;
                     int c = 0;
                     if (doc.TryGetProperty("results", out var results))
-                        foreach (var id in results.EnumerateArray())
-                        {
-                            var s = id.GetString();
-                            if (!string.IsNullOrEmpty(s)) allIds.Add(s);
-                            c++;
-                        }
+                        foreach (var id in results.EnumerateArray()) { var s = id.GetString(); if (!string.IsNullOrEmpty(s)) allIds.Add(s); c++; }
                     scrollId = doc.TryGetProperty("scroll_id", out var sd) && sd.ValueKind != JsonValueKind.Null ? sd.GetString() : null;
                     first = false;
                     if (c == 0 || string.IsNullOrEmpty(scrollId)) break;
                 }
             }
 
-            if (progressId is not null)
-                _syncProgress.Update(progressId, p =>
-                {
-                    p.TotalItemsFound = allIds.Count;
-                    p.CurrentStep = $"{account.Nickname}: revisando {allIds.Count} publicaciones para la familia {target}...";
-                });
-
-            // 2) Multiget de detalle en lotes de 20; guardar solo las de la familia buscada
             var ids = allIds.ToList();
             for (int i = 0; i < ids.Count; i += 20)
             {
                 var batch = ids.Skip(i).Take(20).ToList();
-                var idsParam = string.Join(",", batch);
-                var resp = await http.GetAsync($"https://api.mercadolibre.com/items?ids={idsParam}&include_attributes=all");
+                var resp = await http.GetAsync($"https://api.mercadolibre.com/items?ids={string.Join(",", batch)}&include_attributes=all");
                 if (resp.IsSuccessStatusCode)
                 {
                     var arr = JsonDocument.Parse(await resp.Content.ReadAsStringAsync()).RootElement;
@@ -959,19 +984,16 @@ public class MeliItemService
                     }
                     await _db.SaveChangesAsync();
                 }
-
                 revisadas += batch.Count;
                 if (progressId is not null)
                 {
-                    var enc = encontradas;
-                    var rev = revisadas;
-                    var totalIds = ids.Count;
+                    var enc = encontradas; var rev = revisadas; var totalIds = ids.Count;
                     _syncProgress.Update(progressId, p =>
                     {
+                        p.TotalItemsFound = totalIds;
                         p.ItemsSynced = rev;
-                        p.CurrentStep = $"{account.Nickname}: {rev}/{totalIds} revisadas · {enc} de la familia";
-                        if (p.TotalItemsFound > 0)
-                            p.Percentage = (int)((double)rev / p.TotalItemsFound * 100);
+                        p.CurrentStep = $"{account.Nickname} (respaldo): {rev}/{totalIds} revisadas · {enc} de la familia";
+                        if (totalIds > 0) p.Percentage = (int)((double)rev / totalIds * 100);
                     });
                 }
             }
@@ -979,9 +1001,51 @@ public class MeliItemService
 
         if (progressId is not null)
         {
-            _syncProgress.Complete(progressId, $"Familia {target}: {encontradas} publicaciones encontradas, {sincronizadas} guardadas.");
+            _syncProgress.Complete(progressId, $"Familia {target} (respaldo): {encontradas} encontradas, {sincronizadas} guardadas.");
             _syncProgress.Cleanup();
         }
+    }
+
+    // Baja el detalle de una lista de MLA (lotes de 20), hace upsert, y fuerza el family_id/nombre
+    // en las filas guardadas (porque MeLi a las publicaciones inactivas no siempre les pone la familia).
+    private async Task<int> UpsertItemsByIdsAsync(int accountId, HttpClient http, List<string> ids, string familyId, string? familyName, string? progressId)
+    {
+        int guardadas = 0;
+        var brought = new List<string>();
+        for (int i = 0; i < ids.Count; i += 20)
+        {
+            var batch = ids.Skip(i).Take(20).ToList();
+            var resp = await http.GetAsync($"https://api.mercadolibre.com/items?ids={string.Join(",", batch)}&include_attributes=all");
+            if (resp.IsSuccessStatusCode)
+            {
+                var arr = JsonDocument.Parse(await resp.Content.ReadAsStringAsync()).RootElement;
+                foreach (var itemResult in arr.EnumerateArray())
+                {
+                    if (!itemResult.TryGetProperty("code", out var codeEl) || codeEl.GetInt32() != 200) continue;
+                    var body = itemResult.GetProperty("body");
+                    guardadas += await UpsertItemAsync(accountId, body);
+                    if (body.TryGetProperty("id", out var idEl))
+                    {
+                        var mid = idEl.GetString();
+                        if (!string.IsNullOrEmpty(mid)) brought.Add(mid);
+                    }
+                }
+                await _db.SaveChangesAsync();
+            }
+        }
+
+        // Forzar el family_id en las que quedaron sin él (inactivas que MeLi devuelve sin familia)
+        if (brought.Count > 0)
+        {
+            var rows = await _db.MeliItems.Where(m => brought.Contains(m.MeliItemId)).ToListAsync();
+            foreach (var r in rows)
+            {
+                if (string.IsNullOrEmpty(r.FamilyId)) r.FamilyId = familyId;
+                if (!string.IsNullOrEmpty(familyName) && string.IsNullOrEmpty(r.FamilyName)) r.FamilyName = familyName;
+            }
+            await _db.SaveChangesAsync();
+        }
+        return guardadas;
     }
 
     private static string? ExtractFamilyIdFromBody(JsonElement item)
