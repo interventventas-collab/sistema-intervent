@@ -24,7 +24,7 @@ public class StockValuacionController : ControllerBase
     public record MarcaRow(int? MarcaId, string Marca, bool Cuenta, int Productos, decimal Valor);
     public record ExcluidoRow(int ProductoId, string? Sku, string Nombre, string? Marca, decimal Valor);
     public record ValuacionResult(
-        decimal TotalContado, int ProductosContados, int MarcasContadas,
+        decimal TotalContado, decimal TotalContadoConIva, int ProductosContados, int MarcasContadas,
         decimal TotalNoContado,
         List<MarcaRow> Marcas,             // marcas que SÍ suman (ordenadas por valor desc)
         List<MarcaRow> MarcasExcluidas,    // marcas destildadas (no suman)
@@ -41,7 +41,7 @@ public class StockValuacionController : ControllerBase
             .Select(p => new
             {
                 p.Id, p.Sku, p.Nombre, p.Categoria, p.MarcaId, p.Marca,
-                p.StockUnidades, p.StockGramos, p.Costo, p.ExcluirDeValuacion
+                p.StockUnidades, p.StockGramos, p.Costo, p.IvaPct, p.ExcluirDeValuacion
             })
             .ToListAsync();
 
@@ -64,7 +64,7 @@ public class StockValuacionController : ControllerBase
         var marcasContado = new List<MarcaRow>();
         var marcasExcluidas = new List<MarcaRow>();
         var productosExcluidos = new List<ExcluidoRow>();
-        decimal totalContado = 0m; int productosContados = 0;
+        decimal totalContado = 0m; decimal totalContadoConIva = 0m; int productosContados = 0;
         decimal totalNoContado = 0m;
 
         foreach (var grupo in otros.GroupBy(p => p.MarcaId))
@@ -94,7 +94,7 @@ public class StockValuacionController : ControllerBase
             }
 
             // Marca cuenta: separo productos excluidos puntualmente.
-            decimal valorCuenta = 0m; int nCuenta = 0;
+            decimal valorCuenta = 0m; decimal valorCuentaConIva = 0m; int nCuenta = 0;
             foreach (var p in grupo)
             {
                 var v = p.StockUnidades * p.Costo;
@@ -106,12 +106,12 @@ public class StockValuacionController : ControllerBase
                         totalNoContado += v;
                     }
                 }
-                else { valorCuenta += v; nCuenta++; }
+                else { valorCuenta += v; valorCuentaConIva += v * (1m + p.IvaPct / 100m); nCuenta++; }
             }
             if (nCuenta > 0)
             {
                 marcasContado.Add(new MarcaRow(marcaId, nombreMarca, true, nCuenta, valorCuenta));
-                totalContado += valorCuenta; productosContados += nCuenta;
+                totalContado += valorCuenta; totalContadoConIva += valorCuentaConIva; productosContados += nCuenta;
             }
         }
 
@@ -122,7 +122,7 @@ public class StockValuacionController : ControllerBase
         productosExcluidos = productosExcluidos.OrderByDescending(p => p.Valor).ToList();
 
         return Ok(new ValuacionResult(
-            totalContado, productosContados, marcasContado.Count,
+            totalContado, totalContadoConIva, productosContados, marcasContado.Count,
             totalNoContado,
             marcasContado, marcasExcluidas,
             valorCafe, prodCafe,

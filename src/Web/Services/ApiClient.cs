@@ -4851,7 +4851,7 @@ public class ApiClient
     public record ValuacionMarcaRow(int? MarcaId, string Marca, bool Cuenta, int Productos, decimal Valor);
     public record ValuacionExcluidoRow(int ProductoId, string? Sku, string Nombre, string? Marca, decimal Valor);
     public record ValuacionResult(
-        decimal TotalContado, int ProductosContados, int MarcasContadas,
+        decimal TotalContado, decimal TotalContadoConIva, int ProductosContados, int MarcasContadas,
         decimal TotalNoContado,
         List<ValuacionMarcaRow> Marcas,
         List<ValuacionMarcaRow> MarcasExcluidas,
