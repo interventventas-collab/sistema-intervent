@@ -5672,3 +5672,25 @@ BEGIN
     );
 END
 GO
+
+-- 2026-07-10: Motor de alertas configurables ("Mis Alertas"). Cada fila es una regla que el
+-- usuario arma solo (SI pasa esto -> avisame). Un robot las revisa y las "dispara".
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='Mis_Alertas')
+CREATE TABLE Mis_Alertas (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    UserId INT NOT NULL,
+    Tipo NVARCHAR(30) NOT NULL,           -- SHELL_BAJO | BANCO_BAJO | CHEQUE_VENCE | FECHA_MES
+    Umbral DECIMAL(18,2) NULL,            -- monto, cantidad de dias, o dia del mes segun Tipo
+    Mensaje NVARCHAR(300) NOT NULL,
+    CanalCampanita BIT NOT NULL DEFAULT 1,
+    CanalWhatsApp BIT NOT NULL DEFAULT 0,
+    CanalCorreo BIT NOT NULL DEFAULT 0,
+    Activa BIT NOT NULL DEFAULT 1,
+    EstaDisparada BIT NOT NULL DEFAULT 0,
+    Vista BIT NOT NULL DEFAULT 0,
+    DisparadaAt DATETIME2 NULL,
+    UltimoDetalle NVARCHAR(300) NULL,
+    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    UpdatedAt DATETIME2 NULL
+);
+GO

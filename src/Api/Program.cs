@@ -159,6 +159,8 @@ builder.Services.AddHostedService<Me1AutoSyncBackgroundService>();
 builder.Services.AddHostedService<GaliciaAutoSyncBackgroundService>();
 builder.Services.AddHostedService<ShellAutoSyncBackgroundService>();
 builder.Services.AddHostedService<MpAutoSyncBackgroundService>();
+// 2026-07-10: motor de alertas configurables ("Mis Alertas"). Revisa las reglas cada 5 min.
+builder.Services.AddHostedService<MisAlertasBackgroundService>();
 // 2026-06-12: reactivado. Solo LECTURA informativa: pobla Cafe_StockPorDeposito[Full MeLi]
 // con lo que MeLi reporta en su bodega. No toca stock propio (9 de Abril) ni pushes.
 // Lo usan /cafe/stock-comparado, /cafe/stock-masivo y el cartelito "Stock Full" de la ficha.

@@ -1,0 +1,306 @@
+@page "/mis-alertas"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject IJSRuntime JS
+@inject ToastService Toast
+
+<PageTitle>Mis Alertas</PageTitle>
+
+@* 2026-07-10 — Motor de alertas configurables (Paso 1). El usuario arma sus propias reglas:
+   "SI pasa esto → avisame con este mensaje". Un robot las revisa cada 5 min y las dispara
+   en la campanita 🔔 de la barra de arriba. *@
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">🔔 Mis Alertas</h1>
+        <p class="page-subtitle">Armá tus propios avisos. El sistema vigila solo y te avisa en la campanita 🔔 de arriba cuando algo necesita tu atención.</p>
+    </div>
+    @if (!mostrandoEditor)
+    {
+        <button class="btn-primary" @onclick="NuevaAlerta">＋ Nueva alerta</button>
+    }
+</div>
+
+@if (mostrandoEditor)
+{
+    <div class="ma-editor">
+        <div class="ma-editor-title">@(editandoId is null ? "Nueva alerta" : "Editar alerta")</div>
+
+        <div class="ma-frase">
+            <span class="ma-frase-txt">Avisame si</span>
+            <select @bind="form.Tipo" @bind:after="OnTipoChanged" class="ma-select">
+                <option value="SHELL_BAJO">⛽ Shell Flota baja de</option>
+                <option value="BANCO_BAJO">🏦 el Banco Galicia baja de</option>
+                <option value="CHEQUE_VENCE">📄 un cheque emitido vence en</option>
+                <option value="FECHA_MES">📅 es el día del mes</option>
+            </select>
+
+            @if (form.Tipo is "SHELL_BAJO" or "BANCO_BAJO")
+            {
+                <span class="ma-prefix">$</span>
+                <input type="number" min="0" step="1000" @bind="form.Umbral" class="ma-num" placeholder="50000" />
+            }
+            else if (form.Tipo == "CHEQUE_VENCE")
+            {
+                <input type="number" min="0" max="60" step="1" @bind="form.Umbral" class="ma-num" placeholder="2" />
+                <span class="ma-frase-txt">día(s) o menos</span>
+            }
+            else if (form.Tipo == "FECHA_MES")
+            {
+                <span class="ma-frase-txt">día</span>
+                <input type="number" min="1" max="31" step="1" @bind="form.Umbral" class="ma-num" placeholder="15" />
+                <span class="ma-frase-txt">de cada mes</span>
+            }
+        </div>
+
+        <div class="ma-field">
+            <label class="ma-label">Con este mensaje</label>
+            <input type="text" maxlength="300" @bind="form.Mensaje" class="ma-text" placeholder="@PlaceholderMensaje()" />
+        </div>
+
+        <div class="ma-field">
+            <label class="ma-label">Mandámela por</label>
+            <div class="ma-canales">
+                <span class="ma-canal ma-canal-on" title="Aparece en la campanita 🔔 de la barra de arriba">🔔 Campanita</span>
+                <span class="ma-canal ma-canal-off" title="Muy pronto">📱 WhatsApp <em>(pronto)</em></span>
+                <span class="ma-canal ma-canal-off" title="Muy pronto">📧 Correo <em>(pronto)</em></span>
+            </div>
+        </div>
+
+        <div class="ma-editor-actions">
+            <button class="btn-secondary" @onclick="CancelarEditor">Cancelar</button>
+            <button class="btn-primary" @onclick="Guardar" disabled="@guardando">@(guardando ? "Guardando..." : "Guardar alerta")</button>
+        </div>
+    </div>
+}
+
+@if (loading)
+{
+    <div class="loading">Cargando...</div>
+}
+else if (alertas is null || alertas.Count == 0)
+{
+    @if (!mostrandoEditor)
+    {
+        <div class="empty-state">
+            <p>Todavía no tenés ninguna alerta.</p>
+            <p class="ma-empty-sub">Creá la primera con el botón <strong>＋ Nueva alerta</strong>. Por ejemplo: "avisame si Shell Flota baja de $50.000".</p>
+        </div>
+    }
+}
+else
+{
+    <div class="ma-list">
+        @foreach (var a in alertas)
+        {
+            <div class="ma-card @(a.Activa ? "" : "ma-card-off")">
+                <div class="ma-card-emoji">@Emoji(a.Tipo)</div>
+                <div class="ma-card-mid">
+                    <div class="ma-card-msg">@a.Mensaje</div>
+                    <div class="ma-card-desc">@Describir(a)</div>
+                    @if (a.Activa && a.EstaDisparada)
+                    {
+                        <div class="ma-card-fired">🔴 Disparada ahora@(string.IsNullOrWhiteSpace(a.UltimoDetalle) ? "" : $" — {a.UltimoDetalle}")</div>
+                    }
+                </div>
+                <div class="ma-card-actions">
+                    <label class="ma-switch" title="@(a.Activa ? "Alerta encendida" : "Alerta apagada")">
+                        <input type="checkbox" checked="@a.Activa" @onchange="@(() => Toggle(a))" />
+                        <span class="ma-slider"></span>
+                    </label>
+                    <button class="ma-icon-btn" title="Editar" @onclick="@(() => Editar(a))">✏️</button>
+                    <button class="ma-icon-btn" title="Borrar" @onclick="@(() => Borrar(a))">🗑️</button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+<style>
+    .ma-editor {
+        background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+        padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .ma-editor-title { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; color: #9ca3af; margin-bottom: 14px; }
+    .ma-frase { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 16px; }
+    .ma-frase-txt { color: #4b5563; font-size: 0.95rem; }
+    .ma-select, .ma-num, .ma-text {
+        border: 1px solid #d1d5db; border-radius: 8px; padding: 8px 10px;
+        font-size: 0.95rem; background: #fff;
+    }
+    .ma-num { width: 110px; }
+    .ma-text { width: 100%; max-width: 480px; }
+    .ma-prefix { color: #6b7280; font-weight: 600; }
+    .ma-field { margin-bottom: 16px; }
+    .ma-label { display: block; font-size: 0.85rem; color: #4b5563; margin-bottom: 6px; }
+    .ma-canales { display: flex; flex-wrap: wrap; gap: 8px; }
+    .ma-canal { font-size: 0.85rem; padding: 6px 12px; border-radius: 8px; }
+    .ma-canal-on { background: #E6F1FB; color: #185FA5; font-weight: 600; }
+    .ma-canal-off { background: #f3f4f6; color: #9ca3af; }
+    .ma-canal-off em { font-style: normal; font-size: 0.75rem; }
+    .ma-editor-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+
+    .ma-list { display: flex; flex-direction: column; gap: 10px; }
+    .ma-card {
+        display: flex; align-items: center; gap: 14px;
+        background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+        padding: 14px 16px;
+    }
+    .ma-card-off { opacity: 0.55; }
+    .ma-card-emoji { font-size: 1.5rem; width: 32px; text-align: center; flex-shrink: 0; }
+    .ma-card-mid { flex: 1; min-width: 0; }
+    .ma-card-msg { font-size: 1rem; font-weight: 600; color: #111827; }
+    .ma-card-desc { font-size: 0.82rem; color: #6b7280; margin-top: 2px; }
+    .ma-card-fired { font-size: 0.8rem; color: #991B1B; margin-top: 4px; font-weight: 600; }
+    .ma-card-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .ma-icon-btn {
+        background: none; border: none; cursor: pointer; font-size: 1.05rem;
+        padding: 4px 6px; border-radius: 6px;
+    }
+    .ma-icon-btn:hover { background: #f3f4f6; }
+    .ma-empty-sub { color: #6b7280; font-size: 0.9rem; }
+
+    /* Interruptor prender/apagar */
+    .ma-switch { position: relative; display: inline-block; width: 42px; height: 24px; cursor: pointer; }
+    .ma-switch input { opacity: 0; width: 0; height: 0; }
+    .ma-slider {
+        position: absolute; inset: 0; background: #cbd5e1; border-radius: 999px; transition: 0.2s;
+    }
+    .ma-slider::before {
+        content: ""; position: absolute; height: 18px; width: 18px; left: 3px; top: 3px;
+        background: #fff; border-radius: 50%; transition: 0.2s;
+    }
+    .ma-switch input:checked + .ma-slider { background: #22c55e; }
+    .ma-switch input:checked + .ma-slider::before { transform: translateX(18px); }
+</style>
+
+@code {
+    private List<ApiClient.AlertaDto>? alertas;
+    private bool loading = true;
+    private bool mostrandoEditor;
+    private bool guardando;
+    private int? editandoId;
+    private AlertaForm form = new();
+
+    private class AlertaForm
+    {
+        public string Tipo { get; set; } = "SHELL_BAJO";
+        public decimal? Umbral { get; set; }
+        public string Mensaje { get; set; } = "";
+    }
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        loading = true;
+        alertas = await Api.GetMisAlertasAsync();
+        loading = false;
+    }
+
+    private void NuevaAlerta()
+    {
+        editandoId = null;
+        form = new AlertaForm();
+        mostrandoEditor = true;
+    }
+
+    private void Editar(ApiClient.AlertaDto a)
+    {
+        editandoId = a.Id;
+        form = new AlertaForm { Tipo = a.Tipo, Umbral = a.Umbral, Mensaje = a.Mensaje };
+        mostrandoEditor = true;
+    }
+
+    private void CancelarEditor()
+    {
+        mostrandoEditor = false;
+        editandoId = null;
+    }
+
+    private void OnTipoChanged()
+    {
+        // Al cambiar de tipo, limpiamos el valor para no arrastrar un monto donde va un día.
+        form.Umbral = null;
+    }
+
+    private async Task Guardar()
+    {
+        if (string.IsNullOrWhiteSpace(form.Mensaje)) { Toast.Error("Escribí el mensaje del aviso"); return; }
+        if (form.Umbral is null || form.Umbral <= 0) { Toast.Error("Completá el valor (monto, días o día del mes)"); return; }
+        if (form.Tipo == "FECHA_MES" && (form.Umbral < 1 || form.Umbral > 31)) { Toast.Error("El día del mes va de 1 a 31"); return; }
+
+        guardando = true;
+        var req = new ApiClient.AlertaUpsertRequest(form.Tipo, form.Umbral, form.Mensaje.Trim(),
+            CanalCampanita: true, CanalWhatsApp: false, CanalCorreo: false, Activa: true);
+
+        if (editandoId is null)
+        {
+            var (a, err) = await Api.CrearAlertaAsync(req);
+            guardando = false;
+            if (a is null) { Toast.Error(err ?? "No se pudo crear"); return; }
+            Toast.Success("Alerta creada");
+        }
+        else
+        {
+            // Al editar preservamos si estaba activa o no.
+            var actual = alertas?.FirstOrDefault(x => x.Id == editandoId);
+            var reqEdit = req with { Activa = actual?.Activa ?? true };
+            var (a, err) = await Api.ActualizarAlertaAsync(editandoId.Value, reqEdit);
+            guardando = false;
+            if (a is null) { Toast.Error(err ?? "No se pudo guardar"); return; }
+            Toast.Success("Alerta guardada");
+        }
+
+        mostrandoEditor = false;
+        editandoId = null;
+        await Cargar();
+    }
+
+    private async Task Toggle(ApiClient.AlertaDto a)
+    {
+        if (await Api.ToggleAlertaAsync(a.Id)) await Cargar();
+        else Toast.Error("No se pudo cambiar");
+    }
+
+    private async Task Borrar(ApiClient.AlertaDto a)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", $"¿Borrar la alerta \"{a.Mensaje}\"?");
+        if (!ok) return;
+        if (await Api.EliminarAlertaAsync(a.Id)) { Toast.Success("Alerta borrada"); await Cargar(); }
+        else Toast.Error("No se pudo borrar");
+    }
+
+    private string PlaceholderMensaje() => form.Tipo switch
+    {
+        "SHELL_BAJO" => "Recargar saldo Shell",
+        "BANCO_BAJO" => "Poné plata en el banco",
+        "CHEQUE_VENCE" => "Cubrí el cheque",
+        "FECHA_MES" => "Pagar a la contadora",
+        _ => "Escribí el aviso"
+    };
+
+    private static string Emoji(string tipo) => tipo switch
+    {
+        "SHELL_BAJO" => "⛽",
+        "BANCO_BAJO" => "🏦",
+        "CHEQUE_VENCE" => "📄",
+        "FECHA_MES" => "📅",
+        _ => "🔔"
+    };
+
+    private static string Describir(ApiClient.AlertaDto a)
+    {
+        var v = a.Umbral ?? 0;
+        var money = "$" + v.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+        return a.Tipo switch
+        {
+            "SHELL_BAJO" => $"Si Shell Flota baja de {money} · por campanita",
+            "BANCO_BAJO" => $"Si el Banco Galicia baja de {money} · por campanita",
+            "CHEQUE_VENCE" => $"Si un cheque emitido vence en {(int)v} día(s) o menos · por campanita",
+            "FECHA_MES" => $"El día {(int)v} de cada mes · por campanita",
+            _ => ""
+        };
+    }
+}
