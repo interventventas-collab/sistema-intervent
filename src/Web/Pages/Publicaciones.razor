@@ -65,6 +65,9 @@
                     <button class="sync-dropdown-item" @onclick="OpenSyncByIdModal">
                         <i class="fa-solid fa-magnifying-glass"></i> Traer por ID
                     </button>
+                    <button class="sync-dropdown-item" @onclick="OpenSyncFamilyModal">
+                        <i class="fa-solid fa-layer-group"></i> Traer familia completa
+                    </button>
                     <div class="sync-dropdown-divider"></div>
                     <button class="sync-dropdown-item sync-item-all" @onclick='() => SyncItems(null, null)'>
                         <i class="fa-solid fa-arrows-rotate"></i> Sincronizar todo
@@ -2842,6 +2845,42 @@
     </div>
 }
 
+@if (showSyncFamilyModal)
+{
+    <div class="modal-overlay" @onclick="CloseSyncFamilyModal">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h4 style="margin: 0;">Traer familia completa</h4>
+                <button class="btn-close" @onclick="CloseSyncFamilyModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.85rem; color: #6b7280; margin-bottom: 0.75rem;">
+                    Pegá el <strong>número de familia</strong> (el que aparece como "FAMILIA" en la fila padre).<br/>
+                    Trae <strong>todos los colores y modalidades</strong> de esa familia, incluidas las <strong>pausadas y sin stock</strong>.
+                </p>
+                <div class="form-group">
+                    <input class="form-control" placeholder="258599582113069"
+                           @bind="syncFamilyInput" @bind:event="oninput"
+                           disabled="@isSyncingFamily" />
+                </div>
+                <p style="font-size: 0.78rem; color: #9ca3af; margin: 0.4rem 0 0;">
+                    Ojo: revisa todas tus publicaciones para encontrar las de esa familia, así que puede tardar un ratito. Podés cerrar esta ventana y seguir el progreso arriba.
+                </p>
+                @if (!string.IsNullOrEmpty(syncFamilyError))
+                {
+                    <p style="color: #dc3545; font-size: 0.85rem; margin: 0.5rem 0 0;">@syncFamilyError</p>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseSyncFamilyModal" disabled="@isSyncingFamily">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmSyncFamily" disabled="@(isSyncingFamily || string.IsNullOrWhiteSpace(syncFamilyInput))">
+                    @(isSyncingFamily ? "Iniciando..." : "Traer familia")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @if (showSyncByIdModal)
 {
     <div class="modal-overlay" @onclick="CloseSyncByIdModal">
@@ -3480,6 +3519,12 @@
     private string syncByIdInput = string.Empty;
     private string? syncByIdError;
     private bool isSyncingById;
+
+    // 2026-07-10: Traer familia completa
+    private bool showSyncFamilyModal;
+    private string syncFamilyInput = string.Empty;
+    private string? syncFamilyError;
+    private bool isSyncingFamily;
     private MeliItemSyncByIdBatchResult? syncByIdResults;
 
     // View mode
@@ -3967,6 +4012,46 @@
         }
 
         isSyncing = false;
+    }
+
+    private void OpenSyncFamilyModal()
+    {
+        showSyncMenu = false;
+        syncFamilyInput = string.Empty;
+        syncFamilyError = null;
+        showSyncFamilyModal = true;
+    }
+
+    private void CloseSyncFamilyModal()
+    {
+        if (isSyncingFamily) return;
+        showSyncFamilyModal = false;
+        syncFamilyInput = string.Empty;
+        syncFamilyError = null;
+    }
+
+    private async Task ConfirmSyncFamily()
+    {
+        var fam = (syncFamilyInput ?? "").Trim();
+        if (string.IsNullOrEmpty(fam)) { syncFamilyError = "Pegá el número de familia."; return; }
+        isSyncingFamily = true; syncFamilyError = null;
+        StateHasChanged();
+        try
+        {
+            var progressId = await Api.SyncMeliFamilyAsync(fam);
+            if (!string.IsNullOrEmpty(progressId))
+            {
+                _syncReloaded = false;
+                SyncProgress.StartTracking(progressId, $"Trayendo familia {fam}");
+                showSyncFamilyModal = false;
+            }
+            else
+            {
+                syncFamilyError = "No se pudo iniciar la traída de la familia.";
+            }
+        }
+        catch (Exception ex) { syncFamilyError = ex.Message; }
+        finally { isSyncingFamily = false; }
     }
 
     private void OpenSyncByIdModal()

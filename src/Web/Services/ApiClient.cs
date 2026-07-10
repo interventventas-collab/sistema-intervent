@@ -3132,6 +3132,18 @@ public class ApiClient
         return await PostAsync<MeliItemSyncResult>(url, new { });
     }
 
+    // 2026-07-10: trae una familia completa (todos los colores/modalidades, activas y pausadas) por su número.
+    // Devuelve el ProgressId para pollear el progreso con el mismo endpoint que el sync normal.
+    public async Task<string?> SyncMeliFamilyAsync(string familyId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsync($"/api/meli/items/sync-family?familyId={Uri.EscapeDataString(familyId)}", null);
+        if (!resp.IsSuccessStatusCode) { await ThrowIfErrorAsync(resp); return null; }
+        var doc = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        return doc.TryGetProperty("ProgressId", out var pid) ? pid.GetString()
+             : (doc.TryGetProperty("progressId", out var pid2) ? pid2.GetString() : null);
+    }
+
     // === Snapshot Contabilium pre-corte ===
     public class SnapshotTriggerResult { public bool Ok { get; set; } public DateTime Fecha { get; set; } public int Skus { get; set; } public int DurationSec { get; set; } }
 

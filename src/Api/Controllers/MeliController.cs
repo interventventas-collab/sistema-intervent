@@ -728,6 +728,40 @@ public class MeliController : ControllerBase
         }
     }
 
+    // 2026-07-10: trae una familia completa (todos los colores/modalidades, activas y pausadas) por su número.
+    [HttpPost("items/sync-family")]
+    public IActionResult SyncFamily([FromQuery] string familyId)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(familyId))
+                return BadRequest(new { error = "Indicá el número de familia." });
+
+            var progressId = _syncProgress.StartSync($"Trayendo familia {familyId}");
+            var scopeFactory = _scopeFactory;
+            var syncProgress = _syncProgress;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var scope = scopeFactory.CreateScope();
+                    var itemService = scope.ServiceProvider.GetRequiredService<MeliItemService>();
+                    await itemService.SyncFamilyAsync(familyId, progressId);
+                }
+                catch (Exception ex)
+                {
+                    syncProgress.Fail(progressId, $"Error: {ex.Message}");
+                }
+            });
+
+            return Ok(new { ProgressId = progressId });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpGet("items/sync/progress")]
     public IActionResult GetSyncProgress([FromQuery] string? id = null)
     {
