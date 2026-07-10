@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Api.Data;
 using Api.Models;
 using MailKit;
@@ -77,14 +78,7 @@ public class MisAlertasBackgroundService : BackgroundService
         {
             try
             {
-                var cfg = await db.AppSettings
-                    .Where(s => s.Key.StartsWith("alertas.imap."))
-                    .ToDictionaryAsync(s => s.Key, s => s.Value);
-                cfg.TryGetValue("alertas.imap.host", out var host);
-                cfg.TryGetValue("alertas.imap.user", out var user);
-                cfg.TryGetValue("alertas.imap.pass", out var pass);
-                cfg.TryGetValue("alertas.imap.port", out var portStr);
-                int.TryParse(portStr, out var port);
+                var (host, port, user, pass) = await ResolverCredsCorreoAsync(db);
                 (imap, inbox) = await AbrirCorreoAsync(host, port, user, pass);
             }
             catch (Exception ex) { _logger.LogWarning(ex, "[Alertas] no pude abrir la casilla de correo"); }
@@ -206,6 +200,45 @@ public class MisAlertasBackgroundService : BackgroundService
     /// <summary>Abre la casilla de correo a vigilar (IMAP, SOLO LECTURA — no marca leídos ni borra).
     /// Credenciales guardadas en AppSettings (alertas.imap.*), cargadas por el usuario desde la
     /// pantalla Mis Alertas. Si falta usuario o clave, devuelve null y las alertas de correo no disparan.</summary>
+    /// <summary>Resuelve la casilla a vigilar. 1) Si el usuario cargó una casilla propia en
+    /// AppSettings (alertas.imap.*), usa esa. 2) Si no, reutiliza la casilla YA conectada del
+    /// sistema (integración email-smtp) — la misma clave de app de Gmail sirve para IMAP.</summary>
+    private static async Task<(string? host, int port, string? user, string? pass)> ResolverCredsCorreoAsync(AppDbContext db)
+    {
+        // 1) Config propia de alertas (override manual), si está completa.
+        var cfg = await db.AppSettings
+            .Where(s => s.Key.StartsWith("alertas.imap."))
+            .ToDictionaryAsync(s => s.Key, s => s.Value);
+        cfg.TryGetValue("alertas.imap.user", out var user);
+        cfg.TryGetValue("alertas.imap.pass", out var pass);
+        if (!string.IsNullOrWhiteSpace(user) && !string.IsNullOrWhiteSpace(pass))
+        {
+            cfg.TryGetValue("alertas.imap.host", out var h);
+            cfg.TryGetValue("alertas.imap.port", out var pStr);
+            int.TryParse(pStr, out var pr);
+            return (h, pr, user, pass);
+        }
+
+        // 2) Reutilizar la casilla ya conectada (email-smtp).
+        var integ = await db.Set<Integration>().FirstOrDefaultAsync(x => x.Provider == "email-smtp");
+        if (integ is null || string.IsNullOrWhiteSpace(integ.AppSecret)) return (null, 0, null, null);
+        string? iUser = null, iHost = null; int iPort = 993;
+        if (!string.IsNullOrWhiteSpace(integ.Settings))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(integ.Settings);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("username", out var u) && !string.IsNullOrWhiteSpace(u.GetString())) iUser = u.GetString();
+                else if (root.TryGetProperty("fromAddress", out var f)) iUser = f.GetString();
+                if (root.TryGetProperty("imapHost", out var ih)) iHost = ih.GetString();
+                if (root.TryGetProperty("imapPort", out var ip) && ip.TryGetInt32(out var ipv)) iPort = ipv;
+            }
+            catch { }
+        }
+        return (iHost, iPort, iUser, integ.AppSecret);
+    }
+
     private static async Task<(ImapClient? client, IMailFolder? inbox)> AbrirCorreoAsync(string? host, int port, string? user, string? pass)
     {
         if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(pass)) return (null, null);
