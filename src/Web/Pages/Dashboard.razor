@@ -833,6 +833,53 @@
             }
         }
     </div>
+
+    @* Correos importantes — mails que dispararon alertas EMAIL_REMITENTE (2026-07-10) *@
+    <div class="dashboard-detail-card mac-stat-card accent-purple" style="position:relative;">
+        <div class="mac-card-header">
+            <div class="mac-card-iconbox" style="background:#EEEDFE; color:#534AB7;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 6-10 7L2 6"/></svg>
+            </div>
+            <span class="mac-card-eyebrow" style="color:#3f3f46;">Correos importantes</span>
+            @if (correosImportantes.Count > 0)
+            {
+                <span class="ci-count">@correosImportantes.Count</span>
+            }
+        </div>
+        @if (correosImportantes.Count == 0)
+        {
+            <div class="mac-card-bignum" style="font-size:1rem;">Sin novedades</div>
+            <div class="mac-card-sub">No hay correos importantes sin leer</div>
+        }
+        else
+        {
+            <div class="ci-list">
+                @foreach (var c in correosImportantes.Take(5))
+                {
+                    <div class="ci-item">
+                        <div class="ci-top">
+                            <span class="ci-from">@(string.IsNullOrWhiteSpace(c.Remitente) ? (c.RemitenteEmail ?? "(desconocido)") : c.Remitente)</span>
+                            <span class="ci-time">@FormatCorreoFecha(c.Fecha)</span>
+                        </div>
+                        <div class="ci-subject">@(string.IsNullOrWhiteSpace(c.Asunto) ? "(sin asunto)" : c.Asunto)</div>
+                        @if (!string.IsNullOrWhiteSpace(c.Adelanto))
+                        {
+                            <div class="ci-preview">@c.Adelanto</div>
+                        }
+                        @if (c.TieneAdjuntos)
+                        {
+                            <div class="ci-adj">📎 @(string.IsNullOrWhiteSpace(c.Adjuntos) ? "Tiene adjuntos" : c.Adjuntos)</div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(c.GmailLink))
+                        {
+                            <a class="ci-open" href="@c.GmailLink" target="_blank" rel="noopener">Abrir en Gmail →</a>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="tres-card-foot" @onclick='() => Navigation.NavigateTo("/mis-alertas")' style="cursor:pointer;">Ver Mis Alertas ›</div>
+        }
+    </div>
 </div>
 
 @* ═══ Card: resumen del día (cheques + saldo Galicia + preguntas MeLi) ═══ *@
@@ -1516,6 +1563,20 @@
         text-align: center; margin-bottom: 8px;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
+
+    /* 2026-07-10: card "Correos importantes" */
+    .ci-count { margin-left: auto; background: #EEEDFE; color: #3C3489; font-size: 0.72rem; font-weight: 700; padding: 1px 8px; border-radius: 999px; }
+    .ci-list { display: flex; flex-direction: column; margin-top: 4px; }
+    .ci-item { padding: 8px 0; border-top: 1px solid #f1f0f5; }
+    .ci-item:first-child { border-top: none; }
+    .ci-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .ci-from { font-size: 0.85rem; font-weight: 700; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ci-time { font-size: 0.72rem; color: #9ca3af; white-space: nowrap; flex-shrink: 0; }
+    .ci-subject { font-size: 0.82rem; color: #374151; margin-top: 1px; }
+    .ci-preview { font-size: 0.76rem; color: #6b7280; margin-top: 3px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+    .ci-adj { font-size: 0.74rem; color: #7c3aed; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ci-open { font-size: 0.76rem; color: #185FA5; font-weight: 700; margin-top: 5px; display: inline-block; text-decoration: none; }
+    .ci-open:hover { text-decoration: underline; }
 </style>
 
 @* === Cheques por pagar — calendario visual === *@
@@ -2022,6 +2083,8 @@
             alertasCards = dict;
         }
         catch { /* opcional */ }
+        try { correosImportantes = await Api.GetCorreosImportantesAsync(); }
+        catch { /* opcional */ }
         // 2026-07-09: valor de la mercadería a costo (mismo cálculo que /stock/valuacion).
         try { valuacion = await Api.GetValuacionAsync(); }
         catch { /* opcional */ }
@@ -2040,6 +2103,19 @@
     // 2026-07-10: alertas disparadas por tipo (Mis Alertas). tipo → mensaje del usuario.
     private Dictionary<string, string> alertasCards = new();
     private string? AlertaCard(string tipo) => alertasCards.TryGetValue(tipo, out var m) ? m : null;
+
+    // 2026-07-10: correos importantes (mails que dispararon alertas) para la card del Dashboard.
+    private List<ApiClient.CorreoImportanteDto> correosImportantes = new();
+
+    private string FormatCorreoFecha(DateTime? utc)
+    {
+        if (!utc.HasValue) return "";
+        var arg = utc.Value.AddHours(-3);
+        var hoyArg = DateTime.UtcNow.AddHours(-3).Date;
+        if (arg.Date == hoyArg) return $"hoy {arg:HH:mm}";
+        if (arg.Date == hoyArg.AddDays(-1)) return $"ayer {arg:HH:mm}";
+        return arg.ToString("dd/MM");
+    }
 
     // 2026-07-04: estado del mini gráfico de "Ventas del mes".
     private List<ApiClient.MonthlySalesPointDto>? monthlyHistory;

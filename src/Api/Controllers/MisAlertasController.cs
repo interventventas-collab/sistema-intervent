@@ -223,6 +223,24 @@ public class MisAlertasController : ControllerBase
         return Ok(new { marcadas = rows.Count });
     }
 
+    // ---------- Card "Correos importantes" del Dashboard ----------
+    public record CorreoImportanteDto(int Id, string? Remitente, string? RemitenteEmail, string? Asunto,
+        string? Adelanto, DateTime? Fecha, bool TieneAdjuntos, string? Adjuntos, string? GmailLink);
+
+    [HttpGet("correos")]
+    public async Task<IActionResult> CorreosImportantes()
+    {
+        var bucket = await GetBucketAsync();
+        var rows = await _db.MisAlertasCorreos
+            .Where(c => c.Alerta != null && c.Alerta.Activa && c.Alerta.Alcance.Contains(bucket))
+            .OrderByDescending(c => c.FechaRecibido)
+            .Take(20)
+            .Select(c => new CorreoImportanteDto(c.Id, c.Remitente, c.RemitenteEmail, c.Asunto,
+                c.Adelanto, c.FechaRecibido, c.TieneAdjuntos, c.Adjuntos, c.GmailLink))
+            .ToListAsync();
+        return Ok(rows);
+    }
+
     // ---------- Config de la casilla de correo (para alertas EMAIL_REMITENTE) ----------
     // Se guarda en AppSettings (alertas.imap.*). La CLAVE nunca se devuelve al frontend.
     public record ConfigCorreoDto(string? Host, int Port, string? Usuario, bool TieneClave, bool Configurada);
