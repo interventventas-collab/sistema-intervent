@@ -157,10 +157,27 @@ public class MisAlertasBackgroundService : BackgroundService
         var s = new string(raw.Where(c => char.IsDigit(c) || c == ',' || c == '.' || c == '-').ToArray());
         if (string.IsNullOrEmpty(s)) return null;
 
-        // Formato argentino (la fuente es Shell/Edenred AR): el "." SIEMPRE separa miles y
-        // el "," es el decimal. Ej: "197.000" = 197000 ; "1.234.567,89" = 1234567.89.
-        // (Antes se dejaba "197.000" tal cual y decimal.TryParse invariant lo leia como 197.)
-        s = s.Replace(".", "").Replace(",", ".");
+        // Robusto ante formato inglés ("196,988.75") y argentino ("196.988,75"):
+        // el separador que aparece MÁS a la derecha es el decimal; el otro son miles.
+        int lastDot = s.LastIndexOf('.');
+        int lastComma = s.LastIndexOf(',');
+        if (lastDot >= 0 && lastComma >= 0)
+        {
+            if (lastDot > lastComma) s = s.Replace(",", "");          // inglés: 196,988.75 -> 196988.75
+            else s = s.Replace(".", "").Replace(",", ".");            // argentino: 196.988,75 -> 196988.75
+        }
+        else if (lastComma >= 0)
+        {
+            // Solo coma: decimal si tiene 1-2 dígitos detrás; si no, son miles.
+            var dec = s.Length - lastComma - 1;
+            s = (dec >= 1 && dec <= 2) ? s.Replace(",", ".") : s.Replace(",", "");
+        }
+        else if (lastDot >= 0)
+        {
+            // Solo punto: decimal si tiene 1-2 dígitos detrás; si no, son miles.
+            var dec = s.Length - lastDot - 1;
+            if (!(dec >= 1 && dec <= 2)) s = s.Replace(".", "");
+        }
 
         return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : null;
     }
