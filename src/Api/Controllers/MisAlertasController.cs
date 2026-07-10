@@ -22,7 +22,7 @@ public class MisAlertasController : ControllerBase
     private readonly AppDbContext _db;
     public MisAlertasController(AppDbContext db) { _db = db; }
 
-    private static readonly string[] TiposValidos = { "SHELL_BAJO", "BANCO_BAJO", "CHEQUE_VENCE", "FECHA_MES" };
+    private static readonly string[] TiposValidos = { "SHELL_BAJO", "BANCO_BAJO", "CHEQUE_VENCE", "FECHA_MES", "EMAIL_REMITENTE" };
     private static readonly string[] RolesValidos = { "admin", "oficina", "deposito" };
 
     private int? GetUserId()
@@ -50,11 +50,11 @@ public class MisAlertasController : ControllerBase
         return "otro";
     }
 
-    public record AlertaDto(int Id, string Tipo, decimal? Umbral, string Mensaje,
+    public record AlertaDto(int Id, string Tipo, decimal? Umbral, string? TextoParam, string Mensaje,
         bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool Activa, List<string> Roles,
         bool EstaDisparada, bool Vista, string? UltimoDetalle, DateTime? DisparadaAt);
 
-    public record AlertaUpsertRequest(string Tipo, decimal? Umbral, string Mensaje,
+    public record AlertaUpsertRequest(string Tipo, decimal? Umbral, string? TextoParam, string Mensaje,
         bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool Activa, List<string>? Roles);
 
     private static List<string> ParseRoles(string? alcance)
@@ -63,7 +63,7 @@ public class MisAlertasController : ControllerBase
             : alcance.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 
     private static AlertaDto Map(MisAlerta a) => new(
-        a.Id, a.Tipo, a.Umbral, a.Mensaje,
+        a.Id, a.Tipo, a.Umbral, a.TextoParam, a.Mensaje,
         a.CanalCampanita, a.CanalWhatsApp, a.CanalCorreo, a.Activa, ParseRoles(a.Alcance),
         a.EstaDisparada, a.Vista, a.UltimoDetalle, a.DisparadaAt);
 
@@ -85,6 +85,12 @@ public class MisAlertasController : ControllerBase
             return "Tipo de alerta inválido";
         if (string.IsNullOrWhiteSpace(r.Mensaje))
             return "El mensaje es obligatorio";
+        if (r.Tipo == "EMAIL_REMITENTE")
+        {
+            if (string.IsNullOrWhiteSpace(r.TextoParam))
+                return "Escribí el remitente (correo) a vigilar";
+            return null;
+        }
         if (r.Umbral is null || r.Umbral <= 0)
             return "Falta el valor (monto, días o día del mes)";
         if (r.Tipo == "FECHA_MES" && (r.Umbral < 1 || r.Umbral > 31))
@@ -119,6 +125,7 @@ public class MisAlertasController : ControllerBase
             UserId = uid.Value,
             Tipo = r.Tipo,
             Umbral = r.Umbral,
+            TextoParam = string.IsNullOrWhiteSpace(r.TextoParam) ? null : r.TextoParam.Trim(),
             Mensaje = r.Mensaje.Trim(),
             CanalCampanita = r.CanalCampanita,
             CanalWhatsApp = r.CanalWhatsApp,
@@ -143,9 +150,11 @@ public class MisAlertasController : ControllerBase
         if (errRoles is not null) return BadRequest(new { error = errRoles });
 
         // Si cambia la definicion, reseteamos el estado de disparo para que vuelva a evaluarse limpio.
-        var redefinio = a.Tipo != r.Tipo || a.Umbral != r.Umbral;
+        var textoNuevo = string.IsNullOrWhiteSpace(r.TextoParam) ? null : r.TextoParam.Trim();
+        var redefinio = a.Tipo != r.Tipo || a.Umbral != r.Umbral || a.TextoParam != textoNuevo;
         a.Tipo = r.Tipo;
         a.Umbral = r.Umbral;
+        a.TextoParam = textoNuevo;
         a.Mensaje = r.Mensaje.Trim();
         a.CanalCampanita = r.CanalCampanita;
         a.CanalWhatsApp = r.CanalWhatsApp;
@@ -211,5 +220,47 @@ public class MisAlertasController : ControllerBase
         foreach (var a in rows) a.Vista = true;
         if (rows.Count > 0) await _db.SaveChangesAsync();
         return Ok(new { marcadas = rows.Count });
+    }
+
+    // ---------- Config de la casilla de correo (para alertas EMAIL_REMITENTE) ----------
+    // Se guarda en AppSettings (alertas.imap.*). La CLAVE nunca se devuelve al frontend.
+    public record ConfigCorreoDto(string? Host, int Port, string? Usuario, bool TieneClave, bool Configurada);
+    public record ConfigCorreoRequest(string? Host, int? Port, string? Usuario, string? Password);
+
+    [HttpGet("config-correo")]
+    public async Task<IActionResult> GetConfigCorreo()
+    {
+        var cfg = await _db.AppSettings.Where(s => s.Key.StartsWith("alertas.imap.")).ToListAsync();
+        string? Get(string k) => cfg.FirstOrDefault(s => s.Key == k)?.Value;
+        var host = Get("alertas.imap.host");
+        var user = Get("alertas.imap.user");
+        var pass = Get("alertas.imap.pass");
+        if (!int.TryParse(Get("alertas.imap.port"), out var port) || port <= 0) port = 993;
+        var tieneClave = !string.IsNullOrWhiteSpace(pass);
+        var configurada = !string.IsNullOrWhiteSpace(user) && tieneClave;
+        return Ok(new ConfigCorreoDto(host, port, user, tieneClave, configurada));
+    }
+
+    [HttpPost("config-correo")]
+    public async Task<IActionResult> SaveConfigCorreo([FromBody] ConfigCorreoRequest r)
+    {
+        if (string.IsNullOrWhiteSpace(r.Usuario)) return BadRequest(new { error = "Falta el correo (usuario)" });
+
+        async Task Set(string k, string v)
+        {
+            var s = await _db.AppSettings.FirstOrDefaultAsync(x => x.Key == k);
+            if (s is null) { s = new AppSetting { Key = k }; _db.AppSettings.Add(s); }
+            s.Value = v;
+            s.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await Set("alertas.imap.host", string.IsNullOrWhiteSpace(r.Host) ? "imap.gmail.com" : r.Host.Trim());
+        await Set("alertas.imap.port", (r.Port is > 0 ? r.Port.Value : 993).ToString());
+        await Set("alertas.imap.user", r.Usuario.Trim());
+        // La clave solo se pisa si mandaron una nueva (asi no hay que re-tipearla cada vez).
+        if (!string.IsNullOrWhiteSpace(r.Password))
+            await Set("alertas.imap.pass", r.Password);
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
     }
 }

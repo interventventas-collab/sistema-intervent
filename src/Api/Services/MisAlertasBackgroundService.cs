@@ -1,6 +1,10 @@
 using System.Globalization;
 using Api.Data;
 using Api.Models;
+using MailKit;
+using MailKit.Net.Imap;
+using MailKit.Search;
+using MailKit.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -9,12 +13,13 @@ using Microsoft.Extensions.Logging;
 namespace Api.Services;
 
 /// <summary>
-/// Robot del motor de alertas configurables. Cada 5 minutos recorre las reglas activas de
+/// Robot del motor de alertas configurables. Cada 2 minutos recorre las reglas activas de
 /// "Mis Alertas" y evalua si se cumple la condicion de cada una. Cuando una se cumple por
 /// primera vez, la marca como "disparada" (aparece en la campanita). Cuando la condicion deja
 /// de cumplirse, la resetea, asi la proxima vez que se cumpla vuelve a avisar.
 ///
-/// Paso 1: solo el canal campanita esta activo. WhatsApp/Correo quedan para el Paso 2.
+/// Incluye el tipo EMAIL_REMITENTE: vigila una casilla (IMAP, solo lectura) y dispara cuando
+/// hay un correo NO leido de un remitente dado. El canal de aviso sigue siendo la campanita.
 ///
 /// Mismo andamiaje que ShellAutoSyncBackgroundService (BackgroundService + while + Task.Delay
 /// + scope por tick). Hora Argentina = UTC-3.
@@ -23,7 +28,7 @@ public class MisAlertasBackgroundService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<MisAlertasBackgroundService> _logger;
-    private static readonly TimeSpan Period = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan Period = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan FirstDelay = TimeSpan.FromMinutes(1);
     private const int ARG_OFFSET_HOURS = -3;
 
@@ -65,11 +70,32 @@ public class MisAlertasBackgroundService : BackgroundService
             .OrderByDescending(m => m.Fecha).ThenByDescending(m => m.Id)
             .FirstOrDefaultAsync())?.Saldo;
 
-        var changed = false;
+        // Abrir el correo una sola vez por tick, solo si hay alertas de tipo EMAIL_REMITENTE.
+        ImapClient? imap = null;
+        IMailFolder? inbox = null;
+        if (reglas.Any(a => a.Tipo == "EMAIL_REMITENTE"))
+        {
+            try
+            {
+                var cfg = await db.AppSettings
+                    .Where(s => s.Key.StartsWith("alertas.imap."))
+                    .ToDictionaryAsync(s => s.Key, s => s.Value);
+                cfg.TryGetValue("alertas.imap.host", out var host);
+                cfg.TryGetValue("alertas.imap.user", out var user);
+                cfg.TryGetValue("alertas.imap.pass", out var pass);
+                cfg.TryGetValue("alertas.imap.port", out var portStr);
+                int.TryParse(portStr, out var port);
+                (imap, inbox) = await AbrirCorreoAsync(host, port, user, pass);
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "[Alertas] no pude abrir la casilla de correo"); }
+        }
 
+        var changed = false;
+        try
+        {
         foreach (var a in reglas)
         {
-            var (met, detalle) = await EvaluarAsync(db, a, argNow, shellSaldo, bancoSaldo);
+            var (met, detalle) = await EvaluarAsync(db, a, argNow, shellSaldo, bancoSaldo, inbox);
 
             if (met && !a.EstaDisparada)
             {
@@ -96,10 +122,19 @@ public class MisAlertasBackgroundService : BackgroundService
         }
 
         if (changed) await db.SaveChangesAsync();
+        }
+        finally
+        {
+            if (imap is not null)
+            {
+                try { await imap.DisconnectAsync(true); } catch { }
+                imap.Dispose();
+            }
+        }
     }
 
     private async Task<(bool met, string? detalle)> EvaluarAsync(
-        AppDbContext db, MisAlerta a, DateTime argNow, decimal? shellSaldo, decimal? bancoSaldo)
+        AppDbContext db, MisAlerta a, DateTime argNow, decimal? shellSaldo, decimal? bancoSaldo, IMailFolder? emailInbox)
     {
         switch (a.Tipo)
         {
@@ -143,9 +178,46 @@ public class MisAlertasBackgroundService : BackgroundService
                     return (true, $"Hoy {argNow:dd/MM}");
                 return (false, null);
             }
+            case "EMAIL_REMITENTE":
+            {
+                if (emailInbox is null || string.IsNullOrWhiteSpace(a.TextoParam)) return (false, null);
+                // "Disparada" mientras haya un correo NO leído de ese remitente. Se apaga sola
+                // cuando lo leés en Gmail (no tocamos el estado leído/no-leído acá).
+                var query = SearchQuery.NotSeen.And(SearchQuery.FromContains(a.TextoParam.Trim()));
+                var uids = await emailInbox.SearchAsync(query);
+                if (uids.Count == 0) return (false, null);
+                string asunto = "";
+                try
+                {
+                    var sums = await emailInbox.FetchAsync(uids, MessageSummaryItems.Envelope);
+                    asunto = sums.LastOrDefault()?.Envelope?.Subject ?? "";
+                }
+                catch { /* si no puedo leer el asunto, aviso igual */ }
+                if (uids.Count == 1)
+                    return (true, string.IsNullOrWhiteSpace(asunto) ? "1 correo nuevo" : $"\"{asunto}\"");
+                return (true, $"{uids.Count} correos nuevos"
+                    + (string.IsNullOrWhiteSpace(asunto) ? "" : $" (último: \"{asunto}\")"));
+            }
             default:
                 return (false, null);
         }
+    }
+
+    /// <summary>Abre la casilla de correo a vigilar (IMAP, SOLO LECTURA — no marca leídos ni borra).
+    /// Credenciales guardadas en AppSettings (alertas.imap.*), cargadas por el usuario desde la
+    /// pantalla Mis Alertas. Si falta usuario o clave, devuelve null y las alertas de correo no disparan.</summary>
+    private static async Task<(ImapClient? client, IMailFolder? inbox)> AbrirCorreoAsync(string? host, int port, string? user, string? pass)
+    {
+        if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(pass)) return (null, null);
+        if (string.IsNullOrWhiteSpace(host)) host = "imap.gmail.com";
+        if (port <= 0) port = 993;
+
+        var client = new ImapClient();
+        await client.ConnectAsync(host, port, SecureSocketOptions.SslOnConnect);
+        await client.AuthenticateAsync(user, pass);
+        var inbox = client.Inbox;
+        await inbox.OpenAsync(FolderAccess.ReadOnly);
+        return (client, inbox);
     }
 
     /// <summary>Convierte el saldo de Shell (texto scrapeado, formato argentino "$ 1.234,56")
