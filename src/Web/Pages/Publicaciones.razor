@@ -104,6 +104,43 @@
                         <button class="view-mode-btn @(statusFilter == null ? "active" : "")" style="background:@(statusFilter == null ? "#1d4ed8" : "transparent"); color:@(statusFilter == null ? "white" : "#374151");"
                                 @onclick='@(() => CambiarStatus(null))'>📋 Todas</button>
                     </div>
+                    @* 2026-07-10: filtro Tipo/Cuotas ARRIBA (visible, no escondido en el embudo de columna). Opciones dinámicas desde los datos. *@
+                    <div style="position:relative; display:inline-block; margin-left:0.5rem;">
+                        <button class="view-mode-btn @(TipoCuotasFilterCount > 0 ? "active" : "")"
+                                style="background:@(TipoCuotasFilterCount > 0 ? "#7c3aed" : "transparent"); color:@(TipoCuotasFilterCount > 0 ? "white" : "#374151");"
+                                @onclick="() => showTipoCuotasFilter = !showTipoCuotasFilter" @onclick:stopPropagation="true">
+                            🏷️ Tipo / cuotas @(TipoCuotasFilterCount > 0 ? $"({TipoCuotasFilterCount})" : "") <i class="fa-solid fa-caret-down"></i>
+                        </button>
+                        @if (showTipoCuotasFilter)
+                        {
+                            <div class="column-filter-dropdown" @onclick:stopPropagation="true" style="position:absolute; left:0; top:100%; z-index:50;">
+                                <div style="font-size:0.72rem; color:#6b7280; font-weight:600; text-transform:uppercase; padding:0.35rem 0.6rem 0.15rem;">Tipo de publicación</div>
+                                <div class="filter-checkbox-list">
+                                    @foreach (var val in GetUniqueValues("tipo"))
+                                    {
+                                        var v = val;
+                                        <label class="filter-checkbox-item">
+                                            <input type="checkbox" checked="@IsCheckboxChecked("tipo", v)" @onchange='() => ToggleCheckboxValue("tipo", v)' /> @v
+                                        </label>
+                                    }
+                                </div>
+                                <div style="font-size:0.72rem; color:#6b7280; font-weight:600; text-transform:uppercase; padding:0.35rem 0.6rem 0.15rem; border-top:1px solid #e5e7eb; margin-top:0.25rem;">Cuotas</div>
+                                <div class="filter-checkbox-list">
+                                    @foreach (var val in GetUniqueValues("cuotas"))
+                                    {
+                                        var v = val;
+                                        <label class="filter-checkbox-item">
+                                            <input type="checkbox" checked="@IsCheckboxChecked("cuotas", v)" @onchange='() => ToggleCheckboxValue("cuotas", v)' /> @v
+                                        </label>
+                                    }
+                                </div>
+                                @if (TipoCuotasFilterCount > 0)
+                                {
+                                    <div class="filter-actions"><button class="filter-clear-btn" @onclick='() => { ClearCheckboxFilter("tipo"); ClearCheckboxFilter("cuotas"); }'>Limpiar</button></div>
+                                }
+                            </div>
+                        }
+                    </div>
                     @if (viewMode == "flat")
                     {
                         <label title="ON: agrupa familias (FamilyId con varios MLAs) en 1 sola fila — vista catálogo de MeLi. OFF: cada MLA es 1 fila — coincide con el conteo de publicaciones de MeLi web."
@@ -3807,6 +3844,12 @@
     // y confundía — un filtro aplicado por default que oculta datos es lo peor). Arranca todo limpio.
     private Dictionary<string, HashSet<string>> checkboxFilters = new();
 
+    // 2026-07-10: filtro Tipo/Cuotas visible arriba
+    private bool showTipoCuotasFilter;
+    private int TipoCuotasFilterCount =>
+        (checkboxFilters.TryGetValue("tipo", out var t) ? t.Count : 0) +
+        (checkboxFilters.TryGetValue("cuotas", out var c) ? c.Count : 0);
+
     // 2026-05-29: la migración one-time de localStorage -> DB ya se ejecutó en sesiones previas
     // (todos los ajustes que tenías en localStorage ya están en MeliItem_SyncConfig vía paso 2).
     // La logica vieja se removió aquí. Si alguien tiene un localStorage que sobrevive de versiones
@@ -4194,6 +4237,7 @@
         {
             "estado" => items.Select(i => GetStatusLabel(i.Status)).Distinct(),
             "tipo" => items.Select(i => GetListingTypeLabel(i.ListingTypeId)).Distinct(),
+            "cuotas" => items.Select(i => GetCuotasLabel(i.InstallmentTag, i.ListingTypeId)).Distinct(),  // 2026-07-10
             "cuenta" => items.Select(i => i.AccountNickname).Distinct(),
             _ => Enumerable.Empty<string>()
         };
@@ -4314,6 +4358,7 @@
             {
                 "estado" => filtered.Where(i => values.Contains(GetStatusLabel(i.Status))),
                 "tipo" => filtered.Where(i => values.Contains(GetListingTypeLabel(i.ListingTypeId))),
+                "cuotas" => filtered.Where(i => values.Contains(GetCuotasLabel(i.InstallmentTag, i.ListingTypeId))),  // 2026-07-10
                 "cuenta" => filtered.Where(i => values.Contains(i.AccountNickname)),
                 _ => filtered
             };
