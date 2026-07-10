@@ -1204,6 +1204,8 @@ public class ApiClient
         bool EstaDisparada, bool Vista, string? UltimoDetalle, DateTime? DisparadaAt);
     public record AlertaUpsertRequest(string Tipo, decimal? Umbral, string? TextoParam, string Mensaje,
         bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool Activa, List<string>? Roles);
+    public record CorreoImportanteDto(int Id, string? Remitente, string? RemitenteEmail, string? Asunto,
+        string? Adelanto, DateTime? Fecha, bool TieneAdjuntos, string? Adjuntos, string? GmailLink);
     public record ConfigCorreoAlertasDto(string? Host, int Port, string? Usuario, bool TieneClave, bool Configurada);
     public record ConfigCorreoAlertasRequest(string? Host, int? Port, string? Usuario, string? Password);
     public record AlertaDisparadaDto(int Id, string Tipo, string Mensaje, string? Detalle, DateTime? DisparadaAt, bool Vista);
@@ -1259,6 +1261,9 @@ public class ApiClient
         var resp = await _http.PostAsync("/api/mis-alertas/marcar-vistas", null);
         return resp.IsSuccessStatusCode;
     }
+
+    public async Task<List<CorreoImportanteDto>> GetCorreosImportantesAsync()
+        => await GetAsync<List<CorreoImportanteDto>>("/api/mis-alertas/correos") ?? new();
 
     public async Task<ConfigCorreoAlertasDto?> GetConfigCorreoAlertasAsync()
         => await GetAsync<ConfigCorreoAlertasDto>("/api/mis-alertas/config-correo");

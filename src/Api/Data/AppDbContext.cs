@@ -183,6 +183,7 @@ public class AppDbContext : DbContext
     public DbSet<WhatsAppSector> WhatsAppSectores => Set<WhatsAppSector>();
     public DbSet<WhatsAppSectorOperario> WhatsAppSectorOperarios => Set<WhatsAppSectorOperario>();
     public DbSet<MisAlerta> MisAlertas => Set<MisAlerta>();
+    public DbSet<MisAlertaCorreo> MisAlertasCorreos => Set<MisAlertaCorreo>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

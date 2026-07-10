@@ -5704,3 +5704,22 @@ GO
 IF COL_LENGTH('Mis_Alertas','TextoParam') IS NULL
     ALTER TABLE Mis_Alertas ADD TextoParam NVARCHAR(300) NULL;
 GO
+
+-- 2026-07-10: correos detectados por alertas EMAIL_REMITENTE (para la card "Correos importantes").
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='Mis_Alertas_Correos')
+CREATE TABLE Mis_Alertas_Correos (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    AlertaId INT NOT NULL,
+    MessageId NVARCHAR(400) NOT NULL,
+    Remitente NVARCHAR(300) NULL,
+    RemitenteEmail NVARCHAR(300) NULL,
+    Asunto NVARCHAR(500) NULL,
+    Adelanto NVARCHAR(1000) NULL,
+    FechaRecibido DATETIME2 NULL,
+    TieneAdjuntos BIT NOT NULL DEFAULT 0,
+    Adjuntos NVARCHAR(500) NULL,
+    GmailLink NVARCHAR(800) NULL,
+    DetectadoAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT FK_MisAlertasCorreos_Alerta FOREIGN KEY (AlertaId) REFERENCES Mis_Alertas(Id) ON DELETE CASCADE
+);
+GO

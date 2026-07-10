@@ -116,7 +116,7 @@ public class MisAlertasBackgroundService : BackgroundService
             }
         }
 
-        if (changed) await db.SaveChangesAsync();
+        if (changed || db.ChangeTracker.HasChanges()) await db.SaveChangesAsync();
         }
         finally
         {
@@ -189,15 +189,23 @@ public class MisAlertasBackgroundService : BackgroundService
                     deQuien = deQuien.Or(SearchQuery.FromContains(remitentes[i]));
 
                 var uids = await emailInbox.SearchAsync(SearchQuery.NotSeen.And(deQuien));
-                if (uids.Count == 0) return (false, null);
 
                 // Solo los que LLEGARON después de crear la alerta (para no avisar de correos viejos
                 // sin leer). "Disparada" mientras siga sin leer; se apaga cuando lo abrís en Gmail.
-                var sums = await emailInbox.FetchAsync(uids, MessageSummaryItems.Envelope | MessageSummaryItems.InternalDate);
-                var nuevos = sums
-                    .Where(s => (s.InternalDate?.UtcDateTime ?? DateTime.MaxValue) >= a.CreatedAt)
-                    .OrderByDescending(s => s.InternalDate)
-                    .ToList();
+                List<IMessageSummary> nuevos = new();
+                if (uids.Count > 0)
+                {
+                    var sums = await emailInbox.FetchAsync(uids,
+                        MessageSummaryItems.Envelope | MessageSummaryItems.InternalDate | MessageSummaryItems.UniqueId);
+                    nuevos = sums
+                        .Where(s => (s.InternalDate?.UtcDateTime ?? DateTime.MaxValue) >= a.CreatedAt)
+                        .OrderByDescending(s => s.InternalDate)
+                        .ToList();
+                }
+
+                // Sincroniza la tabla de correos para la card del Dashboard (agrega nuevos, borra leídos).
+                await PersistirCorreosAsync(db, a, emailInbox, nuevos);
+
                 if (nuevos.Count == 0) return (false, null);
 
                 var topEnv = nuevos[0].Envelope;
@@ -256,6 +264,78 @@ public class MisAlertasBackgroundService : BackgroundService
         }
         return (iHost, iPort, iUser, integ.AppSecret);
     }
+
+    /// <summary>Mantiene en sincronía la tabla Mis_Alertas_Correos con los mails sin leer que matchean
+    /// la alerta: agrega los nuevos (bajando remitente, asunto, adelanto del cuerpo y adjuntos) y borra
+    /// los que ya no están (leídos en Gmail).</summary>
+    private static async Task PersistirCorreosAsync(AppDbContext db, MisAlerta a, IMailFolder inbox, List<IMessageSummary> nuevos)
+    {
+        static string NormId(IMessageSummary s)
+        {
+            var mid = s.Envelope?.MessageId;
+            if (!string.IsNullOrWhiteSpace(mid)) return mid.Trim().Trim('<', '>');
+            return "uid:" + s.UniqueId.Id;
+        }
+
+        var currentIds = nuevos.Select(NormId).ToHashSet();
+        var existentes = await db.Set<MisAlertaCorreo>().Where(c => c.AlertaId == a.Id).ToListAsync();
+
+        var aBorrar = existentes.Where(c => !currentIds.Contains(c.MessageId)).ToList();
+        if (aBorrar.Count > 0) db.Set<MisAlertaCorreo>().RemoveRange(aBorrar);
+        var yaGuardados = existentes.Select(c => c.MessageId).ToHashSet();
+
+        foreach (var s in nuevos)
+        {
+            var id = NormId(s);
+            if (yaGuardados.Contains(id)) continue; // ya lo tenemos: no re-bajamos el cuerpo
+
+            var mb = s.Envelope?.From?.Mailboxes?.FirstOrDefault();
+            var remNombre = mb is null ? null : (!string.IsNullOrWhiteSpace(mb.Name) ? mb.Name : mb.Address);
+
+            string? adelanto = null; bool tieneAdj = false; string? adjNombres = null;
+            try
+            {
+                var full = await inbox.GetMessageAsync(s.UniqueId);
+                var texto = full.TextBody;
+                if (string.IsNullOrWhiteSpace(texto) && !string.IsNullOrWhiteSpace(full.HtmlBody))
+                    texto = System.Text.RegularExpressions.Regex.Replace(full.HtmlBody, "<[^>]+>", " ");
+                adelanto = LimpiarTexto(texto, 1000);
+                var adj = full.Attachments.OfType<MimePart>()
+                    .Select(p => p.FileName).Where(f => !string.IsNullOrWhiteSpace(f)).ToList();
+                tieneAdj = adj.Count > 0;
+                if (tieneAdj) adjNombres = Recortar(string.Join(", ", adj), 500);
+            }
+            catch { /* si no puedo bajar el cuerpo, igual guardo el resto */ }
+
+            string? link = !id.StartsWith("uid:")
+                ? "https://mail.google.com/mail/u/0/#search/rfc822msgid:" + Uri.EscapeDataString(id)
+                : (string.IsNullOrWhiteSpace(mb?.Address) ? null : "https://mail.google.com/mail/u/0/#search/from:" + Uri.EscapeDataString(mb!.Address));
+
+            db.Set<MisAlertaCorreo>().Add(new MisAlertaCorreo
+            {
+                AlertaId = a.Id,
+                MessageId = id,
+                Remitente = Recortar(remNombre, 300),
+                RemitenteEmail = Recortar(mb?.Address, 300),
+                Asunto = Recortar(s.Envelope?.Subject, 500),
+                Adelanto = adelanto,
+                FechaRecibido = s.InternalDate?.UtcDateTime,
+                TieneAdjuntos = tieneAdj,
+                Adjuntos = adjNombres,
+                GmailLink = Recortar(link, 800)
+            });
+        }
+    }
+
+    private static string? LimpiarTexto(string? t, int max)
+    {
+        if (string.IsNullOrWhiteSpace(t)) return null;
+        t = System.Text.RegularExpressions.Regex.Replace(t, @"\s+", " ").Trim();
+        return t.Length > max ? t.Substring(0, max) : t;
+    }
+
+    private static string? Recortar(string? t, int max)
+        => string.IsNullOrEmpty(t) ? t : (t.Length > max ? t.Substring(0, max) : t);
 
     private static async Task<(ImapClient? client, IMailFolder? inbox)> AbrirCorreoAsync(string? host, int port, string? user, string? pass)
     {
