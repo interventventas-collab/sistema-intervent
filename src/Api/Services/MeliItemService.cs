@@ -904,7 +904,8 @@ public class MeliItemService
                 continue;
             }
 
-            var famDoc = JsonDocument.Parse(await famResp.Content.ReadAsStringAsync()).RootElement;
+            var famRaw = await famResp.Content.ReadAsStringAsync();
+            var famDoc = JsonDocument.Parse(famRaw).RootElement;
             var ups = new List<string>();
             if (famDoc.TryGetProperty("user_products_ids", out var upsEl) && upsEl.ValueKind == JsonValueKind.Array)
                 foreach (var u in upsEl.EnumerateArray()) { var s = u.GetString(); if (!string.IsNullOrEmpty(s)) ups.Add(s); }
@@ -913,6 +914,7 @@ public class MeliItemService
                     if (u.TryGetProperty("id", out var uid)) { var s = uid.GetString(); if (!string.IsNullOrEmpty(s)) ups.Add(s); }
 
             string? famName = famDoc.TryGetProperty("family_name", out var fnEl) ? fnEl.GetString() : null;
+            Console.WriteLine($"FAMDIAG {account.Nickname} ups={ups.Count} fam={famName} RAW={famRaw.Substring(0, Math.Min(700, famRaw.Length))}");
             if (ups.Count == 0) { diag.Append($"{account.Nickname}:0ups "); continue; }
 
             famEncontrada = true;
@@ -944,6 +946,7 @@ public class MeliItemService
 
             var upsShort = string.Join("|", ups.Select(u => u.Length > 6 ? u.Substring(u.Length - 6) : u));
             var stStr = perStatus.Count > 0 ? string.Join(" ", perStatus.Select(kv => kv.Key + ":" + kv.Value)) : "sin items";
+            Console.WriteLine($"FAMDIAG {account.Nickname} ups=[{string.Join(",", ups)}] perStatus=[{stStr}] MLAs={allIds.Count} [{string.Join(",", allIds)}] guard={guardadas}");
             diag.Append($"{account.Nickname}:{ups.Count}ups[{upsShort}] {stStr} MLAs:{allIds.Count} guard:{guardadas}. ");
 
             if (progressId is not null)
