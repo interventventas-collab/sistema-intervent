@@ -881,7 +881,11 @@ public class MeliItemService
 
         var statuses = new[] { "active", "paused", "closed", "under_review", "inactive" };
 
-        // ===== Camino principal: API de familia (User Products) =====
+        // ===== Camino principal: API de familia (User Products) — probar TODAS las cuentas =====
+        // La familia puede pertenecer a cualquiera de las cuentas conectadas (ej TIENDA FRIKAF),
+        // así que NO nos frenamos en la primera: recorremos todas y sumamos.
+        int totalGuardadas = 0, variantesMax = 0;
+        bool famEncontrada = false;
         foreach (var account in accounts)
         {
             var token = await _accountService.GetValidTokenAsync(account);
@@ -889,12 +893,12 @@ public class MeliItemService
             var http = _httpFactory.CreateClient();
             http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-            // 1) Pedir la familia → user_products_ids
+            // 1) Pedir la familia → user_products_ids (con el token de ESTA cuenta)
             var famResp = await http.GetAsync($"https://api.mercadolibre.com/sites/MLA/user-products-families/{target}");
             if (!famResp.IsSuccessStatusCode)
                 famResp = await http.GetAsync($"https://api.mercadolibre.com/user-products-families/{target}");
             if (!famResp.IsSuccessStatusCode)
-                continue; // esta cuenta no conoce la familia; probar la siguiente
+                continue;
 
             var famDoc = JsonDocument.Parse(await famResp.Content.ReadAsStringAsync()).RootElement;
             var ups = new List<string>();
@@ -905,13 +909,14 @@ public class MeliItemService
                     if (u.TryGetProperty("id", out var uid)) { var s = uid.GetString(); if (!string.IsNullOrEmpty(s)) ups.Add(s); }
 
             string? famName = famDoc.TryGetProperty("family_name", out var fnEl) ? fnEl.GetString() : null;
-
             if (ups.Count == 0) continue;
 
+            famEncontrada = true;
+            variantesMax = Math.Max(variantesMax, ups.Count);
             if (progressId is not null)
-                _syncProgress.Update(progressId, p => { p.CurrentStep = $"Familia {target}: {ups.Count} variantes, buscando publicaciones..."; });
+                _syncProgress.Update(progressId, p => { p.CurrentStep = $"{account.Nickname}: familia con {ups.Count} variantes, buscando publicaciones..."; });
 
-            // 2) Por cada User Product, buscar sus items en todos los estados
+            // 2) Por cada User Product, buscar sus items en todos los estados, en ESTA cuenta
             var allIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var up in ups)
                 foreach (var st in statuses)
@@ -924,16 +929,26 @@ public class MeliItemService
                         foreach (var id in res.EnumerateArray()) { var s = id.GetString(); if (!string.IsNullOrEmpty(s)) allIds.Add(s); }
                 }
 
-            // 3) Detalle + upsert (todas son de la familia) y forzar el family_id por si MeLi no lo trae
+            // 3) Detalle + upsert; forzar family_id por si MeLi no lo trae en inactivas
             var guardadas = await UpsertItemsByIdsAsync(account.Id, http, allIds.ToList(), target, famName, progressId);
-
+            totalGuardadas += guardadas;
             if (progressId is not null)
             {
-                _syncProgress.Complete(progressId, $"Familia {target}: {guardadas} publicaciones traídas ({ups.Count} variantes).");
+                var tg = totalGuardadas;
+                _syncProgress.Update(progressId, p => { p.ItemsSynced = tg; p.TotalItemsFound = tg; p.Percentage = 100; });
+            }
+        }
+
+        if (famEncontrada && totalGuardadas > 0)
+        {
+            if (progressId is not null)
+            {
+                _syncProgress.Complete(progressId, $"Familia {target}: {totalGuardadas} publicaciones traídas ({variantesMax} variantes).");
                 _syncProgress.Cleanup();
             }
-            return; // familia resuelta
+            return; // familia resuelta por la puerta directa
         }
+        // Si la API de familia no trajo nada, cae al respaldo (barrido por family_id).
 
         // ===== Respaldo: barrido completo filtrando por family_id =====
         int encontradas = 0, sincronizadas = 0, revisadas = 0;
