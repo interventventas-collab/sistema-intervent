@@ -3,6 +3,7 @@ namespace Web.Models;
 public class TelegramAccountDto
 {
     public int Id { get; set; }
+    public string Proposito { get; set; } = "AVISOS";
     public bool HasToken { get; set; }
     public string? BotUsername { get; set; }
     public long? ChatId { get; set; }

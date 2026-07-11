@@ -23,6 +23,12 @@ public class TelegramAccount
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public int Id { get; set; }
 
+    /// <summary>Para qué sirve este bot. "AVISOS" = notificaciones + consultas (el bot principal).
+    /// "PREVENTAS" = chat aparte donde el dueño solo carga preventas. Así no se mezcla todo.
+    /// Puede haber una fila por propósito.</summary>
+    [MaxLength(20)]
+    public string Proposito { get; set; } = "AVISOS";
+
     /// <summary>Token del bot que devuelve @BotFather (formato "123456789:AA....").</summary>
     [Required]
     public string BotToken { get; set; } = string.Empty;
@@ -51,6 +57,16 @@ public class TelegramAccount
     /// <summary>Cursor del poll de mensajes entrantes (update_id ya procesado). Evita reprocesar
     /// y saltear mensajes viejos. Null = arrancar desde el próximo mensaje.</summary>
     public long? LastUpdateId { get; set; }
+
+    // --- Estado de la conversación de PREVENTA (solo el bot PREVENTAS lo usa) ---
+    /// <summary>Paso actual de la carga de preventa: null | "CLIENTE" (esperando el cliente) |
+    /// "DETALLE" (esperando el texto del pedido).</summary>
+    [MaxLength(20)]
+    public string? ConvEstado { get; set; }
+    /// <summary>Cliente elegido para la preventa en curso (null = venta suelta).</summary>
+    public int? ConvClienteId { get; set; }
+    [MaxLength(200)]
+    public string? ConvClienteNombre { get; set; }
 
     // --- Último intento de conexión ---
     public bool LastSyncOk { get; set; } = false;

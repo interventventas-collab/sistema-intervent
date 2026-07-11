@@ -13,7 +13,7 @@ public class TelegramAccountService
     private readonly AppDbContext _db;
     public TelegramAccountService(AppDbContext db) { _db = db; }
 
-    public record TelegramAccountDto(int Id, bool HasToken, string? BotUsername, long? ChatId,
+    public record TelegramAccountDto(int Id, string Proposito, bool HasToken, string? BotUsername, long? ChatId,
         bool IsActive, bool NotifVentas, bool NotifAlertas, bool NotifFichadas,
         bool LastSyncOk, string? LastError, DateTime? LastSyncAt,
         DateTime CreatedAt, DateTime? UpdatedAt);
@@ -22,28 +22,37 @@ public class TelegramAccountService
         bool NotifVentas = true, bool NotifAlertas = true, bool NotifFichadas = true);
 
     private static TelegramAccountDto Map(TelegramAccount a) => new(
-        a.Id, !string.IsNullOrEmpty(a.BotToken), a.BotUsername, a.ChatId,
+        a.Id, a.Proposito, !string.IsNullOrEmpty(a.BotToken), a.BotUsername, a.ChatId,
         a.IsActive, a.NotifVentas, a.NotifAlertas, a.NotifFichadas,
         a.LastSyncOk, a.LastError, a.LastSyncAt, a.CreatedAt, a.UpdatedAt);
 
-    public async Task<TelegramAccountDto?> GetAsync()
+    private static string NormProposito(string? p)
+        => string.Equals(p?.Trim(), "PREVENTAS", StringComparison.OrdinalIgnoreCase) ? "PREVENTAS" : "AVISOS";
+
+    public async Task<TelegramAccountDto?> GetAsync(string proposito = "AVISOS")
     {
-        var a = await _db.TelegramAccounts.OrderBy(x => x.Id).FirstOrDefaultAsync();
+        var p = NormProposito(proposito);
+        var a = await _db.TelegramAccounts.Where(x => x.Proposito == p).OrderBy(x => x.Id).FirstOrDefaultAsync();
         return a is null ? null : Map(a);
     }
 
-    public async Task<TelegramAccount?> GetEntityAsync()
-        => await _db.TelegramAccounts.OrderBy(x => x.Id).FirstOrDefaultAsync();
-
-    public async Task<(bool ok, string? error, TelegramAccountDto? dto)> SaveAsync(SaveTelegramAccountRequest req)
+    public async Task<TelegramAccount?> GetEntityAsync(string proposito = "AVISOS")
     {
-        var a = await _db.TelegramAccounts.OrderBy(x => x.Id).FirstOrDefaultAsync();
+        var p = NormProposito(proposito);
+        return await _db.TelegramAccounts.Where(x => x.Proposito == p).OrderBy(x => x.Id).FirstOrDefaultAsync();
+    }
+
+    public async Task<(bool ok, string? error, TelegramAccountDto? dto)> SaveAsync(SaveTelegramAccountRequest req, string proposito = "AVISOS")
+    {
+        var p = NormProposito(proposito);
+        var a = await _db.TelegramAccounts.Where(x => x.Proposito == p).OrderBy(x => x.Id).FirstOrDefaultAsync();
         if (a is null)
         {
             if (string.IsNullOrWhiteSpace(req.BotToken))
                 return (false, "El token del bot es obligatorio la primera vez", null);
             a = new TelegramAccount
             {
+                Proposito = p,
                 BotToken = req.BotToken.Trim(),
                 IsActive = req.IsActive,
                 NotifVentas = req.NotifVentas,

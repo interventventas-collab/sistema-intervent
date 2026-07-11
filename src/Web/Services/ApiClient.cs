@@ -4463,20 +4463,20 @@ public class ApiClient
     public async Task<Web.Models.EzvizLiveDto?> GetEzvizLiveAsync(string serial, int channel = 1)
         => await GetAsync<Web.Models.EzvizLiveDto>($"/api/ezviz/live?serial={Uri.EscapeDataString(serial)}&channel={channel}");
 
-    // --- Bot de Telegram (avisos al celu + consultas) ---
-    public async Task<Web.Models.TelegramAccountDto?> GetTelegramAccountAsync()
-        => await GetAsync<Web.Models.TelegramAccountDto>("/api/telegram/account");
+    // --- Bot de Telegram (avisos al celu + consultas + preventas). proposito = AVISOS | PREVENTAS ---
+    public async Task<Web.Models.TelegramAccountDto?> GetTelegramAccountAsync(string proposito = "AVISOS")
+        => await GetAsync<Web.Models.TelegramAccountDto>($"/api/telegram/account?proposito={proposito}");
 
-    public async Task<Web.Models.TelegramAccountDto?> SaveTelegramAccountAsync(Web.Models.SaveTelegramAccountRequest req)
-        => await PutAsync<Web.Models.TelegramAccountDto>("/api/telegram/account", req);
+    public async Task<Web.Models.TelegramAccountDto?> SaveTelegramAccountAsync(Web.Models.SaveTelegramAccountRequest req, string proposito = "AVISOS")
+        => await PutAsync<Web.Models.TelegramAccountDto>($"/api/telegram/account?proposito={proposito}", req);
 
     /// <summary>Prueba el token (getMe), vincula el chat si puede y manda un mensaje de prueba.</summary>
-    public async Task<Web.Models.TelegramProbarResultDto?> ProbarTelegramAsync()
-        => await PostAsync<Web.Models.TelegramProbarResultDto>("/api/telegram/probar", new { });
+    public async Task<Web.Models.TelegramProbarResultDto?> ProbarTelegramAsync(string proposito = "AVISOS")
+        => await PostAsync<Web.Models.TelegramProbarResultDto>($"/api/telegram/probar?proposito={proposito}", new { });
 
     /// <summary>Vincula el chat del dueño mirando los mensajes que le escribió al bot.</summary>
-    public async Task<Web.Models.TelegramVincularResultDto?> VincularTelegramAsync()
-        => await PostAsync<Web.Models.TelegramVincularResultDto>("/api/telegram/vincular", new { });
+    public async Task<Web.Models.TelegramVincularResultDto?> VincularTelegramAsync(string proposito = "AVISOS")
+        => await PostAsync<Web.Models.TelegramVincularResultDto>($"/api/telegram/vincular?proposito={proposito}", new { });
 
     /// <summary>Manda un mensaje de prueba al chat vinculado.</summary>
     public async Task<Web.Models.TelegramTestMsgResultDto?> TestMensajeTelegramAsync()
