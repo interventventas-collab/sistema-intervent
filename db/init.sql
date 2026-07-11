@@ -312,6 +312,23 @@ IF COL_LENGTH('Mis_Alertas','CanalTelegram') IS NULL
     ALTER TABLE Mis_Alertas ADD CanalTelegram BIT NOT NULL DEFAULT 0;
 GO
 
+-- Migración 2026-07-10: soporte de un SEGUNDO bot de Telegram dedicado a PREVENTAS (chat aparte),
+-- para que la carga de preventas no se mezcle con los avisos. Proposito distingue las filas
+-- ("AVISOS" = bot principal, "PREVENTAS" = bot de preventas). ConvEstado/ConvCliente* guardan el
+-- paso de la conversación de preventa en curso (bot single-user, un pedido a la vez).
+IF COL_LENGTH('TelegramAccounts','Proposito') IS NULL
+    ALTER TABLE TelegramAccounts ADD Proposito NVARCHAR(20) NOT NULL DEFAULT 'AVISOS';
+GO
+IF COL_LENGTH('TelegramAccounts','ConvEstado') IS NULL
+    ALTER TABLE TelegramAccounts ADD ConvEstado NVARCHAR(20) NULL;
+GO
+IF COL_LENGTH('TelegramAccounts','ConvClienteId') IS NULL
+    ALTER TABLE TelegramAccounts ADD ConvClienteId INT NULL;
+GO
+IF COL_LENGTH('TelegramAccounts','ConvClienteNombre') IS NULL
+    ALTER TABLE TelegramAccounts ADD ConvClienteNombre NVARCHAR(200) NULL;
+GO
+
 -- Mp_Pagos table — cobros recibidos por Mercado Pago (API /v1/payments/search).
 -- "Lo cobrado por MP": ingresos a la cuenta, para ver y conciliar. Pedido 2026-07-05.
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Mp_Pagos')

@@ -23,15 +23,16 @@ public class TelegramController : ControllerBase
         _service = service;
     }
 
-    /// <summary>Devuelve la config del bot (sin el token), o null si no hay.</summary>
+    /// <summary>Devuelve la config del bot (sin el token), o null si no hay. proposito = AVISOS | PREVENTAS.</summary>
     [HttpGet("account")]
-    public async Task<IActionResult> GetAccount() => Ok(await _accounts.GetAsync());
+    public async Task<IActionResult> GetAccount([FromQuery] string proposito = "AVISOS")
+        => Ok(await _accounts.GetAsync(proposito));
 
-    /// <summary>Crea o actualiza el token + los tildes de qué avisos mandar.</summary>
+    /// <summary>Crea o actualiza el token + los tildes de qué avisos mandar (por propósito).</summary>
     [HttpPut("account")]
-    public async Task<IActionResult> SaveAccount([FromBody] TelegramAccountService.SaveTelegramAccountRequest req)
+    public async Task<IActionResult> SaveAccount([FromBody] TelegramAccountService.SaveTelegramAccountRequest req, [FromQuery] string proposito = "AVISOS")
     {
-        var (ok, error, dto) = await _accounts.SaveAsync(req);
+        var (ok, error, dto) = await _accounts.SaveAsync(req, proposito);
         if (!ok) return BadRequest(new { error });
         return Ok(dto);
     }
@@ -40,9 +41,9 @@ public class TelegramController : ControllerBase
 
     /// <summary>Prueba el token (getMe), vincula el chat si puede, y manda un mensaje de prueba.</summary>
     [HttpPost("probar")]
-    public async Task<IActionResult> Probar()
+    public async Task<IActionResult> Probar([FromQuery] string proposito = "AVISOS")
     {
-        var (ok, username, chatId, testEnviado, error) = await _service.ProbarAsync();
+        var (ok, username, chatId, testEnviado, error) = await _service.ProbarAsync(proposito);
         return Ok(new ProbarResultDto(ok, username, chatId, testEnviado, error));
     }
 
@@ -50,9 +51,9 @@ public class TelegramController : ControllerBase
 
     /// <summary>Vincula el chat del dueño mirando los mensajes que le escribió al bot (getUpdates).</summary>
     [HttpPost("vincular")]
-    public async Task<IActionResult> Vincular()
+    public async Task<IActionResult> Vincular([FromQuery] string proposito = "AVISOS")
     {
-        var (ok, chatId, error) = await _service.DetectarChatAsync();
+        var (ok, chatId, error) = await _service.DetectarChatAsync(proposito);
         return Ok(new VincularResultDto(ok, chatId, error));
     }
 

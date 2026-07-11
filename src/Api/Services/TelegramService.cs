@@ -42,23 +42,34 @@ public class TelegramService
 
     // ─────────────────────────── Mandar mensaje ───────────────────────────
 
-    /// <summary>Manda un mensaje de texto al chat del dueño (o a un chat puntual). Devuelve (ok, error).</summary>
+    /// <summary>Manda un mensaje de texto por el bot de AVISOS al chat del dueño. Devuelve (ok, error).</summary>
     public async Task<(bool ok, string? error)> SendMessageAsync(string text, long? chatId = null, CancellationToken ct = default)
     {
-        var a = await _db.TelegramAccounts.OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
+        var a = await GetBotAsync("AVISOS", ct);
         if (a is null || string.IsNullOrWhiteSpace(a.BotToken)) return (false, "No hay bot de Telegram configurado");
         var target = chatId ?? a.ChatId;
         if (target is null || target == 0) return (false, "Todavía no está vinculado tu Telegram (escribile 'hola' al bot y probá de nuevo)");
         return await SendRawAsync(a.BotToken, target.Value, text, ct);
     }
 
-    private async Task<(bool ok, string? error)> SendRawAsync(string token, long chatId, string text, CancellationToken ct)
+    /// <summary>Devuelve el bot de un propósito ("AVISOS" o "PREVENTAS"), o null si no existe.</summary>
+    private async Task<TelegramAccount?> GetBotAsync(string proposito, CancellationToken ct)
+        => await _db.TelegramAccounts.Where(x => x.Proposito == proposito).OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
+
+    // Teclados de Telegram (botones) para la conversación de preventa.
+    private static object TecladoBotones(IEnumerable<string> opciones)
+        => new { keyboard = opciones.Select(o => new[] { o }).ToArray(), resize_keyboard = true, one_time_keyboard = true };
+    private static readonly object QuitarTeclado = new { remove_keyboard = true };
+
+    private async Task<(bool ok, string? error)> SendRawAsync(string token, long chatId, string text, CancellationToken ct, object? replyMarkup = null)
     {
         try
         {
             var http = NewClient();
-            var resp = await http.PostAsJsonAsync($"{ApiBase}/bot{token}/sendMessage",
-                new { chat_id = chatId, text, disable_web_page_preview = true }, ct);
+            object payload = replyMarkup is null
+                ? new { chat_id = chatId, text, disable_web_page_preview = true }
+                : new { chat_id = chatId, text, disable_web_page_preview = true, reply_markup = replyMarkup };
+            var resp = await http.PostAsJsonAsync($"{ApiBase}/bot{token}/sendMessage", payload, ct);
             var body = await resp.Content.ReadAsStringAsync(ct);
             if (!resp.IsSuccessStatusCode)
             {
@@ -78,9 +89,9 @@ public class TelegramService
 
     /// <summary>Prueba el token (getMe), guarda el @usuario del bot, e intenta captar el chat del
     /// dueño (getUpdates). Si ya hay chat vinculado, manda un mensaje de prueba.</summary>
-    public async Task<(bool ok, string? botUsername, long? chatId, bool testEnviado, string? error)> ProbarAsync(CancellationToken ct = default)
+    public async Task<(bool ok, string? botUsername, long? chatId, bool testEnviado, string? error)> ProbarAsync(string proposito = "AVISOS", CancellationToken ct = default)
     {
-        var a = await _db.TelegramAccounts.OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
+        var a = await GetBotAsync(proposito, ct);
         if (a is null || string.IsNullOrWhiteSpace(a.BotToken))
             return (false, null, null, false, "No hay token de bot cargado");
 
@@ -118,8 +129,10 @@ public class TelegramService
         bool testEnviado = false;
         if (a.ChatId is not null)
         {
-            var (okSend, _) = await SendRawAsync(a.BotToken, a.ChatId.Value,
-                "✅ ¡Listo! Tu bot de Intervent quedó conectado. Te voy a avisar por acá las ventas nuevas y tus alertas. Escribime \"ayuda\" cuando quieras.", ct);
+            var mensajePrueba = a.Proposito == "PREVENTAS"
+                ? "✅ ¡Listo! Este es tu bot de Preventas. Acá cargás las preventas sin que se mezclen con los avisos. Escribime \"nueva\" para arrancar una. 🧾"
+                : "✅ ¡Listo! Tu bot de Intervent quedó conectado. Te voy a avisar por acá las ventas nuevas y tus alertas. Escribime \"ayuda\" cuando quieras.";
+            var (okSend, _) = await SendRawAsync(a.BotToken, a.ChatId.Value, mensajePrueba, ct);
             testEnviado = okSend;
         }
 
@@ -128,9 +141,9 @@ public class TelegramService
     }
 
     /// <summary>Vincula el chat del dueño mirando los últimos mensajes que le escribió al bot.</summary>
-    public async Task<(bool ok, long? chatId, string? error)> DetectarChatAsync(CancellationToken ct = default)
+    public async Task<(bool ok, long? chatId, string? error)> DetectarChatAsync(string proposito = "AVISOS", CancellationToken ct = default)
     {
-        var a = await _db.TelegramAccounts.OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
+        var a = await GetBotAsync(proposito, ct);
         if (a is null || string.IsNullOrWhiteSpace(a.BotToken))
             return (false, null, "No hay token de bot cargado");
 
@@ -198,7 +211,7 @@ public class TelegramService
     /// a 15 por vuelta para no inundar; lo más viejo se marca como avisado sin mandar (anti-backlog).</summary>
     public async Task NotificarVentasPendientesAsync(CancellationToken ct = default)
     {
-        var a = await _db.TelegramAccounts.OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
+        var a = await GetBotAsync("AVISOS", ct);
         if (a is null || string.IsNullOrWhiteSpace(a.BotToken) || !a.IsActive || !a.NotifVentas || a.ChatId is null)
             return;
 
@@ -258,48 +271,63 @@ public class TelegramService
 
     // ─────────────────────────── Poll de mensajes entrantes ───────────────────────────
 
-    /// <summary>Una vuelta del poll: (1) avisa ventas pendientes, (2) hace long-poll de mensajes
-    /// entrantes y responde consultas simples. Devuelve false si no hay bot activo (el caller
-    /// espera más entre vueltas). Usa long-polling (timeout=25) para respuesta casi instantánea.</summary>
+    /// <summary>Una vuelta del poll: recorre TODOS los bots activos (Avisos + Preventas). Para el
+    /// bot de Avisos, además, avisa las ventas pendientes. Devuelve false si no hay ningún bot
+    /// activo (el caller espera más entre vueltas).</summary>
     public async Task<bool> PollOnceAsync(CancellationToken ct)
     {
-        var a = await _db.TelegramAccounts.OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
-        if (a is null || string.IsNullOrWhiteSpace(a.BotToken) || !a.IsActive)
-            return false;
+        var bots = (await _db.TelegramAccounts.Where(x => x.IsActive).OrderBy(x => x.Id).ToListAsync(ct))
+            .Where(b => !string.IsNullOrWhiteSpace(b.BotToken)).ToList();
+        if (bots.Count == 0) return false;
 
-        // 1) Avisos de ventas pendientes (se chequea en cada vuelta ≈ cada ≤25s).
-        try { await NotificarVentasPendientesAsync(ct); }
-        catch (Exception ex) { _logger.LogWarning(ex, "[Telegram] error avisando ventas"); }
-
-        // 2) Long-poll de mensajes entrantes.
-        // Si nunca poleamos (LastUpdateId null), adelantamos el cursor sin responder mensajes viejos.
-        if (a.LastUpdateId is null)
+        foreach (var bot in bots)
         {
-            await AdelantarCursorAsync(a, ct);
-            await _db.SaveChangesAsync(ct);
-            return true;
+            if (ct.IsCancellationRequested) break;
+            try { await PollBotAsync(bot, ct); }
+            catch (OperationCanceledException) { break; }
+            catch (Exception ex) { _logger.LogWarning(ex, "[Telegram] error poleando bot {P}", bot.Proposito); }
+        }
+        return true;
+    }
+
+    /// <summary>Poll de un bot puntual: si es AVISOS avisa ventas; en ambos hace long-poll de mensajes
+    /// y responde según el propósito (consultas para AVISOS, carga de preventa para PREVENTAS).</summary>
+    private async Task PollBotAsync(TelegramAccount bot, CancellationToken ct)
+    {
+        if (bot.Proposito == "AVISOS")
+        {
+            try { await NotificarVentasPendientesAsync(ct); }
+            catch (Exception ex) { _logger.LogWarning(ex, "[Telegram] error avisando ventas"); }
         }
 
-        long offset = a.LastUpdateId.Value + 1;
+        // Si nunca poleamos este bot, adelantamos el cursor sin responder mensajes viejos.
+        if (bot.LastUpdateId is null)
+        {
+            await AdelantarCursorAsync(bot, ct);
+            await _db.SaveChangesAsync(ct);
+            return;
+        }
+
+        long offset = bot.LastUpdateId.Value + 1;
         JsonDocument? doc = null;
         try
         {
-            var http = NewClient(35);
+            var http = NewClient(25);
             var resp = await http.GetAsync(
-                $"{ApiBase}/bot{a.BotToken}/getUpdates?timeout=25&offset={offset}&allowed_updates=%5B%22message%22%5D", ct);
+                $"{ApiBase}/bot{bot.BotToken}/getUpdates?timeout=15&offset={offset}&allowed_updates=%5B%22message%22%5D", ct);
             var body = await resp.Content.ReadAsStringAsync(ct);
-            if (!resp.IsSuccessStatusCode) return true;
+            if (!resp.IsSuccessStatusCode) return;
             doc = JsonDocument.Parse(body);
         }
-        catch (OperationCanceledException) { return true; }
-        catch (Exception ex) { _logger.LogWarning(ex, "[Telegram] error en getUpdates (poll)"); return true; }
+        catch (OperationCanceledException) { return; }
+        catch (Exception ex) { _logger.LogWarning(ex, "[Telegram] error en getUpdates (poll)"); return; }
 
         using (doc)
         {
             if (!doc.RootElement.TryGetProperty("result", out var result) || result.ValueKind != JsonValueKind.Array)
-                return true;
+                return;
 
-            long maxUpdateId = a.LastUpdateId.Value;
+            long maxUpdateId = bot.LastUpdateId.Value;
             foreach (var upd in result.EnumerateArray())
             {
                 if (upd.TryGetProperty("update_id", out var uid) && uid.TryGetInt64(out var uidVal) && uidVal > maxUpdateId)
@@ -312,30 +340,143 @@ public class TelegramService
                 if (string.IsNullOrWhiteSpace(texto)) continue;
 
                 // Auto-vinculación: si todavía no hay dueño, el primero que escribe queda vinculado.
-                if (a.ChatId is null) a.ChatId = chatId;
+                if (bot.ChatId is null) bot.ChatId = chatId;
 
-                // Solo respondemos al chat del dueño (seguridad: el bot no le hace caso a extraños).
-                if (a.ChatId != chatId)
+                // Solo respondemos al chat del dueño (seguridad).
+                if (bot.ChatId != chatId)
                 {
-                    await SendRawAsync(a.BotToken, chatId, "Este bot es privado del sistema Intervent. No estás autorizado.", ct);
+                    await SendRawAsync(bot.BotToken, chatId, "Este bot es privado del sistema Intervent. No estás autorizado.", ct);
                     continue;
                 }
 
-                var respuesta = await ResponderComandoAsync(texto, ct);
-                await SendRawAsync(a.BotToken, chatId, respuesta, ct);
+                if (bot.Proposito == "PREVENTAS")
+                    await ProcesarPreventaAsync(bot, chatId, texto, ct);
+                else
+                {
+                    var respuesta = await ResponderComandoAsync(texto, ct);
+                    await SendRawAsync(bot.BotToken, chatId, respuesta, ct);
+                }
             }
 
-            if (maxUpdateId > a.LastUpdateId.Value)
-            {
-                a.LastUpdateId = maxUpdateId;
-                await _db.SaveChangesAsync(ct);
-            }
-            else if (_db.ChangeTracker.HasChanges())
-            {
-                await _db.SaveChangesAsync(ct);
-            }
+            if (maxUpdateId > bot.LastUpdateId.Value) bot.LastUpdateId = maxUpdateId;
+            if (_db.ChangeTracker.HasChanges()) await _db.SaveChangesAsync(ct);
         }
-        return true;
+    }
+
+    // ─────────────────────────── Bot de PREVENTAS (carga guiada) ───────────────────────────
+
+    private const string PreventaBienvenida =
+        "🧾 Este es tu bot de Preventas. Tocá el botón para cargar una preventa nueva.";
+
+    private static void LimpiarConv(TelegramAccount bot)
+    {
+        bot.ConvEstado = null;
+        bot.ConvClienteId = null;
+        bot.ConvClienteNombre = null;
+    }
+
+    /// <summary>Maneja un mensaje entrante del bot de PREVENTAS (máquina de estados de la conversación).</summary>
+    private async Task ProcesarPreventaAsync(TelegramAccount bot, long chatId, string textoRaw, CancellationToken ct)
+    {
+        var t = QuitarAcentos(textoRaw.Trim().ToLowerInvariant());
+
+        if (t is "cancelar" or "cancela" or "/cancel" or "salir")
+        {
+            LimpiarConv(bot);
+            await SendRawAsync(bot.BotToken, chatId, "Listo, cancelé. 👍", ct, TecladoBotones(new[] { "🧾 Nueva preventa" }));
+            return;
+        }
+
+        if (bot.ConvEstado == "CLIENTE") { await PreventaClienteAsync(bot, chatId, textoRaw, ct); return; }
+        if (bot.ConvEstado == "DETALLE") { await PreventaDetalleAsync(bot, chatId, textoRaw, ct); return; }
+
+        // Sin conversación en curso: ¿arranca una preventa?
+        if (t.Contains("nueva") || t.Contains("preventa") || t.Contains("cargar") || t.Contains("pedido"))
+        {
+            bot.ConvEstado = "CLIENTE";
+            bot.ConvClienteId = null;
+            bot.ConvClienteNombre = null;
+            await SendRawAsync(bot.BotToken, chatId,
+                "🧾 Nueva preventa.\n¿Para qué cliente es? Escribime parte del nombre.\n(o poné \"suelta\" para venta sin cliente, o \"cancelar\")",
+                ct, QuitarTeclado);
+            return;
+        }
+
+        await SendRawAsync(bot.BotToken, chatId, PreventaBienvenida, ct, TecladoBotones(new[] { "🧾 Nueva preventa" }));
+    }
+
+    private async Task PreventaClienteAsync(TelegramAccount bot, long chatId, string textoRaw, CancellationToken ct)
+    {
+        var q = textoRaw.Trim();
+        var qn = QuitarAcentos(q.ToLowerInvariant());
+        if (qn is "suelta" or "venta suelta" or "sin cliente")
+        {
+            bot.ConvClienteId = null;
+            bot.ConvClienteNombre = null;
+            bot.ConvEstado = "DETALLE";
+            await SendRawAsync(bot.BotToken, chatId, "Dale, venta suelta (sin cliente).\nAhora escribime el pedido 👇", ct, QuitarTeclado);
+            return;
+        }
+
+        // 1) Match exacto (por ej. cuando tocó un botón con el nombre completo).
+        var exactos = await _db.CafeClientes.AsNoTracking()
+            .Where(c => c.IsActive && c.Nombre == q)
+            .Select(c => new { c.Id, c.Nombre }).Take(2).ToListAsync(ct);
+        if (exactos.Count == 1) { await PreventaFijarClienteAsync(bot, chatId, exactos[0].Id, exactos[0].Nombre, ct); return; }
+
+        // 2) Búsqueda parcial por nombre o razón social.
+        var like = $"%{q}%";
+        var matches = await _db.CafeClientes.AsNoTracking()
+            .Where(c => c.IsActive && (EF.Functions.Like(c.Nombre, like) ||
+                        (c.RazonSocial != null && EF.Functions.Like(c.RazonSocial, like))))
+            .OrderBy(c => c.Nombre)
+            .Select(c => new { c.Id, c.Nombre }).Take(8).ToListAsync(ct);
+
+        if (matches.Count == 0)
+        {
+            await SendRawAsync(bot.BotToken, chatId,
+                $"No encontré ningún cliente con \"{q}\". Probá con otra parte del nombre, o poné \"suelta\".", ct);
+            return;
+        }
+        if (matches.Count == 1) { await PreventaFijarClienteAsync(bot, chatId, matches[0].Id, matches[0].Nombre, ct); return; }
+
+        var opciones = matches.Select(m => m.Nombre).ToList();
+        opciones.Add("Venta suelta");
+        opciones.Add("Cancelar");
+        await SendRawAsync(bot.BotToken, chatId, "Encontré varios. ¿Cuál es? Tocá el cliente 👇", ct, TecladoBotones(opciones));
+    }
+
+    private async Task PreventaFijarClienteAsync(TelegramAccount bot, long chatId, int clienteId, string clienteNombre, CancellationToken ct)
+    {
+        bot.ConvClienteId = clienteId;
+        bot.ConvClienteNombre = clienteNombre;
+        bot.ConvEstado = "DETALLE";
+        await SendRawAsync(bot.BotToken, chatId, $"Dale, para {clienteNombre}.\nAhora escribime el pedido 👇", ct, QuitarTeclado);
+    }
+
+    private async Task PreventaDetalleAsync(TelegramAccount bot, long chatId, string detalle, CancellationToken ct)
+    {
+        var d = detalle.Trim();
+        if (string.IsNullOrWhiteSpace(d)) { await SendRawAsync(bot.BotToken, chatId, "Escribime el pedido, por favor. 🙏", ct); return; }
+
+        var clienteNombre = bot.ConvClienteNombre;
+        _db.WhatsAppPedidosRecibidos.Add(new WhatsAppPedidoRecibido
+        {
+            Telefono = "telegram",
+            TextoCrudo = d,
+            ClienteId = bot.ConvClienteId,
+            ClienteNombre = clienteNombre,
+            Estado = "NUEVO",
+            Source = "telegram",
+            RecibidoAt = DateTime.UtcNow
+        });
+        LimpiarConv(bot);
+        await _db.SaveChangesAsync(ct);
+
+        var clienteTxt = string.IsNullOrWhiteSpace(clienteNombre) ? "venta suelta" : clienteNombre;
+        await SendRawAsync(bot.BotToken, chatId,
+            $"✅ ¡Preventa guardada! ({clienteTxt})\nYa te aparece en Pedidos para convertirla en venta. 🧾\n\nTocá el botón para cargar otra.",
+            ct, TecladoBotones(new[] { "🧾 Nueva preventa" }));
     }
 
     /// <summary>Trae el último update para fijar el cursor sin responder mensajes viejos.</summary>

@@ -123,6 +123,59 @@
                 </div>
             </div>
         }
+
+        <!-- ─────────── Bot de PREVENTAS (chat aparte) ─────────── -->
+        <div class="card" style="padding:1.2rem 1.4rem;margin-top:1.6rem;border:1px solid #e2e8f0;border-radius:12px;background:#fff;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
+                <h3 style="margin:0;">🧾 Bot de Preventas <span style="font-weight:400;color:#94a3b8;font-size:0.85rem;">(chat aparte)</span></h3>
+                @if (preventaAccount is not null && preventaAccount.HasToken && preventaAccount.ChatId is not null && preventaAccount.LastSyncOk)
+                {
+                    <span style="background:#dcfce7;color:#166534;padding:0.25rem 0.7rem;border-radius:999px;font-weight:600;font-size:0.85rem;">✓ Conectado y vinculado</span>
+                }
+                else if (preventaAccount is not null && preventaAccount.HasToken)
+                {
+                    <span style="background:#fef9c3;color:#854d0e;padding:0.25rem 0.7rem;border-radius:999px;font-weight:600;font-size:0.85rem;">Token guardado — falta vincular</span>
+                }
+                else
+                {
+                    <span style="background:#fee2e2;color:#991b1b;padding:0.25rem 0.7rem;border-radius:999px;font-weight:600;font-size:0.85rem;">Sin conectar</span>
+                }
+            </div>
+            <p style="color:#64748b;font-size:0.9rem;margin:0.6rem 0 1rem;">
+                Un segundo bot, en un <b>chat aparte</b>, donde solo cargás preventas (así no se mezclan con los avisos).
+                Creá el bot con <b>@@BotFather</b> y pegá su token acá.
+            </p>
+            @if (preventaAccount?.BotUsername is not null)
+            {
+                <p style="color:#334155;font-size:0.9rem;margin:0 0 0.6rem;">Bot: <b>@@@preventaAccount.BotUsername</b>@(preventaAccount.ChatId is not null ? " · vinculado ✓" : "")</p>
+            }
+            <div>
+                <label style="font-weight:600;font-size:0.85rem;">Token del bot de Preventas</label>
+                <input @bind="preventaToken" type="password"
+                       placeholder="@(preventaAccount?.HasToken == true ? "•••• (ya guardado)" : "123456789:AAE...")"
+                       class="form-control" style="width:100%;" />
+            </div>
+            <div style="display:flex;align-items:center;gap:0.8rem;margin-top:1rem;flex-wrap:wrap;">
+                <button class="btn btn-primary" @onclick="GuardarPreventa" disabled="@savingPv">@(savingPv ? "Guardando…" : "Guardar token")</button>
+                <button class="btn btn-secondary" @onclick="ProbarPreventa" disabled="@(probandoPv || preventaAccount?.HasToken != true)">@(probandoPv ? "Probando…" : "Probar y mandar mensaje")</button>
+                @if (preventaAccount is not null && preventaAccount.HasToken && preventaAccount.ChatId is null)
+                {
+                    <button class="btn btn-secondary" @onclick="VincularPreventa" disabled="@vinculandoPv">@(vinculandoPv ? "Buscando…" : "🔗 Vincular")</button>
+                }
+                @if (preventaAccount is not null && !preventaAccount.LastSyncOk && !string.IsNullOrEmpty(preventaAccount.LastError))
+                {
+                    <span style="color:#b91c1c;font-size:0.88rem;">⚠ @preventaAccount.LastError</span>
+                }
+            </div>
+            @if (preventaAccount is not null && preventaAccount.HasToken && preventaAccount.ChatId is null)
+            {
+                <p style="color:#64748b;font-size:0.86rem;margin:0.7rem 0 0;">Para vincular: abrí el bot de Preventas en Telegram, escribile <b>hola</b>, y apretá "Probar" (o "Vincular").</p>
+            }
+            @if (preventaAccount is not null && preventaAccount.HasToken && preventaAccount.ChatId is not null && preventaAccount.LastSyncOk)
+            {
+                <p style="color:#16a34a;font-size:0.88rem;margin:0.7rem 0 0;">✅ Listo. Abrí el chat del bot de Preventas y escribile <b>nueva</b> para cargar una preventa.</p>
+            }
+        </div>
     }
 </div>
 
@@ -133,6 +186,11 @@
     private string botToken = "";
     private bool notifVentas = true;
     private bool notifFichadas = true;
+
+    // Bot de Preventas (chat aparte)
+    private TelegramAccountDto? preventaAccount;
+    private string preventaToken = "";
+    private bool savingPv = false, probandoPv = false, vinculandoPv = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -150,8 +208,74 @@
                 notifVentas = account.NotifVentas;
                 notifFichadas = account.NotifFichadas;
             }
+            preventaAccount = await Api.GetTelegramAccountAsync("PREVENTAS");
         }
         catch (Exception ex) { ToastService.Error("No se pudo leer la configuración: " + ex.Message); }
+    }
+
+    private async Task GuardarPreventa()
+    {
+        savingPv = true;
+        try
+        {
+            var req = new SaveTelegramAccountRequest
+            {
+                BotToken = string.IsNullOrWhiteSpace(preventaToken) ? null : preventaToken.Trim(),
+                IsActive = true
+            };
+            var res = await Api.SaveTelegramAccountAsync(req, "PREVENTAS");
+            if (res is not null)
+            {
+                preventaAccount = res;
+                preventaToken = "";
+                ToastService.Success("Token del bot de Preventas guardado. Ahora probá la conexión.");
+            }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { savingPv = false; }
+    }
+
+    private async Task ProbarPreventa()
+    {
+        probandoPv = true;
+        try
+        {
+            var res = await Api.ProbarTelegramAsync("PREVENTAS");
+            if (res is not null && res.Ok)
+            {
+                if (res.TestEnviado)
+                    ToastService.Success("¡Conexión OK! Te mandé un mensaje al bot de Preventas.");
+                else
+                    ToastService.Success("¡Token OK! Escribile 'hola' al bot de Preventas y apretá Vincular.");
+            }
+            else
+            {
+                ToastService.Error(res?.Error ?? "No se pudo conectar con el bot de Preventas.");
+            }
+            preventaAccount = await Api.GetTelegramAccountAsync("PREVENTAS");
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { probandoPv = false; }
+    }
+
+    private async Task VincularPreventa()
+    {
+        vinculandoPv = true;
+        try
+        {
+            var res = await Api.VincularTelegramAsync("PREVENTAS");
+            if (res is not null && res.Ok)
+            {
+                ToastService.Success("¡Bot de Preventas vinculado!");
+                preventaAccount = await Api.GetTelegramAccountAsync("PREVENTAS");
+            }
+            else
+            {
+                ToastService.Error(res?.Error ?? "No encontré tu mensaje. Escribile 'hola' al bot de Preventas y reintentá.");
+            }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { vinculandoPv = false; }
     }
 
     private async Task Guardar()
