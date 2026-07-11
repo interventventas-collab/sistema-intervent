@@ -4478,6 +4478,10 @@ public class ApiClient
     public async Task<Web.Models.TelegramVincularResultDto?> VincularTelegramAsync(string proposito = "AVISOS")
         => await PostAsync<Web.Models.TelegramVincularResultDto>($"/api/telegram/vincular?proposito={proposito}", new { });
 
+    /// <summary>Desvincula el chat y devuelve la config con el código nuevo.</summary>
+    public async Task<Web.Models.TelegramAccountDto?> DesvincularTelegramAsync(string proposito = "AVISOS")
+        => await PostAsync<Web.Models.TelegramAccountDto>($"/api/telegram/desvincular?proposito={proposito}", new { });
+
     /// <summary>Manda un mensaje de prueba al chat vinculado.</summary>
     public async Task<Web.Models.TelegramTestMsgResultDto?> TestMensajeTelegramAsync()
         => await PostAsync<Web.Models.TelegramTestMsgResultDto>("/api/telegram/test-mensaje", new { });

@@ -329,6 +329,15 @@ IF COL_LENGTH('TelegramAccounts','ConvClienteNombre') IS NULL
     ALTER TABLE TelegramAccounts ADD ConvClienteNombre NVARCHAR(200) NULL;
 GO
 
+-- Migración 2026-07-11: código de seguridad para vincular el bot la primera vez.
+IF COL_LENGTH('TelegramAccounts','VinculacionCode') IS NULL
+BEGIN
+    ALTER TABLE TelegramAccounts ADD VinculacionCode NVARCHAR(20) NULL;
+    -- Backfill: darle un código de 6 dígitos a las cuentas que ya existen.
+    EXEC('UPDATE TelegramAccounts SET VinculacionCode = RIGHT(''00000'' + CAST(ABS(CHECKSUM(NEWID())) % 1000000 AS VARCHAR(6)), 6) WHERE VinculacionCode IS NULL');
+END
+GO
+
 -- Migración 2026-07-11: carrito de la preventa (elegir productos desde el bot).
 IF COL_LENGTH('TelegramAccounts','ConvItemsJson') IS NULL
     ALTER TABLE TelegramAccounts ADD ConvItemsJson NVARCHAR(MAX) NULL;

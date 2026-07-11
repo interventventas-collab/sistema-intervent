@@ -7,6 +7,7 @@ public class TelegramAccountDto
     public bool HasToken { get; set; }
     public string? BotUsername { get; set; }
     public long? ChatId { get; set; }
+    public string? VinculacionCode { get; set; }
     public bool IsActive { get; set; } = true;
     public bool NotifVentas { get; set; } = true;
     public bool NotifAlertas { get; set; } = true;
