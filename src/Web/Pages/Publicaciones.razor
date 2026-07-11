@@ -6483,14 +6483,16 @@
         var pct = CalcMargenPct(item);
         if (pct == null) return;
         var (bg, label, fg) = MargenChipStyle(pct.Value);
-        var tooltip = $"Margen aprox sobre costo: {label}\n" +
+        // 2026-07-11: mostrar también el IMPORTE de ganancia real ($), no solo el %. Consistente con el % mostrado.
+        var ganImporte = pct.Value / 100m * item.ProductCost!.Value;
+        var tooltip = $"Ganancia real: $ {ganImporte.ToString("N0", argCulture)} ({label} sobre costo)\n" +
                       $"Costo: $ {item.ProductCost!.Value.ToString("N0", argCulture)}\n" +
                       $"Precio: $ {item.Price.ToString("N0", argCulture)}\n" +
                       $"(neto aprox MeLi: $ {(item.Price * 0.70m).ToString("N0", argCulture)} — abrir detalle para exacto)";
         __builder.OpenElement(0, "div");
         __builder.AddAttribute(1, "style", $"display: inline-block; background:{bg}; color:{fg}; padding:0.1rem 0.45rem; border-radius:10px; font-size:0.7rem; font-weight:700; margin-top:0.15rem;");
         __builder.AddAttribute(2, "title", tooltip);
-        __builder.AddContent(3, $"📊 {label}");
+        __builder.AddContent(3, $"📊 {label} · $ {ganImporte.ToString("N0", argCulture)}");
         __builder.CloseElement();
 
         // 2026-07-02: chip 🎯 objetivo — si tiene objetivo cargado, compara vs real (±2 pt).
