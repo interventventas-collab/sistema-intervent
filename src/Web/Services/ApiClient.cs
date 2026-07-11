@@ -3629,7 +3629,8 @@ public class ApiClient
     // 2026-07-01: masivo por ganancia — mismo motor que la ficha individual "¿Qué querés ganar?".
     public record BulkPrecioPorGananciaRequest(
         List<int> ItemIds, decimal GananciaPct, string? Redondeo,
-        bool IncluirPrecioIndependiente, bool PublicarEnMeli);
+        bool IncluirPrecioIndependiente, bool PublicarEnMeli,
+        bool SoloPiso = false, bool DryRun = false);  // 2026-07-11: piso 50% + vista previa
     public record BulkPrecioPorGananciaDetail(
         int ItemId, string MeliItemId, string Titulo,
         decimal? Costo, decimal? PrecioBase, decimal? PrecioActual, decimal? PrecioNuevo,

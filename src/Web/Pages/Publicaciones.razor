@@ -537,6 +537,12 @@
                                                             title="Análisis de margen: ver el neto que te queda por cada MLA y balancear">
                                                         📊 Margen
                                                     </button>
+                                                    @* 2026-07-11: poner piso de 50% de margen (solo sube las que están abajo), con vista previa *@
+                                                    <button @onclick:stopPropagation="true" @onclick="@(() => AbrirPiso50(grp))"
+                                                            style="margin-left:0.3rem; padding:0.05rem 0.4rem; background:#16a34a; color:white; border:none; border-radius:3px; font-size:0.7rem; font-weight:700; cursor:pointer;"
+                                                            title="Poner piso de 50% de margen: sube solo las que están abajo de 50% (las que ya están arriba no se tocan). Muestra vista previa antes de pushear.">
+                                                        🛡️ Piso 50%
+                                                    </button>
                                                 }
                                                 @StockPushChip(item)
                                                 @PrecioSyncChip(item)
@@ -2878,6 +2884,66 @@
                 {
                     <button class="btn btn-primary" @onclick="CloseBulkCreateModal">Cerrar</button>
                 }
+            </div>
+        </div>
+    </div>
+}
+
+@if (showPiso50Modal)
+{
+    <div class="modal-overlay" @onclick="() => { if(!piso50Aplicando) showPiso50Modal = false; }">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 760px;">
+            <div class="modal-header" style="background:#16a34a; color:white;">
+                <h3 style="margin:0;">🛡️ Poner piso de 50% — @piso50FamilyName</h3>
+                <button class="btn-close" @onclick="() => { if(!piso50Aplicando) showPiso50Modal = false; }" style="color:white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (piso50Loading)
+                {
+                    <p class="text-muted">Calculando la vista previa (usa la cuenta real: comisión + cuotas + envío + IVA)...</p>
+                }
+                else
+                {
+                    <div style="background:#eff6ff; border:1px solid #2563eb; border-radius:8px; padding:0.7rem; margin-bottom:0.7rem; font-size:0.85rem;">
+                        <b>@Piso50Cambian.Count</b> van a SUBIR a 50% · <b>@Piso50YaOk.Count</b> ya están en 50% o más (no se tocan)@(Piso50Problemas.Count > 0 ? $" · {Piso50Problemas.Count} sin costo/problema" : "")
+                        <div style="font-size:0.78rem; color:#4b5563; margin-top:0.3rem;">Todavía NO se aplicó nada. Mirá y confirmá.</div>
+                    </div>
+                    @if (Piso50Cambian.Count > 0)
+                    {
+                        <div style="max-height:300px; overflow:auto; border:1px solid #e5e7eb; border-radius:8px;">
+                            <table class="data-table" style="font-size:0.8rem;">
+                                <thead><tr><th>Publicación</th><th style="text-align:right;">Precio hoy</th><th></th><th style="text-align:right;">Precio nuevo</th><th style="text-align:right;">Margen</th></tr></thead>
+                                <tbody>
+                                    @foreach (var d in Piso50Cambian)
+                                    {
+                                        <tr>
+                                            <td style="max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@d.Titulo</td>
+                                            <td style="text-align:right; color:#9ca3af; text-decoration:line-through;">$@((d.PrecioActual ?? 0).ToString("N0"))</td>
+                                            <td style="text-align:center;">→</td>
+                                            <td style="text-align:right; font-weight:700; color:#15803d;">$@((d.PrecioNuevo ?? 0).ToString("N0"))</td>
+                                            <td style="text-align:right; color:#15803d;">@((d.MargenPct ?? 0).ToString("0.#"))%</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted">Ninguna está por debajo del 50% — no hay nada que subir. 🎉</p>
+                    }
+                    @if (Piso50Problemas.Count > 0)
+                    {
+                        <p style="font-size:0.78rem; color:#b45309; margin-top:0.5rem;">⚠ @Piso50Problemas.Count sin costo cargado o con problema — esas no se pueden calcular (revisá el costo del producto).</p>
+                    }
+                    <p style="font-size:0.78rem; color:#991b1b; margin-top:0.6rem;">Al confirmar, se cambia el precio REAL en MercadoLibre de las que suben.</p>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showPiso50Modal = false" disabled="@piso50Aplicando">Cancelar</button>
+                <button class="btn" style="background:#16a34a; color:white; border:none;" @onclick="AplicarPiso50" disabled="@(piso50Aplicando || piso50Loading || Piso50Cambian.Count == 0)">
+                    @(piso50Aplicando ? "Aplicando y pusheando..." : $"✓ Confirmar y pushear ({Piso50Cambian.Count})")
+                </button>
             </div>
         </div>
     </div>
@@ -5577,6 +5643,58 @@
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { _savingSincro.Remove(item.Id); StateHasChanged(); }
+    }
+
+    // ── 2026-07-11: "Poner piso 50%" (sube solo las que están abajo de 50%) con vista previa ──
+    private bool showPiso50Modal, piso50Loading, piso50Aplicando;
+    private string? piso50FamilyName;
+    private List<int> piso50ItemIds = new();
+    private List<ApiClient.BulkPrecioPorGananciaDetail> piso50Detalles = new();
+    private const decimal Piso50Pct = 50m;
+
+    private List<ApiClient.BulkPrecioPorGananciaDetail> Piso50Cambian =>
+        piso50Detalles.Where(d => d.Mensaje == "Vista previa" && d.PrecioNuevo.HasValue).ToList();
+    private List<ApiClient.BulkPrecioPorGananciaDetail> Piso50YaOk =>
+        piso50Detalles.Where(d => d.Mensaje != null && d.Mensaje.Contains("piso")).ToList();
+    private List<ApiClient.BulkPrecioPorGananciaDetail> Piso50Problemas =>
+        piso50Detalles.Where(d => d.Mensaje != null && d.Mensaje != "Vista previa" && !d.Mensaje.Contains("piso")).ToList();
+
+    private async Task AbrirPiso50(GroupedRow grp)
+    {
+        piso50ItemIds = grp.Variants.Select(v => v.Id).Distinct().ToList();
+        piso50FamilyName = grp.Variants.FirstOrDefault()?.FamilyName ?? grp.Variants.FirstOrDefault()?.Title ?? "familia";
+        piso50Detalles = new();
+        showPiso50Modal = true; piso50Loading = true;
+        StateHasChanged();
+        try
+        {
+            var (resp, err) = await Api.BulkPrecioPorGananciaAsync(new ApiClient.BulkPrecioPorGananciaRequest(
+                piso50ItemIds, Piso50Pct, "99", false, false, SoloPiso: true, DryRun: true));
+            if (err != null) ToastService.Error(err);
+            else piso50Detalles = resp?.Detalles ?? new();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { piso50Loading = false; StateHasChanged(); }
+    }
+
+    private async Task AplicarPiso50()
+    {
+        if (piso50Aplicando) return;
+        piso50Aplicando = true; StateHasChanged();
+        try
+        {
+            var (resp, err) = await Api.BulkPrecioPorGananciaAsync(new ApiClient.BulkPrecioPorGananciaRequest(
+                piso50ItemIds, Piso50Pct, "99", false, PublicarEnMeli: true, SoloPiso: true, DryRun: false));
+            if (err != null) { ToastService.Error(err); }
+            else
+            {
+                ToastService.Success($"Piso 50% aplicado: {resp?.Guardados ?? 0} actualizadas, {resp?.Pusheados ?? 0} pusheadas a MeLi.");
+                showPiso50Modal = false;
+                await LoadItems();
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { piso50Aplicando = false; StateHasChanged(); }
     }
 
     // ── 2026-06-12: sección Stock de la ficha ──
