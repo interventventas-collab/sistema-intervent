@@ -115,43 +115,91 @@
 {
     <div class="loading">Cargando...</div>
 }
-else if (alertas is null || alertas.Count == 0)
-{
-    @if (!mostrandoEditor)
-    {
-        <div class="empty-state">
-            <p>Todavía no tenés ninguna alerta.</p>
-            <p class="ma-empty-sub">Creá la primera con el botón <strong>＋ Nueva alerta</strong>. Por ejemplo: "avisame si Shell Flota baja de $50.000".</p>
-        </div>
-    }
-}
 else
 {
-    <div class="ma-list">
-        @foreach (var a in alertas)
+    var sistema = alertas?.Where(a => a.EsSistema).ToList() ?? new();
+    var propias = alertas?.Where(a => !a.EsSistema).ToList() ?? new();
+
+    @* ── Avisos automáticos del sistema (Ventas MeLi / Fichadas) ── *@
+    @if (sistema.Count > 0)
+    {
+        <div class="ma-sec-title">🤖 Avisos automáticos del sistema</div>
+        <div class="ma-sec-sub">Estos los detecta el sistema solo. Elegí por dónde te avisa cada uno.</div>
+        <div class="ma-list">
+            @foreach (var a in sistema)
+            {
+                <div class="ma-card ma-card-sis @(a.Activa ? "" : "ma-card-off")">
+                    <div class="ma-card-emoji">@Emoji(a.Tipo)</div>
+                    <div class="ma-card-mid">
+                        <div class="ma-card-msg">@TituloSistema(a.Tipo) <span class="ma-sis-tag">del sistema</span></div>
+                        <div class="ma-card-desc">@DescSistema(a.Tipo)</div>
+                        <div class="ma-sis-canales">
+                            <span class="ma-sis-canales-lbl">Avisarme por:</span>
+                            <label class="ma-canal-chk @(a.CanalCampanita ? "on" : "") @(a.Activa ? "" : "dis")" title="Aparece en la campanita 🔔 de arriba">
+                                <input type="checkbox" checked="@a.CanalCampanita" disabled="@(!a.Activa)"
+                                       @onchange="@(e => SetSistemaCampanita(a, Convert.ToBoolean(e.Value)))" /> 🔔 Campanita
+                            </label>
+                            <label class="ma-canal-chk @(a.CanalTelegram ? "on" : "") @(a.Activa ? "" : "dis")" title="Te llega al Telegram del dueño">
+                                <input type="checkbox" checked="@a.CanalTelegram" disabled="@(!a.Activa)"
+                                       @onchange="@(e => SetSistemaTelegram(a, Convert.ToBoolean(e.Value)))" /> 📲 Telegram
+                            </label>
+                        </div>
+                        @if (a.Activa && a.EstaDisparada && !string.IsNullOrWhiteSpace(a.UltimoDetalle))
+                        {
+                            <div class="ma-card-fired">🔴 @a.UltimoDetalle</div>
+                        }
+                    </div>
+                    <div class="ma-card-actions">
+                        <label class="ma-switch" title="@(a.Activa ? "Aviso encendido" : "Aviso apagado")">
+                            <input type="checkbox" checked="@a.Activa" @onchange="@(() => ToggleSistema(a))" />
+                            <span class="ma-slider"></span>
+                        </label>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @* ── Alertas armadas por el usuario ── *@
+    <div class="ma-sec-title" style="margin-top:1.4rem;">🔔 Tus alertas</div>
+    @if (propias.Count == 0)
+    {
+        @if (!mostrandoEditor)
         {
-            <div class="ma-card @(a.Activa ? "" : "ma-card-off")">
-                <div class="ma-card-emoji">@Emoji(a.Tipo)</div>
-                <div class="ma-card-mid">
-                    <div class="ma-card-msg">@a.Mensaje</div>
-                    <div class="ma-card-desc">@Describir(a)</div>
-                    <div class="ma-card-roles">👁 La ven: @RolesTexto(a.Roles)</div>
-                    @if (a.Activa && a.EstaDisparada)
-                    {
-                        <div class="ma-card-fired">🔴 Disparada ahora@(string.IsNullOrWhiteSpace(a.UltimoDetalle) ? "" : $" — {a.UltimoDetalle}")</div>
-                    }
-                </div>
-                <div class="ma-card-actions">
-                    <label class="ma-switch" title="@(a.Activa ? "Alerta encendida" : "Alerta apagada")">
-                        <input type="checkbox" checked="@a.Activa" @onchange="@(() => Toggle(a))" />
-                        <span class="ma-slider"></span>
-                    </label>
-                    <button class="ma-icon-btn" title="Editar" @onclick="@(() => Editar(a))">✏️</button>
-                    <button class="ma-icon-btn" title="Borrar" @onclick="@(() => Borrar(a))">🗑️</button>
-                </div>
+            <div class="empty-state">
+                <p>Todavía no armaste ninguna alerta propia.</p>
+                <p class="ma-empty-sub">Creá la primera con el botón <strong>＋ Nueva alerta</strong>. Por ejemplo: "avisame si Shell Flota baja de $50.000".</p>
             </div>
         }
-    </div>
+    }
+    else
+    {
+        <div class="ma-list">
+            @foreach (var a in propias)
+            {
+                <div class="ma-card @(a.Activa ? "" : "ma-card-off")">
+                    <div class="ma-card-emoji">@Emoji(a.Tipo)</div>
+                    <div class="ma-card-mid">
+                        <div class="ma-card-msg">@a.Mensaje</div>
+                        <div class="ma-card-desc">@Describir(a)</div>
+                        <div class="ma-card-roles">👁 La ven: @RolesTexto(a.Roles)</div>
+                        @if (a.Activa && a.EstaDisparada)
+                        {
+                            <div class="ma-card-fired">🔴 Disparada ahora@(string.IsNullOrWhiteSpace(a.UltimoDetalle) ? "" : $" — {a.UltimoDetalle}")</div>
+                        }
+                    </div>
+                    <div class="ma-card-actions">
+                        <label class="ma-switch" title="@(a.Activa ? "Alerta encendida" : "Alerta apagada")">
+                            <input type="checkbox" checked="@a.Activa" @onchange="@(() => Toggle(a))" />
+                            <span class="ma-slider"></span>
+                        </label>
+                        <button class="ma-icon-btn" title="Editar" @onclick="@(() => Editar(a))">✏️</button>
+                        <button class="ma-icon-btn" title="Borrar" @onclick="@(() => Borrar(a))">🗑️</button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
 }
 
 <div class="ma-correo-box">
@@ -241,6 +289,18 @@ else
     }
     .ma-icon-btn:hover { background: #f3f4f6; }
     .ma-empty-sub { color: #6b7280; font-size: 0.9rem; }
+
+    /* Sección alertas del sistema */
+    .ma-sec-title { font-size: 0.95rem; font-weight: 700; color: #374151; margin-bottom: 4px; }
+    .ma-sec-sub { font-size: 0.8rem; color: #9ca3af; margin-bottom: 10px; }
+    .ma-card-sis { border-color: #dbeafe; background: #f8fbff; }
+    .ma-sis-tag { font-size: 0.68rem; font-weight: 600; color: #2563eb; background: #dbeafe; padding: 1px 7px; border-radius: 999px; margin-left: 6px; vertical-align: middle; }
+    .ma-sis-canales { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+    .ma-sis-canales-lbl { font-size: 0.8rem; color: #6b7280; }
+    .ma-canal-chk { display: inline-flex; align-items: center; gap: 5px; font-size: 0.82rem; padding: 4px 10px; border-radius: 999px; background: #f3f4f6; color: #6b7280; cursor: pointer; border: 1px solid transparent; }
+    .ma-canal-chk.on { background: #E6F1FB; color: #185FA5; border-color: #bcd8f2; font-weight: 600; }
+    .ma-canal-chk.dis { opacity: 0.5; cursor: not-allowed; }
+    .ma-canal-chk input { width: 14px; height: 14px; }
 
     /* Interruptor prender/apagar */
     .ma-switch { position: relative; display: inline-block; width: 42px; height: 24px; cursor: pointer; }
@@ -434,6 +494,35 @@ else
         else Toast.Error("No se pudo cambiar");
     }
 
+    // ── Alertas del sistema (Ventas MeLi / Fichadas) ──
+    private Task ToggleSistema(ApiClient.AlertaDto a)
+        => GuardarSistema(a, !a.Activa, a.CanalCampanita, a.CanalTelegram);
+    private Task SetSistemaCampanita(ApiClient.AlertaDto a, bool v)
+        => GuardarSistema(a, a.Activa, v, a.CanalTelegram);
+    private Task SetSistemaTelegram(ApiClient.AlertaDto a, bool v)
+        => GuardarSistema(a, a.Activa, a.CanalCampanita, v);
+
+    private async Task GuardarSistema(ApiClient.AlertaDto a, bool activa, bool camp, bool tg)
+    {
+        var ok = await Api.UpdateSistemaAlertaAsync(a.Tipo, new ApiClient.SistemaAlertaRequest(activa, camp, tg));
+        if (ok) await Cargar();
+        else Toast.Error("No se pudo guardar el cambio");
+    }
+
+    private static string TituloSistema(string tipo) => tipo switch
+    {
+        "VENTA_MELI" => "Ventas nuevas de MercadoLibre",
+        "FICHADA" => "Fichadas de empleados",
+        _ => tipo
+    };
+
+    private static string DescSistema(string tipo) => tipo switch
+    {
+        "VENTA_MELI" => "Te aviso cada venta nueva que entra por MercadoLibre.",
+        "FICHADA" => "Te aviso cada entrada/salida de empleados (y la plata a rendir al salir).",
+        _ => ""
+    };
+
     private async Task Borrar(ApiClient.AlertaDto a)
     {
         var ok = await JS.InvokeAsync<bool>("confirm", $"¿Borrar la alerta \"{a.Mensaje}\"?");
@@ -472,6 +561,8 @@ else
         "CHEQUE_VENCE" => "📄",
         "FECHA_MES" => "📅",
         "EMAIL_REMITENTE" => "📧",
+        "VENTA_MELI" => "🛒",
+        "FICHADA" => "🕐",
         _ => "🔔"
     };
 

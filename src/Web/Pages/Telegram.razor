@@ -116,25 +116,16 @@
                 </div>
             </div>
 
-            <!-- ─────────── Qué avisos recibir ─────────── -->
-            <div class="card" style="padding:1.2rem 1.4rem;border:1px solid #e2e8f0;border-radius:12px;background:#fff;">
-                <h3 style="margin:0 0 0.8rem;">🔔 Qué avisos automáticos querés recibir</h3>
-                <label style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.7rem;cursor:pointer;">
-                    <input type="checkbox" @bind="notifVentas" style="width:18px;height:18px;" />
-                    <span>🛒 <b>Ventas nuevas</b> de MercadoLibre</span>
-                </label>
-                <label style="display:flex;align-items:center;gap:0.6rem;margin-bottom:1rem;cursor:pointer;">
-                    <input type="checkbox" @bind="notifFichadas" style="width:18px;height:18px;" />
-                    <span>🕐 <b>Fichadas</b> de empleados (entrada/salida + la plata a rendir al salir)</span>
-                </label>
-                <button class="btn btn-primary btn-sm" @onclick="GuardarTildes" disabled="@saving">
-                    @(saving ? "Guardando…" : "Guardar preferencias")
-                </button>
-                <div style="margin-top:1rem;padding-top:0.9rem;border-top:1px solid #f1f5f9;color:#64748b;font-size:0.88rem;">
-                    🔔 ¿Y las alertas (Shell, banco, cheques, fechas, correos)? Esas las elegís
-                    <b>una por una</b> en <a href="/mis-alertas">Mis Alertas</a>: cada alerta tiene un tilde
-                    "Avisar también por Telegram".
-                </div>
+            <!-- ─────────── Qué avisos recibir → ahora todo en Mis Alertas ─────────── -->
+            <div class="card" style="padding:1.2rem 1.4rem;border:1px solid #e2e8f0;border-radius:12px;background:#f8fbff;">
+                <h3 style="margin:0 0 0.5rem;">🔔 ¿Qué avisos querés recibir?</h3>
+                <p style="color:#334155;font-size:0.92rem;margin:0 0 0.8rem;">
+                    Todos los avisos se manejan desde un solo lugar: <b><a href="/mis-alertas">Mis Alertas</a></b>.
+                    Ahí, para cada aviso —las <b>Ventas de MercadoLibre</b>, las <b>Fichadas de empleados</b> y
+                    tus propias alertas (Shell, banco, cheques, fechas, correos)— elegís por dónde te llega:
+                    por la <b>campanita 🔔</b>, por <b>Telegram 📲</b>, o por ambos.
+                </p>
+                <a class="btn btn-primary btn-sm" href="/mis-alertas">Ir a Mis Alertas →</a>
             </div>
         }
 
@@ -211,8 +202,6 @@
     private bool desvinc = false, desvincPv = false;
 
     private string botToken = "";
-    private bool notifVentas = true;
-    private bool notifFichadas = true;
 
     // Bot de Preventas (chat aparte)
     private TelegramAccountDto? preventaAccount;
@@ -230,11 +219,6 @@
         try
         {
             account = await Api.GetTelegramAccountAsync();
-            if (account is not null)
-            {
-                notifVentas = account.NotifVentas;
-                notifFichadas = account.NotifFichadas;
-            }
             preventaAccount = await Api.GetTelegramAccountAsync("PREVENTAS");
         }
         catch (Exception ex) { ToastService.Error("No se pudo leer la configuración: " + ex.Message); }
@@ -313,9 +297,7 @@
             var req = new SaveTelegramAccountRequest
             {
                 BotToken = string.IsNullOrWhiteSpace(botToken) ? null : botToken.Trim(),
-                IsActive = true,
-                NotifVentas = notifVentas,
-                NotifFichadas = notifFichadas
+                IsActive = true
             };
             var res = await Api.SaveTelegramAccountAsync(req);
             if (res is not null)
@@ -324,25 +306,6 @@
                 botToken = "";
                 ToastService.Success("Token guardado. Ahora probá la conexión.");
             }
-        }
-        catch (Exception ex) { ToastService.Error(ex.Message); }
-        finally { saving = false; }
-    }
-
-    private async Task GuardarTildes()
-    {
-        saving = true;
-        try
-        {
-            var req = new SaveTelegramAccountRequest
-            {
-                BotToken = null, // no cambiar el token
-                IsActive = true,
-                NotifVentas = notifVentas,
-                NotifFichadas = notifFichadas
-            };
-            var res = await Api.SaveTelegramAccountAsync(req);
-            if (res is not null) { account = res; ToastService.Success("Preferencias guardadas."); }
         }
         catch (Exception ex) { ToastService.Error(ex.Message); }
         finally { saving = false; }

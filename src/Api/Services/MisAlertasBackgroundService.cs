@@ -59,7 +59,11 @@ public class MisAlertasBackgroundService : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        var reglas = await db.MisAlertas.Where(a => a.Activa).ToListAsync();
+        // Las alertas del sistema (VENTA_MELI / FICHADA) NO se evalúan acá: se disparan desde el evento
+        // real (venta MeLi / fichada). Si las tocáramos, resetearíamos su campanita en cada vuelta.
+        var reglas = await db.MisAlertas
+            .Where(a => a.Activa && a.Tipo != "VENTA_MELI" && a.Tipo != "FICHADA")
+            .ToListAsync();
         if (reglas.Count == 0) return;
 
         var argNow = DateTime.UtcNow.AddHours(ARG_OFFSET_HOURS);

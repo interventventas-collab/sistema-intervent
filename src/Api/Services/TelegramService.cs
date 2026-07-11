@@ -223,9 +223,18 @@ public class TelegramService
     /// a 15 por vuelta para no inundar; lo más viejo se marca como avisado sin mandar (anti-backlog).</summary>
     public async Task NotificarVentasPendientesAsync(CancellationToken ct = default)
     {
+        // 2026-07-11: el aviso de ventas ahora se configura desde "Mis Alertas" (alerta del sistema
+        // VENTA_MELI), con elección de canal: campanita 🔔 y/o Telegram 📲.
+        var alerta = await _db.MisAlertas.FirstOrDefaultAsync(x => x.Tipo == "VENTA_MELI", ct);
+        if (alerta is null || !alerta.Activa) return;
+        bool quiereTelegram = alerta.CanalTelegram;
+        bool quiereCampanita = alerta.CanalCampanita;
+        if (!quiereTelegram && !quiereCampanita) return;
+
         var a = await GetBotAsync("AVISOS", ct);
-        if (a is null || string.IsNullOrWhiteSpace(a.BotToken) || !a.IsActive || !a.NotifVentas || a.ChatId is null)
-            return;
+        bool telegramListo = a is not null && !string.IsNullOrWhiteSpace(a.BotToken) && a.IsActive && a.ChatId is not null;
+        // Si SOLO quiere Telegram y todavía no está vinculado, no consumimos las ventas: esperamos a que se vincule.
+        if (quiereTelegram && !quiereCampanita && !telegramListo) return;
 
         var corteViejo = DateTime.UtcNow.AddHours(-12);
 
@@ -247,17 +256,44 @@ public class TelegramService
         if (pendientes.Count == 0) return;
 
         var porOrden = pendientes.GroupBy(o => o.MeliOrderId).ToList();
-        int enviados = 0;
+        int procesados = 0;
+        string? ultimoDetalle = null;
         foreach (var grupo in porOrden)
         {
-            if (enviados >= 15) break; // el resto queda para la próxima vuelta
-            var texto = ArmarMensajeVenta(grupo.ToList());
-            var (ok, _) = await SendRawAsync(a.BotToken, a.ChatId.Value, texto, ct);
-            if (!ok) break; // si falla el envío, no marcamos: reintenta la próxima
-            foreach (var o in grupo) o.NotifiedTelegram = true;
-            enviados++;
+            if (procesados >= 15) break; // el resto queda para la próxima vuelta
+            var lista = grupo.ToList();
+            if (quiereTelegram && telegramListo)
+            {
+                var texto = ArmarMensajeVenta(lista);
+                var (ok, _) = await SendRawAsync(a!.BotToken, a.ChatId!.Value, texto, ct);
+                if (!ok) break; // si falla el envío, no marcamos: reintenta la próxima
+            }
+            foreach (var o in lista) o.NotifiedTelegram = true;
+            ultimoDetalle = ResumenCortoVenta(lista);
+            procesados++;
         }
-        if (enviados > 0) await _db.SaveChangesAsync(ct);
+
+        if (procesados > 0)
+        {
+            // Campanita: mostramos la última venta (queda encendida hasta que la mirás en la campanita).
+            if (quiereCampanita && ultimoDetalle is not null)
+            {
+                alerta.EstaDisparada = true;
+                alerta.Vista = false;
+                alerta.DisparadaAt = DateTime.UtcNow;
+                alerta.UltimoDetalle = ultimoDetalle;
+                alerta.UpdatedAt = DateTime.UtcNow;
+            }
+            await _db.SaveChangesAsync(ct);
+        }
+    }
+
+    /// <summary>Resumen corto de una venta para la campanita (una línea).</summary>
+    private static string ResumenCortoVenta(List<MeliOrder> items)
+    {
+        var total = items.Select(i => i.TotalAmount).FirstOrDefault();
+        var comprador = string.IsNullOrWhiteSpace(items[0].BuyerNickname) ? "—" : items[0].BuyerNickname;
+        return $"Última venta: {Money(total)} · {comprador}";
     }
 
     private static string ArmarMensajeVenta(List<MeliOrder> items)

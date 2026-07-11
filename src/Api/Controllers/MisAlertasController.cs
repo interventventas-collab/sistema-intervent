@@ -26,6 +26,11 @@ public class MisAlertasController : ControllerBase
     private static readonly string[] TiposValidos = { "SHELL_BAJO", "BANCO_BAJO", "CHEQUE_VENCE", "FECHA_MES", "EMAIL_REMITENTE" };
     private static readonly string[] RolesValidos = { "admin", "oficina", "deposito" };
 
+    // 2026-07-11: alertas "del sistema" (eventos automáticos que antes vivían en la pantalla de Telegram).
+    // Se siembran solas (Program.cs), no se pueden crear ni borrar, solo prender/apagar y elegir canal.
+    // Un robot NO las evalúa: se disparan desde el evento real (venta MeLi / fichada).
+    private static readonly string[] TiposSistema = { "VENTA_MELI", "FICHADA" };
+
     private int? GetUserId()
     {
         var claim = User.FindFirst(ClaimTypes.NameIdentifier);
@@ -53,7 +58,7 @@ public class MisAlertasController : ControllerBase
 
     public record AlertaDto(int Id, string Tipo, decimal? Umbral, string? TextoParam, string Mensaje,
         bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool CanalTelegram, bool Activa, List<string> Roles,
-        bool EstaDisparada, bool Vista, string? UltimoDetalle, DateTime? DisparadaAt);
+        bool EstaDisparada, bool Vista, string? UltimoDetalle, DateTime? DisparadaAt, bool EsSistema);
 
     public record AlertaUpsertRequest(string Tipo, decimal? Umbral, string? TextoParam, string Mensaje,
         bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool CanalTelegram, bool Activa, List<string>? Roles);
@@ -66,7 +71,7 @@ public class MisAlertasController : ControllerBase
     private static AlertaDto Map(MisAlerta a) => new(
         a.Id, a.Tipo, a.Umbral, a.TextoParam, a.Mensaje,
         a.CanalCampanita, a.CanalWhatsApp, a.CanalCorreo, a.CanalTelegram, a.Activa, ParseRoles(a.Alcance),
-        a.EstaDisparada, a.Vista, a.UltimoDetalle, a.DisparadaAt);
+        a.EstaDisparada, a.Vista, a.UltimoDetalle, a.DisparadaAt, TiposSistema.Contains(a.Tipo));
 
     /// <summary>Valida y normaliza los roles del selector. Devuelve el CSV a guardar o null si hay error.</summary>
     private static (string? alcance, string? error) NormalizarRoles(List<string>? roles)
@@ -108,7 +113,9 @@ public class MisAlertasController : ControllerBase
             .Where(a => a.Alcance.Contains(bucket))
             .OrderByDescending(a => a.CreatedAt)
             .ToListAsync();
-        return Ok(rows.Select(Map));
+        // Las alertas del sistema (Ventas MeLi / Fichadas) van SIEMPRE arriba; el resto por fecha.
+        var ordenadas = rows.OrderBy(a => TiposSistema.Contains(a.Tipo) ? 0 : 1).ToList();
+        return Ok(ordenadas.Select(Map));
     }
 
     [HttpPost]
@@ -116,6 +123,8 @@ public class MisAlertasController : ControllerBase
     {
         var uid = GetUserId();
         if (uid is null) return Unauthorized();
+        if (TiposSistema.Contains(r.Tipo))
+            return BadRequest(new { error = "Esa alerta es del sistema y ya existe (Ventas o Fichadas). Solo se prende/apaga." });
         var err = Validar(r);
         if (err is not null) return BadRequest(new { error = err });
         var (alcance, errRoles) = NormalizarRoles(r.Roles);
@@ -176,6 +185,8 @@ public class MisAlertasController : ControllerBase
         var bucket = await GetBucketAsync();
         var a = await _db.MisAlertas.FirstOrDefaultAsync(x => x.Id == id && x.Alcance.Contains(bucket));
         if (a is null) return NotFound();
+        if (TiposSistema.Contains(a.Tipo))
+            return BadRequest(new { error = "Esta alerta es del sistema, no se puede borrar (solo prender/apagar)." });
         _db.MisAlertas.Remove(a);
         await _db.SaveChangesAsync();
         return Ok();
@@ -190,6 +201,28 @@ public class MisAlertasController : ControllerBase
         if (a is null) return NotFound();
         a.Activa = !a.Activa;
         if (!a.Activa) { a.EstaDisparada = false; a.Vista = false; a.UltimoDetalle = null; }
+        a.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(Map(a));
+    }
+
+    // ---------- Alertas del sistema (Ventas MeLi / Fichadas): prender/apagar + elegir canal ----------
+    public record SistemaAlertaRequest(bool Activa, bool CanalCampanita, bool CanalTelegram);
+
+    /// <summary>Prende/apaga una alerta del sistema y elige por dónde avisa (campanita y/o Telegram).
+    /// Son compartidas (no por rol): cualquiera con acceso a Mis Alertas las configura.</summary>
+    [HttpPut("sistema/{tipo}")]
+    public async Task<IActionResult> UpdateSistema(string tipo, [FromBody] SistemaAlertaRequest r)
+    {
+        var t = (tipo ?? "").ToUpperInvariant();
+        if (!TiposSistema.Contains(t)) return NotFound();
+        var a = await _db.MisAlertas.FirstOrDefaultAsync(x => x.Tipo == t);
+        if (a is null) return NotFound();
+        a.Activa = r.Activa;
+        a.CanalCampanita = r.CanalCampanita;
+        a.CanalTelegram = r.CanalTelegram;
+        // Si se apaga o se saca la campanita, limpiamos el estado de "disparada" para que no quede colgado.
+        if (!a.Activa || !a.CanalCampanita) { a.EstaDisparada = false; a.Vista = false; a.UltimoDetalle = null; }
         a.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return Ok(Map(a));

@@ -41,10 +41,11 @@ public class HorasExtrasController : ControllerBase
     {
         try
         {
-            var cuenta = await _db.TelegramAccounts.OrderBy(x => x.Id).FirstOrDefaultAsync();
-            if (cuenta is null || !cuenta.IsActive || !cuenta.NotifFichadas
-                || string.IsNullOrEmpty(cuenta.BotToken) || cuenta.ChatId is null)
-                return;
+            // 2026-07-11: el aviso de fichadas se configura desde "Mis Alertas" (alerta del sistema
+            // FICHADA), con elección de canal: campanita 🔔 y/o Telegram 📲.
+            var alerta = await _db.MisAlertas.FirstOrDefaultAsync(x => x.Tipo == "FICHADA");
+            if (alerta is null || !alerta.Activa) return;
+            if (!alerta.CanalTelegram && !alerta.CanalCampanita) return;
 
             var texto = $"🕐 {emp.Nombre} fichó {tipo} — {horaTxt}";
 
@@ -62,9 +63,27 @@ public class HorasExtrasController : ControllerBase
                 }
             }
 
-            await _telegram.SendMessageAsync(texto);
+            // Telegram (si está tildado y el bot está vinculado).
+            if (alerta.CanalTelegram)
+            {
+                var cuenta = await _db.TelegramAccounts.Where(x => x.Proposito == "AVISOS")
+                    .OrderBy(x => x.Id).FirstOrDefaultAsync();
+                if (cuenta is not null && cuenta.IsActive && !string.IsNullOrEmpty(cuenta.BotToken) && cuenta.ChatId is not null)
+                    await _telegram.SendMessageAsync(texto);
+            }
+
+            // Campanita (si está tildada): queda encendida hasta que la mirás.
+            if (alerta.CanalCampanita)
+            {
+                alerta.EstaDisparada = true;
+                alerta.Vista = false;
+                alerta.DisparadaAt = DateTime.UtcNow;
+                alerta.UltimoDetalle = $"{emp.Nombre} fichó {tipo.ToLowerInvariant()} — {horaTxt}";
+                alerta.UpdatedAt = DateTime.UtcNow;
+                await _db.SaveChangesAsync();
+            }
         }
-        catch { /* nunca romper la fichada por un aviso de Telegram */ }
+        catch { /* nunca romper la fichada por un aviso */ }
     }
 
     // ============================================================
