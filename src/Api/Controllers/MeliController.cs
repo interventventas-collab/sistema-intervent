@@ -762,6 +762,36 @@ public class MeliController : ControllerBase
         }
     }
 
+    // 2026-07-11: trae TODAS las familias completas (pausadas/inactivas incluidas) de una.
+    [HttpPost("items/sync-all-families")]
+    public IActionResult SyncAllFamilies()
+    {
+        try
+        {
+            var progressId = _syncProgress.StartSync("Trayendo todas las familias completas");
+            var scopeFactory = _scopeFactory;
+            var syncProgress = _syncProgress;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var scope = scopeFactory.CreateScope();
+                    var itemService = scope.ServiceProvider.GetRequiredService<MeliItemService>();
+                    await itemService.SyncAllFamiliesAsync(progressId);
+                }
+                catch (Exception ex)
+                {
+                    syncProgress.Fail(progressId, $"Error: {ex.Message}");
+                }
+            });
+            return Ok(new { ProgressId = progressId });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpGet("items/sync/progress")]
     public IActionResult GetSyncProgress([FromQuery] string? id = null)
     {
@@ -2212,7 +2242,9 @@ public class MeliController : ControllerBase
         decimal GananciaPct,          // ej: 30 = quiero ganar 30% sobre costo
         string? Redondeo,             // null / "" / "99" / "999" / "000"
         bool IncluirPrecioIndependiente,
-        bool PublicarEnMeli);
+        bool PublicarEnMeli,
+        bool SoloPiso = false,        // 2026-07-11: PISO — solo sube las que están ABAJO de GananciaPct; las que ya están >= no se tocan
+        bool DryRun = false);         // 2026-07-11: VISTA PREVIA — calcula todo pero NO guarda ajuste ni pushea
 
     public record BulkPrecioPorGananciaDetail(
         int ItemId, string MeliItemId, string Titulo,
@@ -2253,14 +2285,10 @@ public class MeliController : ControllerBase
         {
             if (ct.IsCancellationRequested) break;
 
-            if (!configs.TryGetValue(it.MeliItemId, out var cfg))
-            {
-                cfg = new MeliItemSyncConfig { MeliItemId = it.MeliItemId };
-                db.MeliItemSyncConfigs.Add(cfg);
-                configs[it.MeliItemId] = cfg;
-            }
+            // 2026-07-11: NO crear la config todavía (si es DryRun/preview no queremos escribir nada).
+            configs.TryGetValue(it.MeliItemId, out var cfg);
 
-            if (cfg.PrecioIndependiente && !req.IncluirPrecioIndependiente)
+            if (cfg?.PrecioIndependiente == true && !req.IncluirPrecioIndependiente)
             {
                 saltadosPI++;
                 detalles.Add(new BulkPrecioPorGananciaDetail(it.Id, it.MeliItemId, it.Title,
@@ -2309,6 +2337,16 @@ public class MeliController : ControllerBase
                 fixedPart = 0m;
             }
 
+            // 3.5) PISO: si ya está en (o arriba de) el objetivo, NO tocar (solo en modo SoloPiso).
+            decimal netoConIvaAct = it.Price * (1m - pctPart) - fixedPart;
+            decimal margenActual = costo.Value > 0 ? Math.Round((netoConIvaAct / 1.21m - costo.Value) / costo.Value * 100m, 1) : 0m;
+            if (req.SoloPiso && margenActual >= req.GananciaPct)
+            {
+                detalles.Add(new BulkPrecioPorGananciaDetail(it.Id, it.MeliItemId, it.Title,
+                    costo, precioBase, it.Price, it.Price, null, margenActual, false, false, $"Ya en {margenActual.ToString("0.#")}% (≥ piso) — no se toca"));
+                continue;
+            }
+
             // 4) Precio necesario para ganar req.GananciaPct sobre costo:
             //    netoConIva(precio) = precio × (1 - pctPart) - fixedPart
             //    ⇒ precio = (netoConIvaNecesario + fixedPart) / (1 - pctPart)
@@ -2327,8 +2365,28 @@ public class MeliController : ControllerBase
                 precioNuevo = AplicarRedondeoUpHelper(precioNuevo, redondeo);
             precioNuevo = Math.Round(precioNuevo, 2);
 
+            // 6) Ganancia y margen estimados con el precio nuevo (misma fórmula desglosada).
+            decimal netoConIvaResult = precioNuevo * (1m - pctPart) - fixedPart;
+            decimal netoSinIvaResult = netoConIvaResult / 1.21m;
+            decimal gananciaEst = Math.Round(netoSinIvaResult - costo.Value, 2);
+            decimal margenPct = costo.Value > 0 ? Math.Round(gananciaEst / costo.Value * 100m, 1) : 0m;
+
+            // 2026-07-11: VISTA PREVIA — no guarda ajuste ni pushea, solo muestra el precio propuesto.
+            if (req.DryRun)
+            {
+                detalles.Add(new BulkPrecioPorGananciaDetail(it.Id, it.MeliItemId, it.Title,
+                    costo, precioBase, it.Price, precioNuevo, gananciaEst, margenPct, false, false, "Vista previa"));
+                continue;
+            }
+
             // 5) Guardar como AjustePct=0, AjusteFijo=(precioNuevo - precioBase), Redondeo.
             //    Al pushear con MeliPricePushService, se recalcula: precioBase + ajusteFijo → redondeo → MeLi.
+            if (cfg is null)
+            {
+                cfg = new MeliItemSyncConfig { MeliItemId = it.MeliItemId };
+                db.MeliItemSyncConfigs.Add(cfg);
+                configs[it.MeliItemId] = cfg;
+            }
             cfg.AjustePct = 0m;
             cfg.AjusteFijo = Math.Round(precioNuevo - precioBase, 2);
             cfg.AjusteRedondeo = redondeo;
@@ -2339,15 +2397,8 @@ public class MeliController : ControllerBase
             cfg.GananciaObjetivoAt = ahora;
             guardados++;
 
-            // 6) Ganancia y margen estimados con el precio nuevo (misma fórmula desglosada).
-            decimal netoConIvaResult = precioNuevo * (1m - pctPart) - fixedPart;
-            decimal netoSinIvaResult = netoConIvaResult / 1.21m;
-            decimal gananciaEst = Math.Round(netoSinIvaResult - costo.Value, 2);
-            decimal margenPct = costo.Value > 0 ? Math.Round(gananciaEst / costo.Value * 100m, 1) : 0m;
-
-            var det = new BulkPrecioPorGananciaDetail(it.Id, it.MeliItemId, it.Title,
-                costo, precioBase, it.Price, precioNuevo, gananciaEst, margenPct, true, false, null);
-            detalles.Add(det);
+            detalles.Add(new BulkPrecioPorGananciaDetail(it.Id, it.MeliItemId, it.Title,
+                costo, precioBase, it.Price, precioNuevo, gananciaEst, margenPct, true, false, null));
         }
         await db.SaveChangesAsync(ct);
 

@@ -393,6 +393,45 @@ using (var scope = app.Services.CreateScope())
     await roleService.SyncAdminPermissionsAsync();
 }
 
+// 2026-07-11: Alertas del sistema unificadas en "Mis Alertas" (Ventas MeLi + Fichadas).
+// Se siembran una sola vez. Migran las preferencias viejas del bot de Telegram
+// (NotifVentas/NotifFichadas → canal Telegram). La campanita arranca APAGADA para no
+// cambiar el comportamiento actual (hoy esos avisos van solo por Telegram).
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    try
+    {
+        var adminId = (await db.Users.FirstOrDefaultAsync(u => u.Username == "admin"))?.Id ?? 0;
+        var tg = await db.TelegramAccounts.Where(x => x.Proposito == "AVISOS")
+            .OrderBy(x => x.Id).FirstOrDefaultAsync();
+
+        // activaPorDefecto = el flag viejo del bot (si hoy el aviso está apagado, queda apagado).
+        // El canal histórico era Telegram; la campanita arranca desactivada.
+        async Task EnsureSistemaAlerta(string tipo, string mensaje, bool activaPorDefecto)
+        {
+            if (await db.MisAlertas.AnyAsync(a => a.Tipo == tipo)) return;
+            db.MisAlertas.Add(new Api.Models.MisAlerta
+            {
+                UserId = adminId,
+                Tipo = tipo,
+                Mensaje = mensaje,
+                CanalCampanita = false,
+                CanalTelegram = true,
+                Activa = activaPorDefecto,
+                Alcance = "admin,oficina",
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        await EnsureSistemaAlerta("VENTA_MELI", "🛒 Venta nueva en MercadoLibre", tg?.NotifVentas ?? true);
+        await EnsureSistemaAlerta("FICHADA", "🕐 Fichada de empleado", tg?.NotifFichadas ?? true);
+        await db.SaveChangesAsync();
+    }
+    catch (Exception ex) { logger.LogWarning(ex, "No se pudieron sembrar las alertas del sistema (Ventas/Fichadas)."); }
+}
+
 // Middleware pipeline
 if (app.Environment.IsDevelopment())
 {

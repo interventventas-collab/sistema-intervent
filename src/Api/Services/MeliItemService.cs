@@ -1090,6 +1090,89 @@ public class MeliItemService
         return null;
     }
 
+    // 2026-07-11: trae TODAS las familias completas de una. Recorre las familias conocidas (de items ya
+    // bajados) y por cada una baja los miembros que falten (pausados/inactivos) vía la API de User Products.
+    public async Task SyncAllFamiliesAsync(string? progressId = null)
+    {
+        var accounts = await _accountService.GetAllAccountEntitiesAsync();
+        if (accounts.Count == 0)
+            throw new Exception("No hay cuentas de MercadoLibre conectadas.");
+
+        var familyIds = await _db.MeliItems
+            .Where(m => m.FamilyId != null && m.FamilyId != "")
+            .Select(m => m.FamilyId!)
+            .Distinct()
+            .ToListAsync();
+
+        if (progressId is not null)
+            _syncProgress.Update(progressId, p =>
+            {
+                p.TotalItemsFound = familyIds.Count;
+                p.CurrentStep = $"{familyIds.Count} familias para completar...";
+            });
+
+        var statuses = new[] { "active", "paused", "closed", "under_review", "inactive" };
+        int idx = 0, totalGuardadas = 0;
+
+        foreach (var fam in familyIds)
+        {
+            idx++;
+            foreach (var account in accounts)
+            {
+                var token = await _accountService.GetValidTokenAsync(account);
+                if (token is null) continue;
+                var http = _httpFactory.CreateClient();
+                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+                var famResp = await http.GetAsync($"https://api.mercadolibre.com/sites/MLA/user-products-families/{fam}");
+                if (!famResp.IsSuccessStatusCode)
+                    famResp = await http.GetAsync($"https://api.mercadolibre.com/user-products-families/{fam}");
+                if (!famResp.IsSuccessStatusCode) continue;
+
+                var famDoc = JsonDocument.Parse(await famResp.Content.ReadAsStringAsync()).RootElement;
+                var ups = new List<string>();
+                if (famDoc.TryGetProperty("user_products_ids", out var upsEl) && upsEl.ValueKind == JsonValueKind.Array)
+                    foreach (var u in upsEl.EnumerateArray()) { var s = u.GetString(); if (!string.IsNullOrEmpty(s)) ups.Add(s); }
+                if (ups.Count == 0 && famDoc.TryGetProperty("user_products", out var upObjs) && upObjs.ValueKind == JsonValueKind.Array)
+                    foreach (var u in upObjs.EnumerateArray())
+                        if (u.TryGetProperty("id", out var uid)) { var s = uid.GetString(); if (!string.IsNullOrEmpty(s)) ups.Add(s); }
+                string? famName = famDoc.TryGetProperty("family_name", out var fnEl) ? fnEl.GetString() : null;
+                if (ups.Count == 0) continue;
+
+                var allIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var up in ups)
+                    foreach (var st in statuses)
+                    {
+                        var r = await http.GetAsync($"https://api.mercadolibre.com/users/{account.MeliUserId}/items/search?user_product_id={up}&status={st}&limit=100");
+                        if (!r.IsSuccessStatusCode) continue;
+                        var d = JsonDocument.Parse(await r.Content.ReadAsStringAsync()).RootElement;
+                        if (d.TryGetProperty("results", out var res))
+                            foreach (var id in res.EnumerateArray()) { var s = id.GetString(); if (!string.IsNullOrEmpty(s)) allIds.Add(s); }
+                    }
+
+                if (allIds.Count > 0)
+                    totalGuardadas += await UpsertItemsByIdsAsync(account.Id, http, allIds.ToList(), fam, famName, null);
+            }
+
+            if (progressId is not null)
+            {
+                var i2 = idx; var tg = totalGuardadas; var totalFam = familyIds.Count;
+                _syncProgress.Update(progressId, p =>
+                {
+                    p.ItemsSynced = tg;
+                    p.CurrentStep = $"Familia {i2}/{totalFam} · {tg} publicaciones completadas";
+                    p.Percentage = totalFam > 0 ? (int)((double)i2 / totalFam * 100) : 100;
+                });
+            }
+        }
+
+        if (progressId is not null)
+        {
+            _syncProgress.Complete(progressId, $"{familyIds.Count} familias revisadas · {totalGuardadas} publicaciones completadas.");
+            _syncProgress.Cleanup();
+        }
+    }
+
     public async Task<MeliItemSyncSingleResult> SyncSingleItemAsync(string meliItemId)
     {
         meliItemId = (meliItemId ?? "").Trim().ToUpperInvariant();

@@ -68,6 +68,9 @@
                     <button class="sync-dropdown-item" @onclick="OpenSyncFamilyModal">
                         <i class="fa-solid fa-layer-group"></i> Traer familia completa
                     </button>
+                    <button class="sync-dropdown-item" @onclick="TraerTodasLasFamilias">
+                        <i class="fa-solid fa-layer-group"></i> Traer TODAS las familias completas
+                    </button>
                     <div class="sync-dropdown-divider"></div>
                     <button class="sync-dropdown-item sync-item-all" @onclick='() => SyncItems(null, null)'>
                         <i class="fa-solid fa-arrows-rotate"></i> Sincronizar todo
@@ -537,6 +540,12 @@
                                                             title="Análisis de margen: ver el neto que te queda por cada MLA y balancear">
                                                         📊 Margen
                                                     </button>
+                                                    @* 2026-07-11: poner piso de 50% de margen (solo sube las que están abajo), con vista previa *@
+                                                    <button @onclick:stopPropagation="true" @onclick="@(() => AbrirPiso50(grp))"
+                                                            style="margin-left:0.3rem; padding:0.05rem 0.4rem; background:#16a34a; color:white; border:none; border-radius:3px; font-size:0.7rem; font-weight:700; cursor:pointer;"
+                                                            title="Poner piso de 50% de margen: sube solo las que están abajo de 50% (las que ya están arriba no se tocan). Muestra vista previa antes de pushear.">
+                                                        🛡️ Piso 50%
+                                                    </button>
                                                 }
                                                 @StockPushChip(item)
                                                 @PrecioSyncChip(item)
@@ -604,7 +613,7 @@
                                                 <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                             }
                                             @AjusteChipPrecio(item)
-                                            @MargenChipPrecio(item)
+                                            @MargenChipPrecio(item) @SincroToggle(item)
                                         }
                                         else
                                         {
@@ -821,6 +830,7 @@
                                                         </div>
                                                     }
                                                 }
+                                                @SincroToggle(v)
                                             </td>
                                             <td class="td-product" @onclick:stopPropagation="true">
                                                 @if (v.CafeProductoId.HasValue)
@@ -903,7 +913,7 @@
                                             <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                         }
                                         @AjusteChipPrecio(item)
-                                        @MargenChipPrecio(item)
+                                        @MargenChipPrecio(item) @SincroToggle(item)
                                     </td>
                                         <td style="text-align: center; font-weight: 700;">
                                         @if (item.ProductCriticalStock.HasValue && item.ProductCriticalStock.Value > 0 && item.AvailableQuantity <= item.ProductCriticalStock.Value)
@@ -1019,7 +1029,7 @@
                                             <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                         }
                                         @AjusteChipPrecio(item)
-                                        @MargenChipPrecio(item)
+                                        @MargenChipPrecio(item) @SincroToggle(item)
                                     </td>
                                             <td style="text-align: center; font-weight: 700;">
                                         @if (item.ProductCriticalStock.HasValue && item.ProductCriticalStock.Value > 0 && item.AvailableQuantity <= item.ProductCriticalStock.Value)
@@ -1082,7 +1092,7 @@
                                             <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                         }
                                         @AjusteChipPrecio(item)
-                                        @MargenChipPrecio(item)
+                                        @MargenChipPrecio(item) @SincroToggle(item)
                                     </td>
                                         <td style="text-align: center; font-weight: 700;">
                                         @if (item.ProductCriticalStock.HasValue && item.ProductCriticalStock.Value > 0 && item.AvailableQuantity <= item.ProductCriticalStock.Value)
@@ -2882,6 +2892,66 @@
     </div>
 }
 
+@if (showPiso50Modal)
+{
+    <div class="modal-overlay" @onclick="() => { if(!piso50Aplicando) showPiso50Modal = false; }">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 760px;">
+            <div class="modal-header" style="background:#16a34a; color:white;">
+                <h3 style="margin:0;">🛡️ Poner piso de 50% — @piso50FamilyName</h3>
+                <button class="btn-close" @onclick="() => { if(!piso50Aplicando) showPiso50Modal = false; }" style="color:white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (piso50Loading)
+                {
+                    <p class="text-muted">Calculando la vista previa (usa la cuenta real: comisión + cuotas + envío + IVA)...</p>
+                }
+                else
+                {
+                    <div style="background:#eff6ff; border:1px solid #2563eb; border-radius:8px; padding:0.7rem; margin-bottom:0.7rem; font-size:0.85rem;">
+                        <b>@Piso50Cambian.Count</b> van a SUBIR a 50% · <b>@Piso50YaOk.Count</b> ya están en 50% o más (no se tocan)@(Piso50Problemas.Count > 0 ? $" · {Piso50Problemas.Count} sin costo/problema" : "")
+                        <div style="font-size:0.78rem; color:#4b5563; margin-top:0.3rem;">Todavía NO se aplicó nada. Mirá y confirmá.</div>
+                    </div>
+                    @if (Piso50Cambian.Count > 0)
+                    {
+                        <div style="max-height:300px; overflow:auto; border:1px solid #e5e7eb; border-radius:8px;">
+                            <table class="data-table" style="font-size:0.8rem;">
+                                <thead><tr><th>Publicación</th><th style="text-align:right;">Precio hoy</th><th></th><th style="text-align:right;">Precio nuevo</th><th style="text-align:right;">Margen</th></tr></thead>
+                                <tbody>
+                                    @foreach (var d in Piso50Cambian)
+                                    {
+                                        <tr>
+                                            <td style="max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@d.Titulo</td>
+                                            <td style="text-align:right; color:#9ca3af; text-decoration:line-through;">$@((d.PrecioActual ?? 0).ToString("N0"))</td>
+                                            <td style="text-align:center;">→</td>
+                                            <td style="text-align:right; font-weight:700; color:#15803d;">$@((d.PrecioNuevo ?? 0).ToString("N0"))</td>
+                                            <td style="text-align:right; color:#15803d;">@((d.MargenPct ?? 0).ToString("0.#"))%</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted">Ninguna está por debajo del 50% — no hay nada que subir. 🎉</p>
+                    }
+                    @if (Piso50Problemas.Count > 0)
+                    {
+                        <p style="font-size:0.78rem; color:#b45309; margin-top:0.5rem;">⚠ @Piso50Problemas.Count sin costo cargado o con problema — esas no se pueden calcular (revisá el costo del producto).</p>
+                    }
+                    <p style="font-size:0.78rem; color:#991b1b; margin-top:0.6rem;">Al confirmar, se cambia el precio REAL en MercadoLibre de las que suben.</p>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showPiso50Modal = false" disabled="@piso50Aplicando">Cancelar</button>
+                <button class="btn" style="background:#16a34a; color:white; border:none;" @onclick="AplicarPiso50" disabled="@(piso50Aplicando || piso50Loading || Piso50Cambian.Count == 0)">
+                    @(piso50Aplicando ? "Aplicando y pusheando..." : $"✓ Confirmar y pushear ({Piso50Cambian.Count})")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @if (showSyncFamilyModal)
 {
     <div class="modal-overlay" @onclick="CloseSyncFamilyModal">
@@ -4066,6 +4136,26 @@
         syncFamilyInput = string.Empty;
         syncFamilyError = null;
         showSyncFamilyModal = true;
+    }
+
+    // 2026-07-11: traer TODAS las familias completas (masivo). Confirma antes (es pesado).
+    private async Task TraerTodasLasFamilias()
+    {
+        showSyncMenu = false;
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            "¿Traer TODAS las familias completas?\n\nRecorre todas tus familias y baja las publicaciones que falten (pausadas / sin stock incluidas). Solo LEE de MeLi, no republica ni cambia precios. Puede tardar bastante — corre en segundo plano.");
+        if (!ok) return;
+        try
+        {
+            var progressId = await Api.SyncAllMeliFamiliesAsync();
+            if (!string.IsNullOrEmpty(progressId))
+            {
+                _syncReloaded = false;
+                SyncProgress.StartTracking(progressId, "Trayendo todas las familias completas");
+            }
+            else ToastService.Error("No se pudo iniciar.");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
 
     private void CloseSyncFamilyModal()
@@ -5530,6 +5620,106 @@
         }
     }
 
+    // ── 2026-07-11: interruptor por fila "mantener sincronizado" (stock + precio juntos) ──
+    // Osmar lo prende a mano, publicación por publicación, a medida que revisa y las deja bien.
+    // ON = SyncStock && SyncPrecio true (cambios de precio/costo/stock del sistema se pushean solos).
+    private readonly HashSet<int> _savingSincro = new();
+
+    private RenderFragment SincroToggle(MeliItemDto item) =>
+    @<span>
+        @if (item.CafeProductoId.HasValue || item.ComponentMappingsCount > 0)
+        {
+            var onSync = item.SyncStock && item.SyncPrecio;
+            var saving = _savingSincro.Contains(item.Id);
+            <button @onclick:stopPropagation="true" @onclick="() => ToggleSincroFila(item)" disabled="@saving"
+                    title="@(onSync ? "Sincronizado: los cambios de precio / costo / stock del sistema se pushean solos a MeLi. Click para desactivar." : "Manual. Click para ACTIVAR: esta publicación queda sincronizada (stock + precio) con el sistema.")"
+                    style="margin-top:0.2rem; padding:0.1rem 0.55rem; border-radius:10px; border:none; cursor:pointer; font-size:0.68rem; font-weight:700; background:@(onSync ? "#16a34a" : "#e5e7eb"); color:@(onSync ? "white" : "#4b5563");">
+                @(saving ? "…" : onSync ? "🔄 Sincronizado" : "⏸ Activar sincro")
+            </button>
+        }
+    </span>;
+
+    private async Task ToggleSincroFila(MeliItemDto item)
+    {
+        if (_savingSincro.Contains(item.Id)) return;
+        var nuevo = !(item.SyncStock && item.SyncPrecio);
+        _savingSincro.Add(item.Id);
+        StateHasChanged();
+        try
+        {
+            var (cfg, err) = await Api.ActualizarSyncConfigAsync(item.MeliItemId, new UpdateSyncConfigRequest
+            {
+                SyncStock = nuevo,
+                SyncPrecio = nuevo,
+                AjustePct = item.AjustePct,
+                AjusteFijo = item.AjusteFijo,
+                AjusteRedondeo = item.AjusteRedondeo
+            });
+            if (err is null)
+            {
+                item.SyncStock = nuevo;
+                item.SyncPrecio = nuevo;
+                InvalidateFilterCache();
+                ToastService.Success(nuevo ? "🔄 Sincro de stock y precio ACTIVADA en esta publicación" : "Sincro desactivada (queda manual)");
+            }
+            else ToastService.Error("No se pudo guardar: " + err);
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { _savingSincro.Remove(item.Id); StateHasChanged(); }
+    }
+
+    // ── 2026-07-11: "Poner piso 50%" (sube solo las que están abajo de 50%) con vista previa ──
+    private bool showPiso50Modal, piso50Loading, piso50Aplicando;
+    private string? piso50FamilyName;
+    private List<int> piso50ItemIds = new();
+    private List<ApiClient.BulkPrecioPorGananciaDetail> piso50Detalles = new();
+    private const decimal Piso50Pct = 50m;
+
+    private List<ApiClient.BulkPrecioPorGananciaDetail> Piso50Cambian =>
+        piso50Detalles.Where(d => d.Mensaje == "Vista previa" && d.PrecioNuevo.HasValue).ToList();
+    private List<ApiClient.BulkPrecioPorGananciaDetail> Piso50YaOk =>
+        piso50Detalles.Where(d => d.Mensaje != null && d.Mensaje.Contains("piso")).ToList();
+    private List<ApiClient.BulkPrecioPorGananciaDetail> Piso50Problemas =>
+        piso50Detalles.Where(d => d.Mensaje != null && d.Mensaje != "Vista previa" && !d.Mensaje.Contains("piso")).ToList();
+
+    private async Task AbrirPiso50(GroupedRow grp)
+    {
+        piso50ItemIds = grp.Variants.Select(v => v.Id).Distinct().ToList();
+        piso50FamilyName = grp.Variants.FirstOrDefault()?.FamilyName ?? grp.Variants.FirstOrDefault()?.Title ?? "familia";
+        piso50Detalles = new();
+        showPiso50Modal = true; piso50Loading = true;
+        StateHasChanged();
+        try
+        {
+            var (resp, err) = await Api.BulkPrecioPorGananciaAsync(new ApiClient.BulkPrecioPorGananciaRequest(
+                piso50ItemIds, Piso50Pct, "99", false, false, SoloPiso: true, DryRun: true));
+            if (err != null) ToastService.Error(err);
+            else piso50Detalles = resp?.Detalles ?? new();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { piso50Loading = false; StateHasChanged(); }
+    }
+
+    private async Task AplicarPiso50()
+    {
+        if (piso50Aplicando) return;
+        piso50Aplicando = true; StateHasChanged();
+        try
+        {
+            var (resp, err) = await Api.BulkPrecioPorGananciaAsync(new ApiClient.BulkPrecioPorGananciaRequest(
+                piso50ItemIds, Piso50Pct, "99", false, PublicarEnMeli: true, SoloPiso: true, DryRun: false));
+            if (err != null) { ToastService.Error(err); }
+            else
+            {
+                ToastService.Success($"Piso 50% aplicado: {resp?.Guardados ?? 0} actualizadas, {resp?.Pusheados ?? 0} pusheadas a MeLi.");
+                showPiso50Modal = false;
+                await LoadItems();
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { piso50Aplicando = false; StateHasChanged(); }
+    }
+
     // ── 2026-06-12: sección Stock de la ficha ──
     private bool isSavingSyncStock;
     private bool isPushingStockFicha;
@@ -6483,14 +6673,16 @@
         var pct = CalcMargenPct(item);
         if (pct == null) return;
         var (bg, label, fg) = MargenChipStyle(pct.Value);
-        var tooltip = $"Margen aprox sobre costo: {label}\n" +
+        // 2026-07-11: mostrar también el IMPORTE de ganancia real ($), no solo el %. Consistente con el % mostrado.
+        var ganImporte = pct.Value / 100m * item.ProductCost!.Value;
+        var tooltip = $"Ganancia real: $ {ganImporte.ToString("N0", argCulture)} ({label} sobre costo)\n" +
                       $"Costo: $ {item.ProductCost!.Value.ToString("N0", argCulture)}\n" +
                       $"Precio: $ {item.Price.ToString("N0", argCulture)}\n" +
                       $"(neto aprox MeLi: $ {(item.Price * 0.70m).ToString("N0", argCulture)} — abrir detalle para exacto)";
         __builder.OpenElement(0, "div");
         __builder.AddAttribute(1, "style", $"display: inline-block; background:{bg}; color:{fg}; padding:0.1rem 0.45rem; border-radius:10px; font-size:0.7rem; font-weight:700; margin-top:0.15rem;");
         __builder.AddAttribute(2, "title", tooltip);
-        __builder.AddContent(3, $"📊 {label}");
+        __builder.AddContent(3, $"📊 {label} · $ {ganImporte.ToString("N0", argCulture)}");
         __builder.CloseElement();
 
         // 2026-07-02: chip 🎯 objetivo — si tiene objetivo cargado, compara vs real (±2 pt).

@@ -1201,9 +1201,11 @@ public class ApiClient
     // 2026-07-10: Motor de alertas configurables ("Mis Alertas").
     public record AlertaDto(int Id, string Tipo, decimal? Umbral, string? TextoParam, string Mensaje,
         bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool CanalTelegram, bool Activa, List<string> Roles,
-        bool EstaDisparada, bool Vista, string? UltimoDetalle, DateTime? DisparadaAt);
+        bool EstaDisparada, bool Vista, string? UltimoDetalle, DateTime? DisparadaAt, bool EsSistema = false);
     public record AlertaUpsertRequest(string Tipo, decimal? Umbral, string? TextoParam, string Mensaje,
         bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool CanalTelegram, bool Activa, List<string>? Roles);
+    // 2026-07-11: alertas del sistema (Ventas MeLi / Fichadas): prender/apagar + canal.
+    public record SistemaAlertaRequest(bool Activa, bool CanalCampanita, bool CanalTelegram);
     public record CorreoImportanteDto(int Id, string? Remitente, string? RemitenteEmail, string? Asunto,
         string? Adelanto, DateTime? Fecha, bool TieneAdjuntos, string? Adjuntos, string? GmailLink);
     public record ConfigCorreoAlertasDto(string? Host, int Port, string? Usuario, bool TieneClave, bool Configurada);
@@ -1250,6 +1252,17 @@ public class ApiClient
         await SetAuthHeaderAsync();
         var resp = await _http.PostAsync($"/api/mis-alertas/{id}/toggle", null);
         return resp.IsSuccessStatusCode;
+    }
+
+    public async Task<bool> UpdateSistemaAlertaAsync(string tipo, SistemaAlertaRequest req)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _http.PutAsJsonAsync($"/api/mis-alertas/sistema/{tipo}", req);
+            return resp.IsSuccessStatusCode;
+        }
+        catch { return false; }
     }
 
     public async Task<AlertasBellDto?> GetAlertasDisparadasAsync()
@@ -3144,6 +3157,17 @@ public class ApiClient
              : (doc.TryGetProperty("progressId", out var pid2) ? pid2.GetString() : null);
     }
 
+    // 2026-07-11: trae TODAS las familias completas de una. Devuelve el ProgressId.
+    public async Task<string?> SyncAllMeliFamiliesAsync()
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsync("/api/meli/items/sync-all-families", null);
+        if (!resp.IsSuccessStatusCode) { await ThrowIfErrorAsync(resp); return null; }
+        var doc = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        return doc.TryGetProperty("ProgressId", out var pid) ? pid.GetString()
+             : (doc.TryGetProperty("progressId", out var pid2) ? pid2.GetString() : null);
+    }
+
     // === Snapshot Contabilium pre-corte ===
     public class SnapshotTriggerResult { public bool Ok { get; set; } public DateTime Fecha { get; set; } public int Skus { get; set; } public int DurationSec { get; set; } }
 
@@ -3616,7 +3640,8 @@ public class ApiClient
     // 2026-07-01: masivo por ganancia — mismo motor que la ficha individual "¿Qué querés ganar?".
     public record BulkPrecioPorGananciaRequest(
         List<int> ItemIds, decimal GananciaPct, string? Redondeo,
-        bool IncluirPrecioIndependiente, bool PublicarEnMeli);
+        bool IncluirPrecioIndependiente, bool PublicarEnMeli,
+        bool SoloPiso = false, bool DryRun = false);  // 2026-07-11: piso 50% + vista previa
     public record BulkPrecioPorGananciaDetail(
         int ItemId, string MeliItemId, string Titulo,
         decimal? Costo, decimal? PrecioBase, decimal? PrecioActual, decimal? PrecioNuevo,
