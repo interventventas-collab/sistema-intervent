@@ -392,7 +392,28 @@ public class TelegramService
         bot.ConvEstado = null;
         bot.ConvClienteId = null;
         bot.ConvClienteNombre = null;
+        bot.ConvItemsJson = null;
+        bot.ConvPendProductoId = null;
+        bot.ConvPendProductoNombre = null;
+        bot.ConvPendProductoSku = null;
     }
+
+    private class PreventaItem
+    {
+        public int ProductoId { get; set; }
+        public string? Sku { get; set; }
+        public string Nombre { get; set; } = "";
+        public int Cantidad { get; set; }
+    }
+
+    private static List<PreventaItem> LeerItems(TelegramAccount bot)
+    {
+        if (string.IsNullOrWhiteSpace(bot.ConvItemsJson)) return new();
+        try { return JsonSerializer.Deserialize<List<PreventaItem>>(bot.ConvItemsJson) ?? new(); } catch { return new(); }
+    }
+
+    private static void GuardarItems(TelegramAccount bot, List<PreventaItem> items)
+        => bot.ConvItemsJson = JsonSerializer.Serialize(items);
 
     /// <summary>Maneja un mensaje entrante del bot de PREVENTAS (máquina de estados de la conversación).</summary>
     private async Task ProcesarPreventaAsync(TelegramAccount bot, long chatId, string textoRaw, CancellationToken ct)
@@ -407,7 +428,10 @@ public class TelegramService
         }
 
         if (bot.ConvEstado == "CLIENTE") { await PreventaClienteAsync(bot, chatId, textoRaw, ct); return; }
-        if (bot.ConvEstado == "DETALLE") { await PreventaDetalleAsync(bot, chatId, textoRaw, ct); return; }
+        if (bot.ConvEstado == "CANT") { await PreventaCantidadTextoAsync(bot, chatId, textoRaw, ct); return; }
+        if (bot.ConvEstado == "LIBRE") { await PreventaLibreAsync(bot, chatId, textoRaw, ct); return; }
+        // En el menú de productos, escribir texto = buscar un producto por nombre.
+        if (bot.ConvEstado == "MENU") { await PreventaBuscarProductoAsync(bot, chatId, textoRaw, ct); return; }
 
         // Sin conversación en curso: ¿arranca una preventa?
         if (t.Contains("nueva") || t.Contains("preventa") || t.Contains("cargar") || t.Contains("pedido"))
@@ -432,8 +456,7 @@ public class TelegramService
         {
             bot.ConvClienteId = null;
             bot.ConvClienteNombre = null;
-            bot.ConvEstado = "DETALLE";
-            await SendRawAsync(bot.BotToken, chatId, "Dale, venta suelta (sin cliente).\nAhora escribime el pedido 👇", ct, QuitarTeclado);
+            await IniciarMenuProductosAsync(bot, chatId, "Dale, venta suelta (sin cliente).", ct);
             return;
         }
         if (q.Length < 2)
@@ -473,8 +496,7 @@ public class TelegramService
     {
         bot.ConvClienteId = clienteId;
         bot.ConvClienteNombre = clienteNombre;
-        bot.ConvEstado = "DETALLE";
-        await SendRawAsync(bot.BotToken, chatId, $"Dale, para {clienteNombre}.\nAhora escribime el pedido 👇", ct, QuitarTeclado);
+        await IniciarMenuProductosAsync(bot, chatId, $"Dale, para {clienteNombre}.", ct);
     }
 
     /// <summary>Procesa el toque de un botón inline (callback_query). Confirma el toque (para sacar
@@ -501,51 +523,173 @@ public class TelegramService
 
     private async Task ProcesarPreventaCallbackAsync(TelegramAccount bot, long chatId, string data, CancellationToken ct)
     {
-        if (bot.ConvEstado != "CLIENTE")
-        {
-            await SendRawAsync(bot.BotToken, chatId, "Esa preventa ya se cerró. Escribí \"nueva\" para cargar otra.", ct,
-                TecladoBotones(new[] { "🧾 Nueva preventa" }));
-            return;
-        }
+        // Cancelar corta siempre.
         if (data == "pvcx")
         {
             LimpiarConv(bot);
             await SendRawAsync(bot.BotToken, chatId, "Listo, cancelé. 👍", ct, TecladoBotones(new[] { "🧾 Nueva preventa" }));
             return;
         }
+        if (bot.ConvEstado is null)
+        {
+            await SendRawAsync(bot.BotToken, chatId, "Esa preventa ya se cerró. Escribí \"nueva\" para cargar otra.", ct,
+                TecladoBotones(new[] { "🧾 Nueva preventa" }));
+            return;
+        }
+
+        // --- Elección de cliente ---
         if (data == "pvc:0")
         {
             bot.ConvClienteId = null;
             bot.ConvClienteNombre = null;
-            bot.ConvEstado = "DETALLE";
-            await SendRawAsync(bot.BotToken, chatId, "Dale, venta suelta (sin cliente).\nAhora escribime el pedido 👇", ct, QuitarTeclado);
+            await IniciarMenuProductosAsync(bot, chatId, "Dale, venta suelta (sin cliente).", ct);
             return;
         }
         if (data.StartsWith("pvc:") && int.TryParse(data.AsSpan(4), out var cid))
         {
             var cli = await _db.CafeClientes.AsNoTracking()
                 .Where(c => c.Id == cid).Select(c => new { c.Id, c.Nombre }).FirstOrDefaultAsync(ct);
-            if (cli is null)
-            {
-                await SendRawAsync(bot.BotToken, chatId, "No encontré ese cliente. Escribí parte del nombre de nuevo.", ct);
-                return;
-            }
+            if (cli is null) { await SendRawAsync(bot.BotToken, chatId, "No encontré ese cliente. Escribí parte del nombre de nuevo.", ct); return; }
             await PreventaFijarClienteAsync(bot, chatId, cli.Id, cli.Nombre, ct);
+            return;
+        }
+
+        // --- Menú de productos ---
+        if (data == "pvm:menu") { await MostrarMenuProductosAsync(bot, chatId, "¿Qué le cargamos? 👇", ct); return; }
+        if (data == "pvm:mas")
+        {
+            if (bot.ConvClienteId is null) { await MostrarMenuProductosAsync(bot, chatId, "Para 'más comprados' necesito un cliente. Probá otra opción 👇", ct); return; }
+            var prods = await ProductosMasCompradosAsync(bot.ConvClienteId.Value, ct);
+            await MostrarProductosAsync(bot, chatId, prods,
+                prods.Count == 0 ? "Este cliente todavía no tiene compras. Probá 'buscar' o 'más vendidos' 👇" : "⭐ Más comprados por el cliente. Tocá uno 👇", ct);
+            return;
+        }
+        if (data == "pvm:top")
+        {
+            var prods = await ProductosMasVendidosAsync(ct);
+            await MostrarProductosAsync(bot, chatId, prods, "🔝 Los más vendidos. Tocá uno 👇", ct);
+            return;
+        }
+        if (data == "pvm:buscar") { bot.ConvEstado = "MENU"; await SendRawAsync(bot.BotToken, chatId, "🔎 Escribime parte del nombre del producto 👇", ct); return; }
+        if (data == "pvm:libre") { bot.ConvEstado = "LIBRE"; await SendRawAsync(bot.BotToken, chatId, "✍️ Escribime el pedido con tus palabras 👇", ct, QuitarTeclado); return; }
+        if (data == "pvfin") { await PreventaFinalizarAsync(bot, chatId, ct); return; }
+
+        // --- Elegir producto → pedir cantidad ---
+        if (data.StartsWith("pvp:") && int.TryParse(data.AsSpan(4), out var pid))
+        {
+            var p = await _db.CafeProductos.AsNoTracking()
+                .Where(x => x.Id == pid && x.IsActive).Select(x => new { x.Id, x.Sku, x.Nombre }).FirstOrDefaultAsync(ct);
+            if (p is null) { await MostrarMenuProductosAsync(bot, chatId, "No encontré ese producto. Probá de nuevo 👇", ct); return; }
+            bot.ConvPendProductoId = p.Id;
+            bot.ConvPendProductoNombre = p.Nombre;
+            bot.ConvPendProductoSku = p.Sku;
+            bot.ConvEstado = "CANT";
+            var botones = new List<(string, string)> { ("1", "pvq:1"), ("2", "pvq:2"), ("3", "pvq:3"), ("5", "pvq:5"), ("10", "pvq:10"), ("↩️ Volver", "pvm:menu") };
+            await SendRawAsync(bot.BotToken, chatId, $"¿Cuántos de {p.Nombre}?\nTocá o escribí el número 👇", ct, TecladoInline(botones));
+            return;
+        }
+        if (data.StartsWith("pvq:") && int.TryParse(data.AsSpan(4), out var qn))
+        {
+            await PreventaAgregarConCantidadAsync(bot, chatId, qn, ct);
+            return;
         }
     }
 
-    private async Task PreventaDetalleAsync(TelegramAccount bot, long chatId, string detalle, CancellationToken ct)
-    {
-        var d = detalle.Trim();
-        if (string.IsNullOrWhiteSpace(d)) { await SendRawAsync(bot.BotToken, chatId, "Escribime el pedido, por favor. 🙏", ct); return; }
+    // ── Menú de productos y carrito ──
 
+    private async Task IniciarMenuProductosAsync(TelegramAccount bot, long chatId, string prefacio, CancellationToken ct)
+    {
+        bot.ConvItemsJson = null;
+        bot.ConvPendProductoId = null; bot.ConvPendProductoNombre = null; bot.ConvPendProductoSku = null;
+        await MostrarMenuProductosAsync(bot, chatId, prefacio + "\n¿Qué le cargamos? 👇", ct);
+    }
+
+    private async Task MostrarMenuProductosAsync(TelegramAccount bot, long chatId, string encabezado, CancellationToken ct)
+    {
+        bot.ConvEstado = "MENU";
+        bot.ConvPendProductoId = null; bot.ConvPendProductoNombre = null; bot.ConvPendProductoSku = null;
+        var items = LeerItems(bot);
+        var lineas = new List<string> { encabezado };
+        if (items.Count > 0)
+        {
+            lineas.Add("");
+            lineas.Add("🧾 Va cargado:");
+            foreach (var it in items) lineas.Add($"• {it.Cantidad}× {it.Nombre}");
+        }
+        var botones = new List<(string, string)>();
+        if (bot.ConvClienteId is not null) botones.Add(("⭐ Más comprados", "pvm:mas"));
+        botones.Add(("🔝 Más vendidos", "pvm:top"));
+        botones.Add(("🔎 Buscar producto", "pvm:buscar"));
+        botones.Add(("✍️ Escribir a mano", "pvm:libre"));
+        if (items.Count > 0) botones.Add(("✅ Terminar preventa", "pvfin"));
+        botones.Add(("✖ Cancelar", "pvcx"));
+        await SendRawAsync(bot.BotToken, chatId, string.Join("\n", lineas), ct, TecladoInline(botones));
+    }
+
+    private async Task MostrarProductosAsync(TelegramAccount bot, long chatId, List<(int Id, string? Sku, string Nombre)> prods, string titulo, CancellationToken ct)
+    {
+        if (prods.Count == 0) { await MostrarMenuProductosAsync(bot, chatId, titulo, ct); return; }
+        var botones = prods.Take(10).Select(p => (p.Nombre.Length > 45 ? p.Nombre.Substring(0, 45) : p.Nombre, $"pvp:{p.Id}")).ToList();
+        botones.Add(("↩️ Volver", "pvm:menu"));
+        await SendRawAsync(bot.BotToken, chatId, titulo, ct, TecladoInline(botones));
+    }
+
+    private async Task PreventaBuscarProductoAsync(TelegramAccount bot, long chatId, string textoRaw, CancellationToken ct)
+    {
+        var q = textoRaw.Trim();
+        if (q.Length < 2) { await SendRawAsync(bot.BotToken, chatId, "Escribime al menos 2 letras del producto 🙂", ct); return; }
+        var prods = await BuscarProductosAsync(q, ct);
+        await MostrarProductosAsync(bot, chatId, prods,
+            prods.Count == 0 ? $"No encontré productos con \"{q}\". Probá otra palabra 👇" : "¿Cuál? Tocá el producto 👇", ct);
+    }
+
+    private async Task PreventaCantidadTextoAsync(TelegramAccount bot, long chatId, string texto, CancellationToken ct)
+    {
+        var s = new string(texto.Where(char.IsDigit).ToArray());
+        if (!int.TryParse(s, out var n) || n < 1) { await SendRawAsync(bot.BotToken, chatId, "Decime un número (ej: 2), o tocá un botón. 🙂", ct); return; }
+        if (n > 9999) n = 9999;
+        await PreventaAgregarConCantidadAsync(bot, chatId, n, ct);
+    }
+
+    private async Task PreventaAgregarConCantidadAsync(TelegramAccount bot, long chatId, int cantidad, CancellationToken ct)
+    {
+        if (bot.ConvPendProductoId is null) { await MostrarMenuProductosAsync(bot, chatId, "Elegí un producto primero 👇", ct); return; }
+        if (cantidad < 1) cantidad = 1;
+        var items = LeerItems(bot);
+        var ex = items.FirstOrDefault(i => i.ProductoId == bot.ConvPendProductoId.Value);
+        if (ex is not null) ex.Cantidad += cantidad;
+        else items.Add(new PreventaItem { ProductoId = bot.ConvPendProductoId.Value, Sku = bot.ConvPendProductoSku, Nombre = bot.ConvPendProductoNombre ?? "producto", Cantidad = cantidad });
+        GuardarItems(bot, items);
+        var nom = bot.ConvPendProductoNombre;
+        await MostrarMenuProductosAsync(bot, chatId, $"✅ Agregué {cantidad}× {nom}. ¿Algo más? 👇", ct);
+    }
+
+    private async Task PreventaLibreAsync(TelegramAccount bot, long chatId, string texto, CancellationToken ct)
+    {
+        var d = texto.Trim();
+        if (string.IsNullOrWhiteSpace(d)) { await SendRawAsync(bot.BotToken, chatId, "Escribime el pedido, por favor 🙏", ct); return; }
+        await GuardarPreventaAsync(bot, chatId, d, null, ct);
+    }
+
+    private async Task PreventaFinalizarAsync(TelegramAccount bot, long chatId, CancellationToken ct)
+    {
+        var items = LeerItems(bot);
+        if (items.Count == 0) { await MostrarMenuProductosAsync(bot, chatId, "Todavía no agregaste nada. Elegí al menos un producto 👇", ct); return; }
+        var texto = string.Join("\n", items.Select(i => $"{i.Cantidad}x {i.Nombre}"));
+        var json = JsonSerializer.Serialize(items);
+        await GuardarPreventaAsync(bot, chatId, texto, json, ct);
+    }
+
+    private async Task GuardarPreventaAsync(TelegramAccount bot, long chatId, string textoCrudo, string? productosJson, CancellationToken ct)
+    {
         var clienteNombre = bot.ConvClienteNombre;
         _db.WhatsAppPedidosRecibidos.Add(new WhatsAppPedidoRecibido
         {
             Telefono = "telegram",
-            TextoCrudo = d,
+            TextoCrudo = textoCrudo,
             ClienteId = bot.ConvClienteId,
             ClienteNombre = clienteNombre,
+            ProductosParseados = productosJson,
             Estado = "NUEVO",
             Source = "telegram",
             RecibidoAt = DateTime.UtcNow
@@ -557,6 +701,52 @@ public class TelegramService
         await SendRawAsync(bot.BotToken, chatId,
             $"✅ ¡Preventa guardada! ({clienteTxt})\nYa te aparece en Pedidos para convertirla en venta. 🧾\n\nTocá el botón para cargar otra.",
             ct, TecladoBotones(new[] { "🧾 Nueva preventa" }));
+    }
+
+    // ── Consultas de productos ──
+
+    private async Task<List<(int Id, string? Sku, string Nombre)>> ProductosMasCompradosAsync(int clienteId, CancellationToken ct)
+    {
+        var grouped = await _db.CafeVentaItems
+            .Where(i => i.VentaNav != null && i.VentaNav.ClienteId == clienteId && i.VentaNav.Estado != "anulado" && i.ProductoId != null)
+            .GroupBy(i => i.ProductoId!.Value)
+            .Select(g => new { ProductoId = g.Key, Veces = g.Select(x => x.VentaId).Distinct().Count() })
+            .OrderByDescending(x => x.Veces).Take(10).ToListAsync(ct);
+        return await ResolverProductosAsync(grouped.Select(g => g.ProductoId).ToList(), ct);
+    }
+
+    private async Task<List<(int Id, string? Sku, string Nombre)>> ProductosMasVendidosAsync(CancellationToken ct)
+    {
+        var grouped = await _db.CafeVentaItems
+            .Where(i => i.VentaNav != null && i.VentaNav.Estado != "anulado" && i.ProductoId != null)
+            .GroupBy(i => i.ProductoId!.Value)
+            .Select(g => new { ProductoId = g.Key, Qty = g.Sum(x => x.Cantidad) })
+            .OrderByDescending(x => x.Qty).Take(10).ToListAsync(ct);
+        return await ResolverProductosAsync(grouped.Select(g => g.ProductoId).ToList(), ct);
+    }
+
+    /// <summary>Resuelve id/sku/nombre de una lista de productoIds, respetando el orden recibido.</summary>
+    private async Task<List<(int Id, string? Sku, string Nombre)>> ResolverProductosAsync(List<int> ids, CancellationToken ct)
+    {
+        if (ids.Count == 0) return new();
+        var prods = await _db.CafeProductos.AsNoTracking()
+            .Where(p => ids.Contains(p.Id) && p.IsActive)
+            .Select(p => new { p.Id, p.Sku, p.Nombre }).ToListAsync(ct);
+        var dict = prods.ToDictionary(p => p.Id);
+        var res = new List<(int, string?, string)>();
+        foreach (var id in ids) if (dict.TryGetValue(id, out var p)) res.Add((p.Id, p.Sku, p.Nombre));
+        return res;
+    }
+
+    private async Task<List<(int Id, string? Sku, string Nombre)>> BuscarProductosAsync(string q, CancellationToken ct)
+    {
+        var up = q.ToUpperInvariant();
+        var prods = await _db.CafeProductos.AsNoTracking()
+            .Where(p => p.IsActive && p.IsVisibleEnVentas &&
+                        (p.Nombre.ToUpper().Contains(up) || (p.Sku != null && p.Sku.ToUpper().Contains(up))))
+            .OrderBy(p => p.Nombre).Take(10)
+            .Select(p => new { p.Id, p.Sku, p.Nombre }).ToListAsync(ct);
+        return prods.Select(p => (p.Id, p.Sku, p.Nombre)).ToList();
     }
 
     /// <summary>Trae el último update para fijar el cursor sin responder mensajes viejos.</summary>

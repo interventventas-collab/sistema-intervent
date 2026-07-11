@@ -5050,14 +5050,58 @@
         subventanaWAMin = false;
 
         // 2026-07-11: si el pedido ya trae cliente (ej. preventa de Telegram con cliente elegido),
-        // lo pre-seleccionamos en la venta así no hay que buscarlo de nuevo.
+        // lo pre-seleccionamos en la venta así no hay que buscarlo de nuevo. Usamos SelectCliente
+        // (no seteo crudo) para que además cargue tipo/precios/más comprados y re-renderice.
         if (pedido.ClienteId.HasValue && pedido.ClienteId.Value > 0)
         {
             if (clientes is null || clientes.Count == 0)
                 try { clientes = await Api.GetCafeClientesAsync(); } catch { }
-            formClienteId = pedido.ClienteId.Value;
+            await SelectCliente(pedido.ClienteId.Value);
         }
+
+        // 2026-07-11: si la preventa de Telegram trae productos elegidos, los pre-cargamos como
+        // renglones de la venta (además del cliente). El texto queda igual en la nota flotante.
+        await PrecargarItemsDesdePedidoWAAsync(pedido);
+
         StateHasChanged();
+    }
+
+    /// <summary>Carga los items de ProductosParseados del pedido (JSON de la preventa de Telegram)
+    /// como renglones de la venta. Formato según categoría (café=1KG, otros=UNIT).</summary>
+    private async Task PrecargarItemsDesdePedidoWAAsync(ApiClient.WhatsAppPedidoDto pedido)
+    {
+        if (string.IsNullOrWhiteSpace(pedido.ProductosParseados)) return;
+        List<PreventaWAItem>? items;
+        try { items = System.Text.Json.JsonSerializer.Deserialize<List<PreventaWAItem>>(pedido.ProductosParseados); }
+        catch { return; }
+        if (items is null || items.Count == 0) return;
+
+        if (productos is null || productos.Count == 0)
+            try { productos = await Api.GetCafeProductosAsync(null); } catch { }
+
+        foreach (var it in items)
+        {
+            if (it.ProductoId <= 0) continue;
+            var prod = productos?.FirstOrDefault(p => p.Id == it.ProductoId);
+            var formato = prod?.Categoria == "CAFE" ? "1KG" : "UNIT";
+            formItems.Add(new CafeCotizarItemRequest
+            {
+                ProductoId = it.ProductoId,
+                Formato = formato,
+                Cantidad = Math.Max(1, it.Cantidad),
+                DescuentoPct = 0m,
+                EsConceptoLibre = false
+            });
+        }
+        try { await Cotizar(); } catch { }
+    }
+
+    private class PreventaWAItem
+    {
+        public int ProductoId { get; set; }
+        public string? Sku { get; set; }
+        public string? Nombre { get; set; }
+        public int Cantidad { get; set; }
     }
 
     /// <summary>Si la URL trae ?preventa=ID, abre el modal de Nueva Venta con los items pre-cargados
