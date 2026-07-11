@@ -4437,6 +4437,51 @@ public class ApiClient
         return await GetAsync<Web.Models.MpMovResumenDto>(url);
     }
 
+    // --- Cámaras EZVIZ (API oficial) ---
+    public async Task<Web.Models.EzvizAccountDto?> GetEzvizAccountAsync()
+        => await GetAsync<Web.Models.EzvizAccountDto>("/api/ezviz/account");
+
+    public async Task<Web.Models.EzvizAccountDto?> SaveEzvizAccountAsync(Web.Models.SaveEzvizAccountRequest req)
+        => await PutAsync<Web.Models.EzvizAccountDto>("/api/ezviz/account", req);
+
+    /// <summary>Prueba la conexión con EZVIZ (pide un token con las credenciales guardadas).</summary>
+    public async Task<Web.Models.EzvizProbarResultDto?> ProbarEzvizAsync()
+        => await PostAsync<Web.Models.EzvizProbarResultDto>("/api/ezviz/probar", new { });
+
+    /// <summary>Lista las cámaras de la cuenta. Lanza HttpRequestException con el mensaje del
+    /// servidor si EZVIZ devuelve error (para mostrarlo tal cual en la pantalla).</summary>
+    public async Task<List<Web.Models.EzvizCamaraDto>> GetEzvizCamarasAsync()
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync("/api/ezviz/camaras");
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return new(); }
+        await ThrowIfErrorAsync(resp);
+        return await resp.Content.ReadFromJsonAsync<List<Web.Models.EzvizCamaraDto>>() ?? new();
+    }
+
+    /// <summary>Trae el link + token para reproducir una cámara en vivo (EZUIKit).</summary>
+    public async Task<Web.Models.EzvizLiveDto?> GetEzvizLiveAsync(string serial, int channel = 1)
+        => await GetAsync<Web.Models.EzvizLiveDto>($"/api/ezviz/live?serial={Uri.EscapeDataString(serial)}&channel={channel}");
+
+    // --- Bot de Telegram (avisos al celu + consultas) ---
+    public async Task<Web.Models.TelegramAccountDto?> GetTelegramAccountAsync()
+        => await GetAsync<Web.Models.TelegramAccountDto>("/api/telegram/account");
+
+    public async Task<Web.Models.TelegramAccountDto?> SaveTelegramAccountAsync(Web.Models.SaveTelegramAccountRequest req)
+        => await PutAsync<Web.Models.TelegramAccountDto>("/api/telegram/account", req);
+
+    /// <summary>Prueba el token (getMe), vincula el chat si puede y manda un mensaje de prueba.</summary>
+    public async Task<Web.Models.TelegramProbarResultDto?> ProbarTelegramAsync()
+        => await PostAsync<Web.Models.TelegramProbarResultDto>("/api/telegram/probar", new { });
+
+    /// <summary>Vincula el chat del dueño mirando los mensajes que le escribió al bot.</summary>
+    public async Task<Web.Models.TelegramVincularResultDto?> VincularTelegramAsync()
+        => await PostAsync<Web.Models.TelegramVincularResultDto>("/api/telegram/vincular", new { });
+
+    /// <summary>Manda un mensaje de prueba al chat vinculado.</summary>
+    public async Task<Web.Models.TelegramTestMsgResultDto?> TestMensajeTelegramAsync()
+        => await PostAsync<Web.Models.TelegramTestMsgResultDto>("/api/telegram/test-mensaje", new { });
+
     private async Task<T?> GetAsync<T>(string url)
     {
         await SetAuthHeaderAsync();

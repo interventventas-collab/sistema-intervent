@@ -20,6 +20,8 @@ public class AppDbContext : DbContext
     public DbSet<GaliciaAccount> GaliciaAccounts => Set<GaliciaAccount>();
     public DbSet<ShellAccount> ShellAccounts => Set<ShellAccount>();
     public DbSet<MpAccount> MpAccounts => Set<MpAccount>();
+    public DbSet<EzvizAccount> EzvizAccounts => Set<EzvizAccount>();
+    public DbSet<TelegramAccount> TelegramAccounts => Set<TelegramAccount>();
     public DbSet<MpPago> MpPagos => Set<MpPago>();
     public DbSet<MpMovimiento> MpMovimientos => Set<MpMovimiento>();
     public DbSet<MeliOrder> MeliOrders => Set<MeliOrder>();

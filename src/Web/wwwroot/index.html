@@ -1687,5 +1687,45 @@
             } catch (e) {}
         };
     </script>
+    <!-- 2026-07-10: reproductor oficial de EZVIZ (EZUIKit) para ver las cámaras en vivo dentro
+         del dashboard. Se carga async: si no está disponible, la pantalla de Cámaras muestra
+         un aviso en vez de romperse. -->
+    <script src="https://cdn.jsdelivr.net/npm/ezuikit-js@8.1.4/dist/ezuikit.js" async></script>
+    <script>
+        // Interop Blazor <-> EZUIKit. La pantalla /integraciones/camaras llama a estas funciones
+        // para arrancar y parar el video en vivo de una cámara EZVIZ.
+        window.ezvizPlayer = (function () {
+            var player = null;
+            return {
+                // Devuelve true si la librería EZUIKit terminó de cargar.
+                ready: function () { return typeof window.EZUIKit !== 'undefined'; },
+                // Arranca el video en 'elementId' con el token + url (ezopen://...) que da el backend.
+                // Para cámaras con imagen encriptada, el código de verificación va dentro de la url.
+                play: function (elementId, accessToken, url) {
+                    try {
+                        if (typeof window.EZUIKit === 'undefined') return false;
+                        // Si había un player abierto, lo cerramos antes de abrir el nuevo.
+                        if (player) { try { player.stop(); } catch (e) {} player = null; }
+                        var el = document.getElementById(elementId);
+                        if (!el) return false;
+                        el.innerHTML = '';
+                        player = new window.EZUIKit.EZUIKitPlayer({
+                            id: elementId,
+                            accessToken: accessToken,
+                            url: url,
+                            template: 'security',
+                            width: el.clientWidth || 640,
+                            height: el.clientHeight || 400
+                        });
+                        return true;
+                    } catch (e) { console.warn('ezvizPlayer.play', e); return false; }
+                },
+                stop: function () {
+                    try { if (player) { player.stop(); player = null; } } catch (e) {}
+                    return true;
+                }
+            };
+        })();
+    </script>
 </body>
 </html>

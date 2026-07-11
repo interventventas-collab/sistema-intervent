@@ -1045,6 +1045,10 @@
                              IsActive="@IsActive("/integraciones")" OnClick="@(() => NavigateTo("/integraciones"))" />
                     <NavItem Href="/sitios" Label="Marcas / Sitios" Icon="@SvgIcons.Link"
                              IsActive="@IsActive("/sitios")" OnClick="@(() => NavigateTo("/sitios"))" />
+                    <NavItem Href="/integraciones/camaras" Label="Cámaras" Icon="@SvgIcons.Camera"
+                             IsActive="@IsActive("/integraciones/camaras")" OnClick="@(() => NavigateTo("/integraciones/camaras"))" />
+                    <NavItem Href="/integraciones/telegram" Label="Telegram" Icon="@SvgIcons.MessageCircle"
+                             IsActive="@IsActive("/integraciones/telegram")" OnClick="@(() => NavigateTo("/integraciones/telegram"))" />
                 }
                 @if (HasPerm("procesos"))
                 {

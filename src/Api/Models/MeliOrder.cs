@@ -45,6 +45,12 @@ public class MeliOrder
     public string? ProvinciaDestino { get; set; }
 
     public bool StockDiscounted { get; set; } = false;
+
+    /// <summary>2026-07-10: true cuando ya se avisó esta venta por Telegram (para no repetir el
+    /// aviso). Las ventas que ya existían cuando se agregó Telegram arrancan en true (backfill en
+    /// init.sql) para no mandar una catarata de avisos viejos.</summary>
+    public bool NotifiedTelegram { get; set; } = false;
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 

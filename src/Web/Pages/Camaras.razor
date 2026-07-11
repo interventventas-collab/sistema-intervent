@@ -1,0 +1,328 @@
+@page "/integraciones/camaras"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<PageTitle>Cámaras</PageTitle>
+
+<div class="page-container" style="max-width:1100px;">
+    <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.4rem;">
+        <span style="font-size:1.6rem;">📹</span>
+        <h1 style="margin:0;">Cámaras del depósito</h1>
+    </div>
+    <p style="color:#64748b;margin-top:0;">
+        Mirá las cámaras EZVIZ del depósito acá adentro, sin abrir la app del celular.
+    </p>
+
+    @if (loading)
+    {
+        <p style="color:#94a3b8;">Cargando…</p>
+    }
+    else
+    {
+        <!-- ─────────── Caja de configuración (credenciales) ─────────── -->
+        <div class="card" style="padding:1.2rem 1.4rem;margin-bottom:1.4rem;border:1px solid #e2e8f0;border-radius:12px;background:#fff;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
+                <h3 style="margin:0;">🔌 Conexión con EZVIZ</h3>
+                @if (account is not null && account.HasCredentials)
+                {
+                    @if (account.LastSyncOk)
+                    {
+                        <span style="background:#dcfce7;color:#166534;padding:0.25rem 0.7rem;border-radius:999px;font-weight:600;font-size:0.85rem;">✓ Conectado</span>
+                    }
+                    else
+                    {
+                        <span style="background:#fef9c3;color:#854d0e;padding:0.25rem 0.7rem;border-radius:999px;font-weight:600;font-size:0.85rem;">Credenciales guardadas — falta probar</span>
+                    }
+                }
+                else
+                {
+                    <span style="background:#fee2e2;color:#991b1b;padding:0.25rem 0.7rem;border-radius:999px;font-weight:600;font-size:0.85rem;">Sin conectar</span>
+                }
+            </div>
+
+            <p style="color:#64748b;font-size:0.9rem;margin:0.6rem 0 1rem;">
+                Pegá el <b>appKey</b> y el <b>appSecret</b> que sacaste de la web de desarrolladores de EZVIZ.
+                Se guardan una sola vez; el sistema renueva el permiso solo.
+            </p>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem;">
+                <div>
+                    <label style="font-weight:600;font-size:0.85rem;">appKey</label>
+                    <input @bind="appKey" placeholder="@(account?.HasCredentials == true ? "•••• (ya guardado)" : "Ej: a1b2c3d4e5...")"
+                           class="form-control" style="width:100%;" />
+                </div>
+                <div>
+                    <label style="font-weight:600;font-size:0.85rem;">appSecret</label>
+                    <input @bind="appSecret" type="password" placeholder="@(account?.HasCredentials == true ? "•••• (ya guardado)" : "Ej: 9f8e7d6c...")"
+                           class="form-control" style="width:100%;" />
+                </div>
+                <div>
+                    <label style="font-weight:600;font-size:0.85rem;">Alias (opcional)</label>
+                    <input @bind="alias" placeholder="Ej: Cámaras 9 de Abril" class="form-control" style="width:100%;" />
+                </div>
+                <div>
+                    <label style="font-weight:600;font-size:0.85rem;">Región (host de la API)</label>
+                    <select @bind="apiHost" class="form-control" style="width:100%;">
+                        <option value="https://open.ezvizlife.com">Global (open.ezvizlife.com)</option>
+                        <option value="https://ieuopen.ezvizlife.com">Europa (ieuopen.ezvizlife.com)</option>
+                        <option value="https://iusopen.ezviz.com">EE.UU. (iusopen.ezviz.com)</option>
+                        <option value="https://isaopen.ezvizlife.com">Sudamérica (isaopen.ezvizlife.com)</option>
+                    </select>
+                    <small style="color:#94a3b8;">Si no sabés cuál, dejá "Global". Se puede cambiar si no conecta.</small>
+                </div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:0.8rem;margin-top:1rem;flex-wrap:wrap;">
+                <button class="btn btn-primary" @onclick="Guardar" disabled="@saving">
+                    @(saving ? "Guardando…" : "Guardar credenciales")
+                </button>
+                <button class="btn btn-secondary" @onclick="Probar" disabled="@(probando || account?.HasCredentials != true)">
+                    @(probando ? "Probando…" : "Probar conexión")
+                </button>
+                @if (account is not null && !account.LastSyncOk && !string.IsNullOrEmpty(account.LastError))
+                {
+                    <span style="color:#b91c1c;font-size:0.88rem;">⚠ @account.LastError</span>
+                }
+            </div>
+        </div>
+
+        <!-- ─────────── Grilla de cámaras ─────────── -->
+        @if (account is not null && account.HasCredentials)
+        {
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.8rem;">
+                <h3 style="margin:0;">Cámaras</h3>
+                <button class="btn btn-secondary btn-sm" @onclick="CargarCamaras" disabled="@cargandoCamaras">
+                    @(cargandoCamaras ? "Buscando…" : "🔄 Actualizar")
+                </button>
+            </div>
+
+            @if (cargandoCamaras)
+            {
+                <p style="color:#94a3b8;">Buscando cámaras…</p>
+            }
+            else if (!string.IsNullOrEmpty(camarasError))
+            {
+                <div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:1rem;border-radius:10px;">
+                    No se pudieron traer las cámaras: @camarasError
+                </div>
+            }
+            else if (camaras.Count == 0)
+            {
+                <div style="background:#f8fafc;border:1px solid #e2e8f0;color:#64748b;padding:1.4rem;border-radius:10px;text-align:center;">
+                    No aparecen cámaras en esta cuenta todavía.<br />
+                    Revisá que las cámaras estén dadas de alta en la app de EZVIZ y probá "Actualizar".
+                </div>
+            }
+            else
+            {
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem;">
+                    @foreach (var cam in camaras)
+                    {
+                        <div style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;background:#fff;">
+                            <div style="position:relative;aspect-ratio:16/9;background:#0f172a;display:flex;align-items:center;justify-content:center;">
+                                @if (!string.IsNullOrEmpty(cam.PicUrl))
+                                {
+                                    <img src="@cam.PicUrl" alt="@cam.Nombre" style="width:100%;height:100%;object-fit:cover;" />
+                                }
+                                else
+                                {
+                                    <span style="color:#475569;font-size:2rem;">📷</span>
+                                }
+                                <span style="position:absolute;top:8px;left:8px;padding:0.2rem 0.6rem;border-radius:999px;font-size:0.75rem;font-weight:700;color:#fff;background:@(cam.Online ? "#16a34a" : "#64748b");">
+                                    @(cam.Online ? "En línea" : "Offline")
+                                </span>
+                            </div>
+                            <div style="padding:0.8rem;">
+                                <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                                    @(string.IsNullOrWhiteSpace(cam.Nombre) ? cam.DeviceSerial : cam.Nombre)
+                                </div>
+                                <div style="color:#94a3b8;font-size:0.78rem;margin-bottom:0.6rem;">@cam.DeviceSerial</div>
+                                <button class="btn btn-primary btn-sm" style="width:100%;"
+                                        @onclick="() => VerEnVivo(cam)" disabled="@(!cam.Online)">
+                                    ▶ Ver en vivo
+                                </button>
+                                @if (cam.Encriptada)
+                                {
+                                    <small style="color:#b45309;display:block;margin-top:0.4rem;">🔒 Imagen encriptada — puede pedir el código de verificación de la cámara.</small>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    }
+</div>
+
+<!-- ─────────── Modal de video en vivo ─────────── -->
+@if (liveOpen)
+{
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:2000;display:flex;align-items:center;justify-content:center;padding:1rem;"
+         @onclick="CerrarVivo">
+        <div style="background:#111827;border-radius:14px;max-width:820px;width:100%;overflow:hidden;" @onclick:stopPropagation="true">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:0.8rem 1rem;color:#fff;">
+                <span style="font-weight:600;">@(camActiva?.Nombre ?? camActiva?.DeviceSerial)</span>
+                <button class="btn btn-sm" style="background:#374151;color:#fff;" @onclick="CerrarVivo">✕ Cerrar</button>
+            </div>
+            <div style="padding:0 1rem 1rem;">
+                <div id="ezviz-live-container" style="width:100%;aspect-ratio:16/9;background:#000;border-radius:8px;"></div>
+                @if (!string.IsNullOrEmpty(liveError))
+                {
+                    <div style="color:#fca5a5;padding:1rem;text-align:center;">@liveError</div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private EzvizAccountDto? account;
+    private bool loading = true, saving = false, probando = false, cargandoCamaras = false;
+
+    // Formulario de credenciales
+    private string appKey = "";
+    private string appSecret = "";
+    private string alias = "";
+    private string apiHost = "https://open.ezvizlife.com";
+
+    // Cámaras
+    private List<EzvizCamaraDto> camaras = new();
+    private string? camarasError;
+
+    // Video en vivo
+    private bool liveOpen = false;
+    private EzvizCamaraDto? camActiva;
+    private string? liveError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarCuenta();
+        loading = false;
+        if (account is not null && account.HasCredentials)
+            await CargarCamaras();
+    }
+
+    private async Task CargarCuenta()
+    {
+        try
+        {
+            account = await Api.GetEzvizAccountAsync();
+            if (account is not null)
+            {
+                alias = account.Alias ?? "";
+                if (!string.IsNullOrWhiteSpace(account.ApiHost)) apiHost = account.ApiHost;
+            }
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo leer la configuración: " + ex.Message); }
+    }
+
+    private async Task Guardar()
+    {
+        saving = true;
+        try
+        {
+            var req = new SaveEzvizAccountRequest
+            {
+                AppKey = string.IsNullOrWhiteSpace(appKey) ? null : appKey.Trim(),
+                AppSecret = string.IsNullOrWhiteSpace(appSecret) ? null : appSecret.Trim(),
+                Alias = alias,
+                IsActive = true,
+                ApiHost = apiHost
+            };
+            var res = await Api.SaveEzvizAccountAsync(req);
+            if (res is not null)
+            {
+                account = res;
+                appKey = "";
+                appSecret = "";
+                ToastService.Success("Credenciales guardadas.");
+            }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task Probar()
+    {
+        probando = true;
+        try
+        {
+            var res = await Api.ProbarEzvizAsync();
+            if (res is not null && res.Ok)
+            {
+                ToastService.Success("¡Conexión con EZVIZ OK!");
+                await CargarCuenta();
+                await CargarCamaras();
+            }
+            else
+            {
+                ToastService.Error(res?.Error ?? "No se pudo conectar con EZVIZ.");
+                await CargarCuenta();
+            }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { probando = false; }
+    }
+
+    private async Task CargarCamaras()
+    {
+        cargandoCamaras = true;
+        camarasError = null;
+        try
+        {
+            camaras = await Api.GetEzvizCamarasAsync();
+        }
+        catch (Exception ex)
+        {
+            camarasError = ex.Message;
+            camaras = new();
+        }
+        finally { cargandoCamaras = false; }
+    }
+
+    private async Task VerEnVivo(EzvizCamaraDto cam)
+    {
+        camActiva = cam;
+        liveError = null;
+        liveOpen = true;
+        StateHasChanged();
+
+        try
+        {
+            var live = await Api.GetEzvizLiveAsync(cam.DeviceSerial, cam.ChannelNo);
+            if (live is null || !live.Ok || string.IsNullOrEmpty(live.Url) || string.IsNullOrEmpty(live.AccessToken))
+            {
+                liveError = live?.Error ?? "No se pudo abrir el video de esta cámara.";
+                return;
+            }
+            // Damos un instante a que el contenedor esté en el DOM y la librería EZUIKit cargada.
+            await Task.Delay(150);
+            var ready = await JS.InvokeAsync<bool>("ezvizPlayer.ready");
+            if (!ready)
+            {
+                liveError = "El reproductor de video todavía está cargando. Cerrá y volvé a abrir en unos segundos.";
+                return;
+            }
+            var ok = await JS.InvokeAsync<bool>("ezvizPlayer.play", "ezviz-live-container", live.AccessToken, live.Url);
+            if (!ok)
+                liveError = "No se pudo iniciar el video. Revisá que la cámara esté en línea.";
+        }
+        catch (Exception ex) { liveError = ex.Message; }
+    }
+
+    private async Task CerrarVivo()
+    {
+        try { await JS.InvokeVoidAsync("ezvizPlayer.stop"); } catch { }
+        liveOpen = false;
+        camActiva = null;
+        liveError = null;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("ezvizPlayer.stop"); } catch { }
+    }
+}
