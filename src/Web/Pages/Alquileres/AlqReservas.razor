@@ -27,8 +27,8 @@
                 🚚 En calle@(EnCalleCount > 0 ? $" ({EnCalleCount})" : "")
             </button>
             <button class="btn btn-secondary" @onclick="() => ordenReciente = !ordenReciente"
-                    title="Cambiar el orden por fecha de entrega">
-                @(ordenReciente ? "🔽 Más recientes primero" : "🔼 Más antiguas primero")
+                    title="Cambiar el orden: por cuándo cargaste la reserva">
+                @(ordenReciente ? "🔽 Últimas cargadas primero" : "🔼 Primeras cargadas primero")
             </button>
             <button class="btn btn-secondary" @onclick="ShowCondicionesEditor" title="Editar las condiciones que aparecen al pie del PDF">📝 Condiciones</button>
         </div>
@@ -61,8 +61,8 @@
         @if (!ordenReciente)
         {
             <span style="display:inline-flex; align-items:center; gap:6px; background:#eff6ff; color:#1d4ed8; border:0.5px solid #bfdbfe; border-radius:20px; padding:3px 10px; font-size:0.76rem;">
-                Más antiguas primero
-                <span style="cursor:pointer; font-weight:700; line-height:1;" title="Volver a más recientes primero" @onclick="() => ordenReciente = true">&times;</span>
+                Primeras cargadas primero
+                <span style="cursor:pointer; font-weight:700; line-height:1;" title="Volver a últimas cargadas primero" @onclick="() => ordenReciente = true">&times;</span>
             </span>
         }
         @if (filtroEstado == "" && !soloEnCalle && ordenReciente)
@@ -1115,8 +1115,10 @@
         // Filtro de estado (client-side): "activas" oculta finalizadas/canceladas; vacío = todas
         if (filtroEstado == "activas") q = q.Where(r => !EstaCerrada(r));
         else if (!string.IsNullOrEmpty(filtroEstado)) q = q.Where(r => r.Estado == filtroEstado);
-        // Orden por fecha de entrega, más recientes primero por defecto
-        q = ordenReciente ? q.OrderByDescending(r => r.FechaEntrega) : q.OrderBy(r => r.FechaEntrega);
+        // Orden por cuándo se cargó la reserva: las últimas cargadas primero por defecto
+        q = ordenReciente
+            ? q.OrderByDescending(r => r.CreatedAt).ThenByDescending(r => r.Id)
+            : q.OrderBy(r => r.CreatedAt).ThenBy(r => r.Id);
         return q.ToList();
     }
     private bool deepLinkApplied;
