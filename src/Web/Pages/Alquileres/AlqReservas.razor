@@ -7,13 +7,14 @@
 @inject BrandSettingsService BrandSettings
 
 <div class="card">
-    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-        <h3>
+    <div class="card-header" style="display: flex; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+        <h3 style="margin: 0; white-space: nowrap;">
             📅 Reservas de Alquileres
-            <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@(reservas?.Count ?? 0))</span>
+            <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@ReservasMostradas().Count)</span>
         </h3>
-        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-            <select class="form-input" style="max-width: 180px; font-size: 0.85rem;" @bind="filtroEstado" @bind:after="Load">
+        <div style="flex: 1; display: flex; gap: 0.5rem; align-items: center; justify-content: center; flex-wrap: wrap;">
+            <select class="form-input" style="max-width: 190px; font-size: 0.85rem;" @bind="filtroEstado">
+                <option value="activas">Activas (sin finalizar)</option>
                 <option value="">Todos los estados</option>
                 <option value="reservado">Reservado</option>
                 <option value="confirmado">Confirmado</option>
@@ -30,8 +31,44 @@
                 @(ordenReciente ? "🔽 Más recientes primero" : "🔼 Más antiguas primero")
             </button>
             <button class="btn btn-secondary" @onclick="ShowCondicionesEditor" title="Editar las condiciones que aparecen al pie del PDF">📝 Condiciones</button>
-            <button class="btn btn-primary" @onclick="ShowCreate">+ Nueva Reserva</button>
         </div>
+        <button class="btn btn-primary" style="white-space: nowrap;" @onclick="ShowCreate">+ Nueva Reserva</button>
+    </div>
+    @* Chips de filtros aplicados *@
+    <div style="display: flex; align-items: center; gap: 8px; padding: 10px 1.25rem; flex-wrap: wrap; border-top: 0.5px solid #f0f0f0;">
+        <span style="font-size: 0.78rem; color: #6b7280;">Filtros aplicados:</span>
+        @if (filtroEstado == "activas")
+        {
+            <span style="display:inline-flex; align-items:center; gap:6px; background:#eff6ff; color:#1d4ed8; border:0.5px solid #bfdbfe; border-radius:20px; padding:3px 10px; font-size:0.76rem;">
+                Ocultando finalizadas y canceladas
+                <span style="cursor:pointer; font-weight:700; line-height:1;" title="Ver todas" @onclick='() => filtroEstado = ""'>&times;</span>
+            </span>
+        }
+        else if (!string.IsNullOrEmpty(filtroEstado))
+        {
+            <span style="display:inline-flex; align-items:center; gap:6px; background:#eff6ff; color:#1d4ed8; border:0.5px solid #bfdbfe; border-radius:20px; padding:3px 10px; font-size:0.76rem;">
+                Estado: @EstadoLabel(filtroEstado)
+                <span style="cursor:pointer; font-weight:700; line-height:1;" title="Quitar filtro de estado" @onclick='() => filtroEstado = "activas"'>&times;</span>
+            </span>
+        }
+        @if (soloEnCalle)
+        {
+            <span style="display:inline-flex; align-items:center; gap:6px; background:#eff6ff; color:#1d4ed8; border:0.5px solid #bfdbfe; border-radius:20px; padding:3px 10px; font-size:0.76rem;">
+                Solo en calle
+                <span style="cursor:pointer; font-weight:700; line-height:1;" title="Quitar" @onclick="() => soloEnCalle = false">&times;</span>
+            </span>
+        }
+        @if (!ordenReciente)
+        {
+            <span style="display:inline-flex; align-items:center; gap:6px; background:#eff6ff; color:#1d4ed8; border:0.5px solid #bfdbfe; border-radius:20px; padding:3px 10px; font-size:0.76rem;">
+                Más antiguas primero
+                <span style="cursor:pointer; font-weight:700; line-height:1;" title="Volver a más recientes primero" @onclick="() => ordenReciente = true">&times;</span>
+            </span>
+        }
+        @if (filtroEstado == "" && !soloEnCalle && ordenReciente)
+        {
+            <span style="font-size: 0.76rem; color: #9ca3af;">mostrando todas las reservas</span>
+        }
     </div>
     <div class="card-body" style="padding: 0;">
         @if (isLoading)
@@ -42,6 +79,12 @@
         {
             <p class="text-muted" style="padding: 1.5rem;">
                 No hay reservas para mostrar. Tocá <strong>"+ Nueva Reserva"</strong> para crear la primera.
+            </p>
+        }
+        else if (ReservasMostradas().Count == 0)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">
+                No hay reservas que coincidan con el filtro. Probá cambiar el filtro de arriba o tocá la <strong>✕</strong> de los chips para verlas todas.
             </p>
         }
         else
@@ -1045,21 +1088,36 @@
     private AlqReservaDto? reservaAsignar;
     private int asignarRepartidorId;
     private bool asignando;
-    private string filtroEstado = "";
+    private string filtroEstado = "activas"; // por defecto: solo las que no están finalizadas ni canceladas
     private bool soloEnCalle;
     private bool ordenReciente = true; // por defecto: fechas más recientes primero
 
     private bool EsEnCalle(AlqReservaDto r) => r.EntregadoPorRepartidorId.HasValue && !r.RetiradoPorRepartidorId.HasValue;
     private int EnCalleCount => reservas?.Count(EsEnCalle) ?? 0;
+    private bool EstaCerrada(AlqReservaDto r) => r.Estado == "finalizado" || r.Estado == "cancelado";
+
+    private string EstadoLabel(string e) => e switch
+    {
+        "reservado" => "Reservado",
+        "confirmado" => "Confirmado",
+        "entregado" => "Entregado",
+        "finalizado" => "Finalizado",
+        "cancelado" => "Cancelado",
+        _ => e
+    };
+
     private List<AlqReservaDto> ReservasMostradas()
     {
         if (reservas is null) return new();
         // En calle: ordenar por fecha de retiro (lo más urgente primero)
         if (soloEnCalle) return reservas.Where(EsEnCalle).OrderBy(r => r.FechaRetiro).ToList();
-        // Resto: por fecha de entrega, más recientes primero por defecto (o al revés con el botón)
-        return ordenReciente
-            ? reservas.OrderByDescending(r => r.FechaEntrega).ToList()
-            : reservas.OrderBy(r => r.FechaEntrega).ToList();
+        var q = reservas.AsEnumerable();
+        // Filtro de estado (client-side): "activas" oculta finalizadas/canceladas; vacío = todas
+        if (filtroEstado == "activas") q = q.Where(r => !EstaCerrada(r));
+        else if (!string.IsNullOrEmpty(filtroEstado)) q = q.Where(r => r.Estado == filtroEstado);
+        // Orden por fecha de entrega, más recientes primero por defecto
+        q = ordenReciente ? q.OrderByDescending(r => r.FechaEntrega) : q.OrderBy(r => r.FechaEntrega);
+        return q.ToList();
     }
     private bool deepLinkApplied;
 
@@ -1290,7 +1348,7 @@
     private async Task Load()
     {
         isLoading = true;
-        try { reservas = await Api.GetAlqReservasAsync(string.IsNullOrEmpty(filtroEstado) ? null : filtroEstado) ?? new(); }
+        try { reservas = await Api.GetAlqReservasAsync(null) ?? new(); } // traemos todas; el filtro por estado se aplica en ReservasMostradas()
         catch { ToastService.Error("Error al cargar reservas"); reservas = new(); }
         isLoading = false;
     }
