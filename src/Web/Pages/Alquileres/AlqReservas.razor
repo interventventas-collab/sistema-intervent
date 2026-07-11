@@ -25,6 +25,10 @@
                     title="Mostrar solo lo entregado que falta retirar (equipos en la calle)">
                 🚚 En calle@(EnCalleCount > 0 ? $" ({EnCalleCount})" : "")
             </button>
+            <button class="btn btn-secondary" @onclick="() => ordenReciente = !ordenReciente"
+                    title="Cambiar el orden por fecha de entrega">
+                @(ordenReciente ? "🔽 Más recientes primero" : "🔼 Más antiguas primero")
+            </button>
             <button class="btn btn-secondary" @onclick="ShowCondicionesEditor" title="Editar las condiciones que aparecen al pie del PDF">📝 Condiciones</button>
             <button class="btn btn-primary" @onclick="ShowCreate">+ Nueva Reserva</button>
         </div>
@@ -1043,15 +1047,19 @@
     private bool asignando;
     private string filtroEstado = "";
     private bool soloEnCalle;
+    private bool ordenReciente = true; // por defecto: fechas más recientes primero
 
     private bool EsEnCalle(AlqReservaDto r) => r.EntregadoPorRepartidorId.HasValue && !r.RetiradoPorRepartidorId.HasValue;
     private int EnCalleCount => reservas?.Count(EsEnCalle) ?? 0;
     private List<AlqReservaDto> ReservasMostradas()
     {
         if (reservas is null) return new();
-        var q = soloEnCalle ? reservas.Where(EsEnCalle) : reservas.AsEnumerable();
         // En calle: ordenar por fecha de retiro (lo más urgente primero)
-        return soloEnCalle ? q.OrderBy(r => r.FechaRetiro).ToList() : q.ToList();
+        if (soloEnCalle) return reservas.Where(EsEnCalle).OrderBy(r => r.FechaRetiro).ToList();
+        // Resto: por fecha de entrega, más recientes primero por defecto (o al revés con el botón)
+        return ordenReciente
+            ? reservas.OrderByDescending(r => r.FechaEntrega).ToList()
+            : reservas.OrderBy(r => r.FechaEntrega).ToList();
     }
     private bool deepLinkApplied;
 
