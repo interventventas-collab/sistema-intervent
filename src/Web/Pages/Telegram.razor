@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject IJSRuntime JS
 
 <PageTitle>Telegram</PageTitle>
 
@@ -100,6 +101,19 @@
                         @(vinculando ? "Buscando…" : "🔗 Vincular mi Telegram")
                     </button>
                 }
+
+                <div style="margin-top:0.9rem;padding-top:0.8rem;border-top:1px solid #f1f5f9;font-size:0.86rem;color:#475569;">
+                    🔒 <b>Código de seguridad</b>: <span style="font-family:monospace;font-size:1rem;background:#f1f5f9;padding:0.1rem 0.5rem;border-radius:6px;">@account.VinculacionCode</span>
+                    <div style="color:#94a3b8;font-size:0.8rem;margin-top:0.3rem;">
+                        Si el bot no está vinculado, solo se activa cuando le mandan este código. Nadie puede adueñárselo sin él.
+                    </div>
+                    @if (account.ChatId is not null)
+                    {
+                        <button class="btn btn-secondary btn-sm" style="margin-top:0.5rem;" @onclick="Desvincular" disabled="@desvinc">
+                            @(desvinc ? "…" : "Desvincular este celular")
+                        </button>
+                    }
+                </div>
             </div>
 
             <!-- ─────────── Qué avisos recibir ─────────── -->
@@ -175,6 +189,18 @@
             {
                 <p style="color:#16a34a;font-size:0.88rem;margin:0.7rem 0 0;">✅ Listo. Abrí el chat del bot de Preventas y escribile <b>nueva</b> para cargar una preventa.</p>
             }
+            @if (preventaAccount is not null && preventaAccount.HasToken)
+            {
+                <div style="margin-top:0.9rem;padding-top:0.8rem;border-top:1px solid #f1f5f9;font-size:0.86rem;color:#475569;">
+                    🔒 <b>Código de seguridad</b>: <span style="font-family:monospace;font-size:1rem;background:#f1f5f9;padding:0.1rem 0.5rem;border-radius:6px;">@preventaAccount.VinculacionCode</span>
+                    @if (preventaAccount.ChatId is not null)
+                    {
+                        <button class="btn btn-secondary btn-sm" style="margin-left:0.6rem;" @onclick="DesvincularPreventa" disabled="@desvincPv">
+                            @(desvincPv ? "…" : "Desvincular")
+                        </button>
+                    }
+                </div>
+            }
         </div>
     }
 </div>
@@ -182,6 +208,7 @@
 @code {
     private TelegramAccountDto? account;
     private bool loading = true, saving = false, probando = false, vinculando = false, testando = false;
+    private bool desvinc = false, desvincPv = false;
 
     private string botToken = "";
     private bool notifVentas = true;
@@ -375,5 +402,33 @@
         }
         catch (Exception ex) { ToastService.Error(ex.Message); }
         finally { testando = false; }
+    }
+
+    private async Task Desvincular()
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", "¿Desvincular este celular del bot de Avisos? Vas a dejar de recibir avisos hasta volver a vincularlo con el código nuevo.");
+        if (!ok) return;
+        desvinc = true;
+        try
+        {
+            var res = await Api.DesvincularTelegramAsync("AVISOS");
+            if (res is not null) { account = res; ToastService.Success("Desvinculado. Se generó un código nuevo."); }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { desvinc = false; }
+    }
+
+    private async Task DesvincularPreventa()
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", "¿Desvincular el bot de Preventas? Para volver a usarlo hay que mandarle el código nuevo.");
+        if (!ok) return;
+        desvincPv = true;
+        try
+        {
+            var res = await Api.DesvincularTelegramAsync("PREVENTAS");
+            if (res is not null) { preventaAccount = res; ToastService.Success("Bot de Preventas desvinculado. Código nuevo generado."); }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { desvincPv = false; }
     }
 }

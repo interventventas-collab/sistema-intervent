@@ -358,8 +358,29 @@ public class TelegramService
                 var texto = m.TryGetProperty("text", out var txt) ? txt.GetString() : null;
                 if (string.IsNullOrWhiteSpace(texto)) continue;
 
-                // Auto-vinculación: si todavía no hay dueño, el primero que escribe queda vinculado.
-                if (bot.ChatId is null) bot.ChatId = chatId;
+                // Vinculación con código: mientras no haya dueño, el bot NO le hace caso a nadie hasta
+                // que le manden el código de seguridad. Así un extraño que descubra el bot no puede
+                // adueñárselo.
+                if (bot.ChatId is null)
+                {
+                    if (!string.IsNullOrEmpty(bot.VinculacionCode))
+                    {
+                        if (texto.Trim() == bot.VinculacionCode)
+                        {
+                            bot.ChatId = chatId;
+                            await _db.SaveChangesAsync(ct);
+                            await SendRawAsync(bot.BotToken, chatId, "✅ ¡Listo! Quedaste vinculado. Ya podés usar el bot.", ct);
+                        }
+                        else
+                        {
+                            await SendRawAsync(bot.BotToken, chatId,
+                                "🔒 Para activar este bot mandame el código de seguridad (lo ves en el sistema, en Integraciones → Telegram).", ct);
+                        }
+                        continue;
+                    }
+                    // Sin código configurado (caso viejo): auto-vincular el primero que escribe.
+                    bot.ChatId = chatId;
+                }
 
                 // Solo respondemos al chat del dueño (seguridad).
                 if (bot.ChatId != chatId)
@@ -513,8 +534,8 @@ public class TelegramService
             chatId = frv;
         if (chatId is null) return;
 
-        if (bot.ChatId is null) bot.ChatId = chatId;
-        if (bot.ChatId != chatId || bot.Proposito != "PREVENTAS") return;
+        // Los botones inline solo se le mandan al dueño ya vinculado; si no coincide, ignoramos.
+        if (bot.ChatId is null || bot.ChatId != chatId || bot.Proposito != "PREVENTAS") return;
 
         var data = cq.TryGetProperty("data", out var dEl) ? dEl.GetString() : null;
         if (string.IsNullOrEmpty(data)) return;

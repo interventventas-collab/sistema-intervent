@@ -57,6 +57,15 @@ public class TelegramController : ControllerBase
         return Ok(new VincularResultDto(ok, chatId, error));
     }
 
+    /// <summary>Desvincula el chat y genera un código nuevo (para re-vincular con seguridad).</summary>
+    [HttpPost("desvincular")]
+    public async Task<IActionResult> Desvincular([FromQuery] string proposito = "AVISOS")
+    {
+        var dto = await _accounts.DesvincularAsync(proposito);
+        if (dto is null) return BadRequest(new { error = "No hay bot configurado" });
+        return Ok(dto);
+    }
+
     public record TestMsgResultDto(bool Ok, string? Error);
 
     /// <summary>Manda un mensaje de prueba al chat vinculado.</summary>

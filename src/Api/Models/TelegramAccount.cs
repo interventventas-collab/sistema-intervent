@@ -41,6 +41,13 @@ public class TelegramAccount
     [MaxLength(120)]
     public string? BotUsername { get; set; }
 
+    /// <summary>Código de seguridad para VINCULAR el bot la primera vez. Cuando el chat todavía no
+    /// está vinculado (ChatId null), el bot NO le hace caso a nadie hasta que le manden este código.
+    /// Así un desconocido que descubra el bot no puede "adueñárselo". Se genera solo y se muestra en
+    /// la pantalla del sistema. Pedido de Osmar 2026-07-11.</summary>
+    [MaxLength(20)]
+    public string? VinculacionCode { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     // --- Qué avisos mandar (tildes que elige el usuario) ---
