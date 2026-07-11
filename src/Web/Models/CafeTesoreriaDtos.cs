@@ -316,6 +316,10 @@ public class ExtractoMovimientoDto
     // ComprobantesAsociados trae los N numeros de venta y CobranzaNumeroAsociada el de la cobranza.
     public List<string>? ComprobantesAsociados { get; set; }
     public string? CobranzaNumeroAsociada { get; set; }
+    // 2026-07-11: asociado a una venta pero sin cobranza vigente (proceso a medias).
+    // VentaClienteId = cliente de la venta, para retomar la cobranza precargada.
+    public bool SinCobranza { get; set; }
+    public int? VentaClienteId { get; set; }
 }
 
 public class SaldoBancoDto

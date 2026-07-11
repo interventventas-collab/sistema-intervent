@@ -37,7 +37,13 @@ public class CafeExtractoBancoController : ControllerBase
         // devolvemos los numeros de TODAS las ventas imputadas y el numero de la cobranza.
         // Asi la UI muestra "✓ CAFE-2026-0073, CAFE-2026-0206" en vez de solo el primero.
         List<string>? ComprobantesAsociados = null,
-        string? CobranzaNumeroAsociada = null);
+        string? CobranzaNumeroAsociada = null,
+        // 2026-07-11: SinCobranza = el mov quedo asociado a una venta pero esa venta NO tiene
+        // ninguna cobranza VIGENTE que la impute (proceso a medias: se asocio y no se cargo la
+        // cobranza). La UI lo pinta en rojo con boton "Retomar cobranza". VentaClienteId es el
+        // cliente de la venta asociada, para poder precargar Cobranzas al retomar.
+        bool SinCobranza = false,
+        int? VentaClienteId = null);
 
     public record SaldoBancoDto(decimal Saldo, DateTime UltimaFecha, int CantidadMovimientos, DateTime? UltimoImportadoAt);
 
@@ -65,8 +71,17 @@ public class CafeExtractoBancoController : ControllerBase
         if (hasta.HasValue) q = q.Where(m => m.Fecha <= hasta.Value.Date);
         if (tipo == "ingresos") q = q.Where(m => m.Creditos > 0);
         else if (tipo == "egresos") q = q.Where(m => m.Debitos > 0);
+        // 2026-07-11: ventas que tienen al menos una cobranza VIGENTE que las imputa.
+        // Sirve para el filtro "sin-completar" y para la marca SinCobranza del DTO.
+        var ventasConCobranzaVigente = _db.CafeCobranzasComprobantes
+            .Where(cc => cc.VentaId != null && cc.Cobranza!.Estado == "VIGENTE")
+            .Select(cc => cc.VentaId!.Value);
+
         if (asociado == "si") q = q.Where(m => m.VentaIdAsociada != null);
         else if (asociado == "no") q = q.Where(m => m.VentaIdAsociada == null);
+        else if (asociado == "sin-completar")
+            q = q.Where(m => m.VentaIdAsociada != null
+                && !ventasConCobranzaVigente.Contains(m.VentaIdAsociada.Value));
 
         var movs = await q.OrderByDescending(m => m.Fecha).ThenByDescending(m => m.Id)
             .Take(Math.Clamp(take, 1, 2000))
@@ -81,11 +96,22 @@ public class CafeExtractoBancoController : ControllerBase
             .ToListAsync();
         var byCuit = clientesPorCuit.GroupBy(c => c.Cuit!).ToDictionary(g => g.Key, g => g.First());
 
-        // Pre-cargar numeros de venta asociados
+        // Pre-cargar numeros de venta asociados (y el cliente, para poder retomar la cobranza)
         var ventaIds = movs.Where(m => m.VentaIdAsociada.HasValue).Select(m => m.VentaIdAsociada!.Value).Distinct().ToList();
-        var ventasDict = await _db.CafeVentas.Where(v => ventaIds.Contains(v.Id))
-            .Select(v => new { v.Id, v.Numero })
-            .ToDictionaryAsync(v => v.Id, v => v.Numero);
+        var ventasDict = (await _db.CafeVentas.Where(v => ventaIds.Contains(v.Id))
+            .Select(v => new { v.Id, v.Numero, v.ClienteId })
+            .ToListAsync())
+            .ToDictionary(v => v.Id, v => v);
+
+        // 2026-07-11: de las ventas asociadas, cuales YA tienen una cobranza VIGENTE. El resto
+        // quedaron a medias (asociadas sin cobranza) -> SinCobranza = true en el DTO.
+        var ventasSaldadas = (await _db.CafeCobranzasComprobantes
+            .Where(cc => cc.VentaId.HasValue && ventaIds.Contains(cc.VentaId.Value)
+                && cc.Cobranza!.Estado == "VIGENTE")
+            .Select(cc => cc.VentaId!.Value)
+            .Distinct()
+            .ToListAsync())
+            .ToHashSet();
 
         // 2026-06-19: para cada venta asociada, buscar la cobranza que la imputo. Si esa cobranza
         // tiene MAS imputaciones, las devolvemos todas para que la UI muestre los N comprobantes.
@@ -121,8 +147,12 @@ public class CafeExtractoBancoController : ControllerBase
                 cliNom = c.Nombre;
             }
             string? ventaNumero = null;
-            if (m.VentaIdAsociada.HasValue && ventasDict.TryGetValue(m.VentaIdAsociada.Value, out var nro))
-                ventaNumero = nro;
+            int? ventaClienteId = null;
+            if (m.VentaIdAsociada.HasValue && ventasDict.TryGetValue(m.VentaIdAsociada.Value, out var vinfo))
+            {
+                ventaNumero = vinfo.Numero;
+                ventaClienteId = vinfo.ClienteId;
+            }
             List<string>? comprobantes = null;
             string? cobranzaNumero = null;
             if (m.VentaIdAsociada.HasValue
@@ -131,11 +161,14 @@ public class CafeExtractoBancoController : ControllerBase
                 if (compsPorCobranza.TryGetValue(cobId, out var lista)) comprobantes = lista;
                 if (cobranzaNumeros.TryGetValue(cobId, out var cnum)) cobranzaNumero = cnum;
             }
+            // Asociado a una venta que todavia no tiene cobranza vigente = proceso a medias.
+            bool sinCobranza = m.VentaIdAsociada.HasValue && !ventasSaldadas.Contains(m.VentaIdAsociada.Value);
             return new ExtractoMovimientoDto(m.Id, m.Fecha, m.Descripcion, m.Debitos, m.Creditos, m.Saldo,
                 m.Concepto, m.ObservacionesCliente, m.LeyendaAdicional1, m.LeyendaAdicional2, m.TipoMovimiento,
                 m.VentaIdAsociada, ventaNumero, m.AsociadoPor, m.AsociadoAt,
                 cliId, cliNom,
-                comprobantes, cobranzaNumero);
+                comprobantes, cobranzaNumero,
+                sinCobranza, ventaClienteId);
         }).ToList();
         return Ok(result);
     }

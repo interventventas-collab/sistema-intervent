@@ -47,6 +47,17 @@
     .btn-desasociar { padding: 0.25rem 0.5rem; font-size: 0.7rem; background: white; color: #6b7280; border: 1px solid #d1d5db; border-radius: 4px; cursor: pointer; }
     .btn-desasociar:hover { background: #fee2e2; color: #b91c1c; }
 
+    /* 2026-07-11: fila asociada sin cobranza (proceso a medias) */
+    .ex-tabla tr.sincompletar td { background: #fef2f2; }
+    .ex-tabla tr.sincompletar:hover td { background: #fee2e2; }
+    .ex-sincompletar-aviso { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.72rem; color: #b91c1c; font-weight: 700; }
+    .btn-retomar { padding: 0.28rem 0.6rem; font-size: 0.75rem; background: #1d4ed8; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 700; }
+    .btn-retomar:hover { background: #1e40af; }
+    .ex-filtro.sincompletar-tab { color: #b91c1c; border-color: #fecaca; }
+    .ex-filtro.sincompletar-tab.activo { background: #dc2626; color: white; border-color: #dc2626; }
+    .ex-badge-count { background: #dc2626; color: white; border-radius: 999px; padding: 0 0.4rem; font-size: 0.7rem; margin-left: 0.25rem; }
+    .ex-filtro.sincompletar-tab.activo .ex-badge-count { background: white; color: #dc2626; }
+
     .vacio { background: white; padding: 2rem; text-align: center; color: #9ca3af; border-radius: 8px; }
 </style>
 
@@ -71,6 +82,10 @@
             <button class="ex-filtro @(filtro == "ingresos" ? "activo" : "")" @onclick='() => CambiarFiltro("ingresos")'>🟢 Ingresos</button>
             <button class="ex-filtro @(filtro == "egresos" ? "activo" : "")" @onclick='() => CambiarFiltro("egresos")'>🔴 Egresos</button>
             <button class="ex-filtro @(filtro == "sin-asociar" ? "activo" : "")" @onclick='() => CambiarFiltro("sin-asociar")'>⚠ Sin asociar</button>
+            <button class="ex-filtro sincompletar-tab @(filtro == "sin-completar" ? "activo" : "")" @onclick='() => CambiarFiltro("sin-completar")' title="Asociadas a una venta pero sin la cobranza cargada">
+                🔴 Sin completar
+                @if (sinCompletarCount > 0) { <span class="ex-badge-count">@sinCompletarCount</span> }
+            </button>
         </div>
         <label class="btn-import" style="margin-left: auto;">
             @if (importing)
@@ -136,7 +151,7 @@
                 @foreach (var m in MovsFiltrados())
                 {
                     var esIngreso = m.Creditos > 0.01m;
-                    <tr class="@(esIngreso ? "ingreso" : "egreso")">
+                    <tr class="@(m.SinCobranza ? "sincompletar" : esIngreso ? "ingreso" : "egreso")">
                         <td>@m.Fecha.ToString("dd/MM/yyyy")</td>
                         <td>
                             <strong>@(m.Descripcion ?? "—")</strong>
@@ -172,9 +187,22 @@
                         <td>
                             @if (m.VentaIdAsociada.HasValue)
                             {
+                                @* 2026-07-11: asociada a una venta pero SIN cobranza vigente = proceso a medias.
+                                   Mostramos aviso rojo + boton para retomar la cobranza (precargada). Tiene
+                                   prioridad sobre el badge verde. *@
+                                @if (m.SinCobranza)
+                                {
+                                    <div style="display:flex; flex-direction:column; gap:.3rem; max-width:260px;">
+                                        <span class="ex-sincompletar-aviso">⚠ @m.VentaNumeroAsociada · falta la cobranza</span>
+                                        <div style="display:flex; gap:.3rem; align-items:center;">
+                                            <button class="btn-retomar" @onclick="() => RetomarCobranza(m)">▶ Retomar cobranza</button>
+                                            <button class="btn-desasociar" @onclick="() => Desasociar(m.Id)" title="Quitar asociación">×</button>
+                                        </div>
+                                    </div>
+                                }
                                 @* 2026-06-19: si la cobranza imputo a varias ventas, mostramos los N comprobantes
                                    en chips. Si solo es una, fallback al texto plano. *@
-                                @if (m.ComprobantesAsociados is { Count: > 1 })
+                                else if (m.ComprobantesAsociados is { Count: > 1 })
                                 {
                                     <div style="display:flex; flex-direction:column; gap:.15rem; max-width:260px;">
                                         @if (!string.IsNullOrEmpty(m.CobranzaNumeroAsociada))
@@ -361,6 +389,8 @@
     private bool loading = true;
     private bool importing;
     private string filtro = "todos";
+    // 2026-07-11: cantidad de movimientos asociados sin cobranza (para el badge del filtro).
+    private int sinCompletarCount;
 
     // 2026-06-02: Filtros adicionales client-side (buscan sobre lo ya cargado).
     private string busquedaTexto = "";
@@ -415,9 +445,18 @@
         {
             saldo = await Api.GetSaldoBancoAsync();
             await CargarMovs();
+            await RefrescarContadorSinCompletar();
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { loading = false; }
+    }
+
+    /// <summary>Cuenta los movimientos asociados a una venta que quedaron sin cobranza.
+    /// Consulta liviana al backend para que el badge sea siempre exacto, sin importar el filtro activo.</summary>
+    private async Task RefrescarContadorSinCompletar()
+    {
+        try { sinCompletarCount = (await Api.GetExtractoMovimientosAsync(asociado: "sin-completar"))?.Count ?? 0; }
+        catch { /* el badge es secundario, no rompe la pantalla */ }
     }
 
     private async Task CambiarFiltro(string f)
@@ -429,7 +468,7 @@
     private async Task CargarMovs()
     {
         var tipo = filtro is "ingresos" or "egresos" ? filtro : null;
-        var asoc = filtro == "sin-asociar" ? "no" : null;
+        var asoc = filtro switch { "sin-asociar" => "no", "sin-completar" => "sin-completar", _ => null };
         movs = await Api.GetExtractoMovimientosAsync(tipo: tipo, asociado: asoc) ?? new();
     }
 
@@ -558,6 +597,17 @@
         {
             ToastService.Info("Asociación quitada");
             await CargarMovs();
+            await RefrescarContadorSinCompletar();
         }
+    }
+
+    /// <summary>2026-07-11: retoma una cobranza que quedó a medias. Lleva a Cobranzas con el
+    /// cliente, la venta y el movimiento del banco precargados — el mismo camino que al asociar
+    /// por primera vez, para terminar el paso que faltó.</summary>
+    private void RetomarCobranza(ExtractoMovimientoDto m)
+    {
+        if (!m.VentaIdAsociada.HasValue) return;
+        var clienteId = m.VentaClienteId ?? m.ClienteSugeridoId ?? 0;
+        Navigation.NavigateTo($"/cafe/tesoreria/cobranzas?cliente={clienteId}&venta={m.VentaIdAsociada.Value}&movimiento={m.Id}");
     }
 }
