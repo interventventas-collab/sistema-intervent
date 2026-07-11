@@ -104,18 +104,23 @@
 
             <!-- ─────────── Qué avisos recibir ─────────── -->
             <div class="card" style="padding:1.2rem 1.4rem;border:1px solid #e2e8f0;border-radius:12px;background:#fff;">
-                <h3 style="margin:0 0 0.8rem;">🔔 Qué avisos querés recibir</h3>
+                <h3 style="margin:0 0 0.8rem;">🔔 Qué avisos automáticos querés recibir</h3>
                 <label style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.7rem;cursor:pointer;">
                     <input type="checkbox" @bind="notifVentas" style="width:18px;height:18px;" />
                     <span>🛒 <b>Ventas nuevas</b> de MercadoLibre</span>
                 </label>
                 <label style="display:flex;align-items:center;gap:0.6rem;margin-bottom:1rem;cursor:pointer;">
-                    <input type="checkbox" @bind="notifAlertas" style="width:18px;height:18px;" />
-                    <span>🔔 <b>Mis Alertas</b> (Shell, banco, cheques, fechas, correos)</span>
+                    <input type="checkbox" @bind="notifFichadas" style="width:18px;height:18px;" />
+                    <span>🕐 <b>Fichadas</b> de empleados (entrada/salida + la plata a rendir al salir)</span>
                 </label>
                 <button class="btn btn-primary btn-sm" @onclick="GuardarTildes" disabled="@saving">
                     @(saving ? "Guardando…" : "Guardar preferencias")
                 </button>
+                <div style="margin-top:1rem;padding-top:0.9rem;border-top:1px solid #f1f5f9;color:#64748b;font-size:0.88rem;">
+                    🔔 ¿Y las alertas (Shell, banco, cheques, fechas, correos)? Esas las elegís
+                    <b>una por una</b> en <a href="/mis-alertas">Mis Alertas</a>: cada alerta tiene un tilde
+                    "Avisar también por Telegram".
+                </div>
             </div>
         }
     }
@@ -127,7 +132,7 @@
 
     private string botToken = "";
     private bool notifVentas = true;
-    private bool notifAlertas = true;
+    private bool notifFichadas = true;
 
     protected override async Task OnInitializedAsync()
     {
@@ -143,7 +148,7 @@
             if (account is not null)
             {
                 notifVentas = account.NotifVentas;
-                notifAlertas = account.NotifAlertas;
+                notifFichadas = account.NotifFichadas;
             }
         }
         catch (Exception ex) { ToastService.Error("No se pudo leer la configuración: " + ex.Message); }
@@ -159,7 +164,7 @@
                 BotToken = string.IsNullOrWhiteSpace(botToken) ? null : botToken.Trim(),
                 IsActive = true,
                 NotifVentas = notifVentas,
-                NotifAlertas = notifAlertas
+                NotifFichadas = notifFichadas
             };
             var res = await Api.SaveTelegramAccountAsync(req);
             if (res is not null)
@@ -183,7 +188,7 @@
                 BotToken = null, // no cambiar el token
                 IsActive = true,
                 NotifVentas = notifVentas,
-                NotifAlertas = notifAlertas
+                NotifFichadas = notifFichadas
             };
             var res = await Api.SaveTelegramAccountAsync(req);
             if (res is not null) { account = res; ToastService.Success("Preferencias guardadas."); }

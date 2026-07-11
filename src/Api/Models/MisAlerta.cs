@@ -53,6 +53,9 @@ public class MisAlerta
     public bool CanalCampanita { get; set; } = true;
     public bool CanalWhatsApp { get; set; } = false;
     public bool CanalCorreo { get; set; } = false;
+    /// <summary>2026-07-10: además de la campanita, mandar esta alerta al Telegram del dueño
+    /// cuando salte. Se elige por-alerta desde la pantalla Mis Alertas.</summary>
+    public bool CanalTelegram { get; set; } = false;
 
     /// <summary>Interruptor prender/apagar sin borrar la regla.</summary>
     public bool Activa { get; set; } = true;

@@ -52,11 +52,11 @@ public class MisAlertasController : ControllerBase
     }
 
     public record AlertaDto(int Id, string Tipo, decimal? Umbral, string? TextoParam, string Mensaje,
-        bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool Activa, List<string> Roles,
+        bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool CanalTelegram, bool Activa, List<string> Roles,
         bool EstaDisparada, bool Vista, string? UltimoDetalle, DateTime? DisparadaAt);
 
     public record AlertaUpsertRequest(string Tipo, decimal? Umbral, string? TextoParam, string Mensaje,
-        bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool Activa, List<string>? Roles);
+        bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool CanalTelegram, bool Activa, List<string>? Roles);
 
     private static List<string> ParseRoles(string? alcance)
         => string.IsNullOrWhiteSpace(alcance)
@@ -65,7 +65,7 @@ public class MisAlertasController : ControllerBase
 
     private static AlertaDto Map(MisAlerta a) => new(
         a.Id, a.Tipo, a.Umbral, a.TextoParam, a.Mensaje,
-        a.CanalCampanita, a.CanalWhatsApp, a.CanalCorreo, a.Activa, ParseRoles(a.Alcance),
+        a.CanalCampanita, a.CanalWhatsApp, a.CanalCorreo, a.CanalTelegram, a.Activa, ParseRoles(a.Alcance),
         a.EstaDisparada, a.Vista, a.UltimoDetalle, a.DisparadaAt);
 
     /// <summary>Valida y normaliza los roles del selector. Devuelve el CSV a guardar o null si hay error.</summary>
@@ -131,6 +131,7 @@ public class MisAlertasController : ControllerBase
             CanalCampanita = r.CanalCampanita,
             CanalWhatsApp = r.CanalWhatsApp,
             CanalCorreo = r.CanalCorreo,
+            CanalTelegram = r.CanalTelegram,
             Activa = r.Activa,
             Alcance = alcance!
         };
@@ -160,6 +161,7 @@ public class MisAlertasController : ControllerBase
         a.CanalCampanita = r.CanalCampanita;
         a.CanalWhatsApp = r.CanalWhatsApp;
         a.CanalCorreo = r.CanalCorreo;
+        a.CanalTelegram = r.CanalTelegram;
         a.Activa = r.Activa;
         a.Alcance = alcance!;
         if (redefinio) { a.EstaDisparada = false; a.Vista = false; a.UltimoDetalle = null; }
