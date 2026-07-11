@@ -26,9 +26,9 @@
                     title="Mostrar solo lo entregado que falta retirar (equipos en la calle)">
                 🚚 En calle@(EnCalleCount > 0 ? $" ({EnCalleCount})" : "")
             </button>
-            <button class="btn btn-secondary" @onclick="() => ordenReciente = !ordenReciente"
-                    title="Cambiar el orden: por cuándo cargaste la reserva">
-                @(ordenReciente ? "🔽 Últimas cargadas primero" : "🔼 Primeras cargadas primero")
+            <button class="btn btn-secondary" @onclick="() => ordenProximas = !ordenProximas"
+                    title="Cambiar el orden por proximidad de la fecha de entrega">
+                @(ordenProximas ? "🔽 Próximas entregas primero" : "🔼 Más lejanas primero")
             </button>
             <button class="btn btn-secondary" @onclick="ShowCondicionesEditor" title="Editar las condiciones que aparecen al pie del PDF">📝 Condiciones</button>
         </div>
@@ -58,14 +58,14 @@
                 <span style="cursor:pointer; font-weight:700; line-height:1;" title="Quitar" @onclick="() => soloEnCalle = false">&times;</span>
             </span>
         }
-        @if (!ordenReciente)
+        @if (!ordenProximas)
         {
             <span style="display:inline-flex; align-items:center; gap:6px; background:#eff6ff; color:#1d4ed8; border:0.5px solid #bfdbfe; border-radius:20px; padding:3px 10px; font-size:0.76rem;">
-                Primeras cargadas primero
-                <span style="cursor:pointer; font-weight:700; line-height:1;" title="Volver a últimas cargadas primero" @onclick="() => ordenReciente = true">&times;</span>
+                Entregas más lejanas primero
+                <span style="cursor:pointer; font-weight:700; line-height:1;" title="Volver a próximas entregas primero" @onclick="() => ordenProximas = true">&times;</span>
             </span>
         }
-        @if (filtroEstado == "" && !soloEnCalle && ordenReciente)
+        @if (filtroEstado == "" && !soloEnCalle && ordenProximas)
         {
             <span style="font-size: 0.76rem; color: #9ca3af;">mostrando todas las reservas</span>
         }
@@ -1090,7 +1090,7 @@
     private bool asignando;
     private string filtroEstado = "activas"; // por defecto: solo las que no están finalizadas ni canceladas
     private bool soloEnCalle;
-    private bool ordenReciente = true; // por defecto: fechas más recientes primero
+    private bool ordenProximas = true; // por defecto: las entregas más próximas primero
 
     private bool EsEnCalle(AlqReservaDto r) => r.EntregadoPorRepartidorId.HasValue && !r.RetiradoPorRepartidorId.HasValue;
     private int EnCalleCount => reservas?.Count(EsEnCalle) ?? 0;
@@ -1115,11 +1115,18 @@
         // Filtro de estado (client-side): "activas" oculta finalizadas/canceladas; vacío = todas
         if (filtroEstado == "activas") q = q.Where(r => !EstaCerrada(r));
         else if (!string.IsNullOrEmpty(filtroEstado)) q = q.Where(r => r.Estado == filtroEstado);
-        // Orden por cuándo se cargó la reserva: las últimas cargadas primero por defecto
-        q = ordenReciente
-            ? q.OrderByDescending(r => r.CreatedAt).ThenByDescending(r => r.Id)
-            : q.OrderBy(r => r.CreatedAt).ThenBy(r => r.Id);
-        return q.ToList();
+        var lista = q.ToList();
+        var hoy = DateTime.Today;
+        if (ordenProximas)
+        {
+            // Proximidad de entrega: primero lo que hay que entregar de hoy en adelante (lo más cercano arriba),
+            // y después lo que ya pasó (lo más reciente primero).
+            var proximas = lista.Where(r => r.FechaEntrega.Date >= hoy).OrderBy(r => r.FechaEntrega).ThenBy(r => r.Id);
+            var pasadas = lista.Where(r => r.FechaEntrega.Date < hoy).OrderByDescending(r => r.FechaEntrega).ThenByDescending(r => r.Id);
+            return proximas.Concat(pasadas).ToList();
+        }
+        // Orden inverso: de la entrega más lejana a la más próxima
+        return lista.OrderByDescending(r => r.FechaEntrega).ThenByDescending(r => r.Id).ToList();
     }
     private bool deepLinkApplied;
 
