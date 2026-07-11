@@ -329,6 +329,20 @@ IF COL_LENGTH('TelegramAccounts','ConvClienteNombre') IS NULL
     ALTER TABLE TelegramAccounts ADD ConvClienteNombre NVARCHAR(200) NULL;
 GO
 
+-- Migración 2026-07-11: carrito de la preventa (elegir productos desde el bot).
+IF COL_LENGTH('TelegramAccounts','ConvItemsJson') IS NULL
+    ALTER TABLE TelegramAccounts ADD ConvItemsJson NVARCHAR(MAX) NULL;
+GO
+IF COL_LENGTH('TelegramAccounts','ConvPendProductoId') IS NULL
+    ALTER TABLE TelegramAccounts ADD ConvPendProductoId INT NULL;
+GO
+IF COL_LENGTH('TelegramAccounts','ConvPendProductoNombre') IS NULL
+    ALTER TABLE TelegramAccounts ADD ConvPendProductoNombre NVARCHAR(200) NULL;
+GO
+IF COL_LENGTH('TelegramAccounts','ConvPendProductoSku') IS NULL
+    ALTER TABLE TelegramAccounts ADD ConvPendProductoSku NVARCHAR(60) NULL;
+GO
+
 -- Mp_Pagos table — cobros recibidos por Mercado Pago (API /v1/payments/search).
 -- "Lo cobrado por MP": ingresos a la cuenta, para ver y conciliar. Pedido 2026-07-05.
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Mp_Pagos')

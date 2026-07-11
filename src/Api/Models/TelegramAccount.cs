@@ -59,14 +59,25 @@ public class TelegramAccount
     public long? LastUpdateId { get; set; }
 
     // --- Estado de la conversación de PREVENTA (solo el bot PREVENTAS lo usa) ---
-    /// <summary>Paso actual de la carga de preventa: null | "CLIENTE" (esperando el cliente) |
-    /// "DETALLE" (esperando el texto del pedido).</summary>
+    /// <summary>Paso actual de la carga de preventa: null | CLIENTE | MENU (menú de productos) |
+    /// CANT (esperando cantidad de un producto) | BUSCAR (esperando texto de búsqueda) |
+    /// LIBRE (esperando el pedido escrito a mano).</summary>
     [MaxLength(20)]
     public string? ConvEstado { get; set; }
     /// <summary>Cliente elegido para la preventa en curso (null = venta suelta).</summary>
     public int? ConvClienteId { get; set; }
     [MaxLength(200)]
     public string? ConvClienteNombre { get; set; }
+
+    /// <summary>Carrito de la preventa en curso: JSON con los productos ya agregados
+    /// [{ProductoId, Sku, Nombre, Cantidad}]. Al terminar se copia al pedido.</summary>
+    public string? ConvItemsJson { get; set; }
+    /// <summary>Producto elegido esperando que el usuario diga la cantidad (estado CANT).</summary>
+    public int? ConvPendProductoId { get; set; }
+    [MaxLength(200)]
+    public string? ConvPendProductoNombre { get; set; }
+    [MaxLength(60)]
+    public string? ConvPendProductoSku { get; set; }
 
     // --- Último intento de conexión ---
     public bool LastSyncOk { get; set; } = false;
