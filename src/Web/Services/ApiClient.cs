@@ -3157,6 +3157,17 @@ public class ApiClient
              : (doc.TryGetProperty("progressId", out var pid2) ? pid2.GetString() : null);
     }
 
+    // 2026-07-11: trae TODAS las familias completas de una. Devuelve el ProgressId.
+    public async Task<string?> SyncAllMeliFamiliesAsync()
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsync("/api/meli/items/sync-all-families", null);
+        if (!resp.IsSuccessStatusCode) { await ThrowIfErrorAsync(resp); return null; }
+        var doc = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        return doc.TryGetProperty("ProgressId", out var pid) ? pid.GetString()
+             : (doc.TryGetProperty("progressId", out var pid2) ? pid2.GetString() : null);
+    }
+
     // === Snapshot Contabilium pre-corte ===
     public class SnapshotTriggerResult { public bool Ok { get; set; } public DateTime Fecha { get; set; } public int Skus { get; set; } public int DurationSec { get; set; } }
 

@@ -762,6 +762,36 @@ public class MeliController : ControllerBase
         }
     }
 
+    // 2026-07-11: trae TODAS las familias completas (pausadas/inactivas incluidas) de una.
+    [HttpPost("items/sync-all-families")]
+    public IActionResult SyncAllFamilies()
+    {
+        try
+        {
+            var progressId = _syncProgress.StartSync("Trayendo todas las familias completas");
+            var scopeFactory = _scopeFactory;
+            var syncProgress = _syncProgress;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var scope = scopeFactory.CreateScope();
+                    var itemService = scope.ServiceProvider.GetRequiredService<MeliItemService>();
+                    await itemService.SyncAllFamiliesAsync(progressId);
+                }
+                catch (Exception ex)
+                {
+                    syncProgress.Fail(progressId, $"Error: {ex.Message}");
+                }
+            });
+            return Ok(new { ProgressId = progressId });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpGet("items/sync/progress")]
     public IActionResult GetSyncProgress([FromQuery] string? id = null)
     {

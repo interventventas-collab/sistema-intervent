@@ -68,6 +68,9 @@
                     <button class="sync-dropdown-item" @onclick="OpenSyncFamilyModal">
                         <i class="fa-solid fa-layer-group"></i> Traer familia completa
                     </button>
+                    <button class="sync-dropdown-item" @onclick="TraerTodasLasFamilias">
+                        <i class="fa-solid fa-layer-group"></i> Traer TODAS las familias completas
+                    </button>
                     <div class="sync-dropdown-divider"></div>
                     <button class="sync-dropdown-item sync-item-all" @onclick='() => SyncItems(null, null)'>
                         <i class="fa-solid fa-arrows-rotate"></i> Sincronizar todo
@@ -4133,6 +4136,26 @@
         syncFamilyInput = string.Empty;
         syncFamilyError = null;
         showSyncFamilyModal = true;
+    }
+
+    // 2026-07-11: traer TODAS las familias completas (masivo). Confirma antes (es pesado).
+    private async Task TraerTodasLasFamilias()
+    {
+        showSyncMenu = false;
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            "¿Traer TODAS las familias completas?\n\nRecorre todas tus familias y baja las publicaciones que falten (pausadas / sin stock incluidas). Solo LEE de MeLi, no republica ni cambia precios. Puede tardar bastante — corre en segundo plano.");
+        if (!ok) return;
+        try
+        {
+            var progressId = await Api.SyncAllMeliFamiliesAsync();
+            if (!string.IsNullOrEmpty(progressId))
+            {
+                _syncReloaded = false;
+                SyncProgress.StartTracking(progressId, "Trayendo todas las familias completas");
+            }
+            else ToastService.Error("No se pudo iniciar.");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
 
     private void CloseSyncFamilyModal()
