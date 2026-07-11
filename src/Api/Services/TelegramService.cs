@@ -61,6 +61,18 @@ public class TelegramService
         => new { keyboard = opciones.Select(o => new[] { o }).ToArray(), resize_keyboard = true, one_time_keyboard = true };
     private static readonly object QuitarTeclado = new { remove_keyboard = true };
 
+    // Botones "inline" (pegados al mensaje) con un dato oculto (callback_data). Los usamos para
+    // elegir el cliente: cada botón lleva el id del cliente, así no hay ambigüedad al tocar.
+    private static object TecladoInline(IEnumerable<(string text, string data)> items)
+        => new { inline_keyboard = items.Select(i => new object[] { new { text = i.text, callback_data = i.data } }).ToArray() };
+
+    private async Task AnswerCallbackAsync(string token, string? callbackId, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(callbackId)) return;
+        try { var http = NewClient(); await http.PostAsJsonAsync($"{ApiBase}/bot{token}/answerCallbackQuery", new { callback_query_id = callbackId }, ct); }
+        catch { }
+    }
+
     private async Task<(bool ok, string? error)> SendRawAsync(string token, long chatId, string text, CancellationToken ct, object? replyMarkup = null)
     {
         try
@@ -314,7 +326,7 @@ public class TelegramService
         {
             var http = NewClient(25);
             var resp = await http.GetAsync(
-                $"{ApiBase}/bot{bot.BotToken}/getUpdates?timeout=15&offset={offset}&allowed_updates=%5B%22message%22%5D", ct);
+                $"{ApiBase}/bot{bot.BotToken}/getUpdates?timeout=15&offset={offset}&allowed_updates=%5B%22message%22%2C%22callback_query%22%5D", ct);
             var body = await resp.Content.ReadAsStringAsync(ct);
             if (!resp.IsSuccessStatusCode) return;
             doc = JsonDocument.Parse(body);
@@ -332,6 +344,13 @@ public class TelegramService
             {
                 if (upd.TryGetProperty("update_id", out var uid) && uid.TryGetInt64(out var uidVal) && uidVal > maxUpdateId)
                     maxUpdateId = uidVal;
+
+                // Tocó un botón inline (ej. eligió un cliente de la lista).
+                if (upd.TryGetProperty("callback_query", out var cq))
+                {
+                    await ProcesarCallbackAsync(bot, cq, ct);
+                    continue;
+                }
 
                 if (!upd.TryGetProperty("message", out var m)) continue;
                 if (!m.TryGetProperty("chat", out var c) || !c.TryGetProperty("id", out var cid) || !cid.TryGetInt64(out var chatId))
@@ -417,33 +436,37 @@ public class TelegramService
             await SendRawAsync(bot.BotToken, chatId, "Dale, venta suelta (sin cliente).\nAhora escribime el pedido 👇", ct, QuitarTeclado);
             return;
         }
+        if (q.Length < 2)
+        {
+            await SendRawAsync(bot.BotToken, chatId, "Escribime al menos 2 letras del nombre del cliente. 🙂", ct);
+            return;
+        }
 
-        // 1) Match exacto (por ej. cuando tocó un botón con el nombre completo).
-        var exactos = await _db.CafeClientes.AsNoTracking()
-            .Where(c => c.IsActive && c.Nombre == q)
-            .Select(c => new { c.Id, c.Nombre }).Take(2).ToListAsync(ct);
-        if (exactos.Count == 1) { await PreventaFijarClienteAsync(bot, chatId, exactos[0].Id, exactos[0].Nombre, ct); return; }
-
-        // 2) Búsqueda parcial por nombre o razón social.
+        // Búsqueda parcial por nombre o razón social. SIEMPRE mostramos las coincidencias como
+        // botones para que el dueño elija (aunque una coincida exacto): así nunca elige por él.
         var like = $"%{q}%";
         var matches = await _db.CafeClientes.AsNoTracking()
             .Where(c => c.IsActive && (EF.Functions.Like(c.Nombre, like) ||
                         (c.RazonSocial != null && EF.Functions.Like(c.RazonSocial, like))))
             .OrderBy(c => c.Nombre)
-            .Select(c => new { c.Id, c.Nombre }).Take(8).ToListAsync(ct);
+            .Select(c => new { c.Id, c.Nombre }).Take(30).ToListAsync(ct);
 
         if (matches.Count == 0)
         {
             await SendRawAsync(bot.BotToken, chatId,
-                $"No encontré ningún cliente con \"{q}\". Probá con otra parte del nombre, o poné \"suelta\".", ct);
+                $"No encontré ningún cliente con \"{q}\". Probá con otra parte del nombre, o escribí \"suelta\".", ct);
             return;
         }
-        if (matches.Count == 1) { await PreventaFijarClienteAsync(bot, chatId, matches[0].Id, matches[0].Nombre, ct); return; }
 
-        var opciones = matches.Select(m => m.Nombre).ToList();
-        opciones.Add("Venta suelta");
-        opciones.Add("Cancelar");
-        await SendRawAsync(bot.BotToken, chatId, "Encontré varios. ¿Cuál es? Tocá el cliente 👇", ct, TecladoBotones(opciones));
+        var opciones = matches.Take(10).Select(m => (text: m.Nombre, data: $"pvc:{m.Id}")).ToList();
+        opciones.Add(("🛒 Venta suelta (sin cliente)", "pvc:0"));
+        opciones.Add(("✖ Cancelar", "pvcx"));
+        var cab = matches.Count == 1
+            ? "Encontré este. Tocalo para confirmar 👇"
+            : (matches.Count > 10
+                ? $"Encontré {matches.Count}. Te muestro los primeros 10 — si no está, escribí más letras del nombre 👇"
+                : "¿Cuál es? Tocá el cliente 👇");
+        await SendRawAsync(bot.BotToken, chatId, cab, ct, TecladoInline(opciones));
     }
 
     private async Task PreventaFijarClienteAsync(TelegramAccount bot, long chatId, int clienteId, string clienteNombre, CancellationToken ct)
@@ -452,6 +475,63 @@ public class TelegramService
         bot.ConvClienteNombre = clienteNombre;
         bot.ConvEstado = "DETALLE";
         await SendRawAsync(bot.BotToken, chatId, $"Dale, para {clienteNombre}.\nAhora escribime el pedido 👇", ct, QuitarTeclado);
+    }
+
+    /// <summary>Procesa el toque de un botón inline (callback_query). Confirma el toque (para sacar
+    /// el "reloj") y, si es del bot de Preventas y del dueño, resuelve la elección del cliente.</summary>
+    private async Task ProcesarCallbackAsync(TelegramAccount bot, JsonElement cq, CancellationToken ct)
+    {
+        var cbId = cq.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+        await AnswerCallbackAsync(bot.BotToken, cbId, ct);
+
+        long? chatId = null;
+        if (cq.TryGetProperty("message", out var msg) && msg.TryGetProperty("chat", out var ch) &&
+            ch.TryGetProperty("id", out var chId) && chId.TryGetInt64(out var cidv)) chatId = cidv;
+        if (chatId is null && cq.TryGetProperty("from", out var fr) && fr.TryGetProperty("id", out var frId) && frId.TryGetInt64(out var frv))
+            chatId = frv;
+        if (chatId is null) return;
+
+        if (bot.ChatId is null) bot.ChatId = chatId;
+        if (bot.ChatId != chatId || bot.Proposito != "PREVENTAS") return;
+
+        var data = cq.TryGetProperty("data", out var dEl) ? dEl.GetString() : null;
+        if (string.IsNullOrEmpty(data)) return;
+        await ProcesarPreventaCallbackAsync(bot, chatId.Value, data, ct);
+    }
+
+    private async Task ProcesarPreventaCallbackAsync(TelegramAccount bot, long chatId, string data, CancellationToken ct)
+    {
+        if (bot.ConvEstado != "CLIENTE")
+        {
+            await SendRawAsync(bot.BotToken, chatId, "Esa preventa ya se cerró. Escribí \"nueva\" para cargar otra.", ct,
+                TecladoBotones(new[] { "🧾 Nueva preventa" }));
+            return;
+        }
+        if (data == "pvcx")
+        {
+            LimpiarConv(bot);
+            await SendRawAsync(bot.BotToken, chatId, "Listo, cancelé. 👍", ct, TecladoBotones(new[] { "🧾 Nueva preventa" }));
+            return;
+        }
+        if (data == "pvc:0")
+        {
+            bot.ConvClienteId = null;
+            bot.ConvClienteNombre = null;
+            bot.ConvEstado = "DETALLE";
+            await SendRawAsync(bot.BotToken, chatId, "Dale, venta suelta (sin cliente).\nAhora escribime el pedido 👇", ct, QuitarTeclado);
+            return;
+        }
+        if (data.StartsWith("pvc:") && int.TryParse(data.AsSpan(4), out var cid))
+        {
+            var cli = await _db.CafeClientes.AsNoTracking()
+                .Where(c => c.Id == cid).Select(c => new { c.Id, c.Nombre }).FirstOrDefaultAsync(ct);
+            if (cli is null)
+            {
+                await SendRawAsync(bot.BotToken, chatId, "No encontré ese cliente. Escribí parte del nombre de nuevo.", ct);
+                return;
+            }
+            await PreventaFijarClienteAsync(bot, chatId, cli.Id, cli.Nombre, ct);
+        }
     }
 
     private async Task PreventaDetalleAsync(TelegramAccount bot, long chatId, string detalle, CancellationToken ct)
