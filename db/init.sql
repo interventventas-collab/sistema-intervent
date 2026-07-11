@@ -245,6 +245,30 @@ IF COL_LENGTH('MpAccounts','SaldoInicialFecha') IS NULL
     ALTER TABLE MpAccounts ADD SaldoInicialFecha DATETIME2 NULL;
 GO
 
+-- EzvizAccounts table — cuenta de EZVIZ (cámaras) por API oficial. Guarda appKey/appSecret
+-- + el accessToken cacheado (se renueva solo). Con eso lista las cámaras y arma el video en
+-- vivo. Pedido de Osmar 2026-07-10 ("ver las cámaras del depósito en el dashboard").
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='EzvizAccounts' AND xtype='U')
+BEGIN
+    CREATE TABLE EzvizAccounts (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        AppKey NVARCHAR(200) NOT NULL,
+        AppSecret NVARCHAR(MAX) NOT NULL,
+        Alias NVARCHAR(120) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        ApiHost NVARCHAR(200) NOT NULL DEFAULT 'https://open.ezvizlife.com',
+        AccessToken NVARCHAR(MAX) NULL,
+        TokenExpiresAt DATETIME2 NULL,
+        AreaDomain NVARCHAR(200) NULL,
+        LastSyncOk BIT NOT NULL DEFAULT 0,
+        LastError NVARCHAR(500) NULL,
+        LastSyncAt DATETIME2 NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL
+    );
+END
+GO
+
 -- Mp_Pagos table — cobros recibidos por Mercado Pago (API /v1/payments/search).
 -- "Lo cobrado por MP": ingresos a la cuenta, para ver y conciliar. Pedido 2026-07-05.
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Mp_Pagos')

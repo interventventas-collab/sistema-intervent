@@ -127,6 +127,9 @@ builder.Services.AddSingleton<ShellScrapingService>();
 builder.Services.AddScoped<ShellSyncService>();
 builder.Services.AddScoped<MpAccountService>();
 builder.Services.AddScoped<MpSyncService>();
+// 2026-07-10: cámaras EZVIZ (API oficial). Config en /integraciones/camaras.
+builder.Services.AddScoped<EzvizAccountService>();
+builder.Services.AddScoped<EzvizService>();
 builder.Services.AddScoped<MpPagosService>();
 builder.Services.AddScoped<MpReportesService>();
 builder.Services.AddScoped<ArcaWebserviceAccountService>();

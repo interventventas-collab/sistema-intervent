@@ -4437,6 +4437,32 @@ public class ApiClient
         return await GetAsync<Web.Models.MpMovResumenDto>(url);
     }
 
+    // --- Cámaras EZVIZ (API oficial) ---
+    public async Task<Web.Models.EzvizAccountDto?> GetEzvizAccountAsync()
+        => await GetAsync<Web.Models.EzvizAccountDto>("/api/ezviz/account");
+
+    public async Task<Web.Models.EzvizAccountDto?> SaveEzvizAccountAsync(Web.Models.SaveEzvizAccountRequest req)
+        => await PutAsync<Web.Models.EzvizAccountDto>("/api/ezviz/account", req);
+
+    /// <summary>Prueba la conexión con EZVIZ (pide un token con las credenciales guardadas).</summary>
+    public async Task<Web.Models.EzvizProbarResultDto?> ProbarEzvizAsync()
+        => await PostAsync<Web.Models.EzvizProbarResultDto>("/api/ezviz/probar", new { });
+
+    /// <summary>Lista las cámaras de la cuenta. Lanza HttpRequestException con el mensaje del
+    /// servidor si EZVIZ devuelve error (para mostrarlo tal cual en la pantalla).</summary>
+    public async Task<List<Web.Models.EzvizCamaraDto>> GetEzvizCamarasAsync()
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync("/api/ezviz/camaras");
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return new(); }
+        await ThrowIfErrorAsync(resp);
+        return await resp.Content.ReadFromJsonAsync<List<Web.Models.EzvizCamaraDto>>() ?? new();
+    }
+
+    /// <summary>Trae el link + token para reproducir una cámara en vivo (EZUIKit).</summary>
+    public async Task<Web.Models.EzvizLiveDto?> GetEzvizLiveAsync(string serial, int channel = 1)
+        => await GetAsync<Web.Models.EzvizLiveDto>($"/api/ezviz/live?serial={Uri.EscapeDataString(serial)}&channel={channel}");
+
     private async Task<T?> GetAsync<T>(string url)
     {
         await SetAuthHeaderAsync();
