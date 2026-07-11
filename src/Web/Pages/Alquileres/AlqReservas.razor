@@ -1095,6 +1095,8 @@
     private bool EsEnCalle(AlqReservaDto r) => r.EntregadoPorRepartidorId.HasValue && !r.RetiradoPorRepartidorId.HasValue;
     private int EnCalleCount => reservas?.Count(EsEnCalle) ?? 0;
     private bool EstaCerrada(AlqReservaDto r) => r.Estado == "finalizado" || r.Estado == "cancelado";
+    // Retiro vencido = ya se entregó, todavía no se retiró y la fecha de retiro ya pasó (equipo urgente de recuperar)
+    private bool RetiroVencido(AlqReservaDto r) => EsEnCalle(r) && r.FechaRetiro.Date < DateTime.Today;
 
     private string EstadoLabel(string e) => e switch
     {
@@ -1117,16 +1119,22 @@
         else if (!string.IsNullOrEmpty(filtroEstado)) q = q.Where(r => r.Estado == filtroEstado);
         var lista = q.ToList();
         var hoy = DateTime.Today;
+
+        // SIEMPRE arriba: los retiros vencidos (equipos que ya deberían haber vuelto). Son lo más urgente.
+        // El más atrasado primero (fecha de retiro más vieja arriba).
+        var urgentes = lista.Where(RetiroVencido).OrderBy(r => r.FechaRetiro).ThenBy(r => r.Id);
+        var resto = lista.Where(r => !RetiroVencido(r)).ToList();
+
         if (ordenProximas)
         {
             // Proximidad de entrega: primero lo que hay que entregar de hoy en adelante (lo más cercano arriba),
             // y después lo que ya pasó (lo más reciente primero).
-            var proximas = lista.Where(r => r.FechaEntrega.Date >= hoy).OrderBy(r => r.FechaEntrega).ThenBy(r => r.Id);
-            var pasadas = lista.Where(r => r.FechaEntrega.Date < hoy).OrderByDescending(r => r.FechaEntrega).ThenByDescending(r => r.Id);
-            return proximas.Concat(pasadas).ToList();
+            var proximas = resto.Where(r => r.FechaEntrega.Date >= hoy).OrderBy(r => r.FechaEntrega).ThenBy(r => r.Id);
+            var pasadas = resto.Where(r => r.FechaEntrega.Date < hoy).OrderByDescending(r => r.FechaEntrega).ThenByDescending(r => r.Id);
+            return urgentes.Concat(proximas).Concat(pasadas).ToList();
         }
-        // Orden inverso: de la entrega más lejana a la más próxima
-        return lista.OrderByDescending(r => r.FechaEntrega).ThenByDescending(r => r.Id).ToList();
+        // Orden inverso: retiros vencidos arriba igual, después de la entrega más lejana a la más próxima
+        return urgentes.Concat(resto.OrderByDescending(r => r.FechaEntrega).ThenByDescending(r => r.Id)).ToList();
     }
     private bool deepLinkApplied;
 
