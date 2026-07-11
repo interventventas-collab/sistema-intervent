@@ -5048,6 +5048,15 @@
         pedidoWASeleccionado = pedido;
         convirtiendoPedidoWAId = pedido.Id;
         subventanaWAMin = false;
+
+        // 2026-07-11: si el pedido ya trae cliente (ej. preventa de Telegram con cliente elegido),
+        // lo pre-seleccionamos en la venta así no hay que buscarlo de nuevo.
+        if (pedido.ClienteId.HasValue && pedido.ClienteId.Value > 0)
+        {
+            if (clientes is null || clientes.Count == 0)
+                try { clientes = await Api.GetCafeClientesAsync(); } catch { }
+            formClienteId = pedido.ClienteId.Value;
+        }
         StateHasChanged();
     }
 
