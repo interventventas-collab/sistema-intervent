@@ -86,6 +86,8 @@ public class MisAlertasBackgroundService : BackgroundService
         }
 
         var changed = false;
+        // Alertas que recién saltaron en este tick: se avisan por Telegram después de guardar.
+        var reciecienDisparadas = new List<MisAlerta>();
         try
         {
         foreach (var a in reglas)
@@ -100,6 +102,7 @@ public class MisAlertasBackgroundService : BackgroundService
                 a.UltimoDetalle = detalle;
                 a.UpdatedAt = DateTime.UtcNow;
                 changed = true;
+                reciecienDisparadas.Add(a);
             }
             else if (met && a.EstaDisparada)
             {
@@ -117,6 +120,28 @@ public class MisAlertasBackgroundService : BackgroundService
         }
 
         if (changed || db.ChangeTracker.HasChanges()) await db.SaveChangesAsync();
+
+        // Avisar por Telegram las alertas que recién saltaron (si el bot está activo y el tilde ON).
+        if (reciecienDisparadas.Count > 0)
+        {
+            try
+            {
+                var tg = scope.ServiceProvider.GetRequiredService<TelegramService>();
+                var cuenta = await db.TelegramAccounts.OrderBy(x => x.Id).FirstOrDefaultAsync();
+                if (cuenta is not null && cuenta.IsActive && cuenta.NotifAlertas && !string.IsNullOrEmpty(cuenta.BotToken) && cuenta.ChatId is not null)
+                {
+                    foreach (var a in reciecienDisparadas)
+                    {
+                        var msg = string.IsNullOrWhiteSpace(a.Mensaje) ? a.Tipo : a.Mensaje;
+                        var texto = string.IsNullOrWhiteSpace(a.UltimoDetalle)
+                            ? $"🔔 Alerta: {msg}"
+                            : $"🔔 Alerta: {msg}\n{a.UltimoDetalle}";
+                        await tg.SendMessageAsync(texto);
+                    }
+                }
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "[Alertas] no pude avisar por Telegram"); }
+        }
         }
         finally
         {

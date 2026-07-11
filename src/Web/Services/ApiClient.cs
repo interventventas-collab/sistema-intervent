@@ -4463,6 +4463,25 @@ public class ApiClient
     public async Task<Web.Models.EzvizLiveDto?> GetEzvizLiveAsync(string serial, int channel = 1)
         => await GetAsync<Web.Models.EzvizLiveDto>($"/api/ezviz/live?serial={Uri.EscapeDataString(serial)}&channel={channel}");
 
+    // --- Bot de Telegram (avisos al celu + consultas) ---
+    public async Task<Web.Models.TelegramAccountDto?> GetTelegramAccountAsync()
+        => await GetAsync<Web.Models.TelegramAccountDto>("/api/telegram/account");
+
+    public async Task<Web.Models.TelegramAccountDto?> SaveTelegramAccountAsync(Web.Models.SaveTelegramAccountRequest req)
+        => await PutAsync<Web.Models.TelegramAccountDto>("/api/telegram/account", req);
+
+    /// <summary>Prueba el token (getMe), vincula el chat si puede y manda un mensaje de prueba.</summary>
+    public async Task<Web.Models.TelegramProbarResultDto?> ProbarTelegramAsync()
+        => await PostAsync<Web.Models.TelegramProbarResultDto>("/api/telegram/probar", new { });
+
+    /// <summary>Vincula el chat del dueño mirando los mensajes que le escribió al bot.</summary>
+    public async Task<Web.Models.TelegramVincularResultDto?> VincularTelegramAsync()
+        => await PostAsync<Web.Models.TelegramVincularResultDto>("/api/telegram/vincular", new { });
+
+    /// <summary>Manda un mensaje de prueba al chat vinculado.</summary>
+    public async Task<Web.Models.TelegramTestMsgResultDto?> TestMensajeTelegramAsync()
+        => await PostAsync<Web.Models.TelegramTestMsgResultDto>("/api/telegram/test-mensaje", new { });
+
     private async Task<T?> GetAsync<T>(string url)
     {
         await SetAuthHeaderAsync();

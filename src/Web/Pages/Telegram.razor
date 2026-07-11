@@ -1,0 +1,250 @@
+@page "/integraciones/telegram"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<PageTitle>Telegram</PageTitle>
+
+<div class="page-container" style="max-width:820px;">
+    <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.4rem;">
+        <span style="font-size:1.6rem;">📲</span>
+        <h1 style="margin:0;">Avisos por Telegram</h1>
+    </div>
+    <p style="color:#64748b;margin-top:0;">
+        Recibí en tu celular las ventas nuevas de MercadoLibre y tus alertas. Y podés escribirle al
+        bot <b>ventas</b>, <b>saldo</b> o <b>alertas</b> para que te conteste al toque.
+    </p>
+
+    @if (loading)
+    {
+        <p style="color:#94a3b8;">Cargando…</p>
+    }
+    else
+    {
+        <!-- ─────────── Estado / conexión ─────────── -->
+        <div class="card" style="padding:1.2rem 1.4rem;margin-bottom:1.4rem;border:1px solid #e2e8f0;border-radius:12px;background:#fff;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
+                <h3 style="margin:0;">🤖 Conexión con el bot</h3>
+                @if (account is not null && account.HasToken && account.ChatId is not null && account.LastSyncOk)
+                {
+                    <span style="background:#dcfce7;color:#166534;padding:0.25rem 0.7rem;border-radius:999px;font-weight:600;font-size:0.85rem;">✓ Conectado y vinculado</span>
+                }
+                else if (account is not null && account.HasToken)
+                {
+                    <span style="background:#fef9c3;color:#854d0e;padding:0.25rem 0.7rem;border-radius:999px;font-weight:600;font-size:0.85rem;">Token guardado — falta vincular tu Telegram</span>
+                }
+                else
+                {
+                    <span style="background:#fee2e2;color:#991b1b;padding:0.25rem 0.7rem;border-radius:999px;font-weight:600;font-size:0.85rem;">Sin conectar</span>
+                }
+            </div>
+
+            @if (account?.BotUsername is not null)
+            {
+                <p style="color:#334155;font-size:0.9rem;margin:0.7rem 0 0;">
+                    Bot: <b>@@@account.BotUsername</b>
+                    @if (account.ChatId is not null)
+                    {
+                        <span style="color:#16a34a;"> · tu Telegram está vinculado ✓</span>
+                    }
+                </p>
+            }
+
+            <p style="color:#64748b;font-size:0.9rem;margin:0.6rem 0 1rem;">
+                Pegá el <b>token</b> que te dio <b>@@BotFather</b> cuando creaste el bot (algo como
+                <code>123456789:AA...</code>). Se guarda una sola vez.
+            </p>
+
+            <div>
+                <label style="font-weight:600;font-size:0.85rem;">Token del bot</label>
+                <input @bind="botToken" type="password"
+                       placeholder="@(account?.HasToken == true ? "•••• (ya guardado)" : "123456789:AAE...")"
+                       class="form-control" style="width:100%;" />
+            </div>
+
+            <div style="display:flex;align-items:center;gap:0.8rem;margin-top:1rem;flex-wrap:wrap;">
+                <button class="btn btn-primary" @onclick="Guardar" disabled="@saving">
+                    @(saving ? "Guardando…" : "Guardar token")
+                </button>
+                <button class="btn btn-secondary" @onclick="Probar" disabled="@(probando || account?.HasToken != true)">
+                    @(probando ? "Probando…" : "Probar y mandar mensaje")
+                </button>
+                @if (account is not null && !account.LastSyncOk && !string.IsNullOrEmpty(account.LastError))
+                {
+                    <span style="color:#b91c1c;font-size:0.88rem;">⚠ @account.LastError</span>
+                }
+            </div>
+        </div>
+
+        <!-- ─────────── Vincular tu Telegram ─────────── -->
+        @if (account is not null && account.HasToken)
+        {
+            <div class="card" style="padding:1.2rem 1.4rem;margin-bottom:1.4rem;border:1px solid #e2e8f0;border-radius:12px;background:#fff;">
+                <h3 style="margin:0 0 0.4rem;">📱 Vincular tu Telegram</h3>
+                @if (account.ChatId is not null)
+                {
+                    <p style="color:#16a34a;font-size:0.92rem;margin:0 0 0.8rem;">
+                        ✓ Ya está vinculado. Los avisos te llegan a tu Telegram.
+                    </p>
+                    <button class="btn btn-secondary btn-sm" @onclick="TestMensaje" disabled="@testando">
+                        @(testando ? "Mandando…" : "📤 Mandarme un mensaje de prueba")
+                    </button>
+                }
+                else
+                {
+                    <p style="color:#64748b;font-size:0.92rem;margin:0 0 0.8rem;">
+                        1) Abrí el bot en Telegram@(account.BotUsername is not null ? $" (@{account.BotUsername})" : "") y escribile <b>hola</b>.<br />
+                        2) Volvé acá y apretá este botón.
+                    </p>
+                    <button class="btn btn-primary btn-sm" @onclick="Vincular" disabled="@vinculando">
+                        @(vinculando ? "Buscando…" : "🔗 Vincular mi Telegram")
+                    </button>
+                }
+            </div>
+
+            <!-- ─────────── Qué avisos recibir ─────────── -->
+            <div class="card" style="padding:1.2rem 1.4rem;border:1px solid #e2e8f0;border-radius:12px;background:#fff;">
+                <h3 style="margin:0 0 0.8rem;">🔔 Qué avisos querés recibir</h3>
+                <label style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.7rem;cursor:pointer;">
+                    <input type="checkbox" @bind="notifVentas" style="width:18px;height:18px;" />
+                    <span>🛒 <b>Ventas nuevas</b> de MercadoLibre</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:0.6rem;margin-bottom:1rem;cursor:pointer;">
+                    <input type="checkbox" @bind="notifAlertas" style="width:18px;height:18px;" />
+                    <span>🔔 <b>Mis Alertas</b> (Shell, banco, cheques, fechas, correos)</span>
+                </label>
+                <button class="btn btn-primary btn-sm" @onclick="GuardarTildes" disabled="@saving">
+                    @(saving ? "Guardando…" : "Guardar preferencias")
+                </button>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private TelegramAccountDto? account;
+    private bool loading = true, saving = false, probando = false, vinculando = false, testando = false;
+
+    private string botToken = "";
+    private bool notifVentas = true;
+    private bool notifAlertas = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarCuenta();
+        loading = false;
+    }
+
+    private async Task CargarCuenta()
+    {
+        try
+        {
+            account = await Api.GetTelegramAccountAsync();
+            if (account is not null)
+            {
+                notifVentas = account.NotifVentas;
+                notifAlertas = account.NotifAlertas;
+            }
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo leer la configuración: " + ex.Message); }
+    }
+
+    private async Task Guardar()
+    {
+        saving = true;
+        try
+        {
+            var req = new SaveTelegramAccountRequest
+            {
+                BotToken = string.IsNullOrWhiteSpace(botToken) ? null : botToken.Trim(),
+                IsActive = true,
+                NotifVentas = notifVentas,
+                NotifAlertas = notifAlertas
+            };
+            var res = await Api.SaveTelegramAccountAsync(req);
+            if (res is not null)
+            {
+                account = res;
+                botToken = "";
+                ToastService.Success("Token guardado. Ahora probá la conexión.");
+            }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task GuardarTildes()
+    {
+        saving = true;
+        try
+        {
+            var req = new SaveTelegramAccountRequest
+            {
+                BotToken = null, // no cambiar el token
+                IsActive = true,
+                NotifVentas = notifVentas,
+                NotifAlertas = notifAlertas
+            };
+            var res = await Api.SaveTelegramAccountAsync(req);
+            if (res is not null) { account = res; ToastService.Success("Preferencias guardadas."); }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task Probar()
+    {
+        probando = true;
+        try
+        {
+            var res = await Api.ProbarTelegramAsync();
+            if (res is not null && res.Ok)
+            {
+                if (res.TestEnviado)
+                    ToastService.Success("¡Conexión OK! Te mandé un mensaje de prueba, fijate en tu Telegram.");
+                else
+                    ToastService.Success("¡Token OK! Ahora vinculá tu Telegram (escribile 'hola' al bot).");
+            }
+            else
+            {
+                ToastService.Error(res?.Error ?? "No se pudo conectar con Telegram.");
+            }
+            await CargarCuenta();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { probando = false; }
+    }
+
+    private async Task Vincular()
+    {
+        vinculando = true;
+        try
+        {
+            var res = await Api.VincularTelegramAsync();
+            if (res is not null && res.Ok)
+            {
+                ToastService.Success("¡Listo! Tu Telegram quedó vinculado.");
+                await CargarCuenta();
+            }
+            else
+            {
+                ToastService.Error(res?.Error ?? "No encontré tu mensaje. Escribile 'hola' al bot y probá de nuevo.");
+            }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { vinculando = false; }
+    }
+
+    private async Task TestMensaje()
+    {
+        testando = true;
+        try
+        {
+            var res = await Api.TestMensajeTelegramAsync();
+            if (res is not null && res.Ok) ToastService.Success("Mensaje enviado. Fijate en tu Telegram. 📲");
+            else ToastService.Error(res?.Error ?? "No se pudo enviar el mensaje.");
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { testando = false; }
+    }
+}
