@@ -88,7 +88,9 @@
             <label class="ma-label">Mandámela por</label>
             <div class="ma-canales">
                 <span class="ma-canal ma-canal-on" title="Aparece en la campanita 🔔 de la barra de arriba">🔔 Campanita</span>
-                <span class="ma-canal ma-canal-off" title="Muy pronto">📱 WhatsApp <em>(pronto)</em></span>
+                <label class="ma-canal @(form.PorTelegram ? "ma-canal-on" : "ma-canal-off")" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;" title="Además de la campanita, te llega al Telegram del dueño">
+                    <input type="checkbox" @bind="form.PorTelegram" style="width:15px;height:15px;" /> 📲 Telegram
+                </label>
                 <span class="ma-canal ma-canal-off" title="Muy pronto">📧 Correo <em>(pronto)</em></span>
             </div>
         </div>
@@ -272,6 +274,7 @@ else
         public bool VeAdmin { get; set; } = true;
         public bool VeOficina { get; set; } = true;
         public bool VeDeposito { get; set; } = false;
+        public bool PorTelegram { get; set; } = false;
     }
 
     // Config de la casilla de correo (para alertas 📧)
@@ -336,7 +339,8 @@ else
             Mensaje = a.Mensaje,
             VeAdmin = a.Roles.Contains("admin"),
             VeOficina = a.Roles.Contains("oficina"),
-            VeDeposito = a.Roles.Contains("deposito")
+            VeDeposito = a.Roles.Contains("deposito"),
+            PorTelegram = a.CanalTelegram
         };
         mostrandoEditor = true;
     }
@@ -398,7 +402,8 @@ else
         guardando = true;
         var texto = form.Tipo == "EMAIL_REMITENTE" ? string.Join(",", form.Remitentes) : null;
         var req = new ApiClient.AlertaUpsertRequest(form.Tipo, form.Umbral, texto, form.Mensaje.Trim(),
-            CanalCampanita: true, CanalWhatsApp: false, CanalCorreo: false, Activa: true, Roles: roles);
+            CanalCampanita: true, CanalWhatsApp: false, CanalCorreo: false, CanalTelegram: form.PorTelegram,
+            Activa: true, Roles: roles);
 
         if (editandoId is null)
         {
@@ -474,13 +479,14 @@ else
     {
         var v = a.Umbral ?? 0;
         var money = "$" + v.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+        var canal = a.CanalTelegram ? "campanita + Telegram 📲" : "campanita";
         return a.Tipo switch
         {
-            "SHELL_BAJO" => $"Si Shell Flota baja de {money} · por campanita",
-            "BANCO_BAJO" => $"Si el Banco Galicia baja de {money} · por campanita",
-            "CHEQUE_VENCE" => $"Si un cheque emitido vence en {(int)v} día(s) o menos · por campanita",
-            "FECHA_MES" => $"El día {(int)v} de cada mes · por campanita",
-            "EMAIL_REMITENTE" => $"Si entra un correo de: {FormatRemitentes(a.TextoParam)} · por campanita",
+            "SHELL_BAJO" => $"Si Shell Flota baja de {money} · por {canal}",
+            "BANCO_BAJO" => $"Si el Banco Galicia baja de {money} · por {canal}",
+            "CHEQUE_VENCE" => $"Si un cheque emitido vence en {(int)v} día(s) o menos · por {canal}",
+            "FECHA_MES" => $"El día {(int)v} de cada mes · por {canal}",
+            "EMAIL_REMITENTE" => $"Si entra un correo de: {FormatRemitentes(a.TextoParam)} · por {canal}",
             _ => ""
         };
     }

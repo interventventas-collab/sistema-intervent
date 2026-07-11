@@ -14,16 +14,16 @@ public class TelegramAccountService
     public TelegramAccountService(AppDbContext db) { _db = db; }
 
     public record TelegramAccountDto(int Id, bool HasToken, string? BotUsername, long? ChatId,
-        bool IsActive, bool NotifVentas, bool NotifAlertas,
+        bool IsActive, bool NotifVentas, bool NotifAlertas, bool NotifFichadas,
         bool LastSyncOk, string? LastError, DateTime? LastSyncAt,
         DateTime CreatedAt, DateTime? UpdatedAt);
 
     public record SaveTelegramAccountRequest(string? BotToken, bool IsActive = true,
-        bool NotifVentas = true, bool NotifAlertas = true);
+        bool NotifVentas = true, bool NotifAlertas = true, bool NotifFichadas = true);
 
     private static TelegramAccountDto Map(TelegramAccount a) => new(
         a.Id, !string.IsNullOrEmpty(a.BotToken), a.BotUsername, a.ChatId,
-        a.IsActive, a.NotifVentas, a.NotifAlertas,
+        a.IsActive, a.NotifVentas, a.NotifAlertas, a.NotifFichadas,
         a.LastSyncOk, a.LastError, a.LastSyncAt, a.CreatedAt, a.UpdatedAt);
 
     public async Task<TelegramAccountDto?> GetAsync()
@@ -48,6 +48,7 @@ public class TelegramAccountService
                 IsActive = req.IsActive,
                 NotifVentas = req.NotifVentas,
                 NotifAlertas = req.NotifAlertas,
+                NotifFichadas = req.NotifFichadas,
                 CreatedAt = DateTime.UtcNow
             };
             _db.TelegramAccounts.Add(a);
@@ -70,6 +71,7 @@ public class TelegramAccountService
             a.IsActive = req.IsActive;
             a.NotifVentas = req.NotifVentas;
             a.NotifAlertas = req.NotifAlertas;
+            a.NotifFichadas = req.NotifFichadas;
             a.UpdatedAt = DateTime.UtcNow;
         }
         await _db.SaveChangesAsync();

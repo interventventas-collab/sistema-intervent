@@ -368,6 +368,7 @@ public class TelegramService
         "🤖 Soy tu asistente de Intervent. Escribime una de estas:\n\n" +
         "• ventas — cuánto vendiste hoy en MercadoLibre\n" +
         "• saldo — la plata en Mercado Pago\n" +
+        "• shell — el saldo de la Shell Flota\n" +
         "• alertas — tus alertas que están saltando\n\n" +
         "Y te voy avisando solo las ventas nuevas y las alertas.";
 
@@ -381,6 +382,8 @@ public class TelegramService
             return await ResumenVentasHoyAsync(ct);
         if (t.Contains("saldo") || t.Contains("mercado pago") || t == "mp" || t.Contains("plata") || t.Contains("dinero"))
             return await ResumenSaldoAsync(ct);
+        if (t.Contains("shell") || t.Contains("nafta") || t.Contains("combustible"))
+            return await ResumenShellAsync(ct);
         if (t.Contains("alerta"))
             return await ResumenAlertasAsync(ct);
 
@@ -421,6 +424,17 @@ public class TelegramService
         if (mp.LastSaldoTotal is not null) lineas.Add($"Total: {Money(mp.LastSaldoTotal.Value)}");
         if (mp.LastSaldoAt is not null)
             lineas.Add($"(último dato: {mp.LastSaldoAt.Value.AddHours(ARG_OFFSET_HOURS):dd/MM HH:mm})");
+        return string.Join("\n", lineas);
+    }
+
+    private async Task<string> ResumenShellAsync(CancellationToken ct)
+    {
+        var sh = await _db.ShellAccounts.OrderByDescending(s => s.Id).FirstOrDefaultAsync(ct);
+        if (sh is null || string.IsNullOrWhiteSpace(sh.LastSaldo))
+            return "⛽ Todavía no tengo el saldo de la Shell Flota. (se lee solo cada un rato)";
+        var lineas = new List<string> { "⛽ Shell Flota", $"Saldo: {sh.LastSaldo}" };
+        if (sh.LastSaldoAt is not null)
+            lineas.Add($"(último dato: {sh.LastSaldoAt.Value.AddHours(ARG_OFFSET_HOURS):dd/MM HH:mm})");
         return string.Join("\n", lineas);
     }
 

@@ -301,6 +301,17 @@ BEGIN
 END
 GO
 
+-- Migración 2026-07-10: tilde de avisos de fichadas (entrada/salida + plata a rendir) por Telegram.
+IF COL_LENGTH('TelegramAccounts','NotifFichadas') IS NULL
+    ALTER TABLE TelegramAccounts ADD NotifFichadas BIT NOT NULL DEFAULT 1;
+GO
+
+-- Migración 2026-07-10: canal Telegram POR-ALERTA en Mis Alertas (se elige alerta por alerta si
+-- además de la campanita se manda al Telegram del dueño).
+IF COL_LENGTH('Mis_Alertas','CanalTelegram') IS NULL
+    ALTER TABLE Mis_Alertas ADD CanalTelegram BIT NOT NULL DEFAULT 0;
+GO
+
 -- Mp_Pagos table — cobros recibidos por Mercado Pago (API /v1/payments/search).
 -- "Lo cobrado por MP": ingresos a la cuenta, para ver y conciliar. Pedido 2026-07-05.
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Mp_Pagos')

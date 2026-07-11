@@ -40,8 +40,13 @@ public class TelegramAccount
     // --- Qué avisos mandar (tildes que elige el usuario) ---
     /// <summary>Avisar cada venta nueva de MercadoLibre.</summary>
     public bool NotifVentas { get; set; } = true;
-    /// <summary>Avisar cuando salta una alerta de "Mis Alertas".</summary>
+    /// <summary>Avisar cuando salta una alerta de "Mis Alertas". OJO: desde 2026-07-10 el aviso de
+    /// alertas se elige por-alerta (MisAlerta.CanalTelegram); este flag quedó como interruptor
+    /// histórico y ya no controla el envío. Se mantiene para no romper datos existentes.</summary>
     public bool NotifAlertas { get; set; } = true;
+
+    /// <summary>Avisar cada fichada de empleado (entrada/salida), con la plata a rendir al salir.</summary>
+    public bool NotifFichadas { get; set; } = true;
 
     /// <summary>Cursor del poll de mensajes entrantes (update_id ya procesado). Evita reprocesar
     /// y saltear mensajes viejos. Null = arrancar desde el próximo mensaje.</summary>

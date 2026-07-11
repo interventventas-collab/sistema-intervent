@@ -9,6 +9,7 @@ public class TelegramAccountDto
     public bool IsActive { get; set; } = true;
     public bool NotifVentas { get; set; } = true;
     public bool NotifAlertas { get; set; } = true;
+    public bool NotifFichadas { get; set; } = true;
     public bool LastSyncOk { get; set; }
     public string? LastError { get; set; }
     public DateTime? LastSyncAt { get; set; }
@@ -22,6 +23,7 @@ public class SaveTelegramAccountRequest
     public bool IsActive { get; set; } = true;
     public bool NotifVentas { get; set; } = true;
     public bool NotifAlertas { get; set; } = true;
+    public bool NotifFichadas { get; set; } = true;
 }
 
 public class TelegramProbarResultDto

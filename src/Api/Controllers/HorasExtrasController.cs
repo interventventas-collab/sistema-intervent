@@ -25,11 +25,46 @@ public class HorasExtrasController : ControllerBase
     private readonly AppDbContext _db;
     private readonly IFido2 _fido2;
     private readonly IMemoryCache _cache;
-    public HorasExtrasController(AppDbContext db, IFido2 fido2, IMemoryCache cache)
+    private readonly Services.TelegramService _telegram;
+    public HorasExtrasController(AppDbContext db, IFido2 fido2, IMemoryCache cache, Services.TelegramService telegram)
     {
         _db = db;
         _fido2 = fido2;
         _cache = cache;
+        _telegram = telegram;
+    }
+
+    /// <summary>2026-07-10: avisa al Telegram del dueño cuando alguien ficha (entrada/salida). Si es
+    /// SALIDA y el empleado es repartidor, suma cuánto tiene que rendir (cobranzas en efectivo
+    /// pendientes). Nunca rompe la fichada si Telegram falla. Se prende/apaga en /integraciones/telegram.</summary>
+    private async Task AvisarFichadaTelegramAsync(HorasExtrasEmpleado emp, string tipo, string horaTxt)
+    {
+        try
+        {
+            var cuenta = await _db.TelegramAccounts.OrderBy(x => x.Id).FirstOrDefaultAsync();
+            if (cuenta is null || !cuenta.IsActive || !cuenta.NotifFichadas
+                || string.IsNullOrEmpty(cuenta.BotToken) || cuenta.ChatId is null)
+                return;
+
+            var texto = $"🕐 {emp.Nombre} fichó {tipo} — {horaTxt}";
+
+            if (tipo == "SALIDA" && emp.NomEmpleadoId is not null)
+            {
+                var rep = await _db.CafeRepartidores
+                    .FirstOrDefaultAsync(r => r.IsActive && r.NomEmpleadoId == emp.NomEmpleadoId);
+                if (rep is not null)
+                {
+                    var porRendir = await _db.CafeCobranzasPendientes
+                        .Where(p => p.Estado == "PENDIENTE" && p.RepartidorId == rep.Id)
+                        .SumAsync(p => (decimal?)p.Importe) ?? 0m;
+                    if (porRendir > 0)
+                        texto += $"\n💵 Tiene que rendir: $" + porRendir.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+                }
+            }
+
+            await _telegram.SendMessageAsync(texto);
+        }
+        catch { /* nunca romper la fichada por un aviso de Telegram */ }
     }
 
     // ============================================================
@@ -1358,6 +1393,7 @@ public class HorasExtrasController : ControllerBase
         }
 
         var horaTxt = $"{horaActual.Hours:D2}:{horaActual.Minutes:D2}";
+        await AvisarFichadaTelegramAsync(emp, tipo, horaTxt);
         var saludo = tipo == "ENTRADA" ? $"¡Buen día {emp.Nombre}!" : $"¡Hasta luego {emp.Nombre}!";
         return Ok(new FichadorMarcarResult(true, saludo, tipo, horaTxt, emp.Nombre));
     }
@@ -1617,6 +1653,7 @@ public class HorasExtrasController : ControllerBase
         }
 
         var horaTxt = $"{horaActual.Hours:D2}:{horaActual.Minutes:D2}";
+        await AvisarFichadaTelegramAsync(emp, tipo, horaTxt);
         var saludo = tipo == "ENTRADA" ? $"¡Buen día {emp.Nombre}!" : $"¡Hasta luego {emp.Nombre}!";
         return Ok(new FichadorMarcarResult(true, saludo, tipo, horaTxt, emp.Nombre));
     }

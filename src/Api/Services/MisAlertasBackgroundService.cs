@@ -121,16 +121,18 @@ public class MisAlertasBackgroundService : BackgroundService
 
         if (changed || db.ChangeTracker.HasChanges()) await db.SaveChangesAsync();
 
-        // Avisar por Telegram las alertas que recién saltaron (si el bot está activo y el tilde ON).
-        if (reciecienDisparadas.Count > 0)
+        // Avisar por Telegram SOLO las alertas que recién saltaron y tienen el canal Telegram tildado
+        // (se elige por-alerta desde Mis Alertas), si el bot está activo y vinculado.
+        var paraTelegram = reciecienDisparadas.Where(a => a.CanalTelegram).ToList();
+        if (paraTelegram.Count > 0)
         {
             try
             {
-                var tg = scope.ServiceProvider.GetRequiredService<TelegramService>();
                 var cuenta = await db.TelegramAccounts.OrderBy(x => x.Id).FirstOrDefaultAsync();
-                if (cuenta is not null && cuenta.IsActive && cuenta.NotifAlertas && !string.IsNullOrEmpty(cuenta.BotToken) && cuenta.ChatId is not null)
+                if (cuenta is not null && cuenta.IsActive && !string.IsNullOrEmpty(cuenta.BotToken) && cuenta.ChatId is not null)
                 {
-                    foreach (var a in reciecienDisparadas)
+                    var tg = scope.ServiceProvider.GetRequiredService<TelegramService>();
+                    foreach (var a in paraTelegram)
                     {
                         var msg = string.IsNullOrWhiteSpace(a.Mensaje) ? a.Tipo : a.Mensaje;
                         var texto = string.IsNullOrWhiteSpace(a.UltimoDetalle)
