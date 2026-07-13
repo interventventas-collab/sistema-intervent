@@ -229,6 +229,51 @@ else
     }
 </div>
 
+@* ── Historial de avisos (bitácora: cada notificación de a una) ── *@
+<div class="ma-hist-box">
+    <div class="ma-hist-head" @onclick="() => mostrarHistorial = !mostrarHistorial">
+        <span class="ma-hist-title">📜 Historial de avisos</span>
+        <span class="ma-hist-sub">@(historial.Count == 0 ? "sin avisos todavía" : $"últimos {historial.Count}")</span>
+        <span class="ma-hist-chev">@(mostrarHistorial ? "▾" : "▸")</span>
+    </div>
+    @if (mostrarHistorial)
+    {
+        @if (historial.Count == 0)
+        {
+            <div class="ma-hist-empty">Acá van a ir apareciendo, uno por uno, todos los avisos que dispara el sistema (correos que entran, saldos, cheques, etc.).</div>
+        }
+        else
+        {
+            <div class="ma-hist-list">
+                @foreach (var h in historial)
+                {
+                    <div class="ma-hist-row">
+                        <div class="ma-hist-emoji">@Emoji(h.Tipo)</div>
+                        <div class="ma-hist-mid">
+                            <div class="ma-hist-msg">@h.Mensaje</div>
+                            @if (!string.IsNullOrWhiteSpace(h.Detalle))
+                            {
+                                <div class="ma-hist-det">@h.Detalle</div>
+                            }
+                            <div class="ma-hist-meta">
+                                <span>@FechaArg(h.CreatedAt)</span>
+                                @if (h.PorTelegram)
+                                {
+                                    <span class="ma-hist-tg @(h.EnviadoTelegram ? "ok" : "fail")" title="@(h.EnviadoTelegram ? "Enviado a Telegram" : "No se pudo enviar a Telegram")">📲 @(h.EnviadoTelegram ? "enviado" : "no enviado")</span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(h.GmailLink))
+                                {
+                                    <a href="@h.GmailLink" target="_blank" class="ma-hist-link">Abrir en Gmail →</a>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    }
+</div>
+
 <style>
     .ma-editor {
         background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
@@ -314,6 +359,27 @@ else
     }
     .ma-switch input:checked + .ma-slider { background: #22c55e; }
     .ma-switch input:checked + .ma-slider::before { transform: translateX(18px); }
+
+    /* Historial de avisos */
+    .ma-hist-box { background: #F9FAFB; border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px 16px; margin-top: 1.5rem; }
+    .ma-hist-head { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+    .ma-hist-title { font-size: 0.95rem; font-weight: 700; color: #374151; }
+    .ma-hist-sub { font-size: 0.78rem; color: #9ca3af; }
+    .ma-hist-chev { margin-left: auto; color: #9ca3af; font-size: 0.9rem; }
+    .ma-hist-empty { font-size: 0.82rem; color: #6b7280; margin-top: 10px; }
+    .ma-hist-list { display: flex; flex-direction: column; margin-top: 10px; }
+    .ma-hist-row { display: flex; gap: 12px; padding: 10px 0; border-top: 1px solid #eef1f4; }
+    .ma-hist-row:first-child { border-top: none; }
+    .ma-hist-emoji { font-size: 1.2rem; width: 26px; text-align: center; flex-shrink: 0; }
+    .ma-hist-mid { flex: 1; min-width: 0; }
+    .ma-hist-msg { font-size: 0.92rem; font-weight: 600; color: #111827; }
+    .ma-hist-det { font-size: 0.82rem; color: #4b5563; margin-top: 2px; }
+    .ma-hist-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 4px; font-size: 0.75rem; color: #9ca3af; }
+    .ma-hist-tg { padding: 1px 7px; border-radius: 999px; font-weight: 600; }
+    .ma-hist-tg.ok { background: #E6F1FB; color: #185FA5; }
+    .ma-hist-tg.fail { background: #FEE2E2; color: #991B1B; }
+    .ma-hist-link { color: #185FA5; text-decoration: none; font-weight: 600; }
+    .ma-hist-link:hover { text-decoration: underline; }
 </style>
 
 @code {
@@ -339,6 +405,10 @@ else
         public bool PorTelegram { get; set; } = false;
     }
 
+    // Historial de avisos (bitácora)
+    private List<ApiClient.HistorialAlertaDto> historial = new();
+    private bool mostrarHistorial = true;
+
     // Config de la casilla de correo (para alertas 📧)
     private ApiClient.ConfigCorreoAlertasDto? correoCfg;
     private bool mostrandoCfgCorreo;
@@ -362,6 +432,7 @@ else
         loading = true;
         alertas = await Api.GetMisAlertasAsync();
         correoCfg = await Api.GetConfigCorreoAlertasAsync();
+        historial = await Api.GetHistorialAlertasAsync();
         loading = false;
     }
 
@@ -566,6 +637,10 @@ else
         });
         return string.Join(", ", nombres);
     }
+
+    // El historial guarda la fecha en UTC; la mostramos en hora Argentina (UTC-3).
+    private static string FechaArg(DateTime utc)
+        => utc.AddHours(-3).ToString("dd/MM HH:mm");
 
     private static string Emoji(string tipo) => tipo switch
     {

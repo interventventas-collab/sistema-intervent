@@ -1278,6 +1278,12 @@ public class ApiClient
     public async Task<List<CorreoImportanteDto>> GetCorreosImportantesAsync()
         => await GetAsync<List<CorreoImportanteDto>>("/api/mis-alertas/correos") ?? new();
 
+    public record HistorialAlertaDto(int Id, string Tipo, string Mensaje, string? Detalle,
+        string? RemitenteEmail, string? GmailLink, bool PorTelegram, bool EnviadoTelegram, DateTime CreatedAt);
+
+    public async Task<List<HistorialAlertaDto>> GetHistorialAlertasAsync()
+        => await GetAsync<List<HistorialAlertaDto>>("/api/mis-alertas/historial") ?? new();
+
     public async Task<ConfigCorreoAlertasDto?> GetConfigCorreoAlertasAsync()
         => await GetAsync<ConfigCorreoAlertasDto>("/api/mis-alertas/config-correo");
 
