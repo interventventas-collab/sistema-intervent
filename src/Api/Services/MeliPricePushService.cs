@@ -58,13 +58,30 @@ public class MeliPricePushService
         var (precioBase, hasBase) = await CalcularPrecioBaseAsync(item, ct);
         if (!hasBase) return new PushResult(false, "No se pudo calcular precio base (sin PrecioOtro)");
 
-        // 2. Aplicar ajuste configurado.
+        // 2. Determinar el precio final.
+        //    2026-07-13: si la publicación tiene un OBJETIVO de ganancia cargado (cfg.GananciaObjetivoPct),
+        //    el precio se calcula para dejar ese % sobre costo — PERO nunca por debajo del sugerido del
+        //    sistema (precioBase = piso). Es decir: precio = MAX(precio_para_tu_objetivo, sugerido).
+        //    Si NO hay objetivo, se usa el comportamiento histórico: precioBase + ajuste configurado.
         var cfg = await _db.MeliItemSyncConfigs.FindAsync(new object[] { item.MeliItemId }, ct);
-        var pct = cfg?.AjustePct ?? 0m;
-        var fijo = cfg?.AjusteFijo ?? 0m;
-        var redondeo = cfg?.AjusteRedondeo;
-        var conAjuste = Math.Round(precioBase * (1 + pct / 100m) + fijo, 2);
-        var precioFinal = AplicarRedondeoUp(conAjuste, redondeo);
+        decimal precioFinal;
+        if (cfg?.GananciaObjetivoPct is decimal objetivoPct && objetivoPct > 0)
+        {
+            var precioObjetivo = await CalcularPrecioParaGananciaAsync(item, objetivoPct, ct);
+            // El objetivo solo puede SUBIR desde el piso sugerido; nunca lo baja.
+            var elegido = (precioObjetivo.HasValue && precioObjetivo.Value > precioBase)
+                ? precioObjetivo.Value
+                : precioBase;
+            precioFinal = AplicarRedondeoUp(elegido, cfg.AjusteRedondeo);
+        }
+        else
+        {
+            var pct = cfg?.AjustePct ?? 0m;
+            var fijo = cfg?.AjusteFijo ?? 0m;
+            var redondeo = cfg?.AjusteRedondeo;
+            var conAjuste = Math.Round(precioBase * (1 + pct / 100m) + fijo, 2);
+            precioFinal = AplicarRedondeoUp(conAjuste, redondeo);
+        }
 
         // 3. PUT a MeLi (detectar variantes).
         var token = await _accSvc.GetValidTokenAsync(item.MeliAccount);
@@ -279,6 +296,44 @@ public class MeliPricePushService
         }
         if (!any) return (0m, false);
         return (Math.Round(sum, 2), true);
+    }
+
+    /// <summary>2026-07-13: precio necesario para que ESTA publicación deje `gananciaPct`% sobre costo,
+    /// usando la comisión real de la publicación (misma fórmula que el bulk-precio-por-ganancia del
+    /// MeliController). Contempla que la parte % de la comisión escala con el precio y el cargo fijo no.
+    /// Devuelve null si no hay costo cargado o la comisión es imposible (>95%).</summary>
+    public async Task<decimal?> CalcularPrecioParaGananciaAsync(MeliItem item, decimal gananciaPct, CancellationToken ct = default)
+    {
+        var costo = await CalcularCostoTotalAsync(item, ct);
+        if (costo is null || costo.Value <= 0) return null;
+
+        // Comisión desglosada: parte % (escala con el precio) + cargo FIJO (independiente).
+        decimal pctPart, fixedPart;
+        if (item.SaleFeePercentageFee.HasValue && item.SaleFeePercentageFee.Value > 0)
+        {
+            pctPart = item.SaleFeePercentageFee.Value / 100m;
+            fixedPart = item.SaleFeeFixedFee ?? 0m;
+        }
+        else if (item.SaleFeeAmount.HasValue && item.SaleFeeAmount.Value > 0 && item.Price > 0)
+        {
+            pctPart = item.SaleFeeAmount.Value / item.Price;
+            fixedPart = 0m;
+        }
+        else
+        {
+            pctPart = 0.30m;
+            fixedPart = 0m;
+        }
+
+        var denom = 1m - pctPart;
+        if (denom <= 0.05m) return null;
+
+        // netoConIva(precio) = precio × (1 - pctPart) - fixedPart ; y netoSinIva = netoConIva / 1.21
+        // Queremos netoSinIva = costo × (1 + ganancia%) ⇒ despejamos el precio.
+        var netoSinIvaNec = costo.Value * (1 + gananciaPct / 100m);
+        var netoConIvaNec = netoSinIvaNec * 1.21m;
+        var precio = (netoConIvaNec + fixedPart) / denom;
+        return Math.Round(precio, 2);
     }
 
     /// <summary>2026-07-01: costo total del producto/combo linkeado a un MeliItem, mismo cálculo

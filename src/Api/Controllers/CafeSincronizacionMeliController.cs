@@ -295,6 +295,133 @@ public class CafeSincronizacionMeliController : ControllerBase
         return Ok(new SyncConfigDto(cfg.SyncStock, cfg.SyncPrecio, cfg.AjustePct, cfg.AjusteFijo, cfg.AjusteRedondeo, cfg.LastSyncAt));
     }
 
+    // ==========================================================================
+    // 2026-07-13: Objetivo de ganancia por publicación + vista previa.
+    // El precio que se pushea = MAX(precio_para_tu_objetivo%, sugerido del sistema=piso).
+    // Guardar el objetivo lo deja "pegado" a la publicación: la sincro lo mantiene.
+    // ==========================================================================
+
+    public record SyncPrecioPreviewRequest(List<int> ItemIds);
+    public record SyncPrecioPreviewItem(
+        int Id, string MeliItemId, string? Sku, string? Title, string Modalidad,
+        decimal PrecioActual, decimal PisoSugerido, decimal? ObjetivoPct,
+        decimal? PrecioObjetivo, decimal PrecioFinal, bool Cambia, string? Nota);
+
+    /// <summary>Vista previa (no aplica nada): para cada publicación calcula qué precio quedaría
+    /// con su objetivo cargado, respetando el piso sugerido. Sirve para revisar la familia antes de aplicar.</summary>
+    [HttpPost("sync-precio-preview")]
+    public async Task<IActionResult> SyncPrecioPreview(
+        [FromBody] SyncPrecioPreviewRequest req,
+        [FromServices] Api.Services.MeliPricePushService pushSvc)
+    {
+        if (req.ItemIds is null || req.ItemIds.Count == 0)
+            return BadRequest(new { error = "No hay publicaciones seleccionadas." });
+
+        var items = await _db.MeliItems.Where(i => req.ItemIds.Contains(i.Id)).ToListAsync();
+        var ids = items.Select(i => i.MeliItemId).ToList();
+        var cfgs = await _db.MeliItemSyncConfigs.Where(c => ids.Contains(c.MeliItemId))
+            .ToDictionaryAsync(c => c.MeliItemId, c => c);
+
+        var res = new List<SyncPrecioPreviewItem>();
+        foreach (var it in items)
+        {
+            cfgs.TryGetValue(it.MeliItemId, out var cfg);
+            var modalidad = it.InstallmentTag == "pcj-co-funded" ? "cuotas" : "contado";
+            var (piso, hasBase) = await pushSvc.CalcularPrecioBaseAsync(it, default);
+            decimal? objetivo = cfg?.GananciaObjetivoPct;
+            decimal? precioObjetivo = null;
+            string? nota = null;
+            decimal precioFinal;
+
+            if (!hasBase)
+            {
+                precioFinal = it.Price;
+                nota = "Sin precio base del sistema — no se calcula";
+            }
+            else if (objetivo is decimal g && g > 0)
+            {
+                precioObjetivo = await pushSvc.CalcularPrecioParaGananciaAsync(it, g, default);
+                if (precioObjetivo is null)
+                {
+                    precioFinal = AplicarRedondeoHaciaArriba(piso, cfg?.AjusteRedondeo);
+                    nota = "Sin costo cargado — queda en el piso sugerido";
+                }
+                else if (precioObjetivo.Value > piso)
+                {
+                    precioFinal = AplicarRedondeoHaciaArriba(precioObjetivo.Value, cfg?.AjusteRedondeo);
+                }
+                else
+                {
+                    precioFinal = AplicarRedondeoHaciaArriba(piso, cfg?.AjusteRedondeo);
+                    nota = "El objetivo da menos que el piso → gana el piso sugerido";
+                }
+            }
+            else
+            {
+                precioFinal = AplicarRedondeoHaciaArriba(piso, cfg?.AjusteRedondeo);
+                nota = "Sin objetivo cargado → piso sugerido";
+            }
+
+            res.Add(new SyncPrecioPreviewItem(
+                it.Id, it.MeliItemId, it.Sku, it.Title, modalidad,
+                it.Price, piso, objetivo, precioObjetivo, precioFinal,
+                Math.Abs(precioFinal - it.Price) >= 1m, nota));
+        }
+        return Ok(res);
+    }
+
+    public record SetObjetivoRequest(decimal? GananciaObjetivoPct, bool Aplicar = true);
+
+    /// <summary>Guarda (o limpia) el objetivo de ganancia de una publicación. Si Aplicar=true y hay
+    /// objetivo, marca SyncPrecio=true (para que se mantenga) y pushea el precio nuevo a MeLi al toque.</summary>
+    [HttpPut("{meliItemId}/objetivo")]
+    public async Task<IActionResult> SetObjetivo(
+        string meliItemId,
+        [FromBody] SetObjetivoRequest req,
+        [FromServices] Api.Services.MeliPricePushService pushSvc)
+    {
+        var mi = await _db.MeliItems.FirstOrDefaultAsync(x => x.MeliItemId == meliItemId);
+        if (mi is null) return NotFound(new { error = "Item MeLi no encontrado" });
+
+        var cfg = await _db.MeliItemSyncConfigs.FindAsync(meliItemId);
+        if (cfg is null)
+        {
+            cfg = new MeliItemSyncConfig { MeliItemId = meliItemId };
+            _db.MeliItemSyncConfigs.Add(cfg);
+        }
+
+        if (req.GananciaObjetivoPct.HasValue && req.GananciaObjetivoPct.Value > 0)
+        {
+            cfg.GananciaObjetivoPct = req.GananciaObjetivoPct.Value;
+            cfg.GananciaObjetivoAt = DateTime.UtcNow;
+            if (req.Aplicar) cfg.SyncPrecio = true; // que la sincro lo mantenga
+        }
+        else
+        {
+            cfg.GananciaObjetivoPct = null;
+            cfg.GananciaObjetivoAt = null;
+        }
+        cfg.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        decimal? precioNuevo = null;
+        string? pushError = null;
+        if (req.Aplicar && cfg.GananciaObjetivoPct.HasValue)
+        {
+            var r = await pushSvc.PushPrecioForItemAsync(mi.Id, markAsClaimed: true);
+            if (r.Ok) precioNuevo = r.PushedPrice;
+            else pushError = r.Message;
+        }
+
+        return Ok(new
+        {
+            objetivoPct = cfg.GananciaObjetivoPct,
+            syncPrecio = cfg.SyncPrecio,
+            precioNuevo,
+            pushError
+        });
+    }
+
     /// <summary>Redondea HACIA ARRIBA al siguiente número que cumpla la terminación.
     /// "" / null = sin redondeo. "99" = termina en 99 (ej: 24684 → 24699).
     /// "999" = termina en 999 (ej: 24684 → 24999). "000" = múltiplo de 1000 (ej: 24684 → 25000).</summary>

@@ -4881,6 +4881,48 @@ public class ApiClient
         catch (Exception ex) { return (null, ex.Message); }
     }
 
+    // ===== 2026-07-13: Objetivo de ganancia por publicación + vista previa =====
+    public record SyncPrecioPreviewItem(
+        int Id, string MeliItemId, string? Sku, string? Title, string Modalidad,
+        decimal PrecioActual, decimal PisoSugerido, decimal? ObjetivoPct,
+        decimal? PrecioObjetivo, decimal PrecioFinal, bool Cambia, string? Nota);
+
+    public record SetObjetivoResult(decimal? ObjetivoPct, bool SyncPrecio, decimal? PrecioNuevo, string? PushError);
+
+    /// <summary>Vista previa (no aplica): qué precio quedaría en cada publicación con su objetivo, respetando el piso.</summary>
+    public async Task<(List<SyncPrecioPreviewItem>? items, string? error)> SyncPrecioPreviewAsync(List<int> itemIds)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/cafe/sincronizacion-meli/sync-precio-preview", new { itemIds });
+            if (resp.IsSuccessStatusCode) return (await resp.Content.ReadFromJsonAsync<List<SyncPrecioPreviewItem>>(), null);
+            string err = "Error";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                  if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; }
+            catch { }
+            return (null, err);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    /// <summary>Guarda (o limpia con null) el objetivo de ganancia de una publicación. Si aplicar=true, además
+    /// deja el precio sincronizado y pushea el precio nuevo a MeLi al toque.</summary>
+    public async Task<(SetObjetivoResult? result, string? error)> SetObjetivoGananciaAsync(string meliItemId, decimal? gananciaObjetivoPct, bool aplicar = true)
+    {
+        try
+        {
+            var resp = await _http.PutAsJsonAsync($"/api/cafe/sincronizacion-meli/{meliItemId}/objetivo",
+                new { gananciaObjetivoPct, aplicar });
+            if (resp.IsSuccessStatusCode) return (await resp.Content.ReadFromJsonAsync<SetObjetivoResult>(), null);
+            string err = "Error";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                  if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; }
+            catch { }
+            return (null, err);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
     // ===== Tesoreria Cafe: Bancos (catalogo) =====
     public async Task<List<CafeBancoDto>?> GetBancosAsync(bool incluirInactivos = false)
         => await GetAsync<List<CafeBancoDto>>($"/api/cafe/bancos?incluirInactivos={(incluirInactivos ? "true" : "false")}");
