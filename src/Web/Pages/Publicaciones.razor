@@ -579,6 +579,11 @@
                                             {
                                                 @item.MeliItemId
                                                 <CopyButton Text="@item.MeliItemId" />
+                                                @if (!string.IsNullOrEmpty(item.FamilyId))
+                                                {
+                                                    <span style="margin-left:0.5rem; background:#fef3c7; color:#92400e; padding:0.05rem 0.3rem; border-radius:3px; font-size:0.7rem; font-weight:700;" title="Número de familia (catálogo MeLi)">👪 Fam: @item.FamilyId</span>
+                                                    <CopyButton Text="@item.FamilyId" />
+                                                }
                                                 @StockPushChip(item)
                                                 @PrecioSyncChip(item)
                                             }
@@ -923,7 +928,7 @@
                                             {
                                                 <span title="@item.MeliItemId">@Truncate(item.Title, 50)</span>
                                             }
-                                            <div class="item-id">@item.MeliItemId @StockPushChip(item) @PrecioSyncChip(item)</div>
+                                            <div class="item-id">@item.MeliItemId @FamilyChip(item)@StockPushChip(item) @PrecioSyncChip(item)</div>
                                         </td>
                                         <td>@SkuConPrecioSistema(item)</td>
                                         <td>
@@ -1039,7 +1044,7 @@
                                                 {
                                                     <span title="@item.MeliItemId">@Truncate(item.Title, 50)</span>
                                                 }
-                                                <div class="item-id">@item.MeliItemId @StockPushChip(item) @PrecioSyncChip(item)</div>
+                                                <div class="item-id">@item.MeliItemId @FamilyChip(item)@StockPushChip(item) @PrecioSyncChip(item)</div>
                                             </td>
                                             <td>@SkuConPrecioSistema(item)</td>
                                             <td>
@@ -1102,7 +1107,7 @@
                                             {
                                                 <span title="@item.MeliItemId">@Truncate(item.Title, 50)</span>
                                             }
-                                            <div class="item-id">@item.MeliItemId @StockPushChip(item) @PrecioSyncChip(item)</div>
+                                            <div class="item-id">@item.MeliItemId @FamilyChip(item)@StockPushChip(item) @PrecioSyncChip(item)</div>
                                         </td>
                                         <td>@SkuConPrecioSistema(item)</td>
                                         <td>
@@ -5717,6 +5722,12 @@
             StateHasChanged();
         }
     }
+
+    // ── 2026-07-13: chip con el número de FAMILIA al lado del número de publicación (para verlo/copiarlo desde la lista) ──
+    private RenderFragment FamilyChip(MeliItemDto item) => @<text>@if (!string.IsNullOrEmpty(item.FamilyId))
+    {
+        <span style="margin-left:0.35rem; margin-right:0.15rem; background:#fef3c7; color:#92400e; padding:0.05rem 0.3rem; border-radius:3px; font-size:0.7rem; font-weight:700;" title="Número de familia (catálogo MeLi)">👪 Fam: @item.FamilyId</span>
+    }</text>;
 
     // ── 2026-07-13: DOS interruptores por fila, independientes: "sincronizar precio" y "sincronizar stock" ──
     // Antes había uno solo que hacía las dos cosas juntas. Ahora se ven y se prenden por separado desde la lista.
