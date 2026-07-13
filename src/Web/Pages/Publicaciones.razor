@@ -1492,8 +1492,23 @@
                                                 </div>
                                                 <button @onclick="AplicarPrecioCalculado" disabled="@(isPushingCalcPrecio)"
                                                         style="margin-top:0.5rem; width:100%; padding:0.55rem; background:#16a34a; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer;">
-                                                    @(isPushingCalcPrecio ? "Pusheando..." : "✔ Aplicar y pushear")
+                                                    @(isPushingCalcPrecio ? "Pusheando..." : "✔ Aplicar una vez y pushear")
                                                 </button>
+                                                @if (calcGananciaModo == "%")
+                                                {
+                                                    <button @onclick="GuardarObjetivoYMantener" disabled="@(isGuardandoObjetivo)"
+                                                            title="Guarda este % como objetivo de la publicación, prende el tilde de PRECIO y empuja el precio (nunca por debajo del piso sugerido). De ahí en más el sistema lo mantiene solo."
+                                                            style="margin-top:0.4rem; width:100%; padding:0.55rem; background:#1e40af; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer;">
+                                                        @(isGuardandoObjetivo ? "Guardando..." : "📌 Guardar objetivo y mantener")
+                                                    </button>
+                                                }
+                                            }
+                                            @if (selectedItem.GananciaObjetivoPct.HasValue)
+                                            {
+                                                <div style="margin-top:0.45rem; padding:0.4rem 0.6rem; background:@(selectedItem.SyncPrecio ? "#dcfce7" : "#fef3c7"); border-radius:6px; font-size:0.72rem; color:@(selectedItem.SyncPrecio ? "#166534" : "#92400e");">
+                                                    🎯 Objetivo guardado: <strong>@selectedItem.GananciaObjetivoPct.Value.ToString("0.#", argCulture)%</strong>.
+                                                    @(selectedItem.SyncPrecio ? "El tilde Precio está ON → se mantiene solo." : "Prendé el tilde 🏷 Precio para que se mantenga solo.")
+                                                </div>
                                             }
                                             else
                                             {
@@ -5451,6 +5466,7 @@
     private decimal calcGananciaValor = 50m;
     private string calcRedondeo = "99";      // exacto | 99 | 999
     private bool isPushingCalcPrecio;
+    private bool isGuardandoObjetivo;
 
     /// <summary>Precio crudo que cubre costo + ganancia + todos los costos MeLi.
     /// neto(P) = P − P·comis% − cargoFijo − envío − P·retenciones% ⇒ despejamos P.
@@ -5620,36 +5636,43 @@
         }
     }
 
-    // ── 2026-07-11: interruptor por fila "mantener sincronizado" (stock + precio juntos) ──
-    // Osmar lo prende a mano, publicación por publicación, a medida que revisa y las deja bien.
-    // ON = SyncStock && SyncPrecio true (cambios de precio/costo/stock del sistema se pushean solos).
-    private readonly HashSet<int> _savingSincro = new();
+    // ── 2026-07-13: DOS interruptores por fila, independientes: "sincronizar precio" y "sincronizar stock" ──
+    // Antes había uno solo que hacía las dos cosas juntas. Ahora se ven y se prenden por separado desde la lista.
+    //   Precio ON  = SyncPrecio=true  → los cambios de precio/costo/objetivo del sistema se pushean solos.
+    //   Stock  ON  = SyncStock=true   → los cambios de stock del sistema se pushean solos.
+    private readonly HashSet<int> _savingSincroPrecio = new();
+    private readonly HashSet<int> _savingSincroStock = new();
 
     private RenderFragment SincroToggle(MeliItemDto item) =>
-    @<span>
+    @<span style="display:inline-flex; gap:0.3rem; flex-wrap:wrap; align-items:center;">
         @if (item.CafeProductoId.HasValue || item.ComponentMappingsCount > 0)
         {
-            var onSync = item.SyncStock && item.SyncPrecio;
-            var saving = _savingSincro.Contains(item.Id);
-            <button @onclick:stopPropagation="true" @onclick="() => ToggleSincroFila(item)" disabled="@saving"
-                    title="@(onSync ? "Sincronizado: los cambios de precio / costo / stock del sistema se pushean solos a MeLi. Click para desactivar." : "Manual. Click para ACTIVAR: esta publicación queda sincronizada (stock + precio) con el sistema.")"
-                    style="margin-top:0.2rem; padding:0.1rem 0.55rem; border-radius:10px; border:none; cursor:pointer; font-size:0.68rem; font-weight:700; background:@(onSync ? "#16a34a" : "#e5e7eb"); color:@(onSync ? "white" : "#4b5563");">
-                @(saving ? "…" : onSync ? "🔄 Sincronizado" : "⏸ Activar sincro")
+            var savingP = _savingSincroPrecio.Contains(item.Id);
+            var savingS = _savingSincroStock.Contains(item.Id);
+            <button @onclick:stopPropagation="true" @onclick="() => ToggleSincroPrecio(item)" disabled="@savingP"
+                    title="@(item.SyncPrecio ? "Precio sincronizado: se mantiene con tu objetivo (o el piso sugerido). Click para desactivar." : "Precio manual. Click para ACTIVAR: el sistema mantiene el precio de esta publicación.")"
+                    style="margin-top:0.2rem; padding:0.1rem 0.5rem; border-radius:10px; border:none; cursor:pointer; font-size:0.68rem; font-weight:700; background:@(item.SyncPrecio ? "#16a34a" : "#e5e7eb"); color:@(item.SyncPrecio ? "white" : "#4b5563");">
+                @(savingP ? "…" : item.SyncPrecio ? "🏷 Precio ON" : "🏷 Precio")
+            </button>
+            <button @onclick:stopPropagation="true" @onclick="() => ToggleSincroStock(item)" disabled="@savingS"
+                    title="@(item.SyncStock ? "Stock sincronizado: se mantiene con el stock del sistema. Click para desactivar." : "Stock manual. Click para ACTIVAR: el sistema mantiene el stock de esta publicación.")"
+                    style="margin-top:0.2rem; padding:0.1rem 0.5rem; border-radius:10px; border:none; cursor:pointer; font-size:0.68rem; font-weight:700; background:@(item.SyncStock ? "#0ea5e9" : "#e5e7eb"); color:@(item.SyncStock ? "white" : "#4b5563");">
+                @(savingS ? "…" : item.SyncStock ? "📦 Stock ON" : "📦 Stock")
             </button>
         }
     </span>;
 
-    private async Task ToggleSincroFila(MeliItemDto item)
+    private async Task ToggleSincroPrecio(MeliItemDto item)
     {
-        if (_savingSincro.Contains(item.Id)) return;
-        var nuevo = !(item.SyncStock && item.SyncPrecio);
-        _savingSincro.Add(item.Id);
+        if (_savingSincroPrecio.Contains(item.Id)) return;
+        var nuevo = !item.SyncPrecio;
+        _savingSincroPrecio.Add(item.Id);
         StateHasChanged();
         try
         {
             var (cfg, err) = await Api.ActualizarSyncConfigAsync(item.MeliItemId, new UpdateSyncConfigRequest
             {
-                SyncStock = nuevo,
+                SyncStock = item.SyncStock,   // no tocar el otro tilde
                 SyncPrecio = nuevo,
                 AjustePct = item.AjustePct,
                 AjusteFijo = item.AjusteFijo,
@@ -5657,15 +5680,42 @@
             });
             if (err is null)
             {
-                item.SyncStock = nuevo;
                 item.SyncPrecio = nuevo;
                 InvalidateFilterCache();
-                ToastService.Success(nuevo ? "🔄 Sincro de stock y precio ACTIVADA en esta publicación" : "Sincro desactivada (queda manual)");
+                ToastService.Success(nuevo ? "🏷 Sincro de PRECIO activada en esta publicación" : "Sincro de precio desactivada (queda manual)");
             }
             else ToastService.Error("No se pudo guardar: " + err);
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
-        finally { _savingSincro.Remove(item.Id); StateHasChanged(); }
+        finally { _savingSincroPrecio.Remove(item.Id); StateHasChanged(); }
+    }
+
+    private async Task ToggleSincroStock(MeliItemDto item)
+    {
+        if (_savingSincroStock.Contains(item.Id)) return;
+        var nuevo = !item.SyncStock;
+        _savingSincroStock.Add(item.Id);
+        StateHasChanged();
+        try
+        {
+            var (cfg, err) = await Api.ActualizarSyncConfigAsync(item.MeliItemId, new UpdateSyncConfigRequest
+            {
+                SyncStock = nuevo,
+                SyncPrecio = item.SyncPrecio,   // no tocar el otro tilde
+                AjustePct = item.AjustePct,
+                AjusteFijo = item.AjusteFijo,
+                AjusteRedondeo = item.AjusteRedondeo
+            });
+            if (err is null)
+            {
+                item.SyncStock = nuevo;
+                InvalidateFilterCache();
+                ToastService.Success(nuevo ? "📦 Sincro de STOCK activada en esta publicación" : "Sincro de stock desactivada (queda manual)");
+            }
+            else ToastService.Error("No se pudo guardar: " + err);
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { _savingSincroStock.Remove(item.Id); StateHasChanged(); }
     }
 
     // ── 2026-07-11: "Poner piso 50%" (sube solo las que están abajo de 50%) con vista previa ──
@@ -5844,6 +5894,47 @@
         finally
         {
             isPushingCalcPrecio = false;
+            StateHasChanged();
+        }
+    }
+
+    // 2026-07-13: guarda el % como OBJETIVO de la publicación, prende el tilde de precio y pushea
+    // (respetando el piso sugerido). De ahí en más la sincro lo mantiene solo.
+    private async Task GuardarObjetivoYMantener()
+    {
+        if (selectedItem is null || isGuardandoObjetivo || calcGananciaModo != "%") return;
+        isGuardandoObjetivo = true;
+        StateHasChanged();
+        try
+        {
+            var (res, err) = await Api.SetObjetivoGananciaAsync(selectedItem.MeliItemId, calcGananciaValor, aplicar: true);
+            if (err is null && res is not null)
+            {
+                selectedItem.GananciaObjetivoPct = res.ObjetivoPct;
+                selectedItem.GananciaObjetivoAt = DateTime.UtcNow;
+                selectedItem.SyncPrecio = res.SyncPrecio;
+                if (res.PrecioNuevo.HasValue) selectedItem.Price = res.PrecioNuevo.Value;
+                InvalidateFilterCache();
+
+                if (!string.IsNullOrEmpty(res.PushError))
+                    ToastService.Warning($"🎯 Objetivo {calcGananciaValor.ToString("0.#", argCulture)}% guardado y tilde Precio prendido. El precio se mantendrá solo. (No se pudo pushear ahora: {res.PushError})");
+                else if (res.PrecioNuevo.HasValue)
+                    ToastService.Success($"🎯 Objetivo {calcGananciaValor.ToString("0.#", argCulture)}% guardado. Precio quedó en ${res.PrecioNuevo.Value.ToString("N0", argCulture)} y se mantiene solo.");
+                else
+                    ToastService.Success($"🎯 Objetivo {calcGananciaValor.ToString("0.#", argCulture)}% guardado. Se mantiene solo.");
+
+                isLoadingCosts = true;
+                StateHasChanged();
+                try { itemCosts = await Api.GetItemCostsAsync(selectedItem.MeliItemId); }
+                catch { }
+                isLoadingCosts = false;
+            }
+            else ToastService.Error("No se pudo guardar el objetivo: " + (err ?? "error"));
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally
+        {
+            isGuardandoObjetivo = false;
             StateHasChanged();
         }
     }
