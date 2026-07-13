@@ -323,6 +323,8 @@ else
     private bool guardando;
     private int? editandoId;
     private AlertaForm form = new();
+    // Al abrir el editor, subimos la pantalla hasta él (si no, se abre arriba y parece que "no hace nada").
+    private bool scrollEditorPending;
 
     private class AlertaForm
     {
@@ -345,6 +347,15 @@ else
     private string cfgPassword = "";
 
     protected override async Task OnInitializedAsync() => await Cargar();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (scrollEditorPending)
+        {
+            scrollEditorPending = false;
+            try { await JS.InvokeVoidAsync("scrollTo", new { top = 0, behavior = "smooth" }); } catch { }
+        }
+    }
 
     private async Task Cargar()
     {
@@ -384,6 +395,7 @@ else
         editandoId = null;
         form = new AlertaForm();
         mostrandoEditor = true;
+        scrollEditorPending = true;
     }
 
     private void Editar(ApiClient.AlertaDto a)
@@ -403,6 +415,7 @@ else
             PorTelegram = a.CanalTelegram
         };
         mostrandoEditor = true;
+        scrollEditorPending = true;
     }
 
     private void CancelarEditor()
