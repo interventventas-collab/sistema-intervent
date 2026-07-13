@@ -6,6 +6,7 @@ using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using System.Globalization;
 
 namespace Api.Controllers;
@@ -22,6 +23,24 @@ public class CafeOemsController : ControllerBase
     public CafeOemsController(AppDbContext db, OemWebScrapingService scraper, OemMassiveScrapeState massiveState, IServiceScopeFactory scopeFactory)
     {
         _db = db; _scraper = scraper; _massiveState = massiveState; _scopeFactory = scopeFactory;
+    }
+
+    /// <summary>2026-07-13: dispara re-push de PRECIO a MeLi en background (fire-and-forget) para un producto,
+    /// cuando cambia el costo/PVP del OEM. Solo pushea publicaciones "claimed" (SyncPrecio=true); las con
+    /// objetivo recalculan el precio para mantener el %. Mismo patrón que CafeProductosController.</summary>
+    private void FireAndForgetPushPrecio(int cafeProductoId)
+    {
+        var scopeFactory = _scopeFactory;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var pushSvc = scope.ServiceProvider.GetRequiredService<MeliPricePushService>();
+                await pushSvc.PushPrecioForProductoAsync(cafeProductoId);
+            }
+            catch { /* el service captura errores; la marca queda en PriceChangedAt para el background */ }
+        });
     }
 
     private static CafeOemDto Map(CafeOem o, int variantesCount = 0) => new(
@@ -188,6 +207,15 @@ public class CafeOemsController : ControllerBase
         // Propagar costo + PVP + UxB + barcode a TODAS las variantes vinculadas.
         var n = await PropagarAVariantesAsync(o.Id);
         if (n > 0) await _db.SaveChangesAsync();
+
+        // 2026-07-13: si cambió el COSTO o el PVP del OEM, las publicaciones MeLi con objetivo (y el precio base)
+        // dependen de eso → disparar re-push de precio para cada producto vinculado (fire-and-forget). Antes,
+        // cambiar el costo por el OEM dejaba el precio (y el margen) viejos porque solo Productos lo disparaba.
+        if (req.Costo.HasValue || req.PvpConIva.HasValue)
+        {
+            var productoIds = await _db.CafeProductos.Where(p => p.OemId == o.Id).Select(p => p.Id).ToListAsync();
+            foreach (var pid in productoIds) FireAndForgetPushPrecio(pid);
+        }
 
         var saved = await _db.CafeOems.Include(x => x.MarcaNav).FirstAsync(x => x.Id == o.Id);
         return Ok(Map(saved, n));
