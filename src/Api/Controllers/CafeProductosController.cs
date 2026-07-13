@@ -772,8 +772,13 @@ public class CafeProductosController : ControllerBase
         // 2026-05-30: detectar cambio de PRECIO (PrecioOtro o IvaPct) y disparar push event-driven.
         // Marca PriceChangedAt para que el background service también lo procese si el push inline falla.
         bool precioOtroOIvaCambio = (oldPrecioOtro ?? -1m) != (p.PrecioOtro ?? -1m) || oldIva != p.IvaPct;
-        if (precioOtroOIvaCambio) p.PriceChangedAt = DateTime.UtcNow;
-        var dispararPushPrecio = precioOtroOIvaCambio;
+        // 2026-07-13: el precio con OBJETIVO de ganancia depende del COSTO. Si cambia el costo, hay que
+        // recalcular el precio de las publicaciones con objetivo para mantener el %. Antes solo se disparaba
+        // por cambio de PrecioOtro/IVA → cambiar el costo dejaba el precio (y el margen) viejo. Para las
+        // publicaciones SIN objetivo el precio base no depende del costo, así que el push recalcula lo mismo (inocuo).
+        bool costoCambio = oldCosto != p.Costo;
+        if (precioOtroOIvaCambio || costoCambio) p.PriceChangedAt = DateTime.UtcNow;
+        var dispararPushPrecio = precioOtroOIvaCambio || costoCambio;
 
         // Si algun precio cambio, grabar historial.
         bool precioCambio = oldPvp1 != p.Pvp1 || oldPvp2 != p.Pvp2 || oldCosto != p.Costo || oldIva != p.IvaPct;
