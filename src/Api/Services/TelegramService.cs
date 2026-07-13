@@ -262,14 +262,27 @@ public class TelegramService
         {
             if (procesados >= 15) break; // el resto queda para la próxima vuelta
             var lista = grupo.ToList();
+            bool enviado = false;
             if (quiereTelegram && telegramListo)
             {
                 var texto = ArmarMensajeVenta(lista);
                 var (ok, _) = await SendRawAsync(a!.BotToken, a.ChatId!.Value, texto, ct);
                 if (!ok) break; // si falla el envío, no marcamos: reintenta la próxima
+                enviado = true;
             }
             foreach (var o in lista) o.NotifiedTelegram = true;
             ultimoDetalle = ResumenCortoVenta(lista);
+            // Historial de avisos: una fila por venta (bitácora, aparece de a una).
+            _db.MisAlertasHistorial.Add(new MisAlertaHistorial
+            {
+                AlertaId = alerta.Id,
+                Tipo = "VENTA_MELI",
+                Mensaje = string.IsNullOrWhiteSpace(alerta.Mensaje) ? "Venta nueva en MercadoLibre" : alerta.Mensaje,
+                Detalle = ultimoDetalle,
+                Alcance = string.IsNullOrWhiteSpace(alerta.Alcance) ? "admin,oficina" : alerta.Alcance,
+                PorTelegram = alerta.CanalTelegram,
+                EnviadoTelegram = enviado
+            });
             procesados++;
         }
 

@@ -63,13 +63,19 @@ public class HorasExtrasController : ControllerBase
                 }
             }
 
+            var detalleCorto = $"{emp.Nombre} fichó {tipo.ToLowerInvariant()} — {horaTxt}";
+
             // Telegram (si está tildado y el bot está vinculado).
+            bool enviadoTg = false;
             if (alerta.CanalTelegram)
             {
                 var cuenta = await _db.TelegramAccounts.Where(x => x.Proposito == "AVISOS")
                     .OrderBy(x => x.Id).FirstOrDefaultAsync();
                 if (cuenta is not null && cuenta.IsActive && !string.IsNullOrEmpty(cuenta.BotToken) && cuenta.ChatId is not null)
-                    await _telegram.SendMessageAsync(texto);
+                {
+                    var (ok, _) = await _telegram.SendMessageAsync(texto);
+                    enviadoTg = ok;
+                }
             }
 
             // Campanita (si está tildada): queda encendida hasta que la mirás.
@@ -78,10 +84,22 @@ public class HorasExtrasController : ControllerBase
                 alerta.EstaDisparada = true;
                 alerta.Vista = false;
                 alerta.DisparadaAt = DateTime.UtcNow;
-                alerta.UltimoDetalle = $"{emp.Nombre} fichó {tipo.ToLowerInvariant()} — {horaTxt}";
+                alerta.UltimoDetalle = detalleCorto;
                 alerta.UpdatedAt = DateTime.UtcNow;
-                await _db.SaveChangesAsync();
             }
+
+            // Historial de avisos: una fila por fichada (bitácora, aparece de a una).
+            _db.MisAlertasHistorial.Add(new MisAlertaHistorial
+            {
+                AlertaId = alerta.Id,
+                Tipo = "FICHADA",
+                Mensaje = string.IsNullOrWhiteSpace(alerta.Mensaje) ? "Fichada de empleado" : alerta.Mensaje,
+                Detalle = detalleCorto,
+                Alcance = string.IsNullOrWhiteSpace(alerta.Alcance) ? "admin,oficina" : alerta.Alcance,
+                PorTelegram = alerta.CanalTelegram,
+                EnviadoTelegram = enviadoTg
+            });
+            await _db.SaveChangesAsync();
         }
         catch { /* nunca romper la fichada por un aviso */ }
     }
