@@ -280,13 +280,16 @@ public class MisAlertasController : ControllerBase
     public record HistorialDto(int Id, string Tipo, string Mensaje, string? Detalle,
         string? RemitenteEmail, string? GmailLink, bool PorTelegram, bool EnviadoTelegram, DateTime CreatedAt);
 
-    /// <summary>Últimos avisos emitidos que el rol del usuario puede ver, más nuevos primero.</summary>
+    /// <summary>Últimos avisos emitidos que el rol del usuario puede ver, más nuevos primero.
+    /// Filtro opcional por tipo (EMAIL_REMITENTE, VENTA_MELI, FICHADA, etc.); "TODOS" o vacío = todos.</summary>
     [HttpGet("historial")]
-    public async Task<IActionResult> Historial()
+    public async Task<IActionResult> Historial([FromQuery] string? tipo = null)
     {
         var bucket = await GetBucketAsync();
-        var rows = await _db.MisAlertasHistorial
-            .Where(h => h.Alcance.Contains(bucket))
+        var q = _db.MisAlertasHistorial.Where(h => h.Alcance.Contains(bucket));
+        if (!string.IsNullOrWhiteSpace(tipo) && tipo != "TODOS")
+            q = q.Where(h => h.Tipo == tipo);
+        var rows = await q
             .OrderByDescending(h => h.CreatedAt)
             .Take(100)
             .Select(h => new HistorialDto(h.Id, h.Tipo, h.Mensaje, h.Detalle,

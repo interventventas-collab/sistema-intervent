@@ -13,13 +13,80 @@
 <div class="page-header">
     <div>
         <h1 class="page-title">🔔 Mis Alertas</h1>
-        <p class="page-subtitle">Armá tus propios avisos. El sistema vigila solo y te avisa en la campanita 🔔 de arriba cuando algo necesita tu atención.</p>
+        <p class="page-subtitle">Acá ves el historial de todos los avisos. Con el botón <strong>⚙️ Configurar</strong> armás tus propias alertas.</p>
     </div>
-    @if (!mostrandoEditor)
+    @if (tab == "config" && !mostrandoEditor)
     {
         <button class="btn-primary" @onclick="NuevaAlerta">＋ Nueva alerta</button>
     }
 </div>
+
+@* Dos solapas: el Historial (lo que pasó) y la Configuración (armar/prender alertas). *@
+<div class="ma-tabs">
+    <button class="ma-tab @(tab == "historial" ? "on" : "")" @onclick='() => CambiarTab("historial")'>📜 Historial de avisos</button>
+    <button class="ma-tab @(tab == "config" ? "on" : "")" @onclick='() => CambiarTab("config")'>⚙️ Configurar alertas</button>
+</div>
+
+@if (tab == "historial")
+{
+    <div class="ma-hist-box">
+        <div class="ma-hist-toolbar">
+            <div class="ma-hist-filter">
+                <label class="ma-hist-filter-lbl">Mostrar:</label>
+                <select class="ma-select" @bind="filtroTipo" @bind:after="CargarHistorial">
+                    <option value="TODOS">Todos los avisos</option>
+                    <option value="EMAIL_REMITENTE">📧 Correos</option>
+                    <option value="VENTA_MELI">🛒 Ventas MercadoLibre</option>
+                    <option value="FICHADA">🕐 Fichadas</option>
+                    <option value="SHELL_BAJO">⛽ Shell Flota</option>
+                    <option value="BANCO_BAJO">🏦 Banco Galicia</option>
+                    <option value="CHEQUE_VENCE">📄 Cheques</option>
+                    <option value="FECHA_MES">📅 Recordatorios de fecha</option>
+                </select>
+            </div>
+            <button class="btn-secondary" @onclick="CargarHistorial" title="Actualizar">🔄 Actualizar</button>
+        </div>
+        @if (historial.Count == 0)
+        {
+            <div class="ma-hist-empty">
+                @(filtroTipo == "TODOS"
+                    ? "Todavía no hay avisos. Acá van a ir apareciendo, uno por uno, todos los avisos que dispara el sistema (correos que entran, ventas, fichadas, saldos, cheques, etc.)."
+                    : "No hay avisos de este tipo por ahora.")
+            </div>
+        }
+        else
+        {
+            <div class="ma-hist-list">
+                @foreach (var h in historial)
+                {
+                    <div class="ma-hist-row">
+                        <div class="ma-hist-emoji">@Emoji(h.Tipo)</div>
+                        <div class="ma-hist-mid">
+                            <div class="ma-hist-msg">@h.Mensaje</div>
+                            @if (!string.IsNullOrWhiteSpace(h.Detalle))
+                            {
+                                <div class="ma-hist-det">@h.Detalle</div>
+                            }
+                            <div class="ma-hist-meta">
+                                <span>@FechaArg(h.CreatedAt)</span>
+                                @if (h.PorTelegram)
+                                {
+                                    <span class="ma-hist-tg @(h.EnviadoTelegram ? "ok" : "fail")" title="@(h.EnviadoTelegram ? "Enviado a Telegram" : "No se pudo enviar a Telegram")">📲 @(h.EnviadoTelegram ? "enviado" : "no enviado")</span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(h.GmailLink))
+                                {
+                                    <a href="@h.GmailLink" target="_blank" class="ma-hist-link">Abrir en Gmail →</a>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+else
+{
 
 @if (mostrandoEditor)
 {
@@ -229,50 +296,7 @@ else
     }
 </div>
 
-@* ── Historial de avisos (bitácora: cada notificación de a una) ── *@
-<div class="ma-hist-box">
-    <div class="ma-hist-head" @onclick="() => mostrarHistorial = !mostrarHistorial">
-        <span class="ma-hist-title">📜 Historial de avisos</span>
-        <span class="ma-hist-sub">@(historial.Count == 0 ? "sin avisos todavía" : $"últimos {historial.Count}")</span>
-        <span class="ma-hist-chev">@(mostrarHistorial ? "▾" : "▸")</span>
-    </div>
-    @if (mostrarHistorial)
-    {
-        @if (historial.Count == 0)
-        {
-            <div class="ma-hist-empty">Acá van a ir apareciendo, uno por uno, todos los avisos que dispara el sistema (correos que entran, saldos, cheques, etc.).</div>
-        }
-        else
-        {
-            <div class="ma-hist-list">
-                @foreach (var h in historial)
-                {
-                    <div class="ma-hist-row">
-                        <div class="ma-hist-emoji">@Emoji(h.Tipo)</div>
-                        <div class="ma-hist-mid">
-                            <div class="ma-hist-msg">@h.Mensaje</div>
-                            @if (!string.IsNullOrWhiteSpace(h.Detalle))
-                            {
-                                <div class="ma-hist-det">@h.Detalle</div>
-                            }
-                            <div class="ma-hist-meta">
-                                <span>@FechaArg(h.CreatedAt)</span>
-                                @if (h.PorTelegram)
-                                {
-                                    <span class="ma-hist-tg @(h.EnviadoTelegram ? "ok" : "fail")" title="@(h.EnviadoTelegram ? "Enviado a Telegram" : "No se pudo enviar a Telegram")">📲 @(h.EnviadoTelegram ? "enviado" : "no enviado")</span>
-                                }
-                                @if (!string.IsNullOrWhiteSpace(h.GmailLink))
-                                {
-                                    <a href="@h.GmailLink" target="_blank" class="ma-hist-link">Abrir en Gmail →</a>
-                                }
-                            </div>
-                        </div>
-                    </div>
-                }
-            </div>
-        }
-    }
-</div>
+}
 
 <style>
     .ma-editor {
@@ -360,14 +384,23 @@ else
     .ma-switch input:checked + .ma-slider { background: #22c55e; }
     .ma-switch input:checked + .ma-slider::before { transform: translateX(18px); }
 
+    /* Solapas Historial / Configuración */
+    .ma-tabs { display: flex; gap: 6px; border-bottom: 2px solid #e5e7eb; margin-bottom: 1.25rem; }
+    .ma-tab {
+        background: none; border: none; cursor: pointer; padding: 10px 16px;
+        font-size: 0.92rem; font-weight: 600; color: #6b7280;
+        border-bottom: 2px solid transparent; margin-bottom: -2px;
+    }
+    .ma-tab:hover { color: #374151; }
+    .ma-tab.on { color: #185FA5; border-bottom-color: #185FA5; }
+
     /* Historial de avisos */
-    .ma-hist-box { background: #F9FAFB; border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px 16px; margin-top: 1.5rem; }
-    .ma-hist-head { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
-    .ma-hist-title { font-size: 0.95rem; font-weight: 700; color: #374151; }
-    .ma-hist-sub { font-size: 0.78rem; color: #9ca3af; }
-    .ma-hist-chev { margin-left: auto; color: #9ca3af; font-size: 0.9rem; }
-    .ma-hist-empty { font-size: 0.82rem; color: #6b7280; margin-top: 10px; }
-    .ma-hist-list { display: flex; flex-direction: column; margin-top: 10px; }
+    .ma-hist-box { background: #F9FAFB; border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px 16px; }
+    .ma-hist-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .ma-hist-filter { display: flex; align-items: center; gap: 8px; }
+    .ma-hist-filter-lbl { font-size: 0.85rem; color: #4b5563; }
+    .ma-hist-empty { font-size: 0.85rem; color: #6b7280; margin-top: 14px; padding: 8px 0; }
+    .ma-hist-list { display: flex; flex-direction: column; margin-top: 12px; }
     .ma-hist-row { display: flex; gap: 12px; padding: 10px 0; border-top: 1px solid #eef1f4; }
     .ma-hist-row:first-child { border-top: none; }
     .ma-hist-emoji { font-size: 1.2rem; width: 26px; text-align: center; flex-shrink: 0; }
@@ -405,9 +438,12 @@ else
         public bool PorTelegram { get; set; } = false;
     }
 
+    // Solapa activa: "historial" (por defecto, lo que ve la campanita al entrar) o "config".
+    private string tab = "historial";
+
     // Historial de avisos (bitácora)
     private List<ApiClient.HistorialAlertaDto> historial = new();
-    private bool mostrarHistorial = true;
+    private string filtroTipo = "TODOS";
 
     // Config de la casilla de correo (para alertas 📧)
     private ApiClient.ConfigCorreoAlertasDto? correoCfg;
@@ -432,9 +468,14 @@ else
         loading = true;
         alertas = await Api.GetMisAlertasAsync();
         correoCfg = await Api.GetConfigCorreoAlertasAsync();
-        historial = await Api.GetHistorialAlertasAsync();
+        historial = await Api.GetHistorialAlertasAsync(filtroTipo);
         loading = false;
     }
+
+    private void CambiarTab(string t) => tab = t;
+
+    private async Task CargarHistorial()
+        => historial = await Api.GetHistorialAlertasAsync(filtroTipo);
 
     private void AbrirCfgCorreo()
     {
