@@ -370,7 +370,7 @@ public class CafeSincronizacionMeliController : ControllerBase
         return Ok(res);
     }
 
-    public record SetObjetivoRequest(decimal? GananciaObjetivoPct, bool Aplicar = true);
+    public record SetObjetivoRequest(decimal? GananciaObjetivoPct, bool Aplicar = true, string? Redondeo = null);
 
     /// <summary>Guarda (o limpia) el objetivo de ganancia de una publicación. Si Aplicar=true y hay
     /// objetivo, marca SyncPrecio=true (para que se mantenga) y pushea el precio nuevo a MeLi al toque.</summary>
@@ -390,11 +390,19 @@ public class CafeSincronizacionMeliController : ControllerBase
             _db.MeliItemSyncConfigs.Add(cfg);
         }
 
+        // 2026-07-13: el redondeo ahora se maneja junto al objetivo (se sacó la tarjeta de "Ajuste").
+        // "exacto"/null/"" = sin redondeo.
+        if (req.Redondeo is not null)
+            cfg.AjusteRedondeo = (req.Redondeo == "exacto" || req.Redondeo == "") ? null : req.Redondeo;
+
         if (req.GananciaObjetivoPct.HasValue && req.GananciaObjetivoPct.Value > 0)
         {
             cfg.GananciaObjetivoPct = req.GananciaObjetivoPct.Value;
             cfg.GananciaObjetivoAt = DateTime.UtcNow;
             if (req.Aplicar) cfg.SyncPrecio = true; // que la sincro lo mantenga
+            // El objetivo reemplaza al ajuste manual viejo (% extra / $ extra): lo limpiamos para que no interfiera.
+            cfg.AjustePct = 0m;
+            cfg.AjusteFijo = 0m;
         }
         else
         {

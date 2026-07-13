@@ -4907,12 +4907,12 @@ public class ApiClient
 
     /// <summary>Guarda (o limpia con null) el objetivo de ganancia de una publicación. Si aplicar=true, además
     /// deja el precio sincronizado y pushea el precio nuevo a MeLi al toque.</summary>
-    public async Task<(SetObjetivoResult? result, string? error)> SetObjetivoGananciaAsync(string meliItemId, decimal? gananciaObjetivoPct, bool aplicar = true)
+    public async Task<(SetObjetivoResult? result, string? error)> SetObjetivoGananciaAsync(string meliItemId, decimal? gananciaObjetivoPct, bool aplicar = true, string? redondeo = null)
     {
         try
         {
             var resp = await _http.PutAsJsonAsync($"/api/cafe/sincronizacion-meli/{meliItemId}/objetivo",
-                new { gananciaObjetivoPct, aplicar });
+                new { gananciaObjetivoPct, aplicar, redondeo });
             if (resp.IsSuccessStatusCode) return (await resp.Content.ReadFromJsonAsync<SetObjetivoResult>(), null);
             string err = "Error";
             try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
