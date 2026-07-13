@@ -276,6 +276,25 @@ public class MisAlertasController : ControllerBase
         return Ok(rows);
     }
 
+    // ---------- Historial de avisos (bitácora: cada notificación de a una) ----------
+    public record HistorialDto(int Id, string Tipo, string Mensaje, string? Detalle,
+        string? RemitenteEmail, string? GmailLink, bool PorTelegram, bool EnviadoTelegram, DateTime CreatedAt);
+
+    /// <summary>Últimos avisos emitidos que el rol del usuario puede ver, más nuevos primero.</summary>
+    [HttpGet("historial")]
+    public async Task<IActionResult> Historial()
+    {
+        var bucket = await GetBucketAsync();
+        var rows = await _db.MisAlertasHistorial
+            .Where(h => h.Alcance.Contains(bucket))
+            .OrderByDescending(h => h.CreatedAt)
+            .Take(100)
+            .Select(h => new HistorialDto(h.Id, h.Tipo, h.Mensaje, h.Detalle,
+                h.RemitenteEmail, h.GmailLink, h.PorTelegram, h.EnviadoTelegram, h.CreatedAt))
+            .ToListAsync();
+        return Ok(rows);
+    }
+
     // ---------- Config de la casilla de correo (para alertas EMAIL_REMITENTE) ----------
     // Se guarda en AppSettings (alertas.imap.*). La CLAVE nunca se devuelve al frontend.
     public record ConfigCorreoDto(string? Host, int Port, string? Usuario, bool TieneClave, bool Configurada);

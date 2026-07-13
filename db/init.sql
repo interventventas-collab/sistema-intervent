@@ -5830,3 +5830,26 @@ CREATE TABLE Mis_Alertas_Correos (
     CONSTRAINT FK_MisAlertasCorreos_Alerta FOREIGN KEY (AlertaId) REFERENCES Mis_Alertas(Id) ON DELETE CASCADE
 );
 GO
+
+-- 2026-07-13: historial de avisos (bitácora). Cada fila = UNA notificación concreta que emitió el
+-- robot (un correo nuevo, o una alerta disparada). Snapshot de Tipo/Mensaje/Alcance para que el
+-- historial sobreviva aunque se borre la alerta (por eso AlertaId no tiene FK).
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='Mis_Alertas_Historial')
+CREATE TABLE Mis_Alertas_Historial (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    AlertaId INT NULL,
+    Tipo NVARCHAR(30) NOT NULL,
+    Mensaje NVARCHAR(300) NOT NULL,
+    Detalle NVARCHAR(500) NULL,
+    Alcance NVARCHAR(100) NOT NULL DEFAULT 'admin,oficina',
+    RemitenteEmail NVARCHAR(300) NULL,
+    GmailLink NVARCHAR(800) NULL,
+    PorTelegram BIT NOT NULL DEFAULT 0,
+    EnviadoTelegram BIT NOT NULL DEFAULT 0,
+    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+GO
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='Mis_Alertas_Historial')
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_MisAlertasHistorial_CreatedAt')
+    CREATE INDEX IX_MisAlertasHistorial_CreatedAt ON Mis_Alertas_Historial (CreatedAt DESC);
+GO

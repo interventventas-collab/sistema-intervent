@@ -92,11 +92,13 @@ public class MisAlertasBackgroundService : BackgroundService
         var changed = false;
         // Alertas que recién saltaron en este tick: se avisan por Telegram después de guardar.
         var reciecienDisparadas = new List<MisAlerta>();
+        // Correos NUEVOS detectados este tick (uno por mail, con su alerta): generan aviso mail-por-mail.
+        var nuevosCorreos = new List<(MisAlerta alerta, MisAlertaCorreo correo)>();
         try
         {
         foreach (var a in reglas)
         {
-            var (met, detalle) = await EvaluarAsync(db, a, argNow, shellSaldo, bancoSaldo, inbox);
+            var (met, detalle) = await EvaluarAsync(db, a, argNow, shellSaldo, bancoSaldo, inbox, nuevosCorreos);
 
             if (met && !a.EstaDisparada)
             {
@@ -123,31 +125,78 @@ public class MisAlertasBackgroundService : BackgroundService
             }
         }
 
+        // Guardo primero los cambios de estado (y los correos nuevos agregados a Mis_Alertas_Correos).
         if (changed || db.ChangeTracker.HasChanges()) await db.SaveChangesAsync();
 
-        // Avisar por Telegram SOLO las alertas que recién saltaron y tienen el canal Telegram tildado
-        // (se elige por-alerta desde Mis Alertas), si el bot está activo y vinculado.
-        var paraTelegram = reciecienDisparadas.Where(a => a.CanalTelegram).ToList();
-        if (paraTelegram.Count > 0)
+        // ── Historial de avisos + Telegram, de a UNO por evento ──
+        // Dos fuentes de eventos:
+        //   A) Cada CORREO nuevo que entró este tick (aunque la alerta ya estuviera disparada por otro mail).
+        //   B) Cada alerta NO-correo que recién se disparó (transición apagada→prendida).
+        // Cada evento = una fila en el historial + (si tiene Telegram) un mensaje al Telegram del dueño.
+        var eventos = new List<(MisAlertaHistorial hist, string? tgTexto)>();
+
+        // A) Correos nuevos → uno por mail.
+        foreach (var (alerta, correo) in nuevosCorreos)
         {
-            try
+            var rem = !string.IsNullOrWhiteSpace(correo.Remitente) ? correo.Remitente : correo.RemitenteEmail;
+            var asunto = string.IsNullOrWhiteSpace(correo.Asunto) ? "(sin asunto)" : correo.Asunto;
+            var detalle = string.IsNullOrWhiteSpace(rem) ? $"\"{asunto}\"" : $"De {rem} · \"{asunto}\"";
+            var hist = NuevoHistorial(alerta, detalle, correo.RemitenteEmail, correo.GmailLink);
+            var tgTexto = alerta.CanalTelegram
+                ? $"📧 {(string.IsNullOrWhiteSpace(alerta.Mensaje) ? "Correo importante" : alerta.Mensaje)}\n{detalle}"
+                : null;
+            eventos.Add((hist, tgTexto));
+        }
+
+        // B) Alertas no-correo que recién saltaron.
+        foreach (var a in reciecienDisparadas.Where(a => a.Tipo != "EMAIL_REMITENTE"))
+        {
+            var hist = NuevoHistorial(a, a.UltimoDetalle, null, null);
+            var msg = string.IsNullOrWhiteSpace(a.Mensaje) ? a.Tipo : a.Mensaje;
+            var tgTexto = a.CanalTelegram
+                ? (string.IsNullOrWhiteSpace(a.UltimoDetalle) ? $"🔔 Alerta: {msg}" : $"🔔 Alerta: {msg}\n{a.UltimoDetalle}")
+                : null;
+            eventos.Add((hist, tgTexto));
+        }
+
+        if (eventos.Count > 0)
+        {
+            // Bot de Telegram: lo resuelvo una sola vez si hay al menos un evento que lo pida.
+            TelegramService? tg = null;
+            if (eventos.Any(e => e.tgTexto is not null))
             {
-                var cuenta = await db.TelegramAccounts.OrderBy(x => x.Id).FirstOrDefaultAsync();
-                if (cuenta is not null && cuenta.IsActive && !string.IsNullOrEmpty(cuenta.BotToken) && cuenta.ChatId is not null)
+                try
                 {
-                    var tg = scope.ServiceProvider.GetRequiredService<TelegramService>();
-                    foreach (var a in paraTelegram)
+                    var cuenta = await db.TelegramAccounts.OrderBy(x => x.Id).FirstOrDefaultAsync();
+                    if (cuenta is not null && cuenta.IsActive && !string.IsNullOrEmpty(cuenta.BotToken) && cuenta.ChatId is not null)
+                        tg = scope.ServiceProvider.GetRequiredService<TelegramService>();
+                }
+                catch (Exception ex) { _logger.LogWarning(ex, "[Alertas] no pude resolver el bot de Telegram"); }
+            }
+
+            foreach (var (hist, tgTexto) in eventos)
+            {
+                db.Set<MisAlertaHistorial>().Add(hist);
+                if (tgTexto is not null && tg is not null)
+                {
+                    try
                     {
-                        var msg = string.IsNullOrWhiteSpace(a.Mensaje) ? a.Tipo : a.Mensaje;
-                        var texto = string.IsNullOrWhiteSpace(a.UltimoDetalle)
-                            ? $"🔔 Alerta: {msg}"
-                            : $"🔔 Alerta: {msg}\n{a.UltimoDetalle}";
-                        await tg.SendMessageAsync(texto);
+                        var (ok, _) = await tg.SendMessageAsync(tgTexto);
+                        hist.EnviadoTelegram = ok;
                     }
+                    catch (Exception ex) { _logger.LogWarning(ex, "[Alertas] no pude avisar por Telegram"); }
                 }
             }
-            catch (Exception ex) { _logger.LogWarning(ex, "[Alertas] no pude avisar por Telegram"); }
+            await db.SaveChangesAsync();
         }
+
+        // Limpieza: el historial guarda los últimos 90 días (evita que crezca sin fin).
+        try
+        {
+            var limite = DateTime.UtcNow.AddDays(-90);
+            await db.Set<MisAlertaHistorial>().Where(h => h.CreatedAt < limite).ExecuteDeleteAsync();
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "[Alertas] no pude limpiar historial viejo"); }
         }
         finally
         {
@@ -160,7 +209,8 @@ public class MisAlertasBackgroundService : BackgroundService
     }
 
     private async Task<(bool met, string? detalle)> EvaluarAsync(
-        AppDbContext db, MisAlerta a, DateTime argNow, decimal? shellSaldo, decimal? bancoSaldo, IMailFolder? emailInbox)
+        AppDbContext db, MisAlerta a, DateTime argNow, decimal? shellSaldo, decimal? bancoSaldo, IMailFolder? emailInbox,
+        List<(MisAlerta alerta, MisAlertaCorreo correo)> nuevosCorreosSink)
     {
         switch (a.Tipo)
         {
@@ -235,7 +285,10 @@ public class MisAlertasBackgroundService : BackgroundService
                 }
 
                 // Sincroniza la tabla de correos para la card del Dashboard (agrega nuevos, borra leídos).
-                await PersistirCorreosAsync(db, a, emailInbox, nuevos);
+                // Devuelve SOLO los mails que se agregaron ahora (no los que ya teníamos): esos generan
+                // el aviso mail-por-mail (historial + Telegram).
+                var agregados = await PersistirCorreosAsync(db, a, emailInbox, nuevos);
+                foreach (var c in agregados) nuevosCorreosSink.Add((a, c));
 
                 if (nuevos.Count == 0) return (false, null);
 
@@ -299,8 +352,9 @@ public class MisAlertasBackgroundService : BackgroundService
     /// <summary>Mantiene en sincronía la tabla Mis_Alertas_Correos con los mails sin leer que matchean
     /// la alerta: agrega los nuevos (bajando remitente, asunto, adelanto del cuerpo y adjuntos) y borra
     /// los que ya no están (leídos en Gmail).</summary>
-    private static async Task PersistirCorreosAsync(AppDbContext db, MisAlerta a, IMailFolder inbox, List<IMessageSummary> nuevos)
+    private static async Task<List<MisAlertaCorreo>> PersistirCorreosAsync(AppDbContext db, MisAlerta a, IMailFolder inbox, List<IMessageSummary> nuevos)
     {
+        var agregados = new List<MisAlertaCorreo>();
         static string NormId(IMessageSummary s)
         {
             var mid = s.Envelope?.MessageId;
@@ -342,7 +396,7 @@ public class MisAlertasBackgroundService : BackgroundService
                 ? "https://mail.google.com/mail/u/0/#search/rfc822msgid:" + Uri.EscapeDataString(id)
                 : (string.IsNullOrWhiteSpace(mb?.Address) ? null : "https://mail.google.com/mail/u/0/#search/from:" + Uri.EscapeDataString(mb!.Address));
 
-            db.Set<MisAlertaCorreo>().Add(new MisAlertaCorreo
+            var nuevo = new MisAlertaCorreo
             {
                 AlertaId = a.Id,
                 MessageId = id,
@@ -354,9 +408,26 @@ public class MisAlertasBackgroundService : BackgroundService
                 TieneAdjuntos = tieneAdj,
                 Adjuntos = adjNombres,
                 GmailLink = Recortar(link, 800)
-            });
+            };
+            db.Set<MisAlertaCorreo>().Add(nuevo);
+            agregados.Add(nuevo);
         }
+        return agregados;
     }
+
+    /// <summary>Arma una fila de historial (bitácora de avisos) con snapshot de la alerta.</summary>
+    private static MisAlertaHistorial NuevoHistorial(MisAlerta a, string? detalle, string? remitenteEmail, string? gmailLink)
+        => new()
+        {
+            AlertaId = a.Id,
+            Tipo = a.Tipo,
+            Mensaje = Recortar(a.Mensaje, 300) ?? a.Tipo,
+            Detalle = Recortar(detalle, 500),
+            Alcance = string.IsNullOrWhiteSpace(a.Alcance) ? "admin,oficina" : a.Alcance,
+            RemitenteEmail = Recortar(remitenteEmail, 300),
+            GmailLink = Recortar(gmailLink, 800),
+            PorTelegram = a.CanalTelegram
+        };
 
     private static string? LimpiarTexto(string? t, int max)
     {
