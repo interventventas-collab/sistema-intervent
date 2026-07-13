@@ -68,7 +68,7 @@
                     <button class="sync-dropdown-item" @onclick="OpenSyncFamilyModal">
                         <i class="fa-solid fa-layer-group"></i> Traer familia completa
                     </button>
-                    <button class="sync-dropdown-item" @onclick="TraerTodasLasFamilias">
+                    <button class="sync-dropdown-item" @onclick="() => TraerTodasLasFamilias()">
                         <i class="fa-solid fa-layer-group"></i> Traer TODAS las familias completas
                     </button>
                     <div class="sync-dropdown-divider"></div>
@@ -80,6 +80,31 @@
         </div>
         </div>
     </div>
+
+    @* 2026-07-13: cartel de confirmación de sincronización (doble check) *@
+    @if (showSyncConfirm)
+    {
+        <div style="position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:3000; display:flex; align-items:center; justify-content:center; padding:1rem;" @onclick="CancelarSync">
+            <div style="background:white; border-radius:12px; max-width:460px; width:100%; padding:1.5rem; box-shadow:0 10px 40px rgba(0,0,0,0.3);" @onclick:stopPropagation="true">
+                <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:0.75rem;">
+                    <span style="font-size:1.8rem;">⚠️</span>
+                    <h3 style="margin:0; font-size:1.15rem; font-weight:800; color:#b45309;">¿Confirmás la sincronización?</h3>
+                </div>
+                <p style="margin:0 0 1.25rem; color:#374151; font-size:0.95rem; line-height:1.5;">@syncConfirmText</p>
+                <div style="display:flex; gap:0.6rem; justify-content:flex-end;">
+                    <button @onclick="CancelarSync"
+                            style="padding:0.6rem 1.1rem; border:1px solid #d1d5db; background:white; color:#374151; border-radius:8px; font-weight:700; cursor:pointer;">
+                        Cancelar
+                    </button>
+                    <button @onclick="ConfirmarSyncAsync"
+                            style="padding:0.6rem 1.1rem; border:none; background:#2563eb; color:white; border-radius:8px; font-weight:700; cursor:pointer;">
+                        Sí, sincronizar
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
     <div class="card-body" style="padding: 0;">
         @if (isLoading)
         {
@@ -4097,8 +4122,54 @@
         // No volvemos a false: el background corre 15 min, queda deshabilitado hasta reload.
     }
 
-    private async Task SyncItems(string? status, int? accountId)
+    // ── 2026-07-13: cartel de confirmación propio para las sincronizaciones (doble check) ──
+    // In-app (no usa el confirm() del navegador, que a veces se silencia). Cualquier acción de
+    // sincronizar pasa por acá antes de ejecutarse.
+    private bool showSyncConfirm;
+    private string syncConfirmText = "";
+    private Func<Task>? syncConfirmAction;
+
+    private void PedirConfirmacionSync(string texto, Func<Task> accion)
     {
+        syncConfirmText = texto;
+        syncConfirmAction = accion;
+        showSyncConfirm = true;
+        showSyncMenu = false;
+        StateHasChanged();
+    }
+
+    private async Task ConfirmarSyncAsync()
+    {
+        var accion = syncConfirmAction;
+        showSyncConfirm = false;
+        syncConfirmAction = null;
+        StateHasChanged();
+        if (accion is not null) await accion();
+    }
+
+    private void CancelarSync()
+    {
+        showSyncConfirm = false;
+        syncConfirmAction = null;
+        StateHasChanged();
+    }
+
+    private async Task SyncItems(string? status, int? accountId, bool confirmado = false)
+    {
+        // 2026-07-13: doble check — cualquier sincronización pide confirmación antes de ejecutar.
+        if (!confirmado)
+        {
+            string queHace;
+            if (status is not null)
+                queHace = $"Vas a sincronizar las publicaciones {GetStatusLabel(status)}s con MercadoLibre.";
+            else if (accountId.HasValue && meliAccounts is not null)
+                queHace = $"Vas a sincronizar las publicaciones de la cuenta {meliAccounts.FirstOrDefault(a => a.Id == accountId)?.Nickname ?? "seleccionada"} con MercadoLibre.";
+            else
+                queHace = "Vas a sincronizar TODAS las publicaciones con MercadoLibre (trae los últimos datos de todas las cuentas).";
+            PedirConfirmacionSync(queHace, () => SyncItems(status, accountId, confirmado: true));
+            return;
+        }
+
         showSyncMenu = false;
         isSyncing = true;
 
@@ -4154,12 +4225,16 @@
     }
 
     // 2026-07-11: traer TODAS las familias completas (masivo). Confirma antes (es pesado).
-    private async Task TraerTodasLasFamilias()
+    private async Task TraerTodasLasFamilias(bool confirmado = false)
     {
+        if (!confirmado)
+        {
+            PedirConfirmacionSync(
+                "Vas a traer TODAS las familias completas: recorre todas tus familias y baja las publicaciones que falten (pausadas / sin stock incluidas). Solo LEE de MeLi, no republica ni cambia precios. Puede tardar — corre en segundo plano.",
+                () => TraerTodasLasFamilias(confirmado: true));
+            return;
+        }
         showSyncMenu = false;
-        var ok = await JS.InvokeAsync<bool>("confirm",
-            "¿Traer TODAS las familias completas?\n\nRecorre todas tus familias y baja las publicaciones que falten (pausadas / sin stock incluidas). Solo LEE de MeLi, no republica ni cambia precios. Puede tardar bastante — corre en segundo plano.");
-        if (!ok) return;
         try
         {
             var progressId = await Api.SyncAllMeliFamiliesAsync();
