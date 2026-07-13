@@ -3355,6 +3355,9 @@ textarea.form-input {
 .push-meli-btn.push-precio:hover { background: #fde68a; border-color: #d97706; }
 
 /* ───── Columna AJUSTE — diseño Contabilium-style (pill segmentado compacto) ───── */
+/* 2026-07-13: columna "Ajuste 💵" RETIRADA a pedido de Osmar (el precio se maneja con objetivo % + redondeo).
+   Se oculta por CSS en todas las vistas. Para restaurarla, borrar esta regla display:none. */
+.th-ajuste, .td-ajuste { display: none; }
 .td-ajuste { padding: 0.25rem 0.35rem; vertical-align: middle; }
 .th-ajuste .th-label { font-size: 0.75rem; color: #4b5563; font-weight: 600; }
 
