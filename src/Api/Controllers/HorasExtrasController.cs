@@ -340,6 +340,17 @@ public class HorasExtrasController : ControllerBase
         }
         await _db.SaveChangesAsync();
 
+        // 2026-07-13: avisar (Telegram/campanita) también cuando fichan desde el LINK PERSONAL.
+        // Antes el aviso de fichada solo salía desde el kiosco /fichador, así que las fichadas de
+        // los empleados que usan su página propia (ej. Alexis) nunca avisaban. Avisamos SOLO la
+        // marcación realmente nueva (entrada y/o salida que cambió en este guardado).
+        bool entradaNueva = horaEnt.HasValue && entradaAnterior != horaEnt;
+        bool salidaNueva = horaSal.HasValue && salidaAnterior != horaSal;
+        if (entradaNueva)
+            await AvisarFichadaTelegramAsync(emp, "ENTRADA", $"{horaEnt!.Value.Hours:D2}:{horaEnt.Value.Minutes:D2}");
+        if (salidaNueva)
+            await AvisarFichadaTelegramAsync(emp, "SALIDA", $"{horaSal!.Value.Hours:D2}:{horaSal.Value.Minutes:D2}");
+
         // 2026-06-03: log de metadata para auditoria (IP + GPS) — si modo nuevo (WiFi) o GPS activo.
         // Loguea solo si esta marcacion (entrada o salida) es realmente nueva (no se repite).
         if (modoNuevoActivo || gpsAplica)
