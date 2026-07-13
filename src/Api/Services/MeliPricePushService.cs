@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Api.Data;
+using Api.DTOs;
 using Api.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -30,14 +31,17 @@ public class MeliPricePushService
     private readonly MeliAccountService _accSvc;
     private readonly IHttpClientFactory _httpFactory;
     private readonly ILogger<MeliPricePushService> _logger;
+    private readonly MeliItemService _itemService;
 
     public MeliPricePushService(AppDbContext db, MeliAccountService accSvc,
-        IHttpClientFactory httpFactory, ILogger<MeliPricePushService> logger)
+        IHttpClientFactory httpFactory, ILogger<MeliPricePushService> logger,
+        MeliItemService itemService)
     {
         _db = db;
         _accSvc = accSvc;
         _httpFactory = httpFactory;
         _logger = logger;
+        _itemService = itemService;
     }
 
     public record PushResult(bool Ok, string Message, decimal? PushedPrice = null, decimal? BasePrice = null);
@@ -307,33 +311,35 @@ public class MeliPricePushService
         var costo = await CalcularCostoTotalAsync(item, ct);
         if (costo is null || costo.Value <= 0) return null;
 
-        // Comisión desglosada: parte % (escala con el precio) + cargo FIJO (independiente).
-        decimal pctPart, fixedPart;
-        if (item.SaleFeePercentageFee.HasValue && item.SaleFeePercentageFee.Value > 0)
+        // 2026-07-13: traer costos EN VIVO de MeLi (comisión desglosada + ENVÍO a cargo del vendedor + listing fee).
+        // Antes esta cuenta NO contaba el envío → en productos grandes el precio mantenido salía mal (daba
+        // distinto que "Aplicar una vez y pushear"). Ahora usa la MISMA fórmula del simulador de la ficha
+        // (CalcPrecioCrudo del frontend). GetListingCostsAsync además refresca la comisión cacheada del item.
+        ListingCostDto lc;
+        try { lc = await _itemService.GetListingCostsAsync(item.MeliItemId); }
+        catch (Exception ex)
         {
-            pctPart = item.SaleFeePercentageFee.Value / 100m;
-            fixedPart = item.SaleFeeFixedFee ?? 0m;
-        }
-        else if (item.SaleFeeAmount.HasValue && item.SaleFeeAmount.Value > 0 && item.Price > 0)
-        {
-            pctPart = item.SaleFeeAmount.Value / item.Price;
-            fixedPart = 0m;
-        }
-        else
-        {
-            pctPart = 0.30m;
-            fixedPart = 0m;
+            _logger.LogWarning(ex, "[PricePush] No se pudieron traer costos en vivo de {Mla} para el objetivo — gana el piso", item.MeliItemId);
+            return null; // sin costos en vivo no arriesgamos un precio mal calculado → gana el piso
         }
 
-        var denom = 1m - pctPart;
+        var price = lc.Price > 0 ? lc.Price : item.Price;
+        if (price <= 0) return null;
+
+        // % que escalan con el precio: comisión variable (sin el cargo fijo) + financiación de cuotas.
+        var pctEscalable = (lc.SaleFeeAmount - lc.FixedFee + lc.FinancingFee) / price;
+        var denom = 1m - pctEscalable;
         if (denom <= 0.05m) return null;
 
-        // netoConIva(precio) = precio × (1 - pctPart) - fixedPart ; y netoSinIva = netoConIva / 1.21
-        // Queremos netoSinIva = costo × (1 + ganancia%) ⇒ despejamos el precio.
-        var netoSinIvaNec = costo.Value * (1 + gananciaPct / 100m);
-        var netoConIvaNec = netoSinIvaNec * 1.21m;
-        var precio = (netoConIvaNec + fixedPart) / denom;
-        return Math.Round(precio, 2);
+        var netoConIvaNec = costo.Value * (1 + gananciaPct / 100m) * 1.21m;
+        var envio = lc.ShippingCost + lc.ListingFeeAmount;   // ← el ENVÍO que antes faltaba
+        var fijoActual = lc.FixedFee;
+
+        // Igual que el frontend: si el precio resultante queda alto (>= $30.000) MeLi no cobra cargo fijo.
+        var pSinFijo = (netoConIvaNec + envio) / denom;
+        if (pSinFijo >= 30000m) return Math.Round(pSinFijo, 2);
+        var pConFijo = (netoConIvaNec + envio + fijoActual) / denom;
+        return Math.Round(pConFijo, 2);
     }
 
     /// <summary>2026-07-01: costo total del producto/combo linkeado a un MeliItem, mismo cálculo
