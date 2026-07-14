@@ -247,12 +247,34 @@ public class MeliPricePushService
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
+    /// <summary>2026-07-14: si el MeliItem está linkeado a un COMBO compuesto (EsCompuesto=true) con OEM,
+    /// devuelve el OEM y su multiplicador. En un compuesto (caja+tapa) el PRECIO y el COSTO salen del OEM del
+    /// producto COMPLETO (× MultiplicadorOem), NO de la suma de las piezas — igual que la venta
+    /// (CafeVentasController) y el diseño de cajas+tapas. Null si no es un compuesto con OEM.</summary>
+    private async Task<(CafeOem Oem, decimal Mult)?> GetCompuestoOemAsync(MeliItem mi, CancellationToken ct)
+    {
+        if (!mi.CafeComboId.HasValue) return null;
+        var combo = await _db.CafeCombos.AsNoTracking().FirstOrDefaultAsync(c => c.Id == mi.CafeComboId.Value, ct);
+        if (combo is null || !combo.EsCompuesto || !combo.OemId.HasValue) return null;
+        var oem = await _db.CafeOems.AsNoTracking().FirstOrDefaultAsync(o => o.Id == combo.OemId.Value, ct);
+        if (oem is null) return null;
+        var mult = combo.MultiplicadorOem ?? 1m;
+        if (mult <= 0) mult = 1m;
+        return (oem, mult);
+    }
+
     /// <summary>Calcula el precio base del sistema para un MeliItem (sin ajuste).
     /// 2026-05-30: respeta el modelo OEM. Si un producto tiene OemId y el OEM tiene PvpConIva,
     /// el precio = OEM.PvpConIva × MultiplicadorOem (default 1). Si no, PrecioOtro × (1 + IvaPct/100).
-    /// 2026-07-01: público para que el endpoint bulk-precio-por-ganancia lo reuse.</summary>
+    /// 2026-07-01: público para que el endpoint bulk-precio-por-ganancia lo reuse.
+    /// 2026-07-14: si es un COMPUESTO con OEM, el precio sale del OEM del completo (no la suma de piezas).</summary>
     public async Task<(decimal Price, bool Found)> CalcularPrecioBaseAsync(MeliItem item, CancellationToken ct)
     {
+        // 2026-07-14: COMPUESTO con OEM (caja+tapa) → precio del OEM del producto completo, NO la suma de las piezas.
+        var comp = await GetCompuestoOemAsync(item, ct);
+        if (comp is not null && comp.Value.Oem.PvpConIva is decimal pvpComp && pvpComp > 0)
+            return (Math.Round(pvpComp * comp.Value.Mult, 2), true);
+
         // Helper local que devuelve precio c/IVA de un producto, respetando OEM.
         async Task<decimal?> PrecioCIvaAsync(int prodId)
         {
@@ -346,6 +368,11 @@ public class MeliPricePushService
     /// que el endpoint /product-cost del controller. Usado por el bulk-precio-por-ganancia.</summary>
     public async Task<decimal?> CalcularCostoTotalAsync(MeliItem mi, CancellationToken ct)
     {
+        // 2026-07-14: COMPUESTO con OEM (caja+tapa) → costo del OEM del producto completo, NO la suma de las piezas.
+        var comp = await GetCompuestoOemAsync(mi, ct);
+        if (comp is not null && comp.Value.Oem.Costo > 0)
+            return Math.Round(comp.Value.Oem.Costo * comp.Value.Mult, 2);
+
         // 1) Modelo nuevo: MeliItemComponentes
         var mecs = await (
             from c in _db.MeliItemComponentes
