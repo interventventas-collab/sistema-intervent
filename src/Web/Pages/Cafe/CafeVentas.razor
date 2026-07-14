@@ -217,7 +217,11 @@
                 <select class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.85rem;" @bind="filtroTipo">
                     <option value="TODOS">Todos</option>
                     <option value="X">Cotización (X)</option>
-                    <option value="PRO">Proforma</option>
+                    @* 2026-07-14: "Proforma" solo en la solapa Presupuestos; en Ventas no se lista. *@
+                    @if (ModoPresupuestos)
+                    {
+                        <option value="PRO">Proforma</option>
+                    }
                     <option value="FA">Factura A</option>
                     <option value="FB">Factura B</option>
                     <option value="FC">Factura C</option>
@@ -2432,12 +2436,16 @@
                                 <span>🚀 WA Interno</span>
                             </label>
 
-                            @{ var chipDrive = envioDrive; }
-                            <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipDrive ? "#f0fdf4" : "white"); border: 1px solid @(chipDrive ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;"
-                                   title="Sube el PDF a Drive y aparece en /cafe/preparacion">
-                                <input id="nv-envio-drive" type="checkbox" tabindex="-1" @bind="envioDrive" @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEnvioChip(e, 3))" style="margin: 0;" />
-                                <span>📁 Imprimir pedidos</span>
-                            </label>
+                            @* 2026-07-14: los PRESUPUESTOS no van a preparación — no mostramos el chip. *@
+                            @if (formTipoComprobante != "PRO")
+                            {
+                                var chipDrive = envioDrive;
+                                <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipDrive ? "#f0fdf4" : "white"); border: 1px solid @(chipDrive ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;"
+                                       title="Sube el PDF a Drive y aparece en /cafe/preparacion">
+                                    <input id="nv-envio-drive" type="checkbox" tabindex="-1" @bind="envioDrive" @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEnvioChip(e, 3))" style="margin: 0;" />
+                                    <span>📁 Imprimir pedidos</span>
+                                </label>
+                            }
 
                             <button type="button"
                                     style="font-size: 0.68rem; padding: 0.25rem 0.5rem; background:white; border:1px solid #9ca3af; border-radius:4px; cursor:pointer; color:#374151;"
@@ -2472,16 +2480,19 @@
                     }
                     else
                     {
-                        @* EDIT: solo el chip Drive *@
-                        <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
-                            <span style="font-size: 0.68rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;">Al guardar:</span>
-                            @{ var chipDriveEdit = envioDriveEdit; }
-                            <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipDriveEdit ? "#f0fdf4" : "white"); border: 1px solid @(chipDriveEdit ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;"
-                                   title="@(editingVentaTieneDrive ? "Sube el PDF actualizado y avisa con chip ⚠ PEDIDO MODIFICADO." : "Sube el PDF a Drive y aparece en /cafe/preparacion.")">
-                                <input type="checkbox" @bind="envioDriveEdit" style="margin: 0;" />
-                                <span>📁 @(editingVentaTieneDrive ? "Re-subir a" : "Enviar a") Imprimir pedidos</span>
-                            </label>
-                        </div>
+                        @* EDIT: solo el chip Drive — 2026-07-14: oculto para presupuestos (no van a preparación). *@
+                        @if (formTipoComprobante != "PRO")
+                        {
+                            <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                                <span style="font-size: 0.68rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;">Al guardar:</span>
+                                @{ var chipDriveEdit = envioDriveEdit; }
+                                <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipDriveEdit ? "#f0fdf4" : "white"); border: 1px solid @(chipDriveEdit ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;"
+                                       title="@(editingVentaTieneDrive ? "Sube el PDF actualizado y avisa con chip ⚠ PEDIDO MODIFICADO." : "Sube el PDF a Drive y aparece en /cafe/preparacion.")">
+                                    <input type="checkbox" @bind="envioDriveEdit" style="margin: 0;" />
+                                    <span>📁 @(editingVentaTieneDrive ? "Re-subir a" : "Enviar a") Imprimir pedidos</span>
+                                </label>
+                            </div>
+                        }
                     }
 
                     @if (!editingVentaId.HasValue && lastBorradorSavedAt.HasValue)
@@ -4082,6 +4093,9 @@
                 });
             }
             if (filtroTipo != "TODOS") q = q.Where(v => v.TipoComprobante == filtroTipo);
+            // 2026-07-14: en la solapa VENTAS no mostramos los PRESUPUESTOS (PRO) — viven en su
+            // propia solapa "Presupuestos". Un presupuesto no es una venta real hasta que se aprueba.
+            if (!ModoPresupuestos) q = q.Where(v => v.TipoComprobante != "PRO");
             if (filtroEstado != "TODOS") q = q.Where(v => v.Estado == filtroEstado);
             if (filtroCae == "CON_CAE") q = q.Where(v => v.ArcaEstado == "autorizado");
             else if (filtroCae == "SIN_CAE") q = q.Where(v => v.ArcaEstado == "no_aplica");
@@ -7487,7 +7501,8 @@
 
                 // 2026-06-03: si el checkbox de re-subir Drive esta tildado, disparamos la subida en background.
                 // Si la venta ya estaba en LISTO/EN_CAMINO/ENTREGADO, el backend la revive con flag "MODIFICADO".
-                if (envioDriveEdit)
+                // 2026-07-14: los presupuestos (PRO) no van a preparación — se saltean.
+                if (envioDriveEdit && v.TipoComprobante != "PRO")
                 {
                     var ventaIdParaDrive = v.Id;
                     var numeroParaToast = v.Numero;
@@ -7674,7 +7689,9 @@
 
                 // 2026-05-28: si "Enviar a IMPRIMIR PEDIDOS DE OSMAR" estaba tildado,
                 // subir el PDF a Drive en background — no bloqueamos el flujo de la venta.
-                if (envioDrive)
+                // 2026-07-14: los PRESUPUESTOS (PRO) NO van a preparación aunque esté tildado —
+                // son solo un precio, no se arman hasta que se aprueban y convierten a venta real.
+                if (envioDrive && v.TipoComprobante != "PRO")
                 {
                     var ventaIdParaDrive = v.Id;
                     var numeroParaToast = v.Numero;
