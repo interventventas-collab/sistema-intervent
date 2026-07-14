@@ -472,6 +472,25 @@ public class MeliController : ControllerBase
         var mi = await db.MeliItems.AsNoTracking().FirstOrDefaultAsync(x => x.MeliItemId == meliItemId);
         if (mi == null) return NotFound(new { error = "MLA no encontrada" });
 
+        // 2026-07-14: COMPUESTO con OEM (caja+tapa) → el costo sale del OEM del producto COMPLETO, en UNA
+        // línea, NO de la suma de las piezas. Igual que la venta y que MeliPricePushService.
+        if (mi.CafeComboId.HasValue)
+        {
+            var comboC = await db.CafeCombos.AsNoTracking().FirstOrDefaultAsync(c => c.Id == mi.CafeComboId.Value);
+            if (comboC is not null && comboC.EsCompuesto && comboC.OemId.HasValue)
+            {
+                var oemC = await db.CafeOems.AsNoTracking().FirstOrDefaultAsync(o => o.Id == comboC.OemId.Value);
+                if (oemC is not null && oemC.Costo > 0)
+                {
+                    var multC = comboC.MultiplicadorOem ?? 1m;
+                    if (multC <= 0) multC = 1m;
+                    var costoOemC = Math.Round(oemC.Costo * multC, 2);
+                    var compOem = new ProductCostDto.Comp(oemC.Codigo ?? "OEM", $"OEM {oemC.Codigo} · {oemC.Descripcion}", oemC.Costo, multC, costoOemC);
+                    return Ok(new ProductCostDto(costoOemC, new List<ProductCostDto.Comp> { compOem }, "compuesto_oem"));
+                }
+            }
+        }
+
         var comps = new List<ProductCostDto.Comp>();
         string source = "none";
 

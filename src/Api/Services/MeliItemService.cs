@@ -238,6 +238,24 @@ public class MeliItemService
                 .ToDictionaryAsync(o => o.Id, o => o.Pvp);
         var componentesByItemId = componentesForPrecio.GroupBy(c => c.MeliItemId).ToDictionary(g => g.Key, g => g.ToList());
 
+        // 2026-07-14: combos COMPUESTOS (caja+tapa) → costo y precio del OEM del producto COMPLETO,
+        // NO la suma de las piezas. Cargo en batch los combos EsCompuesto con OEM y sus OEMs.
+        var compuestoInfo = comboIdsLegacy.Count == 0
+            ? new Dictionary<int, (int OemId, decimal Mult)>()
+            : (await _db.CafeCombos
+                .Where(cb => comboIdsLegacy.Contains(cb.Id) && cb.EsCompuesto && cb.OemId != null)
+                .Select(cb => new { cb.Id, OemId = cb.OemId!.Value, cb.MultiplicadorOem })
+                .ToListAsync())
+                .ToDictionary(cb => cb.Id, cb => (cb.OemId, Mult: (cb.MultiplicadorOem ?? 1m) <= 0 ? 1m : (cb.MultiplicadorOem ?? 1m)));
+        var compuestoOemIds = compuestoInfo.Values.Select(v => v.OemId).Distinct().ToList();
+        var compuestoOems = compuestoOemIds.Count == 0
+            ? new Dictionary<int, (decimal Costo, decimal? Pvp)>()
+            : (await _db.CafeOems
+                .Where(o => compuestoOemIds.Contains(o.Id))
+                .Select(o => new { o.Id, o.Costo, o.PvpConIva })
+                .ToListAsync())
+                .ToDictionary(o => o.Id, o => (Costo: o.Costo, Pvp: o.PvpConIva));
+
         // Helper local: precio c/IVA de un producto, respetando OEM si aplica.
         // Si tiene OEM y el OEM tiene PvpConIva → OEM × Multiplicador (default 1).
         // Si no → PrecioOtro × (1 + IvaPct/100).
@@ -259,7 +277,13 @@ public class MeliItemService
         {
             var it = items[k];
             decimal? precioBase = null;
-            if (it.CafeProductoId.HasValue)
+            // 2026-07-14: COMPUESTO con OEM (caja+tapa) → precio del OEM del producto completo, no la suma de piezas.
+            if (it.ComboId.HasValue && compuestoInfo.TryGetValue(it.ComboId.Value, out var compP)
+                && compuestoOems.TryGetValue(compP.OemId, out var compOemP) && compOemP.Pvp is decimal pvpP && pvpP > 0)
+            {
+                precioBase = Math.Round(pvpP * compP.Mult, 2);
+            }
+            else if (it.CafeProductoId.HasValue)
             {
                 precioBase = PrecioCIvaProducto(it.CafeProductoId.Value);
                 // 2026-06-19: cafe fraccionado — aplicar factor proporcional al precio sistema tambien.
@@ -292,8 +316,14 @@ public class MeliItemService
             }
             // 2026-06-01: calcular ProductCost (costo del producto/combo desde sistema)
             decimal? costoBase = null;
+            // 2026-07-14: COMPUESTO con OEM (caja+tapa) → costo del OEM del producto completo, no la suma de piezas.
+            if (it.ComboId.HasValue && compuestoInfo.TryGetValue(it.ComboId.Value, out var compC)
+                && compuestoOems.TryGetValue(compC.OemId, out var compOemC) && compOemC.Costo > 0)
+            {
+                costoBase = Math.Round(compOemC.Costo * compC.Mult, 2);
+            }
             // 1) Modelo nuevo: componentes
-            if (componentesByItemId.TryGetValue(it.MeliItemId, out var compsCost))
+            if (!costoBase.HasValue && componentesByItemId.TryGetValue(it.MeliItemId, out var compsCost))
             {
                 var compsForItem = compsCost.Where(c =>
                 {
