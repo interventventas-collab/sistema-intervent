@@ -1449,26 +1449,19 @@
                                             <span>Margen</span>
                                             <span><strong style="color:@MarginColor();">@MarginPctSobreCosto().ToString("0.0", argCulture)% sobre costo</strong> · @MarginLabel()</span>
                                         </div>
-                                        @* 2026-07-02: chip 🎯 objetivo cargado — verde si está dentro de ±2 pt, ámbar si se desvió *@
+                                        @* 2026-07-13: chip 🎯 objetivo — el objetivo es un PISO: estar ARRIBA es bueno (verde ✓),
+                                           estar ABAJO conviene subir (ámbar ⚠). NO repetimos el % (ya está en "Margen" arriba). *@
                                         @if (selectedItem?.GananciaObjetivoPct.HasValue == true)
                                         {
                                             var _obj = selectedItem.GananciaObjetivoPct!.Value;
                                             var _real = MarginPctSobreCosto();
-                                            var _desv = _real - _obj;
-                                            var _ok = Math.Abs(_desv) <= 2m;
-                                            var _bg = _ok ? "#dcfce7" : "#fef3c7";
-                                            var _fg = _ok ? "#166534" : "#92400e";
-                                            var _icon = _ok ? "✓" : "⚠";
+                                            var _arriba = _real >= _obj - 0.5m; // en el objetivo o por encima
+                                            var _bg = _arriba ? "#dcfce7" : "#fef3c7";
+                                            var _fg = _arriba ? "#166534" : "#92400e";
                                             <div style="display:flex; justify-content:space-between; align-items:center; padding:0.35rem 0.75rem; margin-top:0.35rem; background:@_bg; color:@_fg; border-radius:6px; font-size:0.82rem; font-weight:600;">
-                                                <span>🎯 Objetivo cargado: <strong>@_obj.ToString("0.#", argCulture)%</strong></span>
-                                                <span>Hoy da <strong>@_real.ToString("0.#", argCulture)%</strong> @_icon</span>
+                                                <span>🎯 Objetivo <strong>@_obj.ToString("0.#", argCulture)%</strong></span>
+                                                <span>@(_arriba ? "✓ estás arriba" : "⚠ estás abajo, conviene subir")</span>
                                             </div>
-                                            @if (!_ok)
-                                            {
-                                                <div style="padding:0.15rem 0.75rem 0; font-size:0.72rem; color:#92400e;">
-                                                    Desviación: @(_desv > 0 ? "+" : "")@_desv.ToString("0.#", argCulture) pt · umbral tolerado ±2 pt · <em>republicá para volver al objetivo</em>
-                                                </div>
-                                            }
                                         }
                                         @if (itemProductCost.Components.Count > 1)
                                         {
