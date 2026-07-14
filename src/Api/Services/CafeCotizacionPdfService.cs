@@ -727,7 +727,8 @@ public class CafeCotizacionPdfService
                 else if (gItems[0].ComboOrigenNav is not null) { nombreCombo = gItems[0].ComboOrigenNav!.Nombre; skuCombo = gItems[0].ComboOrigenNav!.Sku; }
                 else { nombreCombo = gItems[0].ProductoNombreSnapshot; skuCombo = null; }
 
-                var subtotalCombo = gItems.Sum(x => x.Subtotal);
+                var subtotalCombo = gItems.Sum(x => x.Subtotal);                     // neto (con descuento)
+                var listaCombo = gItems.Sum(x => x.PrecioUnitario * x.Cantidad);      // precio de LISTA (sin descuento)
 
                 // 2026-07-14: cuántos combos se cargaron = piezas guardadas ÷ piezas por combo (la "receta").
                 // Ej: combo "1 recipiente + 1 tapa", si se guardaron 3 recipientes + 3 tapas → 3 combos.
@@ -745,16 +746,24 @@ public class CafeCotizacionPdfService
                     if (ratios.Count > 0) nCombos = ratios.Min();
                 }
 
+                // 2026-07-14: mostrar el descuento del combo IGUAL que los renglones sueltos (precio de lista
+                // tachado + el -%). Antes el combo mostraba el precio ya con el descuento adentro, sin tachar,
+                // y quedaba disparejo con el resto. El % sale de comparar lista vs neto.
+                decimal descComboPct = 0m;
+                if (listaCombo > subtotalCombo + 0.01m && listaCombo > 0m)
+                    descComboPct = Math.Round((1m - subtotalCombo / listaCombo) * 100m, 2, MidpointRounding.AwayFromZero);
+                // P. Unitario de LISTA por combo (se tacha si hay descuento). Si no hay descuento, lista == neto.
+                decimal precioListaUnit = nCombos > 0 ? Math.Round(listaCombo / nCombos, 2, MidpointRounding.AwayFromZero) : listaCombo;
+
                 rows.Add(new PresentationRow
                 {
                     CantPrint = nCombos,
                     Sku = skuCombo,
                     Nombre = nombreCombo,
                     FmtPrint = "Combo",
-                    Subtotal = subtotalCombo,
-                    // Precio unitario del combo = subtotal ÷ cantidad de combos (así Cant × P.Unit = Subtotal).
-                    PrecioPrint = nCombos > 0 ? Math.Round(subtotalCombo / nCombos, 2, MidpointRounding.AwayFromZero) : subtotalCombo,
-                    DescuentoPct = 0,   // descuento se considera ya aplicado en el Subtotal acumulado
+                    Subtotal = subtotalCombo,               // neto (Cant × precio con descuento)
+                    PrecioPrint = precioListaUnit,          // precio de lista por combo (tachado si hay desc.)
+                    DescuentoPct = descComboPct,            // ahora sí muestra el -% como los demás
                     Molienda = null,
                     EsDoyPack = false,
                     EsEnvasePlateado = false
