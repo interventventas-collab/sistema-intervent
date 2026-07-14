@@ -435,6 +435,8 @@ public class CafeVentaDto
     public string TipoComprobante { get; set; } = "X";
     public string CondicionIva { get; set; } = "CF";
     public string CondicionPago { get; set; } = "EFECTIVO";
+    /// <summary>2026-07-14: solo presupuestos (PRO). true = PDF con desglose IVA; false = total sin IVA.</summary>
+    public bool MostrarIvaProforma { get; set; } = true;
     public DateTime CreatedAt { get; set; }
     public List<CafeVentaItemDto> Items { get; set; } = new();
     public string? ClienteRazonSocial { get; set; }
@@ -700,6 +702,8 @@ public class CreateCafeVentaRequest
     public string? TipoComprobante { get; set; }
     public string? CondicionIva { get; set; }
     public string? CondicionPago { get; set; }
+    /// <summary>2026-07-14: solo presupuestos (PRO). true (default) = PDF con IVA; false = total sin IVA.</summary>
+    public bool MostrarIvaProforma { get; set; } = true;
     public string? EntregaPor { get; set; }
     public string? ComentarioArmado { get; set; }
     /// <summary>2026-06-23: Concepto AFIP. 1=Productos (default), 2=Servicios, 3=Productos y Servicios.</summary>
@@ -741,6 +745,8 @@ public class UpdateCafeVentaRequest
     public string? TipoComprobante { get; set; }
     public string? CondicionIva { get; set; }
     public string? CondicionPago { get; set; }
+    /// <summary>2026-07-14: solo presupuestos (PRO). true = PDF con IVA; false = total sin IVA.</summary>
+    public bool? MostrarIvaProforma { get; set; }
     public string? WeekDays { get; set; }
     public bool? EnRadar { get; set; }
     public bool? Retira { get; set; }

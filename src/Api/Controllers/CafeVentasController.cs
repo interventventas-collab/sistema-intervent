@@ -308,7 +308,8 @@ public class CafeVentasController : ControllerBase
         v.ConceptoServHasta,
         v.MapeoLink,
         v.ArcaWebserviceAccountId,
-        cobradoEnEntrega);
+        cobradoEnEntrega,
+        v.MostrarIvaProforma);
 
     [HttpGet]
     public async Task<IActionResult> GetAll(
@@ -1330,6 +1331,8 @@ public class CafeVentasController : ControllerBase
             TipoComprobante = NormTipoComprobante(req.TipoComprobante),
             CondicionIva = NormCondicionIva(req.CondicionIva),
             CondicionPago = NormCondicionPago(req.CondicionPago),
+            // 2026-07-14: elección con/sin IVA del presupuesto (solo aplica a PRO en el PDF).
+            MostrarIvaProforma = req.MostrarIvaProforma,
             CreatedAt = DateTime.UtcNow,
             ComentarioArmado = string.IsNullOrWhiteSpace(req.ComentarioArmado) ? null : req.ComentarioArmado.Trim(),
         };
@@ -1476,6 +1479,8 @@ public class CafeVentasController : ControllerBase
             TipoComprobante = NormTipoComprobante(req.TipoComprobante),
             CondicionIva = NormCondicionIva(req.CondicionIva),
             CondicionPago = NormCondicionPago(req.CondicionPago),
+            // 2026-07-14: elección con/sin IVA del presupuesto (solo aplica a PRO en el PDF).
+            MostrarIvaProforma = req.MostrarIvaProforma,
             CreatedAt = DateTime.UtcNow,
             // 2026-06-05: Quien la cargo (header X-Operator-Name del frontend). Sirve para
             // mostrar iniciales OS/GE/GA/etc en el listado + auditoria.
@@ -2539,6 +2544,7 @@ public class CafeVentasController : ControllerBase
         if (req.TipoComprobante is not null) v.TipoComprobante = NormTipoComprobante(req.TipoComprobante);
         if (req.CondicionIva is not null) v.CondicionIva = NormCondicionIva(req.CondicionIva);
         if (req.CondicionPago is not null) v.CondicionPago = NormCondicionPago(req.CondicionPago);
+        if (req.MostrarIvaProforma.HasValue) v.MostrarIvaProforma = req.MostrarIvaProforma.Value;
         if (req.WeekDays is not null) v.WeekDays = NormWeekDays(req.WeekDays);
         if (req.EnRadar.HasValue) v.EnRadar = req.EnRadar.Value;
         if (req.Retira.HasValue) v.Retira = req.Retira.Value;

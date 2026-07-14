@@ -435,7 +435,9 @@ public record CafeVentaDto(
     int? ArcaWebserviceAccountId = null,
     // 2026-07-03: monto cobrado en la calle por el repartidor cuando entrego (suma de
     // CafeCobranzasPendientes no rechazadas para esta venta). Null si no cobro.
-    decimal? CobradoEnEntrega = null);
+    decimal? CobradoEnEntrega = null,
+    // 2026-07-14: solo presupuestos (PRO). true = PDF con desglose de IVA (default); false = total sin IVA.
+    bool MostrarIvaProforma = true);
 
 public class CafeCotizarItemRequest
 {
@@ -545,6 +547,8 @@ public class CreateCafeVentaRequest
     public string? TipoComprobante { get; set; }
     public string? CondicionIva { get; set; }
     public string? CondicionPago { get; set; }
+    /// <summary>2026-07-14: solo presupuestos (PRO). true (default) = PDF con desglose IVA; false = total sin IVA.</summary>
+    public bool MostrarIvaProforma { get; set; } = true;
     public string? EntregaPor { get; set; }
     /// <summary>2026-06-02: Nota interna para armado (post-it en /cafe/preparacion). NO sale en PDF.</summary>
     public string? ComentarioArmado { get; set; }
@@ -598,6 +602,8 @@ public class UpdateCafeVentaRequest
     public string? TipoComprobante { get; set; }
     public string? CondicionIva { get; set; }
     public string? CondicionPago { get; set; }
+    /// <summary>2026-07-14: solo presupuestos (PRO). true = PDF con desglose IVA; false = total sin IVA.</summary>
+    public bool? MostrarIvaProforma { get; set; }
     public string? WeekDays { get; set; }
     public bool? EnRadar { get; set; }
     public bool? Retira { get; set; }

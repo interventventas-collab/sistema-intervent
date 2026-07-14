@@ -5552,6 +5552,11 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ConceptoServHasta' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
     ALTER TABLE Cafe_Ventas ADD ConceptoServHasta DATE NULL;
 GO
+-- 2026-07-14: elección con/sin IVA para PRESUPUESTOS (PRO). true (1, default) = PDF con desglose de
+-- IVA 21% estimado; false (0) = presupuesto con total SIN IVA (neto pelado). Solo afecta el PDF de PRO.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='MostrarIvaProforma' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD MostrarIvaProforma BIT NOT NULL CONSTRAINT DF_CafeVentas_MostrarIvaProforma DEFAULT 1;
+GO
 
 -- ============================================================================
 -- 2026-06-26: Modulo QR + Repartidor para ALQUILERES (calcado del de Ventas).

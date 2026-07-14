@@ -1093,6 +1093,21 @@
                         </div>
                     </div>
 
+                    @* 2026-07-14: elección con/sin IVA — SOLO presupuestos (PRO). Tildado = desglose de IVA
+                       (como venía). Destildado = el presupuesto sale con el total SIN IVA (neto pelado). *@
+                    @if (formTipoComprobante == "PRO")
+                    {
+                        <div style="margin-top: 0.5rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                            <label style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.7rem; background: @(formMostrarIvaProforma ? "#eff6ff" : "#f9fafb"); border: 1px solid @(formMostrarIvaProforma ? "#3b82f6" : "#d1d5db"); border-radius: 6px; font-size: 0.8rem; cursor: pointer; user-select: none;">
+                                <input type="checkbox" @bind="formMostrarIvaProforma" style="margin: 0;" />
+                                <span>🧾 Mostrar IVA en el presupuesto</span>
+                            </label>
+                            <span style="font-size: 0.72rem; color: #6b7280;">
+                                @(formMostrarIvaProforma ? "Sale con desglose de IVA 21% + total c/IVA." : "Sale con el total SIN IVA (neto), sin desglose.")
+                            </span>
+                        </div>
+                    }
+
                     @* 2026-07-04: empresa emisora SIEMPRE visible (pedido de Osmar), preseleccionada con el
                        negocio (PALANICA HERMANOS SRL). Elegir la empresa primero filtra el tipo de comprobante
                        (RI → A/B, Monotributo → C). Solo aparece si hay más de un certificado cargado. *@
@@ -2507,7 +2522,8 @@
             @* Fila TOTALES + BOTONES — verde, abajo del todo. Totales a la izquierda, botones a la derecha. *@
             @if (cotizacion is not null)
             {
-                bool mostrarIvaT = formTipoComprobante is "FA" or "FB" or "PRO";
+                // 2026-07-14: el presupuesto muestra IVA solo si el operador lo dejó tildado.
+                bool mostrarIvaT = formTipoComprobante is "FA" or "FB" || (formTipoComprobante == "PRO" && formMostrarIvaProforma);
                 decimal ivaT = mostrarIvaT ? Math.Round(cotizacion.Total * 0.21m, 2, MidpointRounding.AwayFromZero) : 0m;
                 decimal totalConIvaT = cotizacion.Total + ivaT;
                 decimal margenPctT = cotizacion.CostoTotal > 0
@@ -4285,6 +4301,8 @@
     private string formTipoComprobante = "X";
     private string formCondicionIva = "CF";
     private string formCondicionPago = "EFECTIVO";
+    // 2026-07-14: presupuesto con/sin IVA. true (default) = PDF con desglose de IVA; false = total sin IVA.
+    private bool formMostrarIvaProforma = true;
     // 2026-06-23: Concepto AFIP. 1=Productos (default), 2=Servicios, 3=Productos y Servicios.
     // Solo importa cuando es factura (FA/FB/FC) y va a ARCA con CAE.
     private int formConcepto = 1;
@@ -5420,6 +5438,7 @@
         vrNombre = vrRazonSocial = vrCuit = vrDireccion = vrLocalidad = vrCiudad = vrCp = vrTelefono = vrDomicilioEntrega = "";
         formFecha = DateTime.Today; formDescuento = 0; formObservaciones = "";
         formTipoComprobante = "X"; formCondicionIva = "CF"; formCondicionPago = "EFECTIVO";
+        formMostrarIvaProforma = true;
         formConcepto = 1; formConceptoServDesde = null; formConceptoServHasta = null;
         formArcaAccountId = null;
         EnsureDefaultArcaAccount(); // multi-sociedad: preseleccionar el negocio (PALANICA HERMANOS SRL) de entrada
@@ -5485,6 +5504,7 @@
         public string FormTipoComprobante { get; set; } = "X";
         public string FormCondicionIva { get; set; } = "CF";
         public string FormCondicionPago { get; set; } = "EFECTIVO";
+        public bool FormMostrarIvaProforma { get; set; } = true;
         public DateTime FormFecha { get; set; }
         public decimal FormDescuento { get; set; }
         public string FormObservaciones { get; set; } = "";
@@ -5524,6 +5544,7 @@
                 ? clientes.FirstOrDefault(c => c.Id == formClienteId)?.Nombre
                 : (modoVentaRapida ? vrNombre : null),
             FormTipoComprobante = formTipoComprobante,
+            FormMostrarIvaProforma = formMostrarIvaProforma,
             FormCondicionIva = formCondicionIva,
             FormCondicionPago = formCondicionPago,
             FormFecha = formFecha,
@@ -5602,6 +5623,7 @@
         formClienteId = b.FormClienteId;
         formClienteTipo = b.FormClienteTipo;
         formTipoComprobante = b.FormTipoComprobante;
+        formMostrarIvaProforma = b.FormMostrarIvaProforma;
         formCondicionIva = b.FormCondicionIva;
         formCondicionPago = b.FormCondicionPago;
         formFecha = b.FormFecha;
@@ -6162,6 +6184,7 @@
                         : formTipoComprobante,
                     CondicionIva = formCondicionIva,
                     CondicionPago = formCondicionPago,
+                    MostrarIvaProforma = formMostrarIvaProforma,
                     EntregaPor = formEntregaPor,
                     ComentarioArmado = formComentarioArmado
                 });
@@ -6229,6 +6252,7 @@
             formTipoComprobante = payload.TipoComprobante;
             formCondicionIva = payload.CondicionIva;
             formCondicionPago = payload.CondicionPago;
+            formMostrarIvaProforma = true; // 2026-07-14: al duplicar, arranca con IVA (default); se puede destildar.
             formItems = payload.Items.ToList();
             cotizacion = null;
             addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
@@ -6317,6 +6341,7 @@
         vrNombre = vrRazonSocial = vrCuit = vrDireccion = vrLocalidad = vrCiudad = vrCp = vrTelefono = vrDomicilioEntrega = "";
         formTipoComprobante = "X";
         formCondicionIva = "CF";
+        formMostrarIvaProforma = true;
         unpaidPrevSales = new();
         topProductsForClient = new();
         await Cotizar();
@@ -7385,6 +7410,7 @@
                 TipoComprobante = formTipoComprobante,
                 CondicionIva = formCondicionIva,
                 CondicionPago = formCondicionPago,
+                MostrarIvaProforma = formMostrarIvaProforma,
                 ComentarioArmado = formComentarioArmado,
                 Concepto = formConcepto,
                 ConceptoServDesde = formConcepto != 1 ? formConceptoServDesde : null,
@@ -7491,6 +7517,7 @@
                     TipoComprobante = formTipoComprobante,
                     CondicionIva = formCondicionIva,
                     CondicionPago = formCondicionPago,
+                    MostrarIvaProforma = formMostrarIvaProforma,
                     EntregaPor = formEntregaPor,
                     ComentarioArmado = formComentarioArmado,
                     MapeoLink = string.IsNullOrWhiteSpace(formMapeoLink) ? null : formMapeoLink.Trim(),
@@ -7577,6 +7604,7 @@
                     TipoComprobante = formTipoComprobante,
                     CondicionIva = formCondicionIva,
                     CondicionPago = formCondicionPago,
+                    MostrarIvaProforma = formMostrarIvaProforma,
                     EntregaPor = formEntregaPor,
                     ComentarioArmado = formComentarioArmado,
                     // 2026-06-23: Concepto AFIP. Solo se aplica a facturas (FA/FB/FC).
@@ -8089,6 +8117,7 @@
         formTipoComprobante = string.IsNullOrWhiteSpace(v.TipoComprobante) ? "X" : v.TipoComprobante;
         formCondicionIva = string.IsNullOrWhiteSpace(v.CondicionIva) ? "CF" : v.CondicionIva;
         formCondicionPago = string.IsNullOrWhiteSpace(v.CondicionPago) ? "EFECTIVO" : v.CondicionPago;
+        formMostrarIvaProforma = v.MostrarIvaProforma;
         formConcepto = v.Concepto is 1 or 2 or 3 ? v.Concepto : 1;
         formConceptoServDesde = v.ConceptoServDesde;
         formConceptoServHasta = v.ConceptoServHasta;
