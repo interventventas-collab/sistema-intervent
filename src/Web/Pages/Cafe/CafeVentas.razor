@@ -8154,6 +8154,10 @@
             Molienda = i.Molienda,
             EsDoyPack = i.EsDoyPack,
             DescuentoPct = i.DescuentoPct,
+            // 2026-07-14: preservar el ComboOrigenId al editar. Sin esto, un comprobante con combos
+            // se abría con los componentes SUELTOS (cada uno con su -% escondido) en vez de agrupados
+            // como combo — y al guardar, el combo se "desarmaba" para siempre (también en el PDF).
+            ComboOrigenId = i.ComboOrigenId,
             // Preservamos el PrecioUnitario guardado en el item:
             //   - Concepto libre: es la ÚNICA fuente del precio (no hay producto del catálogo).
             //   - Producto del catálogo: preservamos el precio histórico del comprobante.
