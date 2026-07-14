@@ -79,6 +79,10 @@ public class MeliItem
     public decimal? SaleFeeFinancingFee { get; set; }
     [System.ComponentModel.DataAnnotations.Schema.Column(TypeName = "decimal(18,2)")]
     public decimal? SaleFeeListingFee { get; set; }
+    /// <summary>2026-07-14: costo de envío a cargo del vendedor cacheado (para calcular el margen REAL
+    /// en la lista sin llamar a MeLi por fila). Se guarda en GetListingCostsAsync. Null = no cacheado aún.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.Column(TypeName = "decimal(18,2)")]
+    public decimal? SaleFeeShippingCost { get; set; }
     [System.ComponentModel.DataAnnotations.Schema.Column(TypeName = "decimal(18,2)")]
     public decimal? SaleFeePriceSnapshot { get; set; }
     public DateTime? SaleFeeCapturedAt { get; set; }
