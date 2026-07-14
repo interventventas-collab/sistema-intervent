@@ -6871,8 +6871,9 @@
             && item.SaleFeePriceSnapshot.HasValue
             && Math.Abs(precio - item.SaleFeePriceSnapshot.Value) / Math.Max(precio, 1m) < 0.05m)
         {
-            // Sale_fee real: la API listing_prices ya incluye comisión + cargo fijo + envío gratis.
-            netoConIva = precio - item.SaleFeeAmountReal.Value;
+            // 2026-07-14: neto real = precio - comisión (SaleFeeAmount) - ENVÍO a cargo del vendedor.
+            // Antes NO se restaba el envío → en productos grandes el margen salía inflado. Ahora coincide con la ficha.
+            netoConIva = precio - item.SaleFeeAmountReal.Value - (item.SaleFeeShippingCost ?? 0m);
         }
         else
         {
@@ -6900,24 +6901,24 @@
         var pct = CalcMargenPct(item);
         if (pct == null) return;
         var (bg, label, fg) = MargenChipStyle(pct.Value);
-        // 2026-07-13: en productos grandes (envío a cargo del vendedor, precio ≥ $33.000) ESTE margen NO cuenta
-        // el envío → queda optimista/engañoso. Lo marcamos en gris con aviso; el número real está en la ficha.
-        var envioSinContar = item.FreeShipping && item.Price >= 33000m;
+        // 2026-07-14: el margen YA cuenta el envío (SaleFeeShippingCost, restado en CalcMargenPct). Pero si esta
+        // publicación paga envío y todavía NO tenemos el envío cacheado, el margen saldría inflado → marcamos
+        // "falta envío" hasta que se refresquen las comisiones (ahí se carga el envío y aparece el margen real).
+        var faltaEnvio = item.FreeShipping && item.Price >= 33000m && !item.SaleFeeShippingCost.HasValue;
         // 2026-07-11: mostrar también el IMPORTE de ganancia real ($), no solo el %. Consistente con el % mostrado.
         var ganImporte = pct.Value / 100m * item.ProductCost!.Value;
-        var tooltip = envioSinContar
-            ? $"⚠ Este margen NO incluye el costo de envío (esta publicación lo paga el vendedor).\n" +
-              $"El margen REAL es menor — abrí la ficha (\"Cuentas de esta venta\") para verlo exacto.\n" +
+        var tooltip = faltaEnvio
+            ? $"⚠ Falta cargar el costo de envío de esta publicación (lo paga el vendedor).\n" +
+              $"Refrescá las comisiones (o abrí la ficha) para ver el margen REAL con envío incluido.\n" +
               $"Costo: $ {item.ProductCost!.Value.ToString("N0", argCulture)} · Precio: $ {item.Price.ToString("N0", argCulture)}"
-            : $"Ganancia real: $ {ganImporte.ToString("N0", argCulture)} ({label} sobre costo)\n" +
-              $"Costo: $ {item.ProductCost!.Value.ToString("N0", argCulture)}\n" +
-              $"Precio: $ {item.Price.ToString("N0", argCulture)}\n" +
-              $"(neto aprox MeLi: $ {(item.Price * 0.70m).ToString("N0", argCulture)} — abrir detalle para exacto)";
-        if (envioSinContar) { bg = "#e5e7eb"; fg = "#6b7280"; }
+            : $"Ganancia real: $ {ganImporte.ToString("N0", argCulture)} ({label} sobre costo)" +
+              (item.SaleFeeShippingCost is decimal env && env > 0 ? $"\n(envío ya descontado: $ {env.ToString("N0", argCulture)})" : "") +
+              $"\nCosto: $ {item.ProductCost!.Value.ToString("N0", argCulture)} · Precio: $ {item.Price.ToString("N0", argCulture)}";
+        if (faltaEnvio) { bg = "#e5e7eb"; fg = "#6b7280"; }
         __builder.OpenElement(0, "div");
         __builder.AddAttribute(1, "style", $"display: inline-block; background:{bg}; color:{fg}; padding:0.1rem 0.45rem; border-radius:10px; font-size:0.7rem; font-weight:700; margin-top:0.15rem;");
         __builder.AddAttribute(2, "title", tooltip);
-        __builder.AddContent(3, envioSinContar ? $"📊 {label} · ⚠ sin envío" : $"📊 {label} · $ {ganImporte.ToString("N0", argCulture)}");
+        __builder.AddContent(3, faltaEnvio ? $"📊 {label} · ⚠ falta envío" : $"📊 {label} · $ {ganImporte.ToString("N0", argCulture)}");
         __builder.CloseElement();
 
         // 2026-07-02: chip 🎯 objetivo — si tiene objetivo cargado, compara vs real (±2 pt).
@@ -6930,15 +6931,15 @@
             var esExacto = item.SaleFeeAmountReal.HasValue && item.SaleFeeAmountReal.Value > 0
                 && item.SaleFeePriceSnapshot.HasValue
                 && Math.Abs(item.Price - item.SaleFeePriceSnapshot.Value) / Math.Max(item.Price, 1m) < 0.05m
-                && !envioSinContar; // en productos con envío a cargo del vendedor, la comparación de la lista no es fiable
+                && !faltaEnvio; // si falta cargar el envío, la comparación de la lista todavía no es fiable
 
             string objBg, objFg, objIcon, objTip;
             if (!esExacto)
             {
-                // Aprox: no refrescamos las comisiones, el precio se movió, o hay envío no contado → gris, sin comparar.
+                // Aprox: no refrescamos las comisiones, el precio se movió, o falta cargar el envío → gris, sin comparar.
                 objBg = "#e5e7eb"; objFg = "#4b5563"; objIcon = "?";
-                objTip = envioSinContar
-                    ? $"Objetivo: {obj:0.#}%. Esta publicación paga envío — el margen de la lista no lo cuenta. Abrí la ficha para comparar exacto."
+                objTip = faltaEnvio
+                    ? $"Objetivo: {obj:0.#}%. Falta cargar el envío de esta publicación — refrescá las comisiones para comparar con el margen real."
                     : $"Objetivo: {obj:0.#}%. Comisiones desactualizadas — refrescá para saber exacto (abrí la ficha o botón 💰 Refrescar comisiones).";
             }
             else

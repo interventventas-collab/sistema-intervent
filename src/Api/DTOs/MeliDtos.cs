@@ -187,6 +187,8 @@ public record MeliItemDto(
     decimal? SaleFeePercentageFee = null,
     decimal? SaleFeeFixedFee = null,
     decimal? SaleFeeFinancingFee = null,
+    // 2026-07-14: costo de envío a cargo del vendedor cacheado (para el margen REAL de la lista).
+    decimal? SaleFeeShippingCost = null,
     // 2026-07-02: objetivo de ganancia cargado al pushear (% sobre costo).
     decimal? GananciaObjetivoPct = null,
     DateTime? GananciaObjetivoAt = null

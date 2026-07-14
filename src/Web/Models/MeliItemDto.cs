@@ -94,6 +94,8 @@ public class MeliItemDto
     public decimal? SaleFeePercentageFee { get; set; }
     public decimal? SaleFeeFixedFee { get; set; }
     public decimal? SaleFeeFinancingFee { get; set; }
+    // 2026-07-14: costo de envío a cargo del vendedor cacheado (para el margen REAL de la lista).
+    public decimal? SaleFeeShippingCost { get; set; }
 
     // 2026-07-02: objetivo de ganancia cargado al pushear precio (% sobre costo).
     // Null = nunca se pusheó con modo %. Si está cargado, ficha/grilla muestra chip

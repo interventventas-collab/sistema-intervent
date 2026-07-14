@@ -82,6 +82,7 @@ public class MeliItemService
                 i.CatalogListing,  // 2026-06-12: publicacion de catalogo
                 i.SaleFeeAmount, i.SaleFeePriceSnapshot, i.SaleFeeCapturedAt,  // 2026-06-19: comision real cacheada
                 i.SaleFeePercentageFee, i.SaleFeeFixedFee, i.SaleFeeFinancingFee,  // 2026-07-02: desglose
+                i.SaleFeeShippingCost,  // 2026-07-14: envío cacheado para el margen real de la lista
                 null, null  // 2026-07-02: GananciaObjetivoPct/At — se completan abajo desde MeliItemSyncConfigs
                 ))
             .ToListAsync();
@@ -2283,6 +2284,7 @@ public class MeliItemService
         item.SaleFeePercentageFee = result.PercentageFee;
         item.SaleFeeFinancingFee = result.FinancingFee;
         item.SaleFeeListingFee = result.ListingFeeAmount;
+        item.SaleFeeShippingCost = result.ShippingCost;   // 2026-07-14: envío cacheado para el margen real de la lista
         item.SaleFeePriceSnapshot = price;
         item.SaleFeeCapturedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
