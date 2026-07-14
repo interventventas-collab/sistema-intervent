@@ -43,6 +43,10 @@ public class CafeCotizacionPdfService
         var tipoLetra = TipoComprobanteCorto(v.TipoComprobante);
         var tipoNombre = TipoComprobanteLargo(v.TipoComprobante);
         var esProforma = v.TipoComprobante == "PRO";
+        // 2026-07-14: el presupuesto puede salir CON o SIN IVA (elección del operador).
+        // Si es proforma y MostrarIvaProforma=false, el PDF muestra el total sin IVA (neto pelado),
+        // sin la línea de IVA ni la nota de proforma. Default (true) = comportamiento histórico.
+        var proformaConIva = esProforma && v.MostrarIvaProforma;
 
         decimal netoSinIva = v.Total;
         decimal iva21 = Math.Round(netoSinIva * 0.21m, 2, MidpointRounding.AwayFromZero);
@@ -410,7 +414,7 @@ public class CafeCotizacionPdfService
                         {
                             c.Item().Row(r =>
                             {
-                                r.RelativeItem().Text(esProforma ? "Subtotal (neto sin IVA):" : "Subtotal:").FontSize(9);
+                                r.RelativeItem().Text(proformaConIva ? "Subtotal (neto sin IVA):" : "Subtotal:").FontSize(9);
                                 r.AutoItem().Text("$ " + v.Subtotal.ToString("N2", Es)).SemiBold().FontSize(9);
                             });
                             if (v.Descuento > 0)
@@ -421,7 +425,7 @@ public class CafeCotizacionPdfService
                                     r.AutoItem().Text("− $ " + v.Descuento.ToString("N2", Es)).FontColor(Colors.Red.Darken1).FontSize(9);
                                 });
                             }
-                            if (esProforma)
+                            if (proformaConIva)
                             {
                                 c.Item().Row(r =>
                                 {
@@ -491,7 +495,7 @@ public class CafeCotizacionPdfService
                         });
                     }
 
-                    if (esProforma)
+                    if (proformaConIva)
                     {
                         fc.Item().PaddingTop(4).Background(Colors.Yellow.Lighten4).Border(1).BorderColor(Colors.Yellow.Darken1)
                             .Padding(5).Text(t =>

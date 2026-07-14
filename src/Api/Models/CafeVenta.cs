@@ -77,6 +77,11 @@ public class CafeVenta
     [MaxLength(20)]
     public string CondicionIva { get; set; } = "CF";
 
+    /// <summary>2026-07-14: solo aplica a PRESUPUESTOS (PRO). Si true (default), el PDF muestra el
+    /// desglose de IVA 21% estimado + total c/IVA (comportamiento historico). Si false, el presupuesto
+    /// sale con el total SIN IVA (el neto pelado), sin la linea de IVA ni la nota de proforma.</summary>
+    public bool MostrarIvaProforma { get; set; } = true;
+
     /// <summary>Condicion de pago: EFECTIVO, TRANSFERENCIA, DEBITO, CREDITO, CTA_CORRIENTE, CHEQUE.</summary>
     [MaxLength(20)]
     public string CondicionPago { get; set; } = "EFECTIVO";
