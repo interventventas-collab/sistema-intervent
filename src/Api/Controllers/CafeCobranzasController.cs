@@ -187,7 +187,9 @@ public class CafeCobranzasController : ControllerBase
         // MontoCobrable (Total + ArcaImpTotal). Tambien traemos TipoComprobante para detectar NCs
         // (Notas de Credito) que van con signo negativo — el operador las imputa junto con la FA para compensar.
         var ventas = await _db.CafeVentas
-            .Where(v => v.ClienteId != null && clienteIds.Contains(v.ClienteId!.Value) && v.Estado != "anulado")
+            // 2026-07-14: los PRESUPUESTOS (PRO) no se pueden cobrar — son solo un precio, no una venta real.
+            .Where(v => v.ClienteId != null && clienteIds.Contains(v.ClienteId!.Value) && v.Estado != "anulado"
+                     && v.TipoComprobante != "PRO")
             .Select(v => new { v.Id, v.Numero, v.Fecha, v.Total, v.ArcaImpTotal, v.ClienteId, v.TipoComprobante, v.ArcaPtoVta, v.ArcaCbteNro })
             .ToListAsync();
 

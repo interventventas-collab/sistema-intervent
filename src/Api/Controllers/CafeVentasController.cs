@@ -487,6 +487,8 @@ public class CafeVentasController : ControllerBase
         var ventas = await _db.CafeVentas.Include(v => v.Items)
             .Where(v => v.ClienteId == clienteId
                      && v.Estado == "emitido"
+                     // 2026-07-14: los PRESUPUESTOS (PRO) NO son deuda — son solo un precio. No cuentan como impagos.
+                     && v.TipoComprobante != "PRO"
                      && (excludeVentaId == null || v.Id != excludeVentaId.Value))
             .ToListAsync();
         if (ventas.Count == 0) return Ok(new List<CafeVentaDto>());
