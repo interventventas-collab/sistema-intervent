@@ -70,7 +70,8 @@ public class CafeClientesController : ControllerBase
         // Ventas vigentes del cliente. Para facturas A/B/C con IVA, el debe es el TOTAL CON IVA
         // (ArcaImpTotal), no el neto (Total) — sino la cuenta corriente queda corta el IVA.
         var ventas = await _db.CafeVentas
-            .Where(v => v.ClienteId == id && v.Estado != "anulado")
+            // 2026-07-14: los PRESUPUESTOS (PRO) no son deuda — no entran a la cuenta corriente del cliente.
+            .Where(v => v.ClienteId == id && v.Estado != "anulado" && v.TipoComprobante != "PRO")
             .Select(v => new { v.Id, v.Fecha, v.Numero, v.Total, v.ArcaImpTotal, v.TipoComprobante })
             .ToListAsync();
         // Cobranzas vigentes y sus retenciones
@@ -418,6 +419,8 @@ public class CafeClientesController : ControllerBase
             .Where(v => v.Estado != "anulado"
                      && v.ClienteId != null
                      && v.Total > 0
+                     // 2026-07-14: los PRESUPUESTOS (PRO) no son deuda — se excluyen del reporte de deudores.
+                     && v.TipoComprobante != "PRO"
                      && (v.TipoComprobante == null || !v.TipoComprobante.StartsWith("NC")))
             .Select(v => new {
                 v.Id, ClienteId = v.ClienteId!.Value, v.Total, v.ArcaImpTotal, v.Fecha, v.TipoComprobante,
@@ -503,7 +506,9 @@ public class CafeClientesController : ControllerBase
         var ventas = await _db.CafeVentas
             .Where(v => v.Estado != "anulado"
                      && v.ClienteId == null
-                     && v.Total > 0)
+                     && v.Total > 0
+                     // 2026-07-14: los PRESUPUESTOS (PRO) no son deuda — tampoco como venta ocasional.
+                     && v.TipoComprobante != "PRO")
             .Select(v => new
             {
                 v.Id, v.Numero, v.Fecha, v.ClienteNombreSnapshot,
