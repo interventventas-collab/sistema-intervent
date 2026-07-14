@@ -633,6 +633,9 @@ public class CafeCotizarRequest
     // cotizador NO cuente contra sí mismo el stock que esa venta ya tiene reservado.
     // Si es null = venta nueva, comportamiento normal.
     public int? EditandoVentaId { get; set; }
+    // 2026-07-14: tipo de comprobante (X/PRO/FA/FB/FC). El PRESUPUESTO (PRO) no descuenta
+    // stock → la falta de stock solo avisa, no bloquea la emisión.
+    public string? TipoComprobante { get; set; }
 }
 
 public class CafeCotizadoItemDto
