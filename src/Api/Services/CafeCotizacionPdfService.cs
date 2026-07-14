@@ -109,19 +109,21 @@ public class CafeCotizacionPdfService
                         var esTipoX = v.TipoComprobante == "X";
                         row.RelativeItem(0.9f).Column(colLogo =>
                         {
-                            colLogo.Item().Row(r =>
-                            {
+                            // 2026-07-14: emisor APILADO (logo arriba, datos abajo) en vez de lado a lado.
+                            // Antes el logo (120px) comía casi toda la columna angosta del emisor y la razón
+                            // social salía partida letra por letra ("PALA/NICA/HER/MAN/OS"). Apilando, el
+                            // texto usa el ancho completo de la columna y se lee bien.
                             if (logoBytes is not null)
                             {
                                 if (esTipoX)
-                                    r.ConstantItem(110).Height(60).AlignLeft().AlignMiddle().Image(logoBytes).FitArea();
+                                    colLogo.Item().AlignLeft().Width(110).Height(60).Image(logoBytes).FitArea();
                                 else
-                                    r.ConstantItem(120).Height(70).AlignLeft().AlignMiddle().Image(logoBytes).FitArea();
+                                    colLogo.Item().AlignLeft().Width(120).Height(70).Image(logoBytes).FitArea();
                             }
 
                             if (!esTipoX)
                             {
-                                r.RelativeItem().PaddingLeft(logoBytes is null ? 0 : 8).Column(c =>
+                                colLogo.Item().PaddingTop(6).Column(c =>
                                 {
                                     var razon = string.IsNullOrWhiteSpace(cfg.NegocioRazonSocial)
                                         ? (cfg.NegocioNombre ?? "Café e insumos")
@@ -159,9 +161,8 @@ public class CafeCotizacionPdfService
                                         if (!string.IsNullOrEmpty(cfg.NegocioWeb)) parts.Add(cfg.NegocioWeb);
                                         c.Item().Text(string.Join(" · ", parts)).FontSize(8).FontColor(Colors.Grey.Darken1);
                                     }
-                                });
+                                }); // cierra el Column de datos del emisor
                             }
-                            }); // cierro el colLogo.Item().Row
 
                             // 2026-06-17 v8: bloque "PEDIDOS AL:" bajo el logo, alineado a la izquierda — reemplaza la
                             // franja horizontal de tels+email que antes vivia entre el header y la tabla.

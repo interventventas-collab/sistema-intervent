@@ -569,6 +569,13 @@ public class CafeVentasController : ControllerBase
         if (v is null) return NotFound(new { error = "Venta no encontrada" });
         var cfg = await _db.CafeSettings.FindAsync(1);
 
+        // 2026-07-14: un PRESUPUESTO (PRO) NO va a Preparación ni al tablero "Imprimir pedidos".
+        // Es solo un precio para pasarle al cliente — todavía no descuenta stock ni se arma.
+        // Recién cuando se aprueba y se convierte en venta/factura real entra a armarse.
+        // Cortamos acá para que no entre al tablero ni suba a esa carpeta de Drive.
+        if (string.Equals(v.TipoComprobante, "PRO", StringComparison.OrdinalIgnoreCase))
+            return Ok(new { ok = true, skipped = true, esPresupuesto = true, motivo = "Los presupuestos no van a preparación." });
+
         // 2026-05-28: subir a Drive equivale a "mandar al tablero IMPRIMIR PEDIDOS DE OSMAR".
         // 2026-06-12: el tablero YA NO depende de que Drive funcione. Si Google corta el permiso
         // (token vencido/revocado), la venta entra igual a Preparacion de pedidos y solo se
