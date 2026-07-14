@@ -5708,16 +5708,21 @@
         // Si el cliente seleccionado tiene Cond IVA cargada en su ficha, esa manda
         // (la setteo OnClienteChanged y no quiero pisarla solo porque cambiaste el tipo).
         var cli = formClienteId > 0 ? clientes?.FirstOrDefault(c => c.Id == formClienteId) : null;
-        if (cli is not null && !string.IsNullOrWhiteSpace(cli.CondicionIvaDefault))
-            return;
-        formCondicionIva = formTipoComprobante switch
+        if (cli is null || string.IsNullOrWhiteSpace(cli.CondicionIvaDefault))
         {
-            "FA" => "RI",
-            "FB" => "CF",
-            "FC" => "MO",
-            "X" or "PRO" => "CF",
-            _ => formCondicionIva
-        };
+            formCondicionIva = formTipoComprobante switch
+            {
+                "FA" => "RI",
+                "FB" => "CF",
+                "FC" => "MO",
+                "X" or "PRO" => "CF",
+                _ => formCondicionIva
+            };
+        }
+
+        // 2026-07-14: recotizar al cambiar de comprobante. El PRESUPUESTO (PRO) no valida stock,
+        // así que el botón Emitir debe prenderse/apagarse según el nuevo tipo elegido.
+        _ = Cotizar();
     }
 
     /// <summary>2026-06-23: cuando el usuario cambia Concepto AFIP de Productos a Servicios o Mixto,
@@ -7314,6 +7319,9 @@
                 ClienteTipo = formClienteTipo,
                 Items = formItems,
                 Descuento = formDescuento,
+                // 2026-07-14: el tipo de comprobante define si la falta de stock frena o solo avisa.
+                // El PRESUPUESTO (PRO) no descuenta stock → deja emitir aunque falte, con aviso.
+                TipoComprobante = formTipoComprobante,
                 // 2026-06-18: al editar una venta, le decimos al backend que NO cuente su propio
                 // stock reservado como conflicto. Sin esto, una cotización X que ya descontó stock
                 // tiraba "stock insuficiente" al intentar editarla o convertirla a Factura.

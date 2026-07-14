@@ -1262,7 +1262,7 @@ public class CafeVentasController : ControllerBase
         // 2026-06-18: si se está editando una venta, le pasamos su Id al cotizador para que
         // sume al stock disponible las cantidades que esa misma venta ya tiene reservadas
         // (evita falso "stock insuficiente" al editar/convertir-a-factura una cotización).
-        return Ok(await CotizarInternoAsync(req.Items, tipo, req.Descuento, settings, req.EditandoVentaId));
+        return Ok(await CotizarInternoAsync(req.Items, tipo, req.Descuento, settings, req.EditandoVentaId, NormTipoComprobante(req.TipoComprobante)));
     }
 
     /// <summary>
@@ -1381,7 +1381,9 @@ public class CafeVentasController : ControllerBase
         var settings = await _db.CafeSettings.FindAsync(1) ?? new CafeSetting { Id = 1 };
         var tipo = await ResolverTipoAsync(req.ClienteId, req.ClienteTipoOverride);
 
-        var cot = await CotizarInternoAsync(req.Items, tipo, req.Descuento, settings);
+        // 2026-07-14: pasamos el tipo de comprobante para que un PRESUPUESTO (PRO) no se
+        // bloquee por falta de stock (no descuenta). X y Facturas sí validan stock.
+        var cot = await CotizarInternoAsync(req.Items, tipo, req.Descuento, settings, null, NormTipoComprobante(req.TipoComprobante));
         if (!cot.TodoOk)
             return BadRequest(new { error = "No hay stock suficiente para alguno de los items. Revisá la cotización." });
 
@@ -2651,7 +2653,8 @@ public class CafeVentasController : ControllerBase
                 var settings = await _db.CafeSettings.FindAsync(1) ?? new CafeSetting { Id = 1 };
                 var tipo = v.ClienteTipoSnapshot ?? "OTRO";
                 var descuentoNuevo = req.Descuento ?? v.Descuento;
-                var cot = await CotizarInternoAsync(req.Items, tipo, descuentoNuevo, settings);
+                // 2026-07-14: un presupuesto (PRO) no valida stock al editar tampoco.
+                var cot = await CotizarInternoAsync(req.Items, tipo, descuentoNuevo, settings, null, NormTipoComprobante(v.TipoComprobante));
                 if (!cot.TodoOk)
                 {
                     await tx.RollbackAsync();
@@ -2930,11 +2933,17 @@ public class CafeVentasController : ControllerBase
         return dict;
     }
 
-    private async Task<CafeCotizadoDto> CotizarInternoAsync(List<CafeCotizarItemRequest> items, string tipo, decimal descuento, CafeSetting settings, int? editandoVentaId = null)
+    private async Task<CafeCotizadoDto> CotizarInternoAsync(List<CafeCotizarItemRequest> items, string tipo, decimal descuento, CafeSetting settings, int? editandoVentaId = null, string? tipoComprobante = null)
     {
         var cotizadoItems = new List<CafeCotizadoItemDto>();
         decimal subtotal = 0m, costoTotal = 0m;
         bool todoOk = true;
+
+        // 2026-07-14: el PRESUPUESTO (PRO) NO descuenta stock, así que la falta de stock
+        // NO debe bloquear la emisión — se muestra el aviso amarillo igual, pero como
+        // advertencia. Los demás comprobantes (X y Facturas FA/FB/FC) sí descuentan stock,
+        // así que sí frenan. Si no viene tipo (llamador viejo), asumimos que descuenta (estricto).
+        bool descuentaStock = !string.Equals(tipoComprobante, "PRO", StringComparison.OrdinalIgnoreCase);
 
         // 2026-06-18: si se está editando una venta existente, traemos las cantidades que esa
         // venta ya tiene reservadas (descontadas) para sumarlas al stock disponible y NO
@@ -3246,12 +3255,15 @@ public class CafeVentasController : ControllerBase
                 string detalleCantidad = esFormatoBulto ? $"{it.Cantidad} bulto×{prod.UxB}"
                     : esFormatoPack ? $"{it.Cantidad} pack×{packUnidades}"
                     : $"{it.Cantidad}";
+                var prefijoAviso = descuentaStock ? "Stock insuficiente." : "⚠️ Sin stock (el presupuesto no descuenta).";
                 aviso = esCafe
-                    ? $"Stock insuficiente. Disponible: {stockGramosDisponibleEfectivo:0} g, necesitás {gramosNecesarios:0} g."
+                    ? $"{prefijoAviso} Disponible: {stockGramosDisponibleEfectivo:0} g, necesitás {gramosNecesarios:0} g."
                     : esShell
-                        ? $"Stock insuficiente. Disponible: {stockUnidadesDisponibleEfectivo} u. 🧩 armable, necesitás {unidadesNecesarias} u ({detalleCantidad})."
-                        : $"Stock insuficiente. Disponible: {stockUnidadesDisponibleEfectivo} u, necesitás {unidadesNecesarias} u ({detalleCantidad}).";
-                todoOk = false;
+                        ? $"{prefijoAviso} Disponible: {stockUnidadesDisponibleEfectivo} u. 🧩 armable, necesitás {unidadesNecesarias} u ({detalleCantidad})."
+                        : $"{prefijoAviso} Disponible: {stockUnidadesDisponibleEfectivo} u, necesitás {unidadesNecesarias} u ({detalleCantidad}).";
+                // Solo bloquea la emisión si el comprobante descuenta stock (X / Facturas).
+                // El presupuesto (PRO) muestra el aviso pero deja emitir igual.
+                if (descuentaStock) todoOk = false;
             }
 
             cotizadoItems.Add(new CafeCotizadoItemDto(

@@ -489,6 +489,9 @@ public class CafeCotizarRequest
     // 2026-06-18: si se está editando una venta existente, mandar su Id para que el
     // cotizador no cuente su propio stock reservado como conflicto.
     public int? EditandoVentaId { get; set; }
+    // 2026-07-14: tipo de comprobante (X/PRO/FA/FB/FC). El PRESUPUESTO (PRO) NO descuenta
+    // stock, así que no debe bloquearse por stock insuficiente — solo avisa. Los demás sí.
+    public string? TipoComprobante { get; set; }
 }
 
 public record CafeCotizadoItemDto(
