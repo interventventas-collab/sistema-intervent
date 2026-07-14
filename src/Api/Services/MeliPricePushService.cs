@@ -87,6 +87,18 @@ public class MeliPricePushService
             precioFinal = AplicarRedondeoUp(conAjuste, redondeo);
         }
 
+        // 2.5) 2026-07-14: CANDADO DE SEGURIDAD — nunca pushear un precio absurdo a MeLi. Un error de datos
+        //    (multiplicador OEM mal cargado, comisión/envío raros que devuelve MeLi, división por casi-cero)
+        //    puede disparar el precio a millones. Si el precio calculado queda fuera de rango, se FRENA y NO
+        //    se manda a MeLi — se marca como error para revisar. (Los productos reales no superan unos cientos de miles.)
+        const decimal TopePrecioSeguro = 2_000_000m;
+        if (precioFinal <= 0 || precioFinal > TopePrecioSeguro)
+        {
+            _logger.LogError("[PricePush] ⛔ CANDADO: {Mla} precio calculado ${Precio} fuera de rango (tope ${Tope}) — NO se pushea. Revisar costo/multiplicador/comisión.",
+                item.MeliItemId, precioFinal, TopePrecioSeguro);
+            return new PushResult(false, $"⛔ Precio ${precioFinal:N0} frenado por seguridad (fuera de rango razonable). Revisá el costo / multiplicador de esta publicación antes de pushear.");
+        }
+
         // 3. PUT a MeLi (detectar variantes).
         var token = await _accSvc.GetValidTokenAsync(item.MeliAccount);
         if (string.IsNullOrWhiteSpace(token)) return new PushResult(false, "Token MeLi inválido");

@@ -471,6 +471,10 @@ public class CafeSincronizacionMeliController : ControllerBase
         [FromServices] Api.Services.MeliItemService meliSvc)
     {
         if (req.Precio <= 0) return BadRequest(new { error = "Precio debe ser mayor a 0" });
+        // 2026-07-14: CANDADO DE SEGURIDAD — no pushear un precio absurdo (un error de costo/multiplicador
+        // puede disparar el precio a millones). Los productos reales no superan unos cientos de miles.
+        if (req.Precio > 2_000_000m)
+            return BadRequest(new { error = $"⛔ Precio ${req.Precio:N0} frenado por seguridad (tope $2.000.000). Revisá el costo / multiplicador de esta publicación antes de pushear." });
 
         var mi = await _db.MeliItems.Include(m => m.MeliAccount).FirstOrDefaultAsync(x => x.MeliItemId == meliItemId);
         if (mi is null) return NotFound(new { error = "Item MeLi no encontrado" });
