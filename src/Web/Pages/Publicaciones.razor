@@ -1526,6 +1526,18 @@
                                                     </button>
                                                 }
                                             }
+                                            @* 2026-07-14: poner un precio EXACTO a mano (útil cuando el envío deja el cálculo trabado en un precio alto) *@
+                                            <div style="margin-top:0.6rem; padding-top:0.5rem; border-top:1px dashed #e5e7eb;">
+                                                <div style="font-size:0.72rem; color:#6b7280; margin-bottom:0.25rem;">O poné el precio a mano:</div>
+                                                <div style="display:flex; gap:0.4rem;">
+                                                    <input type="text" value="@precioManualStr" @oninput="OnPrecioManualInput" inputmode="decimal" placeholder="43399"
+                                                           style="flex:1; padding:0.4rem 0.5rem; border:1px solid #d1d5db; border-radius:6px; text-align:right; font-weight:700;" />
+                                                    <button @onclick="AplicarPrecioManual" disabled="@(isPushingManual || precioManual <= 0)"
+                                                            style="padding:0.4rem 0.9rem; background:#b45309; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer; white-space:nowrap;">
+                                                        @(isPushingManual ? "..." : "💵 Pushear")
+                                                    </button>
+                                                </div>
+                                            </div>
                                             @if (selectedItem.GananciaObjetivoPct.HasValue)
                                             {
                                                 <div style="margin-top:0.45rem; padding:0.4rem 0.6rem; background:@(selectedItem.SyncPrecio ? "#dcfce7" : "#fef3c7"); border-radius:6px; font-size:0.72rem; color:@(selectedItem.SyncPrecio ? "#166534" : "#92400e");">
@@ -5545,6 +5557,44 @@
     private string calcRedondeo = "99";      // exacto | 99 | 999
     private bool isPushingCalcPrecio;
     private bool isGuardandoObjetivo;
+    // 2026-07-14: poner un precio EXACTO a mano (para casos donde el envío deja el cálculo trabado alto).
+    private string precioManualStr = "";
+    private decimal precioManual;
+    private bool isPushingManual;
+
+    private void OnPrecioManualInput(ChangeEventArgs e)
+    {
+        precioManualStr = e.Value?.ToString() ?? "";
+        precioManual = ParseFormattedPrice(precioManualStr);
+    }
+
+    private async Task AplicarPrecioManual()
+    {
+        if (selectedItem is null || isPushingManual || precioManual <= 0) return;
+        isPushingManual = true;
+        StateHasChanged();
+        try
+        {
+            var (res, err) = await Api.PushPrecioAMeliAsync(selectedItem.MeliItemId, precioManual, null);
+            if (err is null)
+            {
+                selectedItem.Price = precioManual;
+                var sib = GetCatalogSibling(selectedItem);
+                if (sib is not null) sib.Price = precioManual;
+                InvalidateFilterCache();
+                ToastService.Success($"✔ Precio ${precioManual.ToString("N0", argCulture)} pusheado a MeLi");
+                precioManualStr = "";
+                precioManual = 0;
+                isLoadingCosts = true;
+                StateHasChanged();
+                try { itemCosts = await Api.GetItemCostsAsync(selectedItem.MeliItemId); } catch { }
+                isLoadingCosts = false;
+            }
+            else ToastService.Error("No se pudo pushear: " + err);
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { isPushingManual = false; StateHasChanged(); }
+    }
     // 2026-07-13: tarjeta vieja de "Ajuste de precio (para push)" retirada; en false no se muestra. Restaurable.
     private bool mostrarAjusteViejo = false;
 
