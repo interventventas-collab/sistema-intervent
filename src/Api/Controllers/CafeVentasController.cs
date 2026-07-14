@@ -512,6 +512,28 @@ public class CafeVentasController : ControllerBase
         return Ok(impagas.Select(v => Map(v)).ToList());
     }
 
+    /// <summary>2026-07-14: arma el mapa de combos para el PDF de cotización/presupuesto, incluyendo la
+    /// "receta" (cuántas unidades de cada producto entran en 1 combo). Con eso el PDF calcula cuántos
+    /// combos se cargaron (piezas guardadas ÷ piezas por combo) y muestra la cantidad real, no "1".
+    /// Devuelve null si no hay combos.</summary>
+    private async Task<Dictionary<int, Api.Services.ComboPdfInfo>?> BuildCombosMapAsync(List<int> comboIds)
+    {
+        if (comboIds is null || comboIds.Count == 0) return null;
+        var combos = await _db.Set<CafeCombo>()
+            .Where(c => comboIds.Contains(c.Id))
+            .Select(c => new
+            {
+                c.Id, c.Nombre, c.Sku,
+                Items = c.Items.Select(i => new { i.ProductoId, i.Cantidad }).ToList()
+            })
+            .ToListAsync();
+        return combos.ToDictionary(
+            c => c.Id,
+            c => new Api.Services.ComboPdfInfo(
+                c.Nombre, c.Sku,
+                c.Items.GroupBy(i => i.ProductoId).ToDictionary(g => g.Key, g => g.Sum(x => x.Cantidad))));
+    }
+
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetById(int id)
     {
@@ -552,9 +574,7 @@ public class CafeVentasController : ControllerBase
         var qr = await _qrRepartidorService.GenerarQrAsync(v.PublicToken);
         // 2026-06-08: combosMap para agrupar items de combos en el PDF (visualización para el cliente)
         var comboIds = v.Items.Where(x => x.ComboOrigenId.HasValue).Select(x => x.ComboOrigenId!.Value).Distinct().ToList();
-        var combosMap = comboIds.Count > 0
-            ? await _db.Set<CafeCombo>().Where(c => comboIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => (c.Nombre, c.Sku))
-            : null;
+        var combosMap = await BuildCombosMapAsync(comboIds);
         await HydrateCfgFromEmisorAsync(cfg);
         var bytes = _pdfService.GenerarPdfBytes(v, cfg, qr, combosMap);
         return File(bytes, "application/pdf", BuildPdfFilename(v));
@@ -665,9 +685,7 @@ public class CafeVentasController : ControllerBase
         var qr = await _qrRepartidorService.GenerarQrAsync(v.PublicToken);
         // 2026-06-08: combosMap para agrupar items que vienen del mismo combo en una sola línea
         var comboIds = v.Items.Where(x => x.ComboOrigenId.HasValue).Select(x => x.ComboOrigenId!.Value).Distinct().ToList();
-        var combosMap = comboIds.Count > 0
-            ? await _db.Set<CafeCombo>().Where(c => comboIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => (c.Nombre, c.Sku))
-            : null;
+        var combosMap = await BuildCombosMapAsync(comboIds);
         await HydrateCfgFromEmisorAsync(cfg);
         return _pdfService.GenerarPdfBytes(v, cfg, qr, combosMap);
     }
@@ -726,13 +744,12 @@ public class CafeVentasController : ControllerBase
                          && v.ArcaCbteNro.HasValue && v.ArcaPtoVta.HasValue && v.ArcaCbteTipoNum.HasValue;
         var qr = await _qrRepartidorService.GenerarQrAsync(v.PublicToken);
         // 2026-06-08: combosMap para agrupar items que vienen del mismo combo en el PDF
-        Dictionary<int, (string Nombre, string? Sku)>? combosMapPub = null;
+        Dictionary<int, Api.Services.ComboPdfInfo>? combosMapPub = null;
         if (!(esFacturaArca && autorizada))
         {
             var comboIdsPub = v.Items.Where(x => x.ComboOrigenId.HasValue).Select(x => x.ComboOrigenId!.Value).Distinct().ToList();
             combosMapPub = comboIdsPub.Count > 0
-                ? await _db.Set<CafeCombo>().Where(c => comboIdsPub.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => (c.Nombre, c.Sku))
-                : null;
+                ? await BuildCombosMapAsync(comboIdsPub) : null;
         }
         if (!(esFacturaArca && autorizada)) await HydrateCfgFromEmisorAsync(cfg);
         byte[] pdfBytes = (esFacturaArca && autorizada) ? BuildArcaPdf(v, cfg!) : _pdfService.GenerarPdfBytes(v, cfg, qr, combosMapPub);
@@ -815,8 +832,7 @@ public class CafeVentasController : ControllerBase
             // 2026-06-08: combosMap para PDF
             var comboIdsM = v.Items.Where(x => x.ComboOrigenId.HasValue).Select(x => x.ComboOrigenId!.Value).Distinct().ToList();
             var combosMapM = comboIdsM.Count > 0
-                ? await _db.Set<CafeCombo>().Where(c => comboIdsM.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => (c.Nombre, c.Sku))
-                : null;
+                ? await BuildCombosMapAsync(comboIdsM) : null;
             await HydrateCfgFromEmisorAsync(cfg);
             pdfBytes = _pdfService.GenerarPdfBytes(v, cfg, qr, combosMapM);
         }
@@ -893,8 +909,7 @@ public class CafeVentasController : ControllerBase
             // 2026-06-08: combosMap para PDF
             var comboIdsW = v.Items.Where(x => x.ComboOrigenId.HasValue).Select(x => x.ComboOrigenId!.Value).Distinct().ToList();
             var combosMapW = comboIdsW.Count > 0
-                ? await _db.Set<CafeCombo>().Where(c => comboIdsW.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => (c.Nombre, c.Sku))
-                : null;
+                ? await BuildCombosMapAsync(comboIdsW) : null;
             await HydrateCfgFromEmisorAsync(cfg);
             pdfBytes = _pdfService.GenerarPdfBytes(v, cfg, qr, combosMapW);
         }
@@ -1377,8 +1392,7 @@ public class CafeVentasController : ControllerBase
         // 2026-06-08: combosMap para agrupar items de combos en el PDF (1 sola línea por combo)
         var comboIdsPrev = ventaPreview.Items.Where(x => x.ComboOrigenId.HasValue).Select(x => x.ComboOrigenId!.Value).Distinct().ToList();
         var combosMapPrev = comboIdsPrev.Count > 0
-            ? await _db.Set<CafeCombo>().Where(c => comboIdsPrev.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => (c.Nombre, c.Sku))
-            : null;
+            ? await BuildCombosMapAsync(comboIdsPrev) : null;
         await HydrateCfgFromEmisorAsync(cfg);
         var bytes = _pdfService.GenerarPdfBytes(ventaPreview, cfg, null, combosMapPrev);
         return File(bytes, "application/pdf", "preview.pdf");
