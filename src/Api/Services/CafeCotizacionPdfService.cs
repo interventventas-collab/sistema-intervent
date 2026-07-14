@@ -6,6 +6,11 @@ using System.Globalization;
 
 namespace Api.Services;
 
+/// <summary>2026-07-14: info del combo para el PDF. CantPorProducto = ProductoId → cuántas unidades
+/// de ese producto entran en UN (1) combo (la "receta"). Sirve para calcular cuántos combos se cargaron
+/// (piezas guardadas ÷ piezas por combo) y mostrar la cantidad real en vez de "1".</summary>
+public record ComboPdfInfo(string Nombre, string? Sku, Dictionary<int, int> CantPorProducto);
+
 /// <summary>
 /// Generador puro del PDF de cotizaciones / proformas / remitos del módulo Café.
 /// NO toca ARCA, NO toca el ArcaInvoicePdfService. Solo recibe la venta + los
@@ -37,7 +42,7 @@ public class CafeCotizacionPdfService
     /// mismo combo en UNA sola línea en el PDF (lo que ve el cliente). Si es null, los items se muestran
     /// desglosados como antes (ventas viejas sin ComboOrigenId también se ven igual).</summary>
     public byte[] GenerarPdfBytes(CafeVenta v, CafeSetting? cfg, byte[]? qrRepartidor,
-                                  Dictionary<int, (string Nombre, string? Sku)>? combosMap)
+                                  Dictionary<int, ComboPdfInfo>? combosMap)
     {
         cfg ??= new CafeSetting();
         var tipoLetra = TipoComprobanteCorto(v.TipoComprobante);
@@ -689,7 +694,7 @@ public class CafeCotizacionPdfService
     ///   determinar. El precio unitario mostrado = Subtotal del grupo / packs.
     /// El fallback de nombre/sku usa el primer item del grupo si combosMap no resuelve el ComboId.</summary>
     private static List<PresentationRow> BuildPresentationRows(CafeVenta v,
-        Dictionary<int, (string Nombre, string? Sku)>? combosMap)
+        Dictionary<int, ComboPdfInfo>? combosMap)
     {
         var rows = new List<PresentationRow>();
         // Mantener el orden original (insercion). Usamos un dict para agrupar pero recordamos el
@@ -714,25 +719,41 @@ public class CafeCotizacionPdfService
                 if (grupoYaEmitido.Contains(k)) continue;
                 grupoYaEmitido.Add(k);
                 var gItems = grupos[k];
-                // Resolver nombre/sku del combo (combosMap > ComboOrigenNav > fallback)
+                // Resolver nombre/sku + receta del combo (combosMap > ComboOrigenNav > fallback)
                 string nombreCombo;
                 string? skuCombo;
-                if (combosMap != null && combosMap.TryGetValue(k, out var c)) { nombreCombo = c.Nombre; skuCombo = c.Sku; }
+                Dictionary<int, int>? recetaCombo = null;
+                if (combosMap != null && combosMap.TryGetValue(k, out var c)) { nombreCombo = c.Nombre; skuCombo = c.Sku; recetaCombo = c.CantPorProducto; }
                 else if (gItems[0].ComboOrigenNav is not null) { nombreCombo = gItems[0].ComboOrigenNav!.Nombre; skuCombo = gItems[0].ComboOrigenNav!.Sku; }
                 else { nombreCombo = gItems[0].ProductoNombreSnapshot; skuCombo = null; }
 
-                // Asumo 1 pack del combo. Si el operador cargó N packs, se reflejará en las cantidades
-                // individuales (todas multiplicadas por N) pero como agrupamos por suma, queda una sola
-                // fila de cantidad 1 con el subtotal correcto. Esto es lo MÁS SEGURO para no romper
-                // ARCA — el monto y la descripción siempre cuadran.
+                var subtotalCombo = gItems.Sum(x => x.Subtotal);
+
+                // 2026-07-14: cuántos combos se cargaron = piezas guardadas ÷ piezas por combo (la "receta").
+                // Ej: combo "1 recipiente + 1 tapa", si se guardaron 3 recipientes + 3 tapas → 3 combos.
+                // Antes esto estaba fijo en 1 y mostraba "1" aunque hubieras cargado 3. El monto no cambia:
+                // el subtotal del grupo es el mismo, solo repartimos Cant × PrecioUnitario para que cuadre.
+                int nCombos = 1;
+                if (recetaCombo is not null && recetaCombo.Count > 0)
+                {
+                    var ratios = gItems
+                        .Where(x => x.ProductoId.HasValue
+                                 && recetaCombo.TryGetValue(x.ProductoId.Value, out var dq) && dq > 0)
+                        .Select(x => x.Cantidad / recetaCombo[x.ProductoId!.Value])
+                        .Where(r => r > 0)
+                        .ToList();
+                    if (ratios.Count > 0) nCombos = ratios.Min();
+                }
+
                 rows.Add(new PresentationRow
                 {
-                    CantPrint = 1,
+                    CantPrint = nCombos,
                     Sku = skuCombo,
                     Nombre = nombreCombo,
                     FmtPrint = "Combo",
-                    Subtotal = gItems.Sum(x => x.Subtotal),
-                    PrecioPrint = gItems.Sum(x => x.Subtotal),  // mismo subtotal ya que cantidad=1
+                    Subtotal = subtotalCombo,
+                    // Precio unitario del combo = subtotal ÷ cantidad de combos (así Cant × P.Unit = Subtotal).
+                    PrecioPrint = nCombos > 0 ? Math.Round(subtotalCombo / nCombos, 2, MidpointRounding.AwayFromZero) : subtotalCombo,
                     DescuentoPct = 0,   // descuento se considera ya aplicado en el Subtotal acumulado
                     Molienda = null,
                     EsDoyPack = false,
