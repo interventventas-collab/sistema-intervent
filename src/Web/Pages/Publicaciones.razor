@@ -643,7 +643,7 @@
                                                 <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                             }
                                             @AjusteChipPrecio(item)
-                                            @MargenChipPrecio(item) @SincroToggle(item)
+                                            @MargenChipPrecio(item) @SincroToggle(item)@CuentaResumidaLinea(item)
                                         }
                                         else
                                         {
@@ -943,7 +943,7 @@
                                             <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                         }
                                         @AjusteChipPrecio(item)
-                                        @MargenChipPrecio(item) @SincroToggle(item)
+                                        @MargenChipPrecio(item) @SincroToggle(item)@CuentaResumidaLinea(item)
                                     </td>
                                         <td style="text-align: center; font-weight: 700;">
                                         @if (item.ProductCriticalStock.HasValue && item.ProductCriticalStock.Value > 0 && item.AvailableQuantity <= item.ProductCriticalStock.Value)
@@ -1059,7 +1059,7 @@
                                             <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                         }
                                         @AjusteChipPrecio(item)
-                                        @MargenChipPrecio(item) @SincroToggle(item)
+                                        @MargenChipPrecio(item) @SincroToggle(item)@CuentaResumidaLinea(item)
                                     </td>
                                             <td style="text-align: center; font-weight: 700;">
                                         @if (item.ProductCriticalStock.HasValue && item.ProductCriticalStock.Value > 0 && item.AvailableQuantity <= item.ProductCriticalStock.Value)
@@ -1122,7 +1122,7 @@
                                             <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                         }
                                         @AjusteChipPrecio(item)
-                                        @MargenChipPrecio(item) @SincroToggle(item)
+                                        @MargenChipPrecio(item) @SincroToggle(item)@CuentaResumidaLinea(item)
                                     </td>
                                         <td style="text-align: center; font-weight: 700;">
                                         @if (item.ProductCriticalStock.HasValue && item.ProductCriticalStock.Value > 0 && item.AvailableQuantity <= item.ProductCriticalStock.Value)
@@ -6896,6 +6896,29 @@
 
     /// <summary>2026-06-01: chip de margen estimado (sobre costo) debajo del precio.
     /// Solo se muestra si el item tiene producto linkeado con costo cargado.</summary>
+    // 2026-07-14 (Etapa 2): línea chica con la cuenta resumida (publicado − MeLi − envío − IVA − costo).
+    // Solo se muestra si tenemos la comisión REAL fresca (mismo criterio que el margen), para no mostrar estimados.
+    private RenderFragment CuentaResumidaLinea(MeliItemDto item) => @<text>
+        @if (item.ProductCost.HasValue && item.ProductCost.Value > 0
+             && item.SaleFeeAmountReal.HasValue && item.SaleFeeAmountReal.Value > 0
+             && item.SaleFeePriceSnapshot.HasValue
+             && Math.Abs(item.Price - item.SaleFeePriceSnapshot.Value) / Math.Max(item.Price, 1m) < 0.05m)
+        {
+            var _comision = item.SaleFeeAmountReal.Value;
+            var _comPct = item.Price > 0 ? _comision / item.Price * 100m : 0m;
+            var _envio = item.SaleFeeShippingCost ?? 0m;
+            var _neto = item.Price - _comision - _envio;
+            var _iva = _neto - _neto / 1.21m;
+            <div style="font-size:0.62rem; color:#9ca3af; margin-top:2px; line-height:1.45; white-space:nowrap;">
+                pub <strong style="color:#6b7280;">$@item.Price.ToString("N0", argCulture)</strong>
+                · MeLi <span style="color:#b91c1c;">−$@_comision.ToString("N0", argCulture)</span> (@_comPct.ToString("0.#", argCulture)%)
+                @if (_envio > 0) { <span> · envío <span style="color:#b91c1c;">−$@_envio.ToString("N0", argCulture)</span></span> }
+                · IVA <span style="color:#b91c1c;">−$@_iva.ToString("N0", argCulture)</span>
+                · costo <span style="color:#b91c1c;">−$@item.ProductCost.Value.ToString("N0", argCulture)</span>
+            </div>
+        }
+    </text>;
+
     private RenderFragment MargenChipPrecio(MeliItemDto item) => __builder =>
     {
         var pct = CalcMargenPct(item);
