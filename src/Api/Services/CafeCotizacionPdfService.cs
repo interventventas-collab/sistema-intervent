@@ -419,16 +419,19 @@ public class CafeCotizacionPdfService
                         {
                             c.Item().Row(r =>
                             {
-                                r.RelativeItem().Text(proformaConIva ? "Subtotal (neto sin IVA):" : "Subtotal:").FontSize(9);
-                                r.AutoItem().Text("$ " + v.Subtotal.ToString("N2", Es)).SemiBold().FontSize(9);
+                                // 2026-07-14: el Subtotal muestra el precio de LISTA (bruto, antes del descuento),
+                                // así "Subtotal − Bonificación = Total" cierra. Si no hay descuento, bruto == neto.
+                                r.RelativeItem().Text(proformaConIva ? "Subtotal (sin IVA):" : "Subtotal:").FontSize(9);
+                                r.AutoItem().Text("$ " + (v.Subtotal + totalBonificacion).ToString("N2", Es)).SemiBold().FontSize(9);
                             });
                             // 2026-07-14: total de bonificación (suma de descuentos por renglón), estilo Contabilium.
+                            // Se muestra como RESTA para que la cuenta cierre (Subtotal bruto − Bonificación = neto).
                             if (totalBonificacion > 0.01m)
                             {
                                 c.Item().Row(r =>
                                 {
-                                    r.RelativeItem().Text("Bonificación:").FontSize(9);
-                                    r.AutoItem().Text("$ " + totalBonificacion.ToString("N2", Es)).SemiBold().FontSize(9);
+                                    r.RelativeItem().Text("Bonificación:").FontSize(9).FontColor(Colors.Red.Darken1);
+                                    r.AutoItem().Text("− $ " + totalBonificacion.ToString("N2", Es)).FontColor(Colors.Red.Darken1).FontSize(9);
                                 });
                             }
                             if (v.Descuento > 0)
