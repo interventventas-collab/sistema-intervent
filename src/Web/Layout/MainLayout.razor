@@ -155,6 +155,12 @@
         padding: 1px 5px; border-radius: 999px; margin-left: 4px; line-height: 1.4;
         animation: calcnuevo 1s ease-in-out infinite;
     }
+    /* Botón CALCUPRECIOS: relleno rosa llamativo para que resalte entre los grises */
+    .calcuprecios-btn { background: #db2777 !important; color: #fff !important; font-weight: 700; }
+    .calcuprecios-btn:hover { background: #be185d !important; }
+    .calcuprecios-btn .topbar-nav-modern-ico,
+    .calcuprecios-btn .topbar-nav-modern-ico svg { color: #fff !important; }
+    .calcuprecios-btn .calc-nuevo-badge { background: #fff; color: #be185d; }
     @@keyframes calcnuevo { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
     .topbar-nav-modern-ico {
         font-size: 1.1rem;
@@ -1344,11 +1350,11 @@
                     <span class="topbar-nav-modern-ico">@SvgIcons.Shield</span>
                     <span>BOVEDA CONT</span>
                 </button>
-                <button class="topbar-nav-modern"
+                <button class="topbar-nav-modern calcuprecios-btn"
                         @onclick="OpenCalcFromNav"
-                        title="Calculadora de precios (buscar costo y sugerido)">
+                        title="CalcuPrecios — buscar costo y precio sugerido">
                     <span class="topbar-nav-modern-ico">@SvgIcons.Calculator</span>
-                    <span>Calculadora</span>
+                    <span>CALCUPRECIOS</span>
                     @if (calcNuevoBadge)
                     {
                         <span class="calc-nuevo-badge">nuevo</span>
