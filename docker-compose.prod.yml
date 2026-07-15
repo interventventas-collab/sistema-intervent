@@ -112,10 +112,29 @@ services:
       - "80"
     volumes:
       - ./nginx/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+      # App del amigo electricista (C.S.E) — archivo estatico autonomo servido en /electricista
+      - ./presupuestos-electricista/sistema-cse.html:/usr/share/nginx/html/electricista/index.html:ro
+      - ./presupuestos-electricista/armador-presupuestos-cse.html:/usr/share/nginx/html/electricista/armador.html:ro
     networks:
       - aiml-prod-net
     depends_on:
       - api-prod
+    restart: unless-stopped
+
+  # --- App del amigo electricista (C.S.E): backend propio + SQLite, separado de INTER VENT ---
+  electri-api:
+    build:
+      context: ./electricista-nube/Api
+      dockerfile: Dockerfile
+    container_name: aiml-electri-prod
+    expose:
+      - "8080"
+    environment:
+      - DB_PATH=/data/electricista.db
+    volumes:
+      - electri_prod_data:/data
+    networks:
+      - aiml-prod-net
     restart: unless-stopped
 
   # --- Caddy (reverse proxy + HTTPS automatico) ---
@@ -169,3 +188,4 @@ volumes:
   wa_uploads_prod:
   caddy_data:
   caddy_config:
+  electri_prod_data:

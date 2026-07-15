@@ -1045,3 +1045,24 @@ public class ConvertirAFacturaRequest
     /// <summary>2026-07-03: certificado/CUIT con el que se factura (multi-sociedad). Null = default.</summary>
     public int? ArcaWebserviceAccountId { get; set; }
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// 2026-07-14: Borradores de venta COMPARTIDOS (servidor, hasta 10)
+// ════════════════════════════════════════════════════════════════════════
+public record BorradorServerDto(
+    int Id,
+    string? ClienteNombre,
+    int ItemsCount,
+    decimal Total,
+    string? CreadoPorOperador,
+    DateTime UpdatedAt,
+    string PayloadJson);
+
+public class SaveBorradorRequest
+{
+    /// <summary>Snapshot del formulario de Nueva Venta serializado a JSON.</summary>
+    public string PayloadJson { get; set; } = "";
+    public string? ClienteNombre { get; set; }
+    public int ItemsCount { get; set; }
+    public decimal Total { get; set; }
+}

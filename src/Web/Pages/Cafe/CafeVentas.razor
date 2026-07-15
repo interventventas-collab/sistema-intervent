@@ -973,29 +973,36 @@
                    para el panel derecho — la columna izq lleva padding-right para que no se solape. *@
                 <div style="position: relative;">
                 <div style="min-width: 0; padding-right: 360px;">
-                @* Banner de borrador pendiente — aparece sólo si hay un auto-guardado de sesión previa *@
-                @if (borradorBannerVisible && pendingBorrador is not null && !editingVentaId.HasValue)
+                @* 2026-07-14: Borradores del EQUIPO (servidor, hasta 10). Cualquiera los retoma. *@
+                @if (borradorBannerVisible && teamBorradores.Count > 0 && !editingVentaId.HasValue)
                 {
-                    <div style="background:#fffbeb; border:2px solid #f59e0b; border-radius:8px; padding:0.7rem 1rem; margin-bottom:0.8rem; display:flex; align-items:center; gap:0.8rem; flex-wrap:wrap;">
-                        <div style="font-size:1.4rem;">💾</div>
-                        <div style="flex:1; min-width: 220px;">
-                            <div style="font-weight:700; color:#78350f;">Tenés un borrador guardado</div>
-                            <div style="font-size:0.82rem; color:#78350f;">
-                                @if (!string.IsNullOrWhiteSpace(pendingBorrador.ClienteNombreSnap))
-                                {
-                                    <span><strong>@pendingBorrador.ClienteNombreSnap</strong> · </span>
-                                }
-                                <span>@pendingBorrador.ItemsCount producto@(pendingBorrador.ItemsCount == 1 ? "" : "s")</span>
-                                @if (pendingBorrador.TotalCalc > 0)
-                                {
-                                    <span> · Total: $@pendingBorrador.TotalCalc.ToString("N2")</span>
-                                }
-                                <span> · Guardado @(((int)(DateTime.UtcNow - pendingBorrador.SavedAt).TotalMinutes)) min atrás</span>
-                            </div>
+                    <div style="background:#fffbeb; border:2px solid #f59e0b; border-radius:8px; padding:0.7rem 1rem; margin-bottom:0.8rem;">
+                        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
+                            <span style="font-size:1.2rem;">💾</span>
+                            <span style="font-weight:700; color:#78350f;">Borradores guardados del equipo (@teamBorradores.Count/10)</span>
+                            <button class="btn btn-secondary btn-sm" style="margin-left:auto;" @onclick="@(() => { borradorBannerVisible = false; })">✕ Ocultar</button>
                         </div>
-                        <button class="btn btn-primary btn-sm" @onclick="CargarBorradorAsync">📂 Cargar borrador</button>
-                        <button class="btn btn-secondary btn-sm" @onclick="DiscardBorradorAsync" style="background:#fee2e2; color:#991b1b; border-color:#fca5a5;">🗑 Descartar</button>
-                        <button class="btn btn-secondary btn-sm" @onclick="@(() => { borradorBannerVisible = false; })">✕ Ignorar</button>
+                        <div style="display:flex; flex-direction:column; gap:0.4rem;">
+                            @foreach (var bd in teamBorradores)
+                            {
+                                var bdId = bd.Id;
+                                <div style="display:flex; align-items:center; gap:0.6rem; background:white; border:1px solid #fcd34d; border-radius:6px; padding:0.4rem 0.6rem; flex-wrap:wrap;">
+                                    <div style="flex:1; min-width:200px; font-size:0.82rem; color:#78350f;">
+                                        @if (!string.IsNullOrWhiteSpace(bd.ClienteNombre))
+                                        {
+                                            <span><strong>@bd.ClienteNombre</strong> · </span>
+                                        }
+                                        else { <span><strong>Sin cliente</strong> · </span> }
+                                        <span>@bd.ItemsCount producto@(bd.ItemsCount == 1 ? "" : "s")</span>
+                                        @if (bd.Total > 0) { <span> · Total: $@bd.Total.ToString("N2")</span> }
+                                        @if (!string.IsNullOrWhiteSpace(bd.CreadoPorOperador)) { <span> · por @bd.CreadoPorOperador</span> }
+                                        <span style="color:#a16207;"> · @(((int)(DateTime.UtcNow - bd.UpdatedAt).TotalMinutes)) min atrás</span>
+                                    </div>
+                                    <button class="btn btn-primary btn-sm" @onclick="@(() => CargarBorradorServerAsync(bd))">📂 Retomar</button>
+                                    <button class="btn btn-secondary btn-sm" style="background:#fee2e2; color:#991b1b; border-color:#fca5a5;" @onclick="@(() => DiscardBorradorServerAsync(bdId))">🗑</button>
+                                </div>
+                            }
+                        </div>
                     </div>
                 }
                 @if (!string.IsNullOrEmpty(formError))
@@ -2578,6 +2585,15 @@
                         </div>
                         <div style="display: flex; gap: 0.4rem; align-items: center; justify-content: flex-end;">
                             <button class="btn btn-secondary" tabindex="-1" @onclick="CloseForm" disabled="@saving">Cancelar</button>
+                            @* 2026-07-14: parkear la venta como borrador compartido y empezar otra limpia *@
+                            @if (!editingVentaId.HasValue)
+                            {
+                                <button class="btn btn-secondary" tabindex="-1" @onclick="GuardarYEmpezarOtraAsync" disabled="@saving"
+                                        style="background:#eff6ff; color:#1d4ed8; border-color:#93c5fd;"
+                                        title="Guarda esta venta como borrador (lo ve todo el equipo) y te abre una venta nueva">
+                                    💾 Guardar y empezar otra
+                                </button>
+                            }
                             <button class="btn btn-secondary" tabindex="-1" @onclick="PreviewPdf" disabled="@(saving || previewLoading || formItems.Count == 0 || cotizacion?.TodoOk != true)"
                                     title="Ver cómo quedaría el PDF sin guardar la venta">
                                 @(previewLoading ? "⏳..." : "👁 PDF")
@@ -5461,11 +5477,12 @@
         envioDrive = string.Equals(Operator.Current ?? "", "OSMAR", StringComparison.OrdinalIgnoreCase);
         formError = null; showForm = true;
         _focusClienteAtNextRender = true;
+        // 2026-07-14: form nuevo y limpio → arranca SIN borrador asociado (el próximo auto-save crea uno).
+        currentBorradorServerId = null;
 
-        // Chequear si hay borrador local guardado (auto-save de sesión previa).
-        // Si existe, lo cargamos en `pendingBorrador` y el banner del modal lo ofrece.
+        // Traer la lista de borradores del equipo (servidor) para ofrecer retomar alguno.
         // Fire-and-forget para mantener ShowCreate sync y no romper call sites existentes.
-        _ = CheckBorradorPendienteAsync();
+        _ = LoadTeamBorradoresAsync();
     }
 
     /// <summary>EN RADAR cubre LUN a SAB (no DOM — DOM es caso particular separado).</summary>
@@ -5489,10 +5506,14 @@
     // El form se guarda solo cada X segundos mientras el operario tipea.
     // Si cierra la ventana sin emitir, al volver a abrir Nueva Venta aparece un
     // banner ofreciendo "Cargar borrador". Al emitir con éxito se borra solo.
-    private const string BorradorKey = "cafe_venta_borrador_v1";
+    // 2026-07-14: los borradores ahora viven en el SERVIDOR (compartidos por el equipo, hasta 10).
+    // currentBorradorServerId = el borrador que representa el form actual (se actualiza en cada
+    // auto-save y se borra al emitir). teamBorradores = la lista del equipo para retomar.
     private DateTime? lastBorradorSavedAt;
-    private CafeVentaBorrador? pendingBorrador;  // si != null, mostramos banner en el modal
+    private int? currentBorradorServerId;
+    private List<BorradorServerDto> teamBorradores = new();
     private bool borradorBannerVisible;
+    private bool borradorSaving;  // evita crear duplicados si el auto-save corre en paralelo
 
     /// <summary>Snapshot serializable del form. Se guarda en localStorage.</summary>
     public class CafeVentaBorrador
@@ -5572,54 +5593,113 @@
         };
     }
 
-    /// <summary>Guarda el snapshot a localStorage. Solo si hay algo cargado (cliente o items),
-    /// para no guardar borradores vacíos basura.</summary>
+    /// <summary>Arma el request de guardado desde el snapshot actual del form.</summary>
+    private SaveBorradorRequest BuildBorradorRequest()
+    {
+        var snap = BuildBorradorSnapshot();
+        return new SaveBorradorRequest
+        {
+            PayloadJson = System.Text.Json.JsonSerializer.Serialize(snap),
+            ClienteNombre = snap.ClienteNombreSnap,
+            ItemsCount = snap.ItemsCount,
+            Total = snap.TotalCalc
+        };
+    }
+
+    /// <summary>Auto-guarda el form en el SERVIDOR (borrador compartido). Crea uno la primera vez
+    /// y después lo actualiza. Solo si hay algo cargado, para no guardar borradores vacíos.</summary>
     private async Task SaveBorradorAsync()
     {
         // No auto-guardar si estamos editando una venta existente (eso se guarda con "Guardar cambios")
         if (editingVentaId.HasValue) return;
-        // No guardar si no hay nada significativo cargado
         bool tieneAlgo = (formClienteId > 0) || (formItems?.Count ?? 0) > 0
                         || !string.IsNullOrWhiteSpace(formObservaciones) || modoVentaRapida;
         if (!tieneAlgo) return;
+        if (borradorSaving) return;  // ya hay un guardado en curso — evita duplicados
+        borradorSaving = true;
         try
         {
-            var snap = BuildBorradorSnapshot();
-            var json = System.Text.Json.JsonSerializer.Serialize(snap);
-            await JS.InvokeVoidAsync("localStorage.setItem", BorradorKey, json);
-            lastBorradorSavedAt = DateTime.UtcNow;
+            var req = BuildBorradorRequest();
+            if (currentBorradorServerId.HasValue)
+            {
+                var ok = await Api.UpdateBorradorAsync(currentBorradorServerId.Value, req);
+                if (!ok) currentBorradorServerId = null;  // se borró en otra PC — que se recree abajo
+            }
+            if (!currentBorradorServerId.HasValue)
+            {
+                var (id, _) = await Api.CreateBorradorAsync(req);  // si hay 10, id=null (no molestamos en auto-save)
+                currentBorradorServerId = id;
+            }
+            if (currentBorradorServerId.HasValue) lastBorradorSavedAt = DateTime.UtcNow;
         }
-        catch { /* localStorage puede fallar en private browsing — no romper la app */ }
+        catch { /* si el server no responde, no rompemos la carga de la venta */ }
+        finally { borradorSaving = false; }
     }
 
-    /// <summary>Lee el borrador de localStorage. Si existe, lo deja en pendingBorrador y
-    /// muestra el banner. Se llama al abrir el modal Nueva Venta.</summary>
-    private async Task CheckBorradorPendienteAsync()
+    /// <summary>Guarda el borrador actual y limpia el form para empezar una venta nueva
+    /// (botón "Guardar y empezar otra"). Si ya hay 10, avisa y no limpia.</summary>
+    private async Task GuardarYEmpezarOtraAsync()
+    {
+        bool tieneAlgo = (formClienteId > 0) || (formItems?.Count ?? 0) > 0 || modoVentaRapida;
+        if (!tieneAlgo) { ToastService.Error("Cargá un cliente o un producto antes de guardar el borrador"); return; }
+        var req = BuildBorradorRequest();
+        bool ok;
+        if (currentBorradorServerId.HasValue)
+        {
+            ok = await Api.UpdateBorradorAsync(currentBorradorServerId.Value, req);
+            if (!ok) { var (id, full) = await Api.CreateBorradorAsync(req); if (full) { ToastService.Error("Ya hay 10 borradores guardados. Descartá alguno primero."); return; } ok = id.HasValue; }
+        }
+        else
+        {
+            var (id, full) = await Api.CreateBorradorAsync(req);
+            if (full) { ToastService.Error("Ya hay 10 borradores guardados. Descartá alguno primero."); return; }
+            ok = id.HasValue;
+        }
+        if (!ok) { ToastService.Error("No se pudo guardar el borrador"); return; }
+        ToastService.Success("Borrador guardado ✅ — empezá otra venta");
+        ShowCreate();  // limpia el form + currentBorradorServerId = null
+        await LoadTeamBorradoresAsync();
+    }
+
+    /// <summary>Trae la lista de borradores del equipo (servidor). Se llama al abrir Nueva Venta.</summary>
+    private async Task LoadTeamBorradoresAsync()
     {
         try
         {
-            var json = await JS.InvokeAsync<string?>("localStorage.getItem", BorradorKey);
-            if (string.IsNullOrEmpty(json)) { pendingBorrador = null; borradorBannerVisible = false; return; }
-            var snap = System.Text.Json.JsonSerializer.Deserialize<CafeVentaBorrador>(json);
-            if (snap is null) return;
-            // Si el borrador es muy viejo (más de 24hs), lo descartamos solo
-            if ((DateTime.UtcNow - snap.SavedAt).TotalHours > 24)
-            {
-                await DiscardBorradorAsync();
-                return;
-            }
-            pendingBorrador = snap;
-            borradorBannerVisible = true;
+            var list = await Api.ListBorradoresAsync();
+            teamBorradores = list ?? new();
+            borradorBannerVisible = teamBorradores.Count > 0;
             StateHasChanged();
         }
-        catch { pendingBorrador = null; borradorBannerVisible = false; }
+        catch { teamBorradores = new(); borradorBannerVisible = false; }
     }
 
-    /// <summary>El operario tocó "Cargar borrador" — restaura todo el form desde el snapshot.</summary>
-    private async Task CargarBorradorAsync()
+    /// <summary>Retoma un borrador del equipo: lee su snapshot y lo carga en el form.</summary>
+    private async Task CargarBorradorServerAsync(BorradorServerDto dto)
     {
-        if (pendingBorrador is null) return;
-        var b = pendingBorrador;
+        CafeVentaBorrador? b = null;
+        try { b = System.Text.Json.JsonSerializer.Deserialize<CafeVentaBorrador>(dto.PayloadJson); } catch { }
+        if (b is null) { ToastService.Error("No se pudo leer el borrador"); return; }
+        AplicarBorradorSnapshot(b);
+        currentBorradorServerId = dto.Id;   // seguimos editando ESTE borrador
+        borradorBannerVisible = false;
+        ToastService.Success("Borrador retomado");
+        await Cotizar();
+    }
+
+    /// <summary>Descarta un borrador del equipo (lo borra del servidor).</summary>
+    private async Task DiscardBorradorServerAsync(int id)
+    {
+        try { await Api.DeleteBorradorAsync(id); } catch { }
+        if (currentBorradorServerId == id) currentBorradorServerId = null;
+        teamBorradores.RemoveAll(x => x.Id == id);
+        borradorBannerVisible = teamBorradores.Count > 0;
+        StateHasChanged();
+    }
+
+    /// <summary>Aplica un snapshot al form (restaura todos los campos).</summary>
+    private void AplicarBorradorSnapshot(CafeVentaBorrador b)
+    {
         formClienteId = b.FormClienteId;
         formClienteTipo = b.FormClienteTipo;
         formTipoComprobante = b.FormTipoComprobante;
@@ -5641,19 +5721,16 @@
         vrNombre = b.VrNombre; vrRazonSocial = b.VrRazonSocial; vrCuit = b.VrCuit;
         vrDireccion = b.VrDireccion; vrLocalidad = b.VrLocalidad; vrCiudad = b.VrCiudad;
         vrCp = b.VrCp; vrTelefono = b.VrTelefono; vrDomicilioEntrega = b.VrDomicilioEntrega;
-        borradorBannerVisible = false;
-        ToastService.Success("Borrador cargado");
-        // Re-cotizar para que aparezca el total
-        await Cotizar();
     }
 
-    /// <summary>Elimina el borrador de localStorage. Se llama al emitir, al descartar manual,
-    /// o cuando el borrador es muy viejo.</summary>
+    /// <summary>Borra del servidor el borrador del form actual (al emitir con éxito).</summary>
     private async Task DiscardBorradorAsync()
     {
-        try { await JS.InvokeVoidAsync("localStorage.removeItem", BorradorKey); }
-        catch { }
-        pendingBorrador = null;
+        if (currentBorradorServerId.HasValue)
+        {
+            try { await Api.DeleteBorradorAsync(currentBorradorServerId.Value); } catch { }
+            currentBorradorServerId = null;
+        }
         borradorBannerVisible = false;
         lastBorradorSavedAt = null;
     }

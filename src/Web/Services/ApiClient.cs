@@ -1666,6 +1666,38 @@ public class ApiClient
     public async Task<CafeVentaDto?> CreateCafeVentaAsync(CreateCafeVentaRequest request)
         => await PostAsync<CafeVentaDto>("/api/cafe/ventas", request);
 
+    // ── 2026-07-14: Borradores de venta COMPARTIDOS (servidor, hasta 10) ──
+    public async Task<List<BorradorServerDto>?> ListBorradoresAsync()
+        => await GetAsync<List<BorradorServerDto>>("/api/cafe/borradores");
+
+    /// <summary>Crea un borrador. Devuelve (id, full): full=true si ya hay 10 (no se creó).</summary>
+    public async Task<(int? id, bool full)> CreateBorradorAsync(SaveBorradorRequest req)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync("/api/cafe/borradores", req);
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return (null, false); }
+        if (resp.StatusCode == HttpStatusCode.Conflict) return (null, true);
+        if (!resp.IsSuccessStatusCode) return (null, false);
+        try
+        {
+            var doc = await resp.Content.ReadFromJsonAsync<Dictionary<string, System.Text.Json.JsonElement>>();
+            if (doc != null && doc.TryGetValue("id", out var idEl) && idEl.TryGetInt32(out var id)) return (id, false);
+        }
+        catch { }
+        return (null, false);
+    }
+
+    public async Task<bool> UpdateBorradorAsync(int id, SaveBorradorRequest req)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PutAsJsonAsync($"/api/cafe/borradores/{id}", req);
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return false; }
+        return resp.IsSuccessStatusCode;
+    }
+
+    public async Task<bool> DeleteBorradorAsync(int id)
+        => await DeleteAsync($"/api/cafe/borradores/{id}");
+
     /// <summary>Asegura que la venta tenga un PublicToken (lo genera si no tiene)
     /// y devuelve el token, asi el frontend puede armar la URL publica.</summary>
     public async Task<string?> EnsurePublicTokenAsync(int id)

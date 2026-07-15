@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sistema C.S.E · Gestión</title>
+<style>
+  :root{
+    --negro:#15151a; --panel:#1e1e26; --amarillo:#f9c400; --amarillo2:#ffdd55;
+    --gris:#f4f4f6; --borde:#e2e2e8; --texto:#22232a; --muted:#8a8a95;
+    --verde:#1f9d55; --rojo:#d0453c; --azul:#2563c9; --naranja:#e08a00;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:var(--texto);background:#ececed;}
+  button{font-family:inherit;}
+  .hidden{display:none !important;}
+
+  /* ===== LOGIN ===== */
+  #login{position:fixed;inset:0;background:linear-gradient(135deg,#15151a,#2b2b36);display:flex;align-items:center;justify-content:center;z-index:100;}
+  .login-card{background:#fff;border-radius:16px;padding:34px 30px;width:340px;box-shadow:0 20px 60px rgba(0,0,0,.4);text-align:center;}
+  .login-card .logo{width:130px;margin:0 auto 10px;}
+  .login-card h1{font-size:19px;margin:6px 0 2px;}
+  .login-card p{color:var(--muted);font-size:13px;margin:0 0 20px;}
+  .login-card input{width:100%;padding:12px;border:1px solid var(--borde);border-radius:9px;font-size:15px;margin-bottom:12px;}
+  .login-card button{width:100%;padding:13px;border:0;border-radius:9px;background:var(--negro);color:#fff;font-weight:700;font-size:15px;cursor:pointer;}
+  .login-card button:hover{background:#000;}
+  .login-hint{font-size:12px;color:var(--muted);margin-top:14px;}
+  .login-err{color:var(--rojo);font-size:13px;font-weight:600;min-height:18px;margin-bottom:4px;}
+
+  /* ===== LAYOUT APP ===== */
+  #app{display:flex;min-height:100vh;}
+  .side{width:230px;background:var(--negro);color:#cfcfd6;flex:0 0 auto;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;}
+  .side .brand{padding:18px 18px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #2c2c36;}
+  .side .brand .r{color:var(--amarillo);font-size:22px;}
+  .side .brand b{color:#fff;font-size:15px;letter-spacing:1px;}
+  .nav{padding:10px 8px;flex:1;overflow:auto;}
+  .nav a{display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:9px;color:#cfcfd6;text-decoration:none;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:2px;}
+  .nav a:hover{background:#2a2a34;color:#fff;}
+  .nav a.active{background:var(--amarillo);color:#15151a;}
+  .nav .ic{width:20px;text-align:center;font-size:16px;}
+  .side .foot{padding:12px;border-top:1px solid #2c2c36;font-size:12px;color:#8a8a95;}
+  .side .foot button{width:100%;background:#2a2a34;color:#fff;border:0;padding:9px;border-radius:8px;cursor:pointer;font-weight:600;}
+
+  .main{flex:1;min-width:0;}
+  .topbar{background:#fff;border-bottom:1px solid var(--borde);padding:14px 26px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:10;}
+  .topbar h2{margin:0;font-size:18px;flex:1;}
+  .content{padding:24px 26px;max-width:1200px;}
+
+  /* botones */
+  .btn{border:0;border-radius:9px;padding:10px 16px;font-weight:700;font-size:14px;cursor:pointer;color:#fff;display:inline-flex;align-items:center;gap:7px;}
+  .btn-amar{background:var(--amarillo);color:#15151a;}
+  .btn-neg{background:var(--negro);}
+  .btn-verde{background:var(--verde);}
+  .btn-rojo{background:var(--rojo);}
+  .btn-azul{background:var(--azul);}
+  .btn-gris{background:#e6e6ea;color:#333;}
+  .btn:hover{filter:brightness(1.06);}
+  .btn-sm{padding:6px 11px;font-size:12.5px;border-radius:7px;}
+
+  /* cards / stats */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:22px;}
+  .stat{background:#fff;border-radius:14px;padding:18px;box-shadow:0 3px 12px rgba(0,0,0,.06);}
+  .stat .lbl{color:var(--muted);font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px;}
+  .stat .val{font-size:27px;font-weight:800;margin-top:6px;}
+  .stat .val.chico{font-size:20px;}
+  .card{background:#fff;border-radius:14px;padding:20px;box-shadow:0 3px 12px rgba(0,0,0,.06);margin-bottom:22px;}
+  .card h3{margin:0 0 14px;font-size:16px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:22px;}
+  @media(max-width:900px){.grid2{grid-template-columns:1fr;} .side{width:64px;} .side .brand b,.nav a span.txt,.side .foot{display:none;} .nav a{justify-content:center;}}
+
+  /* tablas */
+  table.tbl{width:100%;border-collapse:collapse;font-size:14px;}
+  table.tbl th{text-align:left;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.4px;padding:9px 10px;border-bottom:2px solid var(--borde);}
+  table.tbl td{padding:11px 10px;border-bottom:1px solid var(--borde);}
+  table.tbl tr:hover td{background:#fafafb;}
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;}
+  .b-pend{background:#fff3d6;color:#9a6b00;}
+  .b-aprob{background:#d9f5e3;color:#0f7a3d;}
+  .b-rech{background:#fbe0dd;color:#a32b22;}
+  .b-bajo{background:#fbe0dd;color:#a32b22;}
+  .b-ok{background:#d9f5e3;color:#0f7a3d;}
+  .muted{color:var(--muted);}
+  .empty{text-align:center;color:var(--muted);padding:34px;font-size:14px;}
+
+  /* forms */
+  .campo{margin-bottom:14px;}
+  .campo label{display:block;font-size:13px;font-weight:700;margin-bottom:5px;}
+  .campo input,.campo select,.campo textarea{width:100%;padding:10px;border:1px solid var(--borde);border-radius:8px;font-size:14px;font-family:inherit;}
+  .campo textarea{min-height:60px;resize:vertical;}
+  .fila{display:grid;gap:12px;}
+  .f2{grid-template-columns:1fr 1fr;}
+  .f3{grid-template-columns:1fr 1fr 1fr;}
+  @media(max-width:700px){.f2,.f3{grid-template-columns:1fr;}}
+
+  /* modal */
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;z-index:60;overflow:auto;}
+  .modal{background:#fff;border-radius:14px;padding:24px;width:560px;max-width:100%;box-shadow:0 20px 60px rgba(0,0,0,.4);}
+  .modal h3{margin:0 0 16px;}
+  .modal .acc{display:flex;gap:10px;justify-content:flex-end;margin-top:18px;}
+
+  /* renglones presupuesto */
+  .reng{border:1px solid var(--borde);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--gris);}
+  .reng .r1{display:grid;grid-template-columns:70px 1fr;gap:8px;}
+  .reng .r2{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px;align-items:end;}
+  .reng .ml{font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px;}
+  .reng .quitar{background:none;border:0;color:var(--rojo);font-weight:700;cursor:pointer;font-size:12px;margin-top:6px;}
+  .add-reng{width:100%;padding:11px;border:2px dashed var(--borde);background:#fff;border-radius:10px;font-weight:700;cursor:pointer;font-size:14px;}
+  .add-reng:hover{border-color:var(--amarillo);background:#fffbe9;}
+
+  /* gráficos */
+  .leyenda{display:flex;flex-direction:column;gap:8px;justify-content:center;}
+  .leyenda div{display:flex;align-items:center;gap:8px;font-size:13px;}
+  .leyenda .pt{width:12px;height:12px;border-radius:3px;}
+
+  /* ===== DOCUMENTO IMPRIMIBLE ===== */
+  #printArea{display:none;}
+  @media print{
+    body *{visibility:hidden;}
+    #printArea,#printArea *{visibility:visible;}
+    #printArea{display:block;position:absolute;inset:0;}
+    @page{size:A4;margin:12mm;}
+  }
+  .doc{color:#1a1a1a;font-size:12.5px;line-height:1.5;font-family:Arial,sans-serif;}
+  .doc .fecha{text-align:center;font-weight:700;margin-bottom:14px;text-transform:capitalize;}
+  .doc .cab{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;}
+  .doc .cab .logo{width:170px;}.doc .cab .logo img{max-width:100%;}
+  .doc .cab .cont div{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-weight:600;font-size:12.5px;}
+  .doc h1{font-size:19px;margin:16px 0 12px;border-bottom:2px solid #111;display:inline-block;padding-bottom:2px;}
+  .doc .dato{margin-bottom:5px;}.doc .dato .k{background:var(--amarillo);padding:1px 6px;font-weight:800;border-radius:3px;}
+  .doc table{width:100%;border-collapse:collapse;margin:14px 0;font-size:12px;}
+  .doc table th,.doc table td{border:1px solid #333;padding:5px 7px;}
+  .doc table th{background:#f0f0f0;text-align:center;}
+  .doc table td.c{text-align:center;}.doc table td.r{text-align:right;white-space:nowrap;}
+  .doc .trow td{font-weight:800;background:var(--amarillo);}
+  .doc .cap{font-weight:800;text-transform:uppercase;font-size:12px;background:var(--amarillo);display:inline-block;padding:2px 8px;border-radius:3px;margin:14px 0 8px;}
+  .doc ol{margin:0 0 6px;padding-left:22px;}.doc ol li{margin-bottom:6px;}
+  .doc .grande{font-size:14px;font-weight:800;}
+  .doc .pie{margin-top:24px;text-align:center;font-size:11px;color:#888;border-top:1px solid #ddd;padding-top:8px;}
+</style>
+</head>
+<body>
+
+<!-- ================= LOGIN ================= -->
+<div id="login">
+  <div class="login-card">
+    <div class="logo" id="loginLogo"></div>
+    <h1>Sistema C.S.E</h1>
+    <p>Caldeira Servicio Eléctrico</p>
+    <div class="login-err" id="loginErr"></div>
+    <input id="luser" placeholder="Usuario" autocomplete="username">
+    <input id="lpass" type="password" placeholder="Contraseña" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()">
+    <button onclick="login()">Ingresar</button>
+    <div class="login-hint">Usuario: <b>admin</b> · Clave: <b>1234</b><br>(se puede cambiar después)</div>
+  </div>
+</div>
+
+<!-- ================= APP ================= -->
+<div id="app" class="hidden">
+  <aside class="side">
+    <div class="brand"><span class="r">⚡</span><b>C.S.E</b></div>
+    <nav class="nav" id="nav">
+      <a data-v="dashboard" class="active"><span class="ic">📊</span><span class="txt">Tablero</span></a>
+      <a data-v="presupuestos"><span class="ic">🧾</span><span class="txt">Presupuestos</span></a>
+      <a data-v="clientes"><span class="ic">👥</span><span class="txt">Clientes</span></a>
+      <a data-v="servicios"><span class="ic">🔧</span><span class="txt">Servicios</span></a>
+      <a data-v="productos"><span class="ic">📦</span><span class="txt">Productos / Stock</span></a>
+      <a data-v="config"><span class="ic">⚙️</span><span class="txt">Configuración</span></a>
+    </nav>
+    <div class="foot">
+      <button onclick="logout()">🔒 Cerrar sesión</button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <h2 id="titulo">Tablero</h2>
+      <button class="btn btn-amar" id="accionTop" onclick="accionTop()"></button>
+    </div>
+    <div class="content" id="content"></div>
+  </div>
+</div>
+
+<div id="printArea"></div>
+
+<script>
+/* =================== MARCA / DATOS FIJOS =================== */
+const LOGO_DEFAULT=`<svg viewBox="0 0 260 120" xmlns="http://www.w3.org/2000/svg">
+<polygon points="70,5 130,5 105,52 140,52 55,115 78,58 48,58" fill="#f9c400" stroke="#111" stroke-width="2"/>
+<rect x="20" y="28" width="150" height="52" fill="none" stroke="#111" stroke-width="7"/>
+<text x="95" y="68" font-family="Arial Black,Arial" font-size="40" font-weight="900" fill="#111" text-anchor="middle" letter-spacing="2">C.S.E</text>
+<text x="18" y="70" font-size="26" fill="#c0322b" font-weight="900">+</text>
+<text x="95" y="100" font-family="Arial" font-size="12.5" font-weight="700" fill="#111" text-anchor="middle">CALDEIRA SERVICIO ELÉCTRICO</text></svg>`;
+
+/* =================== ESTADO / STORAGE =================== */
+const KEY='cse_sistema_v1';
+let DB=null;
+function nuevoDB(){
+  return {
+    usuario:{user:'admin',pass:'1234'},
+    config:{
+      logo:null,
+      instagram:'Caldeira.servi.electrico',
+      whatsapp:'11 2505 2932',
+      mail:'caldeira.servicioelectrico@gmail.com',
+      zona:'P.B.A, Esteban Echeverría',
+      proximoNumero:1
+    },
+    clientes:[], servicios:[], productos:[], presupuestos:[]
+  };
+}
+function cargar(){ try{DB=JSON.parse(localStorage.getItem(KEY))||nuevoDB();}catch(e){DB=nuevoDB();} if(!DB.config)DB=nuevoDB(); }
+function guardar(){ localStorage.setItem(KEY,JSON.stringify(DB)); }
+function uid(){ return 'id'+(Math.floor(performance.now()*1000)).toString(36)+Math.floor(Math.random()*1e6).toString(36); }
+
+/* =================== UTILS =================== */
+function $(id){return document.getElementById(id);}
+function num(v){v=parseFloat(v);return isNaN(v)?0:v;}
+function money(n){return '$ '+Math.round(n).toLocaleString('es-AR');}
+function money2(n){return '$ '+n.toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:2});}
+function esc(s){return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function nl2br(s){return esc(s).replace(/\n/g,'<br>');}
+function fechaLarga(iso){if(!iso)return '';const d=new Date(iso+'T00:00:00');const di=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];const me=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];return `${di[d.getDay()]}, ${d.getDate()} de ${me[d.getMonth()]} de ${d.getFullYear()}`;}
+function fechaCorta(iso){if(!iso)return '';const d=new Date(iso+'T00:00:00');return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();}
+function hoyISO(){const d=new Date();return d.toISOString().slice(0,10);}
+function logoHTML(){return DB.config.logo?`<img src="${DB.config.logo}">`:LOGO_DEFAULT;}
+function clienteNombre(id){const c=DB.clientes.find(c=>c.id===id);return c?c.nombre:'—';}
+function totalPres(p){const mo=(p.items||[]).reduce((a,it)=>a+num(it.cant)*num(it.unit),0);return {mo, mat:num(p.materiales), total:mo+num(p.materiales)};}
+
+/* =================== LOGIN =================== */
+function login(){
+  const u=$('luser').value.trim(), p=$('lpass').value;
+  if(u===DB.usuario.user && p===DB.usuario.pass){
+    $('login').classList.add('hidden'); $('app').classList.remove('hidden');
+    sessionStorage.setItem('cse_logueado','1'); ir('dashboard');
+  }else{ $('loginErr').textContent='Usuario o contraseña incorrectos.'; }
+}
+function logout(){ sessionStorage.removeItem('cse_logueado'); $('app').classList.add('hidden'); $('login').classList.remove('hidden'); $('lpass').value=''; }
+
+/* =================== ROUTER =================== */
+let VISTA='dashboard';
+const TITULOS={dashboard:'Tablero',presupuestos:'Presupuestos',clientes:'Clientes',servicios:'Servicios',productos:'Productos / Stock',config:'Configuración'};
+const ACC={dashboard:'',presupuestos:'➕ Nuevo presupuesto',clientes:'➕ Nuevo cliente',servicios:'➕ Nuevo servicio',productos:'➕ Nuevo producto',config:''};
+function ir(v){
+  VISTA=v;
+  document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('active',a.dataset.v===v));
+  $('titulo').textContent=TITULOS[v];
+  const acc=$('accionTop'); acc.textContent=ACC[v]||''; acc.style.display=ACC[v]?'inline-flex':'none';
+  ({dashboard:vDashboard,presupuestos:vPresupuestos,clientes:vClientes,servicios:vServicios,productos:vProductos,config:vConfig}[v])();
+}
+function accionTop(){
+  if(VISTA==='presupuestos') abrirPresupuesto();
+  else if(VISTA==='clientes') modalCliente();
+  else if(VISTA==='servicios') modalServicio();
+  else if(VISTA==='productos') modalProducto();
+}
+
+/* =================== DASHBOARD =================== */
+function vDashboard(){
+  const ps=DB.presupuestos;
+  const aprob=ps.filter(p=>p.estado==='aprobado');
+  const pend=ps.filter(p=>p.estado==='pendiente');
+  const rech=ps.filter(p=>p.estado==='rechazado');
+  const montoAprob=aprob.reduce((a,p)=>a+totalPres(p).total,0);
+  const montoPend=pend.reduce((a,p)=>a+totalPres(p).total,0);
+  const bajos=DB.productos.filter(p=>num(p.stock)<=num(p.stockMin||0)&&num(p.stockMin||0)>0);
+
+  let html=`<div class="stats">
+    <div class="stat"><div class="lbl">🧾 Trabajos / Presupuestos</div><div class="val">${ps.length}</div></div>
+    <div class="stat"><div class="lbl">✅ Aprobados</div><div class="val" style="color:var(--verde)">${aprob.length}</div></div>
+    <div class="stat"><div class="lbl">⏳ Pendientes</div><div class="val" style="color:var(--naranja)">${pend.length}</div></div>
+    <div class="stat"><div class="lbl">💰 Facturado (aprobados)</div><div class="val chico">${money(montoAprob)}</div></div>
+  </div>`;
+
+  html+=`<div class="grid2">
+    <div class="card"><h3>Presupuestos por estado</h3>${donut([
+        {label:'Aprobados',value:aprob.length,color:'#1f9d55'},
+        {label:'Pendientes',value:pend.length,color:'#e08a00'},
+        {label:'Rechazados',value:rech.length,color:'#d0453c'}
+      ])}</div>
+    <div class="card"><h3>Monto por estado</h3>${barras([
+        {label:'Aprobado',value:montoAprob,color:'#1f9d55'},
+        {label:'Pendiente',value:montoPend,color:'#e08a00'}
+      ])}</div>
+  </div>`;
+
+  // últimos presupuestos
+  html+=`<div class="card"><h3>Últimos presupuestos</h3>`;
+  if(!ps.length){ html+=`<div class="empty">Todavía no cargaste presupuestos.<br><br><button class="btn btn-amar" onclick="datosDemo()">✨ Cargar datos de ejemplo para probar</button></div>`; }
+  else{
+    const ult=[...ps].reverse().slice(0,6);
+    html+=tablaPres(ult);
+  }
+  html+=`</div>`;
+
+  if(bajos.length){
+    html+=`<div class="card"><h3>⚠️ Stock bajo</h3><table class="tbl"><tr><th>Producto</th><th>Stock</th><th>Mínimo</th></tr>`;
+    bajos.forEach(p=>html+=`<tr><td>${esc(p.nombre)}</td><td><span class="badge b-bajo">${p.stock}</span></td><td>${p.stockMin}</td></tr>`);
+    html+=`</table></div>`;
+  }
+  $('content').innerHTML=html;
+}
+
+/* gráfico donut (SVG puro) */
+function donut(segs){
+  const tot=segs.reduce((a,s)=>a+s.value,0);
+  if(!tot) return `<div class="empty">Sin datos todavía</div>`;
+  let acc=0, paths='';
+  const R=52,C=60,sw=22;
+  segs.forEach(s=>{
+    if(s.value<=0)return;
+    const frac=s.value/tot, start=acc*2*Math.PI-Math.PI/2; acc+=frac; const end=acc*2*Math.PI-Math.PI/2;
+    const large=frac>0.5?1:0;
+    const x1=C+R*Math.cos(start),y1=C+R*Math.sin(start),x2=C+R*Math.cos(end),y2=C+R*Math.sin(end);
+    if(frac>=0.999){ paths+=`<circle cx="${C}" cy="${C}" r="${R}" fill="none" stroke="${s.color}" stroke-width="${sw}"/>`; }
+    else paths+=`<path d="M ${x1} ${y1} A ${R} ${R} 0 ${large} 1 ${x2} ${y2}" fill="none" stroke="${s.color}" stroke-width="${sw}"/>`;
+  });
+  let ley=segs.map(s=>`<div><span class="pt" style="background:${s.color}"></span>${s.label}: <b>&nbsp;${s.value}</b></div>`).join('');
+  return `<div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">
+    <svg width="120" height="120" viewBox="0 0 120 120">${paths}<text x="60" y="66" text-anchor="middle" font-size="22" font-weight="800">${tot}</text></svg>
+    <div class="leyenda">${ley}</div></div>`;
+}
+/* gráfico barras */
+function barras(items){
+  const max=Math.max(1,...items.map(i=>i.value));
+  let bars=items.map(i=>{
+    const w=Math.round(i.value/max*100);
+    return `<div style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>${i.label}</span><b>${money(i.value)}</b></div>
+      <div style="background:#eee;border-radius:6px;height:16px;overflow:hidden"><div style="width:${w}%;height:100%;background:${i.color}"></div></div>
+    </div>`;
+  }).join('');
+  return `<div style="padding-top:6px">${bars}</div>`;
+}
+
+function tablaPres(list){
+  let h=`<table class="tbl"><tr><th>N°</th><th>Fecha</th><th>Cliente</th><th>Trabajo</th><th>Total</th><th>Estado</th><th></th></tr>`;
+  list.forEach(p=>{
+    const t=totalPres(p);
+    h+=`<tr>
+      <td><b>${p.numero}</b></td>
+      <td>${fechaCorta(p.fecha)}</td>
+      <td>${esc(clienteNombre(p.clienteId))}</td>
+      <td>${esc(p.titulo)}</td>
+      <td>${money(t.total)}</td>
+      <td>${badgeEstado(p.estado)}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn btn-gris btn-sm" onclick="imprimirPres('${p.id}')">🖨️</button>
+        <button class="btn btn-gris btn-sm" onclick="abrirPresupuesto('${p.id}')">✏️</button>
+      </td>
+    </tr>`;
+  });
+  return h+`</table>`;
+}
+function badgeEstado(e){return e==='aprobado'?'<span class="badge b-aprob">Aprobado</span>':e==='rechazado'?'<span class="badge b-rech">Rechazado</span>':'<span class="badge b-pend">Pendiente</span>';}
+
+/* =================== PRESUPUESTOS (lista) =================== */
+function vPresupuestos(){
+  const ps=[...DB.presupuestos].reverse();
+  let html=`<div class="card">`;
+  if(!ps.length){ html+=`<div class="empty">No hay presupuestos.<br><br><button class="btn btn-amar" onclick="abrirPresupuesto()">➕ Crear el primero</button> &nbsp; <button class="btn btn-gris" onclick="datosDemo()">✨ Datos de ejemplo</button></div>`; }
+  else{
+    html+=`<table class="tbl"><tr><th>N°</th><th>Fecha</th><th>Cliente</th><th>Trabajo</th><th>Total</th><th>Estado</th><th></th></tr>`;
+    ps.forEach(p=>{
+      const t=totalPres(p);
+      html+=`<tr>
+        <td><b>${p.numero}</b></td><td>${fechaCorta(p.fecha)}</td>
+        <td>${esc(clienteNombre(p.clienteId))}</td><td>${esc(p.titulo)}</td>
+        <td>${money(t.total)}</td><td>${badgeEstado(p.estado)}</td>
+        <td style="text-align:right;white-space:nowrap">
+          ${p.estado!=='aprobado'?`<button class="btn btn-verde btn-sm" onclick="cambiarEstado('${p.id}','aprobado')">Aprobar</button>`:''}
+          ${p.estado!=='rechazado'?`<button class="btn btn-rojo btn-sm" onclick="cambiarEstado('${p.id}','rechazado')">Rechazar</button>`:''}
+          <button class="btn btn-gris btn-sm" onclick="imprimirPres('${p.id}')">🖨️ PDF</button>
+          <button class="btn btn-gris btn-sm" onclick="abrirPresupuesto('${p.id}')">✏️</button>
+          <button class="btn btn-gris btn-sm" onclick="borrarPres('${p.id}')">🗑️</button>
+        </td>
+      </tr>`;
+    });
+    html+=`</table>`;
+  }
+  html+=`</div>`;
+  $('content').innerHTML=html;
+}
+function cambiarEstado(id,e){ const p=DB.presupuestos.find(p=>p.id===id); if(!p)return; p.estado=e; guardar(); ir(VISTA); }
+function borrarPres(id){ if(!confirm('¿Borrar este presupuesto?'))return; DB.presupuestos=DB.presupuestos.filter(p=>p.id!==id); guardar(); ir('presupuestos'); }
+
+/* =================== EDITOR DE PRESUPUESTO =================== */
+let DRAFT=null;
+function abrirPresupuesto(id){
+  if(id){ DRAFT=JSON.parse(JSON.stringify(DB.presupuestos.find(p=>p.id===id))); }
+  else{
+    DRAFT={id:null,numero:DB.config.proximoNumero,fecha:hoyISO(),clienteId:'',titulo:'',
+      items:[{cant:1,desc:'',unit:0,detalle:''}],materiales:0,mostrarIVA:true,
+      cobros:'Para comenzar el trabajo se necesita un adelanto del 40% de la mano de obra.\nLa 2° cuota será cobrada al finalizar el trabajo.',
+      ejecucion:'Jornada de trabajo de 8:00 a 15:30 hs (aprox).\nSe estima un total de 4 días.',
+      adicionales:'Los trabajos que sean necesarios realizar y no estén en el presupuesto se sumarán al mismo, previamente hablado con el cliente.',
+      garantia:'5',estado:'pendiente'};
+  }
+  $('titulo').textContent=id?('Editar presupuesto N° '+DRAFT.numero):('Nuevo presupuesto N° '+DRAFT.numero);
+  $('accionTop').style.display='none';
+  document.querySelectorAll('#nav a').forEach(a=>a.classList.remove('active'));
+  renderEditor();
+}
+function renderEditor(){
+  const opcC=DB.clientes.map(c=>`<option value="${c.id}" ${c.id===DRAFT.clienteId?'selected':''}>${esc(c.nombre)}</option>`).join('');
+  let html=`<div class="card">
+    <div class="fila f3">
+      <div class="campo"><label>Fecha</label><input type="date" value="${DRAFT.fecha}" oninput="DRAFT.fecha=this.value"></div>
+      <div class="campo"><label>Cliente</label><select onchange="DRAFT.clienteId=this.value">
+        <option value="">— Elegí un cliente —</option>${opcC}
+      </select></div>
+      <div class="campo"><label>&nbsp;</label><button class="btn btn-gris" style="width:100%" onclick="modalCliente(null,true)">➕ Cliente nuevo</button></div>
+    </div>
+    <div class="campo"><label>Detalle del trabajo (título)</label><input value="${esc(DRAFT.titulo)}" placeholder="Ej: Refacción" oninput="DRAFT.titulo=this.value"></div>
+  </div>
+
+  <div class="card"><h3>Mano de obra</h3><div id="rengs"></div>
+    <button class="add-reng" onclick="draftAdd()">➕ Agregar renglón</button>
+    <div style="margin-top:10px" class="muted" id="subMO"></div>
+  </div>
+
+  <div class="card"><h3>Materiales y cobros</h3>
+    <div class="fila f2">
+      <div class="campo"><label>Total de materiales ($)</label><input type="number" min="0" step="0.01" value="${DRAFT.materiales}" oninput="DRAFT.materiales=this.value;calcTotales()"></div>
+      <div class="campo"><label>&nbsp;</label><label style="display:flex;gap:8px;align-items:center;font-weight:600"><input type="checkbox" style="width:auto" ${DRAFT.mostrarIVA?'checked':''} onchange="DRAFT.mostrarIVA=this.checked;calcTotales()"> Mostrar Factura A/B (+21%)</label></div>
+    </div>
+    <div id="totales" style="font-size:15px;font-weight:700;margin:6px 0"></div>
+    <div class="campo"><label>Condiciones de cobro</label><textarea oninput="DRAFT.cobros=this.value">${esc(DRAFT.cobros)}</textarea></div>
+  </div>
+
+  <div class="card"><h3>Ejecución y garantía</h3>
+    <div class="campo"><label>Ejecución del trabajo</label><textarea oninput="DRAFT.ejecucion=this.value">${esc(DRAFT.ejecucion)}</textarea></div>
+    <div class="campo"><label>Adicionales</label><textarea oninput="DRAFT.adicionales=this.value">${esc(DRAFT.adicionales)}</textarea></div>
+    <div class="fila f2">
+      <div class="campo"><label>Garantía mano de obra</label><select onchange="DRAFT.garantia=this.value">
+        ${['3','5','8'].map(a=>`<option value="${a}" ${DRAFT.garantia===a?'selected':''}>${a} años</option>`).join('')}
+      </select></div>
+      <div class="campo"><label>Estado</label><select onchange="DRAFT.estado=this.value">
+        ${[['pendiente','Pendiente'],['aprobado','Aprobado'],['rechazado','Rechazado']].map(e=>`<option value="${e[0]}" ${DRAFT.estado===e[0]?'selected':''}>${e[1]}</option>`).join('')}
+      </select></div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:12px;margin-bottom:30px">
+    <button class="btn btn-verde" onclick="guardarPres()">💾 Guardar presupuesto</button>
+    <button class="btn btn-azul" onclick="guardarPres(true)">💾 Guardar e imprimir PDF</button>
+    <button class="btn btn-gris" onclick="ir('presupuestos')">Cancelar</button>
+  </div>`;
+  $('content').innerHTML=html;
+  pintarRengs(); calcTotales();
+}
+function pintarRengs(){
+  const cont=$('rengs'); cont.innerHTML='';
+  const opcS=DB.servicios.map(s=>`<option value="serv:${s.id}">🔧 ${esc(s.nombre)} (${money(s.precio)})</option>`).join('');
+  const opcP=DB.productos.map(p=>`<option value="prod:${p.id}">📦 ${esc(p.nombre)} (${money(p.precio)})</option>`).join('');
+  DRAFT.items.forEach((it,i)=>{
+    const sub=num(it.cant)*num(it.unit);
+    const d=document.createElement('div'); d.className='reng';
+    d.innerHTML=`
+      <div class="r1">
+        <div><span class="ml">Cant.</span><input type="number" min="0" value="${it.cant}" oninput="DRAFT.items[${i}].cant=this.value;calcTotales();subRow(${i})"></div>
+        <div><span class="ml">Descripción</span><input value="${esc(it.desc)}" placeholder="Ej: Instalación de artefactos" oninput="DRAFT.items[${i}].desc=this.value"></div>
+      </div>
+      <div class="r2">
+        <div><span class="ml">Cargar desde catálogo</span><select onchange="draftDesde(${i},this.value);this.value=''">
+          <option value="">— elegir servicio/producto —</option>${opcS}${opcP}
+        </select></div>
+        <div><span class="ml">Precio unitario ($)</span><input type="number" min="0" step="0.01" value="${it.unit}" oninput="DRAFT.items[${i}].unit=this.value;calcTotales();subRow(${i})"></div>
+        <div><span class="ml">Subtotal</span><input id="sub${i}" value="${money(sub)}" disabled></div>
+      </div>
+      <span class="ml" style="margin-top:8px">Detalle puntual (opcional)</span>
+      <textarea placeholder="Explicá en qué consiste este ítem..." oninput="DRAFT.items[${i}].detalle=this.value">${esc(it.detalle)}</textarea>
+      <button class="quitar" onclick="draftQuitar(${i})">✕ Quitar renglón</button>`;
+    cont.appendChild(d);
+  });
+}
+function subRow(i){const it=DRAFT.items[i];const el=$('sub'+i);if(el)el.value=money(num(it.cant)*num(it.unit));}
+function draftAdd(){DRAFT.items.push({cant:1,desc:'',unit:0,detalle:''});pintarRengs();calcTotales();}
+function draftQuitar(i){DRAFT.items.splice(i,1);pintarRengs();calcTotales();}
+function draftDesde(i,val){
+  if(!val)return; const [tipo,id]=val.split(':');
+  if(tipo==='serv'){const s=DB.servicios.find(s=>s.id===id);if(s){DRAFT.items[i].desc=s.nombre;DRAFT.items[i].unit=s.precio;if(s.descripcion&&!DRAFT.items[i].detalle)DRAFT.items[i].detalle=s.descripcion;}}
+  else{const p=DB.productos.find(p=>p.id===id);if(p){DRAFT.items[i].desc=p.nombre;DRAFT.items[i].unit=p.precio;}}
+  pintarRengs();calcTotales();
+}
+function calcTotales(){
+  const mo=DRAFT.items.reduce((a,it)=>a+num(it.cant)*num(it.unit),0);
+  const mat=num(DRAFT.materiales); const total=mo+mat;
+  $('subMO').textContent='Subtotal mano de obra: '+money(mo);
+  let t=`Mano de obra: ${money(mo)} &nbsp;·&nbsp; Materiales: ${money(mat)} &nbsp;·&nbsp; <span style="color:var(--verde)">TOTAL: ${money(total)}</span>`;
+  if(DRAFT.mostrarIVA) t+=` &nbsp;·&nbsp; <span class="muted" style="font-weight:600">Factura A/B: ${money(total*1.21)}</span>`;
+  $('totales').innerHTML=t;
+}
+function guardarPres(imprimir){
+  if(!DRAFT.clienteId){alert('Elegí un cliente para el presupuesto.');return;}
+  if(DRAFT.id){ const i=DB.presupuestos.findIndex(p=>p.id===DRAFT.id); DB.presupuestos[i]=DRAFT; }
+  else{ DRAFT.id=uid(); DB.presupuestos.push(DRAFT); if(DRAFT.numero>=DB.config.proximoNumero)DB.config.proximoNumero=DRAFT.numero+1; }
+  guardar();
+  if(imprimir){ imprimirPres(DRAFT.id); }
+  ir('presupuestos');
+}
+
+/* =================== IMPRIMIR PRESUPUESTO =================== */
+function imprimirPres(id){
+  const p=DB.presupuestos.find(p=>p.id===id); if(!p)return;
+  const cl=DB.clientes.find(c=>c.id===p.clienteId)||{};
+  const t=totalPres(p);
+  let filas='';
+  p.items.forEach((it,i)=>{filas+=`<tr><td class="c">${i+1}</td><td class="c">${esc(it.cant)}</td><td>${esc(it.desc)}</td><td class="r">${money(num(it.unit))}</td><td class="r">${money(num(it.cant)*num(it.unit))}</td></tr>`;});
+  let puntual='';const cd=p.items.filter(it=>it.detalle&&it.detalle.trim());
+  if(cd.length){let lis='';p.items.forEach(it=>{if(it.detalle&&it.detalle.trim())lis+=`<li>${nl2br(it.detalle)}</li>`;});puntual=`<div class="cap">Detalle puntual</div><ol>${lis}</ol>`;}
+  $('printArea').innerHTML=`<div class="doc">
+    <div class="fecha">${fechaLarga(p.fecha)}</div>
+    <div class="cab"><div class="logo">${logoHTML()}</div>
+      <div class="cont">
+        <div>📷 ${esc(DB.config.instagram)}</div><div>🟢 ${esc(DB.config.whatsapp)}</div>
+        <div>✉️ ${esc(DB.config.mail)}</div><div>📍 ${esc(DB.config.zona)}</div>
+      </div></div>
+    <h1>PRESUPUESTO N° ${p.numero}</h1>
+    <div class="dato"><span class="k">CLIENTE</span>: ${esc(cl.nombre||'')}</div>
+    <div class="dato"><span class="k">DIRECCIÓN</span>: ${esc(cl.direccion||'')}</div>
+    <div class="dato"><span class="k">Detalle del trabajo</span>: ${esc(p.titulo)}</div>
+    <table><thead><tr><th>N°</th><th>Cant.</th><th>Descripción</th><th>Unitario</th><th>Subtotal</th></tr></thead>
+      <tbody>${filas}<tr class="trow"><td colspan="4" class="r">TOTAL MANO DE OBRA</td><td class="r">${money(t.mo)}</td></tr></tbody></table>
+    ${puntual}
+    <div class="cap">Cobros</div>
+    <p><b>MATERIALES:</b> ${money(t.mat)}</p><p><b>MANO DE OBRA:</b> ${money(t.mo)}</p>
+    <p class="grande">TOTAL: ${money(t.total)} <span style="font-weight:400;font-size:12px">(efectivo / transferencia)</span></p>
+    ${p.mostrarIVA?`<p><b>Factura A o B:</b> ${money(t.total*1.21)}</p>`:''}
+    <div style="margin-top:6px">${nl2br(p.cobros)}</div>
+    <div class="cap">Ejecución del trabajo</div><div>${nl2br(p.ejecucion)}</div>
+    <div class="cap">Adicionales</div><div>${nl2br(p.adicionales)}</div>
+    <div class="cap">Garantía</div>
+    <p><b>Mano de obra:</b> garantía de <b>${p.garantia} años</b> desde la fecha de finalización.</p>
+    <p><b>Materiales:</b> Los que establezca el fabricante.</p>
+    <div class="pie">C.S.E · Caldeira Servicio Eléctrico · ${esc(DB.config.whatsapp)} · ${esc(DB.config.mail)}</div>
+  </div>`;
+  window.print();
+}
+
+/* =================== CLIENTES =================== */
+function vClientes(){
+  let html=`<div class="card">`;
+  if(!DB.clientes.length) html+=`<div class="empty">No hay clientes cargados.<br><br><button class="btn btn-amar" onclick="modalCliente()">➕ Cargar cliente</button></div>`;
+  else{
+    html+=`<table class="tbl"><tr><th>Nombre</th><th>Dirección</th><th>Teléfono</th><th>Email</th><th></th></tr>`;
+    DB.clientes.forEach(c=>html+=`<tr><td><b>${esc(c.nombre)}</b></td><td>${esc(c.direccion)}</td><td>${esc(c.telefono)}</td><td>${esc(c.email)}</td>
+      <td style="text-align:right;white-space:nowrap"><button class="btn btn-gris btn-sm" onclick="modalCliente('${c.id}')">✏️</button> <button class="btn btn-gris btn-sm" onclick="borrarCliente('${c.id}')">🗑️</button></td></tr>`);
+    html+=`</table>`;
+  }
+  $('content').innerHTML=html+`</div>`;
+}
+function modalCliente(id,volverEditor){
+  const c=id?DB.clientes.find(c=>c.id===id):{nombre:'',direccion:'',telefono:'',email:'',notas:''};
+  abrirModal(id?'Editar cliente':'Nuevo cliente',`
+    <div class="campo"><label>Nombre *</label><input id="m_nombre" value="${esc(c.nombre)}"></div>
+    <div class="campo"><label>Dirección</label><input id="m_dir" value="${esc(c.direccion)}"></div>
+    <div class="fila f2"><div class="campo"><label>Teléfono</label><input id="m_tel" value="${esc(c.telefono)}"></div>
+    <div class="campo"><label>Email</label><input id="m_email" value="${esc(c.email)}"></div></div>
+    <div class="campo"><label>Notas</label><textarea id="m_notas">${esc(c.notas||'')}</textarea></div>
+  `,()=>{
+    const nombre=$('m_nombre').value.trim(); if(!nombre){alert('Poné un nombre.');return false;}
+    const data={nombre,direccion:$('m_dir').value,telefono:$('m_tel').value,email:$('m_email').value,notas:$('m_notas').value};
+    if(id){Object.assign(DB.clientes.find(c=>c.id===id),data);}
+    else{data.id=uid();DB.clientes.push(data);if(volverEditor)DRAFT.clienteId=data.id;}
+    guardar();
+    if(volverEditor)renderEditor(); else ir('clientes');
+    return true;
+  });
+}
+function borrarCliente(id){if(!confirm('¿Borrar este cliente?'))return;DB.clientes=DB.clientes.filter(c=>c.id!==id);guardar();ir('clientes');}
+
+/* =================== SERVICIOS =================== */
+function vServicios(){
+  let html=`<div class="card">`;
+  if(!DB.servicios.length) html+=`<div class="empty">No hay servicios cargados.<br><span class="muted">Son los trabajos de mano de obra que hacés seguido, con su precio.</span><br><br><button class="btn btn-amar" onclick="modalServicio()">➕ Cargar servicio</button></div>`;
+  else{
+    html+=`<table class="tbl"><tr><th>Servicio</th><th>Precio</th><th></th></tr>`;
+    DB.servicios.forEach(s=>html+=`<tr><td><b>${esc(s.nombre)}</b>${s.descripcion?`<br><span class="muted" style="font-size:12px">${esc(s.descripcion)}</span>`:''}</td><td>${money(s.precio)}</td>
+      <td style="text-align:right;white-space:nowrap"><button class="btn btn-gris btn-sm" onclick="modalServicio('${s.id}')">✏️</button> <button class="btn btn-gris btn-sm" onclick="borrarServicio('${s.id}')">🗑️</button></td></tr>`);
+    html+=`</table>`;
+  }
+  $('content').innerHTML=html+`</div>`;
+}
+function modalServicio(id){
+  const s=id?DB.servicios.find(s=>s.id===id):{nombre:'',precio:0,descripcion:''};
+  abrirModal(id?'Editar servicio':'Nuevo servicio',`
+    <div class="campo"><label>Nombre del servicio *</label><input id="m_nom" value="${esc(s.nombre)}" placeholder="Ej: Instalación de artefactos de iluminación"></div>
+    <div class="campo"><label>Precio ($)</label><input id="m_pre" type="number" min="0" step="0.01" value="${s.precio}"></div>
+    <div class="campo"><label>Descripción / detalle puntual (opcional)</label><textarea id="m_desc" placeholder="Se usa como 'detalle puntual' en el presupuesto">${esc(s.descripcion||'')}</textarea></div>
+  `,()=>{
+    const nombre=$('m_nom').value.trim(); if(!nombre){alert('Poné un nombre.');return false;}
+    const data={nombre,precio:num($('m_pre').value),descripcion:$('m_desc').value};
+    if(id)Object.assign(DB.servicios.find(s=>s.id===id),data); else{data.id=uid();DB.servicios.push(data);}
+    guardar();ir('servicios');return true;
+  });
+}
+function borrarServicio(id){if(!confirm('¿Borrar este servicio?'))return;DB.servicios=DB.servicios.filter(s=>s.id!==id);guardar();ir('servicios');}
+
+/* =================== PRODUCTOS / STOCK =================== */
+function vProductos(){
+  let html=`<div class="card">`;
+  if(!DB.productos.length) html+=`<div class="empty">No hay productos cargados.<br><span class="muted">Materiales que usás y querés controlar el stock.</span><br><br><button class="btn btn-amar" onclick="modalProducto()">➕ Cargar producto</button></div>`;
+  else{
+    html+=`<table class="tbl"><tr><th>Producto</th><th>Precio</th><th>Stock</th><th>Estado</th><th></th></tr>`;
+    DB.productos.forEach(p=>{
+      const bajo=num(p.stockMin)>0&&num(p.stock)<=num(p.stockMin);
+      html+=`<tr><td><b>${esc(p.nombre)}</b>${p.codigo?`<br><span class="muted" style="font-size:12px">Cód: ${esc(p.codigo)}</span>`:''}</td><td>${money(p.precio)}</td><td>${p.stock}</td>
+      <td>${bajo?'<span class="badge b-bajo">Stock bajo</span>':'<span class="badge b-ok">OK</span>'}</td>
+      <td style="text-align:right;white-space:nowrap"><button class="btn btn-gris btn-sm" onclick="modalProducto('${p.id}')">✏️</button> <button class="btn btn-gris btn-sm" onclick="borrarProducto('${p.id}')">🗑️</button></td></tr>`;
+    });
+    html+=`</table>`;
+  }
+  $('content').innerHTML=html+`</div>`;
+}
+function modalProducto(id){
+  const p=id?DB.productos.find(p=>p.id===id):{nombre:'',codigo:'',precio:0,stock:0,stockMin:0};
+  abrirModal(id?'Editar producto':'Nuevo producto',`
+    <div class="campo"><label>Nombre del producto *</label><input id="m_nom" value="${esc(p.nombre)}" placeholder="Ej: Cable 2.5mm"></div>
+    <div class="fila f2"><div class="campo"><label>Código (opcional)</label><input id="m_cod" value="${esc(p.codigo||'')}"></div>
+    <div class="campo"><label>Precio ($)</label><input id="m_pre" type="number" min="0" step="0.01" value="${p.precio}"></div></div>
+    <div class="fila f2"><div class="campo"><label>Stock actual</label><input id="m_stk" type="number" step="1" value="${p.stock}"></div>
+    <div class="campo"><label>Stock mínimo (avisa si baja)</label><input id="m_min" type="number" step="1" value="${p.stockMin||0}"></div></div>
+  `,()=>{
+    const nombre=$('m_nom').value.trim(); if(!nombre){alert('Poné un nombre.');return false;}
+    const data={nombre,codigo:$('m_cod').value,precio:num($('m_pre').value),stock:num($('m_stk').value),stockMin:num($('m_min').value)};
+    if(id)Object.assign(DB.productos.find(p=>p.id===id),data); else{data.id=uid();DB.productos.push(data);}
+    guardar();ir('productos');return true;
+  });
+}
+function borrarProducto(id){if(!confirm('¿Borrar este producto?'))return;DB.productos=DB.productos.filter(p=>p.id!==id);guardar();ir('productos');}
+
+/* =================== CONFIG =================== */
+function vConfig(){
+  const c=DB.config;
+  $('content').innerHTML=`
+  <div class="card"><h3>Datos de la marca (salen en el presupuesto)</h3>
+    <div class="fila f2">
+      <div class="campo"><label>Instagram</label><input id="c_ig" value="${esc(c.instagram)}"></div>
+      <div class="campo"><label>WhatsApp</label><input id="c_wa" value="${esc(c.whatsapp)}"></div>
+    </div>
+    <div class="fila f2">
+      <div class="campo"><label>Email</label><input id="c_mail" value="${esc(c.mail)}"></div>
+      <div class="campo"><label>Zona</label><input id="c_zona" value="${esc(c.zona)}"></div>
+    </div>
+    <button class="btn btn-verde" onclick="guardarConfig()">💾 Guardar datos</button>
+  </div>
+
+  <div class="card"><h3>Logo</h3>
+    <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+      <div style="width:130px;height:95px;border:1px solid var(--borde);border-radius:8px;display:flex;align-items:center;justify-content:center;padding:6px">${logoHTML()}</div>
+      <div><input type="file" accept="image/*" onchange="subirLogo(event)"><div class="muted" style="font-size:12px;margin-top:6px">Subí el logo real de C.S.E (PNG/JPG). Queda guardado.</div>
+      ${c.logo?`<br><button class="btn btn-gris btn-sm" onclick="DB.config.logo=null;guardar();ir('config')">Quitar logo</button>`:''}</div>
+    </div>
+  </div>
+
+  <div class="card"><h3>Usuario y contraseña</h3>
+    <div class="fila f2">
+      <div class="campo"><label>Usuario</label><input id="c_user" value="${esc(DB.usuario.user)}"></div>
+      <div class="campo"><label>Contraseña</label><input id="c_pass" value="${esc(DB.usuario.pass)}"></div>
+    </div>
+    <button class="btn btn-verde" onclick="guardarUsuario()">💾 Guardar acceso</button>
+  </div>
+
+  <div class="card"><h3>Numeración</h3>
+    <div class="campo"><label>Próximo N° de presupuesto</label><input id="c_num" type="number" min="1" value="${c.proximoNumero}"></div>
+    <button class="btn btn-verde" onclick="DB.config.proximoNumero=Math.max(1,num($('c_num').value));guardar();alert('Guardado')">💾 Guardar</button>
+  </div>
+
+  <div class="card"><h3>Datos</h3>
+    <button class="btn btn-azul" onclick="exportar()">⬇️ Descargar copia de seguridad</button>
+    <button class="btn btn-gris" onclick="$('impFile').click()">⬆️ Restaurar copia</button>
+    <input type="file" id="impFile" accept="application/json" class="hidden" onchange="importar(event)">
+    <button class="btn btn-rojo" onclick="borrarTodo()">🗑️ Borrar todos los datos</button>
+    <div class="muted" style="font-size:12px;margin-top:10px">La copia de seguridad es un archivo con todos tus clientes, productos y presupuestos. Guardalo por las dudas.</div>
+  </div>`;
+}
+function guardarConfig(){Object.assign(DB.config,{instagram:$('c_ig').value,whatsapp:$('c_wa').value,mail:$('c_mail').value,zona:$('c_zona').value});guardar();alert('Datos guardados');ir('config');}
+function guardarUsuario(){const u=$('c_user').value.trim(),p=$('c_pass').value;if(!u||!p){alert('Completá usuario y clave');return;}DB.usuario={user:u,pass:p};guardar();alert('Acceso actualizado');}
+function subirLogo(ev){const f=ev.target.files[0];if(!f)return;const r=new FileReader();r.onload=e=>{DB.config.logo=e.target.result;guardar();ir('config');};r.readAsDataURL(f);}
+function exportar(){const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='respaldo-cse.json';a.click();}
+function importar(ev){const f=ev.target.files[0];if(!f)return;const r=new FileReader();r.onload=e=>{try{DB=JSON.parse(e.target.result);guardar();alert('Copia restaurada');ir('dashboard');}catch(x){alert('El archivo no es válido');}};r.readAsText(f);}
+function borrarTodo(){if(!confirm('¿Borrar TODO? Esto no se puede deshacer.'))return;if(!confirm('¿Seguro? Se pierden clientes, productos y presupuestos.'))return;DB=nuevoDB();guardar();ir('dashboard');}
+
+/* =================== MODAL genérico =================== */
+let modalOnOk=null;
+function abrirModal(titulo,cuerpo,onOk){
+  modalOnOk=onOk;
+  const bg=document.createElement('div');bg.className='modal-bg';bg.id='modalBg';
+  bg.innerHTML=`<div class="modal"><h3>${titulo}</h3>${cuerpo}<div class="acc">
+    <button class="btn btn-gris" onclick="cerrarModal()">Cancelar</button>
+    <button class="btn btn-verde" onclick="okModal()">Guardar</button></div></div>`;
+  document.body.appendChild(bg);
+  bg.addEventListener('click',e=>{if(e.target===bg)cerrarModal();});
+}
+function cerrarModal(){const m=$('modalBg');if(m)m.remove();modalOnOk=null;}
+function okModal(){if(modalOnOk&&modalOnOk()!==false)cerrarModal();}
+
+/* =================== DATOS DE EJEMPLO =================== */
+function datosDemo(){
+  const c1=uid(),c2=uid(),c3=uid();
+  DB.clientes.push(
+    {id:c1,nombre:'Sebastián',direccion:'Becco 886',telefono:'11 4444 5555',email:'sebastian@mail.com',notas:''},
+    {id:c2,nombre:'YPF Camino de Cintura',direccion:'Camino de Cintura 1200',telefono:'11 3333 2222',email:'',notas:'Estación de servicio'},
+    {id:c3,nombre:'Administración Guemes',direccion:'Guemes 3722',telefono:'11 6666 7777',email:'',notas:'Edificio 18 unidades'});
+  DB.servicios.push(
+    {id:uid(),nombre:'Instalación de artefactos de iluminación',precio:64000,descripcion:'Instalación de artefactos varios de iluminación.'},
+    {id:uid(),nombre:'Instalación de cámaras de seguridad WiFi',precio:86000,descripcion:'Cámaras fijas y domo, con repetidores si hace falta.'},
+    {id:uid(),nombre:'Montaje y armado de tablero seccional',precio:230000,descripcion:'Montaje con protecciones y elementos de automatización.'},
+    {id:uid(),nombre:'Colocación de tira de LED',precio:110000,descripcion:'Tira de LED con fuente y tecla de encendido.'});
+  DB.productos.push(
+    {id:uid(),nombre:'Cable subterráneo 3x1.5mm',codigo:'EN31',precio:1854,stock:60,stockMin:20},
+    {id:uid(),nombre:'Caja empalme estanca IP68',codigo:'QQT8',precio:6873,stock:8,stockMin:10},
+    {id:uid(),nombre:'Termomagnética 2x16 6kA',codigo:'U7ZL',precio:6452,stock:15,stockMin:5},
+    {id:uid(),nombre:'Disyuntor diferencial 2x40 30mA',codigo:'U7ZD',precio:26652,stock:3,stockMin:4});
+  const s=DB.servicios;
+  DB.presupuestos.push(
+    {id:uid(),numero:1,fecha:hoyISO(),clienteId:c1,titulo:'Refacción',items:[
+      {cant:14,desc:s[0].nombre,unit:64000,detalle:s[0].descripcion},
+      {cant:3,desc:s[1].nombre,unit:86000,detalle:s[1].descripcion},
+      {cant:1,desc:s[2].nombre,unit:230000,detalle:s[2].descripcion}],
+      materiales:750080,mostrarIVA:true,cobros:'Adelanto del 40% para comenzar.',ejecucion:'4 días de trabajo.',adicionales:'Los adicionales se charlan con el cliente.',garantia:'3',estado:'aprobado'},
+    {id:uid(),numero:2,fecha:hoyISO(),clienteId:c2,titulo:'Instalación eléctrica del full',items:[
+      {cant:1,desc:s[2].nombre,unit:1645600,detalle:''},{cant:16,desc:'Bocas de tomacorriente',unit:108900,detalle:''}],
+      materiales:0,mostrarIVA:true,cobros:'20% - 40% - 40%.',ejecucion:'A coordinar.',adicionales:'',garantia:'5',estado:'pendiente'},
+    {id:uid(),numero:3,fecha:hoyISO(),clienteId:c3,titulo:'Cambio de montantes',items:[
+      {cant:45,desc:'Cambio de termomagnéticas 2x32',unit:48400,detalle:''}],
+      materiales:12285283,mostrarIVA:false,cobros:'10 cuotas.',ejecucion:'15 días.',adicionales:'',garantia:'8',estado:'rechazado'});
+  DB.config.proximoNumero=4;
+  guardar(); ir('dashboard');
+}
+
+/* =================== INICIO =================== */
+cargar();
+$('loginLogo').innerHTML=LOGO_DEFAULT;
+document.querySelectorAll('#nav a').forEach(a=>a.addEventListener('click',()=>ir(a.dataset.v)));
+if(sessionStorage.getItem('cse_logueado')){ $('login').classList.add('hidden'); $('app').classList.remove('hidden'); ir('dashboard'); }
+</script>
+</body>
+</html>

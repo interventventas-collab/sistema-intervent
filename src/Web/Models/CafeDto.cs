@@ -1774,3 +1774,23 @@ public class ItemDisponibleDto
     public decimal? PrecioOtro { get; set; }
     public string? Detalle { get; set; }
 }
+
+// 2026-07-14: borrador de venta compartido (servidor)
+public class BorradorServerDto
+{
+    public int Id { get; set; }
+    public string? ClienteNombre { get; set; }
+    public int ItemsCount { get; set; }
+    public decimal Total { get; set; }
+    public string? CreadoPorOperador { get; set; }
+    public DateTime UpdatedAt { get; set; }
+    public string PayloadJson { get; set; } = "";
+}
+
+public class SaveBorradorRequest
+{
+    public string PayloadJson { get; set; } = "";
+    public string? ClienteNombre { get; set; }
+    public int ItemsCount { get; set; }
+    public decimal Total { get; set; }
+}

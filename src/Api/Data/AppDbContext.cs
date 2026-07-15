@@ -100,6 +100,8 @@ public class AppDbContext : DbContext
     public DbSet<CafeSetting> CafeSettings => Set<CafeSetting>();
     public DbSet<CafeVenta> CafeVentas => Set<CafeVenta>();
     public DbSet<CafeVentaItem> CafeVentaItems => Set<CafeVentaItem>();
+    // 2026-07-14: borradores de venta compartidos (servidor, hasta 10)
+    public DbSet<CafeVentaBorradorServer> CafeVentaBorradores => Set<CafeVentaBorradorServer>();
     public DbSet<CafeVentaPreparacionLog> CafeVentaPreparacionLogs => Set<CafeVentaPreparacionLog>();
     public DbSet<CafeChequeBanco> CafeChequesBanco => Set<CafeChequeBanco>();
     public DbSet<CafeCalendarioNota> CafeCalendarioNotas => Set<CafeCalendarioNota>();
