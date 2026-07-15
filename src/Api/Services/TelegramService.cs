@@ -850,7 +850,8 @@ public class TelegramService
         "• ventas — cuánto vendiste hoy en MercadoLibre\n" +
         "• saldo — la plata en Mercado Pago\n" +
         "• shell — el saldo de la Shell Flota\n" +
-        "• alertas — tus alertas que están saltando\n\n" +
+        "• alertas — tus alertas que están saltando\n" +
+        "• precio C3622AZ — costo y sugerido de un producto\n\n" +
         "Y te voy avisando solo las ventas nuevas y las alertas.";
 
     private async Task<string> ResponderComandoAsync(string textoRaw, CancellationToken ct)
@@ -859,6 +860,17 @@ public class TelegramService
 
         if (t.StartsWith("/start") || t.Contains("hola") || t.Contains("ayuda") || t.Contains("menu") || t == "?")
             return Ayuda;
+        // "precio C3622AZ" / "costo F30" — se busca el código en el texto ORIGINAL (sin bajar a
+        // minúsculas) para no romper SKUs. Va antes que el resto para que gane el comando.
+        if (t.StartsWith("precio") || t.StartsWith("costo") || t.StartsWith("/precio") || t.StartsWith("/costo"))
+        {
+            var raw = textoRaw.Trim();
+            var sp = raw.IndexOf(' ');
+            var codigo = sp >= 0 ? raw.Substring(sp + 1).Trim() : "";
+            if (string.IsNullOrWhiteSpace(codigo))
+                return "🔎 Escribime el código así:\nprecio C3622AZ";
+            return await ResumenPrecioProductoAsync(codigo, ct);
+        }
         if (t.Contains("venta"))
             return await ResumenVentasHoyAsync(ct);
         if (t.Contains("saldo") || t.Contains("mercado pago") || t == "mp" || t.Contains("plata") || t.Contains("dinero"))
@@ -891,6 +903,56 @@ public class TelegramService
         if (cant == 0) return $"🛒 Hoy ({argNow:dd/MM}) todavía no hay ventas en MercadoLibre.";
         var plural = cant == 1 ? "venta" : "ventas";
         return $"🛒 Ventas de hoy ({argNow:dd/MM})\n\n{cant} {plural} · Total {Money(total)}";
+    }
+
+    /// <summary>Busca un producto por código (SKU) o nombre y devuelve costo sin IVA + sugerido.
+    /// Misma lógica que el buscador de la web (CafeConsultasController.BuscarPrecio): si tiene OEM,
+    /// el sugerido sale del OEM (con IVA → sin IVA); si no, muestra las listas Bar/Comercial.</summary>
+    private async Task<string> ResumenPrecioProductoAsync(string codigo, CancellationToken ct)
+    {
+        codigo = codigo.Trim();
+        var up = codigo.ToUpperInvariant();
+        var p = await _db.CafeProductos
+            .Include(x => x.OemNav)
+            .FirstOrDefaultAsync(x => x.Sku == codigo || x.Sku == up, ct);
+        if (p is null)
+        {
+            p = await _db.CafeProductos
+                .Include(x => x.OemNav)
+                .Where(x => (x.Sku != null && x.Sku.Contains(codigo)) || x.Nombre.Contains(codigo))
+                .OrderBy(x => x.Nombre)
+                .FirstOrDefaultAsync(ct);
+        }
+        if (p is null)
+            return $"🔎 No encontré ningún producto con «{codigo}».";
+
+        var iva = p.IvaPct > 0m ? p.IvaPct : 21m;
+        var lineas = new List<string>
+        {
+            $"🔎 {p.Nombre}",
+            $"SKU {p.Sku ?? "—"} · {p.Categoria}",
+            $"Costo sin IVA: {Money(p.Costo)}"
+        };
+
+        if (p.OemId.HasValue && p.OemNav?.PvpConIva is decimal pvpOem && pvpOem > 0m)
+        {
+            var mult = p.MultiplicadorOem is decimal m && m > 0m ? m : 1m;
+            var ivaOem = p.OemNav.IvaPct is decimal io && io > 0m ? io : 21m;
+            var conIva = Math.Round(pvpOem * mult, 2);
+            var sinIva = Math.Round(conIva / (1m + ivaOem / 100m), 2);
+            lineas.Add($"Sugerido: {Money(sinIva)}  (con IVA {Money(conIva)})");
+        }
+        else
+        {
+            var suf = p.Categoria == "CAFE" ? " (por kg)" : "";
+            var bar = p.PrecioBar ?? p.Pvp1 ?? p.PrecioPorKg;
+            var com = p.PrecioOtro ?? p.Pvp2 ?? p.PrecioPorKg;
+            if (bar.HasValue)
+                lineas.Add($"Precio Bar{suf}: {Money(bar.Value)}  (con IVA {Money(Math.Round(bar.Value * (1m + iva / 100m), 2))})");
+            if (com.HasValue)
+                lineas.Add($"Precio Comercial{suf}: {Money(com.Value)}  (con IVA {Money(Math.Round(com.Value * (1m + iva / 100m), 2))})");
+        }
+        return string.Join("\n", lineas);
     }
 
     private async Task<string> ResumenSaldoAsync(CancellationToken ct)

@@ -1846,6 +1846,10 @@
                         <td style="padding: 0.5rem 0;"><kbd style="@KbdStyle">N</kbd> <kbd style="@KbdStyle">C</kbd></td>
                         <td style="padding: 0.5rem 0;">💵 Nueva Cobranza</td>
                     </tr>
+                    <tr style="border-bottom: 1px solid #f3f4f6;">
+                        <td style="padding: 0.5rem 0;"><kbd style="@KbdStyle">N</kbd> <kbd style="@KbdStyle">K</kbd></td>
+                        <td style="padding: 0.5rem 0;">🧮 Calculadora de precios</td>
+                    </tr>
                     <tr>
                         <td style="padding: 0.5rem 0;"><kbd style="@KbdStyle">Ctrl</kbd> <kbd style="@KbdStyle">K</kbd></td>
                         <td style="padding: 0.5rem 0;">🔎 Buscador rápido</td>
@@ -2193,6 +2197,10 @@
         {
             showShortcutsHelp = !showShortcutsHelp;
             InvokeAsync(StateHasChanged);
+        }
+        else if (action == "calc")
+        {
+            _ = OpenCalcFromNav();
         }
         else
         {
