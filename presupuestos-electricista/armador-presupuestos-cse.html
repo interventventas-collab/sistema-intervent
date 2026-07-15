@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Armador de Presupuestos · C.S.E</title>
+<style>
+  :root{
+    --negro:#111;
+    --amarillo:#f9c400;
+    --amarillo-suave:#fff3c4;
+    --gris:#f4f4f5;
+    --gris-borde:#d9d9de;
+    --texto:#1c1c1e;
+    --verde:#25913f;
+    --azul:#1b64c9;
+    --rojo:#c0322b;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    color:var(--texto);
+    background:#e9e9ee;
+  }
+
+  /* ===== BARRA SUPERIOR ===== */
+  .toolbar{
+    position:sticky;top:0;z-index:50;
+    background:var(--negro);
+    color:#fff;
+    padding:10px 16px;
+    display:flex;gap:10px;flex-wrap:wrap;align-items:center;
+    box-shadow:0 2px 8px rgba(0,0,0,.25);
+  }
+  .toolbar .marca{font-weight:800;letter-spacing:1px;margin-right:auto;display:flex;align-items:center;gap:8px;}
+  .toolbar .marca .rayo{color:var(--amarillo);font-size:20px;}
+  .btn{
+    border:0;border-radius:8px;padding:10px 14px;font-size:14px;font-weight:700;
+    cursor:pointer;color:#fff;display:inline-flex;align-items:center;gap:6px;
+  }
+  .btn-print{background:var(--verde);}
+  .btn-wsp{background:#1f9d55;}
+  .btn-save{background:var(--azul);}
+  .btn-clear{background:#555;}
+  .btn:hover{filter:brightness(1.08);}
+
+  /* ===== LAYOUT ===== */
+  .wrap{
+    max-width:1500px;margin:0 auto;padding:18px;
+    display:grid;grid-template-columns:minmax(340px,460px) 1fr;gap:22px;
+    align-items:start;
+  }
+  @media(max-width:980px){ .wrap{grid-template-columns:1fr;} }
+
+  /* ===== FORMULARIO ===== */
+  .panel{background:#fff;border-radius:14px;box-shadow:0 4px 16px rgba(0,0,0,.08);padding:18px;}
+  .panel h2{margin:0 0 4px;font-size:17px;}
+  .panel .sub{color:#777;font-size:13px;margin:0 0 16px;}
+  .campo{margin-bottom:14px;}
+  .campo label{display:block;font-size:13px;font-weight:700;margin-bottom:5px;color:#333;}
+  .campo input,.campo textarea,.campo select{
+    width:100%;padding:10px;border:1px solid var(--gris-borde);border-radius:8px;font-size:14px;font-family:inherit;
+  }
+  .campo textarea{resize:vertical;min-height:60px;}
+  .campo input:focus,.campo textarea:focus,.campo select:focus{outline:2px solid var(--amarillo);border-color:var(--amarillo);}
+  .fila2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .seccion-titulo{
+    font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;
+    color:#111;background:var(--amarillo-suave);padding:7px 10px;border-radius:6px;margin:22px 0 12px;
+  }
+
+  /* ===== RENGLONES DE TRABAJO ===== */
+  .item{border:1px solid var(--gris-borde);border-radius:10px;padding:12px;margin-bottom:12px;background:var(--gris);}
+  .item .top{display:grid;grid-template-columns:60px 1fr;gap:8px;}
+  .item .precio-fila{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;}
+  .item .sub-line{margin-top:8px;font-size:13px;text-align:right;color:#444;}
+  .item .sub-line b{color:#111;}
+  .item textarea{margin-top:8px;width:100%;}
+  .item .mini-label{font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px;}
+  .item .quitar{background:none;border:0;color:var(--rojo);font-weight:700;cursor:pointer;font-size:12px;margin-top:8px;}
+  .add-item{width:100%;padding:11px;border:2px dashed var(--gris-borde);background:#fff;border-radius:10px;
+    font-weight:700;cursor:pointer;color:#333;font-size:14px;}
+  .add-item:hover{border-color:var(--amarillo);background:var(--amarillo-suave);}
+
+  .logo-box{display:flex;gap:12px;align-items:center;margin-bottom:8px;}
+  .logo-prev{width:88px;height:66px;border:1px solid var(--gris-borde);border-radius:8px;display:flex;align-items:center;justify-content:center;background:#fff;overflow:hidden;}
+  .logo-prev img{max-width:100%;max-height:100%;}
+  .chk{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin:6px 0;cursor:pointer;}
+  .chk input{width:auto;}
+  .aviso{font-size:12px;color:#777;margin-top:4px;}
+
+  /* ===== DOCUMENTO / VISTA PREVIA ===== */
+  .doc-cont{display:flex;justify-content:center;}
+  .doc{
+    background:#fff;width:210mm;min-height:297mm;padding:16mm 15mm;
+    box-shadow:0 6px 24px rgba(0,0,0,.15);color:#1a1a1a;font-size:12.5px;line-height:1.5;
+  }
+  .doc .fecha{text-align:center;font-weight:700;margin-bottom:14px;text-transform:capitalize;}
+  .doc .cab{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:8px;}
+  .doc .cab .logo{width:180px;flex:0 0 auto;}
+  .doc .cab .logo img{max-width:100%;}
+  .doc .cab .contacto{font-size:12.5px;}
+  .doc .cab .contacto div{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-weight:600;}
+  .doc .cab .contacto .ic{width:20px;text-align:center;}
+  .doc h1{font-size:19px;margin:18px 0 12px;border-bottom:2px solid #111;display:inline-block;padding-bottom:2px;}
+  .doc .dato{margin-bottom:5px;}
+  .doc .dato .k{background:var(--amarillo);padding:1px 6px;font-weight:800;border-radius:3px;}
+  .doc table{width:100%;border-collapse:collapse;margin:14px 0;font-size:12px;}
+  .doc table th,.doc table td{border:1px solid #333;padding:5px 7px;}
+  .doc table th{background:#f0f0f0;text-align:center;font-size:11.5px;}
+  .doc table td.c{text-align:center;}
+  .doc table td.r{text-align:right;white-space:nowrap;}
+  .doc .total-row td{font-weight:800;background:var(--amarillo);}
+  .doc .cap{font-weight:800;text-transform:uppercase;font-size:12px;background:var(--amarillo);
+    display:inline-block;padding:2px 8px;border-radius:3px;margin:16px 0 8px;}
+  .doc ol.puntual{margin:0 0 6px;padding-left:22px;}
+  .doc ol.puntual li{margin-bottom:6px;}
+  .doc .cobros p{margin:3px 0;}
+  .doc .cobros .grande{font-size:14px;font-weight:800;}
+  .doc .cobros .factura{color:#111;}
+  .doc .nota{margin:3px 0;}
+  .doc .firma{margin-top:30px;font-size:11.5px;color:#555;}
+  .doc .pie-marca{margin-top:26px;text-align:center;font-size:11px;color:#888;border-top:1px solid #ddd;padding-top:8px;}
+
+  /* logo dibujado por defecto */
+  .logo-cse{font-family:Arial,sans-serif;}
+
+  /* ===== IMPRESIÓN ===== */
+  @media print{
+    body{background:#fff;}
+    .toolbar,.panel-form{display:none !important;}
+    .wrap{display:block;padding:0;margin:0;max-width:none;}
+    .doc-cont{display:block;}
+    .doc{width:auto;min-height:auto;box-shadow:none;padding:10mm 12mm;}
+    @page{size:A4;margin:0;}
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== BARRA DE BOTONES ===== -->
+<div class="toolbar">
+  <span class="marca"><span class="rayo">⚡</span> Armador de Presupuestos · C.S.E</span>
+  <button class="btn btn-save" onclick="guardarBorrador()">💾 Guardar</button>
+  <button class="btn btn-clear" onclick="limpiarTodo()">🗑️ Nuevo</button>
+  <button class="btn btn-wsp" onclick="enviarWhatsApp()">🟢 WhatsApp</button>
+  <button class="btn btn-print" onclick="window.print()">🖨️ Guardar PDF / Imprimir</button>
+</div>
+
+<div class="wrap">
+
+  <!-- ============ FORMULARIO ============ -->
+  <div class="panel panel-form">
+    <h2>Cargar el presupuesto</h2>
+    <p class="sub">Completá los datos y mirá cómo se arma solo a la derecha 👉</p>
+
+    <!-- LOGO -->
+    <div class="seccion-titulo">Logo / Marca</div>
+    <div class="logo-box">
+      <div class="logo-prev" id="logoPrev"></div>
+      <div style="flex:1">
+        <label class="mini-label">Subí el logo real de C.S.E (opcional)</label>
+        <input type="file" id="logoFile" accept="image/*" onchange="cargarLogo(event)">
+        <div class="aviso">Si no subís nada, usa el logo dibujado. Queda guardado para la próxima.</div>
+        <button class="quitar" onclick="borrarLogo()">Quitar logo subido</button>
+      </div>
+    </div>
+
+    <!-- DATOS DEL TRABAJO -->
+    <div class="seccion-titulo">Datos del trabajo</div>
+    <div class="fila2">
+      <div class="campo"><label>Fecha</label><input type="date" id="fecha" oninput="render()"></div>
+      <div class="campo"><label>Cliente</label><input id="cliente" placeholder="Ej: Sebastián" oninput="render()"></div>
+    </div>
+    <div class="campo"><label>Dirección</label><input id="direccion" placeholder="Ej: Becco 886" oninput="render()"></div>
+    <div class="campo"><label>Detalle del trabajo (título)</label><input id="titulo" placeholder="Ej: Refacción" oninput="render()"></div>
+
+    <!-- RENGLONES -->
+    <div class="seccion-titulo">Mano de obra (renglones)</div>
+    <div id="items"></div>
+    <button class="add-item" onclick="agregarItem()">➕ Agregar renglón</button>
+
+    <!-- MATERIALES E IVA -->
+    <div class="seccion-titulo">Materiales y cobros</div>
+    <div class="campo">
+      <label>Total de materiales ($) — dejalo en 0 si no cotizás materiales</label>
+      <input type="number" id="materiales" value="0" min="0" step="0.01" oninput="render()">
+    </div>
+    <label class="chk"><input type="checkbox" id="mostrarIVA" checked oninput="render()"> Mostrar precio con <b>Factura A o B</b> (+21% IVA)</label>
+    <div class="campo">
+      <label>Condiciones de cobro</label>
+      <textarea id="cobros" oninput="render()">Para comenzar el trabajo se necesita un adelanto del 40% de la mano de obra.
+La 2° cuota será cobrada al finalizar el trabajo.</textarea>
+    </div>
+
+    <!-- CIERRE -->
+    <div class="seccion-titulo">Ejecución y garantía</div>
+    <div class="campo"><label>Ejecución del trabajo (fechas, horario, días)</label>
+      <textarea id="ejecucion" oninput="render()">Jornada de trabajo de 8:00 a 15:30 hs (aprox).
+Se estima un total de 4 días.</textarea></div>
+    <div class="campo"><label>Adicionales</label>
+      <textarea id="adicionales" oninput="render()">Los trabajos que sean necesarios realizar y no estén en el presupuesto se sumarán al mismo, previamente hablado con el cliente.</textarea></div>
+    <div class="fila2">
+      <div class="campo"><label>Garantía mano de obra</label>
+        <select id="garantia" oninput="render()">
+          <option value="3">3 años</option>
+          <option value="5" selected>5 años</option>
+          <option value="8">8 años</option>
+        </select></div>
+      <div class="campo"><label>&nbsp;</label>
+        <label class="chk"><input type="checkbox" id="mostrarPuntual" checked oninput="render()"> Incluir "Detalle puntual"</label></div>
+    </div>
+  </div>
+
+  <!-- ============ VISTA PREVIA / DOCUMENTO ============ -->
+  <div class="doc-cont">
+    <div class="doc" id="doc"></div>
+  </div>
+
+</div>
+
+<script>
+/* ====== DATOS FIJOS DE LA MARCA ====== */
+const MARCA = {
+  instagram:"Caldeira.servi.electrico",
+  whatsapp:"11 2505 2932",
+  mail:"caldeira.servicioelectrico@gmail.com",
+  zona:"P.B.A, Esteban Echeverría"
+};
+
+/* ====== LOGO DIBUJADO POR DEFECTO (SVG) ====== */
+const LOGO_DEFAULT = `
+<svg class="logo-cse" viewBox="0 0 260 120" xmlns="http://www.w3.org/2000/svg">
+  <polygon points="70,5 130,5 105,52 140,52 55,115 78,58 48,58" fill="#f9c400" stroke="#111" stroke-width="2"/>
+  <rect x="20" y="28" width="150" height="52" fill="none" stroke="#111" stroke-width="7"/>
+  <text x="95" y="68" font-family="Arial Black,Arial" font-size="40" font-weight="900" fill="#111" text-anchor="middle" letter-spacing="2">C.S.E</text>
+  <text x="18" y="70" font-size="26" fill="#c0322b" font-weight="900">+</text>
+  <text x="95" y="100" font-family="Arial" font-size="12.5" font-weight="700" fill="#111" text-anchor="middle" letter-spacing="1">CALDEIRA SERVICIO ELÉCTRICO</text>
+</svg>`;
+
+/* ====== ESTADO ====== */
+let items = [];
+let logoData = null; // dataURL del logo subido
+
+/* ====== UTILIDADES ====== */
+function $(id){return document.getElementById(id);}
+function num(v){ v=parseFloat(v); return isNaN(v)?0:v; }
+function money(n){ return '$ ' + n.toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:2}); }
+function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function nl2br(s){ return esc(s).replace(/\n/g,'<br>'); }
+
+function fechaLarga(iso){
+  if(!iso) return '';
+  const d = new Date(iso+'T00:00:00');
+  const dias=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  const meses=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  return `${dias[d.getDay()]}, ${d.getDate()} de ${meses[d.getMonth()]} de ${d.getFullYear()}`;
+}
+
+/* ====== RENGLONES ====== */
+function agregarItem(data){
+  items.push(data||{cant:1,desc:'',unit:0,detalle:''});
+  pintarItems(); render();
+}
+function quitarItem(i){ items.splice(i,1); pintarItems(); render(); }
+function pintarItems(){
+  const cont=$('items'); cont.innerHTML='';
+  items.forEach((it,i)=>{
+    const sub = num(it.cant)*num(it.unit);
+    const div=document.createElement('div');
+    div.className='item';
+    div.innerHTML=`
+      <div class="top">
+        <div><span class="mini-label">Cant.</span><input type="number" min="0" step="1" value="${it.cant}" oninput="upd(${i},'cant',this.value)"></div>
+        <div><span class="mini-label">Descripción</span><input value="${esc(it.desc)}" placeholder="Ej: Instalación de artefactos de iluminación" oninput="upd(${i},'desc',this.value)"></div>
+      </div>
+      <div class="precio-fila">
+        <div><span class="mini-label">Precio unitario ($)</span><input type="number" min="0" step="0.01" value="${it.unit}" oninput="upd(${i},'unit',this.value)"></div>
+        <div><span class="mini-label">Subtotal</span><input value="${money(sub)}" disabled></div>
+      </div>
+      <span class="mini-label" style="margin-top:8px">Detalle puntual (explicación, opcional)</span>
+      <textarea placeholder="Explicá en qué consiste este ítem..." oninput="upd(${i},'detalle',this.value)">${esc(it.detalle)}</textarea>
+      <button class="quitar" onclick="quitarItem(${i})">✕ Quitar renglón</button>
+    `;
+    cont.appendChild(div);
+  });
+}
+function upd(i,campo,val){ items[i][campo]=val; if(campo!=='detalle'){ pintarItems(); } render(); }
+
+/* ====== LOGO ====== */
+function cargarLogo(ev){
+  const f=ev.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=e=>{ logoData=e.target.result; localStorage.setItem('cse_logo',logoData); pintarLogo(); render(); };
+  r.readAsDataURL(f);
+}
+function borrarLogo(){ logoData=null; localStorage.removeItem('cse_logo'); $('logoFile').value=''; pintarLogo(); render(); }
+function pintarLogo(){
+  $('logoPrev').innerHTML = logoData ? `<img src="${logoData}">` : LOGO_DEFAULT;
+}
+function logoHTML(){ return logoData ? `<img src="${logoData}">` : LOGO_DEFAULT; }
+
+/* ====== RENDER DEL DOCUMENTO ====== */
+function render(){
+  const manoObra = items.reduce((a,it)=>a+num(it.cant)*num(it.unit),0);
+  const materiales = num($('materiales').value);
+  const totalEfectivo = manoObra + materiales;
+  const conIVA = $('mostrarIVA').checked;
+  const totalIVA = totalEfectivo*1.21;
+  const garant = $('garantia').value;
+  const puntualOn = $('mostrarPuntual').checked;
+
+  // filas de la tabla
+  let filas='';
+  items.forEach((it,i)=>{
+    const sub=num(it.cant)*num(it.unit);
+    filas+=`<tr>
+      <td class="c">${i+1}</td>
+      <td class="c">${esc(String(it.cant))}</td>
+      <td>${esc(it.desc)}</td>
+      <td class="r">${money(num(it.unit))}</td>
+      <td class="r">${money(sub)}</td>
+    </tr>`;
+  });
+  if(!filas) filas=`<tr><td colspan="5" class="c" style="color:#999;padding:14px">Agregá renglones de mano de obra…</td></tr>`;
+
+  // detalle puntual
+  let puntual='';
+  const conDetalle = items.filter(it=>it.detalle && it.detalle.trim());
+  if(puntualOn && conDetalle.length){
+    let lis='';
+    items.forEach(it=>{ if(it.detalle && it.detalle.trim()) lis+=`<li>${nl2br(it.detalle)}</li>`; });
+    puntual=`<div class="cap">Detalle puntual</div><ol class="puntual">${lis}</ol>`;
+  }
+
+  // cobros
+  let cobrosHTML=`
+    <div class="cap">Cobros</div>
+    <div class="cobros">
+      <p><b>MATERIALES:</b> ${money(materiales)}</p>
+      <p><b>MANO DE OBRA:</b> ${money(manoObra)}</p>
+      <p class="grande">TOTAL: ${money(totalEfectivo)} <span style="font-weight:400;font-size:12px">(efectivo / transferencia)</span></p>
+      ${conIVA?`<p class="factura"><b>Factura A o B:</b> ${money(totalIVA)}</p>`:''}
+      <div class="nota" style="margin-top:8px">${nl2br($('cobros').value)}</div>
+    </div>`;
+
+  const doc=$('doc');
+  doc.innerHTML=`
+    <div class="fecha">${fechaLarga($('fecha').value)}</div>
+    <div class="cab">
+      <div class="logo">${logoHTML()}</div>
+      <div class="contacto">
+        <div><span class="ic">📷</span> ${MARCA.instagram}</div>
+        <div><span class="ic">🟢</span> ${MARCA.whatsapp}</div>
+        <div><span class="ic">✉️</span> ${MARCA.mail}</div>
+        <div><span class="ic">📍</span> ${MARCA.zona}</div>
+      </div>
+    </div>
+
+    <h1>PRESUPUESTO</h1>
+    <div class="dato"><span class="k">CLIENTE</span>: ${esc($('cliente').value)}</div>
+    <div class="dato"><span class="k">DIRECCIÓN</span>: ${esc($('direccion').value)}</div>
+    <div class="dato"><span class="k">Detalle del trabajo</span>: ${esc($('titulo').value)}</div>
+
+    <table>
+      <thead><tr><th>N°</th><th>Cant.</th><th>Descripción</th><th>Unitario</th><th>Subtotal</th></tr></thead>
+      <tbody>${filas}
+        <tr class="total-row"><td colspan="4" class="r">TOTAL MANO DE OBRA</td><td class="r">${money(manoObra)}</td></tr>
+      </tbody>
+    </table>
+
+    ${puntual}
+    ${cobrosHTML}
+
+    <div class="cap">Ejecución del trabajo</div>
+    <div class="nota">${nl2br($('ejecucion').value)}</div>
+
+    <div class="cap">Adicionales</div>
+    <div class="nota">${nl2br($('adicionales').value)}</div>
+
+    <div class="cap">Garantía</div>
+    <p class="nota"><b>Mano de obra:</b> El trabajo de mano de obra tiene una garantía de <b>${garant} años</b> desde la fecha de finalización.</p>
+    <p class="nota"><b>Materiales:</b> Los que establezca el fabricante.</p>
+
+    <div class="pie-marca">C.S.E · Caldeira Servicio Eléctrico · ${MARCA.whatsapp} · ${MARCA.mail}</div>
+  `;
+  guardarBorrador(true);
+}
+
+/* ====== GUARDAR / CARGAR BORRADOR ====== */
+function estado(){
+  return {
+    fecha:$('fecha').value, cliente:$('cliente').value, direccion:$('direccion').value,
+    titulo:$('titulo').value, items, materiales:$('materiales').value,
+    mostrarIVA:$('mostrarIVA').checked, cobros:$('cobros').value,
+    ejecucion:$('ejecucion').value, adicionales:$('adicionales').value,
+    garantia:$('garantia').value, mostrarPuntual:$('mostrarPuntual').checked
+  };
+}
+function guardarBorrador(silencioso){
+  localStorage.setItem('cse_borrador', JSON.stringify(estado()));
+  if(!silencioso){ /* feedback simple */ }
+}
+function cargarBorrador(){
+  const raw=localStorage.getItem('cse_borrador');
+  if(!raw){ agregarItem(); return; }
+  try{
+    const s=JSON.parse(raw);
+    $('fecha').value=s.fecha||hoyISO();
+    $('cliente').value=s.cliente||'';
+    $('direccion').value=s.direccion||'';
+    $('titulo').value=s.titulo||'';
+    $('materiales').value=s.materiales||0;
+    $('mostrarIVA').checked=s.mostrarIVA!==false;
+    $('cobros').value=s.cobros ?? $('cobros').value;
+    $('ejecucion').value=s.ejecucion ?? $('ejecucion').value;
+    $('adicionales').value=s.adicionales ?? $('adicionales').value;
+    $('garantia').value=s.garantia||'5';
+    $('mostrarPuntual').checked=s.mostrarPuntual!==false;
+    items=Array.isArray(s.items)&&s.items.length?s.items:[{cant:1,desc:'',unit:0,detalle:''}];
+  }catch(e){ items=[{cant:1,desc:'',unit:0,detalle:''}]; }
+  pintarItems();
+}
+function limpiarTodo(){
+  if(!confirm('¿Empezar un presupuesto nuevo? Se borra lo que estás cargando ahora (el logo se mantiene).')) return;
+  localStorage.removeItem('cse_borrador');
+  $('cliente').value='';$('direccion').value='';$('titulo').value='';$('materiales').value=0;
+  items=[{cant:1,desc:'',unit:0,detalle:''}];
+  $('fecha').value=hoyISO();
+  pintarItems(); render();
+}
+
+/* ====== WHATSAPP (arma un mensaje de resumen) ====== */
+function enviarWhatsApp(){
+  const manoObra = items.reduce((a,it)=>a+num(it.cant)*num(it.unit),0);
+  const materiales = num($('materiales').value);
+  const total = manoObra+materiales;
+  const txt =
+`*PRESUPUESTO - C.S.E Caldeira Servicio Eléctrico*
+Cliente: ${$('cliente').value}
+Dirección: ${$('direccion').value}
+Trabajo: ${$('titulo').value}
+
+Mano de obra: ${money(manoObra)}
+Materiales: ${money(materiales)}
+*TOTAL: ${money(total)}*
+${$('mostrarIVA').checked?'Factura A/B: '+money(total*1.21):''}
+
+(El presupuesto completo en PDF te lo adjunto aparte)`;
+  window.open('https://wa.me/?text='+encodeURIComponent(txt),'_blank');
+}
+
+/* ====== INICIO ====== */
+function hoyISO(){ const d=new Date(); return d.toISOString().slice(0,10); }
+window.onload=function(){
+  logoData=localStorage.getItem('cse_logo')||null;
+  pintarLogo();
+  if(!$('fecha').value) $('fecha').value=hoyISO();
+  cargarBorrador();
+  render();
+};
+</script>
+</body>
+</html>

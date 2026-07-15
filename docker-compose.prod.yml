@@ -112,6 +112,9 @@ services:
       - "80"
     volumes:
       - ./nginx/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+      # App del amigo electricista (C.S.E) — archivo estatico autonomo servido en /electricista
+      - ./presupuestos-electricista/sistema-cse.html:/usr/share/nginx/html/electricista/index.html:ro
+      - ./presupuestos-electricista/armador-presupuestos-cse.html:/usr/share/nginx/html/electricista/armador.html:ro
     networks:
       - aiml-prod-net
     depends_on:
