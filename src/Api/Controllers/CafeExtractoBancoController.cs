@@ -1,5 +1,6 @@
 using Api.Data;
 using Api.Models;
+using Api.Services;
 using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -383,8 +384,14 @@ public class CafeExtractoBancoController : ControllerBase
         if (!idx.ContainsKey("Fecha") || !idx.ContainsKey("Saldo"))
             return new ImportResultDto(file.FileName, 0, 0, new List<string> { "CSV no parece ser un extracto bancario (faltan columnas Fecha o Saldo). Detecte: " + string.Join(", ", headers.Take(5)) });
 
-        var existentes = await _db.CafeExtractoMovimientos.Select(m => m.HashUnico).ToListAsync();
-        var hashSet = new HashSet<string>(existentes);
+        // Dedup por CANTIDAD de copias por clave (fecha+desc+débito+crédito), NO por saldo.
+        // Ver Services/ExtractoDedup.
+        var conteoExistente = (await _db.CafeExtractoMovimientos
+                .Select(m => new { m.Fecha, m.Descripcion, m.Debitos, m.Creditos })
+                .ToListAsync())
+            .GroupBy(x => ExtractoDedup.Clave(x.Fecha, x.Descripcion, x.Debitos, x.Creditos))
+            .ToDictionary(g => g.Key, g => g.Count());
+        var vistosEnImport = new Dictionary<string, int>();
         int nuevos = 0, sinCambios = 0;
 
         for (int li = 1; li < lineas.Count; li++)
@@ -420,10 +427,12 @@ public class CafeExtractoBancoController : ControllerBase
                 var creditos = ParseDec(GetCol("Créditos"));
                 var saldo = ParseDec(GetCol("Saldo"));
 
-                var raw = $"{fecha:yyyyMMdd}|{desc}|{debitos}|{creditos}|{saldo}";
-                using var sha = SHA256.Create();
-                var hash = Convert.ToHexString(sha.ComputeHash(Encoding.UTF8.GetBytes(raw))).Substring(0, 32);
-                if (hashSet.Contains(hash)) { sinCambios++; continue; }
+                var clave = ExtractoDedup.Clave(fecha.Value, desc, debitos, creditos);
+                int yaEnDb = conteoExistente.TryGetValue(clave, out var ne) ? ne : 0;
+                int ocurrencia = (vistosEnImport.TryGetValue(clave, out var vv) ? vv : 0) + 1;
+                vistosEnImport[clave] = ocurrencia;
+                if (ocurrencia <= yaEnDb) { sinCambios++; continue; }
+                var hash = ExtractoDedup.Hash(clave, ocurrencia);
 
                 var entrada = new CafeExtractoMovimiento
                 {
@@ -449,7 +458,6 @@ public class CafeExtractoBancoController : ControllerBase
                     CreatedAt = DateTime.UtcNow
                 };
                 _db.CafeExtractoMovimientos.Add(entrada);
-                hashSet.Add(hash);
                 nuevos++;
             }
             catch (Exception ex)
@@ -496,8 +504,14 @@ public class CafeExtractoBancoController : ControllerBase
         if (!idx.ContainsKey("Fecha") || !idx.ContainsKey("Saldo"))
             return new ImportResultDto(fileName, 0, 0, new List<string> { "El archivo no parece ser un extracto bancario (faltan Fecha o Saldo)" });
 
-        var existentes = await _db.CafeExtractoMovimientos.Select(m => m.HashUnico).ToListAsync();
-        var hashSet = new HashSet<string>(existentes);
+        // Dedup por CANTIDAD de copias por clave (fecha+desc+débito+crédito), NO por saldo.
+        // Ver Services/ExtractoDedup.
+        var conteoExistente = (await _db.CafeExtractoMovimientos
+                .Select(m => new { m.Fecha, m.Descripcion, m.Debitos, m.Creditos })
+                .ToListAsync())
+            .GroupBy(x => ExtractoDedup.Clave(x.Fecha, x.Descripcion, x.Debitos, x.Creditos))
+            .ToDictionary(g => g.Key, g => g.Count());
+        var vistosEnImport = new Dictionary<string, int>();
 
         int nuevos = 0, sinCambios = 0;
         var lastRow = ws.LastRowUsed()?.RowNumber() ?? 0;
@@ -561,12 +575,12 @@ public class CafeExtractoBancoController : ControllerBase
                 var creditos = GetDec("Créditos");
                 var saldo = GetDec("Saldo");
 
-                // Hash unico: fecha + descripcion + debitos + creditos + saldo
-                var raw = $"{fecha:yyyyMMdd}|{descripcion}|{debitos}|{creditos}|{saldo}";
-                using var sha = SHA256.Create();
-                var hash = Convert.ToHexString(sha.ComputeHash(Encoding.UTF8.GetBytes(raw))).Substring(0, 32);
-
-                if (hashSet.Contains(hash)) { sinCambios++; continue; }
+                var clave = ExtractoDedup.Clave(fecha.Value, descripcion, debitos, creditos);
+                int yaEnDb = conteoExistente.TryGetValue(clave, out var ne) ? ne : 0;
+                int ocurrencia = (vistosEnImport.TryGetValue(clave, out var vv) ? vv : 0) + 1;
+                vistosEnImport[clave] = ocurrencia;
+                if (ocurrencia <= yaEnDb) { sinCambios++; continue; }
+                var hash = ExtractoDedup.Hash(clave, ocurrencia);
 
                 var entrada = new CafeExtractoMovimiento
                 {
@@ -592,7 +606,6 @@ public class CafeExtractoBancoController : ControllerBase
                     CreatedAt = DateTime.UtcNow
                 };
                 _db.CafeExtractoMovimientos.Add(entrada);
-                hashSet.Add(hash);
                 nuevos++;
             }
             catch (Exception ex)

@@ -75,7 +75,8 @@ public class CafeExtractoMovimiento
     [MaxLength(30)]
     public string? TipoMovimiento { get; set; }
 
-    /// <summary>Hash de fecha+descripcion+importe+saldo para detectar duplicados al re-importar.</summary>
+    /// <summary>Hash de fecha+descripcion+importe+N° de ocurrencia (NO incluye saldo) para
+    /// detectar duplicados al re-importar. Ver Services/ExtractoDedup.</summary>
     [Required, MaxLength(80)]
     public string HashUnico { get; set; } = "";
 
