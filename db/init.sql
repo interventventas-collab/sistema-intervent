@@ -5557,6 +5557,23 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='MostrarIvaProforma' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
     ALTER TABLE Cafe_Ventas ADD MostrarIvaProforma BIT NOT NULL CONSTRAINT DF_CafeVentas_MostrarIvaProforma DEFAULT 1;
 GO
+-- 2026-07-14: borradores de venta COMPARTIDOS (servidor, hasta 10). Reemplazan al borrador
+-- que vivía en el localStorage del navegador. Visibles/retomables desde cualquier PC por todo el equipo.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_VentaBorradores' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_VentaBorradores (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        PayloadJson NVARCHAR(MAX) NOT NULL,
+        ClienteNombre NVARCHAR(200) NULL,
+        ItemsCount INT NOT NULL DEFAULT 0,
+        Total DECIMAL(18,2) NOT NULL DEFAULT 0,
+        CreadoPorOperador NVARCHAR(60) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NOT NULL DEFAULT GETDATE()
+    );
+    CREATE INDEX IX_CafeVentaBorradores_UpdatedAt ON Cafe_VentaBorradores (UpdatedAt DESC);
+END
+GO
 
 -- ============================================================================
 -- 2026-06-26: Modulo QR + Repartidor para ALQUILERES (calcado del de Ventas).
