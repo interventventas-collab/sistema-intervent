@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -22,9 +23,13 @@ namespace Api.Services;
 /// </summary>
 public static class ExtractoDedup
 {
-    /// <summary>Clave de negocio de un movimiento (NO incluye Saldo a propósito).</summary>
+    /// <summary>Clave de negocio de un movimiento (NO incluye Saldo a propósito).
+    /// Los importes se normalizan a 2 decimales con cultura invariante: un importe vacío
+    /// leído del archivo llega como 0 (sin decimales) pero en la DB está como 0.00, y sin
+    /// normalizar "0" != "0.00" rompía el match → se re-importaba TODO como nuevo.</summary>
     public static string Clave(DateTime fecha, string? descripcion, decimal debitos, decimal creditos)
-        => $"{fecha:yyyyMMdd}|{(descripcion ?? "").Trim()}|{debitos}|{creditos}";
+        => string.Format(CultureInfo.InvariantCulture, "{0:yyyyMMdd}|{1}|{2:0.00}|{3:0.00}",
+            fecha, (descripcion ?? "").Trim(), debitos, creditos);
 
     /// <summary>Hash único de la N-ésima ocurrencia de una clave (1-based).</summary>
     public static string Hash(string clave, int ocurrencia)

@@ -10,10 +10,12 @@
 --   * Se conservan primero las filas ASOCIADAS a venta/cobranza y luego las mas recientes.
 --
 -- SEGURIDAD: antes de borrar deja una copia de las filas eliminadas en una tabla de backup.
+-- Re-ejecutable: recrea su propia tabla de backup en cada corrida.
 
 SET NOCOUNT ON;
 
-DECLARE @bk sysname = 'Cafe_ExtractoMovimientos_BackupDup_20260715';
+IF OBJECT_ID('dbo.Cafe_ExtractoMovimientos_BackupDupLimpieza') IS NOT NULL
+    DROP TABLE dbo.Cafe_ExtractoMovimientos_BackupDupLimpieza;
 
 ;WITH dup AS (
     SELECT CAST(Fecha AS date) F, Descripcion, Debitos, Creditos
@@ -42,7 +44,7 @@ ranked AS (
         AND m.Debitos = rc.Debitos AND m.Creditos = rc.Creditos
 )
 SELECT m.*
-INTO dbo.Cafe_ExtractoMovimientos_BackupDup_20260715
+INTO dbo.Cafe_ExtractoMovimientos_BackupDupLimpieza
 FROM dbo.Cafe_ExtractoMovimientos m
 JOIN ranked r ON m.Id = r.Id
 WHERE r.rn > r.rc;
@@ -80,4 +82,4 @@ FROM dbo.Cafe_ExtractoMovimientos m
 JOIN ranked r ON m.Id = r.Id
 WHERE r.rn > r.rc;
 
-PRINT 'Filas duplicadas eliminadas: ' + CAST(@n AS varchar) + ' (backup en ' + @bk + ')';
+PRINT 'Filas duplicadas eliminadas: ' + CAST(@n AS varchar) + ' (backup en Cafe_ExtractoMovimientos_BackupDupLimpieza)';
