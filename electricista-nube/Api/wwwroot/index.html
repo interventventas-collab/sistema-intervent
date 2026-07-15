@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sistema C.S.E · Nube</title>
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#22232a;background:#ececed;}
+  .hidden{display:none !important;}
+  .rayo{color:#f9c400;}
+  /* login */
+  #login{position:fixed;inset:0;background:linear-gradient(135deg,#15151a,#2b2b36);display:flex;align-items:center;justify-content:center;padding:16px;}
+  .card{background:#fff;border-radius:16px;padding:32px 28px;width:340px;box-shadow:0 20px 60px rgba(0,0,0,.4);text-align:center;}
+  .card .logo{width:120px;margin:0 auto 8px;}
+  .card h1{font-size:19px;margin:6px 0 2px;}
+  .card p{color:#8a8a95;font-size:13px;margin:0 0 18px;}
+  .card input{width:100%;padding:12px;border:1px solid #e2e2e8;border-radius:9px;font-size:15px;margin-bottom:12px;}
+  .card button{width:100%;padding:13px;border:0;border-radius:9px;background:#15151a;color:#fff;font-weight:700;font-size:15px;cursor:pointer;}
+  .err{color:#d0453c;font-size:13px;font-weight:600;min-height:18px;margin-bottom:4px;}
+  .hint{font-size:12px;color:#8a8a95;margin-top:14px;}
+  .nube{display:inline-block;background:#d9f5e3;color:#0f7a3d;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;margin-top:10px;}
+  /* app */
+  .top{background:#15151a;color:#fff;padding:14px 20px;display:flex;align-items:center;gap:10px;}
+  .top b{letter-spacing:1px;flex:1;}
+  .top button{background:#2a2a34;color:#fff;border:0;padding:8px 12px;border-radius:8px;cursor:pointer;font-weight:600;}
+  .wrap{max-width:720px;margin:22px auto;padding:0 16px;}
+  .panel{background:#fff;border-radius:14px;padding:22px;box-shadow:0 3px 12px rgba(0,0,0,.06);margin-bottom:18px;}
+  .ok-banner{background:#d9f5e3;color:#0f7a3d;border-radius:12px;padding:16px;font-weight:700;text-align:center;margin-bottom:18px;}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;}
+  .stat{background:#f4f4f6;border-radius:10px;padding:14px;text-align:center;}
+  .stat .n{font-size:26px;font-weight:800;}
+  .stat .l{font-size:12px;color:#8a8a95;margin-top:3px;}
+  .row{display:flex;gap:8px;margin-top:10px;}
+  .row input{flex:1;padding:10px;border:1px solid #e2e2e8;border-radius:8px;font-size:14px;}
+  .row button{background:#f9c400;border:0;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer;}
+  ul.lst{list-style:none;padding:0;margin:12px 0 0;}
+  ul.lst li{padding:10px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;}
+  .muted{color:#8a8a95;font-size:13px;}
+  h3{margin:0 0 6px;}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div class="card">
+    <div class="logo" id="logoBox"></div>
+    <h1><span class="rayo">⚡</span> Sistema C.S.E</h1>
+    <p>Caldeira Servicio Eléctrico</p>
+    <div class="nube">☁️ Versión nube</div>
+    <div class="err" id="err" style="margin-top:14px"></div>
+    <input id="u" placeholder="Usuario" autocomplete="username">
+    <input id="p" type="password" placeholder="Contraseña" autocomplete="current-password" onkeydown="if(event.key==='Enter')entrar()">
+    <button onclick="entrar()">Ingresar</button>
+    <div class="hint">Usuario: <b>admin</b> · Clave: <b>1234</b></div>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <div class="top"><span class="rayo">⚡</span><b>Sistema C.S.E · Nube</b><span id="quien" class="muted"></span><button onclick="salir()">Cerrar sesión</button></div>
+  <div class="wrap">
+    <div class="ok-banner">✅ Conectado a la base de datos en la nube. Estos datos se ven igual desde el celular y la PC.</div>
+
+    <div class="panel">
+      <h3>Resumen (desde el servidor)</h3>
+      <div class="stats" id="stats"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Prueba rápida: cargar un cliente</h3>
+      <p class="muted">Cargá un cliente acá y va directo a la nube. Después abrí este link en otro dispositivo y vas a ver el mismo cliente. Eso prueba que la base es compartida.</p>
+      <div class="row"><input id="nuevoCli" placeholder="Nombre del cliente de prueba"><button onclick="addCliente()">➕ Guardar</button></div>
+      <ul class="lst" id="listaCli"></ul>
+    </div>
+
+    <div class="panel">
+      <p class="muted">🚧 Esta es <b>la base</b> del sistema en la nube (base de datos + ingreso funcionando). Los módulos completos (tablero con gráficos, presupuestos, stock, PDF) los conectamos arriba de esta base en el próximo paso.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+const LOGO=`<svg viewBox="0 0 260 120" xmlns="http://www.w3.org/2000/svg">
+<polygon points="70,5 130,5 105,52 140,52 55,115 78,58 48,58" fill="#f9c400" stroke="#111" stroke-width="2"/>
+<rect x="20" y="28" width="150" height="52" fill="none" stroke="#111" stroke-width="7"/>
+<text x="95" y="68" font-family="Arial Black,Arial" font-size="40" font-weight="900" fill="#111" text-anchor="middle" letter-spacing="2">C.S.E</text>
+<text x="18" y="70" font-size="26" fill="#c0322b" font-weight="900">+</text>
+<text x="95" y="100" font-family="Arial" font-size="12.5" font-weight="700" fill="#111" text-anchor="middle">CALDEIRA SERVICIO ELÉCTRICO</text></svg>`;
+document.getElementById('logoBox').innerHTML=LOGO;
+
+const API='api';
+async function api(path,method,body){
+  const r=await fetch(API+'/'+path,{method:method||'GET',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:body?JSON.stringify(body):undefined});
+  return r;
+}
+function $(id){return document.getElementById(id);}
+
+async function entrar(){
+  $('err').textContent='';
+  const r=await api('login','POST',{user:$('u').value,pass:$('p').value});
+  if(r.ok){ mostrarApp(); }
+  else{ $('err').textContent='Usuario o contraseña incorrectos.'; }
+}
+async function salir(){ await api('logout','POST'); location.reload(); }
+
+async function mostrarApp(){
+  const me=await api('me'); if(!me.ok){ return; }
+  const info=await me.json(); $('quien').textContent='('+info.user+')';
+  $('login').classList.add('hidden'); $('app').classList.remove('hidden');
+  cargarStats(); cargarClientes();
+}
+async function cargarStats(){
+  const r=await api('stats'); if(!r.ok)return; const s=await r.json();
+  $('stats').innerHTML=`
+    <div class="stat"><div class="n">${s.presupuestos}</div><div class="l">Presupuestos</div></div>
+    <div class="stat"><div class="n">${s.clientes}</div><div class="l">Clientes</div></div>
+    <div class="stat"><div class="n">${s.servicios}</div><div class="l">Servicios</div></div>
+    <div class="stat"><div class="n">${s.productos}</div><div class="l">Productos</div></div>`;
+}
+async function cargarClientes(){
+  const r=await api('clientes'); if(!r.ok)return; const cs=await r.json();
+  $('listaCli').innerHTML=cs.length? cs.map(c=>`<li><span>👤 ${escapeHtml(c.nombre)}</span><button onclick="delCliente(${c.id})" style="background:none;border:0;color:#d0453c;cursor:pointer">✕</button></li>`).join('') : '<li class="muted">Todavía no hay clientes.</li>';
+}
+async function addCliente(){
+  const nombre=$('nuevoCli').value.trim(); if(!nombre)return;
+  await api('clientes','POST',{nombre}); $('nuevoCli').value='';
+  cargarClientes(); cargarStats();
+}
+async function delCliente(id){ await api('clientes/'+id,'DELETE'); cargarClientes(); cargarStats(); }
+function escapeHtml(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// al abrir, si ya hay sesión, entrar directo
+(async()=>{ const me=await api('me'); if(me.ok) mostrarApp(); })();
+</script>
+</body>
+</html>

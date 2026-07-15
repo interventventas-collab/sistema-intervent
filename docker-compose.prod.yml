@@ -121,6 +121,22 @@ services:
       - api-prod
     restart: unless-stopped
 
+  # --- App del amigo electricista (C.S.E): backend propio + SQLite, separado de INTER VENT ---
+  electri-api:
+    build:
+      context: ./electricista-nube/Api
+      dockerfile: Dockerfile
+    container_name: aiml-electri-prod
+    expose:
+      - "8080"
+    environment:
+      - DB_PATH=/data/electricista.db
+    volumes:
+      - electri_prod_data:/data
+    networks:
+      - aiml-prod-net
+    restart: unless-stopped
+
   # --- Caddy (reverse proxy + HTTPS automatico) ---
   # Si DOMAIN esta definido -> pide certificado real a Let's Encrypt.
   # Si DOMAIN esta vacio      -> sirve por IP con certificado autofirmado (tls internal).
@@ -172,3 +188,4 @@ volumes:
   wa_uploads_prod:
   caddy_data:
   caddy_config:
+  electri_prod_data:
