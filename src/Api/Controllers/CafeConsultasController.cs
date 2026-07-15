@@ -89,6 +89,7 @@ public class CafeConsultasController : ControllerBase
                 ? (p.StockGramos / 1000m).ToString("N2", ARS) + " kg"
                 : $"{p.StockUnidades} u.",
             CostoSinIva = p.Costo,
+            IvaPct = iva,
             Activo = p.IsActive,
         };
 

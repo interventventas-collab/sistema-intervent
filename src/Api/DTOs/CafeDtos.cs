@@ -914,6 +914,7 @@ public class CafePrecioConsultaDto
     public string? Marca { get; set; }
     public string Stock { get; set; } = "";
     public decimal CostoSinIva { get; set; }
+    public decimal IvaPct { get; set; } = 21m;
     public bool TieneOem { get; set; }
     public string? OemCodigo { get; set; }
     public bool Activo { get; set; } = true;
