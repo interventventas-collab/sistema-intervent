@@ -53,6 +53,11 @@ public class CafeCotizacionPdfService
         // sin la línea de IVA ni la nota de proforma. Default (true) = comportamiento histórico.
         var proformaConIva = esProforma && v.MostrarIvaProforma;
 
+        // 2026-07-14: total de bonificación (descuento) = suma de (precio de lista − neto) de cada renglón.
+        // Se muestra al pie como en Contabilium ("Bonificación: $X"), para que el cliente vea cuánto ahorró.
+        decimal totalBonificacion = v.Items.Sum(i => i.PrecioUnitario * i.Cantidad - i.Subtotal);
+        if (totalBonificacion < 0m) totalBonificacion = 0m;
+
         decimal netoSinIva = v.Total;
         decimal iva21 = Math.Round(netoSinIva * 0.21m, 2, MidpointRounding.AwayFromZero);
         decimal totalConIva = netoSinIva + iva21;
@@ -354,7 +359,7 @@ public class CafeCotizacionPdfService
                             h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).Text("Producto").SemiBold().FontSize(8);
                             h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter().Text("Formato").SemiBold().FontSize(8);
                             h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("P. Unitario").SemiBold().FontSize(8);
-                            h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("Desc.").SemiBold().FontSize(8);
+                            h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("Bonif.").SemiBold().FontSize(8);
                             h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("Subtotal").SemiBold().FontSize(8);
                         });
                         // 2026-06-08: Agrupar items por ComboOrigenId. Los items que vienen del mismo
@@ -378,20 +383,15 @@ public class CafeCotizacionPdfService
                             // Formato
                             table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter()
                                 .Text(pr.FmtPrint).Italic().FontColor(Colors.Grey.Darken1).FontFamily("Times New Roman");
-                            // P. Unitario
-                            table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text(t =>
-                            {
-                                var pu = "$ " + pr.PrecioPrint.ToString("N2", Es);
-                                if (pr.DescuentoPct > 0)
-                                    t.Span(pu).Strikethrough().FontColor(Colors.Grey.Medium);
-                                else
-                                    t.Span(pu);
-                            });
-                            // Desc.
+                            // P. Unitario — 2026-07-14: siempre limpio (precio de lista, SIN tachar). El descuento
+                            // se muestra aparte en la columna "Bonif." (formato Contabilium/AFIP, más prolijo).
+                            table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight()
+                                .Text("$ " + pr.PrecioPrint.ToString("N2", Es));
+                            // Bonif. — el % de descuento (positivo, sin tachar el precio).
                             table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text(t =>
                             {
                                 if (pr.DescuentoPct > 0)
-                                    t.Span($"-{pr.DescuentoPct.ToString("0.##", Es)}%").FontColor(Colors.Red.Darken1).Bold();
+                                    t.Span($"{pr.DescuentoPct.ToString("0.##", Es)} %").SemiBold();
                                 else
                                     t.Span("—").FontColor(Colors.Grey.Medium);
                             });
@@ -422,6 +422,15 @@ public class CafeCotizacionPdfService
                                 r.RelativeItem().Text(proformaConIva ? "Subtotal (neto sin IVA):" : "Subtotal:").FontSize(9);
                                 r.AutoItem().Text("$ " + v.Subtotal.ToString("N2", Es)).SemiBold().FontSize(9);
                             });
+                            // 2026-07-14: total de bonificación (suma de descuentos por renglón), estilo Contabilium.
+                            if (totalBonificacion > 0.01m)
+                            {
+                                c.Item().Row(r =>
+                                {
+                                    r.RelativeItem().Text("Bonificación:").FontSize(9);
+                                    r.AutoItem().Text("$ " + totalBonificacion.ToString("N2", Es)).SemiBold().FontSize(9);
+                                });
+                            }
                             if (v.Descuento > 0)
                             {
                                 c.Item().Row(r =>

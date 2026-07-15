@@ -224,7 +224,7 @@ public class ArcaInvoicePdfService
                             h.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Producto").SemiBold();
                             h.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Formato").SemiBold();
                             h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("P. Unitario").SemiBold();
-                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("Desc.").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("Bonif.").SemiBold();
                             h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("IVA %").SemiBold();
                             h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("Subtotal").SemiBold();
                         });
@@ -237,22 +237,12 @@ public class ArcaInvoicePdfService
                             table.Cell().BorderBottom(0.3f).Padding(2).Text(it.Sku ?? "").FontSize(8).FontColor(Colors.Blue.Darken2).SemiBold();
                             table.Cell().BorderBottom(0.3f).Padding(2).Text(prod);
                             table.Cell().BorderBottom(0.3f).Padding(2).Text(fmt).FontSize(8).FontColor(Colors.Grey.Darken1);
-                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(t =>
-                            {
-                                if (it.DescuentoPct.HasValue && it.PrecioOriginal.HasValue)
-                                {
-                                    t.Span("$ " + it.PrecioOriginal.Value.ToString("N2", new CultureInfo("es-AR")))
-                                        .Strikethrough().FontColor(Colors.Grey.Medium);
-                                    t.Span("\n");
-                                    t.Span("$ " + it.PrecioUnitario.ToString("N2", new CultureInfo("es-AR")));
-                                }
-                                else
-                                {
-                                    t.Span("$ " + it.PrecioUnitario.ToString("N2", new CultureInfo("es-AR")));
-                                }
-                            });
+                            // 2026-07-14: P. Unitario limpio = precio de LISTA (sin tachar). El descuento va aparte
+                            // en "Bonif." (formato Contabilium/AFIP). El Importe/Subtotal queda con el neto.
+                            var puListaA = it.DescuentoPct.HasValue && it.PrecioOriginal.HasValue ? it.PrecioOriginal.Value : it.PrecioUnitario;
+                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text("$ " + puListaA.ToString("N2", new CultureInfo("es-AR")));
                             table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(
-                                it.DescuentoPct.HasValue ? it.DescuentoPct.Value.ToString("0.##") + "%" : "—"
+                                it.DescuentoPct.HasValue ? it.DescuentoPct.Value.ToString("0.##") + " %" : "—"
                             ).FontSize(8);
                             table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(it.AlicPct.ToString("0.##") + "%");
                             table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text("$ " + sub.ToString("N2", new CultureInfo("es-AR")));
@@ -278,7 +268,7 @@ public class ArcaInvoicePdfService
                             h.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Producto").SemiBold();
                             h.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Formato").SemiBold();
                             h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("P. Unitario").SemiBold();
-                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("Desc.").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("Bonif.").SemiBold();
                             h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("Subtotal").SemiBold();
                         });
                         foreach (var it in comp.Items)
@@ -295,22 +285,12 @@ public class ArcaInvoicePdfService
                             table.Cell().BorderBottom(0.3f).Padding(2).Text(it.Sku ?? "").FontSize(8).FontColor(Colors.Blue.Darken2).SemiBold();
                             table.Cell().BorderBottom(0.3f).Padding(2).Text(prod);
                             table.Cell().BorderBottom(0.3f).Padding(2).Text(fmt).FontSize(8).FontColor(Colors.Grey.Darken1);
-                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(t =>
-                            {
-                                if (it.DescuentoPct.HasValue && it.PrecioOriginal.HasValue)
-                                {
-                                    t.Span("$ " + pcuOrigConIva.ToString("N2", new CultureInfo("es-AR")))
-                                        .Strikethrough().FontColor(Colors.Grey.Medium);
-                                    t.Span("\n");
-                                    t.Span("$ " + pcuConIva.ToString("N2", new CultureInfo("es-AR")));
-                                }
-                                else
-                                {
-                                    t.Span("$ " + pcuConIva.ToString("N2", new CultureInfo("es-AR")));
-                                }
-                            });
+                            // 2026-07-14: P. Unitario limpio = precio de LISTA con IVA (sin tachar). El descuento
+                            // va aparte en "Bonif." (formato Contabilium/AFIP). El Subtotal queda con el neto.
+                            var puListaBC = it.DescuentoPct.HasValue && it.PrecioOriginal.HasValue ? pcuOrigConIva : pcuConIva;
+                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text("$ " + puListaBC.ToString("N2", new CultureInfo("es-AR")));
                             table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(
-                                it.DescuentoPct.HasValue ? it.DescuentoPct.Value.ToString("0.##") + "%" : "—"
+                                it.DescuentoPct.HasValue ? it.DescuentoPct.Value.ToString("0.##") + " %" : "—"
                             ).FontSize(8);
                             table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text("$ " + subConIva.ToString("N2", new CultureInfo("es-AR")));
                         }
@@ -334,6 +314,12 @@ public class ArcaInvoicePdfService
                                 c.Item().Text($"IVA {iva.Pct.ToString("0.##")}%: $ {iva.Importe.ToString("N2", new CultureInfo("es-AR"))}");
                             }
                         }
+                        // 2026-07-14: total de bonificación (suma de descuentos por renglón), estilo Contabilium.
+                        var bonifTotalF = comp.Items
+                            .Where(it => it.DescuentoPct.HasValue && it.PrecioOriginal.HasValue)
+                            .Sum(it => (it.PrecioOriginal!.Value - it.PrecioUnitario) * it.Cantidad);
+                        if (bonifTotalF > 0.01m)
+                            c.Item().Text($"Bonificación: $ {bonifTotalF.ToString("N2", new CultureInfo("es-AR"))}").FontSize(9);
                         c.Item().PaddingTop(2).Text($"Importe Total: $ {comp.ImpTotal.ToString("N2", new CultureInfo("es-AR"))}").FontSize(11).Bold();
                     });
 
