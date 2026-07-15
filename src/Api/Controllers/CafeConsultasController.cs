@@ -47,6 +47,94 @@ public class CafeConsultasController : ControllerBase
         return Ok(Ayuda("No entendí la consulta. Probá con alguno de estos ejemplos:"));
     }
 
+    /// <summary>
+    /// Buscador simple: recibe un codigo/SKU (o nombre) y devuelve costo sin IVA + precio(s)
+    /// sugerido(s), listo para mostrar en una tarjeta. Sin lenguaje natural.
+    /// GET api/cafe/consultas/precio?codigo=C3622AZ
+    /// </summary>
+    [HttpGet("precio")]
+    public async Task<IActionResult> BuscarPrecio([FromQuery] string codigo)
+    {
+        codigo = (codigo ?? "").Trim();
+        if (string.IsNullOrEmpty(codigo))
+            return Ok(new CafePrecioConsultaDto { Encontrado = false, Mensaje = "Escribí un código o nombre de producto." });
+
+        var up = codigo.ToUpperInvariant();
+        var p = await _db.CafeProductos
+            .Include(x => x.MarcaNav)
+            .Include(x => x.OemNav)
+            .FirstOrDefaultAsync(x => x.Sku == codigo || x.Sku == up);
+        if (p is null)
+        {
+            // Fallback: contiene (por SKU o por nombre)
+            p = await _db.CafeProductos
+                .Include(x => x.MarcaNav)
+                .Include(x => x.OemNav)
+                .Where(x => (x.Sku != null && x.Sku.Contains(codigo)) || x.Nombre.Contains(codigo))
+                .OrderBy(x => x.Nombre)
+                .FirstOrDefaultAsync();
+        }
+        if (p is null)
+            return Ok(new CafePrecioConsultaDto { Encontrado = false, Mensaje = $"No encontré ningún producto con '{codigo}'." });
+
+        var iva = p.IvaPct > 0m ? p.IvaPct : 21m;
+        var dto = new CafePrecioConsultaDto
+        {
+            Encontrado = true,
+            Sku = p.Sku ?? "—",
+            Nombre = p.Nombre,
+            Categoria = p.Categoria,
+            Marca = p.MarcaNav?.Nombre ?? p.Marca,
+            Stock = p.Categoria == "CAFE"
+                ? (p.StockGramos / 1000m).ToString("N2", ARS) + " kg"
+                : $"{p.StockUnidades} u.",
+            CostoSinIva = p.Costo,
+            Activo = p.IsActive,
+        };
+
+        // Precio sugerido: mismo criterio que el motor de ventas (CafePricingService).
+        // Si el producto tiene OEM con PvpConIva > 0, el sugerido sale del OEM (CON IVA) y se
+        // convierte a SIN IVA con el IVA del OEM. Si no, se muestran las listas Bar/Comercial.
+        if (p.OemId.HasValue && p.OemNav?.PvpConIva is decimal pvpOem && pvpOem > 0m)
+        {
+            var mult = p.MultiplicadorOem is decimal m && m > 0m ? m : 1m;
+            var ivaOem = p.OemNav.IvaPct is decimal io && io > 0m ? io : 21m;
+            var conIva = Math.Round(pvpOem * mult, 2);
+            var sinIva = Math.Round(conIva / (1m + ivaOem / 100m), 2);
+            dto.TieneOem = true;
+            dto.OemCodigo = p.OemNav.Codigo;
+            dto.Precios.Add(new CafePrecioLineaDto
+            {
+                Etiqueta = "Sugerido",
+                SinIva = sinIva,
+                ConIva = conIva,
+                Nota = $"según OEM {p.OemNav.Codigo}"
+            });
+        }
+        else
+        {
+            var suf = p.Categoria == "CAFE" ? " (por kg)" : "";
+            var bar = p.PrecioBar ?? p.Pvp1 ?? p.PrecioPorKg;
+            var com = p.PrecioOtro ?? p.Pvp2 ?? p.PrecioPorKg;
+            if (bar.HasValue)
+                dto.Precios.Add(new CafePrecioLineaDto
+                {
+                    Etiqueta = "Precio Bar" + suf,
+                    SinIva = bar.Value,
+                    ConIva = Math.Round(bar.Value * (1m + iva / 100m), 2)
+                });
+            if (com.HasValue)
+                dto.Precios.Add(new CafePrecioLineaDto
+                {
+                    Etiqueta = "Precio Comercial" + suf,
+                    SinIva = com.Value,
+                    ConIva = Math.Round(com.Value * (1m + iva / 100m), 2)
+                });
+        }
+
+        return Ok(dto);
+    }
+
     // ============================================================
     // Pattern matchers
     // ============================================================

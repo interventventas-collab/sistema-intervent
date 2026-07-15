@@ -1990,6 +1990,9 @@ public class ApiClient
     public async Task<CafeConsultaResultDto?> ConsultarCafeAsync(string query)
         => await PostAsync<CafeConsultaResultDto>("/api/cafe/consultas", new CafeConsultaRequest { Query = query });
 
+    public async Task<CafePrecioConsultaDto?> BuscarPrecioCafeAsync(string codigo)
+        => await GetAsync<CafePrecioConsultaDto>($"/api/cafe/consultas/precio?codigo={Uri.EscapeDataString(codigo)}");
+
     // --- Cotejo MeLi <-> Contabilium ---
     public async Task<CotejoImportResultDto?> ImportContabiliumStagingAsync()
         => await PostAsync<CotejoImportResultDto>("/api/meli/cotejo/import-staging", new { });

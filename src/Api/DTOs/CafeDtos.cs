@@ -892,6 +892,34 @@ public class CafeConsultaResultDto
     public List<string> Ayuda { get; set; } = new();
 }
 
+// ===== Buscar precio por codigo (buscador simple SKU -> costo sin IVA + sugerido) =====
+public class CafePrecioLineaDto
+{
+    /// <summary>Ej: "Sugerido", "Precio Bar (por kg)", "Precio Comercial (por kg)".</summary>
+    public string Etiqueta { get; set; } = "";
+    public decimal SinIva { get; set; }
+    public decimal ConIva { get; set; }
+    /// <summary>Aclaracion opcional, ej: "segun OEM 3622".</summary>
+    public string? Nota { get; set; }
+}
+
+public class CafePrecioConsultaDto
+{
+    public bool Encontrado { get; set; }
+    /// <summary>Mensaje cuando no se encontro (para mostrar al usuario).</summary>
+    public string? Mensaje { get; set; }
+    public string Sku { get; set; } = "";
+    public string Nombre { get; set; } = "";
+    public string Categoria { get; set; } = "";
+    public string? Marca { get; set; }
+    public string Stock { get; set; } = "";
+    public decimal CostoSinIva { get; set; }
+    public bool TieneOem { get; set; }
+    public string? OemCodigo { get; set; }
+    public bool Activo { get; set; } = true;
+    public List<CafePrecioLineaDto> Precios { get; set; } = new();
+}
+
 // ===== Listas de precios =====
 public class CafeListaPreciosFiltroRequest
 {
