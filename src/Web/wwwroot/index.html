@@ -954,6 +954,16 @@
                 dragging = true;
             };
 
+            // ── Agrandar / achicar (resize desde la esquina inferior derecha) ──
+            var resizing = false, rStartX = 0, rStartY = 0, rStartW = 0, rStartH = 0;
+            window.startCalcResize = function (mouseX, mouseY) {
+                var el = document.getElementById('calc-floating');
+                rStartW = el ? el.offsetWidth : 268;
+                rStartH = el ? el.offsetHeight : 300;
+                rStartX = mouseX; rStartY = mouseY;
+                resizing = true;
+            };
+
             function onMove(clientX, clientY) {
                 if (!dragging || !calcDragRef) return;
                 var dx = clientX - startMouseX;
@@ -967,16 +977,41 @@
                 newY = Math.max(0, Math.min(newY, maxY));
                 calcDragRef.invokeMethodAsync('UpdatePosition', newX, newY);
             }
-            function endDrag() { dragging = false; }
+            function onResize(clientX, clientY) {
+                if (!resizing || !calcDragRef) return;
+                var w = rStartW + (clientX - rStartX);
+                var h = rStartH + (clientY - rStartY);
+                w = Math.max(240, Math.min(w, 560));
+                h = Math.max(200, Math.min(h, Math.floor(window.innerHeight * 0.92)));
+                calcDragRef.invokeMethodAsync('UpdateSize', w, h);
+            }
+            function endDrag() { dragging = false; resizing = false; }
 
-            document.addEventListener('mousemove', function (e) { if (dragging) onMove(e.clientX, e.clientY); });
+            document.addEventListener('mousemove', function (e) {
+                if (dragging) onMove(e.clientX, e.clientY);
+                else if (resizing) onResize(e.clientX, e.clientY);
+            });
             document.addEventListener('mouseup', endDrag);
             document.addEventListener('touchmove', function (e) {
-                if (!dragging || e.touches.length === 0) return;
-                onMove(e.touches[0].clientX, e.touches[0].clientY);
+                if (e.touches.length === 0) return;
+                if (dragging) onMove(e.touches[0].clientX, e.touches[0].clientY);
+                else if (resizing) onResize(e.touches[0].clientX, e.touches[0].clientY);
             }, { passive: true });
             document.addEventListener('touchend', endDrag);
         })();
+
+        // ── Novedad "estos días": la calculadora se abre sola al entrar, hasta que el
+        //    usuario toca "no abrir sola" o pasan 14 días desde la primera vez que la vio. ──
+        window.calcShouldAutoOpen = function () {
+            try {
+                if (localStorage.getItem('calc.autoopen.off') === '1') return false;
+                var first = localStorage.getItem('calc.autoopen.first');
+                var now = Date.now();
+                if (!first) { localStorage.setItem('calc.autoopen.first', String(now)); return true; }
+                return (now - parseInt(first, 10)) / 86400000 < 14;
+            } catch (e) { return false; }
+        };
+        window.calcStopAutoOpen = function () { try { localStorage.setItem('calc.autoopen.off', '1'); } catch (e) {} };
 
         // Recibe bytes en base64 y abre el PDF en una pestaña nueva del browser.
         // Útil para "previsualizar" PDFs sin forzar la descarga.
