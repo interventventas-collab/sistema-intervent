@@ -1,25 +1,26 @@
 @page "/cafe/consultas"
 @attribute [Authorize]
+@using System.Globalization
 @inject ApiClient Api
 @inject ToastService ToastService
 
 <div class="card">
     <div class="card-header">
-        <h3>🔍 Consultas rápidas</h3>
+        <h3>🔍 Buscar precio</h3>
     </div>
     <div class="card-body">
-        <div style="max-width: 800px; margin: 0 auto;">
+        <div style="max-width: 640px; margin: 0 auto;">
             <p style="color: #6b7280; font-size: 0.88rem; margin-bottom: 0.6rem;">
-                Preguntá en lenguaje natural — el asistente busca en tu base.
+                Escribí el código del producto (SKU) y te muestro el <strong>costo sin IVA</strong> y el <strong>precio sugerido</strong>.
             </p>
 
-            <div style="display: flex; gap: 0.4rem; margin-bottom: 0.6rem;">
-                <input class="form-input" style="flex: 1; font-size: 1rem; padding: 0.6rem 0.8rem;"
-                       @bind="query" @bind:event="oninput"
+            <div style="display: flex; gap: 0.4rem; margin-bottom: 0.9rem;">
+                <input class="form-input" style="flex: 1; font-size: 1.05rem; padding: 0.7rem 0.9rem;"
+                       @bind="codigo" @bind:event="oninput"
                        @onkeydown="OnKey"
-                       placeholder="Ej: cuanto debe Cuchiflito · stock café Frikaf · ventas hoy" autofocus />
-                <button class="btn btn-primary" @onclick="DoQuery" disabled="@(string.IsNullOrWhiteSpace(query) || isLoading)">
-                    @(isLoading ? "..." : "Consultar")
+                       placeholder="Ej: C3622AZ · F30" autofocus />
+                <button class="btn btn-primary" @onclick="Buscar" disabled="@(string.IsNullOrWhiteSpace(codigo) || isLoading)">
+                    @(isLoading ? "..." : "Buscar")
                 </button>
                 @if (resultado is not null)
                 {
@@ -27,90 +28,71 @@
                 }
             </div>
 
-            @if (resultado is null)
+            @if (resultado is not null && resultado.Encontrado)
             {
-                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.9rem;">
-                    <div style="font-weight: 700; margin-bottom: 0.5rem; color: #4b5563; font-size: 0.85rem;">💡 Probá con alguno de estos:</div>
-                    <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
-                        @foreach (var ej in ejemplos)
-                        {
-                            var qtxt = ej;
-                            <button type="button" class="btn"
-                                    style="background: white; border: 1px solid #d1d5db; padding: 0.3rem 0.6rem; font-size: 0.82rem; border-radius: 6px; color: #374151;"
-                                    @onclick="() => RunExample(qtxt)">@ej</button>
-                        }
-                    </div>
-                </div>
-            }
-            else
-            {
-                <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; margin-top: 0.4rem;">
-                    @* Header del resultado *@
-                    <div style="margin-bottom: 0.7rem; display: flex; justify-content: space-between; align-items: flex-start; gap: 0.8rem; flex-wrap: wrap;">
-                        <div style="flex: 1;">
-                            <h3 style="margin: 0; font-size: 1.05rem; color: #1e3a8a;">@resultado.Titulo</h3>
-                            @if (!string.IsNullOrEmpty(resultado.Subtitulo))
+                <div style="background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 1.1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.8rem; flex-wrap: wrap; margin-bottom: 0.9rem;">
+                        <div>
+                            <h3 style="margin: 0; font-size: 1.15rem; color: #1e3a8a;">@resultado.Nombre</h3>
+                            <p style="margin: 0.25rem 0 0; font-size: 0.85rem; color: #6b7280;">
+                                SKU @resultado.Sku · @resultado.Categoria
+                                @if (!string.IsNullOrEmpty(resultado.Marca)) { <text> · @resultado.Marca</text> }
+                            </p>
+                        </div>
+                        <div style="text-align: right; font-size: 0.85rem; color: #6b7280;">
+                            Stock: <strong style="color:#374151;">@resultado.Stock</strong>
+                            @if (!resultado.Activo)
                             {
-                                <p style="margin: 0.2rem 0 0; font-size: 0.85rem; color: #6b7280;">@resultado.Subtitulo</p>
+                                <div style="margin-top:0.2rem; color:#b91c1c; font-weight:700;">Inactivo</div>
                             }
                         </div>
-                        @if (!string.IsNullOrEmpty(resultado.Total))
-                        {
-                            <div style="background: #fef3c7; color: #78350f; padding: 0.4rem 0.8rem; border-radius: 8px; font-weight: 800; font-size: 1.1rem;">
-                                Total: @resultado.Total
-                            </div>
-                        }
                     </div>
 
-                    @if (resultado.Tipo == "tabla" && resultado.Filas.Count > 0)
+                    @* Costo sin IVA — el numero protagonista *@
+                    <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 0.8rem 1rem; margin-bottom: 0.8rem; display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-weight: 700; color: #075985;">Costo sin IVA</span>
+                        <span style="font-weight: 800; font-size: 1.3rem; color: #0c4a6e;">@Money(resultado.CostoSinIva)</span>
+                    </div>
+
+                    @* Precios sugeridos / listas *@
+                    @if (resultado.Precios.Count > 0)
                     {
-                        <div class="table-responsive">
-                            <table class="data-table" style="font-size: 0.88rem;">
-                                <thead>
-                                    <tr>
-                                        @foreach (var c in resultado.Columnas) { <th>@c</th> }
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var fila in resultado.Filas)
-                                    {
-                                        <tr>
-                                            @foreach (var c in resultado.Columnas)
-                                            {
-                                                <td>@(fila.TryGetValue(c, out var v) ? v : "")</td>
-                                            }
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                    }
-                    else if (resultado.Tipo == "ficha" && resultado.Datos.Count > 0)
-                    {
-                        <table class="data-table" style="font-size: 0.9rem;">
+                        <table class="data-table" style="font-size: 0.92rem;">
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th style="text-align:right;">Sin IVA</th>
+                                    <th style="text-align:right;">Con IVA</th>
+                                </tr>
+                            </thead>
                             <tbody>
-                                @foreach (var d in resultado.Datos)
+                                @foreach (var linea in resultado.Precios)
                                 {
                                     <tr>
-                                        <td style="font-weight: 700; color: #4b5563; width: 200px; background: #f9fafb;">@d.Key</td>
-                                        <td>@d.Value</td>
+                                        <td style="font-weight: 700; color: #374151;">
+                                            @linea.Etiqueta
+                                            @if (!string.IsNullOrEmpty(linea.Nota))
+                                            {
+                                                <div style="font-weight:400; font-size:0.78rem; color:#9ca3af;">@linea.Nota</div>
+                                            }
+                                        </td>
+                                        <td style="text-align:right; font-weight:700; color:#065f46;">@Money(linea.SinIva)</td>
+                                        <td style="text-align:right; color:#6b7280;">@Money(linea.ConIva)</td>
                                     </tr>
                                 }
                             </tbody>
                         </table>
                     }
-                    else if (resultado.Tipo == "ayuda" && resultado.Ayuda.Count > 0)
+                    else
                     {
-                        <div style="display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem;">
-                            @foreach (var a in resultado.Ayuda)
-                            {
-                                var qtxt = a;
-                                <button type="button" class="btn"
-                                        style="background: white; border: 1px solid #d1d5db; padding: 0.3rem 0.6rem; font-size: 0.82rem; border-radius: 6px; color: #374151;"
-                                        @onclick="() => RunExample(qtxt)">@a</button>
-                            }
-                        </div>
+                        <p style="color:#9ca3af; font-size:0.85rem; margin:0;">Este producto no tiene precio sugerido cargado.</p>
                     }
+                </div>
+            }
+            else if (resultado is not null && !resultado.Encontrado)
+            {
+                <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 0.9rem; color: #991b1b; font-size: 0.9rem;">
+                    @resultado.Mensaje
                 </div>
             }
         </div>
@@ -118,50 +100,34 @@
 </div>
 
 @code {
-    private string query = "";
+    private string codigo = "";
     private bool isLoading;
-    private CafeConsultaResultDto? resultado;
+    private CafePrecioConsultaDto? resultado;
+    private static readonly CultureInfo ARS = CultureInfo.GetCultureInfo("es-AR");
 
-    private static readonly string[] ejemplos = new[]
-    {
-        "cuanto debe Cuchiflito",
-        "stock café Frikaf",
-        "ventas hoy",
-        "ventas mes",
-        "compras pendientes",
-        "clientes con deuda",
-        "top productos Cuchiflito",
-        "producto F1",
-        "proveedor Colombraro"
-    };
+    private static string Money(decimal v) => "$" + v.ToString("N2", ARS);
 
     private async Task OnKey(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(query) && !isLoading)
-            await DoQuery();
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(codigo) && !isLoading)
+            await Buscar();
     }
 
-    private async Task DoQuery()
+    private async Task Buscar()
     {
-        if (string.IsNullOrWhiteSpace(query)) return;
+        if (string.IsNullOrWhiteSpace(codigo)) return;
         isLoading = true;
         try
         {
-            resultado = await Api.ConsultarCafeAsync(query);
+            resultado = await Api.BuscarPrecioCafeAsync(codigo.Trim());
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { isLoading = false; }
     }
 
-    private async Task RunExample(string ej)
-    {
-        query = ej;
-        await DoQuery();
-    }
-
     private void Clear()
     {
-        query = "";
+        codigo = "";
         resultado = null;
     }
 }

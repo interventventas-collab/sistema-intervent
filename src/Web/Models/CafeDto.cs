@@ -1146,6 +1146,31 @@ public class CafeConsultaResultDto
     public List<string> Ayuda { get; set; } = new();
 }
 
+// ===== Buscar precio por codigo (buscador simple) =====
+public class CafePrecioLineaDto
+{
+    public string Etiqueta { get; set; } = "";
+    public decimal SinIva { get; set; }
+    public decimal ConIva { get; set; }
+    public string? Nota { get; set; }
+}
+
+public class CafePrecioConsultaDto
+{
+    public bool Encontrado { get; set; }
+    public string? Mensaje { get; set; }
+    public string Sku { get; set; } = "";
+    public string Nombre { get; set; } = "";
+    public string Categoria { get; set; } = "";
+    public string? Marca { get; set; }
+    public string Stock { get; set; } = "";
+    public decimal CostoSinIva { get; set; }
+    public bool TieneOem { get; set; }
+    public string? OemCodigo { get; set; }
+    public bool Activo { get; set; } = true;
+    public List<CafePrecioLineaDto> Precios { get; set; } = new();
+}
+
 // ===== Listas de precios =====
 public class CafeListaPreciosFiltroRequest
 {
