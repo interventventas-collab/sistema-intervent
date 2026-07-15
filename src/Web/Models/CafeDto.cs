@@ -1418,6 +1418,37 @@ public class CafeOemImportPreviewDto
     public List<string> Errores { get; set; } = new();
 }
 
+// 2026-07-15: gestión masiva de Stock mínimo (StockMinimoMeLi) por Excel
+public class StockMinimoCambioDto
+{
+    public int ProductoId { get; set; }
+    public string? Codigo { get; set; }
+    public string Descripcion { get; set; } = "";
+    public int? MinimoViejo { get; set; }
+    public int? MinimoNuevo { get; set; }
+    public bool Asigna { get; set; }
+    public bool Quita { get; set; }
+}
+
+public class StockMinimoPreviewDto
+{
+    public int TotalFilas { get; set; }
+    public int SinCambios { get; set; }
+    public int Asignan { get; set; }
+    public int Quitan { get; set; }
+    public int NoEncontrados { get; set; }
+    public List<StockMinimoCambioDto> Cambios { get; set; } = new();
+    public List<string> Errores { get; set; } = new();
+}
+
+public class StockMinimoApplyResultDto
+{
+    public int Actualizados { get; set; }
+    public int Quitados { get; set; }
+    public int NoEncontrados { get; set; }
+    public List<string> Errores { get; set; } = new();
+}
+
 // === Descuentos por tipo de cliente y marca ===
 public class CafeDescuentoGrillaFila
 {

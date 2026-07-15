@@ -4,6 +4,7 @@
 @inject ToastService ToastService
 @inject HttpClient Http
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 @* === Bloque QR superior ===
    2 entradas mobile (pedido del usuario 2026-05-25):
@@ -53,10 +54,14 @@
                 @onclick='() => modoCarga = "pedido"'>🛒 Cargar stock (rápido)</button>
         <button class="@(modoCarga == "lista" ? "btn btn-primary" : "btn btn-secondary")" style="font-size:0.85rem;"
                 @onclick='() => modoCarga = "lista"'>📋 Lista completa</button>
+        <button class="@(modoCarga == "minimo" ? "btn btn-primary" : "btn btn-secondary")" style="font-size:0.85rem;"
+                @onclick='() => modoCarga = "minimo"'>🎯 Stock mínimo</button>
         <span style="font-size:0.78rem; color:#6b7280; margin-left:0.5rem;">
             @(modoCarga == "pedido"
                 ? "Buscás producto → sumás cantidad → agregás a la lista → al final 1 click guarda todo."
-                : "Ves toda la lista de productos del depósito y editás stock final de cada uno.")
+                : modoCarga == "lista"
+                    ? "Ves toda la lista de productos del depósito y editás stock final de cada uno."
+                    : "Bajás un Excel con todos los productos, editás la columna 'stock mínimo' y lo volvés a subir.")
         </span>
     </div>
 </div>
@@ -265,7 +270,7 @@
         </div>
     </div>
 }
-else
+else if (modoCarga == "lista")
 {
 <div class="card">
     <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
@@ -385,6 +390,137 @@ else
 </div>
 
 }
+else if (modoCarga == "minimo")
+{
+    @* 2026-07-15: gestión masiva del "Stock mínimo para MeLi" por Excel (bajar → editar → subir con vista previa). *@
+    <div class="card" style="margin-bottom:0.8rem;">
+        <div class="card-header">
+            <h3 style="margin:0;">🎯 Stock mínimo por Excel</h3>
+        </div>
+        <div class="card-body" style="padding:1rem;">
+            <div style="background:#fff7ed; border:1px solid #fdba74; border-radius:8px; padding:0.8rem 1rem; margin-bottom:1rem; font-size:0.85rem; color:#7c2d12;">
+                El <b>stock mínimo</b> es la cantidad que te <b>reservás para vos</b>: Mercado Libre ve (stock − ese número).
+                Bajá el Excel, editá la columna amarilla <b>stock mínimo</b> (dejala vacía para sacarle el mínimo a un producto)
+                y volvé a subirlo. Antes de aplicar vas a ver una vista previa.
+            </div>
+
+            <div style="display:flex; gap:0.8rem; flex-wrap:wrap; align-items:center; margin-bottom:1rem;">
+                <button class="btn btn-primary" @onclick="BajarExcelMinimo" disabled="@bajandoMin">
+                    @(bajandoMin ? "Generando..." : "📥 Bajar Excel")
+                </button>
+                <span style="color:#9ca3af;">|</span>
+                <label class="btn btn-secondary" style="margin:0; cursor:pointer;">
+                    📂 Elegir archivo editado
+                    <InputFile OnChange="OnArchivoMinimoChange" accept=".xlsx" style="display:none;" />
+                </label>
+                @if (archivoMin is not null)
+                {
+                    <span style="font-size:0.85rem; color:#374151;">📄 @archivoMin.Name</span>
+                }
+            </div>
+
+            @if (errorMin is not null)
+            {
+                <div style="background:#fee2e2; border:1px solid #fecaca; border-radius:8px; padding:0.7rem 1rem; margin-bottom:1rem; color:#991b1b; font-size:0.85rem;">
+                    ⚠ @errorMin
+                </div>
+            }
+
+            @if (archivoMin is not null && previewMin is null && resultadoMin is null)
+            {
+                <button class="btn" style="background:#2563eb; color:white; border:none;" @onclick="VerPreviewMinimo" disabled="@procesandoMin">
+                    @(procesandoMin ? "Analizando..." : "👁️ Ver vista previa")
+                </button>
+            }
+
+            @if (previewMin is not null && resultadoMin is null)
+            {
+                <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; padding:1rem; margin-bottom:1rem;">
+                    <h4 style="margin:0 0 0.6rem; color:#075985;">Vista previa — nada se aplicó todavía</h4>
+                    <ul style="margin:0 0 0.5rem; padding-left:1.2rem; font-size:0.88rem;">
+                        <li>Se les va a <b>asignar / cambiar</b> el mínimo a <b>@previewMin.Asignan</b> producto@(previewMin.Asignan == 1 ? "" : "s").</li>
+                        <li>Se les va a <b>sacar</b> el mínimo a <b>@previewMin.Quitan</b> producto@(previewMin.Quitan == 1 ? "" : "s").</li>
+                        <li><b>@previewMin.SinCambios</b> quedan igual.</li>
+                        @if (previewMin.NoEncontrados > 0)
+                        {
+                            <li style="color:#b45309;">@previewMin.NoEncontrados fila@(previewMin.NoEncontrados == 1 ? "" : "s") no coincidieron con ningún producto (se ignoran).</li>
+                        }
+                    </ul>
+
+                    @if (previewMin.Errores.Any())
+                    {
+                        <div style="font-size:0.8rem; color:#b45309; margin-bottom:0.5rem;">
+                            @foreach (var e in previewMin.Errores) { <div>• @e</div> }
+                        </div>
+                    }
+
+                    @if (previewMin.Cambios.Any())
+                    {
+                        <div style="max-height:320px; overflow:auto; border:1px solid #e5e7eb; border-radius:6px; background:white;">
+                            <table class="table" style="margin:0; font-size:0.82rem;">
+                                <thead style="position:sticky; top:0; background:#f3f4f6;">
+                                    <tr>
+                                        <th>Código</th>
+                                        <th>Descripción</th>
+                                        <th style="text-align:center;">Mínimo actual</th>
+                                        <th style="text-align:center;">Nuevo mínimo</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var c in previewMin.Cambios.Take(500))
+                                    {
+                                        <tr>
+                                            <td>@c.Codigo</td>
+                                            <td>@c.Descripcion</td>
+                                            <td style="text-align:center; color:#9ca3af;">@(c.MinimoViejo?.ToString() ?? "—")</td>
+                                            <td style="text-align:center; font-weight:600; color:@(c.Quita ? "#b91c1c" : "#15803d");">
+                                                @(c.MinimoNuevo?.ToString() ?? "sin mínimo")
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                        @if (previewMin.Cambios.Count > 500)
+                        {
+                            <div style="font-size:0.78rem; color:#6b7280; margin-top:0.4rem;">Mostrando los primeros 500 de @previewMin.Cambios.Count cambios. Se aplican todos igual.</div>
+                        }
+                    }
+                    else
+                    {
+                        <div style="font-size:0.85rem; color:#6b7280;">No hay cambios para aplicar.</div>
+                    }
+
+                    <div style="display:flex; gap:0.6rem; margin-top:1rem;">
+                        <button class="btn btn-secondary" @onclick="CancelarMinimo" disabled="@procesandoMin">Cancelar</button>
+                        @if (previewMin.Cambios.Any())
+                        {
+                            <button class="btn btn-primary" @onclick="AplicarMinimo" disabled="@procesandoMin">
+                                @(procesandoMin ? "Aplicando..." : $"✅ Aplicar {previewMin.Cambios.Count} cambios")
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (resultadoMin is not null)
+            {
+                <div style="background:#dcfce7; border:1px solid #86efac; border-radius:8px; padding:1rem; margin-bottom:1rem;">
+                    <h4 style="margin:0 0 0.6rem; color:#166534;">✅ Listo, cambios aplicados</h4>
+                    <ul style="margin:0; padding-left:1.2rem; font-size:0.88rem;">
+                        <li>Se asignó / cambió el mínimo a <b>@resultadoMin.Actualizados</b> producto@(resultadoMin.Actualizados == 1 ? "" : "s").</li>
+                        <li>Se sacó el mínimo a <b>@resultadoMin.Quitados</b> producto@(resultadoMin.Quitados == 1 ? "" : "s").</li>
+                        @if (resultadoMin.NoEncontrados > 0)
+                        {
+                            <li style="color:#b45309;">@resultadoMin.NoEncontrados fila@(resultadoMin.NoEncontrados == 1 ? "" : "s") se ignoraron (no coincidían).</li>
+                        }
+                    </ul>
+                    <button class="btn btn-secondary" style="margin-top:0.8rem;" @onclick="CancelarMinimo">Cargar otro Excel</button>
+                </div>
+            }
+        </div>
+    </div>
+}
 
 @code {
     private List<CafeDepositoDto>? depositos;
@@ -400,7 +536,81 @@ else
     private Dictionary<int, int> nuevoStockUnidades = new();
 
     // ─── 2026-06-02: Modo "Cargar pedido" estilo Contabilium ───
-    private string modoCarga = "pedido"; // "pedido" | "lista"
+    private string modoCarga = "pedido"; // "pedido" | "lista" | "minimo"
+
+    // ─── 2026-07-15: Modo "Stock mínimo" (bajar/subir Excel del campo StockMinimoMeLi) ───
+    private bool bajandoMin;
+    private bool procesandoMin;
+    private string? errorMin;
+    private IBrowserFile? archivoMin;
+    private byte[]? archivoMinBytes;
+    private StockMinimoPreviewDto? previewMin;
+    private StockMinimoApplyResultDto? resultadoMin;
+
+    private async Task BajarExcelMinimo()
+    {
+        bajandoMin = true; errorMin = null;
+        try
+        {
+            var bytes = await Api.DownloadStockMinimoExcelAsync();
+            if (bytes is null) { ToastService.Error("No se pudo generar el Excel"); return; }
+            await JS.InvokeVoidAsync("downloadFile", "stock-minimo.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                Convert.ToBase64String(bytes));
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { bajandoMin = false; }
+    }
+
+    private async Task OnArchivoMinimoChange(InputFileChangeEventArgs e)
+    {
+        errorMin = null; previewMin = null; resultadoMin = null; archivoMinBytes = null;
+        archivoMin = e.File;
+        try
+        {
+            using var src = archivoMin.OpenReadStream(maxAllowedSize: 100_000_000);
+            using var ms = new MemoryStream();
+            await src.CopyToAsync(ms);
+            archivoMinBytes = ms.ToArray();
+        }
+        catch (Exception ex) { errorMin = "No pude leer el archivo: " + ex.Message; archivoMin = null; }
+    }
+
+    private async Task VerPreviewMinimo()
+    {
+        if (archivoMinBytes is null) return;
+        procesandoMin = true; errorMin = null;
+        try
+        {
+            using var ms = new MemoryStream(archivoMinBytes);
+            previewMin = await Api.PreviewStockMinimoAsync(ms, archivoMin?.Name ?? "stock-minimo.xlsx");
+        }
+        catch (Exception ex) { errorMin = ex.Message; }
+        finally { procesandoMin = false; }
+    }
+
+    private async Task AplicarMinimo()
+    {
+        if (archivoMinBytes is null) return;
+        procesandoMin = true; errorMin = null;
+        try
+        {
+            using var ms = new MemoryStream(archivoMinBytes);
+            resultadoMin = await Api.ApplyStockMinimoAsync(ms, archivoMin?.Name ?? "stock-minimo.xlsx");
+            if (resultadoMin is not null)
+            {
+                ToastService.Success($"Aplicado: {resultadoMin.Actualizados} con mínimo, {resultadoMin.Quitados} sin mínimo");
+                previewMin = null;
+            }
+        }
+        catch (Exception ex) { errorMin = ex.Message; }
+        finally { procesandoMin = false; }
+    }
+
+    private void CancelarMinimo()
+    {
+        archivoMin = null; archivoMinBytes = null; previewMin = null; resultadoMin = null; errorMin = null;
+    }
     private string cargaSearch = "";
     private bool cargaSearchOpen = false;
     private string cargaModo = "modificar"; // "modificar" (sumar/restar) | "reemplazar" (stock final)
