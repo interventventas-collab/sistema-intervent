@@ -150,6 +150,12 @@
     }
     .topbar-nav-modern:hover { background: #f3f4f6; }
     .topbar-nav-modern.abierto { background: #f3f4f6; }
+    .calc-nuevo-badge {
+        background: #dc2626; color: #fff; font-size: 9px; font-weight: 700;
+        padding: 1px 5px; border-radius: 999px; margin-left: 4px; line-height: 1.4;
+        animation: calcnuevo 1s ease-in-out infinite;
+    }
+    @@keyframes calcnuevo { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
     .topbar-nav-modern-ico {
         font-size: 1.1rem;
         opacity: 0.85;
@@ -1339,6 +1345,16 @@
                     <span>BOVEDA CONT</span>
                 </button>
                 <button class="topbar-nav-modern"
+                        @onclick="OpenCalcFromNav"
+                        title="Calculadora de precios (buscar costo y sugerido)">
+                    <span class="topbar-nav-modern-ico">@SvgIcons.Calculator</span>
+                    <span>Calculadora</span>
+                    @if (calcNuevoBadge)
+                    {
+                        <span class="calc-nuevo-badge">nuevo</span>
+                    }
+                </button>
+                <button class="topbar-nav-modern"
                         @onclick="@(() => NavigateTo("/cafe/stock-masivo"))"
                         title="Stock masivo (todos los productos)">
                     <span class="topbar-nav-modern-ico">@SvgIcons.Package</span>
@@ -2275,6 +2291,16 @@
     private async Task ToggleCalc() { if (calcRef is not null) await calcRef.ToggleAsync(); }
     private async Task TogglePostits() { if (postitsRef is not null) await postitsRef.ToggleAsync(); }
 
+    // 2026-07-15: acceso directo a la calculadora en la barra, con cartel "nuevo" titilante
+    // hasta que se abre por primera vez.
+    private bool calcNuevoBadge = true;
+    private async Task OpenCalcFromNav()
+    {
+        calcNuevoBadge = false;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "calc.usada", "1"); } catch { }
+        await ToggleCalc();
+    }
+
     private static readonly Dictionary<string, string> RouteToMenuKey = new()
     {
         { "", "dashboard" },
@@ -2564,6 +2590,13 @@
             catch { /* navegador viejo o JS bloqueado */ }
             // 2026-07-08: chequear si corresponde mostrar el globito de bienvenida.
             await CargarWelcomeAsync();
+            // 2026-07-15: apagar el cartel "nuevo" de la calculadora si ya la usaron.
+            try
+            {
+                var usada = await JS.InvokeAsync<string?>("localStorage.getItem", "calc.usada");
+                if (usada == "1") { calcNuevoBadge = false; await InvokeAsync(StateHasChanged); }
+            }
+            catch { }
         }
     }
 

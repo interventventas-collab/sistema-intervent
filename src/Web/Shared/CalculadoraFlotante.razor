@@ -16,17 +16,23 @@
 @if (visible)
 {
     <div class="calc-floating" id="calc-floating"
-         style="left: @(posX)px; top: @(posY)px;">
+         style="left: @(posX)px; top: @(posY)px;@SizeStyle">
         <div class="calc-header" @onmousedown="StartDrag" @ontouchstart="StartDragTouch">
             <span class="calc-title">🧮 Calculadora</span>
             <button class="calc-close" @onclick="Close" title="Cerrar">×</button>
         </div>
+
+        @if (mostrarNovedad)
+        {
+            <div class="calc-novedad">✨ Nuevo · Calculadora de precios</div>
+        }
 
         <div class="calc-tabs">
             <button class="calc-tab @(tab == "precios" ? "active" : "")" @onclick='() => tab = "precios"'>🏷️ Precios</button>
             <button class="calc-tab @(tab == "numeros" ? "active" : "")" @onclick='() => tab = "numeros"'>🔢 Números</button>
         </div>
 
+        <div class="calc-body">
         @if (tab == "numeros")
         {
             <div class="calc-display" title="@history">@display</div>
@@ -132,6 +138,16 @@
                 </div>
             </div>
         }
+        </div>
+
+        @if (mostrarNovedad)
+        {
+            <div class="calc-novedad-foot">
+                <button @onclick="NoAbrirSola">ya la vi · no abrir sola</button>
+            </div>
+        }
+
+        <div class="calc-resize" @onmousedown="StartResize" @ontouchstart="StartResizeTouch" title="Agrandar / achicar"></div>
     </div>
 }
 
@@ -140,6 +156,10 @@
         position: fixed;
         z-index: 9000;
         width: 268px;
+        min-width: 240px; max-width: 560px;
+        min-height: 200px; max-height: 92vh;
+        display: flex; flex-direction: column;
+        overflow: hidden;
         background: #1f2937;
         border-radius: 12px;
         box-shadow: 0 12px 30px rgba(0,0,0,0.35);
@@ -151,12 +171,34 @@
     .calc-header {
         background: #111827;
         padding: 0.5rem 0.75rem;
-        border-top-left-radius: 12px;
-        border-top-right-radius: 12px;
         display: flex;
         align-items: center;
         cursor: move;
         gap: 0.5rem;
+        flex-shrink: 0;
+    }
+    .calc-body { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
+    .calc-novedad {
+        background: #065f46; color: #d1fae5; font-size: 0.72rem;
+        padding: 4px 10px; text-align: center; font-weight: 700; flex-shrink: 0;
+    }
+    .calc-novedad-foot {
+        border-top: 1px solid #374151; padding: 5px; text-align: center; flex-shrink: 0;
+    }
+    .calc-novedad-foot button {
+        background: none; border: none; color: #9ca3af; font-size: 0.74rem;
+        text-decoration: underline; cursor: pointer;
+    }
+    .calc-novedad-foot button:hover { color: #f9fafb; }
+    .calc-resize {
+        position: absolute; right: 0; bottom: 0;
+        width: 18px; height: 18px; cursor: nwse-resize; z-index: 3;
+    }
+    .calc-resize::after {
+        content: ""; position: absolute; right: 3px; bottom: 3px;
+        width: 9px; height: 9px;
+        border-right: 2px solid #9ca3af; border-bottom: 2px solid #9ca3af;
+        opacity: 0.7;
     }
     .calc-title { flex: 1; font-size: 0.82rem; font-weight: 700; }
     .calc-close {
@@ -172,7 +214,7 @@
     .calc-close:hover { background: #dc2626; }
 
     /* Solapas */
-    .calc-tabs { display: flex; gap: 4px; padding: 6px 8px 0; }
+    .calc-tabs { display: flex; gap: 4px; padding: 6px 8px 0; flex-shrink: 0; }
     .calc-tab {
         flex: 1; background: #374151; color: #d1d5db; border: none;
         padding: 0.45rem 0.3rem; font-size: 0.8rem; font-weight: 700;
@@ -223,8 +265,6 @@
     /* Panel Precios */
     .calc-precios {
         padding: 10px;
-        max-height: 62vh;
-        overflow-y: auto;
         user-select: text;
         -webkit-user-select: text;
     }
@@ -311,6 +351,12 @@
     private decimal ivaCalc = 21m;
     private List<CatalogItem> sugerencias = new();
     private bool catalogoCargado = false;
+    private double? sizeW, sizeH;
+    private bool mostrarNovedad = false;
+    private bool _novedadChecked = false;
+    private string SizeStyle => (sizeW.HasValue && sizeH.HasValue)
+        ? $" width:{sizeW.Value.ToString(CultureInfo.InvariantCulture)}px; height:{sizeH.Value.ToString(CultureInfo.InvariantCulture)}px;"
+        : "";
 
     private static readonly CultureInfo ARS = CultureInfo.GetCultureInfo("es-AR");
     private static string Money(decimal v) => "$" + v.ToString("N2", ARS);
@@ -325,46 +371,90 @@
 
     public async Task ToggleAsync()
     {
-        visible = !visible;
-        if (visible)
+        if (visible) { Close(); return; }
+        await OpenAsync();
+    }
+
+    private async Task OpenAsync()
+    {
+        visible = true;
+
+        // Cargar posición previa
+        try
         {
-            // Cargar posición previa
-            try
+            var saved = await JS.InvokeAsync<string?>("localStorage.getItem", "calc.position");
+            if (!string.IsNullOrEmpty(saved))
             {
-                var saved = await JS.InvokeAsync<string?>("localStorage.getItem", "calc.position");
-                if (!string.IsNullOrEmpty(saved))
+                var parts = saved.Split(',');
+                if (parts.Length == 2 && double.TryParse(parts[0], out var x) && double.TryParse(parts[1], out var y))
                 {
-                    var parts = saved.Split(',');
-                    if (parts.Length == 2 && double.TryParse(parts[0], out var x) && double.TryParse(parts[1], out var y))
-                    {
-                        posX = x; posY = y;
-                    }
+                    posX = x; posY = y;
                 }
             }
-            catch { /* primera apertura */ }
+        }
+        catch { /* primera apertura */ }
 
-            // Registrar JS para drag
-            if (!jsHooked)
+        // Cargar tamaño previo (agrandar/achicar se recuerda)
+        try
+        {
+            var s = await JS.InvokeAsync<string?>("localStorage.getItem", "calc.size");
+            if (!string.IsNullOrEmpty(s))
             {
-                selfRef ??= DotNetObjectReference.Create(this);
-                await JS.InvokeVoidAsync("registerCalcDrag", selfRef);
-                jsHooked = true;
-            }
-
-            // Cargar el catálogo (mismo motor que el buscador de Nueva Venta) para
-            // buscar mientras se escribe. Es idempotente: si ya lo cargó otra pantalla, es instantáneo.
-            if (!catalogoCargado)
-            {
-                try { await Catalog.EnsureLoadedAsync(); catalogoCargado = Catalog.Count > 0; }
-                catch { /* si falla, el botón Buscar sigue andando contra el servidor */ }
+                var p = s.Split(',');
+                if (p.Length == 2
+                    && double.TryParse(p[0], NumberStyles.Any, CultureInfo.InvariantCulture, out var w)
+                    && double.TryParse(p[1], NumberStyles.Any, CultureInfo.InvariantCulture, out var h))
+                {
+                    sizeW = w; sizeH = h;
+                }
             }
         }
+        catch { }
+
+        // Registrar JS para drag
+        if (!jsHooked)
+        {
+            selfRef ??= DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("registerCalcDrag", selfRef);
+            jsHooked = true;
+        }
+
+        // Cargar el catálogo (mismo motor que el buscador de Nueva Venta) para
+        // buscar mientras se escribe. Es idempotente: si ya lo cargó otra pantalla, es instantáneo.
+        if (!catalogoCargado)
+        {
+            try { await Catalog.EnsureLoadedAsync(); catalogoCargado = Catalog.Count > 0; }
+            catch { /* si falla, el botón Buscar sigue andando contra el servidor */ }
+        }
+
+        // Marcar como usada — apaga el cartel "nuevo" del acceso de la barra.
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "calc.usada", "1"); } catch { }
+
         StateHasChanged();
+    }
+
+    // La calculadora se abre sola al entrar al sistema, como novedad, "estos días"
+    // (hasta que el usuario toque "no abrir sola" o pasen 14 días — lo decide calcShouldAutoOpen en JS).
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _novedadChecked) return;
+        _novedadChecked = true;
+        try
+        {
+            var auto = await JS.InvokeAsync<bool>("calcShouldAutoOpen");
+            if (auto)
+            {
+                mostrarNovedad = true;
+                tab = "precios";
+                await OpenAsync();
+            }
+        }
+        catch { }
     }
 
     public bool IsVisible => visible;
 
-    private void Close() { visible = false; StateHasChanged(); }
+    private void Close() { visible = false; mostrarNovedad = false; StateHasChanged(); }
 
     private async Task StartDrag(MouseEventArgs e)
     {
@@ -384,6 +474,34 @@
         posX = x; posY = y;
         StateHasChanged();
         try { await JS.InvokeVoidAsync("localStorage.setItem", "calc.position", $"{x},{y}"); } catch { }
+    }
+
+    [JSInvokable]
+    public async Task UpdateSize(double w, double h)
+    {
+        sizeW = w; sizeH = h;
+        StateHasChanged();
+        var val = $"{w.ToString(CultureInfo.InvariantCulture)},{h.ToString(CultureInfo.InvariantCulture)}";
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "calc.size", val); } catch { }
+    }
+
+    private async Task StartResize(MouseEventArgs e)
+    {
+        await JS.InvokeVoidAsync("startCalcResize", e.ClientX, e.ClientY);
+    }
+
+    private async Task StartResizeTouch(TouchEventArgs e)
+    {
+        if (e.Touches.Length == 0) return;
+        var t = e.Touches[0];
+        await JS.InvokeVoidAsync("startCalcResize", t.ClientX, t.ClientY);
+    }
+
+    private async Task NoAbrirSola()
+    {
+        mostrarNovedad = false;
+        try { await JS.InvokeVoidAsync("calcStopAutoOpen"); } catch { }
+        StateHasChanged();
     }
 
     // ─── Panel Precios ───
