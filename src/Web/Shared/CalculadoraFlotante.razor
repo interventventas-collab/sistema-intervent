@@ -1,9 +1,14 @@
 @* Calculadora flotante: ventanita arrastrable que se abre desde el botón de la topbar.
    Se puede mover a cualquier lado de la pantalla, recuerda la última posición en
    localStorage. Funciona en cualquier pantalla del sistema porque vive en MainLayout.
-   Pedido del usuario 2026-05-28. *@
+   Pedido del usuario 2026-05-28.
+   2026-07-14: se agregó la solapa "Precios" — buscar un producto por código (costo sin IVA
+   + sugerido) y calcular precio de venta poniendo el % que se le quiere ganar sobre el costo. *@
 
+@using System.Globalization
 @inject IJSRuntime JS
+@inject ApiClient Api
+@inject ToastService ToastService
 @implements IAsyncDisposable
 
 @if (visible)
@@ -14,33 +19,98 @@
             <span class="calc-title">🧮 Calculadora</span>
             <button class="calc-close" @onclick="Close" title="Cerrar">×</button>
         </div>
-        <div class="calc-display" title="@history">@display</div>
-        <div class="calc-grid">
-            <button class="calc-btn calc-fn" @onclick="Clear">C</button>
-            <button class="calc-btn calc-fn" @onclick="ClearEntry">CE</button>
-            <button class="calc-btn calc-fn" @onclick="Backspace">⌫</button>
-            <button class="calc-btn calc-op" @onclick='() => SetOperator("/")'>÷</button>
 
-            <button class="calc-btn" @onclick='() => Digit("7")'>7</button>
-            <button class="calc-btn" @onclick='() => Digit("8")'>8</button>
-            <button class="calc-btn" @onclick='() => Digit("9")'>9</button>
-            <button class="calc-btn calc-op" @onclick='() => SetOperator("*")'>×</button>
-
-            <button class="calc-btn" @onclick='() => Digit("4")'>4</button>
-            <button class="calc-btn" @onclick='() => Digit("5")'>5</button>
-            <button class="calc-btn" @onclick='() => Digit("6")'>6</button>
-            <button class="calc-btn calc-op" @onclick='() => SetOperator("-")'>−</button>
-
-            <button class="calc-btn" @onclick='() => Digit("1")'>1</button>
-            <button class="calc-btn" @onclick='() => Digit("2")'>2</button>
-            <button class="calc-btn" @onclick='() => Digit("3")'>3</button>
-            <button class="calc-btn calc-op" @onclick='() => SetOperator("+")'>+</button>
-
-            <button class="calc-btn" @onclick="ToggleSign">±</button>
-            <button class="calc-btn" @onclick='() => Digit("0")'>0</button>
-            <button class="calc-btn" @onclick="Decimal">,</button>
-            <button class="calc-btn calc-eq" @onclick="Equals">=</button>
+        <div class="calc-tabs">
+            <button class="calc-tab @(tab == "precios" ? "active" : "")" @onclick='() => tab = "precios"'>🏷️ Precios</button>
+            <button class="calc-tab @(tab == "numeros" ? "active" : "")" @onclick='() => tab = "numeros"'>🔢 Números</button>
         </div>
+
+        @if (tab == "numeros")
+        {
+            <div class="calc-display" title="@history">@display</div>
+            <div class="calc-grid">
+                <button class="calc-btn calc-fn" @onclick="Clear">C</button>
+                <button class="calc-btn calc-fn" @onclick="ClearEntry">CE</button>
+                <button class="calc-btn calc-fn" @onclick="Backspace">⌫</button>
+                <button class="calc-btn calc-op" @onclick='() => SetOperator("/")'>÷</button>
+
+                <button class="calc-btn" @onclick='() => Digit("7")'>7</button>
+                <button class="calc-btn" @onclick='() => Digit("8")'>8</button>
+                <button class="calc-btn" @onclick='() => Digit("9")'>9</button>
+                <button class="calc-btn calc-op" @onclick='() => SetOperator("*")'>×</button>
+
+                <button class="calc-btn" @onclick='() => Digit("4")'>4</button>
+                <button class="calc-btn" @onclick='() => Digit("5")'>5</button>
+                <button class="calc-btn" @onclick='() => Digit("6")'>6</button>
+                <button class="calc-btn calc-op" @onclick='() => SetOperator("-")'>−</button>
+
+                <button class="calc-btn" @onclick='() => Digit("1")'>1</button>
+                <button class="calc-btn" @onclick='() => Digit("2")'>2</button>
+                <button class="calc-btn" @onclick='() => Digit("3")'>3</button>
+                <button class="calc-btn calc-op" @onclick='() => SetOperator("+")'>+</button>
+
+                <button class="calc-btn" @onclick="ToggleSign">±</button>
+                <button class="calc-btn" @onclick='() => Digit("0")'>0</button>
+                <button class="calc-btn" @onclick="Decimal">,</button>
+                <button class="calc-btn calc-eq" @onclick="Equals">=</button>
+            </div>
+        }
+        else
+        {
+            <div class="calc-precios">
+                <div class="cp-search">
+                    <input class="cp-input" placeholder="Código (ej: C3622AZ)"
+                           @bind="codigoBusq" @bind:event="oninput" @onkeydown="OnCodigoKey" />
+                    <button class="cp-buscar" @onclick="BuscarProducto"
+                            disabled="@(buscandoProd || string.IsNullOrWhiteSpace(codigoBusq))">
+                        @(buscandoProd ? "…" : "Buscar")
+                    </button>
+                </div>
+
+                @if (prodResult is not null && prodResult.Encontrado)
+                {
+                    <div class="cp-card">
+                        <div class="cp-nombre">@prodResult.Nombre</div>
+                        <div class="cp-sub">@prodResult.Sku · @prodResult.Categoria</div>
+                        <div class="cp-row"><span>Costo sin IVA</span><b>@Money(prodResult.CostoSinIva)</b></div>
+                        @foreach (var l in prodResult.Precios)
+                        {
+                            <div class="cp-row"><span>@l.Etiqueta</span><b class="cp-verde">@Money(l.SinIva)</b></div>
+                        }
+                    </div>
+                }
+                else if (prodResult is not null && !prodResult.Encontrado)
+                {
+                    <div class="cp-msg">@prodResult.Mensaje</div>
+                }
+
+                <div class="cp-margen">
+                    <div class="cp-margen-title">Calcular ganancia</div>
+                    <div class="cp-field">
+                        <label>Costo (sin IVA)</label>
+                        <input class="cp-input" inputmode="decimal" placeholder="0"
+                               @bind="costoStr" @bind:event="oninput" />
+                    </div>
+                    <div class="cp-field">
+                        <label>Quiero ganar %</label>
+                        <input class="cp-input" inputmode="decimal" placeholder="ej: 20"
+                               @bind="pctStr" @bind:event="oninput" />
+                    </div>
+
+                    @if (PrecioSinIva is decimal pSin)
+                    {
+                        <div class="cp-result">
+                            <div class="cp-row"><span>Precio venta (sin IVA)</span><b class="cp-verde">@Money(pSin)</b></div>
+                            <div class="cp-row"><span>Precio venta (con IVA @FmtPct(ivaCalc)%)</span><b>@Money(PrecioConIva!.Value)</b></div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="cp-hint">Poné un costo y el % para ver el precio.</div>
+                    }
+                </div>
+            </div>
+        }
     </div>
 }
 
@@ -48,7 +118,7 @@
     .calc-floating {
         position: fixed;
         z-index: 9000;
-        width: 240px;
+        width: 268px;
         background: #1f2937;
         border-radius: 12px;
         box-shadow: 0 12px 30px rgba(0,0,0,0.35);
@@ -79,6 +149,17 @@
         border-radius: 4px;
     }
     .calc-close:hover { background: #dc2626; }
+
+    /* Solapas */
+    .calc-tabs { display: flex; gap: 4px; padding: 6px 8px 0; }
+    .calc-tab {
+        flex: 1; background: #374151; color: #d1d5db; border: none;
+        padding: 0.45rem 0.3rem; font-size: 0.8rem; font-weight: 700;
+        cursor: pointer; border-radius: 7px 7px 0 0;
+    }
+    .calc-tab:hover { background: #4b5563; }
+    .calc-tab.active { background: #111827; color: #fff; }
+
     .calc-display {
         background: #111827;
         padding: 0.7rem 0.8rem;
@@ -117,11 +198,62 @@
     .calc-op.active { background: #fbbf24; }
     .calc-eq { background: #16a34a; color: white; }
     .calc-eq:hover { background: #15803d; }
+
+    /* Panel Precios */
+    .calc-precios {
+        padding: 10px;
+        max-height: 62vh;
+        overflow-y: auto;
+        user-select: text;
+        -webkit-user-select: text;
+    }
+    .cp-search { display: flex; gap: 5px; margin-bottom: 8px; }
+    .cp-input {
+        flex: 1; width: 100%; box-sizing: border-box;
+        background: #111827; border: 1px solid #374151; color: #f9fafb;
+        border-radius: 6px; padding: 0.5rem 0.6rem; font-size: 0.9rem;
+    }
+    .cp-input:focus { outline: none; border-color: #3b82f6; }
+    .cp-input::placeholder { color: #6b7280; }
+    .cp-buscar {
+        background: #2563eb; color: white; border: none; border-radius: 6px;
+        padding: 0 0.8rem; font-size: 0.85rem; font-weight: 700; cursor: pointer;
+    }
+    .cp-buscar:hover:not(:disabled) { background: #1d4ed8; }
+    .cp-buscar:disabled { opacity: 0.5; cursor: default; }
+
+    .cp-card {
+        background: #111827; border: 1px solid #374151; border-radius: 8px;
+        padding: 0.6rem 0.7rem; margin-bottom: 10px;
+    }
+    .cp-nombre { font-weight: 700; font-size: 0.9rem; color: #e5e7eb; }
+    .cp-sub { font-size: 0.75rem; color: #9ca3af; margin-bottom: 6px; }
+    .cp-row {
+        display: flex; justify-content: space-between; align-items: baseline;
+        gap: 8px; font-size: 0.82rem; padding: 3px 0; color: #d1d5db;
+    }
+    .cp-row b { font-weight: 800; color: #f9fafb; }
+    .cp-verde { color: #34d399 !important; }
+    .cp-msg {
+        background: #7f1d1d; color: #fecaca; border-radius: 6px;
+        padding: 0.5rem 0.6rem; font-size: 0.8rem; margin-bottom: 10px;
+    }
+
+    .cp-margen {
+        background: #111827; border: 1px solid #374151; border-radius: 8px;
+        padding: 0.6rem 0.7rem;
+    }
+    .cp-margen-title { font-weight: 700; font-size: 0.82rem; color: #93c5fd; margin-bottom: 8px; }
+    .cp-field { margin-bottom: 8px; }
+    .cp-field label { display: block; font-size: 0.72rem; color: #9ca3af; margin-bottom: 3px; }
+    .cp-result { margin-top: 4px; border-top: 1px solid #374151; padding-top: 6px; }
+    .cp-hint { font-size: 0.76rem; color: #6b7280; margin-top: 2px; }
 </style>
 
 @code {
     // Estado expuesto al MainLayout para poder abrir/cerrar desde el botón de la topbar.
     private bool visible = false;
+    private string tab = "precios"; // "precios" | "numeros"
     private double posX = 100, posY = 100;
     private string display = "0";
     private string history = "";
@@ -130,6 +262,25 @@
     private bool esperandoNuevoNumero = true;
     private DotNetObjectReference<CalculadoraFlotante>? selfRef;
     private bool jsHooked = false;
+
+    // ─── Estado del panel Precios ───
+    private string codigoBusq = "";
+    private bool buscandoProd = false;
+    private CafePrecioConsultaDto? prodResult;
+    private string costoStr = "";
+    private string pctStr = "";
+    private decimal ivaCalc = 21m;
+
+    private static readonly CultureInfo ARS = CultureInfo.GetCultureInfo("es-AR");
+    private static string Money(decimal v) => "$" + v.ToString("N2", ARS);
+    private static string FmtPct(decimal v) => v.ToString("0.##", ARS);
+
+    private decimal? Costo => ParseNum(costoStr);
+    private decimal? Pct => ParseNum(pctStr);
+    private decimal? PrecioSinIva => (Costo is decimal c && c > 0m && Pct is decimal p)
+        ? Math.Round(c * (1m + p / 100m), 2) : (decimal?)null;
+    private decimal? PrecioConIva => PrecioSinIva is decimal ps
+        ? Math.Round(ps * (1m + ivaCalc / 100m), 2) : (decimal?)null;
 
     public async Task ToggleAsync()
     {
@@ -184,6 +335,41 @@
         posX = x; posY = y;
         StateHasChanged();
         try { await JS.InvokeVoidAsync("localStorage.setItem", "calc.position", $"{x},{y}"); } catch { }
+    }
+
+    // ─── Panel Precios ───
+    private async Task OnCodigoKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !buscandoProd && !string.IsNullOrWhiteSpace(codigoBusq))
+            await BuscarProducto();
+    }
+
+    private async Task BuscarProducto()
+    {
+        if (string.IsNullOrWhiteSpace(codigoBusq)) return;
+        buscandoProd = true;
+        try
+        {
+            prodResult = await Api.BuscarPrecioCafeAsync(codigoBusq.Trim());
+            if (prodResult is not null && prodResult.Encontrado)
+            {
+                // Precarga el costo y el IVA del producto para el cálculo por %.
+                costoStr = prodResult.CostoSinIva.ToString("0.##", ARS);
+                ivaCalc = prodResult.IvaPct > 0m ? prodResult.IvaPct : 21m;
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { buscandoProd = false; StateHasChanged(); }
+    }
+
+    /// <summary>Parsea un número aceptando coma o punto (formato AR o simple).</summary>
+    private static decimal? ParseNum(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        s = s.Trim().Replace(" ", "");
+        if (s.Contains(',') && s.Contains('.')) s = s.Replace(".", "").Replace(",", ".");
+        else s = s.Replace(",", ".");
+        return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var n) ? n : (decimal?)null;
     }
 
     // ─── Lógica de la calculadora ───
