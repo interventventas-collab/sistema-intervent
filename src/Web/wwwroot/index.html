@@ -491,6 +491,7 @@
                 if (k === 'v') action = 'venta';
                 else if (k === 'a') action = 'alquiler';
                 else if (k === 'c') action = 'cobranza';
+                else if (k === 'k') action = 'calc';
                 if (action) {
                     e.preventDefault();
                     if (window.__nuevoRef) window.__nuevoRef.invokeMethodAsync('HandleNuevoShortcut', action);
@@ -1012,6 +1013,26 @@
             } catch (e) { return false; }
         };
         window.calcStopAutoOpen = function () { try { localStorage.setItem('calc.autoopen.off', '1'); } catch (e) {} };
+
+        // ── Teclado físico para la solapa "Números" de la calculadora. Solo actúa si la calc
+        //    está abierta en esa solapa (existe .calc-grid) y NO estás escribiendo en un casillero. ──
+        var calcKeysRef = null;
+        window.registerCalcKeys = function (dotNetRef) { calcKeysRef = dotNetRef; };
+        window.unregisterCalcKeys = function () { calcKeysRef = null; };
+        document.addEventListener('keydown', function (e) {
+            if (!calcKeysRef) return;
+            if (e.ctrlKey || e.altKey || e.metaKey) return;
+            if (!document.querySelector('#calc-floating .calc-grid')) return;
+            var ae = document.activeElement;
+            if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
+            var k = e.key;
+            var ok = (k >= '0' && k <= '9') || k === '+' || k === '-' || k === '*' || k === '/'
+                || k === '.' || k === ',' || k === 'Enter' || k === '=' || k === 'Backspace'
+                || k === 'Escape' || k === 'Delete';
+            if (!ok) return;
+            e.preventDefault();
+            calcKeysRef.invokeMethodAsync('OnPhysicalKey', k);
+        });
 
         // Recibe bytes en base64 y abre el PDF en una pestaña nueva del browser.
         // Útil para "previsualizar" PDFs sin forzar la descarga.

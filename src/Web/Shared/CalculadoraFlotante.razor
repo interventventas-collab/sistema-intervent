@@ -411,11 +411,12 @@
         }
         catch { }
 
-        // Registrar JS para drag
+        // Registrar JS para drag + teclado físico de la solapa Números
         if (!jsHooked)
         {
             selfRef ??= DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("registerCalcDrag", selfRef);
+            await JS.InvokeVoidAsync("registerCalcKeys", selfRef);
             jsHooked = true;
         }
 
@@ -502,6 +503,29 @@
         mostrarNovedad = false;
         try { await JS.InvokeVoidAsync("calcStopAutoOpen"); } catch { }
         StateHasChanged();
+    }
+
+    // Tecla física (pad numérico) cuando la calc está abierta en la solapa Números.
+    // El JS ya filtró: solo llega si estamos en Números y no escribiendo en un casillero.
+    [JSInvokable]
+    public void OnPhysicalKey(string k)
+    {
+        if (!visible || tab != "numeros") return;
+        if (k.Length == 1 && k[0] >= '0' && k[0] <= '9') { Digit(k); return; }
+        switch (k)
+        {
+            case "+": SetOperator("+"); break;
+            case "-": SetOperator("-"); break;
+            case "*": SetOperator("*"); break;
+            case "/": SetOperator("/"); break;
+            case ".":
+            case ",": Decimal(); break;
+            case "Enter":
+            case "=": Equals(); break;
+            case "Backspace": Backspace(); break;
+            case "Escape":
+            case "Delete": Clear(); break;
+        }
     }
 
     // ─── Panel Precios ───
@@ -668,5 +692,6 @@
     {
         selfRef?.Dispose();
         try { await JS.InvokeVoidAsync("unregisterCalcDrag"); } catch { }
+        try { await JS.InvokeVoidAsync("unregisterCalcKeys"); } catch { }
     }
 }
