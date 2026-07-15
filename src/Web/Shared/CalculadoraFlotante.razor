@@ -6,9 +6,11 @@
    + sugerido) y calcular precio de venta poniendo el % que se le quiere ganar sobre el costo. *@
 
 @using System.Globalization
+@using Web.Models.Mobile
 @inject IJSRuntime JS
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject Web.Services.Mobile.CatalogIndex Catalog
 @implements IAsyncDisposable
 
 @if (visible)
@@ -59,13 +61,26 @@
         {
             <div class="calc-precios">
                 <div class="cp-search">
-                    <input class="cp-input" placeholder="Código (ej: C3622AZ)"
-                           @bind="codigoBusq" @bind:event="oninput" @onkeydown="OnCodigoKey" />
+                    <input class="cp-input" placeholder="Escribí código o nombre…"
+                           value="@codigoBusq" @oninput="OnCodigoInput" @onkeydown="OnCodigoKey" />
                     <button class="cp-buscar" @onclick="BuscarProducto"
                             disabled="@(buscandoProd || string.IsNullOrWhiteSpace(codigoBusq))">
                         @(buscandoProd ? "…" : "Buscar")
                     </button>
                 </div>
+
+                @if (sugerencias.Count > 0)
+                {
+                    <div class="cp-suggest">
+                        @foreach (var s in sugerencias)
+                        {
+                            <button class="cp-sug-item" @onclick="() => SelectSugerencia(s)">
+                                <span class="cp-sug-sku">@s.Sku</span>
+                                <span class="cp-sug-name">@Trunc(s.Nombre, 32)</span>
+                            </button>
+                        }
+                    </div>
+                }
 
                 @if (prodResult is not null && prodResult.Encontrado)
                 {
@@ -75,7 +90,13 @@
                         <div class="cp-row"><span>Costo sin IVA</span><b>@Money(prodResult.CostoSinIva)</b></div>
                         @foreach (var l in prodResult.Precios)
                         {
-                            <div class="cp-row"><span>@l.Etiqueta</span><b class="cp-verde">@Money(l.SinIva)</b></div>
+                            <div class="cp-row cp-row-price">
+                                <span>@l.Etiqueta</span>
+                                <span class="cp-price-vals">
+                                    <b class="cp-verde">@Money(l.SinIva)</b>
+                                    <span class="cp-civa">c/IVA @Money(l.ConIva)</span>
+                                </span>
+                            </div>
                         }
                     </div>
                 }
@@ -222,6 +243,21 @@
     .cp-buscar:hover:not(:disabled) { background: #1d4ed8; }
     .cp-buscar:disabled { opacity: 0.5; cursor: default; }
 
+    /* Desplegable de sugerencias (busca mientras escribís, como en Nueva Venta) */
+    .cp-suggest {
+        background: #0b1220; border: 1px solid #374151; border-radius: 6px;
+        margin: -3px 0 9px; max-height: 190px; overflow-y: auto;
+    }
+    .cp-sug-item {
+        display: flex; flex-direction: column; align-items: flex-start; width: 100%;
+        background: transparent; border: none; border-bottom: 1px solid #1f2937;
+        color: #e5e7eb; padding: 6px 9px; cursor: pointer; text-align: left;
+    }
+    .cp-sug-item:last-child { border-bottom: none; }
+    .cp-sug-item:hover { background: #1e293b; }
+    .cp-sug-sku { font-family: monospace; font-weight: 700; font-size: 0.85rem; }
+    .cp-sug-name { font-size: 0.72rem; color: #9ca3af; }
+
     .cp-card {
         background: #111827; border: 1px solid #374151; border-radius: 8px;
         padding: 0.6rem 0.7rem; margin-bottom: 10px;
@@ -233,6 +269,9 @@
         gap: 8px; font-size: 0.82rem; padding: 3px 0; color: #d1d5db;
     }
     .cp-row b { font-weight: 800; color: #f9fafb; }
+    .cp-row-price { align-items: flex-start; }
+    .cp-price-vals { display: flex; flex-direction: column; align-items: flex-end; }
+    .cp-civa { font-size: 0.7rem; color: #9ca3af; font-weight: 400; }
     .cp-verde { color: #34d399 !important; }
     .cp-msg {
         background: #7f1d1d; color: #fecaca; border-radius: 6px;
@@ -270,6 +309,8 @@
     private string costoStr = "";
     private string pctStr = "";
     private decimal ivaCalc = 21m;
+    private List<CatalogItem> sugerencias = new();
+    private bool catalogoCargado = false;
 
     private static readonly CultureInfo ARS = CultureInfo.GetCultureInfo("es-AR");
     private static string Money(decimal v) => "$" + v.ToString("N2", ARS);
@@ -309,6 +350,14 @@
                 await JS.InvokeVoidAsync("registerCalcDrag", selfRef);
                 jsHooked = true;
             }
+
+            // Cargar el catálogo (mismo motor que el buscador de Nueva Venta) para
+            // buscar mientras se escribe. Es idempotente: si ya lo cargó otra pantalla, es instantáneo.
+            if (!catalogoCargado)
+            {
+                try { await Catalog.EnsureLoadedAsync(); catalogoCargado = Catalog.Count > 0; }
+                catch { /* si falla, el botón Buscar sigue andando contra el servidor */ }
+            }
         }
         StateHasChanged();
     }
@@ -344,10 +393,34 @@
             await BuscarProducto();
     }
 
+    // Busca mientras se escribe: filtra el catálogo en memoria (solo productos, no combos)
+    // y muestra hasta 8 coincidencias. Mismo comportamiento que el buscador de Nueva Venta.
+    private void OnCodigoInput(ChangeEventArgs e)
+    {
+        codigoBusq = e.Value?.ToString() ?? "";
+        RefreshSugerencias();
+    }
+
+    private void RefreshSugerencias()
+    {
+        var q = codigoBusq.Trim();
+        if (q.Length < 2 || !catalogoCargado) { sugerencias = new(); return; }
+        sugerencias = Catalog.Search(q, 8, it => it.Tipo == "producto")
+            .Select(h => h.Item).ToList();
+    }
+
+    private async Task SelectSugerencia(CatalogItem it)
+    {
+        codigoBusq = it.Sku;
+        sugerencias = new();
+        await BuscarProducto();
+    }
+
     private async Task BuscarProducto()
     {
         if (string.IsNullOrWhiteSpace(codigoBusq)) return;
         buscandoProd = true;
+        sugerencias = new();
         try
         {
             prodResult = await Api.BuscarPrecioCafeAsync(codigoBusq.Trim());
@@ -361,6 +434,9 @@
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { buscandoProd = false; StateHasChanged(); }
     }
+
+    private static string Trunc(string s, int len)
+        => string.IsNullOrEmpty(s) ? "" : (s.Length > len ? s.Substring(0, len) + "…" : s);
 
     /// <summary>Parsea un número aceptando coma o punto (formato AR o simple).</summary>
     private static decimal? ParseNum(string? s)
