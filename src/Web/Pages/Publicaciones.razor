@@ -643,7 +643,7 @@
                                                 <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                             }
                                             @AjusteChipPrecio(item)
-                                            @MargenChipPrecio(item) @SincroToggle(item)@CuentaResumidaLinea(item)
+                                            @MargenChipPrecio(item) @SincroToggle(item)@CuentaResumidaLinea(item)@ControlesFila(item)
                                         }
                                         else
                                         {
@@ -943,7 +943,7 @@
                                             <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                         }
                                         @AjusteChipPrecio(item)
-                                        @MargenChipPrecio(item) @SincroToggle(item)@CuentaResumidaLinea(item)
+                                        @MargenChipPrecio(item) @SincroToggle(item)@CuentaResumidaLinea(item)@ControlesFila(item)
                                     </td>
                                         <td style="text-align: center; font-weight: 700;">
                                         @if (item.ProductCriticalStock.HasValue && item.ProductCriticalStock.Value > 0 && item.AvailableQuantity <= item.ProductCriticalStock.Value)
@@ -1059,7 +1059,7 @@
                                             <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                         }
                                         @AjusteChipPrecio(item)
-                                        @MargenChipPrecio(item) @SincroToggle(item)@CuentaResumidaLinea(item)
+                                        @MargenChipPrecio(item) @SincroToggle(item)@CuentaResumidaLinea(item)@ControlesFila(item)
                                     </td>
                                             <td style="text-align: center; font-weight: 700;">
                                         @if (item.ProductCriticalStock.HasValue && item.ProductCriticalStock.Value > 0 && item.AvailableQuantity <= item.ProductCriticalStock.Value)
@@ -1122,7 +1122,7 @@
                                             <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                         }
                                         @AjusteChipPrecio(item)
-                                        @MargenChipPrecio(item) @SincroToggle(item)@CuentaResumidaLinea(item)
+                                        @MargenChipPrecio(item) @SincroToggle(item)@CuentaResumidaLinea(item)@ControlesFila(item)
                                     </td>
                                         <td style="text-align: center; font-weight: 700;">
                                         @if (item.ProductCriticalStock.HasValue && item.ProductCriticalStock.Value > 0 && item.AvailableQuantity <= item.ProductCriticalStock.Value)
@@ -5778,6 +5778,100 @@
     //   Stock  ON  = SyncStock=true   → los cambios de stock del sistema se pushean solos.
     private readonly HashSet<int> _savingSincroPrecio = new();
     private readonly HashSet<int> _savingSincroStock = new();
+
+    // ── 2026-07-14 (Etapa 3): controles de OBJETIVO % y PRECIO por fila, para editar desde la lista sin entrar a la ficha. ──
+    private readonly Dictionary<int, string> _objInput = new();
+    private readonly Dictionary<int, string> _precioInput = new();
+    private readonly HashSet<int> _savingObjFila = new();
+    private readonly HashSet<int> _savingPrecioFila = new();
+
+    private RenderFragment ControlesFila(MeliItemDto item) =>
+    @<span style="display:inline-flex; gap:0.5rem; flex-wrap:wrap; align-items:center; margin-top:0.25rem;">
+        @if (item.CafeProductoId.HasValue || item.ComponentMappingsCount > 0)
+        {
+            var objVal = _objInput.TryGetValue(item.Id, out var ov) ? ov : (item.GananciaObjetivoPct?.ToString("0.#", argCulture) ?? "");
+            var savingO = _savingObjFila.Contains(item.Id);
+            <span style="display:inline-flex; align-items:center; gap:2px;" @onclick:stopPropagation="true">
+                <span title="Objetivo de ganancia %" style="font-size:0.7rem;">🎯</span>
+                <input value="@objVal" @onchange="(e) => _objInput[item.Id] = e.Value?.ToString() ?? string.Empty"
+                       style="width:38px; padding:0.1rem 0.25rem; font-size:0.7rem; text-align:right; border:1px solid #cbd5e1; border-radius:4px;" />
+                <span style="font-size:0.7rem; color:#6b7280;">%</span>
+                <button @onclick:stopPropagation="true" @onclick="() => AplicarObjetivoFila(item)" disabled="@savingO"
+                        title="Guardar el objetivo y aplicarlo (mantiene el % solo)"
+                        style="padding:0.1rem 0.4rem; font-size:0.68rem; font-weight:700; background:#1e40af; color:white; border:none; border-radius:4px; cursor:pointer;">
+                    @(savingO ? "…" : "Aplicar")
+                </button>
+            </span>
+            var precioVal = _precioInput.TryGetValue(item.Id, out var pv) ? pv : "";
+            var savingP = _savingPrecioFila.Contains(item.Id);
+            <span style="display:inline-flex; align-items:center; gap:2px;" @onclick:stopPropagation="true">
+                <span title="Precio a mano" style="font-size:0.7rem;">💵</span>
+                <input value="@precioVal" placeholder="precio" @onchange="(e) => _precioInput[item.Id] = e.Value?.ToString() ?? string.Empty"
+                       style="width:62px; padding:0.1rem 0.25rem; font-size:0.7rem; text-align:right; border:1px solid #cbd5e1; border-radius:4px;" />
+                <button @onclick:stopPropagation="true" @onclick="() => AplicarPrecioFila(item)" disabled="@savingP"
+                        title="Empujar este precio exacto a MeLi"
+                        style="padding:0.1rem 0.4rem; font-size:0.68rem; font-weight:700; background:#b45309; color:white; border:none; border-radius:4px; cursor:pointer;">
+                    @(savingP ? "…" : "Push")
+                </button>
+            </span>
+        }
+    </span>;
+
+    private async Task AplicarObjetivoFila(MeliItemDto item)
+    {
+        if (_savingObjFila.Contains(item.Id)) return;
+        _objInput.TryGetValue(item.Id, out var raw);
+        if (!decimal.TryParse((raw ?? "").Replace(',', '.'), NumberStyles.Any, CultureInfo.InvariantCulture, out var pct) || pct <= 0)
+        { ToastService.Error("Poné un % de objetivo válido"); return; }
+        _savingObjFila.Add(item.Id);
+        StateHasChanged();
+        try
+        {
+            var (res, err) = await Api.SetObjetivoGananciaAsync(item.MeliItemId, pct, aplicar: true, redondeo: "99");
+            if (err is null && res is not null)
+            {
+                item.GananciaObjetivoPct = res.ObjetivoPct;
+                item.GananciaObjetivoAt = DateTime.UtcNow;
+                item.SyncPrecio = res.SyncPrecio;
+                if (res.PrecioNuevo.HasValue) item.Price = res.PrecioNuevo.Value;
+                _objInput.Remove(item.Id);
+                InvalidateFilterCache();
+                if (!string.IsNullOrEmpty(res.PushError))
+                    ToastService.Warning($"🎯 Objetivo {pct.ToString("0.#", argCulture)}% guardado. (No se pudo pushear ahora: {res.PushError})");
+                else
+                    ToastService.Success($"🎯 Objetivo {pct.ToString("0.#", argCulture)}% aplicado" + (res.PrecioNuevo.HasValue ? $" → ${res.PrecioNuevo.Value.ToString("N0", argCulture)}" : ""));
+            }
+            else ToastService.Error("No se pudo: " + (err ?? "error"));
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { _savingObjFila.Remove(item.Id); StateHasChanged(); }
+    }
+
+    private async Task AplicarPrecioFila(MeliItemDto item)
+    {
+        if (_savingPrecioFila.Contains(item.Id)) return;
+        _precioInput.TryGetValue(item.Id, out var raw);
+        var precio = ParseFormattedPrice(raw ?? "");
+        if (precio <= 0) { ToastService.Error("Poné un precio válido"); return; }
+        _savingPrecioFila.Add(item.Id);
+        StateHasChanged();
+        try
+        {
+            var (res, err) = await Api.PushPrecioAMeliAsync(item.MeliItemId, precio, null);
+            if (err is null)
+            {
+                item.Price = precio;
+                var sib = GetCatalogSibling(item);
+                if (sib is not null) sib.Price = precio;
+                _precioInput.Remove(item.Id);
+                InvalidateFilterCache();
+                ToastService.Success($"✔ Precio ${precio.ToString("N0", argCulture)} pusheado a MeLi");
+            }
+            else ToastService.Error("No se pudo pushear: " + err);
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { _savingPrecioFila.Remove(item.Id); StateHasChanged(); }
+    }
 
     private RenderFragment SincroToggle(MeliItemDto item) =>
     @<span style="display:inline-flex; gap:0.3rem; flex-wrap:wrap; align-items:center;">
