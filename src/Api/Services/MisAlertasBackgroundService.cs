@@ -167,8 +167,10 @@ public class MisAlertasBackgroundService : BackgroundService
             {
                 try
                 {
-                    var cuenta = await db.TelegramAccounts.OrderBy(x => x.Id).FirstOrDefaultAsync();
-                    if (cuenta is not null && cuenta.IsActive && !string.IsNullOrEmpty(cuenta.BotToken) && cuenta.ChatId is not null)
+                    var cuenta = await db.TelegramAccounts.Where(x => x.Proposito == "AVISOS").OrderBy(x => x.Id).FirstOrDefaultAsync();
+                    // 2026-07-16: multi-persona — hay destino si al menos una persona vinculada recibe alertas.
+                    if (cuenta is not null && cuenta.IsActive && !string.IsNullOrEmpty(cuenta.BotToken)
+                        && await db.TelegramChats.AnyAsync(c => c.TelegramAccountId == cuenta.Id && c.NotifAlertas))
                         tg = scope.ServiceProvider.GetRequiredService<TelegramService>();
                 }
                 catch (Exception ex) { _logger.LogWarning(ex, "[Alertas] no pude resolver el bot de Telegram"); }
@@ -181,7 +183,7 @@ public class MisAlertasBackgroundService : BackgroundService
                 {
                     try
                     {
-                        var (ok, _) = await tg.SendMessageAsync(tgTexto);
+                        var (ok, _) = await tg.SendMessageAsync(tgTexto, categoria: "ALERTAS");
                         hist.EnviadoTelegram = ok;
                     }
                     catch (Exception ex) { _logger.LogWarning(ex, "[Alertas] no pude avisar por Telegram"); }

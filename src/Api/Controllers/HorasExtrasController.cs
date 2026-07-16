@@ -71,9 +71,11 @@ public class HorasExtrasController : ControllerBase
             {
                 var cuenta = await _db.TelegramAccounts.Where(x => x.Proposito == "AVISOS")
                     .OrderBy(x => x.Id).FirstOrDefaultAsync();
-                if (cuenta is not null && cuenta.IsActive && !string.IsNullOrEmpty(cuenta.BotToken) && cuenta.ChatId is not null)
+                // 2026-07-16: multi-persona — la fichada le llega a cada vinculado con el tilde de Fichadas.
+                if (cuenta is not null && cuenta.IsActive && !string.IsNullOrEmpty(cuenta.BotToken)
+                    && await _db.TelegramChats.AnyAsync(c => c.TelegramAccountId == cuenta.Id && c.NotifFichadas))
                 {
-                    var (ok, _) = await _telegram.SendMessageAsync(texto);
+                    var (ok, _) = await _telegram.SendMessageAsync(texto, categoria: "FICHADAS");
                     enviadoTg = ok;
                 }
             }

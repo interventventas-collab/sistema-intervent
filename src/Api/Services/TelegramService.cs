@@ -42,17 +42,44 @@ public class TelegramService
 
     // ─────────────────────────── Mandar mensaje ───────────────────────────
 
-    /// <summary>Manda un mensaje de texto por el bot de AVISOS al chat del dueño. Devuelve (ok, error).</summary>
-    public async Task<(bool ok, string? error)> SendMessageAsync(string text, long? chatId = null, CancellationToken ct = default)
+    /// <summary>Manda un mensaje por el bot de AVISOS. Si viene chatId va solo a ese chat; si no,
+    /// va a TODAS las personas vinculadas que tengan prendido el tilde de la categoría
+    /// ("VENTAS" | "ALERTAS" | "FICHADAS" | "TODOS"). Devuelve ok si le llegó al menos a una.</summary>
+    public async Task<(bool ok, string? error)> SendMessageAsync(string text, long? chatId = null, CancellationToken ct = default, string categoria = "ALERTAS")
     {
         var a = await GetBotAsync("AVISOS", ct);
         if (a is null || string.IsNullOrWhiteSpace(a.BotToken)) return (false, "No hay bot de Telegram configurado");
-        var target = chatId ?? a.ChatId;
-        if (target is null || target == 0) return (false, "Todavía no está vinculado tu Telegram (escribile 'hola' al bot y probá de nuevo)");
-        return await SendRawAsync(a.BotToken, target.Value, text, ct);
+        if (chatId is not null && chatId != 0) return await SendRawAsync(a.BotToken, chatId.Value, text, ct);
+
+        var chats = await ChatsConTildeAsync(a.Id, categoria, ct);
+        if (chats.Count == 0)
+            return (false, "No hay ninguna persona vinculada que reciba estos avisos (Integraciones → Telegram)");
+
+        bool alguno = false; string? err = null;
+        foreach (var c in chats)
+        {
+            var (ok, e) = await SendRawAsync(a.BotToken, c, text, ct);
+            if (ok) alguno = true; else err = e;
+        }
+        return alguno ? (true, null) : (false, err);
     }
 
-    /// <summary>Devuelve el bot de un propósito ("AVISOS" o "PREVENTAS"), o null si no existe.</summary>
+    /// <summary>Chats de las personas vinculadas a un bot que tienen prendido el tilde de esa
+    /// categoría de aviso ("TODOS" = todas las personas vinculadas, sin mirar tildes).</summary>
+    private async Task<List<long>> ChatsConTildeAsync(int accountId, string categoria, CancellationToken ct)
+    {
+        var q = _db.TelegramChats.Where(c => c.TelegramAccountId == accountId);
+        q = categoria switch
+        {
+            "VENTAS" => q.Where(c => c.NotifVentas),
+            "FICHADAS" => q.Where(c => c.NotifFichadas),
+            "ALERTAS" => q.Where(c => c.NotifAlertas),
+            _ => q // TODOS
+        };
+        return await q.Select(c => c.ChatId).ToListAsync(ct);
+    }
+
+    /// <summary>Devuelve el bot de un propósito ("AVISOS", "FUNCIONES" o "PREVENTAS"), o null si no existe.</summary>
     private async Task<TelegramAccount?> GetBotAsync(string proposito, CancellationToken ct)
         => await _db.TelegramAccounts.Where(x => x.Proposito == proposito).OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
 
@@ -133,31 +160,53 @@ public class TelegramService
 
         a.BotUsername = username;
 
-        // 2) Intentar captar el chat del dueño si todavía no está vinculado.
-        if (a.ChatId is null)
-            await IntentarCaptarChatAsync(a, ct);
-
-        // 3) Si hay chat, mandar un mensaje de prueba.
         bool testEnviado = false;
-        if (a.ChatId is not null)
+        long? chatVinculado = null;
+
+        if (a.Proposito == "PREVENTAS")
         {
-            var mensajePrueba = a.Proposito == "PREVENTAS"
-                ? "✅ ¡Listo! Este es tu bot de Preventas. Acá cargás las preventas sin que se mezclen con los avisos. Escribime \"nueva\" para arrancar una. 🧾"
-                : "✅ ¡Listo! Tu bot de Intervent quedó conectado. Te voy a avisar por acá las ventas nuevas y tus alertas. Escribime \"ayuda\" cuando quieras.";
-            var (okSend, _) = await SendRawAsync(a.BotToken, a.ChatId.Value, mensajePrueba, ct);
-            testEnviado = okSend;
+            // Preventas sigue single-user: captar el chat del dueño si falta, y probar.
+            if (a.ChatId is null)
+                await IntentarCaptarChatAsync(a, ct);
+            chatVinculado = a.ChatId;
+            if (a.ChatId is not null)
+            {
+                var (okSend, _) = await SendRawAsync(a.BotToken, a.ChatId.Value,
+                    "✅ ¡Listo! Este es tu bot de Preventas. Acá cargás las preventas sin que se mezclen con los avisos. Escribime \"nueva\" para arrancar una. 🧾", ct);
+                testEnviado = okSend;
+            }
+        }
+        else
+        {
+            // AVISOS / FUNCIONES: las personas se vinculan mandando el código de seguridad al bot.
+            // Acá solo probamos: mensaje de prueba a todas las personas ya vinculadas.
+            var chats = await ChatsConTildeAsync(a.Id, "TODOS", ct);
+            chatVinculado = chats.Count > 0 ? chats[0] : null;
+            var mensajePrueba = a.Proposito == "FUNCIONES"
+                ? "✅ ¡Listo! Este es el bot de Funciones de Intervent. Escribime \"ayuda\" para ver qué consultas puedo contestarte."
+                : "✅ ¡Listo! Tu bot de avisos de Intervent quedó conectado. Te voy a mandar por acá los avisos del sistema.";
+            foreach (var chat in chats)
+            {
+                var (okSend, _) = await SendRawAsync(a.BotToken, chat, mensajePrueba, ct);
+                if (okSend) testEnviado = true;
+            }
         }
 
         await MarcarResultadoAsync(a, true, null, ct);
-        return (true, username, a.ChatId, testEnviado, null);
+        return (true, username, chatVinculado, testEnviado, null);
     }
 
-    /// <summary>Vincula el chat del dueño mirando los últimos mensajes que le escribió al bot.</summary>
+    /// <summary>Vincula el chat del dueño mirando los últimos mensajes que le escribió al bot.
+    /// Solo aplica a PREVENTAS (single-user); en AVISOS/FUNCIONES las personas se vinculan
+    /// mandándole el código de seguridad al bot.</summary>
     public async Task<(bool ok, long? chatId, string? error)> DetectarChatAsync(string proposito = "AVISOS", CancellationToken ct = default)
     {
         var a = await GetBotAsync(proposito, ct);
         if (a is null || string.IsNullOrWhiteSpace(a.BotToken))
             return (false, null, "No hay token de bot cargado");
+
+        if (a.Proposito != "PREVENTAS")
+            return (false, null, "Este bot ya no se vincula así: cada persona le manda el código de seguridad al bot desde su Telegram y queda vinculada sola.");
 
         var captado = await IntentarCaptarChatAsync(a, ct);
         await _db.SaveChangesAsync(ct);
@@ -232,8 +281,10 @@ public class TelegramService
         if (!quiereTelegram && !quiereCampanita) return;
 
         var a = await GetBotAsync("AVISOS", ct);
-        bool telegramListo = a is not null && !string.IsNullOrWhiteSpace(a.BotToken) && a.IsActive && a.ChatId is not null;
-        // Si SOLO quiere Telegram y todavía no está vinculado, no consumimos las ventas: esperamos a que se vincule.
+        var chatsVentas = (a is not null && !string.IsNullOrWhiteSpace(a.BotToken) && a.IsActive)
+            ? await ChatsConTildeAsync(a.Id, "VENTAS", ct) : new List<long>();
+        bool telegramListo = chatsVentas.Count > 0;
+        // Si SOLO quiere Telegram y no hay nadie vinculado que reciba ventas, no consumimos: esperamos.
         if (quiereTelegram && !quiereCampanita && !telegramListo) return;
 
         var corteViejo = DateTime.UtcNow.AddHours(-12);
@@ -266,8 +317,13 @@ public class TelegramService
             if (quiereTelegram && telegramListo)
             {
                 var texto = ArmarMensajeVenta(lista);
-                var (ok, _) = await SendRawAsync(a!.BotToken, a.ChatId!.Value, texto, ct);
-                if (!ok) break; // si falla el envío, no marcamos: reintenta la próxima
+                bool okAlguno = false;
+                foreach (var chat in chatsVentas)
+                {
+                    var (ok, _) = await SendRawAsync(a!.BotToken, chat, texto, ct);
+                    if (ok) okAlguno = true;
+                }
+                if (!okAlguno) break; // si no le llegó a nadie, no marcamos: reintenta la próxima
                 enviado = true;
             }
             foreach (var o in lista) o.NotifiedTelegram = true;
@@ -315,7 +371,9 @@ public class TelegramService
         if (!quiereTelegram && !quiereCampanita) return;
 
         var a = await GetBotAsync("AVISOS", ct);
-        bool telegramListo = a is not null && !string.IsNullOrWhiteSpace(a.BotToken) && a.IsActive && a.ChatId is not null;
+        var chatsAlertas = (a is not null && !string.IsNullOrWhiteSpace(a.BotToken) && a.IsActive)
+            ? await ChatsConTildeAsync(a.Id, "ALERTAS", ct) : new List<long>();
+        bool telegramListo = chatsAlertas.Count > 0;
         if (quiereTelegram && !quiereCampanita && !telegramListo) return;
 
         var tipos = new[] { "PAUSADA_CON_STOCK", "STATUS_ACTIVE" };
@@ -346,8 +404,13 @@ public class TelegramService
             var texto = ArmarMensajePubliRevisar(ev);
             if (quiereTelegram && telegramListo)
             {
-                var (ok, _) = await SendRawAsync(a!.BotToken, a.ChatId!.Value, texto, ct);
-                if (!ok) break; // si falla el envío, no marcamos: reintenta la próxima
+                bool okAlguno = false;
+                foreach (var chat in chatsAlertas)
+                {
+                    var (ok, _) = await SendRawAsync(a!.BotToken, chat, texto, ct);
+                    if (ok) okAlguno = true;
+                }
+                if (!okAlguno) break; // si no le llegó a nadie, no marcamos: reintenta la próxima
                 enviado = true;
             }
             ev.NotifiedAt = DateTime.UtcNow;
@@ -524,43 +587,107 @@ public class TelegramService
                 var texto = m.TryGetProperty("text", out var txt) ? txt.GetString() : null;
                 if (string.IsNullOrWhiteSpace(texto)) continue;
 
-                // Vinculación con código: mientras no haya dueño, el bot NO le hace caso a nadie hasta
-                // que le manden el código de seguridad. Así un extraño que descubra el bot no puede
-                // adueñárselo.
-                if (bot.ChatId is null)
+                if (bot.Proposito == "PREVENTAS")
                 {
-                    if (!string.IsNullOrEmpty(bot.VinculacionCode))
+                    // PREVENTAS sigue siendo de UNA persona (la conversación guiada guarda su estado
+                    // en la fila del bot; dos personas a la vez se pisarían el carrito).
+                    if (bot.ChatId is null)
                     {
-                        if (texto.Trim() == bot.VinculacionCode)
+                        if (!string.IsNullOrEmpty(bot.VinculacionCode))
                         {
-                            bot.ChatId = chatId;
-                            await _db.SaveChangesAsync(ct);
-                            await SendRawAsync(bot.BotToken, chatId, "✅ ¡Listo! Quedaste vinculado. Ya podés usar el bot.", ct);
+                            if (texto.Trim() == bot.VinculacionCode)
+                            {
+                                bot.ChatId = chatId;
+                                await _db.SaveChangesAsync(ct);
+                                await SendRawAsync(bot.BotToken, chatId, "✅ ¡Listo! Quedaste vinculado. Ya podés usar el bot.", ct);
+                            }
+                            else
+                            {
+                                await SendRawAsync(bot.BotToken, chatId,
+                                    "🔒 Para activar este bot mandame el código de seguridad (lo ves en el sistema, en Integraciones → Telegram).", ct);
+                            }
+                            continue;
                         }
-                        else
-                        {
-                            await SendRawAsync(bot.BotToken, chatId,
-                                "🔒 Para activar este bot mandame el código de seguridad (lo ves en el sistema, en Integraciones → Telegram).", ct);
-                        }
+                        // Sin código configurado (caso viejo): auto-vincular el primero que escribe.
+                        bot.ChatId = chatId;
+                    }
+
+                    // Solo respondemos al chat del dueño (seguridad).
+                    if (bot.ChatId != chatId)
+                    {
+                        await SendRawAsync(bot.BotToken, chatId, "Este bot es privado del sistema Intervent. No estás autorizado.", ct);
                         continue;
                     }
-                    // Sin código configurado (caso viejo): auto-vincular el primero que escribe.
-                    bot.ChatId = chatId;
-                }
 
-                // Solo respondemos al chat del dueño (seguridad).
-                if (bot.ChatId != chatId)
-                {
-                    await SendRawAsync(bot.BotToken, chatId, "Este bot es privado del sistema Intervent. No estás autorizado.", ct);
+                    await ProcesarPreventaAsync(bot, chatId, texto, ct);
                     continue;
                 }
 
-                if (bot.Proposito == "PREVENTAS")
-                    await ProcesarPreventaAsync(bot, chatId, texto, ct);
-                else
+                // ── AVISOS / FUNCIONES: varias personas (2026-07-16) ──
+                // Cada persona se vincula mandando el código de seguridad. El código se regenera
+                // después de cada alta, así el que ya lo usó no puede pasárselo a otro sin que el
+                // admin lo sepa. El primero que se vincula es el dueño (recibe todo); los demás
+                // arrancan sin recibir nada hasta que el admin les prende avisos en el sistema.
+                var vinculado = await _db.TelegramChats.AnyAsync(x => x.TelegramAccountId == bot.Id && x.ChatId == chatId, ct);
+                if (!vinculado)
+                {
+                    if (string.IsNullOrEmpty(bot.VinculacionCode))
+                    {
+                        // Bot sin código (no debería pasar): generamos uno; se ve en el sistema.
+                        bot.VinculacionCode = GenerarCodigo();
+                        await _db.SaveChangesAsync(ct);
+                    }
+                    if (texto.Trim() == bot.VinculacionCode)
+                    {
+                        var esPrimero = !await _db.TelegramChats.AnyAsync(x => x.TelegramAccountId == bot.Id, ct);
+                        _db.TelegramChats.Add(new TelegramChat
+                        {
+                            TelegramAccountId = bot.Id,
+                            ChatId = chatId,
+                            Nombre = NombreDelRemitente(m),
+                            NotifVentas = esPrimero,
+                            NotifAlertas = esPrimero,
+                            NotifFichadas = esPrimero
+                        });
+                        bot.VinculacionCode = GenerarCodigo(); // código quemado: el próximo necesita el nuevo
+                        await _db.SaveChangesAsync(ct);
+                        var bienvenida = bot.Proposito == "FUNCIONES"
+                            ? "✅ ¡Listo! Quedaste vinculado. Ya podés hacerme consultas — escribime \"ayuda\" para ver qué sé hacer."
+                            : (esPrimero
+                                ? "✅ ¡Listo! Quedaste vinculado. Te voy a mandar por acá los avisos del sistema."
+                                : "✅ ¡Listo! Quedaste vinculado. El administrador va a elegir qué avisos te llegan por acá.");
+                        await SendRawAsync(bot.BotToken, chatId, bienvenida, ct);
+                    }
+                    else
+                    {
+                        await SendRawAsync(bot.BotToken, chatId,
+                            "🔒 Este bot es privado del sistema Intervent. Si te dieron el código de seguridad, mandámelo tal cual (solo los números).", ct);
+                    }
+                    continue;
+                }
+
+                if (bot.Proposito == "FUNCIONES")
                 {
                     var respuesta = await ResponderComandoAsync(texto, ct);
                     await SendRawAsync(bot.BotToken, chatId, respuesta, ct);
+                }
+                else // AVISOS
+                {
+                    // Si hay bot de Funciones configurado, el de Avisos solo avisa (no contesta
+                    // consultas, para que el chat de avisos quede limpio). Si todavía no existe,
+                    // sigue contestando como siempre (transición sin cortar el servicio).
+                    var funciones = await GetBotAsync("FUNCIONES", ct);
+                    if (funciones is not null && funciones.IsActive && !string.IsNullOrWhiteSpace(funciones.BotToken))
+                    {
+                        var destino = string.IsNullOrWhiteSpace(funciones.BotUsername) ? "el bot de Funciones" : $"@{funciones.BotUsername}";
+                        await SendRawAsync(bot.BotToken, chatId,
+                            $"📣 Yo solo mando avisos. Para consultas (ventas, saldo, precios, alertas) escribile a {destino}.", ct);
+                    }
+                    else
+                    {
+                        var respuesta = await ResponderComandoAsync(texto, ct);
+                        await SendRawAsync(bot.BotToken, chatId, respuesta, ct);
+                    }
                 }
             }
 
@@ -1131,6 +1258,21 @@ public class TelegramService
 
     private static string Money(decimal v)
         => "$" + v.ToString("N0", CultureInfo.GetCultureInfo("es-AR"));
+
+    private static string GenerarCodigo() => Random.Shared.Next(100000, 1000000).ToString();
+
+    /// <summary>Nombre de perfil de Telegram del que mandó el mensaje ("Germán Pérez"), para
+    /// mostrarlo en la lista de personas vinculadas. El admin lo puede corregir después.</summary>
+    private static string? NombreDelRemitente(JsonElement mensaje)
+    {
+        if (!mensaje.TryGetProperty("from", out var f)) return null;
+        var nombre = f.TryGetProperty("first_name", out var fn) ? fn.GetString() : null;
+        var apellido = f.TryGetProperty("last_name", out var ln) ? ln.GetString() : null;
+        var completo = $"{nombre} {apellido}".Trim();
+        if (string.IsNullOrWhiteSpace(completo) && f.TryGetProperty("username", out var un))
+            completo = un.GetString() ?? "";
+        return string.IsNullOrWhiteSpace(completo) ? null : (completo.Length > 120 ? completo[..120] : completo);
+    }
 
     private static string QuitarAcentos(string s)
     {
