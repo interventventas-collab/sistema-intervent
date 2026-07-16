@@ -28,6 +28,7 @@
                 <li>🔴 <strong>Bajó de precio</strong> — modificación hacia abajo (alerta si fue por error).</li>
                 <li>🟡 <strong>Se pausó</strong> — la publicación dejó de estar visible.</li>
                 <li>🟢 <strong>Se activó</strong> — volvió a estar visible.</li>
+                <li>⚠️ <strong>Pausada con stock</strong> — el robot le calculó stock pero NO la despertó (política 16/07: nunca activamos solos, para no vender con precio viejo). Revisá el precio y usá el botón <strong>✅ Activar</strong>.</li>
             </ul>
         </div>
 
@@ -39,6 +40,7 @@
                 <option value="PRECIO_SUBE">🟢 Subió de precio</option>
                 <option value="STATUS_PAUSED">🟡 Pausada</option>
                 <option value="STATUS_ACTIVE">🟢 Activada</option>
+                <option value="PAUSADA_CON_STOCK">⚠️ Pausada con stock (revisar precio)</option>
             </select>
             <label style="font-size: 0.85rem; display: flex; align-items: center; gap: 0.3rem; cursor: pointer;">
                 <input type="checkbox" @bind="soloSinVer" @bind:after="Refrescar" />
@@ -101,10 +103,17 @@
                                     }
                                 </td>
                                 <td style="font-size:0.78rem; color:#6b7280;">@c.Source</td>
-                                <td>
+                                <td style="white-space:nowrap;">
+                                    @if (c.Tipo == "PAUSADA_CON_STOCK" && c.SeenAt is null)
+                                    {
+                                        <button class="btn btn-sm" style="padding: 0.15rem 0.5rem; font-size: 0.75rem; background: #16a34a; color: white; border: 1px solid #15803d; margin-right: 0.25rem;"
+                                                disabled="@(activandoId == c.Id)"
+                                                @onclick="() => Activar(c)">@(activandoId == c.Id ? "..." : "✅ Activar")</button>
+                                    }
                                     @if (c.SeenAt is null)
                                     {
                                         <button class="btn btn-sm" style="padding: 0.15rem 0.5rem; font-size: 0.75rem; background: #f3f4f6; border: 1px solid #d1d5db;"
+                                                title="Marcar como visto (sin activar)"
                                                 @onclick="() => MarcarVisto(c)">✓</button>
                                     }
                                     else
@@ -126,6 +135,7 @@
     .tipo-sube { background:#dcfce7; color:#14532d; padding:0.15rem 0.5rem; border-radius:4px; font-size:0.78rem; font-weight:700; }
     .tipo-paused { background:#fef3c7; color:#92400e; padding:0.15rem 0.5rem; border-radius:4px; font-size:0.78rem; font-weight:700; }
     .tipo-active { background:#dbeafe; color:#1e40af; padding:0.15rem 0.5rem; border-radius:4px; font-size:0.78rem; font-weight:700; }
+    .tipo-revisar { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; padding:0.15rem 0.5rem; border-radius:4px; font-size:0.78rem; font-weight:700; }
 </style>
 
 @code {
@@ -176,6 +186,7 @@
         "PRECIO_SUBE" => "🟢 Subió precio",
         "STATUS_PAUSED" => "🟡 Pausada",
         "STATUS_ACTIVE" => "🟢 Activada",
+        "PAUSADA_CON_STOCK" => "⚠️ Pausada con stock",
         _ => tipo
     };
 
@@ -185,6 +196,29 @@
         "PRECIO_SUBE" => "tipo-sube",
         "STATUS_PAUSED" => "tipo-paused",
         "STATUS_ACTIVE" => "tipo-active",
+        "PAUSADA_CON_STOCK" => "tipo-revisar",
         _ => ""
     };
+
+    private int? activandoId;
+
+    /// <summary>2026-07-16: activa la publicación pausada desde acá (el usuario ya revisó el precio).
+    /// El backend hace PUT status=active + empuja el stock + marca el aviso como visto.</summary>
+    private async Task Activar(ApiClient.MeliCambioDto c)
+    {
+        activandoId = c.Id;
+        StateHasChanged();
+        try
+        {
+            var (ok, mensaje) = await Api.ActivarPublicacionMeliAsync(c.Id);
+            if (ok)
+            {
+                ToastService.Success($"Publicación activada ✅ {(string.IsNullOrWhiteSpace(mensaje) ? "" : "· " + mensaje)}");
+                c.SeenAt = DateTime.UtcNow;
+            }
+            else ToastService.Error(mensaje ?? "No se pudo activar");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { activandoId = null; StateHasChanged(); }
+    }
 }

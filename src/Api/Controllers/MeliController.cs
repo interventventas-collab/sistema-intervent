@@ -418,6 +418,66 @@ public class MeliController : ControllerBase
         return Ok(new { updated = n });
     }
 
+    /// <summary>2026-07-16: cantidad de publicaciones que esperan revisión de precio (pausadas con
+    /// stock que el robot NO despertó + reactivadas detectadas). Alimenta el cartel rojo del layout.</summary>
+    [HttpGet("cambios/count-revisar")]
+    public async Task<IActionResult> CountCambiosRevisar([FromServices] Api.Data.AppDbContext db)
+    {
+        var tipos = new[] { "PAUSADA_CON_STOCK", "STATUS_ACTIVE" };
+        var n = await db.MeliCambiosDetectados.AsNoTracking()
+            .CountAsync(c => c.SeenAt == null && tipos.Contains(c.Tipo));
+        return Ok(new { count = n });
+    }
+
+    /// <summary>2026-07-16: activa una publicación pausada DESDE EL SISTEMA (el usuario ya revisó el
+    /// precio). PUT status=active en MeLi + empuja el stock actual (que el robot no tocó mientras
+    /// estaba pausada) + marca el cambio como visto. El id es el del registro en cambios detectados.</summary>
+    [HttpPost("cambios/{id:int}/activar-publicacion")]
+    public async Task<IActionResult> ActivarPublicacion(int id,
+        [FromServices] Api.Data.AppDbContext db,
+        [FromServices] MeliStockPushService pushService)
+    {
+        var cambio = await db.MeliCambiosDetectados.FindAsync(id);
+        if (cambio is null) return NotFound(new { error = "Aviso no encontrado" });
+
+        var item = await db.MeliItems.Include(i => i.MeliAccount)
+            .FirstOrDefaultAsync(i => i.MeliItemId == cambio.MeliItemId);
+        if (item?.MeliAccount is null)
+            return BadRequest(new { error = "No encuentro la publicación o su cuenta MeLi en el sistema" });
+
+        var token = await _service.GetValidTokenAsync(item.MeliAccount);
+        if (token is null)
+            return BadRequest(new { error = "Token de MercadoLibre inválido — reconectá la cuenta en Integraciones" });
+
+        using var http = new HttpClient();
+        http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        http.Timeout = TimeSpan.FromSeconds(30);
+        var body = new StringContent("{\"status\":\"active\"}", System.Text.Encoding.UTF8, "application/json");
+        var resp = await http.PutAsync($"https://api.mercadolibre.com/items/{cambio.MeliItemId}", body);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            return BadRequest(new { error = $"MeLi rechazó la activación ({(int)resp.StatusCode}): {(err.Length > 200 ? err[..200] : err)}" });
+        }
+
+        // Reflejar en nuestra copia y cerrar el aviso
+        var filas = await db.MeliItems.Where(i => i.MeliItemId == cambio.MeliItemId).ToListAsync();
+        foreach (var f in filas) f.Status = "active";
+        cambio.SeenAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        // Ahora que está activa, empujar el stock real (mientras estuvo pausada no se tocó).
+        string? pushDetalle = null;
+        try
+        {
+            var r = await pushService.PushStockForMeliItemsAsync(new List<string> { cambio.MeliItemId });
+            pushDetalle = r.Mensajes.FirstOrDefault();
+        }
+        catch (Exception ex) { pushDetalle = "Activada OK, pero el push de stock falló: " + ex.Message; }
+
+        return Ok(new { ok = true, detalle = pushDetalle });
+    }
+
     /// <summary>PUSH MASIVO: marca todos los productos OTROS como "stock pendiente de push" y los
     /// procesa via el background sweep. Útil después de un import masivo donde el push event-driven
     /// no se disparó. Idempotente: se puede llamar las veces que sea.</summary>

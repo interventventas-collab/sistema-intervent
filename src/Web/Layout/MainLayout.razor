@@ -273,6 +273,27 @@
     }
     /* 2026-06-20: modo embebido (iframe en drawer del chat) — main sin margen del sidebar */
     .main-wrapper.main-embedded { margin-left: 0 !important; padding: 0 !important; }
+
+    /* 2026-07-16: cartelón rojo "publicaciones MeLi esperando revisión de precio" (incidente KDOR) */
+    .publi-revisar-banner {
+        display: flex; align-items: center; gap: 0.75rem;
+        background: linear-gradient(90deg, #dc2626, #b91c1c);
+        color: #fff; padding: 0.75rem 1.1rem; margin: 0.5rem 1rem 0.25rem;
+        border-radius: 10px; cursor: pointer; font-size: 0.95rem;
+        box-shadow: 0 4px 14px rgba(220, 38, 38, 0.35);
+        animation: publi-revisar-pulse 2s ease-in-out infinite;
+    }
+    .publi-revisar-banner:hover { filter: brightness(1.08); }
+    .publi-revisar-icono { font-size: 1.6rem; flex-shrink: 0; }
+    .publi-revisar-texto { flex: 1; line-height: 1.35; }
+    .publi-revisar-cta {
+        flex-shrink: 0; background: #fff; color: #b91c1c; font-weight: 700;
+        padding: 0.35rem 0.8rem; border-radius: 6px; font-size: 0.85rem; white-space: nowrap;
+    }
+    @@keyframes publi-revisar-pulse {
+        0%, 100% { box-shadow: 0 4px 14px rgba(220, 38, 38, 0.35); }
+        50% { box-shadow: 0 4px 22px rgba(220, 38, 38, 0.65); }
+    }
     .topbar-action-secondary:hover { background: #f9fafb; border-color: #9ca3af; }
     .topbar-action-secondary:active { transform: scale(0.97); }
 
@@ -1508,6 +1529,20 @@
         </div>
     </header>
 }
+    @* 2026-07-16 (incidente cápsulas KDOR): cartelón rojo cuando hay publicaciones MeLi esperando
+       revisión de precio (pausadas con stock que el robot NO despertó / reactivadas). Visible en
+       todas las páginas para admin/oficina hasta que se revisen (se marca visto o se activa). *@
+    @if (publisRevisar > 0 && !IsEmbedded)
+    {
+        <div class="publi-revisar-banner" @onclick="IrARevisarPublis" title="Click para ir a revisar">
+            <span class="publi-revisar-icono">⚠️</span>
+            <span class="publi-revisar-texto">
+                <strong>@publisRevisar publicaci@(publisRevisar == 1 ? "ón" : "ones") de MercadoLibre esperando revisión de PRECIO</strong>
+                — pausadas con stock o reactivadas. No se venden hasta que las revises y actives.
+            </span>
+            <span class="publi-revisar-cta">Revisar ahora →</span>
+        </div>
+    }
     <div class="content">
         @Body
     </div>
@@ -1929,8 +1964,20 @@
     {
         try { _dolar = await Api.GetDolarBnaAsync(); } catch { /* deja el valor previo */ }
         try { _disk = await Api.GetDiskUsageAsync(); } catch { /* deja el valor previo */ }
+        // 2026-07-16: publicaciones MeLi esperando revisión de precio → cartelón rojo.
+        // Solo lo cargan los roles que lo pueden atender (admin/oficina).
+        if (puedeVerPublisRevisar)
+        {
+            try { publisRevisar = await Api.GetMeliCambiosCountRevisarAsync(); } catch { /* deja el valor previo */ }
+        }
         await InvokeAsync(StateHasChanged);
     }
+
+    // 2026-07-16: cartelón "publicaciones MeLi a revisar" (incidente cápsulas KDOR)
+    private int publisRevisar = 0;
+    private bool puedeVerPublisRevisar => string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase)
+        || permissions.Contains("oficina");
+    private void IrARevisarPublis() => Navigation.NavigateTo("/cafe/cambios-meli");
     private bool mostrarPinLock => requierePinLock && !Operator.IsValidated;
     /// <summary>2026-06-15: aplica a admin/oficina/cafe. Deposito-only queda exento
     /// para no romper su flujo (cargan stock, no ventas con identidad).</summary>

@@ -3322,6 +3322,28 @@ public class ApiClient
     public async Task MarkAllCambiosSeenAsync()
         => await _http.PostAsync("/api/meli/cambios/mark-all-seen", null);
 
+    /// <summary>2026-07-16: cantidad de publicaciones esperando revisión de precio (pausadas con
+    /// stock / reactivadas). Alimenta el cartel rojo del layout.</summary>
+    public async Task<int> GetMeliCambiosCountRevisarAsync()
+    {
+        var r = await GetAsync<CountResp>("/api/meli/cambios/count-revisar");
+        return r?.Count ?? 0;
+    }
+
+    public class ActivarPublicacionResp { public bool Ok { get; set; } public string? Detalle { get; set; } public string? Error { get; set; } }
+    /// <summary>2026-07-16: activa una publicación pausada (ya revisada) directo desde el sistema.</summary>
+    public async Task<(bool ok, string? mensaje)> ActivarPublicacionMeliAsync(int cambioId)
+    {
+        try
+        {
+            var resp = await _http.PostAsync($"/api/meli/cambios/{cambioId}/activar-publicacion", null);
+            var body = await resp.Content.ReadFromJsonAsync<ActivarPublicacionResp>();
+            if (resp.IsSuccessStatusCode) return (true, body?.Detalle);
+            return (false, body?.Error ?? $"Error {(int)resp.StatusCode}");
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     // === WhatsApp Pedidos ===
     public class WhatsAppPedidoDto
     {

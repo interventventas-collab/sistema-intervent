@@ -29,7 +29,7 @@ public class MisAlertasController : ControllerBase
     // 2026-07-11: alertas "del sistema" (eventos automáticos que antes vivían en la pantalla de Telegram).
     // Se siembran solas (Program.cs), no se pueden crear ni borrar, solo prender/apagar y elegir canal.
     // Un robot NO las evalúa: se disparan desde el evento real (venta MeLi / fichada).
-    private static readonly string[] TiposSistema = { "VENTA_MELI", "FICHADA" };
+    private static readonly string[] TiposSistema = { "VENTA_MELI", "FICHADA", "PUBLI_MELI" };
 
     private int? GetUserId()
     {

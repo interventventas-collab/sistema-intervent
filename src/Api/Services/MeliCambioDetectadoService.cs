@@ -109,4 +109,42 @@ public class MeliCambioDetectadoService
     /// <summary>Cuenta cambios sin ver (para el badge del topbar).</summary>
     public Task<int> CountUnseenAsync(CancellationToken ct = default)
         => _db.MeliCambiosDetectados.AsNoTracking().Where(c => c.SeenAt == null).CountAsync(ct);
+
+    /// <summary>2026-07-16: registra que una publicación PAUSADA tiene stock para vender pero el robot
+    /// NO la despertó (política nueva tras el incidente de las cápsulas vendidas a precio viejo: el push
+    /// de stock ya no reactiva publicaciones pausadas — el usuario revisa el precio y la activa él).
+    /// ValorNuevo = precio actual en MeLi (el sospechoso), Delta = stock calculado disponible.
+    /// Dedup: si ya hay un aviso SIN VER para la misma publicación, no crea otro (el push corre cada
+    /// 15 min y sería un aviso repetido por vuelta).</summary>
+    public async Task LogPausadaConStockAsync(
+        string meliItemId, int? meliAccountId, string? sku, string? title,
+        decimal? precioActual, int stockDisponible, string source = "push",
+        bool saveChanges = false, CancellationToken ct = default)
+    {
+        try
+        {
+            var yaAvisado = await _db.MeliCambiosDetectados
+                .AnyAsync(c => c.MeliItemId == meliItemId && c.Tipo == "PAUSADA_CON_STOCK" && c.SeenAt == null, ct);
+            if (yaAvisado) return;
+
+            _db.MeliCambiosDetectados.Add(new MeliCambioDetectado
+            {
+                MeliItemId = meliItemId,
+                MeliAccountId = meliAccountId,
+                Sku = sku,
+                Title = title,
+                Tipo = "PAUSADA_CON_STOCK",
+                ValorAnterior = "paused",
+                ValorNuevo = precioActual?.ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
+                Delta = stockDisponible,
+                Source = source,
+                DetectedAt = DateTime.UtcNow
+            });
+            if (saveChanges) await _db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Error logging pausada-con-stock for {MeliItemId}", meliItemId);
+        }
+    }
 }
