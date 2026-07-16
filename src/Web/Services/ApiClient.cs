@@ -4641,6 +4641,10 @@ public class ApiClient
             return default;
         }
 
+        // 204 = el endpoint devolvió null (ej. un bot que todavía no existe). No hay JSON que leer.
+        if (response.StatusCode == HttpStatusCode.NoContent)
+            return default;
+
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<T>();
     }
