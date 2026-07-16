@@ -3981,9 +3981,17 @@
     // muy viejas, queda ahí sin afectar nada (no se lee).
 
 
+    /// <summary>2026-07-16: deep-link desde "Cambios MeLi" (y donde haga falta): /publicaciones?buscar=MLA123
+    /// precarga el filtro de Título/ID así la publicación aparece sola, lista para abrir la ficha.</summary>
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "buscar")]
+    public string? BuscarQuery { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
         SyncProgress.OnChange += OnSyncProgressChanged;
+        if (!string.IsNullOrWhiteSpace(BuscarQuery))
+            textFilters["titulo"] = BuscarQuery.Trim();
         await LoadItems();
         try { meliAccounts = await Api.GetMeliAccountsAsync(); } catch { }
         // Cargar productos OTROS del sistema para matchear variantes huerfanas por SKU
