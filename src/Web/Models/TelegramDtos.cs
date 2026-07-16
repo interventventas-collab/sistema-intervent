@@ -17,6 +17,28 @@ public class TelegramAccountDto
     public DateTime? LastSyncAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
+    /// <summary>Cuántas personas están vinculadas a este bot (2026-07-16: varias por bot).</summary>
+    public int PersonasVinculadas { get; set; }
+}
+
+/// <summary>Una persona vinculada a un bot de Telegram, con sus tildes de qué avisos recibe.</summary>
+public class TelegramChatDto
+{
+    public int Id { get; set; }
+    public long ChatId { get; set; }
+    public string? Nombre { get; set; }
+    public bool NotifVentas { get; set; }
+    public bool NotifAlertas { get; set; }
+    public bool NotifFichadas { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public class UpdateTelegramChatRequest
+{
+    public string? Nombre { get; set; }
+    public bool NotifVentas { get; set; }
+    public bool NotifAlertas { get; set; }
+    public bool NotifFichadas { get; set; }
 }
 
 public class SaveTelegramAccountRequest
