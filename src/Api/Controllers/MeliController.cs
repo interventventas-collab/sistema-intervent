@@ -419,13 +419,18 @@ public class MeliController : ControllerBase
     }
 
     /// <summary>2026-07-16: cantidad de publicaciones que esperan revisión de precio (pausadas con
-    /// stock que el robot NO despertó + reactivadas detectadas). Alimenta el cartel rojo del layout.</summary>
+    /// stock que el robot NO despertó + reactivadas detectadas). Alimenta el cartel rojo del layout.
+    /// SOLO cuenta eventos desde que rige la política (16/07 17hs ART): la tabla acumula reactivaciones
+    /// históricas desde mayo (3.190 en prod) y el cartel mostraba todo ese backlog — el usuario quiere
+    /// ver únicamente lo que pase de ahora en adelante.</summary>
+    private static readonly DateTime PoliticaNoReactivarDesde = new(2026, 7, 16, 20, 0, 0, DateTimeKind.Utc);
+
     [HttpGet("cambios/count-revisar")]
     public async Task<IActionResult> CountCambiosRevisar([FromServices] Api.Data.AppDbContext db)
     {
         var tipos = new[] { "PAUSADA_CON_STOCK", "STATUS_ACTIVE" };
         var n = await db.MeliCambiosDetectados.AsNoTracking()
-            .CountAsync(c => c.SeenAt == null && tipos.Contains(c.Tipo));
+            .CountAsync(c => c.SeenAt == null && tipos.Contains(c.Tipo) && c.DetectedAt >= PoliticaNoReactivarDesde);
         return Ok(new { count = n });
     }
 
