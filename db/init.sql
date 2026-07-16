@@ -5882,3 +5882,31 @@ GO
 IF COL_LENGTH('MeliCambiosDetectados','NotifiedAt') IS NULL
     ALTER TABLE MeliCambiosDetectados ADD NotifiedAt DATETIME2 NULL;
 GO
+
+-- 2026-07-16: VARIAS PERSONAS por bot de Telegram (pedido de Osmar: ir dándole acceso a las
+-- notificaciones a los empleados de a poco). Antes cada bot tenía UN dueño (TelegramAccounts.ChatId);
+-- ahora las personas vinculadas viven en TelegramChats (una fila por persona y bot), cada una con
+-- sus tildes de qué avisos recibe. El dueño actual se migra solo con todo prendido.
+-- TelegramAccounts.ChatId queda como legacy (el bot de PREVENTAS lo sigue usando, single-user).
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='TelegramChats' AND xtype='U')
+BEGIN
+    CREATE TABLE TelegramChats (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        TelegramAccountId INT NOT NULL,
+        ChatId BIGINT NOT NULL,
+        Nombre NVARCHAR(120) NULL,
+        NotifVentas BIT NOT NULL DEFAULT 0,
+        NotifAlertas BIT NOT NULL DEFAULT 0,
+        NotifFichadas BIT NOT NULL DEFAULT 0,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL
+    );
+    CREATE INDEX IX_TelegramChats_Account ON TelegramChats (TelegramAccountId, ChatId);
+
+    -- Migrar el dueño actual de cada bot (menos Preventas, que sigue single-user con ChatId).
+    EXEC('INSERT INTO TelegramChats (TelegramAccountId, ChatId, Nombre, NotifVentas, NotifAlertas, NotifFichadas)
+          SELECT Id, ChatId, N''Dueño'', 1, 1, 1
+          FROM TelegramAccounts
+          WHERE ChatId IS NOT NULL AND Proposito <> ''PREVENTAS''');
+END
+GO
