@@ -5875,3 +5875,10 @@ IF EXISTS (SELECT 1 FROM sys.tables WHERE name='Mis_Alertas_Historial')
    AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_MisAlertasHistorial_CreatedAt')
     CREATE INDEX IX_MisAlertasHistorial_CreatedAt ON Mis_Alertas_Historial (CreatedAt DESC);
 GO
+
+-- 2026-07-16: publicaciones MeLi a revisar (pausadas con stock / reactivadas). El robot de stock
+-- ya NO despierta publicaciones pausadas: registra un cambio PAUSADA_CON_STOCK y avisa por
+-- Mis Alertas. NotifiedAt = cuándo se mandó el aviso (Telegram/campanita); NULL = pendiente.
+IF COL_LENGTH('MeliCambiosDetectados','NotifiedAt') IS NULL
+    ALTER TABLE MeliCambiosDetectados ADD NotifiedAt DATETIME2 NULL;
+GO

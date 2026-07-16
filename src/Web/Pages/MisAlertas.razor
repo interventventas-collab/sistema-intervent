@@ -38,6 +38,7 @@
                     <option value="EMAIL_REMITENTE">📧 Correos</option>
                     <option value="VENTA_MELI">🛒 Ventas MercadoLibre</option>
                     <option value="FICHADA">🕐 Fichadas</option>
+                    <option value="PUBLI_MELI">⚠️ Publicaciones MeLi para revisar</option>
                     <option value="SHELL_BAJO">⛽ Shell Flota</option>
                     <option value="BANCO_BAJO">🏦 Banco Galicia</option>
                     <option value="CHEQUE_VENCE">📄 Cheques</option>
@@ -638,6 +639,7 @@ else
     {
         "VENTA_MELI" => "Ventas nuevas de MercadoLibre",
         "FICHADA" => "Fichadas de empleados",
+        "PUBLI_MELI" => "Publicaciones MeLi para revisar (precio)",
         _ => tipo
     };
 
@@ -645,6 +647,7 @@ else
     {
         "VENTA_MELI" => "Te aviso cada venta nueva que entra por MercadoLibre.",
         "FICHADA" => "Te aviso cada entrada/salida de empleados (y la plata a rendir al salir).",
+        "PUBLI_MELI" => "Te aviso cuando una publicación pausada recibe stock (el robot NO la activa) o cuando una publicación se reactiva — para que revises el precio antes de vender.",
         _ => ""
     };
 
@@ -692,6 +695,7 @@ else
         "EMAIL_REMITENTE" => "📧",
         "VENTA_MELI" => "🛒",
         "FICHADA" => "🕐",
+        "PUBLI_MELI" => "⚠️",
         _ => "🔔"
     };
 

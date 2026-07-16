@@ -409,7 +409,7 @@ using (var scope = app.Services.CreateScope())
 
         // activaPorDefecto = el flag viejo del bot (si hoy el aviso está apagado, queda apagado).
         // El canal histórico era Telegram; la campanita arranca desactivada.
-        async Task EnsureSistemaAlerta(string tipo, string mensaje, bool activaPorDefecto)
+        async Task EnsureSistemaAlerta(string tipo, string mensaje, bool activaPorDefecto, bool canalCampanita = false)
         {
             if (await db.MisAlertas.AnyAsync(a => a.Tipo == tipo)) return;
             db.MisAlertas.Add(new Api.Models.MisAlerta
@@ -417,7 +417,7 @@ using (var scope = app.Services.CreateScope())
                 UserId = adminId,
                 Tipo = tipo,
                 Mensaje = mensaje,
-                CanalCampanita = false,
+                CanalCampanita = canalCampanita,
                 CanalTelegram = true,
                 Activa = activaPorDefecto,
                 Alcance = "admin,oficina",
@@ -427,6 +427,9 @@ using (var scope = app.Services.CreateScope())
 
         await EnsureSistemaAlerta("VENTA_MELI", "🛒 Venta nueva en MercadoLibre", tg?.NotifVentas ?? true);
         await EnsureSistemaAlerta("FICHADA", "🕐 Fichada de empleado", tg?.NotifFichadas ?? true);
+        // 2026-07-16 (incidente cápsulas KDOR): publicación pausada con stock / reactivada → revisar precio.
+        // Arranca con Telegram + campanita prendidos: es la alerta que evita vender a precio viejo.
+        await EnsureSistemaAlerta("PUBLI_MELI", "⚠️ Publicación MeLi para revisar (precio)", true, canalCampanita: true);
         await db.SaveChangesAsync();
     }
     catch (Exception ex) { logger.LogWarning(ex, "No se pudieron sembrar las alertas del sistema (Ventas/Fichadas)."); }

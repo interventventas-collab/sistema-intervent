@@ -53,6 +53,11 @@ public class MeliCambioDetectado
     /// <summary>Cuando el usuario marcó este cambio como visto.</summary>
     public DateTime? SeenAt { get; set; }
 
+    /// <summary>2026-07-16: cuándo se avisó este cambio por Mis Alertas (Telegram/campanita).
+    /// NULL = todavía no se avisó. Lo consume TelegramService.NotificarPublicacionesMeliAsync
+    /// para los tipos PAUSADA_CON_STOCK y STATUS_ACTIVE (publicaciones a revisar).</summary>
+    public DateTime? NotifiedAt { get; set; }
+
     [MaxLength(500)]
     public string? Notes { get; set; }
 }

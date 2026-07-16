@@ -33,14 +33,17 @@ public class MeliStockPushService
     private readonly AppDbContext _db;
     private readonly IHttpClientFactory _httpFactory;
     private readonly MeliAccountService _accountService;
+    private readonly MeliCambioDetectadoService _cambios;
     private readonly ILogger<MeliStockPushService> _logger;
 
     public MeliStockPushService(AppDbContext db, IHttpClientFactory httpFactory,
-        MeliAccountService accountService, ILogger<MeliStockPushService> logger)
+        MeliAccountService accountService, MeliCambioDetectadoService cambios,
+        ILogger<MeliStockPushService> logger)
     {
         _db = db;
         _httpFactory = httpFactory;
         _accountService = accountService;
+        _cambios = cambios;
         _logger = logger;
     }
 
@@ -392,14 +395,31 @@ public class MeliStockPushService
             if (safeBulkMode && !todasMayorACero)
                 return (PushOutcome.Skipped, "SafeBulk: alguna variante daria 0, skip para no pausar");
 
-            var payload = new Dictionary<string, object> { ["variations"] = varEntries };
-            if (!conservativeMode && !safeBulkMode)
+            // ── POLÍTICA 2026-07-16 (incidente cápsulas KDOR): el push NUNCA despierta una
+            // publicación pausada. Antes acá se mandaba status=active si stock>0 → la publi se
+            // reactivaba con el PRECIO VIEJO y se vendía a pérdida (pusheamos stock, no precio).
+            // Ahora: si está paused y tiene stock para vender, NO tocamos nada y registramos el
+            // aviso PAUSADA_CON_STOCK → Mis Alertas (Telegram/campanita) + cartel en el sistema.
+            // El usuario revisa el precio y la activa él desde /cafe/cambios-meli.
+            // OJO: tampoco pusheamos el stock — MeLi reactiva solo las pausadas por falta de
+            // stock cuando les llega available_quantity > 0, así que ni eso es seguro.
+            if (!conservativeMode && !safeBulkMode
+                && string.Equals(statusActual, "paused", StringComparison.OrdinalIgnoreCase))
             {
-                // Modo normal: si stock>0 y estaba paused, reactivar
-                if (sumStock > 0 && string.Equals(statusActual, "paused", StringComparison.OrdinalIgnoreCase))
-                    payload["status"] = "active";
+                if (sumStock > 0)
+                {
+                    var precio = doc.TryGetProperty("price", out var prV) && prV.ValueKind == JsonValueKind.Number
+                        ? prV.GetDecimal() : (decimal?)null;
+                    var row0 = rows.First();
+                    await _cambios.LogPausadaConStockAsync(meliItemId, row0.MeliAccountId, row0.Sku,
+                        row0.Title, precio, sumStock, "push", saveChanges: true, ct);
+                    return (PushOutcome.Skipped, $"Paused con stock {sumStock}: NO se despierta, avisado para revisar");
+                }
+                return (PushOutcome.Skipped, "Paused sin stock: no se toca");
             }
-            // Conservative/SafeBulk: NUNCA agregar "status" al payload → NO cambia status
+
+            var payload = new Dictionary<string, object> { ["variations"] = varEntries };
+            // NUNCA agregar "status" al payload → el push no cambia el status en ningún modo
             return await DoPut(http, meliItemId, payload, ct);
         }
         else
@@ -449,9 +469,22 @@ public class MeliStockPushService
                 return await DoPut(http, meliItemId, payloadSb, ct);
             }
 
+            // POLÍTICA 2026-07-16: NUNCA despertar pausadas (ver comentario en la rama con variations).
+            if (string.Equals(statusActual, "paused", StringComparison.OrdinalIgnoreCase))
+            {
+                if (stockMeliSingle > 0)
+                {
+                    var precio = doc.TryGetProperty("price", out var prS) && prS.ValueKind == JsonValueKind.Number
+                        ? prS.GetDecimal() : (decimal?)null;
+                    var row0 = rows.First();
+                    await _cambios.LogPausadaConStockAsync(meliItemId, row0.MeliAccountId, row0.Sku,
+                        row0.Title, precio, stockMeliSingle, "push", saveChanges: true, ct);
+                    return (PushOutcome.Skipped, $"Paused con stock {stockMeliSingle}: NO se despierta, avisado para revisar");
+                }
+                return (PushOutcome.Skipped, "Paused sin stock: no se toca");
+            }
+
             var payload = new Dictionary<string, object> { ["available_quantity"] = stockMeliSingle };
-            if (stockMeliSingle > 0 && string.Equals(statusActual, "paused", StringComparison.OrdinalIgnoreCase))
-                payload["status"] = "active";
             return await DoPut(http, meliItemId, payload, ct);
         }
     }

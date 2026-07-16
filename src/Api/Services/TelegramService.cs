@@ -301,6 +301,120 @@ public class TelegramService
         }
     }
 
+    /// <summary>2026-07-16: avisa publicaciones MeLi que hay que REVISAR (incidente cápsulas KDOR):
+    /// - PAUSADA_CON_STOCK: el push le calculó stock a una publi pausada pero NO la despertó.
+    /// - STATUS_ACTIVE: una publi pasó de pausada→activa (reactivación detectada por el sync).
+    /// Un aviso por publicación (Telegram y/o campanita según la alerta del sistema PUBLI_MELI)
+    /// + fila en el historial. Marca NotifiedAt para no repetir. Mismo andamiaje que ventas.</summary>
+    public async Task NotificarPublicacionesMeliAsync(CancellationToken ct = default)
+    {
+        var alerta = await _db.MisAlertas.FirstOrDefaultAsync(x => x.Tipo == "PUBLI_MELI", ct);
+        if (alerta is null || !alerta.Activa) return;
+        bool quiereTelegram = alerta.CanalTelegram;
+        bool quiereCampanita = alerta.CanalCampanita;
+        if (!quiereTelegram && !quiereCampanita) return;
+
+        var a = await GetBotAsync("AVISOS", ct);
+        bool telegramListo = a is not null && !string.IsNullOrWhiteSpace(a.BotToken) && a.IsActive && a.ChatId is not null;
+        if (quiereTelegram && !quiereCampanita && !telegramListo) return;
+
+        var tipos = new[] { "PAUSADA_CON_STOCK", "STATUS_ACTIVE" };
+        var corteViejo = DateTime.UtcNow.AddHours(-12);
+
+        // Anti-backlog: eventos sin avisar más viejos que 12h se marcan y no se mandan.
+        var viejos = await _db.MeliCambiosDetectados
+            .Where(c => c.NotifiedAt == null && tipos.Contains(c.Tipo) && c.DetectedAt < corteViejo)
+            .ToListAsync(ct);
+        if (viejos.Count > 0)
+        {
+            foreach (var c in viejos) c.NotifiedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+        }
+
+        var pendientes = await _db.MeliCambiosDetectados
+            .Where(c => c.NotifiedAt == null && tipos.Contains(c.Tipo) && c.DetectedAt >= corteViejo)
+            .OrderBy(c => c.DetectedAt)
+            .Take(15) // el resto queda para la próxima vuelta
+            .ToListAsync(ct);
+        if (pendientes.Count == 0) return;
+
+        int procesados = 0;
+        string? ultimoDetalle = null;
+        foreach (var ev in pendientes)
+        {
+            bool enviado = false;
+            var texto = ArmarMensajePubliRevisar(ev);
+            if (quiereTelegram && telegramListo)
+            {
+                var (ok, _) = await SendRawAsync(a!.BotToken, a.ChatId!.Value, texto, ct);
+                if (!ok) break; // si falla el envío, no marcamos: reintenta la próxima
+                enviado = true;
+            }
+            ev.NotifiedAt = DateTime.UtcNow;
+            ultimoDetalle = ResumenCortoPubli(ev);
+            _db.MisAlertasHistorial.Add(new MisAlertaHistorial
+            {
+                AlertaId = alerta.Id,
+                Tipo = "PUBLI_MELI",
+                Mensaje = string.IsNullOrWhiteSpace(alerta.Mensaje) ? "Publicación MeLi para revisar" : alerta.Mensaje,
+                Detalle = ultimoDetalle,
+                Alcance = string.IsNullOrWhiteSpace(alerta.Alcance) ? "admin,oficina" : alerta.Alcance,
+                PorTelegram = alerta.CanalTelegram,
+                EnviadoTelegram = enviado
+            });
+            procesados++;
+        }
+
+        if (procesados > 0)
+        {
+            if (quiereCampanita && ultimoDetalle is not null)
+            {
+                alerta.EstaDisparada = true;
+                alerta.Vista = false;
+                alerta.DisparadaAt = DateTime.UtcNow;
+                alerta.UltimoDetalle = ultimoDetalle;
+                alerta.UpdatedAt = DateTime.UtcNow;
+            }
+            await _db.SaveChangesAsync(ct);
+        }
+    }
+
+    private static string ResumenCortoPubli(MeliCambioDetectado ev)
+    {
+        var quePaso = ev.Tipo == "PAUSADA_CON_STOCK" ? "pausada con stock" : "reactivada";
+        var nombre = string.IsNullOrWhiteSpace(ev.Title) ? ev.MeliItemId : ev.Title;
+        return $"Publi {quePaso}: {Recortar(nombre, 60)}";
+    }
+
+    private static string ArmarMensajePubliRevisar(MeliCambioDetectado ev)
+    {
+        var lineas = new List<string>();
+        if (ev.Tipo == "PAUSADA_CON_STOCK")
+        {
+            lineas.Add("⚠️ Publicación PAUSADA con stock — ¡revisá el precio antes de activarla!");
+            lineas.Add($"📦 {ev.Title ?? ev.MeliItemId}");
+            var datos = new List<string>();
+            if (!string.IsNullOrWhiteSpace(ev.Sku)) datos.Add($"SKU {ev.Sku}");
+            if (decimal.TryParse(ev.ValorNuevo, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var precio))
+                datos.Add($"Precio actual en MeLi: {Money(precio)}");
+            if (ev.Delta.HasValue) datos.Add($"Stock disponible: {ev.Delta.Value:0}");
+            if (datos.Count > 0) lineas.Add(string.Join(" · ", datos));
+            lineas.Add("");
+            lineas.Add("El robot NO la activó (política nueva). Revisá el precio y activala desde el sistema: Cambios MeLi.");
+        }
+        else // STATUS_ACTIVE
+        {
+            lineas.Add("📢 Publicación REACTIVADA en MercadoLibre — revisá el precio.");
+            lineas.Add($"📦 {ev.Title ?? ev.MeliItemId}");
+            if (!string.IsNullOrWhiteSpace(ev.Sku)) lineas.Add($"SKU {ev.Sku}");
+        }
+        lineas.Add($"🔗 https://articulo.mercadolibre.com.ar/{ev.MeliItemId.Insert(3, "-")}");
+        return string.Join("\n", lineas);
+    }
+
+    private static string Recortar(string s, int max) => s.Length <= max ? s : s[..(max - 1)] + "…";
+
     /// <summary>Resumen corto de una venta para la campanita (una línea).</summary>
     private static string ResumenCortoVenta(List<MeliOrder> items)
     {
@@ -359,6 +473,9 @@ public class TelegramService
         {
             try { await NotificarVentasPendientesAsync(ct); }
             catch (Exception ex) { _logger.LogWarning(ex, "[Telegram] error avisando ventas"); }
+            // 2026-07-16: publicaciones MeLi a revisar (pausadas con stock / reactivadas)
+            try { await NotificarPublicacionesMeliAsync(ct); }
+            catch (Exception ex) { _logger.LogWarning(ex, "[Telegram] error avisando publicaciones a revisar"); }
         }
 
         // Si nunca poleamos este bot, adelantamos el cursor sin responder mensajes viejos.
