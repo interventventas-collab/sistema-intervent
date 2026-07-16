@@ -23,10 +23,44 @@ public class TelegramController : ControllerBase
         _service = service;
     }
 
-    /// <summary>Devuelve la config del bot (sin el token), o null si no hay. proposito = AVISOS | PREVENTAS.</summary>
+    /// <summary>Devuelve la config del bot (sin el token), o null si no hay. proposito = AVISOS | FUNCIONES | PREVENTAS.</summary>
     [HttpGet("account")]
     public async Task<IActionResult> GetAccount([FromQuery] string proposito = "AVISOS")
         => Ok(await _accounts.GetAsync(proposito));
+
+    // ─────────── Personas vinculadas (varias por bot, 2026-07-16) ───────────
+
+    /// <summary>Lista de personas vinculadas a un bot (cada una con sus tildes de avisos).</summary>
+    [HttpGet("chats")]
+    public async Task<IActionResult> GetChats([FromQuery] string proposito = "AVISOS")
+        => Ok(await _accounts.ListChatsAsync(proposito));
+
+    /// <summary>Edita a una persona vinculada (nombre + qué avisos le llegan).</summary>
+    [HttpPut("chats/{id:int}")]
+    public async Task<IActionResult> UpdateChat(int id, [FromBody] TelegramAccountService.UpdateTelegramChatRequest req)
+    {
+        var dto = await _accounts.UpdateChatAsync(id, req);
+        if (dto is null) return NotFound(new { error = "No existe esa persona vinculada" });
+        return Ok(dto);
+    }
+
+    /// <summary>Quita a una persona vinculada (deja de recibir avisos y el bot no le contesta más).</summary>
+    [HttpDelete("chats/{id:int}")]
+    public async Task<IActionResult> DeleteChat(int id)
+    {
+        var ok = await _accounts.DeleteChatAsync(id);
+        if (!ok) return NotFound(new { error = "No existe esa persona vinculada" });
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>Genera un código de seguridad nuevo para vincular gente (el viejo deja de servir).</summary>
+    [HttpPost("regenerar-codigo")]
+    public async Task<IActionResult> RegenerarCodigo([FromQuery] string proposito = "AVISOS")
+    {
+        var dto = await _accounts.RegenerarCodigoAsync(proposito);
+        if (dto is null) return BadRequest(new { error = "No hay bot configurado" });
+        return Ok(dto);
+    }
 
     /// <summary>Crea o actualiza el token + los tildes de qué avisos mandar (por propósito).</summary>
     [HttpPut("account")]
@@ -68,12 +102,13 @@ public class TelegramController : ControllerBase
 
     public record TestMsgResultDto(bool Ok, string? Error);
 
-    /// <summary>Manda un mensaje de prueba al chat vinculado.</summary>
+    /// <summary>Manda un mensaje de prueba a TODAS las personas vinculadas al bot de Avisos.</summary>
     [HttpPost("test-mensaje")]
     public async Task<IActionResult> TestMensaje()
     {
         var (ok, error) = await _service.SendMessageAsync(
-            "🔔 Mensaje de prueba de Intervent. Si lo estás viendo, ¡funciona perfecto! 🚀");
+            "🔔 Mensaje de prueba de Intervent. Si lo estás viendo, ¡funciona perfecto! 🚀",
+            categoria: "TODOS");
         return Ok(new TestMsgResultDto(ok, error));
     }
 }

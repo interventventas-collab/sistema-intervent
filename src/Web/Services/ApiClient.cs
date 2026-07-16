@@ -4612,9 +4612,23 @@ public class ApiClient
     public async Task<Web.Models.TelegramAccountDto?> DesvincularTelegramAsync(string proposito = "AVISOS")
         => await PostAsync<Web.Models.TelegramAccountDto>($"/api/telegram/desvincular?proposito={proposito}", new { });
 
-    /// <summary>Manda un mensaje de prueba al chat vinculado.</summary>
+    /// <summary>Manda un mensaje de prueba a todas las personas vinculadas al bot de Avisos.</summary>
     public async Task<Web.Models.TelegramTestMsgResultDto?> TestMensajeTelegramAsync()
         => await PostAsync<Web.Models.TelegramTestMsgResultDto>("/api/telegram/test-mensaje", new { });
+
+    // --- Personas vinculadas a cada bot (2026-07-16: varias por bot) ---
+    public async Task<List<Web.Models.TelegramChatDto>?> GetTelegramChatsAsync(string proposito = "AVISOS")
+        => await GetAsync<List<Web.Models.TelegramChatDto>>($"/api/telegram/chats?proposito={proposito}");
+
+    public async Task<Web.Models.TelegramChatDto?> UpdateTelegramChatAsync(int id, Web.Models.UpdateTelegramChatRequest req)
+        => await PutAsync<Web.Models.TelegramChatDto>($"/api/telegram/chats/{id}", req);
+
+    public async Task<bool> DeleteTelegramChatAsync(int id)
+        => await DeleteAsync($"/api/telegram/chats/{id}");
+
+    /// <summary>Genera un código de seguridad nuevo para vincular gente (el viejo deja de servir).</summary>
+    public async Task<Web.Models.TelegramAccountDto?> RegenerarCodigoTelegramAsync(string proposito = "AVISOS")
+        => await PostAsync<Web.Models.TelegramAccountDto>($"/api/telegram/regenerar-codigo?proposito={proposito}", new { });
 
     private async Task<T?> GetAsync<T>(string url)
     {

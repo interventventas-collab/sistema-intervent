@@ -22,6 +22,7 @@ public class AppDbContext : DbContext
     public DbSet<MpAccount> MpAccounts => Set<MpAccount>();
     public DbSet<EzvizAccount> EzvizAccounts => Set<EzvizAccount>();
     public DbSet<TelegramAccount> TelegramAccounts => Set<TelegramAccount>();
+    public DbSet<TelegramChat> TelegramChats => Set<TelegramChat>();
     public DbSet<MpPago> MpPagos => Set<MpPago>();
     public DbSet<MpMovimiento> MpMovimientos => Set<MpMovimiento>();
     public DbSet<MeliOrder> MeliOrders => Set<MeliOrder>();

@@ -6,14 +6,15 @@
 
 <PageTitle>Telegram</PageTitle>
 
-<div class="page-container" style="max-width:820px;">
+<div class="page-container" style="max-width:860px;">
     <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.4rem;">
         <span style="font-size:1.6rem;">📲</span>
-        <h1 style="margin:0;">Avisos por Telegram</h1>
+        <h1 style="margin:0;">Telegram</h1>
     </div>
     <p style="color:#64748b;margin-top:0;">
-        Recibí en tu celular las ventas nuevas de MercadoLibre y tus alertas. Y podés escribirle al
-        bot <b>ventas</b>, <b>saldo</b> o <b>alertas</b> para que te conteste al toque.
+        Cada bot tiene un trabajo: <b>📣 Avisos</b> te manda las novedades (ventas, alertas, fichadas),
+        <b>🤖 Funciones</b> contesta consultas (ventas, saldo, precios) y <b>🧾 Preventas</b> es el chat
+        para cargar preventas. Podés vincular <b>varias personas</b> a cada bot y elegir qué recibe cada una.
     </p>
 
     @if (loading)
@@ -22,117 +23,93 @@
     }
     else
     {
-        <!-- ─────────── Estado / conexión ─────────── -->
-        <div class="card" style="padding:1.2rem 1.4rem;margin-bottom:1.4rem;border:1px solid #e2e8f0;border-radius:12px;background:#fff;">
+        <!-- ═══════════════ 📣 BOT DE AVISOS ═══════════════ -->
+        <div class="card" style="padding:1.2rem 1.4rem;margin-bottom:1.6rem;border:1px solid #e2e8f0;border-radius:12px;background:#fff;">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
-                <h3 style="margin:0;">🤖 Conexión con el bot</h3>
-                @if (account is not null && account.HasToken && account.ChatId is not null && account.LastSyncOk)
-                {
-                    <span style="background:#dcfce7;color:#166534;padding:0.25rem 0.7rem;border-radius:999px;font-weight:600;font-size:0.85rem;">✓ Conectado y vinculado</span>
-                }
-                else if (account is not null && account.HasToken)
-                {
-                    <span style="background:#fef9c3;color:#854d0e;padding:0.25rem 0.7rem;border-radius:999px;font-weight:600;font-size:0.85rem;">Token guardado — falta vincular tu Telegram</span>
-                }
-                else
-                {
-                    <span style="background:#fee2e2;color:#991b1b;padding:0.25rem 0.7rem;border-radius:999px;font-weight:600;font-size:0.85rem;">Sin conectar</span>
-                }
+                <h3 style="margin:0;">📣 Bot de Avisos <span style="font-weight:400;color:#94a3b8;font-size:0.85rem;">(solo manda avisos)</span></h3>
+                @EstadoChip(account)
             </div>
-
+            <p style="color:#64748b;font-size:0.9rem;margin:0.6rem 0 1rem;">
+                Manda las ventas nuevas de MercadoLibre, tus alertas y las fichadas. Pegá el <b>token</b>
+                que te dio <b>@@BotFather</b> (algo como <code>123456789:AA...</code>).
+            </p>
             @if (account?.BotUsername is not null)
             {
-                <p style="color:#334155;font-size:0.9rem;margin:0.7rem 0 0;">
-                    Bot: <b>@@@account.BotUsername</b>
-                    @if (account.ChatId is not null)
-                    {
-                        <span style="color:#16a34a;"> · tu Telegram está vinculado ✓</span>
-                    }
-                </p>
+                <p style="color:#334155;font-size:0.9rem;margin:0 0 0.6rem;">Bot: <b>@@@account.BotUsername</b></p>
             }
-
-            <p style="color:#64748b;font-size:0.9rem;margin:0.6rem 0 1rem;">
-                Pegá el <b>token</b> que te dio <b>@@BotFather</b> cuando creaste el bot (algo como
-                <code>123456789:AA...</code>). Se guarda una sola vez.
-            </p>
-
             <div>
                 <label style="font-weight:600;font-size:0.85rem;">Token del bot</label>
                 <input @bind="botToken" type="password"
                        placeholder="@(account?.HasToken == true ? "•••• (ya guardado)" : "123456789:AAE...")"
                        class="form-control" style="width:100%;" />
             </div>
-
             <div style="display:flex;align-items:center;gap:0.8rem;margin-top:1rem;flex-wrap:wrap;">
-                <button class="btn btn-primary" @onclick="Guardar" disabled="@saving">
-                    @(saving ? "Guardando…" : "Guardar token")
-                </button>
-                <button class="btn btn-secondary" @onclick="Probar" disabled="@(probando || account?.HasToken != true)">
-                    @(probando ? "Probando…" : "Probar y mandar mensaje")
-                </button>
+                <button class="btn btn-primary" @onclick="Guardar" disabled="@saving">@(saving ? "Guardando…" : "Guardar token")</button>
+                <button class="btn btn-secondary" @onclick="Probar" disabled="@(probando || account?.HasToken != true)">@(probando ? "Probando…" : "Probar conexión")</button>
+                @if (account is not null && account.HasToken && account.PersonasVinculadas > 0)
+                {
+                    <button class="btn btn-secondary" @onclick="TestMensaje" disabled="@testando">@(testando ? "Mandando…" : "📤 Mensaje de prueba a todos")</button>
+                }
                 @if (account is not null && !account.LastSyncOk && !string.IsNullOrEmpty(account.LastError))
                 {
                     <span style="color:#b91c1c;font-size:0.88rem;">⚠ @account.LastError</span>
                 }
             </div>
+
+            @if (account is not null && account.HasToken)
+            {
+                @PersonasSection(avisosChats, true, "AVISOS")
+                @CodigoSection(account, "AVISOS")
+            }
+
+            <div style="margin-top:1rem;padding:0.8rem 1rem;border-radius:10px;background:#f8fbff;border:1px solid #e2e8f0;font-size:0.88rem;color:#334155;">
+                🔔 <b>¿Qué avisos existen?</b> Eso se maneja desde <a href="/mis-alertas">Mis Alertas</a>: ahí
+                elegís qué cosas avisan por Telegram. Y acá arriba, con los tildes de cada persona, elegís
+                <b>a quién</b> le llega cada tipo de aviso.
+            </div>
         </div>
 
-        <!-- ─────────── Vincular tu Telegram ─────────── -->
-        @if (account is not null && account.HasToken)
-        {
-            <div class="card" style="padding:1.2rem 1.4rem;margin-bottom:1.4rem;border:1px solid #e2e8f0;border-radius:12px;background:#fff;">
-                <h3 style="margin:0 0 0.4rem;">📱 Vincular tu Telegram</h3>
-                @if (account.ChatId is not null)
-                {
-                    <p style="color:#16a34a;font-size:0.92rem;margin:0 0 0.8rem;">
-                        ✓ Ya está vinculado. Los avisos te llegan a tu Telegram.
-                    </p>
-                    <button class="btn btn-secondary btn-sm" @onclick="TestMensaje" disabled="@testando">
-                        @(testando ? "Mandando…" : "📤 Mandarme un mensaje de prueba")
-                    </button>
-                }
-                else
-                {
-                    <p style="color:#64748b;font-size:0.92rem;margin:0 0 0.8rem;">
-                        1) Abrí el bot en Telegram@(account.BotUsername is not null ? $" (@{account.BotUsername})" : "") y escribile <b>hola</b>.<br />
-                        2) Volvé acá y apretá este botón.
-                    </p>
-                    <button class="btn btn-primary btn-sm" @onclick="Vincular" disabled="@vinculando">
-                        @(vinculando ? "Buscando…" : "🔗 Vincular mi Telegram")
-                    </button>
-                }
-
-                <div style="margin-top:0.9rem;padding-top:0.8rem;border-top:1px solid #f1f5f9;font-size:0.86rem;color:#475569;">
-                    🔒 <b>Código de seguridad</b>: <span style="font-family:monospace;font-size:1rem;background:#f1f5f9;padding:0.1rem 0.5rem;border-radius:6px;">@account.VinculacionCode</span>
-                    <div style="color:#94a3b8;font-size:0.8rem;margin-top:0.3rem;">
-                        Si el bot no está vinculado, solo se activa cuando le mandan este código. Nadie puede adueñárselo sin él.
-                    </div>
-                    @if (account.ChatId is not null)
-                    {
-                        <button class="btn btn-secondary btn-sm" style="margin-top:0.5rem;" @onclick="Desvincular" disabled="@desvinc">
-                            @(desvinc ? "…" : "Desvincular este celular")
-                        </button>
-                    }
-                </div>
-            </div>
-
-            <!-- ─────────── Qué avisos recibir → ahora todo en Mis Alertas ─────────── -->
-            <div class="card" style="padding:1.2rem 1.4rem;border:1px solid #e2e8f0;border-radius:12px;background:#f8fbff;">
-                <h3 style="margin:0 0 0.5rem;">🔔 ¿Qué avisos querés recibir?</h3>
-                <p style="color:#334155;font-size:0.92rem;margin:0 0 0.8rem;">
-                    Todos los avisos se manejan desde un solo lugar: <b><a href="/mis-alertas">Mis Alertas</a></b>.
-                    Ahí, para cada aviso —las <b>Ventas de MercadoLibre</b>, las <b>Fichadas de empleados</b> y
-                    tus propias alertas (Shell, banco, cheques, fechas, correos)— elegís por dónde te llega:
-                    por la <b>campanita 🔔</b>, por <b>Telegram 📲</b>, o por ambos.
-                </p>
-                <a class="btn btn-primary btn-sm" href="/mis-alertas">Ir a Mis Alertas →</a>
-            </div>
-        }
-
-        <!-- ─────────── Bot de PREVENTAS (chat aparte) ─────────── -->
-        <div class="card" style="padding:1.2rem 1.4rem;margin-top:1.6rem;border:1px solid #e2e8f0;border-radius:12px;background:#fff;">
+        <!-- ═══════════════ 🤖 BOT DE FUNCIONES ═══════════════ -->
+        <div class="card" style="padding:1.2rem 1.4rem;margin-bottom:1.6rem;border:1px solid #e2e8f0;border-radius:12px;background:#fff;">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
-                <h3 style="margin:0;">🧾 Bot de Preventas <span style="font-weight:400;color:#94a3b8;font-size:0.85rem;">(chat aparte)</span></h3>
+                <h3 style="margin:0;">🤖 Bot de Funciones <span style="font-weight:400;color:#94a3b8;font-size:0.85rem;">(contesta consultas)</span></h3>
+                @EstadoChip(funcionesAccount)
+            </div>
+            <p style="color:#64748b;font-size:0.9rem;margin:0.6rem 0 1rem;">
+                Un chat aparte para <b>preguntarle cosas</b>: <b>ventas</b>, <b>saldo</b>, <b>shell</b>,
+                <b>alertas</b>, <b>precio C3622AZ</b>… Así el chat de Avisos queda limpio, solo con novedades.
+                Creá otro bot con <b>@@BotFather</b> y pegá su token acá.
+            </p>
+            @if (funcionesAccount?.BotUsername is not null)
+            {
+                <p style="color:#334155;font-size:0.9rem;margin:0 0 0.6rem;">Bot: <b>@@@funcionesAccount.BotUsername</b></p>
+            }
+            <div>
+                <label style="font-weight:600;font-size:0.85rem;">Token del bot de Funciones</label>
+                <input @bind="funcionesToken" type="password"
+                       placeholder="@(funcionesAccount?.HasToken == true ? "•••• (ya guardado)" : "123456789:AAE...")"
+                       class="form-control" style="width:100%;" />
+            </div>
+            <div style="display:flex;align-items:center;gap:0.8rem;margin-top:1rem;flex-wrap:wrap;">
+                <button class="btn btn-primary" @onclick="GuardarFunciones" disabled="@savingFn">@(savingFn ? "Guardando…" : "Guardar token")</button>
+                <button class="btn btn-secondary" @onclick="ProbarFunciones" disabled="@(probandoFn || funcionesAccount?.HasToken != true)">@(probandoFn ? "Probando…" : "Probar conexión")</button>
+                @if (funcionesAccount is not null && !funcionesAccount.LastSyncOk && !string.IsNullOrEmpty(funcionesAccount.LastError))
+                {
+                    <span style="color:#b91c1c;font-size:0.88rem;">⚠ @funcionesAccount.LastError</span>
+                }
+            </div>
+
+            @if (funcionesAccount is not null && funcionesAccount.HasToken)
+            {
+                @PersonasSection(funcionesChats, false, "FUNCIONES")
+                @CodigoSection(funcionesAccount, "FUNCIONES")
+            }
+        </div>
+
+        <!-- ═══════════════ 🧾 BOT DE PREVENTAS (igual que siempre) ═══════════════ -->
+        <div class="card" style="padding:1.2rem 1.4rem;border:1px solid #e2e8f0;border-radius:12px;background:#fff;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
+                <h3 style="margin:0;">🧾 Bot de Preventas <span style="font-weight:400;color:#94a3b8;font-size:0.85rem;">(chat aparte, una sola persona)</span></h3>
                 @if (preventaAccount is not null && preventaAccount.HasToken && preventaAccount.ChatId is not null && preventaAccount.LastSyncOk)
                 {
                     <span style="background:#dcfce7;color:#166534;padding:0.25rem 0.7rem;border-radius:999px;font-weight:600;font-size:0.85rem;">✓ Conectado y vinculado</span>
@@ -147,8 +124,7 @@
                 }
             </div>
             <p style="color:#64748b;font-size:0.9rem;margin:0.6rem 0 1rem;">
-                Un segundo bot, en un <b>chat aparte</b>, donde solo cargás preventas (así no se mezclan con los avisos).
-                Creá el bot con <b>@@BotFather</b> y pegá su token acá.
+                Chat aparte donde solo se cargan preventas (así no se mezclan con los avisos).
             </p>
             @if (preventaAccount?.BotUsername is not null)
             {
@@ -197,32 +173,303 @@
 </div>
 
 @code {
-    private TelegramAccountDto? account;
-    private bool loading = true, saving = false, probando = false, vinculando = false, testando = false;
-    private bool desvinc = false, desvincPv = false;
+    private TelegramAccountDto? account;          // 📣 AVISOS
+    private TelegramAccountDto? funcionesAccount; // 🤖 FUNCIONES
+    private TelegramAccountDto? preventaAccount;  // 🧾 PREVENTAS
+
+    private List<TelegramChatDto> avisosChats = new();
+    private List<TelegramChatDto> funcionesChats = new();
+
+    private bool loading = true, saving = false, probando = false, testando = false;
+    private bool savingFn = false, probandoFn = false;
+    private bool savingPv = false, probandoPv = false, vinculandoPv = false, desvincPv = false;
 
     private string botToken = "";
-
-    // Bot de Preventas (chat aparte)
-    private TelegramAccountDto? preventaAccount;
+    private string funcionesToken = "";
     private string preventaToken = "";
-    private bool savingPv = false, probandoPv = false, vinculandoPv = false;
+
+    // ═══════════ Fragmentos compartidos (personas vinculadas + código) ═══════════
+
+    private RenderFragment EstadoChip(TelegramAccountDto? a) => @<text>
+        @if (a is not null && a.HasToken && a.PersonasVinculadas > 0 && a.LastSyncOk)
+        {
+            <span style="background:#dcfce7;color:#166534;padding:0.25rem 0.7rem;border-radius:999px;font-weight:600;font-size:0.85rem;">✓ Conectado · @a.PersonasVinculadas persona@(a.PersonasVinculadas == 1 ? "" : "s")</span>
+        }
+        else if (a is not null && a.HasToken)
+        {
+            <span style="background:#fef9c3;color:#854d0e;padding:0.25rem 0.7rem;border-radius:999px;font-weight:600;font-size:0.85rem;">Token guardado — falta vincular gente</span>
+        }
+        else
+        {
+            <span style="background:#fee2e2;color:#991b1b;padding:0.25rem 0.7rem;border-radius:999px;font-weight:600;font-size:0.85rem;">Sin conectar</span>
+        }
+    </text>;
+
+    private RenderFragment PersonasSection(List<TelegramChatDto> chats, bool conTildes, string proposito) => @<div style="margin-top:1.1rem;padding-top:0.9rem;border-top:1px solid #f1f5f9;">
+        <h4 style="margin:0 0 0.5rem;font-size:0.98rem;">👥 Personas vinculadas</h4>
+        @if (chats.Count == 0)
+        {
+            <p style="color:#94a3b8;font-size:0.88rem;margin:0 0 0.5rem;">Todavía no hay nadie vinculado. Pasale el código de seguridad (acá abajo) a la persona: lo manda al bot desde su Telegram y aparece en esta lista.</p>
+        }
+        else
+        {
+            <div style="overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:0.9rem;">
+                    <thead>
+                        <tr style="text-align:left;color:#64748b;font-size:0.8rem;">
+                            <th style="padding:0.3rem 0.5rem;">Nombre</th>
+                            @if (conTildes)
+                            {
+                                <th style="padding:0.3rem 0.5rem;text-align:center;">🛒 Ventas</th>
+                                <th style="padding:0.3rem 0.5rem;text-align:center;">🔔 Alertas</th>
+                                <th style="padding:0.3rem 0.5rem;text-align:center;">🕐 Fichadas</th>
+                            }
+                            <th style="padding:0.3rem 0.5rem;">Desde</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var c in chats)
+                        {
+                            var chat = c;
+                            <tr style="border-top:1px solid #f1f5f9;">
+                                <td style="padding:0.35rem 0.5rem;">
+                                    <input value="@chat.Nombre" class="form-control" style="max-width:180px;font-size:0.88rem;padding:0.25rem 0.5rem;"
+                                           placeholder="(sin nombre)"
+                                           @onchange="@(async e => await CambiarNombre(chat, e.Value?.ToString(), proposito))" />
+                                </td>
+                                @if (conTildes)
+                                {
+                                    <td style="padding:0.35rem 0.5rem;text-align:center;">
+                                        <input type="checkbox" checked="@chat.NotifVentas" style="width:1.1rem;height:1.1rem;cursor:pointer;"
+                                               @onchange="@(async e => { chat.NotifVentas = (bool)e.Value!; await GuardarChat(chat, proposito); })" />
+                                    </td>
+                                    <td style="padding:0.35rem 0.5rem;text-align:center;">
+                                        <input type="checkbox" checked="@chat.NotifAlertas" style="width:1.1rem;height:1.1rem;cursor:pointer;"
+                                               @onchange="@(async e => { chat.NotifAlertas = (bool)e.Value!; await GuardarChat(chat, proposito); })" />
+                                    </td>
+                                    <td style="padding:0.35rem 0.5rem;text-align:center;">
+                                        <input type="checkbox" checked="@chat.NotifFichadas" style="width:1.1rem;height:1.1rem;cursor:pointer;"
+                                               @onchange="@(async e => { chat.NotifFichadas = (bool)e.Value!; await GuardarChat(chat, proposito); })" />
+                                    </td>
+                                }
+                                <td style="padding:0.35rem 0.5rem;color:#94a3b8;font-size:0.82rem;white-space:nowrap;">@chat.CreatedAt.AddHours(-3).ToString("dd/MM/yy")</td>
+                                <td style="padding:0.35rem 0.5rem;text-align:right;">
+                                    <button class="btn btn-secondary btn-sm" style="color:#b91c1c;" @onclick="@(async () => await QuitarChat(chat, proposito))">Quitar</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (conTildes)
+            {
+                <p style="color:#94a3b8;font-size:0.8rem;margin:0.4rem 0 0;">Los tildes eligen qué avisos le llegan a cada persona. Los recién vinculados arrancan sin nada: prendeles lo que quieras que reciban.</p>
+            }
+        }
+    </div>;
+
+    private RenderFragment CodigoSection(TelegramAccountDto a, string proposito) => @<div style="margin-top:0.9rem;padding-top:0.8rem;border-top:1px solid #f1f5f9;font-size:0.86rem;color:#475569;">
+        🔒 <b>Código de seguridad para sumar gente</b>:
+        <span style="font-family:monospace;font-size:1rem;background:#f1f5f9;padding:0.1rem 0.5rem;border-radius:6px;">@a.VinculacionCode</span>
+        <button class="btn btn-secondary btn-sm" style="margin-left:0.6rem;" @onclick="@(async () => await RegenerarCodigo(proposito))">↻ Generar otro</button>
+        <div style="color:#94a3b8;font-size:0.8rem;margin-top:0.3rem;">
+            Pasale este código a la persona que quieras sumar. Ella abre el bot en Telegram (@(string.IsNullOrEmpty(a.BotUsername) ? "buscalo por nombre" : $"@{a.BotUsername}")),
+            le manda el código, y queda vinculada. Después de cada alta el código cambia solo, así nadie lo reusa sin que lo sepas.
+        </div>
+    </div>;
+
+    // ═══════════ Carga ═══════════
 
     protected override async Task OnInitializedAsync()
     {
-        await CargarCuenta();
+        await CargarTodo();
         loading = false;
     }
 
-    private async Task CargarCuenta()
+    private async Task CargarTodo()
     {
         try
         {
             account = await Api.GetTelegramAccountAsync();
+            funcionesAccount = await Api.GetTelegramAccountAsync("FUNCIONES");
             preventaAccount = await Api.GetTelegramAccountAsync("PREVENTAS");
+            avisosChats = (account?.HasToken == true ? await Api.GetTelegramChatsAsync("AVISOS") : null) ?? new();
+            funcionesChats = (funcionesAccount?.HasToken == true ? await Api.GetTelegramChatsAsync("FUNCIONES") : null) ?? new();
         }
         catch (Exception ex) { ToastService.Error("No se pudo leer la configuración: " + ex.Message); }
     }
+
+    private async Task RecargarChats(string proposito)
+    {
+        try
+        {
+            if (proposito == "AVISOS")
+            {
+                avisosChats = await Api.GetTelegramChatsAsync("AVISOS") ?? new();
+                account = await Api.GetTelegramAccountAsync();
+            }
+            else
+            {
+                funcionesChats = await Api.GetTelegramChatsAsync("FUNCIONES") ?? new();
+                funcionesAccount = await Api.GetTelegramAccountAsync("FUNCIONES");
+            }
+        }
+        catch { }
+    }
+
+    // ═══════════ Personas vinculadas ═══════════
+
+    private async Task GuardarChat(TelegramChatDto chat, string proposito)
+    {
+        try
+        {
+            var res = await Api.UpdateTelegramChatAsync(chat.Id, new UpdateTelegramChatRequest
+            {
+                Nombre = chat.Nombre,
+                NotifVentas = chat.NotifVentas,
+                NotifAlertas = chat.NotifAlertas,
+                NotifFichadas = chat.NotifFichadas
+            });
+            if (res is null) { ToastService.Error("No se pudo guardar."); await RecargarChats(proposito); }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); await RecargarChats(proposito); }
+    }
+
+    private async Task CambiarNombre(TelegramChatDto chat, string? nombre, string proposito)
+    {
+        chat.Nombre = nombre;
+        await GuardarChat(chat, proposito);
+    }
+
+    private async Task QuitarChat(TelegramChatDto chat, string proposito)
+    {
+        var quien = string.IsNullOrWhiteSpace(chat.Nombre) ? "esta persona" : chat.Nombre;
+        var ok = await JS.InvokeAsync<bool>("confirm", $"¿Quitar a {quien}? Deja de recibir avisos y el bot no le contesta más. Para volver, necesita el código de seguridad nuevo.");
+        if (!ok) return;
+        try
+        {
+            var res = await Api.DeleteTelegramChatAsync(chat.Id);
+            if (res) ToastService.Success($"Listo, {quien} quedó desvinculado.");
+            await RecargarChats(proposito);
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task RegenerarCodigo(string proposito)
+    {
+        try
+        {
+            var res = await Api.RegenerarCodigoTelegramAsync(proposito);
+            if (res is not null)
+            {
+                if (proposito == "AVISOS") account = res; else if (proposito == "FUNCIONES") funcionesAccount = res;
+                ToastService.Success("Código nuevo generado. El anterior ya no sirve.");
+            }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    // ═══════════ 📣 Avisos ═══════════
+
+    private async Task Guardar()
+    {
+        saving = true;
+        try
+        {
+            var req = new SaveTelegramAccountRequest
+            {
+                BotToken = string.IsNullOrWhiteSpace(botToken) ? null : botToken.Trim(),
+                IsActive = true
+            };
+            var res = await Api.SaveTelegramAccountAsync(req);
+            if (res is not null)
+            {
+                account = res;
+                botToken = "";
+                ToastService.Success("Token guardado. Ahora probá la conexión.");
+                await RecargarChats("AVISOS");
+            }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task Probar()
+    {
+        probando = true;
+        try
+        {
+            var res = await Api.ProbarTelegramAsync();
+            if (res is not null && res.Ok)
+            {
+                if (res.TestEnviado) ToastService.Success("¡Conexión OK! Les mandé un mensaje de prueba a los vinculados.");
+                else ToastService.Success("¡Token OK! Ahora vinculá gente con el código de seguridad.");
+            }
+            else ToastService.Error(res?.Error ?? "No se pudo conectar con Telegram.");
+            await CargarTodo();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { probando = false; }
+    }
+
+    private async Task TestMensaje()
+    {
+        testando = true;
+        try
+        {
+            var res = await Api.TestMensajeTelegramAsync();
+            if (res is not null && res.Ok) ToastService.Success("Mensaje enviado a todas las personas vinculadas. 📲");
+            else ToastService.Error(res?.Error ?? "No se pudo enviar el mensaje.");
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { testando = false; }
+    }
+
+    // ═══════════ 🤖 Funciones ═══════════
+
+    private async Task GuardarFunciones()
+    {
+        savingFn = true;
+        try
+        {
+            var req = new SaveTelegramAccountRequest
+            {
+                BotToken = string.IsNullOrWhiteSpace(funcionesToken) ? null : funcionesToken.Trim(),
+                IsActive = true
+            };
+            var res = await Api.SaveTelegramAccountAsync(req, "FUNCIONES");
+            if (res is not null)
+            {
+                funcionesAccount = res;
+                funcionesToken = "";
+                ToastService.Success("Token del bot de Funciones guardado. Ahora probá la conexión.");
+                await RecargarChats("FUNCIONES");
+            }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { savingFn = false; }
+    }
+
+    private async Task ProbarFunciones()
+    {
+        probandoFn = true;
+        try
+        {
+            var res = await Api.ProbarTelegramAsync("FUNCIONES");
+            if (res is not null && res.Ok)
+            {
+                if (res.TestEnviado) ToastService.Success("¡Conexión OK! Les mandé un mensaje a los vinculados.");
+                else ToastService.Success("¡Token OK! Ahora vinculate con el código de seguridad.");
+            }
+            else ToastService.Error(res?.Error ?? "No se pudo conectar con el bot de Funciones.");
+            await CargarTodo();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { probandoFn = false; }
+    }
+
+    // ═══════════ 🧾 Preventas (igual que siempre) ═══════════
 
     private async Task GuardarPreventa()
     {
@@ -254,15 +501,10 @@
             var res = await Api.ProbarTelegramAsync("PREVENTAS");
             if (res is not null && res.Ok)
             {
-                if (res.TestEnviado)
-                    ToastService.Success("¡Conexión OK! Te mandé un mensaje al bot de Preventas.");
-                else
-                    ToastService.Success("¡Token OK! Escribile 'hola' al bot de Preventas y apretá Vincular.");
+                if (res.TestEnviado) ToastService.Success("¡Conexión OK! Te mandé un mensaje al bot de Preventas.");
+                else ToastService.Success("¡Token OK! Escribile 'hola' al bot de Preventas y apretá Vincular.");
             }
-            else
-            {
-                ToastService.Error(res?.Error ?? "No se pudo conectar con el bot de Preventas.");
-            }
+            else ToastService.Error(res?.Error ?? "No se pudo conectar con el bot de Preventas.");
             preventaAccount = await Api.GetTelegramAccountAsync("PREVENTAS");
         }
         catch (Exception ex) { ToastService.Error(ex.Message); }
@@ -280,105 +522,10 @@
                 ToastService.Success("¡Bot de Preventas vinculado!");
                 preventaAccount = await Api.GetTelegramAccountAsync("PREVENTAS");
             }
-            else
-            {
-                ToastService.Error(res?.Error ?? "No encontré tu mensaje. Escribile 'hola' al bot de Preventas y reintentá.");
-            }
+            else ToastService.Error(res?.Error ?? "No encontré tu mensaje. Escribile 'hola' al bot de Preventas y reintentá.");
         }
         catch (Exception ex) { ToastService.Error(ex.Message); }
         finally { vinculandoPv = false; }
-    }
-
-    private async Task Guardar()
-    {
-        saving = true;
-        try
-        {
-            var req = new SaveTelegramAccountRequest
-            {
-                BotToken = string.IsNullOrWhiteSpace(botToken) ? null : botToken.Trim(),
-                IsActive = true
-            };
-            var res = await Api.SaveTelegramAccountAsync(req);
-            if (res is not null)
-            {
-                account = res;
-                botToken = "";
-                ToastService.Success("Token guardado. Ahora probá la conexión.");
-            }
-        }
-        catch (Exception ex) { ToastService.Error(ex.Message); }
-        finally { saving = false; }
-    }
-
-    private async Task Probar()
-    {
-        probando = true;
-        try
-        {
-            var res = await Api.ProbarTelegramAsync();
-            if (res is not null && res.Ok)
-            {
-                if (res.TestEnviado)
-                    ToastService.Success("¡Conexión OK! Te mandé un mensaje de prueba, fijate en tu Telegram.");
-                else
-                    ToastService.Success("¡Token OK! Ahora vinculá tu Telegram (escribile 'hola' al bot).");
-            }
-            else
-            {
-                ToastService.Error(res?.Error ?? "No se pudo conectar con Telegram.");
-            }
-            await CargarCuenta();
-        }
-        catch (Exception ex) { ToastService.Error(ex.Message); }
-        finally { probando = false; }
-    }
-
-    private async Task Vincular()
-    {
-        vinculando = true;
-        try
-        {
-            var res = await Api.VincularTelegramAsync();
-            if (res is not null && res.Ok)
-            {
-                ToastService.Success("¡Listo! Tu Telegram quedó vinculado.");
-                await CargarCuenta();
-            }
-            else
-            {
-                ToastService.Error(res?.Error ?? "No encontré tu mensaje. Escribile 'hola' al bot y probá de nuevo.");
-            }
-        }
-        catch (Exception ex) { ToastService.Error(ex.Message); }
-        finally { vinculando = false; }
-    }
-
-    private async Task TestMensaje()
-    {
-        testando = true;
-        try
-        {
-            var res = await Api.TestMensajeTelegramAsync();
-            if (res is not null && res.Ok) ToastService.Success("Mensaje enviado. Fijate en tu Telegram. 📲");
-            else ToastService.Error(res?.Error ?? "No se pudo enviar el mensaje.");
-        }
-        catch (Exception ex) { ToastService.Error(ex.Message); }
-        finally { testando = false; }
-    }
-
-    private async Task Desvincular()
-    {
-        var ok = await JS.InvokeAsync<bool>("confirm", "¿Desvincular este celular del bot de Avisos? Vas a dejar de recibir avisos hasta volver a vincularlo con el código nuevo.");
-        if (!ok) return;
-        desvinc = true;
-        try
-        {
-            var res = await Api.DesvincularTelegramAsync("AVISOS");
-            if (res is not null) { account = res; ToastService.Success("Desvinculado. Se generó un código nuevo."); }
-        }
-        catch (Exception ex) { ToastService.Error(ex.Message); }
-        finally { desvinc = false; }
     }
 
     private async Task DesvincularPreventa()
