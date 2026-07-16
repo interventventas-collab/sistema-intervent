@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject IJSRuntime JS
 
 @* Pantalla de "Cambios detectados en MeLi": registro de cada vez que cambió un precio
    o el status (paused↔active) de una publicación. Se llena via webhook items + sync periódico. *@
@@ -83,8 +84,12 @@
                         {
                             <tr style="@(c.SeenAt is null ? "background: #fef3c7;" : "")">
                                 <td style="white-space:nowrap;">@c.DetectedAt.ToArTime().ToString("dd/MM HH:mm:ss")</td>
-                                <td style="font-family:monospace; font-size:0.78rem;">
-                                    <a href="https://www.mercadolibre.com.ar/p/@c.MeliItemId" target="_blank">@c.MeliItemId</a>
+                                <td style="font-family:monospace; font-size:0.78rem; white-space:nowrap;">
+                                    @* 2026-07-16: link directo al artículo (el /p/ solo servía para catálogo) + botón copiar *@
+                                    <a href="https://articulo.mercadolibre.com.ar/@(c.MeliItemId.Length > 3 ? c.MeliItemId.Insert(3, "-") : c.MeliItemId)" target="_blank" title="Ver la publicación en MercadoLibre">@c.MeliItemId</a>
+                                    <button class="btn btn-sm" style="padding:0 0.3rem; font-size:0.7rem; background:transparent; border:1px solid #d1d5db; margin-left:0.2rem;"
+                                            title="Copiar el número de publicación"
+                                            @onclick="() => CopiarMla(c.MeliItemId)">📋</button>
                                 </td>
                                 <td>@(c.Title ?? "")</td>
                                 <td style="font-family:monospace; color:#6b7280;">@(c.Sku ?? "-")</td>
@@ -104,6 +109,9 @@
                                 </td>
                                 <td style="font-size:0.78rem; color:#6b7280;">@c.Source</td>
                                 <td style="white-space:nowrap;">
+                                    <a class="btn btn-sm" style="padding: 0.15rem 0.5rem; font-size: 0.75rem; background: #eff6ff; border: 1px solid #93c5fd; color: #1d4ed8; text-decoration: none; margin-right: 0.25rem;"
+                                       href="/publicaciones?buscar=@c.MeliItemId" target="_blank"
+                                       title="Abrir la ficha de esta publicación en el sistema (revisar precio/stock)">🔎 Ficha</a>
                                     @if (c.Tipo == "PAUSADA_CON_STOCK" && c.SeenAt is null)
                                     {
                                         <button class="btn btn-sm" style="padding: 0.15rem 0.5rem; font-size: 0.75rem; background: #16a34a; color: white; border: 1px solid #15803d; margin-right: 0.25rem;"
@@ -156,6 +164,17 @@
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); items = new(); }
         finally { isLoading = false; StateHasChanged(); }
+    }
+
+    /// <summary>2026-07-16: copia el MLA al portapapeles (pedido de Osmar: poder llevarse el número fácil).</summary>
+    private async Task CopiarMla(string mla)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", mla);
+            ToastService.Success($"Copiado: {mla}");
+        }
+        catch { ToastService.Error("No se pudo copiar (probá seleccionarlo a mano)"); }
     }
 
     private async Task MarcarVisto(ApiClient.MeliCambioDto c)
