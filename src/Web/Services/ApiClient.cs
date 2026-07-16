@@ -2345,6 +2345,43 @@ public class ApiClient
         return await resp.Content.ReadAsByteArrayAsync();
     }
 
+    // 2026-07-15: gestión masiva de Stock mínimo (StockMinimoMeLi) por Excel
+    public async Task<byte[]?> DownloadStockMinimoExcelAsync()
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync("/api/stock/minimo/export");
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadAsByteArrayAsync();
+    }
+
+    public async Task<StockMinimoPreviewDto?> PreviewStockMinimoAsync(Stream fileStream, string fileName)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        var sc = new StreamContent(fileStream);
+        sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        content.Add(sc, "file", fileName);
+        var resp = await _http.PostAsync("/api/stock/minimo/preview", content);
+        if (resp.IsSuccessStatusCode)
+            return await resp.Content.ReadFromJsonAsync<StockMinimoPreviewDto>();
+        await ThrowIfErrorAsync(resp);
+        return null;
+    }
+
+    public async Task<StockMinimoApplyResultDto?> ApplyStockMinimoAsync(Stream fileStream, string fileName)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        var sc = new StreamContent(fileStream);
+        sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        content.Add(sc, "file", fileName);
+        var resp = await _http.PostAsync("/api/stock/minimo/apply", content);
+        if (resp.IsSuccessStatusCode)
+            return await resp.Content.ReadFromJsonAsync<StockMinimoApplyResultDto>();
+        await ThrowIfErrorAsync(resp);
+        return null;
+    }
+
     // --- Brands ---
     public async Task<List<BrandDto>?> GetBrandsAsync()
         => await GetAsync<List<BrandDto>>("/api/brands");
