@@ -522,13 +522,16 @@
                     }
                     else
                     {
-                        @* 2026-07-06: elegir la empresa PRIMERO, así el tipo de comprobante ya ofrece A/B o C según corresponda *@
-                        @if (arcaAccounts.Count > 1)
+                        @* 2026-07-16: empresa emisora SOLO visible cuando el comprobante es factura ARCA (pedido
+                           de Osmar — mismo criterio que Ventas del Café: en reservas sin facturar no aplica).
+                           Default PALANICA HERMANOS al pasar a factura; cambiar de empresa pide confirmación. *@
+                        @if (arcaAccounts.Count > 1 && formTipoComprobante is "FA" or "FB" or "FC")
                         {
                             <div class="form-row">
                                 <div class="form-group" style="flex:1;">
                                     <label class="form-label">🏢 ¿Con qué empresa facturás?</label>
-                                    <select class="form-input" @bind="formArcaAccountId" @bind:after="OnArcaAccountChanged">
+                                    @* value+onchange en vez de @bind para poder revertir si el usuario cancela el confirm *@
+                                    <select class="form-input" value="@formArcaAccountId" @onchange="OnArcaAccountSelectChanged">
                                         @foreach (var acc in arcaAccounts)
                                         {
                                             <option value="@acc.Id">@ArcaAccountLabel(acc)</option>
@@ -1252,6 +1255,40 @@
     {
         if (formTipoComprobante is "FA" or "FB" or "FC")
             EnsureDefaultArcaAccount();
+    }
+
+    /// <summary>2026-07-16: doble-check al cambiar la empresa emisora (mismo criterio que Ventas del Café).
+    /// Pide confirmación para no facturar con la sociedad equivocada. Si el operador cancela, revierte la
+    /// selección al valor anterior. Solo se dispara cuando el usuario toca el desplegable.</summary>
+    private async Task OnArcaAccountSelectChanged(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var nuevoId)) return;
+        var anterior = formArcaAccountId;
+        if (anterior.HasValue && anterior.Value == nuevoId) return; // no cambió
+        var accNueva = arcaAccounts.FirstOrDefault(a => a.Id == nuevoId);
+        var accAnterior = anterior.HasValue ? arcaAccounts.FirstOrDefault(a => a.Id == anterior.Value) : null;
+        // Solo confirmamos si YA había una empresa elegida (cambiar de una a otra).
+        if (accAnterior is not null)
+        {
+            var msg = $"¿Seguro que querés cambiar la empresa con la que facturás?\n\n"
+                    + $"De:  {ArcaAccountLabel(accAnterior)}\n"
+                    + $"A:    {(accNueva is not null ? ArcaAccountLabel(accNueva) : "?")}\n\n"
+                    + "Revisá que sea la correcta antes de emitir.";
+            var ok = await JS.InvokeAsync<bool>("confirm", msg);
+            if (!ok)
+            {
+                // Revertir: toggle a null y de vuelta al anterior para forzar que el <select> del DOM
+                // vuelva a mostrar la empresa original (si seteo el mismo valor Blazor no repinta el DOM).
+                formArcaAccountId = null;
+                StateHasChanged();
+                await Task.Yield();
+                formArcaAccountId = anterior;
+                StateHasChanged();
+                return;
+            }
+        }
+        formArcaAccountId = nuevoId;
+        OnArcaAccountChanged();
     }
 
     private void OnArcaAccountChanged()
