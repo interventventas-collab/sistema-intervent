@@ -353,7 +353,6 @@
     private bool catalogoCargado = false;
     private double? sizeW, sizeH;
     private bool mostrarNovedad = false;
-    private bool _novedadChecked = false;
     private string SizeStyle => (sizeW.HasValue && sizeH.HasValue)
         ? $" width:{sizeW.Value.ToString(CultureInfo.InvariantCulture)}px; height:{sizeH.Value.ToString(CultureInfo.InvariantCulture)}px;"
         : "";
@@ -434,24 +433,10 @@
         StateHasChanged();
     }
 
-    // La calculadora se abre sola al entrar al sistema, como novedad, "estos días"
-    // (hasta que el usuario toque "no abrir sola" o pasen 14 días — lo decide calcShouldAutoOpen en JS).
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (!firstRender || _novedadChecked) return;
-        _novedadChecked = true;
-        try
-        {
-            var auto = await JS.InvokeAsync<bool>("calcShouldAutoOpen");
-            if (auto)
-            {
-                mostrarNovedad = true;
-                tab = "precios";
-                await OpenAsync();
-            }
-        }
-        catch { }
-    }
+    // 2026-07-16: la calculadora YA NO se abre sola al entrar (pedido de Osmar: molestaba).
+    // Queda solo el cartel "nuevo" titilante en el botón CALCUPRECIOS de la barra, que se
+    // apaga cuando la usa (calc.usada). El aviso "no abrir sola" (mostrarNovedad) quedó sin
+    // uso: nunca se prende porque ya no hay apertura automática.
 
     public bool IsVisible => visible;
 
