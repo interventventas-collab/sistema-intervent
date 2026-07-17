@@ -7,6 +7,65 @@
 @inject SyncProgressTracker SyncProgress
 @implements IDisposable
 
+@* 2026-07-17: estilos de la vista "Lista" rediseñada (fila resumida + panel de edición). *@
+<style>
+    .plist { border:1px solid #e5e7eb; border-radius:10px; overflow:hidden; background:white; }
+    .plist-head, .plist-row { display:grid; grid-template-columns: 34px 40px minmax(220px,1.6fr) 210px 90px 150px 40px; align-items:center; gap:10px; padding:9px 12px; }
+    .plist-head { background:#f9fafb; border-bottom:1px solid #e5e7eb; font-size:0.68rem; letter-spacing:.03em; text-transform:uppercase; color:#9ca3af; font-weight:600; }
+    .plist-row { border-bottom:1px solid #f1f3f5; cursor:pointer; }
+    .plist-row:hover { background:#fafbfc; }
+    .plist-row.sel { background:#eff6ff; }
+    .plist-row.open { background:#f8fafc; }
+    .plist-thumb { width:34px; height:34px; border-radius:6px; object-fit:cover; border:1px solid #e5e7eb; background:#f3f4f6; }
+    .plist-thumb-ph { width:34px; height:34px; border-radius:6px; border:1px solid #e5e7eb; background:#f3f4f6; display:flex; align-items:center; justify-content:center; }
+    .plist-title { font-weight:600; font-size:0.86rem; color:#111827; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .plist-meta { font-size:0.68rem; color:#9ca3af; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .plist-price { font-weight:600; font-size:0.92rem; color:#111827; }
+    .plist-price-old { font-size:0.68rem; color:#9ca3af; text-decoration:line-through; margin-left:4px; }
+    .plist-mline { margin-top:3px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+    .plist-badge { font-size:0.68rem; font-weight:700; padding:1px 7px; border-radius:9px; }
+    .plist-costo { font-size:0.68rem; color:#9ca3af; }
+    .plist-chip { font-size:0.64rem; font-weight:700; padding:1px 6px; border-radius:8px; background:#eff6ff; color:#1e40af; }
+    .plist-stk { text-align:right; }
+    .plist-stk .n { font-weight:700; font-size:0.9rem; }
+    .plist-stk .u { font-size:0.6rem; color:#9ca3af; text-transform:uppercase; }
+    .plist-stk.zero .n { color:#dc2626; }
+    .plist-stk.zero .u { color:#dc2626; }
+    .plist-st-badge { font-size:0.64rem; font-weight:700; padding:1px 8px; border-radius:8px; display:inline-block; margin-bottom:4px; }
+    .plist-sy { display:flex; align-items:center; gap:5px; font-size:0.66rem; color:#6b7280; line-height:1.5; }
+    .plist-dot { width:7px; height:7px; border-radius:50%; display:inline-block; }
+    .plist-chev { width:26px; height:26px; border:1px solid #e5e7eb; border-radius:6px; background:white; color:#6b7280; font-size:0.8rem; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+    .plist-chev:hover { background:#f3f4f6; }
+    .plist-chev.open { background:#eef2ff; border-color:#c7d2fe; color:#4338ca; }
+    .plist-vrow { display:grid; grid-template-columns: 34px 40px minmax(220px,1.6fr) 210px 90px 150px 40px; align-items:center; gap:10px; padding:7px 12px 7px 12px; border-bottom:1px solid #f1f3f5; background:#fbfcfd; font-size:0.82rem; cursor:pointer; }
+    .plist-vtag { color:#9ca3af; text-align:right; }
+    /* Panel de edición */
+    .plist-panel { border-bottom:1px solid #e5e7eb; background:#f8fafc; padding:16px 18px 18px 86px; display:grid; grid-template-columns: 1fr 250px; gap:26px; }
+    .pp-label { font-size:0.66rem; text-transform:uppercase; letter-spacing:.03em; color:#9ca3af; font-weight:700; margin-bottom:9px; }
+    .pp-seg { display:inline-flex; border:1px solid #d1d5db; border-radius:8px; overflow:hidden; margin-bottom:11px; }
+    .pp-seg button { font-size:0.75rem; padding:6px 13px; color:#6b7280; background:white; border:none; cursor:pointer; }
+    .pp-seg button.sel { background:#111827; color:white; font-weight:600; }
+    .pp-editrow { display:flex; align-items:center; gap:9px; }
+    .pp-inp { width:120px; padding:7px 9px; border:1px solid #d1d5db; border-radius:7px; font-size:0.85rem; }
+    .pp-sign { font-size:0.8rem; color:#9ca3af; margin-left:-4px; }
+    .pp-btn { background:#111827; color:white; border:none; border-radius:7px; padding:8px 15px; font-size:0.78rem; font-weight:600; cursor:pointer; }
+    .pp-btn:disabled { opacity:.6; cursor:default; }
+    .pp-prev { margin-top:10px; font-size:0.78rem; color:#4b5563; background:white; border:1px solid #e5e7eb; border-radius:7px; padding:8px 10px; display:inline-block; }
+    .pp-prev b { color:#111827; }
+    .pp-swrow { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; }
+    .pp-swtxt .t { font-size:0.8rem; color:#111827; }
+    .pp-swtxt .d { font-size:0.68rem; color:#9ca3af; }
+    .pp-sw { width:38px; height:21px; border-radius:11px; position:relative; flex:none; border:none; cursor:pointer; padding:0; }
+    .pp-sw i { position:absolute; top:2px; width:17px; height:17px; border-radius:50%; background:white; transition:left .12s; }
+    .pp-sw.on { background:#16a34a; } .pp-sw.on i { left:19px; }
+    .pp-sw.off { background:#d1d5db; } .pp-sw.off i { left:2px; }
+    .pp-note { font-size:0.75rem; color:#9ca3af; font-style:italic; }
+    @@media (max-width: 820px) {
+        .plist-head, .plist-row, .plist-vrow { grid-template-columns: 30px 0px minmax(140px,1.4fr) 150px 60px 0px 34px; }
+        .plist-panel { grid-template-columns: 1fr; padding-left:18px; }
+    }
+</style>
+
 <div class="card card-publicaciones">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h3>Publicaciones de MercadoLibre (@GetGroupedRows().Count publicaciones · @GetCachedFilteredItems().Count filas)</h3>
@@ -336,6 +395,12 @@
                         </div>
                     </div>
                 }
+                        @if (viewMode == "flat")
+                        {
+                            @RenderFlatList()
+                        }
+                        else
+                        {
                         <div class="table-responsive">
                 <table class="data-table">
                     <thead>
@@ -1148,6 +1213,7 @@
                     </tbody>
                 </table>
             </div>
+                        }
             @* 2026-06-02: Controles de paginación abajo (espejo del de arriba, solo vista "flat") *@
             @if (viewMode == "flat")
             {
@@ -3716,6 +3782,56 @@
     private bool filterUrgente = false;                // 🚨 stock=0 OR status=paused (urgente reponer)
     private string? statusFilter = null;               // 2026-07-10: arranca en "Todas" (antes "active" escondía las pausadas por default). null = todas.
 
+    // 2026-07-17: rediseño de la vista "Lista" — fila resumida en 1 línea que abre un panel de edición al hacer click.
+    // expandedEditKey = id del item cuyo panel de edición está abierto (uno a la vez). _editMode = "margen" | "precio" por item.
+    private int? expandedEditKey = null;
+    private readonly Dictionary<int, string> _editMode = new();
+    private void ToggleEditPanel(int id) { expandedEditKey = (expandedEditKey == id) ? (int?)null : id; }
+    private string GetEditMode(int id) => _editMode.TryGetValue(id, out var m) ? m : "margen";
+    private void SetEditMode(int id, string modo) { _editMode[id] = modo; }
+
+    // Modelo de comisión para la vista previa local (mismo criterio que CalcMargenPct: usa el sale_fee real cacheado
+    // si el precio no se movió, si no cae al 30% estimado). Así el preview coincide con el margen que muestra la fila.
+    private (decimal commPct, decimal shipping, bool exact) FeeModelPreview(MeliItemDto item)
+    {
+        if (item.SaleFeeAmountReal.HasValue && item.SaleFeeAmountReal.Value > 0
+            && item.SaleFeePriceSnapshot.HasValue && item.SaleFeePriceSnapshot.Value > 0)
+        {
+            var commPct = item.SaleFeeAmountReal.Value / item.SaleFeePriceSnapshot.Value;
+            return (commPct, item.SaleFeeShippingCost ?? 0m, true);
+        }
+        return (0.30m, 0m, false);
+    }
+
+    // Margen % que daría este item a un precio dado (para el preview del modo "Por precio $").
+    private decimal? PreviewMarginPctAt(MeliItemDto item, decimal price)
+    {
+        if (!item.ProductCost.HasValue || item.ProductCost.Value <= 0 || price <= 0) return null;
+        var (commPct, shipping, _) = FeeModelPreview(item);
+        var netoConIva = price * (1m - commPct) - shipping;
+        var netoSinIva = netoConIva / (1m + IvaAlicuota);
+        return (netoSinIva - item.ProductCost.Value) / item.ProductCost.Value * 100m;
+    }
+
+    // Precio que haría falta para lograr un margen objetivo (para el preview del modo "Por margen %").
+    private decimal? PreviewPriceForMargin(MeliItemDto item, decimal targetPct)
+    {
+        if (!item.ProductCost.HasValue || item.ProductCost.Value <= 0) return null;
+        var (commPct, shipping, _) = FeeModelPreview(item);
+        if (commPct >= 1m) return null;
+        var netoSinIva = item.ProductCost.Value * (1m + targetPct / 100m);
+        var netoConIva = netoSinIva * (1m + IvaAlicuota);
+        return (netoConIva + shipping) / (1m - commPct);
+    }
+
+    // Color del badge de margen en la vista Lista: verde >=50%, ámbar 20-49%, rojo <20% (criterio del rediseño).
+    private (string bg, string fg) BadgeMargenColor(decimal pct)
+    {
+        if (pct >= 50m) return ("#dcfce7", "#166534");
+        if (pct >= 20m) return ("#fef3c7", "#92400e");
+        return ("#fee2e2", "#991b1b");
+    }
+
     private async Task CambiarStatus(string? nuevoStatus)
     {
         if (statusFilter == nuevoStatus) return;
@@ -5792,6 +5908,261 @@
     private readonly Dictionary<int, string> _precioInput = new();
     private readonly HashSet<int> _savingObjFila = new();
     private readonly HashSet<int> _savingPrecioFila = new();
+
+    // ============================================================================
+    // 2026-07-17: Vista "Lista" rediseñada. Fila resumida en 1 línea + panel de edición al abrir.
+    // NO cambia lógica de precios/sync/MeLi: reutiliza AplicarObjetivoFila / AplicarPrecioFila /
+    // ToggleSincroPrecio / ToggleSincroStock / CalcMargenPct. Solo cambia la presentación.
+    // ============================================================================
+    private RenderFragment RenderThumb(MeliItemDto it) => @<text>
+        @if (!string.IsNullOrEmpty(it.Thumbnail))
+        {
+            <img src="@it.Thumbnail" alt="" class="plist-thumb" />
+        }
+        else
+        {
+            <div class="plist-thumb-ph"><svg width="16" height="16" viewBox="0 0 24 24" fill="#9ca3af"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg></div>
+        }
+    </text>;
+
+    private RenderFragment RenderLinkedTag(MeliItemDto it) => @<text>
+        @if (it.CafeProductoId.HasValue)
+        {
+            <span class="plist-chip" style="background:#dcfce7; color:#15803d;">☕ @it.CafeProductoSku</span>
+        }
+        else if (it.ComboId.HasValue)
+        {
+            <span class="plist-chip" style="background:#fef3c7; color:#92400e;">🎁 combo</span>
+        }
+        else if (it.ComponentMappingsCount > 0)
+        {
+            <span class="plist-chip">✅ linkeado</span>
+        }
+        else if (it.ProductId.HasValue)
+        {
+            <span class="plist-chip">🔗 producto</span>
+        }
+        else
+        {
+            <span class="plist-chip" style="background:#f3f4f6; color:#6b7280;">sin vincular</span>
+        }
+        @if (string.Equals(it.LogisticType, "fulfillment", StringComparison.OrdinalIgnoreCase))
+        {
+            <span class="plist-chip" style="background:#fee2e2; color:#991b1b;">FULL</span>
+        }
+    </text>;
+
+    private RenderFragment RenderPriceMargin(MeliItemDto it) => @<text>
+        @if (it.OriginalPrice.HasValue && it.OriginalPrice.Value > 0 && it.OriginalPrice.Value != it.Price)
+        {
+            <span class="plist-price">@it.CurrencyId @it.Price.ToString("N0", argCulture)</span>
+            <span class="plist-price-old">@it.OriginalPrice.Value.ToString("N0", argCulture)</span>
+        }
+        else
+        {
+            <span class="plist-price">@it.CurrencyId @it.Price.ToString("N0", argCulture)</span>
+        }
+        <div class="plist-mline">
+            @{ var pct = CalcMargenPct(it); }
+            @if (pct.HasValue)
+            {
+                var (bg, fg) = BadgeMargenColor(pct.Value);
+                <span class="plist-badge" style="background:@bg; color:@fg;">@(pct.Value >= 0 ? "+" : "")@pct.Value.ToString("0", argCulture)%</span>
+            }
+            @if (it.ProductCost.HasValue && it.ProductCost.Value > 0)
+            {
+                <span class="plist-costo">costo $@it.ProductCost.Value.ToString("N0", argCulture)</span>
+            }
+            @if (HasAjuste(it))
+            {
+                <span class="plist-chip">con ajuste</span>
+            }
+        </div>
+    </text>;
+
+    private RenderFragment RenderEstadoItem(MeliItemDto it, bool showDots) => @<text>
+        <span class="status-badge @GetStatusClass(it.Status)" style="font-size:0.62rem;">@GetStatusLabel(it.Status)</span>
+        @if (showDots)
+        {
+            var linked = it.CafeProductoId.HasValue || it.ComponentMappingsCount > 0;
+            <div class="plist-sy"><span class="plist-dot" style="background:@(linked && it.SyncPrecio ? "#16a34a" : "#d1d5db");"></span>Precio</div>
+            <div class="plist-sy"><span class="plist-dot" style="background:@(linked && it.SyncStock ? "#16a34a" : "#d1d5db");"></span>Stock</div>
+        }
+    </text>;
+
+    private RenderFragment RenderEditPanel(MeliItemDto it) => @<div class="plist-panel" @onclick:stopPropagation="true">
+        @{
+            var linked = it.CafeProductoId.HasValue || it.ComponentMappingsCount > 0;
+            var mode = linked ? GetEditMode(it.Id) : "precio";
+            var savingO = _savingObjFila.Contains(it.Id);
+            var savingP = _savingPrecioFila.Contains(it.Id);
+        }
+        <div>
+            <div class="pp-label">Actualizar precio</div>
+            @if (linked)
+            {
+                <div class="pp-seg">
+                    <button class="@(mode == "margen" ? "sel" : "")" @onclick='() => SetEditMode(it.Id, "margen")'>Por margen %</button>
+                    <button class="@(mode == "precio" ? "sel" : "")" @onclick='() => SetEditMode(it.Id, "precio")'>Por precio $</button>
+                </div>
+            }
+            @if (mode == "margen")
+            {
+                var objRaw = _objInput.TryGetValue(it.Id, out var ovv) ? ovv : "";
+                decimal pvNum;
+                var okp = decimal.TryParse((objRaw ?? "").Replace(',', '.'), NumberStyles.Any, CultureInfo.InvariantCulture, out pvNum);
+                var np = (okp && pvNum > 0) ? PreviewPriceForMargin(it, pvNum) : (decimal?)null;
+                <div class="pp-editrow">
+                    <input class="pp-inp" value="@objRaw" placeholder='@(CalcMargenPct(it)?.ToString("0", argCulture) ?? "")'
+                           @oninput="(e) => _objInput[it.Id] = e.Value?.ToString() ?? string.Empty" />
+                    <span class="pp-sign">%</span>
+                    <button class="pp-btn" disabled="@savingO" @onclick="() => AplicarObjetivoFila(it)">@(savingO ? "..." : "Aplicar y publicar")</button>
+                </div>
+                @if (np.HasValue)
+                {
+                    <div class="pp-prev">Nuevo precio: <b>$ @np.Value.ToString("N0", argCulture)</b> @(np.Value >= it.Price ? "▲" : "▼") desde $ @it.Price.ToString("N0", argCulture) · margen <b>+@pvNum.ToString("0", argCulture)%</b></div>
+                }
+            }
+            else
+            {
+                var precioRaw = _precioInput.TryGetValue(it.Id, out var pvv) ? pvv : "";
+                var precioParsed = ParseFormattedPrice(precioRaw ?? "");
+                var mp = precioParsed > 0 ? PreviewMarginPctAt(it, precioParsed) : (decimal?)null;
+                <div class="pp-editrow">
+                    <input class="pp-inp" value="@precioRaw" placeholder='@it.Price.ToString("N0", argCulture)'
+                           @oninput="(e) => _precioInput[it.Id] = e.Value?.ToString() ?? string.Empty" />
+                    <button class="pp-btn" disabled="@savingP" @onclick="() => AplicarPrecioFila(it)">@(savingP ? "..." : "Aplicar y publicar")</button>
+                </div>
+                @if (precioParsed > 0)
+                {
+                    <div class="pp-prev">Nuevo precio: <b>$ @precioParsed.ToString("N0", argCulture)</b> @(precioParsed >= it.Price ? "▲" : "▼") desde $ @it.Price.ToString("N0", argCulture)@(mp.HasValue ? $" · margen +{mp.Value.ToString("0", argCulture)}%" : "")</div>
+                }
+            }
+            @if (!linked)
+            {
+                <div class="pp-note" style="margin-top:9px;">Sin producto del sistema linkeado — solo podés empujar un precio a mano. Para margen y sincronización,
+                    <a href="javascript:void(0)" @onclick="() => OpenLinkProductDropdown(it)" style="color:#2563eb;">vinculá un producto</a>.</div>
+            }
+        </div>
+        <div>
+            <div class="pp-label">Sincronización</div>
+            @if (linked)
+            {
+                var savingSP = _savingSincroPrecio.Contains(it.Id);
+                var savingSS = _savingSincroStock.Contains(it.Id);
+                <div class="pp-swrow">
+                    <div class="pp-swtxt"><div class="t">Sincronizar precio</div><div class="d">Empuja cambios a MeLi</div></div>
+                    <button class="pp-sw @(it.SyncPrecio ? "on" : "off")" disabled="@savingSP" @onclick="() => ToggleSincroPrecio(it)"><i></i></button>
+                </div>
+                <div class="pp-swrow">
+                    <div class="pp-swtxt"><div class="t">Sincronizar stock</div><div class="d">Descuenta ventas solo</div></div>
+                    <button class="pp-sw @(it.SyncStock ? "on" : "off")" disabled="@savingSS" @onclick="() => ToggleSincroStock(it)"><i></i></button>
+                </div>
+            }
+            else
+            {
+                <div class="pp-note">Disponible al vincular un producto.</div>
+            }
+        </div>
+    </div>;
+
+    private RenderFragment RenderFlatList() => @<div class="plist">
+        <div class="plist-head">
+            <div @onclick:stopPropagation="true"><input type="checkbox" @onchange="ToggleSelectAll" checked="@IsAllSelected()" title="Seleccionar todos" /></div>
+            <div></div>
+            <div>Producto</div>
+            <div>Precio · margen</div>
+            <div style="text-align:right;">Stock</div>
+            <div>Estado</div>
+            <div></div>
+        </div>
+        @foreach (var grp in GetPagedGroupedRows())
+        {
+            var item = grp.Item;
+            var isMulti = grp.HasMultiple;
+            var isVarExpanded = expandedGroups.Contains(grp.Key);
+            var isEditOpen = !isMulti && expandedEditKey == item.Id;
+            var checkedThisRow = grp.IsFamily
+                ? grp.Variants.Count > 0 && grp.Variants.All(v => selectedItems.Contains(v.Id))
+                : selectedItems.Contains(item.Id);
+            var stockShow = isMulti ? grp.TotalStock : item.AvailableQuantity;
+            <div class="plist-row @(checkedThisRow ? "sel" : "") @(isEditOpen ? "open" : "")" style="@CatalogRowStyle(item)"
+                 @onclick="() => { if (isMulti) ToggleGroupExpand(grp.Key); else OpenItemModal(item); }">
+                <div @onclick:stopPropagation="true"><input type="checkbox" checked="@checkedThisRow" @onchange="() => ToggleSelectRow(grp)" /></div>
+                <div>@RenderThumb(item)</div>
+                <div style="min-width:0;">
+                    <div class="plist-title" title="@item.Title">@item.Title</div>
+                    <div class="plist-meta">
+                        @if (grp.IsFamily)
+                        {
+                            <span>📦 FAMILIA @(item.FamilyId ?? item.MeliItemId) · @grp.DistinctMLAs publicaciones</span>
+                        }
+                        else if (isMulti)
+                        {
+                            <span>@(string.IsNullOrEmpty(item.Sku) ? item.MeliItemId : item.Sku) · @grp.Variants.Count variantes</span>
+                        }
+                        else
+                        {
+                            <span>@(string.IsNullOrEmpty(item.Sku) ? "" : item.Sku + " · ")@item.MeliItemId · @item.AccountNickname · @GetListingTypeLabel(item.ListingTypeId) @GetCuotasLabel(item.InstallmentTag, item.ListingTypeId) </span>
+                            @RenderLinkedTag(item)
+                        }
+                    </div>
+                </div>
+                <div style="min-width:0;">
+                    @if (isMulti)
+                    {
+                        <span class="plist-costo" style="font-style:italic;">— ver variantes ↓</span>
+                    }
+                    else
+                    {
+                        @RenderPriceMargin(item)
+                    }
+                </div>
+                <div class="plist-stk @(stockShow == 0 ? "zero" : "")">
+                    <div class="n">@stockShow</div>
+                    <div class="u">@(stockShow == 0 ? "sin stock" : "unid.")</div>
+                </div>
+                <div>@RenderEstadoItem(item, !isMulti)</div>
+                <div @onclick:stopPropagation="true">
+                    @if (isMulti)
+                    {
+                        <button class="plist-chev @(isVarExpanded ? "open" : "")" @onclick="() => ToggleGroupExpand(grp.Key)" title="Ver variantes">@(isVarExpanded ? "▲" : "▼")</button>
+                    }
+                    else
+                    {
+                        <button class="plist-chev @(isEditOpen ? "open" : "")" @onclick="() => ToggleEditPanel(item.Id)" aria-expanded="@isEditOpen" title="Editar precio y sincronización">@(isEditOpen ? "⌃" : "⌄")</button>
+                    }
+                </div>
+            </div>
+            @if (isEditOpen)
+            {
+                @RenderEditPanel(item)
+            }
+            @if (isMulti && isVarExpanded)
+            {
+                @foreach (var v in grp.Variants)
+                {
+                    var vEditOpen = expandedEditKey == v.Id;
+                    <div class="plist-vrow" style="@CatalogRowStyle(v)" @onclick="() => OpenItemModal(v)">
+                        <div @onclick:stopPropagation="true"><input type="checkbox" checked="@selectedFamilyPush.Contains(v.Id)" @onchange="() => ToggleSelectFamilyChild(v.Id)" /></div>
+                        <div class="plist-vtag">↳</div>
+                        <div style="min-width:0;">
+                            <div class="plist-title" style="font-size:0.8rem; font-weight:500;" title="@v.Title">@(grp.IsFamily ? Truncate(v.Title, 46) : (v.VariationAttributes ?? "(variante)"))</div>
+                            <div class="plist-meta">@(string.IsNullOrEmpty(v.Sku) ? "" : v.Sku + " · ")@v.MeliItemId</div>
+                        </div>
+                        <div style="min-width:0;">@RenderPriceMargin(v)</div>
+                        <div class="plist-stk @(v.AvailableQuantity == 0 ? "zero" : "")"><div class="n">@v.AvailableQuantity</div><div class="u">@(v.AvailableQuantity == 0 ? "sin stock" : "unid.")</div></div>
+                        <div>@RenderEstadoItem(v, true)</div>
+                        <div @onclick:stopPropagation="true"><button class="plist-chev @(vEditOpen ? "open" : "")" @onclick="() => ToggleEditPanel(v.Id)" title="Editar">@(vEditOpen ? "⌃" : "⌄")</button></div>
+                    </div>
+                    @if (vEditOpen)
+                    {
+                        @RenderEditPanel(v)
+                    }
+                }
+            }
+        }
+    </div>;
 
     private RenderFragment ControlesFila(MeliItemDto item) =>
     @<span style="display:inline-flex; gap:0.5rem; flex-wrap:wrap; align-items:center; margin-top:0.25rem;">
