@@ -233,13 +233,21 @@ public class MeliCodigoColectaBackgroundService : BackgroundService
                 || s.Contains("devoluci", StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>¿Es un mail de colecta (que puede traer horario)? Cualquiera cuyo asunto hable de
-    /// colecta/recolectar, menos el del código (ese lo maneja EsMailDeCodigo).</summary>
+    /// <summary>¿Es un mail que da el horario de la colecta de UN día concreto? Lista blanca:
+    /// solo los asuntos que sabemos que hablan de una colecta puntual. Así dejamos AFUERA mails
+    /// como "Tu programación de colectas de la próxima semana está disponible" (que tiene varios
+    /// horarios de días distintos y contaminaría el día de hoy).</summary>
     private static bool EsMailDeColecta(string? asunto)
     {
         if (string.IsNullOrWhiteSpace(asunto)) return false;
-        // "recolectar" contiene "colecta", así que también entran los "No podremos recolectar…".
-        return asunto.Contains("colecta", StringComparison.OrdinalIgnoreCase) && !EsMailDeCodigo(asunto);
+        var s = asunto;
+        bool Tiene(string t) => s.Contains(t, StringComparison.OrdinalIgnoreCase);
+        return (Tiene("en camino") && Tiene("colecta"))         // "Tu colecta de X a Y está en camino"
+            || Tiene("detalle de la colecta")                    // "Detalle de la colecta del DD…"
+            || Tiene("la colecta de hoy")                        // "La colecta de hoy de X a Y…"
+            || Tiene("horario de tu colecta")                    // "El horario de tu colecta (de mañana) cambió"
+            || Tiene("no podremos recolectar")                   // colecta cancelada
+            || Tiene("no pudimos recolectar");
     }
 
     private static bool ContieneManana(string? texto)
