@@ -562,4 +562,30 @@ public class DashboardController : ControllerBase
             chequesProxima7?.Cant ?? 0, chequesProxima7?.Importe ?? 0m,
             preguntasMeli, preguntasMeliNoVistas));
     }
+
+    /// <summary>
+    /// 2026-07-17: código de autorización del día para colectas/devoluciones de MercadoLibre.
+    /// Devuelve el más reciente que el robot bajó del correo. EsDeHoy indica si el código guardado
+    /// corresponde al día de hoy (hora Argentina): si es false, todavía no llegó el mail de hoy.
+    /// </summary>
+    [HttpGet("meli-codigo-colecta")]
+    public async Task<IActionResult> GetMeliCodigoColecta()
+    {
+        var hoyArg = DateTime.UtcNow.AddHours(-3).Date;
+        var fila = await _db.MeliCodigosColecta
+            .OrderByDescending(x => x.FechaCodigo)
+            .FirstOrDefaultAsync();
+
+        if (fila is null)
+            return Ok(new MeliCodigoColectaDto(null, null, false, null));
+
+        return Ok(new MeliCodigoColectaDto(
+            fila.Codigo,
+            fila.FechaCodigo,
+            fila.FechaCodigo.Date == hoyArg,
+            fila.FechaMail));
+    }
 }
+
+/// <summary>Código del día para colectas/devoluciones. Codigo/Fecha en null si nunca llegó ninguno.</summary>
+public record MeliCodigoColectaDto(string? Codigo, DateTime? Fecha, bool EsDeHoy, DateTime? RecibidoAt);

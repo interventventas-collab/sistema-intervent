@@ -190,6 +190,7 @@ public class AppDbContext : DbContext
     public DbSet<MisAlerta> MisAlertas => Set<MisAlerta>();
     public DbSet<MisAlertaCorreo> MisAlertasCorreos => Set<MisAlertaCorreo>();
     public DbSet<MisAlertaHistorial> MisAlertasHistorial => Set<MisAlertaHistorial>();
+    public DbSet<MeliCodigoColecta> MeliCodigosColecta => Set<MeliCodigoColecta>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

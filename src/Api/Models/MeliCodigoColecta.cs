@@ -1,0 +1,40 @@
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace Api.Models;
+
+/// <summary>
+/// 2026-07-17: Código de autorización del día para colectas o devoluciones de MercadoLibre.
+/// MeLi manda un mail todas las mañanas (asunto "Código de autorización del día para colectas o
+/// devoluciones") con un código alfanumérico que cambia cada 24 hs y que el transporte pide cuando
+/// viene a buscar los paquetes (colecta) o a traer una devolución.
+///
+/// El robot MeliCodigoColectaBackgroundService lee la casilla (IMAP, solo lectura), saca el código
+/// y guarda UNA fila por día. La card del Dashboard muestra el más reciente y el bot de Telegram lo
+/// avisa una sola vez por día (EnviadoTelegram evita repetir).
+/// </summary>
+[Table("Meli_CodigoColecta")]
+public class MeliCodigoColecta
+{
+    public int Id { get; set; }
+
+    /// <summary>El código en sí (ej: "DF54B074"). Alfanumérico, 6-12 caracteres.</summary>
+    [Required, MaxLength(20)]
+    public string Codigo { get; set; } = "";
+
+    /// <summary>Día (hora Argentina) al que corresponde el código. Una fila por día.</summary>
+    public DateTime FechaCodigo { get; set; }
+
+    /// <summary>Cuándo llegó el mail de MeLi (fecha interna del correo, UTC).</summary>
+    public DateTime? FechaMail { get; set; }
+
+    /// <summary>Message-Id del mail, por si hace falta rastrearlo.</summary>
+    [MaxLength(400)]
+    public string? MessageId { get; set; }
+
+    /// <summary>Ya se avisó por Telegram (para no repetir el aviso del mismo día).</summary>
+    public bool EnviadoTelegram { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}

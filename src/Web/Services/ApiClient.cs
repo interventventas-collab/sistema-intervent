@@ -1278,6 +1278,12 @@ public class ApiClient
     public async Task<List<CorreoImportanteDto>> GetCorreosImportantesAsync()
         => await GetAsync<List<CorreoImportanteDto>>("/api/mis-alertas/correos") ?? new();
 
+    // 2026-07-17: código de autorización del día para colectas/devoluciones de MeLi (Dashboard).
+    public record MeliCodigoColectaDto(string? Codigo, DateTime? Fecha, bool EsDeHoy, DateTime? RecibidoAt);
+
+    public async Task<MeliCodigoColectaDto?> GetMeliCodigoColectaAsync()
+        => await GetAsync<MeliCodigoColectaDto>("/api/dashboard/meli-codigo-colecta");
+
     public record HistorialAlertaDto(int Id, string Tipo, string Mensaje, string? Detalle,
         string? RemitenteEmail, string? GmailLink, bool PorTelegram, bool EnviadoTelegram, DateTime CreatedAt);
 
