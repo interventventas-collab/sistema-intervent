@@ -4083,6 +4083,8 @@ BEGIN
         Fecha DATE NOT NULL,
         CantidadCABA INT NOT NULL DEFAULT 0,
         CantidadPCIA INT NOT NULL DEFAULT 0,
+        TarifaCABA DECIMAL(18,2) NOT NULL DEFAULT 0,
+        TarifaPCIA DECIMAL(18,2) NOT NULL DEFAULT 0,
         Anotaciones NVARCHAR(500) NULL,
         CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
         UpdatedAt DATETIME2 NULL,
@@ -4103,6 +4105,27 @@ BEGIN
         UpdatedAt DATETIME2 NULL,
         CONSTRAINT FK_ViajesPagos_Empleado FOREIGN KEY (EmpleadoId) REFERENCES Viajes_Empleados(Id) ON DELETE CASCADE
     );
+END
+GO
+
+-- Migracion: congelar la tarifa por viaje (para que cambiar la tarifa del empleado NO recalcule la deuda historica).
+-- Se agregan las columnas si no existen y se rellenan los viajes ya cargados con la tarifa ACTUAL del empleado
+-- (deja la deuda historica igual a como se venia mostrando; de aca en mas cada viaje congela su propia tarifa).
+IF EXISTS (SELECT * FROM sysobjects WHERE name='Viajes_Registros' AND xtype='U')
+   AND NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Viajes_Registros') AND name = 'TarifaCABA')
+BEGIN
+    ALTER TABLE Viajes_Registros ADD TarifaCABA DECIMAL(18,2) NOT NULL DEFAULT 0;
+    ALTER TABLE Viajes_Registros ADD TarifaPCIA DECIMAL(18,2) NOT NULL DEFAULT 0;
+END
+GO
+IF EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Viajes_Registros') AND name = 'TarifaCABA')
+BEGIN
+    UPDATE r
+        SET r.TarifaCABA = e.TarifaCABA,
+            r.TarifaPCIA = e.TarifaPCIA
+    FROM Viajes_Registros r
+    INNER JOIN Viajes_Empleados e ON e.Id = r.EmpleadoId
+    WHERE r.TarifaCABA = 0 AND r.TarifaPCIA = 0;
 END
 GO
 
