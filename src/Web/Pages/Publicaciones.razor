@@ -6067,6 +6067,55 @@
         </div>
     </div>;
 
+    // Panel de edición a nivel FAMILIA: el objetivo % y los switches se aplican a TODAS las variantes de una.
+    private RenderFragment RenderFamilyEditPanel(GroupedRow grp) => @<div class="plist-panel" @onclick:stopPropagation="true">
+        @{
+            var linkeadas = grp.Variants.Where(v => v.CafeProductoId.HasValue || v.ComponentMappingsCount > 0).ToList();
+            var hayLink = linkeadas.Count > 0;
+            var savingO = _savingFamObj.Contains(grp.Key);
+            var savingSP = _savingFamSincroP.Contains(grp.Key);
+            var savingSS = _savingFamSincroS.Contains(grp.Key);
+            var allP = hayLink && linkeadas.All(v => v.SyncPrecio);
+            var allS = hayLink && linkeadas.All(v => v.SyncStock);
+            var objRaw = _objInputFam.TryGetValue(grp.Key, out var ovf) ? ovf : "";
+        }
+        <div>
+            <div class="pp-label">Actualizar precio · toda la familia (@grp.Variants.Count publicaciones)</div>
+            @if (hayLink)
+            {
+                <div class="pp-editrow">
+                    <input class="pp-inp" value="@objRaw" placeholder="margen %"
+                           @oninput="(e) => _objInputFam[grp.Key] = e.Value?.ToString() ?? string.Empty" />
+                    <span class="pp-sign">%</span>
+                    <button class="pp-btn" disabled="@savingO" @onclick="() => AplicarObjetivoFamilia(grp)">@(savingO ? "..." : "Aplicar a todas")</button>
+                </div>
+                <div class="pp-note" style="margin-top:8px;">Fija ese margen objetivo en las @linkeadas.Count publicaciones linkeadas de la familia y publica el precio nuevo en cada una.</div>
+            }
+            else
+            {
+                <div class="pp-note">Ninguna variante está linkeada a un producto del sistema — no se puede fijar margen. Abrí una variante para empujar su precio a mano.</div>
+            }
+        </div>
+        <div>
+            <div class="pp-label">Sincronización · toda la familia</div>
+            @if (hayLink)
+            {
+                <div class="pp-swrow">
+                    <div class="pp-swtxt"><div class="t">Sincronizar precio</div><div class="d">Empuja cambios a MeLi</div></div>
+                    <button class="pp-sw @(allP ? "on" : "off")" disabled="@savingSP" @onclick="() => ToggleSincroPrecioFamilia(grp)"><i></i></button>
+                </div>
+                <div class="pp-swrow">
+                    <div class="pp-swtxt"><div class="t">Sincronizar stock</div><div class="d">Descuenta ventas solo</div></div>
+                    <button class="pp-sw @(allS ? "on" : "off")" disabled="@savingSS" @onclick="() => ToggleSincroStockFamilia(grp)"><i></i></button>
+                </div>
+            }
+            else
+            {
+                <div class="pp-note">Disponible al vincular productos.</div>
+            }
+        </div>
+    </div>;
+
     private RenderFragment RenderFlatList() => @<div class="plist">
         <div class="plist-head">
             <div @onclick:stopPropagation="true"><input type="checkbox" @onchange="ToggleSelectAll" checked="@IsAllSelected()" title="Seleccionar todos" /></div>
@@ -6112,7 +6161,7 @@
                 <div style="min-width:0;">
                     @if (isMulti)
                     {
-                        <span class="plist-costo" style="font-style:italic;">— ver variantes ↓</span>
+                        <span class="plist-costo" style="font-style:italic;">— abrir para editar ↓</span>
                     }
                     else
                     {
@@ -6127,7 +6176,7 @@
                 <div @onclick:stopPropagation="true">
                     @if (isMulti)
                     {
-                        <button class="plist-chev @(isVarExpanded ? "open" : "")" @onclick="() => ToggleGroupExpand(grp.Key)" title="Ver variantes">@(isVarExpanded ? "▲" : "▼")</button>
+                        <button class="plist-chev @(isVarExpanded ? "open" : "")" @onclick="() => ToggleGroupExpand(grp.Key)" title="Abrir editor de la familia y ver variantes">@(isVarExpanded ? "▲" : "▼")</button>
                     }
                     else
                     {
@@ -6141,6 +6190,7 @@
             }
             @if (isMulti && isVarExpanded)
             {
+                @RenderFamilyEditPanel(grp)
                 @foreach (var v in grp.Variants)
                 {
                     var vEditOpen = expandedEditKey == v.Id;
@@ -6326,6 +6376,108 @@
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { _savingSincroStock.Remove(item.Id); StateHasChanged(); }
+    }
+
+    // ── 2026-07-17: edición a nivel FAMILIA (aplica a todas las variantes de una) desde el panel de la vista Lista ──
+    private readonly Dictionary<string, string> _objInputFam = new();
+    private readonly HashSet<string> _savingFamObj = new();
+    private readonly HashSet<string> _savingFamSincroP = new();
+    private readonly HashSet<string> _savingFamSincroS = new();
+
+    private async Task AplicarObjetivoFamilia(GroupedRow grp)
+    {
+        if (_savingFamObj.Contains(grp.Key)) return;
+        _objInputFam.TryGetValue(grp.Key, out var raw);
+        if (!decimal.TryParse((raw ?? "").Replace(',', '.'), NumberStyles.Any, CultureInfo.InvariantCulture, out var pct) || pct <= 0)
+        { ToastService.Error("Poné un % de objetivo válido"); return; }
+        var linkeadas = grp.Variants.Where(v => v.CafeProductoId.HasValue || v.ComponentMappingsCount > 0).ToList();
+        if (linkeadas.Count == 0) { ToastService.Error("Ninguna variante de la familia está linkeada a un producto"); return; }
+        _savingFamObj.Add(grp.Key);
+        StateHasChanged();
+        int ok = 0, fail = 0;
+        try
+        {
+            foreach (var v in linkeadas)
+            {
+                try
+                {
+                    var (res, err) = await Api.SetObjetivoGananciaAsync(v.MeliItemId, pct, aplicar: true, redondeo: "99");
+                    if (err is null && res is not null)
+                    {
+                        v.GananciaObjetivoPct = res.ObjetivoPct;
+                        v.GananciaObjetivoAt = DateTime.UtcNow;
+                        v.SyncPrecio = res.SyncPrecio;
+                        if (res.PrecioNuevo.HasValue) v.Price = res.PrecioNuevo.Value;
+                        ok++;
+                    }
+                    else fail++;
+                }
+                catch { fail++; }
+            }
+            _objInputFam.Remove(grp.Key);
+            InvalidateFilterCache();
+            if (ok > 0 && fail == 0) ToastService.Success($"🎯 Objetivo {pct.ToString("0.#", argCulture)}% aplicado a {ok} publicaciones de la familia");
+            else if (ok > 0) ToastService.Warning($"🎯 Aplicado a {ok}. Fallaron {fail}.");
+            else ToastService.Error("No se pudo aplicar a ninguna publicación de la familia");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { _savingFamObj.Remove(grp.Key); StateHasChanged(); }
+    }
+
+    private async Task ToggleSincroPrecioFamilia(GroupedRow grp)
+    {
+        if (_savingFamSincroP.Contains(grp.Key)) return;
+        var linkeadas = grp.Variants.Where(v => v.CafeProductoId.HasValue || v.ComponentMappingsCount > 0).ToList();
+        if (linkeadas.Count == 0) { ToastService.Error("Ninguna variante está linkeada"); return; }
+        var nuevo = !linkeadas.All(v => v.SyncPrecio);
+        _savingFamSincroP.Add(grp.Key);
+        StateHasChanged();
+        int ok = 0, fail = 0;
+        try
+        {
+            foreach (var v in linkeadas)
+            {
+                try
+                {
+                    var (cfg, err) = await Api.ActualizarSyncConfigAsync(v.MeliItemId, new UpdateSyncConfigRequest
+                    { SyncStock = v.SyncStock, SyncPrecio = nuevo, AjustePct = v.AjustePct, AjusteFijo = v.AjusteFijo, AjusteRedondeo = v.AjusteRedondeo });
+                    if (err is null) { v.SyncPrecio = nuevo; ok++; } else fail++;
+                }
+                catch { fail++; }
+            }
+            InvalidateFilterCache();
+            ToastService.Success($"🏷 Sincro de PRECIO {(nuevo ? "activada" : "desactivada")} en {ok} publicaciones" + (fail > 0 ? $" ({fail} fallaron)" : ""));
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { _savingFamSincroP.Remove(grp.Key); StateHasChanged(); }
+    }
+
+    private async Task ToggleSincroStockFamilia(GroupedRow grp)
+    {
+        if (_savingFamSincroS.Contains(grp.Key)) return;
+        var linkeadas = grp.Variants.Where(v => v.CafeProductoId.HasValue || v.ComponentMappingsCount > 0).ToList();
+        if (linkeadas.Count == 0) { ToastService.Error("Ninguna variante está linkeada"); return; }
+        var nuevo = !linkeadas.All(v => v.SyncStock);
+        _savingFamSincroS.Add(grp.Key);
+        StateHasChanged();
+        int ok = 0, fail = 0;
+        try
+        {
+            foreach (var v in linkeadas)
+            {
+                try
+                {
+                    var (cfg, err) = await Api.ActualizarSyncConfigAsync(v.MeliItemId, new UpdateSyncConfigRequest
+                    { SyncStock = nuevo, SyncPrecio = v.SyncPrecio, AjustePct = v.AjustePct, AjusteFijo = v.AjusteFijo, AjusteRedondeo = v.AjusteRedondeo });
+                    if (err is null) { v.SyncStock = nuevo; ok++; } else fail++;
+                }
+                catch { fail++; }
+            }
+            InvalidateFilterCache();
+            ToastService.Success($"📦 Sincro de STOCK {(nuevo ? "activada" : "desactivada")} en {ok} publicaciones" + (fail > 0 ? $" ({fail} fallaron)" : ""));
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { _savingFamSincroS.Remove(grp.Key); StateHasChanged(); }
     }
 
     // ── 2026-07-11: "Poner piso 50%" (sube solo las que están abajo de 50%) con vista previa ──
