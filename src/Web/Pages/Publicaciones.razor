@@ -9,6 +9,12 @@
 
 @* 2026-07-17: estilos de la vista "Lista" rediseñada (fila resumida + panel de edición). *@
 <style>
+    .plist-search { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; align-items:center; }
+    .plist-search input { padding:9px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:0.85rem; }
+    .plist-search input:focus { outline:none; border-color:#6366f1; box-shadow:0 0 0 3px rgba(99,102,241,.12); }
+    .plist-search input.big { flex:1; min-width:280px; }
+    .plist-search .active { border-color:#6366f1; background:#eef2ff; }
+    .plist-search .clr { padding:8px 12px; border:1px solid #e5e7eb; border-radius:8px; background:white; color:#6b7280; font-size:0.8rem; cursor:pointer; }
     .plist { border:1px solid #e5e7eb; border-radius:10px; overflow:hidden; background:white; }
     .plist-head, .plist-row { display:grid; grid-template-columns: 34px 40px minmax(220px,1.6fr) 210px 90px 150px 40px; align-items:center; gap:10px; padding:16px 14px; }
     .plist-row { min-height:62px; }
@@ -6116,7 +6122,20 @@
         </div>
     </div>;
 
-    private RenderFragment RenderFlatList() => @<div class="plist">
+    private RenderFragment RenderFlatList() => @<div>
+        <div class="plist-search">
+            <input class="big @(IsFilterActive("titulo") ? "active" : "")" placeholder="Buscar por título, ID o N° de publicación (MLA)..."
+                   value="@GetTextFilter("titulo")" @oninput='(e) => SetTextFilter("titulo", e.Value?.ToString() ?? "")' />
+            <input class="@(IsFilterActive("sku") ? "active" : "")" placeholder="SKU"
+                   value="@GetTextFilter("sku")" @oninput='(e) => SetTextFilter("sku", e.Value?.ToString() ?? "")' style="width:150px;" />
+            <input class="@(IsFilterActive("producto") ? "active" : "")" placeholder="Producto del sistema"
+                   value="@GetTextFilter("producto")" @oninput='(e) => SetTextFilter("producto", e.Value?.ToString() ?? "")' style="width:180px;" />
+            @if (IsFilterActive("titulo") || IsFilterActive("sku") || IsFilterActive("producto"))
+            {
+                <button class="clr" @onclick='() => { SetTextFilter("titulo", ""); SetTextFilter("sku", ""); SetTextFilter("producto", ""); }'>✕ Limpiar</button>
+            }
+        </div>
+        <div class="plist">
         <div class="plist-head">
             <div @onclick:stopPropagation="true"><input type="checkbox" @onchange="ToggleSelectAll" checked="@IsAllSelected()" title="Seleccionar todos" /></div>
             <div></div>
@@ -6213,6 +6232,7 @@
                 }
             }
         }
+        </div>
     </div>;
 
     private RenderFragment ControlesFila(MeliItemDto item) =>
