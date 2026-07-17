@@ -26,42 +26,6 @@
    (MainLayout .topstrip), junto con empresa/usuario y el reloj. El dashboard arranca directo
    en el contenido. Balanza y Stock ya viven en su tarjeta detallada más abajo. *@
 
-@* ═══ 2026-07-17: Código de autorización del día (colectas/devoluciones MeLi) ═══
-   El robot lo baja del mail que MeLi manda cada mañana. Se muestra grande y con botón Copiar. *@
-<div class="dash-card" style="border:2px solid #f59e0b; background:linear-gradient(180deg,#fffbeb,#fff);">
-    <div class="dash-card-title">
-        <span class="dash-card-title-ico">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/><path d="M15.5 7.5l3 3L22 7l-3-3"/></svg>
-        </span>
-        Código del día · colectas y devoluciones
-        <span class="dash-card-title-pill">MercadoLibre</span>
-    </div>
-    @if (codigoColecta is not null && !string.IsNullOrWhiteSpace(codigoColecta.Codigo))
-    {
-        <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap; padding:6px 2px 2px;">
-            <div style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:2.6rem; font-weight:800; letter-spacing:4px; color:#92400e;">
-                @codigoColecta.Codigo
-            </div>
-            <button class="btn btn-sm" style="background:#f59e0b; color:#fff; border:none; padding:8px 14px; border-radius:8px; font-weight:600; cursor:pointer;"
-                    @onclick="CopiarCodigoColecta" title="Copiar el código">
-                📋 Copiar
-            </button>
-        </div>
-        @if (codigoColecta.EsDeHoy)
-        {
-            <div class="dash-card-sub" style="color:#65a30d; font-weight:600;">✓ Código de HOY (@codigoColecta.Fecha?.ToString("dd/MM")). Dáselo al transporte cuando venga.</div>
-        }
-        else
-        {
-            <div class="dash-card-sub" style="color:#b45309;">⏳ Todavía no llegó el código de hoy. Este es el del @codigoColecta.Fecha?.ToString("dd/MM") — MeLi suele mandarlo a media mañana.</div>
-        }
-    }
-    else
-    {
-        <div class="dash-card-sub" style="color:#b45309;">⏳ Todavía no llegó el código de hoy. Aparece acá apenas MercadoLibre mande el mail (suele ser a media mañana).</div>
-    }
-</div>
-
 @* ═══ Card: equipo trabajando ahora ═══ *@
 <div class="dash-card">
     <div class="dash-card-title">
@@ -1926,11 +1890,6 @@
         resumenDiaTimer = new System.Threading.Timer(_ => InvokeAsync(LoadResumenDiaAsync), null,
             TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
 
-        // 2026-07-17: código del día para colectas/devoluciones (refresca cada 5 min; cambia 1 vez por día)
-        _ = LoadCodigoColectaAsync();
-        codigoColectaTimer = new System.Threading.Timer(_ => InvokeAsync(LoadCodigoColectaAsync), null,
-            TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
-
         // 2026-07-03: cargar UNA sola vez los settings globales para el overlay de
         // personalizacion de las tarjetas. Fire-and-forget defensivo: si falla, las
         // cards siguen renderizando sin comentario inicial.
@@ -2148,27 +2107,6 @@
     // 2026-07-10: correos importantes (mails que dispararon alertas) para la card del Dashboard.
     private List<ApiClient.CorreoImportanteDto> correosImportantes = new();
 
-    // 2026-07-17: código del día para colectas/devoluciones de MeLi.
-    private ApiClient.MeliCodigoColectaDto? codigoColecta;
-    private System.Threading.Timer? codigoColectaTimer;
-
-    private async Task LoadCodigoColectaAsync()
-    {
-        try { codigoColecta = await Api.GetMeliCodigoColectaAsync(); StateHasChanged(); }
-        catch { /* si falla, la card muestra "todavía no llegó" */ }
-    }
-
-    private async Task CopiarCodigoColecta()
-    {
-        if (codigoColecta is null || string.IsNullOrWhiteSpace(codigoColecta.Codigo)) return;
-        try
-        {
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", codigoColecta.Codigo);
-            ToastService.Success($"Código copiado: {codigoColecta.Codigo}");
-        }
-        catch { ToastService.Info($"Código: {codigoColecta.Codigo}"); }
-    }
-
     private string FormatCorreoFecha(DateTime? utc)
     {
         if (!utc.HasValue) return "";
@@ -2331,7 +2269,6 @@
         tresCardsTimer?.Dispose();
         equipoTimer?.Dispose();
         resumenDiaTimer?.Dispose();
-        codigoColectaTimer?.Dispose();
         // 2026-07-04: liberar timers del auto-hide de saldos (5min)
         foreach (var t in saldoAutoHideTimers.Values) t.Dispose();
         saldoAutoHideTimers.Clear();
