@@ -564,28 +564,25 @@ public class DashboardController : ControllerBase
     }
 
     /// <summary>
-    /// 2026-07-17: código de autorización del día para colectas/devoluciones de MercadoLibre.
-    /// Devuelve el más reciente que el robot bajó del correo. EsDeHoy indica si el código guardado
-    /// corresponde al día de hoy (hora Argentina): si es false, todavía no llegó el mail de hoy.
+    /// 2026-07-17: código de autorización + horario de la colecta de HOY (colectas/devoluciones MeLi).
+    /// El robot los baja del correo. Devuelve la fila del día de hoy (hora Argentina); si todavía no
+    /// llegó nada, viene todo en null (la UI muestra "esperando…").
     /// </summary>
     [HttpGet("meli-codigo-colecta")]
     public async Task<IActionResult> GetMeliCodigoColecta()
     {
         var hoyArg = DateTime.UtcNow.AddHours(-3).Date;
-        var fila = await _db.MeliCodigosColecta
-            .OrderByDescending(x => x.FechaCodigo)
-            .FirstOrDefaultAsync();
+        var fila = await _db.MeliCodigosColecta.FirstOrDefaultAsync(x => x.FechaCodigo == hoyArg);
 
         if (fila is null)
-            return Ok(new MeliCodigoColectaDto(null, null, false, null));
+            return Ok(new MeliCodigoColectaDto(null, null, false));
 
         return Ok(new MeliCodigoColectaDto(
-            fila.Codigo,
-            fila.FechaCodigo,
-            fila.FechaCodigo.Date == hoyArg,
-            fila.FechaMail));
+            string.IsNullOrWhiteSpace(fila.Codigo) ? null : fila.Codigo,
+            fila.HorarioColecta,
+            fila.ColectaCancelada));
     }
 }
 
-/// <summary>Código del día para colectas/devoluciones. Codigo/Fecha en null si nunca llegó ninguno.</summary>
-public record MeliCodigoColectaDto(string? Codigo, DateTime? Fecha, bool EsDeHoy, DateTime? RecibidoAt);
+/// <summary>Código + horario de la colecta de hoy. Todo en null/false si todavía no llegó nada.</summary>
+public record MeliCodigoColectaDto(string? Codigo, string? Horario, bool Cancelada);

@@ -5902,6 +5902,16 @@ IF EXISTS (SELECT 1 FROM sys.tables WHERE name='Meli_CodigoColecta')
    AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_MeliCodigoColecta_Fecha')
     CREATE UNIQUE INDEX UX_MeliCodigoColecta_Fecha ON Meli_CodigoColecta (FechaCodigo);
 GO
+-- 2026-07-17: horario (franja) de la colecta del día + si quedó cancelada. Sale de los mails de MeLi.
+IF COL_LENGTH('Meli_CodigoColecta','HorarioColecta') IS NULL
+    ALTER TABLE Meli_CodigoColecta ADD HorarioColecta NVARCHAR(60) NULL;
+GO
+IF COL_LENGTH('Meli_CodigoColecta','ColectaCancelada') IS NULL
+    ALTER TABLE Meli_CodigoColecta ADD ColectaCancelada BIT NOT NULL DEFAULT 0;
+GO
+IF COL_LENGTH('Meli_CodigoColecta','HorarioMailAt') IS NULL
+    ALTER TABLE Meli_CodigoColecta ADD HorarioMailAt DATETIME2 NULL;
+GO
 
 -- 2026-07-16: VARIAS PERSONAS por bot de Telegram (pedido de Osmar: ir dándole acceso a las
 -- notificaciones a los empleados de a poco). Antes cada bot tenía UN dueño (TelegramAccounts.ChatId);

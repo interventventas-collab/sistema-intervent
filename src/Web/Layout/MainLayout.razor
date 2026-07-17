@@ -1245,16 +1245,24 @@
         @* 2026-07-17: código de autorización del día para colectas/devoluciones de MeLi.
            Chip clickeable: un clic copia el código. Si todavía no llegó el mail de hoy,
            muestra "esperando…" en gris (no muestra uno viejo como si fuera el de hoy). *@
-        @if (_codigoColecta is not null && !string.IsNullOrWhiteSpace(_codigoColecta.Codigo) && _codigoColecta.EsDeHoy)
+        @{
+            var _cc = _codigoColecta;
+            var _ccCod = _cc is not null && !string.IsNullOrWhiteSpace(_cc.Codigo);
+            var _ccLabel = _cc is null ? "Colecta hoy"
+                : _cc.Cancelada ? "Colecta CANCELADA"
+                : !string.IsNullOrWhiteSpace(_cc.Horario) ? $"Colecta {_cc.Horario}"
+                : "Colecta hoy";
+        }
+        @if (_ccCod)
         {
             <div class="topchip" title="Código del día para colectas/devoluciones. Clic para copiar." style="cursor:pointer; border-color:#f59e0b; background:#fffbeb;" @onclick="CopiarCodigoColecta">
                 <span class="topchip-ico" style="background:#fef3c7; color:#92400e;">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/><path d="M15.5 7.5l3 3L22 7l-3-3"/></svg>
                 </span>
                 <span>
-                    <span class="topchip-label" style="display:block; color:#b45309;">Colecta hoy</span>
+                    <span class="topchip-label" style="display:block; color:@(_cc!.Cancelada ? "#b91c1c" : "#b45309");">@_ccLabel</span>
                     <span class="topchip-value" style="display:inline-flex; align-items:center; gap:6px; font-family:ui-monospace,Menlo,monospace; letter-spacing:1px; color:#92400e;">
-                        @_codigoColecta.Codigo
+                        @_cc.Codigo
                         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#b45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
                     </span>
                 </span>
@@ -1262,13 +1270,17 @@
         }
         else
         {
-            <div class="topchip topchip-secondary" title="Código del día para colectas/devoluciones de MercadoLibre. Todavía no llegó el mail de hoy.">
+            <div class="topchip topchip-secondary" title="Código del día para colectas/devoluciones de MercadoLibre. Todavía no llegó el código de hoy.">
                 <span class="topchip-ico" style="background:#f3f4f6; color:#9ca3af;">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/><path d="M15.5 7.5l3 3L22 7l-3-3"/></svg>
                 </span>
                 <span>
-                    <span class="topchip-label" style="display:block;">Colecta hoy</span>
-                    <span class="topchip-value" style="color:#9ca3af;">esperando…</span>
+                    <span class="topchip-label" style="display:block;">@_ccLabel</span>
+                    <span class="topchip-value" style="color:#9ca3af;">
+                        @(_cc is not null && _cc.Cancelada ? "cancelada"
+                          : _cc is not null && !string.IsNullOrWhiteSpace(_cc.Horario) ? "esperando cód."
+                          : "esperando…")
+                    </span>
                 </span>
             </div>
         }
