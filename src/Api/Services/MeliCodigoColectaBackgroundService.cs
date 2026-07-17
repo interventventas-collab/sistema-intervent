@@ -169,29 +169,68 @@ public class MeliCodigoColectaBackgroundService : BackgroundService
 
         if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(ct);
 
-        // ── Avisar por Telegram una sola vez por día (cuando llega/cambia el código) ──
+        // ── Avisos por Telegram ──
+        var hoyArg = DateTime.UtcNow.AddHours(ARG_OFFSET_HOURS).Date;
+        var filaHoy = filaCodigo is not null && filaCodigo.FechaCodigo == hoyArg
+            ? filaCodigo
+            : (db.MeliCodigosColecta.Local.FirstOrDefault(x => x.FechaCodigo == hoyArg)
+               ?? await db.MeliCodigosColecta.FirstOrDefaultAsync(x => x.FechaCodigo == hoyArg, ct));
+
+        // 1) Código del día (una sola vez, cuando llega o cambia). Incluye el horario si ya se conoce.
         if (filaCodigo is not null && (esNuevo || cambio) && !filaCodigo.EnviadoTelegram)
         {
-            try
+            var sig = FirmaHorario(filaCodigo);
+            var horarioLinea = filaCodigo.ColectaCancelada
+                ? "\n🕒 Atención: la colecta de hoy figura CANCELADA."
+                : (!string.IsNullOrWhiteSpace(filaCodigo.HorarioColecta) ? $"\n🕒 Horario de hoy: {filaCodigo.HorarioColecta}." : "");
+            var texto =
+                $"🔑 Código de colecta/devolución de hoy ({filaCodigo.FechaCodigo:dd/MM}):\n\n" +
+                $"👉 {filaCodigo.Codigo}" + horarioLinea + "\n\n" +
+                "Usalo cuando venga el transporte a buscar los paquetes o a traerte una devolución.";
+            if (await NotificarTelegramAsync(scope, db, texto, ct))
             {
-                var cuenta = await db.TelegramAccounts.Where(x => x.Proposito == "AVISOS").OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
-                if (cuenta is not null && cuenta.IsActive && !string.IsNullOrEmpty(cuenta.BotToken)
-                    && await db.TelegramChats.AnyAsync(c => c.TelegramAccountId == cuenta.Id && c.NotifAlertas, ct))
+                filaCodigo.EnviadoTelegram = true;
+                if (sig is not null) filaCodigo.HorarioAvisado = sig; // ya fue en este mismo aviso, no repetir
+                filaCodigo.UpdatedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync(ct);
+            }
+        }
+
+        // 2) Horario de hoy (cuando MeLi lo confirma/cambia/cancela y no se avisó ese mismo horario).
+        if (filaHoy is not null)
+        {
+            var sig = FirmaHorario(filaHoy);
+            if (sig is not null && !string.Equals(sig, filaHoy.HorarioAvisado, StringComparison.OrdinalIgnoreCase))
+            {
+                var texto = filaHoy.ColectaCancelada
+                    ? "⚠️ La colecta de hoy fue CANCELADA por MercadoLibre."
+                    : $"🕒 Colecta de hoy: {filaHoy.HorarioColecta}"
+                      + (!string.IsNullOrWhiteSpace(filaHoy.Codigo) ? $" (código {filaHoy.Codigo})" : "");
+                if (await NotificarTelegramAsync(scope, db, texto, ct))
                 {
-                    var tg = scope.ServiceProvider.GetRequiredService<TelegramService>();
-                    var horarioLinea = filaCodigo.ColectaCancelada
-                        ? "\n🕒 Atención: la colecta de hoy figura CANCELADA."
-                        : (!string.IsNullOrWhiteSpace(filaCodigo.HorarioColecta) ? $"\n🕒 Horario de hoy: {filaCodigo.HorarioColecta}." : "");
-                    var texto =
-                        $"🔑 Código de colecta/devolución de hoy ({filaCodigo.FechaCodigo:dd/MM}):\n\n" +
-                        $"👉 {filaCodigo.Codigo}" + horarioLinea + "\n\n" +
-                        "Usalo cuando venga el transporte a buscar los paquetes o a traerte una devolución.";
-                    var (ok, _) = await tg.SendMessageAsync(texto, categoria: "ALERTAS", ct: ct);
-                    if (ok) { filaCodigo.EnviadoTelegram = true; filaCodigo.UpdatedAt = DateTime.UtcNow; await db.SaveChangesAsync(ct); }
+                    filaHoy.HorarioAvisado = sig;
+                    filaHoy.UpdatedAt = DateTime.UtcNow;
+                    await db.SaveChangesAsync(ct);
                 }
             }
-            catch (Exception ex) { _logger.LogWarning(ex, "[CodigoColecta] no pude avisar por Telegram"); }
         }
+    }
+
+    /// <summary>Firma del horario/estado para no repetir el aviso: "CANCELADA", el horario, o null
+    /// si todavía no hay nada que avisar.</summary>
+    private static string? FirmaHorario(MeliCodigoColecta f)
+        => f.ColectaCancelada ? "CANCELADA" : (string.IsNullOrWhiteSpace(f.HorarioColecta) ? null : f.HorarioColecta);
+
+    /// <summary>Manda un mensaje por el bot de AVISOS (categoría ALERTAS) si hay bot activo y alguien
+    /// vinculado que reciba alertas. Devuelve true si se envió.</summary>
+    private static async Task<bool> NotificarTelegramAsync(IServiceScope scope, AppDbContext db, string texto, CancellationToken ct)
+    {
+        var cuenta = await db.TelegramAccounts.Where(x => x.Proposito == "AVISOS").OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
+        if (cuenta is null || !cuenta.IsActive || string.IsNullOrEmpty(cuenta.BotToken)) return false;
+        if (!await db.TelegramChats.AnyAsync(c => c.TelegramAccountId == cuenta.Id && c.NotifAlertas, ct)) return false;
+        var tg = scope.ServiceProvider.GetRequiredService<TelegramService>();
+        var (ok, _) = await tg.SendMessageAsync(texto, categoria: "ALERTAS", ct: ct);
+        return ok;
     }
 
     /// <summary>Trae (o crea) la fila del día indicado y la deja trackeada por EF.</summary>
