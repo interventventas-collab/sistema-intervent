@@ -64,6 +64,11 @@ public class MeliShipment
     /// orden de MeLi (para el repartidor). Si esta seteado no volvemos a postear (evita duplicar).</summary>
     public DateTime? MapsNoteSentAt { get; set; }
 
+    /// <summary>2026-07-17: cuando posteamos el TELEFONO del comprador como nota en la orden de MeLi.
+    /// MeLi ofusca el telefono hasta que el envio avanza; en cuanto aparece, lo dejamos escrito en la
+    /// nota de la venta (una sola vez). Si esta seteado no volvemos a postear (evita duplicar).</summary>
+    public DateTime? PhoneNoteSentAt { get; set; }
+
     /// <summary>2026-06-17: repartidor (Cafe_Repartidores.Id) al que el admin le asigna esta orden ME1
     /// desde /me1/entregas. El repartidor ve sus ME1 pendientes en /mis-pedidos y las marca entregadas
     /// con doble confirmacion (impacta en MeLi instantaneamente — no es reversible).</summary>

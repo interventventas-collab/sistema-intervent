@@ -37,6 +37,15 @@ public class MeliShipmentDto
     public string? Notes { get; set; }
 }
 
+// 2026-07-17: respuesta del boton "Traer telefono ahora" (Flex).
+public class TraerTelefonoResultDto
+{
+    public bool Ok { get; set; }
+    public string? Phone { get; set; }
+    public bool NotePosted { get; set; }
+    public string? Message { get; set; }
+}
+
 public class MeliShipmentSyncResultDto
 {
     public int TotalSynced { get; set; }

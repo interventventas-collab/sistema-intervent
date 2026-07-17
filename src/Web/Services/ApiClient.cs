@@ -5471,6 +5471,10 @@ public class ApiClient
     public async Task<MeliShipmentSyncResultDto?> SyncMeliFlexShipmentsAsync(int days = 7, int maxOrders = 200)
         => await PostAsync<MeliShipmentSyncResultDto>("/api/meli/shipments/sync-flex", new { days, maxOrders });
 
+    // 2026-07-17: boton "Traer telefono ahora" — fuerza a preguntarle a MeLi el telefono de un envio.
+    public async Task<TraerTelefonoResultDto?> TraerTelefonoAsync(long meliShipmentId)
+        => await PostAsync<TraerTelefonoResultDto>($"/api/meli/shipments/traer-telefono/{meliShipmentId}", new { });
+
     // ===== MeLi ME1 (envios manuales del vendedor) =====
     public async Task<List<MeliMe1ShipmentDto>?> GetMeliMe1ShipmentsAsync(string filter = "todos", int take = 500)
         => await GetAsync<List<MeliMe1ShipmentDto>>($"/api/meli/me1/shipments?filter={Uri.EscapeDataString(filter)}&take={take}");

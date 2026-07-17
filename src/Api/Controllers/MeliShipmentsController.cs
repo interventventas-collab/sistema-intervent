@@ -152,6 +152,19 @@ public class MeliShipmentsController : ControllerBase
         return Ok(new { totalSynced = r.TotalSynced, totalFlex = r.TotalFlex, totalErrors = r.TotalErrors, errores = r.Errors });
     }
 
+    /// <summary>2026-07-17: fuerza a preguntarle a MeLi el telefono del comprador de UN envio en el momento
+    /// (boton "Traer telefono ahora"). Si MeLi ya lo libero, lo devuelve y lo deja escrito en la nota de la venta.</summary>
+    [HttpPost("traer-telefono/{meliShipmentId:long}")]
+    public async Task<IActionResult> TraerTelefono(long meliShipmentId)
+    {
+        var (ok, phone, notePosted) = await _service.TraerTelefonoYNotaAsync(meliShipmentId);
+        if (!ok)
+            return Ok(new { ok = false, phone = (string?)null, notePosted = false, message = "No se pudo consultar el envío en MeLi." });
+        if (string.IsNullOrWhiteSpace(phone))
+            return Ok(new { ok = true, phone = (string?)null, notePosted = false, message = "MeLi todavía no liberó el teléfono de este envío. Probá de nuevo más tarde." });
+        return Ok(new { ok = true, phone, notePosted, message = notePosted ? "Teléfono traído y guardado en la nota de la venta." : "Teléfono traído." });
+    }
+
     public record StartPointDto(string? Address, decimal? Lat, decimal? Lng, string? Time);
 
     /// <summary>Devuelve el punto de partida configurado para el mapa de rutas.</summary>

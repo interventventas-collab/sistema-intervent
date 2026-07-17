@@ -46,6 +46,10 @@ public class MeliShipmentService
                     totalSynced += refreshed;
                 }
                 catch (Exception exR) { errors.Add($"{account.Nickname} (refresh): {exR.Message}"); }
+
+                // 2026-07-17: dejar el telefono del comprador escrito en la nota de la venta apenas MeLi lo libera.
+                try { await PostPendingPhoneNotesAsync(account, token, daysBack); }
+                catch (Exception exP) { errors.Add($"{account.Nickname} (nota tel): {exP.Message}"); }
             }
             catch (Exception ex) { errors.Add($"{account.Nickname}: {ex.Message}"); totalErrors++; }
         }
@@ -76,6 +80,10 @@ public class MeliShipmentService
                     totalSynced += refreshed;
                 }
                 catch (Exception exR) { errors.Add($"{account.Nickname} (refresh ME1): {exR.Message}"); }
+
+                // 2026-07-17: dejar el telefono del comprador escrito en la nota de la venta apenas MeLi lo libera.
+                try { await PostPendingPhoneNotesAsync(account, token, daysBack); }
+                catch (Exception exP) { errors.Add($"{account.Nickname} (nota tel ME1): {exP.Message}"); }
             }
             catch (Exception ex) { errors.Add($"{account.Nickname}: {ex.Message}"); totalErrors++; }
         }
@@ -126,6 +134,23 @@ public class MeliShipmentService
         {
             try { if (await SyncSingleShipmentAsync(shipId)) synced++; }
             catch (Exception ex) { errors++; errList.Add($"ship {shipId}: {ex.Message}"); }
+        }
+
+        // 2026-07-17: dejar el telefono del comprador escrito en la nota de la venta apenas MeLi lo libera.
+        if (shippingIds.Count > 0)
+        {
+            var accountIds = await _db.MeliShipments
+                .Where(s => shippingIds.Contains(s.MeliShipmentId))
+                .Select(s => s.MeliAccountId).Distinct().ToListAsync();
+            foreach (var accId in accountIds)
+            {
+                var acc = await _db.MeliAccounts.FirstOrDefaultAsync(a => a.Id == accId);
+                if (acc is null) continue;
+                var tok = await _accountService.GetValidTokenAsync(acc);
+                if (tok is null) continue;
+                try { await PostPendingPhoneNotesAsync(acc, tok, daysBack); }
+                catch (Exception ex) { errList.Add($"nota tel ME1 acc {accId}: {ex.Message}"); }
+            }
         }
         return new MeliShipmentSyncResult(synced, synced, errors, errList);
     }
@@ -343,6 +368,83 @@ public class MeliShipmentService
         // El campo nota de MeLi tiene 120 chars. Recortamos para asegurar que entre con el "Maps: " prefijo.
         if (query.Length > 110) query = query.Substring(0, 110);
         return $"Maps: {query}";
+    }
+
+    /// <summary>2026-07-17: para cada envio que YA tiene telefono del comprador y todavia no le
+    /// posteamos la nota, deja el telefono escrito como nota en la orden de MeLi (una sola vez).
+    /// Aplica a Flex y ME1 por igual. MeLi permite varias notas por orden, asi que esta NO pisa la del Maps.</summary>
+    private async Task PostPendingPhoneNotesAsync(MeliAccount account, string token, int daysBack)
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-daysBack);
+        var pendientes = await _db.MeliShipments
+            .Where(s => s.MeliAccountId == account.Id
+                        && s.PhoneNoteSentAt == null
+                        && s.ReceiverPhone != null && s.ReceiverPhone != ""
+                        && s.MeliOrderId != null
+                        && s.DateCreated >= cutoff)
+            .ToListAsync();
+        if (pendientes.Count == 0) return;
+
+        var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        foreach (var sh in pendientes)
+        {
+            try { await TryPostPhoneNoteAsync(sh, http); }
+            catch (Exception ex) { Console.WriteLine($"[PhoneNote] order {sh.MeliOrderId} exception: {ex.Message}"); }
+        }
+        await _db.SaveChangesAsync();
+    }
+
+    /// <summary>Postea la nota de telefono para UN envio si corresponde. NO llama a SaveChanges (lo hace el caller).
+    /// Devuelve true si posteo la nota recien ahora.</summary>
+    private async Task<bool> TryPostPhoneNoteAsync(MeliShipment sh, HttpClient http)
+    {
+        if (string.IsNullOrWhiteSpace(sh.ReceiverPhone) || sh.MeliOrderId == null || sh.PhoneNoteSentAt != null)
+            return false;
+        // El campo nota de MeLi admite hasta 300 chars; el telefono entra sobrado.
+        var noteText = $"Tel cliente: {sh.ReceiverPhone}";
+        var body = JsonSerializer.Serialize(new { note = noteText });
+        using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+        var resp = await http.PostAsync($"https://api.mercadolibre.com/orders/{sh.MeliOrderId}/notes", content);
+        if (resp.IsSuccessStatusCode)
+        {
+            sh.PhoneNoteSentAt = DateTime.UtcNow;
+            return true;
+        }
+        var errBody = await resp.Content.ReadAsStringAsync();
+        Console.WriteLine($"[PhoneNote] order {sh.MeliOrderId} {(int)resp.StatusCode}: {errBody[..Math.Min(errBody.Length, 200)]}");
+        return false;
+    }
+
+    /// <summary>2026-07-17: fuerza a re-consultar UN envio a MeLi (boton "Traer telefono ahora") y, si el
+    /// telefono ya aparecio, lo deja escrito como nota en la orden. Devuelve el telefono (o null si MeLi
+    /// todavia no lo libero) y si dejo la nota recien ahora.</summary>
+    public async Task<(bool ok, string? phone, bool notePosted)> TraerTelefonoYNotaAsync(long meliShipmentId)
+    {
+        var ok = await SyncSingleShipmentAsync(meliShipmentId);
+        if (!ok) return (false, null, false);
+
+        var sh = await _db.MeliShipments.FirstOrDefaultAsync(x => x.MeliShipmentId == meliShipmentId);
+        if (sh is null) return (false, null, false);
+
+        bool notePosted = false;
+        if (!string.IsNullOrWhiteSpace(sh.ReceiverPhone) && sh.MeliOrderId != null && sh.PhoneNoteSentAt == null)
+        {
+            var account = await _db.MeliAccounts.FirstOrDefaultAsync(a => a.Id == sh.MeliAccountId);
+            if (account is not null)
+            {
+                var token = await _accountService.GetValidTokenAsync(account);
+                if (token is not null)
+                {
+                    var http = _httpFactory.CreateClient();
+                    http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                    try { notePosted = await TryPostPhoneNoteAsync(sh, http); }
+                    catch (Exception ex) { Console.WriteLine($"[PhoneNote] (boton) order {sh.MeliOrderId} exception: {ex.Message}"); }
+                    if (notePosted) await _db.SaveChangesAsync();
+                }
+            }
+        }
+        return (true, sh.ReceiverPhone, notePosted);
     }
 
     private async Task UpsertShipmentAsync(int accountId, long orderId, decimal? orderTotal, string? itemsSummary, string? buyerNickname, JsonElement sh)

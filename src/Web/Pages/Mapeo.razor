@@ -1457,7 +1457,18 @@ else
                     var digits = new string(tel.Where(char.IsDigit).ToArray());
                     <p style="margin:0.4rem 0;"><strong>📞 Tel:</strong>
                         <a href="@($"https://wa.me/{digits}")" target="_blank" style="color:#25D366; font-weight:700;">@tel (WhatsApp)</a>
+                        · <a href="@($"tel:{digits}")" style="color:#185fa5; font-weight:600;">Llamar</a>
                     </p>
+                }
+                else
+                {
+                    <div style="margin:0.4rem 0;">
+                        <button style="background:#fff3cd; border:1px solid #ffe08a; color:#7a5c00; font-weight:600; padding:0.35rem 0.6rem; border-radius:6px; cursor:pointer;"
+                                @onclick="() => TraerTelefono(selected)" disabled="@trayendoTel">
+                            @(trayendoTel ? "Consultando a MeLi..." : "📞 Traer teléfono de MeLi")
+                        </button>
+                        <div style="font-size:0.72rem; color:#9ca3af; margin-top:0.2rem;">MeLi esconde el teléfono hasta que el envío avanza. Apretá para pedírselo ahora.</div>
+                    </div>
                 }
                 @if (!string.IsNullOrEmpty(selected.Comment))
                 {
@@ -1511,6 +1522,7 @@ else
     private bool showDetail;
     private int? activeShipmentId;
     private int? activeStopId;
+    private bool trayendoTel;
 
     // Multi-stop: selección de hasta 10 destinos para armar ruta en Google Maps.
     // Guardamos la "Key" del grupo unificado (cubre Flex y paradas manuales),
@@ -2105,6 +2117,30 @@ else
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { isLoading = false; }
+    }
+
+    // 2026-07-17: boton "Traer telefono ahora" — le pide a MeLi el telefono del comprador de este envio.
+    // Si MeLi ya lo libero, lo muestra al toque y lo deja escrito en la nota de la venta.
+    private async Task TraerTelefono(MeliShipmentDto s)
+    {
+        if (trayendoTel) return;
+        trayendoTel = true;
+        try
+        {
+            var r = await Api.TraerTelefonoAsync(s.MeliShipmentId);
+            if (r is null) { ToastService.Error("No se pudo consultar MeLi."); return; }
+            if (!string.IsNullOrEmpty(r.Phone))
+            {
+                s.ReceiverPhone = r.Phone;
+                ToastService.Success(r.NotePosted ? "📞 Teléfono traído y guardado en la nota de la venta." : "📞 Teléfono traído.");
+            }
+            else
+            {
+                ToastService.Info(r.Message ?? "MeLi todavía no liberó el teléfono de este envío.");
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { trayendoTel = false; }
     }
 
     private async Task RenderMap()
