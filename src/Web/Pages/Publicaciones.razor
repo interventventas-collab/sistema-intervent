@@ -10,20 +10,21 @@
 @* 2026-07-17: estilos de la vista "Lista" rediseñada (fila resumida + panel de edición). *@
 <style>
     .plist { border:1px solid #e5e7eb; border-radius:10px; overflow:hidden; background:white; }
-    .plist-head, .plist-row { display:grid; grid-template-columns: 34px 40px minmax(220px,1.6fr) 210px 90px 150px 40px; align-items:center; gap:10px; padding:9px 12px; }
-    .plist-head { background:#f9fafb; border-bottom:1px solid #e5e7eb; font-size:0.68rem; letter-spacing:.03em; text-transform:uppercase; color:#9ca3af; font-weight:600; }
+    .plist-head, .plist-row { display:grid; grid-template-columns: 34px 40px minmax(220px,1.6fr) 210px 90px 150px 40px; align-items:center; gap:10px; padding:16px 14px; }
+    .plist-row { min-height:62px; }
+    .plist-head { background:#f9fafb; border-bottom:1px solid #e5e7eb; font-size:0.68rem; letter-spacing:.03em; text-transform:uppercase; color:#9ca3af; font-weight:600; padding:11px 14px; }
     .plist-row { border-bottom:1px solid #f1f3f5; cursor:pointer; }
     .plist-row:hover { background:#fafbfc; }
     .plist-row.sel { background:#eff6ff; }
     .plist-row.open { background:#f8fafc; }
-    .plist-thumb { width:34px; height:34px; border-radius:6px; object-fit:cover; border:1px solid #e5e7eb; background:#f3f4f6; }
-    .plist-thumb-ph { width:34px; height:34px; border-radius:6px; border:1px solid #e5e7eb; background:#f3f4f6; display:flex; align-items:center; justify-content:center; }
-    .plist-title { font-weight:600; font-size:0.86rem; color:#111827; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .plist-meta { font-size:0.68rem; color:#9ca3af; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .plist-price { font-weight:600; font-size:0.92rem; color:#111827; }
+    .plist-thumb { width:40px; height:40px; border-radius:7px; object-fit:cover; border:1px solid #e5e7eb; background:#f3f4f6; }
+    .plist-thumb-ph { width:40px; height:40px; border-radius:7px; border:1px solid #e5e7eb; background:#f3f4f6; display:flex; align-items:center; justify-content:center; }
+    .plist-title { font-weight:600; font-size:0.92rem; color:#111827; line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .plist-meta { font-size:0.72rem; color:#9ca3af; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .plist-price { font-weight:600; font-size:1rem; color:#111827; }
     .plist-price-old { font-size:0.68rem; color:#9ca3af; text-decoration:line-through; margin-left:4px; }
-    .plist-mline { margin-top:3px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
-    .plist-badge { font-size:0.68rem; font-weight:700; padding:1px 7px; border-radius:9px; }
+    .plist-mline { margin-top:5px; display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+    .plist-badge { font-size:0.72rem; font-weight:700; padding:2px 9px; border-radius:9px; }
     .plist-costo { font-size:0.68rem; color:#9ca3af; }
     .plist-chip { font-size:0.64rem; font-weight:700; padding:1px 6px; border-radius:8px; background:#eff6ff; color:#1e40af; }
     .plist-stk { text-align:right; }
@@ -37,7 +38,7 @@
     .plist-chev { width:26px; height:26px; border:1px solid #e5e7eb; border-radius:6px; background:white; color:#6b7280; font-size:0.8rem; cursor:pointer; display:flex; align-items:center; justify-content:center; }
     .plist-chev:hover { background:#f3f4f6; }
     .plist-chev.open { background:#eef2ff; border-color:#c7d2fe; color:#4338ca; }
-    .plist-vrow { display:grid; grid-template-columns: 34px 40px minmax(220px,1.6fr) 210px 90px 150px 40px; align-items:center; gap:10px; padding:7px 12px 7px 12px; border-bottom:1px solid #f1f3f5; background:#fbfcfd; font-size:0.82rem; cursor:pointer; }
+    .plist-vrow { display:grid; grid-template-columns: 34px 40px minmax(220px,1.6fr) 210px 90px 150px 40px; align-items:center; gap:10px; padding:13px 12px; min-height:56px; border-bottom:1px solid #f1f3f5; background:#fbfcfd; font-size:0.82rem; cursor:pointer; }
     .plist-vtag { color:#9ca3af; text-align:right; }
     /* Panel de edición */
     .plist-panel { border-bottom:1px solid #e5e7eb; background:#f8fafc; padding:16px 18px 18px 86px; display:grid; grid-template-columns: 1fr 250px; gap:26px; }
