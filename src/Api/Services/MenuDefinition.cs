@@ -48,7 +48,8 @@ public static class MenuDefinition
             new MenuItem("cafe-tesoreria", "Café · Tesorería", "/cafe/tesoreria/cajas"),
             new MenuItem("cafe-depositos", "Café · Depósitos / Stock", "/cafe/depositos"),
             new MenuItem("cafe-saldos", "Café · Saldos migración", "/cafe/saldos"),
-            new MenuItem("cafe-maquinas", "Café · Máquinas (comodato/financ.)", "/cafe/maquinas")
+            new MenuItem("cafe-maquinas", "Café · Máquinas (comodato/financ.)", "/cafe/maquinas"),
+            new MenuItem("cafe-telefonos-meli", "Teléfonos · Clientes MeLi", "/cafe/telefonos-clientes-meli")
         }),
         new MenuGroup("alquileres", "Alquileres (independiente)", new[]
         {

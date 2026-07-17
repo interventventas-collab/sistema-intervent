@@ -3513,6 +3513,60 @@ IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId=1 AND MenuKey='me1')
     INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'me1');
 GO
 
+-- ===== 2026-07-17: Base propia de clientes de MercadoLibre =====
+-- MeliClientes: un registro por comprador (BuyerId). Se acumula solo con cada venta.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='MeliClientes')
+BEGIN
+    CREATE TABLE MeliClientes (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        BuyerId BIGINT NOT NULL,
+        Nickname NVARCHAR(255) NULL,
+        ReceiverName NVARCHAR(200) NULL,
+        Phone NVARCHAR(50) NULL,
+        AddressLine NVARCHAR(300) NULL,
+        Neighborhood NVARCHAR(150) NULL,
+        City NVARCHAR(150) NULL,
+        State NVARCHAR(150) NULL,
+        ZipCode NVARCHAR(20) NULL,
+        FirstPurchaseAt DATETIME2 NULL,
+        LastPurchaseAt DATETIME2 NULL,
+        LastContactAt DATETIME2 NULL,
+        OrdersCount INT NOT NULL DEFAULT 0,
+        TotalSpent DECIMAL(18,2) NOT NULL DEFAULT 0,
+        LastItems NVARCHAR(500) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL
+    );
+    CREATE UNIQUE INDEX UX_MeliClientes_BuyerId ON MeliClientes(BuyerId);
+END
+GO
+
+-- MeliClienteCompras: una fila por VENTA (historial permanente de "que compro"). Dedup por MeliOrderId.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='MeliClienteCompras')
+BEGIN
+    CREATE TABLE MeliClienteCompras (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        MeliClienteId INT NOT NULL,
+        BuyerId BIGINT NOT NULL,
+        MeliOrderId BIGINT NOT NULL,
+        Fecha DATETIME2 NULL,
+        Items NVARCHAR(500) NULL,
+        Cantidad INT NOT NULL DEFAULT 0,
+        Total DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Canal NVARCHAR(20) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_MeliClienteCompras_Cliente FOREIGN KEY (MeliClienteId) REFERENCES MeliClientes(Id)
+    );
+    CREATE UNIQUE INDEX UX_MeliClienteCompras_OrderId ON MeliClienteCompras(MeliOrderId);
+    CREATE INDEX IX_MeliClienteCompras_ClienteId ON MeliClienteCompras(MeliClienteId);
+END
+GO
+
+-- Permiso de menu para la base de clientes MeLi (admin)
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId=1 AND MenuKey='cafe-telefonos-meli')
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'cafe-telefonos-meli');
+GO
+
 -- ===== Mapeo: Repartidores y libreta de direcciones favoritas =====
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='MapeoDrivers')
 BEGIN

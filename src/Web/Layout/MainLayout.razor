@@ -801,9 +801,11 @@
 
                 @* ───────── 3. CLIENTES Y PROVEEDORES ───────── *@
                 <NavGroup Label="👥 Clientes y proveedores" Icon="@SvgIcons.Users" FlyoutMode="true"
-                          HasActiveChild="@(IsActive("/cafe/clientes") || IsActive("/cafe/clientes-mapeados") || IsActive("/cafe/proveedores"))">
+                          HasActiveChild="@(IsActive("/cafe/clientes") || IsActive("/cafe/clientes-mapeados") || IsActive("/cafe/proveedores") || IsActive("/cafe/telefonos-clientes-meli"))">
                     <NavItem Href="/cafe/clientes" Label="Clientes" Icon="@SvgIcons.Users"
                              IsActive="@IsActive("/cafe/clientes")" OnClick="@(() => NavigateTo("/cafe/clientes"))" />
+                    <NavItem Href="/cafe/telefonos-clientes-meli" Label="📞 Teléfonos clientes MeLi" Icon="@SvgIcons.Users"
+                             IsActive="@IsActive("/cafe/telefonos-clientes-meli")" OnClick="@(() => NavigateTo("/cafe/telefonos-clientes-meli"))" />
                     <NavItem Href="/cafe/clientes-mapeados" Label="Clientes Mapeados" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/cafe/clientes-mapeados")" OnClick="@(() => NavigateTo("/cafe/clientes-mapeados"))" />
                     <NavItem Href="/cafe/proveedores" Label="Proveedores" Icon="@SvgIcons.Users"
@@ -952,7 +954,7 @@
         @if ((HasPerm("publicaciones") || HasPerm("ordenes") || HasPerm("import-productos") || HasPerm("mapeo") || HasPerm("me1")) && (!Company.HasCompany || string.Equals(Company.Current, "INTERVENT", StringComparison.OrdinalIgnoreCase)))
         {
             <NavGroup Label="MercadoLibre" Icon="@SvgIcons.Store"
-                      HasActiveChild="@(IsActive("/publicaciones") || IsActive("/ordenes") || IsActive("/relink-meli-orphans") || IsActive("/mapeo") || IsActive("/meli/me1/entregas"))">
+                      HasActiveChild="@(IsActive("/publicaciones") || IsActive("/ordenes") || IsActive("/relink-meli-orphans") || IsActive("/mapeo") || IsActive("/meli/me1/entregas") || IsActive("/cafe/telefonos-clientes-meli"))">
                 @if (HasPerm("publicaciones"))
                 {
                     <NavItem Href="/publicaciones" Label="Publicaciones" Icon="@SvgIcons.Tag"
@@ -967,6 +969,11 @@
                 {
                     <NavItem Href="/mapeo" Label="Mapeo" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/mapeo")" OnClick="@(() => NavigateTo("/mapeo"))" />
+                }
+                @if (HasPerm("cafe-telefonos-meli"))
+                {
+                    <NavItem Href="/cafe/telefonos-clientes-meli" Label="📞 Teléfonos clientes" Icon="@SvgIcons.Users"
+                             IsActive="@IsActive("/cafe/telefonos-clientes-meli")" OnClick="@(() => NavigateTo("/cafe/telefonos-clientes-meli"))" />
                 }
                 @* Grupo me1: por ahora solo tiene 'Entregas'. Pensado para colgarle mas pantallas adelante. *@
                 @if (HasPerm("me1"))
@@ -2196,6 +2203,7 @@
         { "cafe/ventas", ("🛒", "Ventas", "/cafe/ventas") },
         { "cafe/tesoreria/cobranzas", ("📥", "Cobranzas", "/cafe/tesoreria/cobranzas") },
         { "cafe/clientes", ("👤", "Clientes", "/cafe/clientes") },
+        { "cafe/telefonos-clientes-meli", ("📞", "Teléfonos clientes MeLi", "/cafe/telefonos-clientes-meli") },
         { "cafe/clientes-mapeados", ("👥", "Clientes Mapeados", "/cafe/clientes-mapeados") },
         { "cafe/proveedores", ("🏭", "Proveedores", "/cafe/proveedores") },
         { "mapeo", ("🗺", "Mapa de clientes", "/mapeo") },
@@ -2461,6 +2469,7 @@
         { "cafe/kits", "cafe" },
         { "cafe/oems", "cafe" },
         { "cafe/clientes", "cafe" },
+        { "cafe/telefonos-clientes-meli", "cafe" },
         { "cafe/clientes-mapeados", "cafe" },
         { "cafe/configuracion", "cafe" },
         { "cafe/saldos", "cafe" },

@@ -5475,6 +5475,34 @@ public class ApiClient
     public async Task<TraerTelefonoResultDto?> TraerTelefonoAsync(long meliShipmentId)
         => await PostAsync<TraerTelefonoResultDto>($"/api/meli/shipments/traer-telefono/{meliShipmentId}", new { });
 
+    // ===== 2026-07-17: Base propia de clientes de MercadoLibre (Telefonos) =====
+    public async Task<MeliClientesListDto?> GetMeliClientesAsync(string? search, bool soloConTelefono, int page = 1, int pageSize = 50)
+    {
+        var qs = new List<string> { $"page={page}", $"pageSize={pageSize}" };
+        if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
+        if (soloConTelefono) qs.Add("soloConTelefono=true");
+        return await GetAsync<MeliClientesListDto>("/api/meli/clientes?" + string.Join("&", qs));
+    }
+
+    public async Task<List<MeliClienteCompraDto>?> GetMeliClienteComprasAsync(int id)
+        => await GetAsync<List<MeliClienteCompraDto>>($"/api/meli/clientes/{id}/compras");
+
+    public async Task<MeliClientesSyncResultDto?> SyncMeliClientesAsync()
+        => await PostAsync<MeliClientesSyncResultDto>("/api/meli/clientes/sync", new { });
+
+    public async Task<(byte[]? bytes, string? error)> DownloadMeliClientesExcelAsync(string? search, bool soloConTelefono)
+    {
+        var qs = new List<string>();
+        if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
+        if (soloConTelefono) qs.Add("soloConTelefono=true");
+        var url = "/api/meli/clientes/export-excel" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync(url);
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return (null, "Sesión expirada"); }
+        if (resp.IsSuccessStatusCode) return (await resp.Content.ReadAsByteArrayAsync(), null);
+        return (null, $"Error {(int)resp.StatusCode}");
+    }
+
     // ===== MeLi ME1 (envios manuales del vendedor) =====
     public async Task<List<MeliMe1ShipmentDto>?> GetMeliMe1ShipmentsAsync(string filter = "todos", int take = 500)
         => await GetAsync<List<MeliMe1ShipmentDto>>($"/api/meli/me1/shipments?filter={Uri.EscapeDataString(filter)}&take={take}");

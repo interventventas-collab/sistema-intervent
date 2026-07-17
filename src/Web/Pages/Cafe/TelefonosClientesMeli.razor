@@ -1,0 +1,282 @@
+@page "/cafe/telefonos-clientes-meli"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@using Web.Models
+
+<div style="max-width:1200px; margin:0 auto; padding:1rem;">
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.6rem;">
+        <div>
+            <h2 style="margin:0;">📞 Teléfonos · Clientes MercadoLibre</h2>
+            <div style="color:#6b7280; font-size:0.85rem; margin-top:0.2rem;">
+                Base propia que se va guardando sola con cada venta: usuario, teléfono, dirección y qué compró.
+            </div>
+        </div>
+        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+            <button class="btn" style="background:#eef2ff; border:1px solid #c7d2fe; color:#3730a3; font-weight:600; padding:0.45rem 0.8rem; border-radius:8px; cursor:pointer;"
+                    @onclick="Actualizar" disabled="@ocupado">
+                @(sincronizando ? "Actualizando..." : "🔄 Actualizar ahora")
+            </button>
+            <button class="btn" style="background:#dcfce7; border:1px solid #86efac; color:#166534; font-weight:600; padding:0.45rem 0.8rem; border-radius:8px; cursor:pointer;"
+                    @onclick="DescargarExcel" disabled="@ocupado">
+                @(descargando ? "Generando..." : "⬇️ Exportar Excel")
+            </button>
+        </div>
+    </div>
+
+    @* Resumen *@
+    <div style="display:flex; gap:0.8rem; flex-wrap:wrap; margin:0.9rem 0;">
+        <div style="background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:0.6rem 1rem;">
+            <div style="font-size:0.72rem; color:#6b7280;">Clientes en la base</div>
+            <div style="font-size:1.3rem; font-weight:700; color:#111827;">@totalGlobal.ToString("N0")</div>
+        </div>
+        <div style="background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:0.6rem 1rem;">
+            <div style="font-size:0.72rem; color:#6b7280;">Con teléfono 📞</div>
+            <div style="font-size:1.3rem; font-weight:700; color:#166534;">@conTelefono.ToString("N0")</div>
+        </div>
+    </div>
+
+    @* Filtros *@
+    <div style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:center; margin-bottom:0.8rem;">
+        <input class="form-input" style="flex:1; min-width:240px; padding:0.5rem 0.7rem;" placeholder="Buscar por usuario, nombre, teléfono, ciudad o producto..."
+               @bind="search" @bind:event="oninput" @onkeyup="OnSearchKey" />
+        <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.88rem; color:#374151; cursor:pointer;">
+            <input type="checkbox" @bind="soloConTelefono" @bind:after="Recargar" /> Solo con teléfono
+        </label>
+        <button class="btn" style="background:#1d4ed8; color:#fff; border:none; padding:0.5rem 0.9rem; border-radius:8px; cursor:pointer;" @onclick="Recargar">Buscar</button>
+    </div>
+
+    @if (cargando)
+    {
+        <p style="color:#6b7280;">Cargando...</p>
+    }
+    else if (items.Count == 0)
+    {
+        <div style="background:#fff7ed; border:1px solid #fed7aa; border-radius:10px; padding:1rem; color:#9a3412;">
+            No hay clientes todavía. Apretá <strong>🔄 Actualizar ahora</strong> para cargar los clientes desde tus ventas (la primera vez trae todo el historial que tengamos).
+        </div>
+    }
+    else
+    {
+        <div style="overflow-x:auto; background:#fff; border:1px solid #e5e7eb; border-radius:10px;">
+            <table style="width:100%; border-collapse:collapse; font-size:0.86rem;">
+                <thead>
+                    <tr style="background:#f9fafb; text-align:left; color:#6b7280;">
+                        <th style="padding:0.55rem 0.7rem;">Usuario / Nombre</th>
+                        <th style="padding:0.55rem 0.7rem;">Teléfono</th>
+                        <th style="padding:0.55rem 0.7rem;">Ubicación</th>
+                        <th style="padding:0.55rem 0.7rem; text-align:right;">Compras</th>
+                        <th style="padding:0.55rem 0.7rem; text-align:right;">Total</th>
+                        <th style="padding:0.55rem 0.7rem;">Última compra</th>
+                        <th style="padding:0.55rem 0.7rem;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in items)
+                    {
+                        <tr style="border-top:1px solid #f1f2f4;">
+                            <td style="padding:0.55rem 0.7rem;">
+                                <div style="font-weight:600; color:#111827;">@(c.ReceiverName ?? c.Nickname ?? "—")</div>
+                                @if (!string.IsNullOrWhiteSpace(c.Nickname))
+                                {
+                                    <div style="font-size:0.74rem; color:#1d4ed8; font-family:monospace;">👤 @c.Nickname</div>
+                                }
+                            </td>
+                            <td style="padding:0.55rem 0.7rem;">
+                                @if (!string.IsNullOrWhiteSpace(c.Phone))
+                                {
+                                    var digits = new string(c.Phone.Where(char.IsDigit).ToArray());
+                                    <a href="@($"https://wa.me/{digits}")" target="_blank" style="color:#25D366; font-weight:700; text-decoration:none;">@c.Phone</a>
+                                    <span> · </span>
+                                    <a href="@($"tel:{digits}")" style="color:#185fa5; text-decoration:none;">Llamar</a>
+                                }
+                                else
+                                {
+                                    <span style="color:#9ca3af;">—</span>
+                                }
+                            </td>
+                            <td style="padding:0.55rem 0.7rem; color:#4b5563;">
+                                @(string.Join(", ", new[] { c.City, c.State }.Where(x => !string.IsNullOrWhiteSpace(x))))
+                            </td>
+                            <td style="padding:0.55rem 0.7rem; text-align:right;">@c.OrdersCount</td>
+                            <td style="padding:0.55rem 0.7rem; text-align:right; font-weight:600;">$@c.TotalSpent.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))</td>
+                            <td style="padding:0.55rem 0.7rem; color:#4b5563;">
+                                @(c.LastPurchaseAt?.ToLocalTime().ToString("dd/MM/yyyy") ?? "—")
+                                @if (!string.IsNullOrWhiteSpace(c.LastItems))
+                                {
+                                    <div style="font-size:0.72rem; color:#9ca3af; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@c.LastItems</div>
+                                }
+                            </td>
+                            <td style="padding:0.55rem 0.7rem;">
+                                <button style="background:none; border:1px solid #d1d5db; border-radius:6px; padding:0.25rem 0.5rem; cursor:pointer; font-size:0.78rem;"
+                                        @onclick="() => VerCompras(c)">Ver compras</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @* Paginado *@
+        <div style="display:flex; align-items:center; justify-content:center; gap:0.8rem; margin-top:0.9rem;">
+            <button class="btn" style="padding:0.4rem 0.8rem; border:1px solid #d1d5db; border-radius:8px; background:#fff; cursor:pointer;"
+                    @onclick="Anterior" disabled="@(page <= 1 || cargando)">← Anterior</button>
+            <span style="color:#6b7280; font-size:0.85rem;">Página @(page) de @TotalPaginas (@total.ToString("N0") resultados)</span>
+            <button class="btn" style="padding:0.4rem 0.8rem; border:1px solid #d1d5db; border-radius:8px; background:#fff; cursor:pointer;"
+                    @onclick="Siguiente" disabled="@(page >= TotalPaginas || cargando)">Siguiente →</button>
+        </div>
+    }
+</div>
+
+@* Modal detalle de compras *@
+@if (clienteDetalle is not null)
+{
+    <div style="position:fixed; inset:0; background:rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; z-index:1000; padding:1rem;" @onclick="CerrarDetalle">
+        <div style="background:#fff; border-radius:12px; max-width:620px; width:100%; max-height:85vh; overflow-y:auto; padding:1.2rem;" @onclick:stopPropagation="true">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                <div>
+                    <h3 style="margin:0;">@(clienteDetalle.ReceiverName ?? clienteDetalle.Nickname)</h3>
+                    @if (!string.IsNullOrWhiteSpace(clienteDetalle.Nickname))
+                    { <div style="font-size:0.78rem; color:#1d4ed8; font-family:monospace;">👤 @clienteDetalle.Nickname</div> }
+                    @if (!string.IsNullOrWhiteSpace(clienteDetalle.Phone))
+                    {
+                        var d = new string(clienteDetalle.Phone.Where(char.IsDigit).ToArray());
+                        <div style="margin-top:0.3rem;">📞 <a href="@($"https://wa.me/{d}")" target="_blank" style="color:#25D366; font-weight:700;">@clienteDetalle.Phone (WhatsApp)</a></div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(clienteDetalle.AddressLine))
+                    { <div style="color:#4b5563; font-size:0.85rem; margin-top:0.2rem;">📍 @clienteDetalle.AddressLine@(string.IsNullOrWhiteSpace(clienteDetalle.City) ? "" : $", {clienteDetalle.City}")@(string.IsNullOrWhiteSpace(clienteDetalle.State) ? "" : $" · {clienteDetalle.State}")</div> }
+                </div>
+                <button style="background:none; border:none; font-size:1.4rem; cursor:pointer; color:#6b7280;" @onclick="CerrarDetalle">✕</button>
+            </div>
+
+            <h4 style="margin:1rem 0 0.4rem;">🛒 Compras (@compras.Count)</h4>
+            @if (cargandoCompras)
+            {
+                <p style="color:#6b7280;">Cargando compras...</p>
+            }
+            else
+            {
+                <table style="width:100%; border-collapse:collapse; font-size:0.82rem;">
+                    <thead>
+                        <tr style="text-align:left; color:#6b7280; border-bottom:1px solid #e5e7eb;">
+                            <th style="padding:0.35rem;">Fecha</th>
+                            <th style="padding:0.35rem;">Qué compró</th>
+                            <th style="padding:0.35rem; text-align:right;">Total</th>
+                            <th style="padding:0.35rem;">Canal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var v in compras)
+                        {
+                            <tr style="border-bottom:1px solid #f1f2f4;">
+                                <td style="padding:0.35rem; white-space:nowrap;">@(v.Fecha?.ToLocalTime().ToString("dd/MM/yy") ?? "—")</td>
+                                <td style="padding:0.35rem;">@v.Items</td>
+                                <td style="padding:0.35rem; text-align:right;">$@v.Total.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))</td>
+                                <td style="padding:0.35rem;">
+                                    <span style="font-size:0.7rem; padding:0.1rem 0.4rem; border-radius:6px; background:@(v.Canal == "Correo" ? "#f3f4f6" : "#e0f2fe"); color:#374151;">@v.Canal</span>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private List<MeliClienteDto> items = new();
+    private string? search;
+    private bool soloConTelefono;
+    private int page = 1;
+    private int pageSize = 50;
+    private int total, totalGlobal, conTelefono;
+    private bool cargando, sincronizando, descargando;
+    private bool ocupado => sincronizando || descargando;
+    private int TotalPaginas => Math.Max(1, (int)Math.Ceiling(total / (double)pageSize));
+
+    private MeliClienteDto? clienteDetalle;
+    private List<MeliClienteCompraDto> compras = new();
+    private bool cargandoCompras;
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        cargando = true;
+        try
+        {
+            var r = await Api.GetMeliClientesAsync(search, soloConTelefono, page, pageSize);
+            if (r is not null)
+            {
+                items = r.Items;
+                total = r.Total;
+                totalGlobal = r.TotalGlobal;
+                conTelefono = r.ConTelefono;
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { cargando = false; }
+    }
+
+    private async Task Recargar() { page = 1; await Cargar(); }
+
+    private async Task OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Recargar();
+    }
+
+    private async Task Anterior() { if (page > 1) { page--; await Cargar(); } }
+    private async Task Siguiente() { if (page < TotalPaginas) { page++; await Cargar(); } }
+
+    private async Task Actualizar()
+    {
+        if (ocupado) return;
+        sincronizando = true;
+        try
+        {
+            var r = await Api.SyncMeliClientesAsync();
+            if (r is not null)
+                ToastService.Success(r.Procesadas > 0
+                    ? $"Se sumaron {r.Procesadas} ventas. Total: {r.TotalClientes} clientes."
+                    : "Ya estaba todo al día.");
+            page = 1;
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { sincronizando = false; }
+    }
+
+    private async Task DescargarExcel()
+    {
+        if (ocupado) return;
+        descargando = true;
+        try
+        {
+            var (bytes, error) = await Api.DownloadMeliClientesExcelAsync(search, soloConTelefono);
+            if (bytes is null) { ToastService.Error(error ?? "Error descargando Excel"); return; }
+            var filename = $"clientes-meli-{DateTime.Now:yyyy-MM-dd-HHmm}.xlsx";
+            await JS.InvokeVoidAsync("downloadBytesAsFile", filename, Convert.ToBase64String(bytes),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            ToastService.Success("Excel descargado");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { descargando = false; }
+    }
+
+    private async Task VerCompras(MeliClienteDto c)
+    {
+        clienteDetalle = c;
+        compras = new();
+        cargandoCompras = true;
+        try
+        {
+            compras = await Api.GetMeliClienteComprasAsync(c.Id) ?? new();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { cargandoCompras = false; }
+    }
+
+    private void CerrarDetalle() => clienteDetalle = null;
+}
