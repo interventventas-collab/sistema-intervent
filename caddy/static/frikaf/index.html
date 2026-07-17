@@ -250,6 +250,18 @@ body {
   .footer-inner { grid-template-columns: 1fr; gap: 30px; }
   .hero { padding: 60px 24px 50px; }
 }
+
+.fk-toolbar-wrap{padding:40px 24px 0;}
+.fk-search{display:flex; align-items:center; gap:10px; background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px 16px; max-width:640px; margin:0 auto 16px;}
+.fk-search input{border:none; outline:none; flex:1; font-size:16px; background:transparent; color:var(--ink); font-family:inherit;}
+.fk-tabs{display:flex; gap:8px; justify-content:center; margin-bottom:14px;}
+.fk-tab{border:1px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:999px; padding:6px 16px; font-size:13px; cursor:pointer; font-family:inherit;}
+.fk-tab.on{background:var(--coffee); color:#fff; border-color:var(--coffee);}
+.fk-chips{display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-bottom:10px;}
+.fk-chip{border:1px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:999px; padding:7px 14px; font-size:13px; cursor:pointer; font-family:inherit;}
+.fk-chip.on{background:var(--accent); color:var(--coffee); border-color:var(--accent); font-weight:600;}
+.fk-count{text-align:center; font-size:12px; color:var(--ink-mute); margin-bottom:8px;}
+.fk-noresults{display:none; text-align:center; color:var(--ink-mute); font-size:15px; padding:20px 0;}
 </style>
 <!-- Meta Pixel Code -->
 <script>
@@ -300,6 +312,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 </section>
 
 <section id="cafes" style="display:none;"></section>
+<div class="fk-toolbar-wrap"><div class="container"><div class="fk-search"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8a8a8a" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.65" y2="16.65"/></svg><input id="fk-q" type="search" placeholder="Buscar producto, marca o código…" aria-label="Buscar" /></div><div class="fk-tabs"><button type="button" class="fk-tab on" data-mode="marca">Marcas</button><button type="button" class="fk-tab" data-mode="cat">Categorías</button></div><div class="fk-chips" id="fk-chips"></div><div class="fk-count" id="fk-count"></div><div class="fk-noresults" id="fk-noresults">No encontramos productos con ese criterio. Probá con otra palabra o tocá <b>Todas</b>.</div></div></div>
 <section class="section" style="background: var(--bg);">
 <div class="container">
 <div class="section-head">
@@ -310,7 +323,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 </div>
 <h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">☕ NUESTROS CAFÈS</h3>
 <div class="grid">
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_728137-MLA54001772704_022023-I.webp" alt="Cafe Blend Premium" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU F1</div>
@@ -319,7 +332,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Cafe%20Blend%20Premium" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_651248-MLA89353715597_082025-I.jpg" alt="Café Brasil Seleccion" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU F2</div>
@@ -328,7 +341,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Brasil%20Seleccion" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_600754-MLA89082590730_082025-O.webp" alt="Café Blend  Italiano" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU F3</div>
@@ -337,7 +350,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Blend%20%20Italiano" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_614385-MLA70593143617_072023-O.webp" alt="Café Colombia Excelso" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU F4</div>
@@ -346,7 +359,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Colombia%20Excelso" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_601629-MLA89775368997_082025-I.jpg" alt="Café Robusta Vietnam" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU F5</div>
@@ -355,7 +368,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Robusta%20Vietnam" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_605253-MLA89723511803_082025-O.webp" alt="Café Bracol" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU F6</div>
@@ -364,7 +377,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Bracol" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_601320-MLA91577697099_092025-O.jpg" alt="Café Moka" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU F7</div>
@@ -373,7 +386,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Moka" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_627925-MLA70458023151_072023-O.jpg" alt="Café Costa Rica" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU F8</div>
@@ -382,7 +395,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Costa%20Rica" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img"><div class="card-img-placeholder"><span>☕</span>NUESTROS CAFÈS</div></div>
 <div class="card-body">
 <div class="card-tag">SKU F9</div>
@@ -391,7 +404,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Honey%20Classic" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_631292-MLA70729756694_072023-O.jpg" alt="Café Bourbon specialty" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU F11</div>
@@ -400,7 +413,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Bourbon%20specialty" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img"><div class="card-img-placeholder"><span>☕</span>NUESTROS CAFÈS</div></div>
 <div class="card-body">
 <div class="card-tag">SKU F12</div>
@@ -409,7 +422,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Colombia%20Org%C3%A0nico" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_645884-MLA70286975306_072023-O.webp" alt="Café Brasil Pedra Azul" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU F13</div>
@@ -418,7 +431,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Brasil%20Pedra%20Azul" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_649917-MLA70286744188_072023-O.jpg" alt="Café Amabile natural Sorocabana" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU F14</div>
@@ -427,7 +440,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Amabile%20natural%20Sorocabana" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_831989-MLA89009649602_082025-O.webp" alt="Café Rubi Honey" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU F15</div>
@@ -436,7 +449,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Rubi%20Honey" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_665518-MLA70038514716_062023-O.webp" alt="Café Caracolillo F. rojos ed. lim specialty" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU F16</div>
@@ -445,7 +458,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Caracolillo%20F.%20rojos%20ed.%20lim%20specialty" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_984733-MLA93380345911_092025-O.webp" alt="Café Colibri 85 pts ed lim specialty" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU F17</div>
@@ -454,7 +467,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Colibri%2085%20pts%20ed%20lim%20specialty" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_681531-MLA94359018905_102025-O.webp" alt="Café Esmeralda Lavado" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU F18</div>
@@ -463,7 +476,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Esmeralda%20Lavado" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_619159-MLA71431484655_082023-O.jpg" alt="Café Descafeinado Sumatra" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU F19</div>
@@ -472,7 +485,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Descafeinado%20Sumatra" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_602961-MLA89272730742_082025-I.webp" alt="Café Vending" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU F20</div>
@@ -481,7 +494,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Vending" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_701813-MLA90017891423_082025-O.webp" alt="Café Peru specialty" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU F21</div>
@@ -490,7 +503,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Peru%20specialty" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_634975-MLA90667458803_082025-O.webp" alt="Café Black Premium" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU F22</div>
@@ -499,7 +512,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Black%20Premium" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_966988-MLA69840961659_062023-O.jpg" alt="Cafe Clasico" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU F23</div>
@@ -508,7 +521,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Cafe%20Clasico" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img"><div class="card-img-placeholder"><span>☕</span>NUESTROS CAFÈS</div></div>
 <div class="card-body">
 <div class="card-tag">SKU F24</div>
@@ -517,7 +530,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Guatemala" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img"><div class="card-img-placeholder"><span>☕</span>NUESTROS CAFÈS</div></div>
 <div class="card-body">
 <div class="card-tag">SKU F25</div>
@@ -526,7 +539,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Honduras" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img"><div class="card-img-placeholder"><span>☕</span>NUESTROS CAFÈS</div></div>
 <div class="card-body">
 <div class="card-tag">SKU F26</div>
@@ -535,7 +548,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Ilado%20specialty" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img"><div class="card-img-placeholder"><span>☕</span>NUESTROS CAFÈS</div></div>
 <div class="card-body">
 <div class="card-tag">SKU F27</div>
@@ -544,7 +557,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Colombia%20supremo" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img"><div class="card-img-placeholder"><span>☕</span>NUESTROS CAFÈS</div></div>
 <div class="card-body">
 <div class="card-tag">SKU F28</div>
@@ -553,7 +566,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Colombia%20Huila%20specialty" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img"><div class="card-img-placeholder"><span>☕</span>NUESTROS CAFÈS</div></div>
 <div class="card-body">
 <div class="card-tag">SKU F30</div>
@@ -562,7 +575,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Peru%20Geisha%20Oro%20Verde" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img"><div class="card-img-placeholder"><span>☕</span>NUESTROS CAFÈS</div></div>
 <div class="card-body">
 <div class="card-tag">SKU F48</div>
@@ -571,7 +584,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Mezcla%20Especial" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_719106-MLA49492567855_032022-I.jpg" alt="Café Torrado Brasil" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU F49</div>
@@ -580,7 +593,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caf%C3%A9%20Torrado%20Brasil" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Frikaf®" data-cat="NUESTROS CAFÈS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_634423-MLA89648356307_082025-O.webp" alt="Café Descafeinado Colombia" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU F0</div>
@@ -603,7 +616,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 </div>
 <h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">🍵 INFUSIONES</h3>
 <div class="grid">
-<div class="card">
+<div class="card" data-marca="Urrutia" data-cat="INFUSIONES">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_678477-MLA51617183033_092022-I.webp" alt="TÉ URRUTIA X100 SAQUITOS ENSOBRADOS SIN TACC" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU U001</div>
@@ -612,7 +625,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20T%C3%89%20URRUTIA%20X100%20SAQUITOS%20ENSOBRADOS%20SIN%20TACC" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Natura" data-cat="INFUSIONES">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_993065-MLA99201410072_112025-I.jpg" alt="MATE COCIDO X 100 SAQUITOS ENSOBRADOS NATURA" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU U011</div>
@@ -621,7 +634,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20MATE%20COCIDO%20X%20100%20SAQUITOS%20ENSOBRADOS%20NATURA" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cachamai" data-cat="INFUSIONES">
 <div class="card-img"><div class="card-img-placeholder"><span>🍵</span>INFUSIONES</div></div>
 <div class="card-body">
 <div class="card-tag">SKU U010</div>
@@ -630,7 +643,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CAJA%20T%C3%89%20CACHAMAI%20BOLDO%20X100%20SAQUITOS%20ENSOBRADOS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cachamai" data-cat="INFUSIONES">
 <div class="card-img"><div class="card-img-placeholder"><span>🍵</span>INFUSIONES</div></div>
 <div class="card-body">
 <div class="card-tag">SKU U020</div>
@@ -642,7 +655,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 </div>
 <h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">🍬 COMPLEMENTOS CAFE</h3>
 <div class="grid">
-<div class="card">
+<div class="card" data-marca="Abedul" data-cat="COMPLEMENTOS CAFE">
 <div class="card-img"><div class="card-img-placeholder"><span>🍬</span>COMPLEMENTOS CAFE</div></div>
 <div class="card-body">
 <div class="card-tag">SKU ABEFRIK</div>
@@ -651,7 +664,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20AZUCAR%20logo%20%22FRIKAF%22%20en%20sobres%20X%205%20KG" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Abedul" data-cat="COMPLEMENTOS CAFE">
 <div class="card-img"><div class="card-img-placeholder"><span>🍬</span>COMPLEMENTOS CAFE</div></div>
 <div class="card-body">
 <div class="card-tag">SKU ABEAZU</div>
@@ -660,7 +673,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20AZUCAR%20logo%20%22CHANGO%20ABEDUL%22%20en%20sobres%20X%205%20KG" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Dulkre" data-cat="COMPLEMENTOS CAFE">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_666040-MLA89330123319_082025-I.webp" alt="EDULCORANTE logo "FRIKAF" caja x 400 sobres Dulkre" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU D401</div>
@@ -669,7 +682,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20EDULCORANTE%20logo%20%22FRIKAF%22%20caja%20x%20400%20sobres%20Dulkre" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Dulkre" data-cat="COMPLEMENTOS CAFE">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_666040-MLA89330123319_082025-O.webp" alt="EDULCORANTE logo "DULKRE" caja x 400 sobres Dulkre" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU D400</div>
@@ -678,7 +691,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20EDULCORANTE%20logo%20%22DULKRE%22%20caja%20x%20400%20sobres%20Dulkre" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Pasticcino" data-cat="COMPLEMENTOS CAFE">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_693996-MLA99686980083_112025-I.jpg" alt="GALLETITAS INDIVIDUALES PASTICCINO X 200 UNIDADES" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU PAST1</div>
@@ -687,7 +700,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20GALLETITAS%20INDIVIDUALES%20PASTICCINO%20X%20200%20UNIDADES" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Mapsa" data-cat="COMPLEMENTOS CAFE">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_678509-MLA47088957380_082021-I.jpg" alt="CHOCOLATE SUBMARINO MAPSA SIN TACC CHOCOLATE X 50 " loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU U050</div>
@@ -696,7 +709,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CHOCOLATE%20SUBMARINO%20MAPSA%20SIN%20TACC%20CHOCOLATE%20X%2050%20UNIDADES" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Méndez" data-cat="COMPLEMENTOS CAFE">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_605349-MLA99119684493_112025-I.jpg" alt="AZÚCAR TERRONES X 500 GRAMOS MENDEZ" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU MEN001</div>
@@ -708,7 +721,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 </div>
 <h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">🍅 CONDIMENTOS</h3>
 <div class="grid">
-<div class="card">
+<div class="card" data-marca="Abedul" data-cat="CONDIMENTOS">
 <div class="card-img" style="background:white;"><img src="https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcSLMTDfRJ7sFh1ketPyqi14Pm-YV-kPJ64xDbKVJvKho14nRAne5Ju0DZL7xlzbD-7jA8G-IXLZIpPM6TPdb1B8_2BEU7UQKw" alt="CAJA MAYONESA INDIVIDUAL ABEDUL X 198 UNIDADES SIN" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU ABE-MAYO</div>
@@ -717,7 +730,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CAJA%20MAYONESA%20INDIVIDUAL%20ABEDUL%20X%20198%20UNIDADES%20SIN%20TACC" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Abedul" data-cat="CONDIMENTOS">
 <div class="card-img"><div class="card-img-placeholder"><span>🍅</span>CONDIMENTOS</div></div>
 <div class="card-body">
 <div class="card-tag">SKU ABE-MOST</div>
@@ -726,7 +739,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CAJA%20MOSTAZA%20INDIVIDUAL%20ABEDUL%20198%20UNIDADES" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Abedul" data-cat="CONDIMENTOS">
 <div class="card-img"><div class="card-img-placeholder"><span>🍅</span>CONDIMENTOS</div></div>
 <div class="card-body">
 <div class="card-tag">SKU ABE-KET</div>
@@ -735,7 +748,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CAJA%20KETCHUP%20INDIVIDUAL%20ABEDUL%20198%20UNIDADES" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Abedul" data-cat="CONDIMENTOS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_652232-MLA108621196033_032026-I.webp" alt="CAJA SAL FINA ABEDUL / DOS ANCLAS (DORSO) SOBRES X" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU SAL1000</div>
@@ -747,7 +760,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 </div>
 <h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">🥤 VASOS Y TAPAS POLIPAPEL</h3>
 <div class="grid">
-<div class="card">
+<div class="card" data-marca="Estisol" data-cat="VASOS Y TAPAS POLIPAPEL">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_628337-MLA92882027858_092025-I.jpg" alt="Pack x 100 - VASO POLIPAPEL 4 ONZAS BLANCO" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU VP4BL</div>
@@ -756,7 +769,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%20100%20-%20VASO%20POLIPAPEL%204%20ONZAS%20BLANCO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Estisol" data-cat="VASOS Y TAPAS POLIPAPEL">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_628337-MLA92882027858_092025-O.jpg" alt="Pack x 100 - VASO POLIPAPEL 4 ONZAS KRAFT" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU VP4KRAFT</div>
@@ -765,7 +778,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%20100%20-%20VASO%20POLIPAPEL%204%20ONZAS%20KRAFT" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Estisol" data-cat="VASOS Y TAPAS POLIPAPEL">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_629838-MLA95238279241_102025-O.webp" alt="Pack x 100 - VASO POLIPAPEL 8 ONZAS" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU VP8</div>
@@ -774,7 +787,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%20100%20-%20VASO%20POLIPAPEL%208%20ONZAS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Estisol" data-cat="VASOS Y TAPAS POLIPAPEL">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_629838-MLA95238279241_102025-I.webp" alt="Pack x 100 - VASO KRAFT MARRON POLIPAPEL 8 ONZAS" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU PFVC08-G/10</div>
@@ -783,7 +796,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%20100%20-%20VASO%20KRAFT%20MARRON%20POLIPAPEL%208%20ONZAS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Estisol" data-cat="VASOS Y TAPAS POLIPAPEL">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_792438-MLA69960969627_062023-I.webp" alt="Pack x 100 - TAPA NEGRA PARA VASO POLIPAPEL 8 ONZA" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU T-VP8</div>
@@ -792,7 +805,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%20100%20-%20TAPA%20NEGRA%20PARA%20VASO%20POLIPAPEL%208%20ONZAS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Estisol" data-cat="VASOS Y TAPAS POLIPAPEL">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_606043-MLA90016664001_082025-O.webp" alt="Pack x 100 - VASO POLIPAPEL 12 ONZAS" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU VP12</div>
@@ -801,7 +814,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%20100%20-%20VASO%20POLIPAPEL%2012%20ONZAS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Estisol" data-cat="VASOS Y TAPAS POLIPAPEL">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_606043-MLA90016664001_082025-I.webp" alt="Pack x 100 - VASO KRAFT MARRON POLIPAPEL 12 ONZAS" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU PFVC12-G9</div>
@@ -810,7 +823,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%20100%20-%20VASO%20KRAFT%20MARRON%20POLIPAPEL%2012%20ONZAS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Estisol" data-cat="VASOS Y TAPAS POLIPAPEL">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_905545-MLA69959581931_062023-I.webp" alt="pack x 100 - TAPA NEGRA PARA VASO POLIPAPEL 12 ONZ" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU T-VP12</div>
@@ -819,7 +832,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20pack%20x%20100%20-%20TAPA%20NEGRA%20PARA%20VASO%20POLIPAPEL%2012%20ONZAS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Estisol" data-cat="VASOS Y TAPAS POLIPAPEL">
 <div class="card-img"><div class="card-img-placeholder"><span>🥤</span>VASOS Y TAPAS POLIPAPEL</div></div>
 <div class="card-body">
 <div class="card-tag">SKU T-VP12BL</div>
@@ -828,7 +841,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20pack%20x%20100%20-%20TAPA%20BLANCA%20PARA%20VASO%20POLIPAPEL%2012%20ONZAS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Estisol" data-cat="VASOS Y TAPAS POLIPAPEL">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_604691-MLA95071935799_102025-I.jpg" alt="Pack x 100 - VASO POLIPAPEL 16 ONZAS" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU VP16</div>
@@ -837,7 +850,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%20100%20-%20VASO%20POLIPAPEL%2016%20ONZAS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Estisol" data-cat="VASOS Y TAPAS POLIPAPEL">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_604691-MLA95071935799_102025-O.jpg" alt="Pack x 100 - VASO KRAFT MARRON POLIPAPEL 16 ONZAS" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU PFVC16-6/2</div>
@@ -846,7 +859,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%20100%20-%20VASO%20KRAFT%20MARRON%20POLIPAPEL%2016%20ONZAS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Estisol" data-cat="VASOS Y TAPAS POLIPAPEL">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_792438-MLA69960969627_062023-I.webp" alt="PACK X 100 - TAPA NEGRA PARA VASO POLIPAPEL 14/16 " loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU T-VP16</div>
@@ -855,7 +868,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PACK%20X%20100%20-%20TAPA%20NEGRA%20PARA%20VASO%20POLIPAPEL%2014/16%20ONZAS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Estisol" data-cat="VASOS Y TAPAS POLIPAPEL">
 <div class="card-img"><div class="card-img-placeholder"><span>🥤</span>VASOS Y TAPAS POLIPAPEL</div></div>
 <div class="card-body">
 <div class="card-tag">SKU T-VP16BL</div>
@@ -867,7 +880,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 </div>
 <h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">🥤 VASOS TELGOPOR Y TAPAS</h3>
 <div class="grid">
-<div class="card">
+<div class="card" data-marca="Estisol" data-cat="VASOS TELGOPOR Y TAPAS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_615171-MLA92539888674_092025-I.jpg" alt="PACK 100 VASO TERMICO X 120 CC - VASO TERMICO X 12" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU VT120</div>
@@ -876,7 +889,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PACK%20100%20VASO%20TERMICO%20X%20120%20CC%20-%20VASO%20TERMICO%20X%20120%20CC" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="WELL CUP" data-cat="VASOS TELGOPOR Y TAPAS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_633207-MLA92545712950_092025-I.webp" alt="PACK X 100 TAPA VASO TERMICO 120 CC WC - TAPA VASO" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU TA/WC/4JL/BL</div>
@@ -885,7 +898,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PACK%20X%20100%20TAPA%20VASO%20TERMICO%20120%20CC%20WC%20-%20TAPA%20VASO%20TERMICO%20120%20CC%20WC" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Estisol" data-cat="VASOS TELGOPOR Y TAPAS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_742058-MLA89438352762_082025-I.jpg" alt="PACK X 100 VASO TERMICO X 180 CC - VASO TERMICO X " loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU VT180</div>
@@ -894,7 +907,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PACK%20X%20100%20VASO%20TERMICO%20X%20180%20CC%20-%20VASO%20TERMICO%20X%20180%20CC" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Estisol" data-cat="VASOS TELGOPOR Y TAPAS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_742058-MLA89438352762_082025-I.jpg" alt="PACK X 100 TAPA VT180 CON PICO VERTEDOR NEGRA - TA" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU TPV180DUOMO-N</div>
@@ -903,7 +916,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PACK%20X%20100%20TAPA%20VT180%20CON%20PICO%20VERTEDOR%20NEGRA%20-%20TAPA%20VT180%20CON%20PICO%20VERTEDOR%20NEGRA" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Estisol" data-cat="VASOS TELGOPOR Y TAPAS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_656375-MLA95115335823_102025-I.webp" alt="PACK X 100 VASO TERMICO X 240 CC - VASO TERMICO X " loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU VT240</div>
@@ -912,7 +925,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PACK%20X%20100%20VASO%20TERMICO%20X%20240%20CC%20-%20VASO%20TERMICO%20X%20240%20CC" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Estisol" data-cat="VASOS TELGOPOR Y TAPAS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_963524-MLA89735355337_082025-I.webp" alt="PACK X 100 - TAPA VT240 CON PICO VERTEDOR NEGRA" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU TPV240DUOMO-N</div>
@@ -921,7 +934,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PACK%20X%20100%20-%20TAPA%20VT240%20CON%20PICO%20VERTEDOR%20NEGRA" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Estisol" data-cat="VASOS TELGOPOR Y TAPAS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_690227-MLA90263589244_082025-I.webp" alt="PACK X 100 VASO TERMICO X 300 CC - VASO TERMICO X " loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU VT300</div>
@@ -930,7 +943,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PACK%20X%20100%20VASO%20TERMICO%20X%20300%20CC%20-%20VASO%20TERMICO%20X%20300%20CC" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Estisol" data-cat="VASOS TELGOPOR Y TAPAS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_690227-MLA90263589244_082025-I.webp" alt="PACK X 100 - TAPA VT300 CON PICO VERTEDOR NEGRA" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU TPV300DUOMO-N</div>
@@ -942,7 +955,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 </div>
 <h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">📄 PAPELERA</h3>
 <div class="grid">
-<div class="card">
+<div class="card" data-marca="Palanica®" data-cat="PAPELERA">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_604691-MLA95071935799_102025-I.jpg" alt="Pack x 100 - COLLARIN UNIVERSAL PARA VASOS CAFÉ 8 " loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU P001</div>
@@ -951,7 +964,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%20100%20-%20COLLARIN%20UNIVERSAL%20PARA%20VASOS%20CAF%C3%89%208%2012%20Y%2016%20ONZAS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Generica" data-cat="PAPELERA">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_670440-MLA83348127572_042025-I.jpg" alt="pack x 100 PORTAVASOS ARMABLE CARTON P/2 VASOS - P" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU P003</div>
@@ -960,7 +973,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20pack%20x%20100%20PORTAVASOS%20ARMABLE%20CARTON%20P/2%20VASOS%20-%20PORTAVASOS%20ARMABLE%20CARTON%20P/2%20VASOS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Delta" data-cat="PAPELERA">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_630937-MLA94879785928_102025-I.webp" alt="AGITADORES REMOS DE MADERA X 1000 UN EMBOLSADAS DE" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU REMO1000</div>
@@ -969,7 +982,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20AGITADORES%20REMOS%20DE%20MADERA%20X%201000%20UN%20EMBOLSADAS%20DELTA" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Delta" data-cat="PAPELERA">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_624519-MLA95711311480_102025-I.jpg" alt="Caja x 5000 - AGITADOR 15 CM SUELTO A GRANEL" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU AGIX1</div>
@@ -978,7 +991,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Caja%20x%205000%20-%20AGITADOR%2015%20CM%20SUELTO%20A%20GRANEL" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Delta" data-cat="PAPELERA">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_628337-MLA92882027858_092025-I.jpg" alt="Pack x 1000 - AGITADOR CORTO 9CM" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU REMITOX1</div>
@@ -987,7 +1000,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%201000%20-%20AGITADOR%20CORTO%209CM" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Delta" data-cat="PAPELERA">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_711260-MLA96249327729_102025-I.webp" alt="Pack x 1000 - CUCHARITA 98MM X 1 A GRANEL" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU PALETA98MMX1</div>
@@ -996,7 +1009,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20Pack%20x%201000%20-%20CUCHARITA%2098MM%20X%201%20A%20GRANEL" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Delta" data-cat="PAPELERA">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_612444-MLA69805145736_062023-I.webp" alt="Pack x 1000 - CUCHARITA X 1 A GRANEL" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU CUCX1</div>
@@ -1008,7 +1021,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 </div>
 <h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">♻️ VASOS REUTILIZABLES</h3>
 <div class="grid">
-<div class="card">
+<div class="card" data-marca="Intervent®" data-cat="VASOS REUTILIZABLES">
 <div class="card-img"><div class="card-img-placeholder"><span>♻️</span>VASOS REUTILIZABLES</div></div>
 <div class="card-body">
 <div class="card-tag">SKU VAS190</div>
@@ -1017,7 +1030,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20VASO%20PEQUE%C3%91O%20190%20CC%20REUT%20FRIKAF%20SINCE%201993" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Intervent®" data-cat="VASOS REUTILIZABLES">
 <div class="card-img"><div class="card-img-placeholder"><span>♻️</span>VASOS REUTILIZABLES</div></div>
 <div class="card-body">
 <div class="card-tag">SKU VAS420</div>
@@ -1029,7 +1042,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 </div>
 <h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">🥛 CREMUCCINO</h3>
 <div class="grid">
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_665558-MLA109406216926_042026-I.webp" alt="YOGUR GRIEGO GRANDE 1120 CREMUCCINO" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU BYNC1120G1</div>
@@ -1038,7 +1051,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20YOGUR%20GRIEGO%20GRANDE%201120%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_785779-MLA109405812578_042026-I.jpg" alt="YOGUR GRIEGO CHICO 280 CREMUCCINO" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU BYNC280G1</div>
@@ -1047,7 +1060,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20YOGUR%20GRIEGO%20CHICO%20280%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
 <div class="card-body">
 <div class="card-tag">SKU ZCREMUCA15001</div>
@@ -1056,7 +1069,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20FRAPPE%20MILKSHAKE%20POLVO%20CAPUCCINO%201.5%20KG%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
 <div class="card-body">
 <div class="card-tag">SKU ZCREMUCA4201</div>
@@ -1065,7 +1078,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20FRAPPE%20MILKSHAKE%20POLVO%20CAPUCCINO%20420GR%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
 <div class="card-body">
 <div class="card-tag">SKU ZCREMUDDL15001</div>
@@ -1074,7 +1087,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CREMUCCINO%20DULCE%20DE%20LECHE%20%20DOY%20PACK%201500%20GRAMOS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
 <div class="card-body">
 <div class="card-tag">SKU ZCREMUDDL4201</div>
@@ -1083,7 +1096,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20FRAPPE%20MILKSHAKE%20POLVO%20DULCE%20DE%20LECHE%20420GR%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
 <div class="card-body">
 <div class="card-tag">SKU ZCREMUCHO15001</div>
@@ -1092,7 +1105,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20FRAPPE%20MILKSHAKE%20CHOCOLATE%201.5KG%20CREMUCCINO%20LICUADO%20CAFE" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
 <div class="card-body">
 <div class="card-tag">SKU ZCREMUCHO4201</div>
@@ -1101,7 +1114,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20FRAPPE%20MILKSHAKE%20POLVO%20CHOCOLATE%20420GR%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
 <div class="card-body">
 <div class="card-tag">SKU ZCREMUVAIN15001</div>
@@ -1110,7 +1123,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20FRAPPE%20MILKSHAKE%20VAINILLA%201.5KG%20CREMUCCINO%20LICUADO%20CAF%C3%89" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
 <div class="card-body">
 <div class="card-tag">SKU ZCREMUVAIN4201</div>
@@ -1119,7 +1132,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20FRAPPE%20MILKSHAKE%20POLVO%20VAINILLA%20420GR%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
 <div class="card-body">
 <div class="card-tag">SKU BLP1.501</div>
@@ -1128,7 +1141,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20BASE%20LACTEA%20CREMUCCINO%201%2C5%20KG" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
 <div class="card-body">
 <div class="card-tag">SKU BLP5251</div>
@@ -1137,7 +1150,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20FRAPPE%20MILKSHAKE%20POLVO%20BASE%20LACTEA%20525GR%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
 <div class="card-body">
 <div class="card-tag">SKU BCC12501</div>
@@ -1146,7 +1159,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20SMOOTHIE%20CREMUCCINO%20CRISTAL%20S/SABOR%20P/PREPARAR%20BEBIDA%201%2C25KG" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
 <div class="card-body">
 <div class="card-tag">SKU BCC3001</div>
@@ -1155,7 +1168,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20MEZCLA%20PARA%20SMOOTHIE%20300GR%206%20PORCIONES%20CREMUCCINO%20%20%28CRISTAL%29" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
 <div class="card-body">
 <div class="card-tag">SKU CNEC875G1</div>
@@ -1164,7 +1177,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CHOCOLATE%20NEGRO%20875G%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
 <div class="card-body">
 <div class="card-tag">SKU CNE350G1</div>
@@ -1173,7 +1186,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CHOCOLATE%20NEGRO%20CALIENTE%20ESPESO%20POLVO%20350GR%20CREMUCCINO%20CAFE" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
 <div class="card-body">
 <div class="card-tag">SKU CBEC875G1</div>
@@ -1182,7 +1195,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CHOCOLATE%20BLANCO%20CALIENTE%20ESPESO%20POLVO%20875%20G%20CREMUCCINO%20CAFE" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
 <div class="card-body">
 <div class="card-tag">SKU CBE350G1</div>
@@ -1191,7 +1204,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CHOCOLATE%20BLANCO%20CALIENTE%20ESPESO%20POLVO%20350GR%20CREMUCCINO%20CAFE" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
 <div class="card-body">
 <div class="card-tag">SKU CAE875G1</div>
@@ -1200,7 +1213,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CHOCOLATE%20ALFAJOR%20X%20875%20GRS%20POLVO%20PARA%20PREPARAR.%20SIN%20TACC" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
 <div class="card-body">
 <div class="card-tag">SKU CAE350G1</div>
@@ -1209,7 +1222,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20CHOCOLATE%20ALFAJOR%20X%20350GRS%2C%20POLVO%20PARA%20PREPARAR.%20SIN%20TACC" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
 <div class="card-body">
 <div class="card-tag">SKU BWBC1000G</div>
@@ -1218,7 +1231,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20WAFFLE%201035%20GR%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
 <div class="card-body">
 <div class="card-tag">SKU BWBC200G1</div>
@@ -1227,7 +1240,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20MEZCLA%20LISTA%20WAFFLES%20225GR%20PANCAKES%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
 <div class="card-body">
 <div class="card-tag">SKU BTCC300G1</div>
@@ -1236,7 +1249,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20BASE%20TE%20CHAI%20CREMUCCIONO%20DOYPACK%20X%20300%20GR" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="CREMUCCINO">
 <div class="card-img"><div class="card-img-placeholder"><span>🥛</span>CREMUCCINO</div></div>
 <div class="card-body">
 <div class="card-tag">SKU BTCC120G1</div>
@@ -1248,7 +1261,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 </div>
 <h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">🍓 PULPAS</h3>
 <div class="grid">
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="PULPAS">
 <div class="card-img"><div class="card-img-placeholder"><span>🍓</span>PULPAS</div></div>
 <div class="card-body">
 <div class="card-tag">SKU P0111501</div>
@@ -1257,7 +1270,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PURE%20PULPA%20DE%20FRUTILLA%20CREMUCCINO%201150%20GRS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="PULPAS">
 <div class="card-img"><div class="card-img-placeholder"><span>🍓</span>PULPAS</div></div>
 <div class="card-body">
 <div class="card-tag">SKU P0411501</div>
@@ -1266,7 +1279,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PURE%20PULPA%20DE%20DURAZNO%20/%20NARANJA%20CREMUCCINO%201150%20GRS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="PULPAS">
 <div class="card-img"><div class="card-img-placeholder"><span>🍓</span>PULPAS</div></div>
 <div class="card-body">
 <div class="card-tag">SKU P0311501</div>
@@ -1275,7 +1288,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PURE%20PULPA%20DE%20FRUTOS%20ROJOS%20CREMUCCINO%201150%20GRS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="PULPAS">
 <div class="card-img"><div class="card-img-placeholder"><span>🍓</span>PULPAS</div></div>
 <div class="card-body">
 <div class="card-tag">SKU P0211501</div>
@@ -1284,7 +1297,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20PURE%20PULPA%20DE%20MARACUYA%20CREMUCCINO%201150%20GRS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="PULPAS">
 <div class="card-img"><div class="card-img-placeholder"><span>🍓</span>PULPAS</div></div>
 <div class="card-body">
 <div class="card-tag">SKU BOMBASPURE</div>
@@ -1296,7 +1309,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 </div>
 <h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">🍯 JARABES Y SYRUPS</h3>
 <div class="grid">
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="JARABES Y SYRUPS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_600895-MLA54967956263_042023-I.jpg" alt="SYRUP VAINILLA 1 LITRO CREMUCCINO" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU 7790863008796</div>
@@ -1305,7 +1318,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20SYRUP%20VAINILLA%201%20LITRO%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="JARABES Y SYRUPS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_894175-MLA54967944929_042023-I.webp" alt="SYRUP CARAMELO 1 LITRO CREMUCCINO" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU 7790863008802</div>
@@ -1314,7 +1327,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20SYRUP%20CARAMELO%201%20LITRO%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="JARABES Y SYRUPS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_867209-MLA54973575174_042023-I.jpg" alt="SYRUP AVELLANA 1 LITRO CREMUCCINO" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU 7790863008819</div>
@@ -1323,7 +1336,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20SYRUP%20AVELLANA%201%20LITRO%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="JARABES Y SYRUPS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_999139-MLA54967833265_042023-I.jpg" alt="SYRUP AMARETTI 1 LITRO CREMUCCINO" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU 7790863008789</div>
@@ -1332,7 +1345,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20SYRUP%20AMARETTI%201%20LITRO%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="JARABES Y SYRUPS">
 <div class="card-img"><div class="card-img-placeholder"><span>🍯</span>JARABES Y SYRUPS</div></div>
 <div class="card-body">
 <div class="card-tag">SKU 7790863008833</div>
@@ -1341,7 +1354,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20TOPPING%20JARABE%20SALSA%20DE%20CHOCOLATE%20CAF%C3%89%20POSTRE%20X%20830%20GRS%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="JARABES Y SYRUPS">
 <div class="card-img"><div class="card-img-placeholder"><span>🍯</span>JARABES Y SYRUPS</div></div>
 <div class="card-body">
 <div class="card-tag">SKU 7790863008826</div>
@@ -1350,7 +1363,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20TOPPING%20JARABE%20SALSA%20DE%20DULCE%20DE%20LECHE%20CAF%C3%89%20POSTRE%20X%20830%20GRS%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="JARABES Y SYRUPS">
 <div class="card-img"><div class="card-img-placeholder"><span>🍯</span>JARABES Y SYRUPS</div></div>
 <div class="card-body">
 <div class="card-tag">SKU 7790863009274</div>
@@ -1359,7 +1372,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20TOPPING%20JARABE%20SALSA%20DE%20PISTACHO%20CAF%C3%89%20POSTRE%201.115%20GRS%20CREMUCCINO" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Cremuccino" data-cat="JARABES Y SYRUPS">
 <div class="card-img" style="background:white;"><img src="https://http2.mlstatic.com/D_600895-MLA54967956263_042023-I.jpg" alt="BOMBA DOSIFICADORA  ALMIBARES O SYRUPS (SD)" loading="lazy" style="width:100%; height:100%; object-fit:contain; padding:16px;" /></div>
 <div class="card-body">
 <div class="card-tag">SKU BOMBASSY</div>
@@ -1371,7 +1384,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 </div>
 <h3 style="font-family:Playfair Display,serif; font-size:24px; color:var(--coffee); margin: 40px 0 20px; padding-bottom:8px; border-bottom:1px solid var(--line);">🧪 DESCALCIFICADORES DELLA TAZZA</h3>
 <div class="grid">
-<div class="card">
+<div class="card" data-marca="Della Tazza" data-cat="DESCALCIFICADORES DELLA TAZZA">
 <div class="card-img"><div class="card-img-placeholder"><span>🧪</span>DESCALCIFICADORES DELLA TAZZA</div></div>
 <div class="card-body">
 <div class="card-tag">SKU DELLA001</div>
@@ -1380,7 +1393,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20DESCALCIFICADOR%20M%C3%81QUINAS%20AUTOMATICAS%20Y%20EXPRESS%20DELLA%20TAZZA%20250ML" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Della Tazza" data-cat="DESCALCIFICADORES DELLA TAZZA">
 <div class="card-img"><div class="card-img-placeholder"><span>🧪</span>DESCALCIFICADORES DELLA TAZZA</div></div>
 <div class="card-body">
 <div class="card-tag">SKU DELLA002</div>
@@ -1389,7 +1402,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20POLVO%20DE%20LIMPIEZA%20MAQUINA%20ESPRESSO%20DE%20CAF%C3%89%20450%20GR%20DELLA%20TAZZA" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Della Tazza" data-cat="DESCALCIFICADORES DELLA TAZZA">
 <div class="card-img"><div class="card-img-placeholder"><span>🧪</span>DESCALCIFICADORES DELLA TAZZA</div></div>
 <div class="card-body">
 <div class="card-tag">SKU DELLA003</div>
@@ -1398,7 +1411,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20DELLATAZZA%20LATTE%201.2%20LTS" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Della Tazza" data-cat="DESCALCIFICADORES DELLA TAZZA">
 <div class="card-img"><div class="card-img-placeholder"><span>🧪</span>DESCALCIFICADORES DELLA TAZZA</div></div>
 <div class="card-body">
 <div class="card-tag">SKU DELLA004</div>
@@ -1407,7 +1420,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <a href="https://wa.me/5491158464160?text=Hola%2C%20me%20interesa%3A%20POLVO%20LIMPIA%20CAFETERAS%20GRUPPO%20DESCALCIFICANTE%20DELLA%20TAZZA%20990%20GR" class="card-cta" target="_blank" rel="noopener">Pedir →</a>
 </div>
 </div>
-<div class="card">
+<div class="card" data-marca="Della Tazza" data-cat="DESCALCIFICADORES DELLA TAZZA">
 <div class="card-img"><div class="card-img-placeholder"><span>🧪</span>DESCALCIFICADORES DELLA TAZZA</div></div>
 <div class="card-body">
 <div class="card-tag">SKU DELLA005</div>
@@ -1544,5 +1557,74 @@ fetch('/api/frikaf/urls').then(r => r.json()).then(urls => {
 }).catch(() => {});
 </script>
 
+<script>
+(function(){
+  var cards=[].slice.call(document.querySelectorAll('.card[data-marca]'));
+  if(!cards.length) return;
+  var chipsBox=document.getElementById('fk-chips');
+  var qEl=document.getElementById('fk-q');
+  var countEl=document.getElementById('fk-count');
+  var noRes=document.getElementById('fk-noresults');
+  var tabs=[].slice.call(document.querySelectorAll('.fk-tab'));
+  function distinct(attr){var c={};cards.forEach(function(x){var v=x.getAttribute(attr);c[v]=(c[v]||0)+1;});return c;}
+  var brandCounts=distinct('data-marca');
+  var FRIKAF=Object.keys(brandCounts).filter(function(k){return k.indexOf('Frikaf')===0;})[0] || '__ALL__';
+  var mode='marca', value=FRIKAF, q='';
+  function pretty(c){ if(c==='NUESTROS CAFÈS') return 'Cafés'; c=c.toLowerCase(); return c.charAt(0).toUpperCase()+c.slice(1); }
+  function label(v){ return mode==='marca' ? v.replace(/\u00AE/g,'') : pretty(v); }
+  function buildChips(){
+    chipsBox.innerHTML='';
+    var attr=mode==='marca'?'data-marca':'data-cat';
+    var counts=distinct(attr);
+    var keys=Object.keys(counts);
+    keys.sort(function(a,b){
+      if(mode==='marca'){ if(a.indexOf('Frikaf')===0)return -1; if(b.indexOf('Frikaf')===0)return 1; }
+      else { if(a==='NUESTROS CAFÈS')return -1; if(b==='NUESTROS CAFÈS')return 1; }
+      return counts[b]-counts[a];
+    });
+    ['__ALL__'].concat(keys).forEach(function(k){
+      var b=document.createElement('button');
+      b.type='button';
+      b.className='fk-chip'+((!q&&value===k)?' on':'');
+      b.textContent = k==='__ALL__' ? 'Todas' : label(k)+' ('+counts[k]+')';
+      b.onclick=function(){ value=k; apply(); };
+      chipsBox.appendChild(b);
+    });
+  }
+  function apply(){
+    buildChips();
+    var attr=mode==='marca'?'data-marca':'data-cat';
+    var total=0;
+    cards.forEach(function(c){
+      var okF = q ? true : (value==='__ALL__' || c.getAttribute(attr)===value);
+      var hay = (c.getAttribute('data-marca')+' '+c.getAttribute('data-cat')+' '+c.textContent).toLowerCase();
+      var okQ = !q || hay.indexOf(q)>=0;
+      var vis = okF && okQ;
+      c.style.display = vis?'':'none';
+      if(vis) total++;
+    });
+    document.querySelectorAll('.grid').forEach(function(g){
+      var any=[].slice.call(g.querySelectorAll('.card')).some(function(c){return c.style.display!=='none';});
+      g.style.display=any?'':'none';
+      var prev=g.previousElementSibling;
+      if(prev&&prev.tagName==='H3') prev.style.display=any?'':'none';
+    });
+    document.querySelectorAll('section.section').forEach(function(sec){
+      var any=[].slice.call(sec.querySelectorAll('.card')).some(function(c){return c.style.display!=='none';});
+      sec.style.display=any?'':'none';
+    });
+    countEl.textContent = total+' producto'+(total===1?'':'s');
+    noRes.style.display = total?'none':'block';
+  }
+  tabs.forEach(function(t){ t.onclick=function(){
+    tabs.forEach(function(x){x.classList.remove('on');}); t.classList.add('on');
+    mode=t.getAttribute('data-mode'); value = mode==='marca'?FRIKAF:'__ALL__'; apply();
+  };});
+  qEl.addEventListener('input', function(e){ q=(e.target.value||'').toLowerCase(); apply(); });
+  var lc=document.querySelector('a[href="#cafes"]'); if(lc) lc.addEventListener('click', function(){ mode='marca'; value=FRIKAF; tabs[0].classList.add('on'); tabs[1].classList.remove('on'); q=''; qEl.value=''; apply(); });
+  var lp=document.querySelector('a[href="#productos"]'); if(lp) lp.addEventListener('click', function(){ value='__ALL__'; q=''; qEl.value=''; apply(); });
+  apply();
+})();
+</script>
 </body>
 </html>
