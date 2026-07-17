@@ -163,6 +163,7 @@ builder.Services.AddScoped<MeliFullStockSyncService>();
 builder.Services.AddHostedService<MeliAutoSyncBackgroundService>();
 // 2026-07-08: trae los envios ME1 (manuales) solos cada 1 hora, ultimos 30 dias.
 builder.Services.AddHostedService<Me1AutoSyncBackgroundService>();
+builder.Services.AddHostedService<MeliClientesBackgroundService>();
 builder.Services.AddHostedService<GaliciaAutoSyncBackgroundService>();
 builder.Services.AddHostedService<ShellAutoSyncBackgroundService>();
 builder.Services.AddHostedService<MpAutoSyncBackgroundService>();
@@ -192,6 +193,7 @@ builder.Services.AddScoped<MeliOrderService>();
 builder.Services.AddScoped<MeliItemService>();
 builder.Services.AddScoped<MeliQuestionService>();
 builder.Services.AddScoped<MeliShipmentService>();
+builder.Services.AddScoped<MeliClientesService>();
 builder.Services.AddSingleton<FacturaQrService>();
 builder.Services.AddScoped<FacturasEmailService>();
 builder.Services.AddScoped<ContadoraService>();
