@@ -81,14 +81,15 @@ public class ViajesController : ControllerBase
         var regsMes = registros.Where(r => r.Fecha >= inicioMes).ToList();
         var pagosMes = pagos.Where(p => p.Fecha >= inicioMes).ToList();
         var totalViajesMes = regsMes.Sum(r => r.CantidadCABA + r.CantidadPCIA);
-        var totalACobrarMes = regsMes.Sum(r => r.CantidadCABA * emp.TarifaCABA + r.CantidadPCIA * emp.TarifaPCIA);
+        // Cada viaje se valua con SU tarifa congelada (no la actual del empleado).
+        var totalACobrarMes = regsMes.Sum(r => r.CantidadCABA * r.TarifaCABA + r.CantidadPCIA * r.TarifaPCIA);
         var totalPagadoMes = pagosMes.Sum(p => p.Importe);
         var saldoMes = totalACobrarMes - totalPagadoMes;
 
         // Saldo acumulado (historico, todas las fechas) — para esto pido TODO de la DB.
         var totalACobrarAll = await _db.ViajesRegistros
             .Where(r => r.EmpleadoId == emp.Id)
-            .SumAsync(r => (decimal)r.CantidadCABA * emp.TarifaCABA + (decimal)r.CantidadPCIA * emp.TarifaPCIA);
+            .SumAsync(r => (decimal)r.CantidadCABA * r.TarifaCABA + (decimal)r.CantidadPCIA * r.TarifaPCIA);
         var totalPagadoAll = await _db.ViajesPagos.Where(p => p.EmpleadoId == emp.Id).SumAsync(p => p.Importe);
         var saldoAcum = totalACobrarAll - totalPagadoAll;
 
@@ -143,6 +144,10 @@ public class ViajesController : ControllerBase
                 Fecha = fechaCarga,
                 CantidadCABA = req.CantidadCABA,
                 CantidadPCIA = req.CantidadPCIA,
+                // Congelamos la tarifa vigente HOY. Si mañana cambian la tarifa del empleado,
+                // este viaje sigue valuado a la de hoy (no se recalcula la deuda vieja).
+                TarifaCABA = emp.TarifaCABA,
+                TarifaPCIA = emp.TarifaPCIA,
                 Anotaciones = string.IsNullOrWhiteSpace(req.Anotaciones) ? null : req.Anotaciones.Trim(),
                 CreatedAt = DateTime.UtcNow
             };
@@ -187,10 +192,10 @@ public class ViajesController : ControllerBase
         var result = emps.Select(e =>
         {
             var totalACobrarMes = regsMes.Where(r => r.EmpleadoId == e.Id)
-                .Sum(r => r.CantidadCABA * e.TarifaCABA + r.CantidadPCIA * e.TarifaPCIA);
+                .Sum(r => r.CantidadCABA * r.TarifaCABA + r.CantidadPCIA * r.TarifaPCIA);
             var totalPagadoMes = pagosMes.Where(p => p.EmpleadoId == e.Id).Sum(p => p.Importe);
             var totalACobrarAll = regsAll.Where(r => r.EmpleadoId == e.Id)
-                .Sum(r => r.CantidadCABA * e.TarifaCABA + r.CantidadPCIA * e.TarifaPCIA);
+                .Sum(r => r.CantidadCABA * r.TarifaCABA + r.CantidadPCIA * r.TarifaPCIA);
             var totalPagadoAll = pagosAll.Where(p => p.EmpleadoId == e.Id).Sum(p => p.Importe);
             return new AdminEmpleadoDto(e.Id, e.Nombre, e.Token, e.IsActive,
                 e.TarifaCABA, e.TarifaPCIA,
@@ -290,8 +295,8 @@ public class ViajesController : ControllerBase
 
         var result = regs.Select(r =>
         {
-            var subCABA = r.CantidadCABA * (r.Empleado?.TarifaCABA ?? 0m);
-            var subPCIA = r.CantidadPCIA * (r.Empleado?.TarifaPCIA ?? 0m);
+            var subCABA = r.CantidadCABA * r.TarifaCABA;
+            var subPCIA = r.CantidadPCIA * r.TarifaPCIA;
             return new AdminRegistroDto(r.Id, r.EmpleadoId, r.Empleado?.Nombre ?? "?",
                 r.Fecha, r.CantidadCABA, r.CantidadPCIA, subCABA, subPCIA, subCABA + subPCIA,
                 r.Anotaciones, r.CreatedAt, r.UpdatedAt);

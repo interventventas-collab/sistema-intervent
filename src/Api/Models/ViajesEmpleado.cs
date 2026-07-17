@@ -52,6 +52,15 @@ public class ViajesRegistro
     public int CantidadCABA { get; set; }
     public int CantidadPCIA { get; set; }
 
+    /// <summary>Tarifa CABA vigente el dia que se cargo este viaje. Se congela al crear el registro
+    /// para que cambiar la tarifa del empleado NO recalcule la deuda historica.</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal TarifaCABA { get; set; }
+
+    /// <summary>Tarifa PCIA vigente el dia que se cargo este viaje. Se congela al crear el registro.</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal TarifaPCIA { get; set; }
+
     [MaxLength(500)]
     public string? Anotaciones { get; set; }
 
