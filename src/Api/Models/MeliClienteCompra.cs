@@ -19,8 +19,15 @@ public class MeliClienteCompra
     public MeliCliente? Cliente { get; set; }
 
     public long BuyerId { get; set; }
-    /// <summary>Numero de venta de MeLi (unico en esta tabla).</summary>
+    /// <summary>Numero de orden REPRESENTATIVO (el primero del paquete). Referencia, no clave.</summary>
     public long MeliOrderId { get; set; }
+    /// <summary>PackId de MeLi (carrito) cuando la venta tiene varios productos. Null = venta de un solo item.</summary>
+    public long? PackId { get; set; }
+    /// <summary>Clave UNICA de la venta = PackId si existe, si no MeliOrderId. Con esto agrupamos y deduplicamos:
+    /// una compra de varios productos en un mismo paquete es UNA sola fila.</summary>
+    public long SaleKey { get; set; }
+    /// <summary>ShippingId del envio (para ir a buscar el telefono/direccion a MeLi cuando falte).</summary>
+    public long? ShippingId { get; set; }
 
     public DateTime? Fecha { get; set; }
     [MaxLength(500)] public string? Items { get; set; }

@@ -238,9 +238,14 @@
         {
             var r = await Api.SyncMeliClientesAsync();
             if (r is not null)
-                ToastService.Success(r.Procesadas > 0
-                    ? $"Se sumaron {r.Procesadas} ventas. Total: {r.TotalClientes} clientes."
+            {
+                var partes = new List<string>();
+                if (r.Procesadas > 0) partes.Add($"{r.Procesadas} ventas nuevas");
+                if (r.Telefonos > 0) partes.Add($"{r.Telefonos} teléfonos traídos");
+                ToastService.Success(partes.Count > 0
+                    ? $"{string.Join(" · ", partes)}. Total: {r.TotalClientes} clientes."
                     : "Ya estaba todo al día.");
+            }
             page = 1;
             await Cargar();
         }

@@ -37,6 +37,9 @@ public class MeliCliente
     public DateTime? LastPurchaseAt { get; set; }
     /// <summary>Fecha de la orden con la que se guardo el contacto actual (para no pisarlo con una mas vieja).</summary>
     public DateTime? LastContactAt { get; set; }
+    /// <summary>2026-07-17: ultima vez que le preguntamos a MeLi por el telefono de este cliente (para no
+    /// reintentar en cada vuelta del robot). Solo se reintenta cada tantas horas si sigue sin telefono.</summary>
+    public DateTime? PhoneCheckedAt { get; set; }
 
     public int OrdersCount { get; set; }
     [Column(TypeName = "decimal(18,2)")] public decimal TotalSpent { get; set; }
