@@ -5912,6 +5912,9 @@ GO
 IF COL_LENGTH('Meli_CodigoColecta','HorarioMailAt') IS NULL
     ALTER TABLE Meli_CodigoColecta ADD HorarioMailAt DATETIME2 NULL;
 GO
+IF COL_LENGTH('Meli_CodigoColecta','HorarioAvisado') IS NULL
+    ALTER TABLE Meli_CodigoColecta ADD HorarioAvisado NVARCHAR(80) NULL;
+GO
 
 -- 2026-07-16: VARIAS PERSONAS por bot de Telegram (pedido de Osmar: ir dándole acceso a las
 -- notificaciones a los empleados de a poco). Antes cada bot tenía UN dueño (TelegramAccounts.ChatId);

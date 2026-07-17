@@ -43,6 +43,11 @@ public class MeliCodigoColecta
     /// <summary>Fecha del mail que fijó el horario (para que el más nuevo pise al viejo).</summary>
     public DateTime? HorarioMailAt { get; set; }
 
+    /// <summary>Firma del último horario/cancelación avisado por Telegram (ej "17 a 19 hs" o
+    /// "CANCELADA"). Sirve para no repetir el aviso si el horario no cambió.</summary>
+    [MaxLength(80)]
+    public string? HorarioAvisado { get; set; }
+
     /// <summary>Ya se avisó por Telegram (para no repetir el aviso del mismo día).</summary>
     public bool EnviadoTelegram { get; set; }
 
