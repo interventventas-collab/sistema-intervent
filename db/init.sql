@@ -3493,6 +3493,21 @@ BEGIN
 END
 GO
 
+-- 2026-07-17: Nota con el TELEFONO del comprador en la orden de MeLi. MeLi ofusca el telefono hasta
+-- que el envio avanza; en cuanto aparece, lo dejamos escrito en la nota de la venta (una sola vez).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PhoneNoteSentAt' AND Object_ID=Object_ID('MeliShipments'))
+BEGIN
+    ALTER TABLE MeliShipments ADD PhoneNoteSentAt DATETIME2 NULL;
+END
+GO
+-- Backfill: solo la primera vez (cuando todos estan null). Marcamos como ya enviado para evitar el spam de notas en envios viejos.
+IF NOT EXISTS (SELECT TOP 1 1 FROM MeliShipments WHERE PhoneNoteSentAt IS NOT NULL)
+   AND EXISTS (SELECT TOP 1 1 FROM MeliShipments)
+BEGIN
+    UPDATE MeliShipments SET PhoneNoteSentAt = SYSUTCDATETIME();
+END
+GO
+
 -- Permiso de menu para el modulo me1 (envios manuales tipo ME1)
 IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId=1 AND MenuKey='me1')
     INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'me1');
