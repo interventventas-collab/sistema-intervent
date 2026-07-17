@@ -71,8 +71,14 @@ public class MeliCodigoColectaBackgroundService : BackgroundService
         if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(pass))
             return; // sin casilla conectada, no hay de dónde leerlo
 
-        // ── Buscar el mail más reciente de MeLi con ese asunto (últimos 4 días) ──
+        // ── Leer la casilla una sola vez y juntar dos cosas ──
+        //   1) El código de autorización más reciente (mail "Código de autorización del día…").
+        //   2) El horario de la colecta por día (sale de varios mails: "Detalle de la colecta…",
+        //      "Tu colecta de X a Y está en camino", "El horario de tu colecta de mañana cambió",
+        //      "No podremos recolectar… de X a Y" = cancelada).
         string? codigo = null; DateTime? fechaMail = null; string? messageId = null;
+        // (dia ARG, horario "17 a 19 hs" o null si cancelada, cancelada, fecha del mail)
+        var horarios = new List<(DateTime dia, string? horario, bool cancelada, DateTime mailAt)>();
         ImapClient? client = null;
         try
         {
@@ -89,62 +95,82 @@ public class MeliCodigoColectaBackgroundService : BackgroundService
                 var sums = await inbox.FetchAsync(uids,
                     MessageSummaryItems.Envelope | MessageSummaryItems.InternalDate | MessageSummaryItems.UniqueId, ct);
 
-                // Solo los que son del código de autorización, el más nuevo primero.
-                var candidatos = sums
-                    .Where(s => EsMailDeCodigo(s.Envelope?.Subject))
-                    .OrderByDescending(s => s.InternalDate)
-                    .ToList();
-
-                foreach (var s in candidatos)
+                // 1) Código: el más nuevo con "El código es …".
+                foreach (var s in sums.Where(s => EsMailDeCodigo(s.Envelope?.Subject)).OrderByDescending(s => s.InternalDate))
                 {
                     if (ct.IsCancellationRequested) break;
-                    var full = await inbox.GetMessageAsync(s.UniqueId, ct);
-                    var texto = full.TextBody;
-                    if (string.IsNullOrWhiteSpace(texto) && !string.IsNullOrWhiteSpace(full.HtmlBody))
-                        texto = Regex.Replace(full.HtmlBody, "<[^>]+>", " ");
+                    var texto = await CuerpoTextoAsync(inbox, s.UniqueId, ct);
                     var m = string.IsNullOrWhiteSpace(texto) ? null : RxCodigo.Match(texto);
                     if (m is { Success: true })
                     {
                         codigo = m.Groups[1].Value.ToUpperInvariant();
                         fechaMail = s.InternalDate?.UtcDateTime;
                         messageId = s.Envelope?.MessageId?.Trim().Trim('<', '>');
-                        break; // ya tenemos el más reciente con código
+                        break;
                     }
+                }
+
+                // 2) Horario: mails de colecta (no el del código). De más viejo a más nuevo, así el
+                //    último (más reciente) es el que vale para cada día.
+                foreach (var s in sums
+                    .Where(s => EsMailDeColecta(s.Envelope?.Subject))
+                    .OrderBy(s => s.InternalDate))
+                {
+                    if (ct.IsCancellationRequested) break;
+                    var mailAt = s.InternalDate?.UtcDateTime ?? DateTime.UtcNow;
+                    var asunto = s.Envelope?.Subject ?? "";
+                    var esManana = ContieneManana(asunto);
+
+                    // Intento sacar la franja del asunto; si no está, bajo el cuerpo.
+                    var (found, franja, cancelada) = ExtraerHorario(asunto);
+                    if (!found)
+                    {
+                        var body = await CuerpoTextoAsync(inbox, s.UniqueId, ct);
+                        esManana = esManana || ContieneManana(body);
+                        (found, franja, cancelada) = ExtraerHorario(body);
+                    }
+                    if (!found && !cancelada) continue;
+
+                    var dia = mailAt.AddHours(ARG_OFFSET_HOURS).Date;
+                    if (esManana) dia = dia.AddDays(1); // "…de mañana…" ⇒ es para el día siguiente
+                    horarios.Add((dia, cancelada ? null : franja, cancelada, mailAt));
                 }
             }
         }
         catch (Exception ex) { _logger.LogWarning(ex, "[CodigoColecta] no pude leer la casilla"); return; }
         finally { if (client is not null) { try { await client.DisconnectAsync(true, ct); } catch { } client.Dispose(); } }
 
-        if (string.IsNullOrWhiteSpace(codigo)) return;
-
-        // Día (hora ARG) al que corresponde: el del mail; si no lo tengo, hoy.
-        var argDia = ((fechaMail ?? DateTime.UtcNow).AddHours(ARG_OFFSET_HOURS)).Date;
-
-        // ── Guardar UNA fila por día (upsert) ──
-        var fila = await db.MeliCodigosColecta.FirstOrDefaultAsync(x => x.FechaCodigo == argDia, ct);
+        // ── Guardar el CÓDIGO (una fila por día, upsert) ──
+        MeliCodigoColecta? filaCodigo = null;
         bool esNuevo = false, cambio = false;
-        if (fila is null)
+        if (!string.IsNullOrWhiteSpace(codigo))
         {
-            fila = new MeliCodigoColecta
+            var argDia = ((fechaMail ?? DateTime.UtcNow).AddHours(ARG_OFFSET_HOURS)).Date;
+            filaCodigo = await UpsertFilaAsync(db, argDia, ct);
+            if (string.IsNullOrWhiteSpace(filaCodigo.Codigo)) esNuevo = true;
+            else if (!string.Equals(filaCodigo.Codigo, codigo, StringComparison.OrdinalIgnoreCase)) cambio = true;
+            if (esNuevo || cambio)
             {
-                Codigo = codigo, FechaCodigo = argDia, FechaMail = fechaMail, MessageId = messageId,
-                CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
-            };
-            db.MeliCodigosColecta.Add(fila);
-            esNuevo = true;
+                filaCodigo.Codigo = codigo; filaCodigo.FechaMail = fechaMail; filaCodigo.MessageId = messageId;
+                filaCodigo.EnviadoTelegram = false; filaCodigo.UpdatedAt = DateTime.UtcNow;
+            }
         }
-        else if (!string.Equals(fila.Codigo, codigo, StringComparison.OrdinalIgnoreCase))
-        {
-            fila.Codigo = codigo; fila.FechaMail = fechaMail; fila.MessageId = messageId;
-            fila.EnviadoTelegram = false; // código corregido: vale re-avisar
-            fila.UpdatedAt = DateTime.UtcNow;
-            cambio = true;
-        }
-        if (esNuevo || cambio) await db.SaveChangesAsync(ct);
 
-        // ── Avisar por Telegram una sola vez por día ──
-        if ((esNuevo || cambio) && !fila.EnviadoTelegram)
+        // ── Guardar los HORARIOS por día (el mail más reciente pisa al anterior) ──
+        foreach (var h in horarios)
+        {
+            var fila = await UpsertFilaAsync(db, h.dia, ct);
+            if (fila.HorarioMailAt is not null && fila.HorarioMailAt >= h.mailAt) continue; // ya tengo uno más nuevo
+            fila.HorarioColecta = h.horario;
+            fila.ColectaCancelada = h.cancelada;
+            fila.HorarioMailAt = h.mailAt;
+            fila.UpdatedAt = DateTime.UtcNow;
+        }
+
+        if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(ct);
+
+        // ── Avisar por Telegram una sola vez por día (cuando llega/cambia el código) ──
+        if (filaCodigo is not null && (esNuevo || cambio) && !filaCodigo.EnviadoTelegram)
         {
             try
             {
@@ -153,16 +179,46 @@ public class MeliCodigoColectaBackgroundService : BackgroundService
                     && await db.TelegramChats.AnyAsync(c => c.TelegramAccountId == cuenta.Id && c.NotifAlertas, ct))
                 {
                     var tg = scope.ServiceProvider.GetRequiredService<TelegramService>();
+                    var horarioLinea = filaCodigo.ColectaCancelada
+                        ? "\n🕒 Atención: la colecta de hoy figura CANCELADA."
+                        : (!string.IsNullOrWhiteSpace(filaCodigo.HorarioColecta) ? $"\n🕒 Horario de hoy: {filaCodigo.HorarioColecta}." : "");
                     var texto =
-                        $"🔑 Código de colecta/devolución de hoy ({argDia:dd/MM}):\n\n" +
-                        $"👉 {fila.Codigo}\n\n" +
+                        $"🔑 Código de colecta/devolución de hoy ({filaCodigo.FechaCodigo:dd/MM}):\n\n" +
+                        $"👉 {filaCodigo.Codigo}" + horarioLinea + "\n\n" +
                         "Usalo cuando venga el transporte a buscar los paquetes o a traerte una devolución.";
                     var (ok, _) = await tg.SendMessageAsync(texto, categoria: "ALERTAS", ct: ct);
-                    if (ok) { fila.EnviadoTelegram = true; fila.UpdatedAt = DateTime.UtcNow; await db.SaveChangesAsync(ct); }
+                    if (ok) { filaCodigo.EnviadoTelegram = true; filaCodigo.UpdatedAt = DateTime.UtcNow; await db.SaveChangesAsync(ct); }
                 }
             }
             catch (Exception ex) { _logger.LogWarning(ex, "[CodigoColecta] no pude avisar por Telegram"); }
         }
+    }
+
+    /// <summary>Trae (o crea) la fila del día indicado y la deja trackeada por EF.</summary>
+    private static async Task<MeliCodigoColecta> UpsertFilaAsync(AppDbContext db, DateTime dia, CancellationToken ct)
+    {
+        var fila = db.MeliCodigosColecta.Local.FirstOrDefault(x => x.FechaCodigo == dia)
+                   ?? await db.MeliCodigosColecta.FirstOrDefaultAsync(x => x.FechaCodigo == dia, ct);
+        if (fila is null)
+        {
+            fila = new MeliCodigoColecta { Codigo = "", FechaCodigo = dia, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
+            db.MeliCodigosColecta.Add(fila);
+        }
+        return fila;
+    }
+
+    /// <summary>Baja el cuerpo del mail como texto plano (si es HTML, le saca las etiquetas).</summary>
+    private static async Task<string?> CuerpoTextoAsync(IMailFolder inbox, MailKit.UniqueId uid, CancellationToken ct)
+    {
+        try
+        {
+            var full = await inbox.GetMessageAsync(uid, ct);
+            var texto = full.TextBody;
+            if (string.IsNullOrWhiteSpace(texto) && !string.IsNullOrWhiteSpace(full.HtmlBody))
+                texto = Regex.Replace(full.HtmlBody, "<[^>]+>", " ");
+            return texto;
+        }
+        catch { return null; }
     }
 
     /// <summary>¿El asunto es el del código de autorización? Tolerante a acentos: comparamos por
@@ -175,6 +231,43 @@ public class MeliCodigoColectaBackgroundService : BackgroundService
             && (s.Contains("colecta", StringComparison.OrdinalIgnoreCase)
                 || s.Contains("devolucion", StringComparison.OrdinalIgnoreCase)
                 || s.Contains("devoluci", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>¿Es un mail de colecta (que puede traer horario)? Cualquiera cuyo asunto hable de
+    /// colecta/recolectar, menos el del código (ese lo maneja EsMailDeCodigo).</summary>
+    private static bool EsMailDeColecta(string? asunto)
+    {
+        if (string.IsNullOrWhiteSpace(asunto)) return false;
+        // "recolectar" contiene "colecta", así que también entran los "No podremos recolectar…".
+        return asunto.Contains("colecta", StringComparison.OrdinalIgnoreCase) && !EsMailDeCodigo(asunto);
+    }
+
+    private static bool ContieneManana(string? texto)
+        => !string.IsNullOrWhiteSpace(texto)
+           && (texto.Contains("mañana", StringComparison.OrdinalIgnoreCase)
+               || texto.Contains("manana", StringComparison.OrdinalIgnoreCase));
+
+    // Franja horaria: "17:00 a 19:00", "12:19 a las 14:19", "11 a 13", "entre las 12:00 hs y las 14:00 hs".
+    private static readonly Regex RxHorario = new(
+        @"(?<h1>\d{1,2})(?::(?<m1>\d{2}))?\s*(?:hs)?\s*(?:a\s+las|a|y\s+las|y)\s+(?:las\s+)?(?<h2>\d{1,2})(?::(?<m2>\d{2}))?",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>Saca la franja horaria de un texto (asunto o cuerpo) y si la colecta está cancelada.
+    /// Devuelve (encontróFranja, "17 a 19 hs", cancelada).</summary>
+    private static (bool found, string? franja, bool cancelada) ExtraerHorario(string? texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) return (false, null, false);
+        bool cancelada = texto.Contains("no podremos recolectar", StringComparison.OrdinalIgnoreCase)
+                         || texto.Contains("no pudimos recolectar", StringComparison.OrdinalIgnoreCase);
+
+        var m = RxHorario.Match(texto);
+        if (!m.Success) return (false, null, cancelada);
+        if (!int.TryParse(m.Groups["h1"].Value, out var h1) || !int.TryParse(m.Groups["h2"].Value, out var h2)
+            || h1 > 23 || h2 > 23) return (false, null, cancelada);
+
+        static string Fmt(int h, string min) => (string.IsNullOrEmpty(min) || min == "00") ? h.ToString() : $"{h}:{min}";
+        var franja = $"{Fmt(h1, m.Groups["m1"].Value)} a {Fmt(h2, m.Groups["m2"].Value)} hs";
+        return (true, franja, cancelada);
     }
 
     // ─────────────────────────── Casilla de correo ───────────────────────────

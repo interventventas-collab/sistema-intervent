@@ -32,6 +32,17 @@ public class MeliCodigoColecta
     [MaxLength(400)]
     public string? MessageId { get; set; }
 
+    /// <summary>Horario (franja) de la colecta de ese día, ej "17 a 19 hs". MeLi lo manda en varios
+    /// mails distintos y lo cambia; guardamos el del mail más reciente que aplica a ese día.</summary>
+    [MaxLength(60)]
+    public string? HorarioColecta { get; set; }
+
+    /// <summary>La colecta del día quedó cancelada (mail "No podremos recolectar…").</summary>
+    public bool ColectaCancelada { get; set; }
+
+    /// <summary>Fecha del mail que fijó el horario (para que el más nuevo pise al viejo).</summary>
+    public DateTime? HorarioMailAt { get; set; }
+
     /// <summary>Ya se avisó por Telegram (para no repetir el aviso del mismo día).</summary>
     public bool EnviadoTelegram { get; set; }
 
