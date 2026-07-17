@@ -148,7 +148,8 @@ public class MeliClientesService
 
     private static void AplicarContacto(MeliCliente cli, MeliShipment sh, DateTime? fecha)
     {
-        if (string.IsNullOrWhiteSpace(sh.ReceiverPhone)) return;
+        // Solo telefonos reales (MeLi manda "XXXXXXX" cuando todavia lo tapa).
+        if (!TelefonoUtil.EsReal(sh.ReceiverPhone)) return;
         if (cli.LastContactAt != null && fecha != null && fecha < cli.LastContactAt) return;
         cli.Phone = sh.ReceiverPhone;
         if (!string.IsNullOrWhiteSpace(sh.ReceiverName)) cli.ReceiverName = sh.ReceiverName;
@@ -187,8 +188,10 @@ public class MeliClientesService
     /// ventas viejas que MeLi nunca libera. Solo mira ventas de los ultimos 90 dias.</summary>
     public async Task<int> EnrichPhonesAsync(int maxLlamadas = 100)
     {
-        var desde = DateTime.UtcNow.AddDays(-90);
-        var reintentarAntesDe = DateTime.UtcNow.AddHours(-12);
+        // MeLi libera el telefono en una ventana corta (cuando el envio esta "en camino"). Miramos ventas
+        // recientes (30 dias) y reintentamos cada 6h para atrapar esa ventana sin martillar la API.
+        var desde = DateTime.UtcNow.AddDays(-30);
+        var reintentarAntesDe = DateTime.UtcNow.AddHours(-6);
 
         var candidatos = await _db.MeliClientes
             .Where(cli => (cli.Phone == null || cli.Phone == "")
