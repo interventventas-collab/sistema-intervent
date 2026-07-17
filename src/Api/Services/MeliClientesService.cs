@@ -193,11 +193,13 @@ public class MeliClientesService
         var desde = DateTime.UtcNow.AddDays(-30);
         var reintentarAntesDe = DateTime.UtcNow.AddHours(-6);
 
+        // Solo ME1: MeLi entrega el telefono real en ME1 (envio a coordinar). En Flex y correo lo esconde
+        // siempre (lo verificamos preguntandole directo a MeLi), asi que no gastamos llamadas ahi.
         var candidatos = await _db.MeliClientes
             .Where(cli => (cli.Phone == null || cli.Phone == "")
                 && (cli.PhoneCheckedAt == null || cli.PhoneCheckedAt < reintentarAntesDe)
                 && _db.MeliClienteCompras.Any(c => c.MeliClienteId == cli.Id
-                        && (c.Canal == "Flex" || c.Canal == "ME1")
+                        && c.Canal == "ME1"
                         && c.ShippingId != null
                         && c.Fecha >= desde))
             .OrderByDescending(cli => cli.LastPurchaseAt)
@@ -210,7 +212,7 @@ public class MeliClientesService
             cli.PhoneCheckedAt = DateTime.UtcNow;
 
             var shippingId = await _db.MeliClienteCompras
-                .Where(c => c.MeliClienteId == cli.Id && (c.Canal == "Flex" || c.Canal == "ME1") && c.ShippingId != null)
+                .Where(c => c.MeliClienteId == cli.Id && c.Canal == "ME1" && c.ShippingId != null)
                 .OrderByDescending(c => c.Fecha)
                 .Select(c => c.ShippingId)
                 .FirstOrDefaultAsync();
