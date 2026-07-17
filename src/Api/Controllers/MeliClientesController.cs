@@ -107,8 +107,9 @@ public class MeliClientesController : ControllerBase
     public async Task<IActionResult> SyncNow()
     {
         var procesadas = await _service.SyncAsync();
+        var telefonos = await _service.EnrichPhonesAsync(maxLlamadas: 150);
         var totalClientes = await _db.MeliClientes.CountAsync();
-        return Ok(new { procesadas, totalClientes });
+        return Ok(new { procesadas, telefonos, totalClientes });
     }
 
     /// <summary>Exporta a Excel todos los clientes que matchean el filtro.</summary>

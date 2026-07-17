@@ -43,5 +43,6 @@ public class MeliClienteCompraDto
 public class MeliClientesSyncResultDto
 {
     public int Procesadas { get; set; }
+    public int Telefonos { get; set; }
     public int TotalClientes { get; set; }
 }

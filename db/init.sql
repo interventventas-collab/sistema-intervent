@@ -3531,6 +3531,7 @@ BEGIN
         FirstPurchaseAt DATETIME2 NULL,
         LastPurchaseAt DATETIME2 NULL,
         LastContactAt DATETIME2 NULL,
+        PhoneCheckedAt DATETIME2 NULL,
         OrdersCount INT NOT NULL DEFAULT 0,
         TotalSpent DECIMAL(18,2) NOT NULL DEFAULT 0,
         LastItems NVARCHAR(500) NULL,
@@ -3540,8 +3541,13 @@ BEGIN
     CREATE UNIQUE INDEX UX_MeliClientes_BuyerId ON MeliClientes(BuyerId);
 END
 GO
+-- Migracion para bases ya creadas: agregar PhoneCheckedAt.
+IF COL_LENGTH('MeliClientes','PhoneCheckedAt') IS NULL
+    ALTER TABLE MeliClientes ADD PhoneCheckedAt DATETIME2 NULL;
+GO
 
--- MeliClienteCompras: una fila por VENTA (historial permanente de "que compro"). Dedup por MeliOrderId.
+-- MeliClienteCompras: una fila por VENTA (historial permanente de "que compro"). Dedup por SaleKey
+-- (PackId si la venta es un paquete de varios productos, si no MeliOrderId).
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='MeliClienteCompras')
 BEGIN
     CREATE TABLE MeliClienteCompras (
@@ -3549,6 +3555,9 @@ BEGIN
         MeliClienteId INT NOT NULL,
         BuyerId BIGINT NOT NULL,
         MeliOrderId BIGINT NOT NULL,
+        PackId BIGINT NULL,
+        SaleKey BIGINT NOT NULL,
+        ShippingId BIGINT NULL,
         Fecha DATETIME2 NULL,
         Items NVARCHAR(500) NULL,
         Cantidad INT NOT NULL DEFAULT 0,
@@ -3557,9 +3566,32 @@ BEGIN
         CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
         CONSTRAINT FK_MeliClienteCompras_Cliente FOREIGN KEY (MeliClienteId) REFERENCES MeliClientes(Id)
     );
-    CREATE UNIQUE INDEX UX_MeliClienteCompras_OrderId ON MeliClienteCompras(MeliOrderId);
+    CREATE UNIQUE INDEX UX_MeliClienteCompras_SaleKey ON MeliClienteCompras(SaleKey);
     CREATE INDEX IX_MeliClienteCompras_ClienteId ON MeliClienteCompras(MeliClienteId);
 END
+GO
+-- Migracion para bases ya creadas: agregar PackId/SaleKey/ShippingId y pasar el indice unico a SaleKey.
+IF COL_LENGTH('MeliClienteCompras','PackId') IS NULL
+    ALTER TABLE MeliClienteCompras ADD PackId BIGINT NULL;
+GO
+IF COL_LENGTH('MeliClienteCompras','SaleKey') IS NULL
+    ALTER TABLE MeliClienteCompras ADD SaleKey BIGINT NULL;
+GO
+IF COL_LENGTH('MeliClienteCompras','ShippingId') IS NULL
+    ALTER TABLE MeliClienteCompras ADD ShippingId BIGINT NULL;
+GO
+-- La agrupacion por paquete cambia el sentido de las filas viejas: se vacia y el robot rearma la base bien.
+-- (La base es 100% regenerable desde MeliOrders/MeliShipments; no se pierde nada.)
+IF EXISTS (SELECT * FROM sys.indexes WHERE name='UX_MeliClienteCompras_OrderId' AND object_id=OBJECT_ID('MeliClienteCompras'))
+BEGIN
+    DELETE FROM MeliClienteCompras;
+    UPDATE MeliClientes SET OrdersCount=0, TotalSpent=0, FirstPurchaseAt=NULL, LastPurchaseAt=NULL, LastItems=NULL;
+    DROP INDEX UX_MeliClienteCompras_OrderId ON MeliClienteCompras;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='UX_MeliClienteCompras_SaleKey' AND object_id=OBJECT_ID('MeliClienteCompras'))
+   AND COL_LENGTH('MeliClienteCompras','SaleKey') IS NOT NULL
+    CREATE UNIQUE INDEX UX_MeliClienteCompras_SaleKey ON MeliClienteCompras(SaleKey);
 GO
 
 -- Permiso de menu para la base de clientes MeLi (admin)

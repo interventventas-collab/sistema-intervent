@@ -38,6 +38,11 @@ public class MeliClientesBackgroundService : BackgroundService
                 var procesadas = await svc.SyncAsync();
                 if (procesadas > 0)
                     _logger.LogInformation("[Clientes MeLi] {N} ventas nuevas sumadas a la base de clientes.", procesadas);
+
+                // Buscar a MeLi el telefono de los clientes Flex/ME1 que todavia no lo tienen.
+                var traidos = await svc.EnrichPhonesAsync(maxLlamadas: 100);
+                if (traidos > 0)
+                    _logger.LogInformation("[Clientes MeLi] {N} telefonos nuevos traidos de MeLi.", traidos);
             }
             catch (Exception ex)
             {
