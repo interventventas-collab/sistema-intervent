@@ -31,6 +31,10 @@
     .plist-price-old { font-size:0.68rem; color:#9ca3af; text-decoration:line-through; margin-left:4px; }
     .plist-mline { margin-top:5px; display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
     .plist-badge { font-size:0.72rem; font-weight:700; padding:2px 9px; border-radius:9px; }
+    .mmeter { width:58px; height:6px; border-radius:3px; background:#eef0f2; overflow:hidden; display:inline-block; vertical-align:middle; }
+    .mmeter-fill { display:block; height:100%; border-radius:3px; }
+    .plist-meta .cp-inline { display:inline-flex; align-items:center; vertical-align:middle; }
+    .plist-sku { font-weight:600; color:#374151; }
     .plist-costo { font-size:0.68rem; color:#9ca3af; }
     .plist-chip { font-size:0.64rem; font-weight:700; padding:1px 6px; border-radius:8px; background:#eff6ff; color:#1e40af; }
     .plist-stk { text-align:right; }
@@ -3838,6 +3842,15 @@
         if (pct >= 20m) return ("#fef3c7", "#92400e");
         return ("#fee2e2", "#991b1b");
     }
+    // Color vivo (para la barrita) y emoji de estado del margen.
+    private string MargenColorSolid(decimal pct) => pct >= 50m ? "#16a34a" : pct >= 20m ? "#f59e0b" : "#dc2626";
+    private string MargenEstadoEmoji(decimal pct) => pct >= 50m ? "🟢" : pct >= 20m ? "🟡" : "🔴";
+    // Ancho de la barrita (0-100%): 80% de margen = barra llena; mínimo 5% para que siempre se vea algo.
+    private string MargenMeterWidth(decimal pct)
+    {
+        var w = pct <= 0m ? 5m : Math.Min(100m, Math.Max(5m, pct / 80m * 100m));
+        return w.ToString("0", CultureInfo.InvariantCulture);
+    }
 
     private async Task CambiarStatus(string? nuevoStatus)
     {
@@ -5959,6 +5972,18 @@
         }
     </text>;
 
+    // SKU + N° de publicación (MLA) con botón de copiar. Se muestra en cada fila (family o no).
+    private RenderFragment RenderSkuMla(MeliItemDto it) => @<text>
+        @if (!string.IsNullOrEmpty(it.Sku))
+        {
+            <span class="plist-sku">@it.Sku</span>
+            <span class="cp-inline" @onclick:stopPropagation="true"><CopyButton Text="@it.Sku" /></span>
+            <span> · </span>
+        }
+        <span>@it.MeliItemId</span>
+        <span class="cp-inline" @onclick:stopPropagation="true"><CopyButton Text="@it.MeliItemId" /></span>
+    </text>;
+
     private RenderFragment RenderPriceMargin(MeliItemDto it) => @<text>
         @if (it.OriginalPrice.HasValue && it.OriginalPrice.Value > 0 && it.OriginalPrice.Value != it.Price)
         {
@@ -5974,7 +5999,8 @@
             @if (pct.HasValue)
             {
                 var (bg, fg) = BadgeMargenColor(pct.Value);
-                <span class="plist-badge" style="background:@bg; color:@fg;">@(pct.Value >= 0 ? "+" : "")@pct.Value.ToString("0", argCulture)%</span>
+                <span class="plist-badge" style="background:@bg; color:@fg;" title="Margen sobre el costo (verde ≥50% · amarillo 20-49% · rojo <20%)">@MargenEstadoEmoji(pct.Value) @(pct.Value >= 0 ? "+" : "")@pct.Value.ToString("0", argCulture)%</span>
+                <span class="mmeter" title="Estado del margen"><span class="mmeter-fill" style="width:@(MargenMeterWidth(pct.Value))%; background:@MargenColorSolid(pct.Value);"></span></span>
             }
             @if (it.ProductCost.HasValue && it.ProductCost.Value > 0)
             {
@@ -6162,17 +6188,18 @@
                 <div style="min-width:0;">
                     <div class="plist-title" title="@item.Title">@item.Title</div>
                     <div class="plist-meta">
+                        @RenderSkuMla(item)
                         @if (grp.IsFamily)
                         {
-                            <span>📦 FAMILIA @(item.FamilyId ?? item.MeliItemId) · @grp.DistinctMLAs publicaciones</span>
+                            <span> · 📦 @grp.DistinctMLAs publicaciones</span>
                         }
                         else if (isMulti)
                         {
-                            <span>@(string.IsNullOrEmpty(item.Sku) ? item.MeliItemId : item.Sku) · @grp.Variants.Count variantes</span>
+                            <span> · @grp.Variants.Count variantes</span>
                         }
                         else
                         {
-                            <span>@(string.IsNullOrEmpty(item.Sku) ? "" : item.Sku + " · ")@item.MeliItemId · @item.AccountNickname · @GetListingTypeLabel(item.ListingTypeId) @GetCuotasLabel(item.InstallmentTag, item.ListingTypeId) </span>
+                            <span> · @item.AccountNickname · @GetListingTypeLabel(item.ListingTypeId) @GetCuotasLabel(item.InstallmentTag, item.ListingTypeId) </span>
                             @RenderLinkedTag(item)
                         }
                     </div>
@@ -6180,7 +6207,9 @@
                 <div style="min-width:0;">
                     @if (isMulti)
                     {
-                        <span class="plist-costo" style="font-style:italic;">— abrir para editar ↓</span>
+                        var preciosDistintos = grp.Variants.Select(v => v.Price).Distinct().Count();
+                        @RenderPriceMargin(item)
+                        <div class="plist-costo" style="margin-top:3px; font-style:italic;">@(preciosDistintos > 1 ? "varios precios · " : "")abrir para editar ↓</div>
                     }
                     else
                     {
