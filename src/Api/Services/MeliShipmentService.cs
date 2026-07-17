@@ -399,7 +399,7 @@ public class MeliShipmentService
     /// Devuelve true si posteo la nota recien ahora.</summary>
     private async Task<bool> TryPostPhoneNoteAsync(MeliShipment sh, HttpClient http)
     {
-        if (string.IsNullOrWhiteSpace(sh.ReceiverPhone) || sh.MeliOrderId == null || sh.PhoneNoteSentAt != null)
+        if (!TelefonoUtil.EsReal(sh.ReceiverPhone) || sh.MeliOrderId == null || sh.PhoneNoteSentAt != null)
             return false;
         // El campo nota de MeLi admite hasta 300 chars; el telefono entra sobrado.
         var noteText = $"Tel cliente: {sh.ReceiverPhone}";
@@ -467,7 +467,9 @@ public class MeliShipmentService
         if (sh.TryGetProperty("receiver_address", out var ra) && ra.ValueKind == JsonValueKind.Object)
         {
             existing.ReceiverName = StrProp(ra, "receiver_name", 200);
-            existing.ReceiverPhone = StrProp(ra, "receiver_phone", 50);
+            // MeLi ofusca el telefono con "XXXXXXX" hasta que el envio avanza: si viene tapado, lo guardamos null.
+            var rawPhone = StrProp(ra, "receiver_phone", 50);
+            existing.ReceiverPhone = TelefonoUtil.EsReal(rawPhone) ? rawPhone : null;
             existing.AddressLine = StrProp(ra, "address_line", 300);
             existing.StreetName = StrProp(ra, "street_name", 200);
             existing.StreetNumber = StrProp(ra, "street_number", 20);
