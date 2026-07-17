@@ -113,6 +113,16 @@
                         <div style="font-size: 0.8rem; color: #6b7280; margin-top: 0.1rem;">
                             @(s.ItemsSummary ?? "—")@(string.IsNullOrWhiteSpace(s.AddressLine) ? "" : $" · {s.AddressLine}, {s.City}")
                         </div>
+                        @if (!string.IsNullOrWhiteSpace(s.ReceiverPhone))
+                        {
+                            var telMe1 = s.ReceiverPhone!;
+                            var digitsMe1 = new string(telMe1.Where(char.IsDigit).ToArray());
+                            <div style="font-size: 0.8rem; margin-top: 0.2rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                                <span>📞</span>
+                                <a href="@($"https://wa.me/{digitsMe1}")" target="_blank" style="color:#25D366; font-weight:700; text-decoration:none;">@telMe1 · WhatsApp</a>
+                                <a href="@($"tel:{digitsMe1}")" style="color:#185fa5; font-weight:600; text-decoration:none;">Llamar</a>
+                            </div>
+                        }
                         <div style="font-size: 0.7rem; color: #9ca3af; font-family: monospace; margin-top: 0.15rem;">
                             @if (s.MeliOrderId.HasValue)
                             {
