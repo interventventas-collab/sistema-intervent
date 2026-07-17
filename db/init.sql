@@ -5883,6 +5883,26 @@ IF COL_LENGTH('MeliCambiosDetectados','NotifiedAt') IS NULL
     ALTER TABLE MeliCambiosDetectados ADD NotifiedAt DATETIME2 NULL;
 GO
 
+-- 2026-07-17: código de autorización del día para colectas/devoluciones de MercadoLibre.
+-- MeLi lo manda por mail cada mañana; el robot MeliCodigoColectaBackgroundService lo lee de la
+-- casilla, guarda UNA fila por día y lo muestra en el Dashboard + lo avisa por Telegram.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='Meli_CodigoColecta')
+CREATE TABLE Meli_CodigoColecta (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    Codigo NVARCHAR(20) NOT NULL,
+    FechaCodigo DATE NOT NULL,
+    FechaMail DATETIME2 NULL,
+    MessageId NVARCHAR(400) NULL,
+    EnviadoTelegram BIT NOT NULL DEFAULT 0,
+    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    UpdatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+GO
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='Meli_CodigoColecta')
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_MeliCodigoColecta_Fecha')
+    CREATE UNIQUE INDEX UX_MeliCodigoColecta_Fecha ON Meli_CodigoColecta (FechaCodigo);
+GO
+
 -- 2026-07-16: VARIAS PERSONAS por bot de Telegram (pedido de Osmar: ir dándole acceso a las
 -- notificaciones a los empleados de a poco). Antes cada bot tenía UN dueño (TelegramAccounts.ChatId);
 -- ahora las personas vinculadas viven en TelegramChats (una fila por persona y bot), cada una con
