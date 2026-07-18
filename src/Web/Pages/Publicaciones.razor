@@ -3903,6 +3903,38 @@
     private decimal? ParseMargenFiltro(string s) =>
         decimal.TryParse((s ?? "").Replace(',', '.'), NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : (decimal?)null;
     private bool FilterMargenRangoActivo() => ParseMargenFiltro(filterMargenDesde).HasValue || ParseMargenFiltro(filterMargenHasta).HasValue;
+
+    // 2026-07-18: "no sacar del listado lo que arreglo". Con un filtro activo, las publicaciones que ya se
+    // mostraron quedan pinneadas y siguen visibles aunque un cambio (arreglar margen, etc.) las saque del
+    // filtro. Se limpian al CAMBIAR el filtro o al recargar la página (el estado vive en el componente).
+    private readonly HashSet<int> _pinnedInView = new();
+    private string? _lastFilterSig = null;
+
+    private bool AnyFilterActive() =>
+        statusFilter != null || filterPromo || filterCatalogo || filterNoProduct
+        || filterLinkeadoCafe || filterLinkeadoComponentes || filterSinLinkear || filterFull || filterNoFull
+        || filterStockPushNunca || filterStockPushOk || filterStockPushViejo || filterUrgente
+        || filterConAjuste || filterSinAjuste || filterDesviadaObjetivo || filterMargenPerdida || filterMargenBajo
+        || FilterMargenRangoActivo() || IsCuentaMe1Filtered()
+        || textFilters.Any(f => !string.IsNullOrEmpty(f.Value))
+        || checkboxFilters.Any(f => f.Value.Count > 0);
+
+    private string CurrentFilterSig()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append(statusFilter).Append('|')
+          .Append(filterPromo).Append(filterCatalogo).Append(filterNoProduct)
+          .Append(filterLinkeadoCafe).Append(filterLinkeadoComponentes).Append(filterSinLinkear)
+          .Append(filterFull).Append(filterNoFull)
+          .Append(filterStockPushNunca).Append(filterStockPushOk).Append(filterStockPushViejo)
+          .Append(filterUrgente).Append(filterConAjuste).Append(filterSinAjuste)
+          .Append(filterDesviadaObjetivo).Append(filterMargenPerdida).Append(filterMargenBajo)
+          .Append(mostrarEliminadas).Append(IsCuentaMe1Filtered()).Append('|')
+          .Append(filterMargenDesde).Append('|').Append(filterMargenHasta).Append('|');
+        foreach (var kv in textFilters) sb.Append(kv.Key).Append('=').Append(kv.Value).Append(';');
+        foreach (var kv in checkboxFilters) sb.Append(kv.Key).Append('=').Append(string.Join(",", kv.Value)).Append(';');
+        return sb.ToString();
+    }
     private bool filterCatalogo = false;               // 📋 solo publicaciones de catálogo (amarillas)
     // 2026-07-01: para ajuste masivo — separar las que ya tienen % o $ cargado vs las vírgenes.
     private bool filterConAjuste = false;              // 💵 tiene AjustePct/AjusteFijo/Redondeo cargado
@@ -4763,6 +4795,25 @@
         }
 
         var list = filtered.ToList();
+
+        // 2026-07-18: mantener visibles las publicaciones ya mostradas (aunque un cambio las saque del
+        // filtro). Solo con un filtro activo. Se resetea al cambiar el filtro (firma distinta) o al recargar.
+        {
+            var sig = CurrentFilterSig();
+            if (sig != _lastFilterSig) { _pinnedInView.Clear(); _lastFilterSig = sig; }
+            if (AnyFilterActive())
+            {
+                var matchedIds = new HashSet<int>(list.Select(i => i.Id));
+                foreach (var id in matchedIds) _pinnedInView.Add(id);
+                var extras = items.Where(i => _pinnedInView.Contains(i.Id) && !matchedIds.Contains(i.Id)
+                    && (mostrarEliminadas || !string.Equals(i.Status, "deleted", StringComparison.OrdinalIgnoreCase)));
+                list.AddRange(extras);
+            }
+            else
+            {
+                _pinnedInView.Clear();
+            }
+        }
 
         // Sort
         if (sortColumn is not null)
