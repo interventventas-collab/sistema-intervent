@@ -440,7 +440,8 @@ public class MeliController : ControllerBase
     [HttpPost("cambios/{id:int}/activar-publicacion")]
     public async Task<IActionResult> ActivarPublicacion(int id,
         [FromServices] Api.Data.AppDbContext db,
-        [FromServices] MeliStockPushService pushService)
+        [FromServices] MeliStockPushService pushService,
+        [FromServices] MeliPricePushService pushPrecioService)
     {
         var cambio = await db.MeliCambiosDetectados.FindAsync(id);
         if (cambio is null) return NotFound(new { error = "Aviso no encontrado" });
@@ -480,7 +481,23 @@ public class MeliController : ControllerBase
         }
         catch (Exception ex) { pushDetalle = "Activada OK, pero el push de stock falló: " + ex.Message; }
 
-        return Ok(new { ok = true, detalle = pushDetalle });
+        // 2026-07-18: al activar, si la publicación tiene un OBJETIVO de margen guardado + sincro de precio ON,
+        // aplicar ese precio al toque (antes solo se pusheaba stock; el precio lo mantenía el robot aparte).
+        string? objDetalle = null;
+        try
+        {
+            var cfgObj = await db.MeliItemSyncConfigs.FindAsync(cambio.MeliItemId);
+            if (cfgObj?.GananciaObjetivoPct is decimal objPct && objPct > 0 && cfgObj.SyncPrecio)
+            {
+                var pr = await pushPrecioService.PushPrecioForItemAsync(item.Id, markAsClaimed: false);
+                objDetalle = pr.Ok
+                    ? $"🎯 objetivo {objPct.ToString("0.#")}% aplicado → ${pr.PushedPrice:N0}"
+                    : $"⚠ no se pudo aplicar el objetivo: {pr.Message}";
+            }
+        }
+        catch (Exception ex) { objDetalle = "⚠ objetivo: " + ex.Message; }
+
+        return Ok(new { ok = true, detalle = pushDetalle, objetivo = objDetalle });
     }
 
     /// <summary>PUSH MASIVO: marca todos los productos OTROS como "stock pendiente de push" y los
