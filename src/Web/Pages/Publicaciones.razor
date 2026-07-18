@@ -37,6 +37,8 @@
     .mmeter-fill { display:block; height:100%; border-radius:3px; }
     .plist-meta .cp-inline { display:inline-flex; align-items:center; vertical-align:middle; }
     .plist-sku { font-weight:600; color:#374151; }
+    .plist-tipo { display:inline-block; font-size:0.66rem; font-weight:600; color:#475569; background:#eef2f7; padding:1px 8px; border-radius:6px; margin-top:5px; white-space:nowrap; }
+    .plist-tipo.premium { background:#f3e8ff; color:#7c3aed; }
     .plist-costo { font-size:0.68rem; color:#9ca3af; }
     .plist-chip { font-size:0.64rem; font-weight:700; padding:1px 6px; border-radius:8px; background:#eff6ff; color:#1e40af; }
     .plist-stk { text-align:right; }
@@ -5994,6 +5996,11 @@
         }
     </text>;
 
+    // 2026-07-18: chip con el TIPO de publicación (Clásica/Premium) + las cuotas. Visible en su propia
+    // línea para que no se corte con el "…" del meta. Pedido de Osmar: es importante ver tipo + cuotas.
+    private RenderFragment RenderTipoCuotas(MeliItemDto it) =>
+        @<span class="plist-tipo @(GetListingTypeLabel(it.ListingTypeId) == "Premium" ? "premium" : "")">@GetListingTypeLabel(it.ListingTypeId) · @GetCuotasLabel(it.InstallmentTag, it.ListingTypeId)</span>;
+
     // SKU + N° de publicación (MLA) con botón de copiar. Se muestra en cada fila (family o no).
     private RenderFragment RenderSkuMla(MeliItemDto it) => @<text>
         @if (!string.IsNullOrEmpty(it.Sku))
@@ -6209,9 +6216,10 @@
                 <div class="plist-title" title="@item.Title">@item.Title</div>
                 <div class="plist-meta">
                     @RenderSkuMla(item)
-                    <span> · @item.AccountNickname · @GetListingTypeLabel(item.ListingTypeId) @GetCuotasLabel(item.InstallmentTag, item.ListingTypeId) </span>
+                    <span> · @item.AccountNickname </span>
                     @RenderLinkedTag(item)
                 </div>
+                <div>@RenderTipoCuotas(item)</div>
             </div>
             <div style="min-width:0;">@RenderPriceMargin(item)</div>
             <div class="plist-stk @(stockShow == 0 ? "zero" : "")"><div class="n">@stockShow</div><div class="u">@(stockShow == 0 ? "sin stock" : "unid.")</div></div>
@@ -6303,10 +6311,14 @@
                         }
                         else
                         {
-                            <span> · @item.AccountNickname · @GetListingTypeLabel(item.ListingTypeId) @GetCuotasLabel(item.InstallmentTag, item.ListingTypeId) </span>
+                            <span> · @item.AccountNickname </span>
                             @RenderLinkedTag(item)
                         }
                     </div>
+                    @if (!grp.IsFamily && !isMulti)
+                    {
+                        <div>@RenderTipoCuotas(item)</div>
+                    }
                 </div>
                 <div style="min-width:0;">
                     @if (isMulti)
@@ -6351,7 +6363,8 @@
                         <div class="plist-vtag">↳</div>
                         <div style="min-width:0;">
                             <div class="plist-title" style="font-size:0.8rem; font-weight:500;" title="@v.Title">@(grp.IsFamily ? Truncate(v.Title, 46) : (v.VariationAttributes ?? "(variante)"))</div>
-                            <div class="plist-meta">@(string.IsNullOrEmpty(v.Sku) ? "" : v.Sku + " · ")@v.MeliItemId</div>
+                            <div class="plist-meta">@(string.IsNullOrEmpty(v.Sku) ? "" : v.Sku + " · ")@v.MeliItemId · @v.AccountNickname</div>
+                            <div>@RenderTipoCuotas(v)</div>
                         </div>
                         <div style="min-width:0;">@RenderPriceMargin(v)</div>
                         <div class="plist-stk @(v.AvailableQuantity == 0 ? "zero" : "")"><div class="n">@v.AvailableQuantity</div><div class="u">@(v.AvailableQuantity == 0 ? "sin stock" : "unid.")</div></div>
