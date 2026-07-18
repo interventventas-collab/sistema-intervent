@@ -249,6 +249,12 @@
                             <span>📦 Agrupar familias @(agruparFamilias ? "(ON)" : "(OFF — cada MLA suelto)")</span>
                         </label>
                     }
+                    @* 2026-07-17: por defecto se ocultan las "Eliminada" (ya no existen en MeLi). Botón para verlas. *@
+                    <button title="Por defecto se ocultan las publicaciones eliminadas (ya no existen en MeLi, quedan solo de historial). Tocá para verlas u ocultarlas."
+                            @onclick="() => { mostrarEliminadas = !mostrarEliminadas; InvalidateFilterCache(); }"
+                            style="display:inline-flex; align-items:center; gap:0.35rem; padding:0.35rem 0.7rem; margin-left:0.5rem; background:@(mostrarEliminadas ? "#fee2e2" : "#f3f4f6"); border:1px solid @(mostrarEliminadas ? "#dc2626" : "#e5e7eb"); border-radius:6px; cursor:pointer; font-size:0.82rem; color:@(mostrarEliminadas ? "#991b1b" : "#374151"); user-select:none; font-weight:600;">
+                        🗑️ @(mostrarEliminadas ? "Ocultar eliminadas" : "Ver eliminadas")
+                    </button>
                 </div>
                 <div class="more-filters-wrapper">
                     <button class="more-filters-btn @(GetActiveFilterCount() > 0 ? "has-active" : "")" @onclick="ToggleMoreFilters" @onclick:stopPropagation="true">
@@ -3801,6 +3807,7 @@
     private bool filterStockPushOk = false;            // 🟢 pusheado reciente (<=7 dias)
     private bool filterStockPushViejo = false;         // 🟡 pusheado viejo (>7 dias)
     private bool filterUrgente = false;                // 🚨 stock=0 OR status=paused (urgente reponer)
+    private bool mostrarEliminadas = false;            // 2026-07-17: por defecto ocultar las "Eliminada" (historial). Botón para mostrarlas.
     private string? statusFilter = null;               // 2026-07-10: arranca en "Todas" (antes "active" escondía las pausadas por default). null = todas.
 
     // 2026-07-17: rediseño de la vista "Lista" — fila resumida en 1 línea que abre un panel de edición al hacer click.
@@ -4610,6 +4617,11 @@
         if (items is null) return new();
 
         var filtered = items.AsEnumerable();
+
+        // 2026-07-17: por defecto NO mostrar las publicaciones "Eliminada" (ya no existen en MeLi, quedan de historial).
+        // El botón "Ver eliminadas" las vuelve a mostrar.
+        if (!mostrarEliminadas)
+            filtered = filtered.Where(i => !string.Equals(i.Status, "deleted", StringComparison.OrdinalIgnoreCase));
 
         // Promo filter
         if (filterPromo)
