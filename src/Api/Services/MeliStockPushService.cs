@@ -35,16 +35,67 @@ public class MeliStockPushService
     private readonly MeliAccountService _accountService;
     private readonly MeliCambioDetectadoService _cambios;
     private readonly ILogger<MeliStockPushService> _logger;
+    private readonly MeliPricePushService _pricePush;
 
     public MeliStockPushService(AppDbContext db, IHttpClientFactory httpFactory,
         MeliAccountService accountService, MeliCambioDetectadoService cambios,
-        ILogger<MeliStockPushService> logger)
+        ILogger<MeliStockPushService> logger, MeliPricePushService pricePush)
     {
         _db = db;
         _httpFactory = httpFactory;
         _accountService = accountService;
         _cambios = cambios;
         _logger = logger;
+        _pricePush = pricePush;
+    }
+
+    /// <summary>2026-07-18: umbral de margen para auto-activar una pausada cuando le vuelve el stock.
+    /// Configurable en AppSettings["meli.stock_push.auto_reactivate_min_margin"]. Default 50%.
+    /// Idea de Osmar: la red de seguridad (no despertar solas) SOLO tiene sentido si el margen es flojo;
+    /// si está sano (>= umbral) no hay riesgo de vender a pérdida → que se active sola.</summary>
+    private async Task<decimal> GetAutoReactivateMinMarginAsync(CancellationToken ct = default)
+    {
+        var s = await _db.AppSettings.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Key == "meli.stock_push.auto_reactivate_min_margin", ct);
+        if (s != null && decimal.TryParse(s.Value, System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out var v) && v >= 0)
+            return v;
+        return 50m;
+    }
+
+    /// <summary>2026-07-18: qué hacer cuando una publicación PAUSADA recupera stock.
+    /// • Margen ≥ umbral (y calculable con confianza) → se ACTIVA sola con el precio actual.
+    /// • Margen &lt; umbral, o NO calculable con confianza → red de seguridad: NO se despierta,
+    ///   se registra el aviso PAUSADA_CON_STOCK para revisar a mano. Ante la duda, seguro.
+    /// reactivarStock = la parte del payload con el stock (variations o available_quantity).</summary>
+    private async Task<(PushOutcome, string?)> HandlePausedConStockAsync(
+        HttpClient http, string meliItemId, List<MeliItem> rows, decimal? livePrice,
+        int sumStock, Dictionary<string, object> reactivarStock, CancellationToken ct)
+    {
+        var row0 = rows.First();
+        var (marginPct, confident) = await _pricePush.CalcularMargenActualAsync(row0, livePrice, ct);
+        var umbral = await GetAutoReactivateMinMarginAsync(ct);
+
+        if (confident && marginPct.HasValue && marginPct.Value >= umbral)
+        {
+            // Margen sano → activar sola, con el precio ACTUAL (no tocamos precio).
+            var payload = new Dictionary<string, object>(reactivarStock) { ["status"] = "active" };
+            var res = await DoPut(http, meliItemId, payload, ct);
+            if (res.Item1 == PushOutcome.Ok)
+            {
+                foreach (var r in rows) r.Status = "active";
+                await _db.SaveChangesAsync(ct);
+                _logger.LogInformation("[StockPush] {Mla} AUTO-ACTIVADA por stock (margen {M:0}% >= umbral {U:0}%)", meliItemId, marginPct.Value, umbral);
+                return (PushOutcome.Ok, $"Auto-activada por stock: margen {marginPct.Value:0}% ≥ {umbral:0}% (precio actual)");
+            }
+            return res;
+        }
+
+        // Margen flojo o no confiable → red de seguridad (comportamiento histórico).
+        await _cambios.LogPausadaConStockAsync(meliItemId, row0.MeliAccountId, row0.Sku,
+            row0.Title, livePrice, sumStock, "push", saveChanges: true, ct);
+        var motivo = confident ? $"margen {marginPct!.Value:0}% < umbral {umbral:0}%" : "margen no calculable con confianza";
+        return (PushOutcome.Skipped, $"Paused con stock {sumStock}: {motivo} — NO se despierta, avisado para revisar");
     }
 
     public record PushStockResult(int Procesadas, int Ok, int Skipped, int Errores, List<string> Mensajes);
@@ -410,10 +461,9 @@ public class MeliStockPushService
                 {
                     var precio = doc.TryGetProperty("price", out var prV) && prV.ValueKind == JsonValueKind.Number
                         ? prV.GetDecimal() : (decimal?)null;
-                    var row0 = rows.First();
-                    await _cambios.LogPausadaConStockAsync(meliItemId, row0.MeliAccountId, row0.Sku,
-                        row0.Title, precio, sumStock, "push", saveChanges: true, ct);
-                    return (PushOutcome.Skipped, $"Paused con stock {sumStock}: NO se despierta, avisado para revisar");
+                    // 2026-07-18: auto-activar si el margen está sano; si no, red de seguridad (avisar).
+                    return await HandlePausedConStockAsync(http, meliItemId, rows, precio, sumStock,
+                        new Dictionary<string, object> { ["variations"] = varEntries }, ct);
                 }
                 return (PushOutcome.Skipped, "Paused sin stock: no se toca");
             }
@@ -476,10 +526,9 @@ public class MeliStockPushService
                 {
                     var precio = doc.TryGetProperty("price", out var prS) && prS.ValueKind == JsonValueKind.Number
                         ? prS.GetDecimal() : (decimal?)null;
-                    var row0 = rows.First();
-                    await _cambios.LogPausadaConStockAsync(meliItemId, row0.MeliAccountId, row0.Sku,
-                        row0.Title, precio, stockMeliSingle, "push", saveChanges: true, ct);
-                    return (PushOutcome.Skipped, $"Paused con stock {stockMeliSingle}: NO se despierta, avisado para revisar");
+                    // 2026-07-18: auto-activar si el margen está sano; si no, red de seguridad (avisar).
+                    return await HandlePausedConStockAsync(http, meliItemId, rows, precio, stockMeliSingle,
+                        new Dictionary<string, object> { ["available_quantity"] = stockMeliSingle }, ct);
                 }
                 return (PushOutcome.Skipped, "Paused sin stock: no se toca");
             }
