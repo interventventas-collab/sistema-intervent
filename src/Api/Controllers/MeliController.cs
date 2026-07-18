@@ -549,6 +549,18 @@ public class MeliController : ControllerBase
                 {
                     var multC = comboC.MultiplicadorOem ?? 1m;
                     if (multC <= 0) multC = 1m;
+                    // 2026-07-18: PACKS — contar la CANTIDAD de cajas del pack (igual que la venta y
+                    // MeliPricePushService). Antes solo usaba Mult → los packs (ej C9419TNX3, caja Cantidad=3)
+                    // mostraban el costo de 1 caja y un margen absurdo (350%). La "caja" = el único combo-item
+                    // cuyo producto cuelga del mismo OEM que el compuesto.
+                    var cajaCants = await (
+                        from ci in db.CafeComboItems
+                        join p in db.CafeProductos on ci.ProductoId equals p.Id
+                        where ci.ComboId == comboC.Id && p.OemId == comboC.OemId
+                        select ci.Cantidad
+                    ).ToListAsync();
+                    if (cajaCants.Count == 1 && cajaCants[0] > 0)
+                        multC *= cajaCants[0];
                     var costoOemC = Math.Round(oemC.Costo * multC, 2);
                     var compOem = new ProductCostDto.Comp(oemC.Codigo ?? "OEM", $"OEM {oemC.Codigo} · {oemC.Descripcion}", oemC.Costo, multC, costoOemC);
                     return Ok(new ProductCostDto(costoOemC, new List<ProductCostDto.Comp> { compOem }, "compuesto_oem"));
