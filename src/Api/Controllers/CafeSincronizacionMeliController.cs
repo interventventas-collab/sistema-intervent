@@ -416,9 +416,23 @@ public class CafeSincronizacionMeliController : ControllerBase
         string? pushError = null;
         if (req.Aplicar && cfg.GananciaObjetivoPct.HasValue)
         {
-            var r = await pushSvc.PushPrecioForItemAsync(mi.Id, markAsClaimed: true);
-            if (r.Ok) precioNuevo = r.PushedPrice;
-            else pushError = r.Message;
+            // 2026-07-18 (idea de Osmar): aplicar en varias pasadas hasta CONVERGER al margen real.
+            // Problema: al pushear el precio nuevo, la comisión de MeLi puede cambiar de escalón (envío
+            // gratis a partir de cierto importe, cargo por importe, financiación de cuotas) → el margen
+            // resultante quedaría distinto al pedido (pedís 50% y termina en 44%, por ej). Cada pasada
+            // recalcula el precio con la comisión REAL al precio nuevo (PushPrecioForItemAsync re-lee el
+            // precio recién pusheado) y re-pushea; frena cuando el precio se estabiliza (dif ≤ $1) o a las
+            // 3 pasadas. Así el margen publicado termina siendo el que pediste, no uno aproximado.
+            decimal? prev = null;
+            for (int pass = 0; pass < 3; pass++)
+            {
+                var r = await pushSvc.PushPrecioForItemAsync(mi.Id, markAsClaimed: true);
+                if (!r.Ok) { pushError = r.Message; break; }
+                precioNuevo = r.PushedPrice;
+                if (prev.HasValue && r.PushedPrice.HasValue && Math.Abs(r.PushedPrice.Value - prev.Value) <= 1m)
+                    break; // convergió: el precio ya no se mueve → el margen quedó en el objetivo
+                prev = r.PushedPrice;
+            }
         }
 
         return Ok(new
