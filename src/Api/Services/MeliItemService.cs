@@ -241,13 +241,38 @@ public class MeliItemService
 
         // 2026-07-14: combos COMPUESTOS (caja+tapa) → costo y precio del OEM del producto COMPLETO,
         // NO la suma de las piezas. Cargo en batch los combos EsCompuesto con OEM y sus OEMs.
-        var compuestoInfo = comboIdsLegacy.Count == 0
-            ? new Dictionary<int, (int OemId, decimal Mult)>()
-            : (await _db.CafeCombos
+        Dictionary<int, (int OemId, decimal Mult)> compuestoInfo;
+        if (comboIdsLegacy.Count == 0)
+        {
+            compuestoInfo = new Dictionary<int, (int OemId, decimal Mult)>();
+        }
+        else
+        {
+            var combosRawC = await _db.CafeCombos
                 .Where(cb => comboIdsLegacy.Contains(cb.Id) && cb.EsCompuesto && cb.OemId != null)
                 .Select(cb => new { cb.Id, OemId = cb.OemId!.Value, cb.MultiplicadorOem })
+                .ToListAsync();
+            // 2026-07-18: PACKS — el precio/costo del compuesto tiene que contar la CANTIDAD de cajas del
+            // pack (igual que la venta y GetProductCost). La "caja" = el único ítem cuyo producto cuelga del
+            // mismo OEM que el compuesto. Bakeo esa cantidad dentro de Mult para que precio y costo salgan bien.
+            var comboIdsC = combosRawC.Select(c => c.Id).ToList();
+            var cajaCantByCombo = (await (
+                    from ci in _db.CafeComboItems
+                    join p in _db.CafeProductos on ci.ProductoId equals p.Id
+                    join cb in _db.CafeCombos on ci.ComboId equals cb.Id
+                    where comboIdsC.Contains(ci.ComboId) && p.OemId == cb.OemId
+                    select new { ci.ComboId, ci.Cantidad })
                 .ToListAsync())
-                .ToDictionary(cb => cb.Id, cb => (cb.OemId, Mult: (cb.MultiplicadorOem ?? 1m) <= 0 ? 1m : (cb.MultiplicadorOem ?? 1m)));
+                .GroupBy(x => x.ComboId)
+                .Where(g => g.Count() == 1)   // exactamente 1 caja (patrón caja+tapa)
+                .ToDictionary(g => g.Key, g => g.First().Cantidad);
+            compuestoInfo = combosRawC.ToDictionary(cb => cb.Id, cb =>
+            {
+                var mult = (cb.MultiplicadorOem ?? 1m) <= 0 ? 1m : (cb.MultiplicadorOem ?? 1m);
+                if (cajaCantByCombo.TryGetValue(cb.Id, out var cant) && cant > 0) mult *= cant;
+                return (cb.OemId, Mult: mult);
+            });
+        }
         var compuestoOemIds = compuestoInfo.Values.Select(v => v.OemId).Distinct().ToList();
         var compuestoOems = compuestoOemIds.Count == 0
             ? new Dictionary<int, (decimal Costo, decimal? Pvp)>()
