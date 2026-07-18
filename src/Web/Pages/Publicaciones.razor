@@ -279,6 +279,22 @@
                                     style="background:@(filterMargenBajo ? "#fed7aa" : "transparent"); color:@(filterMargenBajo ? "#9a3412" : "inherit"); font-weight:700;">
                                 🟠 BAJO: margen menor a 15% (revisar)
                             </button>
+                            @* 2026-07-18: filtro por rango de margen a elección *@
+                            <div class="more-filters-item" @onclick:stopPropagation="true"
+                                 style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; @(FilterMargenRangoActivo() ? "background:#e0e7ff; color:#3730a3; font-weight:700;" : "")">
+                                <span>📊 Margen entre</span>
+                                <input value="@filterMargenDesde" @onchange="(e) => { filterMargenDesde = e.Value?.ToString() ?? string.Empty; InvalidateFilterCache(); }"
+                                       placeholder="—" style="width:46px; padding:2px 5px; border:1px solid #cbd5e1; border-radius:4px; text-align:right; font-size:0.82rem;" />
+                                <span>% y</span>
+                                <input value="@filterMargenHasta" @onchange="(e) => { filterMargenHasta = e.Value?.ToString() ?? string.Empty; InvalidateFilterCache(); }"
+                                       placeholder="—" style="width:46px; padding:2px 5px; border:1px solid #cbd5e1; border-radius:4px; text-align:right; font-size:0.82rem;" />
+                                <span>%</span>
+                                @if (FilterMargenRangoActivo())
+                                {
+                                    <button @onclick="() => { filterMargenDesde = string.Empty; filterMargenHasta = string.Empty; InvalidateFilterCache(); }"
+                                            style="padding:2px 7px; border:1px solid #c7d2fe; border-radius:4px; background:white; color:#3730a3; font-size:0.75rem; cursor:pointer;">✕ Limpiar</button>
+                                }
+                            </div>
                             <button class="more-filters-item @(filterSinLinkear ? "active" : "")" @onclick="() => { filterSinLinkear = !filterSinLinkear; InvalidateFilterCache(); showMoreFilters = false; }">
                                 ⚠ Sin linkear (ningún tipo)
                             </button>
@@ -3881,6 +3897,12 @@
     // 2026-06-01: filtros de margen (peor primero, para arreglarlas)
     private bool filterMargenPerdida = false;          // 🔴 margen ≤ 0% (pérdida)
     private bool filterMargenBajo = false;             // 🟠 margen 0-15% (bajo)
+    // 2026-07-18: filtro por rango de margen a elección (Osmar). Vacío = sin filtro.
+    private string filterMargenDesde = "";
+    private string filterMargenHasta = "";
+    private decimal? ParseMargenFiltro(string s) =>
+        decimal.TryParse((s ?? "").Replace(',', '.'), NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : (decimal?)null;
+    private bool FilterMargenRangoActivo() => ParseMargenFiltro(filterMargenDesde).HasValue || ParseMargenFiltro(filterMargenHasta).HasValue;
     private bool filterCatalogo = false;               // 📋 solo publicaciones de catálogo (amarillas)
     // 2026-07-01: para ajuste masivo — separar las que ya tienen % o $ cargado vs las vírgenes.
     private bool filterConAjuste = false;              // 💵 tiene AjustePct/AjusteFijo/Redondeo cargado
@@ -4103,6 +4125,7 @@
         if (filterStockPushViejo) count++;
         if (filterMargenPerdida) count++;
         if (filterMargenBajo) count++;
+        if (FilterMargenRangoActivo()) count++;
         if (filterUrgente) count++;
         if (filterCatalogo) count++;
         if (filterConAjuste) count++;
@@ -4694,6 +4717,18 @@
             {
                 var m = CalcMargenPct(i);
                 return m.HasValue && m.Value < 15m;
+            });
+        // 2026-07-18: rango de margen a elección (desde/hasta). Si una punta está vacía, no acota ese lado.
+        var mDesde = ParseMargenFiltro(filterMargenDesde);
+        var mHasta = ParseMargenFiltro(filterMargenHasta);
+        if (mDesde.HasValue || mHasta.HasValue)
+            filtered = filtered.Where(i =>
+            {
+                var m = CalcMargenPct(i);
+                if (!m.HasValue) return false;
+                if (mDesde.HasValue && m.Value < mDesde.Value) return false;
+                if (mHasta.HasValue && m.Value > mHasta.Value) return false;
+                return true;
             });
 
         // Text filters
