@@ -272,6 +272,23 @@ public class MeliPricePushService
         if (oem is null) return null;
         var mult = combo.MultiplicadorOem ?? 1m;
         if (mult <= 0) mult = 1m;
+
+        // 2026-07-18: PACKS — el precio/costo del compuesto tiene que contar la CANTIDAD de cajas del
+        // pack, igual que la venta (CafeVentasController: OEM × Mult × Cantidad de la caja). Antes solo
+        // usaba Mult → los packs (ej C9419TTX10, caja Cantidad=10) se cotizaban como 1 sola caja, y el
+        // objetivo de margen no podía subir el precio (calculaba para 1 caja, daba menos que el precio
+        // actual y ganaba el piso). La "caja" = el ÚNICO ítem cuyo producto cuelga del mismo OEM que el
+        // compuesto (mismo criterio que la venta). Si no hay exactamente 1, no multiplicamos (combo de
+        // varios productos distintos, no caja+tapa). No toca stock ni el precio de venta.
+        var cajaCants = await (
+            from ci in _db.CafeComboItems
+            join p in _db.CafeProductos on ci.ProductoId equals p.Id
+            where ci.ComboId == combo.Id && p.OemId == combo.OemId
+            select ci.Cantidad
+        ).ToListAsync(ct);
+        if (cajaCants.Count == 1 && cajaCants[0] > 0)
+            mult *= cajaCants[0];
+
         return (oem, mult);
     }
 
