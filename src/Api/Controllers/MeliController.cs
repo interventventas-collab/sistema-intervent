@@ -458,7 +458,34 @@ public class MeliController : ControllerBase
         using var http = new HttpClient();
         http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
         http.Timeout = TimeSpan.FromSeconds(30);
-        var body = new StringContent("{\"status\":\"active\"}", System.Text.Encoding.UTF8, "application/json");
+
+        // 2026-07-18: MeLi NO deja activar una publicación con stock 0 (error item_status_invalid).
+        // Hay que mandar available_quantity junto con status=active. Ponemos un stock temporal mínimo (1)
+        // y enseguida pusheamos el stock REAL del sistema (más abajo). Si tiene variaciones, va por variación.
+        object activarPayload = new { status = "active", available_quantity = 1 };
+        try
+        {
+            var getAct = await http.GetAsync($"https://api.mercadolibre.com/items/{cambio.MeliItemId}?attributes=variations");
+            if (getAct.IsSuccessStatusCode)
+            {
+                var docAct = System.Text.Json.JsonDocument.Parse(await getAct.Content.ReadAsStringAsync()).RootElement;
+                if (docAct.TryGetProperty("variations", out var varsAct)
+                    && varsAct.ValueKind == System.Text.Json.JsonValueKind.Array && varsAct.GetArrayLength() > 0)
+                {
+                    var ve = new List<object>();
+                    foreach (var v in varsAct.EnumerateArray())
+                    {
+                        var vid = v.GetProperty("id").GetInt64();
+                        int vaq = v.TryGetProperty("available_quantity", out var q) && q.ValueKind == System.Text.Json.JsonValueKind.Number ? q.GetInt32() : 0;
+                        ve.Add(new { id = vid, available_quantity = vaq > 0 ? vaq : 1 });
+                    }
+                    activarPayload = new { status = "active", variations = ve };
+                }
+            }
+        }
+        catch { /* si el GET falla, seguimos con el payload simple (available_quantity = 1) */ }
+
+        var body = new StringContent(System.Text.Json.JsonSerializer.Serialize(activarPayload), System.Text.Encoding.UTF8, "application/json");
         var resp = await http.PutAsync($"https://api.mercadolibre.com/items/{cambio.MeliItemId}", body);
         if (!resp.IsSuccessStatusCode)
         {
