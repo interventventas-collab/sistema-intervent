@@ -28,14 +28,17 @@ public class MeliReactivacionService
     private readonly IHttpClientFactory _httpFactory;
     private readonly MeliAccountService _accountService;
     private readonly ILogger<MeliReactivacionService> _logger;
+    private readonly MeliPricePushService _pushSvc;
 
     public MeliReactivacionService(AppDbContext db, IHttpClientFactory httpFactory,
-        MeliAccountService accountService, ILogger<MeliReactivacionService> logger)
+        MeliAccountService accountService, ILogger<MeliReactivacionService> logger,
+        MeliPricePushService pushSvc)
     {
         _db = db;
         _httpFactory = httpFactory;
         _accountService = accountService;
         _logger = logger;
+        _pushSvc = pushSvc;
     }
 
     public record Candidato(string MeliItemId, string Title, string Sku, int AccountId, string Nickname,
@@ -214,6 +217,30 @@ public class MeliReactivacionService
                     var miRows = await _db.MeliItems.Where(x => x.MeliItemId == cand.MeliItemId).ToListAsync(ct);
                     foreach (var r in miRows) r.Status = "active";
                     await _db.SaveChangesAsync(ct);
+
+                    // 2026-07-18: al reactivar (volvió el stock), si la publicación tiene un OBJETIVO de
+                    // margen guardado + sincro de precio ON, aplicar ese precio automáticamente. Así el
+                    // usuario deja el % indicado en una publicación pausada y, cuando vuelve el stock y se
+                    // reactiva, el precio se acomoda solo al margen que pidió (antes había que entrar a mano).
+                    var cfgObj = await _db.MeliItemSyncConfigs.FindAsync(new object[] { cand.MeliItemId }, ct);
+                    if (cfgObj?.GananciaObjetivoPct is decimal objPct && objPct > 0 && cfgObj.SyncPrecio)
+                    {
+                        foreach (var r in miRows)
+                        {
+                            try
+                            {
+                                var pr = await _pushSvc.PushPrecioForItemAsync(r.Id, markAsClaimed: false, ct);
+                                detalles.Add(pr.Ok
+                                    ? $"   🎯 objetivo {objPct.ToString("0.#")}% aplicado → ${pr.PushedPrice:N0}"
+                                    : $"   ⚠ no se pudo aplicar el objetivo: {pr.Message}");
+                            }
+                            catch (Exception exObj)
+                            {
+                                detalles.Add($"   ⚠ objetivo: {exObj.Message}");
+                                _logger.LogWarning(exObj, "Objetivo al reactivar {MeliItemId}", cand.MeliItemId);
+                            }
+                        }
+                    }
                 }
                 else
                 {
