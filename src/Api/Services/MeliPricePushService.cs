@@ -393,6 +393,28 @@ public class MeliPricePushService
         return Math.Round(pConFijo, 2);
     }
 
+    /// <summary>2026-07-18: margen % actual de una publicación (al precio dado, o el suyo), usando la
+    /// comisión REAL cacheada (sale_fee) SOLO si el precio no se movió >5%, y el costo pack-aware.
+    /// Devuelve (null, false) = "no se puede calcular con confianza" (sin costo, o sin comisión real
+    /// fresca). Quien llama debe, ante la duda, quedarse del lado seguro (no arriesgar).</summary>
+    public async Task<(decimal? MarginPct, bool Confident)> CalcularMargenActualAsync(MeliItem item, decimal? livePrice = null, CancellationToken ct = default)
+    {
+        var costo = await CalcularCostoTotalAsync(item, ct);
+        if (costo is null || costo.Value <= 0) return (null, false);
+        var price = (livePrice.HasValue && livePrice.Value > 0) ? livePrice.Value : item.Price;
+        if (price <= 0) return (null, false);
+        if (item.SaleFeeAmount is decimal fee && fee > 0
+            && item.SaleFeePriceSnapshot is decimal snap && snap > 0
+            && Math.Abs(price - snap) / Math.Max(price, 1m) < 0.05m)
+        {
+            var netoConIva = price - fee - (item.SaleFeeShippingCost ?? 0m);
+            var netoSinIva = netoConIva / 1.21m;
+            var margin = (netoSinIva - costo.Value) / costo.Value * 100m;
+            return (margin, true);
+        }
+        return (null, false);
+    }
+
     /// <summary>2026-07-01: costo total del producto/combo linkeado a un MeliItem, mismo cálculo
     /// que el endpoint /product-cost del controller. Usado por el bulk-precio-por-ganancia.</summary>
     public async Task<decimal?> CalcularCostoTotalAsync(MeliItem mi, CancellationToken ct)
