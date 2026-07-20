@@ -66,6 +66,10 @@ services:
       # Origenes permitidos para CORS (lista separada por coma).
       # En desarrollo, si esta vacio, la API permite localhost:3000 por default.
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}
+      # WhatsApp Cloud API oficial de Meta (alternativa a Twilio, sin intermediario).
+      - META_WA_TOKEN=${META_WA_TOKEN:-}
+      - META_WA_PHONE_ID=${META_WA_PHONE_ID:-}
+      - META_WA_VERIFY_TOKEN=${META_WA_VERIFY_TOKEN:-}
     volumes:
       - ./.git:/repo/.git:ro
       - files_data:/data/files

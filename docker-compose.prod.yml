@@ -75,6 +75,10 @@ services:
       - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
       - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
       - TWILIO_WHATSAPP_FROM=${TWILIO_WHATSAPP_FROM:-}
+      # WhatsApp Cloud API oficial de Meta (alternativa a Twilio, sin intermediario).
+      - META_WA_TOKEN=${META_WA_TOKEN:-}
+      - META_WA_PHONE_ID=${META_WA_PHONE_ID:-}
+      - META_WA_VERIFY_TOKEN=${META_WA_VERIFY_TOKEN:-}
     volumes:
       - files_prod_data:/data/files
       - backups_prod_data:/data/backups

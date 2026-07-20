@@ -110,6 +110,7 @@ builder.Services.AddFido2(options =>
 // Services
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<TwilioWhatsAppService>();
+builder.Services.AddScoped<MetaWhatsAppService>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<RoleService>();
 builder.Services.AddScoped<IntegrationService>();
