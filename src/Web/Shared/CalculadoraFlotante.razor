@@ -93,6 +93,10 @@
                     <div class="cp-card">
                         <div class="cp-nombre">@prodResult.Nombre</div>
                         <div class="cp-sub">@prodResult.Sku · @prodResult.Categoria</div>
+                        @if (!string.IsNullOrWhiteSpace(prodResult.Stock))
+                        {
+                            <div class="cp-row"><span>📦 Stock</span><b class="cp-stock">@prodResult.Stock</b></div>
+                        }
                         <div class="cp-row"><span>Costo sin IVA</span><b>@Money(prodResult.CostoSinIva)</b></div>
                         @foreach (var l in prodResult.Precios)
                         {
@@ -313,6 +317,7 @@
     .cp-price-vals { display: flex; flex-direction: column; align-items: flex-end; }
     .cp-civa { font-size: 0.7rem; color: #9ca3af; font-weight: 400; }
     .cp-verde { color: #34d399 !important; }
+    .cp-stock { color: #60a5fa !important; }
     .cp-msg {
         background: #7f1d1d; color: #fecaca; border-radius: 6px;
         padding: 0.5rem 0.6rem; font-size: 0.8rem; margin-bottom: 10px;
