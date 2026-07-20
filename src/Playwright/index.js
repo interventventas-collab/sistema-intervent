@@ -2516,67 +2516,196 @@ async function runGaliciaMovimientos({ usuario, password }) {
 async function galiciaBajarChequesXls(page, tipo, errores) {
   galiciaState.step = `Abriendo cheques ${tipo}...`;
   await page.goto(`https://empresas.bancogalicia.com.ar/cheques/${tipo}`, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
-  await sleep(6000); // SPA + carga del listado
+  // Esperar a que el listado (micro-frontend Backbase) termine de cargar.
+  await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
+  await sleep(6000);
+  // Esperar a que aparezca el texto "Listado" (o la tabla) antes de buscar el botón.
+  await page.getByText('Listado', { exact: false }).first().waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+  await sleep(1500);
 
   // La opción del menú es un texto "Detalle de cheques en .XLS".
   const xlsOption = page.locator('text=/Detalle de cheques en \\.XLS/i').first();
 
   galiciaState.step = `Abriendo el menú de descarga (${tipo})...`;
+  // Playwright pierce shadow DOM en sus locators; probamos varios candidatos.
   const triggers = [
-    page.locator('[class*="download-b"]').first(),
     page.getByRole('button', { name: /descargar/i }).first(),
     page.locator('[aria-label*="escargar"]').first(),
-    page.locator('[class*="brk-dropdown"][class*="download"]').first(),
+    page.locator('[title*="escargar"]').first(),
+    page.locator('[class*="download"]').first(),
+    page.locator('[data-testid*="download" i]').first(),
     page.locator('[class*="brk-dropdown"]').last(),
   ];
-  let menuOpen = false;
-  for (const t of triggers) {
+  let menuOpen = false, triggerUsado = -1;
+  for (let ti = 0; ti < triggers.length; ti++) {
+    const t = triggers[ti];
     try {
       if (!(await t.isVisible().catch(() => false))) continue;
       await t.click({ timeout: 5000 });
       await sleep(1200);
-      if (await xlsOption.isVisible().catch(() => false)) { menuOpen = true; break; }
+      if (await xlsOption.isVisible().catch(() => false)) { menuOpen = true; triggerUsado = ti; break; }
     } catch {}
   }
+  console.log(`[galicia][CHEQUES] ${tipo}: menuOpen=${menuOpen} triggerUsado=${triggerUsado}`);
   if (!menuOpen) {
-    // Diagnóstico: dumpear botones/clickables al log del server para ajustar el selector.
+    // Diagnóstico shadow-DOM + iframe aware: recorre shadow roots e iframes accesibles
+    // y lista los clickeables (Backbase esconde los botones en shadow DOM, por eso un
+    // querySelectorAll normal devolvía vacío).
     try {
       const diag = await page.evaluate(() => {
-        const els = [...document.querySelectorAll('button, [role="button"], a, [class*="download" i], [class*="descarg" i]')];
-        return els.slice(0, 80).map((e, i) => {
-          const t = (e.innerText || '').trim().replace(/\s+/g, ' ').slice(0, 22);
-          const al = e.getAttribute('aria-label') || '';
-          const ti = e.getAttribute('title') || '';
-          const id = e.id || '';
-          const cl = (typeof e.className === 'string' ? e.className : '').slice(0, 40);
-          const svg = e.querySelector('svg') ? 'SVG' : '';
-          return `#${i}[${[t, al && 'aria:' + al, ti && 'title:' + ti, id && 'id:' + id, svg, cl].filter(Boolean).join(' | ')}]`;
-        }).join('\n');
+        const out = [];
+        let iframeCount = 0, xoIframes = 0;
+        function desc(e) {
+          const tag = e.tagName ? e.tagName.toLowerCase() : '?';
+          const role = (e.getAttribute && e.getAttribute('role')) || '';
+          const cls = (typeof e.className === 'string' ? e.className : ((e.getAttribute && e.getAttribute('class')) || ''));
+          const txt = (e.innerText || e.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 26);
+          const al = (e.getAttribute && e.getAttribute('aria-label')) || '';
+          const ti = (e.getAttribute && e.getAttribute('title')) || '';
+          const tid = (e.getAttribute && (e.getAttribute('data-testid') || e.getAttribute('data-test'))) || '';
+          const svg = (e.querySelector && e.querySelector('svg')) ? 'SVG' : '';
+          return `${tag}${role ? '[' + role + ']' : ''}{${[txt, al && 'aria:' + al, ti && 'title:' + ti, tid && 'tid:' + tid, svg, cls && 'cls:' + cls.slice(0, 34)].filter(Boolean).join(' | ')}}`;
+        }
+        function walk(root, depth) {
+          if (!root || depth > 10) return;
+          let nodes;
+          try { nodes = root.querySelectorAll('*'); } catch { return; }
+          for (const e of nodes) {
+            const tag = e.tagName ? e.tagName.toLowerCase() : '';
+            const role = (e.getAttribute && e.getAttribute('role')) || '';
+            const cls = (typeof e.className === 'string' ? e.className : ((e.getAttribute && e.getAttribute('class')) || ''));
+            const clicky = tag === 'button' || tag === 'a' || role === 'button'
+              || /download|descarg|dropdown|export/i.test(cls)
+              || ((e.querySelector && e.querySelector('svg')) && (tag.includes('-') || role === 'button'));
+            if (clicky && out.length < 140) out.push(desc(e));
+            if (e.shadowRoot) walk(e.shadowRoot, depth + 1);
+            if (tag === 'iframe') {
+              iframeCount++;
+              try { if (e.contentDocument) walk(e.contentDocument, depth + 1); else xoIframes++; }
+              catch { xoIframes++; }
+            }
+          }
+        }
+        walk(document, 0);
+        return { url: location.href, title: document.title, bodyLen: (document.body ? (document.body.innerText || '').length : 0), iframeCount, xoIframes, count: out.length, items: out };
       });
-      console.log(`[galicia][DIAG] botones en /cheques/${tipo}:\n` + diag);
+      console.log(`[galicia][DIAG2] /cheques/${tipo} url="${diag.url}" title="${diag.title}" bodyLen=${diag.bodyLen} iframes=${diag.iframeCount}(x-origin ${diag.xoIframes}) clickables=${diag.count}\n` + diag.items.join('\n'));
     } catch (e) {
-      console.log(`[galicia][DIAG] no se pudo dumpear /cheques/${tipo}:`, e?.message);
+      console.log(`[galicia][DIAG2] no se pudo dumpear /cheques/${tipo}:`, e?.message);
     }
     errores.push(`${tipo}: no encontré el botón de descarga .XLS`);
     return null;
   }
 
   galiciaState.step = `Descargando cheques ${tipo} (.XLS)...`;
-  try {
-    const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
-    await xlsOption.click({ timeout: 5000 });
-    const download = await downloadPromise;
-    const filePath = await download.path();
-    const buf = fs.readFileSync(filePath);
+  const context = page.context();
+
+  // Intentamos hasta 2 veces. La descarga puede llegar por la página principal O por
+  // una pestaña nueva (popup) que abre el banco → escuchamos ambas + diálogos.
+  for (let intento = 1; intento <= 2; intento++) {
+    let captured = null;
+    let extra = '';
+    const pagesBefore = context.pages().length;
+
+    const onDownload = (d) => { if (!captured) captured = d; };
+    const onNewPage = (np) => {
+      try { extra += ` popup(${(np.url() || '').slice(0, 50)})`; np.on('download', onDownload); } catch {}
+    };
+    const onDialog = async (dlg) => {
+      try { extra += ` dialog("${(dlg.message() || '').slice(0, 50)}")`; await dlg.accept(); } catch {}
+    };
+    page.on('download', onDownload);
+    context.on('page', onNewPage);
+    page.on('dialog', onDialog);
+
     try {
-      const nombre = download.suggestedFilename();
-      console.log(`[galicia][CHEQUES] tipo=${tipo} archivo="${nombre}" bytes=${buf.length}`);
+      await xlsOption.click({ timeout: 6000, force: intento === 2 }).catch(async () => {
+        await xlsOption.evaluate((el) => (el.closest('button,[role="menuitem"],a,li') || el).click()).catch(() => {});
+      });
     } catch {}
-    return buf.toString('base64');
-  } catch (err) {
-    errores.push(`${tipo}: no se pudo descargar (${err?.message || err})`);
-    return null;
+
+    // Si el listado tiene varias páginas, el banco abre el modal "Seleccioná el tipo de
+    // descarga" (Solo esta página / Todas las páginas). Elegimos "Todas las páginas" +
+    // Continuar para bajar TODOS los cheques, no solo la página visible. Si no aparece
+    // (listado de 1 sola página, como suele ser Recibidos), la descarga baja directo.
+    try {
+      const todas = page.getByText('Todas las páginas', { exact: false }).first();
+      if (await todas.isVisible({ timeout: 4000 }).catch(() => false)) {
+        console.log(`[galicia][CHEQUES] ${tipo}: modal de descarga → elijo "Todas las páginas"`);
+        await todas.click().catch(async () => {
+          await todas.evaluate((el) => (el.closest('label,li,div,button') || el).click()).catch(() => {});
+        });
+        await sleep(500);
+        const cont = page.getByRole('button', { name: /continuar/i }).first();
+        await cont.click({ timeout: 5000 }).catch(() => {});
+      }
+    } catch {}
+
+    // Esperar a que aparezca la descarga (de la página o de un popup).
+    const t0 = Date.now();
+    while (!captured && Date.now() - t0 < 30000) { await sleep(1000); }
+
+    try { page.off('download', onDownload); } catch {}
+    try { context.off('page', onNewPage); } catch {}
+    try { page.off('dialog', onDialog); } catch {}
+
+    if (captured) {
+      try {
+        const filePath = await captured.path();
+        const buf = fs.readFileSync(filePath);
+        const nombre = captured.suggestedFilename();
+        console.log(`[galicia][CHEQUES] tipo=${tipo} OK archivo="${nombre}" bytes=${buf.length} (intento ${intento})`);
+        return buf.toString('base64');
+      } catch (e) {
+        console.log(`[galicia][CHEQUES] ${tipo}: descarga capturada pero falló al leer (${e?.message})`);
+      }
+    }
+
+    const pagesAfter = context.pages().length;
+    console.log(`[galicia][CHEQUES] ${tipo}: intento ${intento} SIN descarga. pagesBefore=${pagesBefore} pagesAfter=${pagesAfter}${extra}`);
+
+    if (intento === 2) {
+      // Diagnóstico: ¿apareció un modal/config al clickear? Dump del texto visible + clickables.
+      try {
+        const diag = await page.evaluate(() => {
+          const out = [];
+          function walk(root, depth) {
+            if (!root || depth > 10) return;
+            let nodes; try { nodes = root.querySelectorAll('*'); } catch { return; }
+            for (const e of nodes) {
+              const tag = e.tagName ? e.tagName.toLowerCase() : '';
+              const role = (e.getAttribute && e.getAttribute('role')) || '';
+              const txt = (e.innerText || e.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 34);
+              if ((tag === 'button' || tag === 'a' || role === 'menuitem' || role === 'button' || role === 'dialog') && txt && out.length < 50)
+                out.push(`${tag}${role ? '[' + role + ']' : ''}{${txt}}`);
+              if (e.shadowRoot) walk(e.shadowRoot, depth + 1);
+            }
+          }
+          walk(document, 0);
+          const body = (document.body ? (document.body.innerText || '') : '').replace(/\s+/g, ' ').slice(0, 2500);
+          return 'BODY: ' + body + '\nCLICKABLES:\n' + out.join('\n');
+        });
+        console.log(`[galicia][DIAG3] ${tipo} tras click .XLS:\n` + diag);
+      } catch {}
+      errores.push(`${tipo}: no se pudo descargar (timeout de descarga)`);
+      return null;
+    }
+
+    // Reintento: recargar el listado y reabrir el menú.
+    await sleep(1500);
+    await page.goto(`https://empresas.bancogalicia.com.ar/cheques/${tipo}`, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
+    await sleep(5000);
+    for (const t of triggers) {
+      try {
+        if (!(await t.isVisible().catch(() => false))) continue;
+        await t.click({ timeout: 5000 });
+        await sleep(1200);
+        if (await xlsOption.isVisible().catch(() => false)) break;
+      } catch {}
+    }
   }
+  return null;
 }
 
 async function runGaliciaCheques({ usuario, password }) {
