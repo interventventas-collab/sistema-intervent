@@ -291,6 +291,32 @@ public class CafeAltaClientesController : ControllerBase
         return Ok(new { ok = true, clienteId = cliente.Id, codigo = cliente.Codigo });
     }
 
+    public class MarcarCargadaRequest
+    {
+        public int ClienteId { get; set; }
+        public string? Operador { get; set; }
+    }
+
+    /// <summary>Marca la solicitud como ya cargada (cuando el operador la terminó de cargar
+    /// desde la pantalla de Clientes con el modal normal). No crea el cliente — ya lo creó
+    /// el flujo de Clientes; acá solo la sacamos de "pendientes" y la enlazamos al cliente creado.</summary>
+    [HttpPost("{id:int}/marcar-cargada")]
+    [Authorize]
+    public async Task<IActionResult> MarcarCargada(int id, [FromBody] MarcarCargadaRequest req)
+    {
+        var alta = await _db.CafeClienteAltas.FindAsync(id);
+        if (alta is null) return NotFound(new { error = "No se encontró la solicitud" });
+        if (alta.Estado != "aprobado")
+        {
+            alta.Estado = "aprobado";
+            alta.ClienteIdCreado = req.ClienteId > 0 ? req.ClienteId : (int?)null;
+            alta.ProcesadoPor = Norm(req.Operador);
+            alta.ProcesadoAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+        }
+        return Ok(new { ok = true });
+    }
+
     public class RechazarRequest
     {
         public string? Motivo { get; set; }

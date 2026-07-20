@@ -78,6 +78,10 @@
                                 {
                                     <a href="@h.GmailLink" target="_blank" class="ma-hist-link">Abrir en Gmail →</a>
                                 }
+                                @if (h.Tipo == "ALTA_CLIENTE")
+                                {
+                                    <a href="/cafe/clientes" class="ma-hist-link">Terminar de cargar →</a>
+                                }
                             </div>
                         </div>
                     </div>

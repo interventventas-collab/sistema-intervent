@@ -801,11 +801,9 @@
 
                 @* ───────── 3. CLIENTES Y PROVEEDORES ───────── *@
                 <NavGroup Label="👥 Clientes y proveedores" Icon="@SvgIcons.Users" FlyoutMode="true"
-                          HasActiveChild="@(IsActive("/cafe/clientes") || IsActive("/cafe/altas-clientes") || IsActive("/cafe/clientes-mapeados") || IsActive("/cafe/proveedores") || IsActive("/cafe/telefonos-clientes-meli"))">
+                          HasActiveChild="@(IsActive("/cafe/clientes") || IsActive("/cafe/clientes-mapeados") || IsActive("/cafe/proveedores") || IsActive("/cafe/telefonos-clientes-meli"))">
                     <NavItem Href="/cafe/clientes" Label="Clientes" Icon="@SvgIcons.Users"
                              IsActive="@IsActive("/cafe/clientes")" OnClick="@(() => NavigateTo("/cafe/clientes"))" />
-                    <NavItem Href="/cafe/altas-clientes" Label="🆕 Altas de clientes (enlace)" Icon="@SvgIcons.Users"
-                             IsActive="@IsActive("/cafe/altas-clientes")" OnClick="@(() => NavigateTo("/cafe/altas-clientes"))" />
                     <NavItem Href="/cafe/telefonos-clientes-meli" Label="📞 Teléfonos clientes MeLi" Icon="@SvgIcons.Users"
                              IsActive="@IsActive("/cafe/telefonos-clientes-meli")" OnClick="@(() => NavigateTo("/cafe/telefonos-clientes-meli"))" />
                     <NavItem Href="/cafe/clientes-mapeados" Label="Clientes Mapeados" Icon="@SvgIcons.Tag"
