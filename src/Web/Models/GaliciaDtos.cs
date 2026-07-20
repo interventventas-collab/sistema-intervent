@@ -33,6 +33,16 @@ public class GaliciaSincronizarResultDto
     public List<string>? Detalles { get; set; }
 }
 
+public class GaliciaChequesSincronizarResultDto
+{
+    public bool Ok { get; set; }
+    public int Nuevos { get; set; }
+    public int Actualizados { get; set; }
+    public int SinCambios { get; set; }
+    public string? Error { get; set; }
+    public List<string>? Detalles { get; set; }
+}
+
 public class GaliciaTestStatusDto
 {
     public bool Running { get; set; }

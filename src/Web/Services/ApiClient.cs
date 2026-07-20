@@ -4526,6 +4526,15 @@ public class ApiClient
     public async Task<Web.Models.GaliciaSincronizarResultDto?> SincronizarGaliciaAsync()
         => await PostAsync<Web.Models.GaliciaSincronizarResultDto>("/api/galicia/sincronizar", new { });
 
+    // Cheques: baja 3 listados, tarda más → cliente de timeout largo (4 min).
+    public async Task<Web.Models.GaliciaChequesSincronizarResultDto?> SincronizarChequesGaliciaAsync()
+    {
+        var resp = await _httpLong.PostAsJsonAsync("/api/galicia/sincronizar-cheques", new { });
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return null; }
+        await ThrowIfErrorAsync(resp);
+        return await resp.Content.ReadFromJsonAsync<Web.Models.GaliciaChequesSincronizarResultDto>();
+    }
+
     private class GaliciaOkResp { public bool Ok { get; set; } }
 
     // --- Shell Flota (saldo disponible) ---

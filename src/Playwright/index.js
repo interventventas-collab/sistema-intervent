@@ -2244,6 +2244,38 @@ app.post('/galicia/movimientos/start', async (req, res) => {
     });
 });
 
+// POST /galicia/cheques/start - body: { usuario, password }
+//   Login + bajar los 3 listados de cheques (Recibidos/Emitidos/Endosados) en .XLS.
+//   Vuelven en result.chequesRecibidosB64 / chequesEmitidosB64 / chequesEndosadosB64.
+app.post('/galicia/cheques/start', async (req, res) => {
+  if (galiciaState.running) {
+    return res.status(409).json({ error: 'Ya hay una operación de Galicia en curso' });
+  }
+  const { usuario, password } = req.body || {};
+  if (!usuario || !password) {
+    return res.status(400).json({ error: 'Faltan usuario y/o clave' });
+  }
+  galiciaState.running = true;
+  galiciaState.step = 'Iniciando...';
+  galiciaState.result = null;
+  galiciaState.startedAt = Date.now();
+  res.json({ ok: true });
+
+  runGaliciaCheques({ usuario, password })
+    .catch(async (err) => {
+      console.error('[galicia] error inesperado (cheques):', err);
+      galiciaState.result = { ok: false, error: err?.message || 'Error desconocido' };
+    })
+    .finally(async () => {
+      await closeGaliciaBrowserSafely();
+      galiciaState.running = false;
+      if (!galiciaState.result) {
+        galiciaState.result = { ok: false, error: 'Operación interrumpida' };
+      }
+      galiciaState.step = galiciaState.result?.ok ? 'Listo' : 'Error';
+    });
+});
+
 app.get('/galicia/test/status', (req, res) => {
   res.json({
     running: galiciaState.running,
@@ -2475,6 +2507,113 @@ async function runGaliciaMovimientos({ usuario, password }) {
 
   galiciaState.step = '¡Movimientos descargados!';
   galiciaState.result = { ok: true, loggedIn: true, csvBase64, url: page.url() };
+  await sleep(4000);
+}
+
+// Baja el listado de cheques de un tipo (recibidos/emitidos/endosados) en .XLS.
+// Navega a /cheques/{tipo}, abre el menú de descarga (flechita ⬇ arriba del "Listado")
+// y elige "Detalle de cheques en .XLS". Devuelve base64 o null (y empuja el motivo a errores[]).
+async function galiciaBajarChequesXls(page, tipo, errores) {
+  galiciaState.step = `Abriendo cheques ${tipo}...`;
+  await page.goto(`https://empresas.bancogalicia.com.ar/cheques/${tipo}`, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+  await sleep(6000); // SPA + carga del listado
+
+  // La opción del menú es un texto "Detalle de cheques en .XLS".
+  const xlsOption = page.locator('text=/Detalle de cheques en \\.XLS/i').first();
+
+  galiciaState.step = `Abriendo el menú de descarga (${tipo})...`;
+  const triggers = [
+    page.locator('[class*="download-b"]').first(),
+    page.getByRole('button', { name: /descargar/i }).first(),
+    page.locator('[aria-label*="escargar"]').first(),
+    page.locator('[class*="brk-dropdown"][class*="download"]').first(),
+    page.locator('[class*="brk-dropdown"]').last(),
+  ];
+  let menuOpen = false;
+  for (const t of triggers) {
+    try {
+      if (!(await t.isVisible().catch(() => false))) continue;
+      await t.click({ timeout: 5000 });
+      await sleep(1200);
+      if (await xlsOption.isVisible().catch(() => false)) { menuOpen = true; break; }
+    } catch {}
+  }
+  if (!menuOpen) {
+    // Diagnóstico: dumpear botones/clickables al log del server para ajustar el selector.
+    try {
+      const diag = await page.evaluate(() => {
+        const els = [...document.querySelectorAll('button, [role="button"], a, [class*="download" i], [class*="descarg" i]')];
+        return els.slice(0, 80).map((e, i) => {
+          const t = (e.innerText || '').trim().replace(/\s+/g, ' ').slice(0, 22);
+          const al = e.getAttribute('aria-label') || '';
+          const ti = e.getAttribute('title') || '';
+          const id = e.id || '';
+          const cl = (typeof e.className === 'string' ? e.className : '').slice(0, 40);
+          const svg = e.querySelector('svg') ? 'SVG' : '';
+          return `#${i}[${[t, al && 'aria:' + al, ti && 'title:' + ti, id && 'id:' + id, svg, cl].filter(Boolean).join(' | ')}]`;
+        }).join('\n');
+      });
+      console.log(`[galicia][DIAG] botones en /cheques/${tipo}:\n` + diag);
+    } catch (e) {
+      console.log(`[galicia][DIAG] no se pudo dumpear /cheques/${tipo}:`, e?.message);
+    }
+    errores.push(`${tipo}: no encontré el botón de descarga .XLS`);
+    return null;
+  }
+
+  galiciaState.step = `Descargando cheques ${tipo} (.XLS)...`;
+  try {
+    const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
+    await xlsOption.click({ timeout: 5000 });
+    const download = await downloadPromise;
+    const filePath = await download.path();
+    const buf = fs.readFileSync(filePath);
+    try {
+      const nombre = download.suggestedFilename();
+      console.log(`[galicia][CHEQUES] tipo=${tipo} archivo="${nombre}" bytes=${buf.length}`);
+    } catch {}
+    return buf.toString('base64');
+  } catch (err) {
+    errores.push(`${tipo}: no se pudo descargar (${err?.message || err})`);
+    return null;
+  }
+}
+
+async function runGaliciaCheques({ usuario, password }) {
+  const page = await galiciaOpenAndFill(usuario, password);
+  const r = await galiciaSubmitLogin(page);
+  if (r.error) { galiciaState.result = { ok: false, error: r.error, url: r.url }; return; }
+  if (r.needsToken) {
+    galiciaState.result = { ok: true, loggedIn: false, needsToken: true, url: r.url };
+    await sleep(8000);
+    return;
+  }
+
+  const errores = [];
+  const recibidosB64 = await galiciaBajarChequesXls(page, 'recibidos', errores);
+  const emitidosB64 = await galiciaBajarChequesXls(page, 'emitidos', errores);
+  const endosadosB64 = await galiciaBajarChequesXls(page, 'endosados', errores);
+
+  const algo = recibidosB64 || emitidosB64 || endosadosB64;
+  if (!algo) {
+    galiciaState.result = {
+      ok: false, loggedIn: true,
+      error: 'Entré pero no pude bajar ningún listado de cheques. ' + errores.join(' · '),
+      url: page.url(),
+    };
+    await sleep(12000);
+    return;
+  }
+
+  galiciaState.step = '¡Cheques descargados!';
+  galiciaState.result = {
+    ok: true, loggedIn: true,
+    chequesRecibidosB64: recibidosB64,
+    chequesEmitidosB64: emitidosB64,
+    chequesEndosadosB64: endosadosB64,
+    chequesErrores: errores,
+    url: page.url(),
+  };
   await sleep(4000);
 }
 
