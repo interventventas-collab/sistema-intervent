@@ -1172,6 +1172,67 @@ public class CafePrecioConsultaDto
     public List<CafePrecioLineaDto> Precios { get; set; } = new();
 }
 
+// ===== Alta de clientes por enlace público =====
+public class CafeClienteAltaDto
+{
+    public int Id { get; set; }
+    public string NombreFantasia { get; set; } = "";
+    public string? RazonSocial { get; set; }
+    public string? Cuit { get; set; }
+    public string? CondicionIva { get; set; }
+    public string? ContactoNombre { get; set; }
+    public string Telefono { get; set; } = "";
+    public string? Email { get; set; }
+    public string? Direccion { get; set; }
+    public string? EntreCalles { get; set; }
+    public string? Localidad { get; set; }
+    public string? MapeoLink { get; set; }
+    public string? Comentarios { get; set; }
+    public string Estado { get; set; } = "pendiente";
+    public DateTime CreatedAt { get; set; }
+}
+
+/// <summary>Lo que el cliente envía desde el formulario público.</summary>
+public class AltaClientePublicaRequest
+{
+    public string? NombreFantasia { get; set; }
+    public string? RazonSocial { get; set; }
+    public string? Cuit { get; set; }
+    public string? CondicionIva { get; set; }
+    public string? ContactoNombre { get; set; }
+    public string? Telefono { get; set; }
+    public string? Email { get; set; }
+    public string? Direccion { get; set; }
+    public string? EntreCalles { get; set; }
+    public string? Localidad { get; set; }
+    public string? MapeoLink { get; set; }
+    public string? Comentarios { get; set; }
+}
+
+/// <summary>Lo que manda el operador al dar de alta (puede corregir datos).</summary>
+public class AprobarAltaClienteRequest
+{
+    public string? NombreFantasia { get; set; }
+    public string? RazonSocial { get; set; }
+    public string? Cuit { get; set; }
+    public string? CondicionIva { get; set; }
+    public string? ContactoNombre { get; set; }
+    public string? Telefono { get; set; }
+    public string? Email { get; set; }
+    public string? Direccion { get; set; }
+    public string? EntreCalles { get; set; }
+    public string? Localidad { get; set; }
+    public string? MapeoLink { get; set; }
+    public string? Comentarios { get; set; }
+    public string? Tipo { get; set; }
+    public string? Operador { get; set; }
+}
+
+public class AltaLinkDto { public string Token { get; set; } = ""; public string Ruta { get; set; } = ""; }
+public class AltaInitDto { public bool Ok { get; set; } public string? Mensaje { get; set; } public string? NegocioNombre { get; set; } }
+public class AltaEnviarResultDto { public bool Ok { get; set; } public string? Mensaje { get; set; } }
+public class AprobarAltaResultDto { public bool Ok { get; set; } public int ClienteId { get; set; } public string? Codigo { get; set; } }
+
 // ===== Listas de precios =====
 public class CafeListaPreciosFiltroRequest
 {

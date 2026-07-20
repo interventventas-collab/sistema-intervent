@@ -2574,6 +2574,56 @@ public class ApiClient
         return await GetAsync<ArcaPadronDto>(url);
     }
 
+    // --- Alta de clientes por enlace público ---
+    private record AltaCountResp(int Count);
+    private record AltaOkResp(bool Ok);
+
+    /// <summary>Devuelve/genera el enlace público para que el cliente cargue su alta.</summary>
+    public async Task<AltaLinkDto?> GetAltaClientesLinkAsync()
+        => await GetAsync<AltaLinkDto>("/api/cafe/alta-clientes/link");
+
+    /// <summary>Genera un token nuevo (invalida el enlace anterior).</summary>
+    public async Task<AltaLinkDto?> RegenerarAltaClientesLinkAsync()
+        => await PostAsync<AltaLinkDto>("/api/cafe/alta-clientes/regenerar-link", new { });
+
+    public async Task<List<CafeClienteAltaDto>?> GetAltasClientesPendientesAsync()
+        => await GetAsync<List<CafeClienteAltaDto>>("/api/cafe/alta-clientes/pendientes");
+
+    public async Task<int> GetAltasClientesPendientesCountAsync()
+    {
+        var r = await GetAsync<AltaCountResp>("/api/cafe/alta-clientes/pendientes/count");
+        return r?.Count ?? 0;
+    }
+
+    public async Task<AprobarAltaResultDto?> AprobarAltaClienteAsync(int id, AprobarAltaClienteRequest req)
+        => await PostAsync<AprobarAltaResultDto>($"/api/cafe/alta-clientes/{id}/aprobar", req);
+
+    public async Task<bool> RechazarAltaClienteAsync(int id, string? motivo, string? operador)
+    {
+        var r = await PostAsync<AltaOkResp>($"/api/cafe/alta-clientes/{id}/rechazar", new { motivo, operador });
+        return r?.Ok ?? false;
+    }
+
+    // Métodos PÚBLICOS (los usa el formulario sin login; los endpoints son AllowAnonymous).
+    public async Task<AltaInitDto?> AltaPublicaInitAsync(string token)
+    {
+        var resp = await _http.GetAsync($"/api/cafe/alta-clientes/publica/{token}/init");
+        return await resp.Content.ReadFromJsonAsync<AltaInitDto>();
+    }
+
+    public async Task<ArcaPadronDto?> AltaPublicaPadronAsync(string token, string cuit)
+    {
+        var resp = await _http.GetAsync($"/api/cafe/alta-clientes/publica/{token}/padron?cuit={Uri.EscapeDataString(cuit)}");
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadFromJsonAsync<ArcaPadronDto>();
+    }
+
+    public async Task<AltaEnviarResultDto?> AltaPublicaEnviarAsync(string token, AltaClientePublicaRequest req)
+    {
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/alta-clientes/publica/{token}", req);
+        return await resp.Content.ReadFromJsonAsync<AltaEnviarResultDto>();
+    }
+
     // --- Cotizaciones ---
     public async Task<DolarBnaDto?> GetDolarBnaAsync()
         => await GetAsync<DolarBnaDto>("/api/quotes/dolar-bna");

@@ -5699,6 +5699,35 @@ BEGIN
 END
 GO
 
+-- Altas de cliente cargadas por el propio cliente desde el enlace publico (sin login).
+-- Quedan como 'pendiente' hasta que el operador las revisa y las da de alta de verdad.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_ClienteAltas' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_ClienteAltas (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        NombreFantasia NVARCHAR(200) NOT NULL,
+        RazonSocial NVARCHAR(200) NULL,
+        Cuit NVARCHAR(20) NULL,
+        CondicionIva NVARCHAR(20) NULL,
+        ContactoNombre NVARCHAR(150) NULL,
+        Telefono NVARCHAR(50) NOT NULL,
+        Email NVARCHAR(255) NULL,
+        Direccion NVARCHAR(300) NULL,
+        EntreCalles NVARCHAR(200) NULL,
+        Localidad NVARCHAR(150) NULL,
+        MapeoLink NVARCHAR(500) NULL,
+        Comentarios NVARCHAR(1000) NULL,
+        Estado NVARCHAR(20) NOT NULL DEFAULT 'pendiente',
+        ClienteIdCreado INT NULL,
+        MotivoRechazo NVARCHAR(300) NULL,
+        ProcesadoPor NVARCHAR(100) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        ProcesadoAt DATETIME2 NULL
+    );
+    CREATE INDEX IX_CafeClienteAltas_Estado ON Cafe_ClienteAltas (Estado, CreatedAt DESC);
+END
+GO
+
 -- ============================================================================
 -- 2026-06-26: Modulo QR + Repartidor para ALQUILERES (calcado del de Ventas).
 -- Reusa Cafe_Repartidores + Cafe_RepartidorSesiones (mismos repartidores, misma app).
