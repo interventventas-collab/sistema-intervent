@@ -1,0 +1,258 @@
+@page "/alta-cliente/{token}"
+@attribute [AllowAnonymous]
+@layout Web.Layout.LoginLayout
+@using Web.Models
+@inject ApiClient Api
+
+@* Formulario público de alta de cliente. El cliente entra por un link (sin login),
+   completa sus datos y quedan como "pendiente" para que el operador lo dé de alta.
+   Pedido de Osmar 2026-07-20. *@
+
+<style>
+    body { background: linear-gradient(135deg, #eff6ff, #e0e7ff); min-height: 100vh; }
+    .ac-wrap { max-width: 560px; margin: 1.5rem auto 3rem; padding: 0 1rem; }
+    .ac-card { background: white; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); overflow: hidden; }
+    .ac-head { background: linear-gradient(135deg, #2563eb, #1d4ed8); color: white; padding: 1.4rem 1.5rem; }
+    .ac-head h1 { margin: 0; font-size: 1.35rem; font-weight: 800; }
+    .ac-head p { margin: 0.35rem 0 0; font-size: 0.9rem; opacity: 0.92; }
+    .ac-body { padding: 1.3rem 1.5rem 1.6rem; }
+
+    .ac-section { font-size: 0.78rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px;
+                  color: #2563eb; margin: 1.1rem 0 0.6rem; padding-bottom: 4px; border-bottom: 2px solid #dbeafe; }
+    .ac-section:first-child { margin-top: 0; }
+
+    .ac-field { margin-bottom: 0.85rem; }
+    .ac-field label { display: block; font-size: 0.82rem; font-weight: 600; color: #374151; margin-bottom: 0.28rem; }
+    .ac-field label .req { color: #dc2626; }
+    .ac-field .hint { font-size: 0.72rem; color: #9ca3af; font-weight: 400; margin-top: 3px; }
+    .ac-input, .ac-select, .ac-textarea {
+        width: 100%; box-sizing: border-box; border: 1.5px solid #d1d5db; border-radius: 9px;
+        padding: 0.62rem 0.7rem; font-size: 0.95rem; color: #111827; background: #fff; font-family: inherit;
+    }
+    .ac-input:focus, .ac-select:focus, .ac-textarea:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
+    .ac-textarea { resize: vertical; min-height: 66px; }
+
+    .ac-cuit-row { display: flex; gap: 0.5rem; }
+    .ac-cuit-row .ac-input { flex: 1; }
+    .ac-cuit-btn { flex-shrink: 0; background: #0ea5e9; color: white; border: none; border-radius: 9px;
+                   padding: 0 1rem; font-size: 0.85rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+    .ac-cuit-btn:hover:not(:disabled) { background: #0284c7; }
+    .ac-cuit-btn:disabled { opacity: 0.55; cursor: default; }
+    .ac-cuit-ok { font-size: 0.76rem; color: #059669; font-weight: 700; margin-top: 4px; }
+    .ac-cuit-err { font-size: 0.76rem; color: #d97706; font-weight: 600; margin-top: 4px; }
+
+    .ac-submit { width: 100%; background: #16a34a; color: white; border: none; border-radius: 11px;
+                 padding: 0.9rem; font-size: 1.05rem; font-weight: 800; cursor: pointer; margin-top: 1.2rem; }
+    .ac-submit:hover:not(:disabled) { background: #15803d; }
+    .ac-submit:disabled { opacity: 0.55; cursor: default; }
+    .ac-error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 9px;
+                padding: 0.6rem 0.8rem; font-size: 0.85rem; margin-top: 0.9rem; }
+
+    /* Estados especiales */
+    .ac-center { text-align: center; padding: 2.5rem 1.5rem; }
+    .ac-center .ico { font-size: 3.2rem; margin-bottom: 0.6rem; }
+    .ac-center h2 { margin: 0 0 0.5rem; font-size: 1.35rem; color: #111827; }
+    .ac-center p { color: #4b5563; font-size: 0.95rem; line-height: 1.55; margin: 0; }
+</style>
+
+<div class="ac-wrap">
+    <div class="ac-card">
+        @if (cargando)
+        {
+            <div class="ac-center"><div class="ico">⏳</div><p>Cargando…</p></div>
+        }
+        else if (!tokenOk)
+        {
+            <div class="ac-center">
+                <div class="ico">🔒</div>
+                <h2>Enlace no válido</h2>
+                <p>@(initMensaje ?? "Este enlace no funciona o fue dado de baja. Pedile uno nuevo a quien te lo mandó.")</p>
+            </div>
+        }
+        else if (enviado)
+        {
+            <div class="ac-center">
+                <div class="ico">✅</div>
+                <h2>¡Datos recibidos!</h2>
+                <p>@(enviadoMensaje ?? "Gracias, ya tenemos tus datos. Te vamos a dar de alta en breve.")</p>
+            </div>
+        }
+        else
+        {
+            <div class="ac-head">
+                <h1>🏪 Alta de cliente</h1>
+                <p>@(string.IsNullOrWhiteSpace(negocioNombre) ? "Completá tus datos y listo." : $"Cargá tus datos para {negocioNombre}.")</p>
+            </div>
+            <div class="ac-body">
+
+                <div class="ac-section">🧾 Datos para la factura</div>
+
+                <div class="ac-field">
+                    <label>CUIT o DNI <span class="hint">(lo completamos solo con estos datos)</span></label>
+                    <div class="ac-cuit-row">
+                        <input class="ac-input" inputmode="numeric" placeholder="Ej: 20304050607"
+                               @bind="model.Cuit" @bind:event="oninput" />
+                        <button class="ac-cuit-btn" @onclick="TraerDatosArca" disabled="@(buscandoCuit || string.IsNullOrWhiteSpace(model.Cuit))">
+                            @(buscandoCuit ? "Buscando…" : "Traer datos")
+                        </button>
+                    </div>
+                    @if (arcaOk) { <div class="ac-cuit-ok">✔ Datos traídos de ARCA</div> }
+                    else if (!string.IsNullOrEmpty(arcaError)) { <div class="ac-cuit-err">@arcaError</div> }
+                </div>
+
+                <div class="ac-field">
+                    <label>Nombre del comercio <span class="req">*</span></label>
+                    <input class="ac-input" placeholder="Como se llama tu local / negocio" @bind="model.NombreFantasia" />
+                </div>
+
+                <div class="ac-field">
+                    <label>Razón social <span class="hint">(nombre legal, para la factura)</span></label>
+                    <input class="ac-input" placeholder="Se completa con el CUIT" @bind="model.RazonSocial" />
+                </div>
+
+                <div class="ac-field">
+                    <label>Condición de IVA</label>
+                    <select class="ac-select" @bind="model.CondicionIva">
+                        <option value="">— Seleccioná —</option>
+                        <option value="RI">Responsable Inscripto</option>
+                        <option value="MO">Monotributo</option>
+                        <option value="EX">Exento</option>
+                        <option value="CF">Consumidor Final</option>
+                    </select>
+                </div>
+
+                <div class="ac-section">📞 Contacto</div>
+
+                <div class="ac-field">
+                    <label>Teléfono / WhatsApp <span class="req">*</span></label>
+                    <input class="ac-input" inputmode="tel" placeholder="Ej: 11 2345 6789" @bind="model.Telefono" />
+                </div>
+
+                <div class="ac-field">
+                    <label>¿A quién buscamos? <span class="hint">(nombre de contacto)</span></label>
+                    <input class="ac-input" placeholder="Ej: Juan, el encargado" @bind="model.ContactoNombre" />
+                </div>
+
+                <div class="ac-field">
+                    <label>Email <span class="hint">(opcional, para mandarte comprobantes)</span></label>
+                    <input class="ac-input" inputmode="email" placeholder="tucorreo@ejemplo.com" @bind="model.Email" />
+                </div>
+
+                <div class="ac-section">🚚 Entrega</div>
+
+                <div class="ac-field">
+                    <label>Dirección de entrega</label>
+                    <input class="ac-input" placeholder="Calle y número" @bind="model.Direccion" />
+                </div>
+
+                <div class="ac-field">
+                    <label>Localidad</label>
+                    <input class="ac-input" placeholder="Ej: San Justo" @bind="model.Localidad" />
+                </div>
+
+                <div class="ac-field">
+                    <label>Entre qué calles <span class="hint">(referencia para el repartidor)</span></label>
+                    <input class="ac-input" placeholder="Ej: entre Rivadavia y Mitre" @bind="model.EntreCalles" />
+                </div>
+
+                <div class="ac-field">
+                    <label>Link de Google Maps <span class="hint">(opcional, tu ubicación exacta)</span></label>
+                    <input class="ac-input" placeholder="https://maps.app.goo.gl/..." @bind="model.MapeoLink" />
+                </div>
+
+                <div class="ac-field">
+                    <label>Comentarios <span class="hint">(horarios, aclaraciones, lo que quieras)</span></label>
+                    <textarea class="ac-textarea" placeholder="Ej: recibimos solo por la mañana" @bind="model.Comentarios"></textarea>
+                </div>
+
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div class="ac-error">@formError</div>
+                }
+
+                <button class="ac-submit" @onclick="Enviar" disabled="@enviando">
+                    @(enviando ? "Enviando…" : "Enviar mis datos")
+                </button>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+
+    private bool cargando = true;
+    private bool tokenOk = false;
+    private string? initMensaje;
+    private string? negocioNombre;
+
+    private AltaClientePublicaRequest model = new();
+
+    private bool buscandoCuit = false;
+    private bool arcaOk = false;
+    private string? arcaError;
+
+    private bool enviando = false;
+    private bool enviado = false;
+    private string? enviadoMensaje;
+    private string? formError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var init = await Api.AltaPublicaInitAsync(Token);
+            tokenOk = init?.Ok == true;
+            initMensaje = init?.Mensaje;
+            negocioNombre = init?.NegocioNombre;
+        }
+        catch { tokenOk = false; }
+        finally { cargando = false; }
+    }
+
+    private async Task TraerDatosArca()
+    {
+        arcaError = null; arcaOk = false;
+        if (string.IsNullOrWhiteSpace(model.Cuit)) return;
+        buscandoCuit = true;
+        try
+        {
+            var r = await Api.AltaPublicaPadronAsync(Token, model.Cuit.Trim());
+            if (r is not null && r.Found)
+            {
+                if (!string.IsNullOrWhiteSpace(r.RazonSocial))
+                {
+                    model.RazonSocial = r.RazonSocial;
+                    if (string.IsNullOrWhiteSpace(model.NombreFantasia)) model.NombreFantasia = r.RazonSocial;
+                }
+                if (!string.IsNullOrWhiteSpace(r.CondicionIva)) model.CondicionIva = r.CondicionIva;
+                if (!string.IsNullOrWhiteSpace(r.Direccion) && string.IsNullOrWhiteSpace(model.Direccion)) model.Direccion = r.Direccion;
+                if (!string.IsNullOrWhiteSpace(r.Localidad) && string.IsNullOrWhiteSpace(model.Localidad)) model.Localidad = r.Localidad;
+                arcaOk = true;
+            }
+            else
+            {
+                arcaError = "No encontramos ese CUIT. Podés completar los datos a mano.";
+            }
+        }
+        catch { arcaError = "No pudimos consultar ahora. Completá los datos a mano."; }
+        finally { buscandoCuit = false; }
+    }
+
+    private async Task Enviar()
+    {
+        formError = null;
+        if (string.IsNullOrWhiteSpace(model.NombreFantasia)) { formError = "Poné el nombre de tu comercio."; return; }
+        if (string.IsNullOrWhiteSpace(model.Telefono)) { formError = "Poné un teléfono de contacto."; return; }
+
+        enviando = true;
+        try
+        {
+            var r = await Api.AltaPublicaEnviarAsync(Token, model);
+            if (r?.Ok == true) { enviado = true; enviadoMensaje = r.Mensaje; }
+            else { formError = r?.Mensaje ?? "No pudimos enviar. Probá de nuevo en un momento."; }
+        }
+        catch { formError = "No pudimos enviar. Revisá tu conexión y probá de nuevo."; }
+        finally { enviando = false; }
+    }
+}
