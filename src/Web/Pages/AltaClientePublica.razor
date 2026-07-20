@@ -95,7 +95,7 @@
                 <div class="ac-field">
                     <label>CUIT o DNI <span class="hint">(lo completamos solo con estos datos)</span></label>
                     <div class="ac-cuit-row">
-                        <input class="ac-input" inputmode="numeric" placeholder="Ej: 20304050607"
+                        <input class="ac-input" inputmode="numeric" placeholder="CUIT (11 díg) o DNI"
                                @bind="model.Cuit" @bind:event="oninput" />
                         <button class="ac-cuit-btn" @onclick="TraerDatosArca" disabled="@(buscandoCuit || string.IsNullOrWhiteSpace(model.Cuit))">
                             @(buscandoCuit ? "Buscando…" : "Traer datos")
@@ -244,6 +244,8 @@
             var r = await Api.AltaPublicaPadronAsync(Token, model.Cuit.Trim());
             if (r is not null && r.Found)
             {
+                // Si el cliente puso un DNI, ARCA nos devuelve el CUIT real: lo dejamos cargado.
+                if (!string.IsNullOrWhiteSpace(r.Cuit)) model.Cuit = r.Cuit;
                 if (!string.IsNullOrWhiteSpace(r.RazonSocial))
                 {
                     model.RazonSocial = r.RazonSocial;

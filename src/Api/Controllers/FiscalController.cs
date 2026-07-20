@@ -38,8 +38,9 @@ public class FiscalController : ControllerBase
     public async Task<IActionResult> Padron([FromQuery] string cuit, [FromQuery] string? cuitEmisor = null)
     {
         if (string.IsNullOrWhiteSpace(cuit))
-            return BadRequest(new { error = "Debe indicar un CUIT/CUIL." });
-        var result = await _padron.ConsultarAsync(cuit, cuitEmisor);
+            return BadRequest(new { error = "Debe indicar un CUIT/CUIL o DNI." });
+        // Acepta CUIT (11 díg) o DNI (7-8 díg): si es DNI, resuelve el CUIT real contra el padrón.
+        var result = await _padron.ConsultarFlexibleAsync(cuit, cuitEmisor);
         return Ok(result);
     }
 }
