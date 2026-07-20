@@ -2604,6 +2604,14 @@ public class ApiClient
         return r?.Ok ?? false;
     }
 
+    /// <summary>Marca una solicitud de alta como ya cargada (la saca de pendientes y la enlaza
+    /// al cliente creado). Se usa cuando el operador la terminó de cargar desde la pantalla de Clientes.</summary>
+    public async Task<bool> MarcarAltaCargadaAsync(int id, int clienteId, string? operador)
+    {
+        var r = await PostAsync<AltaOkResp>($"/api/cafe/alta-clientes/{id}/marcar-cargada", new { clienteId, operador });
+        return r?.Ok ?? false;
+    }
+
     // Métodos PÚBLICOS (los usa el formulario sin login; los endpoints son AllowAnonymous).
     public async Task<AltaInitDto?> AltaPublicaInitAsync(string token)
     {

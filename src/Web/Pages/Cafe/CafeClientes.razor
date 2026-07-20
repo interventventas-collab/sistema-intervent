@@ -1,8 +1,10 @@
 @page "/cafe/clientes"
 @attribute [Authorize]
+@using Web.Models
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject CpService CpService
+@inject OperatorService Operator
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -14,9 +16,37 @@
             <input class="form-input" style="min-width: 280px; font-size: 0.9rem;"
                    @bind="filtro" @bind:event="oninput"
                    placeholder="🔍 Buscar por código, nombre, CUIT, tel, email, dirección, localidad, CP..." />
+            <button class="btn btn-secondary" @onclick="AbrirLinkModal" title="Enlace para que el cliente cargue sus datos solo">🔗 Enlace de alta</button>
             <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo Cliente</button>
         </div>
     </div>
+
+    @* Franja de clientes que se cargaron solos desde el enlace público — están para terminar de cargar. *@
+    @if (pendientesAltas.Count > 0)
+    {
+        <div style="background: #ecfdf5; border-bottom: 1px solid #a7f3d0; padding: 0.75rem 1.1rem;">
+            <div style="font-weight: 700; color: #065f46; font-size: 0.92rem; margin-bottom: 0.5rem;">
+                🆕 @pendientesAltas.Count cliente@(pendientesAltas.Count == 1 ? "" : "s") cargaron sus datos desde el enlace — terminá de cargarlos
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                @foreach (var a in pendientesAltas)
+                {
+                    <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; background: white; border: 1px solid #d1fae5; border-radius: 8px; padding: 0.5rem 0.7rem;">
+                        <span style="font-weight: 700; color: #111827;">🏪 @a.NombreFantasia</span>
+                        @if (!string.IsNullOrWhiteSpace(a.Cuit)) { <span style="font-size: 0.82rem; color: #6b7280;">🧾 @a.Cuit</span> }
+                        <span style="font-size: 0.82rem; color: #6b7280;">📞 @a.Telefono</span>
+                        @if (!string.IsNullOrWhiteSpace(a.Localidad)) { <span style="font-size: 0.82rem; color: #6b7280;">📍 @a.Localidad</span> }
+                        <span style="font-size: 0.72rem; color: #9ca3af;">· @a.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")</span>
+                        <div style="margin-left: auto; display: flex; gap: 0.35rem;">
+                            <button class="btn btn-success" style="padding: 0.35rem 0.8rem; font-size: 0.85rem;" @onclick="() => TerminarCargarAlta(a)">✅ Terminar de cargar</button>
+                            <button class="btn btn-secondary" style="padding: 0.35rem 0.6rem; font-size: 0.85rem;" @onclick="() => DescartarAlta(a)" title="Descartar esta solicitud">🗑️</button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
     <div class="card-body" style="padding: 0;">
         @if (loading)
         {
@@ -459,10 +489,48 @@
     </div>
 }
 
+@* Modal del enlace público de alta de clientes. *@
+@if (showLinkModal)
+{
+    <div class="modal-overlay" @onclick="() => showLinkModal = false">
+        <div class="modal-card" style="max-width: 560px; width: min(560px, 96vw);" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>🔗 Enlace de alta de clientes</h3>
+                <button class="btn-close" @onclick="() => showLinkModal = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="color:#4b5563; font-size:0.9rem; margin-top:0;">
+                    Mandale este enlace al cliente por WhatsApp o mail. Él completa sus datos solo
+                    (sin usuario ni clave) y te aparecen arriba de la lista para que los termines de cargar.
+                </p>
+                @if (altaLink is not null)
+                {
+                    <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+                        <input readonly value="@LinkCompleto" style="flex:1; min-width:240px; padding:0.55rem 0.7rem; border:1.5px solid #d1d5db; border-radius:8px; font-size:0.85rem; background:#f9fafb; color:#111827;" />
+                        <button class="btn btn-primary" @onclick="CopiarLinkAlta">📋 Copiar</button>
+                        <button class="btn btn-secondary" @onclick="RegenerarLinkAlta" title="Genera un enlace nuevo; el anterior deja de funcionar">🔄 Nuevo</button>
+                    </div>
+                }
+                else
+                {
+                    <p style="color:#9ca3af;">Cargando enlace…</p>
+                }
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private List<CafeClienteDto>? clientes;
     private bool loading = true;
     private string filtro = "";
+
+    // Clientes cargados por el propio cliente desde el enlace público, pendientes de terminar.
+    private List<CafeClienteAltaDto> pendientesAltas = new();
+    private int? finalizandoAltaId;   // si estoy terminando de cargar una solicitud, su Id
+    private bool showLinkModal;
+    private AltaLinkDto? altaLink;
+    private string LinkCompleto => altaLink is null ? "" : Nav.BaseUri.TrimEnd('/') + altaLink.Ruta;
     private int maxVisibles = 100;
     private bool showForm, isEditing, saving;
 
@@ -705,6 +773,7 @@
         // Cargar provincias para el datalist (una sola vez por sesion, esta cacheado en CpService)
         provincias = await CpService.GetProvinciasAsync();
         await Load();
+        await LoadPendientes();
 
         // 2026-06-18: si vinimos como popup desde Nueva Venta con ?edit={id} o ?new={nombre},
         // auto-abrir el modal correspondiente. Al guardar, el postMessage avisa a la venta.
@@ -743,9 +812,78 @@
         loading = false;
     }
 
+    private async Task LoadPendientes()
+    {
+        try { pendientesAltas = await Api.GetAltasClientesPendientesAsync() ?? new(); }
+        catch { pendientesAltas = new(); }
+    }
+
+    // Abre el modal "Nuevo cliente" pre-cargado con lo que envió el cliente por el enlace.
+    private async Task TerminarCargarAlta(CafeClienteAltaDto a)
+    {
+        await ShowCreate();                 // resetea el form en modo "crear"
+        finalizandoAltaId = a.Id;
+        formNombre = a.NombreFantasia ?? "";
+        formCuit = a.Cuit ?? "";
+        formRazonSocial = a.RazonSocial ?? "";
+        formCondicionIvaDefault = a.CondicionIva ?? "";
+        formTelefono = a.Telefono ?? "";
+        formEmail = a.Email ?? "";
+        formDireccion = a.DireccionFiscal ?? "";       // domicilio fiscal (ARCA)
+        formDomicilioEntrega = a.Direccion ?? "";       // domicilio de entrega (lo que escribió)
+        formEntreCalles = a.EntreCalles ?? "";
+        formLocalidad = a.Localidad ?? "";
+        formMapeoLink = a.MapeoLink ?? "";
+        // Contacto + comentarios del cliente → notas internas.
+        var notas = new List<string>();
+        if (!string.IsNullOrWhiteSpace(a.ContactoNombre)) notas.Add($"Contacto: {a.ContactoNombre}");
+        if (!string.IsNullOrWhiteSpace(a.Comentarios)) notas.Add($"Comentario del cliente: {a.Comentarios}");
+        formNotas = string.Join("\n", notas);
+        if (!string.IsNullOrWhiteSpace(formCiudad))
+            localidadesSugeridas = await CpService.GetLocalidadesAsync(formCiudad);
+        StateHasChanged();
+    }
+
+    private async Task DescartarAlta(CafeClienteAltaDto a)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Descartar la solicitud de '{a.NombreFantasia}'?"))
+            return;
+        try
+        {
+            var ok = await Api.RechazarAltaClienteAsync(a.Id, null, Operator.Current);
+            if (ok) { pendientesAltas.Remove(a); ToastService.Success("Solicitud descartada."); }
+            else { ToastService.Error("No se pudo descartar."); }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    // ── Enlace público de alta ──
+    private async Task AbrirLinkModal()
+    {
+        showLinkModal = true;
+        if (altaLink is null)
+        {
+            try { altaLink = await Api.GetAltaClientesLinkAsync(); } catch { }
+        }
+    }
+
+    private async Task CopiarLinkAlta()
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", LinkCompleto); ToastService.Success("Enlace copiado ✔"); }
+        catch { ToastService.Info("Copialo manualmente: " + LinkCompleto); }
+    }
+
+    private async Task RegenerarLinkAlta()
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "¿Generar un enlace nuevo? El enlace anterior dejará de funcionar."))
+            return;
+        try { altaLink = await Api.RegenerarAltaClientesLinkAsync(); ToastService.Success("Enlace nuevo generado."); }
+        catch { ToastService.Error("No se pudo generar el enlace."); }
+    }
+
     private async Task ShowCreate()
     {
-        isEditing = false; editingId = null;
+        isEditing = false; editingId = null; finalizandoAltaId = null;
         formNombre = ""; formTipo = "OTRO"; formCuit = ""; formTelefono = ""; formEmail = ""; formDireccion = ""; formNotas = "";
         formRazonSocial = ""; formDomicilioEntrega = ""; formComentariosComprobante = "";
         formTelefono2 = ""; formEntreCalles = "";
@@ -864,7 +1002,7 @@
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
 
-    private void CloseForm() { showForm = false; formError = null; }
+    private void CloseForm() { showForm = false; formError = null; finalizandoAltaId = null; }
 
     private async Task Save()
     {
@@ -930,6 +1068,13 @@
                 else
                 {
                     ToastService.Success("Cliente creado");
+                }
+                // Si veníamos de terminar de cargar una solicitud del enlace, la sacamos de pendientes.
+                if (finalizandoAltaId.HasValue)
+                {
+                    try { await Api.MarcarAltaCargadaAsync(finalizandoAltaId.Value, c.Id, Operator.Current); } catch { }
+                    finalizandoAltaId = null;
+                    await LoadPendientes();
                 }
             }
             showForm = false;
