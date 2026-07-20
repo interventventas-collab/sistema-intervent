@@ -249,6 +249,50 @@ public class ArcaPadronService
     }
 
     /// <summary>
+    /// Consulta el padrón aceptando CUIT (11 dígitos) O DNI (7-8 dígitos).
+    /// AFIP solo busca por CUIT, así que si viene un DNI resolvemos el CUIT/CUIL real:
+    /// armamos los candidatos con los prefijos 20/27/23/24 (+ dígito verificador) y probamos
+    /// contra el padrón hasta que uno exista. Devuelve el primero encontrado (con su CUIT real).
+    /// Si es CUIT, hace la consulta directa de siempre.
+    /// </summary>
+    public async Task<ArcaPadronResult> ConsultarFlexibleAsync(string documento, string? cuitEmisor = null)
+    {
+        var clean = new string((documento ?? "").Where(char.IsDigit).ToArray());
+
+        if (clean.Length == 11)
+            return await ConsultarAsync(clean, cuitEmisor);
+
+        if (clean.Length is 7 or 8)
+        {
+            var dni = clean.PadLeft(8, '0');
+            // Orden por frecuencia real: 20 (personas en general/masc), 27 (fem),
+            // y 23/24 para los casos de colisión. Cortamos en el primero que exista.
+            foreach (var pref in new[] { "20", "27", "23", "24" })
+            {
+                var cuit = pref + dni + CuitDigitoVerificador(pref + dni).ToString();
+                var r = await ConsultarAsync(cuit, cuitEmisor);
+                if (r.Found) return r;
+            }
+            return Err("No encontramos un CUIT asociado a ese DNI en ARCA. "
+                + "Puede que la persona no tenga CUIT/CUIL, o probá cargando el CUIT completo (11 dígitos).");
+        }
+
+        return Err("Ingresá un DNI (7-8 dígitos) o un CUIT/CUIL (11 dígitos).");
+    }
+
+    /// <summary>Dígito verificador de un CUIT a partir de sus primeros 10 dígitos (prefijo + DNI).</summary>
+    private static int CuitDigitoVerificador(string cuit10)
+    {
+        int[] w = { 5, 4, 3, 2, 7, 6, 5, 4, 3, 2 };
+        int sum = 0;
+        for (int i = 0; i < 10 && i < cuit10.Length; i++) sum += (cuit10[i] - '0') * w[i];
+        int dig = 11 - (sum % 11);
+        if (dig == 11) dig = 0;
+        else if (dig == 10) dig = 9;
+        return dig;
+    }
+
+    /// <summary>
     /// Consulta el servicio ws_sr_constancia_inscripcion (endpoint wsconscompuesta) para
     /// obtener la Condición IVA real. Devuelve (condición, XML crudo) — el XML se usa para
     /// diagnóstico si ningún endpoint logra resolver el IVA.

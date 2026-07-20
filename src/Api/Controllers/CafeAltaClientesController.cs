@@ -94,8 +94,9 @@ public class CafeAltaClientesController : ControllerBase
         if (!await TokenValidoAsync(token))
             return NotFound(new { ok = false });
         if (string.IsNullOrWhiteSpace(cuit))
-            return BadRequest(new { ok = false, error = "Falta el CUIT" });
-        var result = await _padron.ConsultarAsync(cuit.Trim());
+            return BadRequest(new { ok = false, error = "Falta el CUIT o DNI" });
+        // Acepta CUIT (11 díg) o DNI (7-8 díg): si es DNI, resuelve el CUIT real contra el padrón.
+        var result = await _padron.ConsultarFlexibleAsync(cuit.Trim());
         return Ok(result);
     }
 
