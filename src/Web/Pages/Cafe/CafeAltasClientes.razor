@@ -66,7 +66,8 @@
                             <span>📞 @a.Telefono</span>
                             @if (!string.IsNullOrWhiteSpace(a.ContactoNombre)) { <span>👤 @a.ContactoNombre</span> }
                             @if (!string.IsNullOrWhiteSpace(a.Email)) { <span>✉️ @a.Email</span> }
-                            @if (!string.IsNullOrWhiteSpace(a.Direccion)) { <span>📍 @a.Direccion@(string.IsNullOrWhiteSpace(a.Localidad) ? "" : $", {a.Localidad}")</span> }
+                            @if (!string.IsNullOrWhiteSpace(a.DireccionFiscal)) { <span>📌 Fiscal: @a.DireccionFiscal</span> }
+                            @if (!string.IsNullOrWhiteSpace(a.Direccion)) { <span>🚚 Entrega: @a.Direccion@(string.IsNullOrWhiteSpace(a.Localidad) ? "" : $", {a.Localidad}")</span> }
                             @if (!string.IsNullOrWhiteSpace(a.EntreCalles)) { <span>↔️ @a.EntreCalles</span> }
                             @if (!string.IsNullOrWhiteSpace(a.MapeoLink)) { <span>🗺️ <a href="@a.MapeoLink" target="_blank">ubicación</a></span> }
                         </div>
@@ -161,6 +162,7 @@
                 ContactoNombre = a.ContactoNombre,
                 Telefono = a.Telefono,
                 Email = a.Email,
+                DireccionFiscal = a.DireccionFiscal,
                 Direccion = a.Direccion,
                 EntreCalles = a.EntreCalles,
                 Localidad = a.Localidad,

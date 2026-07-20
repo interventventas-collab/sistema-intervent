@@ -433,6 +433,8 @@ using (var scope = app.Services.CreateScope())
         // 2026-07-16 (incidente cápsulas KDOR): publicación pausada con stock / reactivada → revisar precio.
         // Arranca con Telegram + campanita prendidos: es la alerta que evita vender a precio viejo.
         await EnsureSistemaAlerta("PUBLI_MELI", "⚠️ Publicación MeLi para revisar (precio)", true, canalCampanita: true);
+        // 2026-07-20: un cliente cargó sus datos desde el enlace público → hay que darlo de alta.
+        await EnsureSistemaAlerta("ALTA_CLIENTE", "🆕 Nuevo cliente para dar de alta", true, canalCampanita: true);
         await db.SaveChangesAsync();
     }
     catch (Exception ex) { logger.LogWarning(ex, "No se pudieron sembrar las alertas del sistema (Ventas/Fichadas)."); }

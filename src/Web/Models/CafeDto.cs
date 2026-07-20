@@ -1183,6 +1183,7 @@ public class CafeClienteAltaDto
     public string? ContactoNombre { get; set; }
     public string Telefono { get; set; } = "";
     public string? Email { get; set; }
+    public string? DireccionFiscal { get; set; }
     public string? Direccion { get; set; }
     public string? EntreCalles { get; set; }
     public string? Localidad { get; set; }
@@ -1202,6 +1203,7 @@ public class AltaClientePublicaRequest
     public string? ContactoNombre { get; set; }
     public string? Telefono { get; set; }
     public string? Email { get; set; }
+    public string? DireccionFiscal { get; set; }
     public string? Direccion { get; set; }
     public string? EntreCalles { get; set; }
     public string? Localidad { get; set; }
@@ -1219,6 +1221,7 @@ public class AprobarAltaClienteRequest
     public string? ContactoNombre { get; set; }
     public string? Telefono { get; set; }
     public string? Email { get; set; }
+    public string? DireccionFiscal { get; set; }
     public string? Direccion { get; set; }
     public string? EntreCalles { get; set; }
     public string? Localidad { get; set; }

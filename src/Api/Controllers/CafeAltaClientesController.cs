@@ -108,6 +108,7 @@ public class CafeAltaClientesController : ControllerBase
         public string? ContactoNombre { get; set; }
         public string? Telefono { get; set; }
         public string? Email { get; set; }
+        public string? DireccionFiscal { get; set; }
         public string? Direccion { get; set; }
         public string? EntreCalles { get; set; }
         public string? Localidad { get; set; }
@@ -136,6 +137,7 @@ public class CafeAltaClientesController : ControllerBase
             ContactoNombre = Norm(req.ContactoNombre),
             Telefono = req.Telefono.Trim(),
             Email = Norm(req.Email),
+            DireccionFiscal = Norm(req.DireccionFiscal),
             Direccion = Norm(req.Direccion),
             EntreCalles = Norm(req.EntreCalles),
             Localidad = Norm(req.Localidad),
@@ -147,18 +149,9 @@ public class CafeAltaClientesController : ControllerBase
         _db.CafeClienteAltas.Add(alta);
         await _db.SaveChangesAsync();
 
-        // Aviso por Telegram (no bloquea la respuesta si falla).
-        try
-        {
-            var msg = $"🆕 <b>Nuevo cliente para dar de alta</b>\n" +
-                      $"🏪 {alta.NombreFantasia}\n" +
-                      (string.IsNullOrWhiteSpace(alta.Cuit) ? "" : $"🧾 CUIT {alta.Cuit}\n") +
-                      $"📞 {alta.Telefono}\n" +
-                      (string.IsNullOrWhiteSpace(alta.Localidad) ? "" : $"📍 {alta.Localidad}\n") +
-                      $"Revisalo en Café → Altas de clientes.";
-            await _telegram.SendMessageAsync(msg);
-        }
-        catch { /* si Telegram no está configurado, no pasa nada */ }
+        // Aviso integrado a "Mis Alertas": campanita 🔔 + historial + Telegram (configurable).
+        // Nunca rompe el envío del cliente si algo del aviso falla.
+        try { await NotificarNuevaAltaAsync(alta); } catch { }
 
         return Ok(new { ok = true, mensaje = "¡Listo! Recibimos tus datos. Te vamos a dar de alta en breve." });
     }
@@ -215,6 +208,7 @@ public class CafeAltaClientesController : ControllerBase
         public string? ContactoNombre { get; set; }
         public string? Telefono { get; set; }
         public string? Email { get; set; }
+        public string? DireccionFiscal { get; set; }
         public string? Direccion { get; set; }
         public string? EntreCalles { get; set; }
         public string? Localidad { get; set; }
@@ -248,6 +242,12 @@ public class CafeAltaClientesController : ControllerBase
             string.IsNullOrWhiteSpace(comentarios) ? null : $"Comentario del cliente: {comentarios}"
         }.Where(x => x != null));
 
+        // Domicilio fiscal (para facturar) y de entrega (dónde recibe) son distintos:
+        //  - fiscal  = lo que trajo ARCA (DireccionFiscal). Si no hay, usa el de entrega.
+        //  - entrega = lo que escribió el cliente (Direccion). Si no hay, usa el fiscal.
+        var fiscal = Norm(req.DireccionFiscal) ?? alta.DireccionFiscal;
+        var entrega = Norm(req.Direccion) ?? alta.Direccion;
+
         var cliente = new CafeCliente
         {
             Codigo = await GenerarCodigoAsync(),
@@ -257,11 +257,11 @@ public class CafeAltaClientesController : ControllerBase
             Cuit = Norm(req.Cuit) ?? alta.Cuit,
             Telefono = Norm(req.Telefono) ?? alta.Telefono,
             Email = Norm(req.Email) ?? alta.Email,
-            Direccion = Norm(req.Direccion) ?? alta.Direccion,
+            Direccion = fiscal ?? entrega,
             EntreCalles = Norm(req.EntreCalles) ?? alta.EntreCalles,
             Localidad = Norm(req.Localidad) ?? alta.Localidad,
             CondicionIvaDefault = NormIva(req.CondicionIva) ?? alta.CondicionIva,
-            DomicilioEntrega = Norm(req.Direccion) ?? alta.Direccion,
+            DomicilioEntrega = entrega ?? fiscal,
             MapeoLink = Norm(req.MapeoLink) ?? alta.MapeoLink,
             Notas = string.IsNullOrWhiteSpace(notas) ? null : notas,
             IsActive = true,
@@ -310,6 +310,56 @@ public class CafeAltaClientesController : ControllerBase
         alta.ProcesadoAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return Ok(new { ok = true });
+    }
+
+    /// <summary>Dispara el aviso "ALTA_CLIENTE" en Mis Alertas: campanita (si está tildada),
+    /// fila en el historial y Telegram (si está tildado). Mismo mecanismo que FICHADA/VENTA_MELI.</summary>
+    private async Task NotificarNuevaAltaAsync(CafeClienteAlta alta)
+    {
+        var alerta = await _db.MisAlertas.FirstOrDefaultAsync(x => x.Tipo == "ALTA_CLIENTE");
+        if (alerta is null || !alerta.Activa) return;
+        if (!alerta.CanalCampanita && !alerta.CanalTelegram) return;
+
+        var detalle = $"{alta.NombreFantasia}" +
+                      (string.IsNullOrWhiteSpace(alta.Localidad) ? "" : $" · {alta.Localidad}") +
+                      $" · Tel {alta.Telefono}";
+
+        // Telegram (si está tildado y el bot está vinculado).
+        bool enviadoTg = false;
+        if (alerta.CanalTelegram)
+        {
+            var texto = $"🆕 <b>Nuevo cliente para dar de alta</b>\n" +
+                        $"🏪 {alta.NombreFantasia}\n" +
+                        (string.IsNullOrWhiteSpace(alta.Cuit) ? "" : $"🧾 CUIT {alta.Cuit}\n") +
+                        $"📞 {alta.Telefono}\n" +
+                        (string.IsNullOrWhiteSpace(alta.Localidad) ? "" : $"📍 {alta.Localidad}\n") +
+                        $"Revisalo en Café → Altas de clientes.";
+            var (ok, _) = await _telegram.SendMessageAsync(texto);
+            enviadoTg = ok;
+        }
+
+        // Campanita (si está tildada): queda encendida hasta que la mirás.
+        if (alerta.CanalCampanita)
+        {
+            alerta.EstaDisparada = true;
+            alerta.Vista = false;
+            alerta.DisparadaAt = DateTime.UtcNow;
+            alerta.UltimoDetalle = detalle;
+            alerta.UpdatedAt = DateTime.UtcNow;
+        }
+
+        // Historial: una fila por alta recibida.
+        _db.MisAlertasHistorial.Add(new MisAlertaHistorial
+        {
+            AlertaId = alerta.Id,
+            Tipo = "ALTA_CLIENTE",
+            Mensaje = string.IsNullOrWhiteSpace(alerta.Mensaje) ? "Nuevo cliente para dar de alta" : alerta.Mensaje,
+            Detalle = detalle,
+            Alcance = string.IsNullOrWhiteSpace(alerta.Alcance) ? "admin,oficina" : alerta.Alcance,
+            PorTelegram = alerta.CanalTelegram,
+            EnviadoTelegram = enviadoTg
+        });
+        await _db.SaveChangesAsync();
     }
 
     // ─────────────────────────── helpers ───────────────────────────
