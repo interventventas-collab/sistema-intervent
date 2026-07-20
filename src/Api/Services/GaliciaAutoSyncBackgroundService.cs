@@ -72,6 +72,21 @@ public class GaliciaAutoSyncBackgroundService : BackgroundService
         if (r.Ok)
             _logger.LogInformation("[Galicia auto] OK — {N} movimientos nuevos ({S} ya estaban)", r.Nuevos, r.SinCambios);
         else
-            _logger.LogWarning("[Galicia auto] No se pudo: {Err}", r.Error);
+            _logger.LogWarning("[Galicia auto] No se pudo (movimientos): {Err}", r.Error);
+
+        // Después de los movimientos, traer también los cheques (mismo horario, misma sesión de robot).
+        // El robot es de una sola corrida a la vez; como SincronizarAsync ya terminó, ahora sí puede correr cheques.
+        try
+        {
+            var rc = await sync.SincronizarChequesAsync();
+            if (rc.Ok)
+                _logger.LogInformation("[Galicia auto] OK — cheques: {N} nuevos, {A} actualizados ({S} sin cambios)", rc.Nuevos, rc.Actualizados, rc.SinCambios);
+            else
+                _logger.LogWarning("[Galicia auto] No se pudo (cheques): {Err}", rc.Error);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Galicia auto] error trayendo cheques (no crítico)");
+        }
     }
 }

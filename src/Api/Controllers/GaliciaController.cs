@@ -83,6 +83,20 @@ public class GaliciaController : ControllerBase
         var r = await _syncService.SincronizarAsync();
         return Ok(new SincronizarResultDto(r.Ok, r.Nuevos, r.SinCambios, r.Error, r.Detalles));
     }
+
+    public record SincronizarChequesResultDto(bool Ok, int Nuevos, int Actualizados, int SinCambios, string? Error, List<string>? Detalles);
+
+    /// <summary>
+    /// Sincroniza los cheques: el robot entra, baja los 3 listados (.XLS) de
+    /// Recibidos/Emitidos/Endosados y los importa a Cafe_ChequesBanco (dedup por ID del banco).
+    /// Sincrónico (espera al robot ~hasta 2,5 min) porque se dispara con un botón manual.
+    /// </summary>
+    [HttpPost("sincronizar-cheques")]
+    public async Task<IActionResult> SincronizarCheques()
+    {
+        var r = await _syncService.SincronizarChequesAsync();
+        return Ok(new SincronizarChequesResultDto(r.Ok, r.Nuevos, r.Actualizados, r.SinCambios, r.Error, r.Detalles));
+    }
 }
 
 /// <summary>

@@ -121,6 +121,7 @@ builder.Services.AddSingleton<ArcaScrapingService>();
 builder.Services.AddScoped<GaliciaAccountService>();
 builder.Services.AddSingleton<GaliciaScrapingService>();
 builder.Services.AddScoped<ExtractoBancoImportService>();
+builder.Services.AddScoped<ChequesBancoImportService>();
 builder.Services.AddScoped<GaliciaSyncService>();
 builder.Services.AddScoped<ShellAccountService>();
 builder.Services.AddSingleton<ShellScrapingService>();
