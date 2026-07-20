@@ -17,15 +17,15 @@ public class WhatsAppTwilioController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly ILogger<WhatsAppTwilioController> _logger;
-    private readonly TwilioWhatsAppService _twilio;
+    private readonly WhatsAppOutboundService _outbound;
     private readonly CafeReciboCobranzaPdfService _cobranzaPdfService;
     private readonly CafeVentasController _ventasController;
 
-    public WhatsAppTwilioController(AppDbContext db, ILogger<WhatsAppTwilioController> logger, TwilioWhatsAppService twilio, CafeReciboCobranzaPdfService cobranzaPdfService, CafeVentasController ventasController)
+    public WhatsAppTwilioController(AppDbContext db, ILogger<WhatsAppTwilioController> logger, WhatsAppOutboundService outbound, CafeReciboCobranzaPdfService cobranzaPdfService, CafeVentasController ventasController)
     {
         _db = db;
         _logger = logger;
-        _twilio = twilio;
+        _outbound = outbound;
         _cobranzaPdfService = cobranzaPdfService;
         _ventasController = ventasController;
     }
@@ -79,7 +79,7 @@ public class WhatsAppTwilioController : ControllerBase
         // ===== Flujo identificacion de rol =====
         // Si el numero NO tiene contacto cargado: o le mandamos el menu (primera vez) o procesamos su respuesta 1/2/3.
         var contactoExistente = await _db.WhatsAppTwilioContactos.FirstOrDefaultAsync(c => c.Numero == from);
-        if (contactoExistente == null && _twilio.IsConfigured)
+        if (contactoExistente == null && _outbound.AnyConfigured)
         {
             // Detectar si ya le mandamos el menu antes (busca la marca textual en mensajes OUTGOING al numero)
             var menuPrevio = await _db.WhatsAppTwilioMensajes
@@ -117,13 +117,14 @@ public class WhatsAppTwilioController : ControllerBase
     {
         try
         {
-            var sid = await _twilio.SendTextAsync(numero, texto);
+            var (sid, canal) = await _outbound.SendTextAsync(numero, texto);
             _db.WhatsAppTwilioMensajes.Add(new WhatsAppTwilioMensaje
             {
                 Direccion = "OUTGOING",
                 Numero = numero,
                 Cuerpo = texto,
                 TwilioMessageSid = sid,
+                Canal = canal,
                 Procesado = true,
                 CreatedAt = DateTime.UtcNow
             });
@@ -146,8 +147,8 @@ public class WhatsAppTwilioController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(req.Numero))
             return BadRequest(new { error = "Numero requerido" });
-        if (!_twilio.IsConfigured)
-            return StatusCode(503, new { error = "Twilio no configurado" });
+        if (!_outbound.AnyConfigured)
+            return StatusCode(503, new { error = "WhatsApp no configurado (ni Meta ni Twilio)" });
 
         var numero = req.Numero.Trim();
         if (!numero.StartsWith("whatsapp:")) numero = "whatsapp:" + numero;
@@ -166,18 +167,19 @@ public class WhatsAppTwilioController : ControllerBase
         if (string.IsNullOrWhiteSpace(req.Numero) || string.IsNullOrWhiteSpace(req.Mensaje))
             return BadRequest(new { error = "Numero y mensaje son obligatorios" });
 
-        if (!_twilio.IsConfigured)
-            return StatusCode(503, new { error = "Twilio no configurado: agregar TWILIO_ACCOUNT_SID y TWILIO_AUTH_TOKEN al .env" });
+        if (!_outbound.AnyConfigured)
+            return StatusCode(503, new { error = "WhatsApp no configurado: falta META_WA_TOKEN/PHONE_ID (Meta) o TWILIO_ACCOUNT_SID/AUTH_TOKEN (Twilio)" });
 
         try
         {
-            var sid = await _twilio.SendTextAsync(req.Numero, req.Mensaje);
+            var (sid, canal) = await _outbound.SendTextAsync(req.Numero, req.Mensaje);
             var msg = new WhatsAppTwilioMensaje
             {
                 Direccion = "OUTGOING",
                 Numero = req.Numero,
                 Cuerpo = req.Mensaje,
                 TwilioMessageSid = sid,
+                Canal = canal,
                 Procesado = true,
                 CreatedAt = DateTime.UtcNow
             };
@@ -525,12 +527,12 @@ public class WhatsAppTwilioController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(req.Numero) || string.IsNullOrWhiteSpace(req.MediaUrl))
             return BadRequest(new { error = "Numero y mediaUrl son obligatorios" });
-        if (!_twilio.IsConfigured)
-            return StatusCode(503, new { error = "Twilio no configurado" });
+        if (!_outbound.AnyConfigured)
+            return StatusCode(503, new { error = "WhatsApp no configurado (ni Meta ni Twilio)" });
 
         try
         {
-            var sid = await _twilio.SendMediaAsync(req.Numero, req.MediaUrl, req.Caption);
+            var (sid, canal) = await _outbound.SendMediaAsync(req.Numero, req.MediaUrl, req.Caption);
             var msg = new WhatsAppTwilioMensaje
             {
                 Direccion = "OUTGOING",
@@ -539,6 +541,7 @@ public class WhatsAppTwilioController : ControllerBase
                 MediaUrl = req.MediaUrl,
                 NumMedia = 1,
                 TwilioMessageSid = sid,
+                Canal = canal,
                 Procesado = true,
                 CreatedAt = DateTime.UtcNow
             };
@@ -548,7 +551,7 @@ public class WhatsAppTwilioController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error enviando media WhatsApp Twilio");
+            _logger.LogError(ex, "Error enviando media WhatsApp");
             return StatusCode(500, new { error = ex.Message });
         }
     }
@@ -647,7 +650,7 @@ public class WhatsAppTwilioController : ControllerBase
     public async Task<IActionResult> SendServerFile([FromBody] SendServerFileRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.Numero)) return BadRequest(new { error = "Numero obligatorio" });
-        if (!_twilio.IsConfigured) return StatusCode(503, new { error = "Twilio no configurado" });
+        if (!_outbound.AnyConfigured) return StatusCode(503, new { error = "WhatsApp no configurado (ni Meta ni Twilio)" });
 
         string mediaUrl;
         string filename;
@@ -756,7 +759,7 @@ public class WhatsAppTwilioController : ControllerBase
 
         try
         {
-            var sid = await _twilio.SendMediaAsync(req.Numero, mediaUrl, req.Caption);
+            var (sid, canal) = await _outbound.SendMediaAsync(req.Numero, mediaUrl, req.Caption);
             var msg = new WhatsAppTwilioMensaje
             {
                 Direccion = "OUTGOING",
@@ -765,6 +768,7 @@ public class WhatsAppTwilioController : ControllerBase
                 MediaUrl = mediaUrl,
                 NumMedia = 1,
                 TwilioMessageSid = sid,
+                Canal = canal,
                 Procesado = true,
                 CreatedAt = DateTime.UtcNow
             };
