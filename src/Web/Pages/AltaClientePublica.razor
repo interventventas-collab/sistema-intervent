@@ -21,21 +21,25 @@
                   color: #2563eb; margin: 1.1rem 0 0.6rem; padding-bottom: 4px; border-bottom: 2px solid #dbeafe; }
     .ac-section:first-child { margin-top: 0; }
 
-    .ac-field { margin-bottom: 0.85rem; }
-    .ac-field label { display: block; font-size: 0.82rem; font-weight: 600; color: #374151; margin-bottom: 0.28rem; }
+    .ac-field { margin-bottom: 1rem; }
+    .ac-field label { display: block; font-size: 0.86rem; font-weight: 600; color: #374151; margin-bottom: 0.35rem; }
     .ac-field label .req { color: #dc2626; }
-    .ac-field .hint { font-size: 0.72rem; color: #9ca3af; font-weight: 400; margin-top: 3px; }
+    .ac-field .hint { font-size: 0.74rem; color: #9ca3af; font-weight: 400; margin-top: 3px; }
+    /* font-size 16px evita el zoom automático de iOS al tocar un campo. */
     .ac-input, .ac-select, .ac-textarea {
-        width: 100%; box-sizing: border-box; border: 1.5px solid #d1d5db; border-radius: 9px;
-        padding: 0.62rem 0.7rem; font-size: 0.95rem; color: #111827; background: #fff; font-family: inherit;
+        width: 100%; box-sizing: border-box; border: 1.5px solid #d1d5db; border-radius: 10px;
+        padding: 0.8rem 0.8rem; font-size: 16px; line-height: 1.3; color: #111827; background: #fff;
+        font-family: inherit; -webkit-appearance: none; appearance: none;
     }
+    .ac-select { background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>");
+                 background-repeat: no-repeat; background-position: right 0.7rem center; padding-right: 2.2rem; }
     .ac-input:focus, .ac-select:focus, .ac-textarea:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
-    .ac-textarea { resize: vertical; min-height: 66px; }
+    .ac-textarea { resize: vertical; min-height: 80px; }
 
     .ac-cuit-row { display: flex; gap: 0.5rem; }
-    .ac-cuit-row .ac-input { flex: 1; }
-    .ac-cuit-btn { flex-shrink: 0; background: #0ea5e9; color: white; border: none; border-radius: 9px;
-                   padding: 0 1rem; font-size: 0.85rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+    .ac-cuit-row .ac-input { flex: 1; min-width: 0; }
+    .ac-cuit-btn { flex-shrink: 0; background: #0ea5e9; color: white; border: none; border-radius: 10px;
+                   padding: 0 1.1rem; font-size: 0.9rem; font-weight: 700; cursor: pointer; white-space: nowrap; min-height: 52px; }
     .ac-cuit-btn:hover:not(:disabled) { background: #0284c7; }
     .ac-cuit-btn:disabled { opacity: 0.55; cursor: default; }
     .ac-cuit-ok { font-size: 0.76rem; color: #059669; font-weight: 700; margin-top: 4px; }
@@ -43,21 +47,32 @@
     .ac-fiscal { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 9px; padding: 0.55rem 0.7rem;
                  font-size: 0.83rem; color: #0c4a6e; margin-bottom: 0.85rem; }
     .ac-fiscal-lbl { display: block; font-weight: 700; font-size: 0.74rem; color: #0369a1; margin-bottom: 2px; }
-    .ac-link { background: none; border: none; color: #2563eb; font-size: 0.78rem; font-weight: 600;
-               text-decoration: underline; cursor: pointer; padding: 4px 0 0; }
+    .ac-link { display: inline-block; background: none; border: none; color: #2563eb; font-size: 0.82rem; font-weight: 600;
+               text-decoration: underline; cursor: pointer; padding: 8px 0 2px; min-height: 32px; }
 
-    .ac-submit { width: 100%; background: #16a34a; color: white; border: none; border-radius: 11px;
-                 padding: 0.9rem; font-size: 1.05rem; font-weight: 800; cursor: pointer; margin-top: 1.2rem; }
+    /* Botón enviar: pegajoso abajo para que en el celu siempre esté a mano. */
+    .ac-submit { position: sticky; bottom: 10px; z-index: 2; width: 100%; background: #16a34a; color: white; border: none;
+                 border-radius: 12px; padding: 1rem; font-size: 1.1rem; font-weight: 800; cursor: pointer; margin-top: 1.3rem;
+                 min-height: 54px; box-shadow: 0 6px 18px rgba(22,163,74,0.35); }
     .ac-submit:hover:not(:disabled) { background: #15803d; }
-    .ac-submit:disabled { opacity: 0.55; cursor: default; }
-    .ac-error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 9px;
-                padding: 0.6rem 0.8rem; font-size: 0.85rem; margin-top: 0.9rem; }
+    .ac-submit:disabled { opacity: 0.6; cursor: default; }
+    .ac-error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 10px;
+                padding: 0.7rem 0.9rem; font-size: 0.9rem; margin-top: 0.9rem; }
 
     /* Estados especiales */
     .ac-center { text-align: center; padding: 2.5rem 1.5rem; }
     .ac-center .ico { font-size: 3.2rem; margin-bottom: 0.6rem; }
     .ac-center h2 { margin: 0 0 0.5rem; font-size: 1.35rem; color: #111827; }
     .ac-center p { color: #4b5563; font-size: 0.95rem; line-height: 1.55; margin: 0; }
+
+    /* ── Ajustes para celular: tarjeta a pantalla completa, sin márgenes que molesten. ── */
+    @@media (max-width: 560px) {
+        .ac-wrap { margin: 0; padding: 0; max-width: 100%; }
+        .ac-card { border-radius: 0; box-shadow: none; min-height: 100vh; }
+        .ac-head { padding: 1.2rem 1.1rem; }
+        .ac-head h1 { font-size: 1.25rem; }
+        .ac-body { padding: 1.1rem 1.1rem calc(1.4rem + env(safe-area-inset-bottom)); }
+    }
 </style>
 
 <div class="ac-wrap">
@@ -95,8 +110,9 @@
                 <div class="ac-field">
                     <label>CUIT o DNI <span class="hint">(lo completamos solo con estos datos)</span></label>
                     <div class="ac-cuit-row">
-                        <input class="ac-input" inputmode="numeric" placeholder="CUIT (11 díg) o DNI"
-                               @bind="model.Cuit" @bind:event="oninput" />
+                        <input class="ac-input" inputmode="numeric" autocomplete="off" autocapitalize="off"
+                               placeholder="CUIT (11 díg) o DNI"
+                               @bind="model.Cuit" @bind:event="oninput" @onkeydown="OnCuitKey" />
                         <button class="ac-cuit-btn" @onclick="TraerDatosArca" disabled="@(buscandoCuit || string.IsNullOrWhiteSpace(model.Cuit))">
                             @(buscandoCuit ? "Buscando…" : "Traer datos")
                         </button>
@@ -107,12 +123,14 @@
 
                 <div class="ac-field">
                     <label>Nombre del comercio <span class="req">*</span></label>
-                    <input class="ac-input" placeholder="Como se llama tu local / negocio" @bind="model.NombreFantasia" />
+                    <input class="ac-input" type="text" autocapitalize="words" autocomplete="organization"
+                           placeholder="Como se llama tu local / negocio" @bind="model.NombreFantasia" />
                 </div>
 
                 <div class="ac-field">
                     <label>Razón social <span class="hint">(nombre legal, para la factura)</span></label>
-                    <input class="ac-input" placeholder="Se completa con el CUIT" @bind="model.RazonSocial" />
+                    <input class="ac-input" type="text" autocapitalize="characters" autocomplete="off"
+                           placeholder="Se completa con el CUIT" @bind="model.RazonSocial" />
                 </div>
 
                 <div class="ac-field">
@@ -138,24 +156,29 @@
 
                 <div class="ac-field">
                     <label>Teléfono / WhatsApp <span class="req">*</span></label>
-                    <input class="ac-input" inputmode="tel" placeholder="Ej: 11 2345 6789" @bind="model.Telefono" />
+                    <input class="ac-input" type="tel" inputmode="tel" autocomplete="tel"
+                           placeholder="Ej: 11 2345 6789" @bind="model.Telefono" />
                 </div>
 
                 <div class="ac-field">
                     <label>¿A quién buscamos? <span class="hint">(nombre de contacto)</span></label>
-                    <input class="ac-input" placeholder="Ej: Juan, el encargado" @bind="model.ContactoNombre" />
+                    <input class="ac-input" type="text" autocapitalize="words" autocomplete="name"
+                           placeholder="Ej: Juan, el encargado" @bind="model.ContactoNombre" />
                 </div>
 
                 <div class="ac-field">
                     <label>Email <span class="hint">(opcional, para mandarte comprobantes)</span></label>
-                    <input class="ac-input" inputmode="email" placeholder="tucorreo@ejemplo.com" @bind="model.Email" />
+                    <input class="ac-input" type="email" inputmode="email" autocomplete="email"
+                           autocapitalize="off" autocorrect="off" spellcheck="false"
+                           placeholder="tucorreo@ejemplo.com" @bind="model.Email" />
                 </div>
 
                 <div class="ac-section">🚚 Entrega</div>
 
                 <div class="ac-field">
                     <label>Dirección de entrega <span class="hint">(dónde te dejamos la mercadería)</span></label>
-                    <input class="ac-input" placeholder="Calle y número" @bind="model.Direccion" />
+                    <input class="ac-input" type="text" autocapitalize="words" autocomplete="street-address"
+                           placeholder="Calle y número" @bind="model.Direccion" />
                     @if (!string.IsNullOrWhiteSpace(model.DireccionFiscal))
                     {
                         <button type="button" class="ac-link" @onclick="UsarFiscalParaEntrega">Es el mismo que el domicilio fiscal ↑</button>
@@ -164,17 +187,20 @@
 
                 <div class="ac-field">
                     <label>Localidad</label>
-                    <input class="ac-input" placeholder="Ej: San Justo" @bind="model.Localidad" />
+                    <input class="ac-input" type="text" autocapitalize="words" autocomplete="address-level2"
+                           placeholder="Ej: San Justo" @bind="model.Localidad" />
                 </div>
 
                 <div class="ac-field">
                     <label>Entre qué calles <span class="hint">(referencia para el repartidor)</span></label>
-                    <input class="ac-input" placeholder="Ej: entre Rivadavia y Mitre" @bind="model.EntreCalles" />
+                    <input class="ac-input" type="text" autocapitalize="words"
+                           placeholder="Ej: entre Rivadavia y Mitre" @bind="model.EntreCalles" />
                 </div>
 
                 <div class="ac-field">
                     <label>Link de Google Maps <span class="hint">(opcional, tu ubicación exacta)</span></label>
-                    <input class="ac-input" placeholder="https://maps.app.goo.gl/..." @bind="model.MapeoLink" />
+                    <input class="ac-input" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false"
+                           placeholder="https://maps.app.goo.gl/..." @bind="model.MapeoLink" />
                 </div>
 
                 <div class="ac-field">
@@ -214,6 +240,13 @@
     {
         model.Direccion = model.DireccionFiscal;
         if (string.IsNullOrWhiteSpace(model.Localidad)) model.Localidad = localidadFiscal;
+    }
+
+    // Enter / "buscar" del teclado del celu en el campo CUIT → dispara ARCA.
+    private async Task OnCuitKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !buscandoCuit && !string.IsNullOrWhiteSpace(model.Cuit))
+            await TraerDatosArca();
     }
 
     private bool enviando = false;
