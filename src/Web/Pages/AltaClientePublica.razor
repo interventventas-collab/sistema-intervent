@@ -3,6 +3,7 @@
 @layout Web.Layout.LoginLayout
 @using Web.Models
 @inject ApiClient Api
+@inject IJSRuntime JS
 
 @* Formulario público de alta de cliente. El cliente entra por un link (sin login),
    completa sus datos y quedan como "pendiente" para que el operador lo dé de alta.
@@ -49,6 +50,12 @@
     .ac-fiscal-lbl { display: block; font-weight: 700; font-size: 0.74rem; color: #0369a1; margin-bottom: 2px; }
     .ac-link { display: inline-block; background: none; border: none; color: #2563eb; font-size: 0.82rem; font-weight: 600;
                text-decoration: underline; cursor: pointer; padding: 8px 0 2px; min-height: 32px; }
+
+    /* Botón GPS "estoy en el local ahora". */
+    .ac-gps { width: 100%; min-height: 52px; background: #eff6ff; color: #1d4ed8; border: 1.5px dashed #93c5fd;
+              border-radius: 11px; padding: 0.8rem; font-size: 0.98rem; font-weight: 700; cursor: pointer; line-height: 1.3; }
+    .ac-gps:hover:not(:disabled) { background: #dbeafe; }
+    .ac-gps:disabled { opacity: 0.7; cursor: default; }
 
     /* Botón enviar: pegajoso abajo para que en el celu siempre esté a mano. */
     .ac-submit { position: sticky; bottom: 10px; z-index: 2; width: 100%; background: #16a34a; color: white; border: none;
@@ -198,7 +205,23 @@
                 </div>
 
                 <div class="ac-field">
-                    <label>Link de Google Maps <span class="hint">(opcional, tu ubicación exacta)</span></label>
+                    <label>Tu ubicación exacta <span class="hint">(para que el repartidor te encuentre fácil)</span></label>
+                    <button type="button" class="ac-gps" @onclick="ObtenerUbicacion" disabled="@obteniendoGps">
+                        @(obteniendoGps ? "📡 Obteniendo tu ubicación…" : "📍 Estoy en el local ahora — Guardar mi ubicación")
+                    </button>
+                    <div class="hint">Tocá esto solo si estás en el local en este momento. Te va a pedir permiso de ubicación.</div>
+                    @if (gpsOk)
+                    {
+                        <div class="ac-cuit-ok">✔ Ubicación guardada@(gpsPrecision.HasValue ? $" (precisión ~{gpsPrecision} m)" : "")</div>
+                    }
+                    else if (!string.IsNullOrEmpty(gpsError))
+                    {
+                        <div class="ac-cuit-err">@gpsError</div>
+                    }
+                </div>
+
+                <div class="ac-field">
+                    <label>…o pegá el link de Google Maps <span class="hint">(opcional, si no estás en el local)</span></label>
                     <input class="ac-input" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false"
                            placeholder="https://maps.app.goo.gl/..." @bind="model.MapeoLink" />
                 </div>
@@ -235,6 +258,42 @@
     private bool arcaOk = false;
     private string? arcaError;
     private string? localidadFiscal;
+
+    private bool obteniendoGps = false;
+    private bool gpsOk = false;
+    private string? gpsError;
+    private int? gpsPrecision;
+
+    private class GeoPos { public double? Lat { get; set; } public double? Lon { get; set; } public int? Accuracy { get; set; } }
+
+    // Captura el GPS del celular (alta precisión, mismo motor que los repartidores) y lo guarda
+    // como link de Google Maps. Al crear el cliente, el link se resuelve a coordenadas solo.
+    private async Task ObtenerUbicacion()
+    {
+        gpsError = null; gpsOk = false;
+        obteniendoGps = true;
+        try
+        {
+            var pos = await JS.InvokeAsync<GeoPos?>("heGetPositionAccurate", 10000);
+            if (pos?.Lat is double lat && pos.Lon is double lon)
+            {
+                var latS = lat.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                var lonS = lon.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                model.MapeoLink = $"https://www.google.com/maps?q={latS},{lonS}";
+                gpsPrecision = pos.Accuracy;
+                gpsOk = true;
+            }
+            else
+            {
+                gpsError = "No pudimos obtener tu ubicación. Activá el GPS y permití el acceso, o pegá el link de Google Maps.";
+            }
+        }
+        catch
+        {
+            gpsError = "No pudimos obtener tu ubicación. Activá el GPS y permití el acceso, o pegá el link de Google Maps.";
+        }
+        finally { obteniendoGps = false; }
+    }
 
     private void UsarFiscalParaEntrega()
     {
