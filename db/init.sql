@@ -5712,6 +5712,7 @@ BEGIN
         ContactoNombre NVARCHAR(150) NULL,
         Telefono NVARCHAR(50) NOT NULL,
         Email NVARCHAR(255) NULL,
+        DireccionFiscal NVARCHAR(300) NULL,
         Direccion NVARCHAR(300) NULL,
         EntreCalles NVARCHAR(200) NULL,
         Localidad NVARCHAR(150) NULL,

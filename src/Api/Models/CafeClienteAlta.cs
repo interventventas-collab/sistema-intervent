@@ -41,7 +41,11 @@ public class CafeClienteAlta
     [MaxLength(255)]
     public string? Email { get; set; }
 
-    /// <summary>Domicilio de entrega (calle y número).</summary>
+    /// <summary>Domicilio FISCAL (viene de ARCA por el CUIT). Se usa para facturar.</summary>
+    [MaxLength(300)]
+    public string? DireccionFiscal { get; set; }
+
+    /// <summary>Domicilio de ENTREGA (calle y número donde recibe la mercadería).</summary>
     [MaxLength(300)]
     public string? Direccion { get; set; }
 

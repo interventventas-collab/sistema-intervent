@@ -40,6 +40,11 @@
     .ac-cuit-btn:disabled { opacity: 0.55; cursor: default; }
     .ac-cuit-ok { font-size: 0.76rem; color: #059669; font-weight: 700; margin-top: 4px; }
     .ac-cuit-err { font-size: 0.76rem; color: #d97706; font-weight: 600; margin-top: 4px; }
+    .ac-fiscal { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 9px; padding: 0.55rem 0.7rem;
+                 font-size: 0.83rem; color: #0c4a6e; margin-bottom: 0.85rem; }
+    .ac-fiscal-lbl { display: block; font-weight: 700; font-size: 0.74rem; color: #0369a1; margin-bottom: 2px; }
+    .ac-link { background: none; border: none; color: #2563eb; font-size: 0.78rem; font-weight: 600;
+               text-decoration: underline; cursor: pointer; padding: 4px 0 0; }
 
     .ac-submit { width: 100%; background: #16a34a; color: white; border: none; border-radius: 11px;
                  padding: 0.9rem; font-size: 1.05rem; font-weight: 800; cursor: pointer; margin-top: 1.2rem; }
@@ -121,6 +126,14 @@
                     </select>
                 </div>
 
+                @if (!string.IsNullOrWhiteSpace(model.DireccionFiscal))
+                {
+                    <div class="ac-fiscal">
+                        <span class="ac-fiscal-lbl">📌 Domicilio fiscal (para la factura):</span>
+                        <span>@model.DireccionFiscal@(string.IsNullOrWhiteSpace(localidadFiscal) ? "" : $", {localidadFiscal}")</span>
+                    </div>
+                }
+
                 <div class="ac-section">📞 Contacto</div>
 
                 <div class="ac-field">
@@ -141,8 +154,12 @@
                 <div class="ac-section">🚚 Entrega</div>
 
                 <div class="ac-field">
-                    <label>Dirección de entrega</label>
+                    <label>Dirección de entrega <span class="hint">(dónde te dejamos la mercadería)</span></label>
                     <input class="ac-input" placeholder="Calle y número" @bind="model.Direccion" />
+                    @if (!string.IsNullOrWhiteSpace(model.DireccionFiscal))
+                    {
+                        <button type="button" class="ac-link" @onclick="UsarFiscalParaEntrega">Es el mismo que el domicilio fiscal ↑</button>
+                    }
                 </div>
 
                 <div class="ac-field">
@@ -191,6 +208,13 @@
     private bool buscandoCuit = false;
     private bool arcaOk = false;
     private string? arcaError;
+    private string? localidadFiscal;
+
+    private void UsarFiscalParaEntrega()
+    {
+        model.Direccion = model.DireccionFiscal;
+        if (string.IsNullOrWhiteSpace(model.Localidad)) model.Localidad = localidadFiscal;
+    }
 
     private bool enviando = false;
     private bool enviado = false;
@@ -226,8 +250,9 @@
                     if (string.IsNullOrWhiteSpace(model.NombreFantasia)) model.NombreFantasia = r.RazonSocial;
                 }
                 if (!string.IsNullOrWhiteSpace(r.CondicionIva)) model.CondicionIva = r.CondicionIva;
-                if (!string.IsNullOrWhiteSpace(r.Direccion) && string.IsNullOrWhiteSpace(model.Direccion)) model.Direccion = r.Direccion;
-                if (!string.IsNullOrWhiteSpace(r.Localidad) && string.IsNullOrWhiteSpace(model.Localidad)) model.Localidad = r.Localidad;
+                // El domicilio de ARCA es el FISCAL — va a su propio campo, NO al de entrega.
+                model.DireccionFiscal = r.Direccion;
+                localidadFiscal = r.Localidad;
                 arcaOk = true;
             }
             else
