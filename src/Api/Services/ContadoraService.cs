@@ -2131,13 +2131,19 @@ public class ContadoraService
             if (f is null) continue;
             var saldo = Math.Round(f.Saldo, 2);
             if (saldo <= 0) continue;   // ya estaba pagada
+            // Importe a imputar: el que mandó el usuario (pago parcial), sin pasarse del saldo.
+            // Si no vino nada, se paga el saldo completo (retrocompatible con el cruce automático).
+            var importe = saldo;
+            if (req.Importes != null && req.Importes.TryGetValue(idc, out var imp) && imp > 0)
+                importe = Math.Min(Math.Round(imp, 2), saldo);
+            if (importe <= 0) continue;
             _db.ContadoraComprobantePagos.Add(new ContadoraComprobantePago
             {
                 IdComprobante = idc,
                 Fecha = mov.Fecha,
                 Medio = "Transferencia",
                 Referencia = string.IsNullOrWhiteSpace(referencia) ? "Transferencia banco" : referencia,
-                Importe = saldo,
+                Importe = importe,
                 Operador = string.IsNullOrWhiteSpace(operador) ? null : operador.Trim(),
                 Observaciones = "Cruzado con el extracto del Galicia",
                 Anulado = false,

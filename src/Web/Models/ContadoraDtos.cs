@@ -313,6 +313,7 @@ public class PagarComprasDesdeBancoRequest
 {
     public int ExtractoMovId { get; set; }
     public List<string> IdComprobantes { get; set; } = new();
+    public Dictionary<string, decimal>? Importes { get; set; }
 }
 
 public class PagoBancoResultDto

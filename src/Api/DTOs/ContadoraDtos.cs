@@ -341,6 +341,9 @@ public class PagarComprasDesdeBancoRequest
 {
     public int ExtractoMovId { get; set; }
     public List<string> IdComprobantes { get; set; } = new();
+    /// <summary>Importe a imputar por factura (IdComprobante → monto). Permite pagos parciales.
+    /// Si una factura no está acá (o el monto es ≤ 0), se paga el saldo completo (retrocompatible).</summary>
+    public Dictionary<string, decimal>? Importes { get; set; }
 }
 
 public class PagoBancoResultDto

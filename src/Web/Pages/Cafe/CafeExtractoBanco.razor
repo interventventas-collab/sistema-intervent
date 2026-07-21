@@ -438,8 +438,10 @@
                         {
                             var coincide = Math.Abs(f.Saldo - movCompra.Debitos) < 0.01m;
                             var sel = facturasElegidas.Contains(f.IdComprobante);
-                            <label style="display:flex; align-items:center; gap:.5rem; padding:.5rem .6rem; border:1px solid @(sel ? "#7c3aed" : "#e2e8f0"); background:@(sel ? "#f5f3ff" : "#fff"); border-radius:8px; cursor:pointer;">
-                                <input type="checkbox" checked="@sel" @onchange="() => ToggleFacturaElegida(f.IdComprobante)" />
+                            <div style="display:flex; align-items:center; gap:.5rem; padding:.5rem .6rem; border:1px solid @(sel ? "#7c3aed" : "#e2e8f0"); background:@(sel ? "#f5f3ff" : "#fff"); border-radius:8px;">
+                                <input type="checkbox" style="cursor:pointer; width:18px; height:18px;"
+                                       @bind:get="facturasElegidas.Contains(f.IdComprobante)"
+                                       @bind:set="v => SetFacturaElegida(f, v)" />
                                 <div style="flex:1;">
                                     <div style="font-weight:600;">
                                         @f.TipoComprobante @(f.PuntoVenta?.ToString("D4"))-@(f.NumeroComprobante?.ToString("D8"))
@@ -447,8 +449,22 @@
                                     </div>
                                     <div style="font-size:.72rem; color:#6b7280;">@f.FechaEmision?.ToString("dd/MM/yyyy") · Total $@f.Total.ToString("N2")@(f.Pagado > 0 ? $" · ya pagado ${f.Pagado.ToString("N2")}" : "")</div>
                                 </div>
-                                <div style="font-weight:700; color:#dc2626;">$@f.Saldo.ToString("N2")</div>
-                            </label>
+                                @if (sel)
+                                {
+                                    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:.1rem;">
+                                        <span style="font-size:.66rem; color:#6b7280;">Pago $</span>
+                                        <input type="number" step="0.01" min="0"
+                                               @bind:get="GetImporteElegido(f.IdComprobante)"
+                                               @bind:set="v => SetImporteElegido(f.IdComprobante, v)"
+                                               style="width:120px; padding:.3rem .4rem; border:1px solid #7c3aed; border-radius:6px; text-align:right; font-weight:700;" />
+                                        <span style="font-size:.64rem; color:#9ca3af;">saldo $@f.Saldo.ToString("N2")</span>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div style="font-weight:700; color:#dc2626;">$@f.Saldo.ToString("N2")</div>
+                                }
+                            </div>
                         }
                     </div>
                     <div style="margin-top:.7rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.4rem; font-size:.85rem;">
@@ -459,7 +475,7 @@
                         }
                     </div>
                     <div style="display:flex; gap:.5rem; margin-top:1rem;">
-                        <button class="btn-asociar" style="background:#7c3aed;" @onclick="ConfirmarPagoCompra" disabled="@guardandoPagoCompra">@(guardandoPagoCompra ? "Guardando…" : "✓ Marcar como pagada")</button>
+                        <button class="btn-asociar" style="background:#7c3aed;" @onclick="ConfirmarPagoCompra" disabled="@guardandoPagoCompra">@(guardandoPagoCompra ? "Guardando…" : "✓ Registrar pago")</button>
                         <button class="btn-close" @onclick="@(() => movCompra = null)" style="background:#e5e7eb; color:#374151; padding:.4rem .8rem; border:none; border-radius:6px; cursor:pointer;">Cerrar</button>
                     </div>
                 }
@@ -490,7 +506,9 @@
                         {
                             var sel = crucesElegidos.Contains(c.MovId);
                             <label style="display:flex; align-items:center; gap:.6rem; padding:.5rem .6rem; border:1px solid @(sel ? "#7c3aed" : "#e2e8f0"); background:@(sel ? "#f5f3ff" : "#fff"); border-radius:8px; cursor:pointer;">
-                                <input type="checkbox" checked="@sel" @onchange="() => ToggleCruce(c.MovId)" />
+                                <input type="checkbox" style="width:18px; height:18px;"
+                                       @bind:get="crucesElegidos.Contains(c.MovId)"
+                                       @bind:set="v => SetCruceElegido(c.MovId, v)" />
                                 <div style="flex:1;">
                                     <div style="font-weight:600;">@(string.IsNullOrWhiteSpace(c.ProveedorNombre) ? "(proveedor)" : c.ProveedorNombre) <span style="font-family:monospace; font-size:.72rem; color:#6b7280;">@c.Cuit</span></div>
                                     <div style="font-size:.72rem; color:#6b7280;">@c.Fecha.ToString("dd/MM/yyyy") · factura <strong>@c.FacturaLabel</strong></div>
@@ -569,9 +587,12 @@
     private ExtractoMovimientoDto? movCompra;
     private List<FacturaCompraImpagaDto> facturasCompra = new();
     private HashSet<string> facturasElegidas = new();
+    // Importe a imputar por factura (permite pagos parciales). Se siembra con el saldo al tildar.
+    private Dictionary<string, decimal> importesElegidos = new();
     private bool loadingFacturasCompra;
     private bool guardandoPagoCompra;
-    private decimal TotalElegido => facturasCompra.Where(f => facturasElegidas.Contains(f.IdComprobante)).Sum(f => f.Saldo);
+    private decimal TotalElegido => facturasCompra.Where(f => facturasElegidas.Contains(f.IdComprobante))
+        .Sum(f => importesElegidos.TryGetValue(f.IdComprobante, out var v) ? v : f.Saldo);
 
     // Cruce automático
     private bool mostrarCruce, cargandoCruce, aplicandoCruce;
@@ -635,6 +656,7 @@
         movCompra = m;
         facturasCompra = new();
         facturasElegidas = new();
+        importesElegidos = new();
         loadingFacturasCompra = true;
         try
         {
@@ -642,27 +664,46 @@
                 facturasCompra = await Api.GetFacturasImpagasProveedorAsync(m.LeyendaAdicional2) ?? new();
             // Pre-tildar la(s) factura(s) cuyo saldo coincide clavado con el importe transferido.
             foreach (var f in facturasCompra.Where(f => Math.Abs(f.Saldo - m.Debitos) < 0.01m))
+            {
                 facturasElegidas.Add(f.IdComprobante);
+                importesElegidos[f.IdComprobante] = Math.Round(Math.Max(0, f.Saldo), 2);
+            }
         }
         catch (Exception ex) { ToastService.Error("No pude cargar las facturas: " + ex.Message); }
         finally { loadingFacturasCompra = false; }
     }
 
-    private void ToggleFacturaElegida(string id)
+    // Tildar/destildar una factura. Al tildar, siembra el importe con el saldo (editable para pago parcial).
+    private void SetFacturaElegida(FacturaCompraImpagaDto f, bool elegida)
     {
-        if (!facturasElegidas.Remove(id)) facturasElegidas.Add(id);
+        if (elegida)
+        {
+            facturasElegidas.Add(f.IdComprobante);
+            if (!importesElegidos.ContainsKey(f.IdComprobante))
+                importesElegidos[f.IdComprobante] = Math.Round(Math.Max(0, f.Saldo), 2);
+        }
+        else
+        {
+            facturasElegidas.Remove(f.IdComprobante);
+            importesElegidos.Remove(f.IdComprobante);
+        }
     }
+
+    private decimal GetImporteElegido(string id) => importesElegidos.TryGetValue(id, out var v) ? v : 0m;
+    private void SetImporteElegido(string id, decimal v) => importesElegidos[id] = v < 0 ? 0 : Math.Round(v, 2);
 
     private async Task ConfirmarPagoCompra()
     {
         if (movCompra is null || guardandoPagoCompra) return;
         if (facturasElegidas.Count == 0) { ToastService.Error("Elegí al menos una factura."); return; }
+        var importes = facturasElegidas.ToDictionary(id => id, id => GetImporteElegido(id));
+        if (importes.Values.All(v => v <= 0)) { ToastService.Error("Poné un importe mayor a cero."); return; }
         guardandoPagoCompra = true;
         try
         {
-            var res = await Api.PagarComprasDesdeBancoAsync(movCompra.Id, facturasElegidas.ToList());
+            var res = await Api.PagarComprasDesdeBancoAsync(movCompra.Id, facturasElegidas.ToList(), importes);
             if (res is null || !res.Ok) { ToastService.Error(res?.Error ?? "No se pudo registrar el pago."); return; }
-            ToastService.Success($"✓ {res.PagosCreados} factura(s) marcada(s) como pagada(s).");
+            ToastService.Success($"✓ {res.PagosCreados} pago(s) registrado(s).");
             movCompra = null;
             await CargarPagosBanco();
         }
@@ -698,9 +739,9 @@
         finally { cargandoCruce = false; }
     }
 
-    private void ToggleCruce(int movId)
+    private void SetCruceElegido(int movId, bool elegido)
     {
-        if (!crucesElegidos.Remove(movId)) crucesElegidos.Add(movId);
+        if (elegido) crucesElegidos.Add(movId); else crucesElegidos.Remove(movId);
     }
 
     private async Task ConfirmarCruce()

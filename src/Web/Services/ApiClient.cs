@@ -6231,9 +6231,9 @@ public class ApiClient
     public async Task<List<FacturaCompraImpagaDto>?> GetFacturasImpagasProveedorAsync(string cuit)
         => await GetAsync<List<FacturaCompraImpagaDto>>("/api/contadora/compras/impagas-proveedor?cuit=" + Uri.EscapeDataString(cuit));
 
-    public async Task<PagoBancoResultDto?> PagarComprasDesdeBancoAsync(int extractoMovId, List<string> idComprobantes)
+    public async Task<PagoBancoResultDto?> PagarComprasDesdeBancoAsync(int extractoMovId, List<string> idComprobantes, Dictionary<string, decimal>? importes = null)
         => await PostAsync<PagoBancoResultDto>("/api/contadora/compras/pagar-desde-banco",
-            new { extractoMovId, idComprobantes });
+            new { extractoMovId, idComprobantes, importes });
 
     public async Task<List<PagoBancoMovDto>?> GetPagosBancoAsync(IEnumerable<int> movIds)
         => await GetAsync<List<PagoBancoMovDto>>("/api/contadora/compras/pagos-banco?movIds=" + Uri.EscapeDataString(string.Join(",", movIds)));
