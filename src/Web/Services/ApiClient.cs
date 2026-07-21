@@ -6227,6 +6227,20 @@ public class ApiClient
         return await GetAsync<ContadoraDeudaProveedoresDto>("/api/contadora/compras/deuda-proveedores" + qs);
     }
 
+    // ── Cruce banco (Galicia) ↔ facturas de compra ──
+    public async Task<List<FacturaCompraImpagaDto>?> GetFacturasImpagasProveedorAsync(string cuit)
+        => await GetAsync<List<FacturaCompraImpagaDto>>("/api/contadora/compras/impagas-proveedor?cuit=" + Uri.EscapeDataString(cuit));
+
+    public async Task<PagoBancoResultDto?> PagarComprasDesdeBancoAsync(int extractoMovId, List<string> idComprobantes)
+        => await PostAsync<PagoBancoResultDto>("/api/contadora/compras/pagar-desde-banco",
+            new { extractoMovId, idComprobantes });
+
+    public async Task<List<PagoBancoMovDto>?> GetPagosBancoAsync(IEnumerable<int> movIds)
+        => await GetAsync<List<PagoBancoMovDto>>("/api/contadora/compras/pagos-banco?movIds=" + Uri.EscapeDataString(string.Join(",", movIds)));
+
+    public async Task<bool> DesasociarPagoBancoAsync(int movId)
+        => await PostAsync<object>($"/api/contadora/compras/desasociar-banco/{movId}", new { }) is not null;
+
     public async Task<List<ContadoraRetencionDto>?> GetContadoraRetencionesAsync(string empresa)
         => await GetAsync<List<ContadoraRetencionDto>>("/api/contadora/retenciones?empresa=" + Uri.EscapeDataString(empresa));
 

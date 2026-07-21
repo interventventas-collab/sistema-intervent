@@ -4,6 +4,7 @@
 @inject ToastService ToastService
 @inject OperatorService Operator
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 @using Web.Models
 
 @* ════════════════════════════════════════════════════════════════════════════
@@ -237,7 +238,28 @@
                             }
                             else
                             {
-                                <span style="color: #9ca3af; font-size: 0.78rem;">—</span>
+                                @* Egreso: transferencia a un proveedor → asociar a su factura de compra *@
+                                @if (pagosCompraPorMov.TryGetValue(m.Id, out var facsPagadas) && facsPagadas.Count > 0)
+                                {
+                                    <div style="display:flex; flex-direction:column; gap:.15rem; max-width:260px;">
+                                        <span style="font-size:0.68rem; color:#16a34a; font-weight:700;">✓ Pagó factura(s) de compra</span>
+                                        <div style="display:flex; flex-wrap:wrap; gap:.2rem; align-items:center;">
+                                            @foreach (var nro in facsPagadas)
+                                            {
+                                                <span style="font-size:0.7rem; padding:.1rem .35rem; background:#dcfce7; color:#166534; border:1px solid #86efac; border-radius:4px; font-family:monospace;">@nro</span>
+                                            }
+                                            <button class="btn-desasociar" @onclick="() => DesasociarCompra(m.Id)" title="Deshacer el cruce">×</button>
+                                        </div>
+                                    </div>
+                                }
+                                else if (!string.IsNullOrEmpty(m.LeyendaAdicional2))
+                                {
+                                    <button class="btn-asociar" @onclick="() => AbrirModalCompra(m)" style="background:#7c3aed;">🧾 Asociar a compra</button>
+                                }
+                                else
+                                {
+                                    <span style="color: #9ca3af; font-size: 0.78rem;">—</span>
+                                }
                             }
                         </td>
                     </tr>
@@ -383,6 +405,66 @@
     </div>
 }
 
+@* Modal: asociar un egreso con factura(s) de compra (pagar desde el banco) *@
+@if (movCompra is not null)
+{
+    <div class="modal-overlay" @onclick="@(() => movCompra = null)" style="z-index: 9000; position: fixed; inset: 0; background: rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center;">
+        <div @onclick:stopPropagation="true" style="background:#fff; border-radius:12px; width:min(600px,95vw); max-height:90vh; overflow:auto; box-shadow:0 20px 60px rgba(0,0,0,.3);">
+            <div style="background:#7c3aed; color:#fff; padding:.8rem 1rem; display:flex; justify-content:space-between; align-items:center; border-radius:12px 12px 0 0;">
+                <h3 style="margin:0; font-size:1.05rem;">🧾 Pagar factura de compra</h3>
+                <button @onclick="@(() => movCompra = null)" style="background:none; border:none; color:#fff; font-size:1.5rem; cursor:pointer;">&times;</button>
+            </div>
+            <div style="padding:1rem;">
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:.6rem .8rem; margin-bottom:.8rem;">
+                    <div style="font-weight:700;">@(movCompra.LeyendaAdicional1 ?? movCompra.Descripcion)</div>
+                    @if (!string.IsNullOrEmpty(movCompra.LeyendaAdicional2)) { <div style="font-family:monospace; font-size:.75rem; color:#6b7280;">CUIT: @movCompra.LeyendaAdicional2</div> }
+                    <div style="font-size:1.2rem; font-weight:800; color:#dc2626; margin-top:.3rem;">Transferencia: $@movCompra.Debitos.ToString("N2")</div>
+                    <div style="font-size:.72rem; color:#6b7280;">del @movCompra.Fecha.ToString("dd/MM/yyyy")</div>
+                </div>
+
+                @if (loadingFacturasCompra) { <p>Buscando facturas…</p> }
+                else if (facturasCompra.Count == 0)
+                {
+                    <p style="color:#6b7280;">No encontré facturas de compra con saldo pendiente de este proveedor (CUIT @movCompra.LeyendaAdicional2). Puede que la factura todavía no haya entrado de AFIP, o que ya esté paga.</p>
+                }
+                else
+                {
+                    <div style="font-size:.85rem; font-weight:700; margin-bottom:.4rem;">Elegí la(s) factura(s) que pagó esta transferencia:</div>
+                    <div style="display:flex; flex-direction:column; gap:.35rem;">
+                        @foreach (var f in facturasCompra)
+                        {
+                            var coincide = Math.Abs(f.Saldo - movCompra.Debitos) < 0.01m;
+                            var sel = facturasElegidas.Contains(f.IdComprobante);
+                            <label style="display:flex; align-items:center; gap:.5rem; padding:.5rem .6rem; border:1px solid @(sel ? "#7c3aed" : "#e2e8f0"); background:@(sel ? "#f5f3ff" : "#fff"); border-radius:8px; cursor:pointer;">
+                                <input type="checkbox" checked="@sel" @onchange="() => ToggleFacturaElegida(f.IdComprobante)" />
+                                <div style="flex:1;">
+                                    <div style="font-weight:600;">
+                                        @f.TipoComprobante @(f.PuntoVenta?.ToString("D4"))-@(f.NumeroComprobante?.ToString("D8"))
+                                        @if (coincide) { <span style="font-size:.7rem; color:#16a34a; font-weight:700; margin-left:.3rem;">✓ coincide</span> }
+                                    </div>
+                                    <div style="font-size:.72rem; color:#6b7280;">@f.FechaEmision?.ToString("dd/MM/yyyy") · Total $@f.Total.ToString("N2")@(f.Pagado > 0 ? $" · ya pagado ${f.Pagado.ToString("N2")}" : "")</div>
+                                </div>
+                                <div style="font-weight:700; color:#dc2626;">$@f.Saldo.ToString("N2")</div>
+                            </label>
+                        }
+                    </div>
+                    <div style="margin-top:.7rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.4rem; font-size:.85rem;">
+                        <span>Elegido: <strong>$@TotalElegido.ToString("N2")</strong></span>
+                        @if (facturasElegidas.Count > 0 && Math.Abs(TotalElegido - movCompra.Debitos) > 0.01m)
+                        {
+                            <span style="color:#b45309;">⚠ No coincide con la transferencia ($@movCompra.Debitos.ToString("N2"))</span>
+                        }
+                    </div>
+                    <div style="display:flex; gap:.5rem; margin-top:1rem;">
+                        <button class="btn-asociar" style="background:#7c3aed;" @onclick="ConfirmarPagoCompra" disabled="@guardandoPagoCompra">@(guardandoPagoCompra ? "Guardando…" : "✓ Marcar como pagada")</button>
+                        <button class="btn-close" @onclick="@(() => movCompra = null)" style="background:#e5e7eb; color:#374151; padding:.4rem .8rem; border:none; border-radius:6px; cursor:pointer;">Cerrar</button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private SaldoBancoDto? saldo;
     private List<ExtractoMovimientoDto> movs = new();
@@ -436,6 +518,15 @@
     private bool clienteSearchOpen;
     private CafeClienteDto? clienteElegidoManual;
 
+    // Cruce banco ↔ factura de compra
+    private Dictionary<int, List<string>> pagosCompraPorMov = new();
+    private ExtractoMovimientoDto? movCompra;
+    private List<FacturaCompraImpagaDto> facturasCompra = new();
+    private HashSet<string> facturasElegidas = new();
+    private bool loadingFacturasCompra;
+    private bool guardandoPagoCompra;
+    private decimal TotalElegido => facturasCompra.Where(f => facturasElegidas.Contains(f.IdComprobante)).Sum(f => f.Saldo);
+
     protected override async Task OnInitializedAsync() => await Recargar();
 
     private async Task Recargar()
@@ -470,6 +561,76 @@
         var tipo = filtro is "ingresos" or "egresos" ? filtro : null;
         var asoc = filtro switch { "sin-asociar" => "no", "sin-completar" => "sin-completar", _ => null };
         movs = await Api.GetExtractoMovimientosAsync(tipo: tipo, asociado: asoc) ?? new();
+        await CargarPagosBanco();
+    }
+
+    /// <summary>Marca qué egresos ya pagaron una factura de compra (para pintarlos en verde).</summary>
+    private async Task CargarPagosBanco()
+    {
+        pagosCompraPorMov = new();
+        var ids = movs.Where(m => m.Debitos > 0.01m).Select(m => m.Id).ToList();
+        if (ids.Count == 0) return;
+        try
+        {
+            var res = await Api.GetPagosBancoAsync(ids);
+            if (res is not null) pagosCompraPorMov = res.ToDictionary(x => x.MovId, x => x.Facturas);
+        }
+        catch { /* secundario: si falla, los egresos quedan sin el badge verde */ }
+    }
+
+    // ── Pagar factura de compra desde una transferencia del banco ──
+    private async Task AbrirModalCompra(ExtractoMovimientoDto m)
+    {
+        movCompra = m;
+        facturasCompra = new();
+        facturasElegidas = new();
+        loadingFacturasCompra = true;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(m.LeyendaAdicional2))
+                facturasCompra = await Api.GetFacturasImpagasProveedorAsync(m.LeyendaAdicional2) ?? new();
+            // Pre-tildar la(s) factura(s) cuyo saldo coincide clavado con el importe transferido.
+            foreach (var f in facturasCompra.Where(f => Math.Abs(f.Saldo - m.Debitos) < 0.01m))
+                facturasElegidas.Add(f.IdComprobante);
+        }
+        catch (Exception ex) { ToastService.Error("No pude cargar las facturas: " + ex.Message); }
+        finally { loadingFacturasCompra = false; }
+    }
+
+    private void ToggleFacturaElegida(string id)
+    {
+        if (!facturasElegidas.Remove(id)) facturasElegidas.Add(id);
+    }
+
+    private async Task ConfirmarPagoCompra()
+    {
+        if (movCompra is null || guardandoPagoCompra) return;
+        if (facturasElegidas.Count == 0) { ToastService.Error("Elegí al menos una factura."); return; }
+        guardandoPagoCompra = true;
+        try
+        {
+            var res = await Api.PagarComprasDesdeBancoAsync(movCompra.Id, facturasElegidas.ToList());
+            if (res is null || !res.Ok) { ToastService.Error(res?.Error ?? "No se pudo registrar el pago."); return; }
+            ToastService.Success($"✓ {res.PagosCreados} factura(s) marcada(s) como pagada(s).");
+            movCompra = null;
+            await CargarPagosBanco();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { guardandoPagoCompra = false; }
+    }
+
+    private async Task DesasociarCompra(int movId)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "¿Deshacer el pago de esta transferencia? Las facturas vuelven a quedar como 'Debo'.")) return;
+        try
+        {
+            if (await Api.DesasociarPagoBancoAsync(movId))
+            {
+                ToastService.Success("Cruce deshecho.");
+                await CargarPagosBanco();
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
 
     private async Task OnFilesSelected(InputFileChangeEventArgs e)

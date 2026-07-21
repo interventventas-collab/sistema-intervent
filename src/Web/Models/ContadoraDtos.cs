@@ -295,6 +295,39 @@ public class RegistrarPagoResultDto
     public ContadoraFacturaPagosDto? Factura { get; set; }
 }
 
+// ── Cruce banco (Galicia) ↔ facturas de compra ──
+
+public class FacturaCompraImpagaDto
+{
+    public string IdComprobante { get; set; } = "";
+    public string? TipoComprobante { get; set; }
+    public int? PuntoVenta { get; set; }
+    public long? NumeroComprobante { get; set; }
+    public DateTime? FechaEmision { get; set; }
+    public decimal Total { get; set; }
+    public decimal Pagado { get; set; }
+    public decimal Saldo { get; set; }
+}
+
+public class PagarComprasDesdeBancoRequest
+{
+    public int ExtractoMovId { get; set; }
+    public List<string> IdComprobantes { get; set; } = new();
+}
+
+public class PagoBancoResultDto
+{
+    public bool Ok { get; set; } = true;
+    public string? Error { get; set; }
+    public int PagosCreados { get; set; }
+}
+
+public class PagoBancoMovDto
+{
+    public int MovId { get; set; }
+    public List<string> Facturas { get; set; } = new();
+}
+
 public class ContadoraDeudaProveedorDto
 {
     public string? Cuit { get; set; }
