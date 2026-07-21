@@ -168,6 +168,20 @@ public class ApiClient
         return (null, error);
     }
 
+    // --- 2026-07-21: Detección de fotos en infracción (Etapa 1.5) ---
+    public async Task<ScanPhotoInfractionsResult?> ScanPhotoInfractionsAsync()
+    {
+        return await GetAsync<ScanPhotoInfractionsResult>("/api/meli/photo-infractions");
+    }
+
+    public async Task<PictureDiagnosisDto?> DiagnosePictureAsync(string meliItemId, string pictureRef)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/meli/items/{meliItemId}/diagnose-picture", new { pictureRef });
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadFromJsonAsync<PictureDiagnosisDto>();
+    }
+
     // --- 2026-06-19: Refresco de sale_fee real (comision MeLi) ---
     public async Task<bool> RefreshMeliItemSaleFeeAsync(string meliItemId)
     {

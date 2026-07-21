@@ -107,6 +107,13 @@
     .pp-save { background:#16a34a; color:#fff; border:none; border-radius:8px; padding:9px 16px; font-size:0.83rem; font-weight:700; cursor:pointer; }
     .pp-save:hover { background:#15803d; }
     .pp-save:disabled { background:#94a3b8; cursor:default; }
+
+    /* 2026-07-21: detección de fotos en infracción */
+    .plist-thumb-wrap { position:relative; display:inline-block; line-height:0; }
+    .plist-flag { position:absolute; top:-6px; right:-6px; font-size:0.85rem; background:#fff; border-radius:50%; box-shadow:0 0 0 1px #ea580c; padding:1px 2px; cursor:help; }
+    .pp-infr { background:#ffedd5; border:1px solid #fb923c; color:#9a3412; font-size:0.8rem; border-radius:8px; padding:9px 11px; margin-bottom:10px; line-height:1.4; }
+    .pp-thumb.bad { border-color:#dc2626; box-shadow:0 0 0 2px #fecaca; }
+    .pp-problem { position:absolute; top:0; right:0; left:0; background:#dc2626; color:#fff; font-size:0.6rem; font-weight:700; padding:2px 4px; text-align:center; line-height:1.15; max-height:2.4em; overflow:hidden; }
 </style>
 
 <div class="card card-publicaciones">
@@ -115,6 +122,12 @@
         <div style="display: flex; gap: 0.5rem; align-items: center;">
         <button class="btn btn-secondary" @onclick='() => Nav.NavigateTo("/publicaciones/auditoria")' title="Comparar lista de MLAs entre MeLi y el sistema">
             <i class="fa-solid fa-magnifying-glass"></i> Auditar vs MeLi
+        </button>
+        @* 2026-07-21: escanea las infracciones de la cuenta y marca las publicaciones con foto en infracción (🚩). *@
+        <button class="btn" style="background:#ea580c; color:white; font-weight:700;"
+                @onclick="BuscarInfraccionesFoto" disabled="@scanningInfractions"
+                title="Revisa las infracciones de tu cuenta en MercadoLibre y marca con 🚩 las publicaciones cuyo problema es de fotos, para que las arregles.">
+            @if (scanningInfractions) { <span>⏳ Escaneando...</span> } else { <span>🚩 Buscar fotos en infracción</span> }
         </button>
         @* 2026-06-19: Refrescar comisiones reales de MeLi via API listing_prices.
            Tarda 10-15 min en background. Despues los netos del listado coinciden al peso con MeLi. *@
@@ -285,6 +298,15 @@
                             style="display:inline-flex; align-items:center; gap:0.35rem; padding:0.35rem 0.7rem; margin-left:0.5rem; background:@(mostrarEliminadas ? "#fee2e2" : "#f3f4f6"); border:1px solid @(mostrarEliminadas ? "#dc2626" : "#e5e7eb"); border-radius:6px; cursor:pointer; font-size:0.82rem; color:@(mostrarEliminadas ? "#991b1b" : "#374151"); user-select:none; font-weight:600;">
                         🗑️ @(mostrarEliminadas ? "Ocultar eliminadas" : "Ver eliminadas")
                     </button>
+                    @* 2026-07-21: chip de filtro por foto en infracción (aparece solo si el escaneo encontró alguna). *@
+                    @if (photoInfractions.Count > 0)
+                    {
+                        <button title="Mostrar solo las publicaciones con foto en infracción detectadas en el último escaneo."
+                                @onclick="() => { filterInfraccionFoto = !filterInfraccionFoto; InvalidateFilterCache(); }"
+                                style="display:inline-flex; align-items:center; gap:0.35rem; padding:0.35rem 0.7rem; margin-left:0.5rem; background:@(filterInfraccionFoto ? "#ffedd5" : "#f3f4f6"); border:1px solid @(filterInfraccionFoto ? "#ea580c" : "#e5e7eb"); border-radius:6px; cursor:pointer; font-size:0.82rem; color:@(filterInfraccionFoto ? "#9a3412" : "#374151"); user-select:none; font-weight:600;">
+                            🚩 Infracción foto (@photoInfractions.Count)
+                        </button>
+                    }
                 </div>
                 <div class="more-filters-wrapper">
                     <button class="more-filters-btn @(GetActiveFilterCount() > 0 ? "has-active" : "")" @onclick="ToggleMoreFilters" @onclick:stopPropagation="true">
@@ -3873,13 +3895,80 @@
         public string? Source { get; set; }
         public string? DataUri { get; set; }
         public string PreviewUrl { get; set; } = "";
+        public string? Problem { get; set; }  // problema detectado por el diagnóstico de MeLi (rojo)
     }
     private int? expandedPhotosKey = null;   // id del item cuyo panel de fotos está abierto
     private bool photosLoading = false;
     private bool photosSaving = false;
     private bool photosCatalog = false;      // publicación de catálogo (fotos posiblemente bloqueadas)
+    private bool photosDiagnosing = false;
     private string photosLinkInput = "";
     private List<PhotoEdit> photosEdit = new();
+
+    // ===== Infracciones de fotos (Etapa 1.5) =====
+    // mlaId -> motivo. Se llena con el botón "Buscar fotos en infracción". En memoria (por sesión).
+    private Dictionary<string, string> photoInfractions = new();
+    private bool filterInfraccionFoto = false;
+    private bool scanningInfractions = false;
+
+    private async Task BuscarInfraccionesFoto()
+    {
+        scanningInfractions = true;
+        StateHasChanged();
+        try
+        {
+            var res = await Api.ScanPhotoInfractionsAsync();
+            if (res is null) { ToastService.Error("No se pudo escanear infracciones. Revisá que haya una cuenta de MeLi conectada."); return; }
+            photoInfractions = res.Items.Where(x => x.PhotoRelated)
+                                        .ToDictionary(x => x.MeliItemId, x => x.Reason);
+            InvalidateFilterCache();
+            if (photoInfractions.Count > 0)
+            {
+                filterInfraccionFoto = true; // mostrar directo las marcadas
+                ToastService.Warning($"🚩 {photoInfractions.Count} publicación(es) con posible infracción de fotos. Te dejé el filtro activado; abrí el 📷 de cada una para ver cuál foto es.");
+            }
+            else if (res.TotalInfractions > 0)
+            {
+                ToastService.Info($"Encontré {res.TotalInfractions} infracción(es) en la cuenta, pero ninguna parece ser de fotos.");
+            }
+            else
+            {
+                ToastService.Success("✅ No encontré infracciones de fotos. ¡Todo limpio!");
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error al escanear: " + ex.Message); }
+        finally { scanningInfractions = false; StateHasChanged(); }
+    }
+
+    private async Task DiagnosticarFotos(MeliItemDto item)
+    {
+        photosDiagnosing = true;
+        StateHasChanged();
+        try
+        {
+            foreach (var p in photosEdit)
+            {
+                // Solo se pueden diagnosticar fotos que ya están en MeLi (Id) o tienen URL pública (Source).
+                var pref = !string.IsNullOrEmpty(p.Id) ? p.Id : (!string.IsNullOrEmpty(p.Source) ? p.Source : null);
+                if (pref is null) { p.Problem = null; continue; }
+                try
+                {
+                    var diag = await Api.DiagnosePictureAsync(item.MeliItemId, pref);
+                    p.Problem = (diag is not null && diag.HasIssues) ? string.Join(" · ", diag.Issues) : null;
+                }
+                catch { p.Problem = null; }
+                StateHasChanged();
+            }
+        }
+        finally
+        {
+            photosDiagnosing = false;
+            StateHasChanged();
+            var conProblema = photosEdit.Count(x => !string.IsNullOrEmpty(x.Problem));
+            if (conProblema > 0) ToastService.Warning($"⚠️ {conProblema} foto(s) con problemas. Las marqué en rojo con el motivo.");
+            else ToastService.Success("✅ Ninguna foto dio problema en el diagnóstico de MeLi.");
+        }
+    }
 
     private async Task TogglePhotosPanel(MeliItemDto item)
     {
@@ -3972,6 +4061,10 @@
             {
                 <div class="pp-warn">⚠️ Es una publicación de <b>catálogo</b>: MercadoLibre suele tener las fotos bloqueadas. Si al guardar te da error, es por esto (no es una falla del sistema).</div>
             }
+            @if (photoInfractions.TryGetValue(item.MeliItemId, out var infrReason))
+            {
+                <div class="pp-infr">🚩 <b>MercadoLibre marcó esta publicación por sus fotos.</b> Motivo: @(string.IsNullOrWhiteSpace(infrReason) ? "(sin detalle)" : infrReason)<br />Tocá <b>"Revisar fotos"</b> para ver cuál foto es la del problema, y borrala o reemplazala.</div>
+            }
             @if (photosEdit.Count == 0)
             {
                 <div class="pp-empty">No hay fotos. Agregá al menos una por enlace o subiendo un archivo.</div>
@@ -3983,9 +4076,13 @@
                     {
                         var p = photosEdit[i];
                         var idx = i;
-                        <div class="pp-thumb">
+                        <div class="pp-thumb @(string.IsNullOrEmpty(p.Problem) ? "" : "bad")">
                             <img src="@p.PreviewUrl" alt="Foto @(idx + 1)" />
                             @if (idx == 0) { <span class="pp-badge">portada</span> }
+                            @if (!string.IsNullOrEmpty(p.Problem))
+                            {
+                                <span class="pp-problem" title="@p.Problem">⚠️ @p.Problem</span>
+                            }
                             <div class="pp-actions">
                                 <button title="Mover antes" disabled="@(idx == 0)" @onclick="() => PhotoMove(p, -1)">◀</button>
                                 <button class="pp-del" title="Quitar esta foto" @onclick="() => PhotoRemove(p)">🗑</button>
@@ -4001,6 +4098,10 @@
                 <label class="pp-btn pp-file">📁 Subir archivo
                     <InputFile OnChange="PhotoUploadFiles" accept="image/*" multiple style="display:none;" />
                 </label>
+                <button class="pp-btn" style="background:#fff7ed; border-color:#fdba74; color:#9a3412;" disabled="@photosDiagnosing" @onclick="() => DiagnosticarFotos(item)"
+                        title="Le pregunta a MercadoLibre si alguna foto tiene marca de agua, texto/logo, fondo o tamaño incorrecto, y la marca en rojo.">
+                    @(photosDiagnosing ? "🔍 Revisando…" : "🔍 Revisar fotos (diagnóstico)")
+                </button>
             </div>
             <div class="pp-foot">
                 <span class="pp-count">@photosEdit.Count foto(s) · la primera es la portada · máx 10 MB (JPG/PNG)</span>
@@ -4852,6 +4953,10 @@
         // El botón "Ver eliminadas" las vuelve a mostrar.
         if (!mostrarEliminadas)
             filtered = filtered.Where(i => !string.Equals(i.Status, "deleted", StringComparison.OrdinalIgnoreCase));
+
+        // 2026-07-21: solo publicaciones con foto en infracción (según el último escaneo).
+        if (filterInfraccionFoto)
+            filtered = filtered.Where(i => photoInfractions.ContainsKey(i.MeliItemId));
 
         // Promo filter
         if (filterPromo)
@@ -6218,14 +6323,20 @@
     // ToggleSincroPrecio / ToggleSincroStock / CalcMargenPct. Solo cambia la presentación.
     // ============================================================================
     private RenderFragment RenderThumb(MeliItemDto it) => @<text>
-        @if (!string.IsNullOrEmpty(it.Thumbnail))
-        {
-            <img src="@it.Thumbnail" alt="" class="plist-thumb" />
-        }
-        else
-        {
-            <div class="plist-thumb-ph"><svg width="16" height="16" viewBox="0 0 24 24" fill="#9ca3af"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg></div>
-        }
+        <span class="plist-thumb-wrap">
+            @if (!string.IsNullOrEmpty(it.Thumbnail))
+            {
+                <img src="@it.Thumbnail" alt="" class="plist-thumb" />
+            }
+            else
+            {
+                <div class="plist-thumb-ph"><svg width="16" height="16" viewBox="0 0 24 24" fill="#9ca3af"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg></div>
+            }
+            @if (photoInfractions.ContainsKey(it.MeliItemId))
+            {
+                <span class="plist-flag" title="@photoInfractions[it.MeliItemId]">🚩</span>
+            }
+        </span>
     </text>;
 
     private RenderFragment RenderLinkedTag(MeliItemDto it) => @<text>

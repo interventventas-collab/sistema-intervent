@@ -2493,6 +2493,199 @@ public class MeliItemService
         return result;
     }
 
+    // Palabras clave para detectar si una infracción es sobre las fotos/imágenes.
+    private static readonly string[] _photoInfractionKeywords =
+    {
+        "imagen", "imágen", "imagenes", "imágenes", "foto", "fotos", "picture", "image",
+        "marca de agua", "watermark", "logo", "logotipo", "texto sobre", "thumbnail",
+        "portada", "fondo blanco", "fondo de la", "calidad de la imagen", "resolución",
+        "resolucion", "píxel", "pixel", "recorte"
+    };
+
+    /// <summary>2026-07-21: escanea las infracciones de todas las cuentas MeLi (GET /moderations/infractions/{userId})
+    /// y devuelve las publicaciones con infracción, marcando cuáles parecen de FOTOS (por el texto del motivo).
+    /// Es liviano: solo trae las infracciones reales de la cuenta, no revisa foto por foto.</summary>
+    public async Task<ScanPhotoInfractionsResult> ScanPhotoInfractionsAsync()
+    {
+        var accounts = await _db.MeliAccounts.ToListAsync();
+        var byItem = new Dictionary<string, (string reason, bool photo)>();
+        int totalItm = 0;
+        var mlaRegex = new System.Text.RegularExpressions.Regex(@"\bML[A-Z]\d{6,}\b");
+
+        foreach (var account in accounts)
+        {
+            var token = await _accountService.GetValidTokenAsync(account);
+            if (token is null) continue;
+            var http = _httpFactory.CreateClient();
+            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            const int pageSize = 20;
+            int offset = 0;
+            for (int page = 0; page < 100; page++) // tope de seguridad: 2000 infracciones
+            {
+                var url = $"https://api.mercadolibre.com/moderations/infractions/{account.MeliUserId}?language=es&limit={pageSize}&offset={offset}";
+                var resp = await http.GetAsync(url);
+                if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+                    resp.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                {
+                    var nt = await _accountService.GetValidTokenAsync(account, forceRefresh: true);
+                    if (nt is null) break;
+                    http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", nt);
+                    resp = await http.GetAsync(url);
+                }
+                if (!resp.IsSuccessStatusCode) break;
+
+                var json = await resp.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                // El array de resultados puede venir como raíz, o en "results" / "data".
+                JsonElement arr;
+                if (root.ValueKind == JsonValueKind.Array) arr = root;
+                else if (root.TryGetProperty("results", out var r) && r.ValueKind == JsonValueKind.Array) arr = r;
+                else if (root.TryGetProperty("data", out var d) && d.ValueKind == JsonValueKind.Array) arr = d;
+                else break;
+
+                int count = 0;
+                foreach (var inf in arr.EnumerateArray())
+                {
+                    count++;
+                    var elementType = inf.TryGetProperty("element_type", out var et) ? et.GetString() : null;
+                    if (!string.IsNullOrEmpty(elementType) &&
+                        !elementType.Equals("ITM", StringComparison.OrdinalIgnoreCase))
+                        continue; // preguntas / reviews no nos interesan
+
+                    // Sacar el MLA de cualquier campo string del objeto (no dependemos del nombre exacto).
+                    var m = mlaRegex.Match(inf.GetRawText());
+                    if (!m.Success) continue;
+                    var mla = m.Value;
+                    totalItm++;
+                    var reason = ExtractInfractionReason(inf);
+                    var isPhoto = _photoInfractionKeywords.Any(k => reason.Contains(k, StringComparison.OrdinalIgnoreCase));
+                    if (byItem.TryGetValue(mla, out var prev))
+                        byItem[mla] = (string.IsNullOrEmpty(prev.reason) ? reason : prev.reason, prev.photo || isPhoto);
+                    else
+                        byItem[mla] = (reason, isPhoto);
+                }
+                if (count < pageSize) break; // última página
+                offset += pageSize;
+            }
+        }
+
+        // Quedarnos solo con las publicaciones que tenemos cargadas (para poder mostrarlas).
+        var mlas = byItem.Keys.ToList();
+        var knownSet = (await _db.MeliItems
+            .Where(i => mlas.Contains(i.MeliItemId))
+            .Select(i => i.MeliItemId)
+            .ToListAsync()).ToHashSet();
+
+        var list = byItem
+            .Where(kv => knownSet.Contains(kv.Key))
+            .Select(kv => new PhotoInfractionDto(kv.Key, kv.Value.reason, kv.Value.photo))
+            .ToList();
+
+        return new ScanPhotoInfractionsResult(totalItm, list.Count, list);
+    }
+
+    private static string ExtractInfractionReason(JsonElement inf)
+    {
+        string? reason = inf.TryGetProperty("reason", out var r) ? r.GetString() : null;
+        if (string.IsNullOrWhiteSpace(reason) && inf.TryGetProperty("title", out var t)) reason = t.GetString();
+        if (string.IsNullOrWhiteSpace(reason) && inf.TryGetProperty("description", out var de)) reason = de.GetString();
+        reason ??= "";
+        reason = System.Text.RegularExpressions.Regex.Replace(reason, "<.*?>", " "); // sacar HTML
+        reason = System.Net.WebUtility.HtmlDecode(reason);
+        reason = System.Text.RegularExpressions.Regex.Replace(reason, @"\s+", " ").Trim();
+        if (reason.Length > 400) reason = reason[..400] + "…";
+        return reason;
+    }
+
+    /// <summary>2026-07-21: diagnostica UNA foto (por picture_id o URL) via POST /moderations/pictures/diagnostic.
+    /// Devuelve los problemas detectados (marca de agua, texto/logo, tamaño, etc.) traducidos.</summary>
+    public async Task<PictureDiagnosisDto> DiagnosePictureAsync(string meliItemId, string pictureRef)
+    {
+        var item = await _db.MeliItems
+            .Include(i => i.MeliAccount)
+            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId);
+        if (item?.MeliAccount is null) throw new Exception("Publicación o cuenta no encontrada.");
+        var token = await _accountService.GetValidTokenAsync(item.MeliAccount);
+        if (token is null) throw new Exception("Token expirado. Reconecta la cuenta de MercadoLibre.");
+
+        var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var body = new Dictionary<string, object?>
+        {
+            ["picture_url"] = pictureRef,
+            ["context"] = new Dictionary<string, object?>
+            {
+                ["category_id"] = item.CategoryId,
+                ["title"] = item.Title
+            }
+        };
+        var json = JsonSerializer.Serialize(body);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var resp = await http.PostAsync("https://api.mercadolibre.com/moderations/pictures/diagnostic", content);
+        if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+            resp.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            var nt = await _accountService.GetValidTokenAsync(item.MeliAccount, forceRefresh: true);
+            if (nt is not null)
+            {
+                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", nt);
+                content = new StringContent(json, Encoding.UTF8, "application/json");
+                resp = await http.PostAsync("https://api.mercadolibre.com/moderations/pictures/diagnostic", content);
+            }
+        }
+        if (!resp.IsSuccessStatusCode)
+        {
+            var eb = await resp.Content.ReadAsStringAsync();
+            throw new Exception($"Error de MercadoLibre ({resp.StatusCode}): {eb}");
+        }
+
+        var respJson = await resp.Content.ReadAsStringAsync();
+        var issues = new List<string>();
+        using var doc = JsonDocument.Parse(respJson);
+        var root = doc.RootElement;
+        if (root.TryGetProperty("diagnostics", out var diags) && diags.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var dg in diags.EnumerateArray())
+            {
+                if (!dg.TryGetProperty("detections", out var dets) || dets.ValueKind != JsonValueKind.Array) continue;
+                foreach (var det in dets.EnumerateArray())
+                {
+                    var name = det.TryGetProperty("name", out var n) ? n.GetString() : null;
+                    string? reasonTxt = null;
+                    if (det.TryGetProperty("wordings", out var ws) && ws.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var w in ws.EnumerateArray())
+                        {
+                            var wt = w.TryGetProperty("type", out var ty) ? ty.GetString() : null;
+                            if (string.Equals(wt, "REASON", StringComparison.OrdinalIgnoreCase) &&
+                                w.TryGetProperty("value", out var wv))
+                            { reasonTxt = wv.GetString(); break; }
+                        }
+                    }
+                    var label = TranslateDetection(name);
+                    if (!string.IsNullOrWhiteSpace(reasonTxt)) label += $" — {reasonTxt}";
+                    issues.Add(label);
+                }
+            }
+        }
+        issues = issues.Distinct().ToList();
+        return new PictureDiagnosisDto(issues.Count > 0, issues);
+    }
+
+    private static string TranslateDetection(string? name) => (name ?? "").ToUpperInvariant() switch
+    {
+        "WATERMARK" => "Marca de agua",
+        "TEXT_LOGO" or "TEXT" or "LOGO" or "LOGOS" => "Texto o logo sobre la foto",
+        "WHITE_BACKGROUND" or "BACKGROUND" or "NO_WHITE_BACKGROUND" => "Fondo no permitido",
+        "LOW_QUALITY" or "QUALITY" or "POOR_QUALITY" => "Baja calidad",
+        "SIZE" or "MIN_SIZE" or "SMALL" => "Tamaño insuficiente",
+        "BORDER" or "BORDERS" => "Bordes/marco",
+        _ => string.IsNullOrEmpty(name) ? "Problema detectado" : name
+    };
+
     /// <summary>Parsea pictures[] (id + secure_url), catalog_listing y permalink de un item JSON de MeLi.</summary>
     private static MeliItemPicturesDto ParsePicturesFromItemJson(string json)
     {

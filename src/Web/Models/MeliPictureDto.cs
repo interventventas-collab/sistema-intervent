@@ -27,3 +27,24 @@ public class UpdateItemPicturesRequest
 {
     public List<PictureSpec> Pictures { get; set; } = new();
 }
+
+// --- Detección de fotos en infracción (Etapa 1.5) ---
+public class PhotoInfractionDto
+{
+    public string MeliItemId { get; set; } = "";
+    public string Reason { get; set; } = "";
+    public bool PhotoRelated { get; set; }
+}
+
+public class ScanPhotoInfractionsResult
+{
+    public int TotalInfractions { get; set; }
+    public int Matched { get; set; }
+    public List<PhotoInfractionDto> Items { get; set; } = new();
+}
+
+public class PictureDiagnosisDto
+{
+    public bool HasIssues { get; set; }
+    public List<string> Issues { get; set; } = new();
+}

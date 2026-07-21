@@ -1029,6 +1029,34 @@ public class MeliController : ControllerBase
         }
     }
 
+    /// <summary>2026-07-21: escanea las infracciones de la cuenta y devuelve las publicaciones marcadas (foto en infracción).</summary>
+    [HttpGet("photo-infractions")]
+    public async Task<IActionResult> ScanPhotoInfractions()
+    {
+        try
+        {
+            return Ok(await _itemService.ScanPhotoInfractionsAsync());
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>2026-07-21: diagnostica una foto puntual (marca de agua, texto/logo, tamaño, etc.).</summary>
+    [HttpPost("items/{meliItemId}/diagnose-picture")]
+    public async Task<IActionResult> DiagnosePicture(string meliItemId, [FromBody] DiagnosePictureRequest request)
+    {
+        try
+        {
+            return Ok(await _itemService.DiagnosePictureAsync(meliItemId, request.PictureRef));
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     /// <summary>2026-06-19: refresca el sale_fee real (lo que MeLi cobra de comision)
     /// para una publicacion. Llama a /sites/MLA/listing_prices y guarda en MeliItems.</summary>
     [HttpPost("items/{meliItemId}/refresh-salefee")]

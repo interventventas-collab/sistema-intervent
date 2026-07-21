@@ -302,6 +302,22 @@ public class UpdateItemPicturesRequest
     public List<PictureSpec> Pictures { get; set; } = new();
 }
 
+// --- Deteccion de fotos en infraccion (Etapa 1.5, 2026-07-21) ---
+public record PhotoInfractionDto(string MeliItemId, string Reason, bool PhotoRelated);
+
+public record ScanPhotoInfractionsResult(
+    int TotalInfractions,   // infracciones de items encontradas en la cuenta
+    int Matched,            // cuantas corresponden a publicaciones que tenemos cargadas
+    List<PhotoInfractionDto> Items
+);
+
+public class DiagnosePictureRequest
+{
+    public string PictureRef { get; set; } = ""; // picture_id o URL de la foto a diagnosticar
+}
+
+public record PictureDiagnosisDto(bool HasIssues, List<string> Issues);
+
 // --- Publish DTOs ---
 
 public record PredictCategoryRequest(string Title);
