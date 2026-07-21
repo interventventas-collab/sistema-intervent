@@ -9,7 +9,7 @@
 <PageTitle>Contadora</PageTitle>
 
 <style>
-    .co-wrap { padding: 1rem; max-width: 1050px; }
+    .co-wrap { padding: 1rem; max-width: 1400px; }
     .co-card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 1.2rem; margin-bottom: 1rem; }
     .co-title { font-size: 1.4rem; font-weight: 700; margin: 0 0 .3rem; }
     .co-sub { color: #6b7280; margin: 0 0 1rem; font-size: .92rem; line-height: 1.4; }
@@ -31,6 +31,9 @@
     table.co-tabla tr.tot td { font-weight: 700; border-top: 2px solid #e5e7eb; }
     table.co-tabla tr.click { cursor: pointer; }
     table.co-tabla tr.click:hover { background: #f8fafc; }
+    /* Detalle de compras: más compacto para que entren todas las columnas (11) sin cortarse. */
+    table.co-tabla.co-compact th, table.co-tabla.co-compact td { padding: .3rem .45rem; font-size: .82rem; }
+    table.co-tabla.co-compact td.prov { max-width: 190px; }
     .co-alerta { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: .9rem 1rem; margin-bottom: 1rem; }
     .co-bar { height: 10px; background: #e5e7eb; border-radius: 6px; overflow: hidden; margin-top: .5rem; }
     .co-bar > div { height: 100%; background: #2563eb; transition: width .3s; }
@@ -656,7 +659,7 @@
                 else
                 {
                     <div style="overflow-x:auto;">
-                        <table class="co-tabla">
+                        <table class="co-tabla co-compact">
                             <thead><tr><th>Pago</th><th>Fecha</th><th>Comprobante</th><th class="num">Pto vta</th><th class="num">Número</th><th>Proveedor</th><th>CUIT</th><th class="num">Neto</th><th class="num">IVA</th><th class="num">Total</th><th>Factura</th></tr></thead>
                             <tbody>
                                 @foreach (var f in compComps.Items)
@@ -685,7 +688,7 @@
                                         <td>@f.TipoComprobante</td>
                                         <td class="num">@f.PuntoVenta</td>
                                         <td class="num">@f.NumeroComprobante</td>
-                                        <td>@f.ReceptorNombre</td>
+                                        <td class="prov">@f.ReceptorNombre</td>
                                         <td>@f.ReceptorDoc</td>
                                         <td class="num">@Money(f.Neto)</td>
                                         <td class="num">@Money(f.Iva)</td>
