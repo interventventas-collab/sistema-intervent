@@ -1939,10 +1939,139 @@ public class ContadoraService
             Iva = (c.EsNotaCredito ? -1 : 1) * (c.Iva21 + c.Iva105),
             Total = (c.EsNotaCredito ? -1 : 1) * c.Total
         }).ToList();
+
+        // Para COMPRAS: marcá cuánto se pagó de cada factura (las NC no se "pagan", restan).
+        if (naturaleza == "COMPRA")
+        {
+            var ids = items.Where(i => !i.EsNotaCredito).Select(i => i.IdComprobante).ToList();
+            if (ids.Count > 0)
+            {
+                var pagos = await _db.ContadoraComprobantePagos
+                    .Where(p => !p.Anulado && ids.Contains(p.IdComprobante))
+                    .GroupBy(p => p.IdComprobante)
+                    .Select(g => new { Id = g.Key, Pagado = g.Sum(x => x.Importe) })
+                    .ToListAsync();
+                var mapa = pagos.ToDictionary(x => x.Id, x => x.Pagado);
+                foreach (var it in items)
+                {
+                    if (it.EsNotaCredito) continue;
+                    it.PuedeRegistrarPago = true;
+                    it.Pagado = mapa.TryGetValue(it.IdComprobante, out var pg) ? pg : 0m;
+                }
+            }
+        }
         return new ContadoraComprobantesPageDto { Items = items, Total = total, Page = page, PageSize = pageSize };
     }
 
     private static string? ConceptoLabel(int? c) => c switch { 1 => "Productos", 2 => "Servicios", 3 => "Productos y Servicios", _ => null };
+
+    // ═════════ Pagos de facturas de COMPRA (cuenta corriente de proveedores con CAE) ═════════
+
+    /// <summary>Estado de pago de una factura de compra + su historial de pagos (no anulados).</summary>
+    public async Task<ContadoraFacturaPagosDto?> GetPagosCompraAsync(string idComprobante)
+    {
+        var comp = await _db.ContadoraComprobantes.FirstOrDefaultAsync(c => c.IdComprobante == idComprobante);
+        if (comp is null) return null;
+        var pagos = await _db.ContadoraComprobantePagos
+            .Where(p => !p.Anulado && p.IdComprobante == idComprobante)
+            .OrderBy(p => p.Fecha).ThenBy(p => p.Id)
+            .Select(p => new ContadoraPagoDto
+            {
+                Id = p.Id, Fecha = p.Fecha, Medio = p.Medio, Referencia = p.Referencia,
+                Importe = p.Importe, Operador = p.Operador, Observaciones = p.Observaciones
+            })
+            .ToListAsync();
+        var pagado = pagos.Sum(p => p.Importe);
+        return new ContadoraFacturaPagosDto
+        {
+            IdComprobante = idComprobante,
+            ProveedorNombre = comp.ReceptorNombre,
+            ProveedorCuit = comp.ReceptorDoc,
+            Total = comp.Total,
+            Pagado = pagado,
+            Saldo = comp.Total - pagado,
+            Pagos = pagos
+        };
+    }
+
+    /// <summary>Registra un pago (transferencia/cheque/efectivo) sobre una factura de compra.</summary>
+    public async Task<RegistrarPagoResultDto> RegistrarPagoCompraAsync(RegistrarPagoCompraRequest req, string? operador)
+    {
+        if (string.IsNullOrWhiteSpace(req.IdComprobante))
+            return new RegistrarPagoResultDto { Ok = false, Error = "Falta la factura." };
+        if (req.Importe <= 0)
+            return new RegistrarPagoResultDto { Ok = false, Error = "El importe tiene que ser mayor a cero." };
+
+        var comp = await _db.ContadoraComprobantes.FirstOrDefaultAsync(c => c.IdComprobante == req.IdComprobante);
+        if (comp is null) return new RegistrarPagoResultDto { Ok = false, Error = "No encontré esa factura." };
+        if (comp.Naturaleza != "COMPRA") return new RegistrarPagoResultDto { Ok = false, Error = "Solo se registran pagos sobre facturas de compra." };
+        if (comp.EsNotaCredito) return new RegistrarPagoResultDto { Ok = false, Error = "Una nota de crédito no se paga." };
+
+        var medio = (req.Medio ?? "").Trim();
+        if (medio != "Transferencia" && medio != "Cheque" && medio != "Efectivo" && medio != "Otro") medio = "Transferencia";
+
+        _db.ContadoraComprobantePagos.Add(new ContadoraComprobantePago
+        {
+            IdComprobante = req.IdComprobante,
+            Fecha = req.Fecha ?? DateTime.Now,
+            Medio = medio,
+            Referencia = string.IsNullOrWhiteSpace(req.Referencia) ? null : req.Referencia.Trim(),
+            Importe = Math.Round(req.Importe, 2),
+            Operador = string.IsNullOrWhiteSpace(operador) ? null : operador.Trim(),
+            Observaciones = string.IsNullOrWhiteSpace(req.Observaciones) ? null : req.Observaciones.Trim(),
+            Anulado = false,
+            CreatedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync();
+        return new RegistrarPagoResultDto { Ok = true, Factura = await GetPagosCompraAsync(req.IdComprobante) };
+    }
+
+    /// <summary>Anula (borra lógicamente) un pago cargado sobre una factura de compra.</summary>
+    public async Task<ContadoraFacturaPagosDto?> AnularPagoCompraAsync(int pagoId)
+    {
+        var pago = await _db.ContadoraComprobantePagos.FirstOrDefaultAsync(p => p.Id == pagoId);
+        if (pago is null) return null;
+        pago.Anulado = true;
+        await _db.SaveChangesAsync();
+        return await GetPagosCompraAsync(pago.IdComprobante);
+    }
+
+    /// <summary>Cuánto se le debe a cada proveedor: facturas de compra (NC restan) − pagos, en un período.</summary>
+    public async Task<ContadoraDeudaProveedoresDto> GetDeudaProveedoresAsync(DateTime? desde, DateTime? hasta, string? empresa, bool soloConDeuda = true)
+    {
+        var q = FiltrarComprobantes(desde, hasta, empresa, null, null, null, null, null, "COMPRA");
+        var facs = await q.Select(c => new { c.IdComprobante, c.ReceptorDoc, c.ReceptorNombre, c.EsNotaCredito, c.Total }).ToListAsync();
+        if (facs.Count == 0) return new ContadoraDeudaProveedoresDto();
+
+        var ids = facs.Where(f => !f.EsNotaCredito).Select(f => f.IdComprobante).ToList();
+        var pagoMap = (await _db.ContadoraComprobantePagos
+                .Where(p => !p.Anulado && ids.Contains(p.IdComprobante))
+                .GroupBy(p => p.IdComprobante)
+                .Select(g => new { Id = g.Key, Pagado = g.Sum(x => x.Importe) })
+                .ToListAsync())
+            .ToDictionary(x => x.Id, x => x.Pagado);
+
+        var grupos = facs.GroupBy(f => f.ReceptorDoc ?? "")
+            .Select(g =>
+            {
+                var total = g.Sum(f => (f.EsNotaCredito ? -1 : 1) * f.Total);
+                var pagado = g.Where(f => !f.EsNotaCredito).Sum(f => pagoMap.TryGetValue(f.IdComprobante, out var pg) ? pg : 0m);
+                return new ContadoraDeudaProveedorDto
+                {
+                    Cuit = string.IsNullOrEmpty(g.Key) ? null : g.Key,
+                    Nombre = g.Select(f => f.ReceptorNombre).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)),
+                    Facturas = g.Count(f => !f.EsNotaCredito),
+                    Total = total,
+                    Pagado = pagado,
+                    Saldo = total - pagado
+                };
+            })
+            .Where(x => !soloConDeuda || Math.Round(x.Saldo, 2) > 0)
+            .OrderByDescending(x => x.Saldo)
+            .ToList();
+
+        return new ContadoraDeudaProveedoresDto { Items = grupos, SaldoTotal = grupos.Sum(x => x.Saldo) };
+    }
 
     /// <summary>Excel del Libro IVA Ventas (importado): hoja resumen + hoja detalle. NC en negativo.</summary>
     public async Task<byte[]> GenerarReporteExcelAsync(DateTime? desde, DateTime? hasta,

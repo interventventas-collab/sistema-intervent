@@ -192,6 +192,12 @@ public class ContadoraComprobanteDto
     public decimal Neto { get; set; }   // con signo (NC en negativo)
     public decimal Iva { get; set; }
     public decimal Total { get; set; }
+
+    // ── Seguimiento de pago (solo aplica a facturas de COMPRA) ──
+    /// <summary>True si es una factura de compra sobre la que se puede registrar pago (no NC).</summary>
+    public bool PuedeRegistrarPago { get; set; }
+    /// <summary>Suma de los pagos no anulados registrados sobre esta factura.</summary>
+    public decimal Pagado { get; set; }
 }
 
 public class ContadoraComprobantesPageDto
@@ -255,4 +261,63 @@ public class ContadoraControlItemDto
     public string? Fuente { get; set; }        // MercadoLibre / Sistema
     public decimal IvaAfip { get; set; }
     public decimal IvaOtro { get; set; }
+}
+
+// ───────── Pagos de facturas de COMPRA (cuenta corriente de proveedores con CAE) ─────────
+
+public class ContadoraPagoDto
+{
+    public int Id { get; set; }
+    public DateTime Fecha { get; set; }
+    public string Medio { get; set; } = "Transferencia";
+    public string? Referencia { get; set; }
+    public decimal Importe { get; set; }
+    public string? Operador { get; set; }
+    public string? Observaciones { get; set; }
+}
+
+/// <summary>Estado de pago de una factura de compra + su historial de pagos.</summary>
+public class ContadoraFacturaPagosDto
+{
+    public string IdComprobante { get; set; } = "";
+    public string? ProveedorNombre { get; set; }
+    public string? ProveedorCuit { get; set; }
+    public decimal Total { get; set; }
+    public decimal Pagado { get; set; }
+    public decimal Saldo { get; set; }
+    public List<ContadoraPagoDto> Pagos { get; set; } = new();
+}
+
+public class RegistrarPagoCompraRequest
+{
+    public string IdComprobante { get; set; } = "";
+    public DateTime? Fecha { get; set; }
+    public string Medio { get; set; } = "Transferencia";
+    public string? Referencia { get; set; }
+    public decimal Importe { get; set; }
+    public string? Observaciones { get; set; }
+}
+
+/// <summary>Cuánto se le debe a cada proveedor (facturas de compra − pagos), en un período.</summary>
+public class ContadoraDeudaProveedorDto
+{
+    public string? Cuit { get; set; }
+    public string? Nombre { get; set; }
+    public int Facturas { get; set; }
+    public decimal Total { get; set; }
+    public decimal Pagado { get; set; }
+    public decimal Saldo { get; set; }
+}
+
+public class ContadoraDeudaProveedoresDto
+{
+    public List<ContadoraDeudaProveedorDto> Items { get; set; } = new();
+    public decimal SaldoTotal { get; set; }
+}
+
+public class RegistrarPagoResultDto
+{
+    public bool Ok { get; set; } = true;
+    public string? Error { get; set; }
+    public ContadoraFacturaPagosDto? Factura { get; set; }
 }

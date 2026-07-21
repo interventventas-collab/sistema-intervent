@@ -182,6 +182,38 @@ public class ContadoraController : ControllerBase
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"libro-iva-compras-{DateTime.Now:yyyy-MM-dd}.xlsx");
     }
 
+    // ───── Pagos de facturas de COMPRA (cuenta corriente de proveedores con CAE) ─────
+
+    /// <summary>Estado de pago + historial de una factura de compra.</summary>
+    [HttpGet("compras/pagos")]
+    public async Task<IActionResult> ComprasPagos([FromQuery] string id)
+    {
+        var f = await _svc.GetPagosCompraAsync(id);
+        return f is null ? NotFound() : Ok(f);
+    }
+
+    /// <summary>Registra un pago (transferencia/cheque/efectivo) sobre una factura de compra.</summary>
+    [HttpPost("compras/pago")]
+    public async Task<ActionResult<RegistrarPagoResultDto>> RegistrarPagoCompra([FromBody] RegistrarPagoCompraRequest req)
+    {
+        var operador = User.Identity?.IsAuthenticated == true ? User.Identity?.Name : null;
+        return Ok(await _svc.RegistrarPagoCompraAsync(req, operador));
+    }
+
+    /// <summary>Anula un pago cargado sobre una factura de compra.</summary>
+    [HttpPost("compras/pago/{id:int}/anular")]
+    public async Task<IActionResult> AnularPagoCompra(int id)
+    {
+        var f = await _svc.AnularPagoCompraAsync(id);
+        return f is null ? NotFound() : Ok(f);
+    }
+
+    /// <summary>Cuánto se le debe a cada proveedor (facturas de compra − pagos).</summary>
+    [HttpGet("compras/deuda-proveedores")]
+    public async Task<ActionResult<ContadoraDeudaProveedoresDto>> DeudaProveedores([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta,
+        [FromQuery] string? empresa, [FromQuery] bool soloConDeuda = true)
+        => Ok(await _svc.GetDeudaProveedoresAsync(desde, hasta, empresa, soloConDeuda));
+
     /// <summary>Balanza de IVA: por mes, IVA de ventas - IVA de compras = saldo.</summary>
     [HttpGet("balanza")]
     public async Task<ActionResult<ContadoraBalanzaDto>> Balanza([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta, [FromQuery] string? empresa)
