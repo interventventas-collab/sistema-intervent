@@ -651,8 +651,13 @@
         @if (verDetalleComp && compComps is not null)
         {
             <div class="co-card">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem;">
-                    <b>Detalle</b>
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;margin-bottom:.6rem;">
+                    <div style="display:flex;gap:.35rem;flex-wrap:wrap;align-items:center;">
+                        <b style="margin-right:.3rem;">Detalle</b>
+                        <button class="co-btn @(kEstadoPago is null ? "co-btn-primary" : "co-btn-ghost")" style="padding:.2rem .6rem;font-size:.82rem;" @onclick='() => FiltrarEstadoPago(null)'>Todas</button>
+                        <button class="co-btn @(kEstadoPago == "debo" ? "co-btn-primary" : "co-btn-ghost")" style="padding:.2rem .6rem;font-size:.82rem;" @onclick='() => FiltrarEstadoPago("debo")'>🔴 Debo</button>
+                        <button class="co-btn @(kEstadoPago == "pagada" ? "co-btn-primary" : "co-btn-ghost")" style="padding:.2rem .6rem;font-size:.82rem;" @onclick='() => FiltrarEstadoPago("pagada")'>✅ Pagadas</button>
+                    </div>
                     <span class="co-chip">@compComps.Total comprobante(s)</span>
                 </div>
                 @if (compComps.Items.Count == 0) { <p class="co-hint">Sin resultados.</p> }
@@ -872,6 +877,7 @@
     private ContadoraComprobantesPageDto? compComps;
     private DateTime? kDesde, kHasta;
     private string? kSearch, kMes;
+    private string? kEstadoPago;   // null=todas, "debo", "pagada"
     private bool cargandoComp, verDetalleComp, compInit;
     private bool procesandoPdf;
     private bool bajandoMeli;
@@ -1253,7 +1259,7 @@
 
     private async Task LimpiarCompras()
     {
-        kDesde = null; kHasta = null; kSearch = null; kMes = null;
+        kDesde = null; kHasta = null; kSearch = null; kMes = null; kEstadoPago = null;
         await CargarCompras();
     }
 
@@ -1272,11 +1278,18 @@
 
     private async Task CargarCompComps()
     {
-        try { compComps = await Api.GetContadoraComprasComprobantesAsync(kDesde, kHasta, empresaSel, kSearch, compPage, 50); }
+        try { compComps = await Api.GetContadoraComprasComprobantesAsync(kDesde, kHasta, empresaSel, kSearch, compPage, 50, kEstadoPago); }
         catch (Exception ex) { ToastService.Error("No se pudo cargar el detalle: " + ex.Message); }
     }
 
     private async Task IrPaginaComp(int p) { compPage = p; await CargarCompComps(); }
+
+    private async Task FiltrarEstadoPago(string? estado)
+    {
+        kEstadoPago = estado;
+        compPage = 1;
+        await CargarCompComps();
+    }
 
     // ── Pagos de facturas de compra ──
     private async Task AbrirPago(ContadoraComprobanteDto f)

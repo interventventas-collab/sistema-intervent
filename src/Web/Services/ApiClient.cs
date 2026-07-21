@@ -6194,10 +6194,11 @@ public class ApiClient
     public async Task<ContadoraReporteResumenDto?> GetContadoraComprasResumenAsync(DateTime? desde, DateTime? hasta, string? empresa, string? search)
         => await GetAsync<ContadoraReporteResumenDto>("/api/contadora/compras/resumen" + ComprasQs(desde, hasta, empresa, search));
 
-    public async Task<ContadoraComprobantesPageDto?> GetContadoraComprasComprobantesAsync(DateTime? desde, DateTime? hasta, string? empresa, string? search, int page = 1, int pageSize = 50)
+    public async Task<ContadoraComprobantesPageDto?> GetContadoraComprasComprobantesAsync(DateTime? desde, DateTime? hasta, string? empresa, string? search, int page = 1, int pageSize = 50, string? estadoPago = null)
     {
         var qs = ComprasQs(desde, hasta, empresa, search);
         qs += (qs.Length > 0 ? "&" : "?") + $"page={page}&pageSize={pageSize}";
+        if (!string.IsNullOrWhiteSpace(estadoPago)) qs += "&estadoPago=" + Uri.EscapeDataString(estadoPago);
         return await GetAsync<ContadoraComprobantesPageDto>("/api/contadora/compras/comprobantes" + qs);
     }
 

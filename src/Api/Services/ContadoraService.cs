@@ -1918,11 +1918,45 @@ public class ContadoraService
 
     /// <summary>Detalle paginado de comprobantes importados (NC con importes en negativo).</summary>
     public async Task<ContadoraComprobantesPageDto> GetReporteComprobantesAsync(DateTime? desde, DateTime? hasta,
-        string? empresaCuit, int? puntoVenta, string? letra, string? provincia, string? search, int page = 1, int pageSize = 50, string? origen = null, string naturaleza = "VENTA")
+        string? empresaCuit, int? puntoVenta, string? letra, string? provincia, string? search, int page = 1, int pageSize = 50, string? origen = null, string naturaleza = "VENTA", string? estadoPago = null)
     {
         if (page < 1) page = 1;
         if (pageSize < 1 || pageSize > 500) pageSize = 50;
         var q = FiltrarComprobantes(desde, hasta, empresaCuit, puntoVenta, letra, provincia, search, origen, naturaleza);
+
+        // Filtro por estado de pago (solo COMPRAS): "debo" | "pagada". Necesita el saldo de TODO
+        // el conjunto antes de paginar, así que va por un camino en memoria y excluye las NC.
+        if (naturaleza == "COMPRA" && (estadoPago == "debo" || estadoPago == "pagada"))
+        {
+            var todo = await q.Where(c => !c.EsNotaCredito)
+                .OrderByDescending(c => c.FechaEmision).ThenByDescending(c => c.NumeroComprobante)
+                .Select(c => new { c.IdComprobante, c.Origen, c.Concepto, c.EmisorCuit, c.TipoComprobante, c.PuntoVenta, c.NumeroComprobante,
+                    c.FechaEmision, c.Letra, c.ReceptorNombre, c.ReceptorDoc, c.Provincia, c.NetoGravado, c.Iva21, c.Iva105, c.Total, c.PdfPath })
+                .ToListAsync();
+            var idsAll = todo.Select(c => c.IdComprobante).ToList();
+            var pagoMap = idsAll.Count == 0 ? new Dictionary<string, decimal>() :
+                (await _db.ContadoraComprobantePagos.Where(p => !p.Anulado && idsAll.Contains(p.IdComprobante))
+                    .GroupBy(p => p.IdComprobante).Select(g => new { Id = g.Key, Pagado = g.Sum(x => x.Importe) }).ToListAsync())
+                .ToDictionary(x => x.Id, x => x.Pagado);
+
+            var todosDto = todo.Select(c =>
+            {
+                var pagado = pagoMap.TryGetValue(c.IdComprobante, out var pg) ? pg : 0m;
+                return new ContadoraComprobanteDto
+                {
+                    IdComprobante = c.IdComprobante, Origen = c.Origen, Concepto = ConceptoLabel(c.Concepto), EmpresaCuit = c.EmisorCuit, EsNotaCredito = false, TienePdf = c.PdfPath != null,
+                    TipoComprobante = c.TipoComprobante, PuntoVenta = c.PuntoVenta, NumeroComprobante = c.NumeroComprobante,
+                    FechaEmision = c.FechaEmision, Letra = c.Letra, ReceptorNombre = c.ReceptorNombre, ReceptorDoc = c.ReceptorDoc, Provincia = c.Provincia,
+                    Neto = c.NetoGravado, Iva = c.Iva21 + c.Iva105, Total = c.Total, PuedeRegistrarPago = true, Pagado = pagado
+                };
+            });
+            var filtrados = (estadoPago == "debo"
+                ? todosDto.Where(i => Math.Round(i.Total - i.Pagado, 2) > 0)
+                : todosDto.Where(i => Math.Round(i.Total - i.Pagado, 2) <= 0)).ToList();
+            var pageItems = filtrados.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+            return new ContadoraComprobantesPageDto { Items = pageItems, Total = filtrados.Count, Page = page, PageSize = pageSize };
+        }
+
         var total = await q.CountAsync();
         var raw = await q.OrderByDescending(c => c.FechaEmision).ThenByDescending(c => c.NumeroComprobante)
             .Skip((page - 1) * pageSize).Take(pageSize)
