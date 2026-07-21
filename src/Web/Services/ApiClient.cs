@@ -1587,6 +1587,10 @@ public class ApiClient
     public async Task<List<ClienteSaldoPendienteDto>?> GetCafeClientesSaldosPendientesAsync()
         => await GetAsync<List<ClienteSaldoPendienteDto>>("/api/cafe/clientes/saldos-pendientes");
 
+    /// <summary>Manda AHORA por Telegram el resumen de deudas (el mismo que sale cada mañana a las 8).</summary>
+    public async Task<ResultadoEnvioDeudoresDto?> EnviarDeudoresAhoraAsync()
+        => await PostAsync<ResultadoEnvioDeudoresDto>("/api/cafe/clientes/deudores-diario/enviar-ahora", new { });
+
     /// <summary>2026-06-06: ventas ocasionales (sin cliente del catálogo) con saldo pendiente.</summary>
     public async Task<List<VentaOcasionalSaldoDto>?> GetCafeVentasOcasionalesSaldosAsync()
         => await GetAsync<List<VentaOcasionalSaldoDto>>("/api/cafe/clientes/saldos-ocasionales");

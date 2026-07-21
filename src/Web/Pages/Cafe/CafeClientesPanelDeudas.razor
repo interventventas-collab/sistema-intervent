@@ -102,7 +102,12 @@
                     @onclick="DescargarExcel" disabled="@exportando">
                 @(exportando ? "⏳ Generando..." : ExcelButtonLabel())
             </button>
+            <button class="btn btn-secondary" style="background: #2563eb; color: white; border: none; font-size: 0.85rem;"
+                    @onclick="ProbarAvisoTelegram" disabled="@enviandoAviso" title="Manda ahora por Telegram el mismo resumen que sale automático cada mañana a las 8">
+                @(enviandoAviso ? "⏳ Enviando..." : "📲 Probar aviso ahora")
+            </button>
         </div>
+        <p style="font-size:0.72rem; color:#9ca3af; margin-top:0.3rem;">📲 Todos los días a las 8 de la mañana llega por Telegram el resumen de lo que debe cada cliente.</p>
     </div>
 
     @if (saldos is null)
@@ -368,6 +373,23 @@
     // Selección + Excel (heredado de la pantalla vieja Saldos pendientes)
     private HashSet<int> seleccionados = new();
     private bool exportando;
+    private bool enviandoAviso;
+
+    /// <summary>Manda ahora por Telegram el resumen de deudas (para probar sin esperar a las 8am).</summary>
+    private async Task ProbarAvisoTelegram()
+    {
+        if (enviandoAviso) return;
+        enviandoAviso = true;
+        try
+        {
+            var r = await Api.EnviarDeudoresAhoraAsync();
+            if (r is null) { ToastService.Error("No se pudo enviar."); return; }
+            if (r.Ok) ToastService.Success(r.Detalle);
+            else ToastService.Error(r.Detalle);
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { enviandoAviso = false; }
+    }
 
     // Compartir link
     private bool showShareModal;

@@ -172,6 +172,10 @@ builder.Services.AddHostedService<ShellAutoSyncBackgroundService>();
 builder.Services.AddHostedService<MpAutoSyncBackgroundService>();
 // 2026-07-10: motor de alertas configurables ("Mis Alertas"). Revisa las reglas cada 5 min.
 builder.Services.AddHostedService<MisAlertasBackgroundService>();
+// 2026-07-22: resumen diario por Telegram de lo que debe cada cliente (cuenta corriente), 08:00 ART.
+builder.Services.AddScoped<CafeSaldosService>();
+builder.Services.AddScoped<DeudoresDiarioNotifier>();
+builder.Services.AddHostedService<DeudoresDiarioService>();
 builder.Services.AddHostedService<MeliCodigoColectaBackgroundService>();
 // 2026-06-12: reactivado. Solo LECTURA informativa: pobla Cafe_StockPorDeposito[Full MeLi]
 // con lo que MeLi reporta en su bodega. No toca stock propio (9 de Abril) ni pushes.

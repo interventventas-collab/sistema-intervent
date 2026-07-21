@@ -1800,6 +1800,15 @@ public class ClienteSaldoPendienteDto
     public decimal SaldoFactura { get; set; }
 }
 
+/// <summary>Resultado de mandar el resumen de deudas por Telegram (botón "probar aviso ahora").</summary>
+public class ResultadoEnvioDeudoresDto
+{
+    public bool Ok { get; set; }
+    public int Clientes { get; set; }
+    public int Mensajes { get; set; }
+    public string Detalle { get; set; } = "";
+}
+
 // 2026-06-06: ventas "ocasionales" (sin cliente del catálogo) con saldo pendiente.
 public class VentaOcasionalSaldoDto
 {

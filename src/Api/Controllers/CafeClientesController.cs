@@ -16,12 +16,14 @@ public class CafeClientesController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly GoogleMapsLinkResolverService _mapsResolver;
+    private readonly CafeSaldosService _saldos;
     private static readonly string[] TiposValidos = { "BAR", "OTRO" };
 
-    public CafeClientesController(AppDbContext db, GoogleMapsLinkResolverService mapsResolver)
+    public CafeClientesController(AppDbContext db, GoogleMapsLinkResolverService mapsResolver, CafeSaldosService saldos)
     {
         _db = db;
         _mapsResolver = mapsResolver;
+        _saldos = saldos;
     }
 
     private static CafeClienteDto Map(CafeCliente c) => new(
@@ -335,17 +337,7 @@ public class CafeClientesController : ControllerBase
     // Saldos pendientes — vista consolidada por cliente
     // ============================================================
 
-    public record ClienteSaldoPendienteDto(
-        int ClienteId, string Nombre, string? Tipo, string? Telefono, string? MapeoLink,
-        int? CodigoInterno,
-        int CantidadVentasPendientes,
-        decimal SaldoPendiente,
-        DateTime FechaMasAntigua, int DiasMasAntigua,
-        bool TieneSaldoMigracion,
-        /// <summary>Saldo de comprobantes tipo X y PRO (no fiscales). Default 0 si no hay.</summary>
-        decimal SaldoCotizacion = 0m,
-        /// <summary>Saldo de comprobantes tipo FA, FB, FC (con CAE de ARCA, fiscales). Default 0 si no hay.</summary>
-        decimal SaldoFactura = 0m);
+    // ClienteSaldoPendienteDto se movió a Api.Services.CafeSaldosService (se reusa desde el aviso diario).
 
     // 2026-06-06: ventas ocasionales (sin cliente del catálogo) con saldo pendiente.
     public record VentaOcasionalSaldoDto(
@@ -408,92 +400,13 @@ public class CafeClientesController : ControllerBase
 
     [HttpGet("saldos-pendientes")]
     public async Task<IActionResult> GetSaldosPendientes()
-    {
-        // Traer todas las ventas emitidas (no anuladas) con cliente y total > 0
-        // Incluyo TipoComprobante para separar saldo Cotizacion (X/PRO) vs Factura (FA/FB/FC).
-        // 2026-06-25: Excluir Notas de Credito (NCA/NCB/NCC). Una NC compensada con una FA via cobranza
-        // tiene imputacion negativa, lo que hace que el calculo Saldo = Total - Pagado termine sumando
-        // el doble (ej: $329120 - (-$329120) = $658240). Las NC ya van al HABER en el estado de cuenta,
-        // no deben aparecer en deudas pendientes. Mismo criterio que GetEstadoCuenta linea 87-89.
-        var ventas = await _db.CafeVentas
-            .Where(v => v.Estado != "anulado"
-                     && v.ClienteId != null
-                     && v.Total > 0
-                     // 2026-07-14: los PRESUPUESTOS (PRO) no son deuda — se excluyen del reporte de deudores.
-                     && v.TipoComprobante != "PRO"
-                     && (v.TipoComprobante == null || !v.TipoComprobante.StartsWith("NC")))
-            .Select(v => new {
-                v.Id, ClienteId = v.ClienteId!.Value, v.Total, v.ArcaImpTotal, v.Fecha, v.TipoComprobante,
-                EsSaldoMigracion = _db.CafeSaldosMigracion.Any(s => s.VentaId == v.Id)
-            })
-            .ToListAsync();
-        if (ventas.Count == 0) return Ok(new List<ClienteSaldoPendienteDto>());
+        => Ok(await _saldos.GetSaldosPendientesAsync());
 
-        // Calcular pagos por venta (cobranzas vigentes)
-        var ventaIds = ventas.Select(v => v.Id).ToList();
-        var pagados = await _db.CafeCobranzasComprobantes
-            .Where(c => c.VentaId != null && ventaIds.Contains(c.VentaId!.Value)
-                     && c.Cobranza!.Estado == "VIGENTE")
-            .GroupBy(c => c.VentaId!.Value)
-            .Select(g => new { VentaId = g.Key, Pagado = g.Sum(x => x.Importe) })
-            .ToListAsync();
-        var pagadosDict = pagados.ToDictionary(p => p.VentaId, p => p.Pagado);
-
-        // Calcular saldo de cada venta — incluyo TipoComprobante para poder separar despues.
-        // Monto real cobrable: ArcaImpTotal (con IVA) si la venta tiene CAE, sino Total.
-        var ventasConSaldo = ventas.Select(v =>
-        {
-            var totalCobrar = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
-            return new {
-                v.Id, v.ClienteId, Total = totalCobrar, v.Fecha, v.TipoComprobante, v.EsSaldoMigracion,
-                Saldo = totalCobrar - (pagadosDict.TryGetValue(v.Id, out var p) ? p : 0m)
-            };
-        // Saldo > 0.50: ignoro diferencias menores a medio peso (típicas de redondeo entre Total y ArcaImpTotal+IVA).
-        // Antes era > 0 y aparecían clientes con saldos residuales de centavos (ej: $0,04) marcados como deudores.
-        }).Where(v => v.Saldo > 0.50m).ToList();
-        if (ventasConSaldo.Count == 0) return Ok(new List<ClienteSaldoPendienteDto>());
-
-        // Agrupar por cliente
-        var clienteIds = ventasConSaldo.Select(v => v.ClienteId).Distinct().ToList();
-        var clientes = await _db.CafeClientes
-            .Where(c => clienteIds.Contains(c.Id))
-            .ToListAsync();
-        var clientesDict = clientes.ToDictionary(c => c.Id);
-
-        var hoy = DateTime.UtcNow.AddHours(-3).Date;
-        var result = ventasConSaldo
-            .GroupBy(v => v.ClienteId)
-            .Select(g =>
-            {
-                clientesDict.TryGetValue(g.Key, out var cli);
-                var fechaMasAntigua = g.Min(x => x.Fecha);
-                // Separar saldo por tipo de comprobante (pedido del usuario 2026-05-19):
-                //   "Cotizacion" = X + PRO (no fiscal, interno)
-                //   "Factura"    = FA + FB + FC (con CAE de ARCA, fiscal)
-                var saldoCotizacion = g.Where(x => x.TipoComprobante == "X" || x.TipoComprobante == "PRO")
-                    .Sum(x => x.Saldo);
-                var saldoFactura = g.Where(x => x.TipoComprobante == "FA" || x.TipoComprobante == "FB" || x.TipoComprobante == "FC")
-                    .Sum(x => x.Saldo);
-                return new ClienteSaldoPendienteDto(
-                    g.Key,
-                    cli?.Nombre ?? "(sin nombre)",
-                    cli?.Tipo,
-                    cli?.Telefono,
-                    cli?.MapeoLink,
-                    cli?.CodigoInterno,
-                    g.Count(),
-                    g.Sum(x => x.Saldo),
-                    fechaMasAntigua,
-                    (int)(hoy - fechaMasAntigua.Date).TotalDays,
-                    g.Any(x => x.EsSaldoMigracion),
-                    saldoCotizacion,
-                    saldoFactura
-                );
-            })
-            .OrderBy(c => c.FechaMasAntigua) // más antigua primero (mayor urgencia)
-            .ToList();
-        return Ok(result);
-    }
+    /// <summary>Manda AHORA por Telegram el resumen de deudas por cliente (el mismo que sale
+    /// automático cada mañana). Sirve para probarlo sin esperar a las 8am.</summary>
+    [HttpPost("deudores-diario/enviar-ahora")]
+    public async Task<IActionResult> EnviarDeudoresAhora([FromServices] DeudoresDiarioNotifier notifier, CancellationToken ct)
+        => Ok(await notifier.EnviarResumenAsync(ct));
 
     /// <summary>2026-06-06: Lista las ventas "ocasionales" (sin cliente del catálogo) con saldo pendiente.
     /// Estas ventas se cargan sin cliente para no llenar el catálogo con clientes de una sola compra,
