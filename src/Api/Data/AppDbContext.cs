@@ -36,6 +36,7 @@ public class AppDbContext : DbContext
     public DbSet<MeliClienteCompra> MeliClienteCompras => Set<MeliClienteCompra>();
     public DbSet<MeliFactura> MeliFacturas => Set<MeliFactura>();
     public DbSet<ContadoraComprobante> ContadoraComprobantes => Set<ContadoraComprobante>();
+    public DbSet<ContadoraComprobantePago> ContadoraComprobantePagos => Set<ContadoraComprobantePago>();
     public DbSet<ContadoraRetencion> ContadoraRetenciones => Set<ContadoraRetencion>();
     public DbSet<ConfigCorreoFacturas> ConfigCorreoFacturas => Set<ConfigCorreoFacturas>();
     public DbSet<MapeoDriver> MapeoDrivers => Set<MapeoDriver>();

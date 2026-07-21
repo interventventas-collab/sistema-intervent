@@ -697,6 +697,27 @@ IF COL_LENGTH('ContadoraComprobantes', 'PdfPath') IS NULL
     ALTER TABLE ContadoraComprobantes ADD PdfPath NVARCHAR(500) NULL;
 GO
 
+-- 2026-07-21: pagos registrados sobre facturas de COMPRA con CAE (Contadora).
+-- Cada factura de proveedor puede tener uno o varios pagos (transferencia/cheque/efectivo).
+-- El saldo de una factura = Total - suma de los pagos no anulados. Idempotente.
+IF OBJECT_ID('ContadoraComprobantePagos','U') IS NULL
+CREATE TABLE ContadoraComprobantePagos (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    IdComprobante NVARCHAR(40) NOT NULL,                 -- vincula a ContadoraComprobantes.IdComprobante
+    Fecha DATETIME2 NOT NULL,
+    Medio NVARCHAR(20) NOT NULL DEFAULT 'Transferencia', -- Transferencia / Cheque / Efectivo / Otro
+    Referencia NVARCHAR(120) NULL,                       -- nro de transferencia, nro de cheque + banco, etc.
+    Importe DECIMAL(18,2) NOT NULL DEFAULT 0,
+    Operador NVARCHAR(120) NULL,
+    Observaciones NVARCHAR(300) NULL,
+    Anulado BIT NOT NULL DEFAULT 0,
+    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='IX_ContadoraCompPagos_IdComp' AND object_id=OBJECT_ID('ContadoraComprobantePagos'))
+    CREATE INDEX IX_ContadoraCompPagos_IdComp ON ContadoraComprobantePagos (IdComprobante);
+GO
+
 -- 2026-07-09: config de la casilla de correo (IMAP) de facturas de proveedores.
 IF OBJECT_ID('ConfigCorreoFacturas','U') IS NULL
 CREATE TABLE ConfigCorreoFacturas (
