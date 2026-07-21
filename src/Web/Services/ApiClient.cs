@@ -140,6 +140,34 @@ public class ApiClient
         return await GetAsync<MeliItemDetailsDto>($"/api/meli/items/{meliItemId}/details");
     }
 
+    // --- 2026-07-21: Gestion de fotos de publicaciones (Etapa 1) ---
+    public async Task<MeliItemPicturesDto?> GetMeliItemPicturesAsync(string meliItemId)
+    {
+        return await GetAsync<MeliItemPicturesDto>($"/api/meli/items/{meliItemId}/pictures");
+    }
+
+    /// <summary>Guarda la lista final ORDENADA de fotos en MeLi. Devuelve las fotos resultantes,
+    /// o (null, mensaje de error) si MeLi rechazo el cambio.</summary>
+    public async Task<(MeliItemPicturesDto? result, string? error)> UpdateMeliItemPicturesAsync(string meliItemId, UpdateItemPicturesRequest request)
+    {
+        await SetAuthHeaderAsync();
+        var response = await _http.PutAsJsonAsync($"/api/meli/items/{meliItemId}/pictures", request);
+        if (response.IsSuccessStatusCode)
+        {
+            var dto = await response.Content.ReadFromJsonAsync<MeliItemPicturesDto>();
+            return (dto, null);
+        }
+        string error = "No se pudieron guardar las fotos.";
+        try
+        {
+            var el = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+            if (el.TryGetProperty("error", out var e) && e.GetString() is string s && !string.IsNullOrWhiteSpace(s))
+                error = s;
+        }
+        catch { }
+        return (null, error);
+    }
+
     // --- 2026-06-19: Refresco de sale_fee real (comision MeLi) ---
     public async Task<bool> RefreshMeliItemSaleFeeAsync(string meliItemId)
     {

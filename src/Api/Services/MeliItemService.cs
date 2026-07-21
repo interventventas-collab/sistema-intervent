@@ -2389,6 +2389,136 @@ public class MeliItemService
         return new MeliItemDetailsDto(pictures, description);
     }
 
+    /// <summary>2026-07-21: trae TODAS las fotos de una publicacion (id + secure_url), sin tope,
+    /// para el gestor de fotos. Tambien informa si es publicacion de catalogo (fotos bloqueadas por MeLi).</summary>
+    public async Task<MeliItemPicturesDto?> GetItemPicturesAsync(string meliItemId)
+    {
+        var item = await _db.MeliItems
+            .Include(i => i.MeliAccount)
+            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId);
+        if (item?.MeliAccount is null) return null;
+
+        var token = await _accountService.GetValidTokenAsync(item.MeliAccount);
+        if (token is null) return null;
+
+        var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        try
+        {
+            var resp = await http.GetAsync($"https://api.mercadolibre.com/items/{meliItemId}");
+            if (!resp.IsSuccessStatusCode) return new MeliItemPicturesDto(new(), false, null);
+            var json = await resp.Content.ReadAsStringAsync();
+            return ParsePicturesFromItemJson(json);
+        }
+        catch
+        {
+            return new MeliItemPicturesDto(new(), false, null);
+        }
+    }
+
+    /// <summary>2026-07-21: reemplaza la lista de fotos de una publicacion existente en MeLi.
+    /// Recibe la lista final ORDENADA: cada foto es una existente (Id), una URL externa (Source)
+    /// o un archivo subido (DataUri base64, que primero se sube a MeLi). Hace PUT /items/{id} con
+    /// el array pictures. La primera foto queda como portada. Actualiza el Thumbnail local.</summary>
+    public async Task<MeliItemPicturesDto> UpdateItemPicturesAsync(string meliItemId, UpdateItemPicturesRequest request)
+    {
+        var item = await _db.MeliItems
+            .Include(i => i.MeliAccount)
+            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId);
+        if (item is null) throw new Exception($"Item {meliItemId} no encontrado");
+        if (item.MeliAccount is null) throw new Exception($"Cuenta asociada no encontrada para {meliItemId}");
+
+        var token = await _accountService.GetValidTokenAsync(item.MeliAccount);
+        if (token is null) throw new Exception("Token expirado. Reconecta la cuenta de MercadoLibre.");
+
+        var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        // Construir el array de pictures en el orden recibido.
+        var pics = new List<object>();
+        foreach (var spec in request.Pictures)
+        {
+            if (!string.IsNullOrEmpty(spec.Id))
+            {
+                pics.Add(new { id = spec.Id });
+            }
+            else if (!string.IsNullOrEmpty(spec.DataUri))
+            {
+                var uploadedUrl = await UploadPictureToMeliAsync(http, spec.DataUri);
+                if (uploadedUrl is null) throw new Exception("No se pudo subir una de las fotos a MercadoLibre. Revisá formato (JPG/PNG) y tamaño (máx 10 MB).");
+                pics.Add(new { source = uploadedUrl });
+            }
+            else if (!string.IsNullOrEmpty(spec.Source))
+            {
+                pics.Add(new { source = spec.Source });
+            }
+        }
+        if (pics.Count == 0) throw new Exception("La publicación tiene que quedar con al menos una foto.");
+
+        var payload = new Dictionary<string, object> { ["pictures"] = pics };
+        var json = JsonSerializer.Serialize(payload);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var response = await http.PutAsync($"https://api.mercadolibre.com/items/{meliItemId}", content);
+
+        // Reintento una vez si el token expiro (mismo patron que UpdateItemAsync).
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+            response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            var newToken = await _accountService.GetValidTokenAsync(item.MeliAccount, forceRefresh: true);
+            if (newToken is not null)
+            {
+                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", newToken);
+                content = new StringContent(json, Encoding.UTF8, "application/json");
+                response = await http.PutAsync($"https://api.mercadolibre.com/items/{meliItemId}", content);
+            }
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync();
+            throw new Exception($"Error de MercadoLibre ({response.StatusCode}): {errorBody}");
+        }
+
+        // Releer las fotos resultantes de la respuesta y refrescar el thumbnail local.
+        var respJson = await response.Content.ReadAsStringAsync();
+        var result = ParsePicturesFromItemJson(respJson);
+        if (result.Pictures.Count > 0)
+        {
+            item.Thumbnail = result.Pictures[0].Url;
+            item.UpdatedAt = DateTime.UtcNow;
+            item.LastUpdated = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+        }
+        return result;
+    }
+
+    /// <summary>Parsea pictures[] (id + secure_url), catalog_listing y permalink de un item JSON de MeLi.</summary>
+    private static MeliItemPicturesDto ParsePicturesFromItemJson(string json)
+    {
+        var pictures = new List<MeliPictureDto>();
+        bool catalogListing = false;
+        string? permalink = null;
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        if (root.TryGetProperty("catalog_listing", out var cl) && cl.ValueKind == JsonValueKind.True)
+            catalogListing = true;
+        if (root.TryGetProperty("permalink", out var pl))
+            permalink = pl.GetString();
+        if (root.TryGetProperty("pictures", out var pics) && pics.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var pic in pics.EnumerateArray())
+            {
+                var id = pic.TryGetProperty("id", out var pid) ? pid.GetString() : null;
+                var url = pic.TryGetProperty("secure_url", out var su) ? su.GetString()
+                        : pic.TryGetProperty("url", out var u) ? u.GetString() : null;
+                if (!string.IsNullOrEmpty(url))
+                    pictures.Add(new MeliPictureDto(id ?? "", url));
+            }
+        }
+        return new MeliItemPicturesDto(pictures, catalogListing, permalink);
+    }
+
     public async Task<List<CategoryPredictionDto>> PredictCategoryAsync(string title, int meliAccountId)
     {
         var account = await _db.MeliAccounts.FindAsync(meliAccountId);

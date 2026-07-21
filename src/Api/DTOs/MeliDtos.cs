@@ -279,6 +279,29 @@ public record MeliItemDetailsDto(
     string? Description
 );
 
+// --- Gestion de fotos de publicaciones existentes (Etapa 1) ---
+public record MeliPictureDto(string Id, string Url);
+
+public record MeliItemPicturesDto(
+    List<MeliPictureDto> Pictures,
+    bool CatalogListing,
+    string? Permalink
+);
+
+/// <summary>Una foto en la lista final que se manda a MeLi. Se usa UNA de las tres:
+/// Id = foto existente que se conserva; Source = URL externa nueva; DataUri = archivo subido (base64).</summary>
+public class PictureSpec
+{
+    public string? Id { get; set; }
+    public string? Source { get; set; }
+    public string? DataUri { get; set; }
+}
+
+public class UpdateItemPicturesRequest
+{
+    public List<PictureSpec> Pictures { get; set; } = new();
+}
+
 // --- Publish DTOs ---
 
 public record PredictCategoryRequest(string Title);

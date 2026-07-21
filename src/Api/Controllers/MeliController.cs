@@ -1005,6 +1005,30 @@ public class MeliController : ControllerBase
         return Ok(details);
     }
 
+    /// <summary>2026-07-21: trae todas las fotos de una publicacion para el gestor de fotos.</summary>
+    [HttpGet("items/{meliItemId}/pictures")]
+    public async Task<IActionResult> GetItemPictures(string meliItemId)
+    {
+        var result = await _itemService.GetItemPicturesAsync(meliItemId);
+        if (result is null) return NotFound();
+        return Ok(result);
+    }
+
+    /// <summary>2026-07-21: reemplaza la lista de fotos (ordenada) de una publicacion en MeLi.</summary>
+    [HttpPut("items/{meliItemId}/pictures")]
+    public async Task<IActionResult> UpdateItemPictures(string meliItemId, [FromBody] UpdateItemPicturesRequest request)
+    {
+        try
+        {
+            var result = await _itemService.UpdateItemPicturesAsync(meliItemId, request);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     /// <summary>2026-06-19: refresca el sale_fee real (lo que MeLi cobra de comision)
     /// para una publicacion. Llama a /sites/MLA/listing_prices y guarda en MeliItems.</summary>
     [HttpPost("items/{meliItemId}/refresh-salefee")]
