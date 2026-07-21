@@ -917,6 +917,44 @@
             background:#f0fdf4; border-color:#86efac;
             box-shadow:0 2px 8px rgba(34,197,94,0.15);
         }
+
+        /* 2026-07-21: la ventana de Nueva Venta MAXIMIZADA arranca justo al lado del menú.
+           Como el menú ahora puede estar plegado (60px) o desplegado (220px), el borde
+           izquierdo sigue el ancho REAL del menú — así no queda un hueco entre la ventana
+           y el dashboard. Se apoya en la clase .main-collapsed que MainLayout pone en el main. */
+        .modal-overlay.nv-overlay-max { left: var(--sidebar-width, 220px); }
+        .main-collapsed .modal-overlay.nv-overlay-max { left: var(--sidebar-collapsed-width, 60px); }
+        @@media (max-width: 768px) { .modal-overlay.nv-overlay-max { left: 0; } }
+
+        /* 2026-07-21: pestaña de "venta minimizada" — centrada abajo y bien visible
+           (antes era un chip chico abajo a la derecha que quedaba tapado por el chat). */
+        .nv-min-tab {
+            position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+            z-index: 9000; background: #1d4ed8; color: white;
+            border-radius: 12px 12px 0 0; padding: 0.6rem 0.9rem;
+            box-shadow: 0 -4px 20px rgba(29,78,216,0.35);
+            display: flex; align-items: center; gap: 0.6rem;
+            font-size: 0.9rem; font-weight: 600;
+            animation: nvMinPulse 2s ease-in-out infinite;
+        }
+        @@keyframes nvMinPulse {
+            0%, 100% { box-shadow: 0 -4px 20px rgba(29,78,216,0.35); }
+            50% { box-shadow: 0 -4px 26px rgba(29,78,216,0.6); }
+        }
+        .nv-min-open { cursor: pointer; display: flex; align-items: center; gap: 0.5rem; }
+        .nv-min-badge { background: rgba(255,255,255,0.25); padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.78rem; font-weight: 500; }
+        .nv-min-restore {
+            background: rgba(255,255,255,0.9); color: #1d4ed8; border: none;
+            border-radius: 8px; padding: 0.3rem 0.7rem; font-size: 0.82rem; font-weight: 700;
+            cursor: pointer; font-family: inherit;
+        }
+        .nv-min-restore:hover { background: #fff; }
+        .nv-min-close {
+            background: rgba(255,255,255,0.15); color: white; border: none;
+            border-radius: 8px; width: 28px; height: 28px; font-size: 1rem;
+            cursor: pointer; line-height: 1; font-family: inherit;
+        }
+        .nv-min-close:hover { background: rgba(255,255,255,0.3); }
     </style>
 }
 
@@ -930,7 +968,7 @@
        MINIMIZADO (chip flotante abajo a la derecha). *@
     @if (formModalMode != "MINIMIZADO")
     {
-    <div class="modal-overlay" style="@(formModalMode == "MAXIMIZADO" ? "left: var(--sidebar-width, 220px); background: rgba(0,0,0,0.25);" : "")">
+    <div class="modal-overlay @(formModalMode == "MAXIMIZADO" ? "nv-overlay-max" : "")" style="@(formModalMode == "MAXIMIZADO" ? "background: rgba(0,0,0,0.25);" : "")">
         <div class="modal-card nv-form" @onclick:stopPropagation="true" style="@(formModalMode == "MAXIMIZADO" ? "max-width: none; width: 100%; height: 100vh; max-height: 100vh; margin: 0; border-radius: 0; display: flex; flex-direction: column;" : "max-width: min(1280px, 96vw); width: 96vw; max-height: 94vh; display: flex; flex-direction: column;")">
             <div class="modal-header" style="background: @(editingVentaId.HasValue ? "#1d4ed8" : "whitesmoke"); color: @(editingVentaId.HasValue ? "white" : "inherit");">
                 <h3 style="margin: 0;">
@@ -2636,26 +2674,27 @@
     </div> @* fin modal-overlay *@
     }
 
-    @* 2026-06-17: chip flotante cuando el modal esta MINIMIZADO. *@
+    @* 2026-06-17: pestaña flotante cuando el modal esta MINIMIZADO.
+       2026-07-21: rediseñada como pestaña centrada abajo, bien visible, con botón "Volver"
+       y "✕" separado — así queda claro que la venta NO se cerró, solo se guardó en espera. *@
     @if (formModalMode == "MINIMIZADO")
     {
-        <div @onclick="RestaurarModal"
-             style="position: fixed; bottom: 16px; right: 16px; z-index: 9000; background: #1d4ed8; color: white;
-                    border-radius: 999px; padding: 0.6rem 1rem; box-shadow: 0 6px 20px rgba(0,0,0,0.25);
-                    cursor: pointer; display: flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; font-weight: 600;"
-             title="Tocá para volver a la venta">
-            <span style="font-size: 1.1rem;">🧾</span>
-            <span>Venta en curso</span>
-            @if (formClienteId > 0)
-            {
-                var cliMin = clientes?.FirstOrDefault(c => c.Id == formClienteId);
-                <span style="opacity: 0.85; font-weight: 400;">· @(cliMin?.Nombre ?? "(s/cliente)")</span>
-            }
-            @if (formItems.Count > 0)
-            {
-                <span style="background: rgba(255,255,255,0.25); padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.78rem;">@formItems.Count items</span>
-            }
-            <span style="margin-left: 0.4rem; opacity: 0.7;">↗</span>
+        <div class="nv-min-tab">
+            <div class="nv-min-open" @onclick="RestaurarModal" title="Tocá para volver a la venta">
+                <span style="font-size: 1.15rem;">🧾</span>
+                <span>Venta en espera</span>
+                @if (formClienteId > 0)
+                {
+                    var cliMin = clientes?.FirstOrDefault(c => c.Id == formClienteId);
+                    <span style="opacity: 0.85; font-weight: 400;">· @(cliMin?.Nombre ?? "(s/cliente)")</span>
+                }
+                @if (formItems.Count > 0)
+                {
+                    <span class="nv-min-badge">@formItems.Count items</span>
+                }
+            </div>
+            <button class="nv-min-restore" @onclick="RestaurarModal">Volver ↗</button>
+            <button class="nv-min-close" @onclick="CloseForm" title="Cerrar la venta (se pierde lo cargado)">✕</button>
         </div>
     }
 }
