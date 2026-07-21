@@ -1714,6 +1714,7 @@ public class CafeComodatoUpdateRequest
     public int? CuotasTotales { get; set; }
     public decimal? ValorCuota { get; set; }
     public int? DiaPagoMensual { get; set; }
+    public string? Modalidad { get; set; }
 }
 
 public class CafeComodatoPagoRequest

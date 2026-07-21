@@ -182,7 +182,7 @@ public class CafeComodatosController : ControllerBase
 
     public record UpdateRequest(int? ClienteId, string? Moneda, string? Marca, string? Modelo, string? NumeroSerie, DateTime? FechaEntrega,
         string? Estado, DateTime? FechaDevolucion, string? Notas, decimal? ValorEstimado,
-        decimal? PrecioVenta, int? CuotasTotales, decimal? ValorCuota, int? DiaPagoMensual);
+        decimal? PrecioVenta, int? CuotasTotales, decimal? ValorCuota, int? DiaPagoMensual, string? Modalidad = null);
 
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateRequest req)
@@ -208,6 +208,34 @@ public class CafeComodatosController : ControllerBase
         c.FechaDevolucion = req.FechaDevolucion;
         c.Notas = req.Notas?.Trim();
         c.ValorEstimado = req.ValorEstimado;
+
+        // Cambio de modalidad (Comodato <-> Financiada).
+        // Opción B: Financiada -> Comodato SOLO si no tiene pagos (para no perder plata cargada).
+        if (!string.IsNullOrWhiteSpace(req.Modalidad))
+        {
+            var nuevaMod = req.Modalidad.Trim().ToUpperInvariant();
+            if (nuevaMod != "COMODATO" && nuevaMod != "FINANCIADA")
+                return BadRequest(new { error = "Modalidad inválida." });
+            if (nuevaMod != c.Modalidad)
+            {
+                if (nuevaMod == "COMODATO")
+                {
+                    if (c.Pagos.Any())
+                        return BadRequest(new { error = "Esta máquina financiada tiene pagos registrados. Anulá los pagos antes de pasarla a comodato." });
+                    c.Modalidad = "COMODATO";
+                    c.PrecioVenta = null; c.CuotasTotales = null; c.ValorCuota = null;
+                    c.DiaPagoMensual = null; c.SaldoFinanciamiento = null;
+                    if (c.Estado == "PAGADA") c.Estado = "EN_CLIENTE";   // comodato no tiene 'pagada'
+                }
+                else // pasar a FINANCIADA
+                {
+                    if ((req.PrecioVenta ?? 0m) <= 0m)
+                        return BadRequest(new { error = "Cargá el precio total para pasarla a financiada." });
+                    c.Modalidad = "FINANCIADA";
+                }
+            }
+        }
+
         if (c.Modalidad == "FINANCIADA")
         {
             c.PrecioVenta = req.PrecioVenta;
