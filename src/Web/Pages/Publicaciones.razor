@@ -6634,8 +6634,19 @@
                         <div style="min-width:0;">@RenderPriceMargin(v)</div>
                         <div class="plist-stk @(v.AvailableQuantity == 0 ? "zero" : "")"><div class="n">@v.AvailableQuantity</div><div class="u">@(v.AvailableQuantity == 0 ? "sin stock" : "unid.")</div></div>
                         <div>@RenderEstadoItem(v, true)</div>
-                        <div @onclick:stopPropagation="true"><button class="plist-chev @(vEditOpen ? "open" : "")" @onclick="() => ToggleEditPanel(v.Id)" title="Editar">@(vEditOpen ? "⌃" : "⌄")</button></div>
+                        <div @onclick:stopPropagation="true">
+                            @if (grp.IsFamily)
+                            {
+                                var vPhotosOpen = expandedPhotosKey == v.Id;
+                                <button class="plist-photobtn @(vPhotosOpen ? "open" : "")" @onclick="() => TogglePhotosPanel(v)" title="Ver y editar fotos de esta publicación">📷</button>
+                            }
+                            <button class="plist-chev @(vEditOpen ? "open" : "")" @onclick="() => ToggleEditPanel(v.Id)" title="Editar">@(vEditOpen ? "⌃" : "⌄")</button>
+                        </div>
                     </div>
+                    @if (grp.IsFamily && expandedPhotosKey == v.Id)
+                    {
+                        @RenderPhotosPanel(v)
+                    }
                     @if (vEditOpen)
                     {
                         @RenderEditPanel(v)
