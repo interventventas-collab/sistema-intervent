@@ -468,21 +468,23 @@
         opacity: 0.9;
     }
 
-    /* 2026-05-28: botón "Editar visibilidad" en el sidebar del admin. */
+    /* 2026-05-28: botón "Editar visibilidad" en el sidebar del admin.
+       2026-07-21: reubicado dentro del grupo Administración y con look discreto (antes
+       era un botón amarillo llamativo arriba de todo). Se mimetiza con los items del menú. */
     .sidebar-edit-btn {
-        margin: 8px 12px;
-        padding: 0.45rem 0.7rem;
-        background: rgba(251,191,36,0.15);
-        border: 1px dashed rgba(251,191,36,0.6);
-        color: #fbbf24;
+        margin: 2px 8px 6px;
+        padding: 0.4rem 0.7rem;
+        background: transparent;
+        border: none;
+        color: rgba(255,255,255,0.45);
         border-radius: 8px;
-        font-size: 0.82rem;
-        font-weight: 700;
+        font-size: 0.78rem;
+        font-weight: 500;
         cursor: pointer;
-        width: calc(100% - 24px);
-        text-align: center;
+        width: calc(100% - 16px);
+        text-align: left;
     }
-    .sidebar-edit-btn:hover { background: rgba(251,191,36,0.25); }
+    .sidebar-edit-btn:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.85); }
     .sidebar-edit-btn.active {
         background: #16a34a;
         color: white;
@@ -591,55 +593,8 @@
         </button>
     </div>
     <nav class="sidebar-nav" role="navigation" aria-label="Menu principal">
-        @* 2026-05-28: botón "Editar visibilidad" solo visible para admin (con permiso "cafe").
-           Al activarse aparecen chips D/O al lado de cada item editable. *@
-        @if (HasPerm("cafe"))
-        {
-            <button class="sidebar-edit-btn @(menuEditMode ? "active" : "")" @onclick="ToggleMenuEditMode"
-                    title="@(menuEditMode ? "Salir del modo edición" : "Modo edición de visibilidad por rol")">
-                @if (menuEditMode)
-                {
-                    <span>✓ Terminar edición</span>
-                }
-                else
-                {
-                    <span>✏️ Editar visibilidad</span>
-                }
-            </button>
-        }
-        @* 2026-05-28: cuando admin activa modo edición, mostramos UNA panel especial con
-           todos los items del catálogo + chips D/O. No tocamos el sidebar real con chips. *@
-        @if (menuEditMode && HasPerm("cafe"))
-        {
-            <div class="menu-edit-panel">
-                <div class="menu-edit-panel-header">
-                    🛠 Editar visibilidad por rol
-                    <div style="font-size:0.72rem; font-weight:400; margin-top: 0.2rem; color: #fed7aa;">
-                        Tildá <strong>D</strong> (DEPOSITO) u <strong>O</strong> (OFICINA) según querés
-                        que vean cada item. Guarda al toque.
-                    </div>
-                </div>
-                <div class="menu-edit-panel-body">
-                    @foreach (var entry in MenuCatalog)
-                    {
-                        var key = entry.Key;
-                        var label = entry.Value.Label;
-                        var emoji = entry.Value.Emoji;
-                        var depo = MenuVisibility.IsEnabled("deposito", key);
-                        var ofi = MenuVisibility.IsEnabled("oficina", key);
-                        <div class="menu-edit-row">
-                            <span class="menu-edit-row-label">@emoji @label</span>
-                            <button class="nav-chip @(depo ? "on" : "off")"
-                                    title="Mostrar a DEPOSITO"
-                                    @onclick="@(() => OnMenuToggleVisibility(key, "deposito", !depo))">D</button>
-                            <button class="nav-chip @(ofi ? "on" : "off")"
-                                    title="Mostrar a OFICINA"
-                                    @onclick="@(() => OnMenuToggleVisibility(key, "oficina", !ofi))">O</button>
-                        </div>
-                    }
-                </div>
-            </div>
-        }
+        @* 2026-07-21: "Editar visibilidad" se movió al grupo Administración (abajo), porque casi
+           no se usa y quedaba muy llamativo arriba de todo. Ver más abajo dentro del NavGroup. *@
         @* ═════════════ 1. DASHBOARD ═════════════ *@
         @if (HasPerm("dashboard"))
         {
@@ -1119,6 +1074,53 @@
                 {
                     <NavItem Href="/config" Label="Configuración" Icon="@SvgIcons.Settings"
                              IsActive="@IsActive("/config")" OnClick="@(() => NavigateTo("/config"))" />
+                }
+                @* 2026-07-21: "Editar visibilidad" reubicado acá (antes estaba arriba de todo, muy
+                   llamativo). Solo admin (permiso "cafe"). Al activarlo aparece el panel con chips D/O. *@
+                @if (HasPerm("cafe"))
+                {
+                    <button class="sidebar-edit-btn @(menuEditMode ? "active" : "")" @onclick="ToggleMenuEditMode"
+                            title="@(menuEditMode ? "Salir del modo edición" : "Modo edición de visibilidad por rol")">
+                        @if (menuEditMode)
+                        {
+                            <span>✓ Terminar edición</span>
+                        }
+                        else
+                        {
+                            <span>✏️ Editar visibilidad</span>
+                        }
+                    </button>
+                    @if (menuEditMode)
+                    {
+                        <div class="menu-edit-panel">
+                            <div class="menu-edit-panel-header">
+                                🛠 Editar visibilidad por rol
+                                <div style="font-size:0.72rem; font-weight:400; margin-top: 0.2rem; color: #fed7aa;">
+                                    Tildá <strong>D</strong> (DEPOSITO) u <strong>O</strong> (OFICINA) según querés
+                                    que vean cada item. Guarda al toque.
+                                </div>
+                            </div>
+                            <div class="menu-edit-panel-body">
+                                @foreach (var entry in MenuCatalog)
+                                {
+                                    var key = entry.Key;
+                                    var label = entry.Value.Label;
+                                    var emoji = entry.Value.Emoji;
+                                    var depo = MenuVisibility.IsEnabled("deposito", key);
+                                    var ofi = MenuVisibility.IsEnabled("oficina", key);
+                                    <div class="menu-edit-row">
+                                        <span class="menu-edit-row-label">@emoji @label</span>
+                                        <button class="nav-chip @(depo ? "on" : "off")"
+                                                title="Mostrar a DEPOSITO"
+                                                @onclick="@(() => OnMenuToggleVisibility(key, "deposito", !depo))">D</button>
+                                        <button class="nav-chip @(ofi ? "on" : "off")"
+                                                title="Mostrar a OFICINA"
+                                                @onclick="@(() => OnMenuToggleVisibility(key, "oficina", !ofi))">O</button>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
                 }
             </NavGroup>
         }
@@ -2091,7 +2093,10 @@
     }
 
     private bool sidebarOpen;
-    private bool sidebarCollapsed;
+    // 2026-07-21: por default el menú arranca PLEGADO (finito, solo iconos). Si el usuario
+    // lo expande o lo vuelve a plegar, se recuerda en el navegador (localStorage) y respeta
+    // esa elección la próxima vez. Ver ToggleCollapse + OnAfterRenderAsync.
+    private bool sidebarCollapsed = true;
     /// <summary>2026-06-20: modo embebido — cuando la pantalla se carga dentro del drawer del chat WhatsApp
     /// (con ?embedded=1), oculta sidebar y topbar para mostrar solo el contenido. Usado para iframes.</summary>
     private bool IsEmbedded => Navigation.Uri.Contains("embedded=1", StringComparison.OrdinalIgnoreCase);
@@ -2723,6 +2728,18 @@
                 if (usada == "1") { calcNuevoBadge = false; await InvokeAsync(StateHasChanged); }
             }
             catch { }
+            // 2026-07-21: respetar cómo dejó el menú el usuario (plegado/expandido).
+            // Default = plegado; solo se expande si el usuario lo guardó así antes.
+            try
+            {
+                var savedCollapsed = await JS.InvokeAsync<string?>("localStorage.getItem", "sidebarCollapsed");
+                if (savedCollapsed == "false" && sidebarCollapsed)
+                {
+                    sidebarCollapsed = false;
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+            catch { }
         }
     }
 
@@ -3045,10 +3062,16 @@
 
     private void ToggleSidebar() => sidebarOpen = !sidebarOpen;
     private void CloseSidebar() => sidebarOpen = false;
-    private void ToggleCollapse()
+    private async Task ToggleCollapse()
     {
         sidebarCollapsed = !sidebarCollapsed;
         userMenuOpen = false;
+        // 2026-07-21: recordar la elección en el navegador para próximas visitas.
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", "sidebarCollapsed", sidebarCollapsed ? "true" : "false");
+        }
+        catch { /* navegador viejo o JS bloqueado: no pasa nada, solo no se recuerda */ }
     }
     private void ToggleUserMenu() => userMenuOpen = !userMenuOpen;
 
