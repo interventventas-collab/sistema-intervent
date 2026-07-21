@@ -502,19 +502,12 @@
                 <p style="color:#4b5563; font-size:0.9rem; margin-top:0;">
                     Mandale este enlace al cliente por WhatsApp o mail. Él completa sus datos solo
                     (sin usuario ni clave) y te aparecen arriba de la lista para que los termines de cargar.
+                    Es un enlace <strong>fijo</strong>: siempre es el mismo, lo podés guardar y reusar.
                 </p>
-                @if (altaLink is not null)
-                {
-                    <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
-                        <input readonly value="@LinkCompleto" style="flex:1; min-width:240px; padding:0.55rem 0.7rem; border:1.5px solid #d1d5db; border-radius:8px; font-size:0.85rem; background:#f9fafb; color:#111827;" />
-                        <button class="btn btn-primary" @onclick="CopiarLinkAlta">📋 Copiar</button>
-                        <button class="btn btn-secondary" @onclick="RegenerarLinkAlta" title="Genera un enlace nuevo; el anterior deja de funcionar">🔄 Nuevo</button>
-                    </div>
-                }
-                else
-                {
-                    <p style="color:#9ca3af;">Cargando enlace…</p>
-                }
+                <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+                    <input readonly value="@LinkCompleto" style="flex:1; min-width:240px; padding:0.55rem 0.7rem; border:1.5px solid #d1d5db; border-radius:8px; font-size:0.85rem; background:#f9fafb; color:#111827;" />
+                    <button class="btn btn-primary" @onclick="CopiarLinkAlta">📋 Copiar</button>
+                </div>
             </div>
         </div>
     </div>
@@ -529,8 +522,8 @@
     private List<CafeClienteAltaDto> pendientesAltas = new();
     private int? finalizandoAltaId;   // si estoy terminando de cargar una solicitud, su Id
     private bool showLinkModal;
-    private AltaLinkDto? altaLink;
-    private string LinkCompleto => altaLink is null ? "" : Nav.BaseUri.TrimEnd('/') + altaLink.Ruta;
+    // 2026-07-21: enlace FIJO y corto (sin token). Se arma en el navegador, no depende del server.
+    private string LinkCompleto => Nav.BaseUri.TrimEnd('/') + "/alta-cliente";
     private int maxVisibles = 100;
     private bool showForm, isEditing, saving;
 
@@ -857,28 +850,13 @@
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
 
-    // ── Enlace público de alta ──
-    private async Task AbrirLinkModal()
-    {
-        showLinkModal = true;
-        if (altaLink is null)
-        {
-            try { altaLink = await Api.GetAltaClientesLinkAsync(); } catch { }
-        }
-    }
+    // ── Enlace público de alta (fijo y corto: /alta-cliente) ──
+    private void AbrirLinkModal() => showLinkModal = true;
 
     private async Task CopiarLinkAlta()
     {
         try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", LinkCompleto); ToastService.Success("Enlace copiado ✔"); }
         catch { ToastService.Info("Copialo manualmente: " + LinkCompleto); }
-    }
-
-    private async Task RegenerarLinkAlta()
-    {
-        if (!await JS.InvokeAsync<bool>("confirm", "¿Generar un enlace nuevo? El enlace anterior dejará de funcionar."))
-            return;
-        try { altaLink = await Api.RegenerarAltaClientesLinkAsync(); ToastService.Success("Enlace nuevo generado."); }
-        catch { ToastService.Error("No se pudo generar el enlace."); }
     }
 
     private async Task ShowCreate()

@@ -2613,22 +2613,32 @@ public class ApiClient
     }
 
     // Métodos PÚBLICOS (los usa el formulario sin login; los endpoints son AllowAnonymous).
+    // token vacío => enlace FIJO y corto /alta-cliente (endpoints "abiertos", sin token).
     public async Task<AltaInitDto?> AltaPublicaInitAsync(string token)
     {
-        var resp = await _http.GetAsync($"/api/cafe/alta-clientes/publica/{token}/init");
+        var url = string.IsNullOrEmpty(token)
+            ? "/api/cafe/alta-clientes/publica/init"
+            : $"/api/cafe/alta-clientes/publica/{token}/init";
+        var resp = await _http.GetAsync(url);
         return await resp.Content.ReadFromJsonAsync<AltaInitDto>();
     }
 
     public async Task<ArcaPadronDto?> AltaPublicaPadronAsync(string token, string cuit)
     {
-        var resp = await _http.GetAsync($"/api/cafe/alta-clientes/publica/{token}/padron?cuit={Uri.EscapeDataString(cuit)}");
+        var url = string.IsNullOrEmpty(token)
+            ? $"/api/cafe/alta-clientes/publica/padron?cuit={Uri.EscapeDataString(cuit)}"
+            : $"/api/cafe/alta-clientes/publica/{token}/padron?cuit={Uri.EscapeDataString(cuit)}";
+        var resp = await _http.GetAsync(url);
         if (!resp.IsSuccessStatusCode) return null;
         return await resp.Content.ReadFromJsonAsync<ArcaPadronDto>();
     }
 
     public async Task<AltaEnviarResultDto?> AltaPublicaEnviarAsync(string token, AltaClientePublicaRequest req)
     {
-        var resp = await _http.PostAsJsonAsync($"/api/cafe/alta-clientes/publica/{token}", req);
+        var url = string.IsNullOrEmpty(token)
+            ? "/api/cafe/alta-clientes/publica"
+            : $"/api/cafe/alta-clientes/publica/{token}";
+        var resp = await _http.PostAsJsonAsync(url, req);
         return await resp.Content.ReadFromJsonAsync<AltaEnviarResultDto>();
     }
 

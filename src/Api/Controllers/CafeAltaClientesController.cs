@@ -72,6 +72,9 @@ public class CafeAltaClientesController : ControllerBase
     }
 
     // ─────────────────────────── PÚBLICO (cliente) ───────────────────────────
+    // Cada endpoint tiene DOS variantes que comparten la misma lógica (los *Core):
+    //   • con {token}: los enlaces largos históricos (backward-compat; se pueden invalidar).
+    //   • sin token ("open"): el enlace FIJO y corto /alta-cliente. Igual cae en "pendientes".
 
     [HttpGet("publica/{token}/init")]
     [AllowAnonymous]
@@ -79,7 +82,15 @@ public class CafeAltaClientesController : ControllerBase
     {
         if (!await TokenValidoAsync(token))
             return NotFound(new { ok = false, mensaje = "El enlace no es válido o fue dado de baja. Pedí uno nuevo." });
+        return await InitCore();
+    }
 
+    [HttpGet("publica/init")]
+    [AllowAnonymous]
+    public Task<IActionResult> InitOpen() => InitCore();
+
+    private async Task<IActionResult> InitCore()
+    {
         var negocio = (await _db.CafeSettings.FirstOrDefaultAsync())?.NegocioNombre;
         if (string.IsNullOrWhiteSpace(negocio))
             negocio = (await _db.AppSettings.FindAsync("BrandName"))?.Value;
@@ -93,6 +104,15 @@ public class CafeAltaClientesController : ControllerBase
     {
         if (!await TokenValidoAsync(token))
             return NotFound(new { ok = false });
+        return await PadronCore(cuit);
+    }
+
+    [HttpGet("publica/padron")]
+    [AllowAnonymous]
+    public Task<IActionResult> PadronOpen([FromQuery] string cuit) => PadronCore(cuit);
+
+    private async Task<IActionResult> PadronCore(string cuit)
+    {
         if (string.IsNullOrWhiteSpace(cuit))
             return BadRequest(new { ok = false, error = "Falta el CUIT o DNI" });
         // Acepta CUIT (11 díg) o DNI (7-8 díg): si es DNI, resuelve el CUIT real contra el padrón.
@@ -123,7 +143,15 @@ public class CafeAltaClientesController : ControllerBase
     {
         if (!await TokenValidoAsync(token))
             return NotFound(new { ok = false, mensaje = "El enlace no es válido o fue dado de baja." });
+        return await EnviarCore(req);
+    }
 
+    [HttpPost("publica")]
+    [AllowAnonymous]
+    public Task<IActionResult> EnviarOpen([FromBody] AltaPublicaRequest req) => EnviarCore(req);
+
+    private async Task<IActionResult> EnviarCore(AltaPublicaRequest req)
+    {
         if (string.IsNullOrWhiteSpace(req.NombreFantasia))
             return BadRequest(new { ok = false, mensaje = "Poné el nombre de tu comercio." });
         if (string.IsNullOrWhiteSpace(req.Telefono))
@@ -161,10 +189,12 @@ public class CafeAltaClientesController : ControllerBase
 
     [HttpGet("link")]
     [Authorize]
-    public async Task<IActionResult> GetLink()
+    public IActionResult GetLink()
     {
-        var token = await GetOrCreateTokenAsync();
-        return Ok(new { token, ruta = $"/alta-cliente/{token}" });
+        // 2026-07-21: ahora el enlace para compartir es FIJO y corto: /alta-cliente
+        // (sin token en la URL). Es más fácil de dictar/mandar. Los enlaces largos
+        // con token que se hayan mandado antes siguen funcionando igual.
+        return Ok(new { token = "", ruta = "/alta-cliente" });
     }
 
     [HttpPost("regenerar-link")]
