@@ -87,7 +87,8 @@ public class CafeSaldosService
                     (int)(hoy - fechaMasAntigua.Date).TotalDays,
                     g.Any(x => x.EsSaldoMigracion),
                     saldoCotizacion,
-                    saldoFactura
+                    saldoFactura,
+                    cli?.Cuit
                 );
             })
             .OrderBy(c => c.FechaMasAntigua) // más antigua primero (mayor urgencia)
@@ -106,4 +107,6 @@ public record ClienteSaldoPendienteDto(
     /// <summary>Saldo de comprobantes tipo X y PRO (no fiscales). Default 0 si no hay.</summary>
     decimal SaldoCotizacion = 0m,
     /// <summary>Saldo de comprobantes tipo FA, FB, FC (con CAE de ARCA, fiscales). Default 0 si no hay.</summary>
-    decimal SaldoFactura = 0m);
+    decimal SaldoFactura = 0m,
+    /// <summary>CUIT del cliente. Sirve para agrupar cuentas del mismo CUIT en el aviso de deudas.</summary>
+    string? Cuit = null);

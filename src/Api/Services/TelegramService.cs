@@ -45,11 +45,11 @@ public class TelegramService
     /// <summary>Manda un mensaje por el bot de AVISOS. Si viene chatId va solo a ese chat; si no,
     /// va a TODAS las personas vinculadas que tengan prendido el tilde de la categoría
     /// ("VENTAS" | "ALERTAS" | "FICHADAS" | "TODOS"). Devuelve ok si le llegó al menos a una.</summary>
-    public async Task<(bool ok, string? error)> SendMessageAsync(string text, long? chatId = null, CancellationToken ct = default, string categoria = "ALERTAS")
+    public async Task<(bool ok, string? error)> SendMessageAsync(string text, long? chatId = null, CancellationToken ct = default, string categoria = "ALERTAS", string? parseMode = null)
     {
         var a = await GetBotAsync("AVISOS", ct);
         if (a is null || string.IsNullOrWhiteSpace(a.BotToken)) return (false, "No hay bot de Telegram configurado");
-        if (chatId is not null && chatId != 0) return await SendRawAsync(a.BotToken, chatId.Value, text, ct);
+        if (chatId is not null && chatId != 0) return await SendRawAsync(a.BotToken, chatId.Value, text, ct, parseMode: parseMode);
 
         var chats = await ChatsConTildeAsync(a.Id, categoria, ct);
         if (chats.Count == 0)
@@ -58,7 +58,7 @@ public class TelegramService
         bool alguno = false; string? err = null;
         foreach (var c in chats)
         {
-            var (ok, e) = await SendRawAsync(a.BotToken, c, text, ct);
+            var (ok, e) = await SendRawAsync(a.BotToken, c, text, ct, parseMode: parseMode);
             if (ok) alguno = true; else err = e;
         }
         return alguno ? (true, null) : (false, err);
@@ -100,14 +100,19 @@ public class TelegramService
         catch { }
     }
 
-    private async Task<(bool ok, string? error)> SendRawAsync(string token, long chatId, string text, CancellationToken ct, object? replyMarkup = null)
+    private async Task<(bool ok, string? error)> SendRawAsync(string token, long chatId, string text, CancellationToken ct, object? replyMarkup = null, string? parseMode = null)
     {
         try
         {
             var http = NewClient();
-            object payload = replyMarkup is null
-                ? new { chat_id = chatId, text, disable_web_page_preview = true }
-                : new { chat_id = chatId, text, disable_web_page_preview = true, reply_markup = replyMarkup };
+            var payload = new Dictionary<string, object?>
+            {
+                ["chat_id"] = chatId,
+                ["text"] = text,
+                ["disable_web_page_preview"] = true
+            };
+            if (replyMarkup is not null) payload["reply_markup"] = replyMarkup;
+            if (!string.IsNullOrEmpty(parseMode)) payload["parse_mode"] = parseMode;   // "HTML" para el desplegable
             var resp = await http.PostAsJsonAsync($"{ApiBase}/bot{token}/sendMessage", payload, ct);
             var body = await resp.Content.ReadAsStringAsync(ct);
             if (!resp.IsSuccessStatusCode)
