@@ -2043,9 +2043,10 @@ public class ContadoraService
         var facs = await q.Select(c => new { c.IdComprobante, c.ReceptorDoc, c.ReceptorNombre, c.EsNotaCredito, c.Total }).ToListAsync();
         if (facs.Count == 0) return new ContadoraDeudaProveedoresDto();
 
-        var ids = facs.Where(f => !f.EsNotaCredito).Select(f => f.IdComprobante).ToList();
+        // Los pagos son pocos (solo los proveedores con cuenta corriente): traemos todos y cruzamos en memoria,
+        // así evitamos un IN gigante contra SQL Server cuando el período tiene muchas facturas.
         var pagoMap = (await _db.ContadoraComprobantePagos
-                .Where(p => !p.Anulado && ids.Contains(p.IdComprobante))
+                .Where(p => !p.Anulado)
                 .GroupBy(p => p.IdComprobante)
                 .Select(g => new { Id = g.Key, Pagado = g.Sum(x => x.Importe) })
                 .ToListAsync())
