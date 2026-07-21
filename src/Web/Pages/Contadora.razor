@@ -711,7 +711,17 @@
         <div class="co-card">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;">
                 <b>💸 Le debo a proveedores</b>
-                <button class="co-btn co-btn-ghost" @onclick="ToggleDeuda">@(verDeuda ? "▲ Ocultar" : "▼ Ver cuánto debo")</button>
+                <div style="display:flex;gap:.4rem;flex-wrap:wrap;">
+                    @if (migracionCount > 0)
+                    {
+                        <button class="co-btn co-btn-ghost" style="color:#b45309;" @onclick="DeshacerMigracion" disabled="@migrando" title="Anula la puesta al día: las facturas vuelven a como estaban">↩ Deshacer puesta al día</button>
+                    }
+                    else
+                    {
+                        <button class="co-btn co-btn-green" @onclick="PonerAlDia" disabled="@migrando" title="Marca como pagadas todas las facturas de compra de hoy para atrás">@(migrando ? "Aplicando…" : "✅ Poner todo al día")</button>
+                    }
+                    <button class="co-btn co-btn-ghost" @onclick="ToggleDeuda">@(verDeuda ? "▲ Ocultar" : "▼ Ver cuánto debo")</button>
+                </div>
             </div>
             @if (verDeuda)
             {
@@ -875,6 +885,8 @@
     private string? pagoObs;
     private ContadoraDeudaProveedoresDto? deudaProv;
     private bool verDeuda, cargandoDeuda;
+    private int migracionCount;
+    private bool migrando;
 
     // ── Facturas por correo ──
     private ConfigCorreoDto? correo;
@@ -1228,6 +1240,7 @@
         try
         {
             comp = await Api.GetContadoraComprasResumenAsync(kDesde, kHasta, empresaSel, kSearch);
+            migracionCount = await Api.GetMigracionCountAsync();
             if (verDetalleComp) { compPage = 1; await CargarCompComps(); }
             if (verDeuda) await CargarDeuda();
         }
@@ -1331,6 +1344,44 @@
         try { deudaProv = await Api.GetContadoraDeudaProveedoresAsync(kDesde, kHasta, empresaSel, true); }
         catch (Exception ex) { ToastService.Error("No pude cargar la deuda: " + ex.Message); }
         finally { cargandoDeuda = false; }
+    }
+
+    // ── Poner al día (migración) ──
+    private async Task PonerAlDia()
+    {
+        if (migrando) return;
+        if (!await JS.InvokeAsync<bool>("confirm", "¿Marcar como PAGADAS todas las facturas de compra de hoy para atrás? El panel queda en cero y de ahora en más solo aparece lo nuevo. Se puede deshacer.")) return;
+        migrando = true;
+        try
+        {
+            var res = await Api.PonerAlDiaAsync();
+            if (res is null || !res.Ok) { ToastService.Error(res?.Error ?? "No se pudo poner al día."); return; }
+            ToastService.Success($"✓ {res.PagosCreados} factura(s) marcadas al día.");
+            migracionCount = await Api.GetMigracionCountAsync();
+            if (verDeuda) await CargarDeuda();
+            if (verDetalleComp) await CargarCompComps();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { migrando = false; }
+    }
+
+    private async Task DeshacerMigracion()
+    {
+        if (migrando) return;
+        if (!await JS.InvokeAsync<bool>("confirm", "¿Deshacer la puesta al día? Se anulan los pagos 'Migración' y las facturas vuelven a como estaban antes.")) return;
+        migrando = true;
+        try
+        {
+            if (await Api.DeshacerMigracionAsync())
+            {
+                ToastService.Success("Puesta al día deshecha.");
+                migracionCount = await Api.GetMigracionCountAsync();
+                if (verDeuda) await CargarDeuda();
+                if (verDetalleComp) await CargarCompComps();
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { migrando = false; }
     }
 
     private MarkupString PdfLink(ContadoraComprobanteDto f)

@@ -6247,6 +6247,18 @@ public class ApiClient
     public async Task<PagoBancoResultDto?> AplicarCruceBancoAsync(List<CruceAplicarItem> items)
         => await PostAsync<PagoBancoResultDto>("/api/contadora/compras/cruce-banco/aplicar", items);
 
+    // ── Poner al día (migración) ──
+    public async Task<int> GetMigracionCountAsync()
+        => (await GetAsync<MigracionInfoDto>("/api/contadora/compras/migracion-info"))?.Cantidad ?? 0;
+
+    public async Task<PagoBancoResultDto?> PonerAlDiaAsync()
+        => await PostAsync<PagoBancoResultDto>("/api/contadora/compras/poner-al-dia", new { });
+
+    public async Task<bool> DeshacerMigracionAsync()
+        => await PostAsync<object>("/api/contadora/compras/deshacer-migracion", new { }) is not null;
+
+    public class MigracionInfoDto { public int Cantidad { get; set; } }
+
     public async Task<List<ContadoraRetencionDto>?> GetContadoraRetencionesAsync(string empresa)
         => await GetAsync<List<ContadoraRetencionDto>>("/api/contadora/retenciones?empresa=" + Uri.EscapeDataString(empresa));
 

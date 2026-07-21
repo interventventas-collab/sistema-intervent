@@ -2036,6 +2036,65 @@ public class ContadoraService
         return await GetPagosCompraAsync(pago.IdComprobante);
     }
 
+    // ═════════ Puesta al día (migración): marcar todo lo de hoy para atrás como pagado ═════════
+    // Medio "Migración" identifica estos pagos para poder distinguirlos y deshacerlos en bloque.
+    private const string MedioMigracion = "Migración";
+
+    /// <summary>Cuántos pagos de "puesta al día (migración)" hay activos (para el estado del botón).</summary>
+    public async Task<int> GetMigracionCountAsync()
+        => await _db.ContadoraComprobantePagos.CountAsync(p => !p.Anulado && p.Medio == MedioMigracion);
+
+    /// <summary>Marca como pagadas TODAS las facturas de compra con saldo pendiente (a hoy). Un pago "Migración" por factura.</summary>
+    public async Task<PagoBancoResultDto> PonerAlDiaMigracionAsync(string? operador)
+    {
+        var facs = await _db.ContadoraComprobantes
+            .Where(c => c.Naturaleza == "COMPRA" && !c.EsNotaCredito)
+            .Select(c => new { c.IdComprobante, c.Total })
+            .ToListAsync();
+        if (facs.Count == 0) return new PagoBancoResultDto { Ok = true, PagosCreados = 0 };
+
+        var pagoMap = (await _db.ContadoraComprobantePagos
+                .Where(p => !p.Anulado)
+                .GroupBy(p => p.IdComprobante)
+                .Select(g => new { Id = g.Key, Pagado = g.Sum(x => x.Importe) })
+                .ToListAsync())
+            .ToDictionary(x => x.Id, x => x.Pagado);
+
+        var hoy = DateTime.Today;
+        var op = string.IsNullOrWhiteSpace(operador) ? null : operador.Trim();
+        int creados = 0;
+        foreach (var f in facs)
+        {
+            var saldo = Math.Round(f.Total - (pagoMap.TryGetValue(f.IdComprobante, out var pg) ? pg : 0m), 2);
+            if (saldo <= 0) continue;
+            _db.ContadoraComprobantePagos.Add(new ContadoraComprobantePago
+            {
+                IdComprobante = f.IdComprobante,
+                Fecha = hoy,
+                Medio = MedioMigracion,
+                Referencia = $"Puesta al día {hoy:dd/MM/yyyy}",
+                Importe = saldo,
+                Operador = op,
+                Observaciones = "Migración inicial — ya estaba pagado",
+                Anulado = false,
+                ExtractoMovId = null,
+                CreatedAt = DateTime.UtcNow
+            });
+            creados++;
+        }
+        if (creados > 0) await _db.SaveChangesAsync();
+        return new PagoBancoResultDto { Ok = true, PagosCreados = creados };
+    }
+
+    /// <summary>Deshace la puesta al día: anula todos los pagos "Migración".</summary>
+    public async Task<int> DeshacerMigracionAsync()
+    {
+        var pagos = await _db.ContadoraComprobantePagos.Where(p => !p.Anulado && p.Medio == MedioMigracion).ToListAsync();
+        foreach (var p in pagos) p.Anulado = true;
+        if (pagos.Count > 0) await _db.SaveChangesAsync();
+        return pagos.Count;
+    }
+
     /// <summary>Cuánto se le debe a cada proveedor: facturas de compra (NC restan) − pagos, en un período.</summary>
     public async Task<ContadoraDeudaProveedoresDto> GetDeudaProveedoresAsync(DateTime? desde, DateTime? hasta, string? empresa, bool soloConDeuda = true)
     {

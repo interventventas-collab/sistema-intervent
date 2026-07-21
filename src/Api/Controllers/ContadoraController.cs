@@ -208,6 +208,24 @@ public class ContadoraController : ControllerBase
         return f is null ? NotFound() : Ok(f);
     }
 
+    /// <summary>Cantidad de pagos "puesta al día (migración)" activos.</summary>
+    [HttpGet("compras/migracion-info")]
+    public async Task<IActionResult> MigracionInfo()
+        => Ok(new { cantidad = await _svc.GetMigracionCountAsync() });
+
+    /// <summary>Marca como pagadas todas las facturas de compra con saldo (a hoy). Puesta al día inicial.</summary>
+    [HttpPost("compras/poner-al-dia")]
+    public async Task<ActionResult<PagoBancoResultDto>> PonerAlDia()
+    {
+        var operador = User.Identity?.IsAuthenticated == true ? User.Identity?.Name : null;
+        return Ok(await _svc.PonerAlDiaMigracionAsync(operador));
+    }
+
+    /// <summary>Deshace la puesta al día (anula los pagos "Migración").</summary>
+    [HttpPost("compras/deshacer-migracion")]
+    public async Task<IActionResult> DeshacerMigracion()
+        => Ok(new { anulados = await _svc.DeshacerMigracionAsync() });
+
     /// <summary>Cuánto se le debe a cada proveedor (facturas de compra − pagos).</summary>
     [HttpGet("compras/deuda-proveedores")]
     public async Task<ActionResult<ContadoraDeudaProveedoresDto>> DeudaProveedores([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta,
