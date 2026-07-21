@@ -182,23 +182,40 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">Cliente</label>
-                    <input class="form-input" placeholder="🔍 Buscar cliente..." @bind="clienteSearch" @bind:event="oninput" />
-                    <div style="max-height:180px; overflow-y:auto; border:1px solid #e5e7eb; border-radius:4px; margin-top:0.3rem;">
-                        @if (clientes is null) { <p class="text-muted" style="padding:0.4rem;">Cargando...</p> }
-                        else
+                    @if (formClienteId > 0 && !clienteListaAbierta)
+                    {
+                        @* Cliente ya elegido: se muestra confirmado y el desplegable queda cerrado *@
+                        <div style="display:flex; gap:0.4rem; align-items:center; padding:0.4rem 0.6rem; background:#ecfdf5; border:1px solid #10b981; border-radius:4px;">
+                            <span style="flex:1;">✓ <strong>@clienteSearch</strong></span>
+                            <button type="button" class="btn btn-secondary" style="font-size:0.72rem; padding:0.15rem 0.5rem;" @onclick="CambiarCliente">Cambiar</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <input class="form-input" placeholder="🔍 Buscar cliente..." value="@clienteSearch"
+                               @oninput="OnClienteSearchInput" @onfocus="() => clienteListaAbierta = true" />
+                        @if (!string.IsNullOrWhiteSpace(clienteSearch))
                         {
-                            @foreach (var c in FiltrarClientes().Take(30))
-                            {
-                                var sel = formClienteId == c.Id;
-                                <div style="padding:0.3rem 0.5rem; border-bottom:1px solid #f3f4f6; cursor:pointer; background:@(sel ? "#dbeafe" : "white");"
-                                     @onclick="() => formClienteId = c.Id">
-                                    @if (c.CodigoInterno.HasValue) { <span style="font-size:0.7rem; padding:0 0.3rem; background:#e0e7ff; color:#1e40af; border-radius:3px; margin-right:0.3rem;">#@c.CodigoInterno</span> }
-                                    <strong>@c.Nombre</strong>
-                                    @if (!string.IsNullOrEmpty(c.Cuit)) { <span style="font-family:monospace; font-size:0.72rem; color:#6b7280; margin-left:0.4rem;">@c.Cuit</span> }
-                                </div>
-                            }
+                            <div style="max-height:180px; overflow-y:auto; border:1px solid #e5e7eb; border-radius:4px; margin-top:0.3rem;">
+                                @if (clientes is null) { <p class="text-muted" style="padding:0.4rem;">Cargando...</p> }
+                                else
+                                {
+                                    var matches = FiltrarClientes().Take(30).ToList();
+                                    @if (matches.Count == 0) { <p class="text-muted" style="padding:0.4rem;">Sin resultados.</p> }
+                                    @foreach (var c in matches)
+                                    {
+                                        var cc = c;
+                                        <div style="padding:0.3rem 0.5rem; border-bottom:1px solid #f3f4f6; cursor:pointer;"
+                                             @onclick="() => SelectCliente(cc)">
+                                            @if (c.CodigoInterno.HasValue) { <span style="font-size:0.7rem; padding:0 0.3rem; background:#e0e7ff; color:#1e40af; border-radius:3px; margin-right:0.3rem;">#@c.CodigoInterno</span> }
+                                            <strong>@c.Nombre</strong>
+                                            @if (!string.IsNullOrEmpty(c.Cuit)) { <span style="font-family:monospace; font-size:0.72rem; color:#6b7280; margin-left:0.4rem;">@c.Cuit</span> }
+                                        </div>
+                                    }
+                                }
+                            </div>
                         }
-                    </div>
+                    }
                 </div>
                 <div style="display:flex; gap:0.5rem;">
                     <div class="form-group" style="flex:1;">
@@ -225,7 +242,7 @@
                 {
                     <div class="form-group">
                         <label class="form-label">Valor estimado de la máquina (opcional)</label>
-                        <input type="number" step="1" class="form-input" @bind="formValorEstimado" placeholder="Para tener un track del valor de tu parque" />
+                        <input type="text" inputmode="numeric" class="form-input" @bind:get="Miles(formValorEstimado)" @bind:set="v => formValorEstimado = MilesParse(v)" placeholder="Para tener un track del valor de tu parque" />
                     </div>
                 }
                 else
@@ -235,7 +252,7 @@
                         <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
                             <div class="form-group" style="flex:1; min-width:140px;">
                                 <label class="form-label">Precio total</label>
-                                <input type="number" step="1" class="form-input" @bind="formPrecioVenta" @bind:after="CalcularValorCuota" />
+                                <input type="text" inputmode="numeric" class="form-input" @bind:get="Miles(formPrecioVenta)" @bind:set="SetPrecioVenta" />
                             </div>
                             <div class="form-group" style="flex:1; min-width:100px;">
                                 <label class="form-label">Cuotas</label>
@@ -243,7 +260,7 @@
                             </div>
                             <div class="form-group" style="flex:1; min-width:140px;">
                                 <label class="form-label">Valor por cuota</label>
-                                <input type="number" step="0.01" class="form-input" @bind="formValorCuota" />
+                                <input type="text" inputmode="decimal" class="form-input" @bind:get="Miles(formValorCuota)" @bind:set="v => formValorCuota = MilesParse(v)" />
                             </div>
                             <div class="form-group" style="flex:0 0 110px;">
                                 <label class="form-label">Día de pago</label>
@@ -411,7 +428,7 @@
                     </div>
                     <div class="form-group" style="flex:1;">
                         <label class="form-label">Importe</label>
-                        <input type="number" step="0.01" class="form-input" @bind="pagoImporte" />
+                        <input type="text" inputmode="decimal" class="form-input" @bind:get="Miles(pagoImporte)" @bind:set="v => pagoImporte = MilesParse(v) ?? 0m" />
                     </div>
                 </div>
                 <div class="form-group">
@@ -475,6 +492,8 @@
     private string formMoneda = "ARS";
     private int formClienteId;
     private string clienteSearch = "";
+    // Controla si el desplegable de clientes está abierto. Se cierra al elegir uno.
+    private bool clienteListaAbierta;
     private string formMarca = "";
     private string formModelo = "";
     private string formNumeroSerie = "";
@@ -538,6 +557,54 @@
         finally { loading = false; }
     }
 
+    // Al tipear: abre la lista y deselecciona (para que se pueda elegir de nuevo).
+    private void OnClienteSearchInput(ChangeEventArgs e)
+    {
+        clienteSearch = e.Value?.ToString() ?? "";
+        clienteListaAbierta = true;
+        formClienteId = 0;
+    }
+
+    // Al elegir un cliente: lo confirma y CIERRA el desplegable.
+    private void SelectCliente(CafeClienteDto c)
+    {
+        formClienteId = c.Id;
+        clienteSearch = c.Nombre ?? "";
+        clienteListaAbierta = false;
+    }
+
+    // Botón "Cambiar": reabre el buscador para elegir otro.
+    private void CambiarCliente()
+    {
+        formClienteId = 0;
+        clienteSearch = "";
+        clienteListaAbierta = true;
+    }
+
+    // ── Formato de números con separador de miles (5.000.000) ──
+    // Usa un formato propio (punto = miles, coma = decimales) para no depender del navegador.
+    private static readonly NumberFormatInfo MilesNfi = new NumberFormatInfo
+    {
+        NumberGroupSeparator = ".",
+        NumberDecimalSeparator = ",",
+        NumberGroupSizes = new[] { 3 }
+    };
+    // Setter del precio: parsea con puntos y recalcula el valor de cuota.
+    private void SetPrecioVenta(string? v)
+    {
+        formPrecioVenta = MilesParse(v);
+        CalcularValorCuota();
+    }
+
+    private static string Miles(decimal? v) => v.HasValue ? v.Value.ToString("#,##0.##", MilesNfi) : "";
+    private static decimal? MilesParse(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        var limpio = s.Replace(".", "").Replace(" ", "").Replace("$", "")
+                      .Replace("U$D", "").Replace("u$d", "").Trim().Replace(",", ".");
+        return decimal.TryParse(limpio, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : (decimal?)null;
+    }
+
     private IEnumerable<CafeClienteDto> FiltrarClientes()
     {
         if (clientes is null) return Enumerable.Empty<CafeClienteDto>();
@@ -561,7 +628,7 @@
         editingTienePagos = false;
         formModalidad = "COMODATO";
         formMoneda = "ARS";
-        formClienteId = 0; clienteSearch = "";
+        formClienteId = 0; clienteSearch = ""; clienteListaAbierta = false;
         formMarca = ""; formModelo = ""; formNumeroSerie = "";
         formFechaEntrega = DateTime.Today;
         formNotas = ""; formValorEstimado = null;
@@ -581,6 +648,7 @@
         formMoneda = string.IsNullOrEmpty(c.Moneda) ? "ARS" : c.Moneda;
         formClienteId = c.ClienteId;
         clienteSearch = c.ClienteNombre ?? "";
+        clienteListaAbierta = false;
         formMarca = c.Marca ?? "";
         formModelo = c.Modelo ?? "";
         formNumeroSerie = c.NumeroSerie ?? "";
