@@ -129,6 +129,46 @@
         background: #f3f4f6;
         color: #374151;
     }
+
+    /* 2026-07-21: la ventana de Nueva Venta MAXIMIZADA arranca justo al lado del menú.
+       Como el menú ahora puede estar plegado (60px) o desplegado (220px), el borde
+       izquierdo sigue el ancho REAL del menú — así no queda un hueco entre la ventana
+       y el dashboard. Se apoya en la clase .main-collapsed que MainLayout pone en el main.
+       IMPORTANTE: va en este bloque de estilo de arriba (siempre presente), NO en el de
+       abajo que solo se renderiza cuando hay un pedido de WhatsApp seleccionado. */
+    .modal-overlay.nv-overlay-max { left: var(--sidebar-width, 220px); }
+    .main-collapsed .modal-overlay.nv-overlay-max { left: var(--sidebar-collapsed-width, 60px); }
+    @@media (max-width: 768px) { .modal-overlay.nv-overlay-max { left: 0; } }
+
+    /* 2026-07-21: pestaña de "venta minimizada" — centrada abajo y bien visible
+       (antes era un chip chico abajo a la derecha que quedaba tapado por el chat). */
+    .nv-min-tab {
+        position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+        z-index: 9000; background: #1d4ed8; color: white;
+        border-radius: 12px 12px 0 0; padding: 0.6rem 0.9rem;
+        box-shadow: 0 -4px 20px rgba(29,78,216,0.35);
+        display: flex; align-items: center; gap: 0.6rem;
+        font-size: 0.9rem; font-weight: 600;
+        animation: nvMinPulse 2s ease-in-out infinite;
+    }
+    @@keyframes nvMinPulse {
+        0%, 100% { box-shadow: 0 -4px 20px rgba(29,78,216,0.35); }
+        50% { box-shadow: 0 -4px 26px rgba(29,78,216,0.6); }
+    }
+    .nv-min-open { cursor: pointer; display: flex; align-items: center; gap: 0.5rem; }
+    .nv-min-badge { background: rgba(255,255,255,0.25); padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.78rem; font-weight: 500; }
+    .nv-min-restore {
+        background: rgba(255,255,255,0.9); color: #1d4ed8; border: none;
+        border-radius: 8px; padding: 0.3rem 0.7rem; font-size: 0.82rem; font-weight: 700;
+        cursor: pointer; font-family: inherit;
+    }
+    .nv-min-restore:hover { background: #fff; }
+    .nv-min-close {
+        background: rgba(255,255,255,0.15); color: white; border: none;
+        border-radius: 8px; width: 28px; height: 28px; font-size: 1rem;
+        cursor: pointer; line-height: 1; font-family: inherit;
+    }
+    .nv-min-close:hover { background: rgba(255,255,255,0.3); }
 </style>
 
 @* overflow:visible para que el tooltip de la celda Cliente no quede recortado por el wrapper .card
@@ -917,44 +957,6 @@
             background:#f0fdf4; border-color:#86efac;
             box-shadow:0 2px 8px rgba(34,197,94,0.15);
         }
-
-        /* 2026-07-21: la ventana de Nueva Venta MAXIMIZADA arranca justo al lado del menú.
-           Como el menú ahora puede estar plegado (60px) o desplegado (220px), el borde
-           izquierdo sigue el ancho REAL del menú — así no queda un hueco entre la ventana
-           y el dashboard. Se apoya en la clase .main-collapsed que MainLayout pone en el main. */
-        .modal-overlay.nv-overlay-max { left: var(--sidebar-width, 220px); }
-        .main-collapsed .modal-overlay.nv-overlay-max { left: var(--sidebar-collapsed-width, 60px); }
-        @@media (max-width: 768px) { .modal-overlay.nv-overlay-max { left: 0; } }
-
-        /* 2026-07-21: pestaña de "venta minimizada" — centrada abajo y bien visible
-           (antes era un chip chico abajo a la derecha que quedaba tapado por el chat). */
-        .nv-min-tab {
-            position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
-            z-index: 9000; background: #1d4ed8; color: white;
-            border-radius: 12px 12px 0 0; padding: 0.6rem 0.9rem;
-            box-shadow: 0 -4px 20px rgba(29,78,216,0.35);
-            display: flex; align-items: center; gap: 0.6rem;
-            font-size: 0.9rem; font-weight: 600;
-            animation: nvMinPulse 2s ease-in-out infinite;
-        }
-        @@keyframes nvMinPulse {
-            0%, 100% { box-shadow: 0 -4px 20px rgba(29,78,216,0.35); }
-            50% { box-shadow: 0 -4px 26px rgba(29,78,216,0.6); }
-        }
-        .nv-min-open { cursor: pointer; display: flex; align-items: center; gap: 0.5rem; }
-        .nv-min-badge { background: rgba(255,255,255,0.25); padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.78rem; font-weight: 500; }
-        .nv-min-restore {
-            background: rgba(255,255,255,0.9); color: #1d4ed8; border: none;
-            border-radius: 8px; padding: 0.3rem 0.7rem; font-size: 0.82rem; font-weight: 700;
-            cursor: pointer; font-family: inherit;
-        }
-        .nv-min-restore:hover { background: #fff; }
-        .nv-min-close {
-            background: rgba(255,255,255,0.15); color: white; border: none;
-            border-radius: 8px; width: 28px; height: 28px; font-size: 1rem;
-            cursor: pointer; line-height: 1; font-family: inherit;
-        }
-        .nv-min-close:hover { background: rgba(255,255,255,0.3); }
     </style>
 }
 
