@@ -256,11 +256,14 @@ public class CafeComodatosController : ControllerBase
         _db.CafeComodatoPagos.Add(p);
         await _db.SaveChangesAsync();
 
-        // Recalcular saldo
-        var pagadoTotal = c.Pagos.Sum(x => x.Importe) + p.Importe;
+        // Recalcular saldo. OJO: tras SaveChanges, EF ya metió 'p' dentro de c.Pagos
+        // (la relación se completa sola), así que NO hay que volver a sumar p.Importe:
+        // hacerlo contaba el pago dos veces y un pago parcial dejaba el saldo en 0 → PAGADA.
+        var pagadoTotal = c.Pagos.Sum(x => x.Importe);
         c.SaldoFinanciamiento = (c.PrecioVenta ?? 0m) - pagadoTotal;
-        // Si el saldo quedo en 0 o menos, marcamos como PAGADA
-        if (c.SaldoFinanciamiento <= 0.01m && c.Estado == "EN_CLIENTE")
+        // Solo se marca PAGADA si tiene precio cargado y el saldo llegó a 0
+        // (evita que una máquina sin precio se dé por pagada con el primer pago).
+        if (c.SaldoFinanciamiento <= 0.01m && c.Estado == "EN_CLIENTE" && (c.PrecioVenta ?? 0m) > 0m)
         {
             c.Estado = "PAGADA";
         }
