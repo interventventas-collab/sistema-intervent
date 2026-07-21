@@ -718,6 +718,15 @@ IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='IX_ContadoraCompPagos_IdCom
     CREATE INDEX IX_ContadoraCompPagos_IdComp ON ContadoraComprobantePagos (IdComprobante);
 GO
 
+-- 2026-07-21: vincula el pago con el movimiento del extracto del banco (cuando se paga cruzando
+-- una transferencia del Galicia con la factura). NULL = pago cargado a mano. Idempotente.
+IF COL_LENGTH('ContadoraComprobantePagos', 'ExtractoMovId') IS NULL
+    ALTER TABLE ContadoraComprobantePagos ADD ExtractoMovId INT NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='IX_ContadoraCompPagos_ExtractoMov' AND object_id=OBJECT_ID('ContadoraComprobantePagos'))
+    CREATE INDEX IX_ContadoraCompPagos_ExtractoMov ON ContadoraComprobantePagos (ExtractoMovId);
+GO
+
 -- 2026-07-09: config de la casilla de correo (IMAP) de facturas de proveedores.
 IF OBJECT_ID('ConfigCorreoFacturas','U') IS NULL
 CREATE TABLE ConfigCorreoFacturas (

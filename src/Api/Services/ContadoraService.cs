@@ -2074,6 +2074,118 @@ public class ContadoraService
         return new ContadoraDeudaProveedoresDto { Items = grupos, SaldoTotal = grupos.Sum(x => x.Saldo) };
     }
 
+    // ═════════ Cruce banco (Galicia) ↔ facturas de compra ═════════
+
+    private static string FacturaLabel(string? letra, int? pv, long? num)
+        => $"{letra} {(pv.HasValue ? pv.Value.ToString("D4") : "")}-{(num.HasValue ? num.Value.ToString("D8") : "")}".Trim();
+
+    /// <summary>Facturas de compra de un proveedor (por CUIT) que todavía tienen saldo pendiente.</summary>
+    public async Task<List<FacturaCompraImpagaDto>> GetFacturasImpagasProveedorAsync(string cuit)
+    {
+        if (string.IsNullOrWhiteSpace(cuit)) return new();
+        var cuitN = cuit.Trim();
+        var facs = await _db.ContadoraComprobantes
+            .Where(c => c.Naturaleza == "COMPRA" && !c.EsNotaCredito && c.ReceptorDoc == cuitN)
+            .Select(c => new { c.IdComprobante, c.TipoComprobante, c.PuntoVenta, c.NumeroComprobante, c.FechaEmision, c.Total })
+            .ToListAsync();
+        if (facs.Count == 0) return new();
+
+        var ids = facs.Select(f => f.IdComprobante).ToList();
+        var pagoMap = (await _db.ContadoraComprobantePagos
+                .Where(p => !p.Anulado && ids.Contains(p.IdComprobante))
+                .GroupBy(p => p.IdComprobante)
+                .Select(g => new { Id = g.Key, Pagado = g.Sum(x => x.Importe) })
+                .ToListAsync())
+            .ToDictionary(x => x.Id, x => x.Pagado);
+
+        return facs.Select(f =>
+            {
+                var pagado = pagoMap.TryGetValue(f.IdComprobante, out var pg) ? pg : 0m;
+                return new FacturaCompraImpagaDto
+                {
+                    IdComprobante = f.IdComprobante, TipoComprobante = f.TipoComprobante,
+                    PuntoVenta = f.PuntoVenta, NumeroComprobante = f.NumeroComprobante,
+                    FechaEmision = f.FechaEmision, Total = f.Total, Pagado = pagado, Saldo = f.Total - pagado
+                };
+            })
+            .Where(f => Math.Round(f.Saldo, 2) > 0)
+            .OrderByDescending(f => f.FechaEmision)
+            .ToList();
+    }
+
+    /// <summary>Registra el pago de una o varias facturas de compra tomando los datos de un movimiento del banco.</summary>
+    public async Task<PagoBancoResultDto> RegistrarPagoDesdeBancoAsync(PagarComprasDesdeBancoRequest req, string? operador)
+    {
+        if (req.IdComprobantes is null || req.IdComprobantes.Count == 0)
+            return new PagoBancoResultDto { Ok = false, Error = "No elegiste ninguna factura." };
+        var mov = await _db.CafeExtractoMovimientos.FirstOrDefaultAsync(m => m.Id == req.ExtractoMovId);
+        if (mov is null) return new PagoBancoResultDto { Ok = false, Error = "No encontré el movimiento del banco." };
+
+        var referencia = string.Join(" ", new[] { mov.Descripcion, mov.NumeroComprobante }.Where(s => !string.IsNullOrWhiteSpace(s))).Trim();
+        if (referencia.Length > 120) referencia = referencia.Substring(0, 120);
+
+        int creados = 0;
+        foreach (var idc in req.IdComprobantes.Distinct())
+        {
+            var f = await GetPagosCompraAsync(idc);
+            if (f is null) continue;
+            var saldo = Math.Round(f.Saldo, 2);
+            if (saldo <= 0) continue;   // ya estaba pagada
+            _db.ContadoraComprobantePagos.Add(new ContadoraComprobantePago
+            {
+                IdComprobante = idc,
+                Fecha = mov.Fecha,
+                Medio = "Transferencia",
+                Referencia = string.IsNullOrWhiteSpace(referencia) ? "Transferencia banco" : referencia,
+                Importe = saldo,
+                Operador = string.IsNullOrWhiteSpace(operador) ? null : operador.Trim(),
+                Observaciones = "Cruzado con el extracto del Galicia",
+                Anulado = false,
+                ExtractoMovId = mov.Id,
+                CreatedAt = DateTime.UtcNow
+            });
+            creados++;
+        }
+        if (creados == 0) return new PagoBancoResultDto { Ok = false, Error = "Esas facturas ya estaban pagadas." };
+        await _db.SaveChangesAsync();
+        return new PagoBancoResultDto { Ok = true, PagosCreados = creados };
+    }
+
+    /// <summary>Para el listado del extracto: qué facturas quedaron pagadas por cada movimiento del banco.</summary>
+    public async Task<List<PagoBancoMovDto>> GetPagosBancoAsync(List<int> movIds)
+    {
+        if (movIds is null || movIds.Count == 0) return new();
+        var pagos = await _db.ContadoraComprobantePagos
+            .Where(p => !p.Anulado && p.ExtractoMovId != null && movIds.Contains(p.ExtractoMovId.Value))
+            .Select(p => new { MovId = p.ExtractoMovId!.Value, p.IdComprobante })
+            .ToListAsync();
+        if (pagos.Count == 0) return new();
+
+        var ids = pagos.Select(p => p.IdComprobante).Distinct().ToList();
+        var labels = (await _db.ContadoraComprobantes
+                .Where(c => ids.Contains(c.IdComprobante))
+                .Select(c => new { c.IdComprobante, c.Letra, c.PuntoVenta, c.NumeroComprobante })
+                .ToListAsync())
+            .ToDictionary(c => c.IdComprobante, c => FacturaLabel(c.Letra, c.PuntoVenta, c.NumeroComprobante));
+
+        return pagos.GroupBy(p => p.MovId)
+            .Select(g => new PagoBancoMovDto
+            {
+                MovId = g.Key,
+                Facturas = g.Select(x => labels.TryGetValue(x.IdComprobante, out var l) ? l : x.IdComprobante).Distinct().ToList()
+            })
+            .ToList();
+    }
+
+    /// <summary>Deshace el cruce: anula los pagos registrados desde ese movimiento del banco.</summary>
+    public async Task<int> DesasociarBancoAsync(int movId)
+    {
+        var pagos = await _db.ContadoraComprobantePagos.Where(p => !p.Anulado && p.ExtractoMovId == movId).ToListAsync();
+        foreach (var p in pagos) p.Anulado = true;
+        if (pagos.Count > 0) await _db.SaveChangesAsync();
+        return pagos.Count;
+    }
+
     /// <summary>Excel del Libro IVA Ventas (importado): hoja resumen + hoja detalle. NC en negativo.</summary>
     public async Task<byte[]> GenerarReporteExcelAsync(DateTime? desde, DateTime? hasta,
         string? empresaCuit, int? puntoVenta, string? letra, string? provincia, string? search, string? origen = null, string naturaleza = "VENTA")

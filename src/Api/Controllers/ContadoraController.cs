@@ -214,6 +214,35 @@ public class ContadoraController : ControllerBase
         [FromQuery] string? empresa, [FromQuery] bool soloConDeuda = true)
         => Ok(await _svc.GetDeudaProveedoresAsync(desde, hasta, empresa, soloConDeuda));
 
+    // ───── Cruce banco (Galicia) ↔ facturas de compra ─────
+
+    /// <summary>Facturas de compra impagas de un proveedor (por CUIT), para pagar desde el banco.</summary>
+    [HttpGet("compras/impagas-proveedor")]
+    public async Task<ActionResult<List<FacturaCompraImpagaDto>>> ImpagasProveedor([FromQuery] string cuit)
+        => Ok(await _svc.GetFacturasImpagasProveedorAsync(cuit));
+
+    /// <summary>Registra el pago de facturas de compra tomando los datos de una transferencia del banco.</summary>
+    [HttpPost("compras/pagar-desde-banco")]
+    public async Task<ActionResult<PagoBancoResultDto>> PagarDesdeBanco([FromBody] PagarComprasDesdeBancoRequest req)
+    {
+        var operador = User.Identity?.IsAuthenticated == true ? User.Identity?.Name : null;
+        return Ok(await _svc.RegistrarPagoDesdeBancoAsync(req, operador));
+    }
+
+    /// <summary>Qué facturas quedaron pagadas por cada movimiento del banco (para el listado del extracto).</summary>
+    [HttpGet("compras/pagos-banco")]
+    public async Task<ActionResult<List<PagoBancoMovDto>>> PagosBanco([FromQuery] string? movIds)
+    {
+        var ids = (movIds ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(s => int.TryParse(s, out var n) ? n : 0).Where(n => n > 0).ToList();
+        return Ok(await _svc.GetPagosBancoAsync(ids));
+    }
+
+    /// <summary>Deshace el cruce de un movimiento del banco (anula sus pagos).</summary>
+    [HttpPost("compras/desasociar-banco/{movId:int}")]
+    public async Task<IActionResult> DesasociarBanco(int movId)
+        => Ok(new { anulados = await _svc.DesasociarBancoAsync(movId) });
+
     /// <summary>Balanza de IVA: por mes, IVA de ventas - IVA de compras = saldo.</summary>
     [HttpGet("balanza")]
     public async Task<ActionResult<ContadoraBalanzaDto>> Balanza([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta, [FromQuery] string? empresa)

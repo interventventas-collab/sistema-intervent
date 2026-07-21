@@ -40,5 +40,8 @@ public class ContadoraComprobantePago
 
     public bool Anulado { get; set; }
 
+    /// <summary>Si el pago se registró cruzando una transferencia del extracto del banco, el Id de ese movimiento (Cafe_ExtractoMovimientos). NULL = cargado a mano.</summary>
+    public int? ExtractoMovId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
