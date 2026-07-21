@@ -6210,6 +6210,23 @@ public class ApiClient
         return await GetAsync<ContadoraBalanzaDto>("/api/contadora/balanza" + (qs.Count > 0 ? "?" + string.Join("&", qs) : ""));
     }
 
+    // ── Pagos de facturas de COMPRA (cuenta corriente de proveedores con CAE) ──
+    public async Task<ContadoraFacturaPagosDto?> GetContadoraPagosCompraAsync(string idComprobante)
+        => await GetAsync<ContadoraFacturaPagosDto>("/api/contadora/compras/pagos?id=" + Uri.EscapeDataString(idComprobante));
+
+    public async Task<RegistrarPagoResultDto?> RegistrarPagoCompraAsync(RegistrarPagoCompraRequest req)
+        => await PostAsync<RegistrarPagoResultDto>("/api/contadora/compras/pago", req);
+
+    public async Task<ContadoraFacturaPagosDto?> AnularPagoCompraAsync(int pagoId)
+        => await PostAsync<ContadoraFacturaPagosDto>($"/api/contadora/compras/pago/{pagoId}/anular", new { });
+
+    public async Task<ContadoraDeudaProveedoresDto?> GetContadoraDeudaProveedoresAsync(DateTime? desde, DateTime? hasta, string? empresa, bool soloConDeuda = true)
+    {
+        var qs = ComprasQs(desde, hasta, empresa, null);
+        qs += (qs.Length > 0 ? "&" : "?") + $"soloConDeuda={(soloConDeuda ? "true" : "false")}";
+        return await GetAsync<ContadoraDeudaProveedoresDto>("/api/contadora/compras/deuda-proveedores" + qs);
+    }
+
     public async Task<List<ContadoraRetencionDto>?> GetContadoraRetencionesAsync(string empresa)
         => await GetAsync<List<ContadoraRetencionDto>>("/api/contadora/retenciones?empresa=" + Uri.EscapeDataString(empresa));
 

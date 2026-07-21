@@ -171,6 +171,10 @@ public class ContadoraComprobanteDto
     public decimal Neto { get; set; }
     public decimal Iva { get; set; }
     public decimal Total { get; set; }
+    // Seguimiento de pago (solo facturas de COMPRA)
+    public bool PuedeRegistrarPago { get; set; }
+    public decimal Pagado { get; set; }
+    public decimal Saldo => Total - Pagado;
 }
 
 public class ContadoraComprobantesPageDto
@@ -248,4 +252,61 @@ public class ContadoraControlItemDto
     public string? Fuente { get; set; }
     public decimal IvaAfip { get; set; }
     public decimal IvaOtro { get; set; }
+}
+
+// ───────── Pagos de facturas de COMPRA (cuenta corriente de proveedores con CAE) ─────────
+
+public class ContadoraPagoDto
+{
+    public int Id { get; set; }
+    public DateTime Fecha { get; set; }
+    public string Medio { get; set; } = "Transferencia";
+    public string? Referencia { get; set; }
+    public decimal Importe { get; set; }
+    public string? Operador { get; set; }
+    public string? Observaciones { get; set; }
+}
+
+public class ContadoraFacturaPagosDto
+{
+    public string IdComprobante { get; set; } = "";
+    public string? ProveedorNombre { get; set; }
+    public string? ProveedorCuit { get; set; }
+    public decimal Total { get; set; }
+    public decimal Pagado { get; set; }
+    public decimal Saldo { get; set; }
+    public List<ContadoraPagoDto> Pagos { get; set; } = new();
+}
+
+public class RegistrarPagoCompraRequest
+{
+    public string IdComprobante { get; set; } = "";
+    public DateTime? Fecha { get; set; }
+    public string Medio { get; set; } = "Transferencia";
+    public string? Referencia { get; set; }
+    public decimal Importe { get; set; }
+    public string? Observaciones { get; set; }
+}
+
+public class RegistrarPagoResultDto
+{
+    public bool Ok { get; set; } = true;
+    public string? Error { get; set; }
+    public ContadoraFacturaPagosDto? Factura { get; set; }
+}
+
+public class ContadoraDeudaProveedorDto
+{
+    public string? Cuit { get; set; }
+    public string? Nombre { get; set; }
+    public int Facturas { get; set; }
+    public decimal Total { get; set; }
+    public decimal Pagado { get; set; }
+    public decimal Saldo { get; set; }
+}
+
+public class ContadoraDeudaProveedoresDto
+{
+    public List<ContadoraDeudaProveedorDto> Items { get; set; } = new();
+    public decimal SaldoTotal { get; set; }
 }
