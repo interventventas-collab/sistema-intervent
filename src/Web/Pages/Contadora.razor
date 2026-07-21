@@ -657,6 +657,8 @@
                         <button class="co-btn @(kEstadoPago is null ? "co-btn-primary" : "co-btn-ghost")" style="padding:.2rem .6rem;font-size:.82rem;" @onclick='() => FiltrarEstadoPago(null)'>Todas</button>
                         <button class="co-btn @(kEstadoPago == "debo" ? "co-btn-primary" : "co-btn-ghost")" style="padding:.2rem .6rem;font-size:.82rem;" @onclick='() => FiltrarEstadoPago("debo")'>🔴 Debo</button>
                         <button class="co-btn @(kEstadoPago == "pagada" ? "co-btn-primary" : "co-btn-ghost")" style="padding:.2rem .6rem;font-size:.82rem;" @onclick='() => FiltrarEstadoPago("pagada")'>✅ Pagadas</button>
+                        <span style="width:1px;height:1.1rem;background:#e2e8f0;margin:0 .2rem;"></span>
+                        <button class="co-btn @(kSinPdf ? "co-btn-primary" : "co-btn-ghost")" style="padding:.2rem .6rem;font-size:.82rem;" title="Solo las facturas que todavía no tienen el PDF adjunto" @onclick="ToggleSinPdf">📎 Sin PDF</button>
                     </div>
                     <span class="co-chip">@compComps.Total comprobante(s)</span>
                 </div>
@@ -878,6 +880,7 @@
     private DateTime? kDesde, kHasta;
     private string? kSearch, kMes;
     private string? kEstadoPago;   // null=todas, "debo", "pagada"
+    private bool kSinPdf;          // true = solo sin PDF adjunto
     private bool cargandoComp, verDetalleComp, compInit;
     private bool procesandoPdf;
     private bool bajandoMeli;
@@ -1259,7 +1262,7 @@
 
     private async Task LimpiarCompras()
     {
-        kDesde = null; kHasta = null; kSearch = null; kMes = null; kEstadoPago = null;
+        kDesde = null; kHasta = null; kSearch = null; kMes = null; kEstadoPago = null; kSinPdf = false;
         await CargarCompras();
     }
 
@@ -1278,7 +1281,7 @@
 
     private async Task CargarCompComps()
     {
-        try { compComps = await Api.GetContadoraComprasComprobantesAsync(kDesde, kHasta, empresaSel, kSearch, compPage, 50, kEstadoPago); }
+        try { compComps = await Api.GetContadoraComprasComprobantesAsync(kDesde, kHasta, empresaSel, kSearch, compPage, 50, kEstadoPago, kSinPdf); }
         catch (Exception ex) { ToastService.Error("No se pudo cargar el detalle: " + ex.Message); }
     }
 
@@ -1287,6 +1290,13 @@
     private async Task FiltrarEstadoPago(string? estado)
     {
         kEstadoPago = estado;
+        compPage = 1;
+        await CargarCompComps();
+    }
+
+    private async Task ToggleSinPdf()
+    {
+        kSinPdf = !kSinPdf;
         compPage = 1;
         await CargarCompComps();
     }

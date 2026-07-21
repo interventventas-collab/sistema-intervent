@@ -1918,11 +1918,12 @@ public class ContadoraService
 
     /// <summary>Detalle paginado de comprobantes importados (NC con importes en negativo).</summary>
     public async Task<ContadoraComprobantesPageDto> GetReporteComprobantesAsync(DateTime? desde, DateTime? hasta,
-        string? empresaCuit, int? puntoVenta, string? letra, string? provincia, string? search, int page = 1, int pageSize = 50, string? origen = null, string naturaleza = "VENTA", string? estadoPago = null)
+        string? empresaCuit, int? puntoVenta, string? letra, string? provincia, string? search, int page = 1, int pageSize = 50, string? origen = null, string naturaleza = "VENTA", string? estadoPago = null, bool soloSinPdf = false)
     {
         if (page < 1) page = 1;
         if (pageSize < 1 || pageSize > 500) pageSize = 50;
         var q = FiltrarComprobantes(desde, hasta, empresaCuit, puntoVenta, letra, provincia, search, origen, naturaleza);
+        if (soloSinPdf) q = q.Where(c => c.PdfPath == null);
 
         // Filtro por estado de pago (solo COMPRAS): "debo" | "pagada". Necesita el saldo de TODO
         // el conjunto antes de paginar, así que va por un camino en memoria y excluye las NC.

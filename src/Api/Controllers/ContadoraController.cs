@@ -171,8 +171,8 @@ public class ContadoraController : ControllerBase
     /// <summary>Detalle paginado de compras. estadoPago: "debo" | "pagada" | null (todas).</summary>
     [HttpGet("compras/comprobantes")]
     public async Task<ActionResult<ContadoraComprobantesPageDto>> ComprasComprobantes([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta,
-        [FromQuery] string? empresa, [FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, [FromQuery] string? estadoPago = null)
-        => Ok(await _svc.GetReporteComprobantesAsync(desde, hasta, empresa, null, null, null, search, page, pageSize, null, "COMPRA", estadoPago));
+        [FromQuery] string? empresa, [FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, [FromQuery] string? estadoPago = null, [FromQuery] bool soloSinPdf = false)
+        => Ok(await _svc.GetReporteComprobantesAsync(desde, hasta, empresa, null, null, null, search, page, pageSize, null, "COMPRA", estadoPago, soloSinPdf));
 
     /// <summary>Descarga el Libro IVA Compras en Excel.</summary>
     [HttpGet("compras/excel")]
