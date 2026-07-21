@@ -243,6 +243,19 @@ public class ContadoraController : ControllerBase
     public async Task<IActionResult> DesasociarBanco(int movId)
         => Ok(new { anulados = await _svc.DesasociarBancoAsync(movId) });
 
+    /// <summary>Detecta cruces automáticos (transferencia ↔ factura, mismo CUIT + importe exacto).</summary>
+    [HttpGet("compras/cruce-banco/preview")]
+    public async Task<ActionResult<List<CrucePropuestoDto>>> CruceBancoPreview()
+        => Ok(await _svc.PreviewCruceBancoAsync());
+
+    /// <summary>Aplica los cruces elegidos.</summary>
+    [HttpPost("compras/cruce-banco/aplicar")]
+    public async Task<ActionResult<PagoBancoResultDto>> CruceBancoAplicar([FromBody] List<CruceAplicarItem> items)
+    {
+        var operador = User.Identity?.IsAuthenticated == true ? User.Identity?.Name : null;
+        return Ok(await _svc.AplicarCruceBancoAsync(items, operador));
+    }
+
     /// <summary>Balanza de IVA: por mes, IVA de ventas - IVA de compras = saldo.</summary>
     [HttpGet("balanza")]
     public async Task<ActionResult<ContadoraBalanzaDto>> Balanza([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta, [FromQuery] string? empresa)

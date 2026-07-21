@@ -356,3 +356,21 @@ public class PagoBancoMovDto
     public int MovId { get; set; }
     public List<string> Facturas { get; set; } = new();
 }
+
+/// <summary>Un cruce automático propuesto: transferencia del banco que coincide clavada con una factura impaga.</summary>
+public class CrucePropuestoDto
+{
+    public int MovId { get; set; }
+    public DateTime Fecha { get; set; }
+    public string? ProveedorNombre { get; set; }
+    public string? Cuit { get; set; }
+    public decimal Importe { get; set; }
+    public string IdComprobante { get; set; } = "";
+    public string FacturaLabel { get; set; } = "";
+}
+
+public class CruceAplicarItem
+{
+    public int MovId { get; set; }
+    public string IdComprobante { get; set; } = "";
+}

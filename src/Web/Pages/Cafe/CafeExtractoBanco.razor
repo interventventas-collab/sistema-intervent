@@ -88,7 +88,10 @@
                 @if (sinCompletarCount > 0) { <span class="ex-badge-count">@sinCompletarCount</span> }
             </button>
         </div>
-        <label class="btn-import" style="margin-left: auto;">
+        <button class="btn-import" style="margin-left:auto; background:#7c3aed;" @onclick="AbrirCruceAuto" disabled="@cargandoCruce" title="Detecta las transferencias que coinciden con una factura de compra y las marca pagadas">
+            @(cargandoCruce ? "⏳ Buscando…" : "🔗 Cruzar automático")
+        </button>
+        <label class="btn-import">
             @if (importing)
             {
                 <span>⏳ Importando...</span>
@@ -465,6 +468,49 @@
     </div>
 }
 
+@* Modal: cruce automático (transferencias ↔ facturas de compra) *@
+@if (mostrarCruce)
+{
+    <div class="modal-overlay" @onclick="@(() => mostrarCruce = false)" style="z-index: 9000; position: fixed; inset: 0; background: rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center;">
+        <div @onclick:stopPropagation="true" style="background:#fff; border-radius:12px; width:min(760px,96vw); max-height:90vh; overflow:auto; box-shadow:0 20px 60px rgba(0,0,0,.3);">
+            <div style="background:#7c3aed; color:#fff; padding:.8rem 1rem; display:flex; justify-content:space-between; align-items:center; border-radius:12px 12px 0 0;">
+                <h3 style="margin:0; font-size:1.05rem;">🔗 Cruzar transferencias con facturas</h3>
+                <button @onclick="@(() => mostrarCruce = false)" style="background:none; border:none; color:#fff; font-size:1.5rem; cursor:pointer;">&times;</button>
+            </div>
+            <div style="padding:1rem;">
+                @if (cruces.Count == 0)
+                {
+                    <p style="color:#6b7280;">No encontré transferencias nuevas que coincidan clavado (mismo proveedor y mismo importe) con una factura impaga. Las que tengan varias facturas del mismo importe, o importes que no coinciden, hay que hacerlas a mano con "🧾 Asociar a compra".</p>
+                }
+                else
+                {
+                    <p style="font-size:.85rem; color:#374151; margin:0 0 .6rem;">Detecté <strong>@cruces.Count</strong> transferencia(s) que coinciden con una factura. Revisá y destildá las que no quieras. Al confirmar, esas facturas quedan <strong>pagadas</strong>.</p>
+                    <div style="display:flex; flex-direction:column; gap:.35rem;">
+                        @foreach (var c in cruces)
+                        {
+                            var sel = crucesElegidos.Contains(c.MovId);
+                            <label style="display:flex; align-items:center; gap:.6rem; padding:.5rem .6rem; border:1px solid @(sel ? "#7c3aed" : "#e2e8f0"); background:@(sel ? "#f5f3ff" : "#fff"); border-radius:8px; cursor:pointer;">
+                                <input type="checkbox" checked="@sel" @onchange="() => ToggleCruce(c.MovId)" />
+                                <div style="flex:1;">
+                                    <div style="font-weight:600;">@(string.IsNullOrWhiteSpace(c.ProveedorNombre) ? "(proveedor)" : c.ProveedorNombre) <span style="font-family:monospace; font-size:.72rem; color:#6b7280;">@c.Cuit</span></div>
+                                    <div style="font-size:.72rem; color:#6b7280;">@c.Fecha.ToString("dd/MM/yyyy") · factura <strong>@c.FacturaLabel</strong></div>
+                                </div>
+                                <div style="font-weight:700; color:#dc2626;">$@c.Importe.ToString("N2")</div>
+                            </label>
+                        }
+                    </div>
+                    <div style="display:flex; gap:.5rem; margin-top:1rem; align-items:center;">
+                        <button class="btn-import" style="background:#7c3aed;" @onclick="ConfirmarCruce" disabled="@(aplicandoCruce || crucesElegidos.Count == 0)">
+                            @(aplicandoCruce ? "Aplicando…" : $"✓ Confirmar {crucesElegidos.Count} pago(s)")
+                        </button>
+                        <button class="btn-close" @onclick="@(() => mostrarCruce = false)" style="background:#e5e7eb; color:#374151; padding:.4rem .8rem; border:none; border-radius:6px; cursor:pointer;">Cancelar</button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private SaldoBancoDto? saldo;
     private List<ExtractoMovimientoDto> movs = new();
@@ -526,6 +572,11 @@
     private bool loadingFacturasCompra;
     private bool guardandoPagoCompra;
     private decimal TotalElegido => facturasCompra.Where(f => facturasElegidas.Contains(f.IdComprobante)).Sum(f => f.Saldo);
+
+    // Cruce automático
+    private bool mostrarCruce, cargandoCruce, aplicandoCruce;
+    private List<CrucePropuestoDto> cruces = new();
+    private HashSet<int> crucesElegidos = new();
 
     protected override async Task OnInitializedAsync() => await Recargar();
 
@@ -631,6 +682,43 @@
             }
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    // ── Cruce automático (todas las transferencias que coinciden) ──
+    private async Task AbrirCruceAuto()
+    {
+        cargandoCruce = true;
+        try
+        {
+            cruces = await Api.GetCruceBancoPreviewAsync() ?? new();
+            crucesElegidos = cruces.Select(c => c.MovId).ToHashSet();   // todas tildadas por defecto
+            mostrarCruce = true;
+        }
+        catch (Exception ex) { ToastService.Error("No pude buscar los cruces: " + ex.Message); }
+        finally { cargandoCruce = false; }
+    }
+
+    private void ToggleCruce(int movId)
+    {
+        if (!crucesElegidos.Remove(movId)) crucesElegidos.Add(movId);
+    }
+
+    private async Task ConfirmarCruce()
+    {
+        if (aplicandoCruce || crucesElegidos.Count == 0) return;
+        aplicandoCruce = true;
+        try
+        {
+            var items = cruces.Where(c => crucesElegidos.Contains(c.MovId))
+                .Select(c => new CruceAplicarItem { MovId = c.MovId, IdComprobante = c.IdComprobante }).ToList();
+            var res = await Api.AplicarCruceBancoAsync(items);
+            if (res is null || !res.Ok) { ToastService.Error(res?.Error ?? "No se pudo aplicar."); return; }
+            ToastService.Success($"✓ {res.PagosCreados} factura(s) marcada(s) como pagada(s).");
+            mostrarCruce = false;
+            await CargarPagosBanco();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { aplicandoCruce = false; }
     }
 
     private async Task OnFilesSelected(InputFileChangeEventArgs e)

@@ -6241,6 +6241,12 @@ public class ApiClient
     public async Task<bool> DesasociarPagoBancoAsync(int movId)
         => await PostAsync<object>($"/api/contadora/compras/desasociar-banco/{movId}", new { }) is not null;
 
+    public async Task<List<CrucePropuestoDto>?> GetCruceBancoPreviewAsync()
+        => await GetAsync<List<CrucePropuestoDto>>("/api/contadora/compras/cruce-banco/preview");
+
+    public async Task<PagoBancoResultDto?> AplicarCruceBancoAsync(List<CruceAplicarItem> items)
+        => await PostAsync<PagoBancoResultDto>("/api/contadora/compras/cruce-banco/aplicar", items);
+
     public async Task<List<ContadoraRetencionDto>?> GetContadoraRetencionesAsync(string empresa)
         => await GetAsync<List<ContadoraRetencionDto>>("/api/contadora/retenciones?empresa=" + Uri.EscapeDataString(empresa));
 

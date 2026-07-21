@@ -2186,6 +2186,80 @@ public class ContadoraService
         return pagos.Count;
     }
 
+    /// <summary>Detecta cruces automáticos: transferencias del banco (egresos con CUIT, no cruzadas todavía)
+    /// que coinciden clavadas (mismo CUIT + mismo importe) con UNA sola factura de compra impaga.
+    /// Solo propone los sin ambigüedad; los dudosos quedan para hacer a mano.</summary>
+    public async Task<List<CrucePropuestoDto>> PreviewCruceBancoAsync()
+    {
+        var reconSet = (await _db.ContadoraComprobantePagos
+            .Where(p => !p.Anulado && p.ExtractoMovId != null)
+            .Select(p => p.ExtractoMovId!.Value).Distinct().ToListAsync()).ToHashSet();
+
+        var movs = (await _db.CafeExtractoMovimientos
+            .Where(m => m.Debitos > 0 && m.LeyendaAdicional2 != null && m.LeyendaAdicional2 != "")
+            .Select(m => new { m.Id, m.Fecha, m.Debitos, m.LeyendaAdicional1, m.LeyendaAdicional2 })
+            .ToListAsync())
+            .Where(m => !reconSet.Contains(m.Id))
+            .OrderBy(m => m.Fecha).ThenBy(m => m.Id)   // el egreso más viejo se queda con la factura
+            .ToList();
+        if (movs.Count == 0) return new();
+
+        var cuits = movs.Select(m => m.LeyendaAdicional2!).Distinct().ToList();
+        var facs = await _db.ContadoraComprobantes
+            .Where(c => c.Naturaleza == "COMPRA" && !c.EsNotaCredito && c.ReceptorDoc != null && cuits.Contains(c.ReceptorDoc))
+            .Select(c => new { c.IdComprobante, c.ReceptorDoc, c.Letra, c.PuntoVenta, c.NumeroComprobante, c.Total })
+            .ToListAsync();
+        if (facs.Count == 0) return new();
+
+        var ids = facs.Select(f => f.IdComprobante).ToList();
+        var pagoMap = (await _db.ContadoraComprobantePagos
+                .Where(p => !p.Anulado && ids.Contains(p.IdComprobante))
+                .GroupBy(p => p.IdComprobante).Select(g => new { Id = g.Key, Pagado = g.Sum(x => x.Importe) })
+                .ToListAsync())
+            .ToDictionary(x => x.Id, x => x.Pagado);
+
+        var impagasPorCuit = facs
+            .Select(f => new
+            {
+                f.IdComprobante, f.ReceptorDoc, f.Letra, f.PuntoVenta, f.NumeroComprobante,
+                Saldo = f.Total - (pagoMap.TryGetValue(f.IdComprobante, out var p) ? p : 0m)
+            })
+            .Where(f => Math.Round(f.Saldo, 2) > 0)
+            .GroupBy(f => f.ReceptorDoc!)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var props = new List<CrucePropuestoDto>();
+        foreach (var m in movs)
+        {
+            if (!impagasPorCuit.TryGetValue(m.LeyendaAdicional2!, out var lista)) continue;
+            var exactas = lista.Where(f => Math.Abs(f.Saldo - m.Debitos) < 0.01m).ToList();
+            if (exactas.Count != 1) continue;   // 0 = no coincide; >1 = ambiguo, va a mano
+            var f = exactas[0];
+            lista.Remove(f);                     // una factura no se propone para dos transferencias
+            props.Add(new CrucePropuestoDto
+            {
+                MovId = m.Id, Fecha = m.Fecha, ProveedorNombre = m.LeyendaAdicional1, Cuit = m.LeyendaAdicional2,
+                Importe = m.Debitos, IdComprobante = f.IdComprobante,
+                FacturaLabel = FacturaLabel(f.Letra, f.PuntoVenta, f.NumeroComprobante)
+            });
+        }
+        return props.OrderByDescending(p => p.Fecha).ToList();
+    }
+
+    /// <summary>Aplica los cruces elegidos (registra el pago de cada factura desde su transferencia).</summary>
+    public async Task<PagoBancoResultDto> AplicarCruceBancoAsync(List<CruceAplicarItem> items, string? operador)
+    {
+        if (items is null || items.Count == 0) return new PagoBancoResultDto { Ok = false, Error = "No hay cruces para aplicar." };
+        int creados = 0;
+        foreach (var it in items)
+        {
+            var r = await RegistrarPagoDesdeBancoAsync(
+                new PagarComprasDesdeBancoRequest { ExtractoMovId = it.MovId, IdComprobantes = new List<string> { it.IdComprobante } }, operador);
+            if (r.Ok) creados += r.PagosCreados;
+        }
+        return new PagoBancoResultDto { Ok = true, PagosCreados = creados };
+    }
+
     /// <summary>Excel del Libro IVA Ventas (importado): hoja resumen + hoja detalle. NC en negativo.</summary>
     public async Task<byte[]> GenerarReporteExcelAsync(DateTime? desde, DateTime? hasta,
         string? empresaCuit, int? puntoVenta, string? letra, string? provincia, string? search, string? origen = null, string naturaleza = "VENTA")

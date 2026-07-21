@@ -328,6 +328,23 @@ public class PagoBancoMovDto
     public List<string> Facturas { get; set; } = new();
 }
 
+public class CrucePropuestoDto
+{
+    public int MovId { get; set; }
+    public DateTime Fecha { get; set; }
+    public string? ProveedorNombre { get; set; }
+    public string? Cuit { get; set; }
+    public decimal Importe { get; set; }
+    public string IdComprobante { get; set; } = "";
+    public string FacturaLabel { get; set; } = "";
+}
+
+public class CruceAplicarItem
+{
+    public int MovId { get; set; }
+    public string IdComprobante { get; set; } = "";
+}
+
 public class ContadoraDeudaProveedorDto
 {
     public string? Cuit { get; set; }
