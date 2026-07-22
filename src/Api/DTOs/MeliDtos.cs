@@ -319,6 +319,11 @@ public class DiagnosePictureRequest
 
 public record PictureDiagnosisDto(bool HasIssues, List<string> Issues);
 
+public class FetchImageRequest
+{
+    public string Url { get; set; } = "";
+}
+
 // --- Publish DTOs ---
 
 public record PredictCategoryRequest(string Title);

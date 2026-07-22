@@ -4037,13 +4037,25 @@
             photosEdit[0].Problem = string.IsNullOrWhiteSpace(infr.Reason) ? "Portada en infracción" : infr.Reason;
     }
 
-    private void PhotoAddLink()
+    private bool photoAddingLink = false;
+    private async Task PhotoAddLink()
     {
         var url = (photosLinkInput ?? "").Trim();
         if (string.IsNullOrEmpty(url)) return;
         if (!url.StartsWith("http")) { ToastService.Error("Pegá un enlace que empiece con http…"); return; }
-        photosEdit.Add(new PhotoEdit { Source = url, PreviewUrl = url });
-        photosLinkInput = "";
+        photoAddingLink = true;
+        StateHasChanged();
+        try
+        {
+            // El sistema baja la foto (esquiva bloqueos y convierte webp→jpg) y la deja capturada como
+            // archivo: aunque el sitio la borre después, no se pierde y MeLi guarda su propia copia al guardar.
+            var (dataUri, error) = await Api.FetchImageFromUrlAsync(url);
+            if (string.IsNullOrEmpty(dataUri)) { ToastService.Error(error ?? "No se pudo traer la foto del enlace."); return; }
+            photosEdit.Add(new PhotoEdit { DataUri = dataUri, PreviewUrl = dataUri });
+            photosLinkInput = "";
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { photoAddingLink = false; StateHasChanged(); }
     }
 
     private async Task PhotoUploadFiles(InputFileChangeEventArgs e)
@@ -4150,8 +4162,8 @@
                 </div>
             }
             <div class="pp-add">
-                <input placeholder="Pegá el enlace de una foto (http…)" @bind="photosLinkInput" @bind:event="oninput" @onkeydown="@(e => { if (e.Key == "Enter") PhotoAddLink(); })" />
-                <button class="pp-btn" @onclick="PhotoAddLink">＋ Agregar por enlace</button>
+                <input placeholder="Pegá el enlace de una foto de cualquier página (http…)" @bind="photosLinkInput" @bind:event="oninput" disabled="@photoAddingLink" @onkeydown="@(async e => { if (e.Key == "Enter") await PhotoAddLink(); })" />
+                <button class="pp-btn" disabled="@photoAddingLink" @onclick="PhotoAddLink">@(photoAddingLink ? "Trayendo…" : "＋ Agregar por enlace")</button>
                 <label class="pp-btn pp-file">📁 Subir archivo
                     <InputFile OnChange="PhotoUploadFiles" accept="image/*" multiple style="display:none;" />
                 </label>

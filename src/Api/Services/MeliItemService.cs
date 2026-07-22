@@ -2617,6 +2617,64 @@ public class MeliItemService
         return new ScanPhotoInfractionsResult(totalItm, list.Count, list, breakdown);
     }
 
+    /// <summary>2026-07-21: baja una imagen desde un enlace de OTRA página (haciéndose pasar por un navegador,
+    /// así esquiva el bloqueo de hotlinking), la convierte a JPG si viene en webp/otro formato, y la devuelve
+    /// como data-URI base64. Así el "Agregar por enlace" toma cualquier foto y queda capturada en el momento
+    /// (si el sitio la borra después, no se pierde: al guardar se sube a MeLi como archivo propio).</summary>
+    public async Task<string> FetchExternalImageAsync(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url) || !(url.StartsWith("http://") || url.StartsWith("https://")))
+            throw new Exception("El enlace tiene que empezar con http:// o https://");
+
+        var http = _httpFactory.CreateClient();
+        http.Timeout = TimeSpan.FromSeconds(25);
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36");
+        http.DefaultRequestHeaders.Accept.ParseAdd("image/avif,image/webp,image/apng,image/*,*/*;q=0.8");
+        try { http.DefaultRequestHeaders.Referrer = new Uri(new Uri(url).GetLeftPart(UriPartial.Authority)); } catch { }
+
+        HttpResponseMessage resp;
+        try { resp = await http.GetAsync(url); }
+        catch (Exception ex) { throw new Exception($"No pude abrir el enlace: {ex.Message}"); }
+        if (!resp.IsSuccessStatusCode)
+            throw new Exception($"El sitio no dejó descargar la foto (HTTP {(int)resp.StatusCode}). Probá con 'Subir archivo'.");
+
+        var bytes = await resp.Content.ReadAsByteArrayAsync();
+        if (bytes.Length == 0) throw new Exception("El enlace no devolvió ninguna imagen.");
+        if (bytes.Length > 15 * 1024 * 1024) throw new Exception("La imagen pesa más de 15 MB.");
+
+        var ct = resp.Content.Headers.ContentType?.MediaType?.ToLowerInvariant() ?? "";
+        bool looksHtml = ct.Contains("html") || (bytes.Length > 1 && bytes[0] == (byte)'<');
+        if (looksHtml)
+            throw new Exception("El enlace no es una foto directa (devolvió una página). Abrí la imagen sola, copiá su dirección, o usá 'Subir archivo'.");
+
+        // MeLi solo acepta JPG/PNG. Si es JPG o PNG, pasa directo. Si es webp/gif/bmp/etc, lo convierto a JPG.
+        bool isJpg = ct.Contains("jpeg") || ct.Contains("jpg") || (bytes.Length > 2 && bytes[0] == 0xFF && bytes[1] == 0xD8);
+        bool isPng = ct.Contains("png") || (bytes.Length > 8 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47);
+
+        string outCt;
+        if (isJpg) outCt = "image/jpeg";
+        else if (isPng) outCt = "image/png";
+        else
+        {
+            // Convertir (webp/gif/bmp/avif…) a JPG con SkiaSharp.
+            try
+            {
+                using var bmp = SkiaSharp.SKBitmap.Decode(bytes);
+                if (bmp is null) throw new Exception("formato no reconocido");
+                using var img = SkiaSharp.SKImage.FromBitmap(bmp);
+                using var data = img.Encode(SkiaSharp.SKEncodedImageFormat.Jpeg, 92);
+                bytes = data.ToArray();
+                outCt = "image/jpeg";
+            }
+            catch
+            {
+                throw new Exception("No pude convertir esa imagen a un formato que acepte MercadoLibre. Probá con 'Subir archivo'.");
+            }
+        }
+
+        return $"data:{outCt};base64,{Convert.ToBase64String(bytes)}";
+    }
+
     // filter_subgroup que corresponden a problemas de FOTOS/imágenes.
     // PQT = "La portada tiene marcas de agua", FOTOS = "Algunas fotos tienen marcas de agua" (vistos en prod).
     private static bool IsPhotoSubgroup(string subgroup)

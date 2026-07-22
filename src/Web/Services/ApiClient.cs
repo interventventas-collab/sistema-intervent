@@ -182,6 +182,27 @@ public class ApiClient
         return await resp.Content.ReadFromJsonAsync<PictureDiagnosisDto>();
     }
 
+    /// <summary>Baja una foto desde un enlace externo y la devuelve como data-URI (o (null, error)).</summary>
+    public async Task<(string? dataUri, string? error)> FetchImageFromUrlAsync(string url)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync("/api/meli/fetch-image", new { url });
+        if (resp.IsSuccessStatusCode)
+        {
+            var el = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+            var du = el.TryGetProperty("dataUri", out var d) ? d.GetString() : null;
+            return (du, null);
+        }
+        string error = "No se pudo traer la foto del enlace.";
+        try
+        {
+            var el = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+            if (el.TryGetProperty("error", out var e) && e.GetString() is string s && !string.IsNullOrWhiteSpace(s)) error = s;
+        }
+        catch { }
+        return (null, error);
+    }
+
     // --- 2026-06-19: Refresco de sale_fee real (comision MeLi) ---
     public async Task<bool> RefreshMeliItemSaleFeeAsync(string meliItemId)
     {

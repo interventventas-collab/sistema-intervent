@@ -1057,6 +1057,22 @@ public class MeliController : ControllerBase
         }
     }
 
+    /// <summary>2026-07-21: baja una imagen desde un enlace externo (convierte webp→jpg) y la devuelve como data-URI,
+    /// para que "Agregar por enlace" tome fotos de cualquier página aunque bloquee hotlinking o sea webp.</summary>
+    [HttpPost("fetch-image")]
+    public async Task<IActionResult> FetchImage([FromBody] FetchImageRequest request)
+    {
+        try
+        {
+            var dataUri = await _itemService.FetchExternalImageAsync(request.Url);
+            return Ok(new { dataUri });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     /// <summary>2026-06-19: refresca el sale_fee real (lo que MeLi cobra de comision)
     /// para una publicacion. Llama a /sites/MLA/listing_prices y guarda en MeliItems.</summary>
     [HttpPost("items/{meliItemId}/refresh-salefee")]
