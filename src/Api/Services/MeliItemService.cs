@@ -2508,8 +2508,9 @@ public class MeliItemService
     public async Task<ScanPhotoInfractionsResult> ScanPhotoInfractionsAsync()
     {
         var accounts = await _db.MeliAccounts.ToListAsync();
-        var byItem = new Dictionary<string, (string reason, bool photo)>();
+        var byItem = new Dictionary<string, (string reason, bool photo, HashSet<string> picIds, bool portada)>();
         var breakdown = new Dictionary<string, int>();
+        var seenInfractionIds = new HashSet<string>(); // para cortar si la página se repite (paginación)
         int totalItm = 0;
         var mlaRegex = new System.Text.RegularExpressions.Regex(@"\bML[A-Z]\d{6,}\b");
 
@@ -2547,10 +2548,15 @@ public class MeliItemService
                 else if (root.ValueKind == JsonValueKind.Array) arr = root;
                 else break;
 
-                int count = 0;
+                int count = 0, nuevas = 0;
                 foreach (var inf in arr.EnumerateArray())
                 {
                     count++;
+                    // Cortar si la página se repite (la paginación por offset puede no avanzar).
+                    var infId = inf.TryGetProperty("id", out var idp) ? idp.GetString() : null;
+                    if (!string.IsNullOrEmpty(infId) && !seenInfractionIds.Add(infId)) continue;
+                    nuevas++;
+
                     var elementType = inf.TryGetProperty("element_type", out var et) ? et.GetString() : null;
                     if (!string.IsNullOrEmpty(elementType) &&
                         !elementType.Equals("ITM", StringComparison.OrdinalIgnoreCase))
@@ -2571,12 +2577,27 @@ public class MeliItemService
                     var reason = ExtractInfractionReason(inf);
                     var isPhoto = IsPhotoSubgroup(subgroup) ||
                                   _photoInfractionKeywords.Any(k => reason.Contains(k, StringComparison.OrdinalIgnoreCase));
+
+                    // IDs de las fotos puntuales en infracción (vienen en pictures[].picture_ids).
+                    var picIds = new HashSet<string>();
+                    if (inf.TryGetProperty("pictures", out var infPics) && infPics.ValueKind == JsonValueKind.Array)
+                        foreach (var pg in infPics.EnumerateArray())
+                            if (pg.TryGetProperty("picture_ids", out var pids) && pids.ValueKind == JsonValueKind.Array)
+                                foreach (var pid in pids.EnumerateArray())
+                                    if (pid.GetString() is string s && !string.IsNullOrEmpty(s)) picIds.Add(s);
+                    var portada = reason.Contains("portada", StringComparison.OrdinalIgnoreCase);
+
                     if (byItem.TryGetValue(mla, out var prev))
-                        byItem[mla] = (string.IsNullOrEmpty(prev.reason) ? reason : prev.reason, prev.photo || isPhoto);
+                    {
+                        prev.picIds.UnionWith(picIds);
+                        byItem[mla] = (string.IsNullOrEmpty(prev.reason) ? reason : prev.reason,
+                                       prev.photo || isPhoto, prev.picIds, prev.portada || portada);
+                    }
                     else
-                        byItem[mla] = (reason, isPhoto);
+                        byItem[mla] = (reason, isPhoto, picIds, portada);
                 }
-                if (count < pageSize) break; // última página
+                if (nuevas == 0) break;        // no vino nada nuevo → cortar (fin o paginación repetida)
+                if (count < pageSize) break;   // última página
                 offset += pageSize;
             }
         }
@@ -2590,18 +2611,20 @@ public class MeliItemService
 
         var list = byItem
             .Where(kv => knownSet.Contains(kv.Key))
-            .Select(kv => new PhotoInfractionDto(kv.Key, kv.Value.reason, kv.Value.photo))
+            .Select(kv => new PhotoInfractionDto(kv.Key, kv.Value.reason, kv.Value.photo, kv.Value.picIds.ToList(), kv.Value.portada))
             .ToList();
 
         return new ScanPhotoInfractionsResult(totalItm, list.Count, list, breakdown);
     }
 
     // filter_subgroup que corresponden a problemas de FOTOS/imágenes.
+    // PQT = "La portada tiene marcas de agua", FOTOS = "Algunas fotos tienen marcas de agua" (vistos en prod).
     private static bool IsPhotoSubgroup(string subgroup)
     {
         if (string.IsNullOrEmpty(subgroup)) return false;
         var s = subgroup.ToUpperInvariant();
-        return s.Contains("PICTURE") || s.Contains("IMAGE") || s.Contains("PHOTO") ||
+        return s is "PQT" or "FOTOS" ||
+               s.Contains("PICTURE") || s.Contains("IMAGE") || s.Contains("PHOTO") ||
                s.Contains("IMAGEN") || s.Contains("FOTO") || s.Contains("THUMBNAIL");
     }
 

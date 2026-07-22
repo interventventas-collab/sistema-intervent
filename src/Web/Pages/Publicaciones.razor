@@ -3906,8 +3906,8 @@
     private List<PhotoEdit> photosEdit = new();
 
     // ===== Infracciones de fotos (Etapa 1.5) =====
-    // mlaId -> motivo. Se llena con el botón "Buscar fotos en infracción". En memoria (por sesión).
-    private Dictionary<string, string> photoInfractions = new();
+    // mlaId -> detalle de la infracción. Se llena con "Buscar fotos en infracción". En memoria (por sesión).
+    private Dictionary<string, PhotoInfractionDto> photoInfractions = new();
     private bool filterInfraccionFoto = false;
     private bool scanningInfractions = false;
 
@@ -3920,7 +3920,8 @@
             var res = await Api.ScanPhotoInfractionsAsync();
             if (res is null) { ToastService.Error("No se pudo escanear infracciones. Revisá que haya una cuenta de MeLi conectada."); return; }
             photoInfractions = res.Items.Where(x => x.PhotoRelated)
-                                        .ToDictionary(x => x.MeliItemId, x => x.Reason);
+                                        .GroupBy(x => x.MeliItemId)
+                                        .ToDictionary(g => g.Key, g => g.First());
             InvalidateFilterCache();
             if (photoInfractions.Count > 0)
             {
@@ -4003,7 +4004,37 @@
         }
         photosCatalog = dto.CatalogListing;
         photosEdit = dto.Pictures.Select(p => new PhotoEdit { Id = p.Id, PreviewUrl = p.Url }).ToList();
+        MarcarFotosEnInfraccion(item);
         StateHasChanged();
+    }
+
+    // Marca en rojo la(s) foto(s) que MeLi señaló como en infracción: por ID exacto, y si esa foto
+    // ya no está, marca la PORTADA cuando el motivo es de portada. Núcleo del ID = parte "MLA…".
+    private void MarcarFotosEnInfraccion(MeliItemDto item)
+    {
+        foreach (var p in photosEdit) p.Problem = null;
+        if (!photoInfractions.TryGetValue(item.MeliItemId, out var infr)) return;
+
+        static string Core(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return "";
+            var m = System.Text.RegularExpressions.Regex.Match(id, "ML[A-Z]?\\d+");
+            return m.Success ? m.Value : id;
+        }
+        var badCores = infr.PictureIds.Select(Core).Where(c => c.Length > 0).ToHashSet();
+
+        int marcadas = 0;
+        foreach (var p in photosEdit)
+        {
+            if (!string.IsNullOrEmpty(p.Id) && badCores.Contains(Core(p.Id)))
+            {
+                p.Problem = string.IsNullOrWhiteSpace(infr.Reason) ? "En infracción" : infr.Reason;
+                marcadas++;
+            }
+        }
+        // Si no coincidió ninguna por ID pero el problema es de portada, marco la primera (portada).
+        if (marcadas == 0 && infr.AfectaPortada && photosEdit.Count > 0)
+            photosEdit[0].Problem = string.IsNullOrWhiteSpace(infr.Reason) ? "Portada en infracción" : infr.Reason;
     }
 
     private void PhotoAddLink()
@@ -4076,9 +4107,20 @@
             {
                 <div class="pp-warn">⚠️ Es una publicación de <b>catálogo</b>: MercadoLibre suele tener las fotos bloqueadas. Si al guardar te da error, es por esto (no es una falla del sistema).</div>
             }
-            @if (photoInfractions.TryGetValue(item.MeliItemId, out var infrReason))
+            @if (photoInfractions.TryGetValue(item.MeliItemId, out var infr))
             {
-                <div class="pp-infr">🚩 <b>MercadoLibre marcó esta publicación por sus fotos.</b> Motivo: @(string.IsNullOrWhiteSpace(infrReason) ? "(sin detalle)" : infrReason)<br />Tocá <b>"Revisar fotos"</b> para ver cuál foto es la del problema, y borrala o reemplazala.</div>
+                var marcadas = photosEdit.Count(x => !string.IsNullOrEmpty(x.Problem));
+                <div class="pp-infr">
+                    🚩 <b>MercadoLibre marcó esta publicación por sus fotos.</b> Motivo: @(string.IsNullOrWhiteSpace(infr.Reason) ? "(sin detalle)" : infr.Reason)<br />
+                    @if (marcadas > 0)
+                    {
+                        <text>👉 La(s) foto(s) marcada(s) en <b>rojo</b> abajo son la(s) del problema. Borrala/reemplazala y guardá.</text>
+                    }
+                    else
+                    {
+                        <text>La foto marcada por MeLi ya no está en la publicación (probablemente ya la cambiaste). Está <b>en revisión</b>; si volvés a ver el 🚩 más adelante, tocá "Revisar fotos" para chequear.</text>
+                    }
+                </div>
             }
             @if (photosEdit.Count == 0)
             {
@@ -6347,9 +6389,9 @@
             {
                 <div class="plist-thumb-ph"><svg width="16" height="16" viewBox="0 0 24 24" fill="#9ca3af"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg></div>
             }
-            @if (photoInfractions.ContainsKey(it.MeliItemId))
+            @if (photoInfractions.TryGetValue(it.MeliItemId, out var flagInfr))
             {
-                <span class="plist-flag" title="@photoInfractions[it.MeliItemId]">🚩</span>
+                <span class="plist-flag" title="@flagInfr.Reason">🚩</span>
             }
         </span>
     </text>;

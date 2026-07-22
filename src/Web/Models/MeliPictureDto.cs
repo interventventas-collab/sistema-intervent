@@ -34,6 +34,8 @@ public class PhotoInfractionDto
     public string MeliItemId { get; set; } = "";
     public string Reason { get; set; } = "";
     public bool PhotoRelated { get; set; }
+    public List<string> PictureIds { get; set; } = new();
+    public bool AfectaPortada { get; set; }
 }
 
 public class ScanPhotoInfractionsResult

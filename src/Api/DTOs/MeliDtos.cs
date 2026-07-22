@@ -303,7 +303,7 @@ public class UpdateItemPicturesRequest
 }
 
 // --- Deteccion de fotos en infraccion (Etapa 1.5, 2026-07-21) ---
-public record PhotoInfractionDto(string MeliItemId, string Reason, bool PhotoRelated);
+public record PhotoInfractionDto(string MeliItemId, string Reason, bool PhotoRelated, List<string> PictureIds, bool AfectaPortada);
 
 public record ScanPhotoInfractionsResult(
     int TotalInfractions,   // infracciones de items encontradas en la cuenta
