@@ -3163,6 +3163,35 @@ public class MeliItemService
             ?? new MeliItemAttributesDto(item.CategoryId ?? "", item.CatalogListing, new());
     }
 
+    /// <summary>2026-07-22: arma el pedido para la IA de sugerencia de atributos de una publicación existente.
+    /// Usa el título + descripción del item y le pasa SOLO los campos de ficha que están VACÍOS, para que la
+    /// IA proponga valores. La marca/modelo actuales van como pista. Devuelve null si no existe el item.</summary>
+    public async Task<SuggestAttributesRequest?> BuildAttributeSuggestRequestAsync(string meliItemId)
+    {
+        var attrsDto = await GetItemAttributesAsync(meliItemId);
+        if (attrsDto is null) return null;
+
+        var item = await _db.MeliItems.FirstOrDefaultAsync(i => i.MeliItemId == meliItemId);
+        var title = item?.Title ?? "";
+
+        string? description = null;
+        try { description = (await GetItemDetailsAsync(meliItemId))?.Description; } catch { }
+
+        var brand = attrsDto.Attributes.FirstOrDefault(a => a.Id == "BRAND")?.CurrentValueName;
+        var model = attrsDto.Attributes.FirstOrDefault(a => a.Id == "MODEL")?.CurrentValueName;
+
+        // Solo los atributos SIN valor (para no pisar lo cargado y ahorrar tokens).
+        var vacios = attrsDto.Attributes
+            .Where(a => string.IsNullOrWhiteSpace(a.CurrentValueId) && string.IsNullOrWhiteSpace(a.CurrentValueName))
+            .Select(a => new CategoryAttributeDto
+            {
+                Id = a.Id, Name = a.Name, ValueType = a.ValueType, Required = a.Required, Values = a.Values
+            })
+            .ToList();
+
+        return new SuggestAttributesRequest(title, description, brand, model, attrsDto.CategoryId, "", vacios);
+    }
+
     public async Task<PublishItemResponse> PublishItemAsync(PublishItemRequest request)
     {
         var account = await _db.MeliAccounts.FindAsync(request.MeliAccountId);

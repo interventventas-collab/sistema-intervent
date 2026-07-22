@@ -152,6 +152,8 @@
     .ft-field select:focus, .ft-field input:focus { outline:none; border-color:#6366f1; box-shadow:0 0 0 3px rgba(99,102,241,.12); }
     .ft-field.req-empty select, .ft-field.req-empty input { border-color:#f59e0b; background:#fffbeb; }
     .ft-field.req-empty label { color:#b45309; }
+    .ft-field.ai-filled select, .ft-field.ai-filled input { border-color:#6366f1; background:#eef2ff; }
+    .ft-ai { font-size:0.7rem; }
     .ft-foot { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; border-top:1px solid #e2e8f0; padding-top:10px; }
 </style>
 
@@ -4337,6 +4339,8 @@
     private bool fichaLoading = false;
     private bool fichaSaving = false;
     private bool fichaCatalog = false;
+    private bool fichaAiLoading = false;
+    private HashSet<string> fichaAiFilled = new();   // ids que completó la IA (para resaltar)
     private List<MeliAttributeFieldDto> fichaFields = new();
     private Dictionary<string, string> fichaInput = new(); // attrId -> value_id (lista) o value_name (texto)
 
@@ -4344,7 +4348,7 @@
     {
         if (expandedFichaKey == item.Id) { expandedFichaKey = null; return; }
         expandedFichaKey = item.Id;
-        fichaFields = new(); fichaInput = new(); fichaCatalog = false;
+        fichaFields = new(); fichaInput = new(); fichaAiFilled = new(); fichaCatalog = false;
         fichaLoading = true;
         StateHasChanged();
         var dto = await Api.GetMeliItemAttributesAsync(item.MeliItemId);
@@ -4358,6 +4362,40 @@
     }
 
     private int FichaFaltantesReq() => fichaFields.Count(f => f.Required && string.IsNullOrWhiteSpace(fichaInput.GetValueOrDefault(f.Id)));
+
+    private async Task CompletarFichaConIA(MeliItemDto item)
+    {
+        fichaAiLoading = true; StateHasChanged();
+        try
+        {
+            var sugs = await Api.SuggestItemAttributesAsync(item.MeliItemId);
+            if (sugs is null) { ToastService.Error("No se pudo consultar la IA."); return; }
+            int aplicadas = 0;
+            foreach (var s in sugs)
+            {
+                var f = fichaFields.FirstOrDefault(x => x.Id == s.AttributeId);
+                if (f is null) continue;
+                if (!string.IsNullOrWhiteSpace(fichaInput.GetValueOrDefault(f.Id))) continue; // no pisar lo cargado
+                if (f.Values.Count > 0)
+                {
+                    // desplegable: necesito un value_id válido de la lista
+                    string? vid = null;
+                    if (!string.IsNullOrWhiteSpace(s.ValueId) && f.Values.Any(o => o.Id == s.ValueId)) vid = s.ValueId;
+                    else if (!string.IsNullOrWhiteSpace(s.ValueName))
+                        vid = f.Values.FirstOrDefault(o => string.Equals(o.Name, s.ValueName, StringComparison.OrdinalIgnoreCase))?.Id;
+                    if (vid is not null) { fichaInput[f.Id] = vid; fichaAiFilled.Add(f.Id); aplicadas++; }
+                }
+                else if (!string.IsNullOrWhiteSpace(s.ValueName))
+                {
+                    fichaInput[f.Id] = s.ValueName!; fichaAiFilled.Add(f.Id); aplicadas++;
+                }
+            }
+            if (aplicadas > 0) ToastService.Success($"🤖 Completé {aplicadas} campo(s). Revisalos (marcados con 🤖) y guardá.");
+            else ToastService.Info("La IA no encontró datos para completar los campos vacíos.");
+        }
+        catch (Exception ex) { ToastService.Error("Error IA: " + ex.Message); }
+        finally { fichaAiLoading = false; StateHasChanged(); }
+    }
 
     private async Task GuardarFicha(MeliItemDto item)
     {
@@ -4405,8 +4443,8 @@
                     {
                         var val = fichaInput.GetValueOrDefault(f.Id) ?? "";
                         var vacio = string.IsNullOrWhiteSpace(val);
-                        <div class="ft-field @(f.Required && vacio ? "req-empty" : "")">
-                            <label>@f.Name @if (f.Required) { <span class="ft-req">*</span> }</label>
+                        <div class="ft-field @(f.Required && vacio ? "req-empty" : "") @(fichaAiFilled.Contains(f.Id) ? "ai-filled" : "")">
+                            <label>@f.Name @if (f.Required) { <span class="ft-req">*</span> } @if (fichaAiFilled.Contains(f.Id)) { <span class="ft-ai">🤖</span> }</label>
                             @if (f.Values.Count > 0)
                             {
                                 <select @onchange="e => fichaInput[f.Id] = e.Value?.ToString() ?? string.Empty">
@@ -4425,8 +4463,13 @@
                     }
                 </div>
                 <div class="ft-foot">
-                    <span class="pp-count">Los campos con <b>*</b> son los que MeLi valora para el ranking. Completar la ficha mejora la posición en las búsquedas.</span>
-                    <button class="pp-save" disabled="@fichaSaving" @onclick="() => GuardarFicha(item)">@(fichaSaving ? "Guardando…" : "💾 Guardar ficha en MercadoLibre")</button>
+                    <span class="pp-count">Los campos con <b>*</b> son los que MeLi valora para el ranking. Con 🤖 la IA propone los vacíos: revisalos antes de guardar.</span>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button class="pp-btn" style="background:#eef2ff; border-color:#c7d2fe; color:#3730a3;" disabled="@(fichaAiLoading || fichaSaving)" @onclick="() => CompletarFichaConIA(item)">
+                            @(fichaAiLoading ? "🤖 Pensando…" : "🤖 Completar con IA")
+                        </button>
+                        <button class="pp-save" disabled="@fichaSaving" @onclick="() => GuardarFicha(item)">@(fichaSaving ? "Guardando…" : "💾 Guardar ficha en MercadoLibre")</button>
+                    </div>
                 </div>
             }
         }

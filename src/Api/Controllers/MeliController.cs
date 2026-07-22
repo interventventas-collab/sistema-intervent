@@ -1053,6 +1053,24 @@ public class MeliController : ControllerBase
         }
     }
 
+    /// <summary>2026-07-22: sugiere con IA los valores de los campos VACÍOS de la ficha técnica.</summary>
+    [HttpPost("items/{meliItemId}/suggest-attributes")]
+    public async Task<IActionResult> SuggestItemAttributes(string meliItemId)
+    {
+        try
+        {
+            var req = await _itemService.BuildAttributeSuggestRequestAsync(meliItemId);
+            if (req is null) return NotFound();
+            if (req.Attributes.Count == 0) return Ok(new List<SuggestedAttributeDto>()); // ya está completa
+            var result = await _aiService.SuggestAttributesAsync(req);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     /// <summary>2026-07-21: escanea las infracciones de la cuenta y devuelve las publicaciones marcadas (foto en infracción).</summary>
     [HttpGet("photo-infractions")]
     public async Task<IActionResult> ScanPhotoInfractions()

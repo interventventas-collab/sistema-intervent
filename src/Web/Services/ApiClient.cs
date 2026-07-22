@@ -188,6 +188,14 @@ public class ApiClient
         return await GetAsync<MeliItemAttributesDto>($"/api/meli/items/{meliItemId}/attributes");
     }
 
+    public async Task<List<SuggestedAttributeDto>?> SuggestItemAttributesAsync(string meliItemId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsync($"/api/meli/items/{meliItemId}/suggest-attributes", null);
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadFromJsonAsync<List<SuggestedAttributeDto>>();
+    }
+
     public async Task<(MeliItemAttributesDto? result, string? error)> UpdateMeliItemAttributesAsync(string meliItemId, UpdateItemAttributesRequest request)
     {
         await SetAuthHeaderAsync();
