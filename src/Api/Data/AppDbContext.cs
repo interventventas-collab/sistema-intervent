@@ -31,6 +31,8 @@ public class AppDbContext : DbContext
     public DbSet<WhatsAppPedidoRecibido> WhatsAppPedidosRecibidos => Set<WhatsAppPedidoRecibido>();
     public DbSet<WhatsAppPedidosTelefono> WhatsAppPedidosTelefonos => Set<WhatsAppPedidosTelefono>();
     public DbSet<MeliQuestion> MeliQuestions => Set<MeliQuestion>();
+    public DbSet<MeliAutoReplyMessage> MeliAutoReplyMessages => Set<MeliAutoReplyMessage>();
+    public DbSet<MeliAutoReplySchedule> MeliAutoReplySchedule => Set<MeliAutoReplySchedule>();
     public DbSet<MeliShipment> MeliShipments => Set<MeliShipment>();
     public DbSet<MeliCliente> MeliClientes => Set<MeliCliente>();
     public DbSet<MeliClienteCompra> MeliClienteCompras => Set<MeliClienteCompra>();
@@ -225,6 +227,10 @@ public class AppDbContext : DbContext
         });
 
         modelBuilder.Entity<AppSetting>().HasKey(a => a.Key);
+
+        // Respondedor automático MeLi: la fila de horario usa el día de la semana como PK (no identity).
+        modelBuilder.Entity<MeliAutoReplySchedule>()
+            .Property(s => s.DayOfWeek).ValueGeneratedNever();
 
         modelBuilder.Entity<Integration>(entity =>
         {

@@ -1,0 +1,385 @@
+@page "/meli/respuestas-automaticas"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService Toast
+
+<div class="autoreply-page">
+
+    <div class="autoreply-header">
+        <div>
+            <h1 class="autoreply-title">🤖 Respuestas automáticas de MercadoLibre</h1>
+            <p class="autoreply-sub">Cuando no hay nadie en el depósito, el sistema responde solo las preguntas que quedan sin contestar.</p>
+        </div>
+        @if (cfg is not null)
+        {
+            <div class="autoreply-master @(cfg.Enabled ? "on" : "off")">
+                <div class="autoreply-master-txt">
+                    <span class="autoreply-master-state">@(cfg.Enabled ? "ACTIVADO" : "APAGADO")</span>
+                    <span class="autoreply-master-hint">@(cfg.Enabled ? "El robot está contestando en su horario" : "El robot no contesta nada")</span>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" checked="@cfg.Enabled" @onchange="ToggleMaster" />
+                    <span class="slider"></span>
+                </label>
+            </div>
+        }
+    </div>
+
+    @if (loading)
+    {
+        <div class="loading-container"><div class="spinner"></div><span>Cargando configuración...</span></div>
+    }
+    else if (cfg is null)
+    {
+        <div class="card"><div class="card-body">No se pudo cargar la configuración.</div></div>
+    }
+    else
+    {
+        <!-- Cómo funciona -->
+        <div class="card">
+            <div class="card-body autoreply-how">
+                <strong>Cómo funciona:</strong> dentro del horario que configures, si una pregunta lleva
+                <strong>@cfg.DelayMinutes minutos</strong> o más sin que nadie la conteste, el robot elige
+                <strong>uno de los mensajes al azar</strong> (así no suena repetitivo) y responde con la firma.
+                Las preguntas ya respondidas o contestadas por una persona no se tocan.
+                <div class="autoreply-now">🕒 Hora Argentina ahora: <strong>@cfg.NowArgentina</strong></div>
+            </div>
+        </div>
+
+        <!-- Ajustes generales -->
+        <div class="card">
+            <div class="card-header">Ajustes generales</div>
+            <div class="card-body">
+                <div class="autoreply-grid2">
+                    <div>
+                        <label class="form-label">Esperar antes de responder (minutos)</label>
+                        <input type="number" min="0" max="1440" class="form-input" @bind="cfg.DelayMinutes" />
+                        <small class="autoreply-help">Le da tiempo a que una persona conteste primero. Recomendado: 30.</small>
+                    </div>
+                    <div>
+                        <label class="form-label">Firma (se agrega al final de cada mensaje)</label>
+                        <input type="text" class="form-input" @bind="cfg.Signature" placeholder="Atte. Leandro de TIENDA FRIKAF" />
+                        <small class="autoreply-help">Aparece al final de todas las respuestas.</small>
+                    </div>
+                </div>
+                <div class="autoreply-actions">
+                    <button class="btn btn-primary" @onclick="SaveConfig" disabled="@savingCfg">💾 Guardar ajustes</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Feriado -->
+        <div class="card">
+            <div class="card-body autoreply-holiday">
+                <div>
+                    <strong>🎉 Feriado / día especial</strong>
+                    <div class="autoreply-help">Si hoy no trabaja nadie, activá esto y el robot responde <strong>todo el día de hoy</strong>. Mañana vuelve solo al horario normal.</div>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" checked="@cfg.HolidayToday" @onchange="ToggleHoliday" />
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Horarios por día -->
+        <div class="card">
+            <div class="card-header">Horarios por día (hora de Argentina)</div>
+            <div class="card-body">
+                <p class="autoreply-help">Marcá los días y las horas en que el robot puede responder. Si la franja cruza la medianoche (ej. 21:00 a 06:00) cubre hasta la mañana siguiente.</p>
+                <div class="autoreply-days">
+                    @foreach (var idx in DayOrder)
+                    {
+                        var row = ScheduleFor(idx);
+                        <div class="autoreply-day @(row.IsActive ? "" : "muted")">
+                            <label class="autoreply-day-name">
+                                <input type="checkbox" checked="@row.IsActive" @onchange="e => row.IsActive = (bool)e.Value!" />
+                                <span>@DayNames[idx]</span>
+                            </label>
+                            <label class="autoreply-day-allday">
+                                <input type="checkbox" checked="@row.AllDay" @onchange="e => row.AllDay = (bool)e.Value!" disabled="@(!row.IsActive)" />
+                                <span>Todo el día</span>
+                            </label>
+                            <div class="autoreply-day-hours @(row.AllDay || !row.IsActive ? "hidden" : "")">
+                                <span>Desde</span>
+                                <input type="time" class="form-input autoreply-time" @bind="row.Start" disabled="@(!row.IsActive)" />
+                                <span>hasta</span>
+                                <input type="time" class="form-input autoreply-time" @bind="row.End" disabled="@(!row.IsActive)" />
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="autoreply-actions">
+                    <button class="btn btn-primary" @onclick="SaveSchedule" disabled="@savingSchedule">💾 Guardar horarios</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mensajes -->
+        <div class="card">
+            <div class="card-header autoreply-msg-header">
+                <span>Mensajes que rotan (@cfg.Messages.Count)</span>
+                <button class="btn btn-secondary btn-sm" @onclick="Preview">👁️ Probar (ver ejemplo)</button>
+            </div>
+            <div class="card-body">
+                @if (!string.IsNullOrEmpty(previewText))
+                {
+                    <div class="autoreply-preview">
+                        <strong>Ejemplo de respuesta (no se envió nada):</strong>
+                        <div class="autoreply-preview-text">@previewText</div>
+                    </div>
+                }
+                <p class="autoreply-help">No escribas la firma acá: se agrega sola al final. Podés apagar un mensaje sin borrarlo.</p>
+
+                @foreach (var m in cfg.Messages)
+                {
+                    <div class="autoreply-msg @(m.IsActive ? "" : "off")">
+                        <textarea class="form-input autoreply-msg-text" rows="2" @bind="m.Body"></textarea>
+                        <div class="autoreply-msg-actions">
+                            <label class="autoreply-msg-active">
+                                <input type="checkbox" checked="@m.IsActive" @onchange="e => m.IsActive = (bool)e.Value!" />
+                                <span>Activo</span>
+                            </label>
+                            <button class="btn btn-primary btn-sm" @onclick="() => SaveMessage(m)">Guardar</button>
+                            <button class="btn btn-danger btn-sm" @onclick="() => DeleteMessage(m)">Borrar</button>
+                        </div>
+                    </div>
+                }
+
+                <div class="autoreply-newmsg">
+                    <textarea class="form-input autoreply-msg-text" rows="2" placeholder="Escribí un mensaje nuevo (sin la firma)..." @bind="newBody"></textarea>
+                    <button class="btn btn-primary" @onclick="AddMessage" disabled="@addingMsg">➕ Agregar mensaje</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recientes -->
+        <div class="card">
+            <div class="card-header autoreply-msg-header">
+                <span>Últimas respondidas por el robot</span>
+                <button class="btn btn-secondary btn-sm" @onclick="LoadRecent">🔄 Actualizar</button>
+            </div>
+            <div class="card-body">
+                @if (recent is null)
+                {
+                    <p class="autoreply-help">Tocá "Actualizar" para ver las últimas respuestas automáticas.</p>
+                }
+                else if (recent.Count == 0)
+                {
+                    <p class="autoreply-help">Todavía el robot no respondió ninguna pregunta.</p>
+                }
+                else
+                {
+                    @foreach (var r in recent)
+                    {
+                        <div class="autoreply-recent">
+                            <div class="autoreply-recent-top">
+                                <span class="autoreply-recent-item">@(string.IsNullOrEmpty(r.ItemTitle) ? "(publicación)" : r.ItemTitle)</span>
+                                <span class="autoreply-recent-date">@(r.DateAnswered?.ToLocalTime().ToString("dd/MM HH:mm"))</span>
+                            </div>
+                            <div class="autoreply-recent-q"><strong>Pregunta:</strong> @r.Text</div>
+                            <div class="autoreply-recent-a"><strong>Respondió:</strong> @r.AnswerText</div>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private MeliAutoReplyConfigDto? cfg;
+    private bool loading = true;
+    private bool savingCfg, savingSchedule, addingMsg;
+    private string newBody = "";
+    private string? previewText;
+    private List<MeliAutoReplyRecentDto>? recent;
+
+    // 0=Domingo .. 6=Sábado (System.DayOfWeek). Mostramos Lun→Dom.
+    private static readonly int[] DayOrder = { 1, 2, 3, 4, 5, 6, 0 };
+    private static readonly string[] DayNames =
+        { "Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        try
+        {
+            cfg = await Api.GetMeliAutoReplyConfigAsync();
+            // Asegurar que estén las 7 filas por si faltara alguna.
+            if (cfg is not null)
+            {
+                for (int i = 0; i <= 6; i++)
+                    if (!cfg.Schedule.Any(s => s.DayOfWeek == i))
+                        cfg.Schedule.Add(new MeliAutoReplyScheduleDto { DayOfWeek = i });
+            }
+        }
+        catch (Exception ex) { Toast.Error("No se pudo cargar: " + ex.Message); }
+        finally { loading = false; }
+    }
+
+    private MeliAutoReplyScheduleDto ScheduleFor(int dow)
+        => cfg!.Schedule.First(s => s.DayOfWeek == dow);
+
+    private async Task ToggleMaster(ChangeEventArgs e)
+    {
+        var on = (bool)e.Value!;
+        try
+        {
+            await Api.ToggleMeliAutoReplyAsync(on);
+            cfg!.Enabled = on;
+            Toast.Success(on ? "Respondedor ACTIVADO" : "Respondedor apagado");
+        }
+        catch (Exception ex) { Toast.Error("No se pudo cambiar: " + ex.Message); }
+    }
+
+    private async Task ToggleHoliday(ChangeEventArgs e)
+    {
+        var on = (bool)e.Value!;
+        try
+        {
+            await Api.SetMeliAutoReplyHolidayTodayAsync(on);
+            cfg!.HolidayToday = on;
+            Toast.Success(on ? "Hoy responde todo el día" : "Feriado desactivado");
+        }
+        catch (Exception ex) { Toast.Error("No se pudo cambiar: " + ex.Message); }
+    }
+
+    private async Task SaveConfig()
+    {
+        savingCfg = true;
+        try
+        {
+            await Api.SaveMeliAutoReplyConfigAsync(cfg!.Enabled, cfg.DelayMinutes, cfg.Signature ?? "");
+            Toast.Success("Ajustes guardados");
+        }
+        catch (Exception ex) { Toast.Error("No se pudo guardar: " + ex.Message); }
+        finally { savingCfg = false; }
+    }
+
+    private async Task SaveSchedule()
+    {
+        savingSchedule = true;
+        try
+        {
+            await Api.SaveMeliAutoReplyScheduleAsync(cfg!.Schedule);
+            Toast.Success("Horarios guardados");
+        }
+        catch (Exception ex) { Toast.Error("No se pudo guardar: " + ex.Message); }
+        finally { savingSchedule = false; }
+    }
+
+    private async Task AddMessage()
+    {
+        if (string.IsNullOrWhiteSpace(newBody)) { Toast.Warning("Escribí un mensaje"); return; }
+        addingMsg = true;
+        try
+        {
+            var m = await Api.CreateMeliAutoReplyMessageAsync(newBody.Trim(), true);
+            if (m is not null) { cfg!.Messages.Add(m); newBody = ""; Toast.Success("Mensaje agregado"); }
+        }
+        catch (Exception ex) { Toast.Error("No se pudo agregar: " + ex.Message); }
+        finally { addingMsg = false; }
+    }
+
+    private async Task SaveMessage(MeliAutoReplyMessageDto m)
+    {
+        if (string.IsNullOrWhiteSpace(m.Body)) { Toast.Warning("El mensaje no puede quedar vacío"); return; }
+        try
+        {
+            await Api.UpdateMeliAutoReplyMessageAsync(m.Id, m.Body.Trim(), m.IsActive);
+            Toast.Success("Mensaje guardado");
+        }
+        catch (Exception ex) { Toast.Error("No se pudo guardar: " + ex.Message); }
+    }
+
+    private async Task DeleteMessage(MeliAutoReplyMessageDto m)
+    {
+        try
+        {
+            if (await Api.DeleteMeliAutoReplyMessageAsync(m.Id))
+            {
+                cfg!.Messages.Remove(m);
+                Toast.Success("Mensaje borrado");
+            }
+        }
+        catch (Exception ex) { Toast.Error("No se pudo borrar: " + ex.Message); }
+    }
+
+    private async Task Preview()
+    {
+        try
+        {
+            var p = await Api.PreviewMeliAutoReplyAsync();
+            previewText = p?.Text ?? "";
+        }
+        catch (Exception ex) { Toast.Error("No se pudo generar el ejemplo: " + ex.Message); }
+    }
+
+    private async Task LoadRecent()
+    {
+        try { recent = await Api.GetMeliAutoReplyRecentAsync() ?? new(); }
+        catch (Exception ex) { Toast.Error("No se pudo cargar: " + ex.Message); }
+    }
+}
+
+<style>
+    .autoreply-page { max-width: 900px; margin: 0 auto; padding: 8px; display: flex; flex-direction: column; gap: 16px; }
+    .autoreply-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+    .autoreply-title { font-size: 1.5rem; margin: 0; }
+    .autoreply-sub { color: var(--text-muted, #6b7280); margin: 4px 0 0; }
+    .autoreply-master { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: 12px; border: 2px solid; min-width: 260px; }
+    .autoreply-master.on { border-color: #10b981; background: rgba(16,185,129,.08); }
+    .autoreply-master.off { border-color: #d1d5db; background: rgba(148,163,184,.08); }
+    .autoreply-master-txt { display: flex; flex-direction: column; }
+    .autoreply-master-state { font-weight: 700; font-size: 1.05rem; }
+    .autoreply-master.on .autoreply-master-state { color: #059669; }
+    .autoreply-master.off .autoreply-master-state { color: #6b7280; }
+    .autoreply-master-hint { font-size: .78rem; color: var(--text-muted, #6b7280); }
+    .autoreply-how { line-height: 1.6; }
+    .autoreply-now { margin-top: 10px; font-size: .9rem; color: var(--text-muted, #6b7280); }
+    .autoreply-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .autoreply-help { color: var(--text-muted, #6b7280); font-size: .82rem; display: block; margin-top: 4px; }
+    .autoreply-actions { margin-top: 14px; display: flex; gap: 10px; }
+    .autoreply-holiday { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    .autoreply-days { display: flex; flex-direction: column; gap: 8px; }
+    .autoreply-day { display: flex; align-items: center; gap: 18px; padding: 8px 10px; border-radius: 8px; background: rgba(148,163,184,.06); flex-wrap: wrap; }
+    .autoreply-day.muted { opacity: .55; }
+    .autoreply-day-name { display: flex; align-items: center; gap: 8px; font-weight: 600; min-width: 130px; }
+    .autoreply-day-allday { display: flex; align-items: center; gap: 6px; font-size: .85rem; }
+    .autoreply-day-hours { display: flex; align-items: center; gap: 8px; font-size: .85rem; }
+    .autoreply-day-hours.hidden { visibility: hidden; }
+    .autoreply-time { width: 110px; display: inline-block; }
+    .autoreply-msg-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .autoreply-msg { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid rgba(148,163,184,.15); }
+    .autoreply-msg.off { opacity: .5; }
+    .autoreply-msg-text { flex: 1; resize: vertical; font-family: inherit; }
+    .autoreply-msg-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; min-width: 90px; }
+    .autoreply-msg-active { display: flex; align-items: center; gap: 6px; font-size: .82rem; }
+    .autoreply-newmsg { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; }
+    .autoreply-preview { background: rgba(16,185,129,.08); border: 1px solid #10b981; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+    .autoreply-preview-text { margin-top: 6px; font-style: italic; }
+    .autoreply-recent { padding: 8px 0; border-bottom: 1px solid rgba(148,163,184,.15); font-size: .88rem; }
+    .autoreply-recent-top { display: flex; justify-content: space-between; color: var(--text-muted, #6b7280); font-size: .8rem; }
+    .autoreply-recent-item { font-weight: 600; color: inherit; }
+    .autoreply-recent-q { margin-top: 4px; }
+    .autoreply-recent-a { margin-top: 2px; color: #059669; }
+
+    /* Switch ON/OFF */
+    .switch { position: relative; display: inline-block; width: 52px; height: 28px; flex-shrink: 0; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; inset: 0; background: #cbd5e1; transition: .3s; border-radius: 28px; }
+    .slider:before { content: ""; position: absolute; height: 22px; width: 22px; left: 3px; bottom: 3px; background: white; transition: .3s; border-radius: 50%; }
+    .switch input:checked + .slider { background: #10b981; }
+    .switch input:checked + .slider:before { transform: translateX(24px); }
+
+    @@media (max-width: 640px) {
+        .autoreply-grid2 { grid-template-columns: 1fr; }
+        .autoreply-day-hours.hidden { display: none; }
+    }
+</style>

@@ -48,6 +48,9 @@ public class MeliQuestion
 
     public DateTime? DateAnswered { get; set; }
 
+    /// <summary>True si la respondió el robot (respondedor automático nocturno), no una persona.</summary>
+    public bool AutoAnswered { get; set; }
+
     /// <summary>Cuando la marcamos como vista en la app (para que la campanita no parpadee mas).</summary>
     public DateTime? SeenAt { get; set; }
 

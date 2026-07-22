@@ -3432,6 +3432,83 @@ BEGIN
 END
 GO
 
+-- ===== Respondedor automatico de preguntas MeLi (horario nocturno) =====
+-- Marca las preguntas que respondio el robot (para distinguirlas de las respondidas por una persona).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='AutoAnswered' AND Object_ID=Object_ID('MeliQuestions'))
+    ALTER TABLE MeliQuestions ADD AutoAnswered BIT NOT NULL CONSTRAINT DF_MeliQuestions_AutoAnswered DEFAULT 0;
+GO
+
+-- Mensajes que rotan (sin la firma; la firma se agrega aparte y es configurable).
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='MeliAutoReplyMessages')
+BEGIN
+    CREATE TABLE MeliAutoReplyMessages (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Body NVARCHAR(MAX) NOT NULL,
+        IsActive BIT NOT NULL CONSTRAINT DF_MeliAutoReplyMsg_Active DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_MeliAutoReplyMsg_Created DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL
+    );
+END
+GO
+
+-- Carga inicial de los 14 mensajes (solo si la tabla esta vacia).
+IF NOT EXISTS (SELECT 1 FROM MeliAutoReplyMessages)
+BEGIN
+    INSERT INTO MeliAutoReplyMessages (Body) VALUES
+    (N'¡Hola! Gracias por tu consulta. En este momento no tenemos a nadie en el depósito para confirmarte ese dato. A partir de las 7 hs te podemos ayudar. ¡Saludos!'),
+    (N'¡Buenas! En este horario no hay personal en el depósito para revisarlo. A partir de las 7 hs te lo confirmamos enseguida. ¡Gracias!'),
+    (N'Hola, ¿cómo estás? Ahora mismo no tenemos a alguien que pueda confirmarte esa info. A partir de las 7 hs estamos con todo para ayudarte. ¡Gracias por tu paciencia!'),
+    (N'¡Hola! Gracias por escribir. En este momento el depósito está cerrado y no podemos verificarlo. A partir de las 7 hs te respondemos sin problema. ¡Saludos!'),
+    (N'¡Buenas! Justo ahora no hay nadie disponible para confirmarte eso. A partir de las 7 hs lo vemos al toque. ¡Gracias!'),
+    (N'Hola, gracias por tu mensaje. A esta hora no tenemos personal para revisar el stock/la info. A partir de las 7 hs te lo confirmamos con gusto. ¡Saludos!'),
+    (N'¡Hola! En este momento no estamos en el depósito, así que no podemos chequearlo. A partir de las 7 hs te ayudamos enseguida. ¡Muchas gracias!'),
+    (N'¡Buenas! Gracias por tu consulta. Ahora no hay nadie que pueda confirmártelo, pero a partir de las 7 hs estamos para responderte. ¡Que tengas buena noche!'),
+    (N'¡Hola! Te agradecemos la consulta. En este horario el equipo no está en el depósito para verificarlo. A partir de las 7 hs con gusto te damos una mano. ¡Saludos!'),
+    (N'¡Buenas noches! Ahora no tenemos a nadie disponible para confirmarte ese dato. A partir de las 7 hs lo resolvemos enseguida. ¡Gracias!'),
+    (N'Hola, gracias por tu interés. En este momento no podemos chequearlo porque el depósito está sin personal. A partir de las 7 hs te respondemos todo. ¡Saludos!'),
+    (N'¡Hola! Disculpá la demora. A esta hora no hay nadie para confirmarte la info, pero apenas abramos (a partir de las 7 hs) te contestamos. ¡Gracias por esperar!'),
+    (N'¡Buenas! Gracias por escribirnos. Ahora mismo no está el equipo en el depósito para verificarlo. A partir de las 7 hs quedamos a disposición. ¡Saludos!'),
+    (N'Hola, ¿qué tal? En este horario no podemos confirmarte eso porque no hay nadie en el depósito. A partir de las 7 hs te ayudamos con todo gusto. ¡Gracias!');
+END
+GO
+
+-- Horario por dia de la semana (0=Domingo .. 6=Sabado). Default: todos los dias 21:00 a 06:00.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='MeliAutoReplySchedule')
+BEGIN
+    CREATE TABLE MeliAutoReplySchedule (
+        DayOfWeek INT PRIMARY KEY,
+        IsActive BIT NOT NULL CONSTRAINT DF_MeliAutoReplySch_Active DEFAULT 1,
+        AllDay BIT NOT NULL CONSTRAINT DF_MeliAutoReplySch_AllDay DEFAULT 0,
+        StartTime NVARCHAR(5) NOT NULL CONSTRAINT DF_MeliAutoReplySch_Start DEFAULT '21:00',
+        EndTime NVARCHAR(5) NOT NULL CONSTRAINT DF_MeliAutoReplySch_End DEFAULT '06:00'
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM MeliAutoReplySchedule)
+BEGIN
+    INSERT INTO MeliAutoReplySchedule (DayOfWeek, IsActive, AllDay, StartTime, EndTime) VALUES
+    (0, 1, 0, '21:00', '06:00'),
+    (1, 1, 0, '21:00', '06:00'),
+    (2, 1, 0, '21:00', '06:00'),
+    (3, 1, 0, '21:00', '06:00'),
+    (4, 1, 0, '21:00', '06:00'),
+    (5, 1, 0, '21:00', '06:00'),
+    (6, 1, 0, '21:00', '06:00');
+END
+GO
+
+-- Config del respondedor automatico. Arranca APAGADO (el usuario lo prende cuando quiere).
+IF NOT EXISTS (SELECT 1 FROM AppSettings WHERE [Key] = 'meli.autoreply.enabled')
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('meli.autoreply.enabled', '0');
+IF NOT EXISTS (SELECT 1 FROM AppSettings WHERE [Key] = 'meli.autoreply.delayMinutes')
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('meli.autoreply.delayMinutes', '30');
+IF NOT EXISTS (SELECT 1 FROM AppSettings WHERE [Key] = 'meli.autoreply.signature')
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('meli.autoreply.signature', N'Atte. Leandro de TIENDA FRIKAF');
+IF NOT EXISTS (SELECT 1 FROM AppSettings WHERE [Key] = 'meli.autoreply.holidayDate')
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('meli.autoreply.holidayDate', '');
+GO
+
 -- MeliItems: formato del cafe (1KG | MEDIO | CUARTO) que representa cada publicacion vinculada
 -- a un CafeProducto. Sirve para el push de stock + precio desde el modulo cafe.
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='CafeFormato' AND Object_ID=Object_ID('MeliItems'))

@@ -19,11 +19,18 @@ public class SyncMeliQuestionsJob : IScheduledJob
         using var scope = _scopeFactory.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<MeliQuestionService>();
         var result = await service.SyncAsync();
+
+        // Respondedor automático: después de refrescar, si está activo y en horario,
+        // contesta solo las preguntas que llevan mucho sin responder.
+        var auto = await service.RunAutoReplyAsync();
+
         return JsonSerializer.Serialize(new
         {
             sincronizadas = result.TotalSynced,
             nuevas = result.TotalNew,
-            errores = result.TotalErrors
+            errores = result.TotalErrors,
+            auto_respondidas = auto.Answered,
+            auto_estado = auto.Motivo
         });
     }
 }

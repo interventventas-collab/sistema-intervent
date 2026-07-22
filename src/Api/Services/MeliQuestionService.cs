@@ -179,7 +179,8 @@ public class MeliQuestionService
     }
 
     /// <summary>Postea la respuesta a MeLi y actualiza el registro local.</summary>
-    public async Task<MeliQuestion?> AnswerAsync(int questionId, string answerText)
+    /// <param name="auto">True si la manda el robot (respondedor automático), false si la escribió una persona.</param>
+    public async Task<MeliQuestion?> AnswerAsync(int questionId, string answerText, bool auto = false)
     {
         if (string.IsNullOrWhiteSpace(answerText)) throw new ArgumentException("La respuesta no puede estar vacía");
         var q = await _db.MeliQuestions.FirstOrDefaultAsync(x => x.Id == questionId);
@@ -213,10 +214,124 @@ public class MeliQuestionService
 
         q.AnswerText = answerText.Trim();
         q.Status = "ANSWERED";
+        q.AutoAnswered = auto;
         q.DateAnswered = DateTime.UtcNow;
         q.LastSyncedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return q;
+    }
+
+    // ===================== RESPONDEDOR AUTOMÁTICO =====================
+    // Corre en cada ciclo del robot (cada 1 min). De noche (o en la franja configurada),
+    // si una pregunta lleva más de X minutos sin que nadie la conteste, responde solo
+    // con uno de los mensajes de la lista (elegido al azar) + la firma.
+    // Config en AppSettings + tablas MeliAutoReplyMessages / MeliAutoReplySchedule.
+
+    private const string CfgEnabled = "meli.autoreply.enabled";
+    private const string CfgDelayMinutes = "meli.autoreply.delayMinutes";
+    private const string CfgSignature = "meli.autoreply.signature";
+    private const string CfgHolidayDate = "meli.autoreply.holidayDate";
+    private const int MaxPerRun = 8;          // tope por ciclo para no mandar todo de golpe (anti-spam)
+    private const int SpacingMs = 1500;       // pausita entre respuestas
+
+    private async Task<string?> GetSettingAsync(string key)
+        => (await _db.AppSettings.FirstOrDefaultAsync(x => x.Key == key))?.Value;
+
+    /// <summary>Hora actual de Argentina (UTC-3, sin horario de verano).</summary>
+    private static DateTime NowArgentina() => DateTime.UtcNow.AddHours(-3);
+
+    /// <summary>Arma el texto final: cuerpo del mensaje + firma configurada.</summary>
+    private static string ComposeAnswer(string body, string? signature)
+    {
+        body = (body ?? "").Trim();
+        signature = (signature ?? "").Trim();
+        return string.IsNullOrEmpty(signature) ? body : $"{body} {signature}";
+    }
+
+    private static TimeSpan ParseHhmm(string? hhmm)
+    {
+        if (TimeSpan.TryParse(hhmm, out var ts)) return ts;
+        return TimeSpan.Zero;
+    }
+
+    /// <summary>Devuelve true si en este momento (hora Argentina) el robot debe responder según la config.</summary>
+    private async Task<bool> IsWithinActiveWindowAsync()
+    {
+        var nowArt = NowArgentina();
+
+        // Feriado manual: "hoy responder todo el día" — si la fecha guardada es hoy, activo todo el día.
+        var holiday = await GetSettingAsync(CfgHolidayDate);
+        if (!string.IsNullOrWhiteSpace(holiday) && holiday == nowArt.ToString("yyyy-MM-dd"))
+            return true;
+
+        int dow = (int)nowArt.DayOfWeek; // 0=Domingo .. 6=Sábado
+        var row = await _db.MeliAutoReplySchedule.FirstOrDefaultAsync(s => s.DayOfWeek == dow);
+        if (row is null || !row.IsActive) return false;
+        if (row.AllDay) return true;
+
+        var start = ParseHhmm(row.StartTime);
+        var end = ParseHhmm(row.EndTime);
+        if (start == end) return true; // desde == hasta => todo el día (seguridad)
+        var tod = nowArt.TimeOfDay;
+        return start < end
+            ? (tod >= start && tod < end)              // franja normal dentro del mismo día
+            : (tod >= start || tod < end);             // franja que cruza la medianoche (ej. 21:00 a 06:00)
+    }
+
+    /// <summary>
+    /// Corre el respondedor automático: si está activo y estamos en la franja horaria,
+    /// contesta las preguntas sin responder que llevan más de X min esperando.
+    /// </summary>
+    public async Task<MeliAutoReplyRunResult> RunAutoReplyAsync()
+    {
+        var enabled = await GetSettingAsync(CfgEnabled);
+        if (enabled != "1" && !string.Equals(enabled, "true", StringComparison.OrdinalIgnoreCase))
+            return new MeliAutoReplyRunResult(false, "apagado", 0, 0);
+
+        if (!await IsWithinActiveWindowAsync())
+            return new MeliAutoReplyRunResult(true, "fuera de horario", 0, 0);
+
+        // Mensajes activos
+        var messages = await _db.MeliAutoReplyMessages
+            .Where(m => m.IsActive)
+            .Select(m => m.Body)
+            .ToListAsync();
+        if (messages.Count == 0)
+            return new MeliAutoReplyRunResult(true, "sin mensajes configurados", 0, 0);
+
+        var signature = await GetSettingAsync(CfgSignature);
+
+        // Colchón: solo preguntas que llevan >= delay minutos sin responder.
+        int delayMin = int.TryParse(await GetSettingAsync(CfgDelayMinutes), out var d) ? d : 30;
+        var cutoff = DateTime.UtcNow.AddMinutes(-Math.Max(0, delayMin));
+
+        var pending = await _db.MeliQuestions
+            .Where(q => q.Status == "UNANSWERED" && q.AnswerText == null
+                        && !q.AutoAnswered && q.DateCreated <= cutoff)
+            .OrderBy(q => q.DateCreated)   // las más viejas primero (bajar reputación es lo peor)
+            .Take(MaxPerRun)
+            .Select(q => q.Id)
+            .ToListAsync();
+
+        int answered = 0, errors = 0;
+        foreach (var qId in pending)
+        {
+            try
+            {
+                var body = messages[Random.Shared.Next(messages.Count)];
+                var text = ComposeAnswer(body, signature);
+                var result = await AnswerAsync(qId, text, auto: true);
+                if (result is not null) answered++;
+                else errors++;
+            }
+            catch
+            {
+                errors++; // toleramos el fallo puntual y seguimos; se reintenta en el próximo ciclo
+            }
+            if (pending.Count > 1) await Task.Delay(SpacingMs); // espaciado anti-ráfaga
+        }
+
+        return new MeliAutoReplyRunResult(true, "ok", answered, errors);
     }
 
     public async Task MarkAllSeenAsync()
@@ -229,3 +344,5 @@ public class MeliQuestionService
 }
 
 public record MeliQuestionSyncResult(int TotalSynced, int TotalNew, int TotalErrors, List<string> Errors);
+
+public record MeliAutoReplyRunResult(bool Enabled, string Motivo, int Answered, int Errors);

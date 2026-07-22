@@ -5877,6 +5877,37 @@ public class ApiClient
     public async Task<object?> SyncMeliQuestionsNowAsync()
         => await PostAsync<object>("/api/meli/questions/sync-now", new { });
 
+    // ===== MeLi Respondedor automático =====
+    public async Task<MeliAutoReplyConfigDto?> GetMeliAutoReplyConfigAsync()
+        => await GetAsync<MeliAutoReplyConfigDto>("/api/meli/autoreply/config");
+
+    public async Task SaveMeliAutoReplyConfigAsync(bool enabled, int delayMinutes, string signature)
+        => await PutAsync<object>("/api/meli/autoreply/config", new { enabled, delayMinutes, signature });
+
+    public async Task ToggleMeliAutoReplyAsync(bool enabled)
+        => await PostAsync<object>("/api/meli/autoreply/toggle", new { enabled });
+
+    public async Task SetMeliAutoReplyHolidayTodayAsync(bool enabled)
+        => await PostAsync<object>("/api/meli/autoreply/holiday-today", new { enabled });
+
+    public async Task<MeliAutoReplyMessageDto?> CreateMeliAutoReplyMessageAsync(string body, bool isActive)
+        => await PostAsync<MeliAutoReplyMessageDto>("/api/meli/autoreply/messages", new { body, isActive });
+
+    public async Task<MeliAutoReplyMessageDto?> UpdateMeliAutoReplyMessageAsync(int id, string body, bool isActive)
+        => await PutAsync<MeliAutoReplyMessageDto>($"/api/meli/autoreply/messages/{id}", new { body, isActive });
+
+    public async Task<bool> DeleteMeliAutoReplyMessageAsync(int id)
+        => await DeleteAsync($"/api/meli/autoreply/messages/{id}");
+
+    public async Task SaveMeliAutoReplyScheduleAsync(List<MeliAutoReplyScheduleDto> rows)
+        => await PutAsync<object>("/api/meli/autoreply/schedule", rows);
+
+    public async Task<MeliAutoReplyPreviewDto?> PreviewMeliAutoReplyAsync()
+        => await GetAsync<MeliAutoReplyPreviewDto>("/api/meli/autoreply/preview");
+
+    public async Task<List<MeliAutoReplyRecentDto>?> GetMeliAutoReplyRecentAsync()
+        => await GetAsync<List<MeliAutoReplyRecentDto>>("/api/meli/autoreply/recent");
+
     // ===== Sitios (marcas / landings) =====
     public async Task<List<SitioDto>?> GetSitiosAsync()
         => await GetAsync<List<SitioDto>>("/api/sitios");
