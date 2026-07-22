@@ -183,9 +183,20 @@ public class ApiClient
     }
 
     // --- Arreglo masivo de fotos en infracción ---
-    public async Task<FixInfractionPreview?> PreviewFixInfractionsAsync()
+    public async Task<(FixInfractionPreview? preview, string? error)> PreviewFixInfractionsAsync()
     {
-        return await GetAsync<FixInfractionPreview>("/api/meli/photo-infractions/preview-fix");
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync("/api/meli/photo-infractions/preview-fix");
+        if (resp.IsSuccessStatusCode)
+            return (await resp.Content.ReadFromJsonAsync<FixInfractionPreview>(), null);
+        string error = "No se pudo analizar.";
+        try
+        {
+            var el = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+            if (el.TryGetProperty("error", out var e) && e.GetString() is string s && !string.IsNullOrWhiteSpace(s)) error = s;
+        }
+        catch { }
+        return (null, error);
     }
 
     public async Task<ApplyFixResult?> ApplyFixInfractionsAsync(IEnumerable<object> items)

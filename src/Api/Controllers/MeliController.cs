@@ -1078,7 +1078,7 @@ public class MeliController : ControllerBase
     public async Task<IActionResult> PreviewFixPhotoInfractions()
     {
         try { return Ok(await _itemService.PreviewFixPhotoInfractionsAsync()); }
-        catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
+        catch (Exception ex) { Console.WriteLine($"[FIX-PREVIEW-ERR] {ex}"); return BadRequest(new { error = ex.Message }); }
     }
 
     /// <summary>2026-07-21: aplica el arreglo masivo (quita las fotos en infracción indicadas).</summary>

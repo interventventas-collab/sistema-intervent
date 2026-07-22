@@ -4015,7 +4015,12 @@
     {
         showFixModal = true; fixLoading = true; fixPreview = null;
         StateHasChanged();
-        try { fixPreview = await Api.PreviewFixInfractionsAsync(); }
+        try
+        {
+            var (preview, error) = await Api.PreviewFixInfractionsAsync();
+            fixPreview = preview;
+            if (preview is null) ToastService.Error("No se pudo analizar: " + (error ?? "error desconocido"));
+        }
         catch (Exception ex) { ToastService.Error("Error al analizar: " + ex.Message); }
         finally { fixLoading = false; StateHasChanged(); }
     }
