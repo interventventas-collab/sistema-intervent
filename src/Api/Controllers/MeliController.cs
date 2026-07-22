@@ -1029,6 +1029,30 @@ public class MeliController : ControllerBase
         }
     }
 
+    /// <summary>2026-07-22: ficha técnica (atributos) de una publicación existente.</summary>
+    [HttpGet("items/{meliItemId}/attributes")]
+    public async Task<IActionResult> GetItemAttributes(string meliItemId)
+    {
+        var result = await _itemService.GetItemAttributesAsync(meliItemId);
+        if (result is null) return NotFound();
+        return Ok(result);
+    }
+
+    /// <summary>2026-07-22: guarda la ficha técnica (atributos) de una publicación en MeLi.</summary>
+    [HttpPut("items/{meliItemId}/attributes")]
+    public async Task<IActionResult> UpdateItemAttributes(string meliItemId, [FromBody] UpdateItemAttributesRequest request)
+    {
+        try
+        {
+            var result = await _itemService.UpdateItemAttributesAsync(meliItemId, request);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     /// <summary>2026-07-21: escanea las infracciones de la cuenta y devuelve las publicaciones marcadas (foto en infracción).</summary>
     [HttpGet("photo-infractions")]
     public async Task<IActionResult> ScanPhotoInfractions()

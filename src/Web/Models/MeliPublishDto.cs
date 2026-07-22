@@ -32,6 +32,37 @@ public class SuggestedAttributeDto
     public string? ValueName { get; set; }
 }
 
+// --- Ficha técnica (atributos) de publicaciones existentes (Etapa 2a) ---
+public class MeliAttributeFieldDto
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string ValueType { get; set; } = "";
+    public bool Required { get; set; }
+    public List<AttributeValueOption> Values { get; set; } = new();
+    public string? CurrentValueId { get; set; }
+    public string? CurrentValueName { get; set; }
+}
+
+public class MeliItemAttributesDto
+{
+    public string CategoryId { get; set; } = "";
+    public bool CatalogListing { get; set; }
+    public List<MeliAttributeFieldDto> Attributes { get; set; } = new();
+}
+
+public class SaveAttributeInput
+{
+    public string Id { get; set; } = "";
+    public string? ValueId { get; set; }
+    public string? ValueName { get; set; }
+}
+
+public class UpdateItemAttributesRequest
+{
+    public List<SaveAttributeInput> Attributes { get; set; } = new();
+}
+
 public class PublishItemRequest
 {
     public int ProductId { get; set; }

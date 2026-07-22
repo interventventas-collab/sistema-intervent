@@ -182,6 +182,28 @@ public class ApiClient
         return await resp.Content.ReadFromJsonAsync<PictureDiagnosisDto>();
     }
 
+    // --- 2026-07-22: Ficha técnica (atributos) de publicaciones existentes ---
+    public async Task<MeliItemAttributesDto?> GetMeliItemAttributesAsync(string meliItemId)
+    {
+        return await GetAsync<MeliItemAttributesDto>($"/api/meli/items/{meliItemId}/attributes");
+    }
+
+    public async Task<(MeliItemAttributesDto? result, string? error)> UpdateMeliItemAttributesAsync(string meliItemId, UpdateItemAttributesRequest request)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PutAsJsonAsync($"/api/meli/items/{meliItemId}/attributes", request);
+        if (resp.IsSuccessStatusCode)
+            return (await resp.Content.ReadFromJsonAsync<MeliItemAttributesDto>(), null);
+        string error = "No se pudo guardar la ficha técnica.";
+        try
+        {
+            var el = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+            if (el.TryGetProperty("error", out var e) && e.GetString() is string s && !string.IsNullOrWhiteSpace(s)) error = s;
+        }
+        catch { }
+        return (null, error);
+    }
+
     // --- Arreglo masivo de fotos en infracción ---
     public async Task<(FixInfractionPreview? preview, string? error)> PreviewFixInfractionsAsync()
     {

@@ -139,6 +139,20 @@
     .fixm-cancel { background:#f1f5f9; border:1px solid #cbd5e1; color:#334155; border-radius:8px; padding:9px 14px; font-size:0.83rem; font-weight:600; cursor:pointer; }
     .fixm-go { background:#b45309; color:#fff; border:none; border-radius:8px; padding:9px 16px; font-size:0.83rem; font-weight:700; cursor:pointer; }
     .fixm-go:disabled { background:#94a3b8; cursor:default; }
+
+    /* Ficha técnica (Etapa 2a) */
+    .plist-ficha-panel { background:#f8fafc; border:1px solid #e2e8f0; border-top:none; border-radius:0 0 10px 10px; padding:14px 18px; margin:-4px 0 8px 0; }
+    .ft-head { font-size:0.8rem; color:#475569; margin-bottom:10px; }
+    .ft-head .ft-falta { color:#b45309; }
+    .ft-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:10px 14px; margin-bottom:12px; }
+    .ft-field { display:flex; flex-direction:column; gap:3px; }
+    .ft-field label { font-size:0.74rem; font-weight:600; color:#334155; }
+    .ft-field .ft-req { color:#dc2626; }
+    .ft-field select, .ft-field input { padding:7px 9px; border:1px solid #cbd5e1; border-radius:7px; font-size:0.82rem; background:#fff; }
+    .ft-field select:focus, .ft-field input:focus { outline:none; border-color:#6366f1; box-shadow:0 0 0 3px rgba(99,102,241,.12); }
+    .ft-field.req-empty select, .ft-field.req-empty input { border-color:#f59e0b; background:#fffbeb; }
+    .ft-field.req-empty label { color:#b45309; }
+    .ft-foot { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; border-top:1px solid #e2e8f0; padding-top:10px; }
 </style>
 
 <div class="card card-publicaciones">
@@ -4318,6 +4332,106 @@
         }
     </div>;
 
+    // ===== Ficha técnica (atributos) — Etapa 2a, 2026-07-22 =====
+    private int? expandedFichaKey = null;
+    private bool fichaLoading = false;
+    private bool fichaSaving = false;
+    private bool fichaCatalog = false;
+    private List<MeliAttributeFieldDto> fichaFields = new();
+    private Dictionary<string, string> fichaInput = new(); // attrId -> value_id (lista) o value_name (texto)
+
+    private async Task ToggleFichaPanel(MeliItemDto item)
+    {
+        if (expandedFichaKey == item.Id) { expandedFichaKey = null; return; }
+        expandedFichaKey = item.Id;
+        fichaFields = new(); fichaInput = new(); fichaCatalog = false;
+        fichaLoading = true;
+        StateHasChanged();
+        var dto = await Api.GetMeliItemAttributesAsync(item.MeliItemId);
+        fichaLoading = false;
+        if (dto is null) { ToastService.Error("No se pudo cargar la ficha técnica."); return; }
+        fichaCatalog = dto.CatalogListing;
+        fichaFields = dto.Attributes;
+        foreach (var f in fichaFields)
+            fichaInput[f.Id] = (f.Values.Count > 0) ? (f.CurrentValueId ?? "") : (f.CurrentValueName ?? "");
+        StateHasChanged();
+    }
+
+    private int FichaFaltantesReq() => fichaFields.Count(f => f.Required && string.IsNullOrWhiteSpace(fichaInput.GetValueOrDefault(f.Id)));
+
+    private async Task GuardarFicha(MeliItemDto item)
+    {
+        var inputs = new List<SaveAttributeInput>();
+        foreach (var f in fichaFields)
+        {
+            var val = (fichaInput.GetValueOrDefault(f.Id) ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(val)) continue;
+            if (f.Values.Count > 0) inputs.Add(new SaveAttributeInput { Id = f.Id, ValueId = val });
+            else inputs.Add(new SaveAttributeInput { Id = f.Id, ValueName = val });
+        }
+        if (inputs.Count == 0) { ToastService.Error("Completá al menos un dato para guardar."); return; }
+        fichaSaving = true; StateHasChanged();
+        var (res, err) = await Api.UpdateMeliItemAttributesAsync(item.MeliItemId, new UpdateItemAttributesRequest { Attributes = inputs });
+        fichaSaving = false;
+        if (res is null) { ToastService.Error(err ?? "No se pudo guardar la ficha."); StateHasChanged(); return; }
+        ToastService.Success("✅ Ficha técnica actualizada en MercadoLibre.");
+        fichaFields = res.Attributes;
+        foreach (var f in fichaFields)
+            fichaInput[f.Id] = (f.Values.Count > 0) ? (f.CurrentValueId ?? "") : (f.CurrentValueName ?? "");
+        StateHasChanged();
+    }
+
+    private RenderFragment RenderFichaPanel(MeliItemDto item) => @<div class="plist-ficha-panel" @onclick:stopPropagation="true">
+        @if (fichaLoading)
+        {
+            <div class="pp-loading">Cargando ficha técnica…</div>
+        }
+        else
+        {
+            @if (fichaCatalog)
+            {
+                <div class="pp-warn">⚠️ Es una publicación de <b>catálogo</b>: MercadoLibre suele tener la ficha bloqueada. Si al guardar te da error, es por esto.</div>
+            }
+            @if (fichaFields.Count == 0)
+            {
+                <div class="pp-empty">No pude traer los campos de ficha de esta categoría.</div>
+            }
+            else
+            {
+                var falt = FichaFaltantesReq();
+                <div class="ft-head">@fichaFields.Count campos · <b class="@(falt > 0 ? "ft-falta" : "")">@falt obligatorio(s) sin completar</b></div>
+                <div class="ft-grid">
+                    @foreach (var f in fichaFields)
+                    {
+                        var val = fichaInput.GetValueOrDefault(f.Id) ?? "";
+                        var vacio = string.IsNullOrWhiteSpace(val);
+                        <div class="ft-field @(f.Required && vacio ? "req-empty" : "")">
+                            <label>@f.Name @if (f.Required) { <span class="ft-req">*</span> }</label>
+                            @if (f.Values.Count > 0)
+                            {
+                                <select @onchange="e => fichaInput[f.Id] = e.Value?.ToString() ?? string.Empty">
+                                    <option value="" selected="@vacio">(elegir)</option>
+                                    @foreach (var opt in f.Values)
+                                    {
+                                        <option value="@opt.Id" selected="@(opt.Id == val)">@opt.Name</option>
+                                    }
+                                </select>
+                            }
+                            else
+                            {
+                                <input value="@val" placeholder="(vacío)" @onchange="e => fichaInput[f.Id] = e.Value?.ToString() ?? string.Empty" />
+                            }
+                        </div>
+                    }
+                </div>
+                <div class="ft-foot">
+                    <span class="pp-count">Los campos con <b>*</b> son los que MeLi valora para el ranking. Completar la ficha mejora la posición en las búsquedas.</span>
+                    <button class="pp-save" disabled="@fichaSaving" @onclick="() => GuardarFicha(item)">@(fichaSaving ? "Guardando…" : "💾 Guardar ficha en MercadoLibre")</button>
+                </div>
+            }
+        }
+    </div>;
+
     // Modelo de comisión para la vista previa local (mismo criterio que CalcMargenPct: usa el sale_fee real cacheado
     // si el precio no se movió, si no cae al 30% estimado). Así el preview coincide con el margen que muestra la fila.
     private (decimal commPct, decimal shipping, bool exact) FeeModelPreview(MeliItemDto item)
@@ -6923,7 +7037,9 @@
                     else
                     {
                         var isPhotosOpen = expandedPhotosKey == item.Id;
+                        var isFichaOpen = expandedFichaKey == item.Id;
                         <button class="plist-photobtn @(isPhotosOpen ? "open" : "")" @onclick="() => TogglePhotosPanel(item)" title="Ver y editar fotos de la publicación">📷</button>
+                        <button class="plist-photobtn @(isFichaOpen ? "open" : "")" @onclick="() => ToggleFichaPanel(item)" title="Ver y completar la ficha técnica">📋</button>
                         <button class="plist-chev @(isEditOpen ? "open" : "")" @onclick="() => ToggleEditPanel(item.Id)" aria-expanded="@isEditOpen" title="Editar precio y sincronización">@(isEditOpen ? "⌃" : "⌄")</button>
                     }
                 </div>
@@ -6931,6 +7047,10 @@
             @if (!isMulti && expandedPhotosKey == item.Id)
             {
                 @RenderPhotosPanel(item)
+            }
+            @if (!isMulti && expandedFichaKey == item.Id)
+            {
+                @RenderFichaPanel(item)
             }
             @if (isEditOpen)
             {
@@ -6957,7 +7077,9 @@
                             @if (grp.IsFamily)
                             {
                                 var vPhotosOpen = expandedPhotosKey == v.Id;
+                                var vFichaOpen = expandedFichaKey == v.Id;
                                 <button class="plist-photobtn @(vPhotosOpen ? "open" : "")" @onclick="() => TogglePhotosPanel(v)" title="Ver y editar fotos de esta publicación">📷</button>
+                                <button class="plist-photobtn @(vFichaOpen ? "open" : "")" @onclick="() => ToggleFichaPanel(v)" title="Ver y completar la ficha técnica">📋</button>
                             }
                             <button class="plist-chev @(vEditOpen ? "open" : "")" @onclick="() => ToggleEditPanel(v.Id)" title="Editar">@(vEditOpen ? "⌃" : "⌄")</button>
                         </div>
@@ -6965,6 +7087,10 @@
                     @if (grp.IsFamily && expandedPhotosKey == v.Id)
                     {
                         @RenderPhotosPanel(v)
+                    }
+                    @if (grp.IsFamily && expandedFichaKey == v.Id)
+                    {
+                        @RenderFichaPanel(v)
                     }
                     @if (vEditOpen)
                     {

@@ -431,6 +431,35 @@ public class PublishAttributeDto
     public string? ValueName { get; set; }
 }
 
+// --- Ficha técnica (atributos) de publicaciones EXISTENTES (Etapa 2a, 2026-07-22) ---
+public record MeliAttributeFieldDto(
+    string Id,
+    string Name,
+    string ValueType,
+    bool Required,
+    List<AttributeValueOption> Values,   // si tiene opciones = desplegable; si está vacío = texto libre
+    string? CurrentValueId,
+    string? CurrentValueName
+);
+
+public record MeliItemAttributesDto(
+    string CategoryId,
+    bool CatalogListing,
+    List<MeliAttributeFieldDto> Attributes
+);
+
+public class SaveAttributeInput
+{
+    public string Id { get; set; } = "";
+    public string? ValueId { get; set; }    // para atributos de lista
+    public string? ValueName { get; set; }  // para atributos de texto libre
+}
+
+public class UpdateItemAttributesRequest
+{
+    public List<SaveAttributeInput> Attributes { get; set; } = new();
+}
+
 public class PublishItemResponse
 {
     public bool Success { get; set; }

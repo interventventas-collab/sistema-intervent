@@ -3050,6 +3050,119 @@ public class MeliItemService
         return results.OrderByDescending(a => a.Required).ThenBy(a => a.Name).ToList();
     }
 
+    /// <summary>2026-07-22: Ficha técnica de una publicación EXISTENTE. Trae el catálogo de atributos de su
+    /// categoría (obligatorios primero, sin los ocultos/automáticos) y le pega los valores que ya tiene cargados.
+    /// Para el panel "Ficha técnica".</summary>
+    public async Task<MeliItemAttributesDto?> GetItemAttributesAsync(string meliItemId)
+    {
+        var item = await _db.MeliItems
+            .Include(i => i.MeliAccount)
+            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId);
+        if (item?.MeliAccount is null) return null;
+        var token = await _accountService.GetValidTokenAsync(item.MeliAccount);
+        if (token is null) return null;
+
+        var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        string categoryId = item.CategoryId ?? "";
+        bool catalog = item.CatalogListing;
+        var current = new Dictionary<string, (string? vid, string? vname)>();
+        try
+        {
+            var resp = await http.GetAsync($"https://api.mercadolibre.com/items/{meliItemId}");
+            if (resp.IsSuccessStatusCode)
+            {
+                var json = await resp.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("category_id", out var cid) && cid.GetString() is string cs && !string.IsNullOrEmpty(cs))
+                    categoryId = cs;
+                if (root.TryGetProperty("catalog_listing", out var cl) && cl.ValueKind == JsonValueKind.True)
+                    catalog = true;
+                if (root.TryGetProperty("attributes", out var attrs) && attrs.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var a in attrs.EnumerateArray())
+                    {
+                        var id = a.TryGetProperty("id", out var ai) ? ai.GetString() : null;
+                        if (string.IsNullOrEmpty(id)) continue;
+                        var vid = a.TryGetProperty("value_id", out var v1) && v1.ValueKind != JsonValueKind.Null ? v1.GetString() : null;
+                        var vname = a.TryGetProperty("value_name", out var v2) && v2.ValueKind != JsonValueKind.Null ? v2.GetString() : null;
+                        if (vid == "-1") vid = null;
+                        current[id] = (vid, vname);
+                    }
+                }
+            }
+        }
+        catch { /* si falla la lectura, mostramos la ficha vacía igual */ }
+
+        if (string.IsNullOrEmpty(categoryId))
+            return new MeliItemAttributesDto("", catalog, new());
+
+        var catAttrs = await GetCategoryAttributesAsync(categoryId);
+        var fields = catAttrs.Select(ca =>
+        {
+            current.TryGetValue(ca.Id, out var cur);
+            return new MeliAttributeFieldDto(ca.Id, ca.Name, ca.ValueType, ca.Required, ca.Values, cur.vid, cur.vname);
+        }).ToList();
+
+        return new MeliItemAttributesDto(categoryId, catalog, fields);
+    }
+
+    /// <summary>2026-07-22: guarda la ficha técnica en MeLi (PUT /items/{id} con attributes). Manda solo los
+    /// atributos con valor: {id, value_id} para los de lista, {id, value_name} para los de texto libre.</summary>
+    public async Task<MeliItemAttributesDto> UpdateItemAttributesAsync(string meliItemId, UpdateItemAttributesRequest request)
+    {
+        var item = await _db.MeliItems
+            .Include(i => i.MeliAccount)
+            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId);
+        if (item is null) throw new Exception($"Item {meliItemId} no encontrado");
+        if (item.MeliAccount is null) throw new Exception($"Cuenta asociada no encontrada para {meliItemId}");
+        var token = await _accountService.GetValidTokenAsync(item.MeliAccount);
+        if (token is null) throw new Exception("Token expirado. Reconecta la cuenta de MercadoLibre.");
+
+        var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var attributes = request.Attributes
+            .Where(a => !string.IsNullOrWhiteSpace(a.ValueId) || !string.IsNullOrWhiteSpace(a.ValueName))
+            .Select(a => !string.IsNullOrWhiteSpace(a.ValueId)
+                ? (object)new { id = a.Id, value_id = a.ValueId }
+                : new { id = a.Id, value_name = a.ValueName })
+            .ToList();
+        if (attributes.Count == 0) throw new Exception("No hay datos de ficha técnica para guardar.");
+
+        var payload = new Dictionary<string, object> { ["attributes"] = attributes };
+        var json = JsonSerializer.Serialize(payload);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var response = await http.PutAsync($"https://api.mercadolibre.com/items/{meliItemId}", content);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+            response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            var newToken = await _accountService.GetValidTokenAsync(item.MeliAccount, forceRefresh: true);
+            if (newToken is not null)
+            {
+                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", newToken);
+                content = new StringContent(json, Encoding.UTF8, "application/json");
+                response = await http.PutAsync($"https://api.mercadolibre.com/items/{meliItemId}", content);
+            }
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync();
+            throw new Exception($"Error de MercadoLibre ({response.StatusCode}): {errorBody}");
+        }
+
+        item.UpdatedAt = DateTime.UtcNow;
+        item.LastUpdated = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        return await GetItemAttributesAsync(meliItemId)
+            ?? new MeliItemAttributesDto(item.CategoryId ?? "", item.CatalogListing, new());
+    }
+
     public async Task<PublishItemResponse> PublishItemAsync(PublishItemRequest request)
     {
         var account = await _db.MeliAccounts.FindAsync(request.MeliAccountId);
