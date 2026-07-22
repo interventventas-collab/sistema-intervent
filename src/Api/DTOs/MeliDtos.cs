@@ -308,7 +308,8 @@ public record PhotoInfractionDto(string MeliItemId, string Reason, bool PhotoRel
 public record ScanPhotoInfractionsResult(
     int TotalInfractions,   // infracciones de items encontradas en la cuenta
     int Matched,            // cuantas corresponden a publicaciones que tenemos cargadas
-    List<PhotoInfractionDto> Items
+    List<PhotoInfractionDto> Items,
+    Dictionary<string, int> Breakdown  // filter_subgroup -> cantidad (para mostrar el desglose)
 );
 
 public class DiagnosePictureRequest

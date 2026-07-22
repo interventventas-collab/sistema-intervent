@@ -2509,6 +2509,7 @@ public class MeliItemService
     {
         var accounts = await _db.MeliAccounts.ToListAsync();
         var byItem = new Dictionary<string, (string reason, bool photo)>();
+        var breakdown = new Dictionary<string, int>();
         int totalItm = 0;
         var mlaRegex = new System.Text.RegularExpressions.Regex(@"\bML[A-Z]\d{6,}\b");
 
@@ -2534,15 +2535,16 @@ public class MeliItemService
                     resp = await http.GetAsync(url);
                 }
                 if (!resp.IsSuccessStatusCode) break;
-
                 var json = await resp.Content.ReadAsStringAsync();
+
                 using var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
-                // El array de resultados puede venir como raíz, o en "results" / "data".
+                // El array de infracciones viene en "infractions" (fallbacks: results/data o raíz array).
                 JsonElement arr;
-                if (root.ValueKind == JsonValueKind.Array) arr = root;
+                if (root.TryGetProperty("infractions", out var inf0) && inf0.ValueKind == JsonValueKind.Array) arr = inf0;
                 else if (root.TryGetProperty("results", out var r) && r.ValueKind == JsonValueKind.Array) arr = r;
                 else if (root.TryGetProperty("data", out var d) && d.ValueKind == JsonValueKind.Array) arr = d;
+                else if (root.ValueKind == JsonValueKind.Array) arr = root;
                 else break;
 
                 int count = 0;
@@ -2554,13 +2556,21 @@ public class MeliItemService
                         !elementType.Equals("ITM", StringComparison.OrdinalIgnoreCase))
                         continue; // preguntas / reviews no nos interesan
 
-                    // Sacar el MLA de cualquier campo string del objeto (no dependemos del nombre exacto).
-                    var m = mlaRegex.Match(inf.GetRawText());
-                    if (!m.Success) continue;
-                    var mla = m.Value;
+                    // El MLA viene en related_item_id o element_id; si no, lo sacamos por regex del objeto.
+                    string? mla = null;
+                    if (inf.TryGetProperty("related_item_id", out var rii) && rii.ValueKind == JsonValueKind.String) mla = rii.GetString();
+                    if (string.IsNullOrEmpty(mla) && inf.TryGetProperty("element_id", out var eid) && eid.ValueKind == JsonValueKind.String) mla = eid.GetString();
+                    if (string.IsNullOrEmpty(mla)) { var m = mlaRegex.Match(inf.GetRawText()); if (m.Success) mla = m.Value; }
+                    if (string.IsNullOrEmpty(mla)) continue;
+
                     totalItm++;
+                    var subgroup = inf.TryGetProperty("filter_subgroup", out var fs) ? (fs.GetString() ?? "") : "";
+                    if (!string.IsNullOrEmpty(subgroup))
+                        breakdown[subgroup] = breakdown.GetValueOrDefault(subgroup) + 1;
+
                     var reason = ExtractInfractionReason(inf);
-                    var isPhoto = _photoInfractionKeywords.Any(k => reason.Contains(k, StringComparison.OrdinalIgnoreCase));
+                    var isPhoto = IsPhotoSubgroup(subgroup) ||
+                                  _photoInfractionKeywords.Any(k => reason.Contains(k, StringComparison.OrdinalIgnoreCase));
                     if (byItem.TryGetValue(mla, out var prev))
                         byItem[mla] = (string.IsNullOrEmpty(prev.reason) ? reason : prev.reason, prev.photo || isPhoto);
                     else
@@ -2583,7 +2593,16 @@ public class MeliItemService
             .Select(kv => new PhotoInfractionDto(kv.Key, kv.Value.reason, kv.Value.photo))
             .ToList();
 
-        return new ScanPhotoInfractionsResult(totalItm, list.Count, list);
+        return new ScanPhotoInfractionsResult(totalItm, list.Count, list, breakdown);
+    }
+
+    // filter_subgroup que corresponden a problemas de FOTOS/imágenes.
+    private static bool IsPhotoSubgroup(string subgroup)
+    {
+        if (string.IsNullOrEmpty(subgroup)) return false;
+        var s = subgroup.ToUpperInvariant();
+        return s.Contains("PICTURE") || s.Contains("IMAGE") || s.Contains("PHOTO") ||
+               s.Contains("IMAGEN") || s.Contains("FOTO") || s.Contains("THUMBNAIL");
     }
 
     private static string ExtractInfractionReason(JsonElement inf)

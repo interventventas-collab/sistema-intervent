@@ -3929,7 +3929,7 @@
             }
             else if (res.TotalInfractions > 0)
             {
-                ToastService.Info($"Encontré {res.TotalInfractions} infracción(es) en la cuenta, pero ninguna parece ser de fotos.");
+                ToastService.Info($"No hay infracciones de FOTOS. Pero tu cuenta tiene {res.TotalInfractions} infracción(es) de otro tipo: {DesgloseInfracciones(res.Breakdown)}.");
             }
             else
             {
@@ -3938,6 +3938,21 @@
         }
         catch (Exception ex) { ToastService.Error("Error al escanear: " + ex.Message); }
         finally { scanningInfractions = false; StateHasChanged(); }
+    }
+
+    // Arma un texto legible del desglose de infracciones por tipo (filter_subgroup de MeLi).
+    private static string DesgloseInfracciones(Dictionary<string, int> breakdown)
+    {
+        if (breakdown is null || breakdown.Count == 0) return "sin detalle";
+        static string Etiqueta(string sub) => sub.ToUpperInvariant() switch
+        {
+            "CATALOG" => "Catálogo",
+            "QUALITY" => "Calidad",
+            "PRICING" or "PRICE" => "Precios",
+            "LISTING" => "Publicación",
+            _ => sub
+        };
+        return string.Join(", ", breakdown.OrderByDescending(kv => kv.Value).Select(kv => $"{Etiqueta(kv.Key)}: {kv.Value}"));
     }
 
     private async Task DiagnosticarFotos(MeliItemDto item)

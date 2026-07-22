@@ -41,6 +41,7 @@ public class ScanPhotoInfractionsResult
     public int TotalInfractions { get; set; }
     public int Matched { get; set; }
     public List<PhotoInfractionDto> Items { get; set; } = new();
+    public Dictionary<string, int> Breakdown { get; set; } = new();
 }
 
 public class PictureDiagnosisDto
