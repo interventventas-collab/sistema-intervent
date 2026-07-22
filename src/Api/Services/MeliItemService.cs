@@ -2718,10 +2718,12 @@ public class MeliItemService
         var photoItems = scan.Items.Where(x => x.PhotoRelated).ToList();
         if (photoItems.Count == 0) return new FixInfractionPreview(new(), 0, 0, 0);
 
-        var mlas = photoItems.Select(x => x.MeliItemId).ToList();
-        var items = await _db.MeliItems.Include(i => i.MeliAccount)
+        var mlas = photoItems.Select(x => x.MeliItemId).Distinct().ToList();
+        var itemsRaw = await _db.MeliItems.Include(i => i.MeliAccount)
             .Where(i => mlas.Contains(i.MeliItemId))
             .ToListAsync();
+        // Una publicación con variantes aparece varias veces (misma MLA); dejamos una fila por MLA.
+        var items = itemsRaw.GroupBy(i => i.MeliItemId).Select(g => g.First()).ToList();
         var titleByMla = items.ToDictionary(i => i.MeliItemId, i => i.Title ?? i.MeliItemId);
 
         // Traer las fotos actuales de todas las publicaciones con multiget (hasta 20 por llamada).
@@ -2733,7 +2735,7 @@ public class MeliItemService
             if (token is null) continue;
             var http = _httpFactory.CreateClient();
             http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            var ids = grp.Select(i => i.MeliItemId).ToList();
+            var ids = grp.Select(i => i.MeliItemId).Distinct().ToList();
             for (int i = 0; i < ids.Count; i += 20)
             {
                 var chunk = ids.Skip(i).Take(20);
