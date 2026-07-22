@@ -1073,6 +1073,22 @@ public class MeliController : ControllerBase
         }
     }
 
+    /// <summary>2026-07-21: vista previa del arreglo masivo de fotos en infracción (no cambia nada).</summary>
+    [HttpGet("photo-infractions/preview-fix")]
+    public async Task<IActionResult> PreviewFixPhotoInfractions()
+    {
+        try { return Ok(await _itemService.PreviewFixPhotoInfractionsAsync()); }
+        catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    /// <summary>2026-07-21: aplica el arreglo masivo (quita las fotos en infracción indicadas).</summary>
+    [HttpPost("photo-infractions/apply-fix")]
+    public async Task<IActionResult> ApplyFixPhotoInfractions([FromBody] ApplyFixRequest request)
+    {
+        try { return Ok(await _itemService.ApplyFixPhotoInfractionsAsync(request.Items)); }
+        catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     /// <summary>2026-06-19: refresca el sale_fee real (lo que MeLi cobra de comision)
     /// para una publicacion. Llama a /sites/MLA/listing_prices y guarda en MeliItems.</summary>
     [HttpPost("items/{meliItemId}/refresh-salefee")]

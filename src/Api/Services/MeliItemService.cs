@@ -2700,6 +2700,128 @@ public class MeliItemService
         catch { return url; }
     }
 
+    // Núcleo del id de una foto de MeLi (parte "ML…") para comparar fotos aunque cambie el prefijo/variante.
+    private static string PicCore(string id)
+    {
+        if (string.IsNullOrEmpty(id)) return "";
+        var m = System.Text.RegularExpressions.Regex.Match(id, "ML[A-Z]?\\d+");
+        return m.Success ? m.Value : id;
+    }
+
+    /// <summary>2026-07-21: vista previa del arreglo masivo. Para cada publicación con foto en infracción,
+    /// clasifica: "quitar" (la foto mala NO es portada y quedan ≥2 fotos → se puede quitar sola),
+    /// "apartar" (la mala es la PORTADA o quedarían muy pocas → mejor revisarla a mano),
+    /// "ya_ok" (la foto marcada ya no está = ya la corregiste). NO cambia nada.</summary>
+    public async Task<FixInfractionPreview> PreviewFixPhotoInfractionsAsync()
+    {
+        var scan = await ScanPhotoInfractionsAsync();
+        var photoItems = scan.Items.Where(x => x.PhotoRelated).ToList();
+        if (photoItems.Count == 0) return new FixInfractionPreview(new(), 0, 0, 0);
+
+        var mlas = photoItems.Select(x => x.MeliItemId).ToList();
+        var items = await _db.MeliItems.Include(i => i.MeliAccount)
+            .Where(i => mlas.Contains(i.MeliItemId))
+            .ToListAsync();
+        var titleByMla = items.ToDictionary(i => i.MeliItemId, i => i.Title ?? i.MeliItemId);
+
+        // Traer las fotos actuales de todas las publicaciones con multiget (hasta 20 por llamada).
+        var picsByMla = new Dictionary<string, List<string>>();
+        foreach (var grp in items.Where(i => i.MeliAccount != null).GroupBy(i => i.MeliAccountId))
+        {
+            var account = grp.First().MeliAccount!;
+            var token = await _accountService.GetValidTokenAsync(account);
+            if (token is null) continue;
+            var http = _httpFactory.CreateClient();
+            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            var ids = grp.Select(i => i.MeliItemId).ToList();
+            for (int i = 0; i < ids.Count; i += 20)
+            {
+                var chunk = ids.Skip(i).Take(20);
+                var url = $"https://api.mercadolibre.com/items?ids={string.Join(",", chunk)}&attributes=id,pictures";
+                var resp = await http.GetAsync(url);
+                if (!resp.IsSuccessStatusCode) continue;
+                var json = await resp.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.ValueKind != JsonValueKind.Array) continue;
+                foreach (var entry in doc.RootElement.EnumerateArray())
+                {
+                    if (!entry.TryGetProperty("body", out var body)) continue;
+                    var id = body.TryGetProperty("id", out var idp) ? idp.GetString() : null;
+                    if (id is null) continue;
+                    var picIds = new List<string>();
+                    if (body.TryGetProperty("pictures", out var pics) && pics.ValueKind == JsonValueKind.Array)
+                        foreach (var p in pics.EnumerateArray())
+                            if (p.TryGetProperty("id", out var pid) && pid.GetString() is string s && !string.IsNullOrEmpty(s))
+                                picIds.Add(s);
+                    picsByMla[id] = picIds;
+                }
+            }
+        }
+
+        var preview = new List<FixInfractionPreviewItem>();
+        int quitar = 0, apartar = 0, yaOk = 0;
+        foreach (var inf in photoItems)
+        {
+            var title = titleByMla.GetValueOrDefault(inf.MeliItemId, inf.MeliItemId);
+            if (!picsByMla.TryGetValue(inf.MeliItemId, out var curr) || curr.Count == 0)
+            {
+                preview.Add(new(inf.MeliItemId, title, "ya_ok", inf.Reason, 0, curr?.Count ?? 0, new()));
+                yaOk++; continue;
+            }
+            var badCores = inf.PictureIds.Select(PicCore).Where(c => c.Length > 0).ToHashSet();
+            var matchedIdx = new List<int>();
+            for (int i = 0; i < curr.Count; i++)
+                if (badCores.Contains(PicCore(curr[i]))) matchedIdx.Add(i);
+
+            if (matchedIdx.Count == 0)
+            {
+                preview.Add(new(inf.MeliItemId, title, "ya_ok", inf.Reason, 0, curr.Count, new()));
+                yaOk++; continue;
+            }
+            bool coverInfringing = matchedIdx.Contains(0);
+            int remaining = curr.Count - matchedIdx.Count;
+            if (coverInfringing || remaining < 2)
+            {
+                preview.Add(new(inf.MeliItemId, title, "apartar", inf.Reason, matchedIdx.Count, remaining, new()));
+                apartar++;
+            }
+            else
+            {
+                var keep = curr.Where((_, i) => !matchedIdx.Contains(i)).ToList();
+                preview.Add(new(inf.MeliItemId, title, "quitar", inf.Reason, matchedIdx.Count, keep.Count, keep));
+                quitar++;
+            }
+        }
+        return new FixInfractionPreview(preview, quitar, apartar, yaOk);
+    }
+
+    /// <summary>2026-07-21: aplica el arreglo: para cada publicación deja SOLO las fotos indicadas (keep),
+    /// quitando la(s) en infracción. Reusa UpdateItemPicturesAsync (PUT a MeLi).</summary>
+    public async Task<ApplyFixResult> ApplyFixPhotoInfractionsAsync(List<ApplyFixItem> items)
+    {
+        int ok = 0;
+        var errores = new List<string>();
+        foreach (var it in items)
+        {
+            try
+            {
+                if (it.KeepPictureIds is null || it.KeepPictureIds.Count == 0)
+                {
+                    errores.Add($"{it.MeliItemId}: no quedaría ninguna foto, la salteo.");
+                    continue;
+                }
+                var req = new UpdateItemPicturesRequest
+                {
+                    Pictures = it.KeepPictureIds.Select(id => new PictureSpec { Id = id }).ToList()
+                };
+                await UpdateItemPicturesAsync(it.MeliItemId, req);
+                ok++;
+            }
+            catch (Exception ex) { errores.Add($"{it.MeliItemId}: {ex.Message}"); }
+        }
+        return new ApplyFixResult(ok, errores.Count, errores);
+    }
+
     // filter_subgroup que corresponden a problemas de FOTOS/imágenes.
     // PQT = "La portada tiene marcas de agua", FOTOS = "Algunas fotos tienen marcas de agua" (vistos en prod).
     private static bool IsPhotoSubgroup(string subgroup)

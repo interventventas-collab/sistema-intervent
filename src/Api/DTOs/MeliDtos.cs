@@ -324,6 +324,37 @@ public class FetchImageRequest
     public string Url { get; set; } = "";
 }
 
+// --- Arreglo masivo de fotos en infracción (vista previa + aplicar) ---
+public record FixInfractionPreviewItem(
+    string MeliItemId,
+    string Title,
+    string Accion,          // "quitar" | "apartar" | "ya_ok"
+    string Reason,
+    int RemoveCount,        // cuántas fotos se quitarían
+    int RemainingCount,     // cuántas quedarían
+    List<string> KeepPictureIds  // ids de las fotos a conservar (para "quitar")
+);
+
+public record FixInfractionPreview(
+    List<FixInfractionPreviewItem> Items,
+    int Quitar,
+    int Apartar,
+    int YaOk
+);
+
+public class ApplyFixItem
+{
+    public string MeliItemId { get; set; } = "";
+    public List<string> KeepPictureIds { get; set; } = new();
+}
+
+public class ApplyFixRequest
+{
+    public List<ApplyFixItem> Items { get; set; } = new();
+}
+
+public record ApplyFixResult(int Ok, int Error, List<string> Errores);
+
 // --- Publish DTOs ---
 
 public record PredictCategoryRequest(string Title);

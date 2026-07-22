@@ -182,6 +182,20 @@ public class ApiClient
         return await resp.Content.ReadFromJsonAsync<PictureDiagnosisDto>();
     }
 
+    // --- Arreglo masivo de fotos en infracción ---
+    public async Task<FixInfractionPreview?> PreviewFixInfractionsAsync()
+    {
+        return await GetAsync<FixInfractionPreview>("/api/meli/photo-infractions/preview-fix");
+    }
+
+    public async Task<ApplyFixResult?> ApplyFixInfractionsAsync(IEnumerable<object> items)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync("/api/meli/photo-infractions/apply-fix", new { items });
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadFromJsonAsync<ApplyFixResult>();
+    }
+
     /// <summary>Baja una foto desde un enlace externo y la devuelve como data-URI (o (null, error)).</summary>
     public async Task<(string? dataUri, string? error)> FetchImageFromUrlAsync(string url)
     {

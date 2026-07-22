@@ -51,3 +51,30 @@ public class PictureDiagnosisDto
     public bool HasIssues { get; set; }
     public List<string> Issues { get; set; } = new();
 }
+
+// --- Arreglo masivo de fotos en infracción ---
+public class FixInfractionPreviewItem
+{
+    public string MeliItemId { get; set; } = "";
+    public string Title { get; set; } = "";
+    public string Accion { get; set; } = "";  // "quitar" | "apartar" | "ya_ok"
+    public string Reason { get; set; } = "";
+    public int RemoveCount { get; set; }
+    public int RemainingCount { get; set; }
+    public List<string> KeepPictureIds { get; set; } = new();
+}
+
+public class FixInfractionPreview
+{
+    public List<FixInfractionPreviewItem> Items { get; set; } = new();
+    public int Quitar { get; set; }
+    public int Apartar { get; set; }
+    public int YaOk { get; set; }
+}
+
+public class ApplyFixResult
+{
+    public int Ok { get; set; }
+    public int Error { get; set; }
+    public List<string> Errores { get; set; } = new();
+}

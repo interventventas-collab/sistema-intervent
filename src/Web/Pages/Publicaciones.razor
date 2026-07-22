@@ -114,6 +114,31 @@
     .pp-infr { background:#ffedd5; border:1px solid #fb923c; color:#9a3412; font-size:0.8rem; border-radius:8px; padding:9px 11px; margin-bottom:10px; line-height:1.4; }
     .pp-thumb.bad { border-color:#dc2626; box-shadow:0 0 0 2px #fecaca; }
     .pp-problem { position:absolute; top:0; right:0; left:0; background:#dc2626; color:#fff; font-size:0.6rem; font-weight:700; padding:2px 4px; text-align:center; line-height:1.15; max-height:2.4em; overflow:hidden; }
+
+    /* Modal arreglo masivo */
+    .fixm-overlay { position:fixed; inset:0; background:rgba(15,23,42,.5); z-index:1000; display:flex; align-items:center; justify-content:center; padding:16px; }
+    .fixm-box { background:#fff; border-radius:14px; width:min(720px, 96vw); max-height:88vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.3); }
+    .fixm-head { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid #e5e7eb; font-weight:800; font-size:0.95rem; color:#1e293b; }
+    .fixm-x { background:none; border:none; font-size:1.1rem; cursor:pointer; color:#64748b; }
+    .fixm-body { padding:16px 18px; overflow-y:auto; }
+    .fixm-summary { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
+    .fixm-card { flex:1; min-width:120px; border-radius:10px; padding:10px 12px; text-align:center; }
+    .fixm-card b { display:block; font-size:1.5rem; line-height:1; }
+    .fixm-card span { font-size:0.72rem; }
+    .fixm-card.ok { background:#dcfce7; color:#15803d; }
+    .fixm-card.warn { background:#ffedd5; color:#9a3412; }
+    .fixm-card.gray { background:#f1f5f9; color:#64748b; }
+    .fixm-section-title { font-size:0.82rem; font-weight:700; color:#334155; margin:12px 0 6px; }
+    .fixm-list { display:flex; flex-direction:column; gap:4px; }
+    .fixm-row { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:0.8rem; padding:5px 8px; background:#f8fafc; border-radius:6px; }
+    .fixm-title { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .fixm-tag { white-space:nowrap; font-size:0.72rem; font-weight:600; padding:1px 6px; border-radius:5px; }
+    .fixm-tag.ok { background:#dcfce7; color:#15803d; }
+    .fixm-tag.warn { background:#fef3c7; color:#92400e; }
+    .fixm-foot { display:flex; justify-content:flex-end; gap:10px; padding:12px 18px; border-top:1px solid #e5e7eb; }
+    .fixm-cancel { background:#f1f5f9; border:1px solid #cbd5e1; color:#334155; border-radius:8px; padding:9px 14px; font-size:0.83rem; font-weight:600; cursor:pointer; }
+    .fixm-go { background:#b45309; color:#fff; border:none; border-radius:8px; padding:9px 16px; font-size:0.83rem; font-weight:700; cursor:pointer; }
+    .fixm-go:disabled { background:#94a3b8; cursor:default; }
 </style>
 
 <div class="card card-publicaciones">
@@ -128,6 +153,12 @@
                 @onclick="BuscarInfraccionesFoto" disabled="@scanningInfractions"
                 title="Revisa las infracciones de tu cuenta en MercadoLibre y marca con 🚩 las publicaciones cuyo problema es de fotos, para que las arregles.">
             @if (scanningInfractions) { <span>⏳ Escaneando...</span> } else { <span>🚩 Buscar fotos en infracción</span> }
+        </button>
+        @* 2026-07-21: arreglo masivo — quita la foto en infracción donde es seguro, aparta las de portada. *@
+        <button class="btn" style="background:#b45309; color:white; font-weight:700;"
+                @onclick="AbrirArreglarMasivo" disabled="@(fixLoading || fixApplying)"
+                title="Analiza todas las publicaciones con foto en infracción y te muestra una vista previa: quita sola la foto mala donde es seguro (no es portada y quedan varias fotos) y aparta las de portada para que las reemplaces a mano.">
+            @if (fixLoading) { <span>⏳ Analizando...</span> } else { <span>🧹 Quitar en infracción (masivo)</span> }
         </button>
         @* 2026-06-19: Refrescar comisiones reales de MeLi via API listing_prices.
            Tarda 10-15 min en background. Despues los netos del listado coinciden al peso con MeLi. *@
@@ -216,6 +247,69 @@
                         Sí, sincronizar
                     </button>
                 </div>
+            </div>
+        </div>
+    }
+
+    @if (showFixModal)
+    {
+        <div class="fixm-overlay" @onclick="() => { if (!fixApplying) showFixModal = false; }">
+            <div class="fixm-box" @onclick:stopPropagation="true">
+                <div class="fixm-head">
+                    <span>🧹 Quitar fotos en infracción — vista previa</span>
+                    <button class="fixm-x" @onclick="() => showFixModal = false" disabled="@fixApplying">✕</button>
+                </div>
+                @if (fixLoading)
+                {
+                    <div class="fixm-body"><p>⏳ Analizando tus publicaciones con foto en infracción… (puede tardar unos segundos)</p></div>
+                }
+                else if (fixPreview is null)
+                {
+                    <div class="fixm-body"><p>No se pudo analizar. Cerrá y probá de nuevo.</p></div>
+                }
+                else
+                {
+                    <div class="fixm-body">
+                        <div class="fixm-summary">
+                            <div class="fixm-card ok"><b>@fixPreview.Quitar</b><span>se pueden quitar solas</span></div>
+                            <div class="fixm-card warn"><b>@fixPreview.Apartar</b><span>apartadas (portada / pocas fotos)</span></div>
+                            <div class="fixm-card gray"><b>@fixPreview.YaOk</b><span>ya arregladas</span></div>
+                        </div>
+
+                        @if (fixPreview.Quitar > 0)
+                        {
+                            <div class="fixm-section-title">✅ Voy a quitar la foto mala en estas (quedan con varias fotos):</div>
+                            <div class="fixm-list">
+                                @foreach (var it in fixPreview.Items.Where(x => x.Accion == "quitar"))
+                                {
+                                    <div class="fixm-row"><span class="fixm-title">@it.Title</span><span class="fixm-tag ok">quita @it.RemoveCount · quedan @it.RemainingCount</span></div>
+                                }
+                            </div>
+                        }
+
+                        @if (fixPreview.Apartar > 0)
+                        {
+                            <div class="fixm-section-title">⚠️ Estas las dejo para que las revises/reemplaces a mano (la foto mala es la portada o quedarían muy pocas):</div>
+                            <div class="fixm-list">
+                                @foreach (var it in fixPreview.Items.Where(x => x.Accion == "apartar"))
+                                {
+                                    <div class="fixm-row"><span class="fixm-title">@it.Title</span><span class="fixm-tag warn">@it.Reason</span></div>
+                                }
+                            </div>
+                        }
+
+                        @if (fixPreview.Quitar == 0 && fixPreview.Apartar == 0)
+                        {
+                            <p style="color:#16a34a; font-weight:600;">✅ No hay nada para quitar: o ya están arregladas, o todas necesitan reemplazo a mano.</p>
+                        }
+                    </div>
+                    <div class="fixm-foot">
+                        <button class="fixm-cancel" @onclick="() => showFixModal = false" disabled="@fixApplying">Cancelar</button>
+                        <button class="fixm-go" disabled="@(fixApplying || fixPreview.Quitar == 0)" @onclick="ConfirmarArreglarMasivo">
+                            @(fixApplying ? "Quitando…" : $"Quitar la foto en las {fixPreview.Quitar} seguras")
+                        </button>
+                    </div>
+                }
             </div>
         </div>
     }
@@ -3910,6 +4004,46 @@
     private Dictionary<string, PhotoInfractionDto> photoInfractions = new();
     private bool filterInfraccionFoto = false;
     private bool scanningInfractions = false;
+
+    // Arreglo masivo (vista previa + aplicar)
+    private bool showFixModal = false;
+    private bool fixLoading = false;
+    private bool fixApplying = false;
+    private FixInfractionPreview? fixPreview;
+
+    private async Task AbrirArreglarMasivo()
+    {
+        showFixModal = true; fixLoading = true; fixPreview = null;
+        StateHasChanged();
+        try { fixPreview = await Api.PreviewFixInfractionsAsync(); }
+        catch (Exception ex) { ToastService.Error("Error al analizar: " + ex.Message); }
+        finally { fixLoading = false; StateHasChanged(); }
+    }
+
+    private async Task ConfirmarArreglarMasivo()
+    {
+        if (fixPreview is null) return;
+        var quitar = fixPreview.Items.Where(x => x.Accion == "quitar")
+            .Select(x => (object)new { meliItemId = x.MeliItemId, keepPictureIds = x.KeepPictureIds })
+            .ToList();
+        if (quitar.Count == 0) return;
+        fixApplying = true; StateHasChanged();
+        try
+        {
+            var res = await Api.ApplyFixInfractionsAsync(quitar);
+            if (res is null) { ToastService.Error("No se pudo aplicar el arreglo."); return; }
+            var msg = $"✅ Listo: quité la foto en infracción en {res.Ok} publicación(es).";
+            if (res.Error > 0) msg += $" {res.Error} con error (revisá esas a mano).";
+            ToastService.Success(msg);
+            // Sacar del listado en memoria las que se arreglaron para que no queden con 🚩.
+            foreach (var it in fixPreview.Items.Where(x => x.Accion == "quitar"))
+                photoInfractions.Remove(it.MeliItemId);
+            InvalidateFilterCache();
+            showFixModal = false;
+        }
+        catch (Exception ex) { ToastService.Error("Error al aplicar: " + ex.Message); }
+        finally { fixApplying = false; StateHasChanged(); }
+    }
 
     private async Task BuscarInfraccionesFoto()
     {
