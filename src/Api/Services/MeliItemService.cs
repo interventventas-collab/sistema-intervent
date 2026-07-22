@@ -2626,6 +2626,10 @@ public class MeliItemService
         if (string.IsNullOrWhiteSpace(url) || !(url.StartsWith("http://") || url.StartsWith("https://")))
             throw new Exception("El enlace tiene que empezar con http:// o https://");
 
+        // Si es un enlace de una foto de MercadoLibre, usar la versión ORIGINAL grande (-O.jpg)
+        // en vez de la miniatura chica (D_Q_NP_2X_..._-P.webp), que MeLi rechaza por tamaño.
+        url = UpgradeMercadoLibreImageUrl(url);
+
         var http = _httpFactory.CreateClient();
         http.Timeout = TimeSpan.FromSeconds(25);
         http.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36");
@@ -2651,28 +2655,49 @@ public class MeliItemService
         bool isJpg = ct.Contains("jpeg") || ct.Contains("jpg") || (bytes.Length > 2 && bytes[0] == 0xFF && bytes[1] == 0xD8);
         bool isPng = ct.Contains("png") || (bytes.Length > 8 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47);
 
-        string outCt;
-        if (isJpg) outCt = "image/jpeg";
-        else if (isPng) outCt = "image/png";
-        else
+        // Decodifico una vez para: (a) medir el tamaño y avisar si es muy chica, (b) convertir si no es JPG/PNG.
+        SkiaSharp.SKBitmap? bmp = null;
+        try { bmp = SkiaSharp.SKBitmap.Decode(bytes); } catch { }
+        using (bmp)
         {
-            // Convertir (webp/gif/bmp/avif…) a JPG con SkiaSharp.
-            try
+            if (bmp is not null)
             {
-                using var bmp = SkiaSharp.SKBitmap.Decode(bytes);
-                if (bmp is null) throw new Exception("formato no reconocido");
+                int minSide = Math.Min(bmp.Width, bmp.Height);
+                if (minSide < 500)
+                    throw new Exception($"La foto es muy chica ({bmp.Width}x{bmp.Height} px). MercadoLibre pide al menos 500x500 (ideal 1200x1200). Buscá una versión más grande de la imagen.");
+            }
+
+            string outCt;
+            if (isJpg) outCt = "image/jpeg";
+            else if (isPng) outCt = "image/png";
+            else
+            {
+                if (bmp is null)
+                    throw new Exception("No pude convertir esa imagen a un formato que acepte MercadoLibre. Probá con 'Subir archivo'.");
                 using var img = SkiaSharp.SKImage.FromBitmap(bmp);
                 using var data = img.Encode(SkiaSharp.SKEncodedImageFormat.Jpeg, 92);
                 bytes = data.ToArray();
                 outCt = "image/jpeg";
             }
-            catch
-            {
-                throw new Exception("No pude convertir esa imagen a un formato que acepte MercadoLibre. Probá con 'Subir archivo'.");
-            }
-        }
 
-        return $"data:{outCt};base64,{Convert.ToBase64String(bytes)}";
+            return $"data:{outCt};base64,{Convert.ToBase64String(bytes)}";
+        }
+    }
+
+    /// <summary>Si el enlace es una foto de MercadoLibre (mlstatic), devuelve la URL de la versión ORIGINAL
+    /// grande (D_{núcleo}-O.jpg) en vez de la miniatura reducida (D_Q_NP_2X_..._-P.webp) que MeLi rechaza.</summary>
+    private static string UpgradeMercadoLibreImageUrl(string url)
+    {
+        try
+        {
+            var uri = new Uri(url);
+            if (!uri.Host.Contains("mlstatic.com", StringComparison.OrdinalIgnoreCase)) return url;
+            // Núcleo del id de la foto: {prefijo}-ML{sitio}{digitos}_{fecha}
+            var m = System.Text.RegularExpressions.Regex.Match(url, @"\d+-ML[A-Z]\d+_\d+");
+            if (!m.Success) return url;
+            return $"https://http2.mlstatic.com/D_{m.Value}-O.jpg";
+        }
+        catch { return url; }
     }
 
     // filter_subgroup que corresponden a problemas de FOTOS/imágenes.
