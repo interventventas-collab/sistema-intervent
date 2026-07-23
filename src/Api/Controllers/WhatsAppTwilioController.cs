@@ -532,7 +532,9 @@ public class WhatsAppTwilioController : ControllerBase
 
         try
         {
-            var (sid, canal) = await _outbound.SendMediaAsync(req.Numero, req.MediaUrl, req.Caption);
+            // El nombre original importa: la URL /files/{token} no tiene extension, asi que
+            // sin el no se puede saber si mandarlo como imagen o como documento.
+            var (sid, canal) = await _outbound.SendMediaAsync(req.Numero, req.MediaUrl, req.Caption, req.OriginalFilename);
             var msg = new WhatsAppTwilioMensaje
             {
                 Direccion = "OUTGOING",
@@ -759,7 +761,7 @@ public class WhatsAppTwilioController : ControllerBase
 
         try
         {
-            var (sid, canal) = await _outbound.SendMediaAsync(req.Numero, mediaUrl, req.Caption);
+            var (sid, canal) = await _outbound.SendMediaAsync(req.Numero, mediaUrl, req.Caption, filename);
             var msg = new WhatsAppTwilioMensaje
             {
                 Direccion = "OUTGOING",

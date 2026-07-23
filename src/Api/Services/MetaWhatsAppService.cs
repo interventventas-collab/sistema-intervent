@@ -70,21 +70,26 @@ public class MetaWhatsAppService
         return await PostMessageAsync(payload, to, ct);
     }
 
-    /// <summary>Envía un mensaje con un adjunto por LINK (imagen/documento). mediaUrl debe ser URL HTTPS pública.
-    /// isDocument=true para PDF/archivos; false para imágenes. filename es opcional (solo documentos).</summary>
+    /// <summary>Envía un mensaje con un adjunto por LINK. mediaUrl debe ser URL HTTPS pública.
+    /// isDocument=true para PDF/archivos; false para imágenes. filename es opcional (solo documentos).
+    /// OJO: Meta rechaza el JSON si mandamos campos en null, por eso el objeto se arma sin ellos.</summary>
     public async Task<string?> SendMediaAsync(string to, string mediaUrl, string? caption = null, bool isDocument = false, string? filename = null, CancellationToken ct = default)
     {
         EnsureConfigured();
-        object media = isDocument
-            ? new { link = mediaUrl, caption, filename }
-            : new { link = mediaUrl, caption };
+
+        // Armamos el objeto media SOLO con los campos que tienen valor.
+        var media = new Dictionary<string, object?> { ["link"] = mediaUrl };
+        if (!string.IsNullOrWhiteSpace(caption)) media["caption"] = caption;
+        if (isDocument && !string.IsNullOrWhiteSpace(filename)) media["filename"] = filename;
+
+        var tipo = isDocument ? "document" : "image";
         var payload = new Dictionary<string, object?>
         {
             ["messaging_product"] = "whatsapp",
             ["recipient_type"] = "individual",
             ["to"] = NormalizeTo(to),
-            ["type"] = isDocument ? "document" : "image",
-            [isDocument ? "document" : "image"] = media
+            ["type"] = tipo,
+            [tipo] = media
         };
         return await PostMessageAsync(payload, to, ct);
     }

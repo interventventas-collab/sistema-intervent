@@ -41,13 +41,17 @@ public class WhatsAppOutboundService
         return (await _twilio.SendTextAsync(numero, body), "TWILIO");
     }
 
-    public async Task<(string? Id, string Canal)> SendMediaAsync(string numero, string mediaUrl, string? caption = null)
+    /// <summary>Envía un adjunto. <paramref name="nombreArchivo"/> es el nombre ORIGINAL (ej "factura.pdf"):
+    /// se usa para saber si va como documento o como imagen. OJO: la URL del adjunto es del tipo
+    /// /files/{token} y NO tiene extensión, por eso NO se puede deducir el tipo desde la URL.</summary>
+    public async Task<(string? Id, string Canal)> SendMediaAsync(string numero, string mediaUrl, string? caption = null, string? nombreArchivo = null)
     {
         var canal = await PickCanalAsync(numero);
         if (canal == "CLOUD")
         {
-            var esDoc = EsDocumento(mediaUrl);
-            return (await _meta.SendMediaAsync(numero, mediaUrl, caption, esDoc, esDoc ? NombreArchivo(mediaUrl) : null), "CLOUD");
+            var esDoc = EsDocumento(nombreArchivo);
+            var id = await _meta.SendMediaAsync(numero, mediaUrl, caption, esDoc, nombreArchivo);
+            return (id, "CLOUD");
         }
         return (await _twilio.SendMediaAsync(numero, mediaUrl, caption), "TWILIO");
     }
@@ -66,14 +70,13 @@ public class WhatsAppOutboundService
         return _meta.IsConfigured ? "CLOUD" : "TWILIO";
     }
 
-    private static bool EsDocumento(string url)
+    /// <summary>Decide si el adjunto va como DOCUMENTO. Criterio: solo las imágenes reales
+    /// (.jpg/.jpeg/.png/.webp) van como "image"; TODO lo demás (pdf, excel, word, o sin
+    /// extensión conocida) va como "document", que acepta cualquier tipo de archivo.</summary>
+    private static bool EsDocumento(string? nombreArchivo)
     {
-        var u = url.ToLowerInvariant();
-        return u.Contains(".pdf") || u.Contains(".doc") || u.Contains(".xls") || u.Contains(".csv") || u.Contains(".txt");
-    }
-
-    private static string? NombreArchivo(string url)
-    {
-        try { return Path.GetFileName(new Uri(url).AbsolutePath); } catch { return null; }
+        if (string.IsNullOrWhiteSpace(nombreArchivo)) return true; // sin nombre → documento (más seguro)
+        var ext = Path.GetExtension(nombreArchivo).ToLowerInvariant();
+        return ext is not (".jpg" or ".jpeg" or ".png" or ".webp");
     }
 }

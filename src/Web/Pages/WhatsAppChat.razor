@@ -123,7 +123,8 @@
                 </button>
             </div>
 
-            <div class="wa-messages" @ref="messagesScroll">
+            @* 2026-07-23: id para poder bajar el scroll al ultimo mensaje (como WhatsApp de verdad) *@
+            <div class="wa-messages" id="wa-messages-scroll" @ref="messagesScroll">
                 @if (loadingMsg)
                 {
                     <div style="padding:1rem; color:#9ca3af; text-align:center;">Cargando…</div>
@@ -216,7 +217,9 @@
                 </label>
                 @* Botón adjuntar desde el servidor *@
                 <button class="wa-attach-btn" title="Adjuntar del servidor (cobranzas, uploads previos)" @onclick="AbrirAdjuntarServidor" disabled="@(uploading || sending)">🗂️</button>
-                <textarea class="form-control" placeholder="Escribir mensaje…" @bind="composerText" @onkeydown="OnComposerKey" rows="2"></textarea>
+                @* 2026-07-23: @bind:event="oninput" es CLAVE — sin esto el texto solo se guarda al salir del
+   campo, y al apretar Enter el sistema veia el mensaje vacio (no enviaba nada). *@
+<textarea class="form-control" placeholder="Escribir mensaje… (Enter para enviar)" @bind="composerText" @bind:event="oninput" @onkeydown="OnComposerKey" rows="2"></textarea>
                 <button class="btn btn-success" @onclick="EnviarMensaje" disabled="@(string.IsNullOrWhiteSpace(composerText) || sending)">
                     @(sending ? "Enviando…" : "📤 Enviar")
                 </button>
@@ -877,6 +880,10 @@
         await LoadMensajes();
     }
 
+    // 2026-07-23: para saber si entraron mensajes nuevos y bajar el scroll solo en ese caso
+    // (si no, al refrescar solo te sacaria de donde estas leyendo).
+    int ultimaCantidadMensajes = -1;
+
     async Task LoadMensajes(bool silent = false)
     {
         if (selectedNumero == null) return;
@@ -884,6 +891,26 @@
         try { mensajes = await Api.GetTwMensajesAsync(selectedNumero); }
         catch { }
         loadingMsg = false;
+
+        // Bajar al ultimo mensaje: siempre al abrir/cambiar de chat, y en los refrescos
+        // automaticos solo si llego algo nuevo.
+        var hayNuevos = mensajes.Count != ultimaCantidadMensajes;
+        ultimaCantidadMensajes = mensajes.Count;
+        if (!silent || hayNuevos) await ScrollAlUltimoMensaje();
+    }
+
+    /// <summary>Baja el panel de mensajes hasta el final (reusa el helper JS del chat interno).</summary>
+    async Task ScrollAlUltimoMensaje()
+    {
+        try
+        {
+            // Un respiro para que Blazor termine de pintar los mensajes antes de scrollear.
+            await Task.Yield();
+            StateHasChanged();
+            await Task.Delay(60);
+            await JS.InvokeVoidAsync("chatScrollToBottom", "wa-messages-scroll");
+        }
+        catch { /* si falla el scroll no rompemos el chat */ }
     }
 
     async Task EnviarMensaje()
