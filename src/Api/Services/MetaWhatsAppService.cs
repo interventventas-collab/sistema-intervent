@@ -56,7 +56,7 @@ public class MetaWhatsAppService
     }
 
     /// <summary>Envía un mensaje de texto simple. Devuelve el wamid (id del mensaje en Meta) o null si falla.</summary>
-    public async Task<string?> SendTextAsync(string to, string body, CancellationToken ct = default)
+    public async Task<string?> SendTextAsync(string to, string body, CancellationToken ct = default, string? lineaPhoneId = null)
     {
         EnsureConfigured();
         var payload = new
@@ -67,13 +67,13 @@ public class MetaWhatsAppService
             type = "text",
             text = new { preview_url = false, body }
         };
-        return await PostMessageAsync(payload, to, ct);
+        return await PostMessageAsync(payload, to, ct, lineaPhoneId);
     }
 
     /// <summary>2026-07-23 (bot de bienvenida): mensaje con BOTONES de respuesta rápida.
     /// WhatsApp permite MÁXIMO 3 botones, títulos de hasta 20 caracteres. El id vuelve en el
     /// webhook (interactive.button_reply.id) para saber qué tocó el cliente.</summary>
-    public async Task<string?> SendButtonsAsync(string to, string body, IEnumerable<(string Id, string Title)> botones, CancellationToken ct = default)
+    public async Task<string?> SendButtonsAsync(string to, string body, IEnumerable<(string Id, string Title)> botones, CancellationToken ct = default, string? lineaPhoneId = null)
     {
         EnsureConfigured();
         var payload = new
@@ -96,13 +96,13 @@ public class MetaWhatsAppService
                 }
             }
         };
-        return await PostMessageAsync(payload, to, ct);
+        return await PostMessageAsync(payload, to, ct, lineaPhoneId);
     }
 
     /// <summary>2026-07-23 (bot de bienvenida): mensaje con LISTA desplegable (hasta 10 opciones).
     /// El cliente toca el botón y se abre el menú. El id de la fila vuelve por el webhook
     /// (interactive.list_reply.id). Títulos hasta 24 chars, descripción hasta 72.</summary>
-    public async Task<string?> SendListAsync(string to, string body, string botonLabel, IEnumerable<(string Id, string Title, string? Desc)> filas, CancellationToken ct = default)
+    public async Task<string?> SendListAsync(string to, string body, string botonLabel, IEnumerable<(string Id, string Title, string? Desc)> filas, CancellationToken ct = default, string? lineaPhoneId = null)
     {
         EnsureConfigured();
         var payload = new
@@ -140,13 +140,13 @@ public class MetaWhatsAppService
                 }
             }
         };
-        return await PostMessageAsync(payload, to, ct);
+        return await PostMessageAsync(payload, to, ct, lineaPhoneId);
     }
 
     /// <summary>2026-07-23: envía una REACCIÓN real (el cliente la ve en su WhatsApp, como en el celu).
     /// messageId es el wamid del mensaje al que se reacciona. Emoji vacío = quitar la reacción.
     /// OJO: WhatsApp permite UNA sola reacción nuestra por mensaje — mandar otra la reemplaza.</summary>
-    public async Task<string?> SendReactionAsync(string to, string messageId, string emoji, CancellationToken ct = default)
+    public async Task<string?> SendReactionAsync(string to, string messageId, string emoji, CancellationToken ct = default, string? lineaPhoneId = null)
     {
         EnsureConfigured();
         var payload = new
@@ -157,13 +157,13 @@ public class MetaWhatsAppService
             type = "reaction",
             reaction = new { message_id = messageId, emoji = emoji ?? "" }
         };
-        return await PostMessageAsync(payload, to, ct);
+        return await PostMessageAsync(payload, to, ct, lineaPhoneId);
     }
 
     /// <summary>Envía un mensaje con un adjunto por LINK. mediaUrl debe ser URL HTTPS pública.
     /// isDocument=true para PDF/archivos; false para imágenes. filename es opcional (solo documentos).
     /// OJO: Meta rechaza el JSON si mandamos campos en null, por eso el objeto se arma sin ellos.</summary>
-    public async Task<string?> SendMediaAsync(string to, string mediaUrl, string? caption = null, bool isDocument = false, string? filename = null, CancellationToken ct = default)
+    public async Task<string?> SendMediaAsync(string to, string mediaUrl, string? caption = null, bool isDocument = false, string? filename = null, CancellationToken ct = default, string? lineaPhoneId = null)
     {
         EnsureConfigured();
 
@@ -181,7 +181,7 @@ public class MetaWhatsAppService
             ["type"] = tipo,
             [tipo] = media
         };
-        return await PostMessageAsync(payload, to, ct);
+        return await PostMessageAsync(payload, to, ct, lineaPhoneId);
     }
 
     /// <summary>
@@ -261,14 +261,16 @@ public class MetaWhatsAppService
         _ => ".bin"
     };
 
-    private async Task<string?> PostMessageAsync(object payload, string to, CancellationToken ct)
+    // 2026-07-23 (multi-línea): lineaPhoneId permite mandar por OTRO número de la misma cuenta
+    // (ej: responder por la línea donde el cliente escribió). Null = la línea default del .env.
+    private async Task<string?> PostMessageAsync(object payload, string to, CancellationToken ct, string? lineaPhoneId = null)
     {
         try
         {
             using var http = NewClient();
             var json = JsonSerializer.Serialize(payload);
             using var content = new StringContent(json, Encoding.UTF8, "application/json");
-            var resp = await http.PostAsync($"{PhoneId}/messages", content, ct);
+            var resp = await http.PostAsync($"{lineaPhoneId ?? PhoneId}/messages", content, ct);
             var respBody = await resp.Content.ReadAsStringAsync(ct);
             if (!resp.IsSuccessStatusCode)
             {

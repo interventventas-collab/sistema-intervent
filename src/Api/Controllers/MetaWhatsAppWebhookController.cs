@@ -108,6 +108,17 @@ public class MetaWhatsAppWebhookController : ControllerBase
                 if (!value.TryGetProperty("messages", out var messages) || messages.ValueKind != JsonValueKind.Array)
                     continue;
 
+                // 2026-07-23 (multi-línea): a QUÉ número nuestro le escribieron. Con 2+ líneas en la
+                // misma cuenta, esto permite etiquetar cada chat y responder por la línea correcta.
+                string? lineaId = null, lineaNumero = null;
+                if (value.TryGetProperty("metadata", out var md))
+                {
+                    lineaId = md.TryGetProperty("phone_number_id", out var pid) ? pid.GetString() : null;
+                    lineaNumero = md.TryGetProperty("display_phone_number", out var dpn) ? dpn.GetString() : null;
+                }
+                if (!string.IsNullOrEmpty(lineaId))
+                    await RegistrarLineaAsync(db, lineaId!, lineaNumero);
+
                 // Mapa wa_id -> nombre de perfil (de value.contacts[]).
                 var nombres = new Dictionary<string, string>();
                 if (value.TryGetProperty("contacts", out var contacts) && contacts.ValueKind == JsonValueKind.Array)
@@ -123,14 +134,24 @@ public class MetaWhatsAppWebhookController : ControllerBase
                 }
 
                 foreach (var m in messages.EnumerateArray())
-                    await ProcesarMensajeAsync(db, meta, pedidoSvc, listasCtrl, m, nombres, baseUrl);
+                    await ProcesarMensajeAsync(db, meta, pedidoSvc, listasCtrl, m, nombres, baseUrl, lineaId);
             }
         }
     }
 
+    /// <summary>Guarda (una sola vez) el número visible de cada línea nuestra, para mostrarlo
+    /// como etiqueta en el chat cuando haya más de una. Clave: whatsapp.linea.{phone_number_id}.</summary>
+    private static async Task RegistrarLineaAsync(AppDbContext db, string lineaId, string? lineaNumero)
+    {
+        var key = $"whatsapp.linea.{lineaId}";
+        if (await db.AppSettings.AnyAsync(s => s.Key == key)) return;
+        db.AppSettings.Add(new AppSetting { Key = key, Value = lineaNumero ?? lineaId, UpdatedAt = DateTime.UtcNow });
+        await db.SaveChangesAsync();
+    }
+
     private async Task ProcesarMensajeAsync(AppDbContext db, MetaWhatsAppService meta,
         WhatsAppPedidoService pedidoSvc, Api.Controllers.CafeListasCustomController listasCtrl,
-        JsonElement m, Dictionary<string, string> nombres, string baseUrl)
+        JsonElement m, Dictionary<string, string> nombres, string baseUrl, string? lineaId)
     {
         var wamid = m.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
         var fromWaId = m.TryGetProperty("from", out var fromEl) ? fromEl.GetString() : null;
@@ -197,6 +218,7 @@ public class MetaWhatsAppWebhookController : ControllerBase
             Cuerpo = cuerpo,
             MediaUrl = mediaUrlPublica,
             MediaFilename = mediaNombre,
+            LineaPhoneId = lineaId,
             NumMedia = mediaUrlPublica != null ? 1 : 0,
             TwilioMessageSid = wamid,
             Canal = "CLOUD",
@@ -226,7 +248,7 @@ public class MetaWhatsAppWebhookController : ControllerBase
         // 2026-07-23 (pedido Osmar): BOT DE BIENVENIDA con botones.
         try
         {
-            await BotBienvenidaAsync(db, meta, listasCtrl, m, tipo, fromWaId!, numero, nombrePerfil, baseUrl);
+            await BotBienvenidaAsync(db, meta, listasCtrl, m, tipo, fromWaId!, numero, nombrePerfil, baseUrl, lineaId);
         }
         catch (Exception ex)
         {
@@ -242,7 +264,7 @@ public class MetaWhatsAppWebhookController : ControllerBase
 
     private async Task BotBienvenidaAsync(AppDbContext db, MetaWhatsAppService meta,
         Api.Controllers.CafeListasCustomController listasCtrl, JsonElement m,
-        string? tipo, string fromWaId, string numero, string? nombrePerfil, string baseUrl)
+        string? tipo, string fromWaId, string numero, string? nombrePerfil, string baseUrl, string? lineaId)
     {
         // ¿Tocó un botón/opción nuestra? El id viene en interactive.button_reply/list_reply.id
         var idTocado = tipo == "interactive" ? TryGetInteractiveId(m) : null;
@@ -280,11 +302,11 @@ public class MetaWhatsAppWebhookController : ControllerBase
 
             // Acción especial: "lista de precios" de Frikaf manda el PDF automático
             if (accion == "lista" && empresa == "frikaf"
-                && await EnviarListaPreciosBotAsync(db, meta, listasCtrl, fromWaId, numero, baseUrl))
+                && await EnviarListaPreciosBotAsync(db, meta, listasCtrl, fromWaId, numero, baseUrl, lineaId))
                 return;
 
-            var sid2 = await meta.SendTextAsync(fromWaId, respuesta);
-            await RegistrarSalienteAsync(db, numero, respuesta, sid2);
+            var sid2 = await meta.SendTextAsync(fromWaId, respuesta, lineaPhoneId: lineaId);
+            await RegistrarSalienteAsync(db, numero, respuesta, sid2, lineaId: lineaId);
             return;
         }
 
@@ -297,15 +319,15 @@ public class MetaWhatsAppWebhookController : ControllerBase
                 && x.Direccion == "OUTGOING" && x.Cuerpo != null && x.Cuerpo.Contains(WhatsAppBotFlow.MarcaNivel1)))
             return;
 
-        var sid1 = await meta.SendButtonsAsync(fromWaId, WhatsAppBotFlow.CuerpoNivel1, WhatsAppBotFlow.BotonesNivel1);
-        await RegistrarSalienteAsync(db, numero, WhatsAppBotFlow.CuerpoNivel1 + " [botones: Frikaf / Intervent / Intereventos]", sid1);
+        var sid1 = await meta.SendButtonsAsync(fromWaId, WhatsAppBotFlow.CuerpoNivel1, WhatsAppBotFlow.BotonesNivel1, lineaPhoneId: lineaId);
+        await RegistrarSalienteAsync(db, numero, WhatsAppBotFlow.CuerpoNivel1 + " [botones: Frikaf / Intervent / Intereventos]", sid1, lineaId: lineaId);
     }
 
     /// <summary>Manda por el bot el PDF de la lista de precios GENERAL activa más reciente
     /// (las que no apuntan a un cliente puntual). Devuelve false si no hay o algo falla,
     /// para que el bot caiga al texto genérico.</summary>
     private async Task<bool> EnviarListaPreciosBotAsync(AppDbContext db, MetaWhatsAppService meta,
-        Api.Controllers.CafeListasCustomController listasCtrl, string fromWaId, string numero, string baseUrl)
+        Api.Controllers.CafeListasCustomController listasCtrl, string fromWaId, string numero, string baseUrl, string? lineaId)
     {
         try
         {
@@ -337,8 +359,8 @@ public class MetaWhatsAppWebhookController : ControllerBase
 
             var mediaUrl = $"{baseUrl}/api/whatsapp/twilio/files/{token}.pdf";
             var caption = "¡Acá tenés nuestra lista de precios! ☕ Cualquier consulta escribinos por acá 👍";
-            var sid = await meta.SendMediaAsync(fromWaId, mediaUrl, caption, isDocument: true, filename: filename);
-            await RegistrarSalienteAsync(db, numero, caption, sid, mediaUrl, filename);
+            var sid = await meta.SendMediaAsync(fromWaId, mediaUrl, caption, isDocument: true, filename: filename, lineaPhoneId: lineaId);
+            await RegistrarSalienteAsync(db, numero, caption, sid, mediaUrl, filename, lineaId);
             return sid != null;
         }
         catch (Exception ex)
@@ -350,7 +372,7 @@ public class MetaWhatsAppWebhookController : ControllerBase
 
     /// <summary>Registra un mensaje saliente del bot en la bandeja, así se ve en el chat.</summary>
     private static async Task RegistrarSalienteAsync(AppDbContext db, string numero, string cuerpo,
-        string? sid, string? mediaUrl = null, string? mediaFilename = null)
+        string? sid, string? mediaUrl = null, string? mediaFilename = null, string? lineaId = null)
     {
         db.WhatsAppTwilioMensajes.Add(new WhatsAppTwilioMensaje
         {
@@ -359,6 +381,7 @@ public class MetaWhatsAppWebhookController : ControllerBase
             Cuerpo = cuerpo,
             MediaUrl = mediaUrl,
             MediaFilename = mediaFilename,
+            LineaPhoneId = lineaId,
             NumMedia = mediaUrl != null ? 1 : 0,
             TwilioMessageSid = sid,
             Canal = "CLOUD",

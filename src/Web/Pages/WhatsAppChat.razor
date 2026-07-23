@@ -31,6 +31,17 @@
             <button class="wa-filtro @(filtroRol=="cliente" ? "active" : "")" @onclick='() => filtroRol="cliente"'>🛍️ Clientes</button>
             <button class="wa-filtro @(filtroRol=="sin" ? "active" : "")" @onclick='() => filtroRol="sin"' title="Conversaciones sin contacto asignado">❓ Sin asignar</button>
         </div>
+        @* 2026-07-23 (multi-línea): filtro por número NUESTRO — solo aparece con 2+ líneas conectadas *@
+        @if (LineasDetectadas().Count > 1)
+        {
+            <div class="wa-filtros" style="border-top:1px dashed #e5e7eb;">
+                <button class="wa-filtro @(filtroLinea=="" ? "active" : "")" @onclick='() => filtroLinea=""'>📞 Todas las líneas</button>
+                @foreach (var l in LineasDetectadas())
+                {
+                    <button class="wa-filtro @(filtroLinea==l.Id ? "active" : "")" @onclick='() => filtroLinea=l.Id' title="Chats que escriben a este número nuestro">@l.Numero</button>
+                }
+            </div>
+        }
         <div class="wa-conv-list">
             @if (loadingConv)
             {
@@ -60,6 +71,11 @@
                                     @if (!string.IsNullOrEmpty(c.Rol))
                                     {
                                         <span class="wa-rol-tag">@RolEmoji(c.Rol)</span>
+                                    }
+                                    @* etiqueta de línea, solo con 2+ líneas conectadas *@
+                                    @if (LineasDetectadas().Count > 1 && !string.IsNullOrEmpty(c.LineaNumero))
+                                    {
+                                        <span style="font-size:0.6rem; background:#e0e7ff; color:#3730a3; padding:0.05rem 0.35rem; border-radius:999px; white-space:nowrap;" title="Escribió a este número nuestro">@c.LineaNumero</span>
                                     }
                                 </span>
                                 <span class="wa-conv-hora">@FormatHora(c.UltimoAt)</span>
@@ -1251,8 +1267,18 @@
     string filtroRol = "";
     List<ApiClient.TwConvDto> conversacionesFiltradas => conversaciones.Where(MatchFiltro).ToList();
 
+    // 2026-07-23 (multi-línea): cuando haya 2+ números nuestros conectados, aparece el filtro por
+    // línea y la etiqueta en cada chat. Con una sola línea no se muestra nada (queda invisible).
+    string filtroLinea = "";
+    List<(string Id, string Numero)> LineasDetectadas() => conversaciones
+        .Where(c => !string.IsNullOrEmpty(c.Linea))
+        .GroupBy(c => c.Linea!)
+        .Select(g => (g.Key, g.First().LineaNumero ?? g.Key))
+        .OrderBy(x => x.Item2).ToList();
+
     bool MatchFiltro(ApiClient.TwConvDto c)
     {
+        if (!string.IsNullOrEmpty(filtroLinea) && c.Linea != filtroLinea) return false;
         if (string.IsNullOrEmpty(filtroRol)) return true;
         if (filtroRol == "pedido") return EsPedido(c.UltimoMensaje);
         if (filtroRol == "sin") return string.IsNullOrEmpty(c.Rol);

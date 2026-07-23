@@ -35,9 +35,9 @@ public class WhatsAppOutboundService
 
     public async Task<(string? Id, string Canal)> SendTextAsync(string numero, string body)
     {
-        var canal = await PickCanalAsync(numero);
+        var (canal, linea) = await PickCanalYLineaAsync(numero);
         if (canal == "CLOUD")
-            return (await _meta.SendTextAsync(numero, body), "CLOUD");
+            return (await _meta.SendTextAsync(numero, body, lineaPhoneId: linea), "CLOUD");
         return (await _twilio.SendTextAsync(numero, body), "TWILIO");
     }
 
@@ -46,28 +46,30 @@ public class WhatsAppOutboundService
     /// /files/{token} y NO tiene extensión, por eso NO se puede deducir el tipo desde la URL.</summary>
     public async Task<(string? Id, string Canal)> SendMediaAsync(string numero, string mediaUrl, string? caption = null, string? nombreArchivo = null)
     {
-        var canal = await PickCanalAsync(numero);
+        var (canal, linea) = await PickCanalYLineaAsync(numero);
         if (canal == "CLOUD")
         {
             var esDoc = EsDocumento(nombreArchivo);
-            var id = await _meta.SendMediaAsync(numero, mediaUrl, caption, esDoc, nombreArchivo);
+            var id = await _meta.SendMediaAsync(numero, mediaUrl, caption, esDoc, nombreArchivo, lineaPhoneId: linea);
             return (id, "CLOUD");
         }
         return (await _twilio.SendMediaAsync(numero, mediaUrl, caption), "TWILIO");
     }
 
-    /// <summary>Elige el canal según el último entrante de ese número; fallback: Meta si está, sino Twilio.</summary>
-    private async Task<string> PickCanalAsync(string numero)
+    /// <summary>Elige el canal según el último entrante de ese número; fallback: Meta si está, sino Twilio.
+    /// 2026-07-23 (multi-línea): además devuelve por QUÉ línea de Meta venía conversando ese número,
+    /// así la respuesta sale siempre por la misma línea donde el cliente escribió (null = la default).</summary>
+    private async Task<(string Canal, string? Linea)> PickCanalYLineaAsync(string numero)
     {
-        var ultimoCanal = await _db.WhatsAppTwilioMensajes
+        var ultimo = await _db.WhatsAppTwilioMensajes
             .Where(m => m.Numero == numero && m.Direccion == "INCOMING")
             .OrderByDescending(m => m.CreatedAt)
-            .Select(m => m.Canal)
+            .Select(m => new { m.Canal, m.LineaPhoneId })
             .FirstOrDefaultAsync();
 
-        if (ultimoCanal == "CLOUD" && _meta.IsConfigured) return "CLOUD";
-        if (ultimoCanal == "TWILIO" && _twilio.IsConfigured) return "TWILIO";
-        return _meta.IsConfigured ? "CLOUD" : "TWILIO";
+        if (ultimo?.Canal == "CLOUD" && _meta.IsConfigured) return ("CLOUD", ultimo.LineaPhoneId);
+        if (ultimo?.Canal == "TWILIO" && _twilio.IsConfigured) return ("TWILIO", null);
+        return (_meta.IsConfigured ? "CLOUD" : "TWILIO", null);
     }
 
     /// <summary>Decide si el adjunto va como DOCUMENTO. Criterio: solo las imágenes reales

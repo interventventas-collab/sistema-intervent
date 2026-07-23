@@ -162,7 +162,13 @@ public class WhatsAppTwilioController : ControllerBase
         string? sid;
         if (_meta.IsConfigured)
         {
-            sid = await _meta.SendButtonsAsync(numero, WhatsAppBotFlow.CuerpoNivel1, WhatsAppBotFlow.BotonesNivel1);
+            // 2026-07-23 (multi-línea): el menú sale por la línea donde venía la conversación
+            var lineaConv = await _db.WhatsAppTwilioMensajes
+                .Where(x => x.Numero == numero && x.Direccion == "INCOMING" && x.LineaPhoneId != null)
+                .OrderByDescending(x => x.CreatedAt)
+                .Select(x => x.LineaPhoneId)
+                .FirstOrDefaultAsync();
+            sid = await _meta.SendButtonsAsync(numero, WhatsAppBotFlow.CuerpoNivel1, WhatsAppBotFlow.BotonesNivel1, lineaPhoneId: lineaConv);
             if (sid != null)
             {
                 _db.WhatsAppTwilioMensajes.Add(new WhatsAppTwilioMensaje
@@ -239,9 +245,15 @@ public class WhatsAppTwilioController : ControllerBase
                 UltimoMensaje = g.OrderByDescending(m => m.CreatedAt).Select(m => m.Cuerpo).FirstOrDefault(),
                 UltimoDireccion = g.OrderByDescending(m => m.CreatedAt).Select(m => m.Direccion).FirstOrDefault(),
                 UltimoAt = g.Max(m => m.CreatedAt),
-                Total = g.Count()
+                Total = g.Count(),
+                // 2026-07-23 (multi-línea): por qué línea nuestra conversa este número
+                Linea = g.OrderByDescending(m => m.CreatedAt).Where(m => m.LineaPhoneId != null).Select(m => m.LineaPhoneId).FirstOrDefault()
             })
             .ToListAsync();
+        // Nombre visible de cada línea (lo auto-registra el webhook en AppSettings)
+        var lineasNombres = await _db.AppSettings.AsNoTracking()
+            .Where(s => s.Key.StartsWith("whatsapp.linea."))
+            .ToDictionaryAsync(s => s.Key.Substring("whatsapp.linea.".Length), s => s.Value);
         // Join in-memory con contactos (poco volumen, mas simple que LINQ join)
         var contactos = await _db.WhatsAppTwilioContactos.AsNoTracking()
             .Where(c => c.Activo).ToDictionaryAsync(c => c.Numero, c => c);
@@ -265,7 +277,9 @@ public class WhatsAppTwilioController : ControllerBase
                 x.UltimoMensaje,
                 x.UltimoDireccion,
                 x.UltimoAt,
-                x.Total
+                x.Total,
+                x.Linea,
+                LineaNumero = x.Linea != null && lineasNombres.TryGetValue(x.Linea, out var ln) ? ln : null
             };
         }).OrderByDescending(x => x.UltimoAt).ToList();
         return Ok(result);
@@ -476,8 +490,9 @@ public class WhatsAppTwilioController : ControllerBase
                 && !string.IsNullOrWhiteSpace(msg.TwilioMessageSid)
                 && msg.TwilioMessageSid.StartsWith("wamid.", StringComparison.OrdinalIgnoreCase))
             {
-                // Al quitar mandamos emoji vacio (Meta la saca del celu del cliente)
-                var sid = await _meta.SendReactionAsync(msg.Numero, msg.TwilioMessageSid, removed ? "" : req.Emoji);
+                // Al quitar mandamos emoji vacio (Meta la saca del celu del cliente).
+                // 2026-07-23 (multi-línea): la reacción sale por la línea del propio mensaje.
+                var sid = await _meta.SendReactionAsync(msg.Numero, msg.TwilioMessageSid, removed ? "" : req.Emoji, lineaPhoneId: msg.LineaPhoneId);
                 enviadaAlCliente = sid != null && !removed;
             }
         }
