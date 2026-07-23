@@ -1568,8 +1568,8 @@
                 @* 2026-06-23: si Playwright esta linked -> va al chat. Si NO -> abre modal QR directo. *@
                 <button class="topbar-action-whatsapp"
                         style="@(waDesvinculado ? "background:#9ca3af !important; box-shadow:none !important; position:relative;" : "position:relative;")"
-                        @onclick="ClickBotonWhatsApp"
-                        title="@(waDesvinculado ? "⚠️ WhatsApp DESVINCULADO — click para rescanear el QR aca mismo" : "Chat WhatsApp — pedidos de hermanos y empleados")"
+                        @onclick="ToggleWaFlotante"
+                        title="WhatsApp — abrir el panel de conversaciones (↗ para verlo en una pestaña aparte)"
                         aria-label="WhatsApp">
                     @SvgIcons.MessageCircle
                     <span>WhatsApp</span>
@@ -1878,6 +1878,11 @@
    al togglear desde la topbar. Disponibles en todas las pantallas. *@
 <CalculadoraFlotante @ref="calcRef" />
 <PostitsFlotantes @ref="postitsRef" Username="@username" />
+
+@* 2026-07-23: panel flotante de WhatsApp (API oficial de Meta). Se abre con el boton verde
+   de la topbar y permite responder sin salir de la pantalla donde estas trabajando.
+   Tiene un boton ↗ para abrirlo en una pestaña aparte. *@
+<WhatsAppFlotante @ref="waFlotanteRef" />
 
 @* 2026-06-23: modal global de vinculacion WhatsApp. Se abre desde cualquier pantalla apretando
    el boton verde de WhatsApp en la topbar (cuando no esta linked) o el boton del banner rojo. *@
@@ -2425,6 +2430,10 @@
     private PostitsFlotantes? postitsRef;
     private async Task ToggleCalc() { if (calcRef is not null) await calcRef.ToggleAsync(); }
     private async Task TogglePostits() { if (postitsRef is not null) await postitsRef.ToggleAsync(); }
+
+    // 2026-07-23: panel flotante de WhatsApp (API oficial de Meta).
+    private WhatsAppFlotante? waFlotanteRef;
+    private async Task ToggleWaFlotante() { if (waFlotanteRef is not null) await waFlotanteRef.ToggleAsync(); }
 
     // 2026-07-15: acceso directo a la calculadora en la barra, con cartel "nuevo" titilante
     // hasta que se abre por primera vez.

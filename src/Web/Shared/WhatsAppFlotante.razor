@@ -1,0 +1,341 @@
+@* Panel flotante de WhatsApp: ventanita chica que se abre desde el boton verde de la topbar.
+   Permite ver las conversaciones y responder sin salir de la pantalla en la que estas trabajando.
+   Tiene un boton para abrirlo en una pestaña aparte (pantalla completa) y usarlo al costado.
+   Vive en MainLayout, asi que funciona en cualquier pantalla del sistema.
+   Pedido del usuario 2026-07-23. Reusa los mismos endpoints que la pantalla /whatsapp. *@
+
+@using static Web.Services.ApiClient
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@implements IDisposable
+
+@if (visible)
+{
+    <div class="waf-panel">
+
+        @* ---------- Encabezado ---------- *@
+        <div class="waf-header">
+            @if (chatAbierto is null)
+            {
+                <span class="waf-title">💬 WhatsApp</span>
+            }
+            else
+            {
+                <button class="waf-icon-btn" @onclick="VolverALista" title="Volver a las conversaciones">←</button>
+                <span class="waf-title waf-title-chat" title="@NombreDe(chatAbierto)">@NombreDe(chatAbierto)</span>
+            }
+            <span class="waf-spacer"></span>
+            <a class="waf-icon-btn" href="/whatsapp" target="_blank" title="Abrir en una pestaña aparte">↗</a>
+            <button class="waf-icon-btn" @onclick="Close" title="Cerrar">×</button>
+        </div>
+
+        @* ---------- Cuerpo ---------- *@
+        <div class="waf-body">
+
+            @if (cargando && convs.Count == 0)
+            {
+                <div class="waf-vacio">Cargando…</div>
+            }
+            else if (chatAbierto is null)
+            {
+                @* ----- Lista de conversaciones ----- *@
+                @if (convs.Count == 0)
+                {
+                    <div class="waf-vacio">Todavía no hay conversaciones.</div>
+                }
+                else
+                {
+                    @foreach (var c in convs)
+                    {
+                        <div class="waf-conv" @onclick="() => AbrirChat(c)">
+                            <div class="waf-avatar">@Inicial(c)</div>
+                            <div class="waf-conv-txt">
+                                <div class="waf-conv-top">
+                                    <span class="waf-conv-nombre">@NombreDe(c)</span>
+                                    <span class="waf-conv-hora">@Cuando(c.UltimoAt)</span>
+                                </div>
+                                <div class="waf-conv-ultimo">
+                                    @if (c.UltimoDireccion == "OUTGOING") { <span class="waf-tick">✓</span> }
+                                    @Recortar(c.UltimoMensaje, 42)
+                                </div>
+                            </div>
+                        </div>
+                    }
+                }
+            }
+            else
+            {
+                @* ----- Chat abierto ----- *@
+                <div class="waf-msgs" id="waf-msgs">
+                    @if (msgs.Count == 0)
+                    {
+                        <div class="waf-vacio">Sin mensajes.</div>
+                    }
+                    else
+                    {
+                        @foreach (var m in msgs)
+                        {
+                            <div class="waf-msg @(m.Direccion == "OUTGOING" ? "waf-out" : "waf-in")">
+                                @if (!string.IsNullOrWhiteSpace(m.Cuerpo))
+                                {
+                                    <div class="waf-msg-txt">@m.Cuerpo</div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(m.MediaUrl))
+                                {
+                                    <div class="waf-msg-adj">📎 Adjunto</div>
+                                }
+                                <div class="waf-msg-hora">@m.CreatedAt.ToLocalTime().ToString("HH:mm")</div>
+                            </div>
+                        }
+                    }
+                </div>
+            }
+        </div>
+
+        @* ---------- Barra de envio (solo con un chat abierto) ---------- *@
+        @if (chatAbierto is not null)
+        {
+            <div class="waf-send">
+                <input class="waf-input" placeholder="Escribir mensaje…" @bind="texto" @bind:event="oninput"
+                       @onkeydown="OnKeyDown" disabled="@enviando" />
+                <button class="waf-send-btn" @onclick="Enviar" disabled="@(enviando || string.IsNullOrWhiteSpace(texto))"
+                        title="Enviar">
+                    @(enviando ? "…" : "➤")
+                </button>
+            </div>
+        }
+    </div>
+}
+
+<style>
+    .waf-panel {
+        position: fixed; right: 18px; bottom: 18px; z-index: 2147483000;
+        width: 370px; height: 540px; max-height: calc(100vh - 90px);
+        display: flex; flex-direction: column;
+        background: #fff; border-radius: 14px; overflow: hidden;
+        box-shadow: 0 18px 48px rgba(0,0,0,.28); border: 1px solid rgba(0,0,0,.08);
+        font-size: 13px;
+    }
+    .waf-header {
+        display: flex; align-items: center; gap: 6px;
+        background: #25d366; color: #fff; padding: 9px 10px; flex: 0 0 auto;
+    }
+    .waf-title { font-weight: 700; font-size: 14px; }
+    .waf-title-chat { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .waf-spacer { flex: 1 1 auto; }
+    .waf-icon-btn {
+        background: rgba(255,255,255,.18); border: 0; color: #fff; cursor: pointer;
+        width: 26px; height: 26px; border-radius: 7px; font-size: 15px; line-height: 1;
+        display: inline-flex; align-items: center; justify-content: center; text-decoration: none;
+    }
+    .waf-icon-btn:hover { background: rgba(255,255,255,.32); }
+
+    .waf-body { flex: 1 1 auto; overflow-y: auto; background: #f6f7f9; }
+    .waf-vacio { padding: 22px 14px; text-align: center; color: #8b93a1; }
+
+    .waf-conv { display: flex; gap: 9px; padding: 9px 11px; cursor: pointer; border-bottom: 1px solid #eceef1; background: #fff; }
+    .waf-conv:hover { background: #f0fdf4; }
+    .waf-avatar {
+        flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%;
+        background: #25d366; color: #fff; font-weight: 700;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .waf-conv-txt { flex: 1 1 auto; min-width: 0; }
+    .waf-conv-top { display: flex; justify-content: space-between; gap: 6px; }
+    .waf-conv-nombre { font-weight: 600; color: #1f2937; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .waf-conv-hora { flex: 0 0 auto; color: #9aa1ac; font-size: 11px; }
+    .waf-conv-ultimo { color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .waf-tick { color: #25d366; margin-right: 3px; }
+
+    .waf-msgs { padding: 10px; display: flex; flex-direction: column; gap: 7px; }
+    .waf-msg { max-width: 78%; padding: 6px 9px; border-radius: 9px; box-shadow: 0 1px 1px rgba(0,0,0,.06); }
+    .waf-in  { align-self: flex-start; background: #fff; }
+    .waf-out { align-self: flex-end;   background: #dcf8c6; }
+    .waf-msg-txt { white-space: pre-wrap; word-break: break-word; color: #111827; }
+    .waf-msg-adj { color: #4b5563; font-style: italic; }
+    .waf-msg-hora { text-align: right; color: #9aa1ac; font-size: 10px; margin-top: 2px; }
+
+    .waf-send { display: flex; gap: 6px; padding: 8px; background: #fff; border-top: 1px solid #eceef1; flex: 0 0 auto; }
+    .waf-input { flex: 1 1 auto; border: 1px solid #d7dbe0; border-radius: 18px; padding: 7px 12px; outline: none; font-size: 13px; }
+    .waf-input:focus { border-color: #25d366; }
+    .waf-send-btn {
+        flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%; border: 0;
+        background: #25d366; color: #fff; cursor: pointer; font-size: 15px;
+    }
+    .waf-send-btn:disabled { background: #b9bfc7; cursor: default; }
+
+    @@media (max-width: 640px) {
+        .waf-panel { right: 8px; left: 8px; width: auto; height: 70vh; }
+    }
+</style>
+
+@code {
+    private bool visible;
+    private bool cargando;
+    private bool enviando;
+    private string texto = "";
+
+    private List<TwConvDto> convs = new();
+    private TwConvDto? chatAbierto;
+    private List<TwMsgDto> msgs = new();
+
+    private PeriodicTimer? timer;
+    private CancellationTokenSource? cts;
+
+    /// <summary>Abre/cierra el panel. Lo llama el boton de WhatsApp de la topbar.</summary>
+    public async Task ToggleAsync()
+    {
+        visible = !visible;
+        if (visible)
+        {
+            await CargarConversaciones();
+            ArrancarRefresco();
+        }
+        else
+        {
+            DetenerRefresco();
+        }
+        StateHasChanged();
+    }
+
+    private void Close()
+    {
+        visible = false;
+        chatAbierto = null;
+        DetenerRefresco();
+    }
+
+    private void VolverALista()
+    {
+        chatAbierto = null;
+        msgs.Clear();
+    }
+
+    // ---------- Datos ----------
+
+    private async Task CargarConversaciones()
+    {
+        try
+        {
+            cargando = true;
+            convs = await Api.GetTwConversacionesAsync();
+        }
+        catch { /* si falla, dejamos lo que habia */ }
+        finally { cargando = false; }
+    }
+
+    private async Task AbrirChat(TwConvDto c)
+    {
+        chatAbierto = c;
+        msgs = new();
+        await CargarMensajes();
+        await ScrollAlFinal();
+    }
+
+    private async Task CargarMensajes()
+    {
+        if (chatAbierto is null) return;
+        try { msgs = await Api.GetTwMensajesAsync(chatAbierto.Numero); }
+        catch { /* silencioso: es un refresco de fondo */ }
+    }
+
+    private async Task Enviar()
+    {
+        if (chatAbierto is null || string.IsNullOrWhiteSpace(texto)) return;
+        var cuerpo = texto.Trim();
+        try
+        {
+            enviando = true;
+            var (ok, error) = await Api.SendTwMensajeAsync(chatAbierto.Numero, cuerpo);
+            if (ok)
+            {
+                texto = "";
+                await CargarMensajes();
+                await ScrollAlFinal();
+            }
+            else
+            {
+                ToastService.Error(error ?? "No se pudo enviar el mensaje");
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error al enviar: " + ex.Message); }
+        finally { enviando = false; }
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey) await Enviar();
+    }
+
+    // ---------- Refresco automatico (cada 10s) ----------
+
+    private void ArrancarRefresco()
+    {
+        DetenerRefresco();
+        cts = new CancellationTokenSource();
+        timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
+        _ = LoopRefresco(cts.Token);
+    }
+
+    private async Task LoopRefresco(CancellationToken ct)
+    {
+        try
+        {
+            while (timer is not null && await timer.WaitForNextTickAsync(ct))
+            {
+                if (!visible) continue;
+                if (chatAbierto is null) await CargarConversaciones();
+                else await CargarMensajes();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { /* normal al cerrar */ }
+    }
+
+    private void DetenerRefresco()
+    {
+        try { cts?.Cancel(); } catch { }
+        timer?.Dispose();
+        timer = null;
+        cts?.Dispose();
+        cts = null;
+    }
+
+    // ---------- Helpers de presentacion ----------
+
+    private async Task ScrollAlFinal()
+    {
+        try { await JS.InvokeVoidAsync("eval", "setTimeout(function(){var e=document.getElementById('waf-msgs'); if(e){e.scrollTop=e.scrollHeight;}},60)"); }
+        catch { }
+    }
+
+    private static string NombreDe(TwConvDto c)
+        => !string.IsNullOrWhiteSpace(c.ClienteNombre) ? c.ClienteNombre!
+         : !string.IsNullOrWhiteSpace(c.NombrePerfil) ? c.NombrePerfil!
+         : c.Numero.Replace("whatsapp:", "");
+
+    private static string Inicial(TwConvDto c)
+    {
+        var n = NombreDe(c).Trim();
+        return string.IsNullOrEmpty(n) ? "?" : n.Substring(0, 1).ToUpperInvariant();
+    }
+
+    private static string Recortar(string? s, int max)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "";
+        s = s.Replace("\n", " ");
+        return s.Length <= max ? s : s.Substring(0, max) + "…";
+    }
+
+    private static string Cuando(DateTime utc)
+    {
+        var l = utc.ToLocalTime();
+        var hoy = DateTime.Now.Date;
+        if (l.Date == hoy) return l.ToString("HH:mm");
+        if (l.Date == hoy.AddDays(-1)) return "Ayer";
+        return l.ToString("dd/MM");
+    }
+
+    public void Dispose() => DetenerRefresco();
+}
