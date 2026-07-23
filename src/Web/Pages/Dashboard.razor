@@ -472,6 +472,58 @@
         }
     </div>
 
+    @* WhatsApp — conversaciones donde el último mensaje lo mandó el CLIENTE (sin responder).
+       2026-07-22 pedido Osmar. Click en una conversación → abre /whatsapp con ese chat elegido. *@
+    <div class="dashboard-detail-card mac-stat-card accent-green tres-card @(waOpen ? "" : "tres-collapsed")" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/whatsapp")' title="Ir a WhatsApp">
+        <div>
+            <div class="mac-card-header">
+                <div class="mac-card-iconbox" style="background:#dcfce7; color:#16a34a;">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
+                </div>
+                <span class="mac-card-eyebrow">WhatsApp</span>
+                <button class="tres-toggle" @onclick:stopPropagation="true" @onclick='() => ToggleCard("wa")'
+                        title="@(waOpen ? "Plegar" : "Desplegar")" aria-label="@(waOpen ? "Plegar" : "Desplegar")">@(waOpen ? "▾" : "▸")</button>
+            </div>
+            @if (waConvs is null)
+            {
+                <div class="mac-card-sub">Cargando…</div>
+            }
+            else
+            {
+                <div class="mac-card-bignum">@waSinResponder.Count <span style="font-size:0.85rem; font-weight:400; color:#6b7280;">sin responder</span></div>
+                <div class="mac-card-sub">@(waSinResponder.Count == 1 ? "cliente esperando respuesta" : "clientes esperando respuesta")</div>
+                @if (waOpen && waSinResponder.Count > 0)
+                {
+                    <div class="tres-detalle">
+                        <div class="tres-detalle-hd">Últimas sin responder — tocá para abrir el chat</div>
+                        @foreach (var c in waSinResponder.Take(5))
+                        {
+                            <div class="tres-row" style="cursor:pointer;" @onclick:stopPropagation="true" @onclick='() => AbrirChatWa(c.Numero)' title="Abrir este chat en /whatsapp">
+                                <span class="tres-row-main">
+                                    <span class="tres-row-t">💬 @(c.ClienteNombre ?? c.NombrePerfil ?? WaPrettyNumero(c.Numero))</span>
+                                    <span class="tres-row-s">@WaSnippet(c.UltimoMensaje)</span>
+                                </span>
+                                <span class="tres-row-val" style="color:#6b7280; font-weight:400; font-size:0.68rem;">@WaHace(c.UltimoAt)</span>
+                            </div>
+                        }
+                        @if (waSinResponder.Count > 5)
+                        {
+                            <div class="tres-more">+@(waSinResponder.Count - 5) más en la pantalla de WhatsApp</div>
+                        }
+                    </div>
+                }
+                else if (waOpen)
+                {
+                    <div style="margin-top:12px; font-size:0.74rem; color:#16a34a;">✅ Todas las conversaciones respondidas</div>
+                }
+            }
+        </div>
+        @if (waOpen)
+        {
+            <div class="tres-card-foot">Abrir WhatsApp ›</div>
+        }
+    </div>
+
 </div>
 
 @* === Fila de KPIs financieros: Shell + Galicia + Ventas del mes + Saldos + Doc ===
@@ -1318,12 +1370,17 @@
         flex-direction: column;
         justify-content: space-between;
     }
-    /* 2026-07-08: fila de 3 cards operativas (cuadradas, un poco mas altas) */
+    /* 2026-07-08: fila de cards operativas (cuadradas, un poco mas altas).
+       2026-07-22: se sumó la card de WhatsApp → ahora son 4 columnas
+       (en pantallas medianas quedan 2x2, en celu una debajo de la otra). */
     .dashboard-tres-cards {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(4, 1fr);
         gap: 1.5rem;
         margin-top: 1.5rem;
+    }
+    @@media (max-width: 1280px) {
+        .dashboard-tres-cards { grid-template-columns: repeat(2, 1fr); }
     }
     @@media (max-width: 900px) {
         .dashboard-tres-cards { grid-template-columns: 1fr; }
@@ -1643,8 +1700,46 @@
         try { chequesProximos = await Api.GetChequesProximosPagarAsync(5); StateHasChanged(); }
         catch { }
     }
+    // 2026-07-22: card WhatsApp — conversaciones sin responder (último mensaje = del cliente)
+    private List<ApiClient.TwConvDto>? waConvs;
+    private List<ApiClient.TwConvDto> waSinResponder =>
+        waConvs?.Where(c => c.UltimoDireccion == "INCOMING").ToList() ?? new();
+
+    private async Task LoadWaCardAsync()
+    {
+        try { waConvs = await Api.GetTwConversacionesAsync(); StateHasChanged(); }
+        catch { /* si falla, la card queda en "Cargando…" y reintenta en la próxima vuelta */ }
+    }
+
+    /// <summary>Abre /whatsapp con esa conversación ya seleccionada (la pantalla lee ?numero=).</summary>
+    private void AbrirChatWa(string numero)
+        => Navigation.NavigateTo($"/whatsapp?numero={Uri.EscapeDataString(numero)}");
+
+    private static string WaPrettyNumero(string numero) => numero?.Replace("whatsapp:", "").Trim() ?? "";
+
+    /// <summary>Recorte del último mensaje para que entre en la fila de la card.</summary>
+    private static string WaSnippet(string? m)
+    {
+        if (string.IsNullOrWhiteSpace(m)) return "📎 Adjunto";
+        var t = m.Trim().Replace('\n', ' ');
+        return t.Length <= 45 ? t : t.Substring(0, 45) + "…";
+    }
+
+    /// <summary>Hace cuánto llegó el mensaje, en criollo: "5 min", "2 h", "ayer", "12/07".</summary>
+    private static string WaHace(DateTime utc)
+    {
+        var local = utc.ToArTime();
+        var ahora = DateTime.UtcNow.ToArTime();
+        var dif = ahora - local;
+        if (dif.TotalMinutes < 1) return "recién";
+        if (dif.TotalMinutes < 60) return $"{(int)dif.TotalMinutes} min";
+        if (local.Date == ahora.Date) return $"{(int)dif.TotalHours} h";
+        if (local.Date == ahora.Date.AddDays(-1)) return "ayer";
+        return local.ToString("dd/MM");
+    }
+
     // 2026-07-08: plegar/desplegar cada card (arrancan desplegadas; se recuerda por navegador)
-    private bool prepOpen = true, alqOpen = true, me1Open = true;
+    private bool prepOpen = true, alqOpen = true, me1Open = true, waOpen = true;
     private bool tresCollapseCargado;
     private List<MeliMe1ShipmentDto>? me1List;
     private List<RepartidorDto> me1Repartidores = new();
@@ -1667,6 +1762,7 @@
         {
             case "prep": prepOpen = !prepOpen; key = "dash.prepOpen"; val = prepOpen; break;
             case "alq": alqOpen = !alqOpen; key = "dash.alqOpen"; val = alqOpen; break;
+            case "wa": waOpen = !waOpen; key = "dash.waOpen"; val = waOpen; break;
             default: me1Open = !me1Open; key = "dash.me1Open"; val = me1Open; break;
         }
         try { await JS.InvokeVoidAsync("localStorage.setItem", key, val ? "1" : "0"); } catch { }
@@ -1682,6 +1778,7 @@
                 prepOpen = await LeerPlegadoAsync("dash.prepOpen");
                 alqOpen = await LeerPlegadoAsync("dash.alqOpen");
                 me1Open = await LeerPlegadoAsync("dash.me1Open");
+                waOpen = await LeerPlegadoAsync("dash.waOpen");
                 StateHasChanged();
             }
             catch { /* si el navegador bloquea localStorage, quedan desplegadas por default */ }
@@ -1872,14 +1969,17 @@
             TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
 
         // 2026-07-08: cards nuevas Preparación + me1 (refrescan cada 60s)
+        // 2026-07-22: se sumó la card de WhatsApp al mismo refresco
         _ = LoadPrepResumenAsync();
         _ = LoadMe1CardAsync();
         _ = LoadChequesAsync();
+        _ = LoadWaCardAsync();
         tresCardsTimer = new System.Threading.Timer(_ => InvokeAsync(async () =>
         {
             await LoadPrepResumenAsync();
             await LoadMe1CardAsync();
             await LoadChequesAsync();
+            await LoadWaCardAsync();
         }), null, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
 
         // 2026-06-25: equipo trabajando ahora (refresca cada 30s) + resumen del día (cada 60s)

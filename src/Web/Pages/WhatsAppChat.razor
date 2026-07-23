@@ -731,9 +731,16 @@
     int nuevaRespOrden = 99;
     string nuevoContNumero = "", nuevoContNombre = "", nuevoContRol = "hermano", nuevoContNotas = "";
 
+    // 2026-07-22: la card de WhatsApp del dashboard navega a /whatsapp?numero=whatsapp:+549...
+    // para abrir directo esa conversación (sin este parámetro la pantalla arranca sin chat elegido).
+    [SupplyParameterFromQuery(Name = "numero")]
+    public string? NumeroInicial { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
         await LoadConversaciones();
+        if (!string.IsNullOrWhiteSpace(NumeroInicial))
+            await SelectConv(NumeroInicial);
         await LoadRespuestas();
         await LoadContactos();
         refreshTimer = new System.Threading.Timer(async _ => await OnTick(), null, 10_000, 10_000);
