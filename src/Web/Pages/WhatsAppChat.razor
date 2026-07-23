@@ -366,10 +366,18 @@
             else
             {
                 <p style="color:#6b7280; font-size:0.85rem;">Asignale un nombre y un rol a los números que te escriben. El nombre que pongas acá prevalece sobre el de WhatsApp.</p>
+                @* 2026-07-23: con la importación masiva de clientes son miles — sin buscador era inusable *@
+                <input class="form-control" style="margin-bottom:0.6rem; max-width:420px;"
+                       placeholder="🔍 Buscar por nombre o número… (mínimo 2 letras)"
+                       value="@contactosBusqueda" @oninput="@(e => contactosBusqueda = e.Value?.ToString() ?? "")" />
+                @if (ContactosFiltrados().Count > 200)
+                {
+                    <p style="color:#9ca3af; font-size:0.8rem;">Mostrando los primeros 200 de @ContactosFiltrados().Count — afiná la búsqueda para encontrar el que querés.</p>
+                }
                 <table class="table table-sm">
                     <thead><tr><th style="width:160px;">Número</th><th>Nombre</th><th style="width:110px;">Rol</th><th style="width:200px;">Cliente vinculado</th><th>Notas</th><th style="width:40px;">Act.</th><th style="width:80px;"></th></tr></thead>
                     <tbody>
-                        @foreach (var c in contactos.OrderBy(x => x.Nombre))
+                        @foreach (var c in ContactosFiltrados().Take(200))
                         {
                             <tr>
                                 <td style="font-family:monospace; font-size:0.78rem;">@c.Numero.Replace("whatsapp:", "")</td>
@@ -1167,6 +1175,19 @@
     }
 
     string PrettyNumero(string numero) => numero?.Replace("whatsapp:", "").Trim() ?? "";
+
+    // 2026-07-23: buscador de la pestaña Contactos (miles tras la importación de clientes)
+    string contactosBusqueda = "";
+    List<ApiClient.TwContactoDto> ContactosFiltrados()
+    {
+        var q = (contactosBusqueda ?? "").Trim();
+        var lista = contactos.OrderBy(x => x.Nombre).ToList();
+        if (q.Length < 2) return lista;
+        return lista.Where(c =>
+               (c.Nombre ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)
+            || (c.Numero ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)
+            || (c.ClienteNombre ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+    }
 
     // 2026-07-23: etiqueta legible del tipo de archivo, por la extensión de la URL o del nombre
     static string WaTipoArchivo(string? url, string? filename)
