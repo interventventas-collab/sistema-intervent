@@ -11,76 +11,26 @@ namespace Api.Services;
 public class ResumenFinancieroNotifier
 {
     private readonly AppDbContext _db;
-    private readonly TelegramService _tg;
-    private readonly WhatsAppOutboundService _wa;
-    private readonly ILogger<ResumenFinancieroNotifier> _log;
-
-    /// <summary>Números de WhatsApp que reciben el resumen (separados por coma). Idea de Osmar:
-    /// los hermanos escriben a la línea todos los días, así que la ventana de 24 hs está casi
-    /// siempre abierta y el mensaje sale GRATIS sin plantillas. Si la ventana está cerrada
-    /// (no escribió en 24 hs), ese día no le llega — queda en el log; Telegram es el respaldo.</summary>
-    public const string WhatsAppNumerosKey = "resumen.financiero.whatsapp_numeros";
+    private readonly AutoAvisoSender _sender;
 
     private static readonly NumberFormatInfo MilesNfi = new NumberFormatInfo
     { NumberGroupSeparator = ".", NumberDecimalSeparator = ",", NumberGroupSizes = new[] { 3 } };
 
-    public ResumenFinancieroNotifier(AppDbContext db, TelegramService tg, WhatsAppOutboundService wa,
-        ILogger<ResumenFinancieroNotifier> log)
+    public ResumenFinancieroNotifier(AppDbContext db, AutoAvisoSender sender)
     {
         _db = db;
-        _tg = tg;
-        _wa = wa;
-        _log = log;
+        _sender = sender;
     }
 
+    /// <summary>Arma el contenido y lo despacha por los canales/personas configurados en el
+    /// Centro de Automatizaciones (clave 'resumen-financiero').</summary>
     public async Task<(bool Ok, string Detalle)> EnviarResumenAsync(CancellationToken ct = default)
     {
         var argNow = DateTime.UtcNow.AddHours(-3);
         var (msgTg, msgWa) = await ConstruirMensajesAsync(argNow, ct);
-        var partes = new List<string>();
-        var okAlguno = false;
-
-        // ── Telegram (a los que tienen el tilde 'Alertas') ──
-        var cuenta = await _db.TelegramAccounts.Where(x => x.Proposito == "AVISOS").OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
-        var hayTg = cuenta is not null && cuenta.IsActive && !string.IsNullOrEmpty(cuenta.BotToken)
-            && await _db.TelegramChats.AnyAsync(c => c.TelegramAccountId == cuenta.Id && c.NotifAlertas, ct);
-        if (hayTg)
-        {
-            var (enviado, err) = await _tg.SendMessageAsync(msgTg, categoria: "ALERTAS", ct: ct, parseMode: "HTML");
-            okAlguno |= enviado;
-            partes.Add(enviado ? "Telegram OK" : $"Telegram falló ({err})");
-        }
-        else partes.Add("Telegram: sin bot o sin destinatarios");
-
-        // ── WhatsApp (a los números configurados, si su ventana de 24 hs está abierta) ──
-        var numerosCfg = await _db.AppSettings.AsNoTracking()
-            .Where(s => s.Key == WhatsAppNumerosKey).Select(s => s.Value).FirstOrDefaultAsync(ct);
-        var numeros = (numerosCfg ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        int waOk = 0;
-        foreach (var n in numeros)
-        {
-            var numero = n.StartsWith("whatsapp:") ? n : "whatsapp:" + n;
-            try
-            {
-                var (sid, canal) = await _wa.SendTextAsync(numero, msgWa);
-                if (sid != null)
-                {
-                    waOk++; okAlguno = true;
-                    // Registrar en la bandeja del chat, como cualquier saliente
-                    _db.WhatsAppTwilioMensajes.Add(new Models.WhatsAppTwilioMensaje
-                    {
-                        Direccion = "OUTGOING", Numero = numero, Cuerpo = msgWa,
-                        TwilioMessageSid = sid, Canal = canal, Procesado = true, CreatedAt = DateTime.UtcNow
-                    });
-                    await _db.SaveChangesAsync(ct);
-                }
-                else _log.LogInformation("[ResumenFinanciero] WhatsApp a {Numero} no salió (¿ventana de 24hs cerrada?)", numero);
-            }
-            catch (Exception ex) { _log.LogWarning(ex, "[ResumenFinanciero] error mandando WhatsApp a {Numero}", numero); }
-        }
-        if (numeros.Length > 0) partes.Add($"WhatsApp: {waOk} de {numeros.Length}");
-
-        return (okAlguno, string.Join(" · ", partes));
+        var plano = msgWa.Replace("*", "");   // versión sin formato para campanita/correo
+        return await _sender.EnviarAsync("resumen-financiero",
+            new AutoAvisoSender.Contenido($"🌅 Resumen financiero {argNow:dd/MM/yyyy}", msgTg, msgWa, plano), ct);
     }
 
     private async Task<(string Telegram, string WhatsApp)> ConstruirMensajesAsync(DateTime argNow, CancellationToken ct)

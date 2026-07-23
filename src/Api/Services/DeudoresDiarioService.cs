@@ -15,7 +15,6 @@ public class DeudoresDiarioService : BackgroundService
     private static readonly TimeSpan Period = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan FirstDelay = TimeSpan.FromMinutes(1);
     private const int ARG_OFFSET_HOURS = -3;
-    private const int HORA_ENVIO = 8;   // 08:00 hora Argentina. Cambiar acá si se quiere otra hora.
     private const string LastSentKey = "deudores.diario.last_sent";
 
     public DeudoresDiarioService(IServiceScopeFactory scopeFactory, ILogger<DeudoresDiarioService> logger)
@@ -38,11 +37,16 @@ public class DeudoresDiarioService : BackgroundService
     private async Task TickAsync(CancellationToken ct)
     {
         var argNow = DateTime.UtcNow.AddHours(ARG_OFFSET_HOURS);
-        if (argNow.Hour < HORA_ENVIO) return;   // todavía no es la hora de hoy
         var hoyStr = argNow.ToString("yyyy-MM-dd");
 
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        // 2026-07-23 (Centro de Automatizaciones): interruptor + días + hora configurables
+        var cfg = await db.AutoConfigs.AsNoTracking().FirstOrDefaultAsync(x => x.AutoKey == "deudas-diario", ct);
+        if (cfg is null || !cfg.Enabled) return;          // apagada desde la pantalla
+        if (!cfg.CorreHoy(argNow)) return;                // hoy no es uno de los días elegidos
+        if (argNow.Hour < cfg.Hora) return;               // todavía no es la hora
 
         // Traba diaria: si ya lo mandé hoy, no repito (aunque la app se reinicie).
         var latch = await db.AppSettings.FindAsync(new object?[] { LastSentKey }, ct);

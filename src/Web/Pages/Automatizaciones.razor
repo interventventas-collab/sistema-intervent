@@ -1,0 +1,371 @@
+@page "/automatizaciones"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService Toast
+@inject NavigationManager Nav
+
+@* 2026-07-23 (pedido Osmar): CENTRO DE AUTOMATIZACIONES — todos los robots del sistema en un
+   solo lugar, con look futurista de IA. Cada aviso programado: interruptor, días, hora, canales
+   (campanita/Telegram/WhatsApp/correo), destinatarios y botón probar. Los respondedores tienen
+   interruptor ESPEJO de su setting de siempre + link a su configuración fina. *@
+
+<PageTitle>Centro de Automatizaciones</PageTitle>
+
+<div class="auto-wrap">
+    <div class="auto-header">
+        <div class="auto-title">
+            <span class="auto-chip-ia">IA</span>
+            <h1>🤖 Centro de Automatizaciones</h1>
+        </div>
+        <p class="auto-sub">Los robots del sistema, todos acá: prendé, apagá, elegí días, horarios, canales y quién recibe cada cosa.</p>
+        <a class="auto-link-alertas" href="/mis-alertas">🔔 Ir a Mis Alertas (reglas y umbrales) →</a>
+    </div>
+
+    @if (data is null)
+    {
+        <div class="auto-loading">Cargando el centro de control<span class="auto-dots">…</span></div>
+    }
+    else
+    {
+        @* ═══════════ PERSONAS ═══════════ *@
+        <div class="auto-seccion-titulo">👥 PERSONAS — quién puede recibir avisos</div>
+        <div class="auto-personas">
+            @foreach (var p in data.Personas)
+            {
+                <div class="auto-persona-card">
+                    <div class="auto-persona-nombre">@p.Nombre</div>
+                    @if (editPersonaId == p.Id)
+                    {
+                        <div class="auto-persona-edit">
+                            <label>📱 WhatsApp (con +54 9…)</label>
+                            <input @bind="editWa" placeholder="+5491122334455" />
+                            <label>📧 Correo</label>
+                            <input @bind="editEmail" placeholder="nombre@gmail.com" />
+                            <div style="display:flex; gap:6px; margin-top:8px;">
+                                <button class="auto-btn auto-btn-ok" @onclick="() => GuardarPersona(p)">💾 Guardar</button>
+                                <button class="auto-btn" @onclick="() => editPersonaId = null">Cancelar</button>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="auto-persona-dato">📲 Telegram: @(p.TelegramChatId is > 0 ? "vinculado ✅" : "sin vincular — se vincula con el bot en Integraciones → Telegram")</div>
+                        <div class="auto-persona-dato">📱 WhatsApp: @(string.IsNullOrEmpty(p.WhatsAppNumero) ? "—" : p.WhatsAppNumero!.Replace("whatsapp:", ""))</div>
+                        <div class="auto-persona-dato">📧 Correo: @(string.IsNullOrEmpty(p.Email) ? "—" : p.Email)</div>
+                        <button class="auto-btn" style="margin-top:8px;" @onclick="() => AbrirEditPersona(p)">✏️ Editar</button>
+                    }
+                </div>
+            }
+        </div>
+
+        @* ═══════════ AVISOS PROGRAMADOS ═══════════ *@
+        <div class="auto-seccion-titulo">📨 AVISOS PROGRAMADOS — mensajes que salen solos a horario</div>
+        @foreach (var a in data.Avisos)
+        {
+            <div class="auto-card @(a.Enabled ? "" : "auto-card-off")">
+                <div class="auto-card-head">
+                    <div>
+                        <div class="auto-card-nombre">@a.Nombre <span class="auto-estado @(a.Enabled ? "on" : "off")">@(a.Enabled ? "● ACTIVA" : "○ APAGADA")</span></div>
+                        <div class="auto-card-desc">@a.Descripcion</div>
+                    </div>
+                    <label class="auto-switch" title="@(a.Enabled ? "Apagar" : "Prender")">
+                        <input type="checkbox" checked="@a.Enabled" @onchange="e => { a2(a).Enabled = (bool)e.Value!; _ = GuardarAviso(a.Key); }" />
+                        <span class="auto-slider"></span>
+                    </label>
+                </div>
+
+                <div class="auto-card-body">
+                    <div class="auto-fila">
+                        <span class="auto-lbl">📅 Días</span>
+                        @foreach (var (num, letra) in DiasSemana)
+                        {
+                            var activo = DiaActivo(a.Key, num);
+                            <button class="auto-dia @(activo ? "on" : "")" @onclick="() => { ToggleDia(a.Key, num); _ = GuardarAviso(a.Key); }">@letra</button>
+                        }
+                        <span class="auto-lbl" style="margin-left:14px;">⏰ Hora</span>
+                        <select class="auto-hora" value="@a2(a).Hora" @onchange="e => { a2(a).Hora = int.Parse(e.Value!.ToString()!); _ = GuardarAviso(a.Key); }">
+                            @for (int h = 0; h < 24; h++) { <option value="@h">@($"{h:00}:00")</option> }
+                        </select>
+                    </div>
+
+                    <div class="auto-fila">
+                        <span class="auto-lbl">Canales</span>
+                        <label class="auto-tilde"><input type="checkbox" checked="@a2(a).CanalCampanita" @onchange="e => { a2(a).CanalCampanita = (bool)e.Value!; _ = GuardarAviso(a.Key); }" /> 🔔 Campanita</label>
+                        <label class="auto-tilde"><input type="checkbox" checked="@a2(a).CanalTelegram" @onchange="e => { a2(a).CanalTelegram = (bool)e.Value!; _ = GuardarAviso(a.Key); }" /> 📲 Telegram</label>
+                        <label class="auto-tilde"><input type="checkbox" checked="@a2(a).CanalWhatsApp" @onchange="e => { a2(a).CanalWhatsApp = (bool)e.Value!; _ = GuardarAviso(a.Key); }" /> 📱 WhatsApp</label>
+                        <label class="auto-tilde"><input type="checkbox" checked="@a2(a).CanalEmail" @onchange="e => { a2(a).CanalEmail = (bool)e.Value!; _ = GuardarAviso(a.Key); }" /> 📧 Correo</label>
+                    </div>
+
+                    <div class="auto-fila">
+                        <span class="auto-lbl">¿A quién?</span>
+                        @foreach (var p in data.Personas.Where(x => x.Activo))
+                        {
+                            var tildado = a2(a).Destinatarios.Contains(p.Id);
+                            <label class="auto-tilde"><input type="checkbox" checked="@tildado" @onchange="e => { ToggleDest(a.Key, p.Id, (bool)e.Value!); _ = GuardarAviso(a.Key); }" /> @p.Nombre</label>
+                        }
+                    </div>
+
+                    <div class="auto-fila auto-fila-foot">
+                        <span class="auto-lastrun @(a.LastRunOk == false ? "err" : "")">
+                            @if (a.LastRunAt.HasValue)
+                            {
+                                <text>Última vez: @a.LastRunAt.Value.ToArTime().ToString("dd/MM HH:mm") @(a.LastRunOk == true ? "✅" : "⚠️") @(string.IsNullOrEmpty(a.LastRunDetalle) ? "" : $"— {a.LastRunDetalle}")</text>
+                            }
+                            else { <text>Todavía no corrió nunca.</text> }
+                        </span>
+                        <button class="auto-btn auto-btn-probar" disabled="@(probando == a.Key)" @onclick="() => Probar(a.Key)">
+                            @(probando == a.Key ? "⏳ Enviando…" : "▶ Probar ahora")
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @* ═══════════ RESPONDEDORES ═══════════ *@
+        <div class="auto-seccion-titulo">🤖 RESPONDEDORES — contestan solos cuando pasa algo</div>
+        <div class="auto-resp-grid">
+            @foreach (var r in data.Respondedores)
+            {
+                <div class="auto-card auto-card-mini @(r.Enabled ? "" : "auto-card-off")">
+                    <div class="auto-card-head">
+                        <div>
+                            <div class="auto-card-nombre" style="font-size:0.95rem;">@r.Nombre <span class="auto-estado @(r.Enabled ? "on" : "off")">@(r.Enabled ? "●" : "○")</span></div>
+                            <div class="auto-card-desc">@r.Descripcion</div>
+                            @if (!string.IsNullOrEmpty(r.LinkConfig))
+                            {
+                                <a class="auto-link-fino" href="@r.LinkConfig">⚙ Configuración completa →</a>
+                            }
+                        </div>
+                        <label class="auto-switch">
+                            <input type="checkbox" checked="@r.Enabled" @onchange="e => ToggleResp(r.Key, (bool)e.Value!)" />
+                            <span class="auto-slider"></span>
+                        </label>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    /* ══ CENTRO DE AUTOMATIZACIONES — look futurista IA (panel oscuro + acentos cian/violeta) ══ */
+    .auto-wrap {
+        background: linear-gradient(160deg, #0b1220 0%, #101a2e 55%, #131233 100%);
+        border-radius: 16px; padding: 1.4rem 1.6rem 2rem; color: #dbe4f5;
+        box-shadow: 0 10px 40px rgba(10, 15, 40, 0.45);
+    }
+    .auto-title { display: flex; align-items: center; gap: 0.7rem; }
+    .auto-title h1 { margin: 0; font-size: 1.45rem; color: #f1f5ff; letter-spacing: 0.02em; }
+    .auto-chip-ia {
+        font-size: 0.7rem; font-weight: 800; letter-spacing: 0.12em; padding: 0.2rem 0.55rem;
+        border-radius: 6px; color: #0b1220;
+        background: linear-gradient(90deg, #22d3ee, #a78bfa);
+        box-shadow: 0 0 14px rgba(34, 211, 238, 0.55);
+    }
+    .auto-sub { color: #8fa3c8; font-size: 0.88rem; margin: 0.4rem 0 0.2rem; }
+    .auto-link-alertas { color: #22d3ee; font-size: 0.8rem; text-decoration: none; }
+    .auto-link-alertas:hover { text-decoration: underline; }
+    .auto-loading { padding: 2rem; color: #8fa3c8; text-align: center; }
+
+    .auto-seccion-titulo {
+        margin: 1.5rem 0 0.7rem; font-size: 0.72rem; letter-spacing: 0.14em; color: #67e8f9;
+        border-bottom: 1px solid rgba(103, 232, 249, 0.18); padding-bottom: 0.35rem;
+    }
+
+    /* Personas */
+    .auto-personas { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.8rem; }
+    .auto-persona-card {
+        background: rgba(255,255,255,0.045); border: 1px solid rgba(139, 92, 246, 0.25);
+        border-radius: 12px; padding: 0.8rem 0.95rem;
+    }
+    .auto-persona-nombre { font-weight: 700; color: #e9d5ff; margin-bottom: 0.35rem; }
+    .auto-persona-dato { font-size: 0.78rem; color: #9fb2d8; margin-top: 2px; }
+    .auto-persona-edit label { display: block; font-size: 0.7rem; color: #8fa3c8; margin-top: 6px; }
+    .auto-persona-edit input {
+        width: 100%; background: #0b1220; color: #e2e8f0; border: 1px solid #33415c;
+        border-radius: 6px; padding: 5px 8px; font-size: 0.82rem;
+    }
+
+    /* Cards de automatización */
+    .auto-card {
+        background: rgba(255,255,255,0.05); border: 1px solid rgba(34, 211, 238, 0.22);
+        border-radius: 14px; padding: 1rem 1.15rem; margin-bottom: 0.9rem;
+        transition: border-color 0.15s ease, opacity 0.15s ease;
+    }
+    .auto-card:hover { border-color: rgba(34, 211, 238, 0.5); }
+    .auto-card-off { opacity: 0.55; border-color: rgba(148, 163, 184, 0.2); }
+    .auto-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+    .auto-card-nombre { font-weight: 700; font-size: 1.05rem; color: #f1f5ff; }
+    .auto-card-desc { font-size: 0.8rem; color: #8fa3c8; margin-top: 2px; max-width: 60ch; }
+    .auto-estado { font-size: 0.64rem; font-weight: 800; letter-spacing: 0.08em; margin-left: 8px; }
+    .auto-estado.on { color: #34d399; text-shadow: 0 0 8px rgba(52, 211, 153, 0.7); animation: auto-pulse 2.4s infinite; }
+    .auto-estado.off { color: #64748b; }
+    @@keyframes auto-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+    .auto-card-body { margin-top: 0.7rem; }
+    .auto-fila { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.55rem; }
+    .auto-lbl { font-size: 0.68rem; letter-spacing: 0.1em; color: #67e8f9; min-width: 62px; }
+
+    .auto-dia {
+        width: 30px; height: 30px; border-radius: 8px; border: 1px solid #33415c;
+        background: transparent; color: #64748b; font-weight: 700; font-size: 0.72rem; cursor: pointer;
+    }
+    .auto-dia.on {
+        background: linear-gradient(135deg, rgba(34,211,238,0.25), rgba(167,139,250,0.25));
+        color: #67e8f9; border-color: #22d3ee; box-shadow: 0 0 8px rgba(34, 211, 238, 0.35);
+    }
+    .auto-hora {
+        background: #0b1220; color: #e2e8f0; border: 1px solid #33415c; border-radius: 8px;
+        padding: 4px 8px; font-size: 0.85rem;
+    }
+    .auto-tilde {
+        display: inline-flex; align-items: center; gap: 5px; font-size: 0.8rem; color: #c4d3ef;
+        background: rgba(255,255,255,0.04); border: 1px solid #26324b; border-radius: 999px;
+        padding: 3px 11px; cursor: pointer; user-select: none;
+    }
+    .auto-tilde:has(input:checked) { border-color: #22d3ee; color: #a5f3fc; background: rgba(34,211,238,0.08); }
+    .auto-tilde input { accent-color: #22d3ee; }
+
+    .auto-fila-foot { justify-content: space-between; margin-top: 0.8rem; border-top: 1px dashed #26324b; padding-top: 0.7rem; }
+    .auto-lastrun { font-size: 0.72rem; color: #8fa3c8; }
+    .auto-lastrun.err { color: #fca5a5; }
+
+    .auto-btn {
+        background: rgba(255,255,255,0.07); color: #dbe4f5; border: 1px solid #33415c;
+        border-radius: 8px; padding: 5px 12px; font-size: 0.78rem; cursor: pointer;
+    }
+    .auto-btn:hover { border-color: #22d3ee; }
+    .auto-btn-ok { border-color: #34d399; color: #a7f3d0; }
+    .auto-btn-probar {
+        background: linear-gradient(90deg, rgba(34,211,238,0.2), rgba(167,139,250,0.2));
+        border-color: #22d3ee; color: #a5f3fc; font-weight: 700;
+    }
+    .auto-btn-probar:hover { box-shadow: 0 0 12px rgba(34, 211, 238, 0.4); }
+    .auto-btn-probar:disabled { opacity: 0.5; cursor: wait; }
+
+    /* Interruptor grande */
+    .auto-switch { position: relative; display: inline-block; width: 52px; height: 28px; flex-shrink: 0; }
+    .auto-switch input { opacity: 0; width: 0; height: 0; }
+    .auto-slider {
+        position: absolute; inset: 0; border-radius: 999px; cursor: pointer;
+        background: #1e293b; border: 1px solid #33415c; transition: 0.2s;
+    }
+    .auto-slider:before {
+        content: ""; position: absolute; height: 20px; width: 20px; left: 3px; top: 3px;
+        border-radius: 50%; background: #64748b; transition: 0.2s;
+    }
+    .auto-switch input:checked + .auto-slider {
+        background: linear-gradient(90deg, #0e7490, #6d28d9); border-color: #22d3ee;
+        box-shadow: 0 0 10px rgba(34, 211, 238, 0.45);
+    }
+    .auto-switch input:checked + .auto-slider:before { transform: translateX(24px); background: #67e8f9; }
+
+    .auto-resp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 0.8rem; }
+    .auto-card-mini { margin-bottom: 0; }
+    .auto-link-fino { font-size: 0.72rem; color: #a78bfa; text-decoration: none; display: inline-block; margin-top: 4px; }
+    .auto-link-fino:hover { text-decoration: underline; }
+    .auto-dots { animation: auto-pulse 1.2s infinite; }
+</style>
+
+@code {
+    ApiClient.AutomatizacionesDto? data;
+    // Copia editable de la config de cada aviso (los records del DTO son inmutables → espejo local)
+    class AvisoEdit
+    {
+        public bool Enabled;
+        public HashSet<int> DiasSet = new();
+        public int Hora;
+        public bool CanalCampanita, CanalTelegram, CanalWhatsApp, CanalEmail;
+        public List<int> Destinatarios = new();
+    }
+    readonly Dictionary<string, AvisoEdit> edit = new();
+    string? probando;
+    int? editPersonaId;
+    string editWa = "", editEmail = "";
+
+    static readonly (int num, string letra)[] DiasSemana =
+        { (1, "L"), (2, "M"), (3, "X"), (4, "J"), (5, "V"), (6, "S"), (7, "D") };
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    async Task Cargar()
+    {
+        data = await Api.GetAutomatizacionesAsync();
+        edit.Clear();
+        if (data is null) return;
+        foreach (var a in data.Avisos)
+        {
+            edit[a.Key] = new AvisoEdit
+            {
+                Enabled = a.Enabled,
+                DiasSet = (a.Dias ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Select(x => int.TryParse(x, out var n) ? n : 0).Where(n => n > 0).ToHashSet(),
+                Hora = a.Hora,
+                CanalCampanita = a.CanalCampanita, CanalTelegram = a.CanalTelegram,
+                CanalWhatsApp = a.CanalWhatsApp, CanalEmail = a.CanalEmail,
+                Destinatarios = a.Destinatarios.ToList()
+            };
+        }
+    }
+
+    AvisoEdit a2(ApiClient.AutoAvisoDto a) => edit[a.Key];
+    bool DiaActivo(string key, int dia) => edit[key].DiasSet.Contains(dia);
+    void ToggleDia(string key, int dia)
+    {
+        if (!edit[key].DiasSet.Remove(dia)) edit[key].DiasSet.Add(dia);
+    }
+    void ToggleDest(string key, int personaId, bool on)
+    {
+        var l = edit[key].Destinatarios;
+        if (on && !l.Contains(personaId)) l.Add(personaId);
+        if (!on) l.Remove(personaId);
+    }
+
+    async Task GuardarAviso(string key)
+    {
+        var e = edit[key];
+        var ok = await Api.SaveAutoAvisoAsync(key, new ApiClient.AutoAvisoConfigReq(
+            e.Enabled, string.Join(",", e.DiasSet.OrderBy(x => x)), e.Hora,
+            e.CanalCampanita, e.CanalTelegram, e.CanalWhatsApp, e.CanalEmail, e.Destinatarios));
+        if (ok) { Toast.Success("Guardado"); await Cargar(); }
+        else Toast.Error("No se pudo guardar");
+    }
+
+    async Task Probar(string key)
+    {
+        probando = key;
+        try
+        {
+            var r = await Api.ProbarAutoAvisoAsync(key);
+            if (r is null) Toast.Error("No se pudo probar");
+            else if (r.Ok) Toast.Success($"✅ {r.Detalle}");
+            else Toast.Error($"⚠️ {r.Detalle}");
+            await Cargar();
+        }
+        finally { probando = null; }
+    }
+
+    async Task ToggleResp(string key, bool on)
+    {
+        var ok = await Api.ToggleAutoRespondedorAsync(key, on);
+        if (ok) { Toast.Success(on ? "Prendido 🟢" : "Apagado ⚪"); await Cargar(); }
+        else Toast.Error("No se pudo cambiar");
+    }
+
+    void AbrirEditPersona(ApiClient.AutoPersonaDto p)
+    {
+        editPersonaId = p.Id;
+        editWa = (p.WhatsAppNumero ?? "").Replace("whatsapp:", "");
+        editEmail = p.Email ?? "";
+    }
+
+    async Task GuardarPersona(ApiClient.AutoPersonaDto p)
+    {
+        var ok = await Api.SaveAutoPersonaAsync(p.Id, new ApiClient.AutoPersonaUpsert(
+            p.Nombre, p.TelegramChatId,
+            string.IsNullOrWhiteSpace(editWa) ? null : editWa.Trim(),
+            string.IsNullOrWhiteSpace(editEmail) ? null : editEmail.Trim(), true));
+        if (ok) { Toast.Success("Persona guardada"); editPersonaId = null; await Cargar(); }
+        else Toast.Error("No se pudo guardar");
+    }
+}

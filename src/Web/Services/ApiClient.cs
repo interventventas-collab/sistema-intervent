@@ -6446,4 +6446,31 @@ public class ApiClient
         if (!string.IsNullOrWhiteSpace(empresa)) qs.Add($"empresa={Uri.EscapeDataString(empresa)}");
         return await GetAsync<ContadoraControlDto>("/api/contadora/control" + (qs.Count > 0 ? "?" + string.Join("&", qs) : ""));
     }
+
+    // ===== Centro de Automatizaciones (2026-07-23) =====
+    public record AutoPersonaDto(int Id, string Nombre, long? TelegramChatId, string? WhatsAppNumero, string? Email, bool Activo);
+    public record AutoAvisoDto(string Key, string Nombre, string Descripcion, bool Enabled, string Dias, int Hora,
+        bool CanalCampanita, bool CanalTelegram, bool CanalWhatsApp, bool CanalEmail,
+        List<int> Destinatarios, DateTime? LastRunAt, bool? LastRunOk, string? LastRunDetalle);
+    public record AutoRespondedorDto(string Key, string Nombre, string Descripcion, bool Enabled, string? LinkConfig);
+    public record AutomatizacionesDto(List<AutoPersonaDto> Personas, List<AutoAvisoDto> Avisos, List<AutoRespondedorDto> Respondedores);
+    public record AutoPersonaUpsert(string Nombre, long? TelegramChatId, string? WhatsAppNumero, string? Email, bool Activo);
+    public record AutoAvisoConfigReq(bool Enabled, string Dias, int Hora,
+        bool CanalCampanita, bool CanalTelegram, bool CanalWhatsApp, bool CanalEmail, List<int> Destinatarios);
+
+    public async Task<AutomatizacionesDto?> GetAutomatizacionesAsync()
+        => await GetAsync<AutomatizacionesDto>("/api/automatizaciones");
+    public async Task<bool> SaveAutoPersonaAsync(int? id, AutoPersonaUpsert p)
+        => (await _http.PostAsJsonAsync(id.HasValue ? $"/api/automatizaciones/personas/{id}" : "/api/automatizaciones/personas", p)).IsSuccessStatusCode;
+    public async Task<bool> SaveAutoAvisoAsync(string key, AutoAvisoConfigReq cfg)
+        => (await _http.PostAsJsonAsync($"/api/automatizaciones/avisos/{key}", cfg)).IsSuccessStatusCode;
+    public record AutoProbarResp(bool Ok, string? Detalle);
+    public async Task<AutoProbarResp?> ProbarAutoAvisoAsync(string key)
+    {
+        var resp = await _http.PostAsync($"/api/automatizaciones/avisos/{key}/probar", null);
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadFromJsonAsync<AutoProbarResp>();
+    }
+    public async Task<bool> ToggleAutoRespondedorAsync(string key, bool enabled)
+        => (await _http.PostAsJsonAsync($"/api/automatizaciones/respondedores/{key}/toggle", new { Enabled = enabled })).IsSuccessStatusCode;
 }

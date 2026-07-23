@@ -314,6 +314,10 @@ public class MetaWhatsAppWebhookController : ControllerBase
         // DESCONOCIDOS (sin contacto) a los que nunca les mandamos el menú. Así no molestamos a
         // clientes/hermanos ya anotados ni repetimos el menú si lo ignoran.
         if (tipo != "text") return;
+        // 2026-07-23 (Centro de Automatizaciones): interruptor del bot. Apagado = no arranca
+        // el menú con desconocidos (las respuestas a botones ya mandados siguen andando arriba).
+        if (await db.AppSettings.AnyAsync(s => s.Key == "whatsapp.bot.bienvenida_enabled" && s.Value == "false"))
+            return;
         if (await db.WhatsAppTwilioContactos.AnyAsync(c => c.Numero == numero && c.Activo)) return;
         if (await db.WhatsAppTwilioMensajes.AnyAsync(x => x.Numero == numero
                 && x.Direccion == "OUTGOING" && x.Cuerpo != null && x.Cuerpo.Contains(WhatsAppBotFlow.MarcaNivel1)))

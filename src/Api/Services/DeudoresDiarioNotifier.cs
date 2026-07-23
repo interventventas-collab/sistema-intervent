@@ -12,46 +12,49 @@ public class DeudoresDiarioNotifier
 {
     private readonly AppDbContext _db;
     private readonly CafeSaldosService _saldos;
-    private readonly TelegramService _tg;
+    private readonly AutoAvisoSender _sender;
     private const int MAX_CHARS = 3500; // límite prudente por mensaje de Telegram (el tope real es ~4096)
 
     private static readonly NumberFormatInfo MilesNfi = new NumberFormatInfo
     { NumberGroupSeparator = ".", NumberDecimalSeparator = ",", NumberGroupSizes = new[] { 3 } };
 
-    public DeudoresDiarioNotifier(AppDbContext db, CafeSaldosService saldos, TelegramService tg)
+    public DeudoresDiarioNotifier(AppDbContext db, CafeSaldosService saldos, AutoAvisoSender sender)
     {
         _db = db;
         _saldos = saldos;
-        _tg = tg;
+        _sender = sender;
     }
 
     /// <summary>Calcula la deuda por cliente y la manda por Telegram (categoría ALERTAS).
     /// Devuelve si se pudo enviar y un detalle para mostrarle al usuario.</summary>
     public async Task<ResultadoEnvioDeudores> EnviarResumenAsync(CancellationToken ct = default)
     {
-        var cuenta = await _db.TelegramAccounts.Where(x => x.Proposito == "AVISOS").OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
-        if (cuenta is null || !cuenta.IsActive || string.IsNullOrEmpty(cuenta.BotToken))
-            return new ResultadoEnvioDeudores(false, 0, 0, "No hay un bot de Telegram (AVISOS) activo. Vinculalo en Integraciones → Telegram.");
-        var hayDestino = await _db.TelegramChats.AnyAsync(c => c.TelegramAccountId == cuenta.Id && c.NotifAlertas, ct);
-        if (!hayDestino)
-            return new ResultadoEnvioDeudores(false, 0, 0, "Nadie tiene activadas las alertas de Telegram (tilde 'Alertas' por persona).");
-
         var lista = OrdenarPorCuit((await _saldos.GetSaldosPendientesAsync()).Where(x => x.SaldoPendiente > 0));
 
         var argNow = DateTime.UtcNow.AddHours(-3);
         var mensajes = ConstruirMensajes(lista, argNow);
 
-        int ok = 0;
-        foreach (var m in mensajes)
+        // 2026-07-23 (Centro de Automatizaciones): ya no manda solo — arma el contenido y el
+        // despachador lo reparte por los canales/personas configurados (clave 'deudas-diario').
+        var fecha = argNow.ToString("dd/MM/yyyy");
+        var total = lista.Sum(x => x.SaldoPendiente);
+        string waTexto;
+        if (lista.Count == 0)
         {
-            // parseMode HTML: habilita el <blockquote expandable> (desplegable) del mensaje.
-            var (enviado, _) = await _tg.SendMessageAsync(m, categoria: "ALERTAS", ct: ct, parseMode: "HTML");
-            if (enviado) ok++;
+            waTexto = $"📋 *Deudas al {fecha}*\n\n🎉 Hoy no te debe ningún cliente.";
         }
-        var detalle = ok > 0
-            ? $"Resumen enviado por Telegram ({lista.Count} cliente(s), {ok} mensaje(s))."
-            : "No se pudo enviar el mensaje de Telegram.";
-        return new ResultadoEnvioDeudores(ok > 0, lista.Count, ok, detalle);
+        else
+        {
+            var lineasWa = lista.Select(c => $"• {c.Nombre}: {Money(c.SaldoPendiente)}").ToList();
+            var listaWa = lineasWa.Count <= 40 ? string.Join("\n", lineasWa)
+                        : string.Join("\n", lineasWa.Take(40)) + $"\n… y {lineasWa.Count - 40} más (verlos en el sistema)";
+            waTexto = $"📋 *Deudas al {fecha}* — {lista.Count} cliente(s)\n💰 TOTAL: *{Money(total)}*\n{listaWa}";
+        }
+        var (ok, detalle) = await _sender.EnviarAsync("deudas-diario",
+            new AutoAvisoSender.Contenido($"📋 Deudas al {fecha} — TOTAL {Money(total)}",
+                mensajes[0], waTexto, waTexto.Replace("*", ""),
+                mensajes.Count > 1 ? mensajes.Skip(1).ToList() : null), ct);
+        return new ResultadoEnvioDeudores(ok, lista.Count, mensajes.Count, detalle);
     }
 
     /// <summary>Ordena los deudores de MAYOR a menor, pero manteniendo juntas las cuentas del mismo CUIT:

@@ -29,6 +29,10 @@ public class AppDbContext : DbContext
     public DbSet<MeliItem> MeliItems => Set<MeliItem>();
     public DbSet<MeliCambioDetectado> MeliCambiosDetectados => Set<MeliCambioDetectado>();
     public DbSet<WhatsAppPedidoRecibido> WhatsAppPedidosRecibidos => Set<WhatsAppPedidoRecibido>();
+    // 2026-07-23: Centro de Automatizaciones (personas + config + destinatarios)
+    public DbSet<AutoPersona> AutoPersonas => Set<AutoPersona>();
+    public DbSet<AutoConfig> AutoConfigs => Set<AutoConfig>();
+    public DbSet<AutoDestinatario> AutoDestinatarios => Set<AutoDestinatario>();
     public DbSet<WhatsAppPedidosTelefono> WhatsAppPedidosTelefonos => Set<WhatsAppPedidosTelefono>();
     public DbSet<MeliQuestion> MeliQuestions => Set<MeliQuestion>();
     public DbSet<MeliAutoReplyMessage> MeliAutoReplyMessages => Set<MeliAutoReplyMessage>();
