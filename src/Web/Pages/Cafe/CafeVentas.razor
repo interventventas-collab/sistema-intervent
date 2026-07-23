@@ -5133,10 +5133,7 @@
     /// comprobante según XC/XP/XF + el texto en "Comentario para armado".</summary>
     private async Task AplicarPedidoWAAsync(ApiClient.WhatsAppPedidoDto pedido)
     {
-        // Mostrar la sub-ventana flotante
-        pedidoWASeleccionado = pedido;
         convirtiendoPedidoWAId = pedido.Id;
-        subventanaWAMin = false;
 
         // 2026-07-11: si el pedido ya trae cliente (por #código, contacto vinculado o IA),
         // lo pre-seleccionamos en la venta así no hay que buscarlo de nuevo. Usamos SelectCliente
@@ -5153,8 +5150,19 @@
 
         // 2026-07-23 pedido Osmar: el texto del mensaje va al "Comentario para armado" (solo lo ve
         // quien arma; NO sale en el comprobante del cliente). Solo si el campo está vacío.
+        // 2026-07-23 v2 (feedback Osmar): el texto estaba DOS veces — acá y en el cartel amarillo
+        // flotante. Ahora el cartel solo aparece si el Comentario ya estaba ocupado con otra cosa
+        // (para no perder el texto); si no, va únicamente al Comentario.
         if (string.IsNullOrWhiteSpace(formComentarioArmado) && !string.IsNullOrWhiteSpace(pedido.TextoCrudo))
+        {
             formComentarioArmado = $"📱 WhatsApp {pedido.Telefono}\n{pedido.TextoCrudo}";
+            pedidoWASeleccionado = null;   // sin cartel flotante: ya se ve en el Comentario
+        }
+        else
+        {
+            pedidoWASeleccionado = pedido; // comentario ocupado → cartel flotante para no perder el texto
+            subventanaWAMin = false;
+        }
 
         // 2026-07-23 pedido Osmar: si el mensaje vino con trigger XC/XP/XF, preseleccionar el
         // comprobante que pidió. La FACTURA no se emite sola: acá solo queda elegida en el
