@@ -492,29 +492,39 @@
             {
                 <div class="mac-card-bignum">@waSinResponder.Count <span style="font-size:0.85rem; font-weight:400; color:#6b7280;">sin responder</span></div>
                 <div class="mac-card-sub">@(waSinResponder.Count == 1 ? "cliente esperando respuesta" : "clientes esperando respuesta")</div>
-                @if (waOpen && waSinResponder.Count > 0)
+                @* 2026-07-23 pedido Osmar: la lista muestra SIEMPRE los últimos 5 chats (no solo
+                   los sin responder). El puntito rojo marca los que esperan respuesta; si el
+                   último mensaje lo mandamos nosotros, va con "Vos:" adelante (como WhatsApp). *@
+                @if (waOpen && waConvs.Count > 0)
                 {
                     <div class="tres-detalle">
-                        <div class="tres-detalle-hd">Últimas sin responder — tocá para abrir el chat</div>
-                        @foreach (var c in waSinResponder.Take(5))
+                        <div class="tres-detalle-hd">Últimos chats — tocá para abrir</div>
+                        @foreach (var c in waConvs.Take(5))
                         {
+                            var sinResponder = c.UltimoDireccion == "INCOMING";
                             <div class="tres-row" style="cursor:pointer;" @onclick:stopPropagation="true" @onclick='() => AbrirChatWa(c.Numero)' title="Abrir este chat en /whatsapp">
                                 <span class="tres-row-main">
-                                    <span class="tres-row-t">💬 @(c.ClienteNombre ?? c.NombrePerfil ?? WaPrettyNumero(c.Numero))</span>
-                                    <span class="tres-row-s">@WaSnippet(c.UltimoMensaje)</span>
+                                    <span class="tres-row-t">
+                                        @if (sinResponder)
+                                        {
+                                            <span style="color:#dc2626;" title="Esperando respuesta">●</span>
+                                        }
+                                        💬 @(c.ClienteNombre ?? c.NombrePerfil ?? WaPrettyNumero(c.Numero))
+                                    </span>
+                                    <span class="tres-row-s" style="@(sinResponder ? "color:#374151; font-weight:600;" : "")">@(sinResponder ? "" : "Vos: ")@WaSnippet(c.UltimoMensaje)</span>
                                 </span>
                                 <span class="tres-row-val" style="color:#6b7280; font-weight:400; font-size:0.68rem;">@WaHace(c.UltimoAt)</span>
                             </div>
                         }
-                        @if (waSinResponder.Count > 5)
+                        @if (waConvs.Count > 5)
                         {
-                            <div class="tres-more">+@(waSinResponder.Count - 5) más en la pantalla de WhatsApp</div>
+                            <div class="tres-more">+@(waConvs.Count - 5) más en la pantalla de WhatsApp</div>
                         }
                     </div>
                 }
                 else if (waOpen)
                 {
-                    <div style="margin-top:12px; font-size:0.74rem; color:#16a34a;">✅ Todas las conversaciones respondidas</div>
+                    <div style="margin-top:12px; font-size:0.74rem; color:#9ca3af;">Sin conversaciones todavía</div>
                 }
             }
         </div>
