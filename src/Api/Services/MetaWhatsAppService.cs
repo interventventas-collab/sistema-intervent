@@ -70,6 +70,23 @@ public class MetaWhatsAppService
         return await PostMessageAsync(payload, to, ct);
     }
 
+    /// <summary>2026-07-23: envía una REACCIÓN real (el cliente la ve en su WhatsApp, como en el celu).
+    /// messageId es el wamid del mensaje al que se reacciona. Emoji vacío = quitar la reacción.
+    /// OJO: WhatsApp permite UNA sola reacción nuestra por mensaje — mandar otra la reemplaza.</summary>
+    public async Task<string?> SendReactionAsync(string to, string messageId, string emoji, CancellationToken ct = default)
+    {
+        EnsureConfigured();
+        var payload = new
+        {
+            messaging_product = "whatsapp",
+            recipient_type = "individual",
+            to = NormalizeTo(to),
+            type = "reaction",
+            reaction = new { message_id = messageId, emoji = emoji ?? "" }
+        };
+        return await PostMessageAsync(payload, to, ct);
+    }
+
     /// <summary>Envía un mensaje con un adjunto por LINK. mediaUrl debe ser URL HTTPS pública.
     /// isDocument=true para PDF/archivos; false para imágenes. filename es opcional (solo documentos).
     /// OJO: Meta rechaza el JSON si mandamos campos en null, por eso el objeto se arma sin ellos.</summary>

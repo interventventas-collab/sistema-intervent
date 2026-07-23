@@ -6093,8 +6093,17 @@ public class ApiClient
     public async Task<List<TwClienteBuscarDto>> BuscarTwClientesAsync(string q)
         => await _http.GetFromJsonAsync<List<TwClienteBuscarDto>>($"/api/whatsapp/twilio/clientes-buscar?q={Uri.EscapeDataString(q ?? "")}") ?? new();
 
-    public async Task<bool> ToggleReaccionAsync(int mensajeId, string emoji)
-        => (await _http.PostAsJsonAsync("/api/whatsapp/twilio/reacciones", new { MensajeId = mensajeId, Emoji = emoji })).IsSuccessStatusCode;
+    public record TwReaccionResp(bool Ok, bool Removed, bool EnviadaAlCliente);
+    public async Task<TwReaccionResp?> ToggleReaccionAsync(int mensajeId, string emoji)
+    {
+        var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/reacciones", new { MensajeId = mensajeId, Emoji = emoji });
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadFromJsonAsync<TwReaccionResp>();
+    }
+
+    /// <summary>Borra una conversación completa del sistema (el chat del cliente no se toca).</summary>
+    public async Task<bool> BorrarTwConversacionAsync(string numero)
+        => (await _http.DeleteAsync($"/api/whatsapp/twilio/conversaciones?numero={Uri.EscapeDataString(numero)}")).IsSuccessStatusCode;
 
     public record TwUploadResp(string Token, string Url, string OriginalFilename, long SizeBytes, string ContentType, DateTime ExpiresAt);
     public async Task<(TwUploadResp? resp, string? error)> UploadTwArchivoAsync(System.IO.Stream stream, string filename, string contentType)

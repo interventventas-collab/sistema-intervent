@@ -20,14 +20,16 @@ public class WhatsAppTwilioController : ControllerBase
     private readonly WhatsAppOutboundService _outbound;
     private readonly CafeReciboCobranzaPdfService _cobranzaPdfService;
     private readonly CafeVentasController _ventasController;
+    private readonly MetaWhatsAppService _meta;
 
-    public WhatsAppTwilioController(AppDbContext db, ILogger<WhatsAppTwilioController> logger, WhatsAppOutboundService outbound, CafeReciboCobranzaPdfService cobranzaPdfService, CafeVentasController ventasController)
+    public WhatsAppTwilioController(AppDbContext db, ILogger<WhatsAppTwilioController> logger, WhatsAppOutboundService outbound, CafeReciboCobranzaPdfService cobranzaPdfService, CafeVentasController ventasController, MetaWhatsAppService meta)
     {
         _db = db;
         _logger = logger;
         _outbound = outbound;
         _cobranzaPdfService = cobranzaPdfService;
         _ventasController = ventasController;
+        _meta = meta;
     }
 
     // ===== Menu de identificacion de rol (auto-respuesta a numeros nuevos) =====
@@ -382,7 +384,32 @@ public class WhatsAppTwilioController : ControllerBase
         return Ok(c);
     }
 
-    // ===== Reacciones a mensajes (etiquetas internas) =====
+    /// <summary>2026-07-23 (pedido Osmar): borra una conversación completa (todos los mensajes de
+    /// ese número + sus reacciones) DEL SISTEMA. El chat en el celular del cliente no se toca.
+    /// El contacto (si existe) queda: si vuelve a escribir, arranca conversación nueva con su nombre.</summary>
+    [HttpDelete("conversaciones")]
+    [Authorize]
+    public async Task<IActionResult> BorrarConversacion([FromQuery] string numero)
+    {
+        if (string.IsNullOrWhiteSpace(numero)) return BadRequest(new { error = "Falta el número" });
+        var ids = await _db.WhatsAppTwilioMensajes
+            .Where(m => m.Numero == numero).Select(m => m.Id).ToListAsync();
+        if (ids.Count == 0) return NotFound(new { error = "No hay mensajes de ese número" });
+
+        var reacs = await _db.WhatsAppTwilioReacciones.Where(r => ids.Contains(r.MensajeId)).ToListAsync();
+        _db.WhatsAppTwilioReacciones.RemoveRange(reacs);
+        var msgs = await _db.WhatsAppTwilioMensajes.Where(m => m.Numero == numero).ToListAsync();
+        _db.WhatsAppTwilioMensajes.RemoveRange(msgs);
+        await _db.SaveChangesAsync();
+        _logger.LogInformation("Conversación {Numero} borrada ({Count} mensajes)", numero, msgs.Count);
+        return Ok(new { ok = true, borrados = msgs.Count });
+    }
+
+    // ===== Reacciones a mensajes =====
+    // 2026-07-23 (pedido Osmar): ademas de guardarse como etiqueta interna, si el mensaje entro por
+    // la Cloud API (Canal=CLOUD, tiene wamid) la reaccion SE MANDA al WhatsApp del cliente — la ve
+    // en su celu como una reaccion comun. Quitar la reaccion tambien se la saca al cliente.
+    // OJO: WhatsApp permite UNA reaccion nuestra por mensaje: si marcas dos emojis, el cliente ve el ultimo.
     public record ReaccionRequest(int MensajeId, string Emoji);
 
     /// <summary>POST /reacciones — toggle: si ya existe ese emoji para ese mensaje, lo borra; sino lo crea.</summary>
@@ -393,20 +420,46 @@ public class WhatsAppTwilioController : ControllerBase
         if (string.IsNullOrWhiteSpace(req.Emoji)) return BadRequest();
         var existing = await _db.WhatsAppTwilioReacciones
             .FirstOrDefaultAsync(r => r.MensajeId == req.MensajeId && r.Emoji == req.Emoji);
+        bool removed;
         if (existing != null)
         {
             _db.WhatsAppTwilioReacciones.Remove(existing);
             await _db.SaveChangesAsync();
-            return Ok(new { ok = true, removed = true });
+            removed = true;
         }
-        _db.WhatsAppTwilioReacciones.Add(new WhatsAppTwilioReaccion
+        else
         {
-            MensajeId = req.MensajeId,
-            Emoji = req.Emoji,
-            CreatedAt = DateTime.UtcNow
-        });
-        await _db.SaveChangesAsync();
-        return Ok(new { ok = true, removed = false });
+            _db.WhatsAppTwilioReacciones.Add(new WhatsAppTwilioReaccion
+            {
+                MensajeId = req.MensajeId,
+                Emoji = req.Emoji,
+                CreatedAt = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync();
+            removed = false;
+        }
+
+        // Mandar la reaccion real al cliente (solo mensajes de la Cloud API, que tienen wamid)
+        var enviadaAlCliente = false;
+        try
+        {
+            var msg = await _db.WhatsAppTwilioMensajes.AsNoTracking()
+                .FirstOrDefaultAsync(m => m.Id == req.MensajeId);
+            if (msg is not null && msg.Canal == "CLOUD"
+                && !string.IsNullOrWhiteSpace(msg.TwilioMessageSid)
+                && msg.TwilioMessageSid.StartsWith("wamid.", StringComparison.OrdinalIgnoreCase))
+            {
+                // Al quitar mandamos emoji vacio (Meta la saca del celu del cliente)
+                var sid = await _meta.SendReactionAsync(msg.Numero, msg.TwilioMessageSid, removed ? "" : req.Emoji);
+                enviadaAlCliente = sid != null && !removed;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "No se pudo mandar la reaccion al cliente (mensaje {Id})", req.MensajeId);
+        }
+
+        return Ok(new { ok = true, removed, enviadaAlCliente });
     }
 
     [HttpDelete("contactos/{id:int}")]

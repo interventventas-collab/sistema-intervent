@@ -127,6 +127,11 @@
                 <button class="btn btn-outline-secondary btn-sm" @onclick="@(() => showConfig = true)" title="Configurar respuestas rápidas y contactos">
                     ⚙️
                 </button>
+                @* 2026-07-23 pedido Osmar: borrar la conversación DEL SISTEMA (el chat en el celular
+                   del cliente no se toca). Pide confirmación. *@
+                <button class="btn btn-outline-danger btn-sm" @onclick="BorrarConversacion" disabled="@borrandoConv" title="Borrar esta conversación del sistema (el celular del cliente no se toca)">
+                    @(borrandoConv ? "⏳" : "🗑")
+                </button>
             </div>
 
             @* 2026-07-23: id para poder bajar el scroll al ultimo mensaje (como WhatsApp de verdad) *@
@@ -631,7 +636,8 @@
     List<ApiClient.TwClienteBuscarDto> clienteResultados = new();
     // Reacciones
     int? pickerOpenMsgId = null;
-    static readonly string[] QuickEmojis = new[] { "👍", "❤️", "😂", "😮", "😢", "🙏", "✅", "⏳", "❗" };
+    // 2026-07-23: ☕ y 🫘 primeros (pedido Osmar — "grano de café" no existe como emoji, esto es lo más parecido)
+    static readonly string[] QuickEmojis = new[] { "☕", "🫘", "👍", "❤️", "😂", "😮", "😢", "🙏", "✅", "⏳", "❗" };
     // === Selección de mensajes + Nueva Venta en ventana popup ===
     HashSet<int> mensajesSeleccionadosIds = new();
 
@@ -815,8 +821,36 @@
     async Task ReaccionarA(int msgId, string emoji)
     {
         pickerOpenMsgId = null;
-        var ok = await Api.ToggleReaccionAsync(msgId, emoji);
-        if (ok) await LoadMensajes(silent: true);
+        var r = await Api.ToggleReaccionAsync(msgId, emoji);
+        if (r is null) { Toast.Error("No se pudo reaccionar"); return; }
+        // 2026-07-23: si el mensaje entró por la API de Meta, la reacción viaja al celu del cliente
+        if (r.EnviadaAlCliente) Toast.Success($"{emoji} enviada — el cliente la ve en su WhatsApp");
+        await LoadMensajes(silent: true);
+    }
+
+    // 2026-07-23 pedido Osmar: borrar conversación del sistema (con confirmación)
+    bool borrandoConv;
+    async Task BorrarConversacion()
+    {
+        if (selectedNumero is null) return;
+        var nombre = SelectedConv()?.NombrePerfil ?? PrettyNumero(selectedNumero);
+        var seguro = await JS.InvokeAsync<bool>("confirm",
+            $"¿Borrar TODA la conversación con {nombre}?\n\nSe borra solo del sistema (el chat en el celular del cliente queda como está). Esto no se puede deshacer.");
+        if (!seguro) return;
+        borrandoConv = true;
+        try
+        {
+            var ok = await Api.BorrarTwConversacionAsync(selectedNumero);
+            if (ok)
+            {
+                Toast.Success("Conversación borrada");
+                selectedNumero = null;
+                mensajes = new();
+                await LoadConversaciones(silent: true);
+            }
+            else Toast.Error("No se pudo borrar");
+        }
+        finally { borrandoConv = false; }
     }
 
     void InsertarRespuesta(ApiClient.TwRespRapidaDto r)
