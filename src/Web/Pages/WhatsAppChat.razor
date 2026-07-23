@@ -121,6 +121,10 @@
                 <button class="btn btn-outline-success btn-sm" @onclick="CargarComoPedido" title="Crear venta nueva precargando el último mensaje en las notas y el cliente vinculado">
                     📋 Crear pedido
                 </button>
+                @* 2026-07-23 pedido Osmar: mandar una lista de precios personalizada de un toque *@
+                <button class="btn btn-outline-warning btn-sm" @onclick="AbrirAdjuntarLista" title="Mandar una lista de precios personalizada (PDF) a este chat">
+                    💲 Lista precios
+                </button>
                 <button class="btn btn-outline-info btn-sm" @onclick="EnviarMenuRol" disabled="@enviandoMenuRol" title="Enviar a este contacto el menú '1-Cliente / 2-Proveedor / 3-Otros' para que se identifique">
                     @(enviandoMenuRol ? "⏳" : "❓") Menú rol
                 </button>
@@ -570,6 +574,7 @@
         <div class="wa-srv-tabs">
             <button class="wa-srv-tab @(srvTab == "VENTA" ? "active" : "")" @onclick='() => CambiarTabServidor("VENTA")'>🧾 Facturas/Ventas</button>
             <button class="wa-srv-tab @(srvTab == "COBRANZA" ? "active" : "")" @onclick='() => CambiarTabServidor("COBRANZA")'>💰 Recibos cobranza</button>
+            <button class="wa-srv-tab @(srvTab == "LISTA" ? "active" : "")" @onclick='() => CambiarTabServidor("LISTA")'>💲 Listas de precios</button>
             <button class="wa-srv-tab @(srvTab == "UPLOAD" ? "active" : "")" @onclick='() => CambiarTabServidor("UPLOAD")'>📁 Mis subidos</button>
         </div>
         <input class="wa-srv-search" placeholder="@SrvSearchPlaceholder()"
@@ -1061,8 +1066,19 @@
     {
         "VENTA" => "🔍 Nº venta, cliente o código...",
         "COBRANZA" => "🔍 Nº recibo, cliente o código...",
+        "LISTA" => "🔍 Nombre de la lista o cliente...",
         _ => "🔍 Nombre del archivo..."
     };
+
+    // 2026-07-23 pedido Osmar: acceso directo "a la vista" para mandar una lista de precios
+    async Task AbrirAdjuntarLista()
+    {
+        if (selectedNumero == null) { Toast.Warning("Seleccioná primero un chat"); return; }
+        showAdjuntarServidor = true;
+        srvSearch = "";
+        srvTab = "LISTA";
+        await CargarServerFiles();
+    }
 
     async Task AbrirAdjuntarServidor()
     {

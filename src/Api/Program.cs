@@ -196,6 +196,8 @@ builder.Services.AddScoped<CafeReciboEntregaPdfService>();
 // desde WhatsAppTwilioController (Fase 2.5 adjuntos: mandar factura/cotizacion por WhatsApp).
 // Solo los metodos publicos GenerarPdfBytesAsync/BuildArcaPdf/HydrateCfgFromEmisorAsync se llaman como service.
 builder.Services.AddScoped<Api.Controllers.CafeVentasController>();
+// 2026-07-23: CafeListasCustomController en DI para mandar listas de precios por el chat WhatsApp
+builder.Services.AddScoped<Api.Controllers.CafeListasCustomController>();
 builder.Services.AddScoped<MeliOrderService>();
 builder.Services.AddScoped<MeliItemService>();
 builder.Services.AddScoped<MeliQuestionService>();

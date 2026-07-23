@@ -771,10 +771,19 @@ public class CafeListasCustomController : ControllerBase
     [HttpGet("{listaId:int}/pdf")]
     public async Task<IActionResult> DescargarPdf(int listaId)
     {
+        var (pdf, filename) = await GenerarPdfBytesAsync(listaId);
+        if (pdf is null) return NotFound();
+        return File(pdf, "application/pdf", filename);
+    }
+
+    /// <summary>2026-07-23: genera el PDF de una lista (la MISMA lógica que el botón descargar)
+    /// para poder reusarlo desde el chat de WhatsApp. Devuelve (null, "") si la lista no existe.</summary>
+    public async Task<(byte[]? Bytes, string Filename)> GenerarPdfBytesAsync(int listaId)
+    {
         var lista = await _db.CafeListasPreciosCustom
             .Include(l => l.ClienteNav)
             .FirstOrDefaultAsync(l => l.Id == listaId && l.IsActive);
-        if (lista is null) return NotFound();
+        if (lista is null) return (null, "");
 
         var negocio = await _db.CafeSettings.FirstOrDefaultAsync() ?? new CafeSetting();
 
@@ -863,6 +872,6 @@ public class CafeListasCustomController : ControllerBase
         var pdf = _pdfService.GenerarPdf(input);
         var safeName = string.Concat((lista.Nombre ?? "lista").Where(c => char.IsLetterOrDigit(c) || c == ' ' || c == '-').ToArray()).Trim();
         if (string.IsNullOrEmpty(safeName)) safeName = $"lista-{listaId}";
-        return File(pdf, "application/pdf", $"{safeName}.pdf");
+        return (pdf, $"{safeName}.pdf");
     }
 }
