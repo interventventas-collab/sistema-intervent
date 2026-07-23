@@ -176,6 +176,9 @@ builder.Services.AddHostedService<MisAlertasBackgroundService>();
 builder.Services.AddScoped<CafeSaldosService>();
 builder.Services.AddScoped<DeudoresDiarioNotifier>();
 builder.Services.AddHostedService<DeudoresDiarioService>();
+// 2026-07-23: resumen financiero de la mañana por Telegram (Galicia + Shell + cheques), 08:00 ART.
+builder.Services.AddScoped<ResumenFinancieroNotifier>();
+builder.Services.AddHostedService<ResumenFinancieroDiarioService>();
 builder.Services.AddHostedService<MeliCodigoColectaBackgroundService>();
 // 2026-06-12: reactivado. Solo LECTURA informativa: pobla Cafe_StockPorDeposito[Full MeLi]
 // con lo que MeLi reporta en su bodega. No toca stock propio (9 de Abril) ni pushes.
