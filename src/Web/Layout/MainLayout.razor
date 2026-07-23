@@ -204,25 +204,31 @@
     .topbar-action-primary:active { transform: scale(0.97); }
 
     /* 2026-07-08: tres accesos rapidos con color por modulo (Venta / Alquiler / Cobranza) */
-    .tb-nuevo-group { display: inline-flex; align-items: center; gap: 0.4rem; }
+    /* 2026-07-23 pedido Osmar: antes cada botón tenía su color (negro/azul/verde) y mareaba.
+       Ahora es UNA cápsula oscura con los 3 adentro, mismo estilo, separados por una línea
+       finita. El emoji de cada uno (🛒 📅 💵) alcanza para distinguirlos. */
+    .tb-nuevo-group {
+        display: inline-flex; align-items: stretch;
+        background: #111827; border-radius: 8px; overflow: hidden;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+    }
     .tb-nuevo {
         border: none; color: white; height: 40px;
-        padding: 0 0.7rem; border-radius: 6px;
+        padding: 0 0.75rem; border-radius: 0; background: transparent;
         font-family: inherit; font-size: 0.82rem; font-weight: 600;
         cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem;
         line-height: 1; white-space: nowrap;
-        transition: background 0.12s ease, transform 0.06s ease;
+        transition: background 0.12s ease;
     }
-    .tb-nuevo:active { transform: scale(0.97); }
+    .tb-nuevo + .tb-nuevo { border-left: 1px solid rgba(255,255,255,0.14); }
+    .tb-nuevo:hover { background: rgba(255,255,255,0.12); }
+    .tb-nuevo:active { background: rgba(255,255,255,0.2); }
     .tb-nuevo .ic { font-size: 1rem; }
     .tb-nuevo .keys { display: inline-flex; gap: 3px; }
     .tb-nuevo .kbd {
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.64rem; font-weight: 700;
         padding: 1px 4px; border-radius: 3px; background: rgba(255,255,255,0.2);
     }
-    .tb-nuevo-venta { background: #111827; } .tb-nuevo-venta:hover { background: #1f2937; }
-    .tb-nuevo-alq   { background: #2563eb; } .tb-nuevo-alq:hover   { background: #1d4ed8; }
-    .tb-nuevo-cob   { background: #059669; } .tb-nuevo-cob:hover   { background: #047857; }
     /* Pantallas chicas: solo el icono (en el celu no hay teclado fisico) */
     @@media (max-width: 900px) {
         .tb-nuevo .lbl, .tb-nuevo .keys { display: none; }
