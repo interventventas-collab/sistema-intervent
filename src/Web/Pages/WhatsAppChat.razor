@@ -148,6 +148,11 @@
                                                 <img src="@m.MediaUrl" style="max-width:100%; max-height:300px; border-radius:6px; display:block;" alt="adjunto" />
                                             </a>
                                         }
+                                        else if (IsAudio(m.MediaUrl))
+                                        {
+                                            @* 2026-07-23: nota de voz — se escucha aca mismo, como en WhatsApp *@
+                                            <audio controls preload="none" src="@m.MediaUrl" style="max-width:250px; height:40px; display:block; margin-bottom:0.2rem;"></audio>
+                                        }
                                         else
                                         {
                                             <a href="@m.MediaUrl" target="_blank" rel="noopener" style="display:flex; align-items:center; gap:0.4rem; padding:0.5rem; background:#f3f4f6; border-radius:6px; text-decoration:none; color:#374151; margin-bottom:0.3rem;">
@@ -1124,6 +1129,17 @@
         var lower = url.ToLowerInvariant();
         return lower.Contains(".jpg") || lower.Contains(".jpeg") || lower.Contains(".png")
             || lower.Contains(".gif") || lower.Contains(".webp") || lower.Contains("image");
+    }
+
+    // 2026-07-23: notas de voz. Los audios de WhatsApp llegan como .ogg (opus); los que grabamos
+    // nosotros desde el navegador pueden ser .webm o .m4a segun el dispositivo.
+    bool IsAudio(string? url)
+    {
+        if (string.IsNullOrEmpty(url)) return false;
+        var lower = url.ToLowerInvariant();
+        return lower.EndsWith(".ogg") || lower.EndsWith(".opus") || lower.EndsWith(".mp3")
+            || lower.EndsWith(".m4a") || lower.EndsWith(".amr") || lower.EndsWith(".wav")
+            || lower.EndsWith(".webm");
     }
 
     // ===== Filtros / detección de pedido =====
