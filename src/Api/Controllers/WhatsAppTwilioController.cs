@@ -488,7 +488,7 @@ public class WhatsAppTwilioController : ControllerBase
             .Select(m => new
             {
                 m.Id, m.Direccion, m.Numero, m.NombrePerfil,
-                m.Cuerpo, m.MediaUrl, m.NumMedia,
+                m.Cuerpo, m.MediaUrl, m.MediaFilename, m.NumMedia,
                 m.Procesado, m.RespuestaEnviada, m.CreatedAt
             })
             .ToListAsync();
@@ -505,7 +505,7 @@ public class WhatsAppTwilioController : ControllerBase
         var result = msgs.Select(m => new
         {
             m.Id, m.Direccion, m.Numero, m.NombrePerfil, m.Cuerpo,
-            m.MediaUrl, m.NumMedia, m.Procesado, m.RespuestaEnviada, m.CreatedAt,
+            m.MediaUrl, m.MediaFilename, m.NumMedia, m.Procesado, m.RespuestaEnviada, m.CreatedAt,
             Reacciones = reacByMsg.TryGetValue(m.Id, out var rs) ? rs.Cast<object>().ToList() : new List<object>()
         }).ToList();
         return Ok(result);
@@ -608,6 +608,7 @@ public class WhatsAppTwilioController : ControllerBase
                 Numero = req.Numero,
                 Cuerpo = req.Caption ?? "",
                 MediaUrl = req.MediaUrl,
+                MediaFilename = req.OriginalFilename,
                 NumMedia = 1,
                 TwilioMessageSid = sid,
                 Canal = canal,
@@ -880,6 +881,7 @@ public class WhatsAppTwilioController : ControllerBase
                 Numero = req.Numero,
                 Cuerpo = req.Caption ?? "",
                 MediaUrl = mediaUrl,
+                MediaFilename = filename,
                 NumMedia = 1,
                 TwilioMessageSid = sid,
                 Canal = canal,

@@ -172,7 +172,8 @@
                                         {
                                             <a href="@m.MediaUrl" target="_blank" rel="noopener" style="display:flex; align-items:center; gap:0.4rem; padding:0.5rem; background:#f3f4f6; border-radius:6px; text-decoration:none; color:#374151; margin-bottom:0.3rem;">
                                                 <span style="font-size:1.5rem;">📎</span>
-                                                <span style="font-size:0.85rem; flex:1;">Archivo adjunto<br/><span style="font-size:0.7rem; color:#6b7280;">Click para abrir</span></span>
+                                                @* 2026-07-23 pedido Osmar: mostrar nombre y tipo del archivo (antes decía "Archivo adjunto" pelado) *@
+                                                <span style="font-size:0.85rem; flex:1;">@(string.IsNullOrWhiteSpace(m.MediaFilename) ? "Archivo adjunto" : m.MediaFilename)<br/><span style="font-size:0.7rem; color:#6b7280;">@WaTipoArchivo(m.MediaUrl, m.MediaFilename) · Click para abrir</span></span>
                                             </a>
                                         }
                                     }
@@ -1166,6 +1167,24 @@
     }
 
     string PrettyNumero(string numero) => numero?.Replace("whatsapp:", "").Trim() ?? "";
+
+    // 2026-07-23: etiqueta legible del tipo de archivo, por la extensión de la URL o del nombre
+    static string WaTipoArchivo(string? url, string? filename)
+    {
+        var ext = System.IO.Path.GetExtension(filename ?? "").TrimStart('.').ToLowerInvariant();
+        if (string.IsNullOrEmpty(ext))
+            ext = System.IO.Path.GetExtension((url ?? "").Split('?')[0]).TrimStart('.').ToLowerInvariant();
+        return ext switch
+        {
+            "pdf" => "📄 PDF",
+            "xls" or "xlsx" or "csv" => "📊 Excel",
+            "doc" or "docx" => "📝 Word",
+            "zip" or "rar" => "🗜 Comprimido",
+            "mp4" or "mov" => "🎬 Video",
+            "" => "Archivo",
+            _ => $"Archivo .{ext}"
+        };
+    }
 
     string FormatHora(DateTime utc)
     {

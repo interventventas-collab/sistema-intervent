@@ -83,7 +83,8 @@
                                 }
                                 @if (!string.IsNullOrWhiteSpace(m.MediaUrl))
                                 {
-                                    <div class="waf-msg-adj">📎 Adjunto</div>
+                                    @* 2026-07-23: mostrar el nombre del archivo si lo tenemos (link para abrirlo) *@
+                                    <div class="waf-msg-adj"><a href="@m.MediaUrl" target="_blank" rel="noopener" style="color:inherit; text-decoration:none;">📎 @(string.IsNullOrWhiteSpace(m.MediaFilename) ? "Adjunto" : m.MediaFilename)</a></div>
                                 }
                                 <div class="waf-msg-hora">@m.CreatedAt.ToLocalTime().ToString("HH:mm")</div>
                             </div>

@@ -6018,7 +6018,7 @@ public class ApiClient
     // ===== WhatsApp Twilio chat =====
     public record TwConvDto(string Numero, string? NombrePerfil, string? Rol, int? ClienteId, string? ClienteNombre, string? UltimoMensaje, string? UltimoDireccion, DateTime UltimoAt, int Total);
     public record TwReaccionDto(string Emoji, int Count);
-    public record TwMsgDto(int Id, string Direccion, string Numero, string? NombrePerfil, string? Cuerpo, string? MediaUrl, int? NumMedia, bool Procesado, string? RespuestaEnviada, DateTime CreatedAt, List<TwReaccionDto>? Reacciones);
+    public record TwMsgDto(int Id, string Direccion, string Numero, string? NombrePerfil, string? Cuerpo, string? MediaUrl, string? MediaFilename, int? NumMedia, bool Procesado, string? RespuestaEnviada, DateTime CreatedAt, List<TwReaccionDto>? Reacciones);
     public record TwRespRapidaDto(int Id, string Nombre, string Texto, int Orden, bool Activo);
     public record TwContactoDto(int Id, string Numero, string Nombre, string Rol, string? Notas, bool Activo, int? ClienteId, string? ClienteNombre, string? ClienteCodigo);
     public record TwRespUpsert(string Nombre, string Texto, int Orden, bool Activo);

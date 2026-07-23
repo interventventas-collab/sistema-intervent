@@ -12,6 +12,8 @@ public class WhatsAppTwilioMensaje
     [MaxLength(120)] public string? NombrePerfil { get; set; }
     public string? Cuerpo { get; set; }
     [MaxLength(500)] public string? MediaUrl { get; set; }
+    /// <summary>2026-07-23: nombre original del adjunto (ej "Lista Take Away.pdf") para mostrarlo en el chat.</summary>
+    [MaxLength(300)] public string? MediaFilename { get; set; }
     public int? NumMedia { get; set; }
     /// <summary>ID del mensaje del proveedor: SID de Twilio o wamid.* de Meta Cloud API (este último es largo).</summary>
     [MaxLength(200)] public string? TwilioMessageSid { get; set; }

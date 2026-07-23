@@ -146,6 +146,7 @@ public class MetaWhatsAppWebhookController : ControllerBase
         // BAJAMOS de Meta y lo guardamos, porque el webhook solo trae un media_id, no el archivo.
         string? cuerpo = null;
         string? mediaUrlPublica = null;
+        string? mediaNombre = null;
         switch (tipo)
         {
             case "text":
@@ -164,7 +165,7 @@ public class MetaWhatsAppWebhookController : ControllerBase
                     ? fnEl.GetString() : null;
 
                 if (!string.IsNullOrWhiteSpace(mediaId))
-                    mediaUrlPublica = await GuardarAdjuntoAsync(db, meta, mediaId!, tipo, nombreOriginal, baseUrl);
+                    (mediaUrlPublica, mediaNombre) = await GuardarAdjuntoAsync(db, meta, mediaId!, tipo, nombreOriginal, baseUrl);
 
                 // Si no se pudo bajar, al menos dejamos constancia de que mandaron algo.
                 if (mediaUrlPublica is null && string.IsNullOrWhiteSpace(cuerpo))
@@ -192,6 +193,7 @@ public class MetaWhatsAppWebhookController : ControllerBase
             NombrePerfil = string.IsNullOrEmpty(nombrePerfil) ? null : nombrePerfil,
             Cuerpo = cuerpo,
             MediaUrl = mediaUrlPublica,
+            MediaFilename = mediaNombre,
             NumMedia = mediaUrlPublica != null ? 1 : 0,
             TwilioMessageSid = wamid,
             Canal = "CLOUD",
@@ -226,13 +228,13 @@ public class MetaWhatsAppWebhookController : ControllerBase
     /// asi la pantalla del chat lo muestra sin tener que tocar nada de la UI.
     /// Devuelve la URL publica del archivo, o null si no se pudo.
     /// </summary>
-    private async Task<string?> GuardarAdjuntoAsync(AppDbContext db, MetaWhatsAppService meta,
+    private async Task<(string? Url, string? Nombre)> GuardarAdjuntoAsync(AppDbContext db, MetaWhatsAppService meta,
         string mediaId, string tipo, string? nombreOriginal, string baseUrl)
     {
         try
         {
             var (bytes, contentType, fileNameMeta) = await meta.DownloadMediaAsync(mediaId);
-            if (bytes is null || bytes.Length == 0) return null;
+            if (bytes is null || bytes.Length == 0) return (null, null);
 
             Directory.CreateDirectory(UploadsDir);
 
@@ -262,12 +264,12 @@ public class MetaWhatsAppWebhookController : ControllerBase
 
             _logger.LogInformation("[Meta WA webhook] Adjunto guardado: {Nombre} ({Bytes} bytes)", nombre, bytes.Length);
             // La extension va en la URL para que el chat muestre la vista previa si es una imagen.
-            return $"{baseUrl}/api/whatsapp/twilio/files/{token}{ext}";
+            return ($"{baseUrl}/api/whatsapp/twilio/files/{token}{ext}", nombre);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Meta WA webhook] No pude guardar el adjunto {MediaId}", mediaId);
-            return null;
+            return (null, null);
         }
     }
 
