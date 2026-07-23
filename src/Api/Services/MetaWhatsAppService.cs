@@ -70,6 +70,79 @@ public class MetaWhatsAppService
         return await PostMessageAsync(payload, to, ct);
     }
 
+    /// <summary>2026-07-23 (bot de bienvenida): mensaje con BOTONES de respuesta rápida.
+    /// WhatsApp permite MÁXIMO 3 botones, títulos de hasta 20 caracteres. El id vuelve en el
+    /// webhook (interactive.button_reply.id) para saber qué tocó el cliente.</summary>
+    public async Task<string?> SendButtonsAsync(string to, string body, IEnumerable<(string Id, string Title)> botones, CancellationToken ct = default)
+    {
+        EnsureConfigured();
+        var payload = new
+        {
+            messaging_product = "whatsapp",
+            recipient_type = "individual",
+            to = NormalizeTo(to),
+            type = "interactive",
+            interactive = new
+            {
+                type = "button",
+                body = new { text = body },
+                action = new
+                {
+                    buttons = botones.Take(3).Select(b => new
+                    {
+                        type = "reply",
+                        reply = new { id = b.Id, title = b.Title.Length > 20 ? b.Title[..20] : b.Title }
+                    }).ToArray()
+                }
+            }
+        };
+        return await PostMessageAsync(payload, to, ct);
+    }
+
+    /// <summary>2026-07-23 (bot de bienvenida): mensaje con LISTA desplegable (hasta 10 opciones).
+    /// El cliente toca el botón y se abre el menú. El id de la fila vuelve por el webhook
+    /// (interactive.list_reply.id). Títulos hasta 24 chars, descripción hasta 72.</summary>
+    public async Task<string?> SendListAsync(string to, string body, string botonLabel, IEnumerable<(string Id, string Title, string? Desc)> filas, CancellationToken ct = default)
+    {
+        EnsureConfigured();
+        var payload = new
+        {
+            messaging_product = "whatsapp",
+            recipient_type = "individual",
+            to = NormalizeTo(to),
+            type = "interactive",
+            interactive = new
+            {
+                type = "list",
+                body = new { text = body },
+                action = new
+                {
+                    button = botonLabel.Length > 20 ? botonLabel[..20] : botonLabel,
+                    sections = new[]
+                    {
+                        new
+                        {
+                            // OJO: Meta rechaza el JSON con campos en null → armamos cada fila
+                            // solo con los campos que tienen valor (mismo truco que SendMediaAsync).
+                            rows = filas.Take(10).Select(f =>
+                            {
+                                var row = new Dictionary<string, object>
+                                {
+                                    ["id"] = f.Id,
+                                    ["title"] = f.Title.Length > 24 ? f.Title[..24] : f.Title
+                                };
+                                if (!string.IsNullOrWhiteSpace(f.Desc))
+                                    row["description"] = f.Desc!.Length > 72 ? f.Desc[..72] : f.Desc;
+                                return row;
+                            }).ToArray()
+                        }
+                    }
+                }
+            }
+        };
+        return await PostMessageAsync(payload, to, ct);
+    }
+
     /// <summary>2026-07-23: envía una REACCIÓN real (el cliente la ve en su WhatsApp, como en el celu).
     /// messageId es el wamid del mensaje al que se reacciona. Emoji vacío = quitar la reacción.
     /// OJO: WhatsApp permite UNA sola reacción nuestra por mensaje — mandar otra la reemplaza.</summary>

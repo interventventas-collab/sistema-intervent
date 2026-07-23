@@ -156,7 +156,32 @@ public class WhatsAppTwilioController : ControllerBase
 
         var numero = req.Numero.Trim();
         if (!numero.StartsWith("whatsapp:")) numero = "whatsapp:" + numero;
-        var sid = await EnviarYRegistrarAsync(numero, MenuRolTexto);
+
+        // 2026-07-23: si Meta está configurado, mandamos el menú NUEVO con botones (el del bot
+        // de bienvenida: elegir empresa). Si no, cae al texto viejo 1/2/3 por Twilio.
+        string? sid;
+        if (_meta.IsConfigured)
+        {
+            sid = await _meta.SendButtonsAsync(numero, WhatsAppBotFlow.CuerpoNivel1, WhatsAppBotFlow.BotonesNivel1);
+            if (sid != null)
+            {
+                _db.WhatsAppTwilioMensajes.Add(new WhatsAppTwilioMensaje
+                {
+                    Direccion = "OUTGOING",
+                    Numero = numero,
+                    Cuerpo = WhatsAppBotFlow.CuerpoNivel1 + " [botones: Frikaf / Intervent / Intereventos]",
+                    TwilioMessageSid = sid,
+                    Canal = "CLOUD",
+                    Procesado = true,
+                    CreatedAt = DateTime.UtcNow
+                });
+                await _db.SaveChangesAsync();
+            }
+        }
+        else
+        {
+            sid = await EnviarYRegistrarAsync(numero, MenuRolTexto);
+        }
         if (sid == null) return StatusCode(500, new { error = "No se pudo enviar el menú (ver logs)" });
         return Ok(new { ok = true, sid });
     }
