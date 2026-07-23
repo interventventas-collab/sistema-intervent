@@ -261,7 +261,8 @@ public class MetaWhatsAppWebhookController : ControllerBase
             await db.SaveChangesAsync();
 
             _logger.LogInformation("[Meta WA webhook] Adjunto guardado: {Nombre} ({Bytes} bytes)", nombre, bytes.Length);
-            return $"{baseUrl}/api/whatsapp/twilio/files/{token}";
+            // La extension va en la URL para que el chat muestre la vista previa si es una imagen.
+            return $"{baseUrl}/api/whatsapp/twilio/files/{token}{ext}";
         }
         catch (Exception ex)
         {

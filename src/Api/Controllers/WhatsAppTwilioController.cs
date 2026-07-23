@@ -492,28 +492,40 @@ public class WhatsAppTwilioController : ControllerBase
         _db.WhatsAppTwilioUploads.Add(up);
         await _db.SaveChangesAsync();
 
-        var url = $"{Request.Scheme}://{Request.Host}/api/whatsapp/twilio/files/{token}";
+        // La extension va en la URL para que el chat sepa si mostrar vista previa de imagen.
+        var url = $"{Request.Scheme}://{Request.Host}/api/whatsapp/twilio/files/{token}{ext}";
         return Ok(new UploadResp(token, url, up.OriginalFilename, up.SizeBytes, up.ContentType, up.ExpiresAt));
     }
 
-    /// <summary>GET /api/whatsapp/twilio/files/{token} — sirve el archivo publicamente (sin auth) para que Twilio lo descargue.</summary>
+    /// <summary>GET /api/whatsapp/twilio/files/{token} — sirve el archivo publicamente (sin auth)
+    /// para que lo baje el proveedor (Twilio/Meta) y para mostrarlo en el chat.
+    /// 2026-07-23: el token puede venir CON extension (ej "abc123.jpg"). Se agrega a la URL para que
+    /// la pantalla sepa que es una imagen y muestre la vista previa (antes, sin extension, mostraba
+    /// todo como "archivo adjunto"). Los tokens son base64url y NO tienen puntos, asi que sacar la
+    /// extension es seguro y las URLs viejas (sin extension) siguen funcionando igual.</summary>
     [HttpGet("files/{token}")]
     [AllowAnonymous]
     public async Task<IActionResult> ServirArchivo(string token)
     {
-        var up = await _db.WhatsAppTwilioUploads.FirstOrDefaultAsync(u => u.Token == token);
+        var tokenLimpio = Path.GetFileNameWithoutExtension(token);
+        var up = await _db.WhatsAppTwilioUploads.FirstOrDefaultAsync(u => u.Token == tokenLimpio);
         if (up == null) return NotFound();
         if (up.ExpiresAt < DateTime.UtcNow) return NotFound(new { error = "Expirado" });
 
         var path = Path.Combine(UploadsDir, up.StoredFilename);
         if (!System.IO.File.Exists(path)) return NotFound();
 
-        // Marcar primera descarga (cuando Twilio lo baje)
+        // Marcar primera descarga (cuando el proveedor lo baje)
         if (up.DownloadedAt == null)
         {
             up.DownloadedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
         }
+
+        // Las imagenes se sirven "inline" para poder previsualizarlas en el chat;
+        // el resto va como descarga, con su nombre original.
+        if (up.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            return PhysicalFile(path, up.ContentType);
 
         return PhysicalFile(path, up.ContentType, up.OriginalFilename);
     }
@@ -669,7 +681,7 @@ public class WhatsAppTwilioController : ControllerBase
                     up.ExpiresAt = DateTime.UtcNow.AddHours(24);
                     await _db.SaveChangesAsync();
                 }
-                mediaUrl = $"{Request.Scheme}://{Request.Host}/api/whatsapp/twilio/files/{up.Token}";
+                mediaUrl = $"{Request.Scheme}://{Request.Host}/api/whatsapp/twilio/files/{up.Token}{Path.GetExtension(up.StoredFilename)}";
                 filename = up.OriginalFilename;
                 break;
             }
@@ -717,7 +729,7 @@ public class WhatsAppTwilioController : ControllerBase
                 };
                 _db.WhatsAppTwilioUploads.Add(up);
                 await _db.SaveChangesAsync();
-                mediaUrl = $"{Request.Scheme}://{Request.Host}/api/whatsapp/twilio/files/{token}";
+                mediaUrl = $"{Request.Scheme}://{Request.Host}/api/whatsapp/twilio/files/{token}{Path.GetExtension(stored)}";
                 break;
             }
             case "VENTA":
@@ -752,7 +764,7 @@ public class WhatsAppTwilioController : ControllerBase
                 };
                 _db.WhatsAppTwilioUploads.Add(up);
                 await _db.SaveChangesAsync();
-                mediaUrl = $"{Request.Scheme}://{Request.Host}/api/whatsapp/twilio/files/{token}";
+                mediaUrl = $"{Request.Scheme}://{Request.Host}/api/whatsapp/twilio/files/{token}{Path.GetExtension(stored)}";
                 break;
             }
             default:
