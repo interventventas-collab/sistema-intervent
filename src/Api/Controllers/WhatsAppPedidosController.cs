@@ -29,15 +29,22 @@ public class WhatsAppPedidosController : ControllerBase
     {
         public string Telefono { get; set; } = "";
         public string Texto { get; set; } = "";
+        /// <summary>2026-07-23: cliente ya conocido por el que llama (ej. contacto del chat
+        /// vinculado). Solo se usa si el texto no trae #código.</summary>
+        public int? ClienteId { get; set; }
+        /// <summary>manual (paste en la pantalla) | whatsapp_chat (botones del chat)</summary>
+        public string? Source { get; set; }
     }
 
-    /// <summary>Recibe un pedido manual (paste). Parsea con IA y guarda en estado PARSEADO o ERROR.</summary>
+    /// <summary>Recibe un pedido manual (paste o botones del chat). Parsea con IA (si el
+    /// interruptor está prendido) y guarda en estado PARSEADO o ERROR.</summary>
     [HttpPost("recibir")]
     public async Task<IActionResult> Recibir([FromBody] RecibirPedidoRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.Texto))
             return BadRequest(new { error = "Texto vacío" });
-        var pedido = await _svc.RecibirPedidoAsync(req.Telefono, req.Texto, "manual", HttpContext.RequestAborted);
+        var source = string.IsNullOrWhiteSpace(req.Source) ? "manual" : req.Source.Trim();
+        var pedido = await _svc.RecibirPedidoAsync(req.Telefono, req.Texto, source, HttpContext.RequestAborted, req.ClienteId);
         return Ok(new { id = pedido.Id, estado = pedido.Estado, error = pedido.ParseError });
     }
 
@@ -259,8 +266,13 @@ public class WhatsAppPedidosController : ControllerBase
         var p = await _db.WhatsAppPedidosRecibidos.FindAsync(id);
         if (p is null) return NotFound();
         var parsed = await _svc.ParseTextoAsync(p.TextoCrudo, HttpContext.RequestAborted);
-        p.ClienteNombre = parsed.ClienteNombre;
-        p.ClienteId = parsed.ClienteId;
+        // 2026-07-23: si el pedido ya tiene cliente (por #código o contacto vinculado), ese manda —
+        // no pisarlo con lo que adivine la IA.
+        if (!p.ClienteId.HasValue)
+        {
+            p.ClienteNombre = parsed.ClienteNombre;
+            p.ClienteId = parsed.ClienteId;
+        }
         p.ProductosParseados = JsonSerializer.Serialize(parsed);
         p.ParseadoAt = DateTime.UtcNow;
         p.Estado = string.IsNullOrEmpty(parsed.Error) ? "PARSEADO" : "ERROR";
@@ -275,6 +287,7 @@ public class WhatsAppPedidosController : ControllerBase
         var trigger = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == "whatsapp.pedidos.trigger");
         var pollEnabled = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == "whatsapp.pedidos.poll_enabled");
         var autoResp = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == "whatsapp.pedidos.auto_responder_enabled");
+        var iaEnabled = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == "whatsapp.pedidos.ia_enabled");
         var telefonos = await _db.WhatsAppPedidosTelefonos.AsNoTracking()
             .OrderBy(t => t.Id)
             .Select(t => new TelefonoDto { Id = t.Id, Telefono = t.Telefono, Etiqueta = t.Etiqueta, Activo = t.Activo, LastMessageId = t.LastMessageId, LastReadAt = t.LastReadAt })
@@ -284,6 +297,8 @@ public class WhatsAppPedidosController : ControllerBase
             trigger = trigger?.Value ?? "#PED",
             pollEnabled = string.Equals(pollEnabled?.Value?.Trim(), "true", StringComparison.OrdinalIgnoreCase),
             autoResponderEnabled = autoResp is null ? true : string.Equals(autoResp.Value?.Trim(), "true", StringComparison.OrdinalIgnoreCase),
+            // 2026-07-23: interruptor de la IA lectora (default prendida)
+            iaEnabled = iaEnabled is null ? true : string.Equals(iaEnabled.Value?.Trim(), "true", StringComparison.OrdinalIgnoreCase),
             telefonos
         });
     }
@@ -303,6 +318,7 @@ public class WhatsAppPedidosController : ControllerBase
         public string? Trigger { get; set; }
         public bool? PollEnabled { get; set; }
         public bool? AutoResponderEnabled { get; set; }
+        public bool? IaEnabled { get; set; }
     }
 
     [HttpPost("config")]
@@ -321,8 +337,10 @@ public class WhatsAppPedidosController : ControllerBase
             await UpsertAsync("whatsapp.pedidos.poll_enabled", req.PollEnabled.Value ? "true" : "false");
         if (req.AutoResponderEnabled.HasValue)
             await UpsertAsync("whatsapp.pedidos.auto_responder_enabled", req.AutoResponderEnabled.Value ? "true" : "false");
+        if (req.IaEnabled.HasValue)
+            await UpsertAsync("whatsapp.pedidos.ia_enabled", req.IaEnabled.Value ? "true" : "false");
         await _db.SaveChangesAsync();
-        return Ok(new { trigger, pollEnabled = req.PollEnabled, autoResponderEnabled = req.AutoResponderEnabled });
+        return Ok(new { trigger, pollEnabled = req.PollEnabled, autoResponderEnabled = req.AutoResponderEnabled, iaEnabled = req.IaEnabled });
     }
 
     // === Teléfonos autorizados ===

@@ -246,7 +246,7 @@ Respondé ESTRICTAMENTE este JSON (sin markdown, sin texto adicional):
     ///
     /// DETECCION DE CLIENTE 2026-05-24: si el texto contiene un patron #NUMERO (ej "#PED #134"),
     /// busca CafeCliente con ese CodigoInterno y lo asocia automaticamente al pedido.</summary>
-    public async Task<WhatsAppPedidoRecibido> RecibirPedidoAsync(string telefono, string textoCrudo, string source = "manual", CancellationToken ct = default)
+    public async Task<WhatsAppPedidoRecibido> RecibirPedidoAsync(string telefono, string textoCrudo, string source = "manual", CancellationToken ct = default, int? clienteIdVinculado = null)
     {
         var pedido = new WhatsAppPedidoRecibido
         {
@@ -267,10 +267,55 @@ Respondé ESTRICTAMENTE este JSON (sin markdown, sin texto adicional):
             pedido.ClienteId = clienteId;
             pedido.ClienteNombre = clienteNombre;
         }
+        // 2026-07-23: si el que llama ya sabe el cliente (ej. contacto del chat vinculado a un
+        // cliente), usarlo como respaldo cuando el texto no trae codigo.
+        else if (clienteIdVinculado.HasValue && clienteIdVinculado.Value > 0)
+        {
+            var cli = await _db.CafeClientes.AsNoTracking()
+                .Where(c => c.Id == clienteIdVinculado.Value && c.IsActive)
+                .Select(c => new { c.Id, c.Nombre })
+                .FirstOrDefaultAsync(ct);
+            if (cli is not null) { pedido.ClienteId = cli.Id; pedido.ClienteNombre = cli.Nombre; }
+        }
 
         _db.WhatsAppPedidosRecibidos.Add(pedido);
         await _db.SaveChangesAsync(ct);
+
+        // 2026-07-23 (unificación): la IA lee el pedido apenas entra — antes solo corría con el
+        // botón "re-parsear" y en la práctica nunca se usaba. Respetá el interruptor de la
+        // pantalla (whatsapp.pedidos.ia_enabled). Si falla, el pedido queda NUEVO igual.
+        try { await ParsearYGuardarAsync(pedido, ct); }
+        catch (Exception ex) { _log.LogError(ex, "Error parseando pedido {Id} con IA", pedido.Id); }
+
         return pedido;
+    }
+
+    /// <summary>Interruptor de la IA lectora de pedidos (lo maneja el usuario desde la pantalla
+    /// Pedidos WhatsApp). Default: prendida.</summary>
+    public async Task<bool> IaEnabledAsync(CancellationToken ct = default)
+    {
+        var s = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Key == "whatsapp.pedidos.ia_enabled", ct);
+        return s is null || string.Equals(s.Value?.Trim(), "true", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Corre la IA sobre un pedido ya guardado y persiste el resultado (misma lógica que
+    /// el botón re-parsear). Si el texto traía código de cliente, ese cliente MANDA: no se pisa
+    /// con lo que adivine la IA. Con el interruptor apagado no hace nada.</summary>
+    public async Task ParsearYGuardarAsync(WhatsAppPedidoRecibido pedido, CancellationToken ct = default)
+    {
+        if (!await IaEnabledAsync(ct)) return;
+
+        var parsed = await ParseTextoAsync(pedido.TextoCrudo, ct);
+        if (!pedido.ClienteId.HasValue)
+        {
+            pedido.ClienteId = parsed.ClienteId;
+            pedido.ClienteNombre = parsed.ClienteNombre;
+        }
+        pedido.ProductosParseados = System.Text.Json.JsonSerializer.Serialize(parsed);
+        pedido.ParseadoAt = DateTime.UtcNow;
+        pedido.Estado = string.IsNullOrEmpty(parsed.Error) ? "PARSEADO" : "ERROR";
+        pedido.ParseError = parsed.Error;
+        await _db.SaveChangesAsync(ct);
     }
 
     /// <summary>Intenta detectar el cliente del pedido buscando #NUMERO en el texto, donde NUMERO

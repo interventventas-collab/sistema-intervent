@@ -629,20 +629,19 @@
     // === Selección de mensajes + Nueva Venta en ventana popup ===
     HashSet<int> mensajesSeleccionadosIds = new();
 
-    string NuevaVentaPopupUrl()
+    /// <summary>2026-07-23 (unificación): los botones del chat ya no van por un camino propio —
+    /// crean un pedido REAL en la cola (la IA lo lee si está prendida) y abren Nueva Venta por el
+    /// mismo circuito que todos (?pedidoId=). Devuelve el id del pedido creado, o null si falló.</summary>
+    async Task<int?> CrearPedidoRealAsync(string texto)
     {
-        var seleccionados = mensajes.Where(m => mensajesSeleccionadosIds.Contains(m.Id))
-            .OrderBy(m => m.CreatedAt).ToList();
+        if (string.IsNullOrWhiteSpace(texto)) { Toast.Warning("No hay texto para el pedido"); return null; }
         var conv = SelectedConv();
-        var lineas = new List<string>();
-        var nombre = conv?.NombrePerfil ?? PrettyNumero(selectedNumero ?? "");
-        lineas.Add($"📱 WhatsApp de {nombre} ({PrettyNumero(selectedNumero ?? "")})");
-        foreach (var m in seleccionados)
-            if (!string.IsNullOrWhiteSpace(m.Cuerpo)) lineas.Add(m.Cuerpo!);
-        var notas = string.Join(" · ", lineas);
-        var url = $"/cafe/ventas?fromTwilio=1&notas={Uri.EscapeDataString(notas)}";
-        if (conv?.ClienteId is int cid) url += $"&clienteIdPre={cid}";
-        return url;
+        Toast.Info("Creando el pedido… si la IA está prendida tarda unos segundos en leerlo.");
+        var r = await Api.RecibirWhatsAppPedidoAsync(
+            PrettyNumero(selectedNumero ?? ""), texto.Trim(),
+            clienteId: conv?.ClienteId, source: "whatsapp_chat");
+        if (r is null) { Toast.Error("No se pudo crear el pedido"); return null; }
+        return r.Id;
     }
 
     void ToggleSeleccionMensaje(int id)
@@ -656,10 +655,15 @@
     async Task AbrirVentanaVenta()
     {
         if (mensajesSeleccionadosIds.Count == 0) { Toast.Warning("Seleccioná al menos un mensaje"); return; }
-        var url = NuevaVentaPopupUrl();
+        var texto = string.Join("\n", mensajes.Where(m => mensajesSeleccionadosIds.Contains(m.Id))
+            .OrderBy(m => m.CreatedAt)
+            .Where(m => !string.IsNullOrWhiteSpace(m.Cuerpo))
+            .Select(m => m.Cuerpo!));
+        var pedidoId = await CrearPedidoRealAsync(texto);
+        if (pedidoId is null) return;
         // width=1300, height=850, posicionado a la derecha. Resizable + scrollbars activos.
         var features = "width=1300,height=850,left=200,top=50,resizable=yes,scrollbars=yes,toolbar=no,menubar=no,location=no";
-        await JS.InvokeVoidAsync("open", url, "nueva-venta-wa", features);
+        await JS.InvokeVoidAsync("open", $"/cafe/ventas?pedidoId={pedidoId}", "nueva-venta-wa", features);
         // Limpiamos la seleccion para evitar abrir 2 veces el mismo set
         mensajesSeleccionadosIds.Clear();
     }
@@ -1087,18 +1091,14 @@
         }
     }
 
-    void CargarComoPedido()
+    async Task CargarComoPedido()
     {
-        var conv = SelectedConv();
-        var nombre = conv?.NombrePerfil ?? PrettyNumero(selectedNumero ?? "");
+        // 2026-07-23 (unificación): crea un pedido real con el último mensaje del cliente y abre
+        // Nueva Venta por el circuito único (?pedidoId=) — IA, comprobante y respuesta incluidos.
         var ultimoIn = mensajes.LastOrDefault(m => m.Direccion == "INCOMING");
-        var notas = $"📱 WhatsApp de {nombre} ({PrettyNumero(selectedNumero ?? "")})\n\n{ultimoIn?.Cuerpo ?? ""}";
-        // 2026-07-23: antes navegaba con ?notas=/&clienteId= que CafeVentas ya no lee (el texto se
-        // perdía). Ahora usa los mismos parámetros que el popup (?fromTwilio=1/&clienteIdPre=) y el
-        // texto cae en "Comentario para armado".
-        var url = $"/cafe/ventas?fromTwilio=1&notas={Uri.EscapeDataString(notas)}";
-        if (conv?.ClienteId is int cid) url += $"&clienteIdPre={cid}";
-        Nav.NavigateTo(url);
+        var pedidoId = await CrearPedidoRealAsync(ultimoIn?.Cuerpo ?? "");
+        if (pedidoId is null) return;
+        Nav.NavigateTo($"/cafe/ventas?pedidoId={pedidoId}");
     }
 
     ApiClient.TwConvDto? SelectedConv() => conversaciones.FirstOrDefault(c => c.Numero == selectedNumero);

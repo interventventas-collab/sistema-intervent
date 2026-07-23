@@ -5083,26 +5083,12 @@
 
     private void CerrarSelectorPedidoWA() => mostrarSelectorPedidoWA = false;
 
-    private void SeleccionarPedidoWA(ApiClient.WhatsAppPedidoDto p)
+    private async Task SeleccionarPedidoWA(ApiClient.WhatsAppPedidoDto p)
     {
-        pedidoWASeleccionado = p;
-        convirtiendoPedidoWAId = p.Id;
         mostrarSelectorPedidoWA = false;
-        subventanaWAMin = false;
-
-        // Si el pedido tiene cliente detectado (por #CODIGO en el texto), pre-seleccionarlo en la venta
-        if (p.ClienteId.HasValue && p.ClienteId.Value > 0)
-        {
-            var cli = clientes?.FirstOrDefault(c => c.Id == p.ClienteId.Value);
-            if (cli is not null)
-            {
-                formClienteId = cli.Id;
-                clienteSearch = "";
-                clienteSearchOpen = false;
-                ToastService.Success($"Cliente detectado: {cli.Nombre}");
-            }
-        }
-        StateHasChanged();
+        // 2026-07-23 (unificación): antes este camino ponía el cliente "a secas" (sin precios ni
+        // condiciones) y no traía renglones ni comprobante. Ahora hace lo mismo que todos.
+        await AplicarPedidoWAAsync(p);
     }
 
     private void CerrarSubventanaWA()
@@ -5137,12 +5123,22 @@
         // Abrir el modal de Nueva Venta si no está abierto
         if (!showForm) ShowCreate();
 
+        await AplicarPedidoWAAsync(pedido);
+    }
+
+    /// <summary>2026-07-23 (unificación pedido Osmar): TODOS los caminos que traen un pedido de
+    /// WhatsApp a la venta pasan por acá — desde la pantalla Pedidos (?pedidoId=), desde el botón
+    /// "Traer pedido WhatsApp" y desde los botones del chat. Hace SIEMPRE lo mismo:
+    /// ventanita flotante + cliente completo (con precios/condiciones) + renglones de la IA +
+    /// comprobante según XC/XP/XF + el texto en "Comentario para armado".</summary>
+    private async Task AplicarPedidoWAAsync(ApiClient.WhatsAppPedidoDto pedido)
+    {
         // Mostrar la sub-ventana flotante
         pedidoWASeleccionado = pedido;
         convirtiendoPedidoWAId = pedido.Id;
         subventanaWAMin = false;
 
-        // 2026-07-11: si el pedido ya trae cliente (ej. preventa de Telegram con cliente elegido),
+        // 2026-07-11: si el pedido ya trae cliente (por #código, contacto vinculado o IA),
         // lo pre-seleccionamos en la venta así no hay que buscarlo de nuevo. Usamos SelectCliente
         // (no seteo crudo) para que además cargue tipo/precios/más comprados y re-renderice.
         if (pedido.ClienteId.HasValue && pedido.ClienteId.Value > 0)
@@ -5152,9 +5148,13 @@
             await SelectCliente(pedido.ClienteId.Value);
         }
 
-        // 2026-07-11: si la preventa de Telegram trae productos elegidos, los pre-cargamos como
-        // renglones de la venta (además del cliente). El texto queda igual en la nota flotante.
+        // Renglones detectados (preventa de Telegram o IA de WhatsApp)
         await PrecargarItemsDesdePedidoWAAsync(pedido);
+
+        // 2026-07-23 pedido Osmar: el texto del mensaje va al "Comentario para armado" (solo lo ve
+        // quien arma; NO sale en el comprobante del cliente). Solo si el campo está vacío.
+        if (string.IsNullOrWhiteSpace(formComentarioArmado) && !string.IsNullOrWhiteSpace(pedido.TextoCrudo))
+            formComentarioArmado = $"📱 WhatsApp {pedido.Telefono}\n{pedido.TextoCrudo}";
 
         // 2026-07-23 pedido Osmar: si el mensaje vino con trigger XC/XP/XF, preseleccionar el
         // comprobante que pidió. La FACTURA no se emite sola: acá solo queda elegida en el
@@ -5196,33 +5196,84 @@
         ToastService.Info($"El WhatsApp pidió {label} — comprobante preseleccionado, revisá y confirmá vos.");
     }
 
-    /// <summary>Carga los items de ProductosParseados del pedido (JSON de la preventa de Telegram)
-    /// como renglones de la venta. Formato según categoría (café=1KG, otros=UNIT).</summary>
+    /// <summary>Carga los items de ProductosParseados del pedido como renglones de la venta.
+    /// Entiende DOS formatos: la lista de la preventa de Telegram (con ProductoId) y — 2026-07-23 —
+    /// el JSON que deja la IA lectora de WhatsApp (objeto con "Productos", identificados por SKU).</summary>
     private async Task PrecargarItemsDesdePedidoWAAsync(ApiClient.WhatsAppPedidoDto pedido)
     {
         if (string.IsNullOrWhiteSpace(pedido.ProductosParseados)) return;
-        List<PreventaWAItem>? items;
-        try { items = System.Text.Json.JsonSerializer.Deserialize<List<PreventaWAItem>>(pedido.ProductosParseados); }
-        catch { return; }
-        if (items is null || items.Count == 0) return;
 
         if (productos is null || productos.Count == 0)
             try { productos = await Api.GetCafeProductosAsync(null); } catch { }
 
-        foreach (var it in items)
+        var agregados = 0;
+        var sinMatch = 0;
+
+        // Formato 1: preventa de Telegram — lista [{ProductoId, Cantidad, ...}]
+        List<PreventaWAItem>? items = null;
+        try { items = System.Text.Json.JsonSerializer.Deserialize<List<PreventaWAItem>>(pedido.ProductosParseados); }
+        catch { /* no es una lista: probamos el formato de la IA abajo */ }
+
+        if (items is not null && items.Count > 0)
         {
-            if (it.ProductoId <= 0) continue;
-            var prod = productos?.FirstOrDefault(p => p.Id == it.ProductoId);
-            var formato = prod?.Categoria == "CAFE" ? "1KG" : "UNIT";
-            formItems.Add(new CafeCotizarItemRequest
+            foreach (var it in items)
             {
-                ProductoId = it.ProductoId,
-                Formato = formato,
-                Cantidad = Math.Max(1, it.Cantidad),
-                DescuentoPct = 0m,
-                EsConceptoLibre = false
-            });
+                if (it.ProductoId <= 0) continue;
+                var prod = productos?.FirstOrDefault(p => p.Id == it.ProductoId);
+                var formato = prod?.Categoria == "CAFE" ? "1KG" : "UNIT";
+                formItems.Add(new CafeCotizarItemRequest
+                {
+                    ProductoId = it.ProductoId,
+                    Formato = formato,
+                    Cantidad = Math.Max(1, it.Cantidad),
+                    DescuentoPct = 0m,
+                    EsConceptoLibre = false
+                });
+                agregados++;
+            }
         }
+        else
+        {
+            // Formato 2: resultado de la IA — {"Productos":[{"Sku","Nombre","Cantidad","Formato","PrecioOverride"...}]}
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(pedido.ProductosParseados);
+                if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object
+                    && doc.RootElement.TryGetProperty("Productos", out var prods)
+                    && prods.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    foreach (var it in prods.EnumerateArray())
+                    {
+                        var sku = it.TryGetProperty("Sku", out var s) && s.ValueKind == System.Text.Json.JsonValueKind.String ? s.GetString() : null;
+                        var cant = it.TryGetProperty("Cantidad", out var c) && c.TryGetInt32(out var ci) ? ci : 1;
+                        var formatoIa = it.TryGetProperty("Formato", out var f) && f.ValueKind == System.Text.Json.JsonValueKind.String ? f.GetString() : null;
+                        decimal? precioOverride = it.TryGetProperty("PrecioOverride", out var po) && po.ValueKind == System.Text.Json.JsonValueKind.Number ? po.GetDecimal() : null;
+
+                        var prod = string.IsNullOrWhiteSpace(sku) ? null
+                            : productos?.FirstOrDefault(p => string.Equals(p.Sku, sku, StringComparison.OrdinalIgnoreCase));
+                        if (prod is null) { sinMatch++; continue; }
+
+                        var formato = !string.IsNullOrWhiteSpace(formatoIa) ? formatoIa!
+                            : (prod.Categoria == "CAFE" ? "1KG" : "UNIT");
+                        formItems.Add(new CafeCotizarItemRequest
+                        {
+                            ProductoId = prod.Id,
+                            Formato = formato,
+                            Cantidad = Math.Max(1, cant),
+                            DescuentoPct = 0m,
+                            PrecioUnitarioOverride = precioOverride,
+                            EsConceptoLibre = false
+                        });
+                        agregados++;
+                    }
+                }
+            }
+            catch { /* JSON raro: el texto queda en la ventanita flotante para cargar a mano */ }
+        }
+
+        if (agregados == 0) return;
+        if (sinMatch > 0)
+            ToastService.Warning($"La IA detectó {agregados + sinMatch} productos pero {sinMatch} no matchearon con el catálogo — revisá el texto en la ventanita.");
         try { await Cotizar(); } catch { }
     }
 

@@ -3564,6 +3564,8 @@ public class ApiClient
         public string Trigger { get; set; } = "#PED";
         public bool PollEnabled { get; set; }
         public bool AutoResponderEnabled { get; set; } = true;
+        /// <summary>Interruptor de la IA lectora de pedidos (identifica productos/cliente).</summary>
+        public bool IaEnabled { get; set; } = true;
         public List<WhatsAppPedidoTelefonoDto> Telefonos { get; set; } = new();
     }
 
@@ -3593,9 +3595,9 @@ public class ApiClient
     }
 
     public class RecibirPedidoResp { public int Id { get; set; } public string Estado { get; set; } = ""; public string? Error { get; set; } }
-    public async Task<RecibirPedidoResp?> RecibirWhatsAppPedidoAsync(string telefono, string texto)
+    public async Task<RecibirPedidoResp?> RecibirWhatsAppPedidoAsync(string telefono, string texto, int? clienteId = null, string? source = null)
     {
-        var resp = await _http.PostAsJsonAsync("/api/whatsapp/pedidos/recibir", new { telefono, texto });
+        var resp = await _http.PostAsJsonAsync("/api/whatsapp/pedidos/recibir", new { telefono, texto, clienteId, source });
         if (!resp.IsSuccessStatusCode) return null;
         return await resp.Content.ReadFromJsonAsync<RecibirPedidoResp>();
     }
@@ -3621,9 +3623,9 @@ public class ApiClient
     public async Task<WhatsAppPedidoConfig?> GetWhatsAppPedidosConfigAsync()
         => await GetAsync<WhatsAppPedidoConfig>("/api/whatsapp/pedidos/config");
 
-    public async Task<bool> SetWhatsAppPedidosConfigAsync(string trigger, bool? pollEnabled = null, bool? autoResponderEnabled = null)
+    public async Task<bool> SetWhatsAppPedidosConfigAsync(string trigger, bool? pollEnabled = null, bool? autoResponderEnabled = null, bool? iaEnabled = null)
     {
-        var resp = await _http.PostAsJsonAsync("/api/whatsapp/pedidos/config", new { trigger, pollEnabled, autoResponderEnabled });
+        var resp = await _http.PostAsJsonAsync("/api/whatsapp/pedidos/config", new { trigger, pollEnabled, autoResponderEnabled, iaEnabled });
         return resp.IsSuccessStatusCode;
     }
 

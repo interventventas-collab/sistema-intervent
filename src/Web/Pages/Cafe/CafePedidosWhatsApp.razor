@@ -33,6 +33,7 @@
                     <ul style="margin:0.3rem 0 0 1.2rem; padding:0;">
                         <li><code style="background:#dbeafe; padding:0.05rem 0.3rem; border-radius:3px;">##</code> al inicio del mensaje → pedido <strong>sin cliente</strong> (lo elegís manualmente)</li>
                         <li><code style="background:#dbeafe; padding:0.05rem 0.3rem; border-radius:3px;">#134</code> (un solo # + número) → pedido directo para el cliente con <strong>código interno 134</strong></li>
+                        <li><code style="background:#dbeafe; padding:0.05rem 0.3rem; border-radius:3px;">XC</code> / <code style="background:#dbeafe; padding:0.05rem 0.3rem; border-radius:3px;">XP</code> / <code style="background:#dbeafe; padding:0.05rem 0.3rem; border-radius:3px;">XF</code> al inicio → <strong>cotización / presupuesto / factura</strong> (opcional el código de cliente: <code style="background:#dbeafe; padding:0.05rem 0.3rem; border-radius:3px;">XF 134 ...</code>)</li>
                     </ul>
                 </div>
                 <div style="display:flex; flex-direction:column; gap:0.4rem; margin-top:0.6rem;">
@@ -43,6 +44,12 @@
                     <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer; padding:0.4rem 0.8rem; background:@(configAutoRespEnabled ? "#dcfce7" : "#f3f4f6"); border:1px solid @(configAutoRespEnabled ? "#22c55e" : "#d1d5db"); border-radius:6px; font-size:0.88rem; user-select:none;">
                         <input type="checkbox" @bind="configAutoRespEnabled" />
                         <strong>✅ Responder automáticamente "PEDIDO RECIBIDO"</strong>
+                    </label>
+                    @* 2026-07-23: interruptor de la IA lectora (pedido Osmar — controla el gasto). *@
+                    <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer; padding:0.4rem 0.8rem; background:@(configIaEnabled ? "#dcfce7" : "#f3f4f6"); border:1px solid @(configIaEnabled ? "#22c55e" : "#d1d5db"); border-radius:6px; font-size:0.88rem; user-select:none;">
+                        <input type="checkbox" @bind="configIaEnabled" />
+                        <strong>🤖 IA lectora de pedidos</strong>
+                        <span style="font-weight:400; color:#6b7280;">— identifica productos y cliente apenas entra el mensaje (consume unos centavos por pedido). Apagada: los pedidos entran igual, pero con el texto crudo.</span>
                     </label>
                 </div>
                 <div style="margin-top:0.7rem; display:flex; gap:0.5rem; justify-content:flex-end;">
@@ -205,6 +212,7 @@ fact A, x flete, ctacte" style="font-family: monospace; font-size:0.85rem;"></te
     private string configTrigger = "#PED";
     private bool configPollEnabled;
     private bool configAutoRespEnabled = true;
+    private bool configIaEnabled = true;
 
     private string nuevoTelefono = "";
     private string nuevaEtiqueta = "";
@@ -255,6 +263,7 @@ fact A, x flete, ctacte" style="font-family: monospace; font-size:0.85rem;"></te
                 configTrigger = cfg.Trigger;
                 configPollEnabled = cfg.PollEnabled;
                 configAutoRespEnabled = cfg.AutoResponderEnabled;
+                configIaEnabled = cfg.IaEnabled;
                 telefonos = cfg.Telefonos;
             }
         }
@@ -266,7 +275,7 @@ fact A, x flete, ctacte" style="font-family: monospace; font-size:0.85rem;"></te
         cargando = true;
         try
         {
-            var ok = await Api.SetWhatsAppPedidosConfigAsync(configTrigger, configPollEnabled, configAutoRespEnabled);
+            var ok = await Api.SetWhatsAppPedidosConfigAsync(configTrigger, configPollEnabled, configAutoRespEnabled, configIaEnabled);
             if (ok) ToastService.Success("Configuración guardada");
             else ToastService.Error("No se pudo guardar");
         }
