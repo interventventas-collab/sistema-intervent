@@ -75,6 +75,8 @@ services:
       - files_data:/data/files
       - backups_data:/data/backups
       - preventas_fotos:/data/preventas-fotos
+      # Adjuntos de WhatsApp (los que subimos y los que bajamos de los clientes)
+      - wa_uploads:/data/whatsapp-uploads
     networks:
       - aiml-net
     depends_on:
@@ -123,3 +125,4 @@ volumes:
   files_data:
   backups_data:
   preventas_fotos:
+  wa_uploads:

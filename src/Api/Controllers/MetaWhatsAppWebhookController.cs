@@ -66,17 +66,21 @@ public class MetaWhatsAppWebhookController : ControllerBase
         using (var reader = new StreamReader(Request.Body))
             raw = await reader.ReadToEndAsync();
 
+        // Capturamos la URL publica ACA, porque el procesamiento va en background y ahi
+        // el HttpContext ya no esta disponible. Se usa para armar el link de los adjuntos.
+        var baseUrl = $"{Request.Scheme}://{Request.Host}";
+
         // Responder 200 al toque y procesar en background (Meta corta si tardamos).
         _ = Task.Run(async () =>
         {
-            try { await ProcesarAsync(raw); }
+            try { await ProcesarAsync(raw, baseUrl); }
             catch (Exception ex) { _logger.LogError(ex, "[Meta WA webhook] Error procesando payload"); }
         });
 
         return Ok();
     }
 
-    private async Task ProcesarAsync(string raw)
+    private async Task ProcesarAsync(string raw, string baseUrl)
     {
         using var scope = _scopeFactory.CreateScope();
         var sp = scope.ServiceProvider;
@@ -117,13 +121,13 @@ public class MetaWhatsAppWebhookController : ControllerBase
                 }
 
                 foreach (var m in messages.EnumerateArray())
-                    await ProcesarMensajeAsync(db, meta, pedidoSvc, m, nombres);
+                    await ProcesarMensajeAsync(db, meta, pedidoSvc, m, nombres, baseUrl);
             }
         }
     }
 
     private async Task ProcesarMensajeAsync(AppDbContext db, MetaWhatsAppService meta,
-        WhatsAppPedidoService pedidoSvc, JsonElement m, Dictionary<string, string> nombres)
+        WhatsAppPedidoService pedidoSvc, JsonElement m, Dictionary<string, string> nombres, string baseUrl)
     {
         var wamid = m.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
         var fromWaId = m.TryGetProperty("from", out var fromEl) ? fromEl.GetString() : null;
@@ -138,22 +142,35 @@ public class MetaWhatsAppWebhookController : ControllerBase
             return;
         }
 
-        // Extraer el cuerpo segun el tipo. Para media guardamos una nota + caption (resolver el media_id es un TODO).
+        // Extraer el cuerpo segun el tipo. Si es un archivo (foto, PDF, audio…), ademas lo
+        // BAJAMOS de Meta y lo guardamos, porque el webhook solo trae un media_id, no el archivo.
         string? cuerpo = null;
-        string? mediaNota = null;
+        string? mediaUrlPublica = null;
         switch (tipo)
         {
             case "text":
                 cuerpo = m.TryGetProperty("text", out var t) && t.TryGetProperty("body", out var tb) ? tb.GetString() : null;
                 break;
+
             case "image":
             case "document":
             case "audio":
             case "video":
             case "sticker":
                 cuerpo = TryGetCaption(m, tipo);
-                mediaNota = $"[{tipo}]";
+                var mediaId = m.TryGetProperty(tipo, out var mediaEl) && mediaEl.TryGetProperty("id", out var midEl)
+                    ? midEl.GetString() : null;
+                var nombreOriginal = m.TryGetProperty(tipo, out var mediaEl2) && mediaEl2.TryGetProperty("filename", out var fnEl)
+                    ? fnEl.GetString() : null;
+
+                if (!string.IsNullOrWhiteSpace(mediaId))
+                    mediaUrlPublica = await GuardarAdjuntoAsync(db, meta, mediaId!, tipo, nombreOriginal, baseUrl);
+
+                // Si no se pudo bajar, al menos dejamos constancia de que mandaron algo.
+                if (mediaUrlPublica is null && string.IsNullOrWhiteSpace(cuerpo))
+                    cuerpo = $"[{tipo} — no se pudo descargar]";
                 break;
+
             case "button":
                 cuerpo = m.TryGetProperty("button", out var btn) && btn.TryGetProperty("text", out var bt) ? bt.GetString() : null;
                 break;
@@ -173,9 +190,9 @@ public class MetaWhatsAppWebhookController : ControllerBase
             Direccion = "INCOMING",
             Numero = numero,
             NombrePerfil = string.IsNullOrEmpty(nombrePerfil) ? null : nombrePerfil,
-            Cuerpo = string.IsNullOrEmpty(cuerpo) ? mediaNota : cuerpo,
-            MediaUrl = null,
-            NumMedia = mediaNota != null ? 1 : 0,
+            Cuerpo = cuerpo,
+            MediaUrl = mediaUrlPublica,
+            NumMedia = mediaUrlPublica != null ? 1 : 0,
             TwilioMessageSid = wamid,
             Canal = "CLOUD",
             Procesado = true,
@@ -199,6 +216,66 @@ public class MetaWhatsAppWebhookController : ControllerBase
                 _logger.LogError(ex, "[Meta WA webhook] Error encolando pedido desde {Numero}", numero);
             }
         }
+    }
+
+    // Mismo directorio que usan los adjuntos que subimos nosotros (volumen wa_uploads_prod).
+    private const string UploadsDir = "/data/whatsapp-uploads";
+
+    /// <summary>
+    /// Baja de Meta el archivo que mandó el cliente y lo guarda igual que los adjuntos propios,
+    /// asi la pantalla del chat lo muestra sin tener que tocar nada de la UI.
+    /// Devuelve la URL publica del archivo, o null si no se pudo.
+    /// </summary>
+    private async Task<string?> GuardarAdjuntoAsync(AppDbContext db, MetaWhatsAppService meta,
+        string mediaId, string tipo, string? nombreOriginal, string baseUrl)
+    {
+        try
+        {
+            var (bytes, contentType, fileNameMeta) = await meta.DownloadMediaAsync(mediaId);
+            if (bytes is null || bytes.Length == 0) return null;
+
+            Directory.CreateDirectory(UploadsDir);
+
+            // Extension: la del nombre original si vino; si no, la deducimos del tipo de archivo.
+            var ext = Path.GetExtension(nombreOriginal ?? fileNameMeta ?? "");
+            if (string.IsNullOrWhiteSpace(ext)) ext = MetaWhatsAppService.ExtensionDesdeMime(contentType);
+
+            var token = GenerarToken();
+            var stored = token + ext;
+            await System.IO.File.WriteAllBytesAsync(Path.Combine(UploadsDir, stored), bytes);
+
+            var nombre = nombreOriginal ?? fileNameMeta ?? $"{tipo}-{DateTime.Now:yyyyMMdd-HHmmss}{ext}";
+
+            db.WhatsAppTwilioUploads.Add(new WhatsAppTwilioUpload
+            {
+                Token = token,
+                OriginalFilename = nombre,
+                StoredFilename = stored,
+                ContentType = string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType!,
+                SizeBytes = bytes.LongLength,
+                CreatedAt = DateTime.UtcNow,
+                // OJO: los adjuntos que subimos NOSOTROS duran 24h (solo para que el proveedor los baje).
+                // Los que manda el CLIENTE hay que conservarlos (ej: comprobantes de transferencia).
+                ExpiresAt = DateTime.UtcNow.AddYears(5)
+            });
+            await db.SaveChangesAsync();
+
+            _logger.LogInformation("[Meta WA webhook] Adjunto guardado: {Nombre} ({Bytes} bytes)", nombre, bytes.Length);
+            return $"{baseUrl}/api/whatsapp/twilio/files/{token}";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Meta WA webhook] No pude guardar el adjunto {MediaId}", mediaId);
+            return null;
+        }
+    }
+
+    /// <summary>Token random para la URL publica del archivo (mismo formato que los adjuntos propios).</summary>
+    private static string GenerarToken()
+    {
+        var bytes = new byte[24];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
+        return Convert.ToBase64String(bytes).Replace('+', '-').Replace('/', '_').Replace("=", "");
     }
 
     private static string? TryGetCaption(JsonElement m, string tipo)

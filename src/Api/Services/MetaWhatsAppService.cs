@@ -94,6 +94,83 @@ public class MetaWhatsAppService
         return await PostMessageAsync(payload, to, ct);
     }
 
+    /// <summary>
+    /// Baja un archivo que mandó un cliente (foto, PDF, audio…).
+    /// Meta NO manda el archivo en el webhook: manda un <c>media_id</c>. Hay que hacer dos pasos:
+    ///   1) GET /{media_id}  -> devuelve una URL temporal + mime_type
+    ///   2) GET esa URL (tambien con el Bearer token) -> los bytes del archivo
+    /// Devuelve (null, null, null) si algo falla (nunca tira excepcion).
+    /// </summary>
+    public async Task<(byte[]? Bytes, string? ContentType, string? FileName)> DownloadMediaAsync(string mediaId, CancellationToken ct = default)
+    {
+        if (!IsConfigured || string.IsNullOrWhiteSpace(mediaId)) return (null, null, null);
+        try
+        {
+            // 1) Datos del media (URL temporal + tipo)
+            using var http = NewClient();
+            var metaResp = await http.GetAsync(mediaId, ct);
+            var metaBody = await metaResp.Content.ReadAsStringAsync(ct);
+            if (!metaResp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Meta media {Id}: no pude obtener la URL ({Status}) {Body}", mediaId, (int)metaResp.StatusCode, metaBody);
+                return (null, null, null);
+            }
+
+            using var doc = JsonDocument.Parse(metaBody);
+            var root = doc.RootElement;
+            var url = root.TryGetProperty("url", out var u) ? u.GetString() : null;
+            var mime = root.TryGetProperty("mime_type", out var m) ? m.GetString() : null;
+            var fileName = root.TryGetProperty("file_name", out var f) ? f.GetString() : null;
+            if (string.IsNullOrWhiteSpace(url)) return (null, null, null);
+
+            // 2) Descargar el archivo. Ojo: la URL es de otro host (lookaside.fbsbx.com)
+            //    y TAMBIEN pide el token, por eso usamos un cliente sin BaseAddress.
+            using var dl = _httpFactory.CreateClient();
+            dl.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Token);
+            dl.Timeout = TimeSpan.FromSeconds(90);
+
+            var fileResp = await dl.GetAsync(url, ct);
+            if (!fileResp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Meta media {Id}: fallo la descarga ({Status})", mediaId, (int)fileResp.StatusCode);
+                return (null, null, null);
+            }
+
+            var bytes = await fileResp.Content.ReadAsByteArrayAsync(ct);
+            mime ??= fileResp.Content.Headers.ContentType?.MediaType;
+            _logger.LogInformation("Meta media {Id} descargado: {Bytes} bytes, tipo {Mime}", mediaId, bytes.Length, mime);
+            return (bytes, mime, fileName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error bajando el media {Id} de Meta", mediaId);
+            return (null, null, null);
+        }
+    }
+
+    /// <summary>Extension sugerida a partir del tipo de archivo (para guardarlo con nombre lindo).</summary>
+    public static string ExtensionDesdeMime(string? mime) => (mime ?? "").ToLowerInvariant() switch
+    {
+        "image/jpeg" => ".jpg",
+        "image/png" => ".png",
+        "image/webp" => ".webp",
+        "image/gif" => ".gif",
+        "application/pdf" => ".pdf",
+        "audio/ogg" or "audio/ogg; codecs=opus" => ".ogg",
+        "audio/mpeg" => ".mp3",
+        "audio/mp4" => ".m4a",
+        "audio/amr" => ".amr",
+        "video/mp4" => ".mp4",
+        "video/3gpp" => ".3gp",
+        "text/plain" => ".txt",
+        "application/msword" => ".doc",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => ".docx",
+        "application/vnd.ms-excel" => ".xls",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => ".xlsx",
+        _ => ".bin"
+    };
+
     private async Task<string?> PostMessageAsync(object payload, string to, CancellationToken ct)
     {
         try
