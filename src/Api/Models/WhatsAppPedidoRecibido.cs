@@ -45,6 +45,11 @@ public class WhatsAppPedidoRecibido
     [Required, MaxLength(20)]
     public string Estado { get; set; } = "NUEVO";
 
+    /// <summary>2026-07-23: que documento pidio el que escribio, segun el trigger del mensaje.
+    /// PEDIDO (##/#nro, como siempre) | COTIZACION (XC) | PRESUPUESTO (XP) | FACTURA (XF).</summary>
+    [Required, MaxLength(20)]
+    public string TipoSolicitado { get; set; } = "PEDIDO";
+
     public int? VentaIdGenerada { get; set; }
 
     public DateTime RecibidoAt { get; set; } = DateTime.UtcNow;

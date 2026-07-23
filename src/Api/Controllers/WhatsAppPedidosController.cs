@@ -55,6 +55,7 @@ public class WhatsAppPedidosController : ControllerBase
         public DateTime RecibidoAt { get; set; }
         public string Source { get; set; } = "";
         public DateTime? SeenAt { get; set; }
+        public string TipoSolicitado { get; set; } = "PEDIDO";
     }
 
     /// <summary>Lista pedidos recibidos, ordenados por fecha desc.</summary>
@@ -71,7 +72,8 @@ public class WhatsAppPedidosController : ControllerBase
                 ClienteId = p.ClienteId, ClienteNombre = p.ClienteNombre,
                 ProductosParseados = p.ProductosParseados, ParseError = p.ParseError,
                 Estado = p.Estado, VentaIdGenerada = p.VentaIdGenerada,
-                RecibidoAt = p.RecibidoAt, Source = p.Source, SeenAt = p.SeenAt
+                RecibidoAt = p.RecibidoAt, Source = p.Source, SeenAt = p.SeenAt,
+                TipoSolicitado = p.TipoSolicitado
             })
             .ToListAsync();
         return Ok(lista);
@@ -98,7 +100,8 @@ public class WhatsAppPedidosController : ControllerBase
                 ClienteId = p.ClienteId, ClienteNombre = p.ClienteNombre,
                 ProductosParseados = p.ProductosParseados, ParseError = p.ParseError,
                 Estado = p.Estado, VentaIdGenerada = p.VentaIdGenerada,
-                RecibidoAt = p.RecibidoAt, Source = p.Source, SeenAt = p.SeenAt
+                RecibidoAt = p.RecibidoAt, Source = p.Source, SeenAt = p.SeenAt,
+                TipoSolicitado = p.TipoSolicitado
             })
             .ToListAsync();
         return Ok(lista);

@@ -3555,6 +3555,8 @@ public class ApiClient
         public DateTime RecibidoAt { get; set; }
         public string Source { get; set; } = "";
         public DateTime? SeenAt { get; set; }
+        /// <summary>PEDIDO | COTIZACION (XC) | PRESUPUESTO (XP) | FACTURA (XF)</summary>
+        public string TipoSolicitado { get; set; } = "PEDIDO";
     }
 
     public class WhatsAppPedidoConfig

@@ -5156,7 +5156,44 @@
         // renglones de la venta (además del cliente). El texto queda igual en la nota flotante.
         await PrecargarItemsDesdePedidoWAAsync(pedido);
 
+        // 2026-07-23 pedido Osmar: si el mensaje vino con trigger XC/XP/XF, preseleccionar el
+        // comprobante que pidió. La FACTURA no se emite sola: acá solo queda elegida en el
+        // selector, la persona revisa y da el OK final (Emitir) como siempre.
+        PreseleccionarComprobantePorTipo(pedido.TipoSolicitado);
+
         StateHasChanged();
+    }
+
+    /// <summary>Elige el tipo de comprobante según lo que pidió el mensaje de WhatsApp:
+    /// COTIZACION → X · PRESUPUESTO → PRO · FACTURA → A/B/C según cond. IVA del cliente y emisor.</summary>
+    private void PreseleccionarComprobantePorTipo(string? tipoSolicitado)
+    {
+        switch (tipoSolicitado)
+        {
+            case "COTIZACION":
+                formTipoComprobante = "X";
+                break;
+            case "PRESUPUESTO":
+                formTipoComprobante = "PRO";
+                break;
+            case "FACTURA":
+                EnsureDefaultArcaAccount();
+                if (!EmisorEsResponsableInscripto(formArcaAccountId))
+                    formTipoComprobante = "FC";           // emisor monotributo/exento solo emite C
+                else
+                    formTipoComprobante = formCondicionIva == "RI" ? "FA" : "FB";
+                break;
+            default:
+                return; // PEDIDO común: no tocar nada
+        }
+        OnTipoComprobanteChanged();
+        var label = tipoSolicitado switch
+        {
+            "COTIZACION" => "cotización (X)",
+            "PRESUPUESTO" => "presupuesto (PRO)",
+            _ => $"factura {formTipoComprobante}"
+        };
+        ToastService.Info($"El WhatsApp pidió {label} — comprobante preseleccionado, revisá y confirmá vos.");
     }
 
     /// <summary>Carga los items de ProductosParseados del pedido (JSON de la preventa de Telegram)

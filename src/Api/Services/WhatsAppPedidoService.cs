@@ -101,6 +101,7 @@ CLIENTES (Id|Nombre):
 {sbClientes}
 
 REGLAS:
+0. El texto puede empezar con un código de control: ""##"", ""#NUMERO"", ""XC"", ""XP"" o ""XF"" (mayúscula o minúscula), a veces seguido de un número que es el CÓDIGO INTERNO del cliente. Ese encabezado NO es un producto ni una cantidad: ignoralo por completo al detectar productos.
 1. Identificá el cliente. Si el pedido empieza con ""#PEDIDO NOMBRE_CLIENTE"" usá ese nombre.
 2. Para cada línea de producto:
    - Detectá la cantidad numérica
@@ -253,7 +254,9 @@ Respondé ESTRICTAMENTE este JSON (sin markdown, sin texto adicional):
             TextoCrudo = textoCrudo,
             Source = source,
             Estado = "NUEVO",
-            RecibidoAt = DateTime.UtcNow
+            RecibidoAt = DateTime.UtcNow,
+            // 2026-07-23: XC/XP/XF marcan que documento quiere el que escribio
+            TipoSolicitado = DetectarTipoSolicitado(textoCrudo)
         };
 
         // Detectar codigo de cliente: buscar #NUMERO en cualquier lugar del texto.
@@ -280,6 +283,18 @@ Respondé ESTRICTAMENTE este JSON (sin markdown, sin texto adicional):
         // Si empieza con `##` es venta ciega (sin cliente)
         if (trimmed.StartsWith("##")) return (null, null);
 
+        // 2026-07-23: con los triggers XC/XP/XF, el numero pegado a las letras (o separado por
+        // espacio) es el codigo interno del cliente. Ej: "XF 105 2 bultos..." o "xc105 ...".
+        var mx = System.Text.RegularExpressions.Regex.Match(trimmed, @"^[xX][cCpPfF]\s*(\d+)\b");
+        if (mx.Success && int.TryParse(mx.Groups[1].Value, out var codigoX))
+        {
+            var cliX = await _db.CafeClientes.AsNoTracking()
+                .Where(c => c.IsActive && c.CodigoInterno == codigoX)
+                .Select(c => new { c.Id, c.Nombre })
+                .FirstOrDefaultAsync(ct);
+            if (cliX is not null) return (cliX.Id, cliX.Nombre);
+        }
+
         // Regex: # seguido SOLO de digitos (ignorar # seguido de letras como #PED y `##` que ya filtramos arriba)
         var matches = System.Text.RegularExpressions.Regex.Matches(textoCrudo, @"#(\d+)\b");
         foreach (System.Text.RegularExpressions.Match m in matches)
@@ -294,15 +309,39 @@ Respondé ESTRICTAMENTE este JSON (sin markdown, sin texto adicional):
         return (null, null);
     }
 
-    /// <summary>Verifica si un texto es un pedido valido (empieza con `##` o `#NUMERO`).
-    /// Devuelve true si el mensaje debe procesarse como pedido.</summary>
+    /// <summary>Verifica si un texto es un pedido valido. Triggers aceptados al inicio del mensaje:
+    /// `##` o `#NUMERO` (pedido comun), y 2026-07-23 pedido Osmar: `XC` (cotizacion),
+    /// `XP` (presupuesto PRO) y `XF` (factura), en mayuscula o minuscula, opcionalmente
+    /// seguidos del codigo interno del cliente (ej: "xf 105 2 bultos cafe...").
+    /// Se exige separador (espacio o fin) despues de las 2 letras para no confundir con
+    /// palabras que empiecen igual.</summary>
     public static bool EsTriggerValido(string? textoCrudo)
     {
         if (string.IsNullOrWhiteSpace(textoCrudo)) return false;
         var t = textoCrudo.TrimStart();
         if (t.StartsWith("##")) return true;
         // `#` seguido inmediatamente de digito
-        return System.Text.RegularExpressions.Regex.IsMatch(t, @"^#\d+\b");
+        if (System.Text.RegularExpressions.Regex.IsMatch(t, @"^#\d+\b")) return true;
+        // XC / XP / XF seguidos de espacio, numero o fin de texto
+        return System.Text.RegularExpressions.Regex.IsMatch(t, @"^[xX][cCpPfF](\s|\d|$)");
+    }
+
+    /// <summary>Que tipo de documento pidio el que escribio, segun el trigger del mensaje:
+    /// XC = COTIZACION (comprobante X) · XP = PRESUPUESTO (PRO) · XF = FACTURA (ARCA con OK humano)
+    /// · ##/#NUMERO = PEDIDO comun (como siempre).</summary>
+    public static string DetectarTipoSolicitado(string? textoCrudo)
+    {
+        if (string.IsNullOrWhiteSpace(textoCrudo)) return "PEDIDO";
+        var t = textoCrudo.TrimStart();
+        var m = System.Text.RegularExpressions.Regex.Match(t, @"^[xX]([cCpPfF])(\s|\d|$)");
+        if (!m.Success) return "PEDIDO";
+        return char.ToUpperInvariant(m.Groups[1].Value[0]) switch
+        {
+            'C' => "COTIZACION",
+            'P' => "PRESUPUESTO",
+            'F' => "FACTURA",
+            _ => "PEDIDO"
+        };
     }
 
     public Task<int> CountUnseenAsync(CancellationToken ct = default)

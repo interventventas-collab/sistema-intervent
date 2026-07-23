@@ -155,6 +155,10 @@ fact A, x flete, ctacte" style="font-family: monospace; font-size:0.85rem;"></te
                         <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
                             @if (p.SeenAt == null) { <span class="estado-badge" style="background:#fef3c7; color:#92400e;">🟡 NUEVO</span> }
                             @if (p.Estado == "VENTA_CREADA") { <span class="estado-badge" style="background:#dcfce7; color:#14532d;">✅ CARGADO</span> }
+                            @* 2026-07-23: chip del documento pedido por trigger (XC/XP/XF). PEDIDO común no muestra chip. *@
+                            @if (p.TipoSolicitado == "COTIZACION") { <span class="estado-badge" style="background:#e0e7ff; color:#3730a3;" title="Lo pidieron con XC — al cargar se preselecciona comprobante X (cotización)">💲 COTIZACIÓN</span> }
+                            @if (p.TipoSolicitado == "PRESUPUESTO") { <span class="estado-badge" style="background:#fce7f3; color:#9d174d;" title="Lo pidieron con XP — al cargar se preselecciona PRESUPUESTO (PRO)">📋 PRESUPUESTO</span> }
+                            @if (p.TipoSolicitado == "FACTURA") { <span class="estado-badge" style="background:#fee2e2; color:#b91c1c;" title="Lo pidieron con XF — al cargar se preselecciona Factura (la emitís vos con el OK final)">🧾 FACTURA</span> }
                             <span style="color:#6b7280; font-size:0.85rem;">@p.RecibidoAt.ToArTime().ToString("dd/MM HH:mm:ss")</span>
                             @if (!string.IsNullOrEmpty(p.Telefono)) { <span style="color:#6b7280; font-size:0.78rem;">📞 @p.Telefono</span> }
                             <span style="color:#6b7280; font-size:0.78rem;">vía @p.Source</span>
