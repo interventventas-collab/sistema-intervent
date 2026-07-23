@@ -684,10 +684,12 @@
                     }
                     @if (HasPerm("cafe-depositos"))
                     {
-                        <NavItem Href="/cafe/pedidos-whatsapp" Label="💬 Pedidos WhatsApp" Icon="@SvgIcons.Tag"
-                                 IsActive="@IsActive("/cafe/pedidos-whatsapp")" OnClick="@(() => NavigateTo("/cafe/pedidos-whatsapp"))" />
-                        <NavItem Href="/whatsapp" Label="📲 WhatsApp (Twilio)" Icon="@SvgIcons.Tag"
+                        @* 2026-07-23: sector WhatsApp unificado (pedido Osmar) — chats y pedidos juntos,
+                           mismas solapas adentro de las dos pantallas. Se sacó el "(Twilio)" viejo. *@
+                        <NavItem Href="/whatsapp" Label="📲 WhatsApp · Chats" Icon="@SvgIcons.MessageCircle"
                                  IsActive="@IsActive("/whatsapp")" OnClick="@(() => NavigateTo("/whatsapp"))" />
+                        <NavItem Href="/cafe/pedidos-whatsapp" Label="📥 WhatsApp · Pedidos" Icon="@SvgIcons.MessageCircle"
+                                 IsActive="@(IsActive("/cafe/pedidos-whatsapp") || IsActive("/whatsapp/pedidos"))" OnClick="@(() => NavigateTo("/cafe/pedidos-whatsapp"))" />
                         @* Stock unificado: entra a Stock masivo, y desde la pantalla hay boton para abrir Stock movil. *@
                         <NavItem Href="/cafe/stock-masivo" Label="📦 Stock" Icon="@SvgIcons.Package"
                                  IsActive="@(IsActive("/cafe/stock-masivo") || IsActive("/stock"))" OnClick="@(() => NavigateTo("/cafe/stock-masivo"))" />

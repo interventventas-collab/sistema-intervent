@@ -9,6 +9,12 @@
 
 <PageTitle>WhatsApp — Chat</PageTitle>
 
+@* 2026-07-23: solapas del sector WhatsApp unificado (pedido Osmar) — chats + pedidos, todo junto *@
+<div style="display:flex; gap:0.4rem; padding:0.5rem 0.75rem 0;">
+    <span style="padding:0.45rem 1rem; border-radius:8px 8px 0 0; background:#25D366; color:#fff; font-weight:600; font-size:0.9rem;">💬 Chats</span>
+    <a href="/whatsapp/pedidos" style="padding:0.45rem 1rem; border-radius:8px 8px 0 0; background:#f3f4f6; color:#374151; text-decoration:none; font-weight:600; font-size:0.9rem; border:1px solid #e5e7eb; border-bottom:none;">📥 Pedidos y configuración</a>
+</div>
+
 <div class="wa-outer">
 <div class="wa-root">
     <div class="wa-sidebar">
@@ -34,7 +40,7 @@
             {
                 <div style="padding:1rem; color:#9ca3af; text-align:center;">
                     <p>📭 Sin conversaciones todavía.</p>
-                    <p style="font-size:0.8rem;">Pedile a tus hermanos que manden <code>join wire-failed</code> al <strong>+1 415 523 8886</strong> y después un mensaje cualquiera para que aparezcan acá.</p>
+                    <p style="font-size:0.8rem;">Cuando alguien le escriba al WhatsApp de la empresa, la conversación aparece acá solita.</p>
                 </div>
             }
             else if (conversacionesFiltradas.Count == 0)
