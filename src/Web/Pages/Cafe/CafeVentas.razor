@@ -5049,7 +5049,9 @@
         if (showForm) return;
 
         ShowCreate();
-        if (!string.IsNullOrWhiteSpace(notas)) formObservaciones = notas;
+        // 2026-07-23 pedido Osmar: el texto del WhatsApp va al "Comentario para armado" (solo lo ve
+        // quien arma), NO a "Notas internas" que se imprimen en el comprobante del cliente.
+        if (!string.IsNullOrWhiteSpace(notas)) formComentarioArmado = notas;
         if (int.TryParse(clienteIdStr, out var cid) && cid > 0)
         {
             // Asegurar que el catalogo de clientes esté cargado antes de setear

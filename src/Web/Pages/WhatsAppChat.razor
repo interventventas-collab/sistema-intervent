@@ -1093,9 +1093,11 @@
         var nombre = conv?.NombrePerfil ?? PrettyNumero(selectedNumero ?? "");
         var ultimoIn = mensajes.LastOrDefault(m => m.Direccion == "INCOMING");
         var notas = $"📱 WhatsApp de {nombre} ({PrettyNumero(selectedNumero ?? "")})\n\n{ultimoIn?.Cuerpo ?? ""}";
-        var url = $"/cafe/ventas?notas={Uri.EscapeDataString(notas)}";
-        // Si el contacto está vinculado a un cliente, precargar el id
-        if (conv?.ClienteId is int cid) url += $"&clienteId={cid}";
+        // 2026-07-23: antes navegaba con ?notas=/&clienteId= que CafeVentas ya no lee (el texto se
+        // perdía). Ahora usa los mismos parámetros que el popup (?fromTwilio=1/&clienteIdPre=) y el
+        // texto cae en "Comentario para armado".
+        var url = $"/cafe/ventas?fromTwilio=1&notas={Uri.EscapeDataString(notas)}";
+        if (conv?.ClienteId is int cid) url += $"&clienteIdPre={cid}";
         Nav.NavigateTo(url);
     }
 
