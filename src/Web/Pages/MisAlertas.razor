@@ -4,19 +4,29 @@
 @inject IJSRuntime JS
 @inject ToastService Toast
 
-<PageTitle>Mis Alertas</PageTitle>
+@* 2026-07-23: esta pantalla también se EMBEBE adentro del Centro de Automatizaciones
+   (<MisAlertas Embebido="true" />): ahí arranca directo en la solapa Configurar y
+   esconde el título propio. Mismo código, cero duplicación. *@
+@if (!Embebido)
+{
+    <PageTitle>Mis Alertas</PageTitle>
+}
 
 @* 2026-07-10 — Motor de alertas configurables (Paso 1). El usuario arma sus propias reglas:
    "SI pasa esto → avisame con este mensaje". Un robot las revisa cada 5 min y las dispara
    en la campanita 🔔 de la barra de arriba. *@
 
 <div class="page-header">
-    <div>
-        <h1 class="page-title">🔔 Mis Alertas</h1>
-        <p class="page-subtitle">Acá ves el historial de todos los avisos. Con el botón <strong>⚙️ Configurar</strong> armás tus propias alertas.
-            @* 2026-07-23: acceso cruzado al Centro de Automatizaciones *@
-            <a href="/automatizaciones" style="margin-left:8px; color:#7c3aed; font-weight:600; text-decoration:none;">🤖 Centro de Automatizaciones →</a></p>
-    </div>
+    @if (!Embebido)
+    {
+        <div>
+            <h1 class="page-title">🔔 Mis Alertas</h1>
+            <p class="page-subtitle">Acá ves el historial de todos los avisos. Con el botón <strong>⚙️ Configurar</strong> armás tus propias alertas.
+                @* 2026-07-23: acceso cruzado al Centro de Automatizaciones *@
+                <a href="/automatizaciones" style="margin-left:8px; color:#7c3aed; font-weight:600; text-decoration:none;">🤖 Automatizaciones y Alertas →</a></p>
+        </div>
+    }
+    else { <div></div> }
     @if (tab == "config" && !mostrandoEditor)
     {
         <button class="btn-primary" @onclick="NuevaAlerta">＋ Nueva alerta</button>
@@ -423,6 +433,10 @@ else
 </style>
 
 @code {
+    /// <summary>2026-07-23: true cuando esta pantalla vive adentro del Centro de Automatizaciones
+    /// (esconde su título y arranca en la solapa Configurar).</summary>
+    [Parameter] public bool Embebido { get; set; }
+
     private List<ApiClient.AlertaDto>? alertas;
     private bool loading = true;
     private bool mostrandoEditor;
@@ -459,7 +473,11 @@ else
     private string cfgUsuario = "";
     private string cfgPassword = "";
 
-    protected override async Task OnInitializedAsync() => await Cargar();
+    protected override async Task OnInitializedAsync()
+    {
+        if (Embebido) tab = "config";   // adentro de Automatizaciones interesa la configuración
+        await Cargar();
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

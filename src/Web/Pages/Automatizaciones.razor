@@ -9,16 +9,16 @@
    (campanita/Telegram/WhatsApp/correo), destinatarios y botón probar. Los respondedores tienen
    interruptor ESPEJO de su setting de siempre + link a su configuración fina. *@
 
-<PageTitle>Centro de Automatizaciones</PageTitle>
+<PageTitle>Automatizaciones y Alertas</PageTitle>
 
 <div class="auto-wrap">
     <div class="auto-header">
         <div class="auto-title">
             <span class="auto-chip-ia">IA</span>
-            <h1>🤖 Centro de Automatizaciones</h1>
+            <h1>🤖 Automatizaciones y Alertas</h1>
         </div>
-        <p class="auto-sub">Los robots del sistema, todos acá: prendé, apagá, elegí días, horarios, canales y quién recibe cada cosa.</p>
-        <a class="auto-link-alertas" href="/mis-alertas">🔔 Ir a Mis Alertas (reglas y umbrales) →</a>
+        <p class="auto-sub">Todo lo automático del sistema en un solo lugar: robots, respondedores y alertas — prendé, apagá, elegí días, horarios, canales y quién recibe cada cosa.</p>
+        <a class="auto-link-alertas" href="/mis-alertas">📜 Ver el historial de avisos (campanita) →</a>
     </div>
 
     @if (data is null)
@@ -118,6 +118,18 @@
                         </button>
                     </div>
                 </div>
+            </div>
+        }
+
+        @* ═══════════ ALERTAS POR CONDICIÓN (2026-07-23, pedido Osmar: la config de Mis Alertas
+           vive acá adentro, en un desplegable — es la MISMA pantalla embebida, cero duplicación) ═══ *@
+        <div class="auto-seccion-titulo" style="cursor:pointer; user-select:none;" @onclick="() => alertasOpen = !alertasOpen">
+            ⚡ ALERTAS POR CONDICIÓN — reglas que vigilan y avisan ("si pasa esto, avisame") @(alertasOpen ? "▾" : "▸ (tocá para desplegar)")
+        </div>
+        @if (alertasOpen)
+        {
+            <div class="auto-alertas-isla">
+                <MisAlertas Embebido="true" />
             </div>
         }
 
@@ -260,6 +272,12 @@
     }
     .auto-switch input:checked + .auto-slider:before { transform: translateX(24px); background: #67e8f9; }
 
+    /* Isla clara para la config de alertas embebida (esa pantalla es de fondo claro) */
+    .auto-alertas-isla {
+        background: #f8fafc; border-radius: 14px; padding: 1rem 1.2rem; color: #111827;
+        border: 1px solid rgba(34, 211, 238, 0.35); margin-bottom: 0.9rem;
+    }
+
     .auto-resp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 0.8rem; }
     .auto-card-mini { margin-bottom: 0; }
     .auto-link-fino { font-size: 0.72rem; color: #a78bfa; text-decoration: none; display: inline-block; margin-top: 4px; }
@@ -282,6 +300,7 @@
     string? probando;
     int? editPersonaId;
     string editWa = "", editEmail = "";
+    bool alertasOpen;   // desplegable de la config de alertas embebida
 
     static readonly (int num, string letra)[] DiasSemana =
         { (1, "L"), (2, "M"), (3, "X"), (4, "J"), (5, "V"), (6, "S"), (7, "D") };
