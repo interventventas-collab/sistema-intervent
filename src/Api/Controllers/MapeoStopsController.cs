@@ -1,5 +1,6 @@
 using Api.Data;
 using Api.Models;
+using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -12,7 +13,8 @@ namespace Api.Controllers;
 public class MapeoStopsController : ControllerBase
 {
     private readonly AppDbContext _db;
-    public MapeoStopsController(AppDbContext db) { _db = db; }
+    private readonly GoogleRoutesService _routes;
+    public MapeoStopsController(AppDbContext db, GoogleRoutesService routes) { _db = db; _routes = routes; }
 
     public record StopDto(int Id, string Origin, string? OriginRefId, string? Alias, string Direccion,
         decimal Latitude, decimal Longitude, string? ContactName, string? Telefono, string? Notas,
@@ -268,8 +270,19 @@ public class MapeoStopsController : ControllerBase
         }
 
         int optimized = 0;
+        int optimizedByGoogle = 0;
         foreach (var grupo in grupos)
         {
+            // 1) Intentar ordenar por CALLES REALES con Google (barato: 1 consulta por grupo).
+            //    Si no hay clave, hay demasiadas paradas (>25) o falla la API, se usa el respaldo (linea recta).
+            if (await TryOptimizeWithGoogleAsync(grupo, startLat, startLng))
+            {
+                optimized += grupo.Count;
+                optimizedByGoogle += grupo.Count;
+                continue;
+            }
+
+            // 2) Respaldo: nearest-neighbor con distancia en linea recta (haversine), desde el punto de partida.
             double curLat = startLat ?? (double)grupo[0].Latitude;
             double curLng = startLng ?? (double)grupo[0].Longitude;
             var remaining = new List<MapeoStop>(grupo);
@@ -285,7 +298,7 @@ public class MapeoStopsController : ControllerBase
             }
         }
         await _db.SaveChangesAsync();
-        return Ok(new { optimized });
+        return Ok(new { optimized, optimizedByGoogle });
     }
 
     /// <summary>
@@ -320,6 +333,43 @@ public class MapeoStopsController : ControllerBase
             case "all":
             default:
                 return q;
+        }
+    }
+
+    /// <summary>
+    /// Ordena las paradas del grupo por CALLES REALES usando Google Routes API. Si hay punto de partida
+    /// configurado, arranca desde ahi; si no, deja como primera la primer parada del grupo (igual que el respaldo).
+    /// Escribe OrderInRoute en cada parada. Devuelve true si Google resolvio el orden; false para que el
+    /// llamador use el respaldo en linea recta (sin clave, grupo > 25 paradas, o error de la API).
+    /// </summary>
+    private async Task<bool> TryOptimizeWithGoogleAsync(List<MapeoStop> grupo, double? startLat, double? startLng)
+    {
+        if (!_routes.IsConfigured || grupo.Count == 0) return false;
+        var now = DateTime.UtcNow;
+
+        if (startLat.HasValue && startLng.HasValue)
+        {
+            var start = (startLat.Value, startLng.Value);
+            var inter = grupo.Select(s => ((double)s.Latitude, (double)s.Longitude)).ToList();
+            var order = await _routes.OptimizeWaypointOrderAsync(start, start, inter);
+            if (order is null || order.Length != grupo.Count) return false;
+            int ord = 1;
+            foreach (var idx in order) { grupo[idx].OrderInRoute = ord++; grupo[idx].UpdatedAt = now; }
+            return true;
+        }
+        else
+        {
+            // Sin punto de partida: la primer parada del grupo queda como arranque fijo.
+            var first = grupo[0];
+            var origin = ((double)first.Latitude, (double)first.Longitude);
+            var rest = grupo.Skip(1).ToList();
+            var inter = rest.Select(s => ((double)s.Latitude, (double)s.Longitude)).ToList();
+            var order = await _routes.OptimizeWaypointOrderAsync(origin, origin, inter);
+            if (order is null || order.Length != rest.Count) return false;
+            int ord = 1;
+            first.OrderInRoute = ord++; first.UpdatedAt = now;
+            foreach (var idx in order) { rest[idx].OrderInRoute = ord++; rest[idx].UpdatedAt = now; }
+            return true;
         }
     }
 

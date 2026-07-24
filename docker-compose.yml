@@ -70,6 +70,8 @@ services:
       - META_WA_TOKEN=${META_WA_TOKEN:-}
       - META_WA_PHONE_ID=${META_WA_PHONE_ID:-}
       - META_WA_VERIFY_TOKEN=${META_WA_VERIFY_TOKEN:-}
+      # Google Maps Platform (Routes API) para optimizar el orden de las rutas de reparto.
+      - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY:-}
     volumes:
       - ./.git:/repo/.git:ro
       - files_data:/data/files
