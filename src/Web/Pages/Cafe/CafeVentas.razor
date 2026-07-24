@@ -7979,8 +7979,10 @@
 
                 // ════════ DISPARAR LOS CANALES DE ENVIO TILDADOS ════════
                 // Email + WhatsApp Web (manual via wa.me) + WhatsApp Interno (con PDF).
+                // 2026-07-24: +copia por WhatsApp a personas internas (Osmar/Gabriel/Germán) — FALTABA
+                // esta condición, por eso al tildar SOLO la copia no se disparaba nada.
                 // Corre en paralelo y avisa con toasts. No bloquea el resto del flujo.
-                if (envioEmail || envioWhatsappWeb || envioWhatsappInterno)
+                if (envioEmail || envioWhatsappWeb || envioWhatsappInterno || copiaWaSeleccion.Count > 0)
                 {
                     await DispararCanalesDeEnvioAsync(v.Id, v.Numero);
                 }
