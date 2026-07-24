@@ -210,7 +210,14 @@
                                     {
                                         <div class="wa-bubble-body">@((MarkupString)EscapeMsg(m.Cuerpo))</div>
                                     }
-                                    <div class="wa-bubble-meta">@FormatHora(m.CreatedAt)</div>
+                                    <div class="wa-bubble-meta">
+                                        @FormatHora(m.CreatedAt)
+                                        @* 2026-07-24: tilditos de estado, solo en los mensajes que MANDAMOS *@
+                                        @if (m.Direccion == "OUTGOING")
+                                        {
+                                            <span class="@TildeCss(m.EstadoEntrega)" title="@TildeTitulo(m.EstadoEntrega)">@TildeTexto(m.EstadoEntrega)</span>
+                                        }
+                                    </div>
                                 </div>
                                 @* Botón reaccionar — visible al hover *@
                                 <button class="wa-react-btn" @onclick="() => TogglePicker(m.Id)" title="Reaccionar">😊</button>
@@ -499,6 +506,10 @@
     .wa-conv-last { font-size: 0.8rem; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
     .wa-conv-count { background: #25d366; color: white; font-size: 0.68rem; font-weight: 700; padding: 0.1rem 0.45rem; border-radius: 10px; text-align: center; }
     .wa-conv-leido { color: #9ca3af; font-size: 0.66rem; white-space: nowrap; }
+    /* Tilditos de estado en los mensajes que mandamos */
+    .wa-tilde { color: #8a8a8a; font-size: 0.72rem; margin-left: 3px; letter-spacing: -1px; }
+    .wa-tilde-read { color: #34b7f1; }
+    .wa-tilde-fail { color: #dc2626; letter-spacing: 0; }
     .wa-thread { display: flex; flex-direction: column; background: #efeae2; overflow: hidden; }
     /* 2026-07-24: flex-wrap para que en el celular los botones del header (incluido 🗑 Borrar,
        que es el ultimo) bajen a otro renglon en vez de quedar cortados por el overflow:hidden
@@ -1239,6 +1250,11 @@
             _ => $"Archivo .{ext}"
         };
     }
+
+    // 2026-07-24: tilditos de estado tipo WhatsApp (✓ enviado · ✓✓ entregado · ✓✓ azul leído · ⚠ falló)
+    static string TildeTexto(string? e) => e switch { "read" => "✓✓", "delivered" => "✓✓", "sent" => "✓", "failed" => "⚠", _ => "✓" };
+    static string TildeCss(string? e) => e == "read" ? "wa-tilde wa-tilde-read" : e == "failed" ? "wa-tilde wa-tilde-fail" : "wa-tilde";
+    static string TildeTitulo(string? e) => e switch { "read" => "Leído", "delivered" => "Entregado", "sent" => "Enviado", "failed" => "No se pudo entregar", _ => "Enviando…" };
 
     string FormatHora(DateTime utc)
     {

@@ -18,6 +18,10 @@ public class WhatsAppTwilioMensaje
     /// <summary>2026-07-23 (multi-línea): phone_number_id de Meta por el que entró/salió este mensaje.
     /// Preparación para tener 2+ números en la misma bandeja: cada chat responde por SU línea.</summary>
     [MaxLength(30)] public string? LineaPhoneId { get; set; }
+
+    /// <summary>2026-07-24: estado de entrega que reporta Meta para los OUTGOING:
+    /// sent (1 tilde), delivered (2 tildes grises), read (2 tildes azules), failed. Null = sin dato.</summary>
+    [MaxLength(15)] public string? EstadoEntrega { get; set; }
     public int? NumMedia { get; set; }
     /// <summary>ID del mensaje del proveedor: SID de Twilio o wamid.* de Meta Cloud API (este último es largo).</summary>
     [MaxLength(200)] public string? TwilioMessageSid { get; set; }

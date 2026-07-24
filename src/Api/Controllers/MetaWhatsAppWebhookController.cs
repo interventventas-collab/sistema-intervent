@@ -104,7 +104,12 @@ public class MetaWhatsAppWebhookController : ControllerBase
             {
                 if (!change.TryGetProperty("value", out var value)) continue;
 
-                // Solo nos interesan mensajes entrantes (ignoramos "statuses" = acuses de entrega).
+                // 2026-07-24: acuses de entrega — Meta manda "statuses[]" (sent/delivered/read/failed)
+                // por cada mensaje que MANDAMOS. Actualizamos el EstadoEntrega del OUTGOING (match por wamid).
+                if (value.TryGetProperty("statuses", out var statuses) && statuses.ValueKind == JsonValueKind.Array)
+                    await ProcesarEstadosAsync(db, statuses);
+
+                // Solo procesamos mensajes ENTRANTES abajo (los statuses ya se manejaron arriba).
                 if (!value.TryGetProperty("messages", out var messages) || messages.ValueKind != JsonValueKind.Array)
                     continue;
 
@@ -135,6 +140,29 @@ public class MetaWhatsAppWebhookController : ControllerBase
 
                 foreach (var m in messages.EnumerateArray())
                     await ProcesarMensajeAsync(db, meta, pedidoSvc, listasCtrl, m, nombres, baseUrl, lineaId);
+            }
+        }
+    }
+
+    /// <summary>2026-07-24: procesa los acuses de entrega de Meta. Cada status trae el wamid del
+    /// mensaje (=TwilioMessageSid nuestro) y el estado. Solo "sube" de nivel (sent→delivered→read),
+    /// nunca baja, así un delivered tardío no pisa un read.</summary>
+    private static async Task ProcesarEstadosAsync(AppDbContext db, JsonElement statuses)
+    {
+        static int Rank(string? s) => s switch { "sent" => 1, "delivered" => 2, "read" => 3, "failed" => 4, _ => 0 };
+        foreach (var st in statuses.EnumerateArray())
+        {
+            var wamid = st.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+            var estado = st.TryGetProperty("status", out var stEl) ? stEl.GetString() : null;
+            if (string.IsNullOrEmpty(wamid) || string.IsNullOrEmpty(estado)) continue;
+
+            var msg = await db.WhatsAppTwilioMensajes.FirstOrDefaultAsync(m => m.TwilioMessageSid == wamid);
+            if (msg is null) continue;
+            // failed siempre gana; el resto solo sube de nivel
+            if (estado == "failed" || Rank(estado) > Rank(msg.EstadoEntrega))
+            {
+                msg.EstadoEntrega = estado;
+                await db.SaveChangesAsync();
             }
         }
     }

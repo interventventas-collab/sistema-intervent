@@ -529,7 +529,7 @@ public class WhatsAppTwilioController : ControllerBase
             {
                 m.Id, m.Direccion, m.Numero, m.NombrePerfil,
                 m.Cuerpo, m.MediaUrl, m.MediaFilename, m.NumMedia,
-                m.Procesado, m.RespuestaEnviada, m.CreatedAt
+                m.Procesado, m.RespuestaEnviada, m.CreatedAt, m.EstadoEntrega
             })
             .ToListAsync();
         msgs.Reverse();
@@ -545,7 +545,7 @@ public class WhatsAppTwilioController : ControllerBase
         var result = msgs.Select(m => new
         {
             m.Id, m.Direccion, m.Numero, m.NombrePerfil, m.Cuerpo,
-            m.MediaUrl, m.MediaFilename, m.NumMedia, m.Procesado, m.RespuestaEnviada, m.CreatedAt,
+            m.MediaUrl, m.MediaFilename, m.NumMedia, m.Procesado, m.RespuestaEnviada, m.CreatedAt, m.EstadoEntrega,
             Reacciones = reacByMsg.TryGetValue(m.Id, out var rs) ? rs.Cast<object>().ToList() : new List<object>()
         }).ToList();
         return Ok(result);
