@@ -500,7 +500,10 @@
     .wa-conv-count { background: #25d366; color: white; font-size: 0.68rem; font-weight: 700; padding: 0.1rem 0.45rem; border-radius: 10px; text-align: center; }
     .wa-conv-leido { color: #9ca3af; font-size: 0.66rem; white-space: nowrap; }
     .wa-thread { display: flex; flex-direction: column; background: #efeae2; overflow: hidden; }
-    .wa-thread-header { padding: 0.7rem 1rem; background: #f0f2f5; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; gap: 0.7rem; }
+    /* 2026-07-24: flex-wrap para que en el celular los botones del header (incluido 🗑 Borrar,
+       que es el ultimo) bajen a otro renglon en vez de quedar cortados por el overflow:hidden
+       del .wa-thread. En pantalla ancha entran todos en una linea = no cambia nada. */
+    .wa-thread-header { padding: 0.7rem 1rem; background: #f0f2f5; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; }
     .wa-messages { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
     .wa-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; text-align: center; }
     .wa-msg-row { display: flex; }
