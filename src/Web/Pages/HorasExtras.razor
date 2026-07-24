@@ -348,14 +348,36 @@
                 <button class="btn-close" @onclick="@(() => showCargarManual = false)">&times;</button>
             </div>
             <div class="modal-body" style="padding:1rem;">
-                <p style="font-size:0.85rem; color:#6b7280; margin:0 0 0.8rem;">Cargá horas extras manualmente (sin horario). Útil para acumulados o ajustes.</p>
+                <p style="font-size:0.85rem; color:#6b7280; margin:0 0 0.8rem;">Cargá el horario de entrada y salida y las horas se calculan solas. O, si preferís, poné directamente la cantidad de horas.</p>
                 <div class="form-group">
                     <label class="form-label">Fecha</label>
                     <input type="date" class="form-input" @bind="manualFecha" />
                 </div>
+
+                <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:0.8rem; margin-bottom:0.8rem;">
+                    <div style="font-weight:700; color:#166534; font-size:0.9rem; margin-bottom:0.6rem;">🕘 Opción 1 — Horario de entrada y salida</div>
+                    <div style="display:flex; gap:0.8rem;">
+                        <div class="form-group" style="flex:1; margin-bottom:0;">
+                            <label class="form-label">Entrada</label>
+                            <input type="time" class="form-input" @bind="manualHoraEntrada" />
+                        </div>
+                        <div class="form-group" style="flex:1; margin-bottom:0;">
+                            <label class="form-label">Salida</label>
+                            <input type="time" class="form-input" @bind="manualHoraSalida" />
+                        </div>
+                    </div>
+                    @if (HorasCalculadas is not null)
+                    {
+                        <div style="margin-top:0.6rem; font-size:0.9rem; color:#166534; font-weight:700;">= @HorasCalculadas.Value.ToString("0.##") horas</div>
+                    }
+                </div>
+
+                <div style="text-align:center; color:#9ca3af; font-size:0.8rem; margin:0.2rem 0 0.8rem;">— o —</div>
+
                 <div class="form-group">
-                    <label class="form-label">Cantidad de horas</label>
-                    <input type="number" step="0.5" min="0" max="999" class="form-input" @bind="manualCantidad" placeholder="Ej: 90" />
+                    <label class="form-label">Opción 2 — Cantidad de horas (sin horario)</label>
+                    <input type="number" step="0.5" min="0" max="999" class="form-input" @bind="manualCantidad" placeholder="Ej: 90"
+                           disabled="@(manualHoraEntrada.HasValue || manualHoraSalida.HasValue)" />
                 </div>
                 <div class="form-group">
                     <label class="form-label">Observación</label>
@@ -615,12 +637,29 @@
     private DateTime manualFecha = DateTime.Today;
     private decimal manualCantidad;
     private string manualObservacion = "";
+    private TimeOnly? manualHoraEntrada;
+    private TimeOnly? manualHoraSalida;
+
+    // Horas que resultan del horario cargado (para mostrar el "= X horas" en vivo).
+    // Contempla cruce de medianoche (ej: 22:00 → 06:00 = 8h).
+    private decimal? HorasCalculadas
+    {
+        get
+        {
+            if (!manualHoraEntrada.HasValue || !manualHoraSalida.HasValue) return null;
+            var diff = manualHoraSalida.Value.ToTimeSpan() - manualHoraEntrada.Value.ToTimeSpan();
+            if (diff.TotalMinutes < 0) diff = diff.Add(TimeSpan.FromHours(24));
+            return (decimal)diff.TotalHours;
+        }
+    }
 
     private void ShowCargarManual(AdminEmpleadoDto e)
     {
         cargandoManualPara = e;
         manualFecha = DateTime.Today;
         manualCantidad = 0;
+        manualHoraEntrada = null;
+        manualHoraSalida = null;
         manualObservacion = "Carga manual";
         showCargarManual = true;
     }
@@ -628,7 +667,21 @@
     private async Task GuardarManualAsync()
     {
         if (cargandoManualPara is null) return;
-        if (manualCantidad <= 0) { ToastService.Error("La cantidad tiene que ser mayor a 0"); return; }
+
+        bool hayEntrada = manualHoraEntrada.HasValue;
+        bool haySalida = manualHoraSalida.HasValue;
+        if (hayEntrada != haySalida)
+        {
+            ToastService.Error("Completá la entrada Y la salida (o dejá las dos vacías y usá la cantidad de horas)");
+            return;
+        }
+        bool usaHorario = hayEntrada && haySalida;
+        if (!usaHorario && manualCantidad <= 0)
+        {
+            ToastService.Error("Cargá el horario de entrada y salida, o una cantidad de horas mayor a 0");
+            return;
+        }
+
         savingManual = true;
         try
         {
@@ -636,10 +689,18 @@
             // DateTime, Blazor le agrega el offset del navegador y el server le restaba un dia al parsearla
             // (ej: hoy 16 quedaba guardado como 15). El server espera el string crudo.
             var resp = await Http.PostAsJsonAsync("api/horas-extras/admin/registros/manual",
-                new { EmpleadoId = cargandoManualPara.Id, Fecha = manualFecha.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), Cantidad = manualCantidad, Observaciones = manualObservacion });
+                new {
+                    EmpleadoId = cargandoManualPara.Id,
+                    Fecha = manualFecha.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+                    Cantidad = manualCantidad,
+                    HoraEntrada = usaHorario ? manualHoraEntrada!.Value.ToString("HH:mm") : null,
+                    HoraSalida = usaHorario ? manualHoraSalida!.Value.ToString("HH:mm") : null,
+                    Observaciones = manualObservacion
+                });
             if (resp.IsSuccessStatusCode)
             {
-                ToastService.Success($"Cargadas {manualCantidad:0.#}h para {cargandoManualPara.Nombre}");
+                var horasMostrar = usaHorario ? (HorasCalculadas ?? 0) : manualCantidad;
+                ToastService.Success($"Cargadas {horasMostrar:0.#}h para {cargandoManualPara.Nombre}");
                 showCargarManual = false;
                 await RecargarTodo();
             }
