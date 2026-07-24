@@ -241,7 +241,40 @@ public class MisAlertasController : ControllerBase
             .Where(a => a.Activa && a.EstaDisparada && a.Alcance.Contains(bucket))
             .OrderByDescending(a => a.DisparadaAt)
             .ToListAsync();
-        var lista = rows.Select(a => new AlertaDisparadaDto(a.Id, a.Tipo, a.Mensaje, a.UltimoDetalle, a.DisparadaAt, a.Vista)).ToList();
+
+        // 2026-07-23 (pedido Osmar): en la campanita cada MAIL importante es SU PROPIO renglón
+        // (antes salía uno solo agrupado "N correos nuevos") y todo se ordena por hora, lo más
+        // nuevo arriba.
+        var lista = new List<AlertaDisparadaDto>();
+        foreach (var a in rows)
+        {
+            if (a.Tipo == "EMAIL_REMITENTE")
+            {
+                var correos = await _db.MisAlertasCorreos.AsNoTracking()
+                    .Where(c => c.AlertaId == a.Id)
+                    .OrderByDescending(c => c.FechaRecibido)
+                    .Take(10)
+                    .ToListAsync();
+                if (correos.Count == 0)
+                {
+                    lista.Add(new AlertaDisparadaDto(a.Id, a.Tipo, a.Mensaje, a.UltimoDetalle, a.DisparadaAt, a.Vista));
+                    continue;
+                }
+                foreach (var c in correos)
+                {
+                    var fecha = c.FechaRecibido ?? c.DetectadoAt;
+                    lista.Add(new AlertaDisparadaDto(a.Id, a.Tipo,
+                        $"Mail de {c.Remitente ?? c.RemitenteEmail ?? "remitente importante"}",
+                        $"\"{c.Asunto ?? "(sin asunto)"}\" — {fecha.AddHours(-3):HH:mm}",
+                        fecha, a.Vista));
+                }
+            }
+            else
+            {
+                lista.Add(new AlertaDisparadaDto(a.Id, a.Tipo, a.Mensaje, a.UltimoDetalle, a.DisparadaAt, a.Vista));
+            }
+        }
+        lista = lista.OrderByDescending(x => x.DisparadaAt ?? DateTime.MinValue).ToList();
         return Ok(new AlertasBellDto(lista.Count(a => !a.Vista), lista));
     }
 
