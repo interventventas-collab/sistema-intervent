@@ -6341,6 +6341,9 @@
         {
             try { await Task.WhenAll(tasks); } catch { }
         }
+        // 2026-07-24: limpiar la selección de copia por WhatsApp DESPUÉS de cada emisión, así no
+        // se arrastra a la próxima venta (bug: con "Guardar y empezar otra" se quedaba pegada).
+        copiaWaSeleccion.Clear();
     }
 
     private void CloseForm() { showForm = false; formError = null; editingVentaId = null; editingVentaNumero = ""; duplicadoDeNumero = null; autoRetryArcaPostEdit = false; editingVentaTipoOriginal = null; editingVentaTieneCae = false; editingVentaArcaEstado = null; }
