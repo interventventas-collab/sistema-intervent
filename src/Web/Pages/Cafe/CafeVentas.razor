@@ -6316,17 +6316,21 @@
             }));
         }
         // 2026-07-24: copia por WhatsApp a las personas internas tildadas (Osmar/Gabriel/Germán).
+        // Usa el circuito de la API OFICIAL de Meta (send-server-file VENTA), el mismo del botón
+        // "Adjuntar del servidor → Enviar". OJO: NO usar SendCafeVentaWhatsappInternoAsync — ese va
+        // por el Playwright/WhatsApp Web viejo que está DESCONECTADO.
         foreach (var per in copiaWaPersonas.Where(p => copiaWaSeleccion.Contains(p.Id)))
         {
-            var numero = per.WhatsAppNumero!.Replace("whatsapp:", "");
+            // El número va en formato whatsapp:+E164 (como lo guarda la libretita de Personas).
+            var numero = per.WhatsAppNumero!.StartsWith("whatsapp:") ? per.WhatsAppNumero : "whatsapp:" + per.WhatsAppNumero;
             var nombrePer = per.Nombre;
             tasks.Add(Task.Run(async () =>
             {
                 try
                 {
-                    var (sent, err) = await Api.SendCafeVentaWhatsappInternoAsync(ventaId, numero,
+                    var (ok, err) = await Api.SendTwServerFileAsync(numero, "VENTA", ventaId,
                         caption: $"📄 Copia del comprobante {ventaNumero}");
-                    if (sent) ToastService.Success($"📤 Copia enviada a {nombrePer}");
+                    if (ok) ToastService.Success($"📤 Copia enviada a {nombrePer}");
                     else ToastService.Error($"📤 Copia a {nombrePer} falló: {err}");
                 }
                 catch (Exception ex) { ToastService.Error($"📤 Copia a {nombrePer} error: {ex.Message}"); }
