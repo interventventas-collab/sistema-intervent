@@ -348,14 +348,15 @@
                 <button class="btn-close" @onclick="@(() => showCargarManual = false)">&times;</button>
             </div>
             <div class="modal-body" style="padding:1rem;">
-                <p style="font-size:0.85rem; color:#6b7280; margin:0 0 0.8rem;">Cargá el horario de entrada y salida y las horas se calculan solas. O, si preferís, poné directamente la cantidad de horas.</p>
+                <p style="font-size:0.85rem; color:#6b7280; margin:0 0 0.8rem;">Marcá la entrada, la salida o las dos y las horas se calculan solas. O, si preferís, poné directamente la cantidad de horas.</p>
                 <div class="form-group">
                     <label class="form-label">Fecha</label>
                     <input type="date" class="form-input" @bind="manualFecha" />
                 </div>
 
                 <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:0.8rem; margin-bottom:0.8rem;">
-                    <div style="font-weight:700; color:#166534; font-size:0.9rem; margin-bottom:0.6rem;">🕘 Opción 1 — Horario de entrada y salida</div>
+                    <div style="font-weight:700; color:#166534; font-size:0.9rem; margin-bottom:0.2rem;">🕘 Opción 1 — Horario</div>
+                    <div style="font-size:0.78rem; color:#15803d; margin-bottom:0.6rem;">Podés cargar solo la entrada, solo la salida o las dos.</div>
                     <div style="display:flex; gap:0.8rem;">
                         <div class="form-group" style="flex:1; margin-bottom:0;">
                             <label class="form-label">Entrada</label>
@@ -369,6 +370,10 @@
                     @if (HorasCalculadas is not null)
                     {
                         <div style="margin-top:0.6rem; font-size:0.9rem; color:#166534; font-weight:700;">= @HorasCalculadas.Value.ToString("0.##") horas</div>
+                    }
+                    else if (manualHoraEntrada.HasValue || manualHoraSalida.HasValue)
+                    {
+                        <div style="margin-top:0.6rem; font-size:0.82rem; color:#92400e;">Marcaste solo @(manualHoraEntrada.HasValue ? "la entrada" : "la salida"). Podés completar la otra más tarde; las horas se calculan cuando estén las dos.</div>
                     }
                 </div>
 
@@ -670,15 +675,10 @@
 
         bool hayEntrada = manualHoraEntrada.HasValue;
         bool haySalida = manualHoraSalida.HasValue;
-        if (hayEntrada != haySalida)
-        {
-            ToastService.Error("Completá la entrada Y la salida (o dejá las dos vacías y usá la cantidad de horas)");
-            return;
-        }
-        bool usaHorario = hayEntrada && haySalida;
+        bool usaHorario = hayEntrada || haySalida;
         if (!usaHorario && manualCantidad <= 0)
         {
-            ToastService.Error("Cargá el horario de entrada y salida, o una cantidad de horas mayor a 0");
+            ToastService.Error("Marcá una hora (entrada y/o salida) o una cantidad de horas mayor a 0");
             return;
         }
 
@@ -693,14 +693,18 @@
                     EmpleadoId = cargandoManualPara.Id,
                     Fecha = manualFecha.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
                     Cantidad = manualCantidad,
-                    HoraEntrada = usaHorario ? manualHoraEntrada!.Value.ToString("HH:mm") : null,
-                    HoraSalida = usaHorario ? manualHoraSalida!.Value.ToString("HH:mm") : null,
+                    HoraEntrada = hayEntrada ? manualHoraEntrada!.Value.ToString("HH:mm") : null,
+                    HoraSalida = haySalida ? manualHoraSalida!.Value.ToString("HH:mm") : null,
                     Observaciones = manualObservacion
                 });
             if (resp.IsSuccessStatusCode)
             {
-                var horasMostrar = usaHorario ? (HorasCalculadas ?? 0) : manualCantidad;
-                ToastService.Success($"Cargadas {horasMostrar:0.#}h para {cargandoManualPara.Nombre}");
+                string msg;
+                if (hayEntrada && haySalida) msg = $"Cargadas {(HorasCalculadas ?? 0):0.#}h para {cargandoManualPara.Nombre}";
+                else if (hayEntrada)         msg = $"Entrada {manualHoraEntrada!.Value:HH:mm} marcada para {cargandoManualPara.Nombre}";
+                else if (haySalida)          msg = $"Salida {manualHoraSalida!.Value:HH:mm} marcada para {cargandoManualPara.Nombre}";
+                else                          msg = $"Cargadas {manualCantidad:0.#}h para {cargandoManualPara.Nombre}";
+                ToastService.Success(msg);
                 showCargarManual = false;
                 await RecargarTodo();
             }

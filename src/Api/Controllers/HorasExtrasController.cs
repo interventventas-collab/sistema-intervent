@@ -1105,21 +1105,14 @@ public class HorasExtrasController : ControllerBase
         if (req.Cantidad < 0 || req.Cantidad > 999) return BadRequest(new { error = "Cantidad inválida (0–999)" });
         if (string.IsNullOrWhiteSpace(req.Fecha)) return BadRequest(new { error = "Fecha obligatoria" });
 
-        // 2026-07-24: si el admin cargó horario de entrada y salida, calculamos la cantidad
-        // de horas desde la diferencia (contempla cruce de medianoche, igual que una fichada).
+        // 2026-07-24: el admin puede marcar SOLO entrada, SOLO salida o AMBAS (o ninguna y usar
+        // la cantidad de horas). Cada campo que venga vacío NO pisa lo que ya estaba cargado, así
+        // se puede marcar la entrada ahora y completar la salida más tarde en otra carga.
         var horaEnt = ParseHora(req.HoraEntrada);
         var horaSal = ParseHora(req.HoraSalida);
-        var cantidadFinal = req.Cantidad;
-        if (horaEnt.HasValue && horaSal.HasValue)
-        {
-            var diff = horaSal.Value - horaEnt.Value;
-            if (diff.TotalMinutes < 0) diff = diff.Add(TimeSpan.FromHours(24)); // pasó medianoche
-            cantidadFinal = (decimal)diff.TotalHours;
-        }
-        else if ((horaEnt.HasValue) != (horaSal.HasValue))
-        {
-            return BadRequest(new { error = "Cargá el horario de entrada Y el de salida, o dejá los dos vacíos y usá la cantidad de horas." });
-        }
+        bool cargoHorario = horaEnt.HasValue || horaSal.HasValue;
+        if (!cargoHorario && req.Cantidad <= 0)
+            return BadRequest(new { error = "Cargá una hora (entrada y/o salida) o una cantidad de horas mayor a 0." });
 
         var emp = await _db.HorasExtrasEmpleados.FindAsync(req.EmpleadoId);
         if (emp is null) return NotFound(new { error = "Empleado no existe" });
@@ -1137,7 +1130,7 @@ public class HorasExtrasController : ControllerBase
             {
                 EmpleadoId = emp.Id,
                 Fecha = fecha,
-                Cantidad = cantidadFinal,
+                Cantidad = req.Cantidad,
                 HoraEntrada = horaEnt,
                 HoraSalida = horaSal,
                 Observaciones = string.IsNullOrWhiteSpace(req.Observaciones) ? "Carga manual (admin)" : req.Observaciones.Trim(),
@@ -1147,12 +1140,25 @@ public class HorasExtrasController : ControllerBase
         }
         else
         {
-            existente.Cantidad = cantidadFinal;
-            existente.HoraEntrada = horaEnt;
-            existente.HoraSalida = horaSal;
+            // Solo pisamos el horario que realmente vino; si un campo quedó vacío, conservamos
+            // lo que ya estaba (permite completar la salida sin borrar la entrada previa).
+            if (horaEnt.HasValue) existente.HoraEntrada = horaEnt;
+            if (horaSal.HasValue) existente.HoraSalida = horaSal;
+            // Carga por cantidad pura (sin horario): actualizamos la cantidad directo.
+            if (!cargoHorario) existente.Cantidad = req.Cantidad;
             if (!string.IsNullOrWhiteSpace(req.Observaciones)) existente.Observaciones = req.Observaciones.Trim();
             existente.UpdatedAt = DateTime.UtcNow;
         }
+
+        // Si el registro quedó con entrada Y salida, la cantidad de horas se calcula sola
+        // desde la diferencia (contempla cruce de medianoche). Si falta una, se deja como está.
+        if (existente.HoraEntrada.HasValue && existente.HoraSalida.HasValue)
+        {
+            var diff = existente.HoraSalida.Value - existente.HoraEntrada.Value;
+            if (diff.TotalMinutes < 0) diff = diff.Add(TimeSpan.FromHours(24)); // pasó medianoche
+            existente.Cantidad = (decimal)diff.TotalHours;
+        }
+
         await _db.SaveChangesAsync();
         return Ok(new { ok = true });
     }
