@@ -1,0 +1,130 @@
+@page "/scan-prueba"
+@attribute [Authorize]
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<PageTitle>Prueba de scanner</PageTitle>
+
+<div class="scanp-wrap">
+    <h2 class="scanp-title">📷 Prueba de scanner</h2>
+    <p class="scanp-help">
+        Apuntá la cámara del celular al <b>código de barras o QR</b> de una etiqueta de Flex.
+        Abajo te voy a mostrar exactamente qué número lee. Con eso confirmo si engancha con
+        los envíos que ya tenemos y armo la carga al mapa por escaneo.
+    </p>
+
+    @if (!_scanning)
+    {
+        <button class="scanp-btn" @onclick="StartAsync">Prender cámara</button>
+    }
+    else
+    {
+        <button class="scanp-btn scanp-btn-stop" @onclick="StopAsync">Apagar cámara</button>
+    }
+
+    <div id="reader" class="scanp-reader"></div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="scanp-error">@_error</div>
+    }
+
+    <div class="scanp-list-head">
+        <h3>Códigos leídos (@_lecturas.Count)</h3>
+        @if (_lecturas.Count > 0)
+        {
+            <button class="scanp-clear" @onclick="() => _lecturas.Clear()">Limpiar</button>
+        }
+    </div>
+
+    @if (_lecturas.Count == 0)
+    {
+        <p class="scanp-empty">Todavía no leíste nada. Prendé la cámara y scaneá una etiqueta.</p>
+    }
+    else
+    {
+        <div class="scanp-cards">
+            @foreach (var l in _lecturas)
+            {
+                <div class="scanp-card">
+                    <div class="scanp-code">@l.Text</div>
+                    <div class="scanp-meta">
+                        <span>@(string.IsNullOrEmpty(l.Format) ? "código" : l.Format)</span>
+                        <span>· @l.Text.Length dígitos/caracteres</span>
+                        <span>· @l.At.ToString("HH:mm:ss")</span>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .scanp-wrap { max-width: 480px; margin: 0 auto; padding: 16px; font-family: Inter, sans-serif; }
+    .scanp-title { margin: 0 0 6px; font-size: 20px; color: #0f172a; }
+    .scanp-help { color: #475569; font-size: 14px; line-height: 1.5; margin: 0 0 16px; }
+    .scanp-btn { width: 100%; padding: 14px; font-size: 16px; font-weight: 600; color: #fff;
+        background: #16a34a; border: none; border-radius: 10px; cursor: pointer; }
+    .scanp-btn-stop { background: #dc2626; }
+    .scanp-reader { width: 100%; margin: 14px 0; border-radius: 10px; overflow: hidden; }
+    .scanp-error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca;
+        padding: 10px 12px; border-radius: 8px; font-size: 14px; margin: 8px 0; }
+    .scanp-list-head { display: flex; align-items: center; justify-content: space-between; margin-top: 18px; }
+    .scanp-list-head h3 { margin: 0; font-size: 16px; color: #0f172a; }
+    .scanp-clear { background: #f1f5f9; border: none; color: #475569; padding: 6px 12px;
+        border-radius: 8px; font-size: 13px; cursor: pointer; }
+    .scanp-empty { color: #94a3b8; font-size: 14px; }
+    .scanp-cards { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+    .scanp-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; }
+    .scanp-code { font-size: 18px; font-weight: 700; color: #0f172a; word-break: break-all; }
+    .scanp-meta { font-size: 12px; color: #64748b; margin-top: 4px; display: flex; gap: 4px; flex-wrap: wrap; }
+</style>
+
+@code {
+    private bool _scanning;
+    private string? _error;
+    private DotNetObjectReference<ScanPrueba>? _ref;
+
+    private record Lectura(string Text, string Format, DateTime At);
+    private readonly List<Lectura> _lecturas = new();
+
+    private async Task StartAsync()
+    {
+        _error = null;
+        _ref ??= DotNetObjectReference.Create(this);
+        _scanning = true;
+        // Esperar a que el <div id="reader"> esté en el DOM antes de arrancar la cámara.
+        await Task.Yield();
+        await JS.InvokeVoidAsync("scannerBarcode.start", "reader", _ref);
+    }
+
+    private async Task StopAsync()
+    {
+        _scanning = false;
+        try { await JS.InvokeVoidAsync("scannerBarcode.stop"); } catch { }
+    }
+
+    [JSInvokable]
+    public void OnScanDetected(string text, string format)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        // Evitar duplicar el último igual leído seguido.
+        if (_lecturas.Count > 0 && _lecturas[0].Text == text) return;
+        _lecturas.Insert(0, new Lectura(text.Trim(), format ?? "", DateTime.Now));
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnScanError(string message)
+    {
+        _error = message;
+        _scanning = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("scannerBarcode.stop"); } catch { }
+        _ref?.Dispose();
+    }
+}
