@@ -1374,6 +1374,13 @@ public class ApiClient
         return resp.IsSuccessStatusCode;
     }
 
+    public async Task<AutoProbarResp?> ProbarMisAlertaAsync(int id)
+    {
+        var resp = await _http.PostAsync($"/api/mis-alertas/{id}/probar", null);
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadFromJsonAsync<AutoProbarResp>();
+    }
+
     public async Task<bool> UpdateSistemaAlertaAsync(string tipo, SistemaAlertaRequest req)
     {
         try

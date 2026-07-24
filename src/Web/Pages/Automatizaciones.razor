@@ -151,23 +151,23 @@
                                 {
                                     case "SHELL_BAJO":
                                         <span class="auto-lbl" style="min-width:auto;">⛽ si Shell baja de $</span>
-                                        <input class="auto-input-num" type="number" value="@alEdit[al.Id].Umbral"
+                                        <input class="auto-input-num" type="number" value="@FmtDec(alEdit[al.Id].Umbral)"
                                                @onchange="e => { alEdit[al.Id].Umbral = ParseDec(e.Value); _ = GuardarAlerta(al); }" />
                                         break;
                                     case "BANCO_BAJO":
                                         <span class="auto-lbl" style="min-width:auto;">🏦 si Galicia baja de $</span>
-                                        <input class="auto-input-num" type="number" value="@alEdit[al.Id].Umbral"
+                                        <input class="auto-input-num" type="number" value="@FmtDec(alEdit[al.Id].Umbral)"
                                                @onchange="e => { alEdit[al.Id].Umbral = ParseDec(e.Value); _ = GuardarAlerta(al); }" />
                                         break;
                                     case "CHEQUE_VENCE":
                                         <span class="auto-lbl" style="min-width:auto;">🧾 avisar</span>
-                                        <input class="auto-input-num" style="width:64px;" type="number" value="@alEdit[al.Id].Umbral"
+                                        <input class="auto-input-num" style="width:64px;" type="number" value="@FmtDec(alEdit[al.Id].Umbral)"
                                                @onchange="e => { alEdit[al.Id].Umbral = ParseDec(e.Value); _ = GuardarAlerta(al); }" />
                                         <span class="auto-lbl" style="min-width:auto;">días antes del vencimiento</span>
                                         break;
                                     case "FECHA_MES":
                                         <span class="auto-lbl" style="min-width:auto;">📅 el día</span>
-                                        <input class="auto-input-num" style="width:64px;" type="number" min="1" max="31" value="@alEdit[al.Id].Umbral"
+                                        <input class="auto-input-num" style="width:64px;" type="number" min="1" max="31" value="@FmtDec(alEdit[al.Id].Umbral)"
                                                @onchange="e => { alEdit[al.Id].Umbral = ParseDec(e.Value); _ = GuardarAlerta(al); }" />
                                         <span class="auto-lbl" style="min-width:auto;">de cada mes</span>
                                         break;
@@ -209,6 +209,10 @@
                                 <input type="checkbox" checked="@al.Activa" @onchange="() => ToggleAlerta(al)" />
                                 <span class="auto-slider"></span>
                             </label>
+                            <button class="auto-btn auto-btn-probar" style="padding:4px 9px; font-size:0.7rem;"
+                                    disabled="@(probandoAlerta == al.Id)" @onclick="() => ProbarAlerta(al)">
+                                @(probandoAlerta == al.Id ? "⏳" : "▶ Probar")
+                            </button>
                             @if (!al.EsSistema)
                             {
                                 <button class="auto-btn" style="border-color:#7f1d1d; color:#fca5a5;" @onclick="() => BorrarAlerta(al)">🗑</button>
@@ -411,7 +415,16 @@
         "FICHADA" => "Fichadas de empleados", "PUBLI_MELI" => "Publicaciones MeLi para revisar",
         "ALTA_CLIENTE" => "Nuevo cliente para dar de alta", _ => t
     };
-    static decimal? ParseDec(object? v) => decimal.TryParse(v?.ToString(), out var d) ? d : null;
+    // OJO CULTURA: el navegador exige punto decimal en los input type=number; si renderizamos
+    // "14,00" (formato es-AR) el casillero queda VACÍO aunque el dato esté guardado. Por eso
+    // formateamos con invariant y parseamos aceptando coma o punto.
+    static string FmtDec(decimal? v) => v?.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) ?? "";
+    static decimal? ParseDec(object? v)
+    {
+        var t = (v?.ToString() ?? "").Trim().Replace(',', '.');
+        return decimal.TryParse(t, System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
+    }
 
     async Task CargarAlertas()
     {
@@ -481,6 +494,20 @@
             ok = await Api.ToggleAlertaAsync(a.Id);
         if (ok) { Toast.Success(!a.Activa ? "Prendida 🟢" : "Apagada ⚪"); await CargarAlertas(); }
         else Toast.Error("No se pudo cambiar");
+    }
+
+    int? probandoAlerta;
+    async Task ProbarAlerta(ApiClient.AlertaDto a)
+    {
+        probandoAlerta = a.Id;
+        try
+        {
+            var r = await Api.ProbarMisAlertaAsync(a.Id);
+            if (r is null) Toast.Error("No se pudo probar");
+            else if (r.Ok) Toast.Success($"✅ {r.Detalle}");
+            else Toast.Error($"⚠️ {r.Detalle}");
+        }
+        finally { probandoAlerta = null; }
     }
 
     async Task BorrarAlerta(ApiClient.AlertaDto a)

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using Api.Data;
 using Api.Models;
+using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -252,6 +253,89 @@ public class MisAlertasController : ControllerBase
         await _db.SaveChangesAsync();
         await GuardarDestinatariosAsync(a.Id, r.Destinatarios);
         return Ok(Map(a, await DestinatariosDeAsync(a.Id)));
+    }
+
+    /// <summary>2026-07-23 (pedido Osmar): dispara una PRUEBA de la alerta YA, por los canales y
+    /// destinatarios que tiene configurados — para verificar que llega donde tiene que llegar.</summary>
+    [HttpPost("{id:int}/probar")]
+    public async Task<IActionResult> Probar(int id,
+        [FromServices] TelegramService tg,
+        [FromServices] WhatsAppOutboundService wa,
+        [FromServices] AutoAvisoSender sender)
+    {
+        var a = await _db.MisAlertas.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
+        if (a is null) return NotFound();
+
+        var titulo = string.IsNullOrWhiteSpace(a.Mensaje) ? a.Tipo : a.Mensaje;
+        var texto = $"🧪 PRUEBA de alerta: {titulo}\n(así se va a ver cuando se dispare de verdad)";
+        var partes = new List<string>();
+        var okAlguno = false;
+
+        var idsDest = await _db.AutoDestinatarios.Where(d => d.AutoKey == $"alerta:{id}")
+            .Select(d => d.PersonaId).ToListAsync();
+        var pers = await _db.AutoPersonas.AsNoTracking()
+            .Where(p => p.Activo && idsDest.Contains(p.Id)).ToListAsync();
+
+        if (a.CanalCampanita)
+        {
+            _db.MisAlertasHistorial.Add(new MisAlertaHistorial
+            {
+                Tipo = a.Tipo, Mensaje = $"🧪 Prueba: {titulo}",
+                Detalle = "Disparada a mano desde Automatizaciones y Alertas",
+                Alcance = a.Alcance, PorTelegram = false, CreatedAt = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync();
+            okAlguno = true; partes.Add("🔔 campanita OK");
+        }
+
+        if (a.CanalTelegram)
+        {
+            int ok = 0, tot = 0;
+            foreach (var p in pers.Where(x => x.TelegramChatId is > 0))
+            {
+                tot++;
+                var (enviado, _) = await tg.SendMessageAsync(texto, chatId: p.TelegramChatId);
+                if (enviado) ok++;
+            }
+            if (tot == 0) { var (enviado, _) = await tg.SendMessageAsync(texto, categoria: "ALERTAS"); if (enviado) { ok = 1; tot = 1; } }
+            okAlguno |= ok > 0; partes.Add($"📲 Telegram {ok}/{tot}");
+        }
+
+        if (a.CanalWhatsApp)
+        {
+            int ok = 0, tot = 0;
+            foreach (var p in pers.Where(x => !string.IsNullOrWhiteSpace(x.WhatsAppNumero)))
+            {
+                tot++;
+                var numero = p.WhatsAppNumero!.StartsWith("whatsapp:") ? p.WhatsAppNumero : "whatsapp:" + p.WhatsAppNumero;
+                var (sid, canal) = await wa.SendTextAsync(numero, texto);
+                if (sid != null)
+                {
+                    ok++;
+                    _db.WhatsAppTwilioMensajes.Add(new WhatsAppTwilioMensaje
+                    {
+                        Direccion = "OUTGOING", Numero = numero, Cuerpo = texto,
+                        TwilioMessageSid = sid, Canal = canal, Procesado = true, CreatedAt = DateTime.UtcNow
+                    });
+                    await _db.SaveChangesAsync();
+                }
+            }
+            okAlguno |= ok > 0; partes.Add($"📱 WhatsApp {ok}/{tot}");
+        }
+
+        if (a.CanalCorreo)
+        {
+            int ok = 0, tot = 0;
+            foreach (var p in pers.Where(x => !string.IsNullOrWhiteSpace(x.Email)))
+            {
+                tot++;
+                if (await sender.EnviarEmailAsync(p.Email!, $"🧪 Prueba: {titulo}", texto, HttpContext.RequestAborted)) ok++;
+            }
+            okAlguno |= ok > 0; partes.Add($"📧 correo {ok}/{tot}");
+        }
+
+        var detalle = partes.Count > 0 ? string.Join(" · ", partes) : "la alerta no tiene ningún canal tildado";
+        return Ok(new { ok = okAlguno, detalle });
     }
 
     // ---------- Campanita de la topbar ----------
