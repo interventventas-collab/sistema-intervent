@@ -92,7 +92,16 @@
                                     }
                                     @(c.UltimoDireccion == "OUTGOING" ? "✓ " : "")@TruncateText(c.UltimoMensaje, 45)
                                 </span>
-                                <span class="wa-conv-count">@c.Total</span>
+                                @* 2026-07-24: el badge verde se enciende SOLO si hay algo sin responder
+                                   (último mensaje del cliente). Si ya respondimos, muestra "✓ leído" apagado. *@
+                                @if (c.UltimoDireccion == "INCOMING")
+                                {
+                                    <span class="wa-conv-count" title="Sin responder">nuevo</span>
+                                }
+                                else
+                                {
+                                    <span class="wa-conv-leido" title="Respondido">✓ leído</span>
+                                }
                             </div>
                         </div>
                     </div>
@@ -488,7 +497,8 @@
     .wa-conv-hora { font-size: 0.7rem; color: #9ca3af; flex-shrink: 0; }
     .wa-conv-row2 { display: flex; justify-content: space-between; gap: 0.5rem; margin-top: 0.15rem; }
     .wa-conv-last { font-size: 0.8rem; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-    .wa-conv-count { background: #25d366; color: white; font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 10px; min-width: 18px; text-align: center; }
+    .wa-conv-count { background: #25d366; color: white; font-size: 0.68rem; font-weight: 700; padding: 0.1rem 0.45rem; border-radius: 10px; text-align: center; }
+    .wa-conv-leido { color: #9ca3af; font-size: 0.66rem; white-space: nowrap; }
     .wa-thread { display: flex; flex-direction: column; background: #efeae2; overflow: hidden; }
     .wa-thread-header { padding: 0.7rem 1rem; background: #f0f2f5; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; gap: 0.7rem; }
     .wa-messages { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
