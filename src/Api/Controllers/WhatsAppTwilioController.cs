@@ -739,13 +739,30 @@ public class WhatsAppTwilioController : ControllerBase
                     || (v.ClienteRazonSocialSnapshot != null && v.ClienteRazonSocialSnapshot.Contains(s))
                     || (sInt.HasValue && _db.CafeClientes.Any(c => c.Id == v.ClienteId && c.CodigoInterno == sInt.Value)));
             }
-            var list = await q.OrderByDescending(v => v.Fecha).Take(take)
-                .Select(v => new ServerFileDto(
-                    "VENTA", v.Id, $"{(v.TipoComprobante ?? "X")} {v.Numero}",
-                    !string.IsNullOrWhiteSpace(v.ClienteRazonSocialSnapshot) ? v.ClienteRazonSocialSnapshot : (v.ClienteNombreSnapshot ?? "—"),
-                    $"${v.Total:N0}",
-                    v.Fecha))
+            // 2026-07-24 (pedido Osmar): mostrar el importe CON IVA (si es factura ARCA autorizada)
+            // y el N° de factura AFIP (0000-00000000) además del número interno del comprobante.
+            // Traemos los campos crudos y formateamos en memoria (el formato :D no traduce a SQL).
+            var rows = await q.OrderByDescending(v => v.Fecha).Take(take)
+                .Select(v => new
+                {
+                    v.Id, v.TipoComprobante, v.Numero, v.Total, v.ArcaImpTotal,
+                    v.ArcaEstado, v.ArcaCae, v.ArcaPtoVta, v.ArcaCbteNro, v.Fecha,
+                    Cliente = !string.IsNullOrWhiteSpace(v.ClienteRazonSocialSnapshot) ? v.ClienteRazonSocialSnapshot : (v.ClienteNombreSnapshot ?? "—")
+                })
                 .ToListAsync();
+            var list = rows.Select(v =>
+            {
+                var autorizada = v.ArcaEstado == "autorizado" && !string.IsNullOrEmpty(v.ArcaCae)
+                                 && v.ArcaPtoVta.HasValue && v.ArcaCbteNro.HasValue;
+                // Título: comprobante + número interno + (N° AFIP si la factura está autorizada)
+                var label = $"{(v.TipoComprobante ?? "X")} {v.Numero}";
+                if (autorizada)
+                    label += $" · N° {v.ArcaPtoVta:D4}-{v.ArcaCbteNro:D8}";
+                // Importe: el total CON IVA de la factura si está autorizada; sino el total de la venta.
+                var monto = (autorizada && v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0) ? v.ArcaImpTotal.Value : v.Total;
+                var info = $"${monto:N0}" + (autorizada ? " c/IVA" : "");
+                return new ServerFileDto("VENTA", v.Id, label, v.Cliente, info, v.Fecha);
+            }).ToList();
             return Ok(list);
         }
         if (tipo == "LISTA")
