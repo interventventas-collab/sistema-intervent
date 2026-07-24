@@ -1323,7 +1323,7 @@ public class ApiClient
     public record AlertaUpsertRequest(string Tipo, decimal? Umbral, string? TextoParam, string Mensaje,
         bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool CanalTelegram, bool Activa, List<string>? Roles);
     // 2026-07-11: alertas del sistema (Ventas MeLi / Fichadas): prender/apagar + canal.
-    public record SistemaAlertaRequest(bool Activa, bool CanalCampanita, bool CanalTelegram);
+    public record SistemaAlertaRequest(bool Activa, bool CanalCampanita, bool CanalTelegram, bool? CanalWhatsApp = null, bool? CanalCorreo = null);
     public record CorreoImportanteDto(int Id, string? Remitente, string? RemitenteEmail, string? Asunto,
         string? Adelanto, DateTime? Fecha, bool TieneAdjuntos, string? Adjuntos, string? GmailLink);
     public record ConfigCorreoAlertasDto(string? Host, int Port, string? Usuario, bool TieneClave, bool Configurada);

@@ -133,7 +133,7 @@ public class MisAlertasBackgroundService : BackgroundService
         //   A) Cada CORREO nuevo que entró este tick (aunque la alerta ya estuviera disparada por otro mail).
         //   B) Cada alerta NO-correo que recién se disparó (transición apagada→prendida).
         // Cada evento = una fila en el historial + (si tiene Telegram) un mensaje al Telegram del dueño.
-        var eventos = new List<(MisAlertaHistorial hist, string? tgTexto)>();
+        var eventos = new List<(MisAlertaHistorial hist, string? tgTexto, MisAlerta alerta)>();
 
         // A) Correos nuevos → uno por mail.
         foreach (var (alerta, correo) in nuevosCorreos)
@@ -145,7 +145,7 @@ public class MisAlertasBackgroundService : BackgroundService
             var tgTexto = alerta.CanalTelegram
                 ? $"📧 {(string.IsNullOrWhiteSpace(alerta.Mensaje) ? "Correo importante" : alerta.Mensaje)}\n{detalle}"
                 : null;
-            eventos.Add((hist, tgTexto));
+            eventos.Add((hist, tgTexto, alerta));
         }
 
         // B) Alertas no-correo que recién saltaron.
@@ -156,7 +156,7 @@ public class MisAlertasBackgroundService : BackgroundService
             var tgTexto = a.CanalTelegram
                 ? (string.IsNullOrWhiteSpace(a.UltimoDetalle) ? $"🔔 Alerta: {msg}" : $"🔔 Alerta: {msg}\n{a.UltimoDetalle}")
                 : null;
-            eventos.Add((hist, tgTexto));
+            eventos.Add((hist, tgTexto, a));
         }
 
         if (eventos.Count > 0)
@@ -176,7 +176,14 @@ public class MisAlertasBackgroundService : BackgroundService
                 catch (Exception ex) { _logger.LogWarning(ex, "[Alertas] no pude resolver el bot de Telegram"); }
             }
 
-            foreach (var (hist, tgTexto) in eventos)
+            // 2026-07-23 (pedido Osmar): las alertas también salen por 📱 WhatsApp y 📧 correo.
+            // Destinatarios = las personas de la libretita del Centro de Automatizaciones
+            // (Auto_Personas activas que tengan esa dirección cargada).
+            List<AutoPersona>? personas = null;
+            if (eventos.Any(e => e.alerta.CanalWhatsApp || e.alerta.CanalCorreo))
+                personas = await db.AutoPersonas.AsNoTracking().Where(x => x.Activo).ToListAsync();
+
+            foreach (var (hist, tgTexto, alerta) in eventos)
             {
                 db.Set<MisAlertaHistorial>().Add(hist);
                 if (tgTexto is not null && tg is not null)
@@ -187,6 +194,39 @@ public class MisAlertasBackgroundService : BackgroundService
                         hist.EnviadoTelegram = ok;
                     }
                     catch (Exception ex) { _logger.LogWarning(ex, "[Alertas] no pude avisar por Telegram"); }
+                }
+
+                var texto = string.IsNullOrWhiteSpace(hist.Detalle)
+                    ? $"🔔 {hist.Mensaje}" : $"🔔 {hist.Mensaje}\n{hist.Detalle}";
+
+                if (alerta.CanalWhatsApp && personas is not null)
+                {
+                    var wa = scope.ServiceProvider.GetRequiredService<WhatsAppOutboundService>();
+                    foreach (var per in personas.Where(x => !string.IsNullOrWhiteSpace(x.WhatsAppNumero)))
+                    {
+                        try
+                        {
+                            var numero = per.WhatsAppNumero!.StartsWith("whatsapp:") ? per.WhatsAppNumero : "whatsapp:" + per.WhatsAppNumero;
+                            var (sid, canal) = await wa.SendTextAsync(numero, texto);
+                            if (sid != null)
+                                db.Set<WhatsAppTwilioMensaje>().Add(new WhatsAppTwilioMensaje
+                                {
+                                    Direccion = "OUTGOING", Numero = numero, Cuerpo = texto,
+                                    TwilioMessageSid = sid, Canal = canal, Procesado = true, CreatedAt = DateTime.UtcNow
+                                });
+                        }
+                        catch (Exception ex) { _logger.LogWarning(ex, "[Alertas] WhatsApp a {P} falló", per.Nombre); }
+                    }
+                }
+
+                if (alerta.CanalCorreo && personas is not null)
+                {
+                    var sender = scope.ServiceProvider.GetRequiredService<AutoAvisoSender>();
+                    foreach (var per in personas.Where(x => !string.IsNullOrWhiteSpace(x.Email)))
+                    {
+                        try { await sender.EnviarEmailAsync(per.Email!, $"🔔 {hist.Mensaje}", texto, CancellationToken.None); }
+                        catch (Exception ex) { _logger.LogWarning(ex, "[Alertas] correo a {P} falló", per.Nombre); }
+                    }
                 }
             }
             await db.SaveChangesAsync();

@@ -127,8 +127,9 @@ public class AutoAvisoSender
         return (okAlguno, detalle);
     }
 
-    /// <summary>Mail simple de texto (misma config SMTP de Integraciones que usan los comprobantes).</summary>
-    private async Task<bool> EnviarEmailAsync(string to, string subject, string body, CancellationToken ct)
+    /// <summary>Mail simple de texto (misma config SMTP de Integraciones que usan los comprobantes).
+    /// Público: también lo usa el robot de Mis Alertas para el canal 📧 de las alertas.</summary>
+    public async Task<bool> EnviarEmailAsync(string to, string subject, string body, CancellationToken ct)
     {
         try
         {

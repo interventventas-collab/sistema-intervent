@@ -207,7 +207,7 @@ public class MisAlertasController : ControllerBase
     }
 
     // ---------- Alertas del sistema (Ventas MeLi / Fichadas): prender/apagar + elegir canal ----------
-    public record SistemaAlertaRequest(bool Activa, bool CanalCampanita, bool CanalTelegram);
+    public record SistemaAlertaRequest(bool Activa, bool CanalCampanita, bool CanalTelegram, bool? CanalWhatsApp = null, bool? CanalCorreo = null);
 
     /// <summary>Prende/apaga una alerta del sistema y elige por dónde avisa (campanita y/o Telegram).
     /// Son compartidas (no por rol): cualquiera con acceso a Mis Alertas las configura.</summary>
@@ -221,6 +221,9 @@ public class MisAlertasController : ControllerBase
         a.Activa = r.Activa;
         a.CanalCampanita = r.CanalCampanita;
         a.CanalTelegram = r.CanalTelegram;
+        // 2026-07-23: canales nuevos (van a las personas de la libretita de Automatizaciones)
+        if (r.CanalWhatsApp.HasValue) a.CanalWhatsApp = r.CanalWhatsApp.Value;
+        if (r.CanalCorreo.HasValue) a.CanalCorreo = r.CanalCorreo.Value;
         // Si se apaga o se saca la campanita, limpiamos el estado de "disparada" para que no quede colgado.
         if (!a.Activa || !a.CanalCampanita) { a.EstaDisparada = false; a.Vista = false; a.UltimoDetalle = null; }
         a.UpdatedAt = DateTime.UtcNow;

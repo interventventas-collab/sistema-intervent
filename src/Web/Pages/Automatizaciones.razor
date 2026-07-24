@@ -3,6 +3,7 @@
 @inject ApiClient Api
 @inject ToastService Toast
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 @* 2026-07-23 (pedido Osmar): CENTRO DE AUTOMATIZACIONES — todos los robots del sistema en un
    solo lugar, con look futurista de IA. Cada aviso programado: interruptor, días, hora, canales
@@ -121,16 +122,91 @@
             </div>
         }
 
-        @* ═══════════ ALERTAS POR CONDICIÓN (2026-07-23, pedido Osmar: la config de Mis Alertas
-           vive acá adentro, en un desplegable — es la MISMA pantalla embebida, cero duplicación) ═══ *@
-        <div class="auto-seccion-titulo" style="cursor:pointer; user-select:none;" @onclick="() => alertasOpen = !alertasOpen">
-            ⚡ ALERTAS POR CONDICIÓN — reglas que vigilan y avisan ("si pasa esto, avisame") @(alertasOpen ? "▾" : "▸ (tocá para desplegar)")
+        @* ═══════════ ALERTAS POR CONDICIÓN (2026-07-23 v2, pedido Osmar: mismo estilo futurista
+           y TODO editable al paso desde la tarjeta — reglas, montos, remitentes, canales) ═══ *@
+        <div class="auto-seccion-titulo">
+            ⚡ ALERTAS POR CONDICIÓN — reglas que vigilan y avisan ("si pasa esto, avisame")
+            <a href="/mis-alertas" style="float:right; color:#a78bfa; text-decoration:none; letter-spacing:normal;">＋ Nueva alerta →</a>
         </div>
-        @if (alertasOpen)
+        @if (alertas is null)
         {
-            <div class="auto-alertas-isla">
-                <MisAlertas Embebido="true" />
-            </div>
+            <div class="auto-loading">Cargando alertas…</div>
+        }
+        else
+        {
+            @foreach (var al in alertas)
+            {
+                <div class="auto-card auto-card-mini @(al.Activa ? "" : "auto-card-off")" style="margin-bottom:0.7rem;">
+                    <div class="auto-card-head">
+                        <div style="flex:1;">
+                            <div class="auto-card-nombre" style="font-size:0.95rem;">
+                                @TipoEmoji(al.Tipo) @(string.IsNullOrWhiteSpace(al.Mensaje) ? TipoNombre(al.Tipo) : al.Mensaje)
+                                <span class="auto-estado @(al.Activa ? "on" : "off")">@(al.Activa ? "●" : "○")</span>
+                                @if (al.EsSistema) { <span style="font-size:0.6rem; color:#8fa3c8; border:1px solid #33415c; border-radius:999px; padding:1px 7px; margin-left:6px;">del sistema</span> }
+                            </div>
+
+                            @* Parámetros de la regla, editables al paso según el tipo *@
+                            <div class="auto-fila" style="margin-top:0.45rem;">
+                                @switch (al.Tipo)
+                                {
+                                    case "SHELL_BAJO":
+                                        <span class="auto-lbl" style="min-width:auto;">⛽ si Shell baja de $</span>
+                                        <input class="auto-input-num" type="number" value="@alEdit[al.Id].Umbral"
+                                               @onchange="e => { alEdit[al.Id].Umbral = ParseDec(e.Value); _ = GuardarAlerta(al); }" />
+                                        break;
+                                    case "BANCO_BAJO":
+                                        <span class="auto-lbl" style="min-width:auto;">🏦 si Galicia baja de $</span>
+                                        <input class="auto-input-num" type="number" value="@alEdit[al.Id].Umbral"
+                                               @onchange="e => { alEdit[al.Id].Umbral = ParseDec(e.Value); _ = GuardarAlerta(al); }" />
+                                        break;
+                                    case "CHEQUE_VENCE":
+                                        <span class="auto-lbl" style="min-width:auto;">🧾 avisar</span>
+                                        <input class="auto-input-num" style="width:64px;" type="number" value="@alEdit[al.Id].Umbral"
+                                               @onchange="e => { alEdit[al.Id].Umbral = ParseDec(e.Value); _ = GuardarAlerta(al); }" />
+                                        <span class="auto-lbl" style="min-width:auto;">días antes del vencimiento</span>
+                                        break;
+                                    case "FECHA_MES":
+                                        <span class="auto-lbl" style="min-width:auto;">📅 el día</span>
+                                        <input class="auto-input-num" style="width:64px;" type="number" min="1" max="31" value="@alEdit[al.Id].Umbral"
+                                               @onchange="e => { alEdit[al.Id].Umbral = ParseDec(e.Value); _ = GuardarAlerta(al); }" />
+                                        <span class="auto-lbl" style="min-width:auto;">de cada mes</span>
+                                        break;
+                                    case "EMAIL_REMITENTE":
+                                        <span class="auto-lbl" style="min-width:auto;">📧 remitentes (separados por coma)</span>
+                                        <input class="auto-input-txt" value="@alEdit[al.Id].TextoParam"
+                                               @onchange="e => { alEdit[al.Id].TextoParam = e.Value?.ToString(); _ = GuardarAlerta(al); }" />
+                                        break;
+                                }
+                            </div>
+
+                            @* Canales, editables al paso (sistema y propias por su endpoint correspondiente) *@
+                            <div class="auto-fila">
+                                <span class="auto-lbl">Avisar por</span>
+                                <label class="auto-tilde"><input type="checkbox" checked="@al.CanalCampanita" @onchange="e => CambiarCanal(al, 'c', (bool)e.Value!)" /> 🔔 Campanita</label>
+                                <label class="auto-tilde"><input type="checkbox" checked="@al.CanalTelegram" @onchange="e => CambiarCanal(al, 't', (bool)e.Value!)" /> 📲 Telegram</label>
+                                <label class="auto-tilde"><input type="checkbox" checked="@al.CanalWhatsApp" @onchange="e => CambiarCanal(al, 'w', (bool)e.Value!)" /> 📱 WhatsApp</label>
+                                <label class="auto-tilde"><input type="checkbox" checked="@al.CanalCorreo" @onchange="e => CambiarCanal(al, 'm', (bool)e.Value!)" /> 📧 Correo</label>
+                                <span style="font-size:0.65rem; color:#64748b;">WhatsApp/correo van a las Personas de arriba</span>
+                            </div>
+
+                            @if (al.EstaDisparada && !string.IsNullOrWhiteSpace(al.UltimoDetalle))
+                            {
+                                <div class="auto-lastrun" style="margin-top:0.4rem; color:#fbbf24;">🔴 Disparada ahora — @al.UltimoDetalle</div>
+                            }
+                        </div>
+                        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
+                            <label class="auto-switch" title="@(al.Activa ? "Apagar" : "Prender")">
+                                <input type="checkbox" checked="@al.Activa" @onchange="() => ToggleAlerta(al)" />
+                                <span class="auto-slider"></span>
+                            </label>
+                            @if (!al.EsSistema)
+                            {
+                                <button class="auto-btn" style="border-color:#7f1d1d; color:#fca5a5;" @onclick="() => BorrarAlerta(al)">🗑</button>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
         }
 
         @* ═══════════ RESPONDEDORES ═══════════ *@
@@ -272,11 +348,16 @@
     }
     .auto-switch input:checked + .auto-slider:before { transform: translateX(24px); background: #67e8f9; }
 
-    /* Isla clara para la config de alertas embebida (esa pantalla es de fondo claro) */
-    .auto-alertas-isla {
-        background: #f8fafc; border-radius: 14px; padding: 1rem 1.2rem; color: #111827;
-        border: 1px solid rgba(34, 211, 238, 0.35); margin-bottom: 0.9rem;
+    /* Inputs de las alertas editables al paso */
+    .auto-input-num {
+        width: 130px; background: #0b1220; color: #e2e8f0; border: 1px solid #33415c;
+        border-radius: 8px; padding: 4px 8px; font-size: 0.85rem;
     }
+    .auto-input-txt {
+        flex: 1; min-width: 260px; background: #0b1220; color: #e2e8f0; border: 1px solid #33415c;
+        border-radius: 8px; padding: 4px 8px; font-size: 0.8rem;
+    }
+    .auto-input-num:focus, .auto-input-txt:focus { border-color: #22d3ee; outline: none; }
 
     .auto-resp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 0.8rem; }
     .auto-card-mini { margin-bottom: 0; }
@@ -300,7 +381,85 @@
     string? probando;
     int? editPersonaId;
     string editWa = "", editEmail = "";
-    bool alertasOpen;   // desplegable de la config de alertas embebida
+
+    // ⚡ Alertas por condición (edición al paso)
+    List<ApiClient.AlertaDto>? alertas;
+    class AlertaEdit { public decimal? Umbral; public string? TextoParam; }
+    readonly Dictionary<int, AlertaEdit> alEdit = new();
+
+    static string TipoEmoji(string t) => t switch
+    {
+        "SHELL_BAJO" => "⛽", "BANCO_BAJO" => "🏦", "CHEQUE_VENCE" => "🧾", "FECHA_MES" => "📅",
+        "EMAIL_REMITENTE" => "📧", "VENTA_MELI" => "🛒", "FICHADA" => "🕐", "PUBLI_MELI" => "⚠️",
+        "ALTA_CLIENTE" => "🆕", _ => "🔔"
+    };
+    static string TipoNombre(string t) => t switch
+    {
+        "SHELL_BAJO" => "Shell Flota bajo", "BANCO_BAJO" => "Banco Galicia bajo",
+        "CHEQUE_VENCE" => "Cheque por vencer", "FECHA_MES" => "Recordatorio mensual",
+        "EMAIL_REMITENTE" => "Mail importante", "VENTA_MELI" => "Ventas nuevas de MercadoLibre",
+        "FICHADA" => "Fichadas de empleados", "PUBLI_MELI" => "Publicaciones MeLi para revisar",
+        "ALTA_CLIENTE" => "Nuevo cliente para dar de alta", _ => t
+    };
+    static decimal? ParseDec(object? v) => decimal.TryParse(v?.ToString(), out var d) ? d : null;
+
+    async Task CargarAlertas()
+    {
+        alertas = await Api.GetMisAlertasAsync();
+        alEdit.Clear();
+        foreach (var a in alertas ?? new())
+            alEdit[a.Id] = new AlertaEdit { Umbral = a.Umbral, TextoParam = a.TextoParam };
+    }
+
+    async Task GuardarAlerta(ApiClient.AlertaDto a)
+    {
+        if (a.EsSistema) return;
+        var e = alEdit[a.Id];
+        var (res, err) = await Api.ActualizarAlertaAsync(a.Id, new ApiClient.AlertaUpsertRequest(
+            a.Tipo, e.Umbral, e.TextoParam, a.Mensaje,
+            a.CanalCampanita, a.CanalWhatsApp, a.CanalCorreo, a.CanalTelegram, a.Activa, a.Roles));
+        if (res is not null) { Toast.Success("Guardado"); await CargarAlertas(); }
+        else Toast.Error(err ?? "No se pudo guardar");
+    }
+
+    async Task CambiarCanal(ApiClient.AlertaDto a, char canal, bool valor)
+    {
+        var camp = canal == 'c' ? valor : a.CanalCampanita;
+        var tg = canal == 't' ? valor : a.CanalTelegram;
+        var wa = canal == 'w' ? valor : a.CanalWhatsApp;
+        var mail = canal == 'm' ? valor : a.CanalCorreo;
+        bool ok;
+        if (a.EsSistema)
+            ok = await Api.UpdateSistemaAlertaAsync(a.Tipo, new ApiClient.SistemaAlertaRequest(a.Activa, camp, tg, wa, mail));
+        else
+        {
+            var e = alEdit[a.Id];
+            var (res, _) = await Api.ActualizarAlertaAsync(a.Id, new ApiClient.AlertaUpsertRequest(
+                a.Tipo, e.Umbral, e.TextoParam, a.Mensaje, camp, wa, mail, tg, a.Activa, a.Roles));
+            ok = res is not null;
+        }
+        if (ok) { Toast.Success("Guardado"); await CargarAlertas(); }
+        else Toast.Error("No se pudo guardar");
+    }
+
+    async Task ToggleAlerta(ApiClient.AlertaDto a)
+    {
+        bool ok;
+        if (a.EsSistema)
+            ok = await Api.UpdateSistemaAlertaAsync(a.Tipo, new ApiClient.SistemaAlertaRequest(!a.Activa, a.CanalCampanita, a.CanalTelegram, a.CanalWhatsApp, a.CanalCorreo));
+        else
+            ok = await Api.ToggleAlertaAsync(a.Id);
+        if (ok) { Toast.Success(!a.Activa ? "Prendida 🟢" : "Apagada ⚪"); await CargarAlertas(); }
+        else Toast.Error("No se pudo cambiar");
+    }
+
+    async Task BorrarAlerta(ApiClient.AlertaDto a)
+    {
+        var seguro = await JS.InvokeAsync<bool>("confirm", $"¿Borrar la alerta \"{(string.IsNullOrWhiteSpace(a.Mensaje) ? TipoNombre(a.Tipo) : a.Mensaje)}\"?");
+        if (!seguro) return;
+        if (await Api.EliminarAlertaAsync(a.Id)) { Toast.Success("Borrada"); await CargarAlertas(); }
+        else Toast.Error("No se pudo borrar");
+    }
 
     static readonly (int num, string letra)[] DiasSemana =
         { (1, "L"), (2, "M"), (3, "X"), (4, "J"), (5, "V"), (6, "S"), (7, "D") };
@@ -310,6 +469,7 @@
     async Task Cargar()
     {
         data = await Api.GetAutomatizacionesAsync();
+        try { await CargarAlertas(); } catch { /* si falla, la sección muestra "cargando" y no rompe el resto */ }
         edit.Clear();
         if (data is null) return;
         foreach (var a in data.Avisos)
