@@ -29,7 +29,29 @@
     else
     {
         @* ═══════════ PERSONAS ═══════════ *@
-        <div class="auto-seccion-titulo">👥 PERSONAS — quién puede recibir avisos</div>
+        <div class="auto-seccion-titulo">
+            👥 PERSONAS — quién puede recibir avisos
+            <a href="javascript:void(0)" style="float:right; color:#a78bfa; text-decoration:none; letter-spacing:normal;" @onclick="() => nuevaPersonaOpen = !nuevaPersonaOpen">＋ Agregar persona</a>
+        </div>
+        @if (nuevaPersonaOpen)
+        {
+            <div class="auto-persona-card" style="border-color:#34d399; margin-bottom:0.7rem; max-width:420px;">
+                <div class="auto-persona-nombre">Nueva persona</div>
+                <div class="auto-persona-edit">
+                    <label>Nombre</label>
+                    <input @bind="npNombre" placeholder="Nombre" />
+                    <label>📱 WhatsApp (con +54 9…)</label>
+                    <input @bind="npWa" placeholder="+5491122334455" />
+                    <label>📧 Correo</label>
+                    <input @bind="npEmail" placeholder="nombre@gmail.com" />
+                    <div style="display:flex; gap:6px; margin-top:8px;">
+                        <button class="auto-btn auto-btn-ok" @onclick="GuardarNuevaPersona">💾 Agregar</button>
+                        <button class="auto-btn" @onclick="() => nuevaPersonaOpen = false">Cancelar</button>
+                    </div>
+                    <div style="font-size:0.65rem; color:#8fa3c8; margin-top:6px;">El Telegram se vincula aparte, con el bot (Integraciones → Telegram).</div>
+                </div>
+            </div>
+        }
         <div class="auto-personas">
             @foreach (var p in data.Personas)
             {
@@ -395,6 +417,19 @@
     string? probando;
     int? editPersonaId;
     string editWa = "", editEmail = "";
+    // ➕ Agregar persona nueva
+    bool nuevaPersonaOpen;
+    string npNombre = "", npWa = "", npEmail = "";
+    async Task GuardarNuevaPersona()
+    {
+        if (string.IsNullOrWhiteSpace(npNombre)) { Toast.Error("Poné un nombre"); return; }
+        var ok = await Api.SaveAutoPersonaAsync(null, new ApiClient.AutoPersonaUpsert(
+            npNombre.Trim(), null,
+            string.IsNullOrWhiteSpace(npWa) ? null : npWa.Trim(),
+            string.IsNullOrWhiteSpace(npEmail) ? null : npEmail.Trim(), true));
+        if (ok) { Toast.Success("Persona agregada"); npNombre = npWa = npEmail = ""; nuevaPersonaOpen = false; await Cargar(); }
+        else Toast.Error("No se pudo agregar");
+    }
 
     // ⚡ Alertas por condición (edición al paso)
     List<ApiClient.AlertaDto>? alertas;

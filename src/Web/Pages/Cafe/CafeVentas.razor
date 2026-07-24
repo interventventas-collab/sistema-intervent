@@ -2518,6 +2518,25 @@
                             </button>
                         </div>
 
+                        @* 2026-07-24 (pedido Osmar): copia del comprobante por WhatsApp a una persona
+                           interna (Osmar/Gabriel/Germán). Como ellos escriben todos los días a la
+                           línea, la ventana de 24hs está abierta y sale sin plantillas. Se gestiona
+                           desde 🤖 Automatizaciones y Alertas → Personas. *@
+                        @if (copiaWaPersonas.Count > 0)
+                        {
+                            <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; margin-top:0.35rem;">
+                                <span style="font-size:0.68rem; color:#6b7280; text-transform:uppercase; letter-spacing:0.04em; font-weight:600;">📤 Copia WhatsApp a:</span>
+                                @foreach (var per in copiaWaPersonas)
+                                {
+                                    var on = copiaWaSeleccion.Contains(per.Id);
+                                    <label style="display:inline-flex; align-items:center; gap:0.3rem; padding:0.35rem 0.6rem; background:@(on ? "#eff6ff" : "white"); border:1px solid @(on ? "#3b82f6" : "#d1d5db"); border-radius:6px; font-size:0.78rem; cursor:pointer; user-select:none;">
+                                        <input type="checkbox" checked="@on" @onchange="e => ToggleCopiaWa(per.Id, (bool)e.Value!)" style="margin:0;" />
+                                        <span>@per.Nombre</span>
+                                    </label>
+                                }
+                            </div>
+                        }
+
                         @if (envioEmail || envioWhatsappWeb || envioWhatsappInterno)
                         {
                             <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
@@ -4404,6 +4423,11 @@
     private bool envioEmail;
     private bool envioWhatsappWeb;
     private bool envioWhatsappInterno;
+    // 2026-07-24 (pedido Osmar): copia del comprobante por WhatsApp a personas internas
+    // (Osmar/Gabriel/Germán, de la libretita de Automatizaciones). Solo las que tienen número.
+    private List<ApiClient.AutoPersonaDto> copiaWaPersonas = new();
+    private HashSet<int> copiaWaSeleccion = new();
+    private void ToggleCopiaWa(int id, bool on) { if (on) copiaWaSeleccion.Add(id); else copiaWaSeleccion.Remove(id); }
     // 2026-05-28: nuevo canal — al confirmar la venta, sube el PDF a Drive (tablero IMPRIMIR PEDIDOS DE OSMAR).
     // Default tildado porque la gran mayoria de las ventas van al armado.
     // 2026-05-30: default depende del operador actual. Solo OSMAR arranca tildado.
@@ -4992,6 +5016,9 @@
         NuevaVentaSignal.OnRequest += OnNuevaVentaSignal;
         try { deleteSettings = await Api.GetCafeDeleteSettingsAsync(); }
         catch { deleteSettings = new DeleteCafeVentaSettingsDto(); }
+        // 2026-07-24: personas internas con WhatsApp (para el chip "copia por WhatsApp al emitir")
+        try { copiaWaPersonas = (await Api.GetAutoPersonasAsync()).Where(p => !string.IsNullOrWhiteSpace(p.WhatsAppNumero)).ToList(); }
+        catch { copiaWaPersonas = new(); }
         // Si la URL es /cafe/presupuestos, pre-filtrar por PRO
         if (ModoPresupuestos) { filtroTipo = "PRO"; }
         // 2026-06-23: catalogos (clientes/productos/combos = 5-9 MB) en background — antes
@@ -5613,6 +5640,7 @@
         // Reset del panel "Enviar al cliente" — todos los checkboxes empiezan apagados
         // para que nunca mandes algo sin querer. El operador tilda lo que necesite por venta.
         envioEmail = false; envioWhatsappWeb = false; envioWhatsappInterno = false;
+        copiaWaSeleccion.Clear();
         envioEmailTo = ""; envioWhatsappPhone = "";
         // 2026-05-30: solo OSMAR arranca con "Enviar a IMPRIMIR PEDIDOS" tildado.
         envioDrive = string.Equals(Operator.Current ?? "", "OSMAR", StringComparison.OrdinalIgnoreCase);
@@ -6285,6 +6313,23 @@
                     else ToastService.Error($"🚀 WhatsApp Interno fallo: {err}");
                 }
                 catch (Exception ex) { ToastService.Error($"🚀 WhatsApp Interno error: {ex.Message}"); }
+            }));
+        }
+        // 2026-07-24: copia por WhatsApp a las personas internas tildadas (Osmar/Gabriel/Germán).
+        foreach (var per in copiaWaPersonas.Where(p => copiaWaSeleccion.Contains(p.Id)))
+        {
+            var numero = per.WhatsAppNumero!.Replace("whatsapp:", "");
+            var nombrePer = per.Nombre;
+            tasks.Add(Task.Run(async () =>
+            {
+                try
+                {
+                    var (sent, err) = await Api.SendCafeVentaWhatsappInternoAsync(ventaId, numero,
+                        caption: $"📄 Copia del comprobante {ventaNumero}");
+                    if (sent) ToastService.Success($"📤 Copia enviada a {nombrePer}");
+                    else ToastService.Error($"📤 Copia a {nombrePer} falló: {err}");
+                }
+                catch (Exception ex) { ToastService.Error($"📤 Copia a {nombrePer} error: {ex.Message}"); }
             }));
         }
         // Esperamos a que terminen pero sin bloquear demasiado (los toasts ya avisaron).

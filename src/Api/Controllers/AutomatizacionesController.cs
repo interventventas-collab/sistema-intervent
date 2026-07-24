@@ -76,6 +76,17 @@ public class AutomatizacionesController : ControllerBase
         return Ok(new { personas, avisos, respondedores });
     }
 
+    /// <summary>2026-07-24: lista liviana de personas (para el selector "copia por WhatsApp" al
+    /// emitir una venta). Solo las activas.</summary>
+    [HttpGet("personas")]
+    public async Task<IActionResult> ListarPersonas()
+    {
+        var personas = await _db.AutoPersonas.AsNoTracking().Where(p => p.Activo).OrderBy(p => p.Id)
+            .Select(p => new PersonaDto(p.Id, p.Nombre, p.TelegramChatId, p.WhatsAppNumero, p.Email, p.Activo))
+            .ToListAsync();
+        return Ok(personas);
+    }
+
     public record PersonaUpsert(string Nombre, long? TelegramChatId, string? WhatsAppNumero, string? Email, bool Activo);
 
     [HttpPost("personas")]

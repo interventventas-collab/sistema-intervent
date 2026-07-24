@@ -6469,6 +6469,9 @@ public class ApiClient
 
     public async Task<AutomatizacionesDto?> GetAutomatizacionesAsync()
         => await GetAsync<AutomatizacionesDto>("/api/automatizaciones");
+    /// <summary>2026-07-24: lista de personas (para el selector "copia por WhatsApp" al emitir venta).</summary>
+    public async Task<List<AutoPersonaDto>> GetAutoPersonasAsync()
+        => await GetAsync<List<AutoPersonaDto>>("/api/automatizaciones/personas") ?? new();
     public async Task<bool> SaveAutoPersonaAsync(int? id, AutoPersonaUpsert p)
         => (await _http.PostAsJsonAsync(id.HasValue ? $"/api/automatizaciones/personas/{id}" : "/api/automatizaciones/personas", p)).IsSuccessStatusCode;
     public async Task<bool> SaveAutoAvisoAsync(string key, AutoAvisoConfigReq cfg)
