@@ -1319,11 +1319,13 @@ public class ApiClient
     // 2026-07-10: Motor de alertas configurables ("Mis Alertas").
     public record AlertaDto(int Id, string Tipo, decimal? Umbral, string? TextoParam, string Mensaje,
         bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool CanalTelegram, bool Activa, List<string> Roles,
-        bool EstaDisparada, bool Vista, string? UltimoDetalle, DateTime? DisparadaAt, bool EsSistema = false);
+        bool EstaDisparada, bool Vista, string? UltimoDetalle, DateTime? DisparadaAt, bool EsSistema = false,
+        List<int>? Destinatarios = null);
     public record AlertaUpsertRequest(string Tipo, decimal? Umbral, string? TextoParam, string Mensaje,
-        bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool CanalTelegram, bool Activa, List<string>? Roles);
+        bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool CanalTelegram, bool Activa, List<string>? Roles,
+        List<int>? Destinatarios = null);
     // 2026-07-11: alertas del sistema (Ventas MeLi / Fichadas): prender/apagar + canal.
-    public record SistemaAlertaRequest(bool Activa, bool CanalCampanita, bool CanalTelegram, bool? CanalWhatsApp = null, bool? CanalCorreo = null);
+    public record SistemaAlertaRequest(bool Activa, bool CanalCampanita, bool CanalTelegram, bool? CanalWhatsApp = null, bool? CanalCorreo = null, List<int>? Destinatarios = null);
     public record CorreoImportanteDto(int Id, string? Remitente, string? RemitenteEmail, string? Asunto,
         string? Adelanto, DateTime? Fecha, bool TieneAdjuntos, string? Adjuntos, string? GmailLink);
     public record ConfigCorreoAlertasDto(string? Host, int Port, string? Usuario, bool TieneClave, bool Configurada);

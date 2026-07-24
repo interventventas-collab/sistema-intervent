@@ -186,7 +186,17 @@
                                 <label class="auto-tilde"><input type="checkbox" checked="@al.CanalTelegram" @onchange="e => CambiarCanal(al, 't', (bool)e.Value!)" /> 📲 Telegram</label>
                                 <label class="auto-tilde"><input type="checkbox" checked="@al.CanalWhatsApp" @onchange="e => CambiarCanal(al, 'w', (bool)e.Value!)" /> 📱 WhatsApp</label>
                                 <label class="auto-tilde"><input type="checkbox" checked="@al.CanalCorreo" @onchange="e => CambiarCanal(al, 'm', (bool)e.Value!)" /> 📧 Correo</label>
-                                <span style="font-size:0.65rem; color:#64748b;">WhatsApp/correo van a las Personas de arriba</span>
+                            </div>
+
+                            @* ¿A quién? — personas tildadas para ESTA alerta (Telegram/WhatsApp/correo) *@
+                            <div class="auto-fila">
+                                <span class="auto-lbl">¿A quién?</span>
+                                @foreach (var per in (data?.Personas ?? new()).Where(x => x.Activo))
+                                {
+                                    var tildado = alEdit[al.Id].Destinatarios.Contains(per.Id);
+                                    <label class="auto-tilde"><input type="checkbox" checked="@tildado" @onchange="e => CambiarDestAlerta(al, per.Id, (bool)e.Value!)" /> @per.Nombre</label>
+                                }
+                                <span style="font-size:0.65rem; color:#64748b;">recibe el que tenga ese canal cargado en Personas</span>
                             </div>
 
                             @if (al.EstaDisparada && !string.IsNullOrWhiteSpace(al.UltimoDetalle))
@@ -384,7 +394,7 @@
 
     // ⚡ Alertas por condición (edición al paso)
     List<ApiClient.AlertaDto>? alertas;
-    class AlertaEdit { public decimal? Umbral; public string? TextoParam; }
+    class AlertaEdit { public decimal? Umbral; public string? TextoParam; public List<int> Destinatarios = new(); }
     readonly Dictionary<int, AlertaEdit> alEdit = new();
 
     static string TipoEmoji(string t) => t switch
@@ -408,7 +418,7 @@
         alertas = await Api.GetMisAlertasAsync();
         alEdit.Clear();
         foreach (var a in alertas ?? new())
-            alEdit[a.Id] = new AlertaEdit { Umbral = a.Umbral, TextoParam = a.TextoParam };
+            alEdit[a.Id] = new AlertaEdit { Umbral = a.Umbral, TextoParam = a.TextoParam, Destinatarios = (a.Destinatarios ?? new()).ToList() };
     }
 
     async Task GuardarAlerta(ApiClient.AlertaDto a)
@@ -417,7 +427,7 @@
         var e = alEdit[a.Id];
         var (res, err) = await Api.ActualizarAlertaAsync(a.Id, new ApiClient.AlertaUpsertRequest(
             a.Tipo, e.Umbral, e.TextoParam, a.Mensaje,
-            a.CanalCampanita, a.CanalWhatsApp, a.CanalCorreo, a.CanalTelegram, a.Activa, a.Roles));
+            a.CanalCampanita, a.CanalWhatsApp, a.CanalCorreo, a.CanalTelegram, a.Activa, a.Roles, e.Destinatarios));
         if (res is not null) { Toast.Success("Guardado"); await CargarAlertas(); }
         else Toast.Error(err ?? "No se pudo guardar");
     }
@@ -429,13 +439,33 @@
         var wa = canal == 'w' ? valor : a.CanalWhatsApp;
         var mail = canal == 'm' ? valor : a.CanalCorreo;
         bool ok;
+        var ed = alEdit[a.Id];
         if (a.EsSistema)
-            ok = await Api.UpdateSistemaAlertaAsync(a.Tipo, new ApiClient.SistemaAlertaRequest(a.Activa, camp, tg, wa, mail));
+            ok = await Api.UpdateSistemaAlertaAsync(a.Tipo, new ApiClient.SistemaAlertaRequest(a.Activa, camp, tg, wa, mail, ed.Destinatarios));
+        else
+        {
+            var (res, _) = await Api.ActualizarAlertaAsync(a.Id, new ApiClient.AlertaUpsertRequest(
+                a.Tipo, ed.Umbral, ed.TextoParam, a.Mensaje, camp, wa, mail, tg, a.Activa, a.Roles, ed.Destinatarios));
+            ok = res is not null;
+        }
+        if (ok) { Toast.Success("Guardado"); await CargarAlertas(); }
+        else Toast.Error("No se pudo guardar");
+    }
+
+    async Task CambiarDestAlerta(ApiClient.AlertaDto a, int personaId, bool on)
+    {
+        var l = alEdit[a.Id].Destinatarios;
+        if (on && !l.Contains(personaId)) l.Add(personaId);
+        if (!on) l.Remove(personaId);
+        bool ok;
+        if (a.EsSistema)
+            ok = await Api.UpdateSistemaAlertaAsync(a.Tipo, new ApiClient.SistemaAlertaRequest(a.Activa, a.CanalCampanita, a.CanalTelegram, a.CanalWhatsApp, a.CanalCorreo, l));
         else
         {
             var e = alEdit[a.Id];
             var (res, _) = await Api.ActualizarAlertaAsync(a.Id, new ApiClient.AlertaUpsertRequest(
-                a.Tipo, e.Umbral, e.TextoParam, a.Mensaje, camp, wa, mail, tg, a.Activa, a.Roles));
+                a.Tipo, e.Umbral, e.TextoParam, a.Mensaje,
+                a.CanalCampanita, a.CanalWhatsApp, a.CanalCorreo, a.CanalTelegram, a.Activa, a.Roles, l));
             ok = res is not null;
         }
         if (ok) { Toast.Success("Guardado"); await CargarAlertas(); }

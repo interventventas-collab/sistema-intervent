@@ -58,20 +58,38 @@ public class MisAlertasController : ControllerBase
 
     public record AlertaDto(int Id, string Tipo, decimal? Umbral, string? TextoParam, string Mensaje,
         bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool CanalTelegram, bool Activa, List<string> Roles,
-        bool EstaDisparada, bool Vista, string? UltimoDetalle, DateTime? DisparadaAt, bool EsSistema);
+        bool EstaDisparada, bool Vista, string? UltimoDetalle, DateTime? DisparadaAt, bool EsSistema,
+        List<int> Destinatarios);
 
     public record AlertaUpsertRequest(string Tipo, decimal? Umbral, string? TextoParam, string Mensaje,
-        bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool CanalTelegram, bool Activa, List<string>? Roles);
+        bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool CanalTelegram, bool Activa, List<string>? Roles,
+        List<int>? Destinatarios = null);
 
     private static List<string> ParseRoles(string? alcance)
         => string.IsNullOrWhiteSpace(alcance)
             ? new List<string>()
             : alcance.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 
-    private static AlertaDto Map(MisAlerta a) => new(
+    private static AlertaDto Map(MisAlerta a, List<int>? destinatarios = null) => new(
         a.Id, a.Tipo, a.Umbral, a.TextoParam, a.Mensaje,
         a.CanalCampanita, a.CanalWhatsApp, a.CanalCorreo, a.CanalTelegram, a.Activa, ParseRoles(a.Alcance),
-        a.EstaDisparada, a.Vista, a.UltimoDetalle, a.DisparadaAt, TiposSistema.Contains(a.Tipo));
+        a.EstaDisparada, a.Vista, a.UltimoDetalle, a.DisparadaAt, TiposSistema.Contains(a.Tipo),
+        destinatarios ?? new List<int>());
+
+    /// <summary>Destinatarios (personas de la libretita) de una alerta. Clave "alerta:{id}" en Auto_Destinatarios.</summary>
+    private async Task<List<int>> DestinatariosDeAsync(int alertaId) =>
+        await _db.AutoDestinatarios.Where(d => d.AutoKey == $"alerta:{alertaId}")
+            .Select(d => d.PersonaId).ToListAsync();
+
+    private async Task GuardarDestinatariosAsync(int alertaId, List<int>? personas)
+    {
+        if (personas is null) return; // null = no tocar (compat con llamadas viejas)
+        var key = $"alerta:{alertaId}";
+        _db.AutoDestinatarios.RemoveRange(_db.AutoDestinatarios.Where(d => d.AutoKey == key));
+        foreach (var pid in personas.Distinct())
+            _db.AutoDestinatarios.Add(new AutoDestinatario { AutoKey = key, PersonaId = pid });
+        await _db.SaveChangesAsync();
+    }
 
     /// <summary>Valida y normaliza los roles del selector. Devuelve el CSV a guardar o null si hay error.</summary>
     private static (string? alcance, string? error) NormalizarRoles(List<string>? roles)
@@ -115,7 +133,9 @@ public class MisAlertasController : ControllerBase
             .ToListAsync();
         // Las alertas del sistema (Ventas MeLi / Fichadas) van SIEMPRE arriba; el resto por fecha.
         var ordenadas = rows.OrderBy(a => TiposSistema.Contains(a.Tipo) ? 0 : 1).ToList();
-        return Ok(ordenadas.Select(Map));
+        var dest = await _db.AutoDestinatarios.Where(d => d.AutoKey.StartsWith("alerta:")).ToListAsync();
+        return Ok(ordenadas.Select(a => Map(a,
+            dest.Where(d => d.AutoKey == $"alerta:{a.Id}").Select(d => d.PersonaId).ToList())));
     }
 
     [HttpPost]
@@ -146,7 +166,8 @@ public class MisAlertasController : ControllerBase
         };
         _db.MisAlertas.Add(a);
         await _db.SaveChangesAsync();
-        return Ok(Map(a));
+        await GuardarDestinatariosAsync(a.Id, r.Destinatarios);
+        return Ok(Map(a, await DestinatariosDeAsync(a.Id)));
     }
 
     [HttpPut("{id:int}")]
@@ -176,7 +197,8 @@ public class MisAlertasController : ControllerBase
         if (redefinio) { a.EstaDisparada = false; a.Vista = false; a.UltimoDetalle = null; }
         a.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return Ok(Map(a));
+        await GuardarDestinatariosAsync(a.Id, r.Destinatarios);
+        return Ok(Map(a, await DestinatariosDeAsync(a.Id)));
     }
 
     [HttpDelete("{id:int}")]
@@ -207,7 +229,7 @@ public class MisAlertasController : ControllerBase
     }
 
     // ---------- Alertas del sistema (Ventas MeLi / Fichadas): prender/apagar + elegir canal ----------
-    public record SistemaAlertaRequest(bool Activa, bool CanalCampanita, bool CanalTelegram, bool? CanalWhatsApp = null, bool? CanalCorreo = null);
+    public record SistemaAlertaRequest(bool Activa, bool CanalCampanita, bool CanalTelegram, bool? CanalWhatsApp = null, bool? CanalCorreo = null, List<int>? Destinatarios = null);
 
     /// <summary>Prende/apaga una alerta del sistema y elige por dónde avisa (campanita y/o Telegram).
     /// Son compartidas (no por rol): cualquiera con acceso a Mis Alertas las configura.</summary>
@@ -228,7 +250,8 @@ public class MisAlertasController : ControllerBase
         if (!a.Activa || !a.CanalCampanita) { a.EstaDisparada = false; a.Vista = false; a.UltimoDetalle = null; }
         a.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return Ok(Map(a));
+        await GuardarDestinatariosAsync(a.Id, r.Destinatarios);
+        return Ok(Map(a, await DestinatariosDeAsync(a.Id)));
     }
 
     // ---------- Campanita de la topbar ----------

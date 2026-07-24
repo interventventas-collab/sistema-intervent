@@ -176,22 +176,42 @@ public class MisAlertasBackgroundService : BackgroundService
                 catch (Exception ex) { _logger.LogWarning(ex, "[Alertas] no pude resolver el bot de Telegram"); }
             }
 
-            // 2026-07-23 (pedido Osmar): las alertas también salen por 📱 WhatsApp y 📧 correo.
-            // Destinatarios = las personas de la libretita del Centro de Automatizaciones
-            // (Auto_Personas activas que tengan esa dirección cargada).
-            List<AutoPersona>? personas = null;
-            if (eventos.Any(e => e.alerta.CanalWhatsApp || e.alerta.CanalCorreo))
-                personas = await db.AutoPersonas.AsNoTracking().Where(x => x.Activo).ToListAsync();
+            // 2026-07-23 (pedido Osmar): las alertas también salen por 📱 WhatsApp y 📧 correo,
+            // y cada alerta tiene SUS destinatarios (personas de la libretita, tildadas en la
+            // pantalla — clave "alerta:{id}" en Auto_Destinatarios). Telegram: si la alerta tiene
+            // personas tildadas va SOLO a ellas; si no tiene ninguna, cae al comportamiento viejo
+            // (todos los del tilde 'Alertas' de Integraciones → Telegram) para no romper nada.
+            List<AutoPersona> personas = await db.AutoPersonas.AsNoTracking().Where(x => x.Activo).ToListAsync();
+            var destinosAlertas = await db.AutoDestinatarios.AsNoTracking()
+                .Where(d => d.AutoKey.StartsWith("alerta:")).ToListAsync();
 
             foreach (var (hist, tgTexto, alerta) in eventos)
             {
                 db.Set<MisAlertaHistorial>().Add(hist);
+
+                var idsDest = destinosAlertas.Where(d => d.AutoKey == $"alerta:{alerta.Id}")
+                    .Select(d => d.PersonaId).ToHashSet();
+                var pers = personas.Where(p => idsDest.Contains(p.Id)).ToList();
+
                 if (tgTexto is not null && tg is not null)
                 {
                     try
                     {
-                        var (ok, _) = await tg.SendMessageAsync(tgTexto, categoria: "ALERTAS");
-                        hist.EnviadoTelegram = ok;
+                        if (idsDest.Count > 0)
+                        {
+                            var okAlguno = false;
+                            foreach (var per in pers.Where(x => x.TelegramChatId is > 0))
+                            {
+                                var (ok, _) = await tg.SendMessageAsync(tgTexto, chatId: per.TelegramChatId);
+                                okAlguno |= ok;
+                            }
+                            hist.EnviadoTelegram = okAlguno;
+                        }
+                        else
+                        {
+                            var (ok, _) = await tg.SendMessageAsync(tgTexto, categoria: "ALERTAS");
+                            hist.EnviadoTelegram = ok;
+                        }
                     }
                     catch (Exception ex) { _logger.LogWarning(ex, "[Alertas] no pude avisar por Telegram"); }
                 }
@@ -199,10 +219,10 @@ public class MisAlertasBackgroundService : BackgroundService
                 var texto = string.IsNullOrWhiteSpace(hist.Detalle)
                     ? $"🔔 {hist.Mensaje}" : $"🔔 {hist.Mensaje}\n{hist.Detalle}";
 
-                if (alerta.CanalWhatsApp && personas is not null)
+                if (alerta.CanalWhatsApp)
                 {
                     var wa = scope.ServiceProvider.GetRequiredService<WhatsAppOutboundService>();
-                    foreach (var per in personas.Where(x => !string.IsNullOrWhiteSpace(x.WhatsAppNumero)))
+                    foreach (var per in pers.Where(x => !string.IsNullOrWhiteSpace(x.WhatsAppNumero)))
                     {
                         try
                         {
@@ -219,10 +239,10 @@ public class MisAlertasBackgroundService : BackgroundService
                     }
                 }
 
-                if (alerta.CanalCorreo && personas is not null)
+                if (alerta.CanalCorreo)
                 {
                     var sender = scope.ServiceProvider.GetRequiredService<AutoAvisoSender>();
-                    foreach (var per in personas.Where(x => !string.IsNullOrWhiteSpace(x.Email)))
+                    foreach (var per in pers.Where(x => !string.IsNullOrWhiteSpace(x.Email)))
                     {
                         try { await sender.EnviarEmailAsync(per.Email!, $"🔔 {hist.Mensaje}", texto, CancellationToken.None); }
                         catch (Exception ex) { _logger.LogWarning(ex, "[Alertas] correo a {P} falló", per.Nombre); }
