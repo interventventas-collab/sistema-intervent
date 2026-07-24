@@ -21,6 +21,10 @@
         <div class="wa-side-header">
             <div style="font-weight:600; font-size:1.05rem;">💬 Conversaciones</div>
             <div style="font-size:0.75rem; color:#6b7280; margin-top:0.2rem;">@conversacionesFiltradas.Count de @conversaciones.Count chats</div>
+            @* 2026-07-24: buscador de conversaciones (por nombre, número o cliente) *@
+            <input class="form-control form-control-sm" style="margin-top:0.4rem; font-size:0.85rem;"
+                   placeholder="🔍 Buscar contacto…"
+                   value="@filtroTexto" @oninput="e => filtroTexto = e.Value?.ToString() ?? string.Empty" />
         </div>
         @* 2026-06-20: filtros por rol *@
         <div class="wa-filtros">
@@ -1276,9 +1280,19 @@
         .Select(g => (g.Key, g.First().LineaNumero ?? g.Key))
         .OrderBy(x => x.Item2).ToList();
 
+    string filtroTexto = "";
     bool MatchFiltro(ApiClient.TwConvDto c)
     {
         if (!string.IsNullOrEmpty(filtroLinea) && c.Linea != filtroLinea) return false;
+        // 2026-07-24: buscador por nombre de perfil, número o cliente vinculado
+        if (!string.IsNullOrWhiteSpace(filtroTexto))
+        {
+            var q = filtroTexto.Trim();
+            var hit = (c.NombrePerfil ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)
+                   || (c.Numero ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)
+                   || (c.ClienteNombre ?? "").Contains(q, StringComparison.OrdinalIgnoreCase);
+            if (!hit) return false;
+        }
         if (string.IsNullOrEmpty(filtroRol)) return true;
         if (filtroRol == "pedido") return EsPedido(c.UltimoMensaje);
         if (filtroRol == "sin") return string.IsNullOrEmpty(c.Rol);
