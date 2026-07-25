@@ -249,13 +249,6 @@ else
 @* ═════════ Filtros (chiquitos) + Setup colapsado ═════════ *@
 <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.5rem; padding:0.4rem 0.6rem; background:white; border:1px solid #e5e7eb; border-radius:8px;">
     <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
-        <span style="font-size:0.78rem; color:#6b7280; font-weight:600;">Entregar:</span>
-        <select class="form-input" style="max-width:140px; font-size:0.78rem; padding:0.2rem 0.4rem;" @bind="diasFiltro" @bind:after="LoadAndRender">
-            <option value="today">Hoy</option>
-            <option value="tomorrow">Mañana</option>
-            <option value="overdue">⚠ Atrasados</option>
-            <option value="all">Todos</option>
-        </select>
         <select class="form-input" style="max-width:140px; font-size:0.78rem; padding:0.2rem 0.4rem;" @bind="filtroInterno" @bind:after="LoadAndRender">
             <option value="">Estado: todos</option>
             <option value="pending">Pendiente</option>
