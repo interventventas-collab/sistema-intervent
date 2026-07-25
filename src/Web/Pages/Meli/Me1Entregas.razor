@@ -171,6 +171,11 @@
                         <span style="display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.76rem; font-weight: 600; padding: 0.2rem 0.6rem; border-radius: 999px; background: @bBg; color: @bTxt;">
                             @bLabel@(isFinal ? " · final" : "")
                         </span>
+                        <button class="btn" style="font-size:0.72rem; padding:0.2rem 0.55rem; background:transparent; border:1px solid #bfdbfe; color:#2563eb; border-radius:6px; cursor:pointer;"
+                                @onclick="() => SumarMe1AlMapa(s)" disabled="@(mapaMe1Guardando == s.Id)"
+                                title="Sumar este envío ME1 al mapa de reparto">
+                            🗺️ Al mapa
+                        </button>
                         @if (!isFinal)
                         {
                             <select class="form-input" style="padding: 0.3rem 0.4rem; font-size: 0.8rem; max-width: 190px;"
@@ -243,7 +248,93 @@
     </div>
 }
 
+@* ═══════════════ MODAL: Cargar domicilio (sumar ME1 al mapa) ═══════════════ *@
+@if (mapaMe1Pendiente is not null)
+{
+    <div class="modal-overlay" @onclick="() => mapaMe1Pendiente = null" style="z-index: 9600 !important;">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 470px; width: 92vw; padding: 1.2rem;">
+            <h3 style="margin: 0 0 0.3rem;">🗺️ Cargar domicilio</h3>
+            <p style="color:#6b7280; font-size:0.87rem; margin:0 0 0.9rem; line-height:1.45;">
+                El envío de <b>@mapaMe1Nombre</b> no tiene ubicación. Escribí la dirección
+                (o pegá un link de Google Maps) y lo sumo al mapa.
+            </p>
+            <label style="font-size:0.8rem; font-weight:600; color:#374151; display:block; margin-bottom:0.2rem;">Dirección</label>
+            <input @bind="mapaDireccionInput" placeholder="Ej: Av. Corrientes 1234, San Miguel"
+                   style="width:100%; padding:0.6rem; border:1px solid #d1d5db; border-radius:8px; font-size:0.95rem; margin-bottom:0.7rem;" />
+            <label style="font-size:0.8rem; font-weight:600; color:#374151; display:block; margin-bottom:0.2rem;">o link de Google Maps</label>
+            <input @bind="mapaLinkInput" placeholder="https://maps.app.goo.gl/..."
+                   style="width:100%; padding:0.6rem; border:1px solid #d1d5db; border-radius:8px; font-size:0.95rem;" />
+            @if (!string.IsNullOrEmpty(mapaError))
+            {
+                <div style="color:#b91c1c; font-size:0.83rem; margin-top:0.55rem;">@mapaError</div>
+            }
+            <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:1.1rem;">
+                <button class="btn btn-secondary" @onclick="() => mapaMe1Pendiente = null" disabled="@mapaGuardandoModal">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmarDomicilioMapaMe1" disabled="@mapaGuardandoModal">
+                    @(mapaGuardandoModal ? "Guardando..." : "Sumar al mapa")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
+    // ═══ Sumar ME1 al mapa de reparto ═══
+    private int? mapaMe1Guardando;
+    private MeliMe1ShipmentDto? mapaMe1Pendiente;
+    private string mapaMe1Nombre = "";
+    private string mapaDireccionInput = "";
+    private string mapaLinkInput = "";
+    private string? mapaError;
+    private bool mapaGuardandoModal;
+
+    private async Task SumarMe1AlMapa(MeliMe1ShipmentDto s)
+    {
+        if (mapaMe1Guardando is not null) return;
+        mapaMe1Guardando = s.Id;
+        try
+        {
+            var res = await Api.AgregarShipmentAlMapaAsync(s.Id);
+            if (res is null) { ToastService.Error("No se pudo sumar al mapa."); return; }
+            if (res.Ok) { ToastService.Success(res.Mensaje ?? "Agregado al mapa ✓"); return; }
+            if (res.Motivo == "sin_domicilio")
+            {
+                mapaMe1Pendiente = s;
+                mapaMe1Nombre = s.ReceiverName ?? s.BuyerNickname ?? "El cliente";
+                mapaDireccionInput = res.DireccionSugerida ?? (string.IsNullOrWhiteSpace(s.AddressLine) ? "" : $"{s.AddressLine}{(string.IsNullOrWhiteSpace(s.City) ? "" : ", " + s.City)}");
+                mapaLinkInput = "";
+                mapaError = null;
+                return;
+            }
+            ToastService.Warning(res.Mensaje ?? "No se pudo sumar al mapa.");
+        }
+        finally { mapaMe1Guardando = null; }
+    }
+
+    private async Task ConfirmarDomicilioMapaMe1()
+    {
+        if (mapaMe1Pendiente is null) return;
+        if (string.IsNullOrWhiteSpace(mapaDireccionInput) && string.IsNullOrWhiteSpace(mapaLinkInput))
+        { mapaError = "Escribí la dirección o pegá un link de Google Maps."; return; }
+
+        mapaGuardandoModal = true;
+        mapaError = null;
+        try
+        {
+            var res = await Api.AgregarShipmentAlMapaAsync(mapaMe1Pendiente.Id, mapaDireccionInput, mapaLinkInput);
+            if (res is not null && res.Ok)
+            {
+                ToastService.Success(res.Mensaje ?? "Agregado al mapa ✓");
+                mapaMe1Pendiente = null;
+            }
+            else
+            {
+                mapaError = res?.Mensaje ?? "No pude encontrar esa dirección. Probá de nuevo.";
+            }
+        }
+        finally { mapaGuardandoModal = false; }
+    }
+
     // 2026-07-08: la pantalla se trae TODAS las ME1 una vez (allShipments) y filtra en el navegador
     // (estado + buscador). La lista es chica, asi que es instantaneo y no recarga.
     private List<MeliMe1ShipmentDto> allShipments = new();

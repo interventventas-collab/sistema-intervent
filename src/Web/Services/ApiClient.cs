@@ -4880,6 +4880,10 @@ public class ApiClient
     public async Task<SumarAlMapaResult?> SumarReservaAlMapaAsync(int reservaId, string? direccion = null, string? link = null)
         => await PostAsync<SumarAlMapaResult>($"/api/alquileres/reservas/{reservaId}/sumar-al-mapa", new { direccion, link });
 
+    // Suma un envío ME1/Flex de MercadoLibre al mapa (botón "Al mapa" en la pantalla de ME1).
+    public async Task<SumarAlMapaResult?> AgregarShipmentAlMapaAsync(int shipmentId, string? direccion = null, string? link = null)
+        => await PostAsync<SumarAlMapaResult>("/api/mapeo/stops/from-shipment", new { shipmentId, direccion, link });
+
     // Limpia las paradas de días anteriores al abrir el mapa (lo de hoy se mantiene).
     public async Task ClearStaleMapeoStopsAsync()
     {

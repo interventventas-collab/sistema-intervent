@@ -16,8 +16,9 @@ public class MapeoStopsController : ControllerBase
     private readonly GoogleRoutesService _routes;
     private readonly VentaMapeoService _ventaMapeo;
     private readonly AlqMapeoService _alqMapeo;
-    public MapeoStopsController(AppDbContext db, GoogleRoutesService routes, VentaMapeoService ventaMapeo, AlqMapeoService alqMapeo)
-    { _db = db; _routes = routes; _ventaMapeo = ventaMapeo; _alqMapeo = alqMapeo; }
+    private readonly GoogleMapsLinkResolverService _mapsResolver;
+    public MapeoStopsController(AppDbContext db, GoogleRoutesService routes, VentaMapeoService ventaMapeo, AlqMapeoService alqMapeo, GoogleMapsLinkResolverService mapsResolver)
+    { _db = db; _routes = routes; _ventaMapeo = ventaMapeo; _alqMapeo = alqMapeo; _mapsResolver = mapsResolver; }
 
     public record StopDto(int Id, string Origin, string? OriginRefId, string? Alias, string Direccion,
         decimal Latitude, decimal Longitude, string? ContactName, string? Telefono, string? Notas,
@@ -594,6 +595,79 @@ public class MapeoStopsController : ControllerBase
         var m = System.Text.RegularExpressions.Regex.Match(code, @"/alquiler/([A-Za-z0-9_\-]+)",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         return m.Success ? m.Groups[1].Value : null;
+    }
+
+    public record FromShipmentRequest(int ShipmentId, string? Direccion, string? Link);
+
+    /// <summary>
+    /// Suma un envío de MercadoLibre (ME1 o Flex) al mapa desde su pantalla (botón "Al mapa").
+    /// Usa las coords del envío; si no tiene, geocodifica la dirección. Si tampoco se puede, devuelve
+    /// sin_domicilio para que el front pida la dirección. Idempotente por OriginRefId=MeliShipmentId.
+    /// </summary>
+    [HttpPost("from-shipment")]
+    public async Task<IActionResult> FromShipment([FromBody] FromShipmentRequest req)
+    {
+        var sh = await _db.MeliShipments.FirstOrDefaultAsync(x => x.Id == req.ShipmentId);
+        if (sh is null) return NotFound(new { ok = false, mensaje = "Envío no encontrado." });
+
+        var nombre = string.IsNullOrWhiteSpace(sh.ReceiverName) ? "Cliente" : sh.ReceiverName!;
+        var direccion = !string.IsNullOrWhiteSpace(sh.AddressLine) ? sh.AddressLine : sh.City;
+        var localidad = sh.City;
+        var telefono = sh.ReceiverPhone;
+        var origin = sh.Mode == "me1" ? "me1" : (sh.LogisticType == "self_service" ? "flex" : "me1");
+
+        decimal? lat = sh.Latitude, lng = sh.Longitude;
+
+        if (req is not null && (!string.IsNullOrWhiteSpace(req.Link) || !string.IsNullOrWhiteSpace(req.Direccion)))
+        {
+            lat = null; lng = null;
+            if (!string.IsNullOrWhiteSpace(req.Link))
+            { var r = await _mapsResolver.TryResolverCoordenadasAsync(req.Link); if (r.HasValue) { lat = r.Value.lat; lng = r.Value.lng; } }
+            if (lat is null && !string.IsNullOrWhiteSpace(req.Direccion))
+            { var q = req.Direccion + (string.IsNullOrWhiteSpace(localidad) ? "" : ", " + localidad) + ", Argentina";
+              var r = await _mapsResolver.TryGeocodeAddressAsync(q); if (r.HasValue) { lat = r.Value.lat; lng = r.Value.lng; } }
+            if (lat is null)
+                return Ok(new { ok = false, motivo = "no_resuelto", mensaje = "No pude encontrar esa dirección. Probá con calle + número + localidad, o pegá un link de Google Maps." });
+            if (!string.IsNullOrWhiteSpace(req.Direccion)) direccion = req.Direccion.Trim();
+        }
+        else if (lat is null || lng is null)
+        {
+            // ME1 sin coords: geocodificar la dirección del envío.
+            if (!string.IsNullOrWhiteSpace(direccion))
+            { var q = direccion + (string.IsNullOrWhiteSpace(localidad) ? "" : ", " + localidad) + ", Argentina";
+              var r = await _mapsResolver.TryGeocodeAddressAsync(q); if (r.HasValue) { lat = r.Value.lat; lng = r.Value.lng; } }
+            if (lat is null)
+                return Ok(new { ok = false, motivo = "sin_domicilio", mensaje = "Este envío no tiene ubicación. Cargá la dirección.",
+                    nombre, direccionSugerida = direccion, localidad });
+        }
+
+        var refId = sh.MeliShipmentId.ToString();
+        var existente = await _db.MapeoStops.FirstOrDefaultAsync(s => (s.Origin == "me1" || s.Origin == "flex") && s.OriginRefId == refId);
+        if (existente is not null)
+        {
+            existente.Latitude = lat!.Value;
+            existente.Longitude = lng!.Value;
+            existente.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+            return Ok(new { ok = true, yaEstaba = true, mensaje = "Ya estaba en el mapa (actualicé la ubicación).", nombre, localidad });
+        }
+
+        _db.MapeoStops.Add(new MapeoStop
+        {
+            Origin = origin,
+            OriginRefId = refId,
+            Alias = nombre,
+            Direccion = string.IsNullOrWhiteSpace(direccion) ? nombre : direccion!,
+            Localidad = localidad,
+            Latitude = lat!.Value,
+            Longitude = lng!.Value,
+            ContactName = nombre,
+            Telefono = telefono,
+            InternalStatus = "pending",
+            CreatedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, yaEstaba = false, mensaje = "Agregado al mapa.", nombre, localidad });
     }
 
     /// <summary>
