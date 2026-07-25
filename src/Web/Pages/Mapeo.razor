@@ -727,14 +727,24 @@ else
                 ✕ Salir de pantalla completa
             </button>
         }
-        @* Botón grande "Armar ruta óptima": ordena TODAS las paradas por el mejor recorrido según el tránsito. *@
+        @* Acciones de ruta: repartir la flota entre choferes (si hay 2+) y/o armar una ruta única. Por tránsito. *@
         @if ((stops?.Count ?? 0) > 0)
         {
-            <button class="btn" style="position:absolute; bottom:18px; left:50%; transform:translateX(-50%); z-index:450; font-size:0.92rem; font-weight:800; background:#1d4ed8; color:#fff; border:none; padding:0.6rem 1.3rem; border-radius:999px; box-shadow:0 3px 14px rgba(0,0,0,0.35); cursor:pointer;"
-                    @onclick="ArmarRutaOptima" disabled="@routeBusy"
-                    title="Ordena todas las paradas en el mejor recorrido según el tránsito actual (Google)">
-                🚦 @(routeBusy ? "Armando…" : "Armar ruta óptima")
-            </button>
+            <div style="position:absolute; bottom:18px; left:50%; transform:translateX(-50%); z-index:450; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; justify-content:center;">
+                @if ((drivers?.Count(d => d.IsActive) ?? 0) >= 2)
+                {
+                    <button class="btn" style="font-size:0.92rem; font-weight:800; background:#7c3aed; color:#fff; border:none; padding:0.6rem 1.3rem; border-radius:999px; box-shadow:0 3px 14px rgba(0,0,0,0.35); cursor:pointer;"
+                            @onclick="RepartirYOptimizar" disabled="@routeBusy"
+                            title="Reparte todas las paradas entre tus choferes y le arma a cada uno la mejor ruta (por tránsito)">
+                        🧠 @(routeBusy ? "Trabajando…" : "Repartir y optimizar")
+                    </button>
+                }
+                <button class="btn" style="font-size:0.9rem; font-weight:800; background:#1d4ed8; color:#fff; border:none; padding:0.6rem 1.2rem; border-radius:999px; box-shadow:0 3px 14px rgba(0,0,0,0.35); cursor:pointer;"
+                        @onclick="ArmarRutaOptima" disabled="@routeBusy"
+                        title="Ordena TODAS las paradas en una sola ruta óptima (según el tránsito)">
+                    🚦 @(routeBusy ? "…" : "Ruta única")
+                </button>
+            </div>
         }
         @{
             var vehiclesActivos = stops?.Where(s => s.AssignedVehicleSlot.HasValue)
@@ -2118,6 +2128,27 @@ else
         StateHasChanged();
         await Task.Delay(60);                 // dejar que el layout cambie de tamaño
         try { await JS.InvokeVoidAsync("mapeoFlex.resize"); } catch { }
+    }
+
+    // "Repartir y optimizar": reparte TODAS las paradas entre los choferes activos (por zona) y le
+    // arma a cada uno la mejor ruta según el tránsito. Es la Fase 2 "versión gratis" (cluster + ruta).
+    private async Task RepartirYOptimizar()
+    {
+        if (routeBusy) return;
+        var activos = drivers?.Count(d => d.IsActive) ?? 0;
+        if (activos == 0) { ToastService.Error("Primero configurá al menos un repartidor activo."); return; }
+        routeBusy = true;
+        try
+        {
+            await Api.AutoAssignStopsAsync(reassignAll: true); // reparte TODAS las paradas entre los choferes
+            await Api.OptimizeStopsOrderAsync();               // optimiza la ruta de cada chofer (por tránsito)
+            await LoadStops();
+            await LoadDrivers();
+            await RenderMap();
+            ToastService.Success("🧠 Repartido entre los choferes y optimizado por el tránsito actual");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo repartir/optimizar: " + ex.Message); }
+        finally { routeBusy = false; StateHasChanged(); }
     }
 
     // "Armar ruta óptima": ordena TODAS las paradas cargadas en el mejor recorrido según el tránsito actual.
