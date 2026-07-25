@@ -58,7 +58,7 @@
 
 @{
     // Estado de cada paso (auto-deteccion)
-    var step1Done = (shipments?.Count ?? 0) > 0; // Hay Flex traidos
+    var step1Done = true; // "Traer Flex" ya no existe: el flujo es escanear/agregar → asignar → optimizar
     var step2Done = (stops?.Count ?? 0) > 0; // Hay paradas en la lista
     var step3Done = (stops?.Any(s => s.AssignedVehicleSlot.HasValue) ?? false); // Hay paradas asignadas a vehiculos
     var step4Done = (stops?.Any(s => s.AssignedDriverId.HasValue) ?? false); // Hay choferes asignados
@@ -192,19 +192,11 @@ else
         </button>
     </div>
     <div class="stepper" style="padding:0.7rem;">
-        <div class="stepper-chip-big @(step1Done ? "completado" : (currentStep == 1 ? "actual" : ""))"
-             title="Traer envíos Flex desde MercadoLibre" @onclick="SyncFromMeli">
-            <span class="stepper-chip-num">@(step1Done ? "✓" : "1")</span>
-            📥 Traer Flex
-            @if (step1Done) { <span style="font-size:0.7rem; opacity:0.85; margin-left:0.25rem;">(@(shipments?.Count ?? 0))</span> }
-        </div>
-        <span class="stepper-arrow">›</span>
-
         <div style="display:flex; flex-direction:column; align-items:center; gap:0.15rem;">
             <div class="stepper-chip-big @(step2Done ? "completado" : (currentStep == 2 ? "actual" : ""))"
-                 title="Sumar Flex de MercadoLibre" @onclick="OpenImportFlexModal">
-                <span class="stepper-chip-num">@(step2Done ? "✓" : "2")</span>
-                🛣 Paradas
+                 title="Escaneá o agregá paradas" @onclick="OpenAddStopModal">
+                <span class="stepper-chip-num">@(step2Done ? "✓" : "1")</span>
+                📍 Paradas
                 @if (step2Done) { <span style="font-size:0.7rem; opacity:0.85; margin-left:0.25rem;">(@(stops?.Count ?? 0))</span> }
             </div>
             <button class="btn" style="font-size:0.7rem; padding:0.1rem 0.4rem; background:transparent; color:#1d4ed8; border:none; text-decoration:underline; cursor:pointer;"
@@ -275,13 +267,6 @@ else
         <label style="display:flex; align-items:center; gap:0.25rem; font-size:0.78rem; color:#374151;">
             <input type="checkbox" @bind="excluirEntregados" @bind:after="LoadAndRender" />
             Ocultar entregados
-        </label>
-        @* Doble-check: por defecto el mapa arranca limpio (solo lo que cargás vos). Tildando esto,
-           trae los envíos Flex de MercadoLibre al mapa (la vieja "traída automática"). *@
-        <label style="display:flex; align-items:center; gap:0.25rem; font-size:0.78rem; color:@(mostrarFlexAuto ? "#1d4ed8" : "#374151"); font-weight:@(mostrarFlexAuto ? "700" : "400"); background:@(mostrarFlexAuto ? "#eff6ff" : "transparent"); border:1px solid @(mostrarFlexAuto ? "#bfdbfe" : "transparent"); padding:0.1rem 0.4rem; border-radius:6px;"
-               title="Por defecto el mapa arranca limpio. Tildá esto para traer los envíos Flex de MercadoLibre al mapa.">
-            <input type="checkbox" @bind="mostrarFlexAuto" @bind:after="LoadAndRender" />
-            📥 Traer Flex de MercadoLibre
         </label>
         <button class="btn" style="font-size:0.75rem; padding:0.2rem 0.5rem; background:transparent; border:1px solid #d1d5db; color:#374151;"
                 @onclick="LoadAndRender" disabled="@isLoading" title="Refrescar lista local">
@@ -442,24 +427,13 @@ else
                     <div style="font-size:2.5rem; margin-bottom:0.5rem;">🗺️</div>
                     <div style="font-size:0.95rem; font-weight:600; margin-bottom:0.3rem;">Empezá el día</div>
                     <div style="font-size:0.8rem; color:#6b7280; margin-bottom:1rem;">
-                        Traé los envíos de MercadoLibre o sumá paradas a mano.
+                        Escaneá los comprobantes o agregá paradas a mano. Después elegís el repartidor de cada una y optimizás la ruta.
                     </div>
                     <div style="display:flex; flex-direction:column; gap:0.5rem;">
-                        @{
-                            // El texto del botón cambia según el filtro de fecha que tenga arriba el usuario,
-                            // así sabe exactamente qué día va a traer sin tener que adivinar.
-                            var labelTraer = diasFiltro switch
-                            {
-                                "today" => "📦 Traer mis Flex de hoy",
-                                "tomorrow" => "📦 Traer mis Flex de mañana",
-                                "overdue" => "📦 Traer Flex atrasados",
-                                _ => "📦 Traer mis Flex"
-                            };
-                        }
-                        <button class="btn btn-primary" style="width:100%; padding:0.7rem; font-size:0.9rem; font-weight:700;"
-                                @onclick="SyncFromMeli" disabled="@isSyncing">
-                            @(isSyncing ? "⏳ Sincronizando..." : labelTraer)
-                        </button>
+                        <NavLink class="btn btn-primary" style="width:100%; padding:0.7rem; font-size:0.9rem; font-weight:700; text-align:center; text-decoration:none;"
+                                 href="mapeo/escanear">
+                            📷 Escanear
+                        </NavLink>
                         <button class="btn" style="width:100%; padding:0.7rem; font-size:0.9rem; font-weight:700; background:#fef3c7; border:1px solid #fcd34d; color:#92400e;"
                                 @onclick="OpenAddStopModal">
                             ✏ Agregar parada manual
@@ -489,11 +463,6 @@ else
                 <div style="padding:0.4rem 0.6rem; background:#dbeafe; border-bottom:1px solid #93c5fd; font-size:0.72rem; font-weight:700; color:#1e40af; display:flex; justify-content:space-between; align-items:center; gap:0.4rem; flex-wrap:wrap; position:sticky; top:0; z-index:2;">
                     <span style="display:flex; align-items:center; gap:0.4rem;">
                         <span style="text-transform:uppercase;">📋 @listaUnificada.Count destinos</span>
-                        <button @onclick="SyncFromMeli" disabled="@isSyncing"
-                                title="Traer ahora las novedades desde MercadoLibre"
-                                style="background:@(isSyncing ? "#9ca3af" : "#2563eb"); color:white; border:none; padding:0.15rem 0.5rem; border-radius:4px; font-size:0.7rem; cursor:@(isSyncing ? "wait" : "pointer"); font-weight:600;">
-                            @(isSyncing ? "⏳ Sincronizando..." : "🔄 Sincronizar ahora")
-                        </button>
                     </span>
                     @if (rutaSeleccion.Count > 0)
                     {
