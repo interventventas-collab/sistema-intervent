@@ -321,6 +321,11 @@
                                 Guardar también en la ficha del cliente <span style="color:#9ca3af;">(para las próximas entregas)</span>
                             </label>
                         }
+                        @* 2026-07-25: mandar la reserva al mapa de reparto al guardarla. *@
+                        <label style="display:flex; align-items:center; gap:0.4rem; margin-top:0.4rem; font-size:0.82rem; color:#166534; cursor:pointer; font-weight:600;">
+                            <input type="checkbox" @bind="formSumarAlMapaReserva" />
+                            🗺️ Sumar al mapa de reparto al guardar
+                        </label>
                     </div>
                 </div>
 
@@ -1253,6 +1258,7 @@
     private string formDireccionEvento = "";
     private string formMapeoLink = "";
     private bool formGuardarMapeoEnCliente;
+    private bool formSumarAlMapaReserva; // tilde "sumar al mapa de reparto al guardar"
     // 2026-07-06: factura en un solo renglón (resumen de equipos)
     private bool formFacturaResumida;
     private string formResumenDescripcion = "";
@@ -1672,7 +1678,7 @@
         formFechaRetiro = null;
         formHoraInicio = ""; formHoraFin = "";
         formDireccionEvento = "";
-        formMapeoLink = ""; formGuardarMapeoEnCliente = false;
+        formMapeoLink = ""; formGuardarMapeoEnCliente = false; formSumarAlMapaReserva = false;
         formDescuento = 0m; formSena = 0m;
         formUsarPrecios = false; formTotalManual = 0m;
         formEstado = "reservado";
@@ -1832,6 +1838,8 @@
                 });
                 if (created is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success($"Reserva {created.Numero} creada");
+                // 2026-07-25: si se tildó "sumar al mapa", mandamos la reserva al mapa de reparto.
+                if (formSumarAlMapaReserva) await SumarReservaAlMapa(created);
                 // Descarga automática del comprobante al crear (pedido 2026-06-29)
                 await DescargarPdfReserva(created.Id, created.Numero);
             }

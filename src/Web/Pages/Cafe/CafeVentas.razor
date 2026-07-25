@@ -1395,6 +1395,11 @@
                                             Guardar también en la ficha del cliente <span style="color:#9ca3af;">(para las próximas ventas)</span>
                                         </label>
                                     }
+                                    @* 2026-07-25: mandar la venta al mapa de reparto en el momento de emitirla. *@
+                                    <label style="display:flex; align-items:center; gap:0.35rem; margin-top:0.3rem; font-size:0.72rem; color:#166534; cursor:pointer; font-weight:600;">
+                                        <input type="checkbox" @bind="formSumarAlMapa" />
+                                        🗺️ Sumar al mapa de reparto al emitir
+                                    </label>
                                 </div>
                             }
                             else
@@ -4425,6 +4430,7 @@
     // 2026-07-02: link de Google Maps del domicilio de entrega (override por venta) + guardar en cliente
     private string formMapeoLink = "";
     private bool formGuardarMapeoEnCliente;
+    private bool formSumarAlMapa; // tilde "sumar al mapa de reparto al emitir"
     private List<CafeCotizarItemRequest> formItems = new();
     private CafeCotizadoDto? cotizacion;
     private HashSet<string> formWeekDays = new();
@@ -5710,7 +5716,7 @@
         formConcepto = 1; formConceptoServDesde = null; formConceptoServHasta = null;
         formArcaAccountId = null;
         EnsureDefaultArcaAccount(); // multi-sociedad: preseleccionar el negocio (PALANICA HERMANOS SRL) de entrada
-        formMapeoLink = ""; formGuardarMapeoEnCliente = false;
+        formMapeoLink = ""; formGuardarMapeoEnCliente = false; formSumarAlMapa = false;
         formItems = new(); cotizacion = null;
         addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
         addMolienda = "EN GRANOS"; addEnvase = "NEGRO";
@@ -7973,6 +7979,9 @@
                 });
                 if (v is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success($"Venta {v.Numero} emitida — Total ${v.Total:N2}");
+                // 2026-07-25: si el operador tildó "sumar al mapa", mandamos la venta al mapa de reparto
+                // (reusa la misma lógica del botón del listado, incluido el modal "sin domicilio").
+                if (formSumarAlMapa) await SumarVentaAlMapa(v);
                 // Emisión exitosa → borramos el auto-borrador
                 await DiscardBorradorAsync();
 
