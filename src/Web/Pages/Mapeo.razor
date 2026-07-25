@@ -249,16 +249,8 @@ else
 @* ═════════ Filtros (chiquitos) + Setup colapsado ═════════ *@
 <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.5rem; padding:0.4rem 0.6rem; background:white; border:1px solid #e5e7eb; border-radius:8px;">
     <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
-        <select class="form-input" style="max-width:140px; font-size:0.78rem; padding:0.2rem 0.4rem;" @bind="filtroInterno" @bind:after="LoadAndRender">
-            <option value="">Estado: todos</option>
-            <option value="pending">Pendiente</option>
-            <option value="en_ruta">En ruta</option>
-            <option value="entregado">Entregado</option>
-            <option value="no_encontrado">No encontrado</option>
-            <option value="reprogramado">Reprogramado</option>
-        </select>
         <label style="display:flex; align-items:center; gap:0.25rem; font-size:0.78rem; color:#374151;">
-            <input type="checkbox" @bind="excluirEntregados" @bind:after="LoadAndRender" />
+            <input type="checkbox" @bind="excluirEntregados" @bind:after="RenderMap" />
             Ocultar entregados
         </label>
         <button class="btn" style="font-size:0.75rem; padding:0.2rem 0.5rem; background:transparent; border:1px solid #d1d5db; color:#374151;"
@@ -1684,6 +1676,11 @@ else
         return sb.ToString().Trim();
     }
 
+    // Una parada se considera "entregada" (y se oculta si el filtro está activo) por su estado interno.
+    private static bool EstaEntregado(MapeoStopDto st)
+        => string.Equals(st.InternalStatus, "entregado", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(st.InternalStatus, "cancelado", StringComparison.OrdinalIgnoreCase);
+
     private List<GrupoUnificado> BuildListaUnificada()
     {
         var dict = new Dictionary<string, GrupoUnificado>(StringComparer.Ordinal);
@@ -1695,7 +1692,7 @@ else
 
         if (stops is not null)
         {
-            foreach (var st in stops)
+            foreach (var st in stops.Where(st => !(excluirEntregados && EstaEntregado(st))))
             {
                 var nombre = NormTxt(st.Alias ?? st.ContactName ?? "");
                 var direc = NormTxt(st.Direccion);
@@ -2351,9 +2348,10 @@ else
         {
             // Filtro de vehículo: null=todos, 0=sin asignar, >0=slot
             var stopsFiltrados = stops.Where(st =>
-                vehiculoFiltro == null ||
+                !(excluirEntregados && EstaEntregado(st)) &&
+                (vehiculoFiltro == null ||
                 (vehiculoFiltro == 0 && !st.AssignedVehicleSlot.HasValue) ||
-                (vehiculoFiltro > 0 && st.AssignedVehicleSlot == vehiculoFiltro));
+                (vehiculoFiltro > 0 && st.AssignedVehicleSlot == vehiculoFiltro)));
             list.AddRange(stopsFiltrados.Select(st => {
                 // Prioridad de color: 1) vehiculo asignado, 2) driver asignado, 3) amarillo default
                 string color = st.AssignedVehicleSlot.HasValue ? VehicleColor(st.AssignedVehicleSlot.Value)
