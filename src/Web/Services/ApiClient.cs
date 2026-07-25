@@ -4871,6 +4871,11 @@ public class ApiClient
     public async Task<ScanFlexResult?> ScanFlexAsync(string code)
         => await PostAsync<ScanFlexResult>("/api/mapeo/stops/scan-flex", new { code });
 
+    // Suma una venta al mapa de reparto. Si el cliente no tiene domicilio, se puede pasar
+    // direccion/link para cargarlo en el momento (queda guardado en la ficha del cliente).
+    public async Task<SumarAlMapaResult?> SumarVentaAlMapaAsync(int ventaId, string? direccion = null, string? link = null)
+        => await PostAsync<SumarAlMapaResult>($"/api/cafe/ventas/{ventaId}/sumar-al-mapa", new { direccion, link });
+
     // Limpia las paradas de días anteriores al abrir el mapa (lo de hoy se mantiene).
     public async Task ClearStaleMapeoStopsAsync()
     {

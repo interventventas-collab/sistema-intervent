@@ -807,6 +807,9 @@
             @* 2026-06-29: bug fix doble-click — Task.Yield() entre el close y el await,
                sino el primer click se pierde porque Blazor no llega a cerrar el popup antes
                de arrancar la tarea async. *@
+            <button class="actions-popup-item" @onclick="async () => { var v = vMenu; CloseActionsMenu(); await Task.Yield(); await SumarVentaAlMapa(v); }">
+                <span class="ic" style="color:#2563eb;">🗺️</span><span>Sumar al mapa</span>
+            </button>
             <button class="actions-popup-item" @onclick="async () => { var v = vMenu; CloseActionsMenu(); await Task.Yield(); await DuplicarComprobante(v); }">
                 <span class="ic" style="color:#16a34a;">📋</span><span>Duplicar comprobante</span>
             </button>
@@ -861,6 +864,36 @@
             }
         </div>
     }
+}
+
+@* ═══════════════ MODAL CARGAR DOMICILIO (sumar al mapa) ═══════════════ *@
+@if (mapaVentaPendiente is not null)
+{
+    <div class="modal-overlay" @onclick="() => mapaVentaPendiente = null" style="z-index: 9600 !important;">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 470px; width: 92vw; padding: 1.2rem;">
+            <h3 style="margin: 0 0 0.3rem;">🗺️ Cargar domicilio</h3>
+            <p style="color:#6b7280; font-size:0.87rem; margin:0 0 0.9rem; line-height:1.45;">
+                <b>@mapaClienteNombre</b> no tiene domicilio cargado. Escribí la dirección (o pegá un link de Google Maps)
+                y lo sumo al mapa. Queda <b>guardado en la ficha del cliente</b> para la próxima.
+            </p>
+            <label style="font-size:0.8rem; font-weight:600; color:#374151; display:block; margin-bottom:0.2rem;">Dirección</label>
+            <input @bind="mapaDireccionInput" placeholder="Ej: Av. Corrientes 1234, San Miguel"
+                   style="width:100%; padding:0.6rem; border:1px solid #d1d5db; border-radius:8px; font-size:0.95rem; margin-bottom:0.7rem;" />
+            <label style="font-size:0.8rem; font-weight:600; color:#374151; display:block; margin-bottom:0.2rem;">o link de Google Maps</label>
+            <input @bind="mapaLinkInput" placeholder="https://maps.app.goo.gl/..."
+                   style="width:100%; padding:0.6rem; border:1px solid #d1d5db; border-radius:8px; font-size:0.95rem;" />
+            @if (!string.IsNullOrEmpty(mapaError))
+            {
+                <div style="color:#b91c1c; font-size:0.83rem; margin-top:0.55rem;">@mapaError</div>
+            }
+            <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:1.1rem;">
+                <button class="btn btn-secondary" @onclick="() => mapaVentaPendiente = null" disabled="@mapaGuardando">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmarDomicilioMapa" disabled="@mapaGuardando">
+                    @(mapaGuardando ? "Guardando..." : "Sumar al mapa")
+                </button>
+            </div>
+        </div>
+    </div>
 }
 
 @* ═══════════════ MODAL SELECCIÓN PEDIDO WHATSAPP ═══════════════ *@
@@ -4915,6 +4948,57 @@
         else { actionsMenuOpenForVentaId = ventaId; printMenuOpenForVentaId = null; }
     }
     private void CloseActionsMenu() => actionsMenuOpenForVentaId = null;
+
+    // ═══ Sumar venta al mapa de reparto ═══
+    private CafeVentaDto? mapaVentaPendiente;
+    private string mapaClienteNombre = "";
+    private string mapaDireccionInput = "";
+    private string mapaLinkInput = "";
+    private string? mapaError;
+    private bool mapaGuardando;
+
+    private async Task SumarVentaAlMapa(CafeVentaDto v)
+    {
+        var res = await Api.SumarVentaAlMapaAsync(v.Id);
+        if (res is null) { ToastService.Error("No se pudo sumar al mapa."); return; }
+        if (res.Ok) { ToastService.Success(res.Mensaje ?? "Agregado al mapa ✓"); return; }
+        if (res.Motivo == "sin_domicilio")
+        {
+            // El cliente no tiene ubicación: abrir modal para cargarla en el momento.
+            mapaVentaPendiente = v;
+            mapaClienteNombre = res.ClienteNombre ?? v.ClienteNombre ?? "El cliente";
+            mapaDireccionInput = res.DireccionSugerida ?? "";
+            mapaLinkInput = "";
+            mapaError = null;
+            StateHasChanged();
+            return;
+        }
+        ToastService.Warning(res.Mensaje ?? "No se pudo sumar al mapa.");
+    }
+
+    private async Task ConfirmarDomicilioMapa()
+    {
+        if (mapaVentaPendiente is null) return;
+        if (string.IsNullOrWhiteSpace(mapaDireccionInput) && string.IsNullOrWhiteSpace(mapaLinkInput))
+        { mapaError = "Escribí la dirección o pegá un link de Google Maps."; return; }
+
+        mapaGuardando = true;
+        mapaError = null;
+        try
+        {
+            var res = await Api.SumarVentaAlMapaAsync(mapaVentaPendiente.Id, mapaDireccionInput, mapaLinkInput);
+            if (res is not null && res.Ok)
+            {
+                ToastService.Success(res.Mensaje ?? "Agregado al mapa ✓");
+                mapaVentaPendiente = null;
+            }
+            else
+            {
+                mapaError = res?.Mensaje ?? "No pude encontrar esa dirección. Probá de nuevo.";
+            }
+        }
+        finally { mapaGuardando = false; }
+    }
 
     // 2026-06-22: estado del dropdown del boton 🖨+ (3 opciones de impresion).
     // Mutuamente excluyente con el menu "+": al abrir uno se cierra el otro.

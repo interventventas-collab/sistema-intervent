@@ -1,5 +1,19 @@
 namespace Web.Models;
 
+// Resultado de sumar una venta al mapa (botón en el listado de ventas).
+public class SumarAlMapaResult
+{
+    public bool Ok { get; set; }
+    public bool YaEstaba { get; set; }
+    public string? Motivo { get; set; }         // "sin_domicilio" | "no_resuelto"
+    public string? Mensaje { get; set; }
+    public int? ClienteId { get; set; }
+    public string? ClienteNombre { get; set; }
+    public string? DireccionSugerida { get; set; }
+    public string? Localidad { get; set; }
+    public string? Nombre { get; set; }
+}
+
 // Resultado de escanear el QR de una etiqueta Flex (pantalla /mapeo/escanear).
 public class ScanFlexResult
 {

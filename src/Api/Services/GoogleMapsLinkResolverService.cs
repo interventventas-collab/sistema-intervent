@@ -15,11 +15,50 @@ public class GoogleMapsLinkResolverService
 {
     private readonly IHttpClientFactory _httpFactory;
     private readonly ILogger<GoogleMapsLinkResolverService> _logger;
+    private readonly IConfiguration _config;
 
-    public GoogleMapsLinkResolverService(IHttpClientFactory httpFactory, ILogger<GoogleMapsLinkResolverService> logger)
+    public GoogleMapsLinkResolverService(IHttpClientFactory httpFactory, ILogger<GoogleMapsLinkResolverService> logger, IConfiguration config)
     {
         _httpFactory = httpFactory;
         _logger = logger;
+        _config = config;
+    }
+
+    private string GeoKey => _config["GOOGLE_MAPS_API_KEY"] ?? Environment.GetEnvironmentVariable("GOOGLE_MAPS_API_KEY") ?? "";
+
+    /// <summary>
+    /// Geocodifica una direccion de TEXTO (calle + numero + localidad) a lat/lng usando la Geocoding API
+    /// de Google (clave de servidor). Devuelve null si no hay clave o no encuentra la direccion.
+    /// </summary>
+    public async Task<(decimal lat, decimal lng)?> TryGeocodeAddressAsync(string? address)
+    {
+        if (string.IsNullOrWhiteSpace(address)) return null;
+        var key = GeoKey;
+        if (string.IsNullOrWhiteSpace(key)) return null;
+        try
+        {
+            var http = _httpFactory.CreateClient();
+            http.Timeout = TimeSpan.FromSeconds(8);
+            var url = $"https://maps.googleapis.com/maps/api/geocode/json?address={Uri.EscapeDataString(address)}&region=ar&language=es&key={key}";
+            var resp = await http.GetAsync(url);
+            if (!resp.IsSuccessStatusCode) return null;
+            var json = await resp.Content.ReadAsStringAsync();
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (root.GetProperty("status").GetString() != "OK") return null;
+            var results = root.GetProperty("results");
+            if (results.GetArrayLength() == 0) return null;
+            var loc = results[0].GetProperty("geometry").GetProperty("location");
+            var lat = loc.GetProperty("lat").GetDecimal();
+            var lng = loc.GetProperty("lng").GetDecimal();
+            if (Math.Abs(lat) <= 90m && Math.Abs(lng) <= 180m) return (lat, lng);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Geocoding de direccion falló: {Addr}", address);
+            return null;
+        }
     }
 
     /// <summary>Sigue el redirect del link corto y extrae lat/lng. Devuelve null si no pudo.</summary>
