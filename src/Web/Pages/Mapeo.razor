@@ -689,6 +689,18 @@ else
                                 { <div style="font-size:0.72rem; color:#6b7280;">📞 @st.Telefono</div> }
                                 @if (!string.IsNullOrEmpty(st.Notas))
                                 { <div style="font-size:0.7rem; color:#9ca3af;">📝 @st.Notas</div> }
+                                @* Selector de repartidor por parada: escaneás y elegís acá quién la lleva. *@
+                                <div style="margin-top:0.3rem;" @onclick:stopPropagation="true">
+                                    <select class="form-input" style="font-size:0.72rem; padding:0.15rem 0.3rem; width:100%; border-color:@(st.AssignedDriverId.HasValue ? stopColor : "#d1d5db");"
+                                            value="@(st.AssignedDriverId?.ToString() ?? "")"
+                                            @onchange="@(e => AsignarRepartidor(st, e.Value?.ToString()))">
+                                        <option value="">🚚 Elegir repartidor…</option>
+                                        @foreach (var d in (drivers ?? new()).Where(d => d.IsActive))
+                                        {
+                                            <option value="@d.Id">@d.Nombre</option>
+                                        }
+                                    </select>
+                                </div>
                                 @if (asignado)
                                 {
                                     <div style="display:flex; gap:0.3rem; margin-top:0.3rem; flex-wrap:wrap;">
@@ -731,12 +743,12 @@ else
         @if ((stops?.Count ?? 0) > 0)
         {
             <div style="position:absolute; bottom:18px; left:50%; transform:translateX(-50%); z-index:450; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; justify-content:center;">
-                @if ((drivers?.Count(d => d.IsActive) ?? 0) >= 2)
+                @if (stops?.Any(s => s.AssignedDriverId.HasValue) ?? false)
                 {
                     <button class="btn" style="font-size:0.92rem; font-weight:800; background:#7c3aed; color:#fff; border:none; padding:0.6rem 1.3rem; border-radius:999px; box-shadow:0 3px 14px rgba(0,0,0,0.35); cursor:pointer;"
-                            @onclick="RepartirYOptimizar" disabled="@routeBusy"
-                            title="Reparte todas las paradas entre tus choferes y le arma a cada uno la mejor ruta (por tránsito)">
-                        🧠 @(routeBusy ? "Trabajando…" : "Repartir y optimizar")
+                            @onclick="OptimizarRutas" disabled="@routeBusy"
+                            title="Le arma a cada repartidor (los que asignaste) su mejor recorrido según el tránsito actual">
+                        ⚡ @(routeBusy ? "Optimizando…" : "Optimizar rutas")
                     </button>
                 }
                 <button class="btn" style="font-size:0.9rem; font-weight:800; background:#1d4ed8; color:#fff; border:none; padding:0.6rem 1.2rem; border-radius:999px; box-shadow:0 3px 14px rgba(0,0,0,0.35); cursor:pointer;"
@@ -2148,6 +2160,37 @@ else
             ToastService.Success("🧠 Repartido entre los choferes y optimizado por el tránsito actual");
         }
         catch (Exception ex) { ToastService.Error("No se pudo repartir/optimizar: " + ex.Message); }
+        finally { routeBusy = false; StateHasChanged(); }
+    }
+
+    // Asignar (o quitar) el repartidor de una parada desde el desplegable de la lista.
+    // driverId 0 (o vacío) = sin repartidor. Vos elegís el quién; el sistema solo optimiza el orden.
+    private async Task AsignarRepartidor(MapeoStopDto st, string? driverIdStr)
+    {
+        int driverId = int.TryParse(driverIdStr, out var d) ? d : 0;
+        try
+        {
+            await Api.UpdateMapeoStopAsync(st.Id, new { assignedDriverId = driverId });
+            await LoadStops();
+            await RenderMap();
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo asignar el repartidor: " + ex.Message); }
+    }
+
+    // "Optimizar rutas": ordena el recorrido de CADA repartidor asignado (por tránsito). Vos ya elegiste
+    // el quién con los desplegables; esto solo optimiza el orden de cada uno.
+    private async Task OptimizarRutas()
+    {
+        if (routeBusy) return;
+        routeBusy = true;
+        try
+        {
+            await Api.OptimizeStopsOrderAsync();   // per-driver, traffic-aware
+            await LoadStops();
+            await RenderMap();
+            ToastService.Success("⚡ Rutas optimizadas por el tránsito actual");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo optimizar: " + ex.Message); }
         finally { routeBusy = false; StateHasChanged(); }
     }
 
