@@ -553,6 +553,17 @@ public class MapeoStopsController : ControllerBase
     }
 
     /// <summary>
+    /// Devuelve la clave del navegador (Maps JavaScript API) para dibujar el mapa de Google.
+    /// Es una clave pública restringida por dominio; el front la usa para cargar el mapa.
+    /// </summary>
+    [HttpGet("map-key")]
+    public IActionResult MapKey([FromServices] IConfiguration config)
+    {
+        var key = config["GOOGLE_MAPS_BROWSER_KEY"] ?? Environment.GetEnvironmentVariable("GOOGLE_MAPS_BROWSER_KEY") ?? "";
+        return Ok(new { key });
+    }
+
+    /// <summary>
     /// Devuelve un PNG con el QR de una URL (para mostrar en la compu y abrir el escáner en el celular).
     /// Se genera en el servidor (QRCoder) para no depender de librerías del navegador ni del caché.
     /// </summary>
