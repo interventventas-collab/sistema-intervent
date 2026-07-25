@@ -18,10 +18,10 @@ public class NoticesController : ControllerBase
     private readonly AppDbContext _db;
     public NoticesController(AppDbContext db) { _db = db; }
 
-    // Aviso vigente: atajos de teclado + 3 botones. Se muestra hasta la fecha de corte (1 mes)
-    // o hasta que el usuario lo oculte.
+    // Aviso de atajos de teclado + 3 botones. 2026-07-24: apagado a pedido del usuario —
+    // la fecha de corte quedó en el pasado, así el globito ya no le aparece a nadie.
     private const string WelcomeKey = "novedad-atajos-2026-07";
-    private static readonly DateTime WelcomeUntil = new DateTime(2026, 8, 8);
+    private static readonly DateTime WelcomeUntil = new DateTime(2026, 7, 23);
 
     private int? GetUserId()
     {
