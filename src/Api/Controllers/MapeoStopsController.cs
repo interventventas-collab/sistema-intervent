@@ -14,7 +14,9 @@ public class MapeoStopsController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly GoogleRoutesService _routes;
-    public MapeoStopsController(AppDbContext db, GoogleRoutesService routes) { _db = db; _routes = routes; }
+    private readonly VentaMapeoService _ventaMapeo;
+    public MapeoStopsController(AppDbContext db, GoogleRoutesService routes, VentaMapeoService ventaMapeo)
+    { _db = db; _routes = routes; _ventaMapeo = ventaMapeo; }
 
     public record StopDto(int Id, string Origin, string? OriginRefId, string? Alias, string Direccion,
         decimal Latitude, decimal Longitude, string? ContactName, string? Telefono, string? Notas,
@@ -499,6 +501,18 @@ public class MapeoStopsController : ControllerBase
     [HttpPost("scan-flex")]
     public async Task<IActionResult> ScanFlex([FromBody] ScanFlexRequest req)
     {
+        // ¿Es el QR de una factura/cotización NUESTRA? (URL .../repartidor/{token}).
+        // Si sí, buscamos la venta por ese token y la sumamos al mapa (misma base que el botón del listado).
+        var ventaToken = ExtractRepartidorToken(req?.Code);
+        if (ventaToken is not null)
+        {
+            var venta = await _db.CafeVentas.Include(x => x.ClienteNav).FirstOrDefaultAsync(x => x.PublicToken == ventaToken);
+            if (venta is null)
+                return Ok(new { ok = false, motivo = "no_encontrado", mensaje = "No reconozco ese comprobante (puede ser de un alquiler o de otra cuenta)." });
+            var rv = await _ventaMapeo.SumarVentaAsync(venta);
+            return Ok(new { ok = rv.Ok, yaEstaba = rv.YaEstaba, motivo = rv.Motivo, mensaje = rv.Mensaje, nombre = rv.Nombre, localidad = rv.Localidad, stopId = rv.StopId });
+        }
+
         var id = ExtractShipmentId(req?.Code);
         if (id is null)
             return Ok(new { ok = false, motivo = "sin_id", mensaje = "No pude leer el numero de envio de ese codigo." });
@@ -550,6 +564,15 @@ public class MapeoStopsController : ControllerBase
                 .Select(x => x.Value).OrderByDescending(x => x.Length).First();
         }
         return digits.Length >= 6 && long.TryParse(digits, out var val) ? val : (long?)null;
+    }
+
+    /// <summary>Saca el token de una URL de comprobante nuestro (.../repartidor/{token}). null si no aplica.</summary>
+    private static string? ExtractRepartidorToken(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return null;
+        var m = System.Text.RegularExpressions.Regex.Match(code, @"/repartidor/([A-Za-z0-9_\-]+)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return m.Success ? m.Groups[1].Value : null;
     }
 
     /// <summary>

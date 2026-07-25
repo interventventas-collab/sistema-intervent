@@ -59,7 +59,7 @@ public class CafeVentasController : ControllerBase
         CafeReciboEntregaPdfService reciboEntregaPdfService,
         IServiceScopeFactory scopeFactory,
         CafeStockLogger stockLogger,
-        GoogleMapsLinkResolverService mapsResolver)
+        VentaMapeoService ventaMapeo)
     {
         _db = db;
         _pdfService = pdfService;
@@ -73,12 +73,10 @@ public class CafeVentasController : ControllerBase
         _reciboEntregaPdfService = reciboEntregaPdfService;
         _scopeFactory = scopeFactory;
         _stockLogger = stockLogger;
-        _mapsResolver = mapsResolver;
+        _ventaMapeo = ventaMapeo;
     }
 
-    private readonly GoogleMapsLinkResolverService _mapsResolver;
-
-    private static string? FirstNonEmpty(params string?[] vals) => vals.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+    private readonly VentaMapeoService _ventaMapeo;
 
     public record SumarAlMapaRequest(string? Direccion, string? Link);
 
@@ -95,88 +93,20 @@ public class CafeVentasController : ControllerBase
         var v = await _db.CafeVentas.Include(x => x.ClienteNav).FirstOrDefaultAsync(x => x.Id == id);
         if (v is null) return NotFound(new { ok = false, mensaje = "Venta no encontrada." });
 
-        var cli = v.ClienteNav;
-        var nombre = FirstNonEmpty(v.ClienteNombreSnapshot, cli?.Nombre) ?? "Cliente";
-        var direccion = FirstNonEmpty(v.ClienteDomicilioEntregaSnapshot, v.ClienteDireccionSnapshot, cli?.DomicilioEntrega, cli?.Direccion);
-        var localidad = FirstNonEmpty(v.ClienteLocalidadSnapshot, v.ClienteCiudadSnapshot, cli?.Localidad, cli?.Ciudad);
-        var telefono = FirstNonEmpty(v.ClienteTelefonoSnapshot, cli?.Telefono);
-
-        decimal? lat = null, lng = null;
-        bool guardarEnCliente = false;
-
-        if (req is not null && (!string.IsNullOrWhiteSpace(req.Link) || !string.IsNullOrWhiteSpace(req.Direccion)))
+        var r = await _ventaMapeo.SumarVentaAsync(v, req?.Direccion, req?.Link);
+        return Ok(new
         {
-            // Cargar en el momento: el usuario tipeó una dirección o pegó un link.
-            if (!string.IsNullOrWhiteSpace(req.Link))
-            {
-                var r = await _mapsResolver.TryResolverCoordenadasAsync(req.Link);
-                if (r.HasValue) { lat = r.Value.lat; lng = r.Value.lng; }
-            }
-            if (lat is null && !string.IsNullOrWhiteSpace(req.Direccion))
-            {
-                var q = req.Direccion + (string.IsNullOrWhiteSpace(localidad) ? "" : ", " + localidad) + ", Argentina";
-                var r = await _mapsResolver.TryGeocodeAddressAsync(q);
-                if (r.HasValue) { lat = r.Value.lat; lng = r.Value.lng; }
-            }
-            if (lat is null)
-                return Ok(new { ok = false, motivo = "no_resuelto", mensaje = "No pude encontrar esa dirección. Probá con calle + número + localidad, o pegá un link de Google Maps." });
-            guardarEnCliente = true;
-            if (!string.IsNullOrWhiteSpace(req.Direccion)) direccion = req.Direccion.Trim();
-        }
-        else
-        {
-            // Resolver automático por prioridad.
-            if (cli?.MapeoLat is not null && cli.MapeoLng is not null) { lat = cli.MapeoLat; lng = cli.MapeoLng; }
-            if (lat is null && !string.IsNullOrWhiteSpace(v.MapeoLink))
-            { var r = await _mapsResolver.TryResolverCoordenadasAsync(v.MapeoLink); if (r.HasValue) { lat = r.Value.lat; lng = r.Value.lng; } }
-            if (lat is null && !string.IsNullOrWhiteSpace(cli?.MapeoLink))
-            { var r = await _mapsResolver.TryResolverCoordenadasAsync(cli!.MapeoLink); if (r.HasValue) { lat = r.Value.lat; lng = r.Value.lng; guardarEnCliente = true; } }
-            if (lat is null && !string.IsNullOrWhiteSpace(direccion))
-            { var q = direccion + (string.IsNullOrWhiteSpace(localidad) ? "" : ", " + localidad) + ", Argentina";
-              var r = await _mapsResolver.TryGeocodeAddressAsync(q); if (r.HasValue) { lat = r.Value.lat; lng = r.Value.lng; guardarEnCliente = true; } }
-
-            if (lat is null)
-                return Ok(new { ok = false, motivo = "sin_domicilio", mensaje = "Este cliente no tiene domicilio cargado.",
-                    clienteId = v.ClienteId, clienteNombre = nombre, direccionSugerida = direccion, localidad });
-        }
-
-        // Guardar la ubicación en la ficha del cliente para la próxima.
-        if (guardarEnCliente && cli is not null && lat is not null && lng is not null)
-        {
-            cli.MapeoLat = lat;
-            cli.MapeoLng = lng;
-            if (req is not null && !string.IsNullOrWhiteSpace(req.Link)) cli.MapeoLink = req.Link.Trim();
-        }
-
-        // Crear/actualizar la parada (idempotente).
-        var refId = v.Id.ToString();
-        var existente = await _db.MapeoStops.FirstOrDefaultAsync(s => s.Origin == "venta_cafe" && s.OriginRefId == refId);
-        if (existente is not null)
-        {
-            existente.Latitude = lat!.Value;
-            existente.Longitude = lng!.Value;
-            existente.UpdatedAt = DateTime.UtcNow;
-            await _db.SaveChangesAsync();
-            return Ok(new { ok = true, yaEstaba = true, mensaje = "Ya estaba en el mapa (actualicé la ubicación).", nombre, localidad });
-        }
-
-        _db.MapeoStops.Add(new MapeoStop
-        {
-            Origin = "venta_cafe",
-            OriginRefId = refId,
-            Alias = nombre,
-            Direccion = string.IsNullOrWhiteSpace(direccion) ? nombre : direccion!,
-            Localidad = localidad,
-            Latitude = lat!.Value,
-            Longitude = lng!.Value,
-            ContactName = nombre,
-            Telefono = telefono,
-            Notas = $"Venta {v.Numero}",
-            InternalStatus = "pending",
-            CreatedAt = DateTime.UtcNow
+            ok = r.Ok,
+            yaEstaba = r.YaEstaba,
+            motivo = r.Motivo,
+            mensaje = r.Mensaje,
+            clienteId = r.ClienteId,
+            clienteNombre = r.Nombre,
+            direccionSugerida = r.DireccionSugerida,
+            nombre = r.Nombre,
+            localidad = r.Localidad,
+            stopId = r.StopId
         });
-        await _db.SaveChangesAsync();
-        return Ok(new { ok = true, yaEstaba = false, mensaje = "Agregado al mapa.", nombre, localidad });
     }
 
     /// <summary>2026-06-16: completa el cfg con datos de la ficha del Emisor ARCA (un solo lugar de carga).
