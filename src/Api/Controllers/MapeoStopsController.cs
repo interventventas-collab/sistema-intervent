@@ -122,6 +122,38 @@ public class MapeoStopsController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    /// <summary>
+    /// Limpia las paradas que quedaron de dias ANTERIORES (creadas antes de hoy, hora Argentina),
+    /// para que el mapa arranque limpio cada dia. Lo de HOY se mantiene (no se pierde lo que se esta
+    /// cargando ahora aunque se recargue la pagina). Hace un respaldo (snapshot) antes de borrar.
+    /// Se llama automaticamente al abrir el mapa.
+    /// </summary>
+    [HttpPost("clear-stale")]
+    public async Task<IActionResult> ClearStale()
+    {
+        var nowLocal = DateTime.UtcNow.AddHours(-3);         // Argentina
+        var hoyInicioUtc = nowLocal.Date.AddHours(3);        // 00:00 ART expresado en UTC
+
+        var staleCount = await _db.MapeoStops.CountAsync(s => s.CreatedAt < hoyInicioUtc);
+        if (staleCount == 0) return Ok(new { cleared = 0 });
+
+        // Respaldo automatico antes de borrar (tolerante a fallo: preferimos limpiar igual).
+        try
+        {
+            var snap = await MapeoSnapshotsController.BuildSnapshotAsync(_db, "Auto-respaldo antes de limpiar dia anterior",
+                User.Identity?.IsAuthenticated == true ? User.Identity?.Name : null);
+            if (snap is not null)
+            {
+                _db.MapeoRouteSnapshots.Add(snap);
+                await _db.SaveChangesAsync();
+            }
+        }
+        catch { }
+
+        var deleted = await _db.MapeoStops.Where(s => s.CreatedAt < hoyInicioUtc).ExecuteDeleteAsync();
+        return Ok(new { cleared = deleted });
+    }
+
     // ===== Asignacion visual a vehiculos (slot) =====
     public record AssignSlotRequest(int? Slot);
 

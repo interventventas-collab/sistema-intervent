@@ -2104,6 +2104,7 @@ else
             await LoadDrivers();
             await LoadFavoritos();
             await LoadClientesMapeados();
+            await Api.ClearStaleMapeoStopsAsync(); // limpiar lo de días anteriores; lo de hoy queda
             await LoadStops();
             await CargarNotas();
             await LoadAndRender();

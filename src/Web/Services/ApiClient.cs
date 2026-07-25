@@ -4871,6 +4871,12 @@ public class ApiClient
     public async Task<ScanFlexResult?> ScanFlexAsync(string code)
         => await PostAsync<ScanFlexResult>("/api/mapeo/stops/scan-flex", new { code });
 
+    // Limpia las paradas de días anteriores al abrir el mapa (lo de hoy se mantiene).
+    public async Task ClearStaleMapeoStopsAsync()
+    {
+        try { await PostAsync<object>("/api/mapeo/stops/clear-stale", new { }); } catch { }
+    }
+
     private async Task<T?> PostAsync<T>(string url, object data)
     {
         await SetAuthHeaderAsync();
