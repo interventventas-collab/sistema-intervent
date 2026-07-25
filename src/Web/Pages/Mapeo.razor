@@ -264,6 +264,13 @@ else
             <input type="checkbox" @bind="excluirEntregados" @bind:after="LoadAndRender" />
             Ocultar entregados
         </label>
+        @* Doble-check: por defecto el mapa arranca limpio (solo lo que cargás vos). Tildando esto,
+           trae los envíos Flex de MercadoLibre al mapa (la vieja "traída automática"). *@
+        <label style="display:flex; align-items:center; gap:0.25rem; font-size:0.78rem; color:@(mostrarFlexAuto ? "#1d4ed8" : "#374151"); font-weight:@(mostrarFlexAuto ? "700" : "400"); background:@(mostrarFlexAuto ? "#eff6ff" : "transparent"); border:1px solid @(mostrarFlexAuto ? "#bfdbfe" : "transparent"); padding:0.1rem 0.4rem; border-radius:6px;"
+               title="Por defecto el mapa arranca limpio. Tildá esto para traer los envíos Flex de MercadoLibre al mapa.">
+            <input type="checkbox" @bind="mostrarFlexAuto" @bind:after="LoadAndRender" />
+            📥 Traer Flex de MercadoLibre
+        </label>
         <button class="btn" style="font-size:0.75rem; padding:0.2rem 0.5rem; background:transparent; border:1px solid #d1d5db; color:#374151;"
                 @onclick="LoadAndRender" disabled="@isLoading" title="Refrescar lista local">
             @(isLoading ? "..." : "🔄")
@@ -1537,6 +1544,7 @@ else
 
 @code {
     private List<MeliShipmentDto>? shipments;
+    private bool mostrarFlexAuto = false; // por defecto el mapa arranca limpio; se tilda para traer Flex de MeLi
     private bool isLoading, isSyncing, isSavingDetail;
     private string diasFiltro = "today";       // Default: ENTREGAR hoy
     private string filtroInterno = "pending";   // Default: solo PENDIENTES
@@ -2142,7 +2150,11 @@ else
         isLoading = true;
         try
         {
-            shipments = await Api.GetMeliFlexShipmentsAsync(diasFiltro, string.IsNullOrEmpty(filtroInterno) ? null : filtroInterno, excluirEntregados) ?? new();
+            // Por defecto el mapa arranca LIMPIO: solo muestra lo que cargás vos (escaneando o asignando).
+            // El Flex de MercadoLibre se trae solo si el usuario tilda "Traer Flex" (doble-check).
+            shipments = mostrarFlexAuto
+                ? (await Api.GetMeliFlexShipmentsAsync(diasFiltro, string.IsNullOrEmpty(filtroInterno) ? null : filtroInterno, excluirEntregados) ?? new())
+                : new();
             if (mapInitialized) await RenderMap();
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
