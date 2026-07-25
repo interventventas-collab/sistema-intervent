@@ -551,4 +551,18 @@ public class MapeoStopsController : ControllerBase
         }
         return digits.Length >= 6 && long.TryParse(digits, out var val) ? val : (long?)null;
     }
+
+    /// <summary>
+    /// Devuelve un PNG con el QR de una URL (para mostrar en la compu y abrir el escáner en el celular).
+    /// Se genera en el servidor (QRCoder) para no depender de librerías del navegador ni del caché.
+    /// </summary>
+    [HttpGet("escanear-qr")]
+    public IActionResult EscanearQr([FromQuery] string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return BadRequest();
+        using var gen = new QRCoder.QRCodeGenerator();
+        using var data = gen.CreateQrCode(url, QRCoder.QRCodeGenerator.ECCLevel.M);
+        var png = new QRCoder.PngByteQRCode(data).GetGraphic(8);
+        return File(png, "image/png");
+    }
 }

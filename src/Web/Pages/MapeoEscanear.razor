@@ -1,52 +1,41 @@
 @page "/mapeo/escanear"
 @attribute [Authorize]
+@layout EmptyLayout
 @inject IJSRuntime JS
 @inject ApiClient Api
-@inject NavigationManager Nav
 @implements IAsyncDisposable
 
 <PageTitle>Escanear Flex</PageTitle>
 
-<div class="esc-wrap">
-    <div class="esc-top">
+<div class="esc-shell">
+
+    <div class="esc-head">
         <NavLink class="esc-volver" href="mapeo">← Volver al mapa</NavLink>
-        <div class="esc-count"><b>@_agregadas</b> agregadas</div>
+        <div class="esc-count"><span class="esc-count-num">@_agregadas</span> agregadas</div>
     </div>
 
-    <h2 class="esc-title">📷 Escanear paquetes Flex</h2>
-    <p class="esc-help">Apuntá la cámara al <b>QR</b> de cada etiqueta. Cada paquete que scaneás se agrega solo al mapa.</p>
-
-    @* En la computadora: QR para abrir esta misma pantalla en el celular. En el celu se esconde solo. *@
-    <div class="esc-qr">
-        <div id="escQr" class="esc-qr-img"></div>
-        <div class="esc-qr-txt">
-            <b>¿Estás en la computadora?</b>
-            <span>Escaneá este código con la cámara del <b>celular</b> para abrir el escáner en el teléfono.</span>
-            <a class="esc-qr-link" href="@_url">@_url</a>
-        </div>
+    <div class="esc-hero">
+        <div class="esc-hero-title">📷 Escanear paquetes Flex</div>
+        <div class="esc-hero-sub">Apuntá al <b>QR</b> de cada etiqueta. Suena un "pip" y se agrega solo al mapa.</div>
     </div>
 
-    @if (!_scanning)
-    {
-        <button class="esc-btn" @onclick="StartAsync">Empezar a escanear</button>
-    }
-    else
-    {
-        <button class="esc-btn esc-btn-stop" @onclick="StopAsync">Terminar</button>
-    }
-
-    <div id="reader" class="esc-reader"></div>
+    <div id="reader" class="esc-reader @(_scanning ? "on" : "")">
+        @if (!_scanning)
+        {
+            <div class="esc-reader-off">La cámara está apagada</div>
+        }
+    </div>
 
     @if (_last is not null)
     {
         <div class="esc-flash @FlashClass(_last)">
             <div class="esc-flash-ico">@FlashIco(_last)</div>
             <div class="esc-flash-body">
-                <div class="esc-flash-msg">@_last.Mensaje</div>
-                @if (!string.IsNullOrEmpty(_last.Nombre))
-                {
-                    <div class="esc-flash-sub">@_last.Nombre@(string.IsNullOrEmpty(_last.Localidad) ? "" : $" · {_last.Localidad}")</div>
-                }
+                <div class="esc-flash-msg">@(string.IsNullOrEmpty(_last.Nombre) ? _last.Mensaje : _last.Nombre)</div>
+                <div class="esc-flash-sub">
+                    @if (!string.IsNullOrEmpty(_last.Nombre)) { <span>@_last.Mensaje</span> }
+                    @if (!string.IsNullOrEmpty(_last.Localidad)) { <span> · @_last.Localidad</span> }
+                </div>
             </div>
         </div>
     }
@@ -56,17 +45,26 @@
         <div class="esc-error">@_error</div>
     }
 
+    @if (!_scanning)
+    {
+        <button class="esc-btn esc-btn-go" @onclick="StartAsync">▶ Empezar a escanear</button>
+    }
+    else
+    {
+        <button class="esc-btn esc-btn-stop" @onclick="StopAsync">■ Terminar</button>
+    }
+
     <div class="esc-list-head">
         <span>Scaneados (@_historial.Count)</span>
         @if (_historial.Count > 0)
         {
-            <button class="esc-clear" @onclick="() => _historial.Clear()">Limpiar lista</button>
+            <button class="esc-clear" @onclick="() => _historial.Clear()">Limpiar</button>
         }
     </div>
 
     @if (_historial.Count == 0)
     {
-        <p class="esc-empty">Todavía no scaneaste nada. Tocá "Empezar a escanear" y apuntá al QR.</p>
+        <p class="esc-empty">Todavía no scaneaste nada.</p>
     }
     else
     {
@@ -84,48 +82,52 @@
 </div>
 
 <style>
-    .esc-wrap { max-width: 480px; margin: 0 auto; padding: 14px; font-family: Inter, sans-serif; }
-    .esc-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-    .esc-volver { color: #1d4ed8; font-size: 14px; text-decoration: none; }
-    .esc-count { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; border-radius: 999px; padding: 4px 12px; font-size: 14px; }
-    .esc-count b { font-size: 16px; }
-    .esc-title { margin: 4px 0 4px; font-size: 20px; color: #0f172a; }
-    .esc-help { color: #475569; font-size: 14px; line-height: 1.5; margin: 0 0 14px; }
-    .esc-qr { display: flex; gap: 14px; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; margin-bottom: 14px; }
-    .esc-qr-img { width: 150px; height: 150px; flex: 0 0 150px; background: #fff; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
-    .esc-qr-txt { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #475569; }
-    .esc-qr-txt b { color: #0f172a; font-size: 14px; }
-    .esc-qr-link { color: #1d4ed8; font-size: 12px; word-break: break-all; margin-top: 2px; }
-    /* En pantallas chicas (celular) el QR no tiene sentido: se esconde. */
-    @@media (max-width: 600px) { .esc-qr { display: none; } }
-    .esc-btn { width: 100%; padding: 15px; font-size: 17px; font-weight: 700; color: #fff; background: #16a34a; border: none; border-radius: 12px; cursor: pointer; }
+    body { background: #0f172a !important; }
+    .esc-shell { max-width: 480px; margin: 0 auto; min-height: 100vh; padding: 12px 14px 28px; font-family: Inter, sans-serif; color: #e2e8f0; }
+    .esc-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 0 10px; }
+    .esc-volver { color: #93c5fd; font-size: 14px; text-decoration: none; }
+    .esc-count { background: #064e3b; color: #6ee7b7; border-radius: 999px; padding: 5px 14px; font-size: 13px; font-weight: 600; }
+    .esc-count-num { font-size: 17px; font-weight: 800; color: #fff; }
+    .esc-hero { text-align: center; margin: 6px 0 12px; }
+    .esc-hero-title { font-size: 21px; font-weight: 800; color: #fff; }
+    .esc-hero-sub { font-size: 13px; color: #94a3b8; margin-top: 4px; line-height: 1.4; }
+
+    .esc-reader { width: 100%; aspect-ratio: 3 / 4; max-height: 58vh; background: #000; border-radius: 16px; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 3px solid #1e293b; }
+    .esc-reader.on { border-color: #16a34a; box-shadow: 0 0 0 3px rgba(22,163,74,0.25); }
+    .esc-reader :is(video) { width: 100% !important; height: 100% !important; object-fit: cover; }
+    .esc-reader-off { color: #475569; font-size: 14px; }
+
+    .esc-flash { display: flex; gap: 12px; align-items: center; padding: 14px; border-radius: 14px; margin: 12px 0; }
+    .esc-flash.ok { background: #052e1b; border: 1px solid #16a34a; }
+    .esc-flash.warn { background: #3a2e05; border: 1px solid #d97706; }
+    .esc-flash.err { background: #3b0d0d; border: 1px solid #dc2626; }
+    .esc-flash-ico { font-size: 30px; font-weight: 900; width: 40px; text-align: center; }
+    .esc-flash.ok .esc-flash-ico { color: #34d399; }
+    .esc-flash.warn .esc-flash-ico { color: #fbbf24; }
+    .esc-flash.err .esc-flash-ico { color: #f87171; }
+    .esc-flash-msg { font-weight: 800; color: #fff; font-size: 17px; }
+    .esc-flash-sub { color: #94a3b8; font-size: 13px; margin-top: 2px; }
+
+    .esc-error { background: #3b0d0d; color: #fca5a5; border: 1px solid #dc2626; padding: 10px 12px; border-radius: 10px; font-size: 14px; margin: 10px 0; }
+
+    .esc-btn { width: 100%; padding: 16px; font-size: 18px; font-weight: 800; color: #fff; border: none; border-radius: 14px; cursor: pointer; margin-top: 10px; }
+    .esc-btn-go { background: #16a34a; }
     .esc-btn-stop { background: #dc2626; }
-    .esc-reader { width: 100%; margin: 12px 0; border-radius: 12px; overflow: hidden; background: #0f172a; min-height: 4px; }
-    .esc-flash { display: flex; gap: 12px; align-items: center; padding: 14px; border-radius: 12px; margin: 8px 0; }
-    .esc-flash.ok { background: #ecfdf5; border: 1px solid #6ee7b7; }
-    .esc-flash.warn { background: #fffbeb; border: 1px solid #fcd34d; }
-    .esc-flash.err { background: #fef2f2; border: 1px solid #fca5a5; }
-    .esc-flash-ico { font-size: 26px; font-weight: 800; width: 34px; text-align: center; }
-    .esc-flash.ok .esc-flash-ico { color: #16a34a; }
-    .esc-flash.warn .esc-flash-ico { color: #d97706; }
-    .esc-flash.err .esc-flash-ico { color: #dc2626; }
-    .esc-flash-msg { font-weight: 700; color: #0f172a; font-size: 15px; }
-    .esc-flash-sub { color: #475569; font-size: 13px; margin-top: 2px; }
-    .esc-error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; padding: 10px 12px; border-radius: 8px; font-size: 14px; margin: 8px 0; }
-    .esc-list-head { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; font-size: 15px; color: #0f172a; font-weight: 600; }
-    .esc-clear { background: #f1f5f9; border: none; color: #475569; padding: 5px 10px; border-radius: 8px; font-size: 13px; cursor: pointer; }
-    .esc-empty { color: #94a3b8; font-size: 14px; }
+
+    .esc-list-head { display: flex; align-items: center; justify-content: space-between; margin-top: 20px; font-size: 15px; color: #cbd5e1; font-weight: 600; }
+    .esc-clear { background: #1e293b; border: none; color: #94a3b8; padding: 6px 12px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+    .esc-empty { color: #64748b; font-size: 14px; }
     .esc-cards { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
-    .esc-card { display: flex; align-items: center; gap: 8px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 9px 12px; }
+    .esc-card { display: flex; align-items: center; gap: 10px; background: #1e293b; border-radius: 10px; padding: 10px 12px; }
     .esc-card.ok { border-left: 4px solid #16a34a; }
     .esc-card.warn { border-left: 4px solid #d97706; }
     .esc-card.err { border-left: 4px solid #dc2626; }
-    .esc-card-ico { font-weight: 800; }
-    .esc-card.ok .esc-card-ico { color: #16a34a; }
-    .esc-card.warn .esc-card-ico { color: #d97706; }
-    .esc-card.err .esc-card-ico { color: #dc2626; }
-    .esc-card-txt { flex: 1; color: #0f172a; font-size: 14px; }
-    .esc-card-loc { color: #64748b; font-size: 12px; }
+    .esc-card-ico { font-weight: 900; }
+    .esc-card.ok .esc-card-ico { color: #34d399; }
+    .esc-card.warn .esc-card-ico { color: #fbbf24; }
+    .esc-card.err .esc-card-ico { color: #f87171; }
+    .esc-card-txt { flex: 1; color: #e2e8f0; font-size: 14px; }
+    .esc-card-loc { color: #94a3b8; font-size: 12px; }
 </style>
 
 @code {
@@ -137,18 +139,6 @@
     private readonly List<ScanFlexResult> _historial = new();
     private string? _lastCode;
     private bool _processing;
-    private string _url = "";
-
-    protected override void OnInitialized() => _url = Nav.Uri;
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            // Dibujar el QR que abre esta pantalla en el celular (solo se ve en la compu).
-            try { await JS.InvokeVoidAsync("renderQr", "escQr", _url); } catch { }
-        }
-    }
 
     private static string FlashClass(ScanFlexResult r) => !r.Ok ? "err" : (r.YaEstaba ? "warn" : "ok");
     private static string FlashIco(ScanFlexResult r) => !r.Ok ? "✕" : (r.YaEstaba ? "↻" : "✓");
@@ -183,11 +173,13 @@
                 _last = res;
                 _historial.Insert(0, res);
                 if (res.Ok && !res.YaEstaba) _agregadas++;
+                try { await JS.InvokeVoidAsync("scanBeep", res.Ok); } catch { }
             }
         }
         catch (Exception ex)
         {
             _error = "No pude agregar la parada: " + ex.Message;
+            try { await JS.InvokeVoidAsync("scanBeep", false); } catch { }
         }
         finally
         {

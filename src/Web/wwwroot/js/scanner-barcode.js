@@ -69,13 +69,25 @@ window.scannerBarcode = (function () {
   return { start, stop };
 })();
 
-// Dibuja un QR con un texto/URL adentro (lo usa la pantalla del escáner para que,
-// desde la compu, puedas abrir el escáner en el celular scaneando el código).
-window.renderQr = function (elId, text) {
+// "Pip" al escanear: un beep corto + vibración. ok=true -> pip agudo/vibra corto;
+// ok=false -> tono grave/vibración doble (para avisar que algo no anduvo).
+window.scanBeep = function (ok) {
   try {
-    const el = document.getElementById(elId);
-    if (!el || typeof QRCode === 'undefined') return;
-    el.innerHTML = '';
-    new QRCode(el, { text: text, width: 150, height: 150, correctLevel: QRCode.CorrectLevel.M });
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    if (Ctx) {
+      var ctx = new Ctx();
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      var t = ctx.currentTime;
+      osc.type = 'sine';
+      osc.frequency.value = ok ? 1180 : 380;
+      gain.gain.setValueAtTime(0.001, t);
+      gain.gain.exponentialRampToValueAtTime(0.3, t + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + (ok ? 0.14 : 0.28));
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(); osc.stop(t + (ok ? 0.15 : 0.3));
+      setTimeout(function () { try { ctx.close(); } catch (e) {} }, 400);
+    }
   } catch (e) {}
+  try { if (navigator.vibrate) navigator.vibrate(ok ? 70 : [60, 40, 60]); } catch (e) {}
 };
