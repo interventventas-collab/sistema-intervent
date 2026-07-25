@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject IJSRuntime JS
 @inject ApiClient Api
+@inject NavigationManager Nav
 @implements IAsyncDisposable
 
 <PageTitle>Escanear Flex</PageTitle>
@@ -14,6 +15,16 @@
 
     <h2 class="esc-title">📷 Escanear paquetes Flex</h2>
     <p class="esc-help">Apuntá la cámara al <b>QR</b> de cada etiqueta. Cada paquete que scaneás se agrega solo al mapa.</p>
+
+    @* En la computadora: QR para abrir esta misma pantalla en el celular. En el celu se esconde solo. *@
+    <div class="esc-qr">
+        <div id="escQr" class="esc-qr-img"></div>
+        <div class="esc-qr-txt">
+            <b>¿Estás en la computadora?</b>
+            <span>Escaneá este código con la cámara del <b>celular</b> para abrir el escáner en el teléfono.</span>
+            <a class="esc-qr-link" href="@_url">@_url</a>
+        </div>
+    </div>
 
     @if (!_scanning)
     {
@@ -80,6 +91,13 @@
     .esc-count b { font-size: 16px; }
     .esc-title { margin: 4px 0 4px; font-size: 20px; color: #0f172a; }
     .esc-help { color: #475569; font-size: 14px; line-height: 1.5; margin: 0 0 14px; }
+    .esc-qr { display: flex; gap: 14px; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+    .esc-qr-img { width: 150px; height: 150px; flex: 0 0 150px; background: #fff; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+    .esc-qr-txt { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #475569; }
+    .esc-qr-txt b { color: #0f172a; font-size: 14px; }
+    .esc-qr-link { color: #1d4ed8; font-size: 12px; word-break: break-all; margin-top: 2px; }
+    /* En pantallas chicas (celular) el QR no tiene sentido: se esconde. */
+    @@media (max-width: 600px) { .esc-qr { display: none; } }
     .esc-btn { width: 100%; padding: 15px; font-size: 17px; font-weight: 700; color: #fff; background: #16a34a; border: none; border-radius: 12px; cursor: pointer; }
     .esc-btn-stop { background: #dc2626; }
     .esc-reader { width: 100%; margin: 12px 0; border-radius: 12px; overflow: hidden; background: #0f172a; min-height: 4px; }
@@ -119,6 +137,18 @@
     private readonly List<ScanFlexResult> _historial = new();
     private string? _lastCode;
     private bool _processing;
+    private string _url = "";
+
+    protected override void OnInitialized() => _url = Nav.Uri;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Dibujar el QR que abre esta pantalla en el celular (solo se ve en la compu).
+            try { await JS.InvokeVoidAsync("renderQr", "escQr", _url); } catch { }
+        }
+    }
 
     private static string FlashClass(ScanFlexResult r) => !r.Ok ? "err" : (r.YaEstaba ? "warn" : "ok");
     private static string FlashIco(ScanFlexResult r) => !r.Ok ? "✕" : (r.YaEstaba ? "↻" : "✓");

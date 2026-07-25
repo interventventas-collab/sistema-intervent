@@ -68,3 +68,14 @@ window.scannerBarcode = (function () {
 
   return { start, stop };
 })();
+
+// Dibuja un QR con un texto/URL adentro (lo usa la pantalla del escáner para que,
+// desde la compu, puedas abrir el escáner en el celular scaneando el código).
+window.renderQr = function (elId, text) {
+  try {
+    const el = document.getElementById(elId);
+    if (!el || typeof QRCode === 'undefined') return;
+    el.innerHTML = '';
+    new QRCode(el, { text: text, width: 150, height: 150, correctLevel: QRCode.CorrectLevel.M });
+  } catch (e) {}
+};
