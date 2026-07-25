@@ -4,12 +4,11 @@
 //   renderMarkers(items)          -> dibuja los globitos (círculo=Flex, cuadrado=ME1, triángulo=otros)
 //   focusOn(lat,lng,zoom) / destroy() / refit()
 // Callbacks a Blazor: OnMarkerClicked(id), OnClusterClicked(ids), ToggleMarkerInRoute(id).
-window.mapeoFlex = (function () {
-    let map = null;
-    let markers = [];
-    let infoWindow = null;
-    let dotNetRef = null;
-    let hasAutoFitted = false;
+//
+// También expone window.mapeoMini: un mini-mapa de PREVIEW (no interactivo) para la card del Dashboard.
+
+// ══════════ Helpers compartidos (mapa grande + mini-mapa) ══════════
+(function () {
     let googleReady = null;
 
     const ZONE_COLORS = [
@@ -17,7 +16,7 @@ window.mapeoFlex = (function () {
         '#ca8a04', '#db2777', '#65a30d', '#7c3aed', '#0d9488', '#b91c1c'
     ];
 
-    // Carga la librería de Google Maps una sola vez (trae la clave del navegador desde el server).
+    // Carga la librería de Google Maps UNA sola vez (trae la clave del navegador desde el server).
     function ensureGoogle() {
         if (window.google && window.google.maps) return Promise.resolve();
         if (googleReady) return googleReady;
@@ -85,11 +84,32 @@ window.mapeoFlex = (function () {
             `${ring}${shapeSvg}${badge}</svg>`;
     }
 
+    function markerIcon(svg, size, anchor) {
+        return {
+            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+            scaledSize: new google.maps.Size(size, size),
+            anchor: new google.maps.Point(anchor, anchor)
+        };
+    }
+
+    // Exponer helpers al scope de este archivo (los dos módulos de abajo los usan).
+    window.__mapeoHelpers = { ensureGoogle, ZONE_COLORS, escapeXml, markerSvg, markerIcon };
+})();
+
+// ══════════ Mapa grande (pantalla Mapeo) ══════════
+window.mapeoFlex = (function () {
+    const H = window.__mapeoHelpers;
+    let map = null;
+    let markers = [];
+    let infoWindow = null;
+    let dotNetRef = null;
+    let hasAutoFitted = false;
+
     function loadZones() {
         if (!map) return;
         let zi = 0;
         map.data.addListener('addfeature', e => {
-            e.feature.setProperty('_c', ZONE_COLORS[(zi++) % ZONE_COLORS.length]);
+            e.feature.setProperty('_c', H.ZONE_COLORS[(zi++) % H.ZONE_COLORS.length]);
         });
         map.data.loadGeoJson('/data/amba-zonas.geojson');
         map.data.setStyle(f => ({
@@ -111,7 +131,7 @@ window.mapeoFlex = (function () {
                 }
             };
             try {
-                await ensureGoogle();
+                await H.ensureGoogle();
             } catch (e) {
                 const el = document.getElementById(elementId);
                 if (el) el.innerHTML = '<div style="padding:1rem;color:#b91c1c;font-family:Inter,sans-serif;font-size:0.9rem;">No se pudo cargar el mapa de Google: ' + (e && e.message ? e.message : e) + '</div>';
@@ -138,11 +158,9 @@ window.mapeoFlex = (function () {
 
         renderMarkers(items) {
             if (!map || !window.google) return;
-            // Limpiar marcadores previos
             for (const m of markers) m.setMap(null);
             markers = [];
 
-            // Agrupar por coordenada (5 decimales ~1.1m) — mismas paradas en un domicilio = 1 globito.
             const groups = new Map();
             for (const it of items) {
                 if (it.lat == null || it.lng == null) continue;
@@ -156,22 +174,14 @@ window.mapeoFlex = (function () {
 
             for (const group of groups.values()) {
                 const first = group[0];
-                const svg = markerSvg(group);
-                const url = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
                 const pos = { lat: +first.lat, lng: +first.lng };
-
                 const marker = new google.maps.Marker({
                     position: pos,
                     map: map,
-                    icon: {
-                        url: url,
-                        scaledSize: new google.maps.Size(48, 48),
-                        anchor: new google.maps.Point(23, 23)
-                    },
+                    icon: H.markerIcon(H.markerSvg(group), 48, 23),
                     zIndex: group.some(g => g.inRoute) ? 1000 : 1
                 });
 
-                // Popup (InfoWindow): 1 parada = su popup; varias = encabezado + lista.
                 let popupHtml;
                 if (group.length === 1) {
                     popupHtml = first.popupHtml || '';
@@ -197,7 +207,6 @@ window.mapeoFlex = (function () {
                 any = true;
             }
 
-            // Solo auto-encuadra en el primer render; después respeta el zoom/pan del usuario.
             if (any && !hasAutoFitted) {
                 map.fitBounds(bounds, 48);
                 hasAutoFitted = true;
@@ -221,5 +230,60 @@ window.mapeoFlex = (function () {
         },
 
         refit() { hasAutoFitted = false; }
+    };
+})();
+
+// ══════════ Mini-mapa de PREVIEW (card del Dashboard) — no interactivo ══════════
+window.mapeoMini = (function () {
+    const H = window.__mapeoHelpers;
+    let map = null;
+    let markers = [];
+
+    return {
+        async init(elementId) {
+            try {
+                await H.ensureGoogle();
+            } catch (e) {
+                const el = document.getElementById(elementId);
+                if (el) el.style.background = '#1e293b';
+                return;
+            }
+            const el = document.getElementById(elementId);
+            if (!el) return;
+            map = new google.maps.Map(el, {
+                center: { lat: -34.6037, lng: -58.3816 },
+                zoom: 10,
+                disableDefaultUI: true,     // sin controles: es un preview
+                gestureHandling: 'none',    // no se puede arrastrar/zoom (la card entera es un link)
+                keyboardShortcuts: false,
+                clickableIcons: false
+            });
+        },
+
+        renderMarkers(items) {
+            if (!map || !window.google) return;
+            for (const m of markers) m.setMap(null);
+            markers = [];
+            const bounds = new google.maps.LatLngBounds();
+            let any = false;
+            for (const it of items) {
+                if (it.lat == null || it.lng == null) continue;
+                const pos = { lat: +it.lat, lng: +it.lng };
+                const marker = new google.maps.Marker({
+                    position: pos,
+                    map: map,
+                    icon: H.markerIcon(H.markerSvg([it]), 38, 19)
+                });
+                markers.push(marker);
+                bounds.extend(pos);
+                any = true;
+            }
+            if (any) {
+                map.fitBounds(bounds, 34);
+            } else {
+                map.setCenter({ lat: -34.6037, lng: -58.3816 });
+                map.setZoom(10);
+            }
+        }
     };
 })();
