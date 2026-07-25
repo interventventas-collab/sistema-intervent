@@ -176,6 +176,7 @@
                                         <button class="btn-icon" style="color: #059669;" @onclick="() => EmitirArca(r)" disabled="@(emitiendoId == r.Id)" title="Emitir factura AFIP (CAE)">@(emitiendoId == r.Id ? "…" : "💳")</button>
                                     }
                                     <button class="btn-icon" style="color: #7c3aed;" @onclick="() => ShowAsignar(r)" title="Asignar a repartidor">🚚</button>
+                                    <button class="btn-icon" style="color: #2563eb;" @onclick="() => SumarReservaAlMapa(r)" title="Sumar al mapa de reparto">🗺️</button>
                                     <button class="btn-icon" style="color: #1d4ed8;" @onclick="() => ShowPrint(r)" title="Ver / imprimir / PDF">🖨</button>
                                     <button class="btn-icon btn-edit" @onclick="() => ShowEdit(r)" title="Editar / Ver">@SvgIcons.Edit</button>
                                     <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(r)" title="Eliminar">@SvgIcons.AlertCircle</button>
@@ -1045,9 +1046,89 @@
     </div>
 }
 
+@* ═══════════════ MODAL: Cargar domicilio (sumar al mapa) ═══════════════ *@
+@if (mapaReservaPendiente is not null)
+{
+    <div class="modal-overlay" @onclick="() => mapaReservaPendiente = null" style="z-index: 9600 !important;">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 470px; width: 92vw; padding: 1.2rem;">
+            <h3 style="margin: 0 0 0.3rem;">🗺️ Cargar domicilio del evento</h3>
+            <p style="color:#6b7280; font-size:0.87rem; margin:0 0 0.9rem; line-height:1.45;">
+                La reserva de <b>@mapaClienteNombre</b> no tiene domicilio cargado. Escribí la dirección del evento
+                (o pegá un link de Google Maps) y la sumo al mapa. Queda <b>guardada en la reserva</b>.
+            </p>
+            <label style="font-size:0.8rem; font-weight:600; color:#374151; display:block; margin-bottom:0.2rem;">Dirección del evento</label>
+            <input @bind="mapaDireccionInput" placeholder="Ej: Av. Corrientes 1234, San Miguel"
+                   style="width:100%; padding:0.6rem; border:1px solid #d1d5db; border-radius:8px; font-size:0.95rem; margin-bottom:0.7rem;" />
+            <label style="font-size:0.8rem; font-weight:600; color:#374151; display:block; margin-bottom:0.2rem;">o link de Google Maps</label>
+            <input @bind="mapaLinkInput" placeholder="https://maps.app.goo.gl/..."
+                   style="width:100%; padding:0.6rem; border:1px solid #d1d5db; border-radius:8px; font-size:0.95rem;" />
+            @if (!string.IsNullOrEmpty(mapaError))
+            {
+                <div style="color:#b91c1c; font-size:0.83rem; margin-top:0.55rem;">@mapaError</div>
+            }
+            <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:1.1rem;">
+                <button class="btn btn-secondary" @onclick="() => mapaReservaPendiente = null" disabled="@mapaGuardando">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmarDomicilioMapaReserva" disabled="@mapaGuardando">
+                    @(mapaGuardando ? "Guardando..." : "Sumar al mapa")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [SupplyParameterFromQuery(Name = "openId")] public int? OpenIdParam { get; set; }
     [SupplyParameterFromQuery(Name = "newDate")] public string? NewDateParam { get; set; }
+
+    // ═══ Sumar reserva al mapa de reparto ═══
+    private AlqReservaDto? mapaReservaPendiente;
+    private string mapaClienteNombre = "";
+    private string mapaDireccionInput = "";
+    private string mapaLinkInput = "";
+    private string? mapaError;
+    private bool mapaGuardando;
+
+    private async Task SumarReservaAlMapa(AlqReservaDto r)
+    {
+        var res = await Api.SumarReservaAlMapaAsync(r.Id);
+        if (res is null) { ToastService.Error("No se pudo sumar al mapa."); return; }
+        if (res.Ok) { ToastService.Success(res.Mensaje ?? "Agregado al mapa ✓"); return; }
+        if (res.Motivo == "sin_domicilio")
+        {
+            mapaReservaPendiente = r;
+            mapaClienteNombre = res.ClienteNombre ?? r.ClienteNombre ?? "El cliente";
+            mapaDireccionInput = res.DireccionSugerida ?? "";
+            mapaLinkInput = "";
+            mapaError = null;
+            StateHasChanged();
+            return;
+        }
+        ToastService.Warning(res.Mensaje ?? "No se pudo sumar al mapa.");
+    }
+
+    private async Task ConfirmarDomicilioMapaReserva()
+    {
+        if (mapaReservaPendiente is null) return;
+        if (string.IsNullOrWhiteSpace(mapaDireccionInput) && string.IsNullOrWhiteSpace(mapaLinkInput))
+        { mapaError = "Escribí la dirección o pegá un link de Google Maps."; return; }
+
+        mapaGuardando = true;
+        mapaError = null;
+        try
+        {
+            var res = await Api.SumarReservaAlMapaAsync(mapaReservaPendiente.Id, mapaDireccionInput, mapaLinkInput);
+            if (res is not null && res.Ok)
+            {
+                ToastService.Success(res.Mensaje ?? "Agregado al mapa ✓");
+                mapaReservaPendiente = null;
+            }
+            else
+            {
+                mapaError = res?.Mensaje ?? "No pude encontrar esa dirección. Probá de nuevo.";
+            }
+        }
+        finally { mapaGuardando = false; }
+    }
     // Atajo de teclado "N + A": ?nueva=<timestamp> abre +Nueva Reserva desde cualquier pantalla. 2026-07-08
     [SupplyParameterFromQuery(Name = "nueva")] public string? NuevaParam { get; set; }
     private string? lastNuevaHandled;

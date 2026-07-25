@@ -4876,6 +4876,10 @@ public class ApiClient
     public async Task<SumarAlMapaResult?> SumarVentaAlMapaAsync(int ventaId, string? direccion = null, string? link = null)
         => await PostAsync<SumarAlMapaResult>($"/api/cafe/ventas/{ventaId}/sumar-al-mapa", new { direccion, link });
 
+    // Suma una reserva de alquiler al mapa de reparto (idem ventas).
+    public async Task<SumarAlMapaResult?> SumarReservaAlMapaAsync(int reservaId, string? direccion = null, string? link = null)
+        => await PostAsync<SumarAlMapaResult>($"/api/alquileres/reservas/{reservaId}/sumar-al-mapa", new { direccion, link });
+
     // Limpia las paradas de días anteriores al abrir el mapa (lo de hoy se mantiene).
     public async Task ClearStaleMapeoStopsAsync()
     {

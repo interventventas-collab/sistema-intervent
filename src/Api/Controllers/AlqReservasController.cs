@@ -21,7 +21,33 @@ public class AlqReservasController : ControllerBase
     private readonly Api.Services.ArcaEmisorService _emisor;
     private static readonly string[] EstadosValidos = { "reservado", "confirmado", "entregado", "finalizado", "cancelado" };
 
-    public AlqReservasController(AppDbContext db, Api.Services.QrRepartidorService qr, Api.Services.AlqReservaPdfService pdf, Api.Services.ArcaInvoiceService arca, Api.Services.ArcaInvoicePdfService arcaPdf, Api.Services.ArcaEmisorService emisor) { _db = db; _qr = qr; _pdf = pdf; _arca = arca; _arcaPdf = arcaPdf; _emisor = emisor; }
+    private readonly Api.Services.AlqMapeoService _alqMapeo;
+
+    public AlqReservasController(AppDbContext db, Api.Services.QrRepartidorService qr, Api.Services.AlqReservaPdfService pdf, Api.Services.ArcaInvoiceService arca, Api.Services.ArcaInvoicePdfService arcaPdf, Api.Services.ArcaEmisorService emisor, Api.Services.AlqMapeoService alqMapeo) { _db = db; _qr = qr; _pdf = pdf; _arca = arca; _arcaPdf = arcaPdf; _emisor = emisor; _alqMapeo = alqMapeo; }
+
+    public record SumarAlMapaRequest(string? Direccion, string? Link);
+
+    /// <summary>Suma una reserva de alquiler al mapa de reparto (mismo patrón que ventas).</summary>
+    [HttpPost("{id:int}/sumar-al-mapa")]
+    public async Task<IActionResult> SumarAlMapa(int id, [FromBody] SumarAlMapaRequest? req)
+    {
+        var r = await _db.AlqReservas.Include(x => x.ClienteNav).FirstOrDefaultAsync(x => x.Id == id);
+        if (r is null) return NotFound(new { ok = false, mensaje = "Reserva no encontrada." });
+        var res = await _alqMapeo.SumarReservaAsync(r, req?.Direccion, req?.Link);
+        return Ok(new
+        {
+            ok = res.Ok,
+            yaEstaba = res.YaEstaba,
+            motivo = res.Motivo,
+            mensaje = res.Mensaje,
+            clienteId = res.ClienteId,
+            clienteNombre = res.Nombre,
+            direccionSugerida = res.DireccionSugerida,
+            nombre = res.Nombre,
+            localidad = res.Localidad,
+            stopId = res.StopId
+        });
+    }
 
     /// <summary>PDF descargable del comprobante de la reserva (como el de ventas). Pedido 2026-06-29.</summary>
     [HttpGet("{id:int}/pdf")]

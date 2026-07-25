@@ -15,8 +15,9 @@ public class MapeoStopsController : ControllerBase
     private readonly AppDbContext _db;
     private readonly GoogleRoutesService _routes;
     private readonly VentaMapeoService _ventaMapeo;
-    public MapeoStopsController(AppDbContext db, GoogleRoutesService routes, VentaMapeoService ventaMapeo)
-    { _db = db; _routes = routes; _ventaMapeo = ventaMapeo; }
+    private readonly AlqMapeoService _alqMapeo;
+    public MapeoStopsController(AppDbContext db, GoogleRoutesService routes, VentaMapeoService ventaMapeo, AlqMapeoService alqMapeo)
+    { _db = db; _routes = routes; _ventaMapeo = ventaMapeo; _alqMapeo = alqMapeo; }
 
     public record StopDto(int Id, string Origin, string? OriginRefId, string? Alias, string Direccion,
         decimal Latitude, decimal Longitude, string? ContactName, string? Telefono, string? Notas,
@@ -513,6 +514,17 @@ public class MapeoStopsController : ControllerBase
             return Ok(new { ok = rv.Ok, yaEstaba = rv.YaEstaba, motivo = rv.Motivo, mensaje = rv.Mensaje, nombre = rv.Nombre, localidad = rv.Localidad, stopId = rv.StopId });
         }
 
+        // ¿Es el QR de una reserva de ALQUILER? (URL .../alquiler/{token}).
+        var alqToken = ExtractAlquilerToken(req?.Code);
+        if (alqToken is not null)
+        {
+            var reserva = await _db.AlqReservas.Include(x => x.ClienteNav).FirstOrDefaultAsync(x => x.PublicToken == alqToken);
+            if (reserva is null)
+                return Ok(new { ok = false, motivo = "no_encontrado", mensaje = "No reconozco ese comprobante de alquiler." });
+            var ra = await _alqMapeo.SumarReservaAsync(reserva);
+            return Ok(new { ok = ra.Ok, yaEstaba = ra.YaEstaba, motivo = ra.Motivo, mensaje = ra.Mensaje, nombre = ra.Nombre, localidad = ra.Localidad, stopId = ra.StopId });
+        }
+
         var id = ExtractShipmentId(req?.Code);
         if (id is null)
             return Ok(new { ok = false, motivo = "sin_id", mensaje = "No pude leer el numero de envio de ese codigo." });
@@ -566,11 +578,20 @@ public class MapeoStopsController : ControllerBase
         return digits.Length >= 6 && long.TryParse(digits, out var val) ? val : (long?)null;
     }
 
-    /// <summary>Saca el token de una URL de comprobante nuestro (.../repartidor/{token}). null si no aplica.</summary>
+    /// <summary>Saca el token de una URL de comprobante de VENTA (.../repartidor/{token}). null si no aplica.</summary>
     private static string? ExtractRepartidorToken(string? code)
     {
         if (string.IsNullOrWhiteSpace(code)) return null;
         var m = System.Text.RegularExpressions.Regex.Match(code, @"/repartidor/([A-Za-z0-9_\-]+)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return m.Success ? m.Groups[1].Value : null;
+    }
+
+    /// <summary>Saca el token de una URL de comprobante de ALQUILER (.../alquiler/{token}). null si no aplica.</summary>
+    private static string? ExtractAlquilerToken(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return null;
+        var m = System.Text.RegularExpressions.Regex.Match(code, @"/alquiler/([A-Za-z0-9_\-]+)",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         return m.Success ? m.Groups[1].Value : null;
     }
