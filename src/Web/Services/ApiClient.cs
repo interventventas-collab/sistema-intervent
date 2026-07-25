@@ -4867,6 +4867,10 @@ public class ApiClient
         return await response.Content.ReadFromJsonAsync<T>();
     }
 
+    // Escaneo de etiqueta Flex: manda el texto del QR y suma la parada al mapa.
+    public async Task<ScanFlexResult?> ScanFlexAsync(string code)
+        => await PostAsync<ScanFlexResult>("/api/mapeo/stops/scan-flex", new { code });
+
     private async Task<T?> PostAsync<T>(string url, object data)
     {
         await SetAuthHeaderAsync();

@@ -1,5 +1,18 @@
 namespace Web.Models;
 
+// Resultado de escanear el QR de una etiqueta Flex (pantalla /mapeo/escanear).
+public class ScanFlexResult
+{
+    public bool Ok { get; set; }
+    public bool YaEstaba { get; set; }
+    public string? Motivo { get; set; }
+    public string? Mensaje { get; set; }
+    public long Id { get; set; }
+    public string? Nombre { get; set; }
+    public string? Localidad { get; set; }
+    public int StopId { get; set; }
+}
+
 public class MapeoDriverDto
 {
     public int Id { get; set; }

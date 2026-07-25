@@ -1,0 +1,182 @@
+@page "/mapeo/escanear"
+@attribute [Authorize]
+@inject IJSRuntime JS
+@inject ApiClient Api
+@implements IAsyncDisposable
+
+<PageTitle>Escanear Flex</PageTitle>
+
+<div class="esc-wrap">
+    <div class="esc-top">
+        <NavLink class="esc-volver" href="mapeo">← Volver al mapa</NavLink>
+        <div class="esc-count"><b>@_agregadas</b> agregadas</div>
+    </div>
+
+    <h2 class="esc-title">📷 Escanear paquetes Flex</h2>
+    <p class="esc-help">Apuntá la cámara al <b>QR</b> de cada etiqueta. Cada paquete que scaneás se agrega solo al mapa.</p>
+
+    @if (!_scanning)
+    {
+        <button class="esc-btn" @onclick="StartAsync">Empezar a escanear</button>
+    }
+    else
+    {
+        <button class="esc-btn esc-btn-stop" @onclick="StopAsync">Terminar</button>
+    }
+
+    <div id="reader" class="esc-reader"></div>
+
+    @if (_last is not null)
+    {
+        <div class="esc-flash @FlashClass(_last)">
+            <div class="esc-flash-ico">@FlashIco(_last)</div>
+            <div class="esc-flash-body">
+                <div class="esc-flash-msg">@_last.Mensaje</div>
+                @if (!string.IsNullOrEmpty(_last.Nombre))
+                {
+                    <div class="esc-flash-sub">@_last.Nombre@(string.IsNullOrEmpty(_last.Localidad) ? "" : $" · {_last.Localidad}")</div>
+                }
+            </div>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="esc-error">@_error</div>
+    }
+
+    <div class="esc-list-head">
+        <span>Scaneados (@_historial.Count)</span>
+        @if (_historial.Count > 0)
+        {
+            <button class="esc-clear" @onclick="() => _historial.Clear()">Limpiar lista</button>
+        }
+    </div>
+
+    @if (_historial.Count == 0)
+    {
+        <p class="esc-empty">Todavía no scaneaste nada. Tocá "Empezar a escanear" y apuntá al QR.</p>
+    }
+    else
+    {
+        <div class="esc-cards">
+            @foreach (var h in _historial)
+            {
+                <div class="esc-card @FlashClass(h)">
+                    <span class="esc-card-ico">@FlashIco(h)</span>
+                    <span class="esc-card-txt">@(string.IsNullOrEmpty(h.Nombre) ? h.Mensaje : h.Nombre)</span>
+                    <span class="esc-card-loc">@h.Localidad</span>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .esc-wrap { max-width: 480px; margin: 0 auto; padding: 14px; font-family: Inter, sans-serif; }
+    .esc-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .esc-volver { color: #1d4ed8; font-size: 14px; text-decoration: none; }
+    .esc-count { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; border-radius: 999px; padding: 4px 12px; font-size: 14px; }
+    .esc-count b { font-size: 16px; }
+    .esc-title { margin: 4px 0 4px; font-size: 20px; color: #0f172a; }
+    .esc-help { color: #475569; font-size: 14px; line-height: 1.5; margin: 0 0 14px; }
+    .esc-btn { width: 100%; padding: 15px; font-size: 17px; font-weight: 700; color: #fff; background: #16a34a; border: none; border-radius: 12px; cursor: pointer; }
+    .esc-btn-stop { background: #dc2626; }
+    .esc-reader { width: 100%; margin: 12px 0; border-radius: 12px; overflow: hidden; background: #0f172a; min-height: 4px; }
+    .esc-flash { display: flex; gap: 12px; align-items: center; padding: 14px; border-radius: 12px; margin: 8px 0; }
+    .esc-flash.ok { background: #ecfdf5; border: 1px solid #6ee7b7; }
+    .esc-flash.warn { background: #fffbeb; border: 1px solid #fcd34d; }
+    .esc-flash.err { background: #fef2f2; border: 1px solid #fca5a5; }
+    .esc-flash-ico { font-size: 26px; font-weight: 800; width: 34px; text-align: center; }
+    .esc-flash.ok .esc-flash-ico { color: #16a34a; }
+    .esc-flash.warn .esc-flash-ico { color: #d97706; }
+    .esc-flash.err .esc-flash-ico { color: #dc2626; }
+    .esc-flash-msg { font-weight: 700; color: #0f172a; font-size: 15px; }
+    .esc-flash-sub { color: #475569; font-size: 13px; margin-top: 2px; }
+    .esc-error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; padding: 10px 12px; border-radius: 8px; font-size: 14px; margin: 8px 0; }
+    .esc-list-head { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; font-size: 15px; color: #0f172a; font-weight: 600; }
+    .esc-clear { background: #f1f5f9; border: none; color: #475569; padding: 5px 10px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+    .esc-empty { color: #94a3b8; font-size: 14px; }
+    .esc-cards { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+    .esc-card { display: flex; align-items: center; gap: 8px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 9px 12px; }
+    .esc-card.ok { border-left: 4px solid #16a34a; }
+    .esc-card.warn { border-left: 4px solid #d97706; }
+    .esc-card.err { border-left: 4px solid #dc2626; }
+    .esc-card-ico { font-weight: 800; }
+    .esc-card.ok .esc-card-ico { color: #16a34a; }
+    .esc-card.warn .esc-card-ico { color: #d97706; }
+    .esc-card.err .esc-card-ico { color: #dc2626; }
+    .esc-card-txt { flex: 1; color: #0f172a; font-size: 14px; }
+    .esc-card-loc { color: #64748b; font-size: 12px; }
+</style>
+
+@code {
+    private bool _scanning;
+    private string? _error;
+    private int _agregadas;
+    private ScanFlexResult? _last;
+    private DotNetObjectReference<MapeoEscanear>? _ref;
+    private readonly List<ScanFlexResult> _historial = new();
+    private string? _lastCode;
+    private bool _processing;
+
+    private static string FlashClass(ScanFlexResult r) => !r.Ok ? "err" : (r.YaEstaba ? "warn" : "ok");
+    private static string FlashIco(ScanFlexResult r) => !r.Ok ? "✕" : (r.YaEstaba ? "↻" : "✓");
+
+    private async Task StartAsync()
+    {
+        _error = null;
+        _ref ??= DotNetObjectReference.Create(this);
+        _scanning = true;
+        await Task.Yield(); // dejar que el <div id="reader"> entre al DOM
+        await JS.InvokeVoidAsync("scannerBarcode.start", "reader", _ref);
+    }
+
+    private async Task StopAsync()
+    {
+        _scanning = false;
+        try { await JS.InvokeVoidAsync("scannerBarcode.stop"); } catch { }
+    }
+
+    [JSInvokable]
+    public async Task OnScanDetected(string text, string format)
+    {
+        if (string.IsNullOrWhiteSpace(text) || _processing) return;
+        if (text == _lastCode) return; // mismo QR seguido, no repetir
+        _processing = true;
+        _lastCode = text;
+        try
+        {
+            var res = await Api.ScanFlexAsync(text);
+            if (res is not null)
+            {
+                _last = res;
+                _historial.Insert(0, res);
+                if (res.Ok && !res.YaEstaba) _agregadas++;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = "No pude agregar la parada: " + ex.Message;
+        }
+        finally
+        {
+            _processing = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    [JSInvokable]
+    public void OnScanError(string message)
+    {
+        _error = message;
+        _scanning = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("scannerBarcode.stop"); } catch { }
+        _ref?.Dispose();
+    }
+}

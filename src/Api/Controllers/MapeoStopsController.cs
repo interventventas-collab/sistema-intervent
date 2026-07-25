@@ -456,4 +456,67 @@ public class MapeoStopsController : ControllerBase
         await _db.SaveChangesAsync();
         return Ok(new { created, total = ships.Count });
     }
+
+    public record ScanFlexRequest(string Code);
+
+    /// <summary>
+    /// Suma UNA parada al mapa a partir del QR de una etiqueta Flex escaneada con el celular.
+    /// El QR trae un JSON tipo {"id":"47599650926",...}; extraemos el id y buscamos ese envio
+    /// (que ya debe estar sincronizado con su ubicacion). Idempotente: si ya estaba, avisa y no duplica.
+    /// </summary>
+    [HttpPost("scan-flex")]
+    public async Task<IActionResult> ScanFlex([FromBody] ScanFlexRequest req)
+    {
+        var id = ExtractShipmentId(req?.Code);
+        if (id is null)
+            return Ok(new { ok = false, motivo = "sin_id", mensaje = "No pude leer el numero de envio de ese codigo." });
+
+        var sh = await _db.MeliShipments.FirstOrDefaultAsync(s => s.MeliShipmentId == id.Value);
+        if (sh is null)
+            return Ok(new { ok = false, motivo = "no_encontrado", id = id.Value, mensaje = $"El envio {id.Value} todavia no esta en el sistema. Proba 'Traer Flex' primero." });
+        if (sh.Latitude is null || sh.Longitude is null)
+            return Ok(new { ok = false, motivo = "sin_ubicacion", id = id.Value, nombre = sh.ReceiverName, mensaje = "Ese envio no tiene ubicacion cargada, no lo puedo poner en el mapa." });
+
+        var refId = sh.MeliShipmentId.ToString();
+        var existente = await _db.MapeoStops.FirstOrDefaultAsync(s => s.Origin == "flex" && s.OriginRefId == refId);
+        if (existente is not null)
+            return Ok(new { ok = true, yaEstaba = true, id = id.Value, nombre = sh.ReceiverName, localidad = sh.City, stopId = existente.Id, mensaje = "Ya estaba en el mapa." });
+
+        var stop = new MapeoStop
+        {
+            Origin = "flex",
+            OriginRefId = refId,
+            Alias = sh.ReceiverName,
+            Direccion = sh.AddressLine ?? $"{sh.City} CP {sh.ZipCode}",
+            Localidad = string.IsNullOrWhiteSpace(sh.City) ? null : sh.City,
+            Latitude = sh.Latitude!.Value,
+            Longitude = sh.Longitude!.Value,
+            ContactName = sh.ReceiverName,
+            Telefono = sh.ReceiverPhone,
+            Notas = sh.Comment,
+            InternalStatus = "pending",
+            CreatedAt = DateTime.UtcNow
+        };
+        _db.MapeoStops.Add(stop);
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, yaEstaba = false, id = id.Value, nombre = sh.ReceiverName, localidad = sh.City, stopId = stop.Id, mensaje = "Agregado al mapa." });
+    }
+
+    /// <summary>Saca el numero de envio de lo que trae el QR (JSON con "id", o si no la corrida de digitos mas larga).</summary>
+    private static long? ExtractShipmentId(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return null;
+        // Preferimos el campo "id" del JSON del QR: {"id":"47599650926",...}
+        var m = System.Text.RegularExpressions.Regex.Match(code, "\"id\"\\s*:\\s*\"?(\\d+)\"?");
+        string digits;
+        if (m.Success) digits = m.Groups[1].Value;
+        else
+        {
+            // Respaldo: la corrida de digitos mas larga del texto (por si viene un codigo distinto).
+            var runs = System.Text.RegularExpressions.Regex.Matches(code, "\\d+");
+            digits = runs.Count == 0 ? "" : runs.Cast<System.Text.RegularExpressions.Match>()
+                .Select(x => x.Value).OrderByDescending(x => x.Length).First();
+        }
+        return digits.Length >= 6 && long.TryParse(digits, out var val) ? val : (long?)null;
+    }
 }
