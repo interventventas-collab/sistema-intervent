@@ -255,7 +255,13 @@ window.mapeoFlex = (function () {
             hasAutoFitted = false;
         },
 
-        refit() { hasAutoFitted = false; }
+        refit() { hasAutoFitted = false; },
+
+        // Fuerza un redibujado cuando cambia el tamaño del contenedor (ej: pantalla completa).
+        resize() {
+            if (!map || !window.google) return;
+            try { google.maps.event.trigger(map, 'resize'); } catch (e) {}
+        }
     };
 })();
 
