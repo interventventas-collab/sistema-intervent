@@ -751,6 +751,12 @@ else
                 </button>
             </div>
         }
+        @* 2026-07-25: buscador de direcciones estilo Google (Places). Escribís, elegís, y se planta la parada. *@
+        <div style="padding:0 0 0.4rem;">
+            <input id="mapeoSearchInput" type="text" class="form-input" autocomplete="off"
+                   placeholder="🔍 Buscar una dirección y sumarla al mapa…"
+                   style="width:100%; font-size:0.9rem; padding:0.5rem 0.75rem; border:1.5px solid #d1d5db; border-radius:8px;" />
+        </div>
         <div id="leafletMap"></div>
     </div>
 </div>
@@ -2132,6 +2138,7 @@ else
             selfRef = DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("mapeoFlex.init", "leafletMap", selfRef);
             mapInitialized = true;
+            try { await JS.InvokeVoidAsync("mapeoFlex.attachSearch", "mapeoSearchInput"); } catch { }
             try { startPoint = await Api.GetMapeoStartPointAsync(); } catch { }
             try { var pu = await Api.GetMapeoPublicBaseUrlAsync(); publicBaseUrl = string.IsNullOrWhiteSpace(pu?.Url) ? null : pu.Url; } catch { }
             await LoadDrivers();
@@ -2339,6 +2346,23 @@ else
     /// togglea su selección en la ruta de Google Maps. Después fuerza un re-render
     /// para que se vea el outline verde en la tarjeta correspondiente del panel lateral.
     /// </summary>
+    // 2026-07-25: el buscador de Google (Places) eligió una dirección → creamos una parada ahí.
+    [JSInvokable]
+    public async Task OnPlacePicked(double lat, double lng, string direccion)
+    {
+        try
+        {
+            await Api.CreateMapeoStopAsync("manual", null, null,
+                string.IsNullOrWhiteSpace(direccion) ? "Punto en el mapa" : direccion,
+                (decimal)lat, (decimal)lng, null, null, null);
+            await LoadStops();
+            await RenderMap();
+            ToastService.Success("📍 Dirección agregada al mapa");
+            StateHasChanged();
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo agregar: " + ex.Message); }
+    }
+
     [JSInvokable]
     public async Task ToggleMarkerInRoute(int markerId)
     {

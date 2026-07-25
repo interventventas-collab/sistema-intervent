@@ -27,7 +27,7 @@
                 if (!key) { reject(new Error('Falta la clave del mapa (GOOGLE_MAPS_BROWSER_KEY).')); return; }
                 window.__mapeoGmapsReady = function () { resolve(); };
                 const s = document.createElement('script');
-                s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) + '&callback=__mapeoGmapsReady';
+                s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) + '&libraries=places&callback=__mapeoGmapsReady';
                 s.async = true;
                 s.defer = true;
                 s.onerror = function () { reject(new Error('No se pudo cargar Google Maps.')); };
@@ -218,6 +218,32 @@ window.mapeoFlex = (function () {
             map.setCenter({ lat: +lat, lng: +lng });
             map.setZoom(zoom || 16);
             if (infoWindow) infoWindow.close();
+        },
+
+        // Buscador estilo Google Maps: engancha un Autocomplete de Places al input dado.
+        // Cuando el usuario elige una dirección, centra el mapa y avisa a Blazor (OnPlacePicked)
+        // para que cree una parada ahí. Restringido a Argentina.
+        attachSearch(inputId) {
+            if (!map || !google.maps.places) return;
+            const input = document.getElementById(inputId);
+            if (!input || input.dataset.acAttached === '1') return;
+            input.dataset.acAttached = '1';
+            const ac = new google.maps.places.Autocomplete(input, {
+                fields: ['geometry', 'formatted_address', 'name'],
+                componentRestrictions: { country: 'ar' }
+            });
+            ac.bindTo('bounds', map); // sesga las sugerencias a lo que se ve en el mapa
+            ac.addListener('place_changed', () => {
+                const place = ac.getPlace();
+                if (!place || !place.geometry || !place.geometry.location) return;
+                const lat = place.geometry.location.lat();
+                const lng = place.geometry.location.lng();
+                const addr = place.formatted_address || place.name || input.value;
+                map.setCenter({ lat: lat, lng: lng });
+                map.setZoom(16);
+                if (dotNetRef) dotNetRef.invokeMethodAsync('OnPlacePicked', lat, lng, addr);
+                input.value = '';
+            });
         },
 
         destroy() {
