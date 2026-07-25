@@ -5904,11 +5904,15 @@ public class ApiClient
     public async Task<object?> AutoAssignStopsAsync(bool reassignAll = false)
         => await PostAsync<object>($"/api/mapeo/stops/auto-assign?reassignAll={reassignAll.ToString().ToLower()}", new { });
 
-    public async Task<object?> OptimizeStopsOrderAsync(int? driverId = null, int? vehicleSlot = null)
+    public async Task<object?> OptimizeStopsOrderAsync(int? driverId = null, int? vehicleSlot = null, bool all = false)
     {
         var qs = new List<string>();
-        if (driverId.HasValue && driverId.Value > 0) qs.Add($"driverId={driverId.Value}");
-        if (vehicleSlot.HasValue && vehicleSlot.Value > 0) qs.Add($"vehicleSlot={vehicleSlot.Value}");
+        if (all) qs.Add("all=true");
+        else
+        {
+            if (driverId.HasValue && driverId.Value > 0) qs.Add($"driverId={driverId.Value}");
+            if (vehicleSlot.HasValue && vehicleSlot.Value > 0) qs.Add($"vehicleSlot={vehicleSlot.Value}");
+        }
         var url = "/api/mapeo/stops/optimize-order" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
         return await PostAsync<object>(url, new { });
     }

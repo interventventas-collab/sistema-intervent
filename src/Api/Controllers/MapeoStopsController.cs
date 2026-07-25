@@ -276,7 +276,7 @@ public class MapeoStopsController : ControllerBase
     /// Optimiza el orden de las paradas de un driver (o de todos) usando nearest-neighbor desde el punto de partida.
     /// </summary>
     [HttpPost("optimize-order")]
-    public async Task<IActionResult> OptimizeOrder([FromQuery] int? driverId = null, [FromQuery] int? vehicleSlot = null)
+    public async Task<IActionResult> OptimizeOrder([FromQuery] int? driverId = null, [FromQuery] int? vehicleSlot = null, [FromQuery] bool all = false)
     {
         // Punto de partida (de AppSettings)
         double? startLat = null, startLng = null;
@@ -285,9 +285,15 @@ public class MapeoStopsController : ControllerBase
         if (double.TryParse(latStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var la)) startLat = la;
         if (double.TryParse(lngStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var lo)) startLng = lo;
 
-        // Determinar grupos a optimizar: por VEHICULO (slot) si vino, o por DRIVER si vino, o todos los drivers.
+        // Determinar grupos a optimizar: TODO junto (all), por VEHICULO (slot), por DRIVER, o todos los drivers.
         var grupos = new List<List<MapeoStop>>();
-        if (vehicleSlot.HasValue && vehicleSlot.Value > 0)
+        if (all)
+        {
+            // "Armar ruta óptima" de TODAS las paradas cargadas como una sola ruta (aunque no tengan chofer).
+            var todas = await _db.MapeoStops.ToListAsync();
+            if (todas.Count > 0) grupos.Add(todas);
+        }
+        else if (vehicleSlot.HasValue && vehicleSlot.Value > 0)
         {
             var stopsV = await _db.MapeoStops.Where(s => s.AssignedVehicleSlot == vehicleSlot.Value).ToListAsync();
             if (stopsV.Count > 0) grupos.Add(stopsV);

@@ -57,6 +57,10 @@ public class GoogleRoutesService
                 .Select(p => new { location = new { latLng = new { latitude = p.lat, longitude = p.lng } } })
                 .ToArray(),
             travelMode = "DRIVE",
+            // TRAFFIC_AWARE = optimiza teniendo en cuenta el tránsito actual. departureTime debe ser FUTURO
+            // (Google rechaza "ahora exacto"), por eso le sumamos unos minutos.
+            routingPreference = "TRAFFIC_AWARE",
+            departureTime = DateTimeOffset.UtcNow.AddMinutes(3).ToString("yyyy-MM-ddTHH:mm:ssZ"),
             optimizeWaypointOrder = true
         };
 

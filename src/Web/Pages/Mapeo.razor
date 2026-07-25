@@ -727,6 +727,15 @@ else
                 ✕ Salir de pantalla completa
             </button>
         }
+        @* Botón grande "Armar ruta óptima": ordena TODAS las paradas por el mejor recorrido según el tránsito. *@
+        @if ((stops?.Count ?? 0) > 0)
+        {
+            <button class="btn" style="position:absolute; bottom:18px; left:50%; transform:translateX(-50%); z-index:450; font-size:0.92rem; font-weight:800; background:#1d4ed8; color:#fff; border:none; padding:0.6rem 1.3rem; border-radius:999px; box-shadow:0 3px 14px rgba(0,0,0,0.35); cursor:pointer;"
+                    @onclick="ArmarRutaOptima" disabled="@routeBusy"
+                    title="Ordena todas las paradas en el mejor recorrido según el tránsito actual (Google)">
+                🚦 @(routeBusy ? "Armando…" : "Armar ruta óptima")
+            </button>
+        }
         @{
             var vehiclesActivos = stops?.Where(s => s.AssignedVehicleSlot.HasValue)
                 .GroupBy(s => s.AssignedVehicleSlot!.Value)
@@ -2109,6 +2118,22 @@ else
         StateHasChanged();
         await Task.Delay(60);                 // dejar que el layout cambie de tamaño
         try { await JS.InvokeVoidAsync("mapeoFlex.resize"); } catch { }
+    }
+
+    // "Armar ruta óptima": ordena TODAS las paradas cargadas en el mejor recorrido según el tránsito actual.
+    private async Task ArmarRutaOptima()
+    {
+        if (routeBusy) return;
+        routeBusy = true;
+        try
+        {
+            await Api.OptimizeStopsOrderAsync(all: true);
+            await LoadStops();
+            await RenderMap();
+            ToastService.Success("🚦 Ruta armada y optimizada por el tránsito actual");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo armar la ruta: " + ex.Message); }
+        finally { routeBusy = false; StateHasChanged(); }
     }
     private string EscanearUrl => Navigation.BaseUri + "mapeo/escanear";
     private string ScanQrUrl => $"/api/mapeo/stops/escanear-qr?url={Uri.EscapeDataString(EscanearUrl)}";
