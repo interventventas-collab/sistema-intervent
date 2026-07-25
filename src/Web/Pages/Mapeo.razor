@@ -12,6 +12,9 @@
     .mapeo-layout.mapeo-fullscreen { position: fixed; inset: 0; z-index: 4000; height: 100vh; min-height: 0;
         margin: 0; padding: 8px; gap: 8px; background: #e5e7eb; grid-template-columns: 380px 1fr; }
     @@media (max-width: 700px) { .mapeo-layout.mapeo-fullscreen { grid-template-columns: 1fr; grid-template-rows: 40% 60%; } }
+    /* El desplegable de sugerencias de Google (Places) tiene que quedar POR ENCIMA de todo,
+       incluso del modo pantalla completa (z-index 4000), si no queda tapado por el mapa. */
+    .pac-container { z-index: 6000 !important; }
     .mapeo-side { background: white; border: 1px solid #e5e7eb; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
     .mapeo-side-header { padding: 0.6rem 0.7rem; background: #f9fafb; border-bottom: 1px solid #e5e7eb; }
     .mapeo-side-list { flex: 1; overflow-y: auto; padding: 0.3rem; }
