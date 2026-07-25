@@ -81,6 +81,8 @@ services:
       - META_WA_VERIFY_TOKEN=${META_WA_VERIFY_TOKEN:-}
       # Google Maps Platform (Routes API) para optimizar el orden de las rutas de reparto.
       - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY:-}
+      # Clave del navegador para dibujar el mapa (Maps JavaScript API, restringida por dominio).
+      - GOOGLE_MAPS_BROWSER_KEY=${GOOGLE_MAPS_BROWSER_KEY:-}
     volumes:
       - files_prod_data:/data/files
       - backups_prod_data:/data/backups
