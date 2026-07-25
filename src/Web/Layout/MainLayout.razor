@@ -707,8 +707,8 @@
                              IsActive="@IsActive("/cafe/listas-precios")" OnClick="@(() => NavigateTo("/cafe/listas-precios"))" />
                     <NavItem Href="/cafe/listas-precios-custom" Label="📋 Listas personalizadas" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/cafe/listas-precios-custom")" OnClick="@(() => NavigateTo("/cafe/listas-precios-custom"))" />
-                    <NavItem Href="/mapeo" Label="🗺 Mapa de clientes" Icon="@SvgIcons.Tag"
-                             IsActive="@IsActive("/mapeo")" OnClick="@(() => NavigateTo("/mapeo"))" />
+                    <NavItem Href="/mapeo?full=1" IsExternal="true" Label="🗺 Mapa de clientes" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/mapeo")" />
                     <NavItem Href="/cafe/clientes-mapeados" Label="👥 Clientes Mapeados" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/cafe/clientes-mapeados")" OnClick="@(() => NavigateTo("/cafe/clientes-mapeados"))" />
                     <NavItem Href="/documentacion" Label="📑 Documentación" Icon="@SvgIcons.Folder"
@@ -927,8 +927,8 @@
                 }
                 @if (HasPerm("mapeo"))
                 {
-                    <NavItem Href="/mapeo" Label="Mapeo" Icon="@SvgIcons.Tag"
-                             IsActive="@IsActive("/mapeo")" OnClick="@(() => NavigateTo("/mapeo"))" />
+                    <NavItem Href="/mapeo?full=1" IsExternal="true" Label="Mapeo" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/mapeo")" />
                 }
                 @if (HasPerm("cafe-telefonos-meli"))
                 {

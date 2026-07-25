@@ -2092,6 +2092,14 @@ else
     private bool showScanQr = false; // desplegable con el QR para escanear desde el celular
     private bool mapaFullscreen = false; // modo pantalla completa (mapa como app)
 
+    // Cuando se abre desde el menú (pestaña nueva con ?full=1), arranca a pantalla completa:
+    // se ve solo el mapa + el listado, ocupando todo. Las herramientas se muestran al Salir.
+    [SupplyParameterFromQuery(Name = "full")] public string? FullParam { get; set; }
+    protected override void OnInitialized()
+    {
+        if (FullParam == "1") mapaFullscreen = true;
+    }
+
     private async Task ToggleFullscreen()
     {
         mapaFullscreen = !mapaFullscreen;

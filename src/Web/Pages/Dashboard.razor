@@ -16,7 +16,7 @@
 </div>
 
 @* ═══ Card: Mapa de Reparto (Google Maps en vivo) — se toca y lleva al mapa completo ═══ *@
-<div class="dash-mapcard" @onclick='() => Navigation.NavigateTo("mapeo")' title="Abrir el mapa de reparto">
+<div class="dash-mapcard" @onclick="AbrirMapaEnPestana" title="Abrir el mapa de reparto en una pestaña nueva">
     <div class="dash-mapcard-map" id="dashMiniMap"></div>
     <div class="dash-mapcard-grad"></div>
     <div class="dash-mapcard-badge">✨ NUEVO · Google Maps</div>
@@ -1833,7 +1833,13 @@
         }
     }
 
-    // Card del Dashboard: mini-mapa de Google con los globitos. Al tocar la card, lleva al mapa completo.
+    // Card del Dashboard: mini-mapa de Google con los globitos. Al tocar la card, abre el mapa
+    // completo en una pestaña nueva (a pantalla completa), así el sistema queda en esta pestaña.
+    private async Task AbrirMapaEnPestana()
+    {
+        try { await JS.InvokeVoidAsync("open", "/mapeo?full=1", "_blank"); } catch { }
+    }
+
     private List<MapeoStopDto>? mapeoStopsMini;
     private async Task InitMapaMiniAsync()
     {
