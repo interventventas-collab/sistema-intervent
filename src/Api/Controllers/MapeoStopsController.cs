@@ -17,8 +17,9 @@ public class MapeoStopsController : ControllerBase
     private readonly VentaMapeoService _ventaMapeo;
     private readonly AlqMapeoService _alqMapeo;
     private readonly GoogleMapsLinkResolverService _mapsResolver;
-    public MapeoStopsController(AppDbContext db, GoogleRoutesService routes, VentaMapeoService ventaMapeo, AlqMapeoService alqMapeo, GoogleMapsLinkResolverService mapsResolver)
-    { _db = db; _routes = routes; _ventaMapeo = ventaMapeo; _alqMapeo = alqMapeo; _mapsResolver = mapsResolver; }
+    private readonly ILogger<MapeoStopsController> _logger;
+    public MapeoStopsController(AppDbContext db, GoogleRoutesService routes, VentaMapeoService ventaMapeo, AlqMapeoService alqMapeo, GoogleMapsLinkResolverService mapsResolver, ILogger<MapeoStopsController> logger)
+    { _db = db; _routes = routes; _ventaMapeo = ventaMapeo; _alqMapeo = alqMapeo; _mapsResolver = mapsResolver; _logger = logger; }
 
     public record StopDto(int Id, string Origin, string? OriginRefId, string? Alias, string Direccion,
         decimal Latitude, decimal Longitude, string? ContactName, string? Telefono, string? Notas,
@@ -388,31 +389,52 @@ public class MapeoStopsController : ControllerBase
     {
         if (!_routes.IsConfigured || grupo.Count == 0) return false;
         var now = DateTime.UtcNow;
+        try
+        {
+            if (startLat.HasValue && startLng.HasValue)
+            {
+                var start = (startLat.Value, startLng.Value);
+                var inter = grupo.Select(s => ((double)s.Latitude, (double)s.Longitude)).ToList();
+                var order = await _routes.OptimizeWaypointOrderAsync(start, start, inter);
+                if (!EsPermutacionValida(order, grupo.Count)) return false;
+                int ord = 1;
+                foreach (var idx in order!) { grupo[idx].OrderInRoute = ord++; grupo[idx].UpdatedAt = now; }
+                return true;
+            }
+            else
+            {
+                // Sin punto de partida: la primer parada del grupo queda como arranque fijo.
+                var first = grupo[0];
+                var origin = ((double)first.Latitude, (double)first.Longitude);
+                var rest = grupo.Skip(1).ToList();
+                var inter = rest.Select(s => ((double)s.Latitude, (double)s.Longitude)).ToList();
+                var order = await _routes.OptimizeWaypointOrderAsync(origin, origin, inter);
+                if (!EsPermutacionValida(order, rest.Count)) return false;
+                int ord = 1;
+                first.OrderInRoute = ord++; first.UpdatedAt = now;
+                foreach (var idx in order!) { rest[idx].OrderInRoute = ord++; rest[idx].UpdatedAt = now; }
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Optimización con Google falló para un grupo; se usa el respaldo en línea recta.");
+            return false;
+        }
+    }
 
-        if (startLat.HasValue && startLng.HasValue)
+    /// <summary>Valida que 'order' sea una permutación EXACTA de 0..count-1 (evita índices fuera de rango de Google).</summary>
+    private static bool EsPermutacionValida(int[]? order, int count)
+    {
+        if (order is null || order.Length != count) return false;
+        if (count == 0) return true;
+        var visto = new bool[count];
+        foreach (var i in order)
         {
-            var start = (startLat.Value, startLng.Value);
-            var inter = grupo.Select(s => ((double)s.Latitude, (double)s.Longitude)).ToList();
-            var order = await _routes.OptimizeWaypointOrderAsync(start, start, inter);
-            if (order is null || order.Length != grupo.Count) return false;
-            int ord = 1;
-            foreach (var idx in order) { grupo[idx].OrderInRoute = ord++; grupo[idx].UpdatedAt = now; }
-            return true;
+            if (i < 0 || i >= count || visto[i]) return false;
+            visto[i] = true;
         }
-        else
-        {
-            // Sin punto de partida: la primer parada del grupo queda como arranque fijo.
-            var first = grupo[0];
-            var origin = ((double)first.Latitude, (double)first.Longitude);
-            var rest = grupo.Skip(1).ToList();
-            var inter = rest.Select(s => ((double)s.Latitude, (double)s.Longitude)).ToList();
-            var order = await _routes.OptimizeWaypointOrderAsync(origin, origin, inter);
-            if (order is null || order.Length != rest.Count) return false;
-            int ord = 1;
-            first.OrderInRoute = ord++; first.UpdatedAt = now;
-            foreach (var idx in order) { rest[idx].OrderInRoute = ord++; rest[idx].UpdatedAt = now; }
-            return true;
-        }
+        return true;
     }
 
     /// <summary>Distancia haversine en km (aproximada).</summary>
