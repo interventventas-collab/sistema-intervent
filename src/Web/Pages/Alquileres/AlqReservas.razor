@@ -1839,7 +1839,7 @@
                 if (created is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success($"Reserva {created.Numero} creada");
                 // 2026-07-25: si se tildó "sumar al mapa", mandamos la reserva al mapa de reparto.
-                if (formSumarAlMapaReserva) await SumarReservaAlMapa(created);
+                if (formSumarAlMapaReserva) { try { await SumarReservaAlMapa(created); } catch { /* el mapa nunca frena el guardado de la reserva */ } }
                 // Descarga automática del comprobante al crear (pedido 2026-06-29)
                 await DescargarPdfReserva(created.Id, created.Numero);
             }

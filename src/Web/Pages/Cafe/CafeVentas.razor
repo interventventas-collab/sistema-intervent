@@ -7981,7 +7981,7 @@
                 ToastService.Success($"Venta {v.Numero} emitida — Total ${v.Total:N2}");
                 // 2026-07-25: si el operador tildó "sumar al mapa", mandamos la venta al mapa de reparto
                 // (reusa la misma lógica del botón del listado, incluido el modal "sin domicilio").
-                if (formSumarAlMapa) await SumarVentaAlMapa(v);
+                if (formSumarAlMapa) { try { await SumarVentaAlMapa(v); } catch { /* el mapa nunca frena la emisión de la venta */ } }
                 // Emisión exitosa → borramos el auto-borrador
                 await DiscardBorradorAsync();
 
