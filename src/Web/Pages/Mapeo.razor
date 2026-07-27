@@ -1420,7 +1420,7 @@ else
                         <input class="form-input" @bind="geocodeQuery" placeholder="Calle 123, Ciudad, Provincia" @onkeydown="OnGeocodeKey" style="flex:1;" />
                         <button class="btn btn-secondary" @onclick="DoGeocode" disabled="@geocoding">@(geocoding ? "..." : "🔍")</button>
                     </div>
-                    <p style="font-size:0.7rem; color:#6b7280; margin:0.2rem 0 0;">Buscamos en OpenStreetMap (gratis, ~5 candidatos).</p>
+                    <p style="font-size:0.7rem; color:#6b7280; margin:0.2rem 0 0;">Buscamos con Google Maps (~5 candidatos).</p>
                 </div>
                 @if (geocodeResults is not null && geocodeResults.Count > 0)
                 {

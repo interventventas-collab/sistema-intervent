@@ -224,13 +224,48 @@ public class MeliShipmentsController : ControllerBase
 
     public record GeocodeResult(string DisplayName, decimal Lat, decimal Lng);
 
-    /// <summary>Busca una direccion en OpenStreetMap (Nominatim, gratis) y devuelve hasta 5 candidatos con coordenadas.</summary>
+    /// <summary>Busca una direccion con Google Geocoding (misma clave que las rutas) y devuelve hasta 5 candidatos con coordenadas. Si no hay clave de Google, cae a OpenStreetMap.</summary>
     [HttpGet("geocode")]
-    public async Task<IActionResult> Geocode([FromQuery] string q, [FromServices] IHttpClientFactory httpFactory)
+    public async Task<IActionResult> Geocode([FromQuery] string q, [FromServices] IHttpClientFactory httpFactory, [FromServices] IConfiguration config)
     {
         if (string.IsNullOrWhiteSpace(q)) return BadRequest(new { error = "Tenes que escribir una direccion" });
         var http = httpFactory.CreateClient();
-        // Nominatim pide un User-Agent identificable; buscamos en Argentina por default.
+        var googleKey = config["GOOGLE_MAPS_API_KEY"] ?? Environment.GetEnvironmentVariable("GOOGLE_MAPS_API_KEY") ?? "";
+
+        // Camino principal: Google Geocoding API (misma clave que ya usan las rutas).
+        if (!string.IsNullOrWhiteSpace(googleKey))
+        {
+            try
+            {
+                http.Timeout = TimeSpan.FromSeconds(8);
+                var gurl = $"https://maps.googleapis.com/maps/api/geocode/json?address={Uri.EscapeDataString(q)}&region=ar&language=es&key={googleKey}";
+                var gresp = await http.GetAsync(gurl);
+                if (gresp.IsSuccessStatusCode)
+                {
+                    var gbody = await gresp.Content.ReadAsStringAsync();
+                    using var gdoc = System.Text.Json.JsonDocument.Parse(gbody);
+                    var root = gdoc.RootElement;
+                    var status = root.TryGetProperty("status", out var st) ? st.GetString() : null;
+                    var glist = new List<GeocodeResult>();
+                    if (status == "OK" && root.TryGetProperty("results", out var results))
+                    {
+                        foreach (var el in results.EnumerateArray())
+                        {
+                            string? display = el.TryGetProperty("formatted_address", out var fa) ? fa.GetString() : null;
+                            if (display is null || !el.TryGetProperty("geometry", out var geom) || !geom.TryGetProperty("location", out var loc)) continue;
+                            var lat = loc.GetProperty("lat").GetDecimal();
+                            var lng = loc.GetProperty("lng").GetDecimal();
+                            glist.Add(new GeocodeResult(display, lat, lng));
+                            if (glist.Count >= 5) break;
+                        }
+                    }
+                    return Ok(glist);
+                }
+            }
+            catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
+        }
+
+        // Respaldo: OpenStreetMap (Nominatim, gratis) si no hay clave de Google configurada.
         http.DefaultRequestHeaders.UserAgent.ParseAdd("ai-ml-app/1.0 (mapeo flex)");
         var url = $"https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=ar&q={Uri.EscapeDataString(q)}";
         try
