@@ -617,8 +617,17 @@
                 <button class="btn" style="font-size:0.85rem; font-weight:800; background:#16a34a; color:#fff; border:none; padding:0.35rem 0.8rem; border-radius:8px; cursor:pointer;"
                         @onclick="TerminarZona">✓ Terminar zona</button>
                 <button class="btn" style="font-size:0.85rem; font-weight:700; background:transparent; color:#fff; border:1px solid #fff; padding:0.35rem 0.7rem; border-radius:8px; cursor:pointer;"
+                        @onclick="DeshacerUltimoPunto" title="Sacar la última esquina que marcaste">↩ Deshacer punto</button>
+                <button class="btn" style="font-size:0.85rem; font-weight:700; background:transparent; color:#fff; border:1px solid #fff; padding:0.35rem 0.7rem; border-radius:8px; cursor:pointer;"
                         @onclick="CancelarZona">✕ Cancelar</button>
             </div>
+        }
+        @if (!dibujandoZona && lastZoneUndo.Count > 0)
+        {
+            <button class="btn" style="position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:560; background:#fff; color:#1f2937; border:1.5px solid #d1d5db; border-radius:999px; box-shadow:0 3px 14px rgba(0,0,0,0.25); padding:0.4rem 0.9rem; font-size:0.85rem; font-weight:700; cursor:pointer;"
+                    @onclick="DeshacerUltimaZona" disabled="@assigningZone" title="Volver atrás la última zona asignada">
+                ↩ Deshacer última zona (@lastZoneUndo.Count)
+            </button>
         }
         @if (mapaFullscreen)
         {
@@ -2134,6 +2143,8 @@
     private List<int> zoneStopIds = new();
     private bool assigningZone;
     private bool dibujandoZona; // true mientras el usuario marca las esquinas de la zona
+    // Para "deshacer última zona": guardamos qué parada quedó con qué repartidor ANTES de asignar.
+    private List<(int stopId, int? prevDriverId)> lastZoneUndo = new();
 
     // Favoritos
     private List<MapeoFavoritoDto>? favoritos;
@@ -2677,6 +2688,12 @@
         assigningZone = true;
         try
         {
+            // Guardamos cómo estaba cada parada ANTES, para poder deshacer.
+            lastZoneUndo = (stops ?? new())
+                .Where(s => zoneStopIds.Contains(s.Id))
+                .Select(s => (s.Id, s.AssignedDriverId))
+                .ToList();
+
             foreach (var id in zoneStopIds)
                 await Api.UpdateMapeoStopAsync(id, new { assignedDriverId = driverId });
             await LoadStops();
@@ -2688,6 +2705,29 @@
         }
         catch (Exception ex) { ToastService.Error("No se pudo asignar la zona: " + ex.Message); }
         finally { assigningZone = false; StateHasChanged(); }
+    }
+
+    // Deshacer la última zona asignada: cada parada vuelve al repartidor que tenía antes (o a "sin asignar").
+    private async Task DeshacerUltimaZona()
+    {
+        if (lastZoneUndo.Count == 0) return;
+        assigningZone = true;
+        try
+        {
+            foreach (var (id, prev) in lastZoneUndo)
+                await Api.UpdateMapeoStopAsync(id, new { assignedDriverId = prev ?? 0 });
+            await LoadStops();
+            await RenderMap();
+            ToastService.Info($"↩ Se deshizo la última zona ({lastZoneUndo.Count} envío/s).");
+            lastZoneUndo = new();
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo deshacer: " + ex.Message); }
+        finally { assigningZone = false; StateHasChanged(); }
+    }
+
+    private async Task DeshacerUltimoPunto()
+    {
+        try { await JS.InvokeVoidAsync("mapeoFlex.undoLastZonePoint"); } catch { }
     }
 
     [JSInvokable]

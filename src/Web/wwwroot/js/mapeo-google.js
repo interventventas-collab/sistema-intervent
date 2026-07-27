@@ -325,6 +325,14 @@ window.mapeoFlex = (function () {
             if (dotNetRef) dotNetRef.invokeMethodAsync('OnZoneDrawn', path);
         },
 
+        // Deshacer el último punto marcado (saca la última esquina y su puntito).
+        undoLastZonePoint() {
+            if (!zonePath || zonePath.getLength() === 0) return;
+            zonePath.pop();
+            const m = zoneVertexMarkers.pop();
+            if (m) m.setMap(null);
+        },
+
         // Cancelar el dibujo sin asignar nada.
         cancelDrawZone() { cleanupZone(); },
 
