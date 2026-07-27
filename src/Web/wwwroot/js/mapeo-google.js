@@ -27,7 +27,7 @@
                 if (!key) { reject(new Error('Falta la clave del mapa (GOOGLE_MAPS_BROWSER_KEY).')); return; }
                 window.__mapeoGmapsReady = function () { resolve(); };
                 const s = document.createElement('script');
-                s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) + '&libraries=places,drawing&callback=__mapeoGmapsReady';
+                s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) + '&libraries=places&callback=__mapeoGmapsReady';
                 s.async = true;
                 s.defer = true;
                 s.onerror = function () { reject(new Error('No se pudo cargar Google Maps.')); };
@@ -103,8 +103,15 @@ window.mapeoFlex = (function () {
     let markers = [];
     let infoWindow = null;
     let dotNetRef = null;
-    let drawingManager = null; // herramienta para dibujar zonas (polígonos)
+    let zonePolygon = null;       // polígono que el usuario dibuja a mano (esquina por esquina)
+    let zoneClickListener = null; // listener de clicks del mapa mientras dibuja
     let lastFitStops = -1; // cuántas paradas (sin contar el punto de partida) había en el último auto-encuadre
+
+    // Limpia el estado del dibujo de zona (saca el polígono y el listener de clicks).
+    function cleanupZone() {
+        if (zoneClickListener) { google.maps.event.removeListener(zoneClickListener); zoneClickListener = null; }
+        if (zonePolygon) { zonePolygon.setMap(null); zonePolygon = null; }
+    }
 
     // Vista por defecto: todo el AMBA (CABA + conurbano + La Plata), como pidió el usuario.
     const AMBA_CENTER = { lat: -34.72, lng: -58.52 };
@@ -278,30 +285,32 @@ window.mapeoFlex = (function () {
             });
         },
 
-        // Dibujar una ZONA (polígono) sobre el mapa. Al cerrarla, manda las esquinas a Blazor
-        // (OnZoneDrawn) para que asigne los envíos de adentro a un repartidor.
+        // Dibujar una ZONA a mano: el usuario toca cada esquina en el mapa y se va armando un polígono.
+        // (No usamos DrawingManager porque Google lo deprecó/quitó en v3.65+.)
         startDrawZone() {
-            if (!map || !google.maps.drawing) return;
-            if (!drawingManager) {
-                drawingManager = new google.maps.drawing.DrawingManager({
-                    drawingMode: null,
-                    drawingControl: false,
-                    polygonOptions: {
-                        fillColor: '#1d4ed8', fillOpacity: 0.12,
-                        strokeColor: '#1d4ed8', strokeWeight: 2,
-                        clickable: false, zIndex: 1
-                    }
-                });
-                drawingManager.setMap(map);
-                google.maps.event.addListener(drawingManager, 'polygoncomplete', function (polygon) {
-                    const path = polygon.getPath().getArray().map(p => [p.lat(), p.lng()]);
-                    polygon.setMap(null);                 // sacamos el dibujo (Blazor decide qué hacer)
-                    drawingManager.setDrawingMode(null);  // salimos del modo dibujo
-                    if (dotNetRef) dotNetRef.invokeMethodAsync('OnZoneDrawn', path);
-                });
-            }
-            drawingManager.setDrawingMode('polygon');
+            if (!map) return;
+            cleanupZone();
+            zonePolygon = new google.maps.Polygon({
+                map: map, paths: [],
+                fillColor: '#1d4ed8', fillOpacity: 0.12,
+                strokeColor: '#1d4ed8', strokeWeight: 2,
+                clickable: false, zIndex: 1
+            });
+            zoneClickListener = map.addListener('click', function (e) {
+                if (zonePolygon) zonePolygon.getPath().push(e.latLng);
+            });
         },
+
+        // Terminar la zona: junta las esquinas y se las manda a Blazor (OnZoneDrawn).
+        finishDrawZone() {
+            if (!zonePolygon) return;
+            const path = zonePolygon.getPath().getArray().map(p => [p.lat(), p.lng()]);
+            cleanupZone();
+            if (dotNetRef) dotNetRef.invokeMethodAsync('OnZoneDrawn', path);
+        },
+
+        // Cancelar el dibujo sin asignar nada.
+        cancelDrawZone() { cleanupZone(); },
 
         destroy() {
             for (const m of markers) m.setMap(null);
@@ -310,7 +319,7 @@ window.mapeoFlex = (function () {
             infoWindow = null;
             dotNetRef = null;
             lastFitStops = -1;
-            if (drawingManager) { drawingManager.setMap(null); drawingManager = null; }
+            cleanupZone();
         },
 
         refit() { lastFitStops = -1; },

@@ -610,6 +610,16 @@
         </div>
     </div>
     <div class="mapeo-map" style="position:relative;">
+        @if (dibujandoZona)
+        {
+            <div style="position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:600; background:#1d4ed8; color:#fff; border-radius:10px; box-shadow:0 3px 14px rgba(0,0,0,0.35); padding:0.5rem 0.7rem; display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap;">
+                <span style="font-size:0.85rem; font-weight:600;">✏️ Tocá las esquinas de la zona…</span>
+                <button class="btn" style="font-size:0.85rem; font-weight:800; background:#16a34a; color:#fff; border:none; padding:0.35rem 0.8rem; border-radius:8px; cursor:pointer;"
+                        @onclick="TerminarZona">✓ Terminar zona</button>
+                <button class="btn" style="font-size:0.85rem; font-weight:700; background:transparent; color:#fff; border:1px solid #fff; padding:0.35rem 0.7rem; border-radius:8px; cursor:pointer;"
+                        @onclick="CancelarZona">✕ Cancelar</button>
+            </div>
+        }
         @if (mapaFullscreen)
         {
             <button class="btn" style="position:absolute; top:10px; right:10px; z-index:500; font-size:0.8rem; font-weight:700; background:#111827; color:#fff; border:none; padding:0.4rem 0.8rem; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.3);"
@@ -2123,6 +2133,7 @@
     private bool showZoneAssignModal;
     private List<int> zoneStopIds = new();
     private bool assigningZone;
+    private bool dibujandoZona; // true mientras el usuario marca las esquinas de la zona
 
     // Favoritos
     private List<MapeoFavoritoDto>? favoritos;
@@ -2607,14 +2618,31 @@
         showConfigMenu = false;
         try { await JS.InvokeVoidAsync("mapeoFlex.startDrawZone"); }
         catch (Exception ex) { ToastService.Error("No se pudo iniciar el dibujo: " + ex.Message); return; }
-        ToastService.Info("✏️ Marcá las esquinas de la zona con clicks. Para cerrarla, tocá de nuevo el primer punto.");
+        dibujandoZona = true;
+        StateHasChanged();
+        ToastService.Info("✏️ Tocá las esquinas de la zona en el mapa. Cuando termines, apretá '✓ Terminar zona'.");
+    }
+
+    private async Task TerminarZona()
+    {
+        try { await JS.InvokeVoidAsync("mapeoFlex.finishDrawZone"); }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        // dibujandoZona se apaga en OnZoneDrawn (cuando llega el resultado)
+    }
+
+    private async Task CancelarZona()
+    {
+        try { await JS.InvokeVoidAsync("mapeoFlex.cancelDrawZone"); } catch { }
+        dibujandoZona = false;
+        StateHasChanged();
     }
 
     // El mapa nos manda las esquinas de la zona dibujada. Calculamos qué paradas caen adentro.
     [JSInvokable]
     public async Task OnZoneDrawn(double[][] pts)
     {
-        if (pts is null || pts.Length < 3) { ToastService.Info("La zona quedó muy chica. Probá de nuevo."); return; }
+        dibujandoZona = false;
+        if (pts is null || pts.Length < 3) { ToastService.Info("La zona quedó muy chica (marcá al menos 3 esquinas). Probá de nuevo."); StateHasChanged(); return; }
         var dentro = (stops ?? new())
             .Where(s => s.Latitude != 0 && s.Longitude != 0
                      && PuntoEnPoligono((double)s.Latitude, (double)s.Longitude, pts))
