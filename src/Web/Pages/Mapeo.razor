@@ -339,8 +339,8 @@ else
     </div>
 }
 
-<div class="mapeo-layout @(mapaFullscreen ? "mapeo-fullscreen" : "")">
-    <div class="mapeo-side">
+<div class="mapeo-layout @(mapaFullscreen ? "mapeo-fullscreen" : "")" style="@(mapaFullscreen && sideCollapsed ? "grid-template-columns: 1fr;" : "")">
+    <div class="mapeo-side" style="@(mapaFullscreen && sideCollapsed ? "display:none;" : "")">
         <div class="mapeo-side-header" style="display:flex; justify-content:space-between; align-items:center;">
             @{
                 // Conteo real (deduplicado): los Flex que ya fueron importados como parada
@@ -702,6 +702,11 @@ else
             <button class="btn" style="position:absolute; top:10px; right:10px; z-index:500; font-size:0.8rem; font-weight:700; background:#111827; color:#fff; border:none; padding:0.4rem 0.8rem; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.3);"
                     @onclick="ToggleFullscreen" title="Salir de pantalla completa">
                 ✕ Salir de pantalla completa
+            </button>
+            @* Flechita para plegar/desplegar el panel de la izquierda (más lugar para el mapa). *@
+            <button class="btn" style="position:absolute; left:6px; top:50%; transform:translateY(-50%); z-index:530; font-size:1rem; font-weight:800; background:#111827; color:#fff; border:none; width:30px; height:52px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.3); cursor:pointer; padding:0;"
+                    @onclick="ToggleSideCollapsed" title="@(sideCollapsed ? "Mostrar los botones" : "Ocultar los botones")">
+                @(sideCollapsed ? "▶" : "◀")
             </button>
         }
         @* Acciones de ruta: repartir la flota entre choferes (si hay 2+) y/o armar una ruta única. Por tránsito. *@
@@ -2151,6 +2156,15 @@ else
     private bool stepperExpanded = false; // cuando todo está OK, se contrae a 1 línea
     private bool showScanQr = false; // desplegable con el QR para escanear desde el celular
     private bool mapaFullscreen = false; // modo pantalla completa (mapa como app)
+    private bool sideCollapsed = false;  // en pantalla completa: panel izquierdo plegado (más mapa)
+
+    private async Task ToggleSideCollapsed()
+    {
+        sideCollapsed = !sideCollapsed;
+        StateHasChanged();
+        await Task.Delay(60);
+        try { await JS.InvokeVoidAsync("mapeoFlex.resize"); } catch { }
+    }
 
     // Cuando se abre desde el menú (pestaña nueva con ?full=1), arranca a pantalla completa:
     // se ve solo el mapa + el listado, ocupando todo. Las herramientas se muestran al Salir.
