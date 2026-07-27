@@ -445,11 +445,28 @@
                         <span>📍 @zona.Key</span>
                         <span style="font-weight:500; opacity:0.7;">@zona.Sum(g => g.Count) envío@(zona.Sum(g => g.Count) == 1 ? "" : "s")</span>
                     </div>
-                    @foreach (var g in zona)
+                    var grupos = zona.ToList();
+                    @for (int gi = 0; gi < grupos.Count; gi++)
                     {
+                        var g = grupos[gi];
+                        var reIdx = gi;
                         var esFlex = g.TieneFlex;
-                        if (esFlex)
-                        {
+                        <div style="display:flex; align-items:stretch;"
+                             @ondragover:preventDefault="true"
+                             @ondrop="@(() => OnDropRuta(reIdx))"
+                             @ondragenter="@(() => { dragOverIdx = reIdx; })">
+                            @if (zonaUnica)
+                            {
+                                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:0 3px; border-right:1px solid #eef2f7; background:@(dragOverIdx == reIdx ? "#dbeafe" : "transparent");">
+                                    <button class="btn-icon" style="font-size:0.7rem; padding:0; line-height:1.1; color:#6b7280;" @onclick:stopPropagation="true" @onclick="@(() => MoverParada(reIdx, -1))" disabled="@(reIdx == 0 || reordenandoRuta)" title="Subir en la ruta">▲</button>
+                                    <span draggable="true" @ondragstart="@(() => OnDragStartRuta(reIdx))" @ondragend="@(() => { dragOverIdx = -1; })" title="Arrastrá para reordenar la ruta" style="cursor:grab; font-size:0.95rem; color:#9ca3af; user-select:none;">⠿</span>
+                                    <button class="btn-icon" style="font-size:0.7rem; padding:0; line-height:1.1; color:#6b7280;" @onclick:stopPropagation="true" @onclick="@(() => MoverParada(reIdx, 1))" disabled="@(reIdx == grupos.Count - 1 || reordenandoRuta)" title="Bajar en la ruta">▼</button>
+                                </div>
+                            }
+                            <div style="flex:1; min-width:0;">
+                            @{
+                            if (esFlex)
+                            {
                             // ─── Card estilo Flex (tiene al menos 1 envío de MeLi) ───
                             var s = g.Flex.First();
                             var act = activeShipmentId == s.Id;
@@ -637,7 +654,10 @@
                                     </div>
                                 }
                             </div>
-                        }
+                            }
+                            }
+                            </div>
+                        </div>
                     }
                 }
             }
@@ -2028,6 +2048,53 @@
         var driverId = GrupoDriverId(g);
         if (!driverId.HasValue) return !(sinAsignarOcultos && zonasCreadas.Count > 0); // sin asignar
         return !zonasOcultasMapa.Contains(driverId.Value);
+    }
+
+    // ── Etapa 2: reordenar la ruta (arrastrar ⠿ o flechitas ▲▼), solo con UNA zona a la vista ──
+    private int dragFromIdx = -1;   // índice de la parada que estás arrastrando
+    private int dragOverIdx = -1;   // índice sobre el que estás soltando (para resaltar)
+    private bool reordenandoRuta = false;
+
+    private void OnDragStartRuta(int idx) => dragFromIdx = idx;
+    private async Task OnDropRuta(int idx)
+    {
+        var from = dragFromIdx; dragFromIdx = -1; dragOverIdx = -1;
+        await MoverEnRuta(from, idx);
+    }
+    private async Task MoverParada(int idx, int delta) => await MoverEnRuta(idx, idx + delta);
+
+    // Reconstruye la ruta visible EN EL MISMO ORDEN que se muestra en pantalla:
+    // cada elemento es la lista de IDs de paradas de un grupo (destino).
+    private List<List<int>> RutaVisibleOrdenada()
+    {
+        var lista = BuildListaUnificada().Where(GrupoVisibleEnMapa).ToList();
+        if (zonasOcultas.Count > 0) lista = lista.Where(g => !zonasOcultas.Contains(g.Zona)).ToList();
+        return lista.OrderBy(GrupoOrden).ThenBy(g => g.Zona)
+                    .Select(g => g.Manual.Select(m => m.Id).ToList())
+                    .ToList();
+    }
+
+    // Mueve una parada de una posición a otra y guarda el nuevo orden (OrderInRoute = 1,2,3…).
+    private async Task MoverEnRuta(int fromIdx, int toIdx)
+    {
+        if (reordenandoRuta) return;
+        var ruta = RutaVisibleOrdenada();
+        if (fromIdx < 0 || fromIdx >= ruta.Count || toIdx < 0 || toIdx >= ruta.Count || fromIdx == toIdx) return;
+        reordenandoRuta = true;
+        try
+        {
+            var item = ruta[fromIdx];
+            ruta.RemoveAt(fromIdx);
+            ruta.Insert(toIdx, item);
+            var ids = ruta.SelectMany(x => x).ToList();
+            if (ids.Count == 0) return;
+            await Api.ReorderMapeoStopsAsync(ids);
+            await LoadStops();
+            await RenderMap();
+            if (rutasResumen.Count > 0) await CargarYDibujarRutas(single: false); // redibuja la línea con el nuevo orden
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo reordenar la ruta: " + ex.Message); }
+        finally { reordenandoRuta = false; StateHasChanged(); }
     }
 
     private List<GrupoUnificado> BuildListaUnificada()

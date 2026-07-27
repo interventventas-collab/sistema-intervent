@@ -5901,6 +5901,10 @@ public class ApiClient
     public async Task<object?> AssignBulkStopsAsync(List<int> stopIds, int? driverId)
         => await PostAsync<object>("/api/mapeo/stops/assign-bulk", new { stopIds, driverId });
 
+    // Reordena la ruta: manda los IDs de paradas en el orden deseado (arrastrar / flechitas).
+    public async Task<object?> ReorderMapeoStopsAsync(List<int> stopIds)
+        => await PostAsync<object>("/api/mapeo/stops/reorder", new { stopIds });
+
     public async Task<object?> AutoAssignStopsAsync(bool reassignAll = false)
         => await PostAsync<object>($"/api/mapeo/stops/auto-assign?reassignAll={reassignAll.ToString().ToLower()}", new { });
 

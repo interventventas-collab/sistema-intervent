@@ -98,6 +98,31 @@ public class MapeoStopsController : ControllerBase
         return Ok(Map(s));
     }
 
+    public record ReorderRequest(int[] StopIds);
+
+    /// <summary>
+    /// Reordena la ruta: recibe los IDs de las paradas en el orden deseado y les escribe
+    /// OrderInRoute = 1, 2, 3, ... en ese orden. Se usa para arrastrar/subir/bajar desde el listado.
+    /// </summary>
+    [HttpPost("reorder")]
+    public async Task<IActionResult> Reorder([FromBody] ReorderRequest req)
+    {
+        if (req?.StopIds is null || req.StopIds.Length == 0) return Ok(new { updated = 0 });
+        var ids = req.StopIds.ToList();
+        var stops = await _db.MapeoStops.Where(s => ids.Contains(s.Id)).ToListAsync();
+        var now = DateTime.UtcNow;
+        int order = 1;
+        foreach (var id in ids) // respetamos el orden recibido
+        {
+            var s = stops.FirstOrDefault(x => x.Id == id);
+            if (s is null) continue;
+            s.OrderInRoute = order++;
+            s.UpdatedAt = now;
+        }
+        await _db.SaveChangesAsync();
+        return Ok(new { updated = order - 1 });
+    }
+
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
