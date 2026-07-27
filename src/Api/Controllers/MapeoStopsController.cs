@@ -121,7 +121,47 @@ public class MapeoStopsController : ControllerBase
         if (req.OrderInRoute.HasValue) s.OrderInRoute = req.OrderInRoute.Value > 0 ? req.OrderInRoute.Value : null;
         s.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+        // Si es una VENTA y se asignó a un repartidor real, la "cargamos" también en el circuito
+        // normal (Cafe_QrEscaneos) para que aparezca operable (entregar/cobrar) en Mis Pedidos.
+        if (req.AssignedDriverId.HasValue && s.AssignedDriverId.HasValue)
+            await PropagarVentaAlRepartidorAsync(s);
         return Ok(Map(s));
+    }
+
+    /// <summary>
+    /// Cuando una parada de VENTA (Origin=venta_cafe) se asigna a un repartidor en el Mapeo, la
+    /// "carga" también en el circuito normal (Cafe_QrEscaneos) para ese repartidor REAL, así aparece
+    /// en Mis Pedidos como venta OPERABLE (entregar/cobrar), no solo en la ruta del mapa.
+    /// Mismo criterio que el escaneo del repartidor: "el último que la agarra se la queda" (AGREGA un
+    /// registro 'cargado', no borra nada). No toca ventas ya entregadas ni el circuito de plata.
+    /// </summary>
+    private async Task PropagarVentaAlRepartidorAsync(MapeoStop stop)
+    {
+        if (stop.Origin != "venta_cafe" || stop.OriginRefId == null) return;
+        if (!stop.AssignedDriverId.HasValue) return;
+        if (!int.TryParse(stop.OriginRefId, out var ventaId)) return;
+
+        var driver = await _db.MapeoDrivers.FindAsync(stop.AssignedDriverId.Value);
+        if (driver?.CafeRepartidorId is not int repId) return; // el chofer del mapa no está vinculado a un repartidor real
+
+        var venta = await _db.CafeVentas.FirstOrDefaultAsync(v => v.Id == ventaId);
+        if (venta is null || venta.EntregadoPorRepartidorId.HasValue) return; // no re-cargar ventas ya entregadas
+
+        var ultimoCargado = await _db.CafeQrEscaneos
+            .Where(e => e.VentaId == ventaId && e.Accion == "cargado")
+            .OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.Id)
+            .FirstOrDefaultAsync();
+        if (ultimoCargado?.RepartidorId == repId) return; // ya es de este repartidor: nada que hacer
+
+        _db.CafeQrEscaneos.Add(new CafeQrEscaneo
+        {
+            VentaId = ventaId,
+            RepartidorId = repId,
+            Accion = "cargado",
+            CreatedAt = DateTime.UtcNow,
+            Ip = "mapeo-asignar"
+        });
+        await _db.SaveChangesAsync();
     }
 
     public record ReorderRequest(int[] StopIds);
