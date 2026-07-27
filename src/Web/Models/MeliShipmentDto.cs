@@ -59,6 +59,12 @@ public class PublicBaseUrlDto
     public string? Url { get; set; }
 }
 
+// Respuesta genérica de un conteo (ej: "X entregados hoy").
+public class CountResultDto
+{
+    public int Count { get; set; }
+}
+
 public class StartPointDto
 {
     public string? Address { get; set; }

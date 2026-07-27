@@ -5703,6 +5703,12 @@ public class ApiClient
         return await GetAsync<List<MeliShipmentDto>>("/api/meli/shipments/flex?" + string.Join("&", qs));
     }
 
+    // Contador "X entregados hoy" (Flex confirmados por MeLi hoy). Devuelve 0 si falla.
+    public async Task<int> GetFlexDeliveredTodayCountAsync()
+    {
+        var r = await GetAsync<CountResultDto>("/api/meli/shipments/flex/delivered-today");
+        return r?.Count ?? 0;
+    }
     public async Task<MeliShipmentSyncResultDto?> SyncMeliFlexShipmentsAsync(int days = 7, int maxOrders = 200)
         => await PostAsync<MeliShipmentSyncResultDto>("/api/meli/shipments/sync-flex", new { days, maxOrders });
 

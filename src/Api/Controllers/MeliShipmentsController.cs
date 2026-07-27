@@ -152,6 +152,23 @@ public class MeliShipmentsController : ControllerBase
         return Ok(new { totalSynced = r.TotalSynced, totalFlex = r.TotalFlex, totalErrors = r.TotalErrors, errores = r.Errors });
     }
 
+    /// <summary>Cuenta los envíos Flex que MeLi confirmó ENTREGADOS hoy (por DateDelivered, hora Argentina).
+    /// Se usa para el contador "X entregados hoy" del Mapeo, incluso con los entregados ocultos.</summary>
+    [HttpGet("flex/delivered-today")]
+    public async Task<IActionResult> DeliveredToday()
+    {
+        var todayLocal = DateTime.UtcNow.AddHours(-3).Date;
+        var t1 = todayLocal.AddHours(3);            // hoy 00:00 ART -> UTC
+        var t2 = todayLocal.AddDays(1).AddHours(3); // mañana 00:00 ART -> UTC
+        var count = await _db.MeliShipments
+            .Where(s => s.LogisticType == "self_service"
+                     && s.Status == "delivered"
+                     && s.DateDelivered != null
+                     && s.DateDelivered >= t1 && s.DateDelivered < t2)
+            .CountAsync();
+        return Ok(new { count });
+    }
+
     /// <summary>2026-07-17: fuerza a preguntarle a MeLi el telefono del comprador de UN envio en el momento
     /// (boton "Traer telefono ahora"). Si MeLi ya lo libero, lo devuelve y lo deja escrito en la nota de la venta.</summary>
     [HttpPost("traer-telefono/{meliShipmentId:long}")]
