@@ -352,22 +352,42 @@
             else
             {
                 var listaUnificada = BuildListaUnificada();
-                var zonasUnificadas = listaUnificada
+                // Etapa 1: el listado de la izquierda SIGUE los ojitos del mapa (Z1/Z2/TODO):
+                // solo muestra lo que está prendido en el mapa.
+                var listaVisible = listaUnificada.Where(GrupoVisibleEnMapa).ToList();
+                // Chips de filtro por localidad (con su contador), calculados sobre lo visible.
+                var zonasParaChips = listaVisible
                     .GroupBy(u => u.Zona)
-                    .OrderBy(g => g.Key == "(sin localidad)" ? "ZZZ" : g.Key)
-                    .ToList();
-                // Para los chips de filtro: lista de zonas únicas con su contador (sin filtrar todavía)
-                var zonasParaChips = zonasUnificadas
                     .Select(g => (Zona: g.Key, Count: g.Sum(x => x.Count)))
                     .ToList();
-                // Aplicamos el filtro de zonas ocultas para la lista que se renderiza
-                if (zonasOcultas.Count > 0)
+                // Filtro extra por localidad (chips "Zonas"): se aplica sobre lo visible.
+                var listaRender = zonasOcultas.Count > 0
+                    ? listaVisible.Where(g => !zonasOcultas.Contains(g.Zona)).ToList()
+                    : listaVisible;
+                // ¿Quedó UNA sola zona (un repartidor) a la vista? Entonces mostramos las paradas
+                // en el ORDEN de la ruta (1, 2, 3…) en vez de agrupar por localidad.
+                var driversVisibles = listaRender.Select(GrupoDriverId).Where(d => d.HasValue).Select(d => d!.Value).Distinct().ToList();
+                var haySinAsignar = listaRender.Any(g => !GrupoDriverId(g).HasValue);
+                var zonaUnica = driversVisibles.Count == 1 && !haySinAsignar;
+                List<IGrouping<string, GrupoUnificado>> zonasUnificadas;
+                if (zonaUnica)
                 {
-                    zonasUnificadas = zonasUnificadas.Where(g => !zonasOcultas.Contains(g.Key)).ToList();
+                    var drvNom = drivers?.FirstOrDefault(d => d.Id == driversVisibles[0])?.Nombre ?? "Ruta";
+                    zonasUnificadas = listaRender
+                        .OrderBy(GrupoOrden).ThenBy(g => g.Zona)
+                        .GroupBy(_ => $"{drvNom} — en orden de ruta")
+                        .ToList();
+                }
+                else
+                {
+                    zonasUnificadas = listaRender
+                        .GroupBy(u => u.Zona)
+                        .OrderBy(g => g.Key == "(sin localidad)" ? "ZZZ" : g.Key)
+                        .ToList();
                 }
                 <div style="padding:0.4rem 0.6rem; background:#dbeafe; border-bottom:1px solid #93c5fd; font-size:0.72rem; font-weight:700; color:#1e40af; display:flex; justify-content:space-between; align-items:center; gap:0.4rem; flex-wrap:wrap; position:sticky; top:0; z-index:2;">
                     <span style="display:flex; align-items:center; gap:0.4rem;">
-                        <span style="text-transform:uppercase;">📋 @listaUnificada.Count destinos</span>
+                        <span style="text-transform:uppercase;">📋 @listaRender.Count destinos</span>
                         @if (zonasParaChips.Count > 1)
                         {
                             <button @onclick="() => mostrarChipsZonas = !mostrarChipsZonas"
@@ -1991,6 +2011,24 @@
     private static bool EstaEntregado(MapeoStopDto st)
         => string.Equals(st.InternalStatus, "entregado", StringComparison.OrdinalIgnoreCase)
         || string.Equals(st.InternalStatus, "cancelado", StringComparison.OrdinalIgnoreCase);
+
+    // ── Etapa 1: el listado de la izquierda sigue los ojitos del mapa ──
+    // DriverId asignado del grupo (o null si está sin asignar).
+    private int? GrupoDriverId(GrupoUnificado g)
+        => g.Manual.Select(m => m.AssignedDriverId).FirstOrDefault(d => d.HasValue);
+    // Orden de ruta del grupo (el menor OrderInRoute de sus paradas); sin orden = al final.
+    private int GrupoOrden(GrupoUnificado g)
+    {
+        var os = g.Manual.Where(m => m.OrderInRoute.HasValue).Select(m => m.OrderInRoute!.Value).ToList();
+        return os.Count > 0 ? os.Min() : int.MaxValue;
+    }
+    // ¿El grupo está visible según los ojitos del mapa (zonas ocultas + chip "TODO")?
+    private bool GrupoVisibleEnMapa(GrupoUnificado g)
+    {
+        var driverId = GrupoDriverId(g);
+        if (!driverId.HasValue) return !(sinAsignarOcultos && zonasCreadas.Count > 0); // sin asignar
+        return !zonasOcultasMapa.Contains(driverId.Value);
+    }
 
     private List<GrupoUnificado> BuildListaUnificada()
     {
