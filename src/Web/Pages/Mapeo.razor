@@ -269,7 +269,7 @@ else
         {
             <div style="position:absolute; top:100%; right:0; margin-top:0.3rem; background:white; border:1px solid #e5e7eb; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,0.15); padding:0.3rem; min-width:230px; z-index:1200;">
                 <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
-                        @onclick="@(() => { showConfigMenu = false; OpenStartPointModal(); })">
+                        @onclick="@(async () => { showConfigMenu = false; await OpenStartPointModal(); })">
                     <span>📍 Punto de partida</span>
                     @if (startPoint?.Lat.HasValue == true) { <span style="color:#16a34a;">✓</span> }
                 </button>
@@ -622,7 +622,17 @@ else
                                             <span title="Esta parada se repite @g.Count veces" style="background:#dc2626; color:white; padding:0.05rem 0.35rem; border-radius:8px; font-size:0.65rem; font-weight:700;">× @g.Count</span>
                                         }
                                     </label>
-                                    <button class="btn-icon btn-delete" style="font-size:0.7rem;" @onclick="() => DeleteGrupoManual(grupoLocal)" @onclick:stopPropagation="true" title="Quitar">×</button>
+                                    <div style="display:flex; gap:0.2rem; align-items:center;">
+                                        @{
+                                            var yaEsFav = favoritos?.Any(f => Math.Abs(f.Latitude - st.Latitude) < 0.0001m && Math.Abs(f.Longitude - st.Longitude) < 0.0001m) ?? false;
+                                        }
+                                        <button class="btn-icon" style="font-size:0.85rem; @(yaEsFav ? "color:#f59e0b;" : "color:#d1d5db;")"
+                                                @onclick="() => SaveStopAsFavorito(st)" @onclick:stopPropagation="true"
+                                                title="@(yaEsFav ? "Ya está en tus favoritos" : "Guardar como favorito (después podés elegirlo como punto de partida)")" disabled="@(yaEsFav || savingStopFav)">
+                                            @(yaEsFav ? "⭐" : "☆")
+                                        </button>
+                                        <button class="btn-icon btn-delete" style="font-size:0.7rem;" @onclick="() => DeleteGrupoManual(grupoLocal)" @onclick:stopPropagation="true" title="Quitar">×</button>
+                                    </div>
                                 </div>
                                 <div style="color:#4b5563; margin-top:0.15rem; display:flex; align-items:center; gap:0.3rem; flex-wrap:wrap;">
                                     <span>@st.Direccion</span>
@@ -698,7 +708,7 @@ else
                 {
                     <div style="position:absolute; bottom:100%; left:0; margin-bottom:0.3rem; background:white; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.25); padding:0.3rem; min-width:240px;">
                         <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
-                                @onclick="@(() => { showConfigMenu = false; OpenStartPointModal(); })">
+                                @onclick="@(async () => { showConfigMenu = false; await OpenStartPointModal(); })">
                             <span>📍 Punto de partida</span>
                             @if (startPoint?.Lat.HasValue == true) { <span style="color:#16a34a;">✓</span> }
                         </button>
@@ -1455,13 +1465,45 @@ else
                 <p style="color:#6b7280; font-size:0.85rem; margin:0 0 0.5rem;">
                     Es el lugar desde donde salís a repartir. Aparece como casita verde 🏠 en el mapa para que veas la ruta desde ahí.
                 </p>
+
+                @* Camino principal: elegir de tus Favoritos (sin tocar coordenadas). *@
                 <div class="form-group">
-                    <label class="form-label">Buscar dirección</label>
+                    <label class="form-label">⭐ Elegí de tus favoritos</label>
+                    @if (favoritos is null || favoritos.Count == 0)
+                    {
+                        <p style="font-size:0.78rem; color:#6b7280; margin:0.2rem 0;">
+                            Todavía no tenés favoritos. Guardá lugares con el botón ⭐ en la lista de la izquierda, o buscá una dirección acá abajo.
+                        </p>
+                    }
+                    else
+                    {
+                        <div style="border:1px solid #e5e7eb; border-radius:6px; max-height:170px; overflow-y:auto;">
+                            @foreach (var f in favoritos)
+                            {
+                                var esActual = startPoint?.Address == f.Direccion && startPoint?.Lat == f.Latitude;
+                                <div style="padding:0.45rem 0.6rem; border-bottom:1px solid #f3f4f6; cursor:pointer; font-size:0.82rem; display:flex; justify-content:space-between; align-items:center; gap:0.5rem; @(esActual ? "background:#dcfce7;" : "")"
+                                     @onclick="() => PickFavoritoAsStart(f)" title="Usar este favorito como punto de partida">
+                                    <div>
+                                        <strong>@f.Alias</strong>
+                                        <div style="font-size:0.72rem; color:#9ca3af;">@f.Direccion</div>
+                                    </div>
+                                    @if (esActual) { <span style="color:#16a34a; font-size:0.75rem; font-weight:700; white-space:nowrap;">✓ actual</span> }
+                                    else { <span style="color:#2563eb; font-size:0.75rem; font-weight:700; white-space:nowrap;">Elegir →</span> }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <div style="text-align:center; color:#9ca3af; font-size:0.72rem; margin:0.3rem 0;">— o buscá una dirección nueva —</div>
+
+                <div class="form-group">
+                    <label class="form-label">🔍 Buscar dirección</label>
                     <div style="display:flex; gap:0.4rem;">
                         <input class="form-input" @bind="geocodeQuery" placeholder="Calle 123, Ciudad, Provincia" @onkeydown="OnGeocodeKey" style="flex:1;" />
                         <button class="btn btn-secondary" @onclick="DoGeocode" disabled="@geocoding">@(geocoding ? "..." : "🔍")</button>
                     </div>
-                    <p style="font-size:0.7rem; color:#6b7280; margin:0.2rem 0 0;">Buscamos con Google Maps (~5 candidatos).</p>
+                    <p style="font-size:0.7rem; color:#6b7280; margin:0.2rem 0 0;">Buscamos con Google Maps. Tocá el resultado correcto para fijarlo.</p>
                 </div>
                 @if (geocodeResults is not null && geocodeResults.Count > 0)
                 {
@@ -2073,7 +2115,7 @@ else
 
     // Punto de partida
     private StartPointDto? startPoint;
-    private bool showStartPointModal, savingStartPoint, geocoding;
+    private bool showStartPointModal, savingStartPoint, geocoding, savingStopFav;
     private string formStartAddress = "", formStartLat = "", formStartLng = "";
     private string geocodeQuery = "";
     private List<GeocodeResultDto>? geocodeResults;
@@ -3490,6 +3532,38 @@ else
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
 
+    // Guardar una parada del listado como favorito (para después poder elegirla como punto de partida).
+    private async Task SaveStopAsFavorito(MapeoStopDto st)
+    {
+        if (st.Latitude == 0 && st.Longitude == 0) { ToastService.Error("Esta parada no tiene ubicación en el mapa."); return; }
+        if (favoritos?.Any(f => Math.Abs(f.Latitude - st.Latitude) < 0.0001m && Math.Abs(f.Longitude - st.Longitude) < 0.0001m) ?? false)
+        { ToastService.Info("Ya está en tus favoritos."); return; }
+        var sugerido = st.Alias ?? st.ContactName ?? st.Direccion ?? "Favorito";
+        var nombre = await JS.InvokeAsync<string?>("prompt", "Ponele un nombre a este favorito:", sugerido);
+        if (string.IsNullOrWhiteSpace(nombre)) return; // canceló
+        savingStopFav = true;
+        try
+        {
+            var dto = new MapeoFavoritoDto
+            {
+                Alias = nombre.Trim(),
+                Direccion = st.Direccion ?? "",
+                Latitude = st.Latitude, Longitude = st.Longitude,
+                ContactName = string.IsNullOrWhiteSpace(st.ContactName) ? null : st.ContactName,
+                Telefono = string.IsNullOrWhiteSpace(st.Telefono) ? null : st.Telefono,
+                Notas = string.IsNullOrWhiteSpace(st.Notas) ? null : st.Notas
+            };
+            var f = await Api.CreateMapeoFavoritoAsync(dto);
+            if (f is not null)
+            {
+                favoritos ??= new(); favoritos.Insert(0, f);
+                ToastService.Success($"⭐ '{nombre}' guardado en favoritos");
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { savingStopFav = false; }
+    }
+
     private async Task DeleteFavorito(MapeoFavoritoDto f)
     {
         if (!await ConfirmAsync($"Eliminar '{f.Alias}'?")) return;
@@ -3499,7 +3573,7 @@ else
 
     private Task<bool> ConfirmAsync(string msg) => JS.InvokeAsync<bool>("confirm", msg).AsTask();
 
-    private void OpenStartPointModal()
+    private async Task OpenStartPointModal()
     {
         formStartAddress = startPoint?.Address ?? "";
         formStartLat = startPoint?.Lat?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "";
@@ -3507,6 +3581,7 @@ else
         geocodeQuery = formStartAddress;
         geocodeResults = null;
         showStartPointModal = true;
+        if (favoritos is null || favoritos.Count == 0) await LoadFavoritos();
     }
     private void CloseStartPointModal() { showStartPointModal = false; geocodeResults = null; }
 
@@ -3534,6 +3609,15 @@ else
         formStartLat = r.Lat.ToString(System.Globalization.CultureInfo.InvariantCulture);
         formStartLng = r.Lng.ToString(System.Globalization.CultureInfo.InvariantCulture);
         geocodeResults = null; // ya eligió: limpiamos la lista para que quede claro
+    }
+
+    // Elegir un favorito como punto de partida: llena dirección + coordenadas (sin escribir nada).
+    private void PickFavoritoAsStart(MapeoFavoritoDto f)
+    {
+        formStartAddress = string.IsNullOrWhiteSpace(f.Alias) ? f.Direccion : f.Alias;
+        formStartLat = f.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        formStartLng = f.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        geocodeResults = null;
     }
 
     // ¿Ya hay coordenadas fijadas? (por búsqueda o punto existente)
