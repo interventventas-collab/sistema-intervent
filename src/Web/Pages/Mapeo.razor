@@ -315,6 +315,10 @@
                             @onclick="@(async () => { showConfigMenu = false; await GuardarSnapshotAhora(); })" disabled="@savingSnapshot">
                         <span>@(savingSnapshot ? "Guardando..." : "💾 Guardar foto de la ruta actual")</span>
                     </button>
+                    <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#b91c1c; border:none; text-align:left;"
+                            @onclick="LimpiarAsignaciones" disabled="@limpiandoAsignaciones">
+                        <span>@(limpiandoAsignaciones ? "Limpiando..." : "🧹 Limpiar asignaciones")</span>
+                    </button>
                 </div>
             }
         </div>
@@ -674,6 +678,10 @@
                             <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
                                     @onclick="@(async () => { showConfigMenu = false; await GuardarSnapshotAhora(); })" disabled="@savingSnapshot">
                                 <span>@(savingSnapshot ? "Guardando..." : "💾 Guardar foto de la ruta actual")</span>
+                            </button>
+                            <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#b91c1c; border:none; text-align:left;"
+                                    @onclick="LimpiarAsignaciones" disabled="@limpiandoAsignaciones">
+                                <span>@(limpiandoAsignaciones ? "Limpiando..." : "🧹 Limpiar asignaciones")</span>
                             </button>
                         </div>
                     }
@@ -2728,6 +2736,29 @@
     private async Task DeshacerUltimoPunto()
     {
         try { await JS.InvokeVoidAsync("mapeoFlex.undoLastZonePoint"); } catch { }
+    }
+
+    private bool limpiandoAsignaciones;
+    // Saca el repartidor (y el número de orden) de TODAS las paradas, para empezar el zoneo de cero.
+    private async Task LimpiarAsignaciones()
+    {
+        showConfigMenu = false;
+        var asignadas = (stops ?? new()).Where(s => s.AssignedDriverId.HasValue || s.OrderInRoute.HasValue).ToList();
+        if (asignadas.Count == 0) { ToastService.Info("No hay asignaciones para limpiar."); return; }
+        if (!await ConfirmAsync($"¿Sacar el repartidor de las {asignadas.Count} paradas asignadas?\n\nNo borra las paradas ni los envíos — solo las deja sin repartidor para volver a armar las zonas.")) return;
+        limpiandoAsignaciones = true;
+        StateHasChanged();
+        try
+        {
+            foreach (var s in asignadas)
+                await Api.UpdateMapeoStopAsync(s.Id, new { assignedDriverId = 0, orderInRoute = 0 });
+            await LoadStops();
+            await RenderMap();
+            lastZoneUndo = new();
+            ToastService.Success($"🧹 {asignadas.Count} paradas quedaron sin repartidor.");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo limpiar: " + ex.Message); }
+        finally { limpiandoAsignaciones = false; StateHasChanged(); }
     }
 
     [JSInvokable]
