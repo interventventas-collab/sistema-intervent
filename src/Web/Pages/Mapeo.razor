@@ -2543,6 +2543,7 @@
             await LoadClientesMapeados();
             await Api.ClearStaleMapeoStopsAsync(); // limpiar lo de días anteriores; lo de hoy queda
             await LoadStops();
+            ReconstruirZonasCreadas(); // rearma los cuadraditos "Zona N" desde las paradas guardadas (sobrevive al refresco)
             await CargarNotas();
             await LoadAndRender();
             StateHasChanged();
@@ -2910,6 +2911,29 @@
     private async Task DeshacerUltimoPunto()
     {
         try { await JS.InvokeVoidAsync("mapeoFlex.undoLastZonePoint"); } catch { }
+    }
+
+    // Reconstruye los cuadraditos "Zona 1 / Zona 2 / ..." a partir de las paradas YA guardadas,
+    // agrupándolas por repartidor asignado. Se llama al abrir la pantalla para que los cuadraditos
+    // sobrevivan a un refresco (antes vivían solo en memoria y se perdían al recargar la página).
+    private void ReconstruirZonasCreadas()
+    {
+        if (zonasCreadas.Count > 0) return; // ya hay zonas de esta sesión: no las pisamos
+        if (stops is null) return;
+        zonasCreadas = stops
+            .Where(s => s.AssignedDriverId.HasValue)
+            .GroupBy(s => s.AssignedDriverId!.Value)
+            .Select(g => new
+            {
+                DriverId = g.Key,
+                Orden = g.Min(s => s.OrderInRoute ?? int.MaxValue),
+                Nombre = g.Select(s => s.AssignedDriverName).FirstOrDefault(n => !string.IsNullOrEmpty(n)) ?? "Repartidor",
+                Color = g.Select(s => s.AssignedDriverColor).FirstOrDefault(c => !string.IsNullOrEmpty(c)) ?? "#1d4ed8",
+                StopIds = g.Select(s => s.Id).ToList()
+            })
+            .OrderBy(x => x.Orden).ThenBy(x => x.DriverId)
+            .Select((x, i) => new ZonaCreada(i + 1, x.DriverId, x.Nombre, x.Color!, x.StopIds))
+            .ToList();
     }
 
     // Al tocar el cuadradito de una zona, encuadramos el mapa sobre sus envíos.
