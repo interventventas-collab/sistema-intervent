@@ -152,6 +152,14 @@ public class MeliShipmentsController : ControllerBase
         return Ok(new { totalSynced = r.TotalSynced, totalFlex = r.TotalFlex, totalErrors = r.TotalErrors, errores = r.Errors });
     }
 
+    /// <summary>Fuerza el refresco del estado de entrega de los envíos Flex/ME1 pendientes (botón "Actualizar entregas").</summary>
+    [HttpPost("refresh-pending")]
+    public async Task<IActionResult> RefreshPending()
+    {
+        var updated = await _service.RefreshPendingShipmentStatusesAsync();
+        return Ok(new { count = updated });
+    }
+
     /// <summary>Cuenta los envíos Flex que MeLi confirmó ENTREGADOS hoy (por DateDelivered, hora Argentina).
     /// Se usa para el contador "X entregados hoy" del Mapeo, incluso con los entregados ocultos.</summary>
     [HttpGet("flex/delivered-today")]

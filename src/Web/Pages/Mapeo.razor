@@ -179,6 +179,11 @@
                 ✔ @entregadosHoy entregado@(entregadosHoy == 1 ? "" : "s") hoy
             </span>
         }
+        <button class="btn" style="font-size:0.75rem; padding:0.2rem 0.5rem; background:transparent; border:1px solid #86efac; color:#15803d;"
+                @onclick="ActualizarEntregas" disabled="@(actualizandoEntregas || isLoading)"
+                title="Preguntarle a MeLi por las entregas más recientes (actualiza los ✔ Entregado)">
+            @(actualizandoEntregas ? "Actualizando…" : "✔ Actualizar entregas")
+        </button>
         <button class="btn" style="font-size:0.75rem; padding:0.2rem 0.5rem; background:transparent; border:1px solid #d1d5db; color:#374151;"
                 @onclick="LoadAndRender" disabled="@isLoading" title="Refrescar lista local">
             @(isLoading ? "..." : "🔄")
@@ -1973,6 +1978,25 @@
     private string filtroInterno = "pending";   // Default: solo PENDIENTES
     private bool excluirEntregados = true;      // Default: ocultar entregados/cancelados
     private int entregadosHoy = 0;              // Contador "X entregados hoy" (Flex confirmados por MeLi)
+    private bool actualizandoEntregas = false;  // spinner del botón "Actualizar entregas"
+
+    // Botón "Actualizar entregas": le pregunta a MeLi por los envíos pendientes y refresca los ✔ Entregado.
+    private async Task ActualizarEntregas()
+    {
+        if (actualizandoEntregas) return;
+        actualizandoEntregas = true;
+        try
+        {
+            var cambiados = await Api.RefreshPendingShipmentsAsync();
+            await LoadStops();       // paradas escaneadas con el estado nuevo
+            await LoadAndRender();   // Flex + contador "entregados hoy" + mapa
+            ToastService.Success(cambiados > 0
+                ? $"✔ {cambiados} envío(s) actualizados desde MeLi."
+                : "Ya estaba todo al día con MeLi.");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo actualizar con MeLi: " + ex.Message); }
+        finally { actualizandoEntregas = false; StateHasChanged(); }
+    }
     private DotNetObjectReference<Mapeo>? selfRef;
     private bool mapInitialized;
 

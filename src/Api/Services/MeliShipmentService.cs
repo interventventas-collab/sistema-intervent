@@ -156,6 +156,29 @@ public class MeliShipmentService
     }
 
     /// <summary>
+    /// LIVIANO: re-consulta a MeLi SOLO los envíos (Flex y ME1) que tenemos con estado no terminal,
+    /// para captar transiciones "en camino → entregado" sin bajar todas las órdenes.
+    /// Lo usa el auto-sync (cada 30 min) y el botón "Actualizar entregas" del Mapeo.
+    /// </summary>
+    public async Task<int> RefreshPendingShipmentStatusesAsync()
+    {
+        var accounts = await _accountService.GetAllAccountEntitiesAsync();
+        int updated = 0;
+        foreach (var account in accounts)
+        {
+            try
+            {
+                var token = await _accountService.GetValidTokenAsync(account);
+                if (token is null) continue;
+                updated += await RefreshPendingForAccountAsync(account, token);                 // Flex
+                updated += await RefreshPendingForAccountAsync(account, token, me1Only: true);   // ME1
+            }
+            catch { /* tolerar por cuenta */ }
+        }
+        return updated;
+    }
+
+    /// <summary>
     /// Recorre los shipments locales con estado no terminal y los re-consulta uno por uno a MeLi.
     /// Sirve para captar transiciones tipo "shipped → delivered" que pasaron en MeLi después del último sync.
     /// </summary>

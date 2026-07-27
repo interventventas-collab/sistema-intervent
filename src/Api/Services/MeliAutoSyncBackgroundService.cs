@@ -59,6 +59,20 @@ public class MeliAutoSyncBackgroundService : BackgroundService
                     _logger.LogWarning(ex2, "[MeLi auto-sync] Error al refrescar ordenes pendientes (no critico)");
                 }
 
+                // 2026-07-27: refrescar el estado de ENTREGA de los envíos Flex/ME1 pendientes,
+                // así el check "Entregado" del Mapeo se actualiza solo (antes quedaba viejo).
+                try
+                {
+                    var shipmentSvc = scope.ServiceProvider.GetRequiredService<MeliShipmentService>();
+                    var envUpdated = await shipmentSvc.RefreshPendingShipmentStatusesAsync();
+                    if (envUpdated > 0)
+                        _logger.LogInformation("[MeLi auto-sync] Refrescados {N} envíos Flex/ME1 (estado de entrega)", envUpdated);
+                }
+                catch (Exception ex3)
+                {
+                    _logger.LogWarning(ex3, "[MeLi auto-sync] Error refrescando estados de envíos (no critico)");
+                }
+
                 var stockResult = await stockSvc.ProcessPendingAsync(maxBatch: 500);
                 if (stockResult.Procesadas > 0)
                 {

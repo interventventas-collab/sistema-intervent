@@ -5703,6 +5703,13 @@ public class ApiClient
         return await GetAsync<List<MeliShipmentDto>>("/api/meli/shipments/flex?" + string.Join("&", qs));
     }
 
+    // Fuerza el refresco de estados de entrega en MeLi (botón "Actualizar entregas"). Devuelve cuántos cambiaron.
+    public async Task<int> RefreshPendingShipmentsAsync()
+    {
+        var r = await PostAsync<CountResultDto>("/api/meli/shipments/refresh-pending", new { });
+        return r?.Count ?? 0;
+    }
+
     // Contador "X entregados hoy" (Flex confirmados por MeLi hoy). Devuelve 0 si falla.
     public async Task<int> GetFlexDeliveredTodayCountAsync()
     {
