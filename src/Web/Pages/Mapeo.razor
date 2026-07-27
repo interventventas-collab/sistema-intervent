@@ -692,6 +692,47 @@ else
                     @onclick="ToggleFullscreen" title="Salir de pantalla completa">
                 ✕ Salir de pantalla completa
             </button>
+            @* En pantalla completa la barra de arriba queda tapada: repetimos acá el menú de Configuración (abajo a la izquierda, zona libre). *@
+            <div style="position:absolute; bottom:18px; left:18px; z-index:520;">
+                @if (showConfigMenu)
+                {
+                    <div style="position:absolute; bottom:100%; left:0; margin-bottom:0.3rem; background:white; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.25); padding:0.3rem; min-width:240px;">
+                        <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                                @onclick="@(() => { showConfigMenu = false; OpenStartPointModal(); })">
+                            <span>📍 Punto de partida</span>
+                            @if (startPoint?.Lat.HasValue == true) { <span style="color:#16a34a;">✓</span> }
+                        </button>
+                        <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                                @onclick="@(() => { showConfigMenu = false; OpenPublicUrlModal(); })">
+                            <span>🌐 URL pública</span>
+                            @if (!string.IsNullOrEmpty(publicBaseUrl)) { <span style="color:#16a34a;">✓</span> }
+                        </button>
+                        <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                                @onclick="@(async () => { showConfigMenu = false; await OpenDriversModal(); })">
+                            <span>👥 Repartidores</span>
+                            <span style="color:#6b7280; font-size:0.72rem;">@(drivers?.Count ?? 0)</span>
+                        </button>
+                        <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                                @onclick="@(async () => { showConfigMenu = false; await OpenFavoritosModal(); })">
+                            <span>⭐ Favoritos</span>
+                            <span style="color:#6b7280; font-size:0.72rem;">@(favoritos?.Count ?? 0)</span>
+                        </button>
+                        <hr style="margin:0.3rem 0; border:none; border-top:1px solid #f3f4f6;" />
+                        <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                                @onclick="@(async () => { showConfigMenu = false; await OpenHistorialModal(); })">
+                            <span>📚 Historial de rutas</span>
+                        </button>
+                        <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                                @onclick="@(async () => { showConfigMenu = false; await GuardarSnapshotAhora(); })" disabled="@savingSnapshot">
+                            <span>@(savingSnapshot ? "Guardando..." : "💾 Guardar foto de la ruta actual")</span>
+                        </button>
+                    </div>
+                }
+                <button class="btn" style="font-size:0.8rem; font-weight:700; background:white; color:#374151; border:1px solid #d1d5db; padding:0.4rem 0.8rem; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.25);"
+                        @onclick="() => showConfigMenu = !showConfigMenu" title="Configuración (punto de partida, repartidores, etc.)">
+                    ⚙ Configuración @(showConfigMenu ? "▾" : "▴")
+                </button>
+            </div>
         }
         @* Acciones de ruta: repartir la flota entre choferes (si hay 2+) y/o armar una ruta única. Por tránsito. *@
         @if ((stops?.Count ?? 0) > 0)
