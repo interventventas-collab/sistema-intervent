@@ -41,54 +41,59 @@
         return ('' + s).replace(/[<>&'"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]));
     }
 
-    // Construye el globito como SVG (data URI) — replica las 3 formas del mapa anterior.
+    // Geometría del pin "gota" estilo Google Maps (en unidades del viewBox del SVG).
+    // La punta de la gota es la que apunta a la ubicación exacta (ahí va el anchor).
+    const PIN_VB_W = 48, PIN_VB_H = 50;   // lienzo del SVG
+    const PIN_TIP_X = 24, PIN_TIP_Y = 44; // punta de la gota
+    const PIN_HEAD_CX = 24, PIN_HEAD_CY = 18; // centro de la cabeza redonda
+    // Path de la gota (icono material "location_on" escalado x2): cabeza en (24,18), punta en (24,44).
+    const PIN_PATH = 'M24 4C16.26 4 10 10.26 10 18c0 10.5 14 26 14 26s14-15.5 14-26c0-7.74-6.26-14-14-14z';
+
+    // Construye el marcador como un pin gota estilo Google (data URI SVG).
+    // Conserva el color del repartidor y el número/etiqueta adentro de la cabeza.
     function markerSvg(group) {
         const first = group[0];
         const extras = group.length - 1;
         const color = first.color || '#1d4ed8';
         const dimmed = first.dimmed === true;
-        const bg = dimmed ? '#ffffff' : color;
-        const txt = dimmed ? '#111827' : '#ffffff';
-        const border = dimmed ? '#111827' : '#ffffff';
         const inRoute = group.some(x => x.inRoute === true);
-        const label = escapeXml(first.label || '');
-        const shape = first.shape;
-        const cx = 23, cy = 23, half = 15;
+        const rawLabel = first.label || '';
+        const label = escapeXml(rawLabel);
 
+        // Cuerpo de la gota: lleno del color del repartidor (o blanco si está "dimmed").
+        const body = dimmed ? '#ffffff' : color;
+        const txt = dimmed ? '#111827' : '#ffffff';
+
+        // Tamaño de texto según cuántos caracteres entran en la cabeza (ej: "12", "V1").
+        const fs = rawLabel.length >= 2 ? 13 : 17;
+
+        // Aro verde alrededor de la cabeza cuando la parada está seleccionada para la ruta.
         const ring = inRoute
-            ? `<rect x="${cx - half - 3}" y="${cy - half - 3}" width="${(half * 2) + 6}" height="${(half * 2) + 6}" rx="${shape === 'square' ? 7 : (shape === 'triangle' ? 3 : 18)}" fill="none" stroke="#16a34a" stroke-width="3"/>`
+            ? `<circle cx="${PIN_HEAD_CX}" cy="${PIN_HEAD_CY}" r="18.5" fill="none" stroke="#16a34a" stroke-width="3"/>`
             : '';
 
-        let shapeSvg;
-        if (shape === 'triangle') {
-            shapeSvg =
-                `<polygon points="${cx},${cy - half} ${cx - half},${cy + half} ${cx + half},${cy + half}" fill="${color}" stroke="#ffffff" stroke-width="1.5" filter="url(#sh)"/>` +
-                `<text x="${cx}" y="${cy + half - 4}" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff" font-family="Inter,Arial,sans-serif">${label}</text>`;
-        } else if (shape === 'square') {
-            shapeSvg =
-                `<rect x="${cx - half}" y="${cy - half}" width="${half * 2}" height="${half * 2}" rx="4" fill="${bg}" stroke="${border}" stroke-width="2" filter="url(#sh)"/>` +
-                `<text x="${cx}" y="${cy + 4}" text-anchor="middle" font-size="12" font-weight="700" fill="${txt}" font-family="Inter,Arial,sans-serif">${label}</text>`;
-        } else {
-            shapeSvg =
-                `<circle cx="${cx}" cy="${cy}" r="${half}" fill="${bg}" stroke="${border}" stroke-width="2" filter="url(#sh)"/>` +
-                `<text x="${cx}" y="${cy + 4}" text-anchor="middle" font-size="12" font-weight="700" fill="${txt}" font-family="Inter,Arial,sans-serif">${label}</text>`;
-        }
-
+        // Badge rojo +N cuando hay varias entregas en el mismo domicilio.
         const badge = extras > 0
-            ? `<circle cx="39" cy="8" r="9" fill="#dc2626" stroke="#ffffff" stroke-width="2"/>` +
-              `<text x="39" y="11.5" text-anchor="middle" font-size="9" font-weight="800" fill="#ffffff" font-family="Inter,Arial,sans-serif">+${extras}</text>`
+            ? `<circle cx="38" cy="7" r="8.5" fill="#dc2626" stroke="#ffffff" stroke-width="2"/>` +
+              `<text x="38" y="10.5" text-anchor="middle" font-size="9" font-weight="800" fill="#ffffff" font-family="Inter,Arial,sans-serif">+${extras}</text>`
             : '';
 
-        return `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">` +
-            `<defs><filter id="sh" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="1" stdDeviation="1.2" flood-opacity="0.45"/></filter></defs>` +
-            `${ring}${shapeSvg}${badge}</svg>`;
+        return `<svg xmlns="http://www.w3.org/2000/svg" width="${PIN_VB_W}" height="${PIN_VB_H}" viewBox="0 0 ${PIN_VB_W} ${PIN_VB_H}">` +
+            `<defs><filter id="sh" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-opacity="0.4"/></filter></defs>` +
+            `${ring}` +
+            `<path d="${PIN_PATH}" fill="${body}" stroke="#ffffff" stroke-width="2" filter="url(#sh)"/>` +
+            `<text x="${PIN_HEAD_CX}" y="${PIN_HEAD_CY + fs * 0.35}" text-anchor="middle" font-size="${fs}" font-weight="800" fill="${txt}" font-family="Inter,Arial,sans-serif">${label}</text>` +
+            `${badge}</svg>`;
     }
 
-    function markerIcon(svg, size, anchor) {
+    // Arma el icono para Google Maps a partir del SVG. dispH = alto deseado en px;
+    // el ancho se ajusta solo para mantener la proporción, y el anchor cae en la punta de la gota.
+    function markerIcon(svg, dispH) {
+        const dispW = dispH * PIN_VB_W / PIN_VB_H;
         return {
             url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-            scaledSize: new google.maps.Size(size, size),
-            anchor: new google.maps.Point(anchor, anchor)
+            scaledSize: new google.maps.Size(dispW, dispH),
+            anchor: new google.maps.Point(dispW * PIN_TIP_X / PIN_VB_W, dispH * PIN_TIP_Y / PIN_VB_H)
         };
     }
 
@@ -108,6 +113,7 @@ window.mapeoFlex = (function () {
     let zoneClickListener = null; // listener de clicks del mapa mientras dibuja
     let zoneVertexMarkers = [];   // puntitos que se ven en cada esquina tocada (feedback visual)
     let routeLines = [];          // líneas de ruta dibujadas (una por repartidor)
+    let trafficLayer = null;      // capa de tráfico de Google (rojo/amarillo/verde en las calles)
     let lastFitStops = -1; // cuántas paradas (sin contar el punto de partida) había en el último auto-encuadre
 
     // Limpia el estado del dibujo de zona (saca el polígono, los puntitos, el listener y el cursor).
@@ -172,6 +178,9 @@ window.mapeoFlex = (function () {
             infoWindow = new google.maps.InfoWindow();
             markers = [];
             lastFitStops = -1;
+            // Capa de tráfico en vivo: pinta las calles con el color del embotellamiento
+            // (rojo = muy congestionado, amarillo = lento, verde = fluido), igual que Google Maps.
+            try { trafficLayer = new google.maps.TrafficLayer(); trafficLayer.setMap(map); } catch (e) {}
             loadZones();
         },
 
@@ -200,7 +209,7 @@ window.mapeoFlex = (function () {
                 const marker = new google.maps.Marker({
                     position: pos,
                     map: map,
-                    icon: H.markerIcon(H.markerSvg(group), 48, 23),
+                    icon: H.markerIcon(H.markerSvg(group), 50),
                     draggable: esArrastrable,
                     title: esArrastrable ? 'Arrastrame para ajustar el punto de partida' : undefined,
                     zIndex: group.some(g => g.inRoute) ? 1000 : (esArrastrable ? 900 : 1)
@@ -345,10 +354,16 @@ window.mapeoFlex = (function () {
             for (const r of routes) {
                 if (!r || !r.encoded) continue;
                 const path = google.maps.geometry.encoding.decodePath(r.encoded);
+                const color = r.color || '#1d4ed8';
+                // Casing (borde blanco) por debajo, como la ruta azul de Google Maps:
+                // hace que la línea de color resalte sobre las calles y el tráfico.
                 routeLines.push(new google.maps.Polyline({
                     path: path, map: map,
-                    strokeColor: r.color || '#1d4ed8',
-                    strokeOpacity: 0.85, strokeWeight: 5, zIndex: 5
+                    strokeColor: '#ffffff', strokeOpacity: 0.9, strokeWeight: 9, zIndex: 4
+                }));
+                routeLines.push(new google.maps.Polyline({
+                    path: path, map: map,
+                    strokeColor: color, strokeOpacity: 0.95, strokeWeight: 5, zIndex: 5
                 }));
             }
         },
@@ -377,6 +392,7 @@ window.mapeoFlex = (function () {
             cleanupZone();
             for (const l of routeLines) l.setMap(null);
             routeLines = [];
+            if (trafficLayer) { trafficLayer.setMap(null); trafficLayer = null; }
         },
 
         refit() { lastFitStops = -1; },
@@ -428,7 +444,7 @@ window.mapeoMini = (function () {
                 const marker = new google.maps.Marker({
                     position: pos,
                     map: map,
-                    icon: H.markerIcon(H.markerSvg([it]), 38, 19)
+                    icon: H.markerIcon(H.markerSvg([it]), 42)
                 });
                 markers.push(marker);
                 bounds.extend(pos);
