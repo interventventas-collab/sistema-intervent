@@ -1919,15 +1919,18 @@
         public string Zona { get; set; } = "";
         public List<MeliShipmentDto> Flex { get; set; } = new();
         public List<MapeoStopDto> Manual { get; set; } = new();
-        // Cuenta los destinos únicos: las paradas con Origin="flex" representan al mismo
-        // envío que ya está en Flex, así que NO las contamos dos veces.
+        // Cuenta los envíos del grupo SIN duplicar: una parada con Origin flex/me1 se descuenta
+        // solo si su Flex "crudo" TAMBIÉN está cargado en la lista (ahí sí sería el mismo envío dos
+        // veces). Si el Flex crudo no está cargado, igual la contamos (antes daba 0 y confundía).
         public int Count
         {
             get
             {
-                var paradasFlex = Manual.Count(m => m.Origin == "flex" || m.Origin == "me1");
-                var paradasManuales = Manual.Count - paradasFlex;
-                return Flex.Count + paradasManuales;
+                var flexIds = new HashSet<string>(Flex.Select(f => f.MeliShipmentId.ToString()));
+                var duplicadas = Manual.Count(m => (m.Origin == "flex" || m.Origin == "me1")
+                                                   && !string.IsNullOrEmpty(m.OriginRefId)
+                                                   && flexIds.Contains(m.OriginRefId!));
+                return Flex.Count + Manual.Count - duplicadas;
             }
         }
         public bool TieneFlex => Flex.Count > 0;
