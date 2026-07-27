@@ -290,6 +290,37 @@ public class MeliShipmentsController : ControllerBase
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 
+    /// <summary>Devuelve una imagen de Google Street View para unas coordenadas (proxy para no exponer la clave). Sirve para confirmar visualmente el punto.</summary>
+    [HttpGet("streetview")]
+    public async Task<IActionResult> StreetView([FromQuery] decimal lat, [FromQuery] decimal lng, [FromServices] IHttpClientFactory httpFactory, [FromServices] IConfiguration config)
+    {
+        var key = config["GOOGLE_MAPS_API_KEY"] ?? Environment.GetEnvironmentVariable("GOOGLE_MAPS_API_KEY") ?? "";
+        if (string.IsNullOrWhiteSpace(key)) return NotFound();
+        var http = httpFactory.CreateClient();
+        http.Timeout = TimeSpan.FromSeconds(8);
+        var latS = lat.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var lngS = lng.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        try
+        {
+            // Primero preguntamos si hay foto de Street View en ese punto (metadata gratis).
+            var metaUrl = $"https://maps.googleapis.com/maps/api/streetview/metadata?location={latS},{lngS}&key={key}";
+            var metaResp = await http.GetAsync(metaUrl);
+            if (metaResp.IsSuccessStatusCode)
+            {
+                var metaBody = await metaResp.Content.ReadAsStringAsync();
+                using var mdoc = System.Text.Json.JsonDocument.Parse(metaBody);
+                var st = mdoc.RootElement.TryGetProperty("status", out var s) ? s.GetString() : null;
+                if (st != "OK") return NoContent(); // 204: no hay foto en ese punto
+            }
+            var imgUrl = $"https://maps.googleapis.com/maps/api/streetview?size=600x300&location={latS},{lngS}&fov=80&source=outdoor&key={key}";
+            var imgResp = await http.GetAsync(imgUrl);
+            if (!imgResp.IsSuccessStatusCode) return NoContent();
+            var bytes = await imgResp.Content.ReadAsByteArrayAsync();
+            return File(bytes, "image/jpeg");
+        }
+        catch { return NoContent(); }
+    }
+
     public record UpdateInternalStatusRequest(string InternalStatus, string? Notes);
 
     /// <summary>Actualiza el estado interno (en_ruta/entregado/no_encontrado/etc.) y notas del envio.</summary>

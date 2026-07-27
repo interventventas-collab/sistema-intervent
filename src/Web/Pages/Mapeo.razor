@@ -1435,19 +1435,35 @@ else
                         }
                     </div>
                 }
+                @if (StartHasCoords)
+                {
+                    <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:0.6rem; margin-bottom:0.6rem;">
+                        <div style="font-size:0.8rem; color:#166534; margin-bottom:0.5rem;">
+                            ✅ <strong>Ubicación elegida.</strong> Confirmá abajo con la foto que sea el lugar correcto.
+                        </div>
+                        <img src="@StreetViewUrl" alt="Street View del punto de partida"
+                             style="width:100%; border-radius:6px; display:block; background:#e5e7eb; min-height:120px; object-fit:cover;"
+                             onerror="this.style.display='none'; var n=this.nextElementSibling; if(n) n.style.display='block';" />
+                        <div style="display:none; font-size:0.78rem; color:#92400e; background:#fffbeb; border:1px solid #fde68a; border-radius:6px; padding:0.4rem; margin-top:0.3rem;">
+                            📷 No hay foto de Street View en este punto exacto. Igual podés guardarlo, o abrir el mapa para chequearlo.
+                        </div>
+                        <a href="@StreetViewLink" target="_blank" rel="noopener"
+                           style="display:inline-block; margin-top:0.5rem; font-size:0.8rem; color:#2563eb; text-decoration:none;">
+                            🔍 Abrir en Google Street View (para mirar alrededor)
+                        </a>
+                    </div>
+                }
                 <div class="form-group">
-                    <label class="form-label">Dirección a guardar</label>
-                    <input class="form-input" @bind="formStartAddress" />
-                </div>
-                <div class="form-row">
-                    <div class="form-group" style="flex:1;">
-                        <label class="form-label">Latitud</label>
-                        <input class="form-input" @bind="formStartLat" placeholder="-34.603722" />
-                    </div>
-                    <div class="form-group" style="flex:1;">
-                        <label class="form-label">Longitud</label>
-                        <input class="form-input" @bind="formStartLng" placeholder="-58.381592" />
-                    </div>
+                    <label class="form-label">Nombre / dirección a guardar</label>
+                    <input class="form-input" @bind="formStartAddress" placeholder="Ej: DEPOSITO" />
+                    @if (StartHasCoords)
+                    {
+                        <p style="font-size:0.68rem; color:#9ca3af; margin:0.2rem 0 0;">Coordenadas fijadas automáticamente (@formStartLat , @formStartLng).</p>
+                    }
+                    else
+                    {
+                        <p style="font-size:0.7rem; color:#b45309; margin:0.2rem 0 0;">👆 Buscá la dirección arriba y tocá el resultado correcto para fijar el punto.</p>
+                    }
                 </div>
             </div>
             <div class="modal-footer">
@@ -3476,7 +3492,19 @@ else
         formStartAddress = r.DisplayName;
         formStartLat = r.Lat.ToString(System.Globalization.CultureInfo.InvariantCulture);
         formStartLng = r.Lng.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        geocodeResults = null; // ya eligió: limpiamos la lista para que quede claro
     }
+
+    // ¿Ya hay coordenadas fijadas? (por búsqueda o punto existente)
+    private bool StartHasCoords =>
+        decimal.TryParse(formStartLat, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out _)
+        && decimal.TryParse(formStartLng, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out _);
+
+    // Foto de Street View servida por el backend (la clave de Google queda oculta).
+    private string StreetViewUrl => $"/api/meli/shipments/streetview?lat={formStartLat}&lng={formStartLng}";
+
+    // Link al Street View interactivo de Google (abre en pestaña nueva, sin clave).
+    private string StreetViewLink => $"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={formStartLat},{formStartLng}";
 
     private async Task SaveStartPoint()
     {
