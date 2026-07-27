@@ -146,6 +146,32 @@ public class CafeRepartidorPublicController : ControllerBase
             return Ok(new { soloEntrega = true, mensaje = $"✓ Marcaste como entregada (sin cobro)" });
         }
 
+        // 2026-07-27: candado anti-duplicado. Si el repartidor toca dos veces el boton
+        // (doble tap) o el celular reintenta por mala señal, no queremos crear dos cobranzas
+        // pendientes identicas. Chequeamos si ya hay una PENDIENTE de la misma venta, del mismo
+        // repartidor, por el mismo importe, cargada en los ultimos 5 minutos. Es una ventana corta
+        // a proposito: no molesta si mas tarde hay que cargar otro cobro legitimo de la misma venta.
+        var hace5min = DateTime.UtcNow.AddMinutes(-5);
+        var yaCargada = await _db.CafeCobranzasPendientes
+            .Where(p => p.VentaId == v.Id
+                        && p.RepartidorId == rep.Id
+                        && p.Estado == "PENDIENTE"
+                        && p.Importe == importe
+                        && p.CreatedAt >= hace5min)
+            .OrderByDescending(p => p.CreatedAt)
+            .FirstOrDefaultAsync();
+        if (yaCargada is not null)
+        {
+            // Igual reflejamos la entrega en la venta por si el primer intento no la marco.
+            if (marcoEntregado && !v.EntregadoPorRepartidorId.HasValue)
+            {
+                v.EntregadoPorRepartidorId = rep.Id;
+                v.EntregadoAt = DateTime.UtcNow;
+                await _db.SaveChangesAsync();
+            }
+            return Ok(new { id = yaCargada.Id, duplicada = true, mensaje = "✓ Ya la habias cargado recien — no la dupliqué" });
+        }
+
         // Sino, crear cobranza pendiente que el admin aprueba despues
         var pend = new CafeCobranzaPendiente
         {
