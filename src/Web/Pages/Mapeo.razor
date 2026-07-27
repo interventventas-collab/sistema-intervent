@@ -709,6 +709,29 @@
                 }
             </div>
         }
+        @* Resumen de rutas: tiempo estimado + km por repartidor (aparece al optimizar). *@
+        @if (rutasResumen.Count > 0)
+        {
+            <div style="position:absolute; top:52px; right:10px; z-index:470; background:white; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 3px 14px rgba(0,0,0,0.2); padding:0.5rem 0.6rem; max-width:250px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
+                    <strong style="font-size:0.82rem;">🛣️ Rutas (tránsito)</strong>
+                    <button class="btn-close" style="font-size:0.9rem;" @onclick="CerrarResumenRutas" title="Ocultar">&times;</button>
+                </div>
+                @foreach (var r in rutasResumen)
+                {
+                    <div style="padding:0.2rem 0; border-top:1px solid #f3f4f6;">
+                        <div style="display:flex; align-items:center; gap:0.4rem; font-size:0.8rem;">
+                            <span style="width:12px; height:12px; border-radius:50%; background:@r.Color; flex:0 0 12px;"></span>
+                            <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@r.Label</span>
+                            <strong>@FormatoDuracion(r.DurationSeconds)</strong>
+                        </div>
+                        <div style="font-size:0.68rem; color:#9ca3af; margin-left:1.1rem;">
+                            @r.StopCount parada@(r.StopCount == 1 ? "" : "s") · @((r.DistanceMeters / 1000.0).ToString("0.0")) km
+                        </div>
+                    </div>
+                }
+            </div>
+        }
         @* Acciones de ruta: repartir la flota entre choferes (si hay 2+) y/o armar una ruta única. Por tránsito. *@
         @if ((stops?.Count ?? 0) > 0)
         {
@@ -2307,6 +2330,7 @@
             await Api.OptimizeStopsOrderAsync();   // per-driver, traffic-aware
             await LoadStops();
             await RenderMap();
+            await CargarYDibujarRutas(single: false);
             ToastService.Success("⚡ Rutas optimizadas por el tránsito actual");
         }
         catch (Exception ex) { ToastService.Error("No se pudo optimizar: " + ex.Message); }
@@ -2323,10 +2347,41 @@
             await Api.OptimizeStopsOrderAsync(all: true);
             await LoadStops();
             await RenderMap();
+            await CargarYDibujarRutas(single: true);
             ToastService.Success("🚦 Ruta armada y optimizada por el tránsito actual");
         }
         catch (Exception ex) { ToastService.Error("No se pudo armar la ruta: " + ex.Message); }
         finally { routeBusy = false; StateHasChanged(); }
+    }
+
+    // Trae de Google el tiempo/km/línea de cada ruta y las dibuja en el mapa.
+    private List<RutaOverviewDto> rutasResumen = new();
+    private async Task CargarYDibujarRutas(bool single)
+    {
+        try
+        {
+            rutasResumen = await Api.GetRoutesOverviewAsync(single) ?? new();
+            var paraDibujar = rutasResumen
+                .Where(r => !string.IsNullOrEmpty(r.EncodedPolyline))
+                .Select(r => new { color = r.Color, encoded = r.EncodedPolyline })
+                .ToArray();
+            await JS.InvokeVoidAsync("mapeoFlex.drawRoutes", new object[] { paraDibujar });
+        }
+        catch (Exception ex) { ToastService.Error("No se pudieron dibujar las rutas: " + ex.Message); }
+    }
+
+    private static string FormatoDuracion(int seg)
+    {
+        if (seg <= 0) return "—";
+        int min = (int)Math.Round(seg / 60.0);
+        if (min < 60) return $"{min} min";
+        return $"{min / 60}h {min % 60:00}min";
+    }
+
+    private async Task CerrarResumenRutas()
+    {
+        rutasResumen = new();
+        try { await JS.InvokeVoidAsync("mapeoFlex.clearRoutes"); } catch { }
     }
     private string EscanearUrl => Navigation.BaseUri + "mapeo/escanear";
     private string ScanQrUrl => $"/api/mapeo/stops/escanear-qr?url={Uri.EscapeDataString(EscanearUrl)}";
@@ -2728,6 +2783,7 @@
                 await Api.UpdateMapeoStopAsync(id, new { assignedDriverId = driverId });
             await LoadStops();
             await RenderMap();
+            rutasResumen = new();
             var driver = drivers?.FirstOrDefault(d => d.Id == driverId);
             var nombre = driver?.Nombre ?? "el repartidor";
             // Registramos la zona creada (cuadradito "Zona N")
@@ -2755,6 +2811,7 @@
             await LoadStops();
             await RenderMap();
             if (zonasCreadas.Count > 0) zonasCreadas.RemoveAt(zonasCreadas.Count - 1);
+            rutasResumen = new();
             ToastService.Info($"↩ Se deshizo la última zona ({lastZoneUndo.Count} envío/s).");
             lastZoneUndo = new();
         }
@@ -2797,6 +2854,7 @@
             await RenderMap();
             lastZoneUndo = new();
             zonasCreadas = new();
+            rutasResumen = new();
             ToastService.Success($"🧹 {asignadas.Count} paradas quedaron sin repartidor.");
         }
         catch (Exception ex) { ToastService.Error("No se pudo limpiar: " + ex.Message); }

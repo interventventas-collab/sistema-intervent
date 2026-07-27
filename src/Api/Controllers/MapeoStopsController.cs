@@ -345,6 +345,64 @@ public class MapeoStopsController : ControllerBase
         return Ok(new { optimized, optimizedByGoogle });
     }
 
+    public record RutaOverviewDto(string Key, string Label, string Color, int? DriverId,
+        int DurationSeconds, int DistanceMeters, string? EncodedPolyline, int StopCount);
+
+    /// <summary>
+    /// Devuelve, por repartidor (o como ruta única), el tiempo estimado + km + la línea dibujable de la ruta.
+    /// Usa el orden ya calculado (OrderInRoute) y el punto de partida configurado.
+    /// </summary>
+    [HttpGet("routes-overview")]
+    public async Task<IActionResult> RoutesOverview([FromQuery] bool single = false)
+    {
+        double? startLat = null, startLng = null;
+        var latStr = (await _db.AppSettings.FindAsync("mapeo.start.lat"))?.Value;
+        var lngStr = (await _db.AppSettings.FindAsync("mapeo.start.lng"))?.Value;
+        if (double.TryParse(latStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var la)) startLat = la;
+        if (double.TryParse(lngStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var lo)) startLng = lo;
+
+        var conOrden = await _db.MapeoStops.Include(x => x.AssignedDriver)
+            .Where(s => s.OrderInRoute != null).ToListAsync();
+        if (conOrden.Count == 0) return Ok(new List<RutaOverviewDto>());
+
+        // single = todas las paradas como UNA ruta; si no, agrupadas por repartidor.
+        var grupos = single
+            ? new List<(int? did, MapeoDriver? drv, List<MapeoStop> ss)> { (null, null, conOrden) }
+            : conOrden.GroupBy(s => s.AssignedDriverId)
+                      .Select(g => (g.Key, g.First().AssignedDriver, g.ToList()))
+                      .ToList();
+
+        var result = new List<RutaOverviewDto>();
+        foreach (var (did, drv, ss) in grupos)
+        {
+            var ordered = ss.OrderBy(s => s.OrderInRoute).ToList();
+            var pts = ordered.Select(s => ((double)s.Latitude, (double)s.Longitude)).ToList();
+
+            (double lat, double lng) origin, dest;
+            List<(double lat, double lng)> inter;
+            if (startLat.HasValue && startLng.HasValue)
+            {
+                origin = (startLat.Value, startLng.Value);
+                dest = pts[^1];
+                inter = pts.Take(pts.Count - 1).ToList();
+            }
+            else
+            {
+                origin = pts[0];
+                dest = pts[^1];
+                inter = pts.Count > 2 ? pts.Skip(1).Take(pts.Count - 2).ToList() : new();
+            }
+
+            var rr = await _routes.ComputeRouteAsync(origin, dest, inter);
+            string label = single ? "Ruta única" : (drv?.Nombre ?? "Sin repartidor");
+            string color = single ? "#1d4ed8" : (string.IsNullOrEmpty(drv?.Color) ? "#6b7280" : drv!.Color!);
+            result.Add(new RutaOverviewDto(
+                did?.ToString() ?? "none", label, color, did,
+                rr?.DurationSeconds ?? 0, rr?.DistanceMeters ?? 0, rr?.EncodedPolyline, ordered.Count));
+        }
+        return Ok(result);
+    }
+
     /// <summary>
     /// Aplica el filtro por modo de entrega (today / tomorrow / overdue / all) usando EstimatedDeliveryLimit.
     /// Refleja la misma logica que MeliShipmentsController.ListFlex para mantener coherencia entre vistas.

@@ -97,4 +97,75 @@ public class GoogleRoutesService
             return null;
         }
     }
+
+    public record RouteResult(int DurationSeconds, int DistanceMeters, string? EncodedPolyline);
+
+    /// <summary>
+    /// Calcula la ruta que pasa por los waypoints EN EL ORDEN DADO (no reordena) y devuelve el tiempo
+    /// estimado (con tránsito), los metros y la línea codificada para dibujarla en el mapa.
+    /// Retorna null si no hay clave o la API falla.
+    /// </summary>
+    public async Task<RouteResult?> ComputeRouteAsync(
+        (double lat, double lng) origin,
+        (double lat, double lng) destination,
+        IReadOnlyList<(double lat, double lng)> waypoints,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(ApiKey)) return null;
+        if (waypoints.Count > MaxWaypoints) return null; // fuera del límite de la API
+
+        var body = new
+        {
+            origin = new { location = new { latLng = new { latitude = origin.lat, longitude = origin.lng } } },
+            destination = new { location = new { latLng = new { latitude = destination.lat, longitude = destination.lng } } },
+            intermediates = waypoints
+                .Select(p => new { location = new { latLng = new { latitude = p.lat, longitude = p.lng } } })
+                .ToArray(),
+            travelMode = "DRIVE",
+            routingPreference = "TRAFFIC_AWARE",
+            departureTime = DateTimeOffset.UtcNow.AddMinutes(3).ToString("yyyy-MM-ddTHH:mm:ssZ")
+            // sin optimizeWaypointOrder: respetamos el orden que ya calculamos
+        };
+
+        try
+        {
+            var http = _httpFactory.CreateClient();
+            http.Timeout = TimeSpan.FromSeconds(20);
+            using var req = new HttpRequestMessage(HttpMethod.Post, "https://routes.googleapis.com/directions/v2:computeRoutes");
+            req.Headers.Add("X-Goog-Api-Key", ApiKey);
+            req.Headers.Add("X-Goog-FieldMask", "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline");
+            req.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+
+            using var resp = await http.SendAsync(req, ct);
+            var json = await resp.Content.ReadAsStringAsync(ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Routes API compute devolvio {Status}: {Body}", (int)resp.StatusCode, json);
+                return null;
+            }
+
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("routes", out var routes) || routes.GetArrayLength() == 0)
+                return null;
+            var r0 = routes[0];
+
+            int dur = 0;
+            if (r0.TryGetProperty("duration", out var durEl) && durEl.ValueKind == JsonValueKind.String)
+            {
+                var s = durEl.GetString() ?? "0s";
+                int.TryParse(s.TrimEnd('s'), out dur);
+            }
+            int dist = r0.TryGetProperty("distanceMeters", out var distEl) && distEl.ValueKind == JsonValueKind.Number
+                ? distEl.GetInt32() : 0;
+            string? poly = r0.TryGetProperty("polyline", out var pl) && pl.TryGetProperty("encodedPolyline", out var enc)
+                ? enc.GetString() : null;
+
+            return new RouteResult(dur, dist, poly);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Routes API compute falló");
+            return null;
+        }
+    }
 }

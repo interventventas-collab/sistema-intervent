@@ -27,7 +27,7 @@
                 if (!key) { reject(new Error('Falta la clave del mapa (GOOGLE_MAPS_BROWSER_KEY).')); return; }
                 window.__mapeoGmapsReady = function () { resolve(); };
                 const s = document.createElement('script');
-                s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) + '&libraries=places&callback=__mapeoGmapsReady';
+                s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) + '&libraries=places,geometry&callback=__mapeoGmapsReady';
                 s.async = true;
                 s.defer = true;
                 s.onerror = function () { reject(new Error('No se pudo cargar Google Maps.')); };
@@ -107,6 +107,7 @@ window.mapeoFlex = (function () {
     let zonePath = null;          // lista de puntos (MVCArray) del polígono — la manejamos nosotros
     let zoneClickListener = null; // listener de clicks del mapa mientras dibuja
     let zoneVertexMarkers = [];   // puntitos que se ven en cada esquina tocada (feedback visual)
+    let routeLines = [];          // líneas de ruta dibujadas (una por repartidor)
     let lastFitStops = -1; // cuántas paradas (sin contar el punto de partida) había en el último auto-encuadre
 
     // Limpia el estado del dibujo de zona (saca el polígono, los puntitos, el listener y el cursor).
@@ -178,6 +179,7 @@ window.mapeoFlex = (function () {
             if (!map || !window.google) return;
             for (const m of markers) m.setMap(null);
             markers = [];
+            this.clearRoutes(); // las líneas viejas se borran; se redibujan al optimizar
 
             const groups = new Map();
             for (const it of items) {
@@ -336,6 +338,26 @@ window.mapeoFlex = (function () {
         // Cancelar el dibujo sin asignar nada.
         cancelDrawZone() { cleanupZone(); },
 
+        // Dibuja las líneas de ruta (una por repartidor). routes = [{color, encoded}].
+        drawRoutes(routes) {
+            this.clearRoutes();
+            if (!map || !routes || !google.maps.geometry) return;
+            for (const r of routes) {
+                if (!r || !r.encoded) continue;
+                const path = google.maps.geometry.encoding.decodePath(r.encoded);
+                routeLines.push(new google.maps.Polyline({
+                    path: path, map: map,
+                    strokeColor: r.color || '#1d4ed8',
+                    strokeOpacity: 0.85, strokeWeight: 5, zIndex: 5
+                }));
+            }
+        },
+
+        clearRoutes() {
+            for (const l of routeLines) l.setMap(null);
+            routeLines = [];
+        },
+
         // Encuadra el mapa sobre un conjunto de puntos [[lat,lng],...] (para hacer foco en una zona).
         fitPoints(points) {
             if (!map || !points || !points.length) return;
@@ -353,6 +375,8 @@ window.mapeoFlex = (function () {
             dotNetRef = null;
             lastFitStops = -1;
             cleanupZone();
+            for (const l of routeLines) l.setMap(null);
+            routeLines = [];
         },
 
         refit() { lastFitStops = -1; },

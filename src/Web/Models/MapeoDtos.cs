@@ -115,6 +115,18 @@ public class MapeoSnapshotListItemDto
     public string? Notes { get; set; }
 }
 
+public class RutaOverviewDto
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string Color { get; set; } = "#1d4ed8";
+    public int? DriverId { get; set; }
+    public int DurationSeconds { get; set; }
+    public int DistanceMeters { get; set; }
+    public string? EncodedPolyline { get; set; }
+    public int StopCount { get; set; }
+}
+
 public class MapeoFavoritoDto
 {
     public int Id { get; set; }
