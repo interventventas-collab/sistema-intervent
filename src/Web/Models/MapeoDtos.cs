@@ -35,6 +35,26 @@ public class MapeoDriverDto
     public string Color { get; set; } = "#1d4ed8";
     public bool IsActive { get; set; } = true;
     public string? ShareToken { get; set; }
+    // Vínculo al repartidor REAL (Cafe_Repartidores) para que la ruta le aparezca en su teléfono.
+    public int? CafeRepartidorId { get; set; }
+}
+
+// Parada del Mapeo en solo-lectura para la pantalla del repartidor (Mis Pedidos).
+public class MisPedidosMapeoDto
+{
+    public int Id { get; set; }
+    public int? OrderInRoute { get; set; }
+    public string Origin { get; set; } = "";
+    public string? Nombre { get; set; }
+    public string Direccion { get; set; } = "";
+    public string? Localidad { get; set; }
+    public decimal Latitude { get; set; }
+    public decimal Longitude { get; set; }
+    public string? Telefono { get; set; }
+    public string? Comprador { get; set; }
+    public long? NumeroVenta { get; set; }
+    public bool Entregado { get; set; }
+    public DateTime? DateDelivered { get; set; }
 }
 
 public class PublicRouteDto

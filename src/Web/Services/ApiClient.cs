@@ -5846,10 +5846,13 @@ public class ApiClient
     // ===== Mapeo: Drivers =====
     public async Task<List<MapeoDriverDto>?> GetMapeoDriversAsync()
         => await GetAsync<List<MapeoDriverDto>>("/api/mapeo/drivers");
-    public async Task<MapeoDriverDto?> CreateMapeoDriverAsync(string nombre, string? telefono, string? color)
-        => await PostAsync<MapeoDriverDto>("/api/mapeo/drivers", new { nombre, telefono, color });
-    public async Task<MapeoDriverDto?> UpdateMapeoDriverAsync(int id, string? nombre, string? telefono, string? color, bool? isActive)
-        => await PutAsync<MapeoDriverDto>($"/api/mapeo/drivers/{id}", new { nombre, telefono, color, isActive });
+    public async Task<MapeoDriverDto?> CreateMapeoDriverAsync(string nombre, string? telefono, string? color, int? cafeRepartidorId = null)
+        => await PostAsync<MapeoDriverDto>("/api/mapeo/drivers", new { nombre, telefono, color, cafeRepartidorId });
+    public async Task<MapeoDriverDto?> UpdateMapeoDriverAsync(int id, string? nombre, string? telefono, string? color, bool? isActive, int? cafeRepartidorId = null)
+        => await PutAsync<MapeoDriverDto>($"/api/mapeo/drivers/{id}", new { nombre, telefono, color, isActive, cafeRepartidorId });
+    // Paso 2: paradas del Mapeo (solo-lectura) para el teléfono del repartidor.
+    public async Task<List<MisPedidosMapeoDto>?> GetMisPedidosMapeoAsync(string tokenRepartidor)
+        => await GetAsync<List<MisPedidosMapeoDto>>($"/api/cafe/repartidor-public/mis-pedidos/{Uri.EscapeDataString(tokenRepartidor)}/mapeo");
     public async Task<bool> DeleteMapeoDriverAsync(int id)
         => await DeleteAsync($"/api/mapeo/drivers/{id}");
     public async Task<string?> GenerateMapeoDriverShareTokenAsync(int id, bool regenerate = false)

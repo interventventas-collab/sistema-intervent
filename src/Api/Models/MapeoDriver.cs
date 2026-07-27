@@ -21,6 +21,10 @@ public class MapeoDriver
     /// <summary>Token publico para compartir el link de la ruta del chofer (sin login).</summary>
     [MaxLength(64)] public string? ShareToken { get; set; }
 
+    /// <summary>Vinculo al repartidor REAL (Cafe_Repartidores.Id). Cuando esta seteado, la ruta
+    /// del mapa de este chofer le aparece en el telefono de ese repartidor (unifica ambos grupos).</summary>
+    public int? CafeRepartidorId { get; set; }
+
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }

@@ -204,6 +204,51 @@
             <div style="background:#fee2e2; color:#991b1b; padding:0.6rem 0.8rem; border-radius:8px; margin-bottom:0.8rem; font-size:0.88rem;">⚠ @scanError</div>
         }
 
+@* ─── RUTA DEL MAPA (Flex + paradas) — SOLO LECTURA, en orden — 2026-07-27 ─── *@
+        @if (mapeoRuta.Count > 0)
+        {
+            var rutaVisible = ocultarFlex ? mapeoRuta.Where(x => x.Origin != "flex").ToList() : mapeoRuta;
+            <div class="mp-section-title" style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                <span>🗺️ Mi ruta (orden del mapa)</span>
+                <span class="badge" style="background:#0891b2; color:white;">@rutaVisible.Count</span>
+                @if (mapeoRuta.Any(x => x.Origin == "flex"))
+                {
+                    <button type="button" @onclick="() => ocultarFlex = !ocultarFlex"
+                            style="margin-left:auto; font-size:0.72rem; font-weight:700; border:1px solid #0891b2; background:@(ocultarFlex ? "#0891b2" : "white"); color:@(ocultarFlex ? "white" : "#0891b2"); padding:0.2rem 0.6rem; border-radius:999px; cursor:pointer;">
+                        @(ocultarFlex ? "Ver todo" : "Ocultar Flex")
+                    </button>
+                }
+            </div>
+            <div style="font-size:0.72rem; color:#6b7280; margin:0 0 0.5rem;">
+                Solo para ver el recorrido en orden. Los Flex se marcan entregados desde la app de Flex de MeLi.
+            </div>
+            @foreach (var p in rutaVisible)
+            {
+                var esFlex = p.Origin == "flex";
+                var mapsUrl = $"https://www.google.com/maps/dir/?api=1&destination={p.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{p.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+                <div class="mp-card" style="background:white; border:1px solid #e5e7eb; border-left:6px solid #0891b2; margin-bottom:0.6rem; padding:0.6rem;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:0.4rem;">
+                        <div style="display:flex; align-items:center; gap:0.4rem; min-width:0;">
+                            @if (p.OrderInRoute.HasValue)
+                            {
+                                <span style="background:#0891b2; color:white; font-weight:800; font-size:0.8rem; min-width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto;">@p.OrderInRoute</span>
+                            }
+                            <span style="font-weight:700; font-size:1rem; color:#111827; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@(p.Nombre ?? "Parada")</span>
+                        </div>
+                        @if (esFlex) { <span style="background:#dbeafe; color:#1e40af; font-size:0.62rem; font-weight:800; padding:0.05rem 0.35rem; border-radius:4px; flex:0 0 auto;">FLEX</span> }
+                    </div>
+                    <div style="font-size:0.85rem; color:#374151; margin-top:0.25rem;">@p.Direccion</div>
+                    @if (!string.IsNullOrEmpty(p.Localidad)) { <div style="font-size:0.75rem; color:#6b7280;">@p.Localidad</div> }
+                    <div style="display:flex; gap:0.6rem; margin-top:0.3rem; flex-wrap:wrap; font-size:0.72rem; color:#6b7280;">
+                        @if (!string.IsNullOrEmpty(p.Comprador)) { <span>👤 @p.Comprador</span> }
+                        @if (p.NumeroVenta.HasValue) { <span style="font-family:monospace;">🧾 @p.NumeroVenta.Value</span> }
+                        @if (p.Entregado) { <span style="color:#15803d; font-weight:700;">✔ Entregado</span> }
+                    </div>
+                    <a href="@mapsUrl" target="_blank" rel="noopener" style="display:block; margin-top:0.5rem; text-align:center; background:#0891b2; color:white; padding:0.55rem; border-radius:8px; font-size:0.9rem; font-weight:700; text-decoration:none;">🧭 Cómo llegar</a>
+                </div>
+            }
+        }
+
 @* ─── ME1 (MercadoLibre) — 2026-06-17 ─── *@
         var me1Pendientes = me1Pedidos.Where(m => !m.YaEntregada).ToList();
         @if (me1Pendientes.Count > 0)
@@ -876,6 +921,9 @@
     private List<CobroDto> cobros = new();
     // 2026-06-17: ME1 (MercadoLibre)
     private List<Me1PedidoDto> me1Pedidos = new();
+    // 2026-07-27: Ruta del mapa (Flex/paradas) en solo-lectura, en orden
+    private List<Web.Models.MisPedidosMapeoDto> mapeoRuta = new();
+    private bool ocultarFlex = false; // filtro "Ver todo / Ocultar Flex"
     // 2026-06-26: Alquileres asignados al repartidor
     private List<AlqReservaItem> alqReservas = new();
     private List<AlqCobroItem> alqCobros = new();
@@ -971,6 +1019,13 @@
                 me1Pedidos = me1 ?? new();
             }
             catch { me1Pedidos = new(); }
+            // 2026-07-27: Ruta del mapa (Flex/paradas) en solo-lectura, en orden.
+            try
+            {
+                var mp = await Http.GetFromJsonAsync<List<Web.Models.MisPedidosMapeoDto>>($"api/cafe/repartidor-public/mis-pedidos/{Token}/mapeo");
+                mapeoRuta = mp ?? new();
+            }
+            catch { mapeoRuta = new(); }
             // 2026-06-26: Alquileres asignados al repartidor (mismo token publico).
             try
             {

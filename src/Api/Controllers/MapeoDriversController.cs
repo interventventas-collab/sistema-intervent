@@ -14,15 +14,15 @@ public class MapeoDriversController : ControllerBase
     private readonly AppDbContext _db;
     public MapeoDriversController(AppDbContext db) { _db = db; }
 
-    public record DriverDto(int Id, string Nombre, string? Telefono, string Color, bool IsActive, string? ShareToken);
-    public record CreateDriverRequest(string Nombre, string? Telefono, string? Color);
-    public record UpdateDriverRequest(string? Nombre, string? Telefono, string? Color, bool? IsActive);
+    public record DriverDto(int Id, string Nombre, string? Telefono, string Color, bool IsActive, string? ShareToken, int? CafeRepartidorId);
+    public record CreateDriverRequest(string Nombre, string? Telefono, string? Color, int? CafeRepartidorId);
+    public record UpdateDriverRequest(string? Nombre, string? Telefono, string? Color, bool? IsActive, int? CafeRepartidorId);
 
     [HttpGet("drivers")]
     public async Task<IActionResult> ListDrivers()
     {
         var list = await _db.MapeoDrivers.OrderBy(d => d.Nombre).ToListAsync();
-        return Ok(list.Select(d => new DriverDto(d.Id, d.Nombre, d.Telefono, d.Color, d.IsActive, d.ShareToken)));
+        return Ok(list.Select(d => new DriverDto(d.Id, d.Nombre, d.Telefono, d.Color, d.IsActive, d.ShareToken, d.CafeRepartidorId)));
     }
 
     [HttpPost("drivers")]
@@ -34,12 +34,13 @@ public class MapeoDriversController : ControllerBase
             Nombre = req.Nombre.Trim(),
             Telefono = string.IsNullOrWhiteSpace(req.Telefono) ? null : req.Telefono.Trim(),
             Color = string.IsNullOrWhiteSpace(req.Color) ? "#1d4ed8" : req.Color.Trim(),
+            CafeRepartidorId = req.CafeRepartidorId.HasValue && req.CafeRepartidorId.Value > 0 ? req.CafeRepartidorId : null,
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
         _db.MapeoDrivers.Add(d);
         await _db.SaveChangesAsync();
-        return Ok(new DriverDto(d.Id, d.Nombre, d.Telefono, d.Color, d.IsActive, d.ShareToken));
+        return Ok(new DriverDto(d.Id, d.Nombre, d.Telefono, d.Color, d.IsActive, d.ShareToken, d.CafeRepartidorId));
     }
 
     [HttpPut("drivers/{id:int}")]
@@ -51,9 +52,11 @@ public class MapeoDriversController : ControllerBase
         if (req.Telefono is not null) d.Telefono = string.IsNullOrWhiteSpace(req.Telefono) ? null : req.Telefono.Trim();
         if (req.Color is not null) d.Color = string.IsNullOrWhiteSpace(req.Color) ? "#1d4ed8" : req.Color.Trim();
         if (req.IsActive.HasValue) d.IsActive = req.IsActive.Value;
+        // CafeRepartidorId: >0 lo vincula, 0 lo desvincula, null lo deja como está.
+        if (req.CafeRepartidorId.HasValue) d.CafeRepartidorId = req.CafeRepartidorId.Value > 0 ? req.CafeRepartidorId.Value : null;
         d.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return Ok(new DriverDto(d.Id, d.Nombre, d.Telefono, d.Color, d.IsActive, d.ShareToken));
+        return Ok(new DriverDto(d.Id, d.Nombre, d.Telefono, d.Color, d.IsActive, d.ShareToken, d.CafeRepartidorId));
     }
 
     [HttpDelete("drivers/{id:int}")]

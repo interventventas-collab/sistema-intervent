@@ -3784,6 +3784,12 @@ IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='UX_MapeoDrivers_ShareToken'
     CREATE UNIQUE INDEX UX_MapeoDrivers_ShareToken ON MapeoDrivers(ShareToken) WHERE ShareToken IS NOT NULL;
 GO
 
+-- MapeoDrivers: vinculo al repartidor REAL (Cafe_Repartidores) para que la ruta del mapa
+-- le aparezca en el telefono del repartidor (unificar los dos grupos de repartidores).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='CafeRepartidorId' AND Object_ID=Object_ID('MapeoDrivers'))
+    ALTER TABLE MapeoDrivers ADD CafeRepartidorId INT NULL;
+GO
+
 -- ===== Mapeo: snapshots de rutas armadas (historial) =====
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='MapeoRouteSnapshots')
 BEGIN

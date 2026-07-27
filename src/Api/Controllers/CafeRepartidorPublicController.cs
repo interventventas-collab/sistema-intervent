@@ -887,6 +887,61 @@ public class CafeRepartidorPublicController : ControllerBase
         bool YaEntregada, DateTime? EntregadoAt
     );
 
+    // ── 2026-07-27: Ruta del Mapeo (Flex/paradas) en SOLO-LECTURA para el teléfono del repartidor ──
+    public record MisPedidosMapeoDto(
+        int Id, int? OrderInRoute, string Origin,
+        string? Nombre, string Direccion, string? Localidad,
+        decimal Latitude, decimal Longitude, string? Telefono,
+        string? Comprador, long? NumeroVenta,
+        bool Entregado, DateTime? DateDelivered
+    );
+
+    /// <summary>Paradas del Mapeo asignadas a este repartidor (vía MapeoDrivers.CafeRepartidorId),
+    /// en orden de ruta. SOLO LECTURA: el repartidor ve su recorrido; NO marca entregado acá
+    /// (los Flex se cierran por la app de Flex de MeLi). No genera cobranzas ni toca el rinde.</summary>
+    [HttpGet("mis-pedidos/{tokenRepartidor}/mapeo")]
+    public async Task<IActionResult> MisPedidosMapeo(string tokenRepartidor)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound(new { error = "Enlace invalido o repartidor inactivo" });
+
+        // MapeoDrivers vinculados a este repartidor real.
+        var driverIds = await _db.MapeoDrivers.Where(d => d.CafeRepartidorId == r.Id).Select(d => d.Id).ToListAsync();
+        if (driverIds.Count == 0) return Ok(new List<MisPedidosMapeoDto>());
+
+        var stops = await _db.MapeoStops
+            .Where(s => s.AssignedDriverId != null && driverIds.Contains(s.AssignedDriverId.Value))
+            .OrderBy(s => s.OrderInRoute ?? int.MaxValue).ThenBy(s => s.Id)
+            .ToListAsync();
+
+        // Enriquecer Flex/ME1 con datos del envío de MeLi (comprador, nº venta, entregado).
+        var refs = stops.Where(s => (s.Origin == "flex" || s.Origin == "me1") && s.OriginRefId != null)
+                        .Select(s => long.TryParse(s.OriginRefId, out var v) ? v : 0L).Where(v => v != 0L).Distinct().ToList();
+        var ships = refs.Count == 0
+            ? new Dictionary<long, MeliShipment>()
+            : await _db.MeliShipments.Where(m => refs.Contains(m.MeliShipmentId)).ToDictionaryAsync(m => m.MeliShipmentId);
+
+        var result = stops.Select(s =>
+        {
+            string? comprador = null; long? numeroVenta = null; bool entregado = false; DateTime? dd = null;
+            if ((s.Origin == "flex" || s.Origin == "me1") && s.OriginRefId != null
+                && long.TryParse(s.OriginRefId, out var sid) && ships.TryGetValue(sid, out var m))
+            {
+                comprador = m.BuyerNickname;
+                numeroVenta = m.MeliOrderId;
+                entregado = string.Equals(m.Status, "delivered", StringComparison.OrdinalIgnoreCase);
+                dd = m.DateDelivered;
+            }
+            return new MisPedidosMapeoDto(
+                s.Id, s.OrderInRoute, s.Origin,
+                s.Alias ?? s.ContactName, s.Direccion, s.Localidad,
+                s.Latitude, s.Longitude, s.Telefono,
+                comprador, numeroVenta, entregado, dd);
+        }).ToList();
+
+        return Ok(result);
+    }
+
     /// <summary>2026-06-17: lista las ME1 asignadas al repartidor (pendientes + las que el repartidor entrego).
     /// Misma autenticacion que /mis-pedidos: PublicToken del repartidor + repartidor activo.</summary>
     [HttpGet("mis-pedidos/{tokenRepartidor}/me1")]
