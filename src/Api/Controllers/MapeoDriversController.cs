@@ -18,11 +18,59 @@ public class MapeoDriversController : ControllerBase
     public record CreateDriverRequest(string Nombre, string? Telefono, string? Color, int? CafeRepartidorId);
     public record UpdateDriverRequest(string? Nombre, string? Telefono, string? Color, bool? IsActive, int? CafeRepartidorId);
 
+    // Paleta de colores para asignar automáticamente a cada repartidor en el mapa.
+    private static readonly string[] Palette = {
+        "#1d4ed8", "#16a34a", "#dc2626", "#9333ea", "#ea580c", "#0891b2",
+        "#ca8a04", "#db2777", "#65a30d", "#7c3aed", "#0d9488", "#b91c1c"
+    };
+
+    /// <summary>
+    /// Los repartidores del Mapeo son AHORA, directamente, los repartidores REALES (Cafe_Repartidores)
+    /// activos. Por cada uno aseguramos un MapeoDriver "espejo" (lo crea si falta) con un color auto y
+    /// el nombre sincronizado. Así el usuario administra UNA sola lista (Administración → Repartidores)
+    /// y en el Mapeo aparecen solos. El motor del mapa sigue usando MapeoDriver.Id por debajo.
+    /// </summary>
     [HttpGet("drivers")]
     public async Task<IActionResult> ListDrivers()
     {
-        var list = await _db.MapeoDrivers.OrderBy(d => d.Nombre).ToListAsync();
-        return Ok(list.Select(d => new DriverDto(d.Id, d.Nombre, d.Telefono, d.Color, d.IsActive, d.ShareToken, d.CafeRepartidorId)));
+        var reales = await _db.CafeRepartidores.Where(r => r.IsActive).OrderBy(r => r.Nombre).ToListAsync();
+        var espejos = await _db.MapeoDrivers.Where(d => d.CafeRepartidorId != null).ToListAsync();
+        var porRep = espejos
+            .GroupBy(d => d.CafeRepartidorId!.Value)
+            .ToDictionary(g => g.Key, g => g.First());
+
+        var result = new List<MapeoDriver>();
+        bool changed = false;
+        int idx = 0;
+        foreach (var r in reales)
+        {
+            if (!porRep.TryGetValue(r.Id, out var d))
+            {
+                d = new MapeoDriver
+                {
+                    Nombre = r.Nombre,
+                    Color = Palette[idx % Palette.Length],
+                    CafeRepartidorId = r.Id,
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _db.MapeoDrivers.Add(d);
+                changed = true;
+            }
+            else if (d.Nombre != r.Nombre || !d.IsActive)
+            {
+                // Mantener el nombre sincronizado con el real y reactivar el espejo si hiciera falta.
+                d.Nombre = r.Nombre;
+                d.IsActive = true;
+                changed = true;
+            }
+            result.Add(d);
+            idx++;
+        }
+        if (changed) await _db.SaveChangesAsync();
+
+        return Ok(result.OrderBy(d => d.Nombre)
+            .Select(d => new DriverDto(d.Id, d.Nombre, d.Telefono, d.Color, d.IsActive, d.ShareToken, d.CafeRepartidorId)));
     }
 
     [HttpPost("drivers")]
