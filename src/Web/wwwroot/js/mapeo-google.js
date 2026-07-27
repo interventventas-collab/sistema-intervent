@@ -104,6 +104,7 @@ window.mapeoFlex = (function () {
     let infoWindow = null;
     let dotNetRef = null;
     let zonePolygon = null;       // polígono que el usuario dibuja a mano (esquina por esquina)
+    let zonePath = null;          // lista de puntos (MVCArray) del polígono — la manejamos nosotros
     let zoneClickListener = null; // listener de clicks del mapa mientras dibuja
     let zoneVertexMarkers = [];   // puntitos que se ven en cada esquina tocada (feedback visual)
     let lastFitStops = -1; // cuántas paradas (sin contar el punto de partida) había en el último auto-encuadre
@@ -112,6 +113,7 @@ window.mapeoFlex = (function () {
     function cleanupZone() {
         if (zoneClickListener) { google.maps.event.removeListener(zoneClickListener); zoneClickListener = null; }
         if (zonePolygon) { zonePolygon.setMap(null); zonePolygon = null; }
+        zonePath = null;
         for (const m of zoneVertexMarkers) m.setMap(null);
         zoneVertexMarkers = [];
         if (map) map.setOptions({ draggableCursor: null });
@@ -295,15 +297,16 @@ window.mapeoFlex = (function () {
             if (!map) return;
             cleanupZone();
             map.setOptions({ draggableCursor: 'crosshair' }); // cursor de cruz = estás dibujando
+            zonePath = new google.maps.MVCArray();
             zonePolygon = new google.maps.Polygon({
-                map: map, paths: [],
+                map: map, paths: zonePath,
                 fillColor: '#1d4ed8', fillOpacity: 0.12,
                 strokeColor: '#1d4ed8', strokeWeight: 3,
                 clickable: false, zIndex: 1
             });
             zoneClickListener = map.addListener('click', function (e) {
-                if (!zonePolygon) return;
-                zonePolygon.getPath().push(e.latLng);
+                if (!zonePath) return;
+                zonePath.push(e.latLng);
                 // Puntito visible en cada esquina, para que se vea que registró el toque.
                 zoneVertexMarkers.push(new google.maps.Marker({
                     position: e.latLng, map: map, clickable: false, zIndex: 2,
@@ -317,8 +320,7 @@ window.mapeoFlex = (function () {
 
         // Terminar la zona: junta las esquinas y se las manda a Blazor (OnZoneDrawn).
         finishDrawZone() {
-            if (!zonePolygon) return;
-            const path = zonePolygon.getPath().getArray().map(p => [p.lat(), p.lng()]);
+            const path = (zonePath ? zonePath.getArray() : []).map(p => [p.lat(), p.lng()]);
             cleanupZone();
             if (dotNetRef) dotNetRef.invokeMethodAsync('OnZoneDrawn', path);
         },
