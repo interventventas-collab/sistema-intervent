@@ -336,6 +336,15 @@ window.mapeoFlex = (function () {
         // Cancelar el dibujo sin asignar nada.
         cancelDrawZone() { cleanupZone(); },
 
+        // Encuadra el mapa sobre un conjunto de puntos [[lat,lng],...] (para hacer foco en una zona).
+        fitPoints(points) {
+            if (!map || !points || !points.length) return;
+            const b = new google.maps.LatLngBounds();
+            for (const p of points) b.extend({ lat: +p[0], lng: +p[1] });
+            if (points.length === 1) { map.setCenter(b.getCenter()); map.setZoom(15); }
+            else map.fitBounds(b, 80);
+        },
+
         destroy() {
             for (const m of markers) m.setMap(null);
             markers = [];
