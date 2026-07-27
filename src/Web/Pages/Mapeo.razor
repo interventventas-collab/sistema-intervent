@@ -1487,11 +1487,17 @@ else
                                         <strong>@f.Alias</strong>
                                         <div style="font-size:0.72rem; color:#9ca3af;">@f.Direccion</div>
                                     </div>
-                                    @if (esActual) { <span style="color:#16a34a; font-size:0.75rem; font-weight:700; white-space:nowrap;">✓ actual</span> }
-                                    else { <span style="color:#2563eb; font-size:0.75rem; font-weight:700; white-space:nowrap;">Elegir →</span> }
+                                    <div style="display:flex; align-items:center; gap:0.5rem; white-space:nowrap;">
+                                        @if (esActual) { <span style="color:#16a34a; font-size:0.75rem; font-weight:700;">✓ actual</span> }
+                                        else { <span style="color:#2563eb; font-size:0.75rem; font-weight:700;">Elegir →</span> }
+                                        <button class="btn-icon btn-delete" style="font-size:0.8rem; color:#dc2626;"
+                                                @onclick="() => DeleteFavorito(f)" @onclick:stopPropagation="true"
+                                                title="Eliminar este favorito">🗑</button>
+                                    </div>
                                 </div>
                             }
                         </div>
+                        <p style="font-size:0.68rem; color:#9ca3af; margin:0.3rem 0 0;">🗑 borra el favorito de la lista (no toca el punto de partida ya guardado).</p>
                     }
                 </div>
 
