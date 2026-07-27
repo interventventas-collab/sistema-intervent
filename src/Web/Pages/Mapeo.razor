@@ -743,6 +743,11 @@
                             title="Le arma a cada repartidor (los que asignaste) su mejor recorrido según el tránsito actual">
                         ⚡ @(routeBusy ? "Optimizando…" : "Optimizar rutas")
                     </button>
+                    <button class="btn" style="font-size:0.9rem; font-weight:800; background:#0f766e; color:#fff; border:none; padding:0.6rem 1.2rem; border-radius:999px; box-shadow:0 3px 14px rgba(0,0,0,0.35); cursor:pointer;"
+                            @onclick="() => showRutasReparto = true"
+                            title="Ver y mandar a cada repartidor su enlace de ruta (por WhatsApp)">
+                        📤 Enviar rutas
+                    </button>
                 }
                 <button class="btn" style="font-size:0.9rem; font-weight:800; background:#1d4ed8; color:#fff; border:none; padding:0.6rem 1.2rem; border-radius:999px; box-shadow:0 3px 14px rgba(0,0,0,0.35); cursor:pointer;"
                         @onclick="ArmarRutaOptima" disabled="@routeBusy"
@@ -1473,6 +1478,88 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="() => showZoneAssignModal = false" disabled="@assigningZone">Cancelar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showRutasReparto)
+{
+    <div class="modal-overlay" @onclick="() => showRutasReparto = false">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width:540px;">
+            <div class="modal-header" style="background:#dbeafe;">
+                <h3 style="margin:0;">📤 Rutas de los repartidores</h3>
+                <button class="btn-close" @onclick="() => showRutasReparto = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                @{
+                    var gruposReparto = (stops ?? new()).Where(s => s.AssignedDriverId.HasValue)
+                        .GroupBy(s => s.AssignedDriverId!.Value)
+                        .Select(g => new { DriverId = g.Key, Count = g.Count() })
+                        .ToList();
+                }
+                @if (gruposReparto.Count == 0)
+                {
+                    <p style="color:#6b7280; font-size:0.9rem;">Todavía no le asignaste envíos a ningún repartidor. Dibujá una zona (🗺️) y asignásela.</p>
+                }
+                else
+                {
+                    <p style="font-size:0.82rem; color:#6b7280; margin:0 0 0.6rem;">Cada repartidor entra a su propio enlace y ve solo sus paradas. Se lo podés mandar por WhatsApp.</p>
+                    @foreach (var gr in gruposReparto)
+                    {
+                        var d = drivers?.FirstOrDefault(x => x.Id == gr.DriverId);
+                        if (d is null) { continue; }
+                        var baseForLink = !string.IsNullOrWhiteSpace(publicBaseUrl) ? publicBaseUrl + "/" : Navigation.BaseUri;
+                        var link = string.IsNullOrEmpty(d.ShareToken) ? null : $"{baseForLink}r/{d.ShareToken}";
+                        var gmaps = BuildGmapsRouteUrlForDriver(d.Id);
+                        <div style="border:1px solid @d.Color; border-radius:8px; padding:0.6rem; margin-bottom:0.6rem;">
+                            <div style="display:flex; align-items:center; gap:0.5rem;">
+                                <span style="width:14px; height:14px; border-radius:50%; background:@d.Color; flex:0 0 14px;"></span>
+                                <strong>@d.Nombre</strong>
+                                <span style="font-size:0.78rem; color:#6b7280;">· @gr.Count parada@(gr.Count == 1 ? "" : "s")</span>
+                            </div>
+                            @if (link is null)
+                            {
+                                <button class="btn btn-secondary" style="font-size:0.8rem; margin-top:0.45rem;" @onclick="() => GenerateLink(d)">🔗 Generar link</button>
+                            }
+                            else
+                            {
+                                <div style="margin-top:0.45rem; display:flex; gap:0.3rem; align-items:center; flex-wrap:wrap;">
+                                    <a href="@link" target="_blank" rel="noopener noreferrer"
+                                       style="flex:1; min-width:180px; font-size:0.72rem; padding:0.3rem 0.5rem; background:#f0f9ff; border:1px solid #93c5fd; border-radius:4px; color:#1d4ed8; font-family:monospace; word-break:break-all; text-decoration:none;">
+                                        🔗 @link
+                                    </a>
+                                    <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="() => CopyLink(link)">📋 Copiar</button>
+                                </div>
+                                @if (gmaps != "#")
+                                {
+                                    <div style="margin-top:0.3rem;">
+                                        <a href="@gmaps" target="_blank" rel="noopener noreferrer" style="font-size:0.78rem; color:#9a3412; text-decoration:none;">🗺 Abrir en Google Maps (@gr.Count paradas)</a>
+                                    </div>
+                                }
+                                @if (!string.IsNullOrEmpty(d.Telefono))
+                                {
+                                    var digits = new string(d.Telefono.Where(char.IsDigit).ToArray());
+                                    var msgParts = new List<string> { $"Hola {d.Nombre}! Tu ruta de hoy ({gr.Count} paradas):", "", $"📋 Detalle: {link}" };
+                                    if (gmaps != "#") { msgParts.Add(""); msgParts.Add($"🗺 Navegar: {gmaps}"); }
+                                    var waMsg = Uri.EscapeDataString(string.Join("\n", msgParts));
+                                    var waDet = Uri.EscapeDataString(BuildWhatsAppDetallado(d.Id, d.Nombre ?? "Chofer"));
+                                    <div style="display:flex; gap:0.3rem; margin-top:0.45rem; flex-wrap:wrap;">
+                                        <a class="btn" style="font-size:0.78rem; background:#25D366; color:white; border:none;" target="_blank" href="@($"https://wa.me/{digits}?text={waMsg}")">💬 Enviar links</a>
+                                        <a class="btn" style="font-size:0.78rem; background:#128C7E; color:white; border:none;" target="_blank" href="@($"https://wa.me/{digits}?text={waDet}")">📋 Enviar detallado</a>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div style="font-size:0.72rem; color:#9ca3af; margin-top:0.3rem;">Cargale el teléfono al repartidor (⚙ Repartidores) para mandarle por WhatsApp.</div>
+                                }
+                            }
+                        </div>
+                    }
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" @onclick="() => showRutasReparto = false">Listo</button>
             </div>
         </div>
     </div>
@@ -2429,6 +2516,7 @@
     private int vehiculoSeleccionado = 1;
     private bool assigningSlot;
     private bool showAssignDriversModal;
+    private bool showRutasReparto; // modal para ver/enviar los links de ruta por repartidor (flujo de zonas)
 
     private static readonly string[] VEHICLE_COLORS = {
         "#1d4ed8", "#dc2626", "#16a34a", "#d97706", "#7c3aed",
