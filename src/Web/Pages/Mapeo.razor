@@ -453,13 +453,12 @@
                         var esFlex = g.TieneFlex;
                         <div style="display:flex; align-items:stretch;"
                              @ondragover:preventDefault="true"
-                             @ondrop="@(() => OnDropRuta(reIdx))"
-                             @ondragenter="@(() => { dragOverIdx = reIdx; })">
+                             @ondrop="@(() => OnDropRuta(reIdx))">
                             @if (zonaUnica)
                             {
-                                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:0 3px; border-right:1px solid #eef2f7; background:@(dragOverIdx == reIdx ? "#dbeafe" : "transparent");">
+                                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:0 3px; border-right:1px solid #eef2f7;">
                                     <button class="btn-icon" style="font-size:0.7rem; padding:0; line-height:1.1; color:#6b7280;" @onclick:stopPropagation="true" @onclick="@(() => MoverParada(reIdx, -1))" disabled="@(reIdx == 0 || reordenandoRuta)" title="Subir en la ruta">▲</button>
-                                    <span draggable="true" @ondragstart="@(() => OnDragStartRuta(reIdx))" @ondragend="@(() => { dragOverIdx = -1; })" title="Arrastrá para reordenar la ruta" style="cursor:grab; font-size:0.95rem; color:#9ca3af; user-select:none;">⠿</span>
+                                    <span draggable="true" @ondragstart="@(() => OnDragStartRuta(reIdx))" title="Arrastrá para reordenar la ruta" style="cursor:grab; font-size:0.95rem; color:#9ca3af; user-select:none;">⠿</span>
                                     <button class="btn-icon" style="font-size:0.7rem; padding:0; line-height:1.1; color:#6b7280;" @onclick:stopPropagation="true" @onclick="@(() => MoverParada(reIdx, 1))" disabled="@(reIdx == grupos.Count - 1 || reordenandoRuta)" title="Bajar en la ruta">▼</button>
                                 </div>
                             }
@@ -2052,13 +2051,14 @@
 
     // ── Etapa 2: reordenar la ruta (arrastrar ⠿ o flechitas ▲▼), solo con UNA zona a la vista ──
     private int dragFromIdx = -1;   // índice de la parada que estás arrastrando
-    private int dragOverIdx = -1;   // índice sobre el que estás soltando (para resaltar)
     private bool reordenandoRuta = false;
 
+    // OJO: no cambiamos estado que afecte el markup mientras se arrastra, porque un redibujado
+    // de Blazor a mitad de arrastre CORTA el drag nativo (por eso antes no dejaba mover varias).
     private void OnDragStartRuta(int idx) => dragFromIdx = idx;
     private async Task OnDropRuta(int idx)
     {
-        var from = dragFromIdx; dragFromIdx = -1; dragOverIdx = -1;
+        var from = dragFromIdx; dragFromIdx = -1;
         await MoverEnRuta(from, idx);
     }
     private async Task MoverParada(int idx, int delta) => await MoverEnRuta(idx, idx + delta);
