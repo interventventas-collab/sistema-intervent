@@ -23,6 +23,9 @@
     .mapeo-card.activa { background: #dbeafe; border-color: #1d4ed8; }
     .mapeo-map { background: white; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
     #leafletMap { width: 100%; height: 100%; }
+    /* Botones-dock del borde izquierdo en pantalla completa (con cartelito al pasar el cursor). */
+    .mapeo-dock-btn { width: 46px; height: 46px; border-radius: 10px; border: none; background: #111827; color: #fff; font-size: 1.25rem; box-shadow: 0 2px 8px rgba(0,0,0,0.3); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; text-decoration: none; }
+    .mapeo-dock-btn:hover { background: #374151; }
     .mapeo-status-pill { display: inline-block; padding: 0.05rem 0.4rem; border-radius: 4px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; }
     .copy-chip { display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.05rem 0.35rem; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 4px; cursor: pointer; transition: all 0.12s; }
     .copy-chip:hover { background: #dbeafe; border-color: #1d4ed8; color: #1d4ed8; }
@@ -703,11 +706,52 @@ else
                     @onclick="ToggleFullscreen" title="Salir de pantalla completa">
                 ✕ Salir de pantalla completa
             </button>
-            @* Flechita para plegar/desplegar el panel de la izquierda (más lugar para el mapa). *@
-            <button class="btn" style="position:absolute; left:6px; top:50%; transform:translateY(-50%); z-index:530; font-size:1rem; font-weight:800; background:#111827; color:#fff; border:none; width:30px; height:52px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.3); cursor:pointer; padding:0;"
-                    @onclick="ToggleSideCollapsed" title="@(sideCollapsed ? "Mostrar los botones" : "Ocultar los botones")">
-                @(sideCollapsed ? "▶" : "◀")
-            </button>
+            @* Columna de botones (dock) en el borde izquierdo. Cada uno tiene su cartelito al pasar el cursor. *@
+            <div style="position:absolute; left:8px; top:50%; transform:translateY(-50%); z-index:530; display:flex; flex-direction:column; gap:8px;">
+                <button class="mapeo-dock-btn" @onclick="ToggleSideCollapsed"
+                        title="@(sideCollapsed ? "Mostrar el listado" : "Ocultar el listado")">
+                    @(sideCollapsed ? "▶" : "📋")
+                </button>
+                <div style="position:relative;">
+                    <button class="mapeo-dock-btn" @onclick="() => showConfigMenu = !showConfigMenu" title="Configuración">⚙️</button>
+                    @if (showConfigMenu)
+                    {
+                        <div style="position:absolute; left:100%; top:0; margin-left:8px; background:white; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.25); padding:0.3rem; min-width:240px;">
+                            <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                                    @onclick="@(async () => { showConfigMenu = false; await OpenStartPointModal(); })">
+                                <span>📍 Punto de partida</span>
+                                @if (startPoint?.Lat.HasValue == true) { <span style="color:#16a34a;">✓</span> }
+                            </button>
+                            <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                                    @onclick="@(() => { showConfigMenu = false; OpenPublicUrlModal(); })">
+                                <span>🌐 URL pública</span>
+                                @if (!string.IsNullOrEmpty(publicBaseUrl)) { <span style="color:#16a34a;">✓</span> }
+                            </button>
+                            <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                                    @onclick="@(async () => { showConfigMenu = false; await OpenDriversModal(); })">
+                                <span>👥 Repartidores</span>
+                                <span style="color:#6b7280; font-size:0.72rem;">@(drivers?.Count ?? 0)</span>
+                            </button>
+                            <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                                    @onclick="@(async () => { showConfigMenu = false; await OpenFavoritosModal(); })">
+                                <span>⭐ Favoritos</span>
+                                <span style="color:#6b7280; font-size:0.72rem;">@(favoritos?.Count ?? 0)</span>
+                            </button>
+                            <hr style="margin:0.3rem 0; border:none; border-top:1px solid #f3f4f6;" />
+                            <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                                    @onclick="@(async () => { showConfigMenu = false; await OpenHistorialModal(); })">
+                                <span>📚 Historial de rutas</span>
+                            </button>
+                            <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                                    @onclick="@(async () => { showConfigMenu = false; await GuardarSnapshotAhora(); })" disabled="@savingSnapshot">
+                                <span>@(savingSnapshot ? "Guardando..." : "💾 Guardar foto de la ruta actual")</span>
+                            </button>
+                        </div>
+                    }
+                </div>
+                <NavLink class="mapeo-dock-btn" href="mapeo/escanear" title="Escanear etiquetas Flex">📷</NavLink>
+                <button class="mapeo-dock-btn" @onclick="OpenAddStopModal" title="Agregar parada manual">✏️</button>
+            </div>
         }
         @* Acciones de ruta: repartir la flota entre choferes (si hay 2+) y/o armar una ruta única. Por tránsito. *@
         @if ((stops?.Count ?? 0) > 0)
