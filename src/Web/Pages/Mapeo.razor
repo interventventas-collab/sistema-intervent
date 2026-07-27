@@ -179,11 +179,6 @@
                 ✔ @entregadosHoy entregado@(entregadosHoy == 1 ? "" : "s") hoy
             </span>
         }
-        <button class="btn" style="font-size:0.75rem; padding:0.2rem 0.5rem; background:transparent; border:1px solid #86efac; color:#15803d;"
-                @onclick="ActualizarEntregas" disabled="@(actualizandoEntregas || isLoading)"
-                title="Preguntarle a MeLi por las entregas más recientes (actualiza los ✔ Entregado)">
-            @(actualizandoEntregas ? "Actualizando…" : "✔ Actualizar entregas")
-        </button>
         <button class="btn" style="font-size:0.75rem; padding:0.2rem 0.5rem; background:transparent; border:1px solid #d1d5db; color:#374151;"
                 @onclick="LoadAndRender" disabled="@isLoading" title="Refrescar lista local">
             @(isLoading ? "..." : "🔄")
@@ -335,6 +330,18 @@
                     </button>
                 </div>
             }
+        </div>
+        @* Actualizar entregas: le pregunta a MeLi por las entregas más recientes. Visible también en pantalla completa. *@
+        <div style="padding:0.4rem 0.5rem; border-bottom:1px solid #e5e7eb;">
+            <button class="btn" style="width:100%; font-size:0.92rem; font-weight:700; padding:0.6rem; background:#15803d; border:none; color:#fff; border-radius:6px; display:flex; justify-content:center; align-items:center; gap:0.4rem;"
+                    @onclick="ActualizarEntregas" disabled="@(actualizandoEntregas || isLoading)"
+                    title="Preguntarle a MeLi por las entregas más recientes (actualiza los ✔ Entregado)">
+                @(actualizandoEntregas ? "Actualizando…" : "✔ Actualizar entregas")
+                @if (entregadosHoy > 0 && !actualizandoEntregas)
+                {
+                    <span style="background:#ffffff33; padding:0.05rem 0.45rem; border-radius:999px; font-size:0.72rem;">@entregadosHoy hoy</span>
+                }
+            </button>
         </div>
         <div class="mapeo-side-list">
             @if (isLoading) { <p class="text-muted" style="padding:0.7rem;">Cargando...</p> }
