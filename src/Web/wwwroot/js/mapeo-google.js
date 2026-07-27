@@ -181,7 +181,8 @@ window.mapeoFlex = (function () {
             // Capa de tráfico en vivo: pinta las calles con el color del embotellamiento
             // (rojo = muy congestionado, amarillo = lento, verde = fluido), igual que Google Maps.
             try { trafficLayer = new google.maps.TrafficLayer(); trafficLayer.setMap(map); } catch (e) {}
-            loadZones();
+            // NOTA: no cargamos el overlay de zonas AMBA (loadZones) — el usuario quiere el mapa
+            // lo más parecido posible al Google Maps original, sin los tonos de colores encima.
         },
 
         renderMarkers(items) {
