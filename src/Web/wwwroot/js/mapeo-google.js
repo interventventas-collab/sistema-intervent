@@ -105,12 +105,16 @@ window.mapeoFlex = (function () {
     let dotNetRef = null;
     let zonePolygon = null;       // polígono que el usuario dibuja a mano (esquina por esquina)
     let zoneClickListener = null; // listener de clicks del mapa mientras dibuja
+    let zoneVertexMarkers = [];   // puntitos que se ven en cada esquina tocada (feedback visual)
     let lastFitStops = -1; // cuántas paradas (sin contar el punto de partida) había en el último auto-encuadre
 
-    // Limpia el estado del dibujo de zona (saca el polígono y el listener de clicks).
+    // Limpia el estado del dibujo de zona (saca el polígono, los puntitos, el listener y el cursor).
     function cleanupZone() {
         if (zoneClickListener) { google.maps.event.removeListener(zoneClickListener); zoneClickListener = null; }
         if (zonePolygon) { zonePolygon.setMap(null); zonePolygon = null; }
+        for (const m of zoneVertexMarkers) m.setMap(null);
+        zoneVertexMarkers = [];
+        if (map) map.setOptions({ draggableCursor: null });
     }
 
     // Vista por defecto: todo el AMBA (CABA + conurbano + La Plata), como pidió el usuario.
@@ -290,14 +294,24 @@ window.mapeoFlex = (function () {
         startDrawZone() {
             if (!map) return;
             cleanupZone();
+            map.setOptions({ draggableCursor: 'crosshair' }); // cursor de cruz = estás dibujando
             zonePolygon = new google.maps.Polygon({
                 map: map, paths: [],
                 fillColor: '#1d4ed8', fillOpacity: 0.12,
-                strokeColor: '#1d4ed8', strokeWeight: 2,
+                strokeColor: '#1d4ed8', strokeWeight: 3,
                 clickable: false, zIndex: 1
             });
             zoneClickListener = map.addListener('click', function (e) {
-                if (zonePolygon) zonePolygon.getPath().push(e.latLng);
+                if (!zonePolygon) return;
+                zonePolygon.getPath().push(e.latLng);
+                // Puntito visible en cada esquina, para que se vea que registró el toque.
+                zoneVertexMarkers.push(new google.maps.Marker({
+                    position: e.latLng, map: map, clickable: false, zIndex: 2,
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE, scale: 6,
+                        fillColor: '#1d4ed8', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2
+                    }
+                }));
             });
         },
 
