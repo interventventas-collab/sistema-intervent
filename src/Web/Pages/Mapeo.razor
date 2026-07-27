@@ -368,6 +368,14 @@
                 <div style="padding:0.4rem 0.6rem; background:#dbeafe; border-bottom:1px solid #93c5fd; font-size:0.72rem; font-weight:700; color:#1e40af; display:flex; justify-content:space-between; align-items:center; gap:0.4rem; flex-wrap:wrap; position:sticky; top:0; z-index:2;">
                     <span style="display:flex; align-items:center; gap:0.4rem;">
                         <span style="text-transform:uppercase;">📋 @listaUnificada.Count destinos</span>
+                        @if (zonasParaChips.Count > 1)
+                        {
+                            <button @onclick="() => mostrarChipsZonas = !mostrarChipsZonas"
+                                    title="@(mostrarChipsZonas ? "Ocultar el filtro de zonas" : "Ver el filtro de zonas")"
+                                    style="background:@(mostrarChipsZonas ? "#1e40af" : "#dbeafe"); color:@(mostrarChipsZonas ? "#fff" : "#1e40af"); border:1px solid #93c5fd; padding:0.1rem 0.5rem; border-radius:999px; font-size:0.65rem; font-weight:700; cursor:pointer;">
+                                🗂️ Zonas @(mostrarChipsZonas ? "▲" : "▼")
+                            </button>
+                        }
                     </span>
                     @if (rutaSeleccion.Count > 0)
                     {
@@ -390,7 +398,7 @@
                         <span style="font-size:0.65rem; color:#6b7280; font-weight:400;">Tildá envíos (hasta @MaxParadasRuta) para armar ruta en Maps</span>
                     }
                 </div>
-                @if (zonasParaChips.Count > 1)
+                @if (zonasParaChips.Count > 1 && mostrarChipsZonas)
                 {
                     <div style="padding:0.4rem 0.6rem; background:white; border-bottom:1px solid #e5e7eb; display:flex; gap:0.3rem; flex-wrap:wrap; align-items:center;">
                         <span style="font-size:0.68rem; color:#6b7280; font-weight:600; margin-right:0.2rem;">Zonas:</span>
@@ -1865,6 +1873,8 @@
 
     // Filtro de zonas (chips): conjunto de zonas que el usuario ocultó. Vacío = todas visibles.
     private HashSet<string> zonasOcultas = new(StringComparer.Ordinal);
+    // Los chips de zonas arrancan OCULTOS; se muestran con el botón "🗂️ Zonas" del encabezado.
+    private bool mostrarChipsZonas = false;
 
     // Notas tipo post-it que persisten en localStorage del browser. Se carga al iniciar
     // y se guarda en cada onblur del textarea para no spammear writes.
