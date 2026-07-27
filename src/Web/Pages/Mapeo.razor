@@ -2121,6 +2121,8 @@ else
 
     // Punto de partida
     private StartPointDto? startPoint;
+    // Qué favorito es hoy el punto de partida (para que, si arrastrás la casita, el favorito aprenda la nueva ubicación).
+    private int? startFavoritoId;
     private bool showStartPointModal, savingStartPoint, geocoding, savingStopFav;
     private string formStartAddress = "", formStartLat = "", formStartLng = "";
     private string geocodeQuery = "";
@@ -2572,10 +2574,26 @@ else
         if (startPoint is null) return;
         try
         {
+            // Averiguamos ANTES de mover si el punto de partida viene de un favorito (por id o por dirección),
+            // así ese favorito también aprende la ubicación corregida y no se vuelve a correr.
+            var fav = favoritos?.FirstOrDefault(f => f.Id == startFavoritoId)
+                      ?? favoritos?.FirstOrDefault(f => !string.IsNullOrEmpty(startPoint.Address)
+                            && (f.Alias == startPoint.Address || f.Direccion == startPoint.Address));
+
             startPoint.Lat = (decimal)lat;
             startPoint.Lng = (decimal)lng;
             var ok = await Api.SetMapeoStartPointAsync(startPoint.Address ?? "", startPoint.Lat, startPoint.Lng);
-            if (ok) ToastService.Success("📍 Punto de partida ajustado");
+
+            if (fav is not null)
+            {
+                fav.Latitude = (decimal)lat;
+                fav.Longitude = (decimal)lng;
+                try { await Api.UpdateMapeoFavoritoAsync(fav.Id, fav); } catch { }
+            }
+
+            if (ok) ToastService.Success(fav is not null
+                ? $"📍 Ajustado y guardado en el favorito '{fav.Alias}'"
+                : "📍 Punto de partida ajustado");
             StateHasChanged();
         }
         catch (Exception ex) { ToastService.Error("No se pudo ajustar: " + ex.Message); }
@@ -3632,6 +3650,7 @@ else
         formStartAddress = r.DisplayName;
         formStartLat = r.Lat.ToString(System.Globalization.CultureInfo.InvariantCulture);
         formStartLng = r.Lng.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        startFavoritoId = null; // viene de una búsqueda nueva, no de un favorito
         geocodeResults = null; // ya eligió: limpiamos la lista para que quede claro
     }
 
@@ -3641,6 +3660,7 @@ else
         formStartAddress = string.IsNullOrWhiteSpace(f.Alias) ? f.Direccion : f.Alias;
         formStartLat = f.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture);
         formStartLng = f.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        startFavoritoId = f.Id; // recordamos de qué favorito viene, para actualizarlo si arrastran la casita
         geocodeResults = null;
     }
 
