@@ -178,9 +178,8 @@ window.mapeoFlex = (function () {
             infoWindow = new google.maps.InfoWindow();
             markers = [];
             lastFitStops = -1;
-            // Capa de tráfico en vivo: pinta las calles con el color del embotellamiento
-            // (rojo = muy congestionado, amarillo = lento, verde = fluido), igual que Google Maps.
-            try { trafficLayer = new google.maps.TrafficLayer(); trafficLayer.setMap(map); } catch (e) {}
+            // Capa de tráfico: arranca APAGADA (como el Google Maps original). Se prende/apaga
+            // con el botón del dock (setTraffic). Rojo=congestionado, amarillo=lento, verde=fluido.
             // NOTA: no cargamos el overlay de zonas AMBA (loadZones) — el usuario quiere el mapa
             // lo más parecido posible al Google Maps original, sin los tonos de colores encima.
         },
@@ -268,6 +267,19 @@ window.mapeoFlex = (function () {
                 }
             }
             lastFitStops = realStops;
+        },
+
+        // Prende/apaga la capa de tráfico (embotellamientos). La creamos recién la primera vez.
+        setTraffic(on) {
+            if (!map || !window.google) return;
+            if (on) {
+                try {
+                    if (!trafficLayer) trafficLayer = new google.maps.TrafficLayer();
+                    trafficLayer.setMap(map);
+                } catch (e) {}
+            } else if (trafficLayer) {
+                trafficLayer.setMap(null);
+            }
         },
 
         focusOn(lat, lng, zoom) {

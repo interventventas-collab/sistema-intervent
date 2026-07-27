@@ -698,6 +698,12 @@
                         </div>
                     }
                 </div>
+                @* Botón para prender/apagar el tránsito (embotellamientos). Arranca apagado = mapa limpio. *@
+                <button class="mapeo-dock-btn" style="@(traficoOn ? "background:#16a34a;" : "")"
+                        @onclick="ToggleTrafico"
+                        title="@(traficoOn ? "Tránsito ENCENDIDO — tocá para apagar" : "Ver tránsito (embotellamientos en rojo/amarillo/verde)")">
+                    🚦
+                </button>
                 @* Cuadraditos de las zonas ya creadas (Zona 1, Zona 2, ...) con el color del repartidor.
                    Arriba el "Z1" (tocar = foco en esa zona); abajo el ojito para mostrar/ocultar la zona en el mapa. *@
                 @foreach (var z in zonasCreadas)
@@ -2500,6 +2506,13 @@
     private string EscanearUrl => Navigation.BaseUri + "mapeo/escanear";
     private string ScanQrUrl => $"/api/mapeo/stops/escanear-qr?url={Uri.EscapeDataString(EscanearUrl)}";
     private bool showConfigMenu = false; // dropdown ⚙ Configuración
+    // Capa de tráfico (embotellamientos): arranca apagada, se prende/apaga con el botón 🚦 del dock.
+    private bool traficoOn = false;
+    private async Task ToggleTrafico()
+    {
+        traficoOn = !traficoOn;
+        try { await JS.InvokeVoidAsync("mapeoFlex.setTraffic", traficoOn); } catch { }
+    }
     // Filtro de vehículo en el mapa: null = todos, 0 = sin asignar, >0 = slot N
     private int? vehiculoFiltro = null;
     /// <summary>
