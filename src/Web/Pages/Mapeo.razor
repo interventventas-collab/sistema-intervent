@@ -419,10 +419,10 @@ else
                         Escaneá los comprobantes o agregá paradas a mano. Después elegís el repartidor de cada una y optimizás la ruta.
                     </div>
                     <div style="display:flex; flex-direction:column; gap:0.5rem;">
-                        <NavLink class="btn" style="width:100%; padding:0.8rem; font-size:1.05rem; font-weight:700; background:#6b7280; border:2px solid #000; color:#fff; border-radius:6px; text-align:center; text-decoration:none;"
-                                 href="mapeo/escanear">
+                        <button class="btn" style="width:100%; padding:0.8rem; font-size:1.05rem; font-weight:700; background:#6b7280; border:2px solid #000; color:#fff; border-radius:6px; text-align:center;"
+                                @onclick="() => showScanModal = true">
                             📷 Escanear
-                        </NavLink>
+                        </button>
                         <button class="btn" style="width:100%; padding:0.8rem; font-size:1.05rem; font-weight:700; background:#6b7280; border:2px solid #000; color:#fff; border-radius:6px;"
                                 @onclick="OpenAddStopModal">
                             ✏ Agregar parada manual
@@ -749,7 +749,7 @@ else
                         </div>
                     }
                 </div>
-                <NavLink class="mapeo-dock-btn" href="mapeo/escanear" title="Escanear etiquetas Flex">📷</NavLink>
+                <button class="mapeo-dock-btn" @onclick="() => showScanModal = true" title="Escanear con el celular (muestra el QR)">📷</button>
                 <button class="mapeo-dock-btn" @onclick="OpenAddStopModal" title="Agregar parada manual">✏️</button>
             </div>
         }
@@ -1457,6 +1457,35 @@ else
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="() => showFavoritosModal = false">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showScanModal)
+{
+    <div class="modal-overlay" @onclick="() => showScanModal = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background:#dcfce7;">
+                <h3 style="margin:0;">📷 Escanear con el celular</h3>
+                <button class="btn-close" @onclick="() => showScanModal = false">&times;</button>
+            </div>
+            <div class="modal-body" style="text-align:center;">
+                <img src="@ScanQrUrl" alt="QR para escanear" style="width:200px; height:200px; background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:6px;" />
+                <div style="font-weight:700; color:#166534; font-size:1rem; margin-top:0.6rem;">📱 Escaneá este QR con el celular</div>
+                <div style="font-size:0.83rem; color:#15803d; margin-top:0.3rem; line-height:1.4;">
+                    Se te abre el escáner en el teléfono. Apuntás al QR de cada etiqueta Flex y los paquetes se suman solos al mapa.
+                </div>
+                <div style="display:flex; gap:0.4rem; align-items:center; margin-top:0.8rem;">
+                    <input class="form-input" readonly value="@EscanearUrl" style="flex:1; font-size:0.78rem; color:#374151;" @onclick:stopPropagation="true" />
+                    <button class="btn btn-secondary" style="white-space:nowrap;" @onclick="@(() => CopyValue(EscanearUrl, "Enlace"))" title="Copiar el enlace">📋 Copiar</button>
+                </div>
+                <a href="@EscanearUrl" target="_blank" rel="noopener" style="display:inline-block; margin-top:0.6rem; font-size:0.82rem; color:#2563eb;">
+                    🔗 Abrir el escáner en este dispositivo
+                </a>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showScanModal = false">Cerrar</button>
             </div>
         </div>
     </div>
@@ -2199,6 +2228,7 @@ else
     // Stepper inteligente
     private bool stepperExpanded = false; // cuando todo está OK, se contrae a 1 línea
     private bool showScanQr = false; // desplegable con el QR para escanear desde el celular
+    private bool showScanModal = false; // cartel (modal) con el QR + enlace para escanear desde el celu
     private bool mapaFullscreen = false; // modo pantalla completa (mapa como app)
     private bool sideCollapsed = false;  // en pantalla completa: panel izquierdo plegado (más mapa)
 
