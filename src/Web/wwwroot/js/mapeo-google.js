@@ -103,7 +103,11 @@ window.mapeoFlex = (function () {
     let markers = [];
     let infoWindow = null;
     let dotNetRef = null;
-    let hasAutoFitted = false;
+    let lastFitStops = -1; // cuántas paradas (sin contar el punto de partida) había en el último auto-encuadre
+
+    // Vista por defecto: todo el AMBA (CABA + conurbano + La Plata), como pidió el usuario.
+    const AMBA_CENTER = { lat: -34.72, lng: -58.52 };
+    const AMBA_ZOOM = 10;
 
     function loadZones() {
         if (!map) return;
@@ -141,8 +145,8 @@ window.mapeoFlex = (function () {
             if (!el) return;
 
             map = new google.maps.Map(el, {
-                center: { lat: -34.6037, lng: -58.3816 }, // CABA por default
-                zoom: 11,
+                center: AMBA_CENTER,   // arranca mostrando todo el AMBA
+                zoom: AMBA_ZOOM,
                 gestureHandling: 'greedy',   // arrastrar con un dedo en el celu
                 clickableIcons: false,       // no abrir fichas de comercios de Google
                 mapTypeControl: true,        // permite cambiar a satélite
@@ -152,7 +156,7 @@ window.mapeoFlex = (function () {
             });
             infoWindow = new google.maps.InfoWindow();
             markers = [];
-            hasAutoFitted = false;
+            lastFitStops = -1;
             loadZones();
         },
 
@@ -171,6 +175,7 @@ window.mapeoFlex = (function () {
 
             const bounds = new google.maps.LatLngBounds();
             let any = false;
+            let realStops = 0; // paradas de verdad (sin contar el punto de partida)
 
             for (const group of groups.values()) {
                 const first = group[0];
@@ -216,12 +221,27 @@ window.mapeoFlex = (function () {
                 markers.push(marker);
                 bounds.extend(pos);
                 any = true;
+                if (!esArrastrable) realStops++;
             }
 
-            if (any && !hasAutoFitted) {
-                map.fitBounds(bounds, 48);
-                hasAutoFitted = true;
+            // Encuadre inteligente:
+            //  - Sin paradas: mostramos TODO el AMBA (aunque haya punto de partida).
+            //  - Con paradas: encuadramos para que entren todas + el punto de partida.
+            //    Solo reajustamos cuando ENTRÓ una parada nueva (no al asignar/tocar), para no
+            //    pisarle el zoom al usuario. Al soltar la casita tampoco reencuadra.
+            if (realStops === 0) {
+                map.setCenter(AMBA_CENTER);
+                map.setZoom(AMBA_ZOOM);
+            } else if (realStops > lastFitStops) {
+                if (markers.length === 1) {
+                    // un solo punto en total: fitBounds haría un zoom exagerado
+                    map.setCenter(bounds.getCenter());
+                    map.setZoom(15);
+                } else {
+                    map.fitBounds(bounds, 60);
+                }
             }
+            lastFitStops = realStops;
         },
 
         focusOn(lat, lng, zoom) {
@@ -263,10 +283,10 @@ window.mapeoFlex = (function () {
             map = null;
             infoWindow = null;
             dotNetRef = null;
-            hasAutoFitted = false;
+            lastFitStops = -1;
         },
 
-        refit() { hasAutoFitted = false; },
+        refit() { lastFitStops = -1; },
 
         // Fuerza un redibujado cuando cambia el tamaño del contenedor (ej: pantalla completa).
         resize() {
