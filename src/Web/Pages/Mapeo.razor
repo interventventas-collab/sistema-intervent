@@ -626,6 +626,26 @@
                                         <button class="btn-icon btn-delete" style="font-size:0.7rem;" @onclick="() => DeleteGrupoManual(grupoLocal)" @onclick:stopPropagation="true" title="Quitar">×</button>
                                     </div>
                                 </div>
+                                @* Usuario (nickname) y N° de venta del envío de MeLi enlazado a esta parada escaneada. *@
+                                @if (!string.IsNullOrEmpty(st.BuyerNickname) || st.MeliOrderId.HasValue)
+                                {
+                                    <div style="font-size:0.7rem; color:#6b7280; margin-top:0.1rem; display:flex; gap:0.4rem; flex-wrap:wrap;">
+                                        @if (!string.IsNullOrEmpty(st.BuyerNickname))
+                                        {
+                                            <span class="copy-chip" title="Click: copiar usuario"
+                                                  @onclick="@(e => CopyValue(st.BuyerNickname!, "Usuario"))" @onclick:stopPropagation="true">
+                                                👤 <strong>@st.BuyerNickname</strong> 📋
+                                            </span>
+                                        }
+                                        @if (st.MeliOrderId.HasValue)
+                                        {
+                                            <span class="copy-chip" title="Click: copiar N° de venta" style="font-family:monospace;"
+                                                  @onclick="@(e => CopyValue(st.MeliOrderId.Value.ToString(), "N° venta"))" @onclick:stopPropagation="true">
+                                                🧾 @st.MeliOrderId.Value 📋
+                                            </span>
+                                        }
+                                    </div>
+                                }
                                 <div style="color:#4b5563; margin-top:0.15rem; display:flex; align-items:center; gap:0.3rem; flex-wrap:wrap;">
                                     <span>@st.Direccion</span>
                                     @if (!string.IsNullOrWhiteSpace(st.Direccion) || (st.Latitude != 0 && st.Longitude != 0))
@@ -678,6 +698,26 @@
                                                 #@st.OrderInRoute
                                             </span>
                                         }
+                                    </div>
+                                }
+                                @* Cartelito de ENTREGADO cuando MeLi confirma la entrega de esta parada. *@
+                                @if (string.Equals(st.MeliStatus, "delivered", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <div style="margin-top:0.35rem; padding:0.35rem 0.5rem; background:#dcfce7; border:1px solid #86efac; border-radius:6px; font-size:0.72rem;">
+                                        <div style="font-weight:800; color:#15803d; display:flex; align-items:center; gap:0.3rem; flex-wrap:wrap;">
+                                            <span>✔ Entregado</span>
+                                            <span style="font-weight:600; color:#166534;">(lo confirma MercadoLibre)</span>
+                                            @if (st.DateDelivered.HasValue)
+                                            {
+                                                <span style="font-weight:700; color:#166534;">· @st.DateDelivered.Value.ToArTime().ToString("dd/MM 'a las' HH:mm") hs</span>
+                                            }
+                                        </div>
+                                        <div style="color:#166534; margin-top:0.2rem; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+                                            @if (!string.IsNullOrEmpty(st.ReceiverName)) { <span>👤 <strong>@st.ReceiverName</strong></span> }
+                                            @if (!string.IsNullOrEmpty(st.BuyerNickname)) { <span>🏷 @st.BuyerNickname</span> }
+                                            @if (st.MeliOrderId.HasValue) { <span style="font-family:monospace;">🧾 @st.MeliOrderId.Value</span> }
+                                            @if (!string.IsNullOrEmpty(st.AssignedDriverName)) { <span>🚚 @st.AssignedDriverName</span> }
+                                        </div>
                                     </div>
                                 }
                             </div>

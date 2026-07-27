@@ -26,7 +26,10 @@ public class MapeoStopsController : ControllerBase
         decimal Latitude, decimal Longitude, string? ContactName, string? Telefono, string? Notas,
         string InternalStatus, int? AssignedDriverId, string? AssignedDriverName, string? AssignedDriverColor,
         int? AssignedVehicleSlot, int? OrderInRoute, DateTime CreatedAt,
-        string? Localidad = null);
+        string? Localidad = null,
+        // Datos del envío de MeLi enlazado (para paradas Flex/ME1 escaneadas): usuario, nº venta, entregado.
+        long? MeliOrderId = null, string? BuyerNickname = null, string? MeliStatus = null,
+        DateTime? DateDelivered = null, string? ReceiverName = null);
 
     private static StopDto Map(MapeoStop s) => new(
         s.Id, s.Origin, s.OriginRefId, s.Alias, s.Direccion, s.Latitude, s.Longitude,
@@ -41,7 +44,30 @@ public class MapeoStopsController : ControllerBase
         if (driverId.HasValue) q = q.Where(s => s.AssignedDriverId == driverId.Value);
         if (!string.IsNullOrWhiteSpace(internalStatus)) q = q.Where(s => s.InternalStatus == internalStatus);
         var list = await q.OrderBy(s => s.AssignedDriverId).ThenBy(s => s.OrderInRoute ?? int.MaxValue).ThenBy(s => s.Id).ToListAsync();
-        return Ok(list.Select(Map));
+        // Enriquecemos las paradas Flex/ME1 con datos del envío de MeLi (usuario, nº venta, entregado).
+        var refs = list.Where(s => (s.Origin == "flex" || s.Origin == "me1") && s.OriginRefId != null)
+                       .Select(s => long.TryParse(s.OriginRefId, out var v) ? v : 0L)
+                       .Where(v => v != 0L).Distinct().ToList();
+        var ships = refs.Count == 0
+            ? new Dictionary<long, MeliShipment>()
+            : await _db.MeliShipments.Where(m => refs.Contains(m.MeliShipmentId)).ToDictionaryAsync(m => m.MeliShipmentId);
+        return Ok(list.Select(s =>
+        {
+            var dto = Map(s);
+            if ((s.Origin == "flex" || s.Origin == "me1") && s.OriginRefId != null
+                && long.TryParse(s.OriginRefId, out var sid) && ships.TryGetValue(sid, out var m))
+            {
+                dto = dto with
+                {
+                    MeliOrderId = m.MeliOrderId,
+                    BuyerNickname = m.BuyerNickname,
+                    MeliStatus = m.Status,
+                    DateDelivered = m.DateDelivered,
+                    ReceiverName = m.ReceiverName
+                };
+            }
+            return dto;
+        }));
     }
 
     public record CreateStopRequest(string Origin, string? OriginRefId, string? Alias, string Direccion,

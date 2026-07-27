@@ -86,6 +86,12 @@ public class MapeoStopDto
     public DateTime CreatedAt { get; set; }
     /// <summary>Localidad / ciudad de la parada — para agrupar la lista lateral por zona.</summary>
     public string? Localidad { get; set; }
+    // Datos del envío de MeLi enlazado (paradas Flex/ME1 escaneadas): usuario, nº venta, entregado.
+    public long? MeliOrderId { get; set; }
+    public string? BuyerNickname { get; set; }
+    public string? MeliStatus { get; set; }
+    public DateTime? DateDelivered { get; set; }
+    public string? ReceiverName { get; set; }
 }
 
 public class ImportFlexPreviewDto
