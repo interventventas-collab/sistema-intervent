@@ -259,47 +259,6 @@ else
         </button>
     </div>
 
-    @* Menú colapsado de Configuración (cosas de 1 vez) *@
-    <div style="position:relative;">
-        <button class="btn" style="font-size:0.78rem; padding:0.25rem 0.6rem; background:#f3f4f6; border:1px solid #d1d5db; color:#374151;"
-                @onclick="() => showConfigMenu = !showConfigMenu" title="Setup inicial — se hace una vez">
-            ⚙ Configuración ▾
-        </button>
-        @if (showConfigMenu)
-        {
-            <div style="position:absolute; top:100%; right:0; margin-top:0.3rem; background:white; border:1px solid #e5e7eb; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,0.15); padding:0.3rem; min-width:230px; z-index:1200;">
-                <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
-                        @onclick="@(async () => { showConfigMenu = false; await OpenStartPointModal(); })">
-                    <span>📍 Punto de partida</span>
-                    @if (startPoint?.Lat.HasValue == true) { <span style="color:#16a34a;">✓</span> }
-                </button>
-                <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
-                        @onclick="@(() => { showConfigMenu = false; OpenPublicUrlModal(); })">
-                    <span>🌐 URL pública</span>
-                    @if (!string.IsNullOrEmpty(publicBaseUrl)) { <span style="color:#16a34a;">✓</span> }
-                </button>
-                <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
-                        @onclick="@(async () => { showConfigMenu = false; await OpenDriversModal(); })">
-                    <span>👥 Repartidores</span>
-                    <span style="color:#6b7280; font-size:0.72rem;">@(drivers?.Count ?? 0)</span>
-                </button>
-                <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
-                        @onclick="@(async () => { showConfigMenu = false; await OpenFavoritosModal(); })">
-                    <span>⭐ Favoritos</span>
-                    <span style="color:#6b7280; font-size:0.72rem;">@(favoritos?.Count ?? 0)</span>
-                </button>
-                <hr style="margin:0.3rem 0; border:none; border-top:1px solid #f3f4f6;" />
-                <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
-                        @onclick="@(async () => { showConfigMenu = false; await OpenHistorialModal(); })">
-                    <span>📚 Historial de rutas</span>
-                </button>
-                <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
-                        @onclick="@(async () => { showConfigMenu = false; await GuardarSnapshotAhora(); })" disabled="@savingSnapshot">
-                    <span>@(savingSnapshot ? "Guardando..." : "💾 Guardar foto de la ruta actual")</span>
-                </button>
-            </div>
-        }
-    </div>
 </div>
 
 @if (modoAsignacion)
