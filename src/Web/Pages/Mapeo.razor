@@ -2398,7 +2398,8 @@ else
                 lng = startPoint.Lng,
                 label = "🏠",
                 color = "#15803d",
-                popupHtml = $"<div style='font-size:0.85rem;'><strong>📍 Punto de partida</strong><br/>{System.Net.WebUtility.HtmlEncode(startPoint.Address ?? "")}</div>"
+                draggable = true, // se puede arrastrar para afinar la ubicación
+                popupHtml = $"<div style='font-size:0.85rem;'><strong>📍 Punto de partida</strong><br/>{System.Net.WebUtility.HtmlEncode(startPoint.Address ?? "")}<br/><em style='color:#6b7280;font-size:0.72rem;'>Podés arrastrar esta casita para ajustarla.</em></div>"
             });
         }
         // Set de shipment IDs que ya fueron importados como stops (origin=flex) — para no duplicar marcadores
@@ -2555,6 +2556,23 @@ else
             StateHasChanged();
         }
         catch (Exception ex) { ToastService.Error("No se pudo agregar: " + ex.Message); }
+    }
+
+    // Se dispara cuando el usuario arrastra la casita del punto de partida y la suelta.
+    // Guarda la nueva posición (misma dirección/nombre, solo se afinan las coordenadas).
+    [JSInvokable]
+    public async Task OnStartPointDragged(double lat, double lng)
+    {
+        if (startPoint is null) return;
+        try
+        {
+            startPoint.Lat = (decimal)lat;
+            startPoint.Lng = (decimal)lng;
+            var ok = await Api.SetMapeoStartPointAsync(startPoint.Address ?? "", startPoint.Lat, startPoint.Lng);
+            if (ok) ToastService.Success("📍 Punto de partida ajustado");
+            StateHasChanged();
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo ajustar: " + ex.Message); }
     }
 
     [JSInvokable]

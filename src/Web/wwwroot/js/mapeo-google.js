@@ -175,12 +175,23 @@ window.mapeoFlex = (function () {
             for (const group of groups.values()) {
                 const first = group[0];
                 const pos = { lat: +first.lat, lng: +first.lng };
+                const esArrastrable = first.draggable === true;
                 const marker = new google.maps.Marker({
                     position: pos,
                     map: map,
                     icon: H.markerIcon(H.markerSvg(group), 48, 23),
-                    zIndex: group.some(g => g.inRoute) ? 1000 : 1
+                    draggable: esArrastrable,
+                    title: esArrastrable ? 'Arrastrame para ajustar el punto de partida' : undefined,
+                    zIndex: group.some(g => g.inRoute) ? 1000 : (esArrastrable ? 900 : 1)
                 });
+
+                // El punto de partida (casita) se puede arrastrar para afinar la ubicación al metro.
+                if (esArrastrable) {
+                    marker.addListener('dragend', function (e) {
+                        const la = e.latLng.lat(), ln = e.latLng.lng();
+                        if (dotNetRef) dotNetRef.invokeMethodAsync('OnStartPointDragged', la, ln);
+                    });
+                }
 
                 let popupHtml;
                 if (group.length === 1) {
