@@ -27,7 +27,7 @@
                 if (!key) { reject(new Error('Falta la clave del mapa (GOOGLE_MAPS_BROWSER_KEY).')); return; }
                 window.__mapeoGmapsReady = function () { resolve(); };
                 const s = document.createElement('script');
-                s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) + '&libraries=places&callback=__mapeoGmapsReady';
+                s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) + '&libraries=places,drawing&callback=__mapeoGmapsReady';
                 s.async = true;
                 s.defer = true;
                 s.onerror = function () { reject(new Error('No se pudo cargar Google Maps.')); };
@@ -103,6 +103,7 @@ window.mapeoFlex = (function () {
     let markers = [];
     let infoWindow = null;
     let dotNetRef = null;
+    let drawingManager = null; // herramienta para dibujar zonas (polígonos)
     let lastFitStops = -1; // cuántas paradas (sin contar el punto de partida) había en el último auto-encuadre
 
     // Vista por defecto: todo el AMBA (CABA + conurbano + La Plata), como pidió el usuario.
@@ -277,6 +278,31 @@ window.mapeoFlex = (function () {
             });
         },
 
+        // Dibujar una ZONA (polígono) sobre el mapa. Al cerrarla, manda las esquinas a Blazor
+        // (OnZoneDrawn) para que asigne los envíos de adentro a un repartidor.
+        startDrawZone() {
+            if (!map || !google.maps.drawing) return;
+            if (!drawingManager) {
+                drawingManager = new google.maps.drawing.DrawingManager({
+                    drawingMode: null,
+                    drawingControl: false,
+                    polygonOptions: {
+                        fillColor: '#1d4ed8', fillOpacity: 0.12,
+                        strokeColor: '#1d4ed8', strokeWeight: 2,
+                        clickable: false, zIndex: 1
+                    }
+                });
+                drawingManager.setMap(map);
+                google.maps.event.addListener(drawingManager, 'polygoncomplete', function (polygon) {
+                    const path = polygon.getPath().getArray().map(p => [p.lat(), p.lng()]);
+                    polygon.setMap(null);                 // sacamos el dibujo (Blazor decide qué hacer)
+                    drawingManager.setDrawingMode(null);  // salimos del modo dibujo
+                    if (dotNetRef) dotNetRef.invokeMethodAsync('OnZoneDrawn', path);
+                });
+            }
+            drawingManager.setDrawingMode('polygon');
+        },
+
         destroy() {
             for (const m of markers) m.setMap(null);
             markers = [];
@@ -284,6 +310,7 @@ window.mapeoFlex = (function () {
             infoWindow = null;
             dotNetRef = null;
             lastFitStops = -1;
+            if (drawingManager) { drawingManager.setMap(null); drawingManager = null; }
         },
 
         refit() { lastFitStops = -1; },

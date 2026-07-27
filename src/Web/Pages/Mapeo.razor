@@ -661,6 +661,7 @@
                 </div>
                 <button class="mapeo-dock-btn" @onclick="() => showScanModal = true" title="Escanear con el celular (muestra el QR)">📷</button>
                 <button class="mapeo-dock-btn" @onclick="OpenAddStopModal" title="Agregar parada manual">✏️</button>
+                <button class="mapeo-dock-btn" @onclick="IniciarDibujoZona" title="Dibujar una zona y asignarla a un repartidor">🗺️</button>
             </div>
         }
         @* Acciones de ruta: repartir la flota entre choferes (si hay 2+) y/o armar una ruta única. Por tránsito. *@
@@ -1367,6 +1368,43 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="() => showFavoritosModal = false">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showZoneAssignModal)
+{
+    <div class="modal-overlay" @onclick="() => showZoneAssignModal = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background:#dbeafe;">
+                <h3 style="margin:0;">🗺️ Asignar zona</h3>
+                <button class="btn-close" @onclick="() => showZoneAssignModal = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size:0.9rem; color:#374151; margin:0 0 0.6rem;">
+                    Dibujaste una zona con <strong>@zoneStopIds.Count envío(s)</strong> adentro. Elegí a qué repartidor se los asigno a todos:
+                </p>
+                @if ((drivers?.Count(d => d.IsActive) ?? 0) == 0)
+                {
+                    <p style="font-size:0.85rem; color:#b45309;">No tenés repartidores cargados. Agregalos en ⚙ Configuración → 👥 Repartidores.</p>
+                }
+                else
+                {
+                    <div style="display:flex; flex-direction:column; gap:0.4rem;">
+                        @foreach (var d in drivers!.Where(x => x.IsActive))
+                        {
+                            <button class="btn" style="display:flex; align-items:center; gap:0.5rem; width:100%; justify-content:flex-start; padding:0.6rem 0.8rem; font-size:0.95rem; font-weight:700; border:2px solid @d.Color; background:white; color:#1f2937;"
+                                    @onclick="() => AsignarZonaARepartidor(d.Id)" disabled="@assigningZone">
+                                <span style="width:14px; height:14px; border-radius:50%; background:@d.Color; display:inline-block;"></span>
+                                @d.Nombre
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showZoneAssignModal = false" disabled="@assigningZone">Cancelar</button>
             </div>
         </div>
     </div>
@@ -2081,6 +2119,11 @@
     private bool showDriversModal;
     private string newDriverName = "", newDriverPhone = "", newDriverColor = "#1d4ed8";
 
+    // Zonas (dibujar un polígono y asignar los envíos de adentro a un repartidor)
+    private bool showZoneAssignModal;
+    private List<int> zoneStopIds = new();
+    private bool assigningZone;
+
     // Favoritos
     private List<MapeoFavoritoDto>? favoritos;
     private bool showFavoritosModal;
@@ -2555,6 +2598,68 @@
             StateHasChanged();
         }
         catch (Exception ex) { ToastService.Error("No se pudo ajustar: " + ex.Message); }
+    }
+
+    // ===== ZONAS: dibujar un polígono y asignar los envíos de adentro a un repartidor =====
+    private async Task IniciarDibujoZona()
+    {
+        if ((stops?.Count ?? 0) == 0) { ToastService.Info("Primero sumá envíos al mapa."); return; }
+        showConfigMenu = false;
+        try { await JS.InvokeVoidAsync("mapeoFlex.startDrawZone"); }
+        catch (Exception ex) { ToastService.Error("No se pudo iniciar el dibujo: " + ex.Message); return; }
+        ToastService.Info("✏️ Marcá las esquinas de la zona con clicks. Para cerrarla, tocá de nuevo el primer punto.");
+    }
+
+    // El mapa nos manda las esquinas de la zona dibujada. Calculamos qué paradas caen adentro.
+    [JSInvokable]
+    public async Task OnZoneDrawn(double[][] pts)
+    {
+        if (pts is null || pts.Length < 3) { ToastService.Info("La zona quedó muy chica. Probá de nuevo."); return; }
+        var dentro = (stops ?? new())
+            .Where(s => s.Latitude != 0 && s.Longitude != 0
+                     && PuntoEnPoligono((double)s.Latitude, (double)s.Longitude, pts))
+            .Select(s => s.Id)
+            .ToList();
+        if (dentro.Count == 0) { ToastService.Info("No hay envíos dentro de esa zona."); return; }
+        zoneStopIds = dentro;
+        showZoneAssignModal = true;
+        StateHasChanged();
+        await Task.CompletedTask;
+    }
+
+    // Ray casting: ¿el punto (lat,lng) está dentro del polígono? poly = [[lat,lng],...]
+    private static bool PuntoEnPoligono(double lat, double lng, double[][] poly)
+    {
+        bool dentro = false;
+        int n = poly.Length;
+        for (int i = 0, j = n - 1; i < n; j = i++)
+        {
+            double yi = poly[i][0], xi = poly[i][1];
+            double yj = poly[j][0], xj = poly[j][1];
+            bool cruza = ((yi > lat) != (yj > lat)) &&
+                         (lng < (xj - xi) * (lat - yi) / ((yj - yi) == 0 ? 1e-12 : (yj - yi)) + xi);
+            if (cruza) dentro = !dentro;
+        }
+        return dentro;
+    }
+
+    private async Task AsignarZonaARepartidor(int driverId)
+    {
+        if (assigningZone) return;
+        assigningZone = true;
+        try
+        {
+            foreach (var id in zoneStopIds)
+                await Api.UpdateMapeoStopAsync(id, new { assignedDriverId = driverId });
+            await LoadStops();
+            await RenderMap();
+            var nombre = drivers?.FirstOrDefault(d => d.Id == driverId)?.Nombre ?? "el repartidor";
+            ToastService.Success($"✅ {zoneStopIds.Count} envío(s) asignados a {nombre}");
+            showZoneAssignModal = false;
+            zoneStopIds = new();
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo asignar la zona: " + ex.Message); }
+        finally { assigningZone = false; StateHasChanged(); }
     }
 
     [JSInvokable]
