@@ -698,14 +698,21 @@
                         </div>
                     }
                 </div>
-                @* Cuadraditos de las zonas ya creadas (Zona 1, Zona 2, ...) con el color del repartidor. *@
+                @* Cuadraditos de las zonas ya creadas (Zona 1, Zona 2, ...) con el color del repartidor.
+                   Arriba el "Z1" (tocar = foco en esa zona); abajo el ojito para mostrar/ocultar la zona en el mapa. *@
                 @foreach (var z in zonasCreadas)
                 {
-                    <button class="mapeo-dock-btn" style="background:@z.Color; font-size:0.7rem; font-weight:800; line-height:1;"
-                            @onclick="() => FocoZona(z)"
-                            title="@($"Zona {z.Numero} · {z.DriverName} · {z.StopIds.Count} envío(s) — tocá para ver en el mapa")">
-                        Z@(z.Numero)
-                    </button>
+                    var zVisible = !zonasOcultasMapa.Contains(z.DriverId);
+                    <div class="mapeo-dock-btn" style="flex-direction:column; gap:1px; background:@(zVisible ? z.Color : "#9ca3af"); @(zVisible ? "" : "opacity:0.55;")">
+                        <span @onclick="() => FocoZona(z)" style="cursor:pointer; font-size:0.72rem; font-weight:800; line-height:1;"
+                              title="@($"Zona {z.Numero} · {z.DriverName} · {z.StopIds.Count} envío(s) — tocá para hacer foco en esta zona")">
+                            Z@(z.Numero)
+                        </span>
+                        <span @onclick="() => ToggleZonaVisible(z)" style="cursor:pointer; font-size:0.8rem; line-height:1;"
+                              title="@(zVisible ? "Ocultar esta zona del mapa" : "Mostrar esta zona en el mapa")">
+                            @(zVisible ? "👁" : "🚫")
+                        </span>
+                    </div>
                 }
             </div>
         }
@@ -2283,6 +2290,9 @@
     // Zonas ya creadas en esta sesión (para mostrar los cuadraditos "Zona 1", "Zona 2", ...)
     private record ZonaCreada(int Numero, int DriverId, string DriverName, string Color, List<int> StopIds);
     private List<ZonaCreada> zonasCreadas = new();
+    // Zonas ocultas del mapa (por el ojito del cuadradito). Guarda el DriverId de la zona apagada.
+    // Vacío = todas las zonas visibles. Sirve para armar/optimizar una ruta a la vez.
+    private HashSet<int> zonasOcultasMapa = new();
     // Para "deshacer última zona": guardamos qué parada quedó con qué repartidor ANTES de asignar.
     private List<(int stopId, int? prevDriverId)> lastZoneUndo = new();
 
@@ -2448,13 +2458,30 @@
         try
         {
             rutasResumen = await Api.GetRoutesOverviewAsync(single) ?? new();
-            var paraDibujar = rutasResumen
-                .Where(r => !string.IsNullOrEmpty(r.EncodedPolyline))
-                .Select(r => new { color = r.Color, encoded = r.EncodedPolyline })
-                .ToArray();
-            await JS.InvokeVoidAsync("mapeoFlex.drawRoutes", new object[] { paraDibujar });
+            await PintarRutas();
         }
         catch (Exception ex) { ToastService.Error("No se pudieron dibujar las rutas: " + ex.Message); }
+    }
+
+    // Dibuja en el mapa las rutas que ya tenemos en memoria (rutasResumen), salteando las zonas
+    // que estén ocultas por el ojito. Se usa al optimizar y al prender/apagar un ojito.
+    private async Task PintarRutas()
+    {
+        var paraDibujar = rutasResumen
+            .Where(r => !string.IsNullOrEmpty(r.EncodedPolyline))
+            .Where(r => !(r.DriverId.HasValue && zonasOcultasMapa.Contains(r.DriverId.Value)))
+            .Select(r => new { color = r.Color, encoded = r.EncodedPolyline })
+            .ToArray();
+        await JS.InvokeVoidAsync("mapeoFlex.drawRoutes", new object[] { paraDibujar });
+    }
+
+    // Ojito del cuadradito: muestra u oculta esa zona (sus paradas y su línea de ruta) en el mapa.
+    private async Task ToggleZonaVisible(ZonaCreada z)
+    {
+        if (!zonasOcultasMapa.Add(z.DriverId)) zonasOcultasMapa.Remove(z.DriverId); // toggle
+        await RenderMap();               // redibuja los pines (RenderMap ya filtra las zonas ocultas)
+        if (rutasResumen.Count > 0) await PintarRutas(); // y las líneas de ruta, si estaban dibujadas
+        StateHasChanged();
     }
 
     private static string FormatoDuracion(int seg)
@@ -2654,6 +2681,8 @@
             // Filtro de vehículo: null=todos, 0=sin asignar, >0=slot
             var stopsFiltrados = stops.Where(st =>
                 !(excluirEntregados && EstaEntregado(st)) &&
+                // Ojito del cuadradito: si la zona (repartidor) está apagada, no se dibujan sus paradas.
+                !(st.AssignedDriverId.HasValue && zonasOcultasMapa.Contains(st.AssignedDriverId.Value)) &&
                 (vehiculoFiltro == null ||
                 (vehiculoFiltro == 0 && !st.AssignedVehicleSlot.HasValue) ||
                 (vehiculoFiltro > 0 && st.AssignedVehicleSlot == vehiculoFiltro)));
@@ -2966,6 +2995,7 @@
             await RenderMap();
             lastZoneUndo = new();
             zonasCreadas = new();
+            zonasOcultasMapa = new();
             rutasResumen = new();
             ToastService.Success($"🧹 {asignadas.Count} paradas quedaron sin repartidor.");
         }
