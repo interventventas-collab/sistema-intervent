@@ -576,25 +576,22 @@
                                         }
                                     </div>
                                 }
-                                @* Cartelito de ENTREGADO: cuando MeLi confirma la entrega, mostramos el check
-                                   con la fecha/hora, a quién, el usuario y el número de venta. *@
+                                @* Entregado: chip verde compacto; al pincharlo muestra SOLO fecha y hora. *@
                                 @if (EffectiveKey(s) == "entregado")
                                 {
-                                    <div style="margin-top:0.35rem; padding:0.35rem 0.5rem; background:#dcfce7; border:1px solid #86efac; border-radius:6px; font-size:0.72rem;">
-                                        <div style="font-weight:800; color:#15803d; display:flex; align-items:center; gap:0.3rem; flex-wrap:wrap;">
-                                            <span>✔ Entregado</span>
-                                            <span style="font-weight:600; color:#166534;">(lo confirma MercadoLibre)</span>
-                                            @if (s.DateDelivered.HasValue)
-                                            {
-                                                <span style="font-weight:700; color:#166534;">· @s.DateDelivered.Value.ToArTime().ToString("dd/MM 'a las' HH:mm") hs</span>
-                                            }
-                                        </div>
-                                        <div style="color:#166534; margin-top:0.2rem; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
-                                            @if (!string.IsNullOrEmpty(s.ReceiverName)) { <span>👤 <strong>@s.ReceiverName</strong></span> }
-                                            @if (!string.IsNullOrEmpty(s.BuyerNickname)) { <span>🏷 @s.BuyerNickname</span> }
-                                            @if (s.MeliOrderId.HasValue) { <span style="font-family:monospace;">🧾 @s.MeliOrderId.Value</span> }
-                                            @if (pf is not null && !string.IsNullOrEmpty(pf.AssignedDriverName)) { <span>🚚 @pf.AssignedDriverName</span> }
-                                        </div>
+                                    var eKey = "F" + s.Id;
+                                    <div style="margin-top:0.3rem;" @onclick:stopPropagation="true">
+                                        <span @onclick="() => ToggleEntregaDetalle(eKey)"
+                                              title="Entregado — tocá para ver fecha y hora"
+                                              style="cursor:pointer; display:inline-flex; align-items:center; gap:0.25rem; background:#dcfce7; color:#15803d; border:1px solid #86efac; padding:0.1rem 0.45rem; border-radius:999px; font-size:0.72rem; font-weight:800;">
+                                            ✔ Entregado
+                                        </span>
+                                        @if (entregaDetalleAbierta.Contains(eKey))
+                                        {
+                                            <div style="font-size:0.72rem; color:#166534; margin-top:0.15rem;">
+                                                🕒 @(s.DateDelivered.HasValue ? s.DateDelivered.Value.ToArTime().ToString("dd/MM/yyyy 'a las' HH:mm") + " hs" : "sin fecha")
+                                            </div>
+                                        }
                                     </div>
                                 }
                             </div>
@@ -712,24 +709,22 @@
                                         }
                                     </div>
                                 }
-                                @* Cartelito de ENTREGADO cuando MeLi confirma la entrega de esta parada. *@
+                                @* Entregado: chip verde compacto; al pincharlo muestra SOLO fecha y hora. *@
                                 @if (string.Equals(st.MeliStatus, "delivered", StringComparison.OrdinalIgnoreCase))
                                 {
-                                    <div style="margin-top:0.35rem; padding:0.35rem 0.5rem; background:#dcfce7; border:1px solid #86efac; border-radius:6px; font-size:0.72rem;">
-                                        <div style="font-weight:800; color:#15803d; display:flex; align-items:center; gap:0.3rem; flex-wrap:wrap;">
-                                            <span>✔ Entregado</span>
-                                            <span style="font-weight:600; color:#166534;">(lo confirma MercadoLibre)</span>
-                                            @if (st.DateDelivered.HasValue)
-                                            {
-                                                <span style="font-weight:700; color:#166534;">· @st.DateDelivered.Value.ToArTime().ToString("dd/MM 'a las' HH:mm") hs</span>
-                                            }
-                                        </div>
-                                        <div style="color:#166534; margin-top:0.2rem; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
-                                            @if (!string.IsNullOrEmpty(st.ReceiverName)) { <span>👤 <strong>@st.ReceiverName</strong></span> }
-                                            @if (!string.IsNullOrEmpty(st.BuyerNickname)) { <span>🏷 @st.BuyerNickname</span> }
-                                            @if (st.MeliOrderId.HasValue) { <span style="font-family:monospace;">🧾 @st.MeliOrderId.Value</span> }
-                                            @if (!string.IsNullOrEmpty(st.AssignedDriverName)) { <span>🚚 @st.AssignedDriverName</span> }
-                                        </div>
+                                    var eKey = "M" + st.Id;
+                                    <div style="margin-top:0.3rem;" @onclick:stopPropagation="true">
+                                        <span @onclick="() => ToggleEntregaDetalle(eKey)"
+                                              title="Entregado — tocá para ver fecha y hora"
+                                              style="cursor:pointer; display:inline-flex; align-items:center; gap:0.25rem; background:#dcfce7; color:#15803d; border:1px solid #86efac; padding:0.1rem 0.45rem; border-radius:999px; font-size:0.72rem; font-weight:800;">
+                                            ✔ Entregado
+                                        </span>
+                                        @if (entregaDetalleAbierta.Contains(eKey))
+                                        {
+                                            <div style="font-size:0.72rem; color:#166534; margin-top:0.15rem;">
+                                                🕒 @(st.DateDelivered.HasValue ? st.DateDelivered.Value.ToArTime().ToString("dd/MM/yyyy 'a las' HH:mm") + " hs" : "sin fecha")
+                                            </div>
+                                        }
                                     </div>
                                 }
                             </div>
@@ -1986,6 +1981,12 @@
     private bool excluirEntregados = true;      // Default: ocultar entregados/cancelados
     private int entregadosHoy = 0;              // Contador "X entregados hoy" (Flex confirmados por MeLi)
     private bool actualizandoEntregas = false;  // spinner del botón "Actualizar entregas"
+    // Qué chips "✔ Entregado" del listado están expandidos mostrando fecha/hora (clave "F"+id / "M"+id).
+    private HashSet<string> entregaDetalleAbierta = new();
+    private void ToggleEntregaDetalle(string key)
+    {
+        if (!entregaDetalleAbierta.Add(key)) entregaDetalleAbierta.Remove(key);
+    }
 
     // Botón "Actualizar entregas": le pregunta a MeLi por los envíos pendientes y refresca los ✔ Entregado.
     private async Task ActualizarEntregas()
@@ -2953,6 +2954,7 @@
                     shape = esMe1 ? "square" : "circle",
                     dimmed = false,
                     inRoute = enRuta,
+                    delivered = EffectiveKey(s) == "entregado",
                     popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(s.ReceiverName ?? "—")}</strong>{(esMe1 ? " <span style='background:#fce7f3;color:#9d174d;padding:0 0.3rem;border-radius:3px;font-size:0.65rem;font-weight:800;'>ME1</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(s.AddressLine ?? "")}<br/><em>{System.Net.WebUtility.HtmlEncode(s.City ?? "")}</em><br/><button onclick=\"window.mapeoActions.toggleRoute({s.Id}); event.stopPropagation();\" style='margin-top:0.3rem; padding:0.2rem 0.5rem; background:{btnBg}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxt}</button></div>"
                 };
             }));
@@ -2997,6 +2999,7 @@
                     color,
                     shape,
                     inRoute = enRutaSt,
+                    delivered = string.Equals(st.MeliStatus, "delivered", StringComparison.OrdinalIgnoreCase),
                     popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· V{st.AssignedVehicleSlot}</span>" : "")}{(st.AssignedDriverName is null ? "" : $" · {System.Net.WebUtility.HtmlEncode(st.AssignedDriverName)}")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}<br/><button onclick=\"window.mapeoActions.toggleRoute({markerId}); event.stopPropagation();\" style='margin-top:0.3rem; padding:0.2rem 0.5rem; background:{btnBgSt}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxtSt}</button></div>"
                 };
             }));

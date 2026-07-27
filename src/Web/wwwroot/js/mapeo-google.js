@@ -78,12 +78,19 @@
               `<text x="38" y="10.5" text-anchor="middle" font-size="9" font-weight="800" fill="#ffffff" font-family="Inter,Arial,sans-serif">+${extras}</text>`
             : '';
 
+        // Tilde verde ✓ arriba a la izquierda cuando MeLi confirmó la entrega.
+        const delivered = group.some(x => x.delivered === true);
+        const check = delivered
+            ? `<circle cx="10" cy="8" r="8.5" fill="#16a34a" stroke="#ffffff" stroke-width="2"/>` +
+              `<path d="M5.8 8.2 L8.6 11 L14 5.4" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`
+            : '';
+
         return `<svg xmlns="http://www.w3.org/2000/svg" width="${PIN_VB_W}" height="${PIN_VB_H}" viewBox="0 0 ${PIN_VB_W} ${PIN_VB_H}">` +
             `<defs><filter id="sh" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-opacity="0.4"/></filter></defs>` +
             `${ring}` +
             `<path d="${PIN_PATH}" fill="${body}" stroke="#ffffff" stroke-width="2" filter="url(#sh)"/>` +
             `<text x="${PIN_HEAD_CX}" y="${PIN_HEAD_CY + fs * 0.35}" text-anchor="middle" font-size="${fs}" font-weight="800" fill="${txt}" font-family="Inter,Arial,sans-serif">${label}</text>` +
-            `${badge}</svg>`;
+            `${badge}${check}</svg>`;
     }
 
     // Arma el icono para Google Maps a partir del SVG. dispH = alto deseado en px;
