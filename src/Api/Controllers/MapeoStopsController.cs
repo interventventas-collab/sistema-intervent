@@ -17,9 +17,10 @@ public class MapeoStopsController : ControllerBase
     private readonly VentaMapeoService _ventaMapeo;
     private readonly AlqMapeoService _alqMapeo;
     private readonly GoogleMapsLinkResolverService _mapsResolver;
+    private readonly MeliShipmentService _shipmentSvc;
     private readonly ILogger<MapeoStopsController> _logger;
-    public MapeoStopsController(AppDbContext db, GoogleRoutesService routes, VentaMapeoService ventaMapeo, AlqMapeoService alqMapeo, GoogleMapsLinkResolverService mapsResolver, ILogger<MapeoStopsController> logger)
-    { _db = db; _routes = routes; _ventaMapeo = ventaMapeo; _alqMapeo = alqMapeo; _mapsResolver = mapsResolver; _logger = logger; }
+    public MapeoStopsController(AppDbContext db, GoogleRoutesService routes, VentaMapeoService ventaMapeo, AlqMapeoService alqMapeo, GoogleMapsLinkResolverService mapsResolver, MeliShipmentService shipmentSvc, ILogger<MapeoStopsController> logger)
+    { _db = db; _routes = routes; _ventaMapeo = ventaMapeo; _alqMapeo = alqMapeo; _mapsResolver = mapsResolver; _shipmentSvc = shipmentSvc; _logger = logger; }
 
     public record StopDto(int Id, string Origin, string? OriginRefId, string? Alias, string Direccion,
         decimal Latitude, decimal Longitude, string? ContactName, string? Telefono, string? Notas,
@@ -560,7 +561,14 @@ public class MapeoStopsController : ControllerBase
 
         var sh = await _db.MeliShipments.FirstOrDefaultAsync(s => s.MeliShipmentId == id.Value);
         if (sh is null)
-            return Ok(new { ok = false, motivo = "no_encontrado", id = id.Value, mensaje = $"El envio {id.Value} todavia no esta en el sistema. Proba 'Traer Flex' primero." });
+        {
+            // No estaba sincronizado: lo traemos de MeLi en el momento (reemplaza al viejo paso "Traer Flex").
+            try { await _shipmentSvc.SyncSingleShipmentAsync(id.Value); }
+            catch (Exception ex) { _logger.LogWarning(ex, "scan-flex: no se pudo traer el envio {Id} de MeLi", id.Value); }
+            sh = await _db.MeliShipments.FirstOrDefaultAsync(s => s.MeliShipmentId == id.Value);
+        }
+        if (sh is null)
+            return Ok(new { ok = false, motivo = "no_encontrado", id = id.Value, mensaje = $"No pude traer el envio {id.Value} de MercadoLibre. Puede ser de otra cuenta, o muy nuevo (esperá unos minutos)." });
         if (sh.Latitude is null || sh.Longitude is null)
             return Ok(new { ok = false, motivo = "sin_ubicacion", id = id.Value, nombre = sh.ReceiverName, mensaje = "Ese envio no tiene ubicacion cargada, no lo puedo poner en el mapa." });
 
