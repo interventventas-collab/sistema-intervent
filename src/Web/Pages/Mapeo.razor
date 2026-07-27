@@ -703,6 +703,14 @@
                 @if (zonasCreadas.Count > 0)
                 {
                     <div class="mapeo-dock-sep"></div>
+                    @* "TODO" = las paradas todavía SIN asignar. Apagá el ojo para ocultarlas y trabajar una zona sola. *@
+                    <div class="mapeo-dock-btn" style="flex-direction:column; gap:1px; background:@(sinAsignarOcultos ? "#9ca3af" : "#eab308"); @(sinAsignarOcultos ? "opacity:0.55;" : "")">
+                        <span style="font-size:0.62rem; font-weight:800; line-height:1; color:#fff;">TODO</span>
+                        <span @onclick="ToggleSinAsignarVisible" style="cursor:pointer; font-size:0.8rem; line-height:1;"
+                              title="@(sinAsignarOcultos ? "Mostrar las paradas sin asignar" : "Ocultar las paradas sin asignar (ver solo las zonas)")">
+                            @(sinAsignarOcultos ? "🚫" : "👁")
+                        </span>
+                    </div>
                     @foreach (var z in zonasCreadas)
                     {
                         var zVisible = !zonasOcultasMapa.Contains(z.DriverId);
@@ -2525,6 +2533,17 @@
         await JS.InvokeVoidAsync("mapeoFlex.drawRoutes", new object[] { paraDibujar });
     }
 
+    // Chip "TODO": si está apagado, se ocultan las paradas todavía SIN asignar (y el Flex crudo),
+    // para poder trabajar/ver una sola zona sin que molesten las que faltan repartir.
+    private bool sinAsignarOcultos = false;
+    private async Task ToggleSinAsignarVisible()
+    {
+        sinAsignarOcultos = !sinAsignarOcultos;
+        await RenderMap();
+        if (rutasResumen.Count > 0) await PintarRutas();
+        StateHasChanged();
+    }
+
     // Ojito del cuadradito: muestra u oculta esa zona (sus paradas y su línea de ruta) en el mapa.
     private async Task ToggleZonaVisible(ZonaCreada z)
     {
@@ -2702,7 +2721,9 @@
         var listaUnificadaCacheada = BuildListaUnificada();
         // Si hay un filtro de vehículo activo (no es "Todos"), también ocultamos los shipments
         // (porque solo queremos ver los stops asignados a ese vehículo).
-        var verShipments = vehiculoFiltro == null;
+        // Si "TODO" está apagado (y hay zonas creadas), tampoco mostramos el Flex crudo (sin asignar).
+        var ocultarSinAsignar = sinAsignarOcultos && zonasCreadas.Count > 0;
+        var verShipments = vehiculoFiltro == null && !ocultarSinAsignar;
         if (verShipments)
         {
             list.AddRange(shipments.Where(s => s.Latitude.HasValue && s.Longitude.HasValue
@@ -2740,6 +2761,8 @@
                 !(excluirEntregados && EstaEntregado(st)) &&
                 // Ojito del cuadradito: si la zona (repartidor) está apagada, no se dibujan sus paradas.
                 !(st.AssignedDriverId.HasValue && zonasOcultasMapa.Contains(st.AssignedDriverId.Value)) &&
+                // Chip "TODO" apagado: ocultamos las paradas todavía sin repartidor asignado.
+                !(ocultarSinAsignar && !st.AssignedDriverId.HasValue) &&
                 (vehiculoFiltro == null ||
                 (vehiculoFiltro == 0 && !st.AssignedVehicleSlot.HasValue) ||
                 (vehiculoFiltro > 0 && st.AssignedVehicleSlot == vehiculoFiltro)));
@@ -3053,6 +3076,7 @@
             lastZoneUndo = new();
             zonasCreadas = new();
             zonasOcultasMapa = new();
+            sinAsignarOcultos = false;
             rutasResumen = new();
             ToastService.Success($"🧹 {asignadas.Count} paradas quedaron sin repartidor.");
         }
