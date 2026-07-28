@@ -874,15 +874,43 @@
                     @foreach (var z in zonasCreadas)
                     {
                         var zVisible = !zonasOcultasMapa.Contains(z.DriverId);
-                        <div class="mapeo-dock-btn" style="flex-direction:column; gap:1px; background:@(zVisible ? z.Color : "#9ca3af"); @(zVisible ? "" : "opacity:0.55;")">
-                            <span @onclick="() => FocoZona(z)" style="cursor:pointer; font-size:0.72rem; font-weight:800; line-height:1;"
-                                  title="@($"Zona {z.Numero} · {z.DriverName} · {z.StopIds.Count} envío(s) — tocá para hacer foco en esta zona")">
-                                Z@(z.Numero)
-                            </span>
-                            <span @onclick="() => ToggleZonaVisible(z)" style="cursor:pointer; font-size:0.8rem; line-height:1;"
-                                  title="@(zVisible ? "Ocultar esta zona del mapa" : "Mostrar esta zona en el mapa")">
-                                @(zVisible ? "👁" : "🚫")
-                            </span>
+                        <div style="position:relative;">
+                            <div class="mapeo-dock-btn" style="flex-direction:column; gap:2px; height:auto; min-height:52px; padding:5px 0; background:@(zVisible ? z.Color : "#9ca3af"); @(zVisible ? "" : "opacity:0.55;")">
+                                <span @onclick="() => FocoZona(z)" style="cursor:pointer; font-size:0.72rem; font-weight:800; line-height:1;"
+                                      title="@($"Zona {z.Numero} · {z.DriverName} · {z.StopIds.Count} envío(s) — tocá para hacer foco en esta zona")">
+                                    Z@(z.Numero)
+                                </span>
+                                @* 👤 Cambiar el repartidor de TODA la zona de una (nuevo). *@
+                                <span @onclick="@(() => zonaDriverMenuId = (zonaDriverMenuId == z.Numero ? (int?)null : z.Numero))"
+                                      style="cursor:pointer; font-size:0.8rem; line-height:1;"
+                                      title="Cambiar el repartidor de toda esta zona">
+                                    👤
+                                </span>
+                                <span @onclick="() => ToggleZonaVisible(z)" style="cursor:pointer; font-size:0.8rem; line-height:1;"
+                                      title="@(zVisible ? "Ocultar esta zona del mapa" : "Mostrar esta zona en el mapa")">
+                                    @(zVisible ? "👁" : "🚫")
+                                </span>
+                            </div>
+                            @if (zonaDriverMenuId == z.Numero)
+                            {
+                                <div style="position:absolute; left:100%; top:0; margin-left:8px; background:white; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.25); padding:0.3rem; min-width:210px; z-index:545;">
+                                    <div style="font-size:0.7rem; color:#6b7280; font-weight:700; padding:0.2rem 0.6rem;">Repartidor de la Zona @z.Numero</div>
+                                    @foreach (var d in (drivers ?? new()).Where(d => d.IsActive))
+                                    {
+                                        var dColor = string.IsNullOrEmpty(d.Color) ? "#1d4ed8" : d.Color!;
+                                        <button class="btn" style="display:flex; width:100%; align-items:center; gap:0.4rem; font-size:0.85rem; padding:0.4rem 0.6rem; background:@(d.Id == z.DriverId ? "#eff6ff" : "transparent"); color:#1f2937; border:none; text-align:left;"
+                                                @onclick="@(() => CambiarRepartidorZona(z, d.Id))" disabled="@assigningZone">
+                                            <span style="width:12px; height:12px; border-radius:50%; background:@dColor; flex:0 0 12px;"></span>
+                                            <span style="flex:1;">@d.Nombre</span>
+                                            @if (d.Id == z.DriverId) { <span style="color:#16a34a;">✓</span> }
+                                        </button>
+                                    }
+                                    @if ((drivers?.Count(d => d.IsActive) ?? 0) == 0)
+                                    {
+                                        <div style="font-size:0.78rem; color:#b45309; padding:0.3rem 0.6rem;">No hay repartidores. Agregalos en ⚙ → 👥 Repartidores.</div>
+                                    }
+                                </div>
+                            }
                         </div>
                     }
                 }
@@ -2655,6 +2683,7 @@
     // Zonas ya creadas en esta sesión (para mostrar los cuadraditos "Zona 1", "Zona 2", ...)
     private record ZonaCreada(int Numero, int DriverId, string DriverName, string Color, List<int> StopIds);
     private List<ZonaCreada> zonasCreadas = new();
+    private int? zonaDriverMenuId = null; // qué cuadradito de zona tiene abierto el menú de repartidor
     // Zonas ocultas del mapa (por el ojito del cuadradito). Guarda el DriverId de la zona apagada.
     // Vacío = todas las zonas visibles. Sirve para armar/optimizar una ruta a la vez.
     private HashSet<int> zonasOcultasMapa = new();
@@ -3367,6 +3396,31 @@
         }
         catch (Exception ex) { ToastService.Error("No se pudo asignar la zona: " + ex.Message); }
         finally { assigningZone = false; StateHasChanged(); }
+    }
+
+    // Cambia el repartidor de TODA una zona ya creada (desde el 👤 del cuadradito Z1/Z2…).
+    // Reasigna todas sus paradas de una y rearma los cuadraditos (toma color/nombre del nuevo repartidor).
+    private async Task CambiarRepartidorZona(ZonaCreada z, int nuevoDriverId)
+    {
+        if (assigningZone) { return; }
+        if (nuevoDriverId == z.DriverId) { zonaDriverMenuId = null; return; } // ya es de ese repartidor
+        assigningZone = true;
+        try
+        {
+            foreach (var id in z.StopIds)
+                await Api.UpdateMapeoStopAsync(id, new { assignedDriverId = nuevoDriverId });
+            await LoadStops();
+            // Rearmar los cuadraditos desde las paradas: así la zona toma el color/nombre del nuevo
+            // repartidor (y se fusiona con otra zona si ya era de ese mismo repartidor).
+            zonasCreadas = new();
+            ReconstruirZonasCreadas();
+            await RenderMap();
+            rutasResumen = new();
+            var nombre = drivers?.FirstOrDefault(d => d.Id == nuevoDriverId)?.Nombre ?? "el repartidor";
+            ToastService.Success($"✅ La zona ahora es de {nombre} ({z.StopIds.Count} envío(s))");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo cambiar el repartidor: " + ex.Message); }
+        finally { assigningZone = false; zonaDriverMenuId = null; StateHasChanged(); }
     }
 
     // Deshacer la última zona asignada: cada parada vuelve al repartidor que tenía antes (o a "sin asignar").
