@@ -1053,6 +1053,20 @@
                    placeholder="@(corrigiendoDomicilioStopId is not null ? "🔍 Escribí el domicilio correcto y elegilo…" : "🔍 Buscar una dirección y sumarla al mapa…")"
                    style="width:100%; font-size:0.9rem; padding:0.5rem 0.75rem; border:1.5px solid @(corrigiendoDomicilioStopId is not null ? "#f59e0b" : "#d1d5db"); border-radius:8px;" />
         </div>
+        @* Mini-leyenda: qué forma de globito es cada tipo de envío. La forma indica el TIPO;
+           el color sigue indicando el repartidor/asignación. Solo aparece si hay algo en el mapa. *@
+        @if ((stops?.Count ?? 0) > 0 || (shipments?.Count ?? 0) > 0)
+        {
+            <div style="position:absolute; left:8px; bottom:14px; z-index:460; background:rgba(255,255,255,0.95); border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,0.18); padding:0.4rem 0.55rem; font-size:0.72rem; color:#374151;">
+                <div style="font-weight:800; color:#6b7280; margin-bottom:0.25rem; font-size:0.62rem; letter-spacing:0.03em;">TIPOS DE ENVÍO</div>
+                <div style="display:flex; flex-direction:column; gap:0.22rem;">
+                    <span style="display:flex; align-items:center; gap:0.4rem;"><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="#6b7280"/></svg> Flex</span>
+                    <span style="display:flex; align-items:center; gap:0.4rem;"><svg width="14" height="14" viewBox="0 0 14 14"><rect x="1" y="1" width="12" height="12" rx="3" fill="#6b7280"/></svg> ME1</span>
+                    <span style="display:flex; align-items:center; gap:0.4rem;"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 0.5 L13.5 7 L7 13.5 L0.5 7 Z" fill="#6b7280"/></svg> Alquiler</span>
+                    <span style="display:flex; align-items:center; gap:0.4rem;"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M1 2 L13 2 L7 13 Z" fill="#6b7280"/></svg> Venta por fuera</span>
+                </div>
+            </div>
+        }
         <div id="leafletMap"></div>
     </div>
 </div>
@@ -3068,11 +3082,17 @@
                               : (string.IsNullOrEmpty(st.AssignedDriverColor) ? "#eab308" : st.AssignedDriverColor!);
                 string label = st.OrderInRoute.HasValue ? st.OrderInRoute.Value.ToString()
                               : (st.AssignedVehicleSlot.HasValue ? "V" + st.AssignedVehicleSlot : "★");
-                // Forma del marker según el origen: CÍRCULO=Flex importado, CUADRADO=ME1 importado,
-                // TRIÁNGULO=manual / favorito / cliente-cafe / etc. Así se conserva la pista visual
-                // del tipo de envío incluso después de importarlo como parada.
-                string shape = st.Origin == "flex" ? "circle"
-                              : (st.Origin == "me1" ? "square" : "triangle");
+                // Forma del marker según el origen, para reconocer el tipo de un vistazo:
+                // CÍRCULO=Flex · CUADRADO=ME1 · ROMBO=Alquiler · TRIÁNGULO=Venta por fuera (café)
+                // · CÍRCULO=manual/favorito (default). El color sigue indicando el repartidor/asignación.
+                string shape = st.Origin switch
+                {
+                    "flex" => "circle",
+                    "me1" => "square",
+                    "alquiler" => "diamond",
+                    "venta_cafe" => "triangle",
+                    _ => "circle"
+                };
                 var markerId = -1000 - st.Id;
                 var grupoSt = listaUnificadaCacheada.FirstOrDefault(g => g.Manual.Any(m => m.Id == st.Id));
                 var enRutaSt = grupoSt is not null && rutaSeleccion.Contains(grupoSt.Key);

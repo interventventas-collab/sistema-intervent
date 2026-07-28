@@ -67,9 +67,32 @@
         // Tamaño de texto según cuántos caracteres entran en la cabeza (ej: "12", "V1").
         const fs = rawLabel.length >= 2 ? 13 : 17;
 
+        // FORMA de la cabeza del pin según el tipo de envío (la punta siempre cae en 24,44):
+        //   circle=Flex/manual · square=ME1 · diamond=Alquiler · triangle=Venta por fuera.
+        // El color sigue indicando repartidor/asignación; la forma indica el TIPO.
+        const shape = first.shape || 'circle';
+        let headPath, labelY;
+        switch (shape) {
+            case 'square':   // ME1 — cuadrado con puntita
+                headPath = 'M13 4 H35 Q38 4 38 7 V27 Q38 30 35 30 H29 L24 44 L19 30 H13 Q10 30 10 27 V7 Q10 4 13 4 Z';
+                labelY = 17;
+                break;
+            case 'diamond':  // Alquiler — rombo (cometa)
+                headPath = 'M24 3 L39 19 L24 44 L9 19 Z';
+                labelY = 15;
+                break;
+            case 'triangle': // Venta por fuera — triángulo apuntando a la ubicación
+                headPath = 'M10 7 Q10 5 12 5 H36 Q38 5 38 7 L24 44 Z';
+                labelY = 13;
+                break;
+            default:         // circle — Flex / manual / favorito (gota redonda de siempre)
+                headPath = PIN_PATH;
+                labelY = 18;
+        }
+
         // Aro verde alrededor de la cabeza cuando la parada está seleccionada para la ruta.
         const ring = inRoute
-            ? `<circle cx="${PIN_HEAD_CX}" cy="${PIN_HEAD_CY}" r="18.5" fill="none" stroke="#16a34a" stroke-width="3"/>`
+            ? `<circle cx="${PIN_HEAD_CX}" cy="${PIN_HEAD_CY}" r="19" fill="none" stroke="#16a34a" stroke-width="3"/>`
             : '';
 
         // Badge rojo +N cuando hay varias entregas en el mismo domicilio.
@@ -88,8 +111,8 @@
         return `<svg xmlns="http://www.w3.org/2000/svg" width="${PIN_VB_W}" height="${PIN_VB_H}" viewBox="0 0 ${PIN_VB_W} ${PIN_VB_H}">` +
             `<defs><filter id="sh" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-opacity="0.4"/></filter></defs>` +
             `${ring}` +
-            `<path d="${PIN_PATH}" fill="${body}" stroke="#ffffff" stroke-width="2" filter="url(#sh)"/>` +
-            `<text x="${PIN_HEAD_CX}" y="${PIN_HEAD_CY + fs * 0.35}" text-anchor="middle" font-size="${fs}" font-weight="800" fill="${txt}" font-family="Inter,Arial,sans-serif">${label}</text>` +
+            `<path d="${headPath}" fill="${body}" stroke="#ffffff" stroke-width="2" filter="url(#sh)"/>` +
+            `<text x="${PIN_HEAD_CX}" y="${labelY + fs * 0.35}" text-anchor="middle" font-size="${fs}" font-weight="800" fill="${txt}" font-family="Inter,Arial,sans-serif">${label}</text>` +
             `${badge}${check}</svg>`;
     }
 
