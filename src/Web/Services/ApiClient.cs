@@ -5921,6 +5921,10 @@ public class ApiClient
     public async Task<object?> ReorderMapeoStopsAsync(List<int> stopIds)
         => await PostAsync<object>("/api/mapeo/stops/reorder", new { stopIds });
 
+    // Fija la ubicación de una parada (elegida en el buscador del mapa) y la guarda en el cliente.
+    public async Task<MapeoStopDto?> SetMapeoStopUbicacionAsync(int id, double lat, double lng, string? direccion)
+        => await PostAsync<MapeoStopDto>($"/api/mapeo/stops/{id}/ubicacion", new { lat, lng, direccion });
+
     public async Task<object?> AutoAssignStopsAsync(bool reassignAll = false)
         => await PostAsync<object>($"/api/mapeo/stops/auto-assign?reassignAll={reassignAll.ToString().ToLower()}", new { });
 

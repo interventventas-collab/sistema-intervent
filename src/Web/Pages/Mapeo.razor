@@ -674,6 +674,21 @@
                                 { <div style="font-size:0.72rem; color:#6b7280;">📞 @st.Telefono</div> }
                                 @if (!string.IsNullOrEmpty(st.Notas))
                                 { <div style="font-size:0.7rem; color:#9ca3af;">📝 @st.Notas</div> }
+                                @* Sin domicilio en el mapa: cartel + buscar. Con domicilio: opción de corregirlo. *@
+                                @{ var stNombreDom = st.Alias ?? st.ContactName ?? "Parada"; }
+                                @if (st.Latitude == 0 && st.Longitude == 0)
+                                {
+                                    <div style="margin-top:0.3rem; background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; border-radius:6px; padding:0.3rem 0.45rem; font-size:0.72rem; display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;" @onclick:stopPropagation="true">
+                                        <span>⚠ Sin domicilio cargado</span>
+                                        <button class="btn" style="font-size:0.7rem; padding:0.15rem 0.5rem; background:#b91c1c; color:#fff; border:none; border-radius:5px;" @onclick="() => BuscarDomicilioParaParada(st.Id, stNombreDom)">📍 Buscar domicilio</button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div style="margin-top:0.2rem;" @onclick:stopPropagation="true">
+                                        <button class="btn" style="font-size:0.66rem; padding:0.08rem 0.4rem; background:transparent; border:1px solid #d1d5db; color:#6b7280; border-radius:5px;" @onclick="() => BuscarDomicilioParaParada(st.Id, stNombreDom)" title="Corregir el domicilio buscándolo en el mapa">📍 Corregir domicilio</button>
+                                    </div>
+                                }
                                 @* Selector de repartidor por parada: escaneás y elegís acá quién la lleva. *@
                                 <div style="margin-top:0.3rem;" @onclick:stopPropagation="true">
                                     <select class="form-input" style="font-size:0.72rem; padding:0.15rem 0.3rem; width:100%; border-color:@(st.AssignedDriverId.HasValue ? stopColor : "#d1d5db");"
@@ -973,11 +988,19 @@
                 </button>
             </div>
         }
-        @* 2026-07-25: buscador de direcciones estilo Google (Places). Escribís, elegís, y se planta la parada. *@
+        @* 2026-07-25: buscador de direcciones estilo Google (Places). Escribís, elegís, y se planta la parada.
+           2026-07-27: si estás "corrigiendo domicilio", lo que elijas se le asigna a esa parada. *@
         <div style="padding:0 0 0.4rem;">
+            @if (corrigiendoDomicilioStopId is not null)
+            {
+                <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.35rem; padding:0.35rem 0.5rem; background:#fef3c7; border:1px solid #fcd34d; border-radius:8px; font-size:0.8rem; color:#92400e;">
+                    <span>📍 Buscá el domicilio para <strong>@corrigiendoDomicilioNombre</strong> y elegilo de la lista.</span>
+                    <button class="btn" style="margin-left:auto; font-size:0.72rem; padding:0.15rem 0.5rem; background:transparent; border:1px solid #92400e; color:#92400e; border-radius:6px;" @onclick="CancelarCorregirDomicilio">✕ Cancelar</button>
+                </div>
+            }
             <input id="mapeoSearchInput" type="text" class="form-input" autocomplete="off"
-                   placeholder="🔍 Buscar una dirección y sumarla al mapa…"
-                   style="width:100%; font-size:0.9rem; padding:0.5rem 0.75rem; border:1.5px solid #d1d5db; border-radius:8px;" />
+                   placeholder="@(corrigiendoDomicilioStopId is not null ? "🔍 Escribí el domicilio correcto y elegilo…" : "🔍 Buscar una dirección y sumarla al mapa…")"
+                   style="width:100%; font-size:0.9rem; padding:0.5rem 0.75rem; border:1.5px solid @(corrigiendoDomicilioStopId is not null ? "#f59e0b" : "#d1d5db"); border-radius:8px;" />
         </div>
         <div id="leafletMap"></div>
     </div>
@@ -2970,6 +2993,8 @@
             // Filtro de vehículo: null=todos, 0=sin asignar, >0=slot
             var stopsFiltrados = stops.Where(st =>
                 !(excluirEntregados && EstaEntregado(st)) &&
+                // Sin ubicación (0,0): no dibujamos pin en el mapa (aparece solo en el listado con el aviso).
+                !(st.Latitude == 0 && st.Longitude == 0) &&
                 // Ojito del cuadradito: si la zona (repartidor) está apagada, no se dibujan sus paradas.
                 !(st.AssignedDriverId.HasValue && zonasOcultasMapa.Contains(st.AssignedDriverId.Value)) &&
                 // Chip "TODO" apagado: ocultamos las paradas todavía sin repartidor asignado.
@@ -3067,12 +3092,39 @@
     /// togglea su selección en la ruta de Google Maps. Después fuerza un re-render
     /// para que se vea el outline verde en la tarjeta correspondiente del panel lateral.
     /// </summary>
-    // 2026-07-25: el buscador de Google (Places) eligió una dirección → creamos una parada ahí.
+    // Modo "corregir domicilio": cuando está seteado, lo que elijas en el buscador se le asigna a ESA parada.
+    private int? corrigiendoDomicilioStopId;
+    private string? corrigiendoDomicilioNombre;
+    private void BuscarDomicilioParaParada(int stopId, string nombre)
+    {
+        corrigiendoDomicilioStopId = stopId;
+        corrigiendoDomicilioNombre = nombre;
+    }
+    private void CancelarCorregirDomicilio()
+    {
+        corrigiendoDomicilioStopId = null;
+        corrigiendoDomicilioNombre = null;
+    }
+
+    // 2026-07-25: el buscador de Google (Places) eligió una dirección → creamos o corregimos una parada.
     [JSInvokable]
     public async Task OnPlacePicked(double lat, double lng, string direccion)
     {
         try
         {
+            // Si estamos corrigiendo una parada, le asignamos esta dirección (y se guarda en el cliente).
+            if (corrigiendoDomicilioStopId is int sid)
+            {
+                await Api.SetMapeoStopUbicacionAsync(sid, lat, lng, string.IsNullOrWhiteSpace(direccion) ? null : direccion);
+                corrigiendoDomicilioStopId = null;
+                corrigiendoDomicilioNombre = null;
+                await LoadStops();
+                await RenderMap();
+                try { await JS.InvokeVoidAsync("mapeoFlex.focusOn", lat, lng, 16); } catch { }
+                ToastService.Success("📍 Domicilio cargado y guardado en la ficha del cliente");
+                StateHasChanged();
+                return;
+            }
             await Api.CreateMapeoStopAsync("manual", null, null,
                 string.IsNullOrWhiteSpace(direccion) ? "Punto en el mapa" : direccion,
                 (decimal)lat, (decimal)lng, null, null, null);

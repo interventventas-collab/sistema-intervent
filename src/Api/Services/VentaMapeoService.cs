@@ -36,6 +36,7 @@ public class VentaMapeoService
         public int? ClienteId { get; set; }
         public string? DireccionSugerida { get; set; }
         public int? StopId { get; set; }
+        public bool SinUbicacion { get; set; }      // se agregó pero SIN ubicación (a resolver en el mapa)
     }
 
     private static string? FirstNonEmpty(params string?[] vals) => vals.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
@@ -51,6 +52,7 @@ public class VentaMapeoService
 
         decimal? lat = null, lng = null;
         bool guardarEnCliente = false;
+        bool sinUbicacion = false;
 
         if (!string.IsNullOrWhiteSpace(link) || !string.IsNullOrWhiteSpace(direccion))
         {
@@ -78,8 +80,11 @@ public class VentaMapeoService
               var r = await _mapsResolver.TryGeocodeAddressAsync(q); if (r.HasValue) { lat = r.Value.lat; lng = r.Value.lng; guardarEnCliente = true; } }
 
             if (lat is null)
-                return new Result { Ok = false, Motivo = "sin_domicilio", Mensaje = "Este cliente no tiene domicilio cargado.",
-                    ClienteId = v.ClienteId, Nombre = nombre, DireccionSugerida = dir, Localidad = localidad };
+            {
+                // Sin domicilio: lo agregamos IGUAL pero SIN ubicación (0,0). La cargás después desde el
+                // mapa con el buscador (y ahí se guarda en la ficha del cliente). Mejor que adivinar mal.
+                lat = 0m; lng = 0m; sinUbicacion = true;
+            }
         }
 
         // Guardar la ubicación en la ficha del cliente para la próxima.
@@ -95,11 +100,12 @@ public class VentaMapeoService
         var existente = await _db.MapeoStops.FirstOrDefaultAsync(s => s.Origin == "venta_cafe" && s.OriginRefId == refId);
         if (existente is not null)
         {
-            existente.Latitude = lat!.Value;
-            existente.Longitude = lng!.Value;
+            // Si ya estaba y ahora tampoco tenemos ubicación, NO le pisamos una ubicación buena con 0,0.
+            if (!sinUbicacion) { existente.Latitude = lat!.Value; existente.Longitude = lng!.Value; }
             existente.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
-            return new Result { Ok = true, YaEstaba = true, Mensaje = "Ya estaba en el mapa (actualicé la ubicación).", Nombre = nombre, Localidad = localidad, StopId = existente.Id };
+            var yaSinUbic = sinUbicacion && existente.Latitude == 0 && existente.Longitude == 0;
+            return new Result { Ok = true, YaEstaba = true, Mensaje = yaSinUbic ? "Ya está en el mapa SIN ubicación — buscá el domicilio en el mapa." : "Ya estaba en el mapa (actualicé la ubicación).", Nombre = nombre, Localidad = localidad, StopId = existente.Id, SinUbicacion = yaSinUbic };
         }
 
         var stop = new MapeoStop
@@ -119,6 +125,6 @@ public class VentaMapeoService
         };
         _db.MapeoStops.Add(stop);
         await _db.SaveChangesAsync();
-        return new Result { Ok = true, YaEstaba = false, Mensaje = "Agregado al mapa.", Nombre = nombre, Localidad = localidad, StopId = stop.Id };
+        return new Result { Ok = true, YaEstaba = false, Mensaje = sinUbicacion ? "Agregado al mapa SIN ubicación — buscá el domicilio en el mapa." : "Agregado al mapa.", Nombre = nombre, Localidad = localidad, StopId = stop.Id, SinUbicacion = sinUbicacion };
     }
 }

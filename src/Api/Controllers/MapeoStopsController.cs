@@ -164,6 +164,40 @@ public class MapeoStopsController : ControllerBase
         await _db.SaveChangesAsync();
     }
 
+    public record SetUbicacionRequest(double Lat, double Lng, string? Direccion);
+
+    /// <summary>Fija la ubicación de una parada (elegida en el buscador del mapa) y, si es una VENTA,
+    /// la guarda también en la ficha del cliente (coords + link) para la próxima. Corrige domicilios
+    /// sin salir del mapa — mejor que el geocoder que a veces adivina mal.</summary>
+    [HttpPost("{id:int}/ubicacion")]
+    public async Task<IActionResult> SetUbicacion(int id, [FromBody] SetUbicacionRequest req)
+    {
+        var s = await _db.MapeoStops.FirstOrDefaultAsync(x => x.Id == id);
+        if (s is null) return NotFound(new { error = "Parada no encontrada" });
+        s.Latitude = (decimal)req.Lat;
+        s.Longitude = (decimal)req.Lng;
+        if (!string.IsNullOrWhiteSpace(req.Direccion)) s.Direccion = req.Direccion.Trim();
+        s.UpdatedAt = DateTime.UtcNow;
+
+        // Si es una venta, guardamos la ubicación en la ficha del cliente para la próxima.
+        if (s.Origin == "venta_cafe" && int.TryParse(s.OriginRefId, out var ventaId))
+        {
+            var venta = await _db.CafeVentas.Include(v => v.ClienteNav).FirstOrDefaultAsync(v => v.Id == ventaId);
+            var cli = venta?.ClienteNav;
+            if (cli is not null)
+            {
+                cli.MapeoLat = (decimal)req.Lat;
+                cli.MapeoLng = (decimal)req.Lng;
+                var ci = System.Globalization.CultureInfo.InvariantCulture;
+                cli.MapeoLink = $"https://www.google.com/maps/search/?api=1&query={req.Lat.ToString(ci)},{req.Lng.ToString(ci)}";
+                if (!string.IsNullOrWhiteSpace(req.Direccion) && string.IsNullOrWhiteSpace(cli.DomicilioEntrega) && string.IsNullOrWhiteSpace(cli.Direccion))
+                    cli.DomicilioEntrega = req.Direccion.Trim();
+            }
+        }
+        await _db.SaveChangesAsync();
+        return Ok(Map(s));
+    }
+
     public record ReorderRequest(int[] StopIds);
 
     /// <summary>
