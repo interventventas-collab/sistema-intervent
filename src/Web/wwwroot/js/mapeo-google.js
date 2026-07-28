@@ -222,11 +222,15 @@ window.mapeoFlex = (function () {
                     zIndex: group.some(g => g.inRoute) ? 1000 : (esArrastrable ? 900 : 1)
                 });
 
-                // El punto de partida (casita) se puede arrastrar para afinar la ubicación al metro.
+                // Arrastrable: el punto de partida (casita) o una parada con el candado abierto.
+                // Al soltar, avisamos a Blazor: si tiene stopId es una parada, si no es el punto de partida.
                 if (esArrastrable) {
+                    const draggedStopId = (first.stopId != null) ? first.stopId : null;
                     marker.addListener('dragend', function (e) {
                         const la = e.latLng.lat(), ln = e.latLng.lng();
-                        if (dotNetRef) dotNetRef.invokeMethodAsync('OnStartPointDragged', la, ln);
+                        if (!dotNetRef) return;
+                        if (draggedStopId != null) dotNetRef.invokeMethodAsync('OnStopDragged', draggedStopId, la, ln);
+                        else dotNetRef.invokeMethodAsync('OnStartPointDragged', la, ln);
                     });
                 }
 

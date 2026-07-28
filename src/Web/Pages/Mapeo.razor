@@ -685,9 +685,15 @@
                                 }
                                 else
                                 {
-                                    <div style="margin-top:0.2rem;" @onclick:stopPropagation="true">
+                                    var desbloqueada = paradasDesbloqueadas.Contains(st.Id);
+                                    <div style="margin-top:0.2rem; display:flex; gap:0.35rem; align-items:center; flex-wrap:wrap;" @onclick:stopPropagation="true">
                                         <button class="btn" style="font-size:0.66rem; padding:0.08rem 0.4rem; background:transparent; border:1px solid #d1d5db; color:#6b7280; border-radius:5px;" @onclick="() => BuscarDomicilioParaParada(st.Id, stNombreDom)" title="Corregir el domicilio buscándolo en el mapa">📍 Corregir domicilio</button>
+                                        <button class="btn" style="font-size:0.66rem; padding:0.08rem 0.45rem; background:@(desbloqueada ? "#fef3c7" : "transparent"); border:1px solid @(desbloqueada ? "#f59e0b" : "#d1d5db"); color:@(desbloqueada ? "#92400e" : "#6b7280"); border-radius:5px;" @onclick="() => ToggleCandado(st.Id)" title="@(desbloqueada ? "Bloquear el pin (no se mueve)" : "Desbloquear para mover el pin en el mapa")">@(desbloqueada ? "🔓 Mover en el mapa" : "🔒")</button>
                                     </div>
+                                    @if (desbloqueada)
+                                    {
+                                        <div style="font-size:0.68rem; color:#92400e; margin-top:0.15rem;" @onclick:stopPropagation="true">👆 Arrastrá el pin en el mapa hasta el punto exacto — se guarda solo.</div>
+                                    }
                                 }
                                 @* Selector de repartidor por parada: escaneás y elegís acá quién la lleva. *@
                                 <div style="margin-top:0.3rem;" @onclick:stopPropagation="true">
@@ -3028,6 +3034,9 @@
                     shape,
                     inRoute = enRutaSt,
                     delivered = string.Equals(st.MeliStatus, "delivered", StringComparison.OrdinalIgnoreCase),
+                    // Candado: si la parada está desbloqueada, su pin se puede arrastrar para ajustar la ubicación.
+                    draggable = paradasDesbloqueadas.Contains(st.Id),
+                    stopId = st.Id,
                     popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· V{st.AssignedVehicleSlot}</span>" : "")}{(st.AssignedDriverName is null ? "" : $" · {System.Net.WebUtility.HtmlEncode(st.AssignedDriverName)}")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}<br/><button onclick=\"window.mapeoActions.toggleRoute({markerId}); event.stopPropagation();\" style='margin-top:0.3rem; padding:0.2rem 0.5rem; background:{btnBgSt}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxtSt}</button></div>"
                 };
             }));
@@ -3104,6 +3113,31 @@
     {
         corrigiendoDomicilioStopId = null;
         corrigiendoDomicilioNombre = null;
+    }
+
+    // Candado por parada: si está desbloqueada, su pin se puede arrastrar en el mapa para ubicarlo al metro.
+    private HashSet<int> paradasDesbloqueadas = new();
+    private async Task ToggleCandado(int stopId)
+    {
+        if (!paradasDesbloqueadas.Add(stopId)) paradasDesbloqueadas.Remove(stopId);
+        await RenderMap(); // redibuja el pin como arrastrable (o fijo)
+        StateHasChanged();
+    }
+
+    // Se llama desde el JS cuando arrastrás y soltás el pin de una parada desbloqueada.
+    [JSInvokable]
+    public async Task OnStopDragged(int stopId, double lat, double lng)
+    {
+        try
+        {
+            await Api.SetMapeoStopUbicacionAsync(stopId, lat, lng, null);
+            paradasDesbloqueadas.Remove(stopId); // lo volvemos a bloquear: fue un ajuste puntual
+            await LoadStops();
+            await RenderMap();
+            ToastService.Success("📍 Ubicación ajustada y guardada");
+            StateHasChanged();
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo guardar la ubicación: " + ex.Message); }
     }
 
     // 2026-07-25: el buscador de Google (Places) eligió una dirección → creamos o corregimos una parada.
