@@ -1407,6 +1407,41 @@
             } catch (e) { return null; }
         };
 
+        // 2026-07-28: Sortable handler para reordenar la ruta en Mapeo (arrastrar el ⠿).
+        // Cada fila lleva data-stop-ids (una parada puede agrupar varios envíos). Al soltar,
+        // junta los ids en el nuevo orden y se los manda a C# para persistir OrderInRoute.
+        window.mapeoInitSortable = function(containerId, dotNetRef) {
+            var el = document.getElementById(containerId);
+            if (!el) return;
+            if (el._sortableInstance) {
+                try { el._sortableInstance.destroy(); } catch (e) {}
+            }
+            el._sortableInstance = Sortable.create(el, {
+                handle: '.mapeo-drag-handle',
+                draggable: '.mapeo-row',        // solo las filas de parada, no los encabezados de zona
+                animation: 150,
+                ghostClass: 'mapeo-drag-ghost',
+                chosenClass: 'mapeo-drag-chosen',
+                forceFallback: true,            // mejor soporte en celus
+                fallbackTolerance: 5,
+                touchStartThreshold: 5,
+                onEnd: function(evt) {
+                    var ids = [];
+                    el.querySelectorAll('.mapeo-row').forEach(function(row) {
+                        var raw = row.getAttribute('data-stop-ids');
+                        if (!raw) return;
+                        raw.split(',').forEach(function(x) {
+                            var n = parseInt(x, 10);
+                            if (!isNaN(n)) ids.push(n);
+                        });
+                    });
+                    if (dotNetRef && ids.length) {
+                        dotNetRef.invokeMethodAsync('OnParadasReordenadas', ids);
+                    }
+                }
+            });
+        };
+
         // 2026-06-16: Sortable handler para la pantalla de edición de listas custom.
         // El operador arrastra los items de una sección para reordenarlos sin clickear ↑↓ uno por uno.
         window.lcInitSortable = function(containerId, seccionId, dotNetRef) {
@@ -1452,6 +1487,10 @@
         .mp-drag-chosen {
             box-shadow: 0 4px 16px rgba(0,0,0,0.15);
         }
+        .mapeo-drag-handle { cursor: grab; touch-action: none; user-select: none; }
+        .mapeo-drag-handle:active { cursor: grabbing; }
+        .mapeo-drag-ghost { opacity: 0.4; background: #dbeafe !important; }
+        .mapeo-drag-chosen { box-shadow: 0 4px 16px rgba(0,0,0,0.18); background: #fff; }
     </style>
     <script>
         // Escaner de QR para la pantalla mobile del repartidor.

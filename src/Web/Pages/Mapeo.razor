@@ -350,7 +350,8 @@
             </button>
         </div>
         }
-        <div class="mapeo-side-list">
+        <div class="mapeo-side-list" id="mapeoStopsList">
+            @{ listaOrdenableActiva = false; }
             @if (isLoading) { <p class="text-muted" style="padding:0.7rem;">Cargando...</p> }
             else if ((shipments is null || shipments.Count == 0) && (stops is null || stops.Count == 0))
             {
@@ -404,6 +405,7 @@
                 var driversVisibles = listaRender.Select(GrupoDriverId).Where(d => d.HasValue).Select(d => d!.Value).Distinct().ToList();
                 var haySinAsignar = listaRender.Any(g => !GrupoDriverId(g).HasValue);
                 var zonaUnica = driversVisibles.Count == 1 && !haySinAsignar;
+                listaOrdenableActiva = zonaUnica; // habilita el arrastre (⠿) solo con UNA zona a la vista
                 List<IGrouping<string, GrupoUnificado>> zonasUnificadas;
                 if (zonaUnica)
                 {
@@ -486,14 +488,12 @@
                         var g = grupos[gi];
                         var reIdx = gi;
                         var esFlex = g.TieneFlex;
-                        <div style="display:flex; align-items:stretch;"
-                             @ondragover:preventDefault="true"
-                             @ondrop="@(() => OnDropRuta(reIdx))">
+                        <div class="mapeo-row" data-stop-ids="@string.Join(",", g.Manual.Select(m => m.Id))" style="display:flex; align-items:stretch;">
                             @if (zonaUnica)
                             {
                                 <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:0 3px; border-right:1px solid #eef2f7;">
                                     <button class="btn-icon" style="font-size:0.7rem; padding:0; line-height:1.1; color:#6b7280;" @onclick:stopPropagation="true" @onclick="@(() => MoverParada(reIdx, -1))" disabled="@(reIdx == 0 || reordenandoRuta)" title="Subir en la ruta">▲</button>
-                                    <span draggable="true" @ondragstart="@(() => OnDragStartRuta(reIdx))" title="Arrastrá para reordenar la ruta" style="cursor:grab; font-size:0.95rem; color:#9ca3af; user-select:none;">⠿</span>
+                                    <span class="mapeo-drag-handle" title="Arrastrá para reordenar la ruta" style="font-size:0.95rem; color:#9ca3af;">⠿</span>
                                     <button class="btn-icon" style="font-size:0.7rem; padding:0; line-height:1.1; color:#6b7280;" @onclick:stopPropagation="true" @onclick="@(() => MoverParada(reIdx, 1))" disabled="@(reIdx == grupos.Count - 1 || reordenandoRuta)" title="Bajar en la ruta">▼</button>
                                 </div>
                             }
@@ -2205,19 +2205,29 @@
         return !zonasOcultasMapa.Contains(driverId.Value);
     }
 
-    // ── Etapa 2: reordenar la ruta (arrastrar ⠿ o flechitas ▲▼), solo con UNA zona a la vista ──
-    private int dragFromIdx = -1;   // índice de la parada que estás arrastrando
+    // ── Etapa 2: reordenar la ruta (arrastrar ⠿ con SortableJS o flechitas ▲▼), solo con UNA zona a la vista ──
     private bool reordenandoRuta = false;
+    private bool listaOrdenableActiva = false; // ¿está a la vista la lista ordenable? (se setea al renderizar)
 
-    // OJO: no cambiamos estado que afecte el markup mientras se arrastra, porque un redibujado
-    // de Blazor a mitad de arrastre CORTA el drag nativo (por eso antes no dejaba mover varias).
-    private void OnDragStartRuta(int idx) => dragFromIdx = idx;
-    private async Task OnDropRuta(int idx)
-    {
-        var from = dragFromIdx; dragFromIdx = -1;
-        await MoverEnRuta(from, idx);
-    }
     private async Task MoverParada(int idx, int delta) => await MoverEnRuta(idx, idx + delta);
+
+    // Lo llama SortableJS (desde el JS) cuando soltás una fila: recibe TODOS los ids de parada
+    // ya en el nuevo orden, los persiste (OrderInRoute = 1,2,3…) y redibuja.
+    [JSInvokable]
+    public async Task OnParadasReordenadas(int[] ids)
+    {
+        if (reordenandoRuta || ids is null || ids.Length == 0) return;
+        reordenandoRuta = true;
+        try
+        {
+            await Api.ReorderMapeoStopsAsync(ids.ToList());
+            await LoadStops();
+            await RenderMap();
+            if (rutasResumen.Count > 0) await CargarYDibujarRutas(single: false); // redibuja la línea con el nuevo orden
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo reordenar la ruta: " + ex.Message); }
+        finally { reordenandoRuta = false; StateHasChanged(); }
+    }
 
     // Reconstruye la ruta visible EN EL MISMO ORDEN que se muestra en pantalla:
     // cada elemento es la lista de IDs de paradas de un grupo (destino).
@@ -2913,6 +2923,12 @@
             await CargarNotas();
             await LoadAndRender();
             StateHasChanged();
+        }
+        // (Re)engancha el arrastre de la lista (⠿) cuando está a la vista la ruta ordenable.
+        // El JS destruye la instancia previa antes de crear una nueva, así que es seguro llamarlo en cada render.
+        if (listaOrdenableActiva && selfRef is not null)
+        {
+            try { await JS.InvokeVoidAsync("mapeoInitSortable", "mapeoStopsList", selfRef); } catch { }
         }
     }
 
