@@ -864,7 +864,8 @@
 
     // 2026-07-28: arma el link de Google Maps con TODA la ruta en orden (parada 1 → 2 → …).
     // Formato "path" (/maps/dir/A/B/C/) que no tiene el tope de 10 del formato ?api=1.
-    // Preferimos el TEXTO de la dirección (Google lo respeta mejor que las coords). null si hay < 2 puntos.
+    // USAMOS COORDENADAS (lat,lng), no el texto de la calle: con texto, Google geocodeaba mal
+    // (mandaba a España calles como "Alvear 582"). Con coords cae SIEMPRE en el punto exacto de BA.
     private string? RutaMapaUrl()
     {
         if (mapeoRuta is null || mapeoRuta.Count == 0) return null;
@@ -872,10 +873,8 @@
         var pts = new List<string>();
         foreach (var s in mapeoRuta.OrderBy(x => x.OrderInRoute ?? int.MaxValue))
         {
-            if (!string.IsNullOrWhiteSpace(s.Direccion))
-                pts.Add(Uri.EscapeDataString(s.Direccion.Trim()));
-            else if (s.Latitude != 0 || s.Longitude != 0)
-                pts.Add(Uri.EscapeDataString($"{s.Latitude.ToString(inv)},{s.Longitude.ToString(inv)}"));
+            if (s.Latitude != 0 || s.Longitude != 0)
+                pts.Add($"{s.Latitude.ToString(inv)},{s.Longitude.ToString(inv)}");
         }
         if (pts.Count < 2) return null;
         return "https://www.google.com/maps/dir/" + string.Join("/", pts) + "/?travelmode=driving";

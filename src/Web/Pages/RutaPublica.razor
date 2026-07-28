@@ -160,8 +160,8 @@
 
     // Arma la URL de Google Maps con TODA la ruta en orden: partida → parada 1 → 2 → … → última.
     // Usa el formato "path" (/maps/dir/A/B/C/) que no tiene el tope de 10 del formato ?api=1.
-    // Preferimos el TEXTO de la dirección (Google lo respeta mejor que las coordenadas); si no hay
-    // texto, caemos a lat,lng. Devuelve null si no hay al menos dos puntos.
+    // USAMOS COORDENADAS (lat,lng), no el texto de la calle: con texto Google geocodeaba mal
+    // (mandaba a España). Con coords cae SIEMPRE en el punto exacto. null si hay < 2 puntos.
     private string? RutaCompletaUrl()
     {
         if (route is null) return null;
@@ -169,14 +169,12 @@
         var pts = new List<string>();
 
         if (route.StartLat.HasValue && route.StartLng.HasValue)
-            pts.Add(Uri.EscapeDataString($"{route.StartLat.Value.ToString(inv)},{route.StartLng.Value.ToString(inv)}"));
+            pts.Add($"{route.StartLat.Value.ToString(inv)},{route.StartLng.Value.ToString(inv)}");
 
         foreach (var s in route.Stops.OrderBy(x => x.OrderInRoute ?? int.MaxValue))
         {
-            if (!string.IsNullOrWhiteSpace(s.Direccion))
-                pts.Add(Uri.EscapeDataString(s.Direccion.Trim()));
-            else if (s.Latitude != 0 || s.Longitude != 0)
-                pts.Add(Uri.EscapeDataString($"{s.Latitude.ToString(inv)},{s.Longitude.ToString(inv)}"));
+            if (s.Latitude != 0 || s.Longitude != 0)
+                pts.Add($"{s.Latitude.ToString(inv)},{s.Longitude.ToString(inv)}");
         }
 
         if (pts.Count < 2) return null;
