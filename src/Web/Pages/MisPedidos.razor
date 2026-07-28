@@ -204,224 +204,153 @@
             <div style="background:#fee2e2; color:#991b1b; padding:0.6rem 0.8rem; border-radius:8px; margin-bottom:0.8rem; font-size:0.88rem;">⚠ @scanError</div>
         }
 
-@* ─── RUTA DEL MAPA (Flex + paradas) — SOLO LECTURA, en orden — 2026-07-27 ─── *@
-        @if (mapeoRuta.Count > 0)
-        {
-            var rutaVisible = ocultarFlex ? mapeoRuta.Where(x => x.Origin != "flex").ToList() : mapeoRuta;
-            <div class="mp-section-title" style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
-                <span>🗺️ Mi ruta (orden del mapa)</span>
-                <span class="badge" style="background:#0891b2; color:white;">@rutaVisible.Count</span>
-                @if (mapeoRuta.Any(x => x.Origin == "flex"))
-                {
-                    <button type="button" @onclick="() => ocultarFlex = !ocultarFlex"
-                            style="margin-left:auto; font-size:0.72rem; font-weight:700; border:1px solid #0891b2; background:@(ocultarFlex ? "#0891b2" : "white"); color:@(ocultarFlex ? "white" : "#0891b2"); padding:0.2rem 0.6rem; border-radius:999px; cursor:pointer;">
-                        @(ocultarFlex ? "Ver todo" : "Ocultar Flex")
-                    </button>
-                }
-            </div>
-            <div style="font-size:0.72rem; color:#6b7280; margin:0 0 0.5rem;">
-                Solo para ver el recorrido en orden. Los Flex se marcan entregados desde la app de Flex de MeLi.
-            </div>
-            @foreach (var p in rutaVisible)
-            {
-                var esFlex = p.Origin == "flex";
-                var mapsUrl = $"https://www.google.com/maps/dir/?api=1&destination={p.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{p.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
-                <div class="mp-card" style="background:white; border:1px solid #e5e7eb; border-left:6px solid #0891b2; margin-bottom:0.6rem; padding:0.6rem;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; gap:0.4rem;">
-                        <div style="display:flex; align-items:center; gap:0.4rem; min-width:0;">
-                            @if (p.OrderInRoute.HasValue)
-                            {
-                                <span style="background:#0891b2; color:white; font-weight:800; font-size:0.8rem; min-width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto;">@p.OrderInRoute</span>
-                            }
-                            <span style="font-weight:700; font-size:1rem; color:#111827; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@(p.Nombre ?? "Parada")</span>
-                        </div>
-                        @if (esFlex) { <span style="background:#dbeafe; color:#1e40af; font-size:0.62rem; font-weight:800; padding:0.05rem 0.35rem; border-radius:4px; flex:0 0 auto;">FLEX</span> }
-                    </div>
-                    <div style="font-size:0.85rem; color:#374151; margin-top:0.25rem;">@p.Direccion</div>
-                    @if (!string.IsNullOrEmpty(p.Localidad)) { <div style="font-size:0.75rem; color:#6b7280;">@p.Localidad</div> }
-                    <div style="display:flex; gap:0.6rem; margin-top:0.3rem; flex-wrap:wrap; font-size:0.72rem; color:#6b7280;">
-                        @if (!string.IsNullOrEmpty(p.Comprador)) { <span>👤 @p.Comprador</span> }
-                        @if (p.NumeroVenta.HasValue) { <span style="font-family:monospace;">🧾 @p.NumeroVenta.Value</span> }
-                        @if (p.Entregado) { <span style="color:#15803d; font-weight:700;">✔ Entregado</span> }
-                    </div>
-                    <a href="@mapsUrl" target="_blank" rel="noopener" style="display:block; margin-top:0.5rem; text-align:center; background:#0891b2; color:white; padding:0.55rem; border-radius:8px; font-size:0.9rem; font-weight:700; text-decoration:none;">🧭 Cómo llegar</a>
-                </div>
-            }
-        }
+@* ─── LISTA UNIFICADA en orden de la ruta del mapa — 2026-07-28 ─── *@
+            var me1Pend = me1Pedidos.Where(m => !m.YaEntregada).ToList();
+            var alqPend = alqReservas.Where(a => !a.Entregado || a.ParaRetiro).ToList();
+            var ventaPend = pedidos.Where(p => !p.YaEntregada).ToList();
 
-@* ─── ME1 (MercadoLibre) — 2026-06-17 ─── *@
-        var me1Pendientes = me1Pedidos.Where(m => !m.YaEntregada).ToList();
-        @if (me1Pendientes.Count > 0)
-        {
-            <div class="mp-section-title">📦 Pedidos MercadoLibre <span class="badge" style="background:#f59e0b;">@me1Pendientes.Count</span></div>
-            <div style="font-size:0.72rem; color:#92400e; margin:0 0 0.5rem; padding:0.35rem 0.55rem; background:#fef3c7; border-left:3px solid #f59e0b; border-radius:6px;">
-                ⚠ Al marcar entregado, MeLi recibe la confirmación al instante. NO se puede deshacer.
-            </div>
-            @foreach (var m in me1Pendientes)
-            {
-                var dir = string.IsNullOrWhiteSpace(m.AddressLine) ? "—" : m.AddressLine;
-                var loc = string.Join(" · ", new[] { m.Neighborhood, m.City, m.State, m.ZipCode }.Where(x => !string.IsNullOrWhiteSpace(x)));
-                <div class="mp-card pendiente" style="background:white; border:2px solid #f59e0b; border-left:6px solid #f59e0b; margin-bottom:0.7rem; padding:0.7rem;">
+            var ventaById = new Dictionary<int, PedidoDto>();
+            foreach (var pp in ventaPend) ventaById[pp.Id] = pp;
+            var me1ByShip = new Dictionary<long, Me1PedidoDto>();
+            foreach (var mm2 in me1Pend) me1ByShip[mm2.MeliShipmentId] = mm2;
+            var alqById = new Dictionary<int, AlqReservaItem>();
+            foreach (var aa2 in alqPend) alqById[aa2.Id] = aa2;
+
+            var vistasVenta = new HashSet<int>();
+            var vistasMe1 = new HashSet<long>();
+            var vistasAlq = new HashSet<int>();
+
+            // Tarjetas reutilizables (las mismas que ya usaban las secciones, con sus botones).
+            RenderFragment<Me1PedidoDto> me1Card = m =>
+                @<div class="mp-card pendiente" style="background:white; border:2px solid #f59e0b; border-left:6px solid #f59e0b; margin-bottom:0.7rem; padding:0.7rem;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
                         <span style="background:#fef3c7; color:#92400e; font-size:0.72rem; font-weight:700; padding:0.15rem 0.5rem; border-radius:4px;">📦 MeLi</span>
                         <span style="font-size:0.7rem; color:#6b7280;">Venta #@(m.MeliOrderId?.ToString() ?? "—")</span>
                     </div>
                     <div style="font-weight:700; font-size:1.02rem; color:#111827;">@(m.ReceiverName ?? m.BuyerNickname ?? "—")</div>
-                    @if (!string.IsNullOrWhiteSpace(m.BuyerNickname))
-                    {
-                        <div style="font-size:0.75rem; color:#1d4ed8; font-family:monospace;">👤 @m.BuyerNickname</div>
-                    }
-                    @if (!string.IsNullOrWhiteSpace(m.ReceiverPhone))
-                    {
-                        <div style="font-size:0.78rem; color:#374151; margin-top:0.15rem;">📞 <a href="tel:@m.ReceiverPhone" style="color:#1d4ed8; font-weight:600;">@m.ReceiverPhone</a></div>
-                    }
+                    @if (!string.IsNullOrWhiteSpace(m.BuyerNickname)) { <div style="font-size:0.75rem; color:#1d4ed8; font-family:monospace;">👤 @m.BuyerNickname</div> }
+                    @if (!string.IsNullOrWhiteSpace(m.ReceiverPhone)) { <div style="font-size:0.78rem; color:#374151; margin-top:0.15rem;">📞 <a href="tel:@m.ReceiverPhone" style="color:#1d4ed8; font-weight:600;">@m.ReceiverPhone</a></div> }
                     <div style="margin-top:0.5rem; padding:0.5rem 0.6rem; background:#f9fafb; border-radius:6px; font-size:0.85rem;">
-                        <div style="font-size:0.68rem; color:#6b7280; font-weight:600; text-transform:uppercase; letter-spacing:0.03em;">Dirección</div>
-                        <div style="font-weight:600; color:#111827;">@dir</div>
-                        @if (!string.IsNullOrEmpty(loc))
-                        {
-                            <div style="font-size:0.78rem; color:#6b7280;">@loc</div>
-                        }
+                        <div style="font-size:0.68rem; color:#6b7280; font-weight:600; text-transform:uppercase;">Dirección</div>
+                        <div style="font-weight:600; color:#111827;">@(string.IsNullOrWhiteSpace(m.AddressLine) ? "—" : m.AddressLine)</div>
+                        <div style="font-size:0.78rem; color:#6b7280;">@(string.Join(" · ", new[] { m.Neighborhood, m.City, m.State, m.ZipCode }.Where(x => !string.IsNullOrWhiteSpace(x))))</div>
                     </div>
-                    @if (!string.IsNullOrWhiteSpace(m.ItemsSummary))
-                    {
-                        <div style="margin-top:0.45rem; font-size:0.82rem; color:#374151;">
-                            <span style="font-weight:600;">Productos:</span> @m.ItemsSummary
-                        </div>
-                    }
-                    <div style="display:flex; gap:0.5rem; margin-top:0.35rem; font-size:0.72rem; color:#6b7280;">
-                        @if (!string.IsNullOrWhiteSpace(m.TrackingNumber))
-                        {
-                            <span><b>Tracking:</b> @m.TrackingNumber</span>
-                        }
-                        @if (m.OrderTotal.HasValue)
-                        {
-                            <span style="margin-left:auto; color:#111827; font-weight:700;">$@m.OrderTotal.Value.ToString("N0")</span>
-                        }
-                    </div>
-                    <button type="button" class="mp-card-btn mp-card-btn-entregar" style="margin-top:0.7rem; width:100%; padding:0.7rem; font-size:0.95rem;"
-                            @onclick="() => AbrirEntregarMe1(m)">
-                        ✅ Entregué este pedido
-                    </button>
-                </div>
-            }
-        }
+                    @if (!string.IsNullOrWhiteSpace(m.ItemsSummary)) { <div style="margin-top:0.45rem; font-size:0.82rem; color:#374151;"><span style="font-weight:600;">Productos:</span> @m.ItemsSummary</div> }
+                    @if (m.OrderTotal.HasValue) { <div style="margin-top:0.35rem; text-align:right; color:#111827; font-weight:700;">$@m.OrderTotal.Value.ToString("N0")</div> }
+                    <button type="button" class="mp-card-btn mp-card-btn-entregar" style="margin-top:0.7rem; width:100%; padding:0.7rem; font-size:0.95rem;" @onclick="() => AbrirEntregarMe1(m)">✅ Entregué este pedido</button>
+                </div>;
 
-@* ─── ALQUILERES — 2026-06-26 ─── *@
-        // 2026-06-26: muestra los que faltan ENTREGAR + los que ya toca RETIRAR (fecha de retiro
-        // llegó o re-escaneó el QR). El resto de entregados quedan solo abajo en "Entregadas".
-        var alqPendientes = alqReservas.Where(a => !a.Entregado || a.ParaRetiro).ToList();
-        @if (alqPendientes.Count > 0)
-        {
-            <div class="mp-section-title">📦 Alquileres <span class="badge" style="background:#7c3aed; color:white;">@alqPendientes.Count</span></div>
-            @foreach (var a in alqPendientes)
-            {
-                var esRetiro = a.Entregado && !a.Retirado;
-                <div class="mp-card pendiente" style="background:white; border:2px solid @(esRetiro ? "#fdba74" : "#c4b5fd"); border-left:6px solid @(esRetiro ? "#ea580c" : "#7c3aed"); margin-bottom:0.7rem; padding:0.7rem;">
+            RenderFragment<AlqReservaItem> alqCard = a =>
+                @<div class="mp-card pendiente" style="background:white; border:2px solid @(a.Entregado && !a.Retirado ? "#fdba74" : "#c4b5fd"); border-left:6px solid @(a.Entregado && !a.Retirado ? "#ea580c" : "#7c3aed"); margin-bottom:0.7rem; padding:0.7rem;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.3rem;">
                         <span style="background:#ede9fe; color:#5b21b6; font-size:0.72rem; font-weight:700; padding:0.15rem 0.5rem; border-radius:4px;">📦 Alquiler · @a.Numero</span>
-                        @if (esRetiro)
-                        {
-                            <span style="background:#ffedd5; color:#9a3412; font-size:0.7rem; font-weight:800; padding:0.15rem 0.5rem; border-radius:999px;">🔙 PARA RETIRAR</span>
-                        }
-                        else
-                        {
-                            <span style="font-size:0.7rem; color:#6b7280;">@a.Estado</span>
-                        }
+                        @if (a.Entregado && !a.Retirado) { <span style="background:#ffedd5; color:#9a3412; font-size:0.7rem; font-weight:800; padding:0.15rem 0.5rem; border-radius:999px;">🔙 PARA RETIRAR</span> }
+                        else { <span style="font-size:0.7rem; color:#6b7280;">@a.Estado</span> }
                     </div>
                     <div style="font-weight:700; font-size:1.02rem; color:#111827;">@a.ClienteNombre</div>
-                    @if (!string.IsNullOrWhiteSpace(a.ClienteTelefono))
-                    {
-                        <div style="font-size:0.78rem; margin-top:0.15rem;">📞 <a href="tel:@a.ClienteTelefono" style="color:#7c3aed; font-weight:600;">@a.ClienteTelefono</a></div>
-                    }
-                    @if (!string.IsNullOrWhiteSpace(a.Direccion))
-                    {
-                        <div style="margin-top:0.4rem; font-size:0.85rem; color:#374151;">📍 @a.Direccion</div>
-                    }
+                    @if (!string.IsNullOrWhiteSpace(a.ClienteTelefono)) { <div style="font-size:0.78rem; margin-top:0.15rem;">📞 <a href="tel:@a.ClienteTelefono" style="color:#7c3aed; font-weight:600;">@a.ClienteTelefono</a></div> }
+                    @if (!string.IsNullOrWhiteSpace(a.Direccion)) { <div style="margin-top:0.4rem; font-size:0.85rem; color:#374151;">📍 @a.Direccion</div> }
                     @RenderAlqChips(a)
-                    <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
-                        <div style="flex:1; background:#f9fafb; border-radius:6px; padding:0.4rem; text-align:center;">
-                            <div style="font-size:0.62rem; color:#6b7280; text-transform:uppercase; font-weight:700;">Entrega</div>
-                            <div style="font-weight:800;">@a.FechaEntrega.ToString("dd/MM") @(a.Entregado ? "✅" : "")</div>
-                        </div>
-                        <div style="flex:1; background:#f9fafb; border-radius:6px; padding:0.4rem; text-align:center;">
-                            <div style="font-size:0.62rem; color:#6b7280; text-transform:uppercase; font-weight:700;">Retiro</div>
-                            <div style="font-weight:800;">@a.FechaRetiro.ToString("dd/MM") @(a.Retirado ? "✅" : "")</div>
-                        </div>
-                        <div style="flex:1; background:#f0fdf4; border-radius:6px; padding:0.4rem; text-align:center;">
-                            <div style="font-size:0.62rem; color:#6b7280; text-transform:uppercase; font-weight:700;">Saldo</div>
-                            <div style="font-weight:800; color:#16a34a;">$@a.Saldo.ToString("N0")</div>
-                        </div>
-                    </div>
-                    <button type="button" class="mp-card-btn mp-card-btn-entregar" style="margin-top:0.7rem; width:100%; padding:0.7rem; font-size:0.95rem; background:#7c3aed;"
-                            @onclick="() => AbrirAlqModal(a)">
-                        @(a.Entregado ? "🔙 Retirar / cobrar" : "📦 Entregar / cobrar")
-                    </button>
+                    <button type="button" class="mp-card-btn mp-card-btn-entregar" style="margin-top:0.6rem; width:100%; padding:0.7rem; font-size:0.95rem; background:#7c3aed;" @onclick="() => AbrirAlqModal(a)">@(a.Entregado ? "🔙 Retirar / cobrar" : "📦 Entregar / cobrar")</button>
                     <button type="button" class="mp-card-btn-link" @onclick="() => VerComprobanteAlq(a)">📄 Ver comprobante</button>
-                </div>
-            }
-        }
+                </div>;
 
-        @* PENDIENTES — siempre completos, sin filtro de fecha (puede tener pendientes de varios días) *@
-        var pendientes = pedidos.Where(p => !p.YaEntregada).ToList();
-        <div id="mp-pendientes" class="mp-section-title">📦 Pendientes <span class="badge">@pendientes.Count</span></div>
-        @if (pendientes.Count == 0)
-        {
-            <div class="mp-empty" style="background:white; border-radius:12px;">
-                <div style="font-size:2.2rem;">✅</div>
-                <div class="mp-empty-text">No tenés pedidos pendientes.</div>
-                <div style="font-size:0.8rem; color:#9ca3af; margin-top:0.3rem;">Tocá "Escanear QR" para cargar uno.</div>
-            </div>
-        }
-        else
-        {
-            <div style="font-size:0.72rem; color:#6b7280; margin:0 0 0.5rem; padding:0.3rem 0.5rem; background:#f9fafb; border-radius:6px;">
-                💡 Arrastrá el ☰ de la izquierda para acomodar los pedidos en tu orden de visita.
-            </div>
-            <div id="mp-lista-pendientes">
-            @foreach (var p in pendientes)
-            {
-                <div class="mp-card pendiente" data-pid="@p.Id" style="display:flex; gap:0.3rem;">
-                    <div class="mp-drag-handle" title="Arrastrá para mover">☰</div>
-                    <div style="flex:1; min-width:0;">
+            RenderFragment<PedidoDto> ventaCard = p =>
+                @<div class="mp-card pendiente">
                     <div class="mp-card-numero">@p.Numero · @p.Fecha.ToArTime().ToString("dd/MM HH:mm")</div>
                     <div class="mp-card-cliente">@(p.ClienteNombre ?? "Cliente sin nombre")</div>
-                    @if (!string.IsNullOrEmpty(p.ClienteDireccion))
-                    {
-                        <div class="mp-card-dir">📍 @p.ClienteDireccion @(string.IsNullOrEmpty(p.ClienteLocalidad) ? "" : "- " + p.ClienteLocalidad)</div>
-                    }
-                    @* 2026-06-11: chips de contacto + ubicación (estilo Mapeo Flex) *@
+                    @if (!string.IsNullOrEmpty(p.ClienteDireccion)) { <div class="mp-card-dir">📍 @p.ClienteDireccion @(string.IsNullOrEmpty(p.ClienteLocalidad) ? "" : "- " + p.ClienteLocalidad)</div> }
                     @RenderContactoChips(p)
                     <div class="mp-card-total">$ @p.Total.ToString("N2")</div>
-                    @* 2026-06-10: chips de estado — verde si pagado, amarillo si saldo parcial *@
-                    @if (p.Saldo <= 0.01m)
-                    {
-                        <div style="margin: 0.4rem 0 0.2rem; padding: 0.35rem 0.55rem; background: #ecfdf5; border-left: 3px solid #10b981; border-radius: 4px; font-size: 0.8rem; color: #065f46; font-weight: 600;">
-                            ✅ Comprobante pagado
-                        </div>
-                    }
-                    else if (p.Saldo > 0 && p.Saldo < p.Total)
-                    {
-                        <div class="mp-card-saldo-aviso">Saldo pendiente: $ @p.Saldo.ToString("N2")</div>
-                    }
-                    @* 2026-06-10: 2 botones uniformes para todos los pedidos *@
+                    @if (p.Saldo <= 0.01m) { <div style="margin:0.4rem 0 0.2rem; padding:0.35rem 0.55rem; background:#ecfdf5; border-left:3px solid #10b981; border-radius:4px; font-size:0.8rem; color:#065f46; font-weight:600;">✅ Comprobante pagado</div> }
+                    else if (p.Saldo > 0 && p.Saldo < p.Total) { <div class="mp-card-saldo-aviso">Saldo pendiente: $ @p.Saldo.ToString("N2")</div> }
                     <div class="mp-card-row-acciones">
                         <button class="mp-card-btn mp-card-btn-entregar" @onclick="() => AbrirEntregar(p)">✅ Solo Entregué</button>
                         <button class="mp-card-btn mp-card-btn-cobrar" @onclick="() => AbrirCobrar(p)">✅+💰 Entregar y/o Cobrar</button>
                     </div>
-                    @* 2026-06-08: botón para ver el PDF del comprobante (mercadería + dirección + total) *@
-                    @if (p.TienePdf)
-                    {
-                        <button type="button" class="mp-card-btn-link"
-                                @onclick="() => VerComprobante(p)">
-                            📄 Ver comprobante
-                        </button>
-                    }
+                    @if (p.TienePdf) { <button type="button" class="mp-card-btn-link" @onclick="() => VerComprobante(p)">📄 Ver comprobante</button> }
+                </div>;
+
+            RenderFragment<MisPedidosMapeoDto> flexCard = fx =>
+                @<div class="mp-card" style="background:white; border:1px solid #e5e7eb; border-left:6px solid #0891b2; margin-bottom:0.6rem; padding:0.6rem;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:0.4rem;">
+                        <span style="font-weight:700; font-size:1rem; color:#111827; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@(fx.Nombre ?? "Parada")</span>
+                        <span style="background:#dbeafe; color:#1e40af; font-size:0.62rem; font-weight:800; padding:0.05rem 0.35rem; border-radius:4px; flex:0 0 auto;">FLEX (solo ver)</span>
                     </div>
-                </div>
+                    <div style="font-size:0.85rem; color:#374151; margin-top:0.25rem;">@fx.Direccion</div>
+                    @if (!string.IsNullOrEmpty(fx.Localidad)) { <div style="font-size:0.75rem; color:#6b7280;">@fx.Localidad</div> }
+                    <div style="display:flex; gap:0.6rem; margin-top:0.3rem; flex-wrap:wrap; font-size:0.72rem; color:#6b7280;">
+                        @if (!string.IsNullOrEmpty(fx.Comprador)) { <span>👤 @fx.Comprador</span> }
+                        @if (fx.NumeroVenta.HasValue) { <span style="font-family:monospace;">🧾 @fx.NumeroVenta.Value</span> }
+                        @if (fx.Entregado) { <span style="color:#15803d; font-weight:700;">✔ Entregado</span> }
+                    </div>
+                    <a href="@($"https://www.google.com/maps/dir/?api=1&destination={fx.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{fx.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}")" target="_blank" rel="noopener" style="display:block; margin-top:0.5rem; text-align:center; background:#0891b2; color:white; padding:0.55rem; border-radius:8px; font-size:0.9rem; font-weight:700; text-decoration:none;">🧭 Cómo llegar</a>
+                </div>;
+
+            // Entradas EN ORDEN de la ruta del mapa.
+            var entradas = new List<(int orden, string tipo, PedidoDto? venta, Me1PedidoDto? me1, AlqReservaItem? alq, MisPedidosMapeoDto? flex)>();
+            foreach (var st in mapeoRuta)
+            {
+                var orden = st.OrderInRoute ?? 99998;
+                int refInt = int.TryParse(st.OriginRefId, out var ri) ? ri : 0;
+                long refLong = long.TryParse(st.OriginRefId, out var rl) ? rl : 0L;
+                if (st.Origin == "venta_cafe" && ventaById.TryGetValue(refInt, out var pv)) { entradas.Add((orden, "venta", pv, null, null, null)); vistasVenta.Add(refInt); }
+                else if (st.Origin == "me1" && me1ByShip.TryGetValue(refLong, out var m1)) { entradas.Add((orden, "me1", null, m1, null, null)); vistasMe1.Add(refLong); }
+                else if (st.Origin == "alquiler" && alqById.TryGetValue(refInt, out var al)) { entradas.Add((orden, "alq", null, null, al, null)); vistasAlq.Add(refInt); }
+                else if ((st.Origin == "flex" || st.Origin == "manual" || st.Origin == "favorito") && verFlex) { entradas.Add((orden, "flex", null, null, null, st)); }
             }
+            entradas = entradas.OrderBy(e => e.orden).ToList();
+
+            var otrosMe1 = me1Pend.Where(m => !vistasMe1.Contains(m.MeliShipmentId)).ToList();
+            var otrosAlq = alqPend.Where(a => !vistasAlq.Contains(a.Id)).ToList();
+            var otrosVenta = ventaPend.Where(p => !vistasVenta.Contains(p.Id)).ToList();
+            var hayFlexRuta = mapeoRuta.Any(x => x.Origin == "flex");
+            var totalPend = me1Pend.Count + alqPend.Count + ventaPend.Count;
+
+        <div class="mp-section-title" style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+            <span>📋 Mis pedidos <span class="badge">@totalPend</span></span>
+            @if (hayFlexRuta)
+            {
+                <button type="button" @onclick="() => verFlex = !verFlex"
+                        style="margin-left:auto; font-size:0.72rem; font-weight:700; border:1px solid #0891b2; background:@(verFlex ? "#0891b2" : "white"); color:@(verFlex ? "white" : "#0891b2"); padding:0.2rem 0.6rem; border-radius:999px; cursor:pointer;">
+                    @(verFlex ? "Ocultar Flex" : "Ver Flex")
+                </button>
+            }
+        </div>
+        @if (entradas.Count > 0)
+        {
+            <div style="font-size:0.72rem; color:#6b7280; margin:0 0 0.5rem;">💡 En el orden de la ruta que armaste en el mapa.</div>
+        }
+        @foreach (var e in entradas)
+        {
+            <div style="display:flex; gap:0.4rem; align-items:flex-start;">
+                @if (e.orden < 99998)
+                {
+                    <div style="flex:0 0 auto; margin-top:0.55rem; background:#0891b2; color:white; font-weight:800; font-size:0.78rem; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center;">@e.orden</div>
+                }
+                <div style="flex:1; min-width:0;">
+                    @if (e.tipo == "venta") { @ventaCard(e.venta!) }
+                    else if (e.tipo == "me1") { @me1Card(e.me1!) }
+                    else if (e.tipo == "alq") { @alqCard(e.alq!) }
+                    else if (e.tipo == "flex") { @flexCard(e.flex!) }
+                </div>
             </div>
         }
+        @if (otrosMe1.Count + otrosAlq.Count + otrosVenta.Count > 0)
+        {
+            <div class="mp-section-title" style="margin-top:0.9rem;">📍 Otros (no están en la ruta) <span class="badge">@(otrosMe1.Count + otrosAlq.Count + otrosVenta.Count)</span></div>
+            @foreach (var m in otrosMe1) { @me1Card(m) }
+            @foreach (var a in otrosAlq) { @alqCard(a) }
+            @foreach (var p in otrosVenta) { @ventaCard(p) }
+        }
+        @if (totalPend == 0)
+        {
+            <div class="mp-empty" style="background:white; border-radius:12px;">
+                <div style="font-size:2.2rem;">✅</div>
+                <div class="mp-empty-text">No tenés pedidos pendientes.</div>
+            </div>
+        }
+
 
         @* ENTREGADAS — 2026-06-11: el resumen + filtros + arqueo SIEMPRE se ven.
            Solo la LISTA de cards se colapsa para no ocupar pantalla. *@
@@ -923,7 +852,7 @@
     private List<Me1PedidoDto> me1Pedidos = new();
     // 2026-07-27: Ruta del mapa (Flex/paradas) en solo-lectura, en orden
     private List<Web.Models.MisPedidosMapeoDto> mapeoRuta = new();
-    private bool ocultarFlex = false; // filtro "Ver todo / Ocultar Flex"
+    private bool verFlex = false; // filtro "Ver Flex" — los Flex arrancan OCULTOS por default
     // 2026-06-26: Alquileres asignados al repartidor
     private List<AlqReservaItem> alqReservas = new();
     private List<AlqCobroItem> alqCobros = new();

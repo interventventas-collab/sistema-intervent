@@ -889,7 +889,7 @@ public class CafeRepartidorPublicController : ControllerBase
 
     // ── 2026-07-27: Ruta del Mapeo (Flex/paradas) en SOLO-LECTURA para el teléfono del repartidor ──
     public record MisPedidosMapeoDto(
-        int Id, int? OrderInRoute, string Origin,
+        int Id, int? OrderInRoute, string Origin, string? OriginRefId,
         string? Nombre, string Direccion, string? Localidad,
         decimal Latitude, decimal Longitude, string? Telefono,
         string? Comprador, long? NumeroVenta,
@@ -933,7 +933,7 @@ public class CafeRepartidorPublicController : ControllerBase
                 dd = m.DateDelivered;
             }
             return new MisPedidosMapeoDto(
-                s.Id, s.OrderInRoute, s.Origin,
+                s.Id, s.OrderInRoute, s.Origin, s.OriginRefId,
                 s.Alias ?? s.ContactName, s.Direccion, s.Localidad,
                 s.Latitude, s.Longitude, s.Telefono,
                 comprador, numeroVenta, entregado, dd);

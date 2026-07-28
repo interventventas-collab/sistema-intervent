@@ -45,6 +45,7 @@ public class MisPedidosMapeoDto
     public int Id { get; set; }
     public int? OrderInRoute { get; set; }
     public string Origin { get; set; } = "";
+    public string? OriginRefId { get; set; }
     public string? Nombre { get; set; }
     public string Direccion { get; set; } = "";
     public string? Localidad { get; set; }
