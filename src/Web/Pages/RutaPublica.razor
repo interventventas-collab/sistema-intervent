@@ -50,6 +50,16 @@
             </p>
         </div>
 
+        @* Botón para ver TODA la ruta en Google Maps, en orden (punto de partida → 1 → 2 → …).
+           Abre el mapa vivo, listo para navegar. *@
+        @if (RutaCompletaUrl() is { } mapaCompletoUrl)
+        {
+            <a class="ruta-card" href="@mapaCompletoUrl" target="_blank" rel="noopener"
+               style="display:flex; align-items:center; justify-content:center; gap:0.5rem; background:#15803d; color:white; font-size:1.08rem; font-weight:800; text-decoration:none; padding:0.95rem;">
+                🗺 Ver mapa completo (toda la ruta)
+            </a>
+        }
+
         @if (!string.IsNullOrEmpty(route.StartAddress))
         {
             <div class="ruta-card" style="background:#dcfce7; border-left:4px solid #15803d;">
@@ -146,6 +156,31 @@
     protected override async Task OnInitializedAsync()
     {
         await Load();
+    }
+
+    // Arma la URL de Google Maps con TODA la ruta en orden: partida → parada 1 → 2 → … → última.
+    // Usa el formato "path" (/maps/dir/A/B/C/) que no tiene el tope de 10 del formato ?api=1.
+    // Preferimos el TEXTO de la dirección (Google lo respeta mejor que las coordenadas); si no hay
+    // texto, caemos a lat,lng. Devuelve null si no hay al menos dos puntos.
+    private string? RutaCompletaUrl()
+    {
+        if (route is null) return null;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var pts = new List<string>();
+
+        if (route.StartLat.HasValue && route.StartLng.HasValue)
+            pts.Add(Uri.EscapeDataString($"{route.StartLat.Value.ToString(inv)},{route.StartLng.Value.ToString(inv)}"));
+
+        foreach (var s in route.Stops.OrderBy(x => x.OrderInRoute ?? int.MaxValue))
+        {
+            if (!string.IsNullOrWhiteSpace(s.Direccion))
+                pts.Add(Uri.EscapeDataString(s.Direccion.Trim()));
+            else if (s.Latitude != 0 || s.Longitude != 0)
+                pts.Add(Uri.EscapeDataString($"{s.Latitude.ToString(inv)},{s.Longitude.ToString(inv)}"));
+        }
+
+        if (pts.Count < 2) return null;
+        return "https://www.google.com/maps/dir/" + string.Join("/", pts) + "/?travelmode=driving";
     }
 
     private async Task Load()
