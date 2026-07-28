@@ -82,15 +82,14 @@
     int paradasAsignadas = stops?.Count(s => s.AssignedDriverId.HasValue) ?? 0;
 }
 
+@* Todo este bloque de arriba (barra, post-it, referencias, filtros, modos viejos) es del modo "normal".
+   El Mapeo ahora es SIEMPRE pantalla completa, así que NO se muestra: todo vive en la barra negra (dock). *@
+@if (!mapaFullscreen)
+{
 @* ═════════ Header chico (titulo + reset chiquito) ═════════ *@
 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem; gap:0.5rem; flex-wrap:wrap;">
     <h3 style="margin:0;">🗺️ Mapeo — Envíos Flex</h3>
     <div style="display:flex; gap:0.4rem; align-items:center;">
-        <button class="btn" style="font-size:0.75rem; background:#1d4ed8; color:#fff; border:none; padding:0.25rem 0.6rem; font-weight:600;"
-                @onclick="ToggleFullscreen"
-                title="Ver el mapa a pantalla completa, como una app">
-            ⛶ Pantalla completa
-        </button>
         <button class="btn" style="font-size:0.75rem; background:#16a34a; color:#fff; border:none; padding:0.25rem 0.6rem; font-weight:600;"
                 @onclick="() => showScanQr = !showScanQr"
                 title="Mostrar un QR para abrir el escáner en el celular y sumar paradas escaneando etiquetas">
@@ -267,9 +266,10 @@
         </div>
     </div>
 }
+}
 
-<div class="mapeo-layout @(mapaFullscreen ? "mapeo-fullscreen" : "")" style="@(mapaFullscreen && sideCollapsed ? "grid-template-columns: 1fr;" : "")">
-    <div class="mapeo-side" style="@(mapaFullscreen && sideCollapsed ? "display:none;" : "")">
+<div class="mapeo-layout mapeo-fullscreen" style="@(sideCollapsed ? "grid-template-columns: 1fr;" : "")">
+    <div class="mapeo-side" style="@(sideCollapsed ? "display:none;" : "")">
         <div class="mapeo-side-header" style="display:flex; justify-content:space-between; align-items:center;">
             @{
                 // Conteo real (deduplicado): los Flex que ya fueron importados como parada
@@ -790,8 +790,8 @@
         @if (mapaFullscreen)
         {
             <button class="btn" style="position:absolute; top:10px; right:10px; z-index:500; font-size:0.8rem; font-weight:700; background:#111827; color:#fff; border:none; padding:0.4rem 0.8rem; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.3);"
-                    @onclick="ToggleFullscreen" title="Salir de pantalla completa">
-                ✕ Salir de pantalla completa
+                    @onclick="VolverAlSistema" title="Volver al sistema (cierra esta pantalla del mapa)">
+                ← Volver
             </button>
             @* Columna de botones (dock) en el borde izquierdo. Cada uno tiene su cartelito al pasar el cursor. *@
             <div class="mapeo-dock" style="position:absolute; left:8px; top:50%; transform:translateY(-50%); z-index:530;">
@@ -924,6 +924,26 @@
                                     @onclick="@(async () => { showConfigMenu = false; await GuardarSnapshotAhora(); })" disabled="@savingSnapshot">
                                 <span>@(savingSnapshot ? "Guardando..." : "💾 Guardar foto de la ruta actual")</span>
                             </button>
+                            <hr style="margin:0.3rem 0; border:none; border-top:1px solid #f3f4f6;" />
+                            @* Ocultar entregados: antes era un tilde en la barra de arriba; ahora vive acá. *@
+                            <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                                    @onclick="@(async () => { excluirEntregados = !excluirEntregados; await LoadAndRender(); })">
+                                <span>✔ Ocultar entregados</span>
+                                <span style="font-weight:700; color:@(excluirEntregados ? "#16a34a" : "#9ca3af");">@(excluirEntregados ? "SÍ" : "NO")</span>
+                            </button>
+                            @* Empezar desde cero: borra todas las paradas para arrancar el día limpio. *@
+                            <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#b91c1c; border:none; text-align:left;"
+                                    @onclick="@(async () => { showConfigMenu = false; await EmpezarDesdeCero(); })" disabled="@reseteandoTodo">
+                                <span>@(reseteandoTodo ? "Borrando..." : "🆕 Empezar desde cero")</span>
+                            </button>
+                            <hr style="margin:0.3rem 0; border:none; border-top:1px solid #f3f4f6;" />
+                            @* Notas del día: el post-it de antes, ahora dentro de Configuración. *@
+                            <div style="padding:0.3rem 0.6rem;">
+                                <div style="font-size:0.7rem; font-weight:700; color:#854d0e; margin-bottom:0.2rem;">📝 Notas del día</div>
+                                <textarea @bind="notasMapeo" @bind:event="oninput" @onblur="GuardarNotas"
+                                          placeholder="Anotá algo para acordarte (proveedor que llamar, parada especial, etc)…"
+                                          style="width:100%; min-height:52px; resize:vertical; border:1px solid #facc15; background:#fef9c3; border-radius:6px; font-size:0.8rem; color:#422006; font-family:inherit; padding:0.3rem 0.4rem; outline:none;"></textarea>
+                            </div>
                         </div>
                     }
                 </div>
@@ -2685,7 +2705,7 @@
     private bool stepperExpanded = false; // cuando todo está OK, se contrae a 1 línea
     private bool showScanQr = false; // desplegable con el QR para escanear desde el celular
     private bool showScanModal = false; // cartel (modal) con el QR + enlace para escanear desde el celu
-    private bool mapaFullscreen = false; // modo pantalla completa (mapa como app)
+    private bool mapaFullscreen = true; // el Mapeo es SIEMPRE pantalla completa (mapa como app)
     private bool sideCollapsed = false;  // en pantalla completa: panel izquierdo plegado (más mapa)
 
     private async Task ToggleSideCollapsed()
@@ -2698,19 +2718,12 @@
 
     // Cuando se abre desde el menú (pestaña nueva con ?full=1), arranca a pantalla completa:
     // se ve solo el mapa + el listado, ocupando todo. Las herramientas se muestran al Salir.
+    // El Mapeo es siempre pantalla completa (ya no hay modo "normal"). El parámetro ?full queda
+    // por compatibilidad con los enlaces viejos del menú, pero no cambia nada.
     [SupplyParameterFromQuery(Name = "full")] public string? FullParam { get; set; }
-    protected override void OnInitialized()
-    {
-        if (FullParam == "1") mapaFullscreen = true;
-    }
 
-    private async Task ToggleFullscreen()
-    {
-        mapaFullscreen = !mapaFullscreen;
-        StateHasChanged();
-        await Task.Delay(60);                 // dejar que el layout cambie de tamaño
-        try { await JS.InvokeVoidAsync("mapeoFlex.resize"); } catch { }
-    }
+    // "← Volver": sale de la pantalla del mapa y lleva al Dashboard (por si se abrió en la misma pestaña).
+    private void VolverAlSistema() => Navigation.NavigateTo("/");
 
     // "Repartir y optimizar": reparte TODAS las paradas entre los choferes activos (por zona) y le
     // arma a cada uno la mejor ruta según el tránsito. Es la Fase 2 "versión gratis" (cluster + ruta).
