@@ -864,9 +864,9 @@
                 {
                     <div class="mapeo-dock-sep"></div>
                     @* "TODO" = las paradas todavía SIN asignar. Apagá el ojo para ocultarlas y trabajar una zona sola. *@
-                    <div class="mapeo-dock-btn" style="flex-direction:column; gap:1px; background:@(sinAsignarOcultos ? "#9ca3af" : "#eab308"); @(sinAsignarOcultos ? "opacity:0.55;" : "")">
-                        <span style="font-size:0.62rem; font-weight:800; line-height:1; color:#fff;">TODO</span>
-                        <span @onclick="ToggleSinAsignarVisible" style="cursor:pointer; font-size:0.8rem; line-height:1;"
+                    <div class="mapeo-dock-btn" style="flex-direction:column; gap:3px; height:auto; min-height:66px; padding:8px 0; background:@(sinAsignarOcultos ? "#9ca3af" : "#eab308"); @(sinAsignarOcultos ? "opacity:0.55;" : "")">
+                        <span style="font-size:0.72rem; font-weight:800; line-height:1; color:#fff;">TODO</span>
+                        <span @onclick="ToggleSinAsignarVisible" style="cursor:pointer; font-size:1.5rem; line-height:1; padding:4px 12px;"
                               title="@(sinAsignarOcultos ? "Mostrar las paradas sin asignar" : "Ocultar las paradas sin asignar (ver solo las zonas)")">
                             @(sinAsignarOcultos ? "🚫" : "👁")
                         </span>
@@ -875,18 +875,18 @@
                     {
                         var zVisible = !zonasOcultasMapa.Contains(z.DriverId);
                         <div style="position:relative;">
-                            <div class="mapeo-dock-btn" style="flex-direction:column; gap:2px; height:auto; min-height:52px; padding:5px 0; background:@(zVisible ? z.Color : "#9ca3af"); @(zVisible ? "" : "opacity:0.55;")">
-                                <span @onclick="() => FocoZona(z)" style="cursor:pointer; font-size:0.72rem; font-weight:800; line-height:1;"
+                            <div class="mapeo-dock-btn" style="flex-direction:column; gap:4px; height:auto; min-height:96px; padding:9px 0; background:@(zVisible ? z.Color : "#9ca3af"); @(zVisible ? "" : "opacity:0.55;")">
+                                <span @onclick="() => FocoZona(z)" style="cursor:pointer; font-size:0.95rem; font-weight:800; line-height:1; padding:3px 12px;"
                                       title="@($"Zona {z.Numero} · {z.DriverName} · {z.StopIds.Count} envío(s) — tocá para hacer foco en esta zona")">
                                     Z@(z.Numero)
                                 </span>
                                 @* 👤 Cambiar el repartidor de TODA la zona de una (nuevo). *@
                                 <span @onclick="@(() => zonaDriverMenuId = (zonaDriverMenuId == z.Numero ? (int?)null : z.Numero))"
-                                      style="cursor:pointer; font-size:0.8rem; line-height:1;"
+                                      style="cursor:pointer; font-size:1.5rem; line-height:1; padding:4px 12px;"
                                       title="Cambiar el repartidor de toda esta zona">
                                     👤
                                 </span>
-                                <span @onclick="() => ToggleZonaVisible(z)" style="cursor:pointer; font-size:0.8rem; line-height:1;"
+                                <span @onclick="() => ToggleZonaVisible(z)" style="cursor:pointer; font-size:1.5rem; line-height:1; padding:4px 12px;"
                                       title="@(zVisible ? "Ocultar esta zona del mapa" : "Mostrar esta zona en el mapa")">
                                     @(zVisible ? "👁" : "🚫")
                                 </span>
