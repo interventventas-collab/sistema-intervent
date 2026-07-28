@@ -452,6 +452,10 @@
                                 <td>@v.Fecha.ToString("dd/MM/yyyy")</td>
                                 <td style="line-height: 1.1; position: relative;" class="cell-cliente-hover">
                                     <strong>@(v.ClienteNombre ?? "—")</strong>@if (v.ClienteCodigoInterno.HasValue) {<span style="color:#6b7280; font-weight:600; margin-left:0.3rem; font-size:0.85rem;">(#@v.ClienteCodigoInterno.Value)</span>}@if (!string.IsNullOrWhiteSpace(v.ClienteRazonSocial) && !string.Equals(v.ClienteRazonSocial, v.ClienteNombre, StringComparison.OrdinalIgnoreCase)) {<span style="color:#6b7280; margin-left:0.4rem; font-size:0.82rem;">· @v.ClienteRazonSocial</span>}
+                                    @if (!string.IsNullOrWhiteSpace(v.ClienteCuit))
+                                    {
+                                        <div style="font-size: 0.82rem; color: #6b7280; margin-top: 0.05rem;">🪪 <span style="font-family: monospace;">@v.ClienteCuit</span></div>
+                                    }
                                     @{
                                         var dir = !string.IsNullOrWhiteSpace(v.ClienteDomicilioEntrega) ? v.ClienteDomicilioEntrega : v.ClienteDireccion;
                                     }
