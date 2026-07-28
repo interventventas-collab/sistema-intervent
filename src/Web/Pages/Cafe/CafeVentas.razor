@@ -8,6 +8,7 @@
 @inject OperatorService Operator
 @inject NuevaVentaSignal NuevaVentaSignal
 @inject NavigationManager Navigation
+@inject CpService CpService
 
 <style>
     /* Tooltip en la celda Cliente: detalle del comprobante al hacer hover. */
@@ -1404,12 +1405,17 @@
                             }
                             else
                             {
-                                <input id="nv-cliente" class="form-input" @bind="clienteSearch" @bind:event="oninput" @bind:after="() => clienteHighlight = 0"
-                                       @ref="clienteInputRef"
-                                       @onfocus="() => clienteSearchOpen = true"
-                                       @onkeydown="OnKeyDownCliente"
-                                       autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-                                       placeholder="🔍 Buscar por código, nombre, CUIT, tel, email, dirección, localidad, CP… (Enter para seguir)" />
+                                <div style="display:flex; gap:0.3rem; align-items:stretch;">
+                                    <input id="nv-cliente" class="form-input" style="flex:1; min-width:0;" @bind="clienteSearch" @bind:event="oninput" @bind:after="() => clienteHighlight = 0"
+                                           @ref="clienteInputRef"
+                                           @onfocus="() => clienteSearchOpen = true"
+                                           @onkeydown="OnKeyDownCliente"
+                                           autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                                           placeholder="🔍 Buscar por código, nombre, CUIT, tel, email, dirección, localidad, CP… (Enter para seguir)" />
+                                    <button type="button" class="btn btn-primary" title="Cargar un cliente nuevo sin salir de la venta"
+                                            style="flex:0 0 auto; white-space:nowrap; background:#16a34a; border-color:#15803d; font-size:0.8rem; padding:0.35rem 0.7rem;"
+                                            @onclick="() => AbrirModalNuevoCliente(clienteSearch)">➕ Nuevo</button>
+                                </div>
                                 @if (clienteSearchOpen && !string.IsNullOrWhiteSpace(clienteSearch))
                                 {
                                     var matches = ClientesMatching(clienteSearch).Take(20).ToList();
@@ -1419,8 +1425,8 @@
                                             @* 2026-06-18: si no hay resultados, ofrecer crear el cliente con lo tipeado como nombre. *@
                                             <div style="padding: 0.7rem 0.9rem; background: #fef3c7; border-left: 3px solid #f59e0b; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap;">
                                                 <div style="font-size: 0.85rem; color: #78350f;">😕 Sin resultados para "<strong>@clienteSearch</strong>"</div>
-                                                <button class="btn btn-primary" type="button" style="background: #d97706; border-color: #b45309; font-size: 0.82rem; padding: 0.35rem 0.7rem; display: inline-flex; align-items: center; gap: 0.3rem;"
-                                                        @onclick="() => AbrirCrearClienteVentana(clienteSearch)">
+                                                <button class="btn btn-primary" type="button" style="background: #16a34a; border-color: #15803d; font-size: 0.82rem; padding: 0.35rem 0.7rem; display: inline-flex; align-items: center; gap: 0.3rem;"
+                                                        @onclick="() => AbrirModalNuevoCliente(clienteSearch)">
                                                     ➕ Crear cliente nuevo
                                                 </button>
                                             </div>
@@ -3916,6 +3922,181 @@
     </div>
 }
 
+@* ═══════════════ Modal: crear cliente nuevo SIN salir de la venta (2026-07-28) ═══════════════ *@
+@* Reemplaza la vieja ventana-popup del navegador: acá se crea el cliente REAL (POST /api/cafe/clientes)
+   y al guardar queda elegido automáticamente en la venta, sin recargar ni salir de la pantalla. *@
+@if (showNuevoClienteModal)
+{
+    <div class="modal-overlay" style="z-index: 9700 !important; background: rgba(0,0,0,0.35);">
+        <div class="modal-card" @onclick:stopPropagation="true"
+             style="max-width: min(880px, 96vw); width: 96vw; max-height: 94vh; display: flex; flex-direction: column;">
+            <div class="modal-header" style="background:#16a34a; color:white;">
+                <h3 style="margin:0; font-size:1.05rem;">👤 Cargar cliente nuevo</h3>
+                <button class="btn-close" @onclick="CerrarModalNuevoCliente" style="color:white;">&times;</button>
+            </div>
+            <div class="modal-body" style="overflow-y:auto; padding:1rem 1.1rem; background:#f8fafc;">
+                @if (!string.IsNullOrEmpty(ncError))
+                {
+                    <div style="background:#fee2e2; border:1px solid #ef4444; color:#991b1b; padding:0.5rem 0.8rem; border-radius:6px; margin-bottom:0.8rem; font-size:0.85rem;">@ncError</div>
+                }
+
+                @* ── Código interno (opcional, se puede auto-asignar) ── *@
+                <div style="background:white; border:1px solid #e2e8f0; border-radius:8px; padding:0.8rem 1rem; margin-bottom:1rem; display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+                    <span style="background:#fef3c7; color:#92400e; font-size:0.78rem; padding:0.28rem 0.7rem; border-radius:6px; font-weight:700;">#️⃣ Código interno</span>
+                    @if (ncCodigoInterno.HasValue)
+                    {
+                        <span style="font-family:monospace; font-weight:700; font-size:1.1rem; color:#1d4ed8;">#@ncCodigoInterno</span>
+                        <button type="button" class="btn btn-secondary" style="font-size:0.75rem; padding:0.25rem 0.6rem;" @onclick="() => ncCodigoInterno = null">Quitar</button>
+                    }
+                    else
+                    {
+                        <span style="font-size:0.9rem; color:#6b7280; font-style:italic;">— sin asignar —</span>
+                        <button type="button" class="btn btn-primary" style="font-size:0.8rem; padding:0.35rem 0.8rem;" disabled="@ncAsignandoCodigo" @onclick="NcAsignarCodigoInterno">
+                            @(ncAsignandoCodigo ? "⏳..." : "🎯 Asignar automático")
+                        </button>
+                        <span style="font-size:0.75rem; color:#6b7280;">(opcional — también se puede dejar sin código)</span>
+                    }
+                </div>
+
+                @* ── Sección 1: datos comerciales ── *@
+                <div style="background:white; border:1px solid #e2e8f0; border-radius:8px; padding:1rem 1.1rem; margin-bottom:1rem;">
+                    <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:0.9rem; padding-bottom:0.6rem; border-bottom:1px solid #e2e8f0;">
+                        <span style="background:#ede9fe; color:#6d28d9; font-size:0.78rem; padding:0.28rem 0.7rem; border-radius:6px; font-weight:700;">🧑‍💼 1 · Datos comerciales</span>
+                        <span style="font-size:0.78rem; color:#6b7280;">los cargás vos</span>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:2;">
+                            <label class="form-label">Nombre fantasía *</label>
+                            <input class="form-input" @bind="ncNombre" placeholder="Ej: Bar Don Pepe" @ref="ncNombreRef" />
+                            <p style="font-size:0.7rem; color:#6b7280; margin:0.2rem 0 0;">Nombre comercial / cómo lo conocés.</p>
+                        </div>
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label">Tipo *</label>
+                            <select class="form-input" @bind="ncTipo">
+                                <option value="BAR">🍺 BAR</option>
+                                <option value="OTRO">🏢 Comercial</option>
+                            </select>
+                            <p style="font-size:0.7rem; color:#6b7280; margin:0.2rem 0 0;">Define qué descuento aplica.</p>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label">Teléfono / WhatsApp</label>
+                            <input class="form-input" @bind="ncTelefono" placeholder="Ej: 5491141234567" />
+                        </div>
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label">Teléfono 2</label>
+                            <input class="form-input" @bind="ncTelefono2" placeholder="Alternativo (opcional)" />
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label">Email</label>
+                            <input class="form-input" type="email" @bind="ncEmail" placeholder="email@ejemplo.com" />
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Domicilio de entrega</label>
+                        <input class="form-input" @bind="ncDomicilioEntrega" placeholder="Dónde se entregan los pedidos (si difiere del fiscal)" />
+                        <p style="font-size:0.7rem; color:#6b7280; margin:0.2rem 0 0;">Si está vacío, se usa la dirección fiscal.</p>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Entre calles</label>
+                        <input class="form-input" @bind="ncEntreCalles" placeholder="Ej: entre Larroque y Beruti (referencia para la entrega)" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Notas internas</label>
+                        <textarea class="form-input" @bind="ncNotas" rows="2" placeholder="Notas que solo ves vos (no aparecen en comprobante)"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Comentarios para comprobante</label>
+                        <textarea class="form-input" @bind="ncComentariosComprobante" rows="2" placeholder="Ej: Entregar antes de las 11 hs · Solicitar firma"></textarea>
+                        <p style="font-size:0.7rem; color:#6b7280; margin:0.2rem 0 0;">Aparecen en TODOS los comprobantes de este cliente.</p>
+                    </div>
+                    <div style="background:#eff6ff; border:1px solid #3b82f6; border-radius:6px; padding:0.6rem 0.8rem; margin-top:0.5rem;">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label" style="font-size:0.78rem; color:#1e40af;">🗺 Enlace Google Maps (corto)</label>
+                            <input class="form-input" @bind="ncMapeoLink" placeholder="https://maps.app.goo.gl/..." />
+                            <p style="font-size:0.7rem; color:#6b7280; margin:0.2rem 0 0;">Pegá el enlace corto de la ubicación. Al guardar se extraen las coordenadas para el mapa.</p>
+                        </div>
+                    </div>
+                    <div class="form-group" style="padding:0.6rem; background:#eff6ff; border-left:3px solid #2563eb; border-radius:4px; margin-top:0.8rem; margin-bottom:0;">
+                        <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; font-weight:600;">
+                            <input type="checkbox" @bind="ncSolicitarFirmaEntrega" style="width:18px; height:18px;" />
+                            <span>📝 Pedir firma al receptor en cada entrega</span>
+                        </label>
+                    </div>
+                </div>
+
+                @* ── Sección 2: datos fiscales (ARCA) ── *@
+                <div style="background:white; border:1px solid #e2e8f0; border-radius:8px; padding:1rem 1.1rem;">
+                    <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:0.9rem; padding-bottom:0.6rem; border-bottom:1px solid #e2e8f0;">
+                        <span style="background:#dbeafe; color:#1e40af; font-size:0.78rem; padding:0.28rem 0.7rem; border-radius:6px; font-weight:700;">📋 2 · Datos fiscales</span>
+                        <span style="font-size:0.78rem; color:#6b7280;">cargá el CUIT y apretá 🔍 ARCA para autocompletar</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">CUIT / DNI</label>
+                        <div style="display:flex; gap:0.4rem; align-items:stretch;">
+                            <input class="form-input" @bind="ncCuit" placeholder="Ej: 30123456789" style="flex:1 1 auto; min-width:0;" />
+                            <button type="button" class="btn btn-secondary" @onclick="NcBuscarPorCuit" disabled="@ncBuscandoCuit"
+                                    style="flex:0 0 auto; white-space:nowrap; font-size:0.85rem; padding:0.45rem 0.9rem;">
+                                @if (ncBuscandoCuit) { <span>⏳</span> } else { <span>🔍 ARCA</span> }
+                            </button>
+                        </div>
+                        <p style="font-size:0.7rem; color:#6b7280; margin:0.2rem 0 0;">CUIT (11 díg.) → completa Razón Social, Dirección, CP, Localidad, Provincia y Condición IVA.</p>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Razón social (legal)</label>
+                        <input class="form-input" @bind="ncRazonSocial" placeholder="Ej: PEPITO Y CIA. S.A." />
+                        <p style="font-size:0.7rem; color:#6b7280; margin:0.2rem 0 0;">Si está vacío, se usa el nombre fantasía.</p>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Dirección fiscal</label>
+                        <input class="form-input" @bind="ncDireccion" placeholder="Calle, número, barrio..." />
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label">CP</label>
+                            <input class="form-input" value="@ncCp" @oninput="@(e => NcOnCpInput(e.Value?.ToString()))" maxlength="4" placeholder="1900" />
+                        </div>
+                        <div class="form-group" style="flex:2;">
+                            <label class="form-label">Localidad</label>
+                            <input class="form-input" list="nc-datalist-localidades" @bind="ncLocalidad" @bind:event="oninput" placeholder="Ej: La Plata" />
+                            <datalist id="nc-datalist-localidades">
+                                @foreach (var loc in ncLocalidadesSugeridas) { <option value="@loc"></option> }
+                            </datalist>
+                        </div>
+                        <div class="form-group" style="flex:2;">
+                            <label class="form-label">Provincia</label>
+                            <input class="form-input" list="nc-datalist-provincias" value="@ncCiudad" @oninput="@(e => NcOnProvinciaInput(e.Value?.ToString()))" placeholder="Ej: Buenos Aires" />
+                            <datalist id="nc-datalist-provincias">
+                                @foreach (var p in ncProvincias) { <option value="@p"></option> }
+                            </datalist>
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label class="form-label">Condición frente al IVA</label>
+                        <select class="form-input" @bind="ncCondicionIvaDefault">
+                            <option value="">— Sin especificar —</option>
+                            <option value="RI">Responsable Inscripto</option>
+                            <option value="MO">Monotributo</option>
+                            <option value="EX">Exento</option>
+                            <option value="CF">Consumidor Final</option>
+                        </select>
+                        <p style="font-size:0.7rem; color:#6b7280; margin:0.2rem 0 0;">Define si la factura es A o B.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:0.6rem;">
+                <button class="btn btn-secondary" @onclick="CerrarModalNuevoCliente" disabled="@guardandoNc">Cancelar</button>
+                <button class="btn btn-primary" style="background:#16a34a; border-color:#16a34a;" @onclick="GuardarNuevoCliente" disabled="@guardandoNc">
+                    @(guardandoNc ? "Guardando..." : "✓ Crear y usar en la venta")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     // 2026-06-06: estado del modal de cobro ocasional (venta sin cliente del catálogo)
     private CafeVentaDto? cobroOcasionalVenta;
@@ -4395,6 +4576,192 @@
     private string clienteSearch = "";
     private bool clienteSearchOpen;
     private string formClienteTipo = "OTRO";
+
+    // ═══ Modal "Cargar cliente nuevo" SIN salir de la venta (2026-07-28) ═══
+    // Reemplaza la vieja ventana-popup del navegador. Crea el cliente REAL con POST /api/cafe/clientes
+    // y al guardar lo deja seleccionado en la venta.
+    private bool showNuevoClienteModal;
+    private bool guardandoNc;
+    private bool ncBuscandoCuit;
+    private bool ncAsignandoCodigo;
+    private string? ncError;
+    private ElementReference ncNombreRef;
+    private string ncNombre = "", ncTipo = "OTRO", ncCuit = "", ncTelefono = "", ncTelefono2 = "";
+    private string ncEmail = "", ncDireccion = "", ncDomicilioEntrega = "", ncEntreCalles = "";
+    private string ncNotas = "", ncComentariosComprobante = "", ncMapeoLink = "";
+    private string ncRazonSocial = "", ncLocalidad = "", ncCiudad = "", ncCp = "", ncCondicionIvaDefault = "";
+    private bool ncSolicitarFirmaEntrega;
+    private int? ncCodigoInterno;
+    private List<string> ncProvincias = new();
+    private List<string> ncLocalidadesSugeridas = new();
+
+    private async Task AbrirModalNuevoCliente(string nombreInicial)
+    {
+        // reset del formulario
+        ncError = null;
+        ncNombre = (nombreInicial ?? "").Trim();
+        ncTipo = "OTRO"; ncCuit = ""; ncTelefono = ""; ncTelefono2 = ""; ncEmail = "";
+        ncDireccion = ""; ncDomicilioEntrega = ""; ncEntreCalles = "";
+        ncNotas = ""; ncComentariosComprobante = ""; ncMapeoLink = "";
+        ncRazonSocial = ""; ncLocalidad = ""; ncCiudad = ""; ncCp = ""; ncCondicionIvaDefault = "";
+        ncSolicitarFirmaEntrega = false; ncCodigoInterno = null;
+        ncLocalidadesSugeridas = new();
+        showNuevoClienteModal = true;
+        clienteSearchOpen = false;
+        StateHasChanged();
+        // cargar provincias para el datalist (cacheado en CpService)
+        try { if (ncProvincias.Count == 0) ncProvincias = await CpService.GetProvinciasAsync(); } catch { }
+        try { await ncNombreRef.FocusAsync(); } catch { }
+    }
+
+    private void CerrarModalNuevoCliente()
+    {
+        showNuevoClienteModal = false;
+        guardandoNc = false;
+        ncError = null;
+    }
+
+    private async Task NcOnCpInput(string? value)
+    {
+        var v = (value ?? "").Trim();
+        if (v.Length > 4) v = v.Substring(0, 4);
+        ncCp = v;
+        if (v.Length == 4 && v.All(char.IsDigit))
+        {
+            var hit = await CpService.LookupAsync(v);
+            if (hit is not null)
+            {
+                ncLocalidad = hit.l;
+                ncCiudad = hit.p;
+                ncLocalidadesSugeridas = await CpService.GetLocalidadesAsync(hit.p);
+            }
+        }
+    }
+
+    private async Task NcOnProvinciaInput(string? value)
+    {
+        ncCiudad = (value ?? "").Trim();
+        ncLocalidadesSugeridas = await CpService.GetLocalidadesAsync(ncCiudad);
+    }
+
+    private async Task NcAsignarCodigoInterno()
+    {
+        ncAsignandoCodigo = true;
+        try
+        {
+            var next = await Api.GetNextCodigoInternoAsync();
+            if (next.HasValue) { ncCodigoInterno = next.Value; ToastService.Success($"Código interno pre-asignado: {next.Value}"); }
+            else ToastService.Error("No se pudo obtener el próximo código");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { ncAsignandoCodigo = false; }
+    }
+
+    private async Task NcBuscarPorCuit()
+    {
+        var clean = new string((ncCuit ?? "").Where(char.IsDigit).ToArray());
+        if (clean.Length != 11) { ToastService.Error("El CUIT debe tener 11 dígitos."); return; }
+        ncBuscandoCuit = true;
+        StateHasChanged();
+        try
+        {
+            var padron = await Api.ConsultarPadronArcaAsync(clean);
+            if (padron is not null && padron.Found)
+            {
+                if (!string.IsNullOrWhiteSpace(padron.RazonSocial))
+                {
+                    ncRazonSocial = padron.RazonSocial!.Trim();
+                    if (string.IsNullOrWhiteSpace(ncNombre)) ncNombre = padron.RazonSocial!.Trim();
+                }
+                if (!string.IsNullOrWhiteSpace(padron.Direccion)) ncDireccion = padron.Direccion!.Trim();
+                if (!string.IsNullOrWhiteSpace(padron.CodPostal)) ncCp = padron.CodPostal!.Trim();
+                if (!string.IsNullOrWhiteSpace(padron.Localidad)) ncLocalidad = padron.Localidad!.Trim();
+                if (!string.IsNullOrWhiteSpace(padron.Provincia)) ncCiudad = padron.Provincia!.Trim();
+                if (!string.IsNullOrWhiteSpace(padron.CondicionIva)) ncCondicionIvaDefault = padron.CondicionIva!;
+                ToastService.Success($"Padrón ARCA: {padron.RazonSocial}");
+                return;
+            }
+            var fallback = await Api.LookupCuitAsync(clean);
+            if (fallback is null || !fallback.Found)
+            {
+                ToastService.Error(padron?.Error ?? fallback?.Error ?? "No se encontraron datos para ese CUIT.");
+                return;
+            }
+            if (!string.IsNullOrWhiteSpace(fallback.Name))
+            {
+                ncRazonSocial = fallback.Name!.Trim();
+                if (string.IsNullOrWhiteSpace(ncNombre)) ncNombre = fallback.Name!.Trim();
+            }
+            var ivaFallback = NcMapearIvaTexto(fallback.IvaCondition);
+            if (ivaFallback is not null) ncCondicionIvaDefault = ivaFallback;
+            ToastService.Success("Datos traídos (parciales).");
+        }
+        catch (Exception ex) { ToastService.Error("Error consultando CUIT: " + ex.Message); }
+        finally { ncBuscandoCuit = false; StateHasChanged(); }
+    }
+
+    private static string? NcMapearIvaTexto(string? texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) return null;
+        var t = texto.Trim().ToUpperInvariant();
+        if (t.Contains("RESPONSABLE INSCRIPTO") || t == "RI") return "RI";
+        if (t.Contains("MONOTRIBUT")) return "MO";
+        if (t.Contains("EXENTO")) return "EX";
+        if (t.Contains("CONSUMIDOR FINAL") || t == "CF") return "CF";
+        return null;
+    }
+
+    private async Task GuardarNuevoCliente()
+    {
+        ncError = null;
+        if (string.IsNullOrWhiteSpace(ncNombre)) { ncError = "El nombre fantasía es obligatorio."; return; }
+        guardandoNc = true;
+        try
+        {
+            var mapeoLinkClean = (ncMapeoLink ?? "").Trim();
+            var creado = await Api.CreateCafeClienteAsync(new CreateCafeClienteRequest
+            {
+                Nombre = ncNombre, RazonSocial = ncRazonSocial, Tipo = ncTipo,
+                Cuit = ncCuit, Telefono = ncTelefono, Telefono2 = ncTelefono2, Email = ncEmail,
+                Direccion = ncDireccion, EntreCalles = ncEntreCalles, DomicilioEntrega = ncDomicilioEntrega,
+                Localidad = ncLocalidad, Ciudad = ncCiudad, Cp = ncCp,
+                CondicionIvaDefault = ncCondicionIvaDefault,
+                Notas = ncNotas, ComentariosComprobante = ncComentariosComprobante,
+                MapeoLink = string.IsNullOrEmpty(mapeoLinkClean) ? null : mapeoLinkClean,
+                CodigoInterno = ncCodigoInterno
+            });
+            if (creado is null) { ncError = "No se pudo crear el cliente."; guardandoNc = false; return; }
+
+            // El flag de firma no va en el Create → update inmediato si está tildado (igual que la pantalla de clientes).
+            if (ncSolicitarFirmaEntrega)
+            {
+                try { await Api.UpdateCafeClienteAsync(creado.Id, new UpdateCafeClienteRequest { SolicitarFirmaEntrega = true }); } catch { }
+            }
+
+            // Refrescar la lista local y dejar el cliente elegido en la venta.
+            var lista = await Api.GetCafeClientesAsync();
+            if (lista is not null) clientes = lista;
+            var actualizado = clientes?.FirstOrDefault(c => c.Id == creado.Id) ?? creado;
+
+            formClienteId = actualizado.Id;
+            formClienteTipo = actualizado.Tipo ?? ncTipo ?? "OTRO";
+            if (!string.IsNullOrWhiteSpace(actualizado.CondicionIvaDefault))
+                formCondicionIva = actualizado.CondicionIvaDefault!;
+            clienteSearch = "";
+            clienteSearchOpen = false;
+
+            showNuevoClienteModal = false;
+            guardandoNc = false;
+            await Cotizar();
+            ToastService.Success($"✓ Cliente creado y elegido para la venta{(actualizado.CodigoInterno.HasValue ? $" (código {actualizado.CodigoInterno})" : "")}");
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            ncError = "Error: " + ex.Message;
+            guardandoNc = false;
+        }
+    }
 
     // Modo "Venta Rápida": cliente ad-hoc (no se elige del catálogo, se cargan datos a mano).
     private bool modoVentaRapida = false;
