@@ -37,6 +37,8 @@ public class MapeoDriverDto
     public string? ShareToken { get; set; }
     // Vínculo al repartidor REAL (Cafe_Repartidores) para que la ruta le aparezca en su teléfono.
     public int? CafeRepartidorId { get; set; }
+    // Token del link fijo del repartidor (/mis-pedidos/{PublicToken}) — para "Ver como repartidores".
+    public string? PublicToken { get; set; }
 }
 
 // Parada del Mapeo en solo-lectura para la pantalla del repartidor (Mis Pedidos).

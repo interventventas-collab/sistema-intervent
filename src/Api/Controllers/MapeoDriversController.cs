@@ -14,7 +14,7 @@ public class MapeoDriversController : ControllerBase
     private readonly AppDbContext _db;
     public MapeoDriversController(AppDbContext db) { _db = db; }
 
-    public record DriverDto(int Id, string Nombre, string? Telefono, string Color, bool IsActive, string? ShareToken, int? CafeRepartidorId);
+    public record DriverDto(int Id, string Nombre, string? Telefono, string Color, bool IsActive, string? ShareToken, int? CafeRepartidorId, string? PublicToken);
     public record CreateDriverRequest(string Nombre, string? Telefono, string? Color, int? CafeRepartidorId);
     public record UpdateDriverRequest(string? Nombre, string? Telefono, string? Color, bool? IsActive, int? CafeRepartidorId);
 
@@ -44,6 +44,13 @@ public class MapeoDriversController : ControllerBase
         int idx = 0;
         foreach (var r in reales)
         {
+            // Aseguramos que el repartidor real tenga PublicToken (link /mis-pedidos/{token}).
+            // Así "Ver como repartidores" siempre tiene un link válido para abrir.
+            if (string.IsNullOrEmpty(r.PublicToken))
+            {
+                r.PublicToken = Guid.NewGuid().ToString("N");
+                changed = true;
+            }
             if (!porRep.TryGetValue(r.Id, out var d))
             {
                 d = new MapeoDriver
@@ -69,8 +76,10 @@ public class MapeoDriversController : ControllerBase
         }
         if (changed) await _db.SaveChangesAsync();
 
+        var tokenPorRep = reales.ToDictionary(r => r.Id, r => r.PublicToken);
         return Ok(result.OrderBy(d => d.Nombre)
-            .Select(d => new DriverDto(d.Id, d.Nombre, d.Telefono, d.Color, d.IsActive, d.ShareToken, d.CafeRepartidorId)));
+            .Select(d => new DriverDto(d.Id, d.Nombre, d.Telefono, d.Color, d.IsActive, d.ShareToken, d.CafeRepartidorId,
+                d.CafeRepartidorId.HasValue && tokenPorRep.TryGetValue(d.CafeRepartidorId.Value, out var pt) ? pt : null)));
     }
 
     [HttpPost("drivers")]
@@ -88,7 +97,7 @@ public class MapeoDriversController : ControllerBase
         };
         _db.MapeoDrivers.Add(d);
         await _db.SaveChangesAsync();
-        return Ok(new DriverDto(d.Id, d.Nombre, d.Telefono, d.Color, d.IsActive, d.ShareToken, d.CafeRepartidorId));
+        return Ok(new DriverDto(d.Id, d.Nombre, d.Telefono, d.Color, d.IsActive, d.ShareToken, d.CafeRepartidorId, null));
     }
 
     [HttpPut("drivers/{id:int}")]
@@ -104,7 +113,7 @@ public class MapeoDriversController : ControllerBase
         if (req.CafeRepartidorId.HasValue) d.CafeRepartidorId = req.CafeRepartidorId.Value > 0 ? req.CafeRepartidorId.Value : null;
         d.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return Ok(new DriverDto(d.Id, d.Nombre, d.Telefono, d.Color, d.IsActive, d.ShareToken, d.CafeRepartidorId));
+        return Ok(new DriverDto(d.Id, d.Nombre, d.Telefono, d.Color, d.IsActive, d.ShareToken, d.CafeRepartidorId, null));
     }
 
     [HttpDelete("drivers/{id:int}")]
