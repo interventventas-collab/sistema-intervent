@@ -1442,6 +1442,43 @@
             });
         };
 
+        // 2026-07-28: mapa embebido de la RUTA del repartidor (dentro de /mis-pedidos).
+        // Usa Leaflet + OpenStreetMap (gratis, sin API key — sirve en la página pública).
+        // Dibuja un globito NUMERADO por parada (en orden) y una línea que las une.
+        window.repartidorRutaMapa = {
+            _map: null,
+            render: function (elId, stops) {
+                if (!window.L) return;
+                var el = document.getElementById(elId);
+                if (!el) return;
+                if (this._map) { try { this._map.remove(); } catch (e) {} this._map = null; }
+                var pts = (stops || []).filter(function (s) { return s && s.lat && s.lng; });
+                if (!pts.length) return;
+                var map = L.map(elId, { zoomControl: true, attributionControl: false });
+                this._map = map;
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 20 }).addTo(map);
+                var latlngs = [];
+                pts.forEach(function (s) {
+                    var ll = [s.lat, s.lng];
+                    latlngs.push(ll);
+                    var icon = L.divIcon({
+                        className: 'rp-ruta-pin',
+                        html: '<div style="width:28px;height:28px;border-radius:50%;background:#0e7490;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:12px;line-height:1;">' + s.n + '</div>',
+                        iconSize: [28, 28], iconAnchor: [14, 14]
+                    });
+                    var m = L.marker(ll, { icon: icon }).addTo(map);
+                    var pop = '';
+                    if (s.label) pop += '<b>' + s.label + '</b>';
+                    if (s.dir) pop += (pop ? '<br>' : '') + s.dir;
+                    if (pop) m.bindPopup('#' + s.n + ' · ' + pop);
+                });
+                if (latlngs.length > 1) L.polyline(latlngs, { color: '#0e7490', weight: 3, opacity: 0.55 }).addTo(map);
+                map.fitBounds(L.latLngBounds(latlngs).pad(0.18));
+                setTimeout(function () { try { map.invalidateSize(); } catch (e) {} }, 200);
+            },
+            destroy: function () { if (this._map) { try { this._map.remove(); } catch (e) {} this._map = null; } }
+        };
+
         // 2026-06-16: Sortable handler para la pantalla de edición de listas custom.
         // El operador arrastra los items de una sección para reordenarlos sin clickear ↑↓ uno por uno.
         window.lcInitSortable = function(containerId, seccionId, dotNetRef) {

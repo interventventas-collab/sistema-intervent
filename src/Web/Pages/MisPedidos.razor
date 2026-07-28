@@ -185,6 +185,19 @@
             </a>
         }
 
+        @* Mapa embebido con los puntos NUMERADOS de la ruta (se ve acá mismo, sin salir). *@
+        @if (TieneRutaMapa)
+        {
+            <button type="button" @onclick="ToggleMapaRuta"
+                    style="display:flex; align-items:center; justify-content:center; gap:0.5rem; width:100%; padding:0.7rem; margin-bottom:0.6rem; background:#0e7490; color:white; border:none; border-radius:12px; font-weight:800; font-size:0.95rem; cursor:pointer;">
+                @(verMapaRuta ? "✕ Ocultar el mapa" : "🗺 Ver el mapa acá (con los números)")
+            </button>
+            @if (verMapaRuta)
+            {
+                <div id="mp-mapa-ruta" style="height:340px; border-radius:12px; overflow:hidden; margin-bottom:0.8rem; border:1px solid #e5e7eb; background:#eef2f5;"></div>
+            }
+        }
+
         @if (escaneando)
         {
             <div @key="@QrScannerId" style="background:white; padding:0.8rem; border-radius:12px; margin-bottom:0.8rem;">
@@ -862,6 +875,18 @@
     // 2026-07-27: Ruta del mapa (Flex/paradas) en solo-lectura, en orden
     private List<Web.Models.MisPedidosMapeoDto> mapeoRuta = new();
 
+    // 2026-07-28: mapa embebido con los puntos numerados (Leaflet, dentro de esta pantalla)
+    private bool verMapaRuta = false;
+    private bool mapaRutaNecesitaRender = false;
+    private bool TieneRutaMapa => mapeoRuta.Any(s => s.Latitude != 0 || s.Longitude != 0);
+
+    private async Task ToggleMapaRuta()
+    {
+        verMapaRuta = !verMapaRuta;
+        if (verMapaRuta) mapaRutaNecesitaRender = true;
+        else { try { await JS.InvokeVoidAsync("repartidorRutaMapa.destroy"); } catch { } }
+    }
+
     // 2026-07-28: arma el link de Google Maps con TODA la ruta en orden (parada 1 → 2 → …).
     // Formato "path" (/maps/dir/A/B/C/) que no tiene el tope de 10 del formato ?api=1.
     // USAMOS COORDENADAS (lat,lng), no el texto de la calle: con texto, Google geocodeaba mal
@@ -982,6 +1007,8 @@
                 mapeoRuta = mp ?? new();
             }
             catch { mapeoRuta = new(); }
+            // Si el mapa embebido está abierto, redibujarlo con la ruta recién traída.
+            if (verMapaRuta) mapaRutaNecesitaRender = true;
             // 2026-06-26: Alquileres asignados al repartidor (mismo token publico).
             try
             {
@@ -1122,6 +1149,25 @@
                 sortableInicializado = true;
             }
             catch { /* JS aún no disponible o lib no cargada */ }
+        }
+
+        // Dibujar/redibujar el mapa embebido con los puntos numerados cuando está a la vista.
+        if (verMapaRuta && mapaRutaNecesitaRender)
+        {
+            mapaRutaNecesitaRender = false;
+            var pts = mapeoRuta
+                .Where(s => s.Latitude != 0 || s.Longitude != 0)
+                .OrderBy(s => s.OrderInRoute ?? int.MaxValue)
+                .Select((s, i) => new
+                {
+                    n = s.OrderInRoute ?? (i + 1),
+                    lat = (double)s.Latitude,
+                    lng = (double)s.Longitude,
+                    label = s.Nombre ?? "",
+                    dir = s.Direccion ?? ""
+                })
+                .ToArray();
+            try { await JS.InvokeVoidAsync("repartidorRutaMapa.render", "mp-mapa-ruta", pts); } catch { }
         }
     }
 
