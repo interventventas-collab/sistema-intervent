@@ -3332,6 +3332,13 @@
                 var enRutaSt = grupoSt is not null && rutaSeleccion.Contains(grupoSt.Key);
                 var btnBgSt = enRutaSt ? "#dc2626" : "#16a34a";
                 var btnTxtSt = enRutaSt ? "✗ Quitar de ruta" : "✓ Sumar a ruta";
+                // 2026-07-29: opciones del selector de repartidor dentro del globito.
+                var driverOpts = new System.Text.StringBuilder();
+                driverOpts.Append($"<option value='0'{(st.AssignedDriverId is null ? " selected" : "")}>— Sin repartidor —</option>");
+                if (drivers != null)
+                    foreach (var dr in drivers.Where(x => x.IsActive).OrderBy(x => x.Nombre))
+                        driverOpts.Append($"<option value='{dr.Id}'{(st.AssignedDriverId == dr.Id ? " selected" : "")}>{System.Net.WebUtility.HtmlEncode(dr.Nombre)}</option>");
+                var driverBorde = string.IsNullOrEmpty(st.AssignedDriverColor) ? "#cbd5e1" : st.AssignedDriverColor!;
                 return (object)new
                 {
                     id = markerId,
@@ -3345,7 +3352,7 @@
                     // Candado: si la parada está desbloqueada, su pin se puede arrastrar para ajustar la ubicación.
                     draggable = paradasDesbloqueadas.Contains(st.Id),
                     stopId = st.Id,
-                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· V{st.AssignedVehicleSlot}</span>" : "")}{(st.AssignedDriverName is null ? "" : $" · {System.Net.WebUtility.HtmlEncode(st.AssignedDriverName)}")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}<br/><button onclick=\"window.mapeoActions.toggleRoute({markerId}); event.stopPropagation();\" style='margin-top:0.3rem; padding:0.2rem 0.5rem; background:{btnBgSt}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxtSt}</button></div>"
+                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· V{st.AssignedVehicleSlot}</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}<div style='margin-top:0.35rem; display:flex; align-items:center; gap:0.25rem;'><span title='Repartidor asignado'>🚚</span><select onchange=\"window.mapeoActions.assignDriver({markerId}, this.value); event.stopPropagation();\" onclick=\"event.stopPropagation();\" style='flex:1; max-width:170px; padding:0.15rem 0.25rem; border:2px solid {driverBorde}; border-radius:4px; font-size:0.72rem; background:white;'>{driverOpts}</select></div><button onclick=\"window.mapeoActions.toggleRoute({markerId}); event.stopPropagation();\" style='margin-top:0.35rem; padding:0.2rem 0.5rem; background:{btnBgSt}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxtSt}</button></div>"
                 };
             }));
         }
@@ -3739,6 +3746,18 @@
         ToggleRutaSeleccion(groupKey);
         StateHasChanged();
         await RenderMap(); // Refresca el mapa para que el aro verde aparezca/desaparezca del marker
+    }
+
+    // 2026-07-29: cambiar/asignar el repartidor desde el <select> del globito del pin.
+    // markerId de un stop viene codificado (-1000 - Id). driverId 0 = sin repartidor.
+    [JSInvokable]
+    public async Task AsignarRepartidorDesdePopup(int markerId, int driverId)
+    {
+        if (markerId > -1000) return; // solo paradas (stops); los shipments crudos no se asignan
+        var stopId = -1000 - markerId;
+        var st = stops?.FirstOrDefault(x => x.Id == stopId);
+        if (st is null) return;
+        await AsignarRepartidor(st, driverId.ToString());
     }
 
     /// <summary>

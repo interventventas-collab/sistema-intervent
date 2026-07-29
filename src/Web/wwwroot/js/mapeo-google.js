@@ -187,6 +187,10 @@ window.mapeoFlex = (function () {
             window.mapeoActions = {
                 toggleRoute: function (markerId) {
                     if (dotNetRef) dotNetRef.invokeMethodAsync('ToggleMarkerInRoute', markerId);
+                },
+                // 2026-07-29: cambiar/asignar el repartidor desde el globito del pin.
+                assignDriver: function (markerId, driverId) {
+                    if (dotNetRef) dotNetRef.invokeMethodAsync('AsignarRepartidorDesdePopup', markerId, parseInt(driverId, 10) || 0);
                 }
             };
             try {
