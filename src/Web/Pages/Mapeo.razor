@@ -618,6 +618,21 @@
                                             </span>
                                         }
                                     </div>
+                                    @* Renglón 3 (solo si hay novedad del repartidor en la parada Flex enlazada): estado + comentario. *@
+                                    @{ var novF = pfC is not null && (!string.Equals(pfC.InternalStatus, "pending", StringComparison.OrdinalIgnoreCase) && EffectiveKey(s) != "entregado" || !string.IsNullOrWhiteSpace(pfC.Notas)); }
+                                    @if (novF)
+                                    {
+                                        <div style="display:flex; align-items:center; gap:0.35rem; margin-top:0.2rem; flex-wrap:wrap;">
+                                            @if (!string.Equals(pfC!.InternalStatus, "pending", StringComparison.OrdinalIgnoreCase) && EffectiveKey(s) != "entregado")
+                                            {
+                                                <span style="@StatusStyle(pfC.InternalStatus) padding:0.05rem 0.4rem; border-radius:999px; font-size:0.62rem; font-weight:800; white-space:nowrap;">@StatusIcon(pfC.InternalStatus) @StatusLabel(pfC.InternalStatus)</span>
+                                            }
+                                            @if (!string.IsNullOrWhiteSpace(pfC!.Notas))
+                                            {
+                                                <span style="font-size:0.66rem; color:#78350f; background:#fef3c7; padding:0.05rem 0.4rem; border-radius:6px;">💬 @pfC.Notas</span>
+                                            }
+                                        </div>
+                                    }
                                 </div>
                             }
                             else
@@ -714,6 +729,15 @@
                                         }
                                     </div>
                                 }
+                                @* Novedad del repartidor en la parada Flex enlazada: estado marcado desde el celular + comentario. *@
+                                @if (pf is not null && !string.Equals(pf.InternalStatus, "pending", StringComparison.OrdinalIgnoreCase) && EffectiveKey(s) != "entregado")
+                                {
+                                    <div style="margin-top:0.25rem;">
+                                        <span style="@StatusStyle(pf.InternalStatus) padding:0.1rem 0.5rem; border-radius:999px; font-size:0.68rem; font-weight:800;">@StatusIcon(pf.InternalStatus) @StatusLabel(pf.InternalStatus)</span>
+                                    </div>
+                                }
+                                @if (pf is not null && !string.IsNullOrWhiteSpace(pf.Notas))
+                                { <div style="font-size:0.72rem; color:#78350f; background:#fef3c7; padding:0.25rem 0.5rem; border-radius:6px; margin-top:0.25rem;">💬 @pf.Notas</div> }
                                 @* Entregado: chip verde compacto; al pincharlo muestra SOLO fecha y hora. *@
                                 @if (EffectiveKey(s) == "entregado")
                                 {
