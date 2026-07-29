@@ -870,6 +870,18 @@
         refreshTimer = new System.Threading.Timer(async _ => await OnTick(), null, 10_000, 10_000);
     }
 
+    // 2026-07-29: registrar el pegado de capturas (Ctrl+V / Win+V) una sola vez, al montar la pantalla.
+    DotNetObjectReference<WhatsAppChat>? _pasteRef;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _pasteRef = DotNetObjectReference.Create(this);
+            try { await JS.InvokeVoidAsync("waPaste.register", _pasteRef); }
+            catch { /* si el JS no cargó, el clip 📎 sigue funcionando igual */ }
+        }
+    }
+
     async Task LoadRespuestas()
     {
         try
@@ -1170,6 +1182,14 @@
         if (file == null) return;
         if (file.Size > MaxUploadBytes) { Toast.Error($"El archivo {file.Name} supera los 16 MB"); return; }
 
+        using var stream = file.OpenReadStream(MaxUploadBytes);
+        await SubirYEnviarAdjunto(stream, file.Name, file.ContentType, $"📎 {file.Name} enviado");
+    }
+
+    // 2026-07-29: helper reusado por el clip 📎 y por el pegado de capturas (Ctrl+V / Win+V).
+    async Task SubirYEnviarAdjunto(System.IO.Stream stream, string fileName, string contentType, string okMsg)
+    {
+        if (selectedNumero == null) { Toast.Warning("Seleccioná primero un chat"); return; }
         uploading = true;
         StateHasChanged();
         try
@@ -1178,21 +1198,34 @@
             var caption = composerText?.Trim();
 
             // 1) Subir al servidor (que devuelve URL publica con token)
-            using var stream = file.OpenReadStream(MaxUploadBytes);
-            var (resp, err) = await Api.UploadTwArchivoAsync(stream, file.Name, file.ContentType);
+            var (resp, err) = await Api.UploadTwArchivoAsync(stream, fileName, contentType);
             if (resp == null) { Toast.Error($"Error subiendo: {err}"); return; }
 
             // 2) Mandar el WhatsApp con la URL publica al numero seleccionado
-            var (ok, sendErr) = await Api.SendTwMediaAsync(selectedNumero, resp.Url, caption, file.Name);
+            var (ok, sendErr) = await Api.SendTwMediaAsync(selectedNumero, resp.Url, caption, fileName);
             if (!ok) { Toast.Error($"Error enviando: {sendErr}"); return; }
 
             composerText = "";
-            Toast.Success($"📎 {file.Name} enviado");
+            Toast.Success(okMsg);
             await LoadMensajes();
             await LoadConversaciones(silent: true);
         }
         catch (Exception ex) { Toast.Error($"Error: {ex.Message}"); }
         finally { uploading = false; StateHasChanged(); }
+    }
+
+    // 2026-07-29: recibe desde JS (wa-paste.js) una captura pegada con Ctrl+V / Win+V y la envía.
+    [Microsoft.JSInterop.JSInvokable]
+    public async Task RecibirImagenPegada(string base64, string fileName, string contentType)
+    {
+        if (selectedNumero == null) { Toast.Warning("Seleccioná primero un chat para pegar la captura"); return; }
+        byte[] bytes;
+        try { bytes = Convert.FromBase64String(base64); }
+        catch { Toast.Error("No se pudo leer la imagen pegada"); return; }
+        if (bytes.Length == 0) return;
+        if (bytes.Length > MaxUploadBytes) { Toast.Error("La captura supera los 16 MB"); return; }
+        using var stream = new System.IO.MemoryStream(bytes);
+        await SubirYEnviarAdjunto(stream, fileName, string.IsNullOrWhiteSpace(contentType) ? "image/png" : contentType, "📷 Captura enviada");
     }
 
     // ===== Adjuntar archivos del servidor (Fase 2) =====
@@ -1449,5 +1482,11 @@
         return $"background:{bg};";
     }
 
-    public void Dispose() => refreshTimer?.Dispose();
+    public void Dispose()
+    {
+        refreshTimer?.Dispose();
+        // Sacar el listener de pegado al salir de la pantalla (evita que Ctrl+V dispare avisos en otras páginas).
+        try { _ = JS.InvokeVoidAsync("waPaste.unregister"); } catch { }
+        _pasteRef?.Dispose();
+    }
 }
