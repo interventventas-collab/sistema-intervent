@@ -778,25 +778,13 @@
         @if (dibujandoZona)
         {
             <div style="position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:600; background:#1d4ed8; color:#fff; border-radius:10px; box-shadow:0 3px 14px rgba(0,0,0,0.35); padding:0.5rem 0.7rem; display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap;">
-                <span style="font-size:0.85rem; font-weight:600;">✏️ Tocá las esquinas de la zona…</span>
+                <span style="font-size:0.85rem; font-weight:600;">✏️ Tocá alrededor de los envíos para marcar la zona — apretá "Terminar zona" para asignarla</span>
                 <button class="btn" style="font-size:0.85rem; font-weight:800; background:#16a34a; color:#fff; border:none; padding:0.35rem 0.8rem; border-radius:8px; cursor:pointer;"
                         @onclick="TerminarZona">✓ Terminar zona</button>
                 <button class="btn" style="font-size:0.85rem; font-weight:700; background:transparent; color:#fff; border:1px solid #fff; padding:0.35rem 0.7rem; border-radius:8px; cursor:pointer;"
                         @onclick="DeshacerUltimoPunto" title="Sacar la última esquina que marcaste">↩ Deshacer punto</button>
                 <button class="btn" style="font-size:0.85rem; font-weight:700; background:transparent; color:#fff; border:1px solid #fff; padding:0.35rem 0.7rem; border-radius:8px; cursor:pointer;"
                         @onclick="CancelarZona">✕ Cancelar</button>
-            </div>
-        }
-        @if (dibujandoLinea)
-        {
-            <div style="position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:600; background:#dc2626; color:#fff; border-radius:10px; box-shadow:0 3px 14px rgba(0,0,0,0.35); padding:0.5rem 0.7rem; display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap;">
-                <span style="font-size:0.85rem; font-weight:600;">✏️ Tocá puntos en el mapa — se van uniendo con una línea…</span>
-                <button class="btn" style="font-size:0.85rem; font-weight:800; background:#16a34a; color:#fff; border:none; padding:0.35rem 0.8rem; border-radius:8px; cursor:pointer;"
-                        @onclick="TerminarLinea">✓ Listo</button>
-                <button class="btn" style="font-size:0.85rem; font-weight:700; background:transparent; color:#fff; border:1px solid #fff; padding:0.35rem 0.7rem; border-radius:8px; cursor:pointer;"
-                        @onclick="DeshacerUltimoPuntoLinea" title="Sacar el último punto que marcaste">↩ Deshacer punto</button>
-                <button class="btn" style="font-size:0.85rem; font-weight:700; background:transparent; color:#fff; border:1px solid #fff; padding:0.35rem 0.7rem; border-radius:8px; cursor:pointer;"
-                        @onclick="BorrarLineas" title="Borrar todas las líneas dibujadas">🧹 Borrar líneas</button>
             </div>
         }
         @if (mapaFullscreen)
@@ -865,11 +853,6 @@
                         </div>
                     }
                 </div>
-                @* Dibujar líneas a mano: tocás puntos en el mapa y se traza una línea de uno al siguiente. *@
-                <button class="mapeo-dock-btn @(dibujandoLinea ? "activo" : "")" @onclick="IniciarDibujoLinea"
-                        title="Dibujar líneas a mano (tocás puntos y se une con una línea)">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="19" r="2"></circle><circle cx="12" cy="8" r="2"></circle><circle cx="19" cy="15" r="2"></circle><line x1="6.6" y1="17.6" x2="10.6" y2="9.6"></line><line x1="13.5" y1="9" x2="17.5" y2="13.5"></line></svg>
-                </button>
                 @* Prender/apagar el tránsito (embotellamientos). Arranca apagado = mapa limpio. Ícono semáforo. *@
                 <button class="mapeo-dock-btn @(traficoOn ? "activo" : "")" @onclick="ToggleTrafico"
                         title="@(traficoOn ? "Tránsito ENCENDIDO — tocá para apagar" : "Ver tránsito (embotellamientos en rojo/amarillo/verde)")">
@@ -2672,7 +2655,6 @@
     private List<int> zoneStopIds = new();
     private bool assigningZone;
     private bool dibujandoZona; // true mientras el usuario marca las esquinas de la zona
-    private bool dibujandoLinea; // true mientras el usuario dibuja líneas a mano (punto a punto)
     private bool showZonasMenu; // desplegable de acciones de zona (anclado al botón 🗺️)
     // Zonas ya creadas en esta sesión (para mostrar los cuadraditos "Zona 1", "Zona 2", ...)
     private record ZonaCreada(int Numero, int DriverId, string DriverName, string Color, List<int> StopIds);
@@ -3309,7 +3291,7 @@
         catch (Exception ex) { ToastService.Error("No se pudo iniciar el dibujo: " + ex.Message); return; }
         dibujandoZona = true;
         StateHasChanged();
-        ToastService.Info("✏️ Tocá las esquinas de la zona en el mapa. Cuando termines, apretá '✓ Terminar zona'.");
+        ToastService.Info("✏️ Tocá alrededor de los envíos: se va dibujando el contorno de la zona. Cuando cierres la vuelta, apretá '✓ Terminar zona' y elegís el repartidor.");
     }
 
     private async Task TerminarZona()
@@ -3323,37 +3305,6 @@
     {
         try { await JS.InvokeVoidAsync("mapeoFlex.cancelDrawZone"); } catch { }
         dibujandoZona = false;
-        StateHasChanged();
-    }
-
-    // ===== LÍNEAS A MANO: tocás puntos en el mapa y se van uniendo con una línea =====
-    private async Task IniciarDibujoLinea()
-    {
-        if (dibujandoLinea) return;
-        showZonasMenu = false;
-        try { await JS.InvokeVoidAsync("mapeoFlex.startDrawLine"); }
-        catch (Exception ex) { ToastService.Error("No se pudo iniciar el dibujo: " + ex.Message); return; }
-        dibujandoLinea = true;
-        StateHasChanged();
-        ToastService.Info("✏️ Tocá puntos en el mapa: se van uniendo con una línea de uno al siguiente.");
-    }
-
-    private async Task DeshacerUltimoPuntoLinea()
-    {
-        try { await JS.InvokeVoidAsync("mapeoFlex.undoLastLinePoint"); } catch { }
-    }
-
-    private async Task TerminarLinea()
-    {
-        try { await JS.InvokeVoidAsync("mapeoFlex.stopDrawLine"); } catch { }
-        dibujandoLinea = false;
-        StateHasChanged();
-    }
-
-    private async Task BorrarLineas()
-    {
-        try { await JS.InvokeVoidAsync("mapeoFlex.clearDrawLines"); } catch { }
-        dibujandoLinea = false;
         StateHasChanged();
     }
 
