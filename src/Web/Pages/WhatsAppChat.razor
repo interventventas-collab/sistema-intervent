@@ -16,13 +16,44 @@
         <span class="wa-tab-top active">💬 Chats</span>
         <a href="/whatsapp/pedidos" class="wa-tab-top">📥 Pedidos y configuración</a>
     </div>
-    <div class="wa-linea-badge @(LineaActivaTieneNumero ? "on" : "")" title="Este es el número de WhatsApp con el que estás trabajando: lo que ve la gente cuando le escribís.">
-        <i class="wa-linea-icon">📱</i>
-        <div class="wa-linea-txt">
-            <span class="wa-linea-label">Línea activa</span>
-            <span class="wa-linea-num">@LineaActivaTexto()</span>
-        </div>
-        <span class="wa-linea-dot @(LineaActivaTieneNumero ? "on" : "")"></span>
+    @* 2026-07-29 (Paso 2): el cartelito ahora es un SELECTOR. Tocándolo cambiás de línea o ves todas.
+       Con una sola línea conectada muestra ese número y avisa que el 2° aparecerá acá. *@
+    <div class="wa-linea-wrap">
+        <button class="wa-linea-badge @(LineaActivaTieneNumero ? "on" : "")" @onclick="@(() => showLineaMenu = !showLineaMenu)"
+                title="Número de WhatsApp que estás viendo. Tocá para cambiar de línea o ver todas.">
+            <i class="wa-linea-icon">📱</i>
+            <div class="wa-linea-txt">
+                <span class="wa-linea-label">Línea</span>
+                <span class="wa-linea-num">@LineaActivaTexto()</span>
+            </div>
+            <span class="wa-linea-dot @(LineaActivaTieneNumero ? "on" : "")"></span>
+            <i class="wa-linea-caret">▾</i>
+        </button>
+        @if (showLineaMenu)
+        {
+            <div class="wa-linea-backdrop" @onclick="@(() => showLineaMenu = false)"></div>
+            <div class="wa-linea-menu">
+                @{ var _lineas = LineasDetectadas(); }
+                @if (_lineas.Count > 1)
+                {
+                    <button class="wa-linea-opt @(filtroLinea=="" ? "sel" : "")" @onclick="@(() => SeleccionarLinea(""))">
+                        <span>📞 Todas las líneas</span>
+                        @if (filtroLinea=="") { <span class="wa-linea-check">✓</span> }
+                    </button>
+                }
+                @foreach (var l in _lineas)
+                {
+                    <button class="wa-linea-opt @(filtroLinea==l.Id ? "sel" : "")" @onclick="@(() => SeleccionarLinea(l.Id))">
+                        <span>📱 @PrettyNumero(l.Numero)</span>
+                        @if (filtroLinea==l.Id) { <span class="wa-linea-check">✓</span> }
+                    </button>
+                }
+                @if (_lineas.Count <= 1)
+                {
+                    <div class="wa-linea-hint">💡 Cuando conectes el 2° número de WhatsApp va a aparecer acá para elegir con cuál trabajar. Ya está todo listo para ese momento.</div>
+                }
+            </div>
+        }
     </div>
 </div>
 
@@ -46,15 +77,13 @@
             <button class="wa-filtro @(filtroRol=="cliente" ? "active" : "")" @onclick='() => filtroRol="cliente"'>🛍️ Clientes</button>
             <button class="wa-filtro @(filtroRol=="sin" ? "active" : "")" @onclick='() => filtroRol="sin"' title="Conversaciones sin contacto asignado">❓ Sin asignar</button>
         </div>
-        @* 2026-07-23 (multi-línea): filtro por número NUESTRO — solo aparece con 2+ líneas conectadas *@
-        @if (LineasDetectadas().Count > 1)
+        @* 2026-07-29 (Paso 2): el filtro por número NUESTRO se movió al selector "Línea" de la barra
+           superior. Cuando hay un filtro de línea puesto, avisamos con un chip para que se note. *@
+        @if (!string.IsNullOrEmpty(filtroLinea) && LineasDetectadas().FirstOrDefault(x => x.Id == filtroLinea) is var lf && lf.Numero != null)
         {
-            <div class="wa-filtros" style="border-top:1px dashed #e5e7eb;">
-                <button class="wa-filtro @(filtroLinea=="" ? "active" : "")" @onclick='() => filtroLinea=""'>📞 Todas las líneas</button>
-                @foreach (var l in LineasDetectadas())
-                {
-                    <button class="wa-filtro @(filtroLinea==l.Id ? "active" : "")" @onclick='() => filtroLinea=l.Id' title="Chats que escriben a este número nuestro">@l.Numero</button>
-                }
+            <div class="wa-linea-activa-chip">
+                📱 Viendo solo: <b>@PrettyNumero(lf.Numero)</b>
+                <button class="wa-linea-activa-x" @onclick='() => filtroLinea=""' title="Ver todas las líneas">×</button>
             </div>
         }
         <div class="wa-conv-list">
@@ -337,6 +366,14 @@
                             </button>
                         }
                     }
+                </div>
+            }
+            @* 2026-07-29 (Paso 2): aviso de por QUÉ número tuyo sale la respuesta (el mismo por el que te
+               escribió el cliente). Solo aparece con 2+ líneas, para no ensuciar cuando hay una sola. *@
+            @if (LineasDetectadas().Count > 1 && SelectedConv()?.LineaNumero is string _lnResp)
+            {
+                <div class="wa-composer-linea" title="La respuesta le llega desde este número tuyo, el mismo por el que el cliente te escribió.">
+                    📱 Le respondés desde <b>@PrettyNumero(_lnResp)</b>
                 </div>
             }
             <div class="wa-composer">
@@ -641,6 +678,23 @@
     .wa-linea-num { font-size: 0.92rem; font-weight: 700; color: #0f172a; }
     .wa-linea-dot { width: 9px; height: 9px; border-radius: 50%; background: #cbd5e1; flex-shrink: 0; }
     .wa-linea-dot.on { background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,0.18); }
+    /* 2026-07-29 (Paso 2): selector de línea desplegable */
+    .wa-linea-wrap { position: relative; }
+    .wa-linea-badge { cursor: pointer; font: inherit; text-align: left; }
+    .wa-linea-badge:hover { border-color: #cbd5e1; }
+    .wa-linea-caret { font-style: normal; font-size: 0.75rem; color: #94a3b8; margin-left: 0.1rem; }
+    .wa-linea-backdrop { position: fixed; inset: 0; z-index: 1200; }
+    .wa-linea-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 1201; background: #fff; border: 1px solid #e6eaf0; border-radius: 14px; box-shadow: 0 12px 32px rgba(15,23,42,0.16); padding: 0.4rem; min-width: 250px; }
+    .wa-linea-opt { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; width: 100%; background: transparent; border: none; border-radius: 10px; padding: 0.55rem 0.7rem; font-size: 0.9rem; font-weight: 600; color: #334155; cursor: pointer; text-align: left; }
+    .wa-linea-opt:hover { background: #f1f5f9; }
+    .wa-linea-opt.sel { background: #eafcf1; color: #15803d; }
+    .wa-linea-check { color: #22c55e; font-weight: 800; }
+    .wa-linea-hint { font-size: 0.78rem; color: #64748b; padding: 0.5rem 0.7rem; line-height: 1.4; }
+    /* chip "viendo solo esta línea" en la barra lateral */
+    .wa-linea-activa-chip { display: flex; align-items: center; gap: 0.4rem; margin: 0.5rem 0.7rem 0; padding: 0.4rem 0.7rem; background: #eafcf1; border: 1px solid #bbf7d0; border-radius: 10px; font-size: 0.8rem; color: #15803d; }
+    .wa-linea-activa-x { margin-left: auto; background: none; border: none; font-size: 1.1rem; line-height: 1; color: #15803d; cursor: pointer; }
+    /* aviso "le respondés desde X" arriba del composer */
+    .wa-composer-linea { margin: 0 1rem; padding: 0.35rem 0.7rem; background: #eafcf1; border: 1px solid #bbf7d0; border-radius: 10px 10px 0 0; font-size: 0.78rem; color: #15803d; }
     .wa-conv-list { flex: 1; overflow-y: auto; }
     .wa-conv-item { display: flex; gap: 0.75rem; padding: 0.7rem 1rem; border-bottom: 1px solid #f3f4f6; cursor: pointer; transition: background 0.1s; border-left: 3px solid transparent; }
     .wa-conv-item:hover { background: #f7faf8; }
@@ -1640,16 +1694,25 @@
         .Select(g => (g.Key, g.First().LineaNumero ?? g.Key))
         .OrderBy(x => x.Item2).ToList();
 
-    // 2026-07-29: texto del cartelito "Línea activa" de la barra superior. Muestra el número que ve la
-    // gente. Con una sola línea = ese número; con varias = aviso (el selector para cambiar es Paso 2);
-    // sin ninguna detectada todavía = etiqueta genérica hasta que entre el primer mensaje.
-    bool LineaActivaTieneNumero => LineasDetectadas().Count == 1;
+    // 2026-07-29: texto del selector "Línea" de la barra superior. Muestra el número que ve la gente.
+    // Con una sola línea = ese número; con varias y filtro puesto = ese número; con varias sin filtro =
+    // "Todas las líneas"; sin ninguna detectada todavía = etiqueta genérica hasta que entre el 1er mensaje.
+    bool showLineaMenu = false;
+    void SeleccionarLinea(string id) { filtroLinea = id; showLineaMenu = false; }
+    bool LineaActivaTieneNumero =>
+        LineasDetectadas().Count == 1
+        || (!string.IsNullOrEmpty(filtroLinea) && LineasDetectadas().Any(x => x.Id == filtroLinea));
     string LineaActivaTexto()
     {
         var ls = LineasDetectadas();
+        if (ls.Count == 0) return "WhatsApp de la empresa";
+        if (!string.IsNullOrEmpty(filtroLinea))
+        {
+            var sel = ls.FirstOrDefault(x => x.Id == filtroLinea);
+            if (sel.Numero != null) return PrettyNumero(sel.Numero);
+        }
         if (ls.Count == 1) return PrettyNumero(ls[0].Numero);
-        if (ls.Count > 1) return $"{ls.Count} líneas conectadas";
-        return "WhatsApp de la empresa";
+        return "Todas las líneas";
     }
 
     string filtroTexto = "";
