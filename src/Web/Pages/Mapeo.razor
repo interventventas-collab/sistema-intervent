@@ -788,6 +788,20 @@
                                             </span>
                                         }
                                     </div>
+                                    @* Renglón 3 (solo si hay novedad del repartidor): estado marcado + comentario que dejó. *@
+                                    @if (!string.Equals(st.InternalStatus, "pending", StringComparison.OrdinalIgnoreCase) || !string.IsNullOrWhiteSpace(st.Notas))
+                                    {
+                                        <div style="display:flex; align-items:center; gap:0.35rem; margin-top:0.2rem; flex-wrap:wrap;">
+                                            @if (!string.Equals(st.InternalStatus, "pending", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                <span style="@StatusStyle(st.InternalStatus) padding:0.05rem 0.4rem; border-radius:999px; font-size:0.62rem; font-weight:800; white-space:nowrap;">@StatusIcon(st.InternalStatus) @StatusLabel(st.InternalStatus)</span>
+                                            }
+                                            @if (!string.IsNullOrWhiteSpace(st.Notas))
+                                            {
+                                                <span style="font-size:0.66rem; color:#78350f; background:#fef3c7; padding:0.05rem 0.4rem; border-radius:6px;">💬 @st.Notas</span>
+                                            }
+                                        </div>
+                                    }
                                 </div>
                             }
                             else
@@ -863,8 +877,15 @@
                                 </div>
                                 @if (!string.IsNullOrEmpty(st.Telefono))
                                 { <div style="font-size:0.72rem; color:#6b7280;">📞 @st.Telefono</div> }
-                                @if (!string.IsNullOrEmpty(st.Notas))
-                                { <div style="font-size:0.7rem; color:#9ca3af;">📝 @st.Notas</div> }
+                                @* Novedad del repartidor: estado que marcó desde su celular + comentario que dejó. *@
+                                @if (!string.Equals(st.InternalStatus, "pending", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <div style="margin-top:0.25rem;">
+                                        <span style="@StatusStyle(st.InternalStatus) padding:0.1rem 0.5rem; border-radius:999px; font-size:0.68rem; font-weight:800;">@StatusIcon(st.InternalStatus) @StatusLabel(st.InternalStatus)</span>
+                                    </div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(st.Notas))
+                                { <div style="font-size:0.72rem; color:#78350f; background:#fef3c7; padding:0.25rem 0.5rem; border-radius:6px; margin-top:0.25rem;">💬 @st.Notas</div> }
                                 @* Sin domicilio en el mapa: cartel + buscar. Con domicilio: opción de corregirlo. *@
                                 @{ var stNombreDom = st.Alias ?? st.ContactName ?? "Parada"; }
                                 @if (st.Latitude == 0 && st.Longitude == 0)
@@ -3539,6 +3560,17 @@
         "reprogramado" => "Reprogramado",
         "cancelled" => "Cancelado",
         _ => "Pendiente"
+    };
+
+    // Emoji para el chip de estado del repartidor en el listado.
+    private static string StatusIcon(string s) => s switch
+    {
+        "en_ruta" => "🚗",
+        "entregado" => "✅",
+        "no_encontrado" => "❌",
+        "reprogramado" => "🔁",
+        "cancelled" => "🚫",
+        _ => "⏳"
     };
 
     private static string StatusStyle(string s)

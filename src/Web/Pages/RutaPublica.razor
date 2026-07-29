@@ -25,6 +25,9 @@
     .ruta-btn-status { background:#f3f4f6; color:#1f2937; border:1px solid #d1d5db; }
     .ruta-btn-status.activo { background:#1d4ed8; color:white; border-color:#1d4ed8; }
     .ruta-num { display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:50%; background:#1d4ed8; color:white; font-weight:700; flex:0 0 auto; }
+    .ruta-comment { margin-top:0.5rem; }
+    .ruta-comment-box { width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:6px; padding:0.5rem; font-size:0.88rem; font-family:inherit; resize:vertical; min-height:2.4rem; }
+    .ruta-comment-save { background:#f59e0b; color:white; }
 </style>
 
 <div class="ruta-wrap">
@@ -100,12 +103,6 @@
                                 @if (!string.IsNullOrEmpty(s.NumeroVenta)) { <span> · 🧾 @s.NumeroVenta</span> }
                             </div>
                         }
-                        @if (!string.IsNullOrEmpty(s.Notas))
-                        {
-                            <div style="font-size:0.82rem; background:#fef3c7; padding:0.3rem 0.5rem; border-radius:4px; margin-top:0.4rem; color:#78350f;">
-                                💬 @s.Notas
-                            </div>
-                        }
                     </div>
                 </div>
 
@@ -141,6 +138,20 @@
                         var cls = s.InternalStatus == st ? "ruta-btn ruta-btn-status activo" : "ruta-btn ruta-btn-status";
                         <button class="@cls" @onclick="() => SetStatus(s, st)" disabled="@updating">@label</button>
                     }
+                </div>
+
+                <div class="ruta-comment">
+                    <textarea class="ruta-comment-box"
+                              placeholder="💬 Comentario (opcional): ej. no estaba, dejé aviso con el vecino…"
+                              value="@GetDraft(s)"
+                              @oninput="e => SetDraft(s, e.Value?.ToString())"></textarea>
+                    <div class="ruta-actions" style="margin-top:0.35rem; align-items:center;">
+                        <button class="ruta-btn ruta-comment-save" @onclick="() => SaveNote(s)" disabled="@updating">💾 Guardar comentario</button>
+                        @if (savedNoteId == s.Id)
+                        {
+                            <span style="color:#15803d; font-size:0.85rem; font-weight:600;">✓ Comentario guardado</span>
+                        }
+                    </div>
                 </div>
             </div>
         }
@@ -208,6 +219,40 @@
             if (!resp.IsSuccessStatusCode) s.InternalStatus = prev;
         }
         catch { s.InternalStatus = prev; }
+        finally { updating = false; }
+    }
+
+    // --- Comentario que el chofer deja en cada parada ---
+    // Guardamos un borrador por parada (clave = Id) mientras escribe; al tocar "Guardar" lo mandamos al backend.
+    private readonly Dictionary<int, string?> noteDrafts = new();
+    private int? savedNoteId;
+
+    private string GetDraft(PublicStopDto s)
+        => noteDrafts.TryGetValue(s.Id, out var v) ? (v ?? "") : (s.Notas ?? "");
+
+    private void SetDraft(PublicStopDto s, string? val)
+    {
+        noteDrafts[s.Id] = val;
+        if (savedNoteId == s.Id) savedNoteId = null; // se editó de nuevo: ocultamos el "guardado"
+    }
+
+    private async Task SaveNote(PublicStopDto s)
+    {
+        var note = GetDraft(s);
+        updating = true;
+        try
+        {
+            // Mandamos el estado actual sin cambiarlo + el comentario. notes="" borra el comentario en el backend.
+            var payload = System.Text.Json.JsonSerializer.Serialize(new { internalStatus = s.InternalStatus, notes = note ?? "" });
+            var content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
+            var resp = await Http.PostAsync($"api/public/route/{Uri.EscapeDataString(Token)}/stop/{s.Id}", content);
+            if (resp.IsSuccessStatusCode)
+            {
+                s.Notas = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+                savedNoteId = s.Id;
+            }
+        }
+        catch { }
         finally { updating = false; }
     }
 }
