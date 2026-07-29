@@ -1461,6 +1461,9 @@ public class CafeVentasController : ControllerBase
         string? clienteLocalidad = null;
         string? clienteCiudad = null;
         string? clienteCp = null;
+        // 2026-07-29: link de Maps de la dirección de entrega ELEGIDA (Cafe_ClienteDirecciones), si el
+        // operador eligió una en la venta. Se usa como fallback para venta.MapeoLink.
+        string? dirElegidaLink = null;
         if (req.ClienteId.HasValue && req.ClienteId.Value > 0)
         {
             var cli = await _db.CafeClientes.FindAsync(req.ClienteId.Value);
@@ -1477,6 +1480,24 @@ public class CafeVentasController : ControllerBase
             clienteCp = cli.Cp;
             clienteSolicitarFirmaEntrega = cli.SolicitarFirmaEntrega;
             tipo = CafePricingService.ResolverTipo(cli.Tipo);
+
+            // 2026-07-29: si el operador eligió una dirección de entrega puntual, la usamos como
+            // domicilio de entrega de ESTA venta (el domicilio fiscal / localidad / CP quedan como
+            // están, para no cambiar la jurisdicción de facturación).
+            if (req.ClienteDireccionId.HasValue && req.ClienteDireccionId.Value > 0)
+            {
+                var dirElegida = await _db.CafeClienteDirecciones
+                    .FirstOrDefaultAsync(d => d.Id == req.ClienteDireccionId.Value && d.ClienteId == cli.Id && d.IsActive);
+                if (dirElegida is not null)
+                {
+                    // Domicilio de entrega = dirección elegida (+ localidad para que quede completo en el comprobante).
+                    clienteDomicilioEntrega = string.IsNullOrWhiteSpace(dirElegida.Localidad)
+                        ? dirElegida.Direccion
+                        : $"{dirElegida.Direccion}, {dirElegida.Localidad}";
+                    if (!string.IsNullOrWhiteSpace(dirElegida.Telefono)) clienteTelefono = dirElegida.Telefono;
+                    dirElegidaLink = dirElegida.MapeoLink;
+                }
+            }
         }
         else
         {
@@ -1546,7 +1567,9 @@ public class CafeVentasController : ControllerBase
             ConceptoServDesde = req.ConceptoServDesde,
             ConceptoServHasta = req.ConceptoServHasta,
             // 2026-07-02: link de Maps del domicilio de entrega (override propio de la venta)
-            MapeoLink = string.IsNullOrWhiteSpace(req.MapeoLink) ? null : req.MapeoLink.Trim(),
+            // 2026-07-29: si no vino link en el request pero se eligió una dirección con link, usamos ese.
+            MapeoLink = !string.IsNullOrWhiteSpace(req.MapeoLink) ? req.MapeoLink.Trim()
+                       : (!string.IsNullOrWhiteSpace(dirElegidaLink) ? dirElegidaLink.Trim() : null),
             // 2026-07-03: certificado/CUIT elegido para facturar (multi-sociedad). Null = default.
             ArcaWebserviceAccountId = req.ArcaWebserviceAccountId.HasValue && req.ArcaWebserviceAccountId.Value > 0
                 ? req.ArcaWebserviceAccountId.Value : null

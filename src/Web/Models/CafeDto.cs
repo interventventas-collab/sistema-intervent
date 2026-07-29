@@ -709,6 +709,9 @@ public class CreateCafeVentaRequest
 {
     public DateTime? Fecha { get; set; }
     public int? ClienteId { get; set; }
+    /// <summary>2026-07-29: id de la dirección de entrega elegida (Cafe_ClienteDirecciones).
+    /// Si viene, la venta usa ESA dirección como domicilio de entrega (snapshot + pin). 0/null = domicilio de siempre.</summary>
+    public int? ClienteDireccionId { get; set; }
     public string? ClienteNombreOverride { get; set; }
     public string? ClienteTipoOverride { get; set; }
     // Overrides ad-hoc para modo "Venta Rápida"
@@ -762,6 +765,9 @@ public class UpdateCafeVentaRequest
 {
     public DateTime? Fecha { get; set; }
     public int? ClienteId { get; set; }
+    /// <summary>2026-07-29: id de la dirección de entrega elegida (Cafe_ClienteDirecciones).
+    /// Si viene, la venta usa ESA dirección como domicilio de entrega (snapshot + pin). 0/null = domicilio de siempre.</summary>
+    public int? ClienteDireccionId { get; set; }
     public string? ClienteNombreOverride { get; set; }
     public string? ClienteTipoOverride { get; set; }
     // Overrides ad-hoc para modo "Venta Rápida"

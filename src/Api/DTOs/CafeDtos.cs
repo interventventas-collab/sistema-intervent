@@ -539,6 +539,9 @@ public class CreateCafeVentaRequest
 {
     public DateTime? Fecha { get; set; }
     public int? ClienteId { get; set; }
+    /// <summary>2026-07-29: dirección de entrega elegida (Cafe_ClienteDirecciones). Si viene, se usa
+    /// como domicilio de entrega de esta venta (snapshot + link para el mapa). 0/null = domicilio de siempre.</summary>
+    public int? ClienteDireccionId { get; set; }
     public string? ClienteNombreOverride { get; set; }   // si no hay cliente cargado
     public string? ClienteTipoOverride { get; set; }     // BAR | OTRO si no hay cliente cargado
 

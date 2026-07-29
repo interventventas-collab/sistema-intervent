@@ -1362,6 +1362,22 @@
                                             style="padding: 0 0.55rem; font-size: 0.85rem; color: #1d4ed8;">✏️</button>
                                     <button class="btn btn-secondary" type="button" @onclick="ClearCliente" title="Quitar cliente" style="padding: 0 0.5rem; font-size: 0.85rem;">×</button>
                                 </div>
+                                @* 2026-07-29: selector de dirección de entrega (si el cliente tiene varias cargadas) *@
+                                @if (ventaDirecciones.Count > 0)
+                                {
+                                    <div style="margin-top: 0.4rem; background: #f0fdf4; border: 1px solid #86efac; border-radius: 6px; padding: 0.35rem 0.55rem;">
+                                        <label class="form-label" style="font-size: 0.72rem; color: #166534; margin-bottom: 0.2rem;">🚚 Entregar en</label>
+                                        <select class="form-input" style="font-size: 0.8rem; padding: 0.3rem 0.5rem;" @onchange="OnVentaDireccionChanged">
+                                            <option value="0" selected="@(formClienteDireccionId == 0)">— Domicilio de siempre —</option>
+                                            @foreach (var d in ventaDirecciones)
+                                            {
+                                                <option value="@d.Id" selected="@(formClienteDireccionId == d.Id)">
+                                                    @(string.IsNullOrWhiteSpace(d.Etiqueta) ? d.Direccion : $"{d.Etiqueta} — {d.Direccion}")@(d.EsPrincipal ? " (principal)" : "")
+                                                </option>
+                                            }
+                                        </select>
+                                    </div>
+                                }
                                 @* 2026-06-02: Post-it amarillo SIEMPRE VISIBLE con las "Notas internas" del cliente.
                                    Solo aparece si el cliente tiene algo cargado en ese campo. NO sale en el PDF.
                                    Pedido del usuario: que se vea mientras carga la venta sin tener que tocar nada. *@
@@ -5334,9 +5350,11 @@
     private string? mapaError;
     private bool mapaGuardando;
 
-    private async Task SumarVentaAlMapa(CafeVentaDto v)
+    private async Task SumarVentaAlMapa(CafeVentaDto v, string? direccion = null, string? link = null)
     {
-        var res = await Api.SumarVentaAlMapaAsync(v.Id);
+        // 2026-07-29: si se eligió una dirección puntual en la venta, la pasamos explícita para que el
+        // pin caiga en ESE lugar (tiene prioridad sobre las coords del cliente). Si no, camino automático.
+        var res = await Api.SumarVentaAlMapaAsync(v.Id, direccion, link);
         if (res is null) { ToastService.Error("No se pudo sumar al mapa."); return; }
         if (res.Ok) { ToastService.Success(res.Mensaje ?? "Agregado al mapa ✓"); return; }
         if (res.Motivo == "sin_domicilio")
@@ -6088,6 +6106,7 @@
         formArcaAccountId = null;
         EnsureDefaultArcaAccount(); // multi-sociedad: preseleccionar el negocio (PALANICA HERMANOS SRL) de entrada
         formMapeoLink = ""; formGuardarMapeoEnCliente = false; formSumarAlMapa = false;
+        ventaDirecciones = new(); formClienteDireccionId = 0;
         formItems = new(); cotizacion = null;
         addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
         addMolienda = "EN GRANOS"; addEnvase = "NEGRO";
@@ -7033,12 +7052,16 @@
                 if (string.IsNullOrWhiteSpace(formMapeoLink) && !string.IsNullOrWhiteSpace(c.MapeoLink))
                     formMapeoLink = c.MapeoLink!;
             }
+            // 2026-07-29: cargar las direcciones de entrega del cliente para el selector "Entregar en".
+            await LoadVentaDirecciones(formClienteId);
         }
         else
         {
-            // Sin cliente seleccionado: limpiar destinatarios.
+            // Sin cliente seleccionado: limpiar destinatarios y direcciones.
             envioEmailTo = "";
             envioWhatsappPhone = "";
+            ventaDirecciones = new();
+            formClienteDireccionId = 0;
         }
         // FIX 2026-05-28: si el usuario cambia el cliente, sacar de Observaciones cualquier línea
         // "Saldo anterior: $X (comprobantes: Y)" que haya quedado del cliente ANTERIOR. Si no
@@ -7060,6 +7083,42 @@
         await LoadTopProductsForClient();
         await Cotizar();
     }
+
+    // ===== 2026-07-29: Direcciones de entrega múltiples — selector "Entregar en" =====
+    private List<CafeDireccionDto> ventaDirecciones = new();
+    private int formClienteDireccionId = 0; // 0 = domicilio de siempre
+
+    private async Task LoadVentaDirecciones(int clienteId)
+    {
+        try { ventaDirecciones = await Api.GetCafeDireccionesAsync(clienteId); }
+        catch { ventaDirecciones = new(); }
+        // Por defecto: la principal (o la primera). Si no hay lista, 0 = domicilio de siempre.
+        var ppal = ventaDirecciones.FirstOrDefault(d => d.EsPrincipal) ?? ventaDirecciones.FirstOrDefault();
+        formClienteDireccionId = ppal?.Id ?? 0;
+        // Si la principal tiene link de Maps y el form está vacío, lo traemos (para el pin y "Probar").
+        if (ppal is not null && !string.IsNullOrWhiteSpace(ppal.MapeoLink) && string.IsNullOrWhiteSpace(formMapeoLink))
+            formMapeoLink = ppal.MapeoLink!;
+    }
+
+    private void OnVentaDireccionChanged(ChangeEventArgs e)
+    {
+        formClienteDireccionId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        var d = ventaDirecciones.FirstOrDefault(x => x.Id == formClienteDireccionId);
+        // Al elegir una dirección con link de Maps, lo traemos para que el pin caiga en ese lugar.
+        if (d is not null && !string.IsNullOrWhiteSpace(d.MapeoLink))
+            formMapeoLink = d.MapeoLink!;
+    }
+
+    /// <summary>Texto "Dirección, Localidad" de la dirección elegida (para mandar al mapa). Null si es domicilio de siempre.</summary>
+    private string? DireccionElegidaTexto()
+    {
+        var d = ventaDirecciones.FirstOrDefault(x => x.Id == formClienteDireccionId);
+        if (d is null) return null;
+        return string.IsNullOrWhiteSpace(d.Localidad) ? d.Direccion : $"{d.Direccion}, {d.Localidad}";
+    }
+
+    private string? DireccionElegidaLink()
+        => ventaDirecciones.FirstOrDefault(x => x.Id == formClienteDireccionId)?.MapeoLink;
 
     /// <summary>Activa el modo "Venta Rápida": cliente ad-hoc, no del catálogo. Limpia el cliente
     /// seleccionado, fuerza el tipo de comprobante a X (Remito interno) y abre los inputs de datos
@@ -8312,6 +8371,8 @@
                 {
                     Fecha = DateTime.SpecifyKind(formFecha, DateTimeKind.Unspecified), // Kind=Unspecified asi System.Text.Json no agrega TZ — el server toma Y/M/D tal cual.
                     ClienteId = formClienteId > 0 ? formClienteId : null,
+                    // 2026-07-29: dirección de entrega elegida (0 = domicilio de siempre)
+                    ClienteDireccionId = formClienteDireccionId > 0 ? formClienteDireccionId : null,
                     ClienteNombreOverride = modoVentaRapida ? (string.IsNullOrWhiteSpace(vrNombre) ? "Consumidor final" : vrNombre) : null,
                     ClienteTipoOverride = formClienteTipo,
                     ClienteRazonSocialOverride = modoVentaRapida ? vrRazonSocial : null,
@@ -8352,7 +8413,7 @@
                 ToastService.Success($"Venta {v.Numero} emitida — Total ${v.Total:N2}");
                 // 2026-07-25: si el operador tildó "sumar al mapa", mandamos la venta al mapa de reparto
                 // (reusa la misma lógica del botón del listado, incluido el modal "sin domicilio").
-                if (formSumarAlMapa) { try { await SumarVentaAlMapa(v); } catch { /* el mapa nunca frena la emisión de la venta */ } }
+                if (formSumarAlMapa) { try { await SumarVentaAlMapa(v, DireccionElegidaTexto(), DireccionElegidaLink()); } catch { /* el mapa nunca frena la emisión de la venta */ } }
                 // Emisión exitosa → borramos el auto-borrador
                 await DiscardBorradorAsync();
 
