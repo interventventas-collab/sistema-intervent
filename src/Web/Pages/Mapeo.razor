@@ -25,7 +25,7 @@
     #leafletMap { width: 100%; height: 100%; }
     /* Botones-dock del borde izquierdo en pantalla completa (con cartelito al pasar el cursor). */
     /* Dock flotante moderno: un panel oscuro translúcido con los botones adentro. */
-    .mapeo-dock { display: flex; flex-direction: column; gap: 6px; padding: 7px; background: rgba(17,24,39,0.94); border-radius: 18px; box-shadow: 0 8px 26px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.08); }
+    .mapeo-dock { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 7px; background: rgba(17,24,39,0.94); border-radius: 18px; box-shadow: 0 8px 26px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.08); }
     .mapeo-dock-sep { height: 1px; margin: 3px 9px; background: rgba(255,255,255,0.14); border-radius: 1px; }
     .mapeo-dock-btn { position: relative; width: 52px; height: 52px; border-radius: 14px; border: none; background: transparent; color: #e5e7eb; font-size: 1.25rem; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; text-decoration: none; transition: background .15s ease, color .15s ease, transform .08s ease; }
     .mapeo-dock-badge { position: absolute; top: 2px; right: 2px; min-width: 16px; height: 16px; padding: 0 3px; border-radius: 999px; background: #16a34a; color: #fff; font-size: 0.62rem; font-weight: 800; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
@@ -939,33 +939,47 @@
                 @if (zonasCreadas.Count > 0)
                 {
                     <div class="mapeo-dock-sep"></div>
-                    @* "TODO" = las paradas todavía SIN asignar. Apagá el ojo para ocultarlas y trabajar una zona sola. *@
-                    <div class="mapeo-dock-btn" style="flex-direction:column; gap:3px; height:auto; min-height:66px; padding:8px 0; background:@(sinAsignarOcultos ? "#9ca3af" : "#eab308"); @(sinAsignarOcultos ? "opacity:0.55;" : "")">
-                        <span style="font-size:0.72rem; font-weight:800; line-height:1; color:#fff;">TODO</span>
-                        <span @onclick="ToggleSinAsignarVisible" style="cursor:pointer; font-size:1.5rem; line-height:1; padding:4px 12px;"
-                              title="@(sinAsignarOcultos ? "Mostrar las paradas sin asignar" : "Ocultar las paradas sin asignar (ver solo las zonas)")">
-                            @(sinAsignarOcultos ? "🚫" : "👁")
-                        </span>
+                    @* "TODO" = las paradas todavía SIN asignar. Arriba el título; abajo el ojito (mostrar/ocultar) y la cantidad. *@
+                    <div class="mapeo-dock-btn" style="flex-direction:column; gap:6px; width:auto; min-width:104px; height:auto; padding:9px 10px; background:@(sinAsignarOcultos ? "#9ca3af" : "#eab308"); @(sinAsignarOcultos ? "opacity:0.55;" : "")">
+                        <span style="font-size:0.82rem; font-weight:800; line-height:1; color:#fff;">TODO (sin asignar)</span>
+                        <div style="display:flex; align-items:center; justify-content:center; gap:12px;">
+                            <span @onclick="ToggleSinAsignarVisible" style="cursor:pointer; font-size:1.35rem; line-height:1;"
+                                  title="@(sinAsignarOcultos ? "Mostrar las paradas sin asignar" : "Ocultar las paradas sin asignar (ver solo las zonas)")">
+                                @(sinAsignarOcultos ? "🚫" : "👁")
+                            </span>
+                            <span style="font-size:1.05rem; font-weight:800; color:#fff; line-height:1; background:rgba(0,0,0,0.22); border-radius:8px; padding:3px 9px; min-width:24px; text-align:center;"
+                                  title="Envíos todavía sin repartidor">
+                                @(stops?.Count(s => !s.AssignedDriverId.HasValue) ?? 0)
+                            </span>
+                        </div>
                     </div>
                     @foreach (var z in zonasCreadas)
                     {
                         var zVisible = !zonasOcultasMapa.Contains(z.DriverId);
+                        var zNombreCorto = string.IsNullOrWhiteSpace(z.DriverName) ? "?" : z.DriverName.Split(' ')[0];
                         <div style="position:relative;">
-                            <div class="mapeo-dock-btn" style="flex-direction:column; gap:4px; height:auto; min-height:96px; padding:9px 0; background:@(zVisible ? z.Color : "#9ca3af"); @(zVisible ? "" : "opacity:0.55;")">
-                                <span @onclick="() => FocoZona(z)" style="cursor:pointer; font-size:0.95rem; font-weight:800; line-height:1; padding:3px 12px;"
+                            <div class="mapeo-dock-btn" style="flex-direction:column; gap:6px; width:auto; min-width:104px; height:auto; padding:9px 10px; background:@(zVisible ? z.Color : "#9ca3af"); @(zVisible ? "" : "opacity:0.55;")">
+                                @* Arriba: "Z1 (Juan)" — tocar hace foco en la zona. *@
+                                <span @onclick="() => FocoZona(z)" style="cursor:pointer; font-size:0.9rem; font-weight:800; line-height:1.1; color:#fff; text-align:center; white-space:nowrap; max-width:170px; overflow:hidden; text-overflow:ellipsis;"
                                       title="@($"Zona {z.Numero} · {z.DriverName} · {z.StopIds.Count} envío(s) — tocá para hacer foco en esta zona")">
-                                    Z@(z.Numero)
+                                    Z@(z.Numero) (@zNombreCorto)
                                 </span>
-                                @* 👤 Cambiar el repartidor de TODA la zona de una (nuevo). *@
-                                <span @onclick="@(() => zonaDriverMenuId = (zonaDriverMenuId == z.Numero ? (int?)null : z.Numero))"
-                                      style="cursor:pointer; font-size:1.5rem; line-height:1; padding:4px 12px;"
-                                      title="Cambiar el repartidor de toda esta zona">
-                                    👤
-                                </span>
-                                <span @onclick="() => ToggleZonaVisible(z)" style="cursor:pointer; font-size:1.5rem; line-height:1; padding:4px 12px;"
-                                      title="@(zVisible ? "Ocultar esta zona del mapa" : "Mostrar esta zona en el mapa")">
-                                    @(zVisible ? "👁" : "🚫")
-                                </span>
+                                @* Abajo: 👁 mostrar/ocultar · 👤 cambiar repartidor de toda la zona · cantidad de envíos. *@
+                                <div style="display:flex; align-items:center; justify-content:center; gap:12px;">
+                                    <span @onclick="() => ToggleZonaVisible(z)" style="cursor:pointer; font-size:1.35rem; line-height:1;"
+                                          title="@(zVisible ? "Ocultar esta zona del mapa" : "Mostrar esta zona en el mapa")">
+                                        @(zVisible ? "👁" : "🚫")
+                                    </span>
+                                    <span @onclick="@(() => zonaDriverMenuId = (zonaDriverMenuId == z.Numero ? (int?)null : z.Numero))"
+                                          style="cursor:pointer; font-size:1.35rem; line-height:1;"
+                                          title="Cambiar el repartidor de toda esta zona">
+                                        👤
+                                    </span>
+                                    <span style="font-size:1.05rem; font-weight:800; color:#fff; line-height:1; background:rgba(0,0,0,0.22); border-radius:8px; padding:3px 9px; min-width:24px; text-align:center;"
+                                          title="@z.StopIds.Count envío(s) en esta zona">
+                                        @z.StopIds.Count
+                                    </span>
+                                </div>
                             </div>
                             @if (zonaDriverMenuId == z.Numero)
                             {
