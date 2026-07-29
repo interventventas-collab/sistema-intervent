@@ -358,16 +358,9 @@ window.mapeoFlex = (function () {
             cleanupZone();
             map.setOptions({ draggableCursor: 'crosshair' }); // cursor de cruz = estás dibujando
             zonePath = new google.maps.MVCArray();
-            // Relleno suave del área (el polígono se cierra solo). El stroke lo dejamos apagado
-            // porque el que se ve trazándose punto a punto es la línea de abajo (Polyline).
-            zonePolygon = new google.maps.Polygon({
-                map: map, paths: zonePath,
-                fillColor: '#dc2626', fillOpacity: 0.12,
-                strokeOpacity: 0, strokeWeight: 0,
-                clickable: false, zIndex: 1
-            });
-            // Línea gruesa que UNE los puntos a medida que tocás (esto es lo que se ve dibujándose,
-            // de un punto al siguiente, y así sucesivamente). Va enganchada al mismo listado de puntos.
+            // Línea gruesa que UNE los puntos a medida que tocás. Es lo ÚNICO que dibujamos mientras
+            // se marca (nada de polígono: compartir la lista de puntos con un polígono rompía el trazo).
+            // El área encerrada la calcula el backend al Terminar (ray-casting sobre estos puntos).
             zoneLine = new google.maps.Polyline({
                 map: map, path: zonePath,
                 strokeColor: '#dc2626', strokeOpacity: 0.95, strokeWeight: 4,
