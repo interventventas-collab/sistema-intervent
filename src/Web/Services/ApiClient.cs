@@ -6157,6 +6157,18 @@ public class ApiClient
     public async Task<bool> DeleteTwRespuestaAsync(int id)
         => (await _http.DeleteAsync($"/api/whatsapp/twilio/respuestas-rapidas/{id}")).IsSuccessStatusCode;
 
+    // 2026-07-29: Datos bancarios / CBUs para pasarle al cliente desde el chat.
+    public record TwCbuDto(int Id, string Nombre, string Banco, string TipoCuenta, string Titular, string Cuit, string Cbu, string Alias, string Mail, int Orden, bool Activo);
+    public record TwCbuUpsert(string Nombre, string Banco, string TipoCuenta, string Titular, string Cuit, string Cbu, string Alias, string Mail, int Orden, bool Activo);
+    public async Task<List<TwCbuDto>> GetTwDatosBancariosAsync()
+        => await _http.GetFromJsonAsync<List<TwCbuDto>>("/api/whatsapp/twilio/datos-bancarios") ?? new();
+    public async Task<bool> CreateTwCbuAsync(TwCbuUpsert c)
+        => (await _http.PostAsJsonAsync("/api/whatsapp/twilio/datos-bancarios", c)).IsSuccessStatusCode;
+    public async Task<bool> UpdateTwCbuAsync(int id, TwCbuUpsert c)
+        => (await _http.PutAsJsonAsync($"/api/whatsapp/twilio/datos-bancarios/{id}", c)).IsSuccessStatusCode;
+    public async Task<bool> DeleteTwCbuAsync(int id)
+        => (await _http.DeleteAsync($"/api/whatsapp/twilio/datos-bancarios/{id}")).IsSuccessStatusCode;
+
     public async Task<List<TwContactoDto>> GetTwContactosAsync()
         => await _http.GetFromJsonAsync<List<TwContactoDto>>("/api/whatsapp/twilio/contactos") ?? new();
     public async Task<(bool ok, string? error)> CreateTwContactoAsync(TwContactoUpsert c)

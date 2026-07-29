@@ -117,3 +117,26 @@ BEGIN
 END
 ELSE PRINT 'WhatsApp_TwilioUploads ya existia (no se toca).';
 GO
+
+-- 6) Datos bancarios / CBUs (2026-07-29) ------------------------------------
+--    Cuentas guardadas para pasarle al cliente desde el chat (boton 🏦).
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'WhatsApp_TwilioDatosBancarios')
+BEGIN
+    CREATE TABLE [WhatsApp_TwilioDatosBancarios] (
+        [Id]          INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+        [Nombre]      NVARCHAR(80)  NOT NULL,
+        [Banco]       NVARCHAR(120) NOT NULL CONSTRAINT DF_WATwCbu_Banco   DEFAULT '',
+        [TipoCuenta]  NVARCHAR(40)  NOT NULL CONSTRAINT DF_WATwCbu_Tipo    DEFAULT '',
+        [Titular]     NVARCHAR(160) NOT NULL CONSTRAINT DF_WATwCbu_Titular DEFAULT '',
+        [Cuit]        NVARCHAR(20)  NOT NULL CONSTRAINT DF_WATwCbu_Cuit    DEFAULT '',
+        [Cbu]         NVARCHAR(30)  NOT NULL CONSTRAINT DF_WATwCbu_Cbu     DEFAULT '',
+        [Alias]       NVARCHAR(60)  NOT NULL CONSTRAINT DF_WATwCbu_Alias   DEFAULT '',
+        [Mail]        NVARCHAR(120) NOT NULL CONSTRAINT DF_WATwCbu_Mail    DEFAULT '',
+        [Orden]       INT           NOT NULL CONSTRAINT DF_WATwCbu_Orden   DEFAULT 0,
+        [Activo]      BIT           NOT NULL CONSTRAINT DF_WATwCbu_Activo  DEFAULT 1,
+        [CreatedAt]   DATETIME2     NOT NULL CONSTRAINT DF_WATwCbu_Created DEFAULT SYSUTCDATETIME()
+    );
+    PRINT 'Tabla WhatsApp_TwilioDatosBancarios creada.';
+END
+ELSE PRINT 'WhatsApp_TwilioDatosBancarios ya existia (no se toca).';
+GO

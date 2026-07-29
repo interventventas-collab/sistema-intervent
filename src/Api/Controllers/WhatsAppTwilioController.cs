@@ -340,6 +340,73 @@ public class WhatsAppTwilioController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    // ===== Datos bancarios / CBUs CRUD (2026-07-29) =====
+    public record CbuUpsert(string Nombre, string Banco, string TipoCuenta, string Titular, string Cuit, string Cbu, string Alias, string Mail, int Orden, bool Activo);
+
+    [HttpGet("datos-bancarios")]
+    [Authorize]
+    public async Task<IActionResult> ListarCbus()
+    {
+        var list = await _db.WhatsAppTwilioDatosBancarios.AsNoTracking()
+            .OrderBy(r => r.Orden).ThenBy(r => r.Id).ToListAsync();
+        return Ok(list);
+    }
+
+    [HttpPost("datos-bancarios")]
+    [Authorize]
+    public async Task<IActionResult> CrearCbu([FromBody] CbuUpsert req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Nombre))
+            return BadRequest(new { error = "El nombre es obligatorio" });
+        var r = new WhatsAppTwilioDatoBancario
+        {
+            Nombre = (req.Nombre ?? "").Trim(),
+            Banco = (req.Banco ?? "").Trim(),
+            TipoCuenta = (req.TipoCuenta ?? "").Trim(),
+            Titular = (req.Titular ?? "").Trim(),
+            Cuit = (req.Cuit ?? "").Trim(),
+            Cbu = (req.Cbu ?? "").Trim(),
+            Alias = (req.Alias ?? "").Trim(),
+            Mail = (req.Mail ?? "").Trim(),
+            Orden = req.Orden,
+            Activo = req.Activo
+        };
+        _db.WhatsAppTwilioDatosBancarios.Add(r);
+        await _db.SaveChangesAsync();
+        return Ok(r);
+    }
+
+    [HttpPut("datos-bancarios/{id:int}")]
+    [Authorize]
+    public async Task<IActionResult> EditarCbu(int id, [FromBody] CbuUpsert req)
+    {
+        var r = await _db.WhatsAppTwilioDatosBancarios.FindAsync(id);
+        if (r == null) return NotFound();
+        r.Nombre = (req.Nombre ?? "").Trim();
+        r.Banco = (req.Banco ?? "").Trim();
+        r.TipoCuenta = (req.TipoCuenta ?? "").Trim();
+        r.Titular = (req.Titular ?? "").Trim();
+        r.Cuit = (req.Cuit ?? "").Trim();
+        r.Cbu = (req.Cbu ?? "").Trim();
+        r.Alias = (req.Alias ?? "").Trim();
+        r.Mail = (req.Mail ?? "").Trim();
+        r.Orden = req.Orden;
+        r.Activo = req.Activo;
+        await _db.SaveChangesAsync();
+        return Ok(r);
+    }
+
+    [HttpDelete("datos-bancarios/{id:int}")]
+    [Authorize]
+    public async Task<IActionResult> BorrarCbu(int id)
+    {
+        var r = await _db.WhatsAppTwilioDatosBancarios.FindAsync(id);
+        if (r == null) return NotFound();
+        _db.WhatsAppTwilioDatosBancarios.Remove(r);
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
     // ===== Contactos CRUD =====
     public record ContactoUpsert(string Numero, string Nombre, string Rol, string? Notas, bool Activo, int? ClienteId);
 
