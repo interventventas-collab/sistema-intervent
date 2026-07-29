@@ -637,7 +637,29 @@ public class MeliShipmentService
                     http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", freshTok);
                     orderResp = await http.GetAsync($"https://api.mercadolibre.com/orders/{orderIdLong}");
                 }
-                if (!orderResp.IsSuccessStatusCode) continue;   // no es de esta cuenta, probar próxima
+                if (!orderResp.IsSuccessStatusCode)
+                {
+                    // No existe como ORDEN. Puede ser un PACK (compra de carrito: varios productos en una
+                    // sola venta). En ese caso el número que ve el usuario es el pack_id, y el envío
+                    // (shipment) cuelga del pack. Probamos /packs/{id} con el mismo token (ya válido).
+                    var packResp = await http.GetAsync($"https://api.mercadolibre.com/packs/{orderIdLong}");
+                    if (packResp.StatusCode == System.Net.HttpStatusCode.Unauthorized || packResp.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                    {
+                        var freshTok2 = await _accountService.GetValidTokenAsync(acc, forceRefresh: true);
+                        if (freshTok2 is null) continue;
+                        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", freshTok2);
+                        packResp = await http.GetAsync($"https://api.mercadolibre.com/packs/{orderIdLong}");
+                    }
+                    if (!packResp.IsSuccessStatusCode) continue;   // ni orden ni pack en esta cuenta, probar próxima
+                    var packDoc = JsonDocument.Parse(await packResp.Content.ReadAsStringAsync()).RootElement;
+                    if (packDoc.TryGetProperty("shipment", out var pshp) && pshp.ValueKind == JsonValueKind.Object
+                        && pshp.TryGetProperty("id", out var psid) && psid.ValueKind == JsonValueKind.Number)
+                    {
+                        shippingIdToImport = psid.GetInt64();
+                        break;
+                    }
+                    return (false, $"El paquete {orderIdStr} existe en MeLi pero todavía no tiene envío asignado (quizá falta que se genere la etiqueta).", null);
+                }
                 var orderDoc = JsonDocument.Parse(await orderResp.Content.ReadAsStringAsync()).RootElement;
                 if (orderDoc.TryGetProperty("shipping", out var shp) && shp.ValueKind == JsonValueKind.Object
                     && shp.TryGetProperty("id", out var sid) && sid.ValueKind == JsonValueKind.Number)
