@@ -830,6 +830,10 @@
                 <button class="mapeo-dock-btn" @onclick="() => showScanModal = true" title="Escanear con el celular (muestra el QR)">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
                 </button>
+                @* Traer por número (sin escanear) — ícono de teclado. Plan B si falla el escáner/impresora. *@
+                <button class="mapeo-dock-btn" @onclick="OpenPorNumeroModal" title="Traer por número (sin escanear): venta, alquiler o envío Flex">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"></rect><line x1="6" y1="10" x2="6" y2="10"></line><line x1="10" y1="10" x2="10" y2="10"></line><line x1="14" y1="10" x2="14" y2="10"></line><line x1="18" y1="10" x2="18" y2="10"></line><line x1="7" y1="14" x2="17" y2="14"></line></svg>
+                </button>
                 @* Agregar parada manual — ícono de globito (pin) de Google. *@
                 <button class="mapeo-dock-btn" @onclick="OpenAddStopModal" title="Agregar parada manual">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
@@ -1893,6 +1897,58 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="() => showScanModal = false">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showPorNumeroModal)
+{
+    <div class="modal-overlay" @onclick="() => showPorNumeroModal = false">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width:520px; max-height:88vh; display:flex; flex-direction:column;">
+            <div class="modal-header" style="background:#e0e7ff;">
+                <h3 style="margin:0;">⌨️ Traer por número (sin escanear)</h3>
+                <button class="btn-close" @onclick="() => showPorNumeroModal = false">&times;</button>
+            </div>
+            <div class="modal-body" style="overflow-y:auto;">
+                <p style="font-size:0.85rem; color:#4b5563; margin:0 0 0.6rem; line-height:1.45;">
+                    Escribí o pegá el <strong>número</strong> y lo traigo al mapa igual que si lo escanearas.
+                    Sirve para <strong>ventas del sistema</strong>, <strong>alquileres</strong> y <strong>envíos de MercadoLibre</strong>
+                    (podés poner el nº de venta o el nº de envío). El sistema se da cuenta solo de qué es.
+                </p>
+                <p style="font-size:0.78rem; color:#6b7280; margin:0 0 0.5rem;">
+                    💡 Podés poner <strong>varios, uno por línea</strong>, y los traigo a todos de una.
+                </p>
+                <textarea class="form-input" @bind="porNumeroTexto" rows="5" placeholder="Ej:&#10;0001-00012345&#10;2000012345678901" @onclick:stopPropagation="true"
+                          style="width:100%; font-size:0.95rem; font-family:monospace;"></textarea>
+                <button class="btn" style="width:100%; margin-top:0.7rem; padding:0.7rem; font-size:1rem; font-weight:700; background:#2563eb; color:#fff; border:none; border-radius:8px;"
+                        @onclick="TraerPorNumero" disabled="@trayendoPorNumero">
+                    @(trayendoPorNumero ? "Trayendo…" : "🔎 Traer al mapa")
+                </button>
+
+                @if (porNumeroResultados.Count > 0)
+                {
+                    <div style="margin-top:0.9rem; display:flex; flex-direction:column; gap:0.35rem;">
+                        @foreach (var r in porNumeroResultados)
+                        {
+                            var ok = r.Ok;
+                            var color = ok ? (r.YaEstaba ? "#d97706" : "#15803d") : "#dc2626";
+                            var bg = ok ? (r.YaEstaba ? "#fffbeb" : "#f0fdf4") : "#fef2f2";
+                            var ico = ok ? (r.YaEstaba ? "↻" : "✓") : "✕";
+                            <div style="display:flex; align-items:flex-start; gap:0.5rem; background:@bg; border:1px solid @color; border-radius:8px; padding:0.4rem 0.6rem;">
+                                <span style="color:@color; font-weight:800; font-size:1rem;">@ico</span>
+                                <div style="flex:1; min-width:0; font-size:0.8rem;">
+                                    <strong style="color:#111827;">@r.Numero</strong>
+                                    @if (!string.IsNullOrEmpty(r.Tipo)) { <span style="color:#6b7280;"> · @r.Tipo</span> }
+                                    <div style="color:#4b5563;">@r.Mensaje @(string.IsNullOrEmpty(r.Nombre) ? "" : $"— {r.Nombre}")</div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showPorNumeroModal = false">Cerrar</button>
             </div>
         </div>
     </div>
@@ -4044,6 +4100,84 @@
         viewingSnapshotTitle = null;
         try { await JS.InvokeVoidAsync("mapeoFlex.clearSnapshot"); } catch { }
         await RenderMap();
+    }
+
+    // ===== Traer por número (sin escanear): venta / alquiler / envío MeLi =====
+    private bool showPorNumeroModal;
+    private bool trayendoPorNumero;
+    private string porNumeroTexto = "";
+    private class PorNumeroLineaVm
+    {
+        public string Numero { get; set; } = "";
+        public bool Ok { get; set; }
+        public bool YaEstaba { get; set; }
+        public string? Tipo { get; set; }
+        public string? Nombre { get; set; }
+        public string? Mensaje { get; set; }
+    }
+    private List<PorNumeroLineaVm> porNumeroResultados = new();
+
+    private void OpenPorNumeroModal()
+    {
+        porNumeroTexto = "";
+        porNumeroResultados = new();
+        showPorNumeroModal = true;
+    }
+
+    private async Task TraerPorNumero()
+    {
+        if (trayendoPorNumero) return;
+        // Un número por línea (permite pegar varios de una). Sacamos vacíos y repetidos.
+        var numeros = (porNumeroTexto ?? "")
+            .Split(new[] { '\n', '\r', ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (numeros.Count == 0) { ToastService.Info("Escribí al menos un número."); return; }
+
+        trayendoPorNumero = true;
+        porNumeroResultados = new();
+        int agregados = 0;
+        try
+        {
+            foreach (var n in numeros)
+            {
+                try
+                {
+                    var r = await Api.TraerPorNumeroAsync(n);
+                    porNumeroResultados.Add(new PorNumeroLineaVm
+                    {
+                        Numero = n,
+                        Ok = r?.Ok ?? false,
+                        YaEstaba = r?.YaEstaba ?? false,
+                        Tipo = r?.Tipo,
+                        Nombre = r?.Nombre,
+                        Mensaje = r?.Mensaje ?? "No hubo respuesta."
+                    });
+                    if ((r?.Ok ?? false) && !(r?.YaEstaba ?? false)) agregados++;
+                }
+                catch (Exception ex)
+                {
+                    porNumeroResultados.Add(new PorNumeroLineaVm { Numero = n, Ok = false, Mensaje = "Error: " + ex.Message });
+                }
+                StateHasChanged();
+            }
+            if (agregados > 0)
+            {
+                await LoadStops();
+                await RenderMap();
+                ToastService.Success($"✓ {agregados} parada(s) agregada(s) al mapa.");
+            }
+            else if (porNumeroResultados.Any(x => x.Ok))
+            {
+                ToastService.Info("Esas paradas ya estaban en el mapa.");
+            }
+            else
+            {
+                ToastService.Error("No pude traer ninguna. Revisá los números.");
+            }
+            porNumeroTexto = "";
+        }
+        finally { trayendoPorNumero = false; StateHasChanged(); }
     }
 
     private async Task DeleteSnapshot(MapeoSnapshotListItemDto s)

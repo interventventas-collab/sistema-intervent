@@ -4871,6 +4871,10 @@ public class ApiClient
     public async Task<ScanFlexResult?> ScanFlexAsync(string code)
         => await PostAsync<ScanFlexResult>("/api/mapeo/stops/scan-flex", new { code });
 
+    // Traer por NÚMERO (sin escanear): venta propia, alquiler o envío MeLi (nº de envío o de venta).
+    public async Task<TraerPorNumeroResult?> TraerPorNumeroAsync(string number)
+        => await PostAsync<TraerPorNumeroResult>("/api/mapeo/stops/by-number", new { number });
+
     // Suma una venta al mapa de reparto. Si el cliente no tiene domicilio, se puede pasar
     // direccion/link para cargarlo en el momento (queda guardado en la ficha del cliente).
     public async Task<SumarAlMapaResult?> SumarVentaAlMapaAsync(int ventaId, string? direccion = null, string? link = null)

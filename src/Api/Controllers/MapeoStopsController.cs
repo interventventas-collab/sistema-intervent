@@ -752,17 +752,24 @@ public class MapeoStopsController : ControllerBase
         }
         if (sh is null)
             return Ok(new { ok = false, motivo = "no_encontrado", id = id.Value, mensaje = $"No pude traer el envio {id.Value} de MercadoLibre. Puede ser de otra cuenta, o muy nuevo (esperá unos minutos)." });
+        return Ok(await AddFlexStopFromShipmentAsync(sh));
+    }
+
+    /// <summary>Crea (o reconoce) la parada de un envío MeLi Flex/ME1 ya sincronizado. Idempotente por
+    /// OriginRefId = MeliShipmentId. Devuelve el mismo shape que scan-flex.</summary>
+    private async Task<object> AddFlexStopFromShipmentAsync(MeliShipment sh)
+    {
         if (sh.Latitude is null || sh.Longitude is null)
-            return Ok(new { ok = false, motivo = "sin_ubicacion", id = id.Value, nombre = sh.ReceiverName, mensaje = "Ese envio no tiene ubicacion cargada, no lo puedo poner en el mapa." });
+            return new { ok = false, motivo = "sin_ubicacion", id = sh.MeliShipmentId, nombre = sh.ReceiverName, mensaje = "Ese envio no tiene ubicacion cargada, no lo puedo poner en el mapa." };
 
         var refId = sh.MeliShipmentId.ToString();
-        var existente = await _db.MapeoStops.FirstOrDefaultAsync(s => s.Origin == "flex" && s.OriginRefId == refId);
+        var existente = await _db.MapeoStops.FirstOrDefaultAsync(s => (s.Origin == "flex" || s.Origin == "me1") && s.OriginRefId == refId);
         if (existente is not null)
-            return Ok(new { ok = true, yaEstaba = true, id = id.Value, nombre = sh.ReceiverName, localidad = sh.City, stopId = existente.Id, mensaje = "Ya estaba en el mapa." });
+            return new { ok = true, yaEstaba = true, id = sh.MeliShipmentId, nombre = sh.ReceiverName, localidad = sh.City, stopId = existente.Id, mensaje = "Ya estaba en el mapa." };
 
         var stop = new MapeoStop
         {
-            Origin = "flex",
+            Origin = string.Equals(sh.Mode, "me1", System.StringComparison.OrdinalIgnoreCase) ? "me1" : "flex",
             OriginRefId = refId,
             Alias = sh.ReceiverName,
             Direccion = sh.AddressLine ?? $"{sh.City} CP {sh.ZipCode}",
@@ -777,7 +784,78 @@ public class MapeoStopsController : ControllerBase
         };
         _db.MapeoStops.Add(stop);
         await _db.SaveChangesAsync();
-        return Ok(new { ok = true, yaEstaba = false, id = id.Value, nombre = sh.ReceiverName, localidad = sh.City, stopId = stop.Id, mensaje = "Agregado al mapa." });
+        return new { ok = true, yaEstaba = false, id = sh.MeliShipmentId, nombre = sh.ReceiverName, localidad = sh.City, stopId = stop.Id, mensaje = "Agregado al mapa." };
+    }
+
+    public record ByNumberRequest(string Number);
+
+    /// <summary>
+    /// Trae UNA parada al mapa a partir de un NÚMERO tipeado a mano (plan B si falla el escáner/impresora).
+    /// Reconoce, en este orden: (1) nº de VENTA propia (Cafe_Ventas), (2) nº de ALQUILER (AlqReservas),
+    /// (3) nº de ENVÍO o nº de VENTA de MercadoLibre (Flex/ME1). Si el envío MeLi no estaba sincronizado,
+    /// lo trae de MeLi en el momento. Mismo shape de respuesta que scan-flex.
+    /// </summary>
+    [HttpPost("by-number")]
+    public async Task<IActionResult> ByNumber([FromBody] ByNumberRequest req)
+    {
+        var raw = (req?.Number ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(raw))
+            return Ok(new { ok = false, motivo = "vacio", mensaje = "Escribí un número." });
+
+        // (1) Venta propia (café) por número exacto.
+        var venta = await _db.CafeVentas.Include(x => x.ClienteNav).FirstOrDefaultAsync(x => x.Numero == raw);
+        if (venta is not null)
+        {
+            var rv = await _ventaMapeo.SumarVentaAsync(venta);
+            return Ok(new { ok = rv.Ok, yaEstaba = rv.YaEstaba, motivo = rv.Motivo, mensaje = rv.Mensaje, nombre = rv.Nombre, localidad = rv.Localidad, stopId = rv.StopId, tipo = "venta" });
+        }
+
+        // (2) Alquiler por número exacto.
+        var reserva = await _db.AlqReservas.Include(x => x.ClienteNav).FirstOrDefaultAsync(x => x.Numero == raw);
+        if (reserva is not null)
+        {
+            var ra = await _alqMapeo.SumarReservaAsync(reserva);
+            return Ok(new { ok = ra.Ok, yaEstaba = ra.YaEstaba, motivo = ra.Motivo, mensaje = ra.Mensaje, nombre = ra.Nombre, localidad = ra.Localidad, stopId = ra.StopId, tipo = "alquiler" });
+        }
+
+        // (3) MercadoLibre: nº de envío o nº de venta (order). Nos quedamos solo con los dígitos.
+        var digits = new string(raw.Where(char.IsDigit).ToArray());
+        if (digits.Length >= 6 && long.TryParse(digits, out var num))
+        {
+            // 3a) directo como nº de envío (shipment id)
+            var sh = await _db.MeliShipments.FirstOrDefaultAsync(s => s.MeliShipmentId == num);
+            // 3b) como nº de venta (order id) ya guardado en el envío
+            if (sh is null) sh = await _db.MeliShipments.FirstOrDefaultAsync(s => s.MeliOrderId == num);
+            // 3c) como nº de venta buscando la orden → su envío (y sincronizándolo si hace falta)
+            if (sh is null)
+            {
+                var ord = await _db.MeliOrders.FirstOrDefaultAsync(o => o.MeliOrderId == num);
+                if (ord?.ShippingId is not null)
+                {
+                    sh = await _db.MeliShipments.FirstOrDefaultAsync(s => s.MeliShipmentId == ord.ShippingId.Value);
+                    if (sh is null)
+                    {
+                        try { await _shipmentSvc.SyncSingleShipmentAsync(ord.ShippingId.Value); }
+                        catch (Exception ex) { _logger.LogWarning(ex, "by-number: no se pudo traer el envio {Id} de MeLi", ord.ShippingId.Value); }
+                        sh = await _db.MeliShipments.FirstOrDefaultAsync(s => s.MeliShipmentId == ord.ShippingId.Value);
+                    }
+                }
+            }
+            // 3d) último recurso: tratar el número como nº de envío y traerlo de MeLi en el momento
+            if (sh is null)
+            {
+                try { await _shipmentSvc.SyncSingleShipmentAsync(num); }
+                catch (Exception ex) { _logger.LogWarning(ex, "by-number: no se pudo traer el envio {Id} de MeLi", num); }
+                sh = await _db.MeliShipments.FirstOrDefaultAsync(s => s.MeliShipmentId == num);
+            }
+            if (sh is not null)
+            {
+                var res = await AddFlexStopFromShipmentAsync(sh);
+                return Ok(res);
+            }
+        }
+
+        return Ok(new { ok = false, motivo = "no_encontrado", mensaje = $"No encontré ninguna venta, alquiler ni envío con el número {raw}. Revisá que esté bien escrito." });
     }
 
     /// <summary>Saca el numero de envio de lo que trae el QR (JSON con "id", o si no la corrida de digitos mas larga).</summary>

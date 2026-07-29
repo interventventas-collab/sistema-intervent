@@ -27,6 +27,20 @@ public class ScanFlexResult
     public int StopId { get; set; }
 }
 
+// Resultado de "traer por número" (venta / alquiler / envío MeLi). StopId puede venir vacío
+// cuando la venta/alquiler no tiene domicilio cargado (Motivo = sin_domicilio / no_resuelto).
+public class TraerPorNumeroResult
+{
+    public bool Ok { get; set; }
+    public bool YaEstaba { get; set; }
+    public string? Motivo { get; set; }
+    public string? Mensaje { get; set; }
+    public string? Nombre { get; set; }
+    public string? Localidad { get; set; }
+    public int? StopId { get; set; }
+    public string? Tipo { get; set; }   // "venta" | "alquiler" | (null = envío MeLi)
+}
+
 public class MapeoDriverDto
 {
     public int Id { get; set; }
