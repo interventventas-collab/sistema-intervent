@@ -3423,6 +3423,11 @@
                 var btnBg = enRuta ? "#dc2626" : "#16a34a";
                 var btnTxt = enRuta ? "✗ Quitar de ruta" : "✓ Sumar a ruta";
                 var esMe1 = s.Mode == "me1";
+                var entregadaFlex = EffectiveKey(s) == "entregado";
+                // Cartelito verde dentro del globito Flex/ME1: "✔ Entregado" + hora que confirmó MercadoLibre.
+                var horaEntregaFlexHtml = entregadaFlex
+                    ? $"<div style='margin-top:0.3rem; color:#15803d; font-weight:700; font-size:0.72rem;'>✔ Entregado{(s.DateDelivered.HasValue ? " · 🕒 " + s.DateDelivered.Value.ToArTime().ToString("dd/MM 'a las' HH:mm") + " hs" : "")}</div>"
+                    : "";
                 return (object)new
                 {
                     id = s.Id,
@@ -3436,8 +3441,8 @@
                     shape = esMe1 ? "square" : "circle",
                     dimmed = false,
                     inRoute = enRuta,
-                    delivered = EffectiveKey(s) == "entregado",
-                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(s.ReceiverName ?? "—")}</strong>{(esMe1 ? " <span style='background:#fce7f3;color:#9d174d;padding:0 0.3rem;border-radius:3px;font-size:0.65rem;font-weight:800;'>ME1</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(s.AddressLine ?? "")}<br/><em>{System.Net.WebUtility.HtmlEncode(s.City ?? "")}</em><br/><button onclick=\"window.mapeoActions.toggleRoute({s.Id}); event.stopPropagation();\" style='margin-top:0.3rem; padding:0.2rem 0.5rem; background:{btnBg}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxt}</button></div>"
+                    delivered = entregadaFlex,
+                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(s.ReceiverName ?? "—")}</strong>{(esMe1 ? " <span style='background:#fce7f3;color:#9d174d;padding:0 0.3rem;border-radius:3px;font-size:0.65rem;font-weight:800;'>ME1</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(s.AddressLine ?? "")}<br/><em>{System.Net.WebUtility.HtmlEncode(s.City ?? "")}</em>{horaEntregaFlexHtml}<br/><button onclick=\"window.mapeoActions.toggleRoute({s.Id}); event.stopPropagation();\" style='margin-top:0.3rem; padding:0.2rem 0.5rem; background:{btnBg}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxt}</button></div>"
                 };
             }));
         }
@@ -3487,6 +3492,15 @@
                     foreach (var dr in drivers.Where(x => x.IsActive).OrderBy(x => x.Nombre))
                         driverOpts.Append($"<option value='{dr.Id}'{(st.AssignedDriverId == dr.Id ? " selected" : "")}>{System.Net.WebUtility.HtmlEncode(dr.Nombre)}</option>");
                 var driverBorde = string.IsNullOrEmpty(st.AssignedDriverColor) ? "#cbd5e1" : st.AssignedDriverColor!;
+                // Entregado: Flex/ME1 lo confirma MeLi (MeliStatus), venta del café trae la hora real (DateDelivered),
+                // y cualquier parada marcada a mano queda como InternalStatus="entregado".
+                var entregadaStop = string.Equals(st.MeliStatus, "delivered", StringComparison.OrdinalIgnoreCase)
+                                    || string.Equals(st.InternalStatus, "entregado", StringComparison.OrdinalIgnoreCase)
+                                    || st.DateDelivered.HasValue;
+                // Cartelito verde dentro del globito: "✔ Entregado" + la hora si la conocemos.
+                var horaEntregaStopHtml = entregadaStop
+                    ? $"<div style='margin-top:0.35rem; color:#15803d; font-weight:700; font-size:0.72rem;'>✔ Entregado{(st.DateDelivered.HasValue ? " · 🕒 " + st.DateDelivered.Value.ToArTime().ToString("dd/MM 'a las' HH:mm") + " hs" : "")}</div>"
+                    : "";
                 return (object)new
                 {
                     id = markerId,
@@ -3496,11 +3510,11 @@
                     color,
                     shape,
                     inRoute = enRutaSt,
-                    delivered = string.Equals(st.MeliStatus, "delivered", StringComparison.OrdinalIgnoreCase),
+                    delivered = entregadaStop,
                     // Candado: si la parada está desbloqueada, su pin se puede arrastrar para ajustar la ubicación.
                     draggable = paradasDesbloqueadas.Contains(st.Id),
                     stopId = st.Id,
-                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· V{st.AssignedVehicleSlot}</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}<div style='margin-top:0.35rem; display:flex; align-items:center; gap:0.25rem;'><span title='Repartidor asignado'>🚚</span><select onchange=\"window.mapeoActions.assignDriver({markerId}, this.value); event.stopPropagation();\" onclick=\"event.stopPropagation();\" style='flex:1; max-width:170px; padding:0.15rem 0.25rem; border:2px solid {driverBorde}; border-radius:4px; font-size:0.72rem; background:white;'>{driverOpts}</select></div><button onclick=\"window.mapeoActions.toggleRoute({markerId}); event.stopPropagation();\" style='margin-top:0.35rem; padding:0.2rem 0.5rem; background:{btnBgSt}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxtSt}</button></div>"
+                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· V{st.AssignedVehicleSlot}</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}{horaEntregaStopHtml}<div style='margin-top:0.35rem; display:flex; align-items:center; gap:0.25rem;'><span title='Repartidor asignado'>🚚</span><select onchange=\"window.mapeoActions.assignDriver({markerId}, this.value); event.stopPropagation();\" onclick=\"event.stopPropagation();\" style='flex:1; max-width:170px; padding:0.15rem 0.25rem; border:2px solid {driverBorde}; border-radius:4px; font-size:0.72rem; background:white;'>{driverOpts}</select></div><button onclick=\"window.mapeoActions.toggleRoute({markerId}); event.stopPropagation();\" style='margin-top:0.35rem; padding:0.2rem 0.5rem; background:{btnBgSt}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxtSt}</button></div>"
                 };
             }));
         }

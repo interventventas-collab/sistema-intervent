@@ -51,6 +51,15 @@ public class MapeoStopsController : ControllerBase
         var ships = refs.Count == 0
             ? new Dictionary<long, MeliShipment>()
             : await _db.MeliShipments.Where(m => refs.Contains(m.MeliShipmentId)).ToDictionaryAsync(m => m.MeliShipmentId);
+        // Enriquecemos las paradas de venta del café con su fecha/hora REAL de entrega:
+        // la que registra el repartidor del café cuando marca la venta como entregada (Cafe_Ventas.EntregadoAt).
+        var ventaRefs = list.Where(s => s.Origin == "venta_cafe" && s.OriginRefId != null)
+                            .Select(s => int.TryParse(s.OriginRefId, out var v) ? v : 0)
+                            .Where(v => v != 0).Distinct().ToList();
+        var ventasEntrega = ventaRefs.Count == 0
+            ? new Dictionary<int, DateTime?>()
+            : await _db.CafeVentas.Where(v => ventaRefs.Contains(v.Id))
+                                  .ToDictionaryAsync(v => v.Id, v => v.EntregadoAt);
         return Ok(list.Select(s =>
         {
             var dto = Map(s);
@@ -65,6 +74,12 @@ public class MapeoStopsController : ControllerBase
                     DateDelivered = m.DateDelivered,
                     ReceiverName = m.ReceiverName
                 };
+            }
+            else if (s.Origin == "venta_cafe" && s.OriginRefId != null
+                && int.TryParse(s.OriginRefId, out var vid)
+                && ventasEntrega.TryGetValue(vid, out var entregadoAt) && entregadoAt.HasValue)
+            {
+                dto = dto with { DateDelivered = entregadoAt };
             }
             return dto;
         }));
