@@ -266,6 +266,42 @@
                     }
                 </div>
             }
+            @* 2026-07-29: Panel "Enviar saldo" — pone la deuda del cliente en el cuadro de mensaje (revisás y mandás con Enter) *@
+            @if (showSaldoPanel)
+            {
+                <div class="wa-saldo-panel">
+                    <div class="wa-saldo-head">
+                        <strong>💰 Poner saldo en el mensaje</strong>
+                        <button class="wa-saldo-x" @onclick="@(() => showSaldoPanel = false)">×</button>
+                    </div>
+                    @if (SelectedConv()?.ClienteId is int cidChat)
+                    {
+                        <button class="wa-saldo-cli destacado" @onclick="() => PonerSaldo(cidChat)" disabled="@saldoCargando">
+                            🛍️ Cliente de este chat: <b>@SelectedConv()?.ClienteNombre</b>
+                        </button>
+                    }
+                    <input class="form-control wa-saldo-buscar" placeholder="Buscar otro cliente por nombre…"
+                           @bind="saldoQuery" @bind:event="oninput" @onkeyup="BuscarSaldoClientes" />
+                    @if (saldoBuscando)
+                    {
+                        <div class="wa-saldo-info">Buscando…</div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(saldoQuery) && saldoResultados.Count == 0)
+                    {
+                        <div class="wa-saldo-info">Sin resultados</div>
+                    }
+                    @foreach (var cli in saldoResultados.Take(10))
+                    {
+                        <button class="wa-saldo-cli" @onclick="() => PonerSaldo(cli.Id)" disabled="@saldoCargando">
+                            @cli.Nombre @(string.IsNullOrWhiteSpace(cli.CodigoInterno) ? "" : $"(#{cli.CodigoInterno})")
+                        </button>
+                    }
+                    @if (saldoCargando)
+                    {
+                        <div class="wa-saldo-info">Trayendo saldo…</div>
+                    }
+                </div>
+            }
             <div class="wa-composer">
                 @* Botón adjuntar archivo de la PC *@
                 <label class="wa-attach-btn @(uploading ? "uploading" : "")" title="Adjuntar archivo de tu PC (máx 16 MB)">
@@ -274,9 +310,11 @@
                 </label>
                 @* Botón adjuntar desde el servidor *@
                 <button class="wa-attach-btn" title="Adjuntar del servidor (cobranzas, uploads previos)" @onclick="AbrirAdjuntarServidor" disabled="@(uploading || sending)">🗂️</button>
+                @* 2026-07-29: Enviar saldo de un cliente *@
+                <button class="wa-attach-btn wa-saldo-btn" title="Enviar saldo (deuda) de un cliente" @onclick="ToggleSaldoPanel" disabled="@(uploading || sending)">💰</button>
                 @* 2026-07-23: @bind:event="oninput" es CLAVE — sin esto el texto solo se guarda al salir del
    campo, y al apretar Enter el sistema veia el mensaje vacio (no enviaba nada). *@
-<textarea class="form-control" placeholder="Escribir mensaje… (Enter para enviar)" @bind="composerText" @bind:event="oninput" @onkeydown="OnComposerKey" rows="2"></textarea>
+<textarea class="form-control" placeholder="Escribir mensaje… (Enter para enviar, Shift+Enter para renglón nuevo)" @bind="composerText" @bind:event="oninput" @onkeydown="OnComposerKey" rows="9"></textarea>
                 <button class="btn btn-success" @onclick="EnviarMensaje" disabled="@(string.IsNullOrWhiteSpace(composerText) || sending)">
                     @(sending ? "Enviando…" : "📤 Enviar")
                 </button>
@@ -529,8 +567,20 @@
     .wa-bubble-body { font-size: 0.92rem; color: #111827; word-wrap: break-word; white-space: pre-wrap; }
     .wa-bubble-meta { font-size: 0.65rem; color: #6b7280; text-align: right; margin-top: 0.2rem; }
     .wa-composer { padding: 0.7rem 1rem 0.4rem; background: #f0f2f5; display: flex; gap: 0.5rem; align-items: flex-end; }
-    .wa-composer textarea { resize: none; border-radius: 8px; flex: 1; }
+    /* 2026-07-29: cuadro de escribir MUCHO más alto (5x) para poder mandar textos largos. resize:vertical = lo podés estirar/achicar con la esquina. */
+    .wa-composer textarea { resize: vertical; border-radius: 8px; flex: 1; min-height: 200px; }
     .wa-composer button { white-space: nowrap; }
+    /* 2026-07-29: panel Enviar saldo */
+    .wa-saldo-btn { font-size: 1.2rem; }
+    .wa-saldo-panel { margin: 0 1rem 0.3rem; padding: 0.6rem 0.7rem; background: #fff; border: 1px solid #d1d5db; border-radius: 10px; box-shadow: 0 4px 14px rgba(0,0,0,0.08); max-height: 46vh; overflow-y: auto; }
+    .wa-saldo-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.45rem; font-size: 0.9rem; }
+    .wa-saldo-x { background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #6b7280; line-height: 1; }
+    .wa-saldo-buscar { margin: 0.35rem 0; font-size: 0.85rem; }
+    .wa-saldo-cli { display: block; width: 100%; text-align: left; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.5rem 0.6rem; margin-bottom: 0.3rem; font-size: 0.85rem; cursor: pointer; }
+    .wa-saldo-cli:hover:not(:disabled) { background: #25d366; color: #fff; border-color: #25d366; }
+    .wa-saldo-cli.destacado { background: #e9f5ff; border-color: #25d366; }
+    .wa-saldo-cli:disabled { opacity: 0.6; cursor: wait; }
+    .wa-saldo-info { font-size: 0.8rem; color: #6b7280; padding: 0.2rem 0.1rem; }
     .wa-attach-btn { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 50%; background: #fff; border: 1px solid #e0e0e0; cursor: pointer; font-size: 1.3rem; transition: all .15s; user-select: none; }
     .wa-attach-btn:hover { background: #e9f5ff; border-color: #25d366; transform: translateY(-1px); }
     .wa-attach-btn.uploading { background: #fff8e1; border-color: #ffc107; cursor: wait; animation: wa-attach-pulse 1s ease-in-out infinite; }
@@ -868,6 +918,45 @@
         editContClienteNombre[contactoId] = cli.Nombre;
         clienteResultados = new();
         clienteBusquedaActivaId = null;
+    }
+
+    // === 2026-07-29: Enviar saldo (deuda) de un cliente ===
+    bool showSaldoPanel = false, saldoBuscando = false, saldoCargando = false;
+    string saldoQuery = "";
+    List<ApiClient.TwClienteBuscarDto> saldoResultados = new();
+
+    void ToggleSaldoPanel()
+    {
+        showSaldoPanel = !showSaldoPanel;
+        if (!showSaldoPanel) { saldoQuery = ""; saldoResultados = new(); }
+    }
+
+    async Task BuscarSaldoClientes()
+    {
+        var q = (saldoQuery ?? "").Trim();
+        if (q.Length < 2) { saldoResultados = new(); return; }
+        saldoBuscando = true;
+        try { saldoResultados = await Api.BuscarTwClientesAsync(q); }
+        catch { saldoResultados = new(); }
+        finally { saldoBuscando = false; }
+    }
+
+    // Trae el saldo del cliente y lo DEJA ESCRITO en el cuadro de mensaje (Opción B: revisás y mandás con Enter).
+    async Task PonerSaldo(int clienteId)
+    {
+        saldoCargando = true;
+        try
+        {
+            var s = await Api.GetClienteSaldoAsync(clienteId);
+            if (s is null) { Toast.Error("No se pudo traer el saldo"); return; }
+            var ar = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
+            var linea = $"{s.ClienteNombre} - ${s.Saldo.ToString("N0", ar)}";
+            composerText = string.IsNullOrWhiteSpace(composerText) ? linea : composerText.TrimEnd() + "\n" + linea;
+            showSaldoPanel = false;
+            saldoQuery = "";
+            saldoResultados = new();
+        }
+        finally { saldoCargando = false; }
     }
 
     // === Reacciones ===

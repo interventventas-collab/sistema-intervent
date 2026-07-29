@@ -6162,6 +6162,15 @@ public class ApiClient
     public async Task<List<TwClienteBuscarDto>> BuscarTwClientesAsync(string q)
         => await _http.GetFromJsonAsync<List<TwClienteBuscarDto>>($"/api/whatsapp/twilio/clientes-buscar?q={Uri.EscapeDataString(q ?? "")}") ?? new();
 
+    // 2026-07-29: saldo (deuda actual) de un cliente, para el botón "Enviar saldo" del chat.
+    // Reusa el estado de cuenta ya existente; solo nos quedamos con el número final.
+    public record ClienteSaldoDto(int ClienteId, string ClienteNombre, decimal Saldo);
+    public async Task<ClienteSaldoDto?> GetClienteSaldoAsync(int clienteId)
+    {
+        try { return await _http.GetFromJsonAsync<ClienteSaldoDto>($"/api/cafe/clientes/{clienteId}/estado-cuenta"); }
+        catch { return null; }
+    }
+
     public record TwReaccionResp(bool Ok, bool Removed, bool EnviadaAlCliente);
     public async Task<TwReaccionResp?> ToggleReaccionAsync(int mensajeId, string emoji)
     {
