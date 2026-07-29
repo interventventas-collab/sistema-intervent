@@ -143,6 +143,12 @@ window.mapeoFlex = (function () {
     let zoneClickListener = null; // listener de clicks del mapa mientras dibuja
     let zoneVertexMarkers = [];   // puntitos que se ven en cada esquina tocada (feedback visual)
     let routeLines = [];          // líneas de ruta dibujadas (una por repartidor)
+    // Dibujar líneas a mano (tocás puntos y se traza una línea de uno al siguiente).
+    let drawLine = null;          // Polyline abierta que se está dibujando ahora
+    let drawLinePath = null;      // MVCArray con los puntos de la línea actual
+    let drawLineDots = [];        // puntitos visibles de la línea que se está dibujando
+    let drawLineListener = null;  // listener de clicks del mapa mientras dibuja líneas
+    let drawLinesDone = [];       // líneas ya terminadas: [{ line, dots:[...] }]
     let trafficLayer = null;      // capa de tráfico de Google (rojo/amarillo/verde en las calles)
     let lastFitStops = -1; // cuántas paradas (sin contar el punto de partida) había en el último auto-encuadre
 
@@ -393,6 +399,69 @@ window.mapeoFlex = (function () {
 
         // Cancelar el dibujo sin asignar nada.
         cancelDrawZone() { cleanupZone(); },
+
+        // ===== Dibujar líneas a mano =====
+        // Arranca a dibujar: cada vez que el usuario toca el mapa se agrega un punto y la
+        // línea se estira hasta ahí (de un punto al siguiente, y así sucesivamente).
+        startDrawLine() {
+            if (!map) return;
+            // Cerramos cualquier línea a medias que hubiera quedado abierta.
+            if (drawLineListener) { google.maps.event.removeListener(drawLineListener); drawLineListener = null; }
+            map.setOptions({ draggableCursor: 'crosshair' }); // cursor de cruz = estás dibujando
+            drawLinePath = new google.maps.MVCArray();
+            drawLineDots = [];
+            drawLine = new google.maps.Polyline({
+                map: map, path: drawLinePath,
+                strokeColor: '#dc2626', strokeOpacity: 0.95, strokeWeight: 4, zIndex: 6
+            });
+            drawLineListener = map.addListener('click', function (e) {
+                if (!drawLinePath) return;
+                drawLinePath.push(e.latLng);
+                // Puntito visible en cada toque, para ver dónde quedó marcado.
+                drawLineDots.push(new google.maps.Marker({
+                    position: e.latLng, map: map, clickable: false, zIndex: 7,
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE, scale: 5,
+                        fillColor: '#dc2626', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2
+                    }
+                }));
+            });
+        },
+
+        // Deshacer el último punto de la línea que se está dibujando.
+        undoLastLinePoint() {
+            if (!drawLinePath || drawLinePath.getLength() === 0) return;
+            drawLinePath.pop();
+            const d = drawLineDots.pop();
+            if (d) d.setMap(null);
+        },
+
+        // Terminar de dibujar: la línea queda fija en el mapa. Sale del modo dibujo.
+        stopDrawLine() {
+            if (drawLineListener) { google.maps.event.removeListener(drawLineListener); drawLineListener = null; }
+            if (map) map.setOptions({ draggableCursor: null });
+            // Guardamos la línea terminada (con sus puntitos) para poder borrarlas después.
+            if (drawLine && drawLinePath && drawLinePath.getLength() > 0) {
+                drawLinesDone.push({ line: drawLine, dots: drawLineDots.slice() });
+            } else if (drawLine) {
+                drawLine.setMap(null);
+            }
+            drawLine = null; drawLinePath = null; drawLineDots = [];
+        },
+
+        // Borra TODAS las líneas dibujadas a mano (las terminadas y la que esté en curso).
+        clearDrawLines() {
+            if (drawLineListener) { google.maps.event.removeListener(drawLineListener); drawLineListener = null; }
+            if (map) map.setOptions({ draggableCursor: null });
+            if (drawLine) drawLine.setMap(null);
+            for (const d of drawLineDots) d.setMap(null);
+            drawLine = null; drawLinePath = null; drawLineDots = [];
+            for (const g of drawLinesDone) {
+                if (g.line) g.line.setMap(null);
+                for (const d of (g.dots || [])) d.setMap(null);
+            }
+            drawLinesDone = [];
+        },
 
         // Dibuja las líneas de ruta (una por repartidor). routes = [{color, encoded}].
         drawRoutes(routes) {
