@@ -284,6 +284,116 @@ public class CafeClientesController : ControllerBase
         return Ok(Map(c));
     }
 
+    // ===== 2026-07-29: Direcciones de entrega múltiples por cliente =====
+    private static CafeDireccionDto MapDir(CafeClienteDireccion d) => new(
+        d.Id, d.ClienteId, d.Etiqueta, d.Direccion,
+        d.EntreCalles, d.Localidad, d.Ciudad, d.Cp, d.Telefono,
+        d.MapeoLink, d.MapeoLat, d.MapeoLng, d.EsPrincipal, d.IsActive);
+
+    /// <summary>Lista las direcciones de entrega de un cliente (la principal primero).</summary>
+    [HttpGet("{id:int}/direcciones")]
+    public async Task<IActionResult> GetDirecciones(int id)
+    {
+        var existe = await _db.CafeClientes.AnyAsync(c => c.Id == id);
+        if (!existe) return NotFound(new { error = "Cliente no encontrado" });
+        var dirs = await _db.CafeClienteDirecciones
+            .Where(d => d.ClienteId == id && d.IsActive)
+            .OrderByDescending(d => d.EsPrincipal).ThenBy(d => d.Etiqueta).ThenBy(d => d.Id)
+            .ToListAsync();
+        return Ok(dirs.Select(MapDir).ToList());
+    }
+
+    [HttpPost("{id:int}/direcciones")]
+    public async Task<IActionResult> CrearDireccion(int id, [FromBody] CafeDireccionUpsertRequest req)
+    {
+        var cli = await _db.CafeClientes.FindAsync(id);
+        if (cli is null) return NotFound(new { error = "Cliente no encontrado" });
+        if (string.IsNullOrWhiteSpace(req.Direccion))
+            return BadRequest(new { error = "La dirección es obligatoria" });
+        var d = new CafeClienteDireccion
+        {
+            ClienteId = id,
+            Etiqueta = Norm(req.Etiqueta),
+            Direccion = req.Direccion.Trim(),
+            EntreCalles = Norm(req.EntreCalles),
+            Localidad = Norm(req.Localidad),
+            Ciudad = Norm(req.Ciudad),
+            Cp = Norm(req.Cp),
+            Telefono = Norm(req.Telefono),
+            MapeoLink = Norm(req.MapeoLink),
+            EsPrincipal = req.EsPrincipal,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        if (!string.IsNullOrEmpty(d.MapeoLink))
+        {
+            var coords = await _mapsResolver.TryResolverCoordenadasAsync(d.MapeoLink);
+            if (coords.HasValue) { d.MapeoLat = coords.Value.lat; d.MapeoLng = coords.Value.lng; }
+        }
+        // Si esta es la primera dirección del cliente, la marcamos principal por defecto.
+        var hayOtras = await _db.CafeClienteDirecciones.AnyAsync(x => x.ClienteId == id && x.IsActive);
+        if (!hayOtras) d.EsPrincipal = true;
+        _db.CafeClienteDirecciones.Add(d);
+        await _db.SaveChangesAsync();
+        if (d.EsPrincipal) await DesmarcarOtrasPrincipales(id, d.Id);
+        return Ok(MapDir(d));
+    }
+
+    [HttpPut("direcciones/{dirId:int}")]
+    public async Task<IActionResult> EditarDireccion(int dirId, [FromBody] CafeDireccionUpsertRequest req)
+    {
+        var d = await _db.CafeClienteDirecciones.FindAsync(dirId);
+        if (d is null || !d.IsActive) return NotFound(new { error = "Dirección no encontrada" });
+        if (string.IsNullOrWhiteSpace(req.Direccion))
+            return BadRequest(new { error = "La dirección es obligatoria" });
+        var linkPrevio = d.MapeoLink;
+        d.Etiqueta = Norm(req.Etiqueta);
+        d.Direccion = req.Direccion.Trim();
+        d.EntreCalles = Norm(req.EntreCalles);
+        d.Localidad = Norm(req.Localidad);
+        d.Ciudad = Norm(req.Ciudad);
+        d.Cp = Norm(req.Cp);
+        d.Telefono = Norm(req.Telefono);
+        d.MapeoLink = Norm(req.MapeoLink);
+        d.EsPrincipal = req.EsPrincipal;
+        if (string.IsNullOrEmpty(d.MapeoLink)) { d.MapeoLat = null; d.MapeoLng = null; }
+        else if (d.MapeoLink != linkPrevio)
+        {
+            var coords = await _mapsResolver.TryResolverCoordenadasAsync(d.MapeoLink);
+            if (coords.HasValue) { d.MapeoLat = coords.Value.lat; d.MapeoLng = coords.Value.lng; }
+        }
+        d.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        if (d.EsPrincipal) await DesmarcarOtrasPrincipales(d.ClienteId, d.Id);
+        return Ok(MapDir(d));
+    }
+
+    [HttpDelete("direcciones/{dirId:int}")]
+    public async Task<IActionResult> BorrarDireccion(int dirId)
+    {
+        var d = await _db.CafeClienteDirecciones.FindAsync(dirId);
+        if (d is null) return NotFound(new { error = "Dirección no encontrada" });
+        _db.CafeClienteDirecciones.Remove(d);
+        await _db.SaveChangesAsync();
+        // Si borramos la principal y quedan otras, promovemos la primera a principal.
+        if (d.EsPrincipal)
+        {
+            var otra = await _db.CafeClienteDirecciones
+                .Where(x => x.ClienteId == d.ClienteId && x.IsActive)
+                .OrderBy(x => x.Id).FirstOrDefaultAsync();
+            if (otra is not null) { otra.EsPrincipal = true; await _db.SaveChangesAsync(); }
+        }
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>Deja EsPrincipal=1 solo en la dirección indicada; apaga las demás del mismo cliente.</summary>
+    private async Task DesmarcarOtrasPrincipales(int clienteId, int dirIdPrincipal)
+    {
+        await _db.CafeClienteDirecciones
+            .Where(x => x.ClienteId == clienteId && x.Id != dirIdPrincipal && x.EsPrincipal)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.EsPrincipal, false));
+    }
+
     /// <summary>Asigna un código interno correlativo al cliente. Si ya tiene uno, lo respeta.
     /// El correlativo se calcula como MAX(CodigoInterno actual) + 1.</summary>
     [HttpPost("{id:int}/asignar-codigo-interno")]

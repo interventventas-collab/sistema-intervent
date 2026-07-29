@@ -17,6 +17,26 @@ public record CafeClienteDto(
     // 2026-07-01: teléfono 2 + entre calles (sirven para ventas y alquileres/eventos)
     string? Telefono2 = null, string? EntreCalles = null);
 
+// 2026-07-29: Direcciones de entrega múltiples por cliente.
+public record CafeDireccionDto(
+    int Id, int ClienteId, string? Etiqueta, string Direccion,
+    string? EntreCalles, string? Localidad, string? Ciudad, string? Cp, string? Telefono,
+    string? MapeoLink, decimal? MapeoLat, decimal? MapeoLng,
+    bool EsPrincipal, bool IsActive);
+
+public class CafeDireccionUpsertRequest
+{
+    public string? Etiqueta { get; set; }
+    public string Direccion { get; set; } = string.Empty;
+    public string? EntreCalles { get; set; }
+    public string? Localidad { get; set; }
+    public string? Ciudad { get; set; }
+    public string? Cp { get; set; }
+    public string? Telefono { get; set; }
+    public string? MapeoLink { get; set; }
+    public bool EsPrincipal { get; set; }
+}
+
 public class CreateCafeClienteRequest
 {
     public string Nombre { get; set; } = string.Empty;

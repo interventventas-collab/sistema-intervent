@@ -88,6 +88,38 @@ public class UpdateCafeClienteRequest
     public bool? SolicitarFirmaEntrega { get; set; }
 }
 
+// 2026-07-29: Direcciones de entrega múltiples por cliente.
+public class CafeDireccionDto
+{
+    public int Id { get; set; }
+    public int ClienteId { get; set; }
+    public string? Etiqueta { get; set; }
+    public string Direccion { get; set; } = "";
+    public string? EntreCalles { get; set; }
+    public string? Localidad { get; set; }
+    public string? Ciudad { get; set; }
+    public string? Cp { get; set; }
+    public string? Telefono { get; set; }
+    public string? MapeoLink { get; set; }
+    public decimal? MapeoLat { get; set; }
+    public decimal? MapeoLng { get; set; }
+    public bool EsPrincipal { get; set; }
+    public bool IsActive { get; set; } = true;
+}
+
+public class CafeDireccionUpsertRequest
+{
+    public string? Etiqueta { get; set; }
+    public string Direccion { get; set; } = "";
+    public string? EntreCalles { get; set; }
+    public string? Localidad { get; set; }
+    public string? Ciudad { get; set; }
+    public string? Cp { get; set; }
+    public string? Telefono { get; set; }
+    public string? MapeoLink { get; set; }
+    public bool EsPrincipal { get; set; }
+}
+
 public class CafeProductoDto
 {
     public int Id { get; set; }

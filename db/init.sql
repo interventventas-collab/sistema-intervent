@@ -2459,6 +2459,34 @@ BEGIN
 END
 GO
 
+-- 2026-07-29: Direcciones de ENTREGA por cliente (varias por cliente). Al hacer una venta
+-- se elige cuál es la de esa entrega. La columna vieja Cafe_Clientes.DomicilioEntrega queda
+-- como fallback (dirección principal) para clientes que todavía no cargaron lista.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_ClienteDirecciones' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_ClienteDirecciones (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ClienteId INT NOT NULL,
+        Etiqueta NVARCHAR(120) NULL,
+        Direccion NVARCHAR(300) NOT NULL,
+        EntreCalles NVARCHAR(200) NULL,
+        Localidad NVARCHAR(150) NULL,
+        Ciudad NVARCHAR(150) NULL,
+        Cp NVARCHAR(20) NULL,
+        Telefono NVARCHAR(50) NULL,
+        MapeoLink NVARCHAR(500) NULL,
+        MapeoLat DECIMAL(10,7) NULL,
+        MapeoLng DECIMAL(10,7) NULL,
+        EsPrincipal BIT NOT NULL DEFAULT 0,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_CafeClienteDirecciones_Cliente FOREIGN KEY (ClienteId) REFERENCES Cafe_Clientes(Id) ON DELETE CASCADE
+    );
+    CREATE INDEX IX_CafeClienteDirecciones_Cliente ON Cafe_ClienteDirecciones (ClienteId);
+END
+GO
+
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Productos' AND xtype='U')
 BEGIN
     CREATE TABLE Cafe_Productos (

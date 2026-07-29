@@ -106,6 +106,7 @@ public class AppDbContext : DbContext
     public DbSet<MenuVisibility> MenuVisibility => Set<MenuVisibility>();
     // Modulo Cafe (independiente)
     public DbSet<CafeCliente> CafeClientes => Set<CafeCliente>();
+    public DbSet<CafeClienteDireccion> CafeClienteDirecciones => Set<CafeClienteDireccion>();
     public DbSet<CafeClienteAlta> CafeClienteAltas => Set<CafeClienteAlta>();
     public DbSet<CafeProducto> CafeProductos => Set<CafeProducto>();
     public DbSet<CafeSetting> CafeSettings => Set<CafeSetting>();

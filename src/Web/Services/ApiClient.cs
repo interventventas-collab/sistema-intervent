@@ -1027,6 +1027,19 @@ public class ApiClient
     public async Task<bool> DeleteCafeClienteAsync(int id)
         => await DeleteAsync($"/api/cafe/clientes/{id}");
 
+    // 2026-07-29: direcciones de entrega múltiples por cliente
+    public async Task<List<CafeDireccionDto>> GetCafeDireccionesAsync(int clienteId)
+        => await GetAsync<List<CafeDireccionDto>>($"/api/cafe/clientes/{clienteId}/direcciones") ?? new();
+
+    public async Task<CafeDireccionDto?> CreateCafeDireccionAsync(int clienteId, CafeDireccionUpsertRequest req)
+        => await PostAsync<CafeDireccionDto>($"/api/cafe/clientes/{clienteId}/direcciones", req);
+
+    public async Task<CafeDireccionDto?> UpdateCafeDireccionAsync(int dirId, CafeDireccionUpsertRequest req)
+        => await PutAsync<CafeDireccionDto>($"/api/cafe/clientes/direcciones/{dirId}", req);
+
+    public async Task<bool> DeleteCafeDireccionAsync(int dirId)
+        => await DeleteAsync($"/api/cafe/clientes/direcciones/{dirId}");
+
     /// <summary>Asigna un código interno correlativo al cliente (max + 1).</summary>
     public async Task<CafeClienteDto?> AsignarCodigoInternoAsync(int id)
         => await PostAsync<CafeClienteDto>($"/api/cafe/clientes/{id}/asignar-codigo-interno", new { });
