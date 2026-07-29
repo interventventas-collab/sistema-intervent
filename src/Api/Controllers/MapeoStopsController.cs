@@ -822,11 +822,11 @@ public class MapeoStopsController : ControllerBase
         var digits = new string(raw.Where(char.IsDigit).ToArray());
         if (digits.Length >= 6 && long.TryParse(digits, out var num))
         {
-            // 3a) directo como nº de envío (shipment id)
+            // 3a) directo como nº de envío (shipment id) que ya tengamos local
             var sh = await _db.MeliShipments.FirstOrDefaultAsync(s => s.MeliShipmentId == num);
             // 3b) como nº de venta (order id) ya guardado en el envío
             if (sh is null) sh = await _db.MeliShipments.FirstOrDefaultAsync(s => s.MeliOrderId == num);
-            // 3c) como nº de venta buscando la orden → su envío (y sincronizándolo si hace falta)
+            // 3c) como nº de venta buscando la orden LOCAL → su envío (sincronizándolo si hace falta)
             if (sh is null)
             {
                 var ord = await _db.MeliOrders.FirstOrDefaultAsync(o => o.MeliOrderId == num);
@@ -841,7 +841,19 @@ public class MapeoStopsController : ControllerBase
                     }
                 }
             }
-            // 3d) último recurso: tratar el número como nº de envío y traerlo de MeLi en el momento
+            // 3d) NO está local: le preguntamos a MeLi. Primero como nº de VENTA (order) — recorre las
+            // cuentas conectadas, encuentra la orden, saca su envío y lo sincroniza (sirve para ventas viejas).
+            if (sh is null)
+            {
+                try
+                {
+                    var imp = await _shipmentSvc.ImportByOrderIdAsync(digits);
+                    if (imp.ok && imp.shipmentId is not null)
+                        sh = await _db.MeliShipments.FirstOrDefaultAsync(s => s.MeliShipmentId == imp.shipmentId.Value);
+                }
+                catch (Exception ex) { _logger.LogWarning(ex, "by-number: ImportByOrderId fallo para {N}", digits); }
+            }
+            // 3e) último recurso: tratar el número como nº de ENVÍO y traerlo de MeLi en el momento.
             if (sh is null)
             {
                 try { await _shipmentSvc.SyncSingleShipmentAsync(num); }
