@@ -365,7 +365,7 @@
                     {
                         <div style="display:flex; flex-direction:column; gap:0.5rem;">
                             <button class="btn" style="width:100%; padding:0.8rem; font-size:1.05rem; font-weight:700; background:#6b7280; border:2px solid #000; color:#fff; border-radius:6px; text-align:center;"
-                                    @onclick="() => showScanModal = true">
+                                    @onclick="OpenScanModal">
                                 📷 Escanear
                             </button>
                             <button class="btn" style="width:100%; padding:0.8rem; font-size:1.05rem; font-weight:700; background:#6b7280; border:2px solid #000; color:#fff; border-radius:6px;"
@@ -827,12 +827,8 @@
                     }
                 </button>
                 @* Escanear con el celular (muestra el QR) — ícono de cámara de fotos. *@
-                <button class="mapeo-dock-btn" @onclick="() => showScanModal = true" title="Escanear con el celular (muestra el QR)">
+                <button class="mapeo-dock-btn" @onclick="OpenScanModal" title="Escanear con el celular, o traer por número (venta/alquiler/Flex)">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
-                </button>
-                @* Traer por número (sin escanear) — ícono de teclado. Plan B si falla el escáner/impresora. *@
-                <button class="mapeo-dock-btn" @onclick="OpenPorNumeroModal" title="Traer por número (sin escanear): venta, alquiler o envío Flex">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"></rect><line x1="6" y1="10" x2="6" y2="10"></line><line x1="10" y1="10" x2="10" y2="10"></line><line x1="14" y1="10" x2="14" y2="10"></line><line x1="18" y1="10" x2="18" y2="10"></line><line x1="7" y1="14" x2="17" y2="14"></line></svg>
                 </button>
                 @* Agregar parada manual — ícono de globito (pin) de Google. *@
                 <button class="mapeo-dock-btn" @onclick="OpenAddStopModal" title="Agregar parada manual">
@@ -1876,12 +1872,12 @@
 @if (showScanModal)
 {
     <div class="modal-overlay" @onclick="() => showScanModal = false">
-        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width:440px; max-height:90vh; display:flex; flex-direction:column;">
             <div class="modal-header" style="background:#dcfce7;">
-                <h3 style="margin:0;">📷 Escanear con el celular</h3>
+                <h3 style="margin:0;">📷 Escanear o traer por número</h3>
                 <button class="btn-close" @onclick="() => showScanModal = false">&times;</button>
             </div>
-            <div class="modal-body" style="text-align:center;">
+            <div class="modal-body" style="text-align:center; overflow-y:auto;">
                 <img src="@ScanQrUrl" alt="QR para escanear" style="width:200px; height:200px; background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:6px;" />
                 <div style="font-weight:700; color:#166534; font-size:1rem; margin-top:0.6rem;">📱 Escaneá este QR con el celular</div>
                 <div style="font-size:0.83rem; color:#15803d; margin-top:0.3rem; line-height:1.4;">
@@ -1894,41 +1890,29 @@
                 <a href="@EscanearUrl" target="_blank" rel="noopener" style="display:inline-block; margin-top:0.6rem; font-size:0.82rem; color:#2563eb;">
                     🔗 Abrir el escáner en este dispositivo
                 </a>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" @onclick="() => showScanModal = false">Cerrar</button>
-            </div>
-        </div>
-    </div>
-}
 
-@if (showPorNumeroModal)
-{
-    <div class="modal-overlay" @onclick="() => showPorNumeroModal = false">
-        <div class="modal-card" @onclick:stopPropagation="true" style="max-width:520px; max-height:88vh; display:flex; flex-direction:column;">
-            <div class="modal-header" style="background:#e0e7ff;">
-                <h3 style="margin:0;">⌨️ Traer por número (sin escanear)</h3>
-                <button class="btn-close" @onclick="() => showPorNumeroModal = false">&times;</button>
-            </div>
-            <div class="modal-body" style="overflow-y:auto;">
-                <p style="font-size:0.85rem; color:#4b5563; margin:0 0 0.6rem; line-height:1.45;">
-                    Escribí o pegá el <strong>número</strong> y lo traigo al mapa igual que si lo escanearas.
+                @* ─── O traer por número, sin escanear (plan B si falla el escáner/impresora) ─── *@
+                <div style="display:flex; align-items:center; gap:0.6rem; margin:1.1rem 0 0.7rem;">
+                    <div style="flex:1; height:1px; background:#e5e7eb;"></div>
+                    <span style="font-size:0.78rem; font-weight:700; color:#6b7280; white-space:nowrap;">⌨️ o traé por número</span>
+                    <div style="flex:1; height:1px; background:#e5e7eb;"></div>
+                </div>
+                <p style="font-size:0.82rem; color:#4b5563; margin:0 0 0.5rem; line-height:1.45; text-align:left;">
+                    Escribí o pegá el <strong>número</strong> y lo traigo al mapa igual que escaneándolo.
                     Sirve para <strong>ventas del sistema</strong>, <strong>alquileres</strong> y <strong>envíos de MercadoLibre</strong>
-                    (podés poner el nº de venta o el nº de envío). El sistema se da cuenta solo de qué es.
+                    (nº de venta o nº de envío). El sistema reconoce solo de qué es.
+                    <br /><span style="color:#6b7280; font-size:0.76rem;">💡 Podés poner varios, uno por línea.</span>
                 </p>
-                <p style="font-size:0.78rem; color:#6b7280; margin:0 0 0.5rem;">
-                    💡 Podés poner <strong>varios, uno por línea</strong>, y los traigo a todos de una.
-                </p>
-                <textarea class="form-input" @bind="porNumeroTexto" rows="5" placeholder="Ej:&#10;0001-00012345&#10;2000012345678901" @onclick:stopPropagation="true"
-                          style="width:100%; font-size:0.95rem; font-family:monospace;"></textarea>
-                <button class="btn" style="width:100%; margin-top:0.7rem; padding:0.7rem; font-size:1rem; font-weight:700; background:#2563eb; color:#fff; border:none; border-radius:8px;"
+                <textarea class="form-input" @bind="porNumeroTexto" rows="3" placeholder="Ej:&#10;0001-00012345&#10;2000012345678901" @onclick:stopPropagation="true"
+                          style="width:100%; font-size:0.95rem; font-family:monospace; text-align:left;"></textarea>
+                <button class="btn" style="width:100%; margin-top:0.6rem; padding:0.65rem; font-size:1rem; font-weight:700; background:#2563eb; color:#fff; border:none; border-radius:8px;"
                         @onclick="TraerPorNumero" disabled="@trayendoPorNumero">
                     @(trayendoPorNumero ? "Trayendo…" : "🔎 Traer al mapa")
                 </button>
 
                 @if (porNumeroResultados.Count > 0)
                 {
-                    <div style="margin-top:0.9rem; display:flex; flex-direction:column; gap:0.35rem;">
+                    <div style="margin-top:0.8rem; display:flex; flex-direction:column; gap:0.35rem; text-align:left;">
                         @foreach (var r in porNumeroResultados)
                         {
                             var ok = r.Ok;
@@ -1948,7 +1932,7 @@
                 }
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" @onclick="() => showPorNumeroModal = false">Cerrar</button>
+                <button class="btn btn-secondary" @onclick="() => showScanModal = false">Cerrar</button>
             </div>
         </div>
     </div>
@@ -4103,7 +4087,7 @@
     }
 
     // ===== Traer por número (sin escanear): venta / alquiler / envío MeLi =====
-    private bool showPorNumeroModal;
+    // Vive DENTRO del cartel de "Escanear con el celular" (no es un botón aparte del dock).
     private bool trayendoPorNumero;
     private string porNumeroTexto = "";
     private class PorNumeroLineaVm
@@ -4117,11 +4101,12 @@
     }
     private List<PorNumeroLineaVm> porNumeroResultados = new();
 
-    private void OpenPorNumeroModal()
+    // Abre el cartel de Escanear y limpia lo que hubiera quedado de una carga por número anterior.
+    private void OpenScanModal()
     {
         porNumeroTexto = "";
         porNumeroResultados = new();
-        showPorNumeroModal = true;
+        showScanModal = true;
     }
 
     private async Task TraerPorNumero()
