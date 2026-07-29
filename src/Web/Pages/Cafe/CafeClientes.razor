@@ -317,7 +317,94 @@
                     <div class="form-group">
                         <label class="form-label">Domicilio de entrega</label>
                         <input class="form-input" @bind="formDomicilioEntrega" placeholder="Donde se entregan los pedidos (si difiere del fiscal)" />
-                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Si está vacío, se usa la dirección fiscal.</p>
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Si está vacío, se usa la dirección fiscal. (Es la dirección de siempre; abajo podés cargar varias.)</p>
+                    </div>
+                    @* ─── 2026-07-29: Direcciones de entrega múltiples ─── *@
+                    <div style="background: #f0fdf4; border: 1px solid #16a34a; border-radius: 6px; padding: 0.6rem 0.8rem; margin-top: 0.5rem;">
+                        <label class="form-label" style="font-size: 0.82rem; color: #166534;">🚚 Direcciones de entrega (varias)</label>
+                        @if (!isEditing)
+                        {
+                            <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">
+                                Guardá el cliente primero y volvé a abrirlo para cargar varias sucursales / puntos de entrega. Al hacer una venta vas a poder elegir a cuál se entrega.
+                            </p>
+                        }
+                        else
+                        {
+                            @if (direccionesCliente.Count == 0)
+                            {
+                                <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0.4rem;">
+                                    Todavía no cargaste direcciones. Agregá las sucursales / puntos de entrega de este cliente para poder elegirlos en la venta.
+                                </p>
+                            }
+                            else
+                            {
+                                <div style="display: flex; flex-direction: column; gap: 0.35rem; margin: 0.35rem 0 0.5rem;">
+                                    @foreach (var d in direccionesCliente)
+                                    {
+                                        <div style="display: flex; align-items: center; gap: 0.5rem; background: white; border: 1px solid #d1d5db; border-radius: 6px; padding: 0.4rem 0.55rem;">
+                                            <div style="flex: 1; min-width: 0;">
+                                                <div style="font-weight: 600; font-size: 0.82rem;">
+                                                    @(string.IsNullOrWhiteSpace(d.Etiqueta) ? "(sin nombre)" : d.Etiqueta)
+                                                    @if (d.EsPrincipal)
+                                                    {
+                                                        <span style="background: #16a34a; color: white; font-size: 0.63rem; padding: 0.05rem 0.4rem; border-radius: 10px; margin-left: 0.3rem;">Principal</span>
+                                                    }
+                                                </div>
+                                                <div style="font-size: 0.75rem; color: #4b5563;">@d.Direccion@(string.IsNullOrWhiteSpace(d.Localidad) ? "" : $" · {d.Localidad}")</div>
+                                            </div>
+                                            @if (!d.EsPrincipal)
+                                            {
+                                                <button type="button" class="btn btn-secondary" style="font-size: 0.68rem; padding: 0.2rem 0.4rem;" @onclick="() => MarcarDireccionPrincipal(d)" disabled="@dirGuardando" title="Marcar como principal">★</button>
+                                            }
+                                            <button type="button" class="btn btn-secondary" style="font-size: 0.68rem; padding: 0.2rem 0.4rem;" @onclick="() => EditarDireccion(d)" disabled="@dirGuardando" title="Editar">✏️</button>
+                                            <button type="button" class="btn btn-secondary" style="font-size: 0.68rem; padding: 0.2rem 0.4rem; color: #dc2626;" @onclick="() => BorrarDireccion(d)" disabled="@dirGuardando" title="Borrar">🗑</button>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            @* Sub-formulario agregar / editar dirección *@
+                            <div style="border-top: 1px dashed #86efac; padding-top: 0.5rem; margin-top: 0.3rem;">
+                                <div style="font-size: 0.74rem; font-weight: 600; color: #166534; margin-bottom: 0.35rem;">
+                                    @(dirEditandoId.HasValue ? "✏️ Editar dirección" : "➕ Agregar dirección")
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0.4rem;">
+                                    <input class="form-input" @bind="dirEtiqueta" placeholder="Nombre para reconocerla (ej: Depósito Canning)" />
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0.4rem;">
+                                    <input class="form-input" @bind="dirDireccion" placeholder="Dirección de entrega *" />
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group" style="flex: 2;">
+                                        <input class="form-input" @bind="dirLocalidad" placeholder="Localidad" />
+                                    </div>
+                                    <div class="form-group" style="flex: 1;">
+                                        <input class="form-input" @bind="dirCp" placeholder="CP" />
+                                    </div>
+                                    <div class="form-group" style="flex: 2;">
+                                        <input class="form-input" @bind="dirTelefono" placeholder="Teléfono (opcional)" />
+                                    </div>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0.4rem;">
+                                    <input class="form-input" @bind="dirMapeoLink" placeholder="🗺 Link Google Maps del pin (opcional)" />
+                                </div>
+                                <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.76rem; cursor: pointer; margin-bottom: 0.4rem;">
+                                    <input type="checkbox" @bind="dirEsPrincipal" /> Marcar como principal (viene elegida por defecto en la venta)
+                                </label>
+                                @if (!string.IsNullOrEmpty(dirError))
+                                {
+                                    <p style="color: #dc2626; font-size: 0.72rem; margin: 0 0 0.3rem;">@dirError</p>
+                                }
+                                <div style="display: flex; gap: 0.4rem;">
+                                    <button type="button" class="btn btn-primary" style="font-size: 0.74rem; padding: 0.3rem 0.7rem;" @onclick="GuardarDireccion" disabled="@dirGuardando">
+                                        @(dirGuardando ? "Guardando…" : (dirEditandoId.HasValue ? "Guardar cambios" : "➕ Agregar"))
+                                    </button>
+                                    @if (dirEditandoId.HasValue)
+                                    {
+                                        <button type="button" class="btn btn-secondary" style="font-size: 0.74rem; padding: 0.3rem 0.7rem;" @onclick="CancelarEdicionDireccion" disabled="@dirGuardando">Cancelar</button>
+                                    }
+                                </div>
+                            </div>
+                        }
                     </div>
                     <div class="form-group">
                         <label class="form-label">Entre calles</label>
@@ -870,6 +957,7 @@
         formMapeoLat = null; formMapeoLng = null;
         localidadesSugeridas = new();
         formIsActive = true; formTieneMiniImpresora = false; formSolicitarFirmaEntrega = false; formError = null; showForm = true;
+        direccionesCliente = new(); ResetSubformDireccion();
         await Task.CompletedTask;
     }
 
@@ -892,6 +980,104 @@
         // Pre-cargar localidades sugeridas segun la provincia del cliente
         localidadesSugeridas = await CpService.GetLocalidadesAsync(formCiudad);
         formIsActive = c.IsActive; formTieneMiniImpresora = c.TieneMiniImpresora; formSolicitarFirmaEntrega = c.SolicitarFirmaEntrega; formError = null; showForm = true;
+        ResetSubformDireccion();
+        await LoadDirecciones(c.Id);
+    }
+
+    // ===== 2026-07-29: Direcciones de entrega múltiples =====
+    private List<CafeDireccionDto> direccionesCliente = new();
+    private string dirEtiqueta = "", dirDireccion = "", dirLocalidad = "", dirCp = "", dirTelefono = "", dirMapeoLink = "";
+    private bool dirEsPrincipal = false, dirGuardando = false;
+    private int? dirEditandoId = null;
+    private string? dirError = null;
+
+    private async Task LoadDirecciones(int clienteId)
+    {
+        try { direccionesCliente = await Api.GetCafeDireccionesAsync(clienteId); }
+        catch { direccionesCliente = new(); }
+    }
+
+    private void ResetSubformDireccion()
+    {
+        dirEditandoId = null;
+        dirEtiqueta = ""; dirDireccion = ""; dirLocalidad = ""; dirCp = ""; dirTelefono = ""; dirMapeoLink = "";
+        dirEsPrincipal = false; dirError = null;
+    }
+
+    private void EditarDireccion(CafeDireccionDto d)
+    {
+        dirEditandoId = d.Id;
+        dirEtiqueta = d.Etiqueta ?? "";
+        dirDireccion = d.Direccion;
+        dirLocalidad = d.Localidad ?? "";
+        dirCp = d.Cp ?? "";
+        dirTelefono = d.Telefono ?? "";
+        dirMapeoLink = d.MapeoLink ?? "";
+        dirEsPrincipal = d.EsPrincipal;
+        dirError = null;
+    }
+
+    private void CancelarEdicionDireccion() => ResetSubformDireccion();
+
+    private async Task GuardarDireccion()
+    {
+        if (!editingId.HasValue) return;
+        if (string.IsNullOrWhiteSpace(dirDireccion)) { dirError = "La dirección es obligatoria."; return; }
+        dirGuardando = true; dirError = null;
+        try
+        {
+            var req = new CafeDireccionUpsertRequest
+            {
+                Etiqueta = dirEtiqueta, Direccion = dirDireccion.Trim(), Localidad = dirLocalidad,
+                Cp = dirCp, Telefono = dirTelefono, MapeoLink = dirMapeoLink, EsPrincipal = dirEsPrincipal
+            };
+            if (dirEditandoId.HasValue)
+            {
+                var upd = await Api.UpdateCafeDireccionAsync(dirEditandoId.Value, req);
+                if (upd is null) { dirError = "No se pudo guardar."; return; }
+            }
+            else
+            {
+                var cre = await Api.CreateCafeDireccionAsync(editingId.Value, req);
+                if (cre is null) { dirError = "No se pudo agregar."; return; }
+            }
+            await LoadDirecciones(editingId.Value);
+            ResetSubformDireccion();
+        }
+        catch (Exception ex) { dirError = "Error: " + ex.Message; }
+        finally { dirGuardando = false; }
+    }
+
+    private async Task MarcarDireccionPrincipal(CafeDireccionDto d)
+    {
+        if (!editingId.HasValue) return;
+        dirGuardando = true;
+        try
+        {
+            await Api.UpdateCafeDireccionAsync(d.Id, new CafeDireccionUpsertRequest
+            {
+                Etiqueta = d.Etiqueta, Direccion = d.Direccion, EntreCalles = d.EntreCalles,
+                Localidad = d.Localidad, Ciudad = d.Ciudad, Cp = d.Cp, Telefono = d.Telefono,
+                MapeoLink = d.MapeoLink, EsPrincipal = true
+            });
+            await LoadDirecciones(editingId.Value);
+        }
+        catch (Exception ex) { dirError = "Error: " + ex.Message; }
+        finally { dirGuardando = false; }
+    }
+
+    private async Task BorrarDireccion(CafeDireccionDto d)
+    {
+        if (!editingId.HasValue) return;
+        dirGuardando = true;
+        try
+        {
+            await Api.DeleteCafeDireccionAsync(d.Id);
+            await LoadDirecciones(editingId.Value);
+            if (dirEditandoId == d.Id) ResetSubformDireccion();
+        }
+        catch (Exception ex) { dirError = "Error: " + ex.Message; }
+        finally { dirGuardando = false; }
     }
 
     private async Task ReExtraerCoords()
