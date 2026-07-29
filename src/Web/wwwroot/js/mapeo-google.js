@@ -137,6 +137,7 @@ window.mapeoFlex = (function () {
     let map = null;
     let markers = [];
     let infoWindow = null;
+    let infoOpen = false;         // ¿hay un globito (popup) abierto? el refresco automático no lo pisa
     let dotNetRef = null;
     let zonePolygon = null;       // polígono que el usuario dibuja a mano (esquina por esquina) — el relleno del área
     let zoneLine = null;          // línea que UNE los puntos mientras dibujás (la que se ve trazándose)
@@ -208,6 +209,7 @@ window.mapeoFlex = (function () {
                 zoomControl: true
             });
             infoWindow = new google.maps.InfoWindow();
+            infoWindow.addListener('closeclick', () => { infoOpen = false; });
             markers = [];
             lastFitStops = -1;
             // Capa de tráfico: arranca APAGADA (como el Google Maps original). Se prende/apaga
@@ -216,8 +218,13 @@ window.mapeoFlex = (function () {
             // lo más parecido posible al Google Maps original, sin los tonos de colores encima.
         },
 
-        renderMarkers(items) {
+        // keepView = true: redibuja los globitos SIN mover el mapa (ni zoom ni centro).
+        // Se usa en el refresco automático, para que los envíos escaneados aparezcan solos
+        // sin saltarte la vista mientras estás mirando una zona.
+        renderMarkers(items, keepView) {
             if (!map || !window.google) return;
+            // Refresco automático con un globito abierto: no lo pisamos, lo dejamos como está.
+            if (keepView && infoOpen) return;
             for (const m of markers) m.setMap(null);
             markers = [];
             this.clearRoutes(); // las líneas viejas se borran; se redibujan al optimizar
@@ -273,7 +280,7 @@ window.mapeoFlex = (function () {
                 const ids = group.map(g => g.id);
                 const isCluster = group.length > 1;
                 marker.addListener('click', () => {
-                    if (infoWindow) { infoWindow.setContent(popupHtml); infoWindow.open(map, marker); }
+                    if (infoWindow) { infoWindow.setContent(popupHtml); infoWindow.open(map, marker); infoOpen = true; }
                     if (!dotNetRef) return;
                     if (isCluster) dotNetRef.invokeMethodAsync('OnClusterClicked', ids);
                     else dotNetRef.invokeMethodAsync('OnMarkerClicked', first.id);
@@ -290,6 +297,8 @@ window.mapeoFlex = (function () {
             //  - Con paradas: encuadramos para que entren todas + el punto de partida.
             //    Solo reajustamos cuando ENTRÓ una parada nueva (no al asignar/tocar), para no
             //    pisarle el zoom al usuario. Al soltar la casita tampoco reencuadra.
+            // Refresco automático: NO tocamos la vista, solo registramos el conteo.
+            if (keepView) { lastFitStops = realStops; return; }
             if (realStops === 0) {
                 map.setCenter(AMBA_CENTER);
                 map.setZoom(AMBA_ZOOM);
@@ -323,6 +332,7 @@ window.mapeoFlex = (function () {
             map.setCenter({ lat: +lat, lng: +lng });
             map.setZoom(zoom || 16);
             if (infoWindow) infoWindow.close();
+            infoOpen = false;
         },
 
         // Buscador estilo Google Maps: engancha un Autocomplete de Places al input dado.

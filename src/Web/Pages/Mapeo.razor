@@ -2955,6 +2955,7 @@
             await CargarNotas();
             await LoadAndRender();
             StateHasChanged();
+            IniciarAutoRefresh(); // refresco automático del mapa (envíos escaneados aparecen solos)
         }
         // (Re)engancha el arrastre de la lista (⠿) cuando está a la vista la ruta ordenable.
         // El JS destruye la instancia previa antes de crear una nueva, así que es seguro llamarlo en cada render.
@@ -2981,6 +2982,41 @@
         finally { isLoading = false; }
     }
 
+    // ===== Refresco automático del mapa =====
+    // 2026-07-29: a medida que se van escaneando/agregando envíos, aparecen solos en el mapa
+    // sin tener que apretar refrescar. Trae SOLO las paradas (de nuestra base, liviano) y las
+    // redibuja SIN moverte la vista. Se pausa solo mientras estás en el medio de algo.
+    private System.Threading.Timer? autoRefreshTimer;
+    private bool autoRefreshBusy;
+
+    private void IniciarAutoRefresh()
+    {
+        if (autoRefreshTimer is not null) return;
+        // Primer chequeo a los 7s y después cada 7s.
+        autoRefreshTimer = new System.Threading.Timer(async _ =>
+        {
+            try { await InvokeAsync(AutoRefreshTick); } catch { }
+        }, null, 7000, 7000);
+    }
+
+    private async Task AutoRefreshTick()
+    {
+        if (autoRefreshBusy || !mapInitialized) return;
+        // Guarda: no interrumpir si el usuario está haciendo algo sobre el mapa.
+        if (dibujandoZona || modoOrden || modoAsignacion || corrigiendoDomicilioStopId is not null
+            || routeBusy || actualizandoEntregas || assigningZone || assigningSlot || isLoading) return;
+        autoRefreshBusy = true;
+        try
+        {
+            var antes = stops?.Count ?? 0;
+            await LoadStops();                      // paradas frescas (incluye lo recién escaneado)
+            if (mapInitialized) await RenderMap(keepView: true); // redibuja sin mover la vista
+            if ((stops?.Count ?? 0) != antes) StateHasChanged();  // refresca la lista de la izquierda si cambió
+        }
+        catch { /* silencioso: es un refresco de fondo, no molestamos con errores */ }
+        finally { autoRefreshBusy = false; }
+    }
+
     // 2026-07-17: boton "Traer telefono ahora" — le pide a MeLi el telefono del comprador de este envio.
     // Si MeLi ya lo libero, lo muestra al toque y lo deja escrito en la nota de la venta.
     private async Task TraerTelefono(MeliShipmentDto s)
@@ -3005,7 +3041,8 @@
         finally { trayendoTel = false; }
     }
 
-    private async Task RenderMap()
+    // keepView=true (refresco automático): redibuja los globitos SIN mover el mapa.
+    private async Task RenderMap(bool keepView = false)
     {
         if (shipments is null) return;
         var list = new List<object>();
@@ -3120,7 +3157,7 @@
                 };
             }));
         }
-        await JS.InvokeVoidAsync("mapeoFlex.renderMarkers", new object[] { list.ToArray() });
+        await JS.InvokeVoidAsync("mapeoFlex.renderMarkers", list.ToArray(), keepView);
     }
 
     private static string ColorFor(string s) => s switch
@@ -4658,6 +4695,7 @@
 
     public async ValueTask DisposeAsync()
     {
+        if (autoRefreshTimer is not null) { await autoRefreshTimer.DisposeAsync(); autoRefreshTimer = null; }
         try { await JS.InvokeVoidAsync("mapeoFlex.destroy"); } catch { }
         selfRef?.Dispose();
     }
