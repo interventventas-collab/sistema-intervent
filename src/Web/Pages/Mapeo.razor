@@ -598,7 +598,7 @@
                                         {
                                             <span title="Hay @g.Count envíos a este mismo destino" style="background:#dc2626; color:white; padding:0.05rem 0.35rem; border-radius:8px; font-size:0.62rem; font-weight:700;">× @g.Count</span>
                                         }
-                                        <button class="btn-icon" style="font-size:0.9rem; color:#6b7280; padding:0 0.15rem; line-height:1;" @onclick="() => ToggleFilaExpandida(grupoKey)" @onclick:stopPropagation="true" title="Ver todos los datos de este envío">▸</button>
+                                        <button class="btn-icon" style="font-size:1.35rem; color:#6b7280; padding:0.1rem 0.4rem; line-height:1;" @onclick="() => ToggleFilaExpandida(grupoKey)" @onclick:stopPropagation="true" title="Ver todos los datos de este envío">▸</button>
                                     </div>
                                     <div style="display:flex; align-items:center; justify-content:space-between; gap:0.4rem; margin-top:0.2rem;">
                                         @if (pfC is not null && !string.IsNullOrEmpty(pfC.AssignedDriverName))
@@ -646,7 +646,7 @@
                                     <div style="display:flex; align-items:center; gap:0.2rem;">
                                         @if (vistaCompacta)
                                         {
-                                            <button class="btn-icon" style="font-size:0.9rem; color:#6b7280; line-height:1;" @onclick="() => ToggleFilaExpandida(grupoKey)" @onclick:stopPropagation="true" title="Volver a la vista compacta">▾</button>
+                                            <button class="btn-icon" style="font-size:1.35rem; color:#6b7280; padding:0.1rem 0.4rem; line-height:1;" @onclick="() => ToggleFilaExpandida(grupoKey)" @onclick:stopPropagation="true" title="Volver a la vista compacta">▾</button>
                                         }
                                         <span class="mapeo-status-pill" style="@EffectiveStatusStyle(s)">@EffectiveStatusLabel(s)</span>
                                     </div>
@@ -766,7 +766,7 @@
                                         {
                                             <span title="Esta parada se repite @g.Count veces" style="background:#dc2626; color:white; padding:0.05rem 0.35rem; border-radius:8px; font-size:0.62rem; font-weight:700;">× @g.Count</span>
                                         }
-                                        <button class="btn-icon" style="font-size:0.9rem; color:#6b7280; padding:0 0.15rem; line-height:1;" @onclick="() => ToggleFilaExpandida(grupoKey)" @onclick:stopPropagation="true" title="Ver todos los datos de este envío">▸</button>
+                                        <button class="btn-icon" style="font-size:1.35rem; color:#6b7280; padding:0.1rem 0.4rem; line-height:1;" @onclick="() => ToggleFilaExpandida(grupoKey)" @onclick:stopPropagation="true" title="Ver todos los datos de este envío">▸</button>
                                     </div>
                                     @* Renglón 2: repartidor (#orden) + N° de envío *@
                                     <div style="display:flex; align-items:center; justify-content:space-between; gap:0.4rem; margin-top:0.2rem;">
@@ -809,17 +809,17 @@
                                     <div style="display:flex; gap:0.2rem; align-items:center;">
                                         @if (vistaCompacta)
                                         {
-                                            <button class="btn-icon" style="font-size:0.9rem; color:#6b7280; line-height:1;" @onclick="() => ToggleFilaExpandida(grupoKey)" @onclick:stopPropagation="true" title="Volver a la vista compacta">▾</button>
+                                            <button class="btn-icon" style="font-size:1.35rem; color:#6b7280; padding:0.1rem 0.4rem; line-height:1;" @onclick="() => ToggleFilaExpandida(grupoKey)" @onclick:stopPropagation="true" title="Volver a la vista compacta">▾</button>
                                         }
                                         @{
                                             var yaEsFav = favoritos?.Any(f => Math.Abs(f.Latitude - st.Latitude) < 0.0001m && Math.Abs(f.Longitude - st.Longitude) < 0.0001m) ?? false;
                                         }
-                                        <button class="btn-icon" style="font-size:0.85rem; @(yaEsFav ? "color:#f59e0b;" : "color:#d1d5db;")"
+                                        <button class="btn-icon" style="font-size:1.3rem; padding:0.1rem 0.35rem; @(yaEsFav ? "color:#f59e0b;" : "color:#d1d5db;")"
                                                 @onclick="() => SaveStopAsFavorito(st)" @onclick:stopPropagation="true"
                                                 title="@(yaEsFav ? "Ya está en tus favoritos" : "Guardar como favorito (después podés elegirlo como punto de partida)")" disabled="@(yaEsFav || savingStopFav)">
                                             @(yaEsFav ? "⭐" : "☆")
                                         </button>
-                                        <button class="btn-icon btn-delete" style="font-size:0.7rem;" @onclick="() => DeleteGrupoManual(grupoLocal)" @onclick:stopPropagation="true" title="Quitar">×</button>
+                                        <button class="btn-icon btn-delete" style="font-size:1.2rem; padding:0.1rem 0.4rem; line-height:1;" @onclick="() => DeleteGrupoManual(grupoLocal)" @onclick:stopPropagation="true" title="Quitar">×</button>
                                     </div>
                                 </div>
                                 @* Usuario (nickname) y N° de venta del envío de MeLi enlazado a esta parada escaneada. *@
