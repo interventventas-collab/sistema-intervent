@@ -10,9 +10,20 @@
 <PageTitle>WhatsApp — Chat</PageTitle>
 
 @* 2026-07-23: solapas del sector WhatsApp unificado (pedido Osmar) — chats + pedidos, todo junto *@
-<div style="display:flex; gap:0.4rem; padding:0.5rem 0.75rem 0;">
-    <span style="padding:0.45rem 1rem; border-radius:8px 8px 0 0; background:#25D366; color:#fff; font-weight:600; font-size:0.9rem;">💬 Chats</span>
-    <a href="/whatsapp/pedidos" style="padding:0.45rem 1rem; border-radius:8px 8px 0 0; background:#f3f4f6; color:#374151; text-decoration:none; font-weight:600; font-size:0.9rem; border:1px solid #e5e7eb; border-bottom:none;">📥 Pedidos y configuración</a>
+@* 2026-07-29: barra superior rediseñada + cartelito "Línea activa" (para saber SIEMPRE con qué WhatsApp trabajás, ya que va a haber un 2° número) *@
+<div class="wa-topbar">
+    <div class="wa-tabs-top">
+        <span class="wa-tab-top active">💬 Chats</span>
+        <a href="/whatsapp/pedidos" class="wa-tab-top">📥 Pedidos y configuración</a>
+    </div>
+    <div class="wa-linea-badge @(LineaActivaTieneNumero ? "on" : "")" title="Este es el número de WhatsApp con el que estás trabajando: lo que ve la gente cuando le escribís.">
+        <i class="wa-linea-icon">📱</i>
+        <div class="wa-linea-txt">
+            <span class="wa-linea-label">Línea activa</span>
+            <span class="wa-linea-num">@LineaActivaTexto()</span>
+        </div>
+        <span class="wa-linea-dot @(LineaActivaTieneNumero ? "on" : "")"></span>
+    </div>
 </div>
 
 <div class="wa-outer">
@@ -609,17 +620,32 @@
 }
 
 <style>
-    /* 2026-06-19: container centrado estilo WhatsApp Web. Sidebar fino + thread centrado con max-width
-       para que las burbujas no queden re-estiradas en pantallas wide y no haya que girar el cuello. */
-    .wa-outer { display: flex; justify-content: center; height: calc(100vh - 70px); background: #d1d7db; padding: 0; }
-    .wa-root { display: grid; grid-template-columns: 300px 1fr; width: 100%; max-width: 1100px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08); gap: 0; overflow: hidden; }
-    .wa-sidebar { background: #fff; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; overflow: hidden; }
-    .wa-side-header { padding: 1rem; border-bottom: 1px solid #e5e7eb; background: #f8fafc; }
+    /* 2026-07-29: rediseño — más ancho y moderno. Sidebar + thread como dos tarjetas redondeadas
+       separadas por un gap, con sombra suave (estilo del resto del sistema). */
+    .wa-outer { display: flex; justify-content: center; height: calc(100vh - 104px); background: #eef1f5; padding: 0.7rem 1rem 1rem; }
+    .wa-root { display: grid; grid-template-columns: 340px 1fr; width: 100%; max-width: 1500px; background: transparent; box-shadow: none; gap: 0.8rem; overflow: hidden; }
+    .wa-sidebar { background: #fff; border: 1px solid #e6eaf0; border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 6px 20px rgba(15,23,42,0.06); }
+    .wa-side-header { padding: 1rem 1rem 0.85rem; border-bottom: 1px solid #eef1f5; background: #fbfcfe; }
+
+    /* Barra superior: solapas + cartelito de línea activa */
+    .wa-topbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; padding: 0.6rem 1rem 0; flex-wrap: wrap; }
+    .wa-tabs-top { display: flex; gap: 0.4rem; }
+    .wa-tab-top { padding: 0.5rem 1.1rem; border-radius: 12px 12px 0 0; background: #f3f4f6; color: #374151; text-decoration: none; font-weight: 600; font-size: 0.92rem; border: 1px solid #e5e7eb; border-bottom: none; transition: background 0.12s; }
+    .wa-tab-top:hover { background: #e9edf2; }
+    .wa-tab-top.active { background: #25D366; color: #fff; border-color: #25D366; }
+    .wa-linea-badge { display: flex; align-items: center; gap: 0.6rem; background: #fff; border: 1px solid #e6eaf0; border-radius: 999px; padding: 0.4rem 0.9rem 0.4rem 0.75rem; box-shadow: 0 4px 14px rgba(15,23,42,0.07); margin-bottom: 0.35rem; }
+    .wa-linea-badge.on { border-color: #bbf7d0; background: #f0fdf6; }
+    .wa-linea-icon { font-style: normal; font-size: 1.2rem; line-height: 1; }
+    .wa-linea-txt { display: flex; flex-direction: column; line-height: 1.15; }
+    .wa-linea-label { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.04em; color: #94a3b8; font-weight: 700; }
+    .wa-linea-num { font-size: 0.92rem; font-weight: 700; color: #0f172a; }
+    .wa-linea-dot { width: 9px; height: 9px; border-radius: 50%; background: #cbd5e1; flex-shrink: 0; }
+    .wa-linea-dot.on { background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,0.18); }
     .wa-conv-list { flex: 1; overflow-y: auto; }
-    .wa-conv-item { display: flex; gap: 0.7rem; padding: 0.7rem 1rem; border-bottom: 1px solid #f3f4f6; cursor: pointer; transition: background 0.1s; }
-    .wa-conv-item:hover { background: #f9fafb; }
-    .wa-conv-item.active { background: #e0f2fe; }
-    .wa-avatar { width: 42px; height: 42px; border-radius: 50%; background: #25d366; color: white; display: flex; align-items: center; justify-content: center; font-weight: 600; flex-shrink: 0; }
+    .wa-conv-item { display: flex; gap: 0.75rem; padding: 0.7rem 1rem; border-bottom: 1px solid #f3f4f6; cursor: pointer; transition: background 0.1s; border-left: 3px solid transparent; }
+    .wa-conv-item:hover { background: #f7faf8; }
+    .wa-conv-item.active { background: #eafcf1; border-left-color: #25d366; }
+    .wa-avatar { width: 46px; height: 46px; border-radius: 50%; background: #25d366; color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.05rem; flex-shrink: 0; }
     .wa-conv-body { flex: 1; min-width: 0; }
     .wa-conv-row1 { display: flex; justify-content: space-between; gap: 0.5rem; }
     .wa-conv-name { font-weight: 600; font-size: 0.9rem; color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -632,11 +658,13 @@
     .wa-tilde { color: #8a8a8a; font-size: 0.72rem; margin-left: 3px; letter-spacing: -1px; }
     .wa-tilde-read { color: #34b7f1; }
     .wa-tilde-fail { color: #dc2626; letter-spacing: 0; }
-    .wa-thread { display: flex; flex-direction: column; background: #efeae2; overflow: hidden; }
+    .wa-thread { display: flex; flex-direction: column; background: #efeae2; border: 1px solid #e6eaf0; border-radius: 16px; overflow: hidden; box-shadow: 0 6px 20px rgba(15,23,42,0.06); }
     /* 2026-07-24: flex-wrap para que en el celular los botones del header (incluido 🗑 Borrar,
        que es el ultimo) bajen a otro renglon en vez de quedar cortados por el overflow:hidden
        del .wa-thread. En pantalla ancha entran todos en una linea = no cambia nada. */
-    .wa-thread-header { padding: 0.7rem 1rem; background: #f0f2f5; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; }
+    .wa-thread-header { padding: 0.75rem 1.1rem; background: #fbfcfe; border-bottom: 1px solid #eef1f5; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+    /* 2026-07-29: botones del encabezado prolijos y parejos (pastilla redondeada), sin tocar la clase global .btn */
+    .wa-thread-header .btn { border-radius: 999px; font-size: 0.8rem; padding: 0.38rem 0.85rem; font-weight: 600; border-width: 1px; }
     .wa-messages { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
     .wa-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; text-align: center; }
     .wa-msg-row { display: flex; }
@@ -650,10 +678,13 @@
     .wa-msg-row.out .wa-bubble { background: #d9fdd3; }
     .wa-bubble-body { font-size: 0.92rem; color: #111827; word-wrap: break-word; white-space: pre-wrap; }
     .wa-bubble-meta { font-size: 0.65rem; color: #6b7280; text-align: right; margin-top: 0.2rem; }
-    .wa-composer { padding: 0.7rem 1rem 0.4rem; background: #f0f2f5; display: flex; gap: 0.5rem; align-items: flex-end; }
+    .wa-composer { padding: 0.7rem 1rem 0.5rem; background: #fbfcfe; display: flex; gap: 0.55rem; align-items: flex-end; }
     /* 2026-07-29: cuadro de escribir MUCHO más alto (5x) para poder mandar textos largos. resize:vertical = lo podés estirar/achicar con la esquina. */
-    .wa-composer textarea { resize: vertical; border-radius: 8px; flex: 1; min-height: 200px; }
+    .wa-composer textarea { resize: vertical; border-radius: 14px; flex: 1; min-height: 200px; border: 1px solid #dfe4ea; padding: 0.7rem 0.9rem; }
+    .wa-composer textarea:focus { border-color: #25d366; box-shadow: 0 0 0 3px rgba(37,211,102,0.15); }
     .wa-composer button { white-space: nowrap; }
+    /* 2026-07-29: botón Enviar más grande y prolijo */
+    .wa-composer .btn-success { border-radius: 14px; padding: 0.65rem 1.2rem; font-weight: 700; box-shadow: 0 3px 10px rgba(37,211,102,0.35); }
     /* 2026-07-29: panel Enviar saldo */
     .wa-saldo-btn { font-size: 1.2rem; }
     .wa-saldo-panel { margin: 0 1rem 0.3rem; padding: 0.6rem 0.7rem; background: #fff; border: 1px solid #d1d5db; border-radius: 10px; box-shadow: 0 4px 14px rgba(0,0,0,0.08); max-height: 46vh; overflow-y: auto; }
@@ -671,9 +702,9 @@
     .wa-attach-btn:hover { background: #e9f5ff; border-color: #25d366; transform: translateY(-1px); }
     .wa-attach-btn.uploading { background: #fff8e1; border-color: #ffc107; cursor: wait; animation: wa-attach-pulse 1s ease-in-out infinite; }
     @@keyframes wa-attach-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
-    .wa-quick-replies { padding: 0.4rem 1rem 0; background: #f0f2f5; display: flex; gap: 0.35rem; flex-wrap: wrap; }
-    .wa-chip { background: #fff; border: 1px solid #d1d5db; color: #374151; padding: 0.25rem 0.7rem; border-radius: 14px; font-size: 0.78rem; cursor: pointer; transition: background 0.1s; white-space: nowrap; }
-    .wa-chip:hover { background: #25d366; color: #fff; border-color: #25d366; }
+    .wa-quick-replies { padding: 0.6rem 1rem 0.2rem; background: #fbfcfe; display: flex; gap: 0.45rem; flex-wrap: wrap; border-top: 1px solid #eef1f5; }
+    .wa-chip { background: #eaf1fb; border: 1px solid #d5e3f7; color: #1d4ed8; padding: 0.42rem 0.95rem; border-radius: 999px; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.12s; white-space: nowrap; }
+    .wa-chip:hover { background: #2563eb; color: #fff; border-color: #2563eb; transform: translateY(-1px); }
     .wa-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2000; }
     .wa-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 900px; max-height: 85vh; background: #fff; border-radius: 8px; z-index: 2001; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
     .wa-modal-header { padding: 1rem; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; gap: 0.5rem; }
@@ -683,10 +714,10 @@
     .wa-tab.active { color: #25d366; border-bottom-color: #25d366; font-weight: 600; background: #fff; }
     .wa-modal-body { padding: 1rem; overflow-y: auto; flex: 1; }
     /* Filtros sidebar */
-    .wa-filtros { display: flex; gap: 0.25rem; padding: 0.5rem 0.6rem; border-bottom: 1px solid #e5e7eb; background: #f8fafc; flex-wrap: wrap; }
-    .wa-filtro { background: #fff; border: 1px solid #d1d5db; color: #374151; padding: 0.2rem 0.55rem; border-radius: 12px; font-size: 0.72rem; cursor: pointer; white-space: nowrap; transition: all 0.1s; }
-    .wa-filtro:hover { background: #f3f4f6; }
-    .wa-filtro.active { background: #25d366; color: #fff; border-color: #25d366; font-weight: 600; }
+    .wa-filtros { display: flex; gap: 0.3rem; padding: 0.55rem 0.7rem; border-bottom: 1px solid #eef1f5; background: #fbfcfe; flex-wrap: wrap; }
+    .wa-filtro { background: #fff; border: 1px solid #dfe4ea; color: #475569; padding: 0.3rem 0.75rem; border-radius: 999px; font-size: 0.76rem; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.12s; }
+    .wa-filtro:hover { background: #f1f5f9; }
+    .wa-filtro.active { background: #25d366; color: #fff; border-color: #25d366; font-weight: 700; }
     .wa-rol-tag { font-size: 0.7rem; margin-left: 0.2rem; }
     .wa-pedido-chip { background: #fef3c7; color: #92400e; font-size: 0.65rem; font-weight: 700; padding: 0.05rem 0.3rem; border-radius: 4px; margin-right: 0.3rem; }
     /* Cliente vinculado */
@@ -1608,6 +1639,18 @@
         .GroupBy(c => c.Linea!)
         .Select(g => (g.Key, g.First().LineaNumero ?? g.Key))
         .OrderBy(x => x.Item2).ToList();
+
+    // 2026-07-29: texto del cartelito "Línea activa" de la barra superior. Muestra el número que ve la
+    // gente. Con una sola línea = ese número; con varias = aviso (el selector para cambiar es Paso 2);
+    // sin ninguna detectada todavía = etiqueta genérica hasta que entre el primer mensaje.
+    bool LineaActivaTieneNumero => LineasDetectadas().Count == 1;
+    string LineaActivaTexto()
+    {
+        var ls = LineasDetectadas();
+        if (ls.Count == 1) return PrettyNumero(ls[0].Numero);
+        if (ls.Count > 1) return $"{ls.Count} líneas conectadas";
+        return "WhatsApp de la empresa";
+    }
 
     string filtroTexto = "";
     bool MatchFiltro(ApiClient.TwConvDto c)
