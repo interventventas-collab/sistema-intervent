@@ -138,7 +138,8 @@ window.mapeoFlex = (function () {
     let markers = [];
     let infoWindow = null;
     let dotNetRef = null;
-    let zonePolygon = null;       // polígono que el usuario dibuja a mano (esquina por esquina)
+    let zonePolygon = null;       // polígono que el usuario dibuja a mano (esquina por esquina) — el relleno del área
+    let zoneLine = null;          // línea que UNE los puntos mientras dibujás (la que se ve trazándose)
     let zonePath = null;          // lista de puntos (MVCArray) del polígono — la manejamos nosotros
     let zoneClickListener = null; // listener de clicks del mapa mientras dibuja
     let zoneVertexMarkers = [];   // puntitos que se ven en cada esquina tocada (feedback visual)
@@ -150,6 +151,7 @@ window.mapeoFlex = (function () {
     function cleanupZone() {
         if (zoneClickListener) { google.maps.event.removeListener(zoneClickListener); zoneClickListener = null; }
         if (zonePolygon) { zonePolygon.setMap(null); zonePolygon = null; }
+        if (zoneLine) { zoneLine.setMap(null); zoneLine = null; }
         zonePath = null;
         for (const m of zoneVertexMarkers) m.setMap(null);
         zoneVertexMarkers = [];
@@ -356,13 +358,20 @@ window.mapeoFlex = (function () {
             cleanupZone();
             map.setOptions({ draggableCursor: 'crosshair' }); // cursor de cruz = estás dibujando
             zonePath = new google.maps.MVCArray();
-            // Contorno bien marcado mientras se dibuja (línea gruesa + relleno suave),
-            // así se ve claramente cómo se va uniendo punto a punto y qué área queda adentro.
+            // Relleno suave del área (el polígono se cierra solo). El stroke lo dejamos apagado
+            // porque el que se ve trazándose punto a punto es la línea de abajo (Polyline).
             zonePolygon = new google.maps.Polygon({
                 map: map, paths: zonePath,
-                fillColor: '#dc2626', fillOpacity: 0.14,
-                strokeColor: '#dc2626', strokeWeight: 4, strokeOpacity: 0.95,
+                fillColor: '#dc2626', fillOpacity: 0.12,
+                strokeOpacity: 0, strokeWeight: 0,
                 clickable: false, zIndex: 1
+            });
+            // Línea gruesa que UNE los puntos a medida que tocás (esto es lo que se ve dibujándose,
+            // de un punto al siguiente, y así sucesivamente). Va enganchada al mismo listado de puntos.
+            zoneLine = new google.maps.Polyline({
+                map: map, path: zonePath,
+                strokeColor: '#dc2626', strokeOpacity: 0.95, strokeWeight: 4,
+                clickable: false, zIndex: 2
             });
             zoneClickListener = map.addListener('click', function (e) {
                 if (!zonePath) return;
