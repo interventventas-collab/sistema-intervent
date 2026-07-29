@@ -466,6 +466,12 @@
                                 🚚 Repartidor @(mostrarFiltroReparto ? "▲" : "▼")
                             </button>
                         }
+                        @* Cambia toda la lista entre vista compacta (2 renglones) y completa. *@
+                        <button @onclick="ToggleVistaCompacta"
+                                title="@(vistaCompacta ? "Ver la ficha completa de cada envío" : "Ver la lista resumida (2 renglones por envío)")"
+                                style="background:@(vistaCompacta ? "#1e40af" : "#dbeafe"); color:@(vistaCompacta ? "#fff" : "#1e40af"); border:1px solid #93c5fd; padding:0.1rem 0.5rem; border-radius:999px; font-size:0.65rem; font-weight:700; cursor:pointer;">
+                            @(vistaCompacta ? "🔎 Ver completo" : "☰ Compacto")
+                        </button>
                     </span>
                     @if (rutaSeleccion.Count > 0)
                     {
@@ -573,6 +579,49 @@
                             var act = activeShipmentId == s.Id;
                             var grupoKey = g.Key;
                             var enRuta = rutaSeleccion.Contains(grupoKey);
+                            var compactaF = vistaCompacta && !filaExpandida.Contains(grupoKey);
+                            var pfC = g.GetParadaFlex(s.MeliShipmentId);
+                            if (compactaF)
+                            {
+                                @* ── Vista compacta Flex: 2 renglones ── *@
+                                <div class="mapeo-card @(act ? "activa" : "")" style="@(enRuta ? "outline:2px solid #16a34a; background:#f0fdf4;" : "")" @onclick="() => OnSelectFromList(s)">
+                                    <div style="display:flex; align-items:center; gap:0.35rem;">
+                                        <input type="checkbox" checked="@enRuta"
+                                               disabled="@(!enRuta && rutaSeleccion.Count >= MaxParadasRuta)"
+                                               @onchange="@(e => ToggleRutaSeleccion(grupoKey))" @onclick:stopPropagation="true"
+                                               title="Incluir en la ruta de Google Maps" />
+                                        <span title="@(s.Mode == "me1" ? "Envío ME1 (entrega propia)" : "Envío Flex de MercadoLibre")" style="background:@(s.Mode == "me1" ? "#fce7f3" : "#dbeafe"); color:@(s.Mode == "me1" ? "#9d174d" : "#1e40af"); padding:0.05rem 0.3rem; border-radius:4px; font-size:0.58rem; font-weight:800;">@(s.Mode == "me1" ? "🏎" : "📦")</span>
+                                        <span style="flex:1; min-width:0; font-weight:600; color:#111827; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                                            @(string.IsNullOrWhiteSpace(s.AddressLine) ? "—" : s.AddressLine)@(string.IsNullOrWhiteSpace(s.City) ? "" : " · " + s.City)
+                                        </span>
+                                        @if (g.Count > 1)
+                                        {
+                                            <span title="Hay @g.Count envíos a este mismo destino" style="background:#dc2626; color:white; padding:0.05rem 0.35rem; border-radius:8px; font-size:0.62rem; font-weight:700;">× @g.Count</span>
+                                        }
+                                        <button class="btn-icon" style="font-size:0.9rem; color:#6b7280; padding:0 0.15rem; line-height:1;" @onclick="() => ToggleFilaExpandida(grupoKey)" @onclick:stopPropagation="true" title="Ver todos los datos de este envío">▸</button>
+                                    </div>
+                                    <div style="display:flex; align-items:center; justify-content:space-between; gap:0.4rem; margin-top:0.2rem;">
+                                        @if (pfC is not null && !string.IsNullOrEmpty(pfC.AssignedDriverName))
+                                        {
+                                            var pfCColor = string.IsNullOrEmpty(pfC.AssignedDriverColor) ? "#d97706" : pfC.AssignedDriverColor!;
+                                            <span style="display:inline-block; padding:0.05rem 0.4rem; background:white; border:1px solid @pfCColor; color:@pfCColor; border-radius:4px; font-size:0.68rem; font-weight:700;">👤 @pfC.AssignedDriverName@(pfC.OrderInRoute.HasValue ? " #" + pfC.OrderInRoute : "")</span>
+                                        }
+                                        else
+                                        {
+                                            <span style="color:#9ca3af; font-size:0.68rem; font-style:italic;">Sin repartidor</span>
+                                        }
+                                        @if (s.MeliOrderId.HasValue)
+                                        {
+                                            <span class="copy-chip" title="Click: copiar N° de venta" style="font-family:monospace; font-size:0.66rem;"
+                                                  @onclick="@(e => CopyValue(s.MeliOrderId.Value.ToString(), "N° venta"))" @onclick:stopPropagation="true">
+                                                🧾 @s.MeliOrderId.Value 📋
+                                            </span>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
                             <div class="mapeo-card @(act ? "activa" : "")" style="@(enRuta ? "outline:2px solid #16a34a; background:#f0fdf4;" : "")" @onclick="() => OnSelectFromList(s)">
                                 <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.4rem;">
                                     <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer; flex:1;" @onclick:stopPropagation="true">
@@ -594,7 +643,13 @@
                                             <span title="Hay @g.Count envíos a este mismo destino" style="background:#dc2626; color:white; padding:0.05rem 0.35rem; border-radius:8px; font-size:0.65rem; font-weight:700;">× @g.Count</span>
                                         }
                                     </label>
-                                    <span class="mapeo-status-pill" style="@EffectiveStatusStyle(s)">@EffectiveStatusLabel(s)</span>
+                                    <div style="display:flex; align-items:center; gap:0.2rem;">
+                                        @if (vistaCompacta)
+                                        {
+                                            <button class="btn-icon" style="font-size:0.9rem; color:#6b7280; line-height:1;" @onclick="() => ToggleFilaExpandida(grupoKey)" @onclick:stopPropagation="true" title="Volver a la vista compacta">▾</button>
+                                        }
+                                        <span class="mapeo-status-pill" style="@EffectiveStatusStyle(s)">@EffectiveStatusLabel(s)</span>
+                                    </div>
                                 </div>
                                 <div style="font-size:0.7rem; color:#6b7280; margin-top:0.1rem; display:flex; gap:0.4rem; flex-wrap:wrap;">
                                     @if (!string.IsNullOrEmpty(s.BuyerNickname))
@@ -678,6 +733,7 @@
                                     </div>
                                 }
                             </div>
+                            }
                         }
                         else
                         {
@@ -690,6 +746,50 @@
                             var grupoLocal = g;
                             var grupoKey = g.Key;
                             var enRuta = rutaSeleccion.Contains(grupoKey);
+                            var compacta = vistaCompacta && !filaExpandida.Contains(grupoKey);
+                            if (compacta)
+                            {
+                                @* ── Vista compacta: 2 renglones ── *@
+                                <div class="mapeo-card @(isActive ? "activa" : "")"
+                                     style="cursor:pointer; border-left:4px solid @stopColor; @(asignado ? $"background: linear-gradient(90deg, {stopColor}15 0%, white 60%);" : "") @(enRuta ? "outline:2px solid #16a34a; background:#f0fdf4;" : "") @(isActive ? "box-shadow: 0 0 0 2px " + stopColor + ";" : "")"
+                                     @onclick="() => FocusStop(st)" title="Click para resaltar en el mapa">
+                                    @* Renglón 1: tilde + domicilio · localidad + flechita para desplegar *@
+                                    <div style="display:flex; align-items:center; gap:0.35rem;">
+                                        <input type="checkbox" checked="@enRuta"
+                                               disabled="@(!enRuta && rutaSeleccion.Count >= MaxParadasRuta)"
+                                               @onchange="@(e => ToggleRutaSeleccion(grupoKey))" @onclick:stopPropagation="true"
+                                               title="Incluir en la ruta de Google Maps" />
+                                        <span style="flex:1; min-width:0; font-weight:600; color:#111827; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                                            @(string.IsNullOrWhiteSpace(st.Direccion) ? "⚠ Sin domicilio" : st.Direccion)@(string.IsNullOrWhiteSpace(st.Localidad) ? "" : " · " + st.Localidad)
+                                        </span>
+                                        @if (g.Count > 1)
+                                        {
+                                            <span title="Esta parada se repite @g.Count veces" style="background:#dc2626; color:white; padding:0.05rem 0.35rem; border-radius:8px; font-size:0.62rem; font-weight:700;">× @g.Count</span>
+                                        }
+                                        <button class="btn-icon" style="font-size:0.9rem; color:#6b7280; padding:0 0.15rem; line-height:1;" @onclick="() => ToggleFilaExpandida(grupoKey)" @onclick:stopPropagation="true" title="Ver todos los datos de este envío">▸</button>
+                                    </div>
+                                    @* Renglón 2: repartidor (#orden) + N° de envío *@
+                                    <div style="display:flex; align-items:center; justify-content:space-between; gap:0.4rem; margin-top:0.2rem;">
+                                        @if (!string.IsNullOrEmpty(st.AssignedDriverName))
+                                        {
+                                            <span style="display:inline-block; padding:0.05rem 0.4rem; background:white; border:1px solid @stopColor; color:@stopColor; border-radius:4px; font-size:0.68rem; font-weight:700;">👤 @st.AssignedDriverName@(st.OrderInRoute.HasValue ? " #" + st.OrderInRoute : "")</span>
+                                        }
+                                        else
+                                        {
+                                            <span style="color:#9ca3af; font-size:0.68rem; font-style:italic;">Sin repartidor</span>
+                                        }
+                                        @if (st.MeliOrderId.HasValue)
+                                        {
+                                            <span class="copy-chip" title="Click: copiar N° de venta" style="font-family:monospace; font-size:0.66rem;"
+                                                  @onclick="@(e => CopyValue(st.MeliOrderId.Value.ToString(), "N° venta"))" @onclick:stopPropagation="true">
+                                                🧾 @st.MeliOrderId.Value 📋
+                                            </span>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
                             <div class="mapeo-card @(isActive ? "activa" : "")"
                                  style="cursor:pointer; border-left:4px solid @stopColor; @(asignado ? $"background: linear-gradient(90deg, {stopColor}15 0%, white 60%);" : "") @(enRuta ? "outline:2px solid #16a34a; background:#f0fdf4;" : "") @(isActive ? "box-shadow: 0 0 0 2px " + stopColor + ";" : "")"
                                  @onclick="() => FocusStop(st)"
@@ -707,6 +807,10 @@
                                         }
                                     </label>
                                     <div style="display:flex; gap:0.2rem; align-items:center;">
+                                        @if (vistaCompacta)
+                                        {
+                                            <button class="btn-icon" style="font-size:0.9rem; color:#6b7280; line-height:1;" @onclick="() => ToggleFilaExpandida(grupoKey)" @onclick:stopPropagation="true" title="Volver a la vista compacta">▾</button>
+                                        }
                                         @{
                                             var yaEsFav = favoritos?.Any(f => Math.Abs(f.Latitude - st.Latitude) < 0.0001m && Math.Abs(f.Longitude - st.Longitude) < 0.0001m) ?? false;
                                         }
@@ -832,6 +936,7 @@
                                     </div>
                                 }
                             </div>
+                            }
                             }
                             }
                             </div>
@@ -2237,6 +2342,20 @@
     private void ToggleEntregaDetalle(string key)
     {
         if (!entregaDetalleAbierta.Add(key)) entregaDetalleAbierta.Remove(key);
+    }
+
+    // Vista compacta del listado: cada envío se ve en 2 renglones (domicilio·localidad / repartidor·nº envío).
+    // Con la flechita ▸ se despliega una fila puntual; el botón de arriba cambia el modo de TODA la lista.
+    private bool vistaCompacta = true;
+    private HashSet<string> filaExpandida = new(StringComparer.Ordinal);
+    private void ToggleFilaExpandida(string key)
+    {
+        if (!filaExpandida.Add(key)) filaExpandida.Remove(key);
+    }
+    private void ToggleVistaCompacta()
+    {
+        vistaCompacta = !vistaCompacta;
+        filaExpandida.Clear(); // al cambiar el modo general, arranca todo parejo
     }
 
     // Botón "Actualizar entregas": le pregunta a MeLi por los envíos pendientes y refresca los ✔ Entregado.
