@@ -15,23 +15,98 @@
     <p class="view-subtitle">Panel de control</p>
 </div>
 
-@* ═══ Card: Mapa de Reparto (Google Maps en vivo) — se toca y lleva al mapa completo ═══ *@
-<div class="dash-mapcard" @onclick="AbrirMapaEnPestana" title="Abrir el mapa de reparto en una pestaña nueva">
-    <div class="dash-mapcard-map" id="dashMiniMap"></div>
-    <div class="dash-mapcard-grad"></div>
-    <div class="dash-mapcard-badge">✨ NUEVO · Google Maps</div>
-    <div class="dash-mapcard-body">
-        <div class="dash-mapcard-title">🗺️ Mapa de Reparto</div>
-        <div class="dash-mapcard-sub">
-            @((mapeoStopsMini?.Count ?? 0)) @((mapeoStopsMini?.Count ?? 0) == 1 ? "parada" : "paradas") en el mapa · rutas optimizadas por calles reales de Google
+@* ═══ Fila hero: Mapa de Reparto (mitad izquierda) + WhatsApp (mitad derecha) ═══
+   2026-07-29 pedido Osmar: la card del mapa deja de ocupar todo el ancho; comparte la
+   fila con la card de WhatsApp (que antes vivía en la fila de 3 cards de más abajo). *@
+<div class="dash-hero-row">
+
+    @* Card: Mapa de Reparto (Google Maps en vivo) — se toca y lleva al mapa completo *@
+    <div class="dash-mapcard" @onclick="AbrirMapaEnPestana" title="Abrir el mapa de reparto en una pestaña nueva">
+        <div class="dash-mapcard-map" id="dashMiniMap"></div>
+        <div class="dash-mapcard-grad"></div>
+        <div class="dash-mapcard-badge">✨ NUEVO · Google Maps</div>
+        <div class="dash-mapcard-body">
+            <div class="dash-mapcard-title">🗺️ Mapa de Reparto</div>
+            <div class="dash-mapcard-sub">
+                @((mapeoStopsMini?.Count ?? 0)) @((mapeoStopsMini?.Count ?? 0) == 1 ? "parada" : "paradas") en el mapa · rutas optimizadas por calles reales de Google
+            </div>
+            <div class="dash-mapcard-cta">Abrir el mapa completo →</div>
         </div>
-        <div class="dash-mapcard-cta">Abrir el mapa completo →</div>
     </div>
+
+    @* WhatsApp — conversaciones donde el último mensaje lo mandó el CLIENTE (sin responder).
+       2026-07-22 pedido Osmar. Click en una conversación → abre /whatsapp con ese chat elegido.
+       2026-07-29: movida acá arriba, al lado del mapa. *@
+    <div class="dashboard-detail-card mac-stat-card accent-green dash-hero-wa tres-card @(waOpen ? "" : "tres-collapsed")" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/whatsapp")' title="Ir a WhatsApp">
+        <div>
+            <div class="mac-card-header">
+                <div class="mac-card-iconbox" style="background:#dcfce7; color:#16a34a;">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
+                </div>
+                <span class="mac-card-eyebrow">WhatsApp</span>
+                <button class="tres-toggle" @onclick:stopPropagation="true" @onclick='() => ToggleCard("wa")'
+                        title="@(waOpen ? "Plegar" : "Desplegar")" aria-label="@(waOpen ? "Plegar" : "Desplegar")">@(waOpen ? "▾" : "▸")</button>
+            </div>
+            @if (waConvs is null)
+            {
+                <div class="mac-card-sub">Cargando…</div>
+            }
+            else
+            {
+                <div class="mac-card-bignum">@waSinResponder.Count <span style="font-size:0.85rem; font-weight:400; color:#6b7280;">sin responder</span></div>
+                <div class="mac-card-sub">@(waSinResponder.Count == 1 ? "cliente esperando respuesta" : "clientes esperando respuesta")</div>
+                @if (waOpen && waConvs.Count > 0)
+                {
+                    <div class="tres-detalle">
+                        <div class="tres-detalle-hd">Últimos chats — tocá para abrir</div>
+                        @foreach (var c in waConvs.Take(5))
+                        {
+                            var sinResponder = c.UltimoDireccion == "INCOMING";
+                            <div class="tres-row" style="cursor:pointer;" @onclick:stopPropagation="true" @onclick='() => AbrirChatWa(c.Numero)' title="Abrir este chat en /whatsapp">
+                                <span class="tres-row-main">
+                                    <span class="tres-row-t">
+                                        @if (sinResponder)
+                                        {
+                                            <span style="color:#dc2626;" title="Esperando respuesta">●</span>
+                                        }
+                                        💬 @(c.ClienteNombre ?? c.NombrePerfil ?? WaPrettyNumero(c.Numero))
+                                    </span>
+                                    <span class="tres-row-s" style="@(sinResponder ? "color:#374151; font-weight:600;" : "")">@(sinResponder ? "" : "Vos: ")@WaSnippet(c.UltimoMensaje)</span>
+                                </span>
+                                <span class="tres-row-val" style="color:#6b7280; font-weight:400; font-size:0.68rem;">@WaHace(c.UltimoAt)</span>
+                            </div>
+                        }
+                        @if (waConvs.Count > 5)
+                        {
+                            <div class="tres-more">+@(waConvs.Count - 5) más en la pantalla de WhatsApp</div>
+                        }
+                    </div>
+                }
+                else if (waOpen)
+                {
+                    <div style="margin-top:12px; font-size:0.74rem; color:#9ca3af;">Sin conversaciones todavía</div>
+                }
+            }
+        </div>
+        @if (waOpen)
+        {
+            <div class="tres-card-foot">Abrir WhatsApp ›</div>
+        }
+    </div>
+
 </div>
 
 <style>
-    .dash-mapcard { position: relative; height: 240px; border-radius: 16px; overflow: hidden; cursor: pointer;
-        margin-bottom: 1rem; box-shadow: 0 4px 16px rgba(0,0,0,0.12); border: 1px solid #e5e7eb; background: #0f172a;
+    /* 2026-07-29: fila hero = mapa (mitad) + WhatsApp (mitad), lado a lado.
+       En celu se apilan (mapa arriba, WhatsApp abajo). */
+    .dash-hero-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;
+        align-items: stretch; margin-bottom: 1rem; }
+    @@media (max-width: 900px) { .dash-hero-row { grid-template-columns: 1fr; } }
+    /* la card de WhatsApp dentro de la fila hero ocupa toda la altura del mapa */
+    .dash-hero-wa { margin-top: 0 !important; height: 100%; }
+
+    .dash-mapcard { position: relative; height: 100%; min-height: 240px; border-radius: 16px; overflow: hidden; cursor: pointer;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.12); border: 1px solid #e5e7eb; background: #0f172a;
         transition: transform .15s ease, box-shadow .15s ease; }
     .dash-mapcard:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(0,0,0,0.20); }
     .dash-mapcard-map { position: absolute; inset: 0; pointer-events: none; }
@@ -505,67 +580,7 @@
         }
     </div>
 
-    @* WhatsApp — conversaciones donde el último mensaje lo mandó el CLIENTE (sin responder).
-       2026-07-22 pedido Osmar. Click en una conversación → abre /whatsapp con ese chat elegido. *@
-    <div class="dashboard-detail-card mac-stat-card accent-green tres-card @(waOpen ? "" : "tres-collapsed")" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/whatsapp")' title="Ir a WhatsApp">
-        <div>
-            <div class="mac-card-header">
-                <div class="mac-card-iconbox" style="background:#dcfce7; color:#16a34a;">
-                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
-                </div>
-                <span class="mac-card-eyebrow">WhatsApp</span>
-                <button class="tres-toggle" @onclick:stopPropagation="true" @onclick='() => ToggleCard("wa")'
-                        title="@(waOpen ? "Plegar" : "Desplegar")" aria-label="@(waOpen ? "Plegar" : "Desplegar")">@(waOpen ? "▾" : "▸")</button>
-            </div>
-            @if (waConvs is null)
-            {
-                <div class="mac-card-sub">Cargando…</div>
-            }
-            else
-            {
-                <div class="mac-card-bignum">@waSinResponder.Count <span style="font-size:0.85rem; font-weight:400; color:#6b7280;">sin responder</span></div>
-                <div class="mac-card-sub">@(waSinResponder.Count == 1 ? "cliente esperando respuesta" : "clientes esperando respuesta")</div>
-                @* 2026-07-23 pedido Osmar: la lista muestra SIEMPRE los últimos 5 chats (no solo
-                   los sin responder). El puntito rojo marca los que esperan respuesta; si el
-                   último mensaje lo mandamos nosotros, va con "Vos:" adelante (como WhatsApp). *@
-                @if (waOpen && waConvs.Count > 0)
-                {
-                    <div class="tres-detalle">
-                        <div class="tres-detalle-hd">Últimos chats — tocá para abrir</div>
-                        @foreach (var c in waConvs.Take(5))
-                        {
-                            var sinResponder = c.UltimoDireccion == "INCOMING";
-                            <div class="tres-row" style="cursor:pointer;" @onclick:stopPropagation="true" @onclick='() => AbrirChatWa(c.Numero)' title="Abrir este chat en /whatsapp">
-                                <span class="tres-row-main">
-                                    <span class="tres-row-t">
-                                        @if (sinResponder)
-                                        {
-                                            <span style="color:#dc2626;" title="Esperando respuesta">●</span>
-                                        }
-                                        💬 @(c.ClienteNombre ?? c.NombrePerfil ?? WaPrettyNumero(c.Numero))
-                                    </span>
-                                    <span class="tres-row-s" style="@(sinResponder ? "color:#374151; font-weight:600;" : "")">@(sinResponder ? "" : "Vos: ")@WaSnippet(c.UltimoMensaje)</span>
-                                </span>
-                                <span class="tres-row-val" style="color:#6b7280; font-weight:400; font-size:0.68rem;">@WaHace(c.UltimoAt)</span>
-                            </div>
-                        }
-                        @if (waConvs.Count > 5)
-                        {
-                            <div class="tres-more">+@(waConvs.Count - 5) más en la pantalla de WhatsApp</div>
-                        }
-                    </div>
-                }
-                else if (waOpen)
-                {
-                    <div style="margin-top:12px; font-size:0.74rem; color:#9ca3af;">Sin conversaciones todavía</div>
-                }
-            }
-        </div>
-        @if (waOpen)
-        {
-            <div class="tres-card-foot">Abrir WhatsApp ›</div>
-        }
-    </div>
+    @* 2026-07-29: la card de WhatsApp se movió arriba, al lado del mapa (fila hero). *@
 
 </div>
 
@@ -1414,11 +1429,11 @@
         justify-content: space-between;
     }
     /* 2026-07-08: fila de cards operativas (cuadradas, un poco mas altas).
-       2026-07-22: se sumó la card de WhatsApp → ahora son 4 columnas
-       (en pantallas medianas quedan 2x2, en celu una debajo de la otra). */
+       2026-07-22: se había sumado WhatsApp (4 columnas).
+       2026-07-29: WhatsApp se movió arriba junto al mapa → vuelven a ser 3 columnas. */
     .dashboard-tres-cards {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(3, 1fr);
         gap: 1.5rem;
         margin-top: 1.5rem;
     }
