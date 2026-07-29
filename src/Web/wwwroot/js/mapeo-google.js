@@ -136,6 +136,7 @@ window.mapeoFlex = (function () {
     const H = window.__mapeoHelpers;
     let map = null;
     let markers = [];
+    let snapMarkers = [];         // pines del histórico (foto de un día anterior) — modo solo mirar
     let infoWindow = null;
     let infoOpen = false;         // ¿hay un globito (popup) abierto? el refresco automático no lo pisa
     let dotNetRef = null;
@@ -434,6 +435,48 @@ window.mapeoFlex = (function () {
             routeLines = [];
         },
 
+        // ── Ver una FOTO (snapshot) de un día anterior sobre el mapa (modo SOLO MIRAR) ──
+        // items = [{lat,lng,label,color,shape,delivered,popupHtml}]. Oculta los pines de HOY,
+        // dibuja los del histórico (no arrastrables, sin botones de ruta) y encuadra todo.
+        showSnapshot(items) {
+            if (!map || !window.google) return;
+            // Escondemos lo de hoy (paradas + rutas) para no mezclar.
+            for (const m of markers) m.setMap(null);
+            this.clearRoutes();
+            this.clearSnapshot();
+            if (infoWindow) { infoWindow.close(); infoOpen = false; }
+
+            const bounds = new google.maps.LatLngBounds();
+            let any = false;
+            for (const it of (items || [])) {
+                if (it.lat == null || it.lng == null) continue;
+                const pos = { lat: +it.lat, lng: +it.lng };
+                const marker = new google.maps.Marker({
+                    position: pos, map: map,
+                    icon: H.markerIcon(H.markerSvg([it]), 50),
+                    draggable: false, zIndex: 1
+                });
+                const html = it.popupHtml || '';
+                marker.addListener('click', () => {
+                    if (infoWindow) { infoWindow.setContent(html); infoWindow.open(map, marker); infoOpen = true; }
+                });
+                snapMarkers.push(marker);
+                bounds.extend(pos);
+                any = true;
+            }
+            if (any) {
+                if (snapMarkers.length === 1) { map.setCenter(bounds.getCenter()); map.setZoom(15); }
+                else map.fitBounds(bounds, 60);
+            }
+        },
+
+        // Saca los pines del histórico (para volver al mapa de hoy). El re-dibujo de hoy lo hace Blazor.
+        clearSnapshot() {
+            for (const m of snapMarkers) m.setMap(null);
+            snapMarkers = [];
+            if (infoWindow) { infoWindow.close(); infoOpen = false; }
+        },
+
         // Encuadra el mapa sobre un conjunto de puntos [[lat,lng],...] (para hacer foco en una zona).
         fitPoints(points) {
             if (!map || !points || !points.length) return;
@@ -446,6 +489,8 @@ window.mapeoFlex = (function () {
         destroy() {
             for (const m of markers) m.setMap(null);
             markers = [];
+            for (const m of snapMarkers) m.setMap(null);
+            snapMarkers = [];
             map = null;
             infoWindow = null;
             dotNetRef = null;

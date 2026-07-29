@@ -17,20 +17,47 @@ public class MapeoSnapshotsController : ControllerBase
     public MapeoSnapshotsController(AppDbContext db) { _db = db; }
 
     public record SnapshotListItemDto(int Id, string Title, int StopsCount, int VehiclesCount, int DriversCount,
-        DateTime CreatedAt, string? CreatedByUsername, string? Notes);
+        int DeliveredCount, DateTime CreatedAt, string? CreatedByUsername, string? Notes);
 
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] int days = 30)
     {
         var since = DateTime.UtcNow.AddDays(-days);
-        var list = await _db.MapeoRouteSnapshots
+        // Traemos también el StopsJson para contar cuántas paradas quedaron ENTREGADAS en cada foto.
+        // Ese número es el que permite marcar sola la ruta "definitiva" del día (la más entregada)
+        // y distinguirla de las pruebas (0 entregadas).
+        var raw = await _db.MapeoRouteSnapshots
             .Where(s => s.CreatedAt >= since)
             .OrderByDescending(s => s.CreatedAt)
             .Take(200)
-            .Select(s => new SnapshotListItemDto(s.Id, s.Title, s.StopsCount, s.VehiclesCount, s.DriversCount,
-                s.CreatedAt, s.CreatedByUsername, s.Notes))
+            .Select(s => new { s.Id, s.Title, s.StopsCount, s.VehiclesCount, s.DriversCount,
+                s.StopsJson, s.CreatedAt, s.CreatedByUsername, s.Notes })
             .ToListAsync();
+
+        var list = raw.Select(s => new SnapshotListItemDto(s.Id, s.Title, s.StopsCount, s.VehiclesCount,
+            s.DriversCount, CountDelivered(s.StopsJson), s.CreatedAt, s.CreatedByUsername, s.Notes)).ToList();
         return Ok(list);
+    }
+
+    /// <summary>Cuenta cuántas paradas del snapshot figuran como entregadas. Usa el flag "delivered"
+    /// (snapshots nuevos) y, si no está, cae al estado interno "entregado" (compatibilidad con fotos viejas).</summary>
+    private static int CountDelivered(string? stopsJson)
+    {
+        if (string.IsNullOrWhiteSpace(stopsJson)) return 0;
+        try
+        {
+            using var doc = JsonDocument.Parse(stopsJson);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return 0;
+            int n = 0;
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                if (el.TryGetProperty("delivered", out var d) && d.ValueKind == JsonValueKind.True) { n++; continue; }
+                if (el.TryGetProperty("internalStatus", out var st) && st.ValueKind == JsonValueKind.String
+                    && string.Equals(st.GetString(), "entregado", System.StringComparison.OrdinalIgnoreCase)) n++;
+            }
+            return n;
+        }
+        catch { return 0; }
     }
 
     [HttpGet("{id:int}")]
@@ -88,6 +115,27 @@ public class MapeoSnapshotsController : ControllerBase
             .ToListAsync();
         if (stops.Count == 0) return null;
 
+        // Para saber cuáles se ENTREGARON de verdad (y así distinguir la ruta "definitiva" del día
+        // de las pruebas), combinamos dos señales: el estado interno marcado por el repartidor
+        // (InternalStatus == "entregado") Y lo que confirmó MercadoLibre en el envío Flex/ME1.
+        var refs = stops.Where(s => (s.Origin == "flex" || s.Origin == "me1") && s.OriginRefId != null)
+                        .Select(s => long.TryParse(s.OriginRefId, out var v) ? v : 0L)
+                        .Where(v => v != 0L).Distinct().ToList();
+        var deliveredShipmentIds = refs.Count == 0
+            ? new HashSet<long>()
+            : (await db.MeliShipments
+                    .Where(m => refs.Contains(m.MeliShipmentId) && m.Status == "delivered")
+                    .Select(m => m.MeliShipmentId).ToListAsync())
+              .ToHashSet();
+
+        bool IsDelivered(MapeoStop s)
+        {
+            if (string.Equals(s.InternalStatus, "entregado", System.StringComparison.OrdinalIgnoreCase)) return true;
+            if ((s.Origin == "flex" || s.Origin == "me1") && s.OriginRefId != null
+                && long.TryParse(s.OriginRefId, out var sid) && deliveredShipmentIds.Contains(sid)) return true;
+            return false;
+        }
+
         var stopsArr = stops.Select(s => new
         {
             id = s.Id,
@@ -101,6 +149,7 @@ public class MapeoSnapshotsController : ControllerBase
             telefono = s.Telefono,
             notas = s.Notas,
             internalStatus = s.InternalStatus,
+            delivered = IsDelivered(s),
             assignedDriverId = s.AssignedDriverId,
             assignedDriverName = s.AssignedDriver?.Nombre,
             assignedDriverColor = s.AssignedDriver?.Color,

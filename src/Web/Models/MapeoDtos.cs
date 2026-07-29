@@ -139,6 +139,7 @@ public class MapeoSnapshotListItemDto
     public int StopsCount { get; set; }
     public int VehiclesCount { get; set; }
     public int DriversCount { get; set; }
+    public int DeliveredCount { get; set; }
     public DateTime CreatedAt { get; set; }
     public string? CreatedByUsername { get; set; }
     public string? Notes { get; set; }
