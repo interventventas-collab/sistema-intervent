@@ -396,10 +396,22 @@
                     .GroupBy(u => u.Zona)
                     .Select(g => (Zona: g.Key, Count: g.Sum(x => x.Count)))
                     .ToList();
-                // Filtro extra por localidad (chips "Zonas"): se aplica sobre lo visible.
-                var listaRender = zonasOcultas.Count > 0
-                    ? listaVisible.Where(g => !zonasOcultas.Contains(g.Zona)).ToList()
-                    : listaVisible;
+                // Chips de filtro por repartidor (con su contador de destinos), sobre lo visible.
+                var repartidoresParaChips = listaVisible
+                    .GroupBy(GrupoDriverId)
+                    .Select(g => (DriverId: g.Key, Count: g.Count()))
+                    .OrderBy(x => x.DriverId ?? int.MaxValue)
+                    .ToList();
+                var totalVisible = listaVisible.Count;
+                // Texto de búsqueda normalizado (para comparar sin acentos/mayúsculas).
+                var qBusqueda = NormTxt(busquedaTexto);
+                // Se aplican, sobre lo visible: (1) chips de zona ocultas, (2) filtro por repartidor,
+                // (3) buscador de texto libre. Los tres se combinan.
+                var listaRender = listaVisible
+                    .Where(g => zonasOcultas.Count == 0 || !zonasOcultas.Contains(g.Zona))
+                    .Where(GrupoCoincideRepartidor)
+                    .Where(g => GrupoCoincideBusqueda(g, qBusqueda))
+                    .ToList();
                 // ¿Quedó UNA sola zona (un repartidor) a la vista? Entonces mostramos las paradas
                 // en el ORDEN de la ruta (1, 2, 3…) en vez de agrupar por localidad.
                 var driversVisibles = listaRender.Select(GrupoDriverId).Where(d => d.HasValue).Select(d => d!.Value).Distinct().ToList();
@@ -422,15 +434,36 @@
                         .OrderBy(g => g.Key == "(sin localidad)" ? "ZZZ" : g.Key)
                         .ToList();
                 }
-                <div style="padding:0.4rem 0.6rem; background:#dbeafe; border-bottom:1px solid #93c5fd; font-size:0.72rem; font-weight:700; color:#1e40af; display:flex; justify-content:space-between; align-items:center; gap:0.4rem; flex-wrap:wrap; position:sticky; top:0; z-index:2;">
-                    <span style="display:flex; align-items:center; gap:0.4rem;">
-                        <span style="text-transform:uppercase;">📋 @listaRender.Count destinos</span>
+                <div style="position:sticky; top:0; z-index:3;">
+                @* Buscador libre: usuario, cliente, nº de envío/venta, dirección, teléfono. *@
+                <div style="padding:0.4rem 0.5rem; background:white; border-bottom:1px solid #e5e7eb; display:flex; align-items:center; gap:0.35rem;">
+                    <span style="font-size:0.9rem;">🔎</span>
+                    <input class="form-input" @bind="busquedaTexto" @bind:event="oninput"
+                           placeholder="Buscar: cliente, usuario, nº envío/venta, dirección…"
+                           style="flex:1; font-size:0.82rem; padding:0.35rem 0.5rem;" />
+                    @if (!string.IsNullOrWhiteSpace(busquedaTexto) || filtroRepartidorId.HasValue)
+                    {
+                        <button @onclick="LimpiarBusquedaYFiltros" title="Limpiar búsqueda y filtros"
+                                style="background:#f3f4f6; border:1px solid #e5e7eb; color:#6b7280; border-radius:6px; font-size:0.8rem; font-weight:700; padding:0.2rem 0.5rem; cursor:pointer;">✕</button>
+                    }
+                </div>
+                <div style="padding:0.4rem 0.6rem; background:#dbeafe; border-bottom:1px solid #93c5fd; font-size:0.72rem; font-weight:700; color:#1e40af; display:flex; justify-content:space-between; align-items:center; gap:0.4rem; flex-wrap:wrap;">
+                    <span style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
+                        <span style="text-transform:uppercase;">📋 @listaRender.Count@(listaRender.Count != totalVisible ? $" / {totalVisible}" : "") destinos</span>
                         @if (zonasParaChips.Count > 1)
                         {
                             <button @onclick="() => mostrarChipsZonas = !mostrarChipsZonas"
                                     title="@(mostrarChipsZonas ? "Ocultar el filtro de zonas" : "Ver el filtro de zonas")"
                                     style="background:@(mostrarChipsZonas ? "#1e40af" : "#dbeafe"); color:@(mostrarChipsZonas ? "#fff" : "#1e40af"); border:1px solid #93c5fd; padding:0.1rem 0.5rem; border-radius:999px; font-size:0.65rem; font-weight:700; cursor:pointer;">
                                 🗂️ Zonas @(mostrarChipsZonas ? "▲" : "▼")
+                            </button>
+                        }
+                        @if (repartidoresParaChips.Count > 1)
+                        {
+                            <button @onclick="() => mostrarFiltroReparto = !mostrarFiltroReparto"
+                                    title="@(mostrarFiltroReparto ? "Ocultar el filtro por repartidor" : "Filtrar por repartidor")"
+                                    style="background:@(mostrarFiltroReparto || filtroRepartidorId.HasValue ? "#1e40af" : "#dbeafe"); color:@(mostrarFiltroReparto || filtroRepartidorId.HasValue ? "#fff" : "#1e40af"); border:1px solid #93c5fd; padding:0.1rem 0.5rem; border-radius:999px; font-size:0.65rem; font-weight:700; cursor:pointer;">
+                                🚚 Repartidor @(mostrarFiltroReparto ? "▲" : "▼")
                             </button>
                         }
                     </span>
@@ -474,6 +507,40 @@
                                 Ver todas
                             </button>
                         }
+                    </div>
+                }
+                @if (repartidoresParaChips.Count > 1 && mostrarFiltroReparto)
+                {
+                    <div style="padding:0.4rem 0.6rem; background:white; border-bottom:1px solid #e5e7eb; display:flex; gap:0.3rem; flex-wrap:wrap; align-items:center;">
+                        <span style="font-size:0.68rem; color:#6b7280; font-weight:600; margin-right:0.2rem;">Repartidor:</span>
+                        <button @onclick="() => filtroRepartidorId = null"
+                                style="background:@(filtroRepartidorId is null ? "#1e40af" : "#f3f4f6"); color:@(filtroRepartidorId is null ? "#fff" : "#374151"); border:1px solid #d1d5db; padding:0.15rem 0.55rem; border-radius:999px; font-size:0.7rem; font-weight:700; cursor:pointer;">
+                            Todos
+                        </button>
+                        @foreach (var (driverId, count) in repartidoresParaChips)
+                        {
+                            var nombre = driverId.HasValue ? (drivers?.FirstOrDefault(d => d.Id == driverId.Value)?.Nombre ?? "Repartidor") : "Sin asignar";
+                            var chipVal = driverId ?? 0;
+                            var activo = filtroRepartidorId == chipVal;
+                            var dColor = driverId.HasValue ? (drivers?.FirstOrDefault(d => d.Id == driverId.Value)?.Color ?? "#1d4ed8") : "#9ca3af";
+                            <button @onclick="() => filtroRepartidorId = (filtroRepartidorId == chipVal ? (int?)null : chipVal)"
+                                    title="Ver solo las paradas de @nombre"
+                                    style="display:inline-flex; align-items:center; gap:0.3rem; background:@(activo ? dColor : "#f3f4f6"); color:@(activo ? "#fff" : "#374151"); border:1px solid @(activo ? dColor : "#d1d5db"); padding:0.15rem 0.55rem; border-radius:999px; font-size:0.7rem; font-weight:600; cursor:pointer;">
+                                <span style="width:9px; height:9px; border-radius:50%; background:@dColor; flex:0 0 9px; @(activo ? "box-shadow:0 0 0 1.5px #fff inset;" : "")"></span>
+                                @nombre <span style="opacity:0.7;">(@count)</span>
+                            </button>
+                        }
+                    </div>
+                }
+                </div>@* /sticky buscador+filtros *@
+                @if (listaRender.Count == 0)
+                {
+                    <div style="padding:1.5rem 1rem; text-align:center; color:#6b7280;">
+                        <div style="font-size:1.8rem; margin-bottom:0.3rem;">🔍</div>
+                        <div style="font-size:0.85rem; font-weight:600;">Sin resultados</div>
+                        <div style="font-size:0.76rem; margin-top:0.2rem;">No hay paradas que coincidan con la búsqueda o el filtro.</div>
+                        <button class="btn" style="margin-top:0.6rem; font-size:0.78rem; padding:0.3rem 0.7rem; background:#2563eb; color:#fff; border:none; border-radius:6px;"
+                                @onclick="LimpiarBusquedaYFiltros">Limpiar búsqueda y filtros</button>
                     </div>
                 }
                 @foreach (var zona in zonasUnificadas)
@@ -2318,6 +2385,44 @@
         var driverId = GrupoDriverId(g);
         if (!driverId.HasValue) return !(sinAsignarOcultos && zonasCreadas.Count > 0); // sin asignar
         return !zonasOcultasMapa.Contains(driverId.Value);
+    }
+
+    // ── Buscador + filtro por repartidor del panel izquierdo ──
+    private string busquedaTexto = "";                 // texto libre: usuario, cliente, nº envío/venta, dirección, tel
+    private int? filtroRepartidorId = null;            // null=todos · 0=sin asignar · >0=id del repartidor
+    private bool mostrarFiltroReparto = false;         // panel de chips de repartidor desplegado
+
+    // ¿El grupo pasa el filtro por repartidor elegido?
+    private bool GrupoCoincideRepartidor(GrupoUnificado g)
+    {
+        if (!filtroRepartidorId.HasValue) return true;
+        var d = GrupoDriverId(g);
+        return filtroRepartidorId.Value == 0 ? !d.HasValue : d == filtroRepartidorId.Value;
+    }
+
+    // ¿El grupo matchea el texto buscado? Busca en TODOS los campos útiles de cada envío/parada:
+    // usuario (nickname), cliente/nombre, nº de envío, nº de venta, dirección, localidad, teléfono, notas.
+    private bool GrupoCoincideBusqueda(GrupoUnificado g, string qNorm)
+    {
+        if (string.IsNullOrWhiteSpace(qNorm)) return true;
+        bool M(string? s) => !string.IsNullOrEmpty(s) && NormTxt(s).Contains(qNorm);
+        foreach (var f in g.Flex)
+            if (M(f.ReceiverName) || M(f.BuyerNickname) || M(f.AddressLine) || M(f.City)
+                || M(f.ReceiverPhone) || M(f.TrackingNumber) || M(f.ItemsSummary)
+                || M(f.MeliShipmentId.ToString()) || M(f.MeliOrderId?.ToString()))
+                return true;
+        foreach (var m in g.Manual)
+            if (M(m.Alias) || M(m.ContactName) || M(m.ReceiverName) || M(m.BuyerNickname)
+                || M(m.Direccion) || M(m.Localidad) || M(m.Telefono) || M(m.Notas)
+                || M(m.OriginRefId) || M(m.MeliOrderId?.ToString()))
+                return true;
+        return false;
+    }
+
+    private void LimpiarBusquedaYFiltros()
+    {
+        busquedaTexto = "";
+        filtroRepartidorId = null;
     }
 
     // ── Etapa 2: reordenar la ruta (arrastrar ⠿ con SortableJS o flechitas ▲▼), solo con UNA zona a la vista ──
