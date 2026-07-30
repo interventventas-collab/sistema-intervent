@@ -35,6 +35,11 @@
     .mapeo-dock-btn:active { transform: scale(0.93); }
     .mapeo-dock-btn.activo { background: #2563eb; color: #fff; box-shadow: 0 2px 10px rgba(37,99,235,0.5); }
     .mapeo-dock-btn svg { width: 24px; height: 24px; display: block; }
+    /* Agarre para arrastrar el dock a cualquier lado de la pantalla. */
+    .mapeo-dock-handle { width: 100%; height: 22px; display: flex; align-items: center; justify-content: center; gap: 3px; cursor: grab; color: rgba(255,255,255,0.45); touch-action: none; user-select: none; margin-bottom: 2px; }
+    .mapeo-dock-handle:hover { color: rgba(255,255,255,0.85); }
+    .mapeo-dock-handle:active { cursor: grabbing; }
+    .mapeo-dock-handle .dot { width: 4px; height: 4px; border-radius: 999px; background: currentColor; }
     .mapeo-status-pill { display: inline-block; padding: 0.05rem 0.4rem; border-radius: 4px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; }
     .copy-chip { display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.05rem 0.35rem; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 4px; cursor: pointer; transition: all 0.12s; }
     .copy-chip:hover { background: #dbeafe; border-color: #1d4ed8; color: #1d4ed8; }
@@ -1017,8 +1022,13 @@
                     @onclick="VolverAlSistema" title="Volver al sistema (cierra esta pantalla del mapa)">
                 ← Volver
             </button>
-            @* Columna de botones (dock) en el borde izquierdo. Cada uno tiene su cartelito al pasar el cursor. *@
-            <div class="mapeo-dock" style="position:absolute; left:8px; top:50%; transform:translateY(-50%); z-index:530;">
+            @* Columna de botones (dock). Aparece a la DERECHA por defecto; se puede arrastrar
+               de la manija (⣿) a cualquier lado y la posición queda guardada. *@
+            <div id="mapeoDock" class="mapeo-dock" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); z-index:530;">
+                @* Manija para arrastrar toda la barra. *@
+                <div class="mapeo-dock-handle" title="Arrastrame para mover la barra a donde quieras">
+                    <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                </div>
                 @* Mostrar/ocultar el listado de la izquierda. *@
                 <button class="mapeo-dock-btn" @onclick="ToggleSideCollapsed"
                         title="@(sideCollapsed ? "Mostrar el listado" : "Ocultar el listado")">
@@ -3370,6 +3380,11 @@
         if (listaOrdenableActiva && selfRef is not null)
         {
             try { await JS.InvokeVoidAsync("mapeoInitSortable", "mapeoStopsList", selfRef); } catch { }
+        }
+        // Barra negra (dock) arrastrable: engancha el arrastre y restaura la posición guardada.
+        if (mapaFullscreen)
+        {
+            try { await JS.InvokeVoidAsync("mapeoDock.enableDrag"); } catch { }
         }
     }
 

@@ -581,3 +581,89 @@ window.mapeoMini = (function () {
         }
     };
 })();
+
+// 2026-07-30: barra negra (dock) arrastrable. Aparece a la derecha por defecto;
+// el usuario la arrastra de la manija a cualquier lado y la posición queda guardada
+// en el navegador (localStorage). Reengancha solo al re-render de Blazor.
+window.mapeoDock = (function () {
+    const KEY = 'mapeoDockPos';
+    function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+    // Aplica la posición guardada (si existe), clampeada dentro del mapa.
+    function applySaved(dock, parent) {
+        let pos = null;
+        try { pos = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { pos = null; }
+        if (!pos || !parent) return;
+        const pr = parent.getBoundingClientRect();
+        const left = clamp(pos.left, 0, Math.max(0, pr.width - dock.offsetWidth));
+        const top = clamp(pos.top, 0, Math.max(0, pr.height - dock.offsetHeight));
+        dock.style.left = left + 'px';
+        dock.style.top = top + 'px';
+        dock.style.right = 'auto';
+        dock.style.transform = 'none';
+    }
+
+    return {
+        enableDrag() {
+            const dock = document.getElementById('mapeoDock');
+            if (!dock) return;
+            const parent = dock.offsetParent || dock.parentElement;
+            const handle = dock.querySelector('.mapeo-dock-handle');
+            if (!handle) return;
+
+            applySaved(dock, parent);
+
+            if (dock.__dragBound) return; // no reenganchar dos veces
+            dock.__dragBound = true;
+
+            let startX = 0, startY = 0, startLeft = 0, startTop = 0, dragging = false;
+
+            function onMove(e) {
+                if (!dragging) return;
+                const pt = e.touches ? e.touches[0] : e;
+                const pr = parent.getBoundingClientRect();
+                let nl = clamp(startLeft + (pt.clientX - startX), 0, pr.width - dock.offsetWidth);
+                let nt = clamp(startTop + (pt.clientY - startY), 0, pr.height - dock.offsetHeight);
+                dock.style.left = nl + 'px';
+                dock.style.top = nt + 'px';
+                e.preventDefault();
+            }
+            function onUp() {
+                if (!dragging) return;
+                dragging = false;
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+                document.removeEventListener('touchmove', onMove);
+                document.removeEventListener('touchend', onUp);
+                try {
+                    localStorage.setItem(KEY, JSON.stringify({
+                        left: parseFloat(dock.style.left) || 0,
+                        top: parseFloat(dock.style.top) || 0
+                    }));
+                } catch (e) { /* localStorage lleno o bloqueado: no pasa nada */ }
+            }
+            function onDown(e) {
+                dragging = true;
+                const pt = e.touches ? e.touches[0] : e;
+                const pr = parent.getBoundingClientRect();
+                const dr = dock.getBoundingClientRect();
+                // Fijamos left/top numéricos (convertimos desde right/transform del arranque).
+                startLeft = dr.left - pr.left;
+                startTop = dr.top - pr.top;
+                dock.style.left = startLeft + 'px';
+                dock.style.top = startTop + 'px';
+                dock.style.right = 'auto';
+                dock.style.transform = 'none';
+                startX = pt.clientX; startY = pt.clientY;
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+                document.addEventListener('touchmove', onMove, { passive: false });
+                document.addEventListener('touchend', onUp);
+                e.preventDefault();
+            }
+
+            handle.addEventListener('mousedown', onDown);
+            handle.addEventListener('touchstart', onDown, { passive: false });
+        }
+    };
+})();
