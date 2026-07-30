@@ -1367,12 +1367,20 @@
                                 {
                                     <div style="margin-top: 0.4rem; background: #f0fdf4; border: 1px solid #86efac; border-radius: 6px; padding: 0.35rem 0.55rem;">
                                         <label class="form-label" style="font-size: 0.72rem; color: #166534; margin-bottom: 0.2rem;">🚚 Entregar en</label>
+                                        @{
+                                            var domSiempre = ciSel is null ? "" : (!string.IsNullOrWhiteSpace(ciSel.DomicilioEntrega) ? ciSel.DomicilioEntrega : (ciSel.Direccion ?? ""));
+                                        }
                                         <select class="form-input" style="font-size: 0.8rem; padding: 0.3rem 0.5rem;" @onchange="OnVentaDireccionChanged">
-                                            <option value="0" selected="@(formClienteDireccionId == 0)">— Domicilio de siempre —</option>
+                                            <option value="0" selected="@(formClienteDireccionId == 0)">
+                                                @(string.IsNullOrWhiteSpace(domSiempre) ? "Domicilio de siempre" : domSiempre) (domicilio principal)
+                                            </option>
+                                            @{ var altNum = 0; }
                                             @foreach (var d in ventaDirecciones)
                                             {
+                                                altNum++;
+                                                var etiqDir = string.IsNullOrWhiteSpace(d.Etiqueta) ? d.Direccion : $"{d.Etiqueta} — {d.Direccion}";
                                                 <option value="@d.Id" selected="@(formClienteDireccionId == d.Id)">
-                                                    @(string.IsNullOrWhiteSpace(d.Etiqueta) ? d.Direccion : $"{d.Etiqueta} — {d.Direccion}")
+                                                    @etiqDir (domicilio alternativo @altNum)
                                                 </option>
                                             }
                                         </select>
