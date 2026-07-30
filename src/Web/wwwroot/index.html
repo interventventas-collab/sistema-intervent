@@ -132,6 +132,9 @@
                     window.mapeoActions = {
                         toggleRoute: function(markerId) {
                             if (dotNetRef) dotNetRef.invokeMethodAsync('ToggleMarkerInRoute', markerId);
+                        },
+                        correctLocation: function(markerId) {
+                            if (dotNetRef) dotNetRef.invokeMethodAsync('CorregirUbicacionDesdePopup', markerId);
                         }
                     };
                     if (map) { map.remove(); map = null; zonesLayer = null; }
