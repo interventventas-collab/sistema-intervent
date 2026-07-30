@@ -325,7 +325,40 @@
                             }
                         </div>
                         <input class="form-input" @bind="formDomicilioEntrega" placeholder="Donde se entregan los pedidos (si difiere del fiscal)" />
-                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Si está vacío, se usa la dirección fiscal. Es el domicilio de siempre; abajo podés sumar domicilios alternativos. (El link de Maps se carga más abajo, en "Enlace Google Maps".)</p>
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Si está vacío, se usa la dirección fiscal. Es el domicilio de siempre (su entre calles y enlace de Maps van acá abajo). Si el cliente entrega en más de un lugar, sumá domicilios alternativos.</p>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Entre calles</label>
+                        <input class="form-input" @bind="formEntreCalles" placeholder="Ej: entre Larroque y Beruti (referencia para la entrega)" />
+                    </div>
+                    @* ─── Enlace Google Maps del domicilio principal ─── *@
+                    <div style="background: #eff6ff; border: 1px solid #3b82f6; border-radius: 6px; padding: 0.6rem 0.8rem; margin-top: 0.5rem;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label" style="font-size: 0.78rem; color: #1e40af;">🗺 Enlace Google Maps (corto)</label>
+                            <input class="form-input" @bind="formMapeoLink"
+                                   placeholder="https://maps.app.goo.gl/..." />
+                            @if (formMapeoLat.HasValue && formMapeoLng.HasValue)
+                            {
+                                <p style="font-size: 0.7rem; color: #15803d; margin: 0.2rem 0 0;">
+                                    ✓ Coordenadas extraídas: <strong>@formMapeoLat?.ToString("0.######"), @formMapeoLng?.ToString("0.######")</strong>
+                                </p>
+                            }
+                            else if (!string.IsNullOrEmpty(formMapeoLink) && isEditing)
+                            {
+                                <p style="font-size: 0.7rem; color: #d97706; margin: 0.2rem 0 0; display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+                                    ⚠ No se pudieron extraer coordenadas todavía.
+                                    <button type="button" class="btn btn-secondary"
+                                            @onclick="ReExtraerCoords" disabled="@reExtrayendo"
+                                            style="font-size: 0.7rem; padding: 0.2rem 0.4rem;">
+                                        @(reExtrayendo ? "⏳..." : "🔄 Re-extraer")
+                                    </button>
+                                </p>
+                            }
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
+                                Pegá el enlace corto que sale al compartir la ubicación desde Google Maps en el celular.
+                                Al guardar, el sistema extrae automáticamente las coordenadas para usarlas en el mapa.
+                            </p>
+                        </div>
                     </div>
                     @* ─── 2026-07-30: Domicilios de entrega alternativos (se cargan por modal) ─── *@
                     <div style="background: #f0fdf4; border: 1px solid #16a34a; border-radius: 6px; padding: 0.6rem 0.8rem; margin-top: 0.5rem;">
@@ -384,10 +417,6 @@
                         }
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Entre calles</label>
-                        <input class="form-input" @bind="formEntreCalles" placeholder="Ej: entre Larroque y Beruti (referencia para la entrega)" />
-                    </div>
-                    <div class="form-group">
                         <label class="form-label">Notas internas</label>
                         <textarea class="form-input" @bind="formNotas" rows="2" placeholder="Notas que solo ves vos (no aparecen en comprobante)"></textarea>
                     </div>
@@ -398,35 +427,6 @@
                         <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
                             Estos comentarios <strong>aparecen en TODOS los comprobantes</strong> de este cliente.
                         </p>
-                    </div>
-                    @* ─── Enlace Google Maps ─── *@
-                    <div style="background: #eff6ff; border: 1px solid #3b82f6; border-radius: 6px; padding: 0.6rem 0.8rem; margin-top: 0.5rem;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label class="form-label" style="font-size: 0.78rem; color: #1e40af;">🗺 Enlace Google Maps (corto)</label>
-                            <input class="form-input" @bind="formMapeoLink"
-                                   placeholder="https://maps.app.goo.gl/..." />
-                            @if (formMapeoLat.HasValue && formMapeoLng.HasValue)
-                            {
-                                <p style="font-size: 0.7rem; color: #15803d; margin: 0.2rem 0 0;">
-                                    ✓ Coordenadas extraídas: <strong>@formMapeoLat?.ToString("0.######"), @formMapeoLng?.ToString("0.######")</strong>
-                                </p>
-                            }
-                            else if (!string.IsNullOrEmpty(formMapeoLink) && isEditing)
-                            {
-                                <p style="font-size: 0.7rem; color: #d97706; margin: 0.2rem 0 0; display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
-                                    ⚠ No se pudieron extraer coordenadas todavía.
-                                    <button type="button" class="btn btn-secondary"
-                                            @onclick="ReExtraerCoords" disabled="@reExtrayendo"
-                                            style="font-size: 0.7rem; padding: 0.2rem 0.4rem;">
-                                        @(reExtrayendo ? "⏳..." : "🔄 Re-extraer")
-                                    </button>
-                                </p>
-                            }
-                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
-                                Pegá el enlace corto que sale al compartir la ubicación desde Google Maps en el celular.
-                                Al guardar, el sistema extrae automáticamente las coordenadas para usarlas en el mapa.
-                            </p>
-                        </div>
                     </div>
                     @if (isEditing)
                     {
