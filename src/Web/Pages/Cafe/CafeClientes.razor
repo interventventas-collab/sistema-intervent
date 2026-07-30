@@ -386,10 +386,6 @@
                                             <div style="flex: 1; min-width: 0;">
                                                 <div style="font-weight: 600; font-size: 0.82rem;">
                                                     @(string.IsNullOrWhiteSpace(d.Etiqueta) ? "(sin nombre)" : d.Etiqueta)
-                                                    @if (d.EsPrincipal)
-                                                    {
-                                                        <span style="background: #16a34a; color: white; font-size: 0.63rem; padding: 0.05rem 0.4rem; border-radius: 10px; margin-left: 0.3rem;">Principal</span>
-                                                    }
                                                 </div>
                                                 <div style="font-size: 0.75rem; color: #4b5563;">@d.Direccion@(string.IsNullOrWhiteSpace(d.Localidad) ? "" : $" · {d.Localidad}")</div>
                                                 @if (!string.IsNullOrWhiteSpace(d.EntreCalles) || !string.IsNullOrWhiteSpace(d.Telefono) || !string.IsNullOrWhiteSpace(d.MapeoLink))
@@ -401,10 +397,6 @@
                                                     </div>
                                                 }
                                             </div>
-                                            @if (!d.EsPrincipal)
-                                            {
-                                                <button type="button" class="btn btn-secondary" style="font-size: 0.68rem; padding: 0.2rem 0.4rem;" @onclick="() => MarcarDireccionPrincipal(d)" disabled="@dirGuardando" title="Marcar como principal (viene elegida por defecto en la venta)">★</button>
-                                            }
                                             <button type="button" class="btn btn-secondary" style="font-size: 0.68rem; padding: 0.2rem 0.4rem;" @onclick="() => AbrirModalDireccion(d)" disabled="@dirGuardando" title="Editar">✏️</button>
                                             <button type="button" class="btn btn-secondary" style="font-size: 0.68rem; padding: 0.2rem 0.4rem; color: #dc2626;" @onclick="() => BorrarDireccion(d)" disabled="@dirGuardando" title="Borrar">🗑</button>
                                         </div>
@@ -621,9 +613,9 @@
                     <label class="form-label">Notas internas de este domicilio</label>
                     <textarea class="form-input" @bind="dirNotasInternas" rows="2" placeholder="Solo las ves vos (no salen en el comprobante). Ej: tocar timbre del fondo, preguntar por Marcelo"></textarea>
                 </div>
-                <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; cursor: pointer; margin-top: 0.2rem;">
-                    <input type="checkbox" @bind="dirEsPrincipal" /> Marcar como principal (viene elegida por defecto en la venta)
-                </label>
+                <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">
+                    Es un domicilio alternativo. El domicilio principal (el de siempre) sigue siendo el de arriba; este lo elegís en la venta cuando la entrega vaya acá.
+                </p>
                 @if (!string.IsNullOrEmpty(dirError))
                 {
                     <p style="color: #dc2626; font-size: 0.8rem; margin: 0.5rem 0 0;">@dirError</p>
@@ -1087,7 +1079,8 @@
             {
                 Etiqueta = dirEtiqueta, Direccion = dirDireccion.Trim(), EntreCalles = dirEntreCalles,
                 NotasInternas = dirNotasInternas, Localidad = dirLocalidad,
-                Cp = dirCp, Telefono = dirTelefono, MapeoLink = dirMapeoLink, EsPrincipal = dirEsPrincipal
+                Cp = dirCp, Telefono = dirTelefono, MapeoLink = dirMapeoLink,
+                EsPrincipal = false  // el principal es siempre el "domicilio de siempre"; los alternativos nunca son principales
             };
             if (dirEditandoId.HasValue)
             {
@@ -1101,24 +1094,6 @@
             }
             await LoadDirecciones(editingId.Value);
             CerrarModalDireccion();
-        }
-        catch (Exception ex) { dirError = "Error: " + ex.Message; }
-        finally { dirGuardando = false; }
-    }
-
-    private async Task MarcarDireccionPrincipal(CafeDireccionDto d)
-    {
-        if (!editingId.HasValue) return;
-        dirGuardando = true;
-        try
-        {
-            await Api.UpdateCafeDireccionAsync(d.Id, new CafeDireccionUpsertRequest
-            {
-                Etiqueta = d.Etiqueta, Direccion = d.Direccion, EntreCalles = d.EntreCalles,
-                NotasInternas = d.NotasInternas, Localidad = d.Localidad, Ciudad = d.Ciudad,
-                Cp = d.Cp, Telefono = d.Telefono, MapeoLink = d.MapeoLink, EsPrincipal = true
-            });
-            await LoadDirecciones(editingId.Value);
         }
         catch (Exception ex) { dirError = "Error: " + ex.Message; }
         finally { dirGuardando = false; }

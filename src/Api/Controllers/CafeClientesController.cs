@@ -331,12 +331,11 @@ public class CafeClientesController : ControllerBase
             var coords = await _mapsResolver.TryResolverCoordenadasAsync(d.MapeoLink);
             if (coords.HasValue) { d.MapeoLat = coords.Value.lat; d.MapeoLng = coords.Value.lng; }
         }
-        // Si esta es la primera dirección del cliente, la marcamos principal por defecto.
-        var hayOtras = await _db.CafeClienteDirecciones.AnyAsync(x => x.ClienteId == id && x.IsActive);
-        if (!hayOtras) d.EsPrincipal = true;
+        // Los domicilios alternativos NUNCA son principales: el principal es siempre el
+        // "domicilio de siempre" (Cafe_Clientes.DomicilioEntrega). Por eso no auto-marcamos nada.
+        d.EsPrincipal = false;
         _db.CafeClienteDirecciones.Add(d);
         await _db.SaveChangesAsync();
-        if (d.EsPrincipal) await DesmarcarOtrasPrincipales(id, d.Id);
         return Ok(MapDir(d));
     }
 

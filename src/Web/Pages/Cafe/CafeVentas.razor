@@ -1372,7 +1372,7 @@
                                             @foreach (var d in ventaDirecciones)
                                             {
                                                 <option value="@d.Id" selected="@(formClienteDireccionId == d.Id)">
-                                                    @(string.IsNullOrWhiteSpace(d.Etiqueta) ? d.Direccion : $"{d.Etiqueta} — {d.Direccion}")@(d.EsPrincipal ? " (principal)" : "")
+                                                    @(string.IsNullOrWhiteSpace(d.Etiqueta) ? d.Direccion : $"{d.Etiqueta} — {d.Direccion}")
                                                 </option>
                                             }
                                         </select>
@@ -7092,12 +7092,8 @@
     {
         try { ventaDirecciones = await Api.GetCafeDireccionesAsync(clienteId); }
         catch { ventaDirecciones = new(); }
-        // Por defecto: la principal (o la primera). Si no hay lista, 0 = domicilio de siempre.
-        var ppal = ventaDirecciones.FirstOrDefault(d => d.EsPrincipal) ?? ventaDirecciones.FirstOrDefault();
-        formClienteDireccionId = ppal?.Id ?? 0;
-        // Si la principal tiene link de Maps y el form está vacío, lo traemos (para el pin y "Probar").
-        if (ppal is not null && !string.IsNullOrWhiteSpace(ppal.MapeoLink) && string.IsNullOrWhiteSpace(formMapeoLink))
-            formMapeoLink = ppal.MapeoLink!;
+        // Por defecto SIEMPRE el "domicilio de siempre" (Bulnes = 0). Los alternativos se eligen a mano.
+        formClienteDireccionId = 0;
     }
 
     private void OnVentaDireccionChanged(ChangeEventArgs e)
