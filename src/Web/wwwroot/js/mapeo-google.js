@@ -193,8 +193,16 @@ window.mapeoFlex = (function () {
                     if (dotNetRef) dotNetRef.invokeMethodAsync('AsignarRepartidorDesdePopup', markerId, parseInt(driverId, 10) || 0);
                 },
                 // 2026-07-30: corregir/mover la ubicación de este pin desde el globito.
+                // Cerramos el globito primero: el modo edición redibuja SOLO ese pin con
+                // keepView, y renderMarkers ignora el redibujo si hay un globito abierto.
                 correctLocation: function (markerId) {
+                    if (infoWindow) { infoWindow.close(); infoOpen = false; }
                     if (dotNetRef) dotNetRef.invokeMethodAsync('CorregirUbicacionDesdePopup', markerId);
+                },
+                // 2026-07-30: quitar esta parada del mapa desde el globito.
+                removeStop: function (markerId) {
+                    if (infoWindow) { infoWindow.close(); infoOpen = false; }
+                    if (dotNetRef) dotNetRef.invokeMethodAsync('EliminarParadaDesdePopup', markerId);
                 }
             };
             try {

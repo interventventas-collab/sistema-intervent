@@ -135,6 +135,9 @@
                         },
                         correctLocation: function(markerId) {
                             if (dotNetRef) dotNetRef.invokeMethodAsync('CorregirUbicacionDesdePopup', markerId);
+                        },
+                        removeStop: function(markerId) {
+                            if (dotNetRef) dotNetRef.invokeMethodAsync('EliminarParadaDesdePopup', markerId);
                         }
                     };
                     if (map) { map.remove(); map = null; zonesLayer = null; }
