@@ -179,11 +179,13 @@ public class MapeoStopsController : ControllerBase
         await _db.SaveChangesAsync();
     }
 
-    public record SetUbicacionRequest(double Lat, double Lng, string? Direccion);
+    /// <summary>GuardarEnCliente=true (definitivo): además de la parada, guarda las coords en el domicilio
+    /// del cliente que se usó en la venta (el alternativo si fue a uno, o el de siempre). false (solo esta
+    /// vez): corrige solo esta entrega, sin tocar la ficha del cliente.</summary>
+    public record SetUbicacionRequest(double Lat, double Lng, string? Direccion, bool GuardarEnCliente = true);
 
-    /// <summary>Fija la ubicación de una parada (elegida en el buscador del mapa) y, si es una VENTA,
-    /// la guarda también en la ficha del cliente (coords + link) para la próxima. Corrige domicilios
-    /// sin salir del mapa — mejor que el geocoder que a veces adivina mal.</summary>
+    /// <summary>Fija la ubicación de una parada (elegida en el buscador o arrastrando el pin). Corrige
+    /// domicilios sin salir del mapa — mejor que el geocoder que a veces adivina mal.</summary>
     [HttpPost("{id:int}/ubicacion")]
     public async Task<IActionResult> SetUbicacion(int id, [FromBody] SetUbicacionRequest req)
     {
@@ -194,19 +196,43 @@ public class MapeoStopsController : ControllerBase
         if (!string.IsNullOrWhiteSpace(req.Direccion)) s.Direccion = req.Direccion.Trim();
         s.UpdatedAt = DateTime.UtcNow;
 
-        // Si es una venta, guardamos la ubicación en la ficha del cliente para la próxima.
         if (s.Origin == "venta_cafe" && int.TryParse(s.OriginRefId, out var ventaId))
         {
             var venta = await _db.CafeVentas.Include(v => v.ClienteNav).FirstOrDefaultAsync(v => v.Id == ventaId);
-            var cli = venta?.ClienteNav;
-            if (cli is not null)
+            if (venta is not null)
             {
-                cli.MapeoLat = (decimal)req.Lat;
-                cli.MapeoLng = (decimal)req.Lng;
                 var ci = System.Globalization.CultureInfo.InvariantCulture;
-                cli.MapeoLink = $"https://www.google.com/maps/search/?api=1&query={req.Lat.ToString(ci)},{req.Lng.ToString(ci)}";
-                if (!string.IsNullOrWhiteSpace(req.Direccion) && string.IsNullOrWhiteSpace(cli.DomicilioEntrega) && string.IsNullOrWhiteSpace(cli.Direccion))
-                    cli.DomicilioEntrega = req.Direccion.Trim();
+                var link = $"https://www.google.com/maps/search/?api=1&query={req.Lat.ToString(ci)},{req.Lng.ToString(ci)}";
+                var linkPrevio = venta.MapeoLink;   // para matchear el domicilio usado ANTES de pisarlo
+
+                // Definitivo: guardar en el domicilio del cliente que realmente se usó en esta venta.
+                var cli = venta.ClienteNav;
+                if (req.GuardarEnCliente && cli is not null)
+                {
+                    var alts = await _db.CafeClienteDirecciones.Where(d => d.ClienteId == cli.Id && d.IsActive).ToListAsync();
+                    CafeClienteDireccion? alt = null;
+                    if (!string.IsNullOrWhiteSpace(linkPrevio))
+                        alt = alts.FirstOrDefault(d => !string.IsNullOrWhiteSpace(d.MapeoLink) && d.MapeoLink == linkPrevio);
+                    if (alt is null && !string.IsNullOrWhiteSpace(venta.ClienteDomicilioEntregaSnapshot))
+                        alt = alts.FirstOrDefault(d => !string.IsNullOrWhiteSpace(d.Direccion)
+                            && venta.ClienteDomicilioEntregaSnapshot!.StartsWith(d.Direccion, StringComparison.OrdinalIgnoreCase));
+
+                    if (alt is not null)
+                    {
+                        alt.MapeoLat = (decimal)req.Lat; alt.MapeoLng = (decimal)req.Lng;
+                        alt.MapeoLink = link; alt.UpdatedAt = DateTime.UtcNow;
+                    }
+                    else
+                    {
+                        cli.MapeoLat = (decimal)req.Lat; cli.MapeoLng = (decimal)req.Lng; cli.MapeoLink = link;
+                        if (!string.IsNullOrWhiteSpace(req.Direccion) && string.IsNullOrWhiteSpace(cli.DomicilioEntrega) && string.IsNullOrWhiteSpace(cli.Direccion))
+                            cli.DomicilioEntrega = req.Direccion.Trim();
+                    }
+                }
+
+                // El link propio de la venta queda corregido SIEMPRE (así este pedido queda fijo en el
+                // lugar corregido, aunque haya sido "solo esta vez").
+                venta.MapeoLink = link;
             }
         }
         await _db.SaveChangesAsync();

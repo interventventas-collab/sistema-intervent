@@ -916,20 +916,14 @@
                                 {
                                     <div style="margin-top:0.3rem; background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; border-radius:6px; padding:0.3rem 0.45rem; font-size:0.72rem; display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;" @onclick:stopPropagation="true">
                                         <span>⚠ Sin domicilio cargado</span>
-                                        <button class="btn" style="font-size:0.7rem; padding:0.15rem 0.5rem; background:#b91c1c; color:#fff; border:none; border-radius:5px;" @onclick="() => BuscarDomicilioParaParada(st.Id, stNombreDom)">📍 Buscar domicilio</button>
+                                        <button class="btn" style="font-size:0.7rem; padding:0.15rem 0.5rem; background:#b91c1c; color:#fff; border:none; border-radius:5px;" @onclick="() => IniciarEdicionPin(st.Id, stNombreDom)">📍 Buscar en el mapa</button>
                                     </div>
                                 }
                                 else
                                 {
-                                    var desbloqueada = paradasDesbloqueadas.Contains(st.Id);
                                     <div style="margin-top:0.2rem; display:flex; gap:0.35rem; align-items:center; flex-wrap:wrap;" @onclick:stopPropagation="true">
-                                        <button class="btn" style="font-size:0.66rem; padding:0.08rem 0.4rem; background:transparent; border:1px solid #d1d5db; color:#6b7280; border-radius:5px;" @onclick="() => BuscarDomicilioParaParada(st.Id, stNombreDom)" title="Corregir el domicilio buscándolo en el mapa">📍 Corregir domicilio</button>
-                                        <button class="btn" style="font-size:0.66rem; padding:0.08rem 0.45rem; background:@(desbloqueada ? "#fef3c7" : "transparent"); border:1px solid @(desbloqueada ? "#f59e0b" : "#d1d5db"); color:@(desbloqueada ? "#92400e" : "#6b7280"); border-radius:5px;" @onclick="() => ToggleCandado(st.Id)" title="@(desbloqueada ? "Bloquear el pin (no se mueve)" : "Desbloquear para mover el pin en el mapa")">@(desbloqueada ? "🔓 Mover en el mapa" : "🔒")</button>
+                                        <button class="btn" style="font-size:0.66rem; padding:0.08rem 0.5rem; background:@(editandoPinStopId == st.Id ? "#fef3c7" : "transparent"); border:1px solid @(editandoPinStopId == st.Id ? "#f59e0b" : "#d1d5db"); color:@(editandoPinStopId == st.Id ? "#92400e" : "#6b7280"); border-radius:5px;" @onclick="() => IniciarEdicionPin(st.Id, stNombreDom)" title="Corregir/mover la ubicación de este pin: mostramos solo este pin, lo buscás o arrastrás, y elegís cómo guardarlo">📍 Corregir ubicación</button>
                                     </div>
-                                    @if (desbloqueada)
-                                    {
-                                        <div style="font-size:0.68rem; color:#92400e; margin-top:0.15rem;" @onclick:stopPropagation="true">👆 Arrastrá el pin en el mapa hasta el punto exacto — se guarda solo.</div>
-                                    }
                                 }
                                 @* Selector de repartidor por parada: escaneás y elegís acá quién la lleva. *@
                                 <div style="margin-top:0.3rem;" @onclick:stopPropagation="true">
@@ -1320,7 +1314,31 @@
         @* 2026-07-25: buscador de direcciones estilo Google (Places). Escribís, elegís, y se planta la parada.
            2026-07-27: si estás "corrigiendo domicilio", lo que elijas se le asigna a esa parada. *@
         <div style="padding:0 0 0.4rem;">
-            @if (corrigiendoDomicilioStopId is not null)
+            @if (editandoPinStopId is not null)
+            {
+                <div style="margin-bottom:0.35rem; padding:0.5rem 0.6rem; background:#fffbeb; border:1px solid #f59e0b; border-radius:8px;">
+                    <div style="font-size:0.82rem; color:#92400e; font-weight:700; margin-bottom:0.25rem;">
+                        📍 Corrigiendo la ubicación de <strong>@editandoPinNombre</strong>
+                    </div>
+                    <div style="font-size:0.72rem; color:#92400e; margin-bottom:0.45rem;">
+                        Buscá la dirección abajo (el pin salta ahí) y/o <strong>arrastrá el pin</strong> en el mapa hasta el punto exacto. Después elegí cómo guardarlo.
+                        @if (!EditPinTieneUbicacion) { <span style="color:#b91c1c;"> — todavía no elegiste ubicación.</span> }
+                    </div>
+                    <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center;">
+                        @if (EditPinEsVenta)
+                        {
+                            <button class="btn" style="font-size:0.74rem; padding:0.3rem 0.6rem; background:#16a34a; color:#fff; border:none; border-radius:6px;" @onclick="() => GuardarEdicionPin(true)" disabled="@(!EditPinTieneUbicacion)" title="Guarda la ubicación en la ficha del cliente (el domicilio que se usó en esta venta) para las próximas.">💾 Guardar en el cliente (definitivo)</button>
+                            <button class="btn" style="font-size:0.74rem; padding:0.3rem 0.6rem; background:#2563eb; color:#fff; border:none; border-radius:6px;" @onclick="() => GuardarEdicionPin(false)" disabled="@(!EditPinTieneUbicacion)" title="Corrige solo esta entrega, sin tocar la ficha del cliente.">📍 Solo esta vez</button>
+                        }
+                        else
+                        {
+                            <button class="btn" style="font-size:0.74rem; padding:0.3rem 0.6rem; background:#16a34a; color:#fff; border:none; border-radius:6px;" @onclick="() => GuardarEdicionPin(false)" disabled="@(!EditPinTieneUbicacion)">💾 Guardar ubicación</button>
+                        }
+                        <button class="btn" style="font-size:0.74rem; padding:0.3rem 0.6rem; background:transparent; border:1px solid #92400e; color:#92400e; border-radius:6px;" @onclick="CancelarEdicionPin">✕ Cancelar</button>
+                    </div>
+                </div>
+            }
+            else if (corrigiendoDomicilioStopId is not null)
             {
                 <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.35rem; padding:0.35rem 0.5rem; background:#fef3c7; border:1px solid #fcd34d; border-radius:8px; font-size:0.8rem; color:#92400e;">
                     <span>📍 Buscá el domicilio para <strong>@corrigiendoDomicilioNombre</strong> y elegilo de la lista.</span>
@@ -1328,8 +1346,8 @@
                 </div>
             }
             <input id="mapeoSearchInput" type="text" class="form-input" autocomplete="off"
-                   placeholder="@(corrigiendoDomicilioStopId is not null ? "🔍 Escribí el domicilio correcto y elegilo…" : "🔍 Buscar una dirección y sumarla al mapa…")"
-                   style="width:100%; font-size:0.9rem; padding:0.5rem 0.75rem; border:1.5px solid @(corrigiendoDomicilioStopId is not null ? "#f59e0b" : "#d1d5db"); border-radius:8px;" />
+                   placeholder="@(editandoPinStopId is not null ? "🔍 Buscá la dirección correcta y elegila (mueve el pin)…" : (corrigiendoDomicilioStopId is not null ? "🔍 Escribí el domicilio correcto y elegilo…" : "🔍 Buscar una dirección y sumarla al mapa…"))"
+                   style="width:100%; font-size:0.9rem; padding:0.5rem 0.75rem; border:1.5px solid @((editandoPinStopId is not null || corrigiendoDomicilioStopId is not null) ? "#f59e0b" : "#d1d5db"); border-radius:8px;" />
         </div>
         @* Mini-leyenda: qué forma de globito es cada tipo de envío. La forma indica el TIPO;
            el color sigue indicando el repartidor/asignación. Solo aparece si hay algo en el mapa. *@
@@ -3388,6 +3406,7 @@
         // Guarda: no interrumpir si el usuario está haciendo algo sobre el mapa,
         // ni mientras mira la foto de un día anterior (no pisar el histórico con lo de hoy).
         if (dibujandoZona || modoOrden || modoAsignacion || corrigiendoDomicilioStopId is not null
+            || editandoPinStopId is not null
             || routeBusy || actualizandoEntregas || assigningZone || assigningSlot || isLoading
             || viewingSnapshot) return;
         autoRefreshBusy = true;
@@ -3430,6 +3449,34 @@
     private async Task RenderMap(bool keepView = false)
     {
         if (shipments is null) return;
+
+        // 2026-07-30: modo "corregir/mover pin" → mostramos SOLO ese pin (arrastrable) para ubicarlo
+        // cómodo, sin el resto de los pines encima ni saltos de zoom.
+        if (editandoPinStopId is int epid)
+        {
+            var stEd = stops?.FirstOrDefault(x => x.Id == epid);
+            var elat = editPinLat ?? (stEd is not null && (stEd.Latitude != 0 || stEd.Longitude != 0) ? stEd.Latitude : (decimal?)null);
+            var elng = editPinLng ?? (stEd is not null && (stEd.Latitude != 0 || stEd.Longitude != 0) ? stEd.Longitude : (decimal?)null);
+            var elist = new List<object>();
+            if (elat.HasValue && elng.HasValue)
+            {
+                elist.Add(new
+                {
+                    id = -1000 - epid,
+                    lat = elat.Value,
+                    lng = elng.Value,
+                    label = "📍",
+                    color = "#f59e0b",
+                    shape = "circle",
+                    draggable = true,
+                    stopId = epid,
+                    popupHtml = $"<div style='font-size:0.8rem;'><strong>{System.Net.WebUtility.HtmlEncode(editandoPinNombre ?? "Corrigiendo domicilio")}</strong><br/><em style='color:#6b7280;'>Arrastrame o buscá la dirección arriba.</em></div>"
+                });
+            }
+            await JS.InvokeVoidAsync("mapeoFlex.renderMarkers", elist.ToArray(), keepView);
+            return;
+        }
+
         var list = new List<object>();
         if (startPoint?.Lat is not null && startPoint?.Lng is not null)
         {
@@ -3648,6 +3695,74 @@
         corrigiendoDomicilioNombre = null;
     }
 
+    // ===== 2026-07-30: modo "corregir/mover pin" unificado =====
+    // Mientras está activo: el mapa muestra SOLO ese pin (arrastrable, sin saltos de zoom), el buscador
+    // lo reubica, y al final elegís si queda en la ficha del cliente (definitivo) o solo en esta entrega.
+    private int? editandoPinStopId;
+    private string? editandoPinNombre;
+    private decimal? editPinLat;
+    private decimal? editPinLng;
+    private string? editPinDireccion;
+    private bool EditPinEsVenta;
+    private bool EditPinTieneUbicacion => editPinLat.HasValue && editPinLng.HasValue;
+
+    private async Task IniciarEdicionPin(int stopId, string nombre)
+    {
+        var st = stops?.FirstOrDefault(x => x.Id == stopId);
+        var tieneUbic = st is not null && (st.Latitude != 0 || st.Longitude != 0);
+        editandoPinStopId = stopId;
+        editandoPinNombre = nombre;
+        editPinLat = tieneUbic ? st!.Latitude : (decimal?)null;
+        editPinLng = tieneUbic ? st!.Longitude : (decimal?)null;
+        editPinDireccion = null;
+        EditPinEsVenta = st?.Origin == "venta_cafe";
+        // Salir de otros modos y dejar SOLO este pin arrastrable.
+        corrigiendoDomicilioStopId = null; corrigiendoDomicilioNombre = null;
+        paradasDesbloqueadas.Clear();
+        paradasDesbloqueadas.Add(stopId);
+        await RenderMap(keepView: true);   // dibuja únicamente este pin
+        if (EditPinTieneUbicacion)
+        { try { await JS.InvokeVoidAsync("mapeoFlex.focusOn", (double)editPinLat!.Value, (double)editPinLng!.Value, 17); } catch { } }
+        StateHasChanged();
+    }
+
+    private void SalirEdicionPin()
+    {
+        if (editandoPinStopId is int sid) paradasDesbloqueadas.Remove(sid);
+        editandoPinStopId = null; editandoPinNombre = null;
+        editPinLat = null; editPinLng = null; editPinDireccion = null;
+        EditPinEsVenta = false;
+    }
+
+    private async Task CancelarEdicionPin()
+    {
+        SalirEdicionPin();
+        await RenderMap();
+        StateHasChanged();
+    }
+
+    private async Task GuardarEdicionPin(bool guardarEnCliente)
+    {
+        if (editandoPinStopId is not int sid) return;
+        if (!EditPinTieneUbicacion)
+        { ToastService.Error("Primero buscá la dirección o arrastrá el pin al lugar correcto."); return; }
+        var lat = (double)editPinLat!.Value; var lng = (double)editPinLng!.Value;
+        var dir = string.IsNullOrWhiteSpace(editPinDireccion) ? null : editPinDireccion;
+        try
+        {
+            await Api.SetMapeoStopUbicacionAsync(sid, lat, lng, dir, guardarEnCliente);
+            SalirEdicionPin();
+            await LoadStops();
+            await RenderMap();
+            try { await JS.InvokeVoidAsync("mapeoFlex.focusOn", lat, lng, 16); } catch { }
+            ToastService.Success(guardarEnCliente
+                ? "📍 Ubicación corregida y guardada en la ficha del cliente"
+                : "📍 Ubicación corregida (solo esta entrega)");
+            StateHasChanged();
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo guardar la ubicación: " + ex.Message); }
+    }
+
     // Candado por parada: si está desbloqueada, su pin se puede arrastrar en el mapa para ubicarlo al metro.
     private HashSet<int> paradasDesbloqueadas = new();
     private async Task ToggleCandado(int stopId)
@@ -3661,6 +3776,15 @@
     [JSInvokable]
     public async Task OnStopDragged(int stopId, double lat, double lng)
     {
+        // Modo "corregir/mover pin": el arrastre solo fija la ubicación PENDIENTE; se guarda al elegir
+        // "definitivo" o "solo esta vez". No re-renderizamos (el pin ya está donde lo soltaste).
+        if (editandoPinStopId == stopId)
+        {
+            editPinLat = (decimal)lat;
+            editPinLng = (decimal)lng;
+            StateHasChanged();
+            return;
+        }
         try
         {
             await Api.SetMapeoStopUbicacionAsync(stopId, lat, lng, null);
@@ -3677,6 +3801,17 @@
     [JSInvokable]
     public async Task OnPlacePicked(double lat, double lng, string direccion)
     {
+        // Modo "corregir/mover pin": el buscador reubica el pin (queda pendiente; se guarda al elegir la opción).
+        if (editandoPinStopId is not null)
+        {
+            editPinLat = (decimal)lat;
+            editPinLng = (decimal)lng;
+            editPinDireccion = string.IsNullOrWhiteSpace(direccion) ? null : direccion;
+            await RenderMap(keepView: true);
+            try { await JS.InvokeVoidAsync("mapeoFlex.focusOn", lat, lng, 17); } catch { }
+            StateHasChanged();
+            return;
+        }
         try
         {
             // Si estamos corrigiendo una parada, le asignamos esta dirección (y se guarda en el cliente).
