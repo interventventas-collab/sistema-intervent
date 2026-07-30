@@ -28,6 +28,10 @@ public class CafeClienteDireccion
     [MaxLength(200)]
     public string? EntreCalles { get; set; }
 
+    /// <summary>Notas internas de ESTA dirección (solo las ve la oficina; no salen en comprobante).</summary>
+    [MaxLength(500)]
+    public string? NotasInternas { get; set; }
+
     [MaxLength(150)]
     public string? Localidad { get; set; }
 

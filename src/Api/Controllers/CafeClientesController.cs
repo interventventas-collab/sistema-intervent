@@ -288,7 +288,7 @@ public class CafeClientesController : ControllerBase
     private static CafeDireccionDto MapDir(CafeClienteDireccion d) => new(
         d.Id, d.ClienteId, d.Etiqueta, d.Direccion,
         d.EntreCalles, d.Localidad, d.Ciudad, d.Cp, d.Telefono,
-        d.MapeoLink, d.MapeoLat, d.MapeoLng, d.EsPrincipal, d.IsActive);
+        d.MapeoLink, d.MapeoLat, d.MapeoLng, d.EsPrincipal, d.IsActive, d.NotasInternas);
 
     /// <summary>Lista las direcciones de entrega de un cliente (la principal primero).</summary>
     [HttpGet("{id:int}/direcciones")]
@@ -316,6 +316,7 @@ public class CafeClientesController : ControllerBase
             Etiqueta = Norm(req.Etiqueta),
             Direccion = req.Direccion.Trim(),
             EntreCalles = Norm(req.EntreCalles),
+            NotasInternas = Norm(req.NotasInternas),
             Localidad = Norm(req.Localidad),
             Ciudad = Norm(req.Ciudad),
             Cp = Norm(req.Cp),
@@ -350,6 +351,7 @@ public class CafeClientesController : ControllerBase
         d.Etiqueta = Norm(req.Etiqueta);
         d.Direccion = req.Direccion.Trim();
         d.EntreCalles = Norm(req.EntreCalles);
+        d.NotasInternas = Norm(req.NotasInternas);
         d.Localidad = Norm(req.Localidad);
         d.Ciudad = Norm(req.Ciudad);
         d.Cp = Norm(req.Cp);

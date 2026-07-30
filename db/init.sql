@@ -2470,6 +2470,7 @@ BEGIN
         Etiqueta NVARCHAR(120) NULL,
         Direccion NVARCHAR(300) NOT NULL,
         EntreCalles NVARCHAR(200) NULL,
+        NotasInternas NVARCHAR(500) NULL,
         Localidad NVARCHAR(150) NULL,
         Ciudad NVARCHAR(150) NULL,
         Cp NVARCHAR(20) NULL,
@@ -2485,6 +2486,11 @@ BEGIN
     );
     CREATE INDEX IX_CafeClienteDirecciones_Cliente ON Cafe_ClienteDirecciones (ClienteId);
 END
+GO
+
+-- 2026-07-30: notas internas por domicilio (para bases que ya tenían la tabla creada).
+IF COL_LENGTH('Cafe_ClienteDirecciones', 'NotasInternas') IS NULL
+    ALTER TABLE Cafe_ClienteDirecciones ADD NotasInternas NVARCHAR(500) NULL;
 GO
 
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Productos' AND xtype='U')

@@ -22,13 +22,14 @@ public record CafeDireccionDto(
     int Id, int ClienteId, string? Etiqueta, string Direccion,
     string? EntreCalles, string? Localidad, string? Ciudad, string? Cp, string? Telefono,
     string? MapeoLink, decimal? MapeoLat, decimal? MapeoLng,
-    bool EsPrincipal, bool IsActive);
+    bool EsPrincipal, bool IsActive, string? NotasInternas = null);
 
 public class CafeDireccionUpsertRequest
 {
     public string? Etiqueta { get; set; }
     public string Direccion { get; set; } = string.Empty;
     public string? EntreCalles { get; set; }
+    public string? NotasInternas { get; set; }
     public string? Localidad { get; set; }
     public string? Ciudad { get; set; }
     public string? Cp { get; set; }

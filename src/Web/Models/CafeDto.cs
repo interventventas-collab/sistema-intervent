@@ -96,6 +96,7 @@ public class CafeDireccionDto
     public string? Etiqueta { get; set; }
     public string Direccion { get; set; } = "";
     public string? EntreCalles { get; set; }
+    public string? NotasInternas { get; set; }
     public string? Localidad { get; set; }
     public string? Ciudad { get; set; }
     public string? Cp { get; set; }
@@ -112,6 +113,7 @@ public class CafeDireccionUpsertRequest
     public string? Etiqueta { get; set; }
     public string Direccion { get; set; } = "";
     public string? EntreCalles { get; set; }
+    public string? NotasInternas { get; set; }
     public string? Localidad { get; set; }
     public string? Ciudad { get; set; }
     public string? Cp { get; set; }
