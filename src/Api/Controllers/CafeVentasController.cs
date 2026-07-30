@@ -2702,6 +2702,23 @@ public class CafeVentasController : ControllerBase
 
         static string? NzU(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 
+        // 2026-07-30: si al editar se eligió un domicilio de entrega ALTERNATIVO, lo aplicamos.
+        // Va DESPUÉS del bloque de cliente (que por defecto resetea el snapshot al domicilio de siempre).
+        // ClienteDireccionId null/0 = domicilio de siempre → se deja lo que puso el bloque de arriba.
+        if (req.ClienteDireccionId.HasValue && req.ClienteDireccionId.Value > 0 && v.ClienteId.HasValue)
+        {
+            var dirElegida = await _db.CafeClienteDirecciones
+                .FirstOrDefaultAsync(d => d.Id == req.ClienteDireccionId.Value && d.ClienteId == v.ClienteId.Value && d.IsActive);
+            if (dirElegida is not null)
+            {
+                v.ClienteDomicilioEntregaSnapshot = string.IsNullOrWhiteSpace(dirElegida.Localidad)
+                    ? dirElegida.Direccion
+                    : $"{dirElegida.Direccion}, {dirElegida.Localidad}";
+                if (!string.IsNullOrWhiteSpace(dirElegida.Telefono)) v.ClienteTelefonoSnapshot = dirElegida.Telefono;
+                v.MapeoLink = string.IsNullOrWhiteSpace(dirElegida.MapeoLink) ? null : dirElegida.MapeoLink.Trim();
+            }
+        }
+
         // Items: si se envian, reemplazar + ajustar stock + recalcular totales.
         // Solo aplicable si la venta no esta anulada.
         if (req.Items is not null)

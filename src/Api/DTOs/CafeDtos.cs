@@ -611,6 +611,9 @@ public class UpdateCafeVentaRequest
     public int? ClienteId { get; set; }
     public string? ClienteNombreOverride { get; set; }
     public string? ClienteTipoOverride { get; set; }
+    /// <summary>2026-07-30: domicilio de entrega elegido al editar. >0 = domicilio alternativo (por Id);
+    /// null/0 = domicilio de siempre. Igual que en la creación.</summary>
+    public int? ClienteDireccionId { get; set; }
 
     // ---- Overrides ad-hoc para modo "Venta Rápida" (sin cliente del catálogo) ----
     public string? ClienteRazonSocialOverride { get; set; }

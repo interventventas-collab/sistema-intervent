@@ -1126,6 +1126,28 @@
                         <button type="button" class="btn btn-secondary" style="margin-left:auto; font-size:0.75rem; padding:0.25rem 0.65rem;"
                                 @onclick="() => editHeaderExpanded = true">✎ Editar cabecera</button>
                     </div>
+                    // 2026-07-30: cambiar el domicilio de entrega también al editar, sin abrir toda la cabecera.
+                    if (ventaDirecciones.Count > 0)
+                    {
+                        var domSiempreH = clienteResumen is null ? "" : (!string.IsNullOrWhiteSpace(clienteResumen.DomicilioEntrega) ? clienteResumen.DomicilioEntrega : (clienteResumen.Direccion ?? ""));
+                        <div style="margin-top: 0.4rem; background: #f0fdf4; border: 1px solid #86efac; border-radius: 6px; padding: 0.35rem 0.55rem;">
+                            <label class="form-label" style="font-size: 0.72rem; color: #166534; margin-bottom: 0.2rem;">🚚 Entregar en</label>
+                            <select class="form-input" style="font-size: 0.8rem; padding: 0.3rem 0.5rem;" @onchange="OnVentaDireccionChanged">
+                                <option value="0" selected="@(formClienteDireccionId == 0)">
+                                    @(string.IsNullOrWhiteSpace(domSiempreH) ? "Domicilio de siempre" : domSiempreH) (domicilio principal)
+                                </option>
+                                @{ var altH = 0; }
+                                @foreach (var d in ventaDirecciones)
+                                {
+                                    altH++;
+                                    var etiqDirH = string.IsNullOrWhiteSpace(d.Etiqueta) ? d.Direccion : $"{d.Etiqueta} — {d.Direccion}";
+                                    <option value="@d.Id" selected="@(formClienteDireccionId == d.Id)">
+                                        @etiqDirH (domicilio alternativo @altH)
+                                    </option>
+                                }
+                            </select>
+                        </div>
+                    }
                 }
 
                 @* ── FILA 1: 4 CAMPOS CHICOS EN GRID ── *@
@@ -8302,6 +8324,7 @@
                     Fecha = DateTime.SpecifyKind(formFecha, DateTimeKind.Unspecified), // Kind=Unspecified asi System.Text.Json no agrega TZ — el server toma Y/M/D tal cual.
                     ClienteId = formClienteId > 0 ? formClienteId : 0,
                     ClienteTipoOverride = formClienteId > 0 ? null : formClienteTipo,
+                    ClienteDireccionId = formClienteDireccionId > 0 ? formClienteDireccionId : null,
                     Items = formItems,
                     Descuento = formDescuento,
                     Observaciones = notesToSave,
@@ -8937,6 +8960,17 @@
             ? v.MapeoLink!
             : (clientes?.FirstOrDefault(x => x.Id == (v.ClienteId ?? 0))?.MapeoLink ?? "");
         formGuardarMapeoEnCliente = false;
+        // 2026-07-30: cargar los domicilios del cliente y reflejar con cuál se emitió la venta,
+        // para poder cambiarlo al editar (selector "Entregar en").
+        await LoadVentaDirecciones(formClienteId);   // deja formClienteDireccionId = 0
+        if (ventaDirecciones.Count > 0)
+        {
+            var matchDir = ventaDirecciones.FirstOrDefault(d => !string.IsNullOrWhiteSpace(d.MapeoLink) && d.MapeoLink == v.MapeoLink);
+            if (matchDir is null && !string.IsNullOrWhiteSpace(v.ClienteDomicilioEntrega))
+                matchDir = ventaDirecciones.FirstOrDefault(d => !string.IsNullOrWhiteSpace(d.Direccion)
+                    && v.ClienteDomicilioEntrega!.StartsWith(d.Direccion, StringComparison.OrdinalIgnoreCase));
+            if (matchDir is not null) formClienteDireccionId = matchDir.Id;
+        }
         formWeekDays = string.IsNullOrWhiteSpace(v.WeekDays)
             ? new HashSet<string>()
             : v.WeekDays.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim().ToUpperInvariant()).ToHashSet();
