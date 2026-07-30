@@ -69,10 +69,13 @@ public class VentaMapeoService
         }
         else
         {
-            // Resolver automático por prioridad.
-            if (cli?.MapeoLat is not null && cli.MapeoLng is not null) { lat = cli.MapeoLat; lng = cli.MapeoLng; }
-            if (lat is null && !string.IsNullOrWhiteSpace(v.MapeoLink))
+            // Resolver automático por prioridad. El MapeoLink PROPIO de la venta refleja el domicilio
+            // elegido en la venta (el principal o un domicilio alternativo), así que GANA sobre las
+            // coords cacheadas del cliente. Si no, una venta a un domicilio alternativo caería en el
+            // principal. Solo cae a las coords del cliente cuando la venta no trae link propio.
+            if (!string.IsNullOrWhiteSpace(v.MapeoLink))
             { var r = await _mapsResolver.TryResolverCoordenadasAsync(v.MapeoLink); if (r.HasValue) { lat = r.Value.lat; lng = r.Value.lng; } }
+            if (lat is null && cli?.MapeoLat is not null && cli.MapeoLng is not null) { lat = cli.MapeoLat; lng = cli.MapeoLng; }
             if (lat is null && !string.IsNullOrWhiteSpace(cli?.MapeoLink))
             { var r = await _mapsResolver.TryResolverCoordenadasAsync(cli!.MapeoLink); if (r.HasValue) { lat = r.Value.lat; lng = r.Value.lng; guardarEnCliente = true; } }
             if (lat is null && !string.IsNullOrWhiteSpace(dir))

@@ -7108,9 +7108,13 @@
     {
         formClienteDireccionId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
         var d = ventaDirecciones.FirstOrDefault(x => x.Id == formClienteDireccionId);
-        // Al elegir una dirección con link de Maps, lo traemos para que el pin caiga en ese lugar.
-        if (d is not null && !string.IsNullOrWhiteSpace(d.MapeoLink))
-            formMapeoLink = d.MapeoLink!;
+        // El link de Maps SIEMPRE acompaña al domicilio elegido, para que el pin caiga en ese lugar:
+        // - domicilio alternativo → el link de ese domicilio (o vacío si no tiene);
+        // - domicilio de siempre  → el link del cliente (el principal).
+        if (d is not null)
+            formMapeoLink = d.MapeoLink ?? "";
+        else
+            formMapeoLink = clientes?.FirstOrDefault(x => x.Id == formClienteId)?.MapeoLink ?? "";
     }
 
     /// <summary>Texto "Dirección, Localidad" de la dirección elegida (para mandar al mapa). Null si es domicilio de siempre.</summary>
@@ -8417,7 +8421,10 @@
                 ToastService.Success($"Venta {v.Numero} emitida — Total ${v.Total:N2}");
                 // 2026-07-25: si el operador tildó "sumar al mapa", mandamos la venta al mapa de reparto
                 // (reusa la misma lógica del botón del listado, incluido el modal "sin domicilio").
-                if (formSumarAlMapa) { try { await SumarVentaAlMapa(v, DireccionElegidaTexto(), DireccionElegidaLink()); } catch { /* el mapa nunca frena la emisión de la venta */ } }
+                // Sumamos SIN pasar dirección/link explícitos: la venta ya guardó su MapeoLink (el del
+                // domicilio elegido, principal o alternativo) y el servicio lo prioriza para el pin. Así
+                // no se sobrescriben las coordenadas del domicilio principal del cliente.
+                if (formSumarAlMapa) { try { await SumarVentaAlMapa(v); } catch { /* el mapa nunca frena la emisión de la venta */ } }
                 // Emisión exitosa → borramos el auto-borrador
                 await DiscardBorradorAsync();
 
