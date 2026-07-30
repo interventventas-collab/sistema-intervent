@@ -191,9 +191,10 @@ public class MapeoStopsController : ControllerBase
     {
         var s = await _db.MapeoStops.FirstOrDefaultAsync(x => x.Id == id);
         if (s is null) return NotFound(new { error = "Parada no encontrada" });
+        var dirTxt = string.IsNullOrWhiteSpace(req.Direccion) ? null : req.Direccion.Trim();
         s.Latitude = (decimal)req.Lat;
         s.Longitude = (decimal)req.Lng;
-        if (!string.IsNullOrWhiteSpace(req.Direccion)) s.Direccion = req.Direccion.Trim();
+        if (dirTxt != null) s.Direccion = dirTxt;
         s.UpdatedAt = DateTime.UtcNow;
 
         if (s.Origin == "venta_cafe" && int.TryParse(s.OriginRefId, out var ventaId))
@@ -203,9 +204,11 @@ public class MapeoStopsController : ControllerBase
             {
                 var ci = System.Globalization.CultureInfo.InvariantCulture;
                 var link = $"https://www.google.com/maps/search/?api=1&query={req.Lat.ToString(ci)},{req.Lng.ToString(ci)}";
-                var linkPrevio = venta.MapeoLink;   // para matchear el domicilio usado ANTES de pisarlo
+                // Matcheamos el domicilio usado con los valores PREVIOS (antes de pisar link/snapshot).
+                var linkPrevio = venta.MapeoLink;
+                var snapshotPrevio = venta.ClienteDomicilioEntregaSnapshot;
 
-                // Definitivo: guardar en el domicilio del cliente que realmente se usó en esta venta.
+                // Definitivo: guardar coords Y texto en el domicilio del cliente que realmente se usó.
                 var cli = venta.ClienteNav;
                 if (req.GuardarEnCliente && cli is not null)
                 {
@@ -213,25 +216,26 @@ public class MapeoStopsController : ControllerBase
                     CafeClienteDireccion? alt = null;
                     if (!string.IsNullOrWhiteSpace(linkPrevio))
                         alt = alts.FirstOrDefault(d => !string.IsNullOrWhiteSpace(d.MapeoLink) && d.MapeoLink == linkPrevio);
-                    if (alt is null && !string.IsNullOrWhiteSpace(venta.ClienteDomicilioEntregaSnapshot))
+                    if (alt is null && !string.IsNullOrWhiteSpace(snapshotPrevio))
                         alt = alts.FirstOrDefault(d => !string.IsNullOrWhiteSpace(d.Direccion)
-                            && venta.ClienteDomicilioEntregaSnapshot!.StartsWith(d.Direccion, StringComparison.OrdinalIgnoreCase));
+                            && snapshotPrevio!.StartsWith(d.Direccion, StringComparison.OrdinalIgnoreCase));
 
                     if (alt is not null)
                     {
                         alt.MapeoLat = (decimal)req.Lat; alt.MapeoLng = (decimal)req.Lng;
                         alt.MapeoLink = link; alt.UpdatedAt = DateTime.UtcNow;
+                        if (dirTxt != null) alt.Direccion = dirTxt;      // corrige también el texto del domicilio alternativo
                     }
                     else
                     {
                         cli.MapeoLat = (decimal)req.Lat; cli.MapeoLng = (decimal)req.Lng; cli.MapeoLink = link;
-                        if (!string.IsNullOrWhiteSpace(req.Direccion) && string.IsNullOrWhiteSpace(cli.DomicilioEntrega) && string.IsNullOrWhiteSpace(cli.Direccion))
-                            cli.DomicilioEntrega = req.Direccion.Trim();
+                        if (dirTxt != null) cli.DomicilioEntrega = dirTxt; // corrige el domicilio de siempre
                     }
                 }
 
-                // El link propio de la venta queda corregido SIEMPRE (así este pedido queda fijo en el
-                // lugar corregido, aunque haya sido "solo esta vez").
+                // El comprobante de ESTA venta refleja el texto corregido y el link corregido SIEMPRE
+                // (aunque sea "solo esta vez").
+                if (dirTxt != null) venta.ClienteDomicilioEntregaSnapshot = dirTxt;
                 venta.MapeoLink = link;
             }
         }

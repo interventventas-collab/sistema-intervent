@@ -1324,6 +1324,13 @@
                         Buscá la dirección abajo (el pin salta ahí) y/o <strong>arrastrá el pin</strong> en el mapa hasta el punto exacto. Después elegí cómo guardarlo.
                         @if (!EditPinTieneUbicacion) { <span style="color:#b91c1c;"> — todavía no elegiste ubicación.</span> }
                     </div>
+                    @* Texto del domicilio, editable: es lo que se ve en el comprobante. *@
+                    <div style="margin-bottom:0.45rem;">
+                        <label style="font-size:0.68rem; color:#92400e; font-weight:700; display:block; margin-bottom:0.15rem;">📝 Domicilio (así sale en el comprobante)</label>
+                        <input type="text" class="form-input" @bind="editPinDireccion" @bind:event="oninput"
+                               placeholder="Ej: Monteagudo 150 3ro D — Parque Patricios"
+                               style="width:100%; font-size:0.8rem; padding:0.35rem 0.5rem; border:1px solid #f59e0b; border-radius:6px;" />
+                    </div>
                     <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center;">
                         @if (EditPinEsVenta)
                         {
@@ -3702,7 +3709,7 @@
     private string? editandoPinNombre;
     private decimal? editPinLat;
     private decimal? editPinLng;
-    private string? editPinDireccion;
+    private string editPinDireccion = "";   // texto del domicilio (lo que sale en el comprobante), editable
     private bool EditPinEsVenta;
     private bool EditPinTieneUbicacion => editPinLat.HasValue && editPinLng.HasValue;
 
@@ -3714,7 +3721,7 @@
         editandoPinNombre = nombre;
         editPinLat = tieneUbic ? st!.Latitude : (decimal?)null;
         editPinLng = tieneUbic ? st!.Longitude : (decimal?)null;
-        editPinDireccion = null;
+        editPinDireccion = st?.Direccion ?? "";   // precargamos el domicilio actual (como sale en el comprobante)
         EditPinEsVenta = st?.Origin == "venta_cafe";
         // Salir de otros modos y dejar SOLO este pin arrastrable.
         corrigiendoDomicilioStopId = null; corrigiendoDomicilioNombre = null;
@@ -3730,7 +3737,7 @@
     {
         if (editandoPinStopId is int sid) paradasDesbloqueadas.Remove(sid);
         editandoPinStopId = null; editandoPinNombre = null;
-        editPinLat = null; editPinLng = null; editPinDireccion = null;
+        editPinLat = null; editPinLng = null; editPinDireccion = "";
         EditPinEsVenta = false;
     }
 
@@ -3806,7 +3813,8 @@
         {
             editPinLat = (decimal)lat;
             editPinLng = (decimal)lng;
-            editPinDireccion = string.IsNullOrWhiteSpace(direccion) ? null : direccion;
+            // El buscador propone el texto del domicilio; el usuario lo puede seguir editando a mano.
+            if (!string.IsNullOrWhiteSpace(direccion)) editPinDireccion = direccion;
             await RenderMap(keepView: true);
             try { await JS.InvokeVoidAsync("mapeoFlex.focusOn", lat, lng, 17); } catch { }
             StateHasChanged();
