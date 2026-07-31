@@ -344,7 +344,7 @@
                     </button>
                     <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
                             @onclick="@(async () => { showConfigMenu = false; await GuardarSnapshotAhora(); })" disabled="@savingSnapshot">
-                        <span>@(savingSnapshot ? "Guardando..." : "💾 Guardar foto de la ruta actual")</span>
+                        <span>@(savingSnapshot ? "Guardando..." : "💾 Guardar ruta en el historial")</span>
                     </button>
                 </div>
             }
@@ -1211,7 +1211,7 @@
                             </button>
                             <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
                                     @onclick="@(async () => { showConfigMenu = false; await GuardarSnapshotAhora(); })" disabled="@savingSnapshot">
-                                <span>@(savingSnapshot ? "Guardando..." : "💾 Guardar foto de la ruta actual")</span>
+                                <span>@(savingSnapshot ? "Guardando..." : "💾 Guardar ruta en el historial")</span>
                             </button>
                             <hr style="margin:0.3rem 0; border:none; border-top:1px solid #f3f4f6;" />
                             @* Ocultar entregados: antes era un tilde en la barra de arriba; ahora vive acá. *@
@@ -1406,7 +1406,7 @@
                     <div style="text-align:center; padding:2rem; color:#6b7280;">
                         <div style="font-size:3rem;">📭</div>
                         <strong>No hay rutas guardadas todavía</strong>
-                        <p style="font-size:0.85rem; margin-top:0.4rem;">Cuando armes una ruta y aprietes "Empezar desde cero", el sistema guarda una foto automática del día. También podés guardar a mano desde ⚙ Configuración → 💾 Guardar foto.</p>
+                        <p style="font-size:0.85rem; margin-top:0.4rem;">Cuando armes una ruta y aprietes "Empezar desde cero", el sistema guarda la ruta del día en el historial. También podés guardarla a mano desde ⚙ Configuración → 💾 Guardar ruta en el historial.</p>
                     </div>
                 }
                 else
