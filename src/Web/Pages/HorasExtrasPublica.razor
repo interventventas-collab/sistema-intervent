@@ -335,16 +335,7 @@
                 }
                 else
                 {
-                    @* ── Mis datos ── *@
-                    <div style="margin-top:0.3rem; padding:0.7rem 0.9rem; background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px;">
-                        <div style="font-size:0.75rem; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:0.5rem;">👤 Mis datos</div>
-                        @if (!string.IsNullOrWhiteSpace(legajo.Puesto))
-                        { <div style="display:flex; justify-content:space-between; padding:0.25rem 0; font-size:0.9rem;"><span style="color:#6b7280;">Puesto</span><strong>@legajo.Puesto</strong></div> }
-                        <div style="display:flex; justify-content:space-between; padding:0.25rem 0; font-size:0.9rem;"><span style="color:#6b7280;">Fecha de ingreso</span><strong>@legajo.FechaIngreso.ToString("dd/MM/yyyy")</strong></div>
-                        @if (legajo.FechaAlta.HasValue)
-                        { <div style="display:flex; justify-content:space-between; padding:0.25rem 0; font-size:0.9rem;"><span style="color:#6b7280;">Fecha de alta</span><strong>@legajo.FechaAlta.Value.ToString("dd/MM/yyyy")</strong></div> }
-                    </div>
-
+                    @* 2026-07-31: "Mis datos" (Puesto / Fecha ingreso / Fecha alta) se ocultó a pedido del usuario. *@
                     @if (!string.IsNullOrWhiteSpace(legajo.Banco) || !string.IsNullOrWhiteSpace(legajo.Cbu) || !string.IsNullOrWhiteSpace(legajo.Alias))
                     {
                         <div style="margin-top:0.5rem; padding:0.7rem 0.9rem; background:#f0f9ff; border:1px solid #bae6fd; border-radius:10px;">
