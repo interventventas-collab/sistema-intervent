@@ -152,7 +152,6 @@ window.mapeoFlex = (function () {
     // mapa muestra la calle+número más cercanos. Es un modo que se prende/apaga desde el buscador.
     let reverseGeoMode = false;
     let reverseGeoListener = null;
-    let geocoder = null;
     let lastReverseAddr = '';
 
     // Limpia el estado del dibujo de zona (saca el polígono, los puntitos, el listener y el cursor).
@@ -404,29 +403,35 @@ window.mapeoFlex = (function () {
                 return;
             }
             map.setOptions({ draggableCursor: 'help' }); // cursor con "?" = modo "¿qué dirección es?"
-            if (!geocoder) geocoder = new google.maps.Geocoder();
             reverseGeoListener = map.addListener('click', function (e) {
                 if (zonePath) return; // si estás dibujando una zona, no interferimos
                 const ll = e.latLng;
+                const lat = ll.lat(), lng = ll.lng();
                 // Globito "Buscando…" inmediato, para que se sienta que registró el toque.
                 infoWindow.setContent('<div style="font-family:Inter,sans-serif;font-size:0.85rem;color:#6b7280;padding:2px 4px;">Buscando dirección…</div>');
                 infoWindow.setPosition(ll);
                 infoWindow.open(map);
                 infoOpen = true;
-                geocoder.geocode({ location: ll }, function (results, status) {
-                    const ok = status === 'OK' && results && results[0];
-                    const addr = ok ? results[0].formatted_address : 'No se encontró una dirección para este punto.';
-                    lastReverseAddr = ok ? addr : '';
-                    let html = '<div style="font-family:Inter,sans-serif;min-width:190px;max-width:270px;">' +
-                        '<div style="font-size:0.66rem;color:#6b7280;font-weight:700;margin-bottom:2px;letter-spacing:.03em;">📍 DIRECCIÓN APROXIMADA</div>' +
-                        '<div style="font-size:0.92rem;color:#111827;font-weight:600;margin-bottom:7px;line-height:1.3;">' + H.escapeXml(addr) + '</div>';
-                    if (ok) {
-                        html += '<button onclick="window.mapeoActions.copyReverseAddress(this)" ' +
-                            'style="font-size:0.78rem;padding:4px 11px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">📋 Copiar</button>';
-                    }
-                    html += '</div>';
-                    infoWindow.setContent(html);
-                });
+                // La geocodificación inversa la hace el SERVIDOR (clave con Geocoding API habilitada).
+                fetch('/api/mapeo/stops/reverse-geocode?lat=' + lat + '&lng=' + lng, { credentials: 'same-origin' })
+                    .then(function (r) { return r.ok ? r.json() : null; })
+                    .then(function (data) {
+                        const addr = data && data.address ? data.address : null;
+                        lastReverseAddr = addr || '';
+                        const shown = addr || 'No se encontró una dirección para este punto.';
+                        let html = '<div style="font-family:Inter,sans-serif;min-width:190px;max-width:270px;">' +
+                            '<div style="font-size:0.66rem;color:#6b7280;font-weight:700;margin-bottom:2px;letter-spacing:.03em;">📍 DIRECCIÓN APROXIMADA</div>' +
+                            '<div style="font-size:0.92rem;color:#111827;font-weight:600;margin-bottom:7px;line-height:1.3;">' + H.escapeXml(shown) + '</div>';
+                        if (addr) {
+                            html += '<button onclick="window.mapeoActions.copyReverseAddress(this)" ' +
+                                'style="font-size:0.78rem;padding:4px 11px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">📋 Copiar</button>';
+                        }
+                        html += '</div>';
+                        infoWindow.setContent(html);
+                    })
+                    .catch(function () {
+                        infoWindow.setContent('<div style="font-family:Inter,sans-serif;font-size:0.85rem;color:#b91c1c;padding:2px 4px;">No se pudo consultar la dirección.</div>');
+                    });
             });
         },
 

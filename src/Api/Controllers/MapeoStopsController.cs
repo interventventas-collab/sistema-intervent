@@ -1037,6 +1037,18 @@ public class MapeoStopsController : ControllerBase
     }
 
     /// <summary>
+    /// "Ver dirección al tocar": geocodificación inversa (punto → calle+número).
+    /// La hace el SERVIDOR con la clave GOOGLE_MAPS_API_KEY (la misma que ya geocodifica direcciones),
+    /// porque la clave del navegador puede no tener habilitada la Geocoding API.
+    /// </summary>
+    [HttpGet("reverse-geocode")]
+    public async Task<IActionResult> ReverseGeocode([FromQuery] decimal lat, [FromQuery] decimal lng)
+    {
+        var addr = await _mapsResolver.TryReverseGeocodeAsync(lat, lng);
+        return Ok(new { address = addr });
+    }
+
+    /// <summary>
     /// Devuelve un PNG con el QR de una URL (para mostrar en la compu y abrir el escáner en el celular).
     /// Se genera en el servidor (QRCoder) para no depender de librerías del navegador ni del caché.
     /// </summary>

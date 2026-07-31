@@ -61,6 +61,37 @@ public class GoogleMapsLinkResolverService
         }
     }
 
+    /// <summary>
+    /// Geocodificacion INVERSA: de un punto (lat/lng) a la direccion de texto mas cercana, usando la
+    /// misma Geocoding API y clave de servidor que la directa. Devuelve la direccion formateada o null.
+    /// </summary>
+    public async Task<string?> TryReverseGeocodeAsync(decimal lat, decimal lng)
+    {
+        var key = GeoKey;
+        if (string.IsNullOrWhiteSpace(key)) return null;
+        try
+        {
+            var http = _httpFactory.CreateClient();
+            http.Timeout = TimeSpan.FromSeconds(8);
+            var latlng = $"{lat.ToString(System.Globalization.CultureInfo.InvariantCulture)},{lng.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+            var url = $"https://maps.googleapis.com/maps/api/geocode/json?latlng={Uri.EscapeDataString(latlng)}&region=ar&language=es&key={key}";
+            var resp = await http.GetAsync(url);
+            if (!resp.IsSuccessStatusCode) return null;
+            var json = await resp.Content.ReadAsStringAsync();
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (root.GetProperty("status").GetString() != "OK") return null;
+            var results = root.GetProperty("results");
+            if (results.GetArrayLength() == 0) return null;
+            return results[0].GetProperty("formatted_address").GetString();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Reverse geocoding falló: {Lat},{Lng}", lat, lng);
+            return null;
+        }
+    }
+
     /// <summary>Sigue el redirect del link corto y extrae lat/lng. Devuelve null si no pudo.</summary>
     public async Task<(decimal lat, decimal lng)?> TryResolverCoordenadasAsync(string? linkOriginal)
     {
