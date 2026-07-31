@@ -5879,6 +5879,15 @@ public class ApiClient
     }
     private class TokenResponse { public string? Token { get; set; } }
 
+    // Descargar / Compartir ruta: trae el listado de la ruta como texto plano (para pegar en WhatsApp).
+    public async Task<string?> GetMapeoRutaTextoAsync(string query)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync($"/api/mapeo/stops/export?format=text&{query}");
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadAsStringAsync();
+    }
+
     // ===== Mapeo: Favoritos =====
     public async Task<List<MapeoFavoritoDto>?> GetMapeoFavoritosAsync(string? q = null)
         => await GetAsync<List<MapeoFavoritoDto>>("/api/mapeo/favoritos" + (string.IsNullOrWhiteSpace(q) ? "" : $"?q={Uri.EscapeDataString(q)}"));

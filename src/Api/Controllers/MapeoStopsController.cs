@@ -18,9 +18,10 @@ public class MapeoStopsController : ControllerBase
     private readonly AlqMapeoService _alqMapeo;
     private readonly GoogleMapsLinkResolverService _mapsResolver;
     private readonly MeliShipmentService _shipmentSvc;
+    private readonly MapeoRutaPdfService _rutaPdf;
     private readonly ILogger<MapeoStopsController> _logger;
-    public MapeoStopsController(AppDbContext db, GoogleRoutesService routes, VentaMapeoService ventaMapeo, AlqMapeoService alqMapeo, GoogleMapsLinkResolverService mapsResolver, MeliShipmentService shipmentSvc, ILogger<MapeoStopsController> logger)
-    { _db = db; _routes = routes; _ventaMapeo = ventaMapeo; _alqMapeo = alqMapeo; _mapsResolver = mapsResolver; _shipmentSvc = shipmentSvc; _logger = logger; }
+    public MapeoStopsController(AppDbContext db, GoogleRoutesService routes, VentaMapeoService ventaMapeo, AlqMapeoService alqMapeo, GoogleMapsLinkResolverService mapsResolver, MeliShipmentService shipmentSvc, MapeoRutaPdfService rutaPdf, ILogger<MapeoStopsController> logger)
+    { _db = db; _routes = routes; _ventaMapeo = ventaMapeo; _alqMapeo = alqMapeo; _mapsResolver = mapsResolver; _shipmentSvc = shipmentSvc; _rutaPdf = rutaPdf; _logger = logger; }
 
     public record StopDto(int Id, string Origin, string? OriginRefId, string? Alias, string Direccion,
         decimal Latitude, decimal Longitude, string? ContactName, string? Telefono, string? Notas,
@@ -1047,5 +1048,201 @@ public class MapeoStopsController : ControllerBase
         using var data = gen.CreateQrCode(url, QRCoder.QRCodeGenerator.ECCLevel.M);
         var png = new QRCoder.PngByteQRCode(data).GetGraphic(8);
         return File(png, "image/png");
+    }
+
+    // ==== Descargar / Compartir ruta ====
+    // 2026-07-31: exporta el listado de la ruta con las columnas que elige el usuario.
+    // format = "pdf" | "excel" | "text" (texto plano, para pegar en WhatsApp).
+    // driverId opcional: si viene, exporta SOLO la ruta de ese repartidor.
+    // Cada columna es un flag para incluirla o no.
+    [HttpGet("export")]
+    public async Task<IActionResult> Export(
+        [FromQuery] string format = "pdf",
+        [FromQuery] int? driverId = null,
+        [FromQuery] bool orden = true,
+        [FromQuery] bool nombre = true,
+        [FromQuery] bool direccion = true,
+        [FromQuery] bool telefono = true,
+        [FromQuery] bool notas = false,
+        [FromQuery] bool repartidor = true,
+        [FromQuery] bool estado = false,
+        [FromQuery] bool ventaMeli = false,
+        [FromQuery] bool incluirEntregados = true)
+    {
+        var stops = await _db.MapeoStops.Include(s => s.AssignedDriver)
+            .Where(s => driverId == null || s.AssignedDriverId == driverId)
+            .OrderBy(s => s.AssignedDriverId).ThenBy(s => s.OrderInRoute ?? int.MaxValue).ThenBy(s => s.Id)
+            .ToListAsync();
+
+        // ¿Cuáles paradas están entregadas? Combinamos las tres señales que ya usa el resto del Mapeo:
+        // envío Flex/ME1 confirmado por MeLi, marca del repartidor (InternalStatus) y venta de café con fecha de entrega.
+        var refs = stops.Where(s => (s.Origin == "flex" || s.Origin == "me1") && s.OriginRefId != null)
+                        .Select(s => long.TryParse(s.OriginRefId, out var v) ? v : 0L)
+                        .Where(v => v != 0L).Distinct().ToList();
+        var ships = refs.Count == 0
+            ? new Dictionary<long, MeliShipment>()
+            : await _db.MeliShipments.Where(m => refs.Contains(m.MeliShipmentId)).ToDictionaryAsync(m => m.MeliShipmentId);
+        var ventaRefs = stops.Where(s => s.Origin == "venta_cafe" && s.OriginRefId != null)
+                             .Select(s => int.TryParse(s.OriginRefId, out var v) ? v : 0)
+                             .Where(v => v != 0).Distinct().ToList();
+        var ventasEntrega = ventaRefs.Count == 0
+            ? new Dictionary<int, DateTime?>()
+            : await _db.CafeVentas.Where(v => ventaRefs.Contains(v.Id)).ToDictionaryAsync(v => v.Id, v => v.EntregadoAt);
+
+        bool IsDelivered(MapeoStop s)
+        {
+            if (string.Equals(s.InternalStatus, "entregado", StringComparison.OrdinalIgnoreCase)) return true;
+            if ((s.Origin == "flex" || s.Origin == "me1") && s.OriginRefId != null
+                && long.TryParse(s.OriginRefId, out var sid) && ships.TryGetValue(sid, out var m)
+                && m.Status == "delivered") return true;
+            if (s.Origin == "venta_cafe" && s.OriginRefId != null
+                && int.TryParse(s.OriginRefId, out var vid) && ventasEntrega.TryGetValue(vid, out var ea) && ea.HasValue) return true;
+            return false;
+        }
+
+        string NombreDe(MapeoStop s)
+        {
+            if (!string.IsNullOrWhiteSpace(s.Alias)) return s.Alias!;
+            if (!string.IsNullOrWhiteSpace(s.ContactName)) return s.ContactName!;
+            if ((s.Origin == "flex" || s.Origin == "me1") && s.OriginRefId != null
+                && long.TryParse(s.OriginRefId, out var sid) && ships.TryGetValue(sid, out var m)
+                && !string.IsNullOrWhiteSpace(m.BuyerNickname)) return m.BuyerNickname!;
+            return "(sin nombre)";
+        }
+        string DireccionDe(MapeoStop s)
+            => string.IsNullOrWhiteSpace(s.Localidad) ? s.Direccion : $"{s.Direccion}, {s.Localidad}";
+        string VentaDe(MapeoStop s)
+        {
+            if ((s.Origin == "flex" || s.Origin == "me1") && s.OriginRefId != null
+                && long.TryParse(s.OriginRefId, out var sid) && ships.TryGetValue(sid, out var m) && m.MeliOrderId.HasValue)
+                return "#" + m.MeliOrderId.Value;
+            return s.OriginRefId ?? "";
+        }
+
+        if (!incluirEntregados)
+            stops = stops.Where(s => !IsDelivered(s)).ToList();
+
+        // Agrupar por repartidor, respetando el orden de recorrido. Los "sin asignar" van al final.
+        var grupos = stops
+            .GroupBy(s => s.AssignedDriverId)
+            .Select(g => new
+            {
+                DriverName = g.First().AssignedDriver?.Nombre ?? "Sin asignar",
+                Color = g.First().AssignedDriver?.Color,
+                Stops = g.ToList()
+            })
+            .OrderBy(g => g.DriverName == "Sin asignar" ? 1 : 0)
+            .ThenBy(g => g.DriverName)
+            .ToList();
+
+        // Columnas elegidas, en un orden fijo y prolijo.
+        var colDefs = new List<(string Key, string Header, float Weight)>();
+        if (orden) colDefs.Add(("orden", "#", 0.5f));
+        if (nombre) colDefs.Add(("nombre", "Cliente", 2.2f));
+        if (direccion) colDefs.Add(("direccion", "Dirección", 3f));
+        if (telefono) colDefs.Add(("telefono", "Teléfono", 1.4f));
+        if (repartidor && driverId == null) colDefs.Add(("repartidor", "Repartidor", 1.4f));
+        if (estado) colDefs.Add(("estado", "Estado", 1.2f));
+        if (ventaMeli) colDefs.Add(("venta", "Venta", 1.2f));
+        if (notas) colDefs.Add(("notas", "Notas", 2.4f));
+        if (colDefs.Count == 0) colDefs.Add(("nombre", "Cliente", 2.2f)); // siempre al menos una
+
+        string CellVal(MapeoStop s, string key, int idx) => key switch
+        {
+            "orden" => (idx + 1).ToString(),
+            "nombre" => NombreDe(s),
+            "direccion" => DireccionDe(s),
+            "telefono" => s.Telefono ?? "",
+            "repartidor" => s.AssignedDriver?.Nombre ?? "Sin asignar",
+            "estado" => IsDelivered(s) ? "Entregado" : "Pendiente",
+            "venta" => VentaDe(s),
+            "notas" => s.Notas ?? "",
+            _ => ""
+        };
+
+        var local = DateTime.UtcNow.AddHours(-3);
+        var tituloBase = driverId == null ? "Ruta de reparto" : $"Ruta de {grupos.FirstOrDefault()?.DriverName ?? "reparto"}";
+        var subtitulo = $"{local:dd/MM/yyyy HH:mm} · {stops.Count} paradas";
+
+        // ---- Texto plano (para WhatsApp) ----
+        if (format == "text")
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"🚚 {tituloBase} — {local:dd/MM/yyyy}");
+            sb.AppendLine();
+            foreach (var g in grupos)
+            {
+                if (driverId == null) sb.AppendLine($"👤 {g.DriverName} ({g.Stops.Count})");
+                for (int i = 0; i < g.Stops.Count; i++)
+                {
+                    var s = g.Stops[i];
+                    var head = orden ? $"{i + 1}. " : "• ";
+                    sb.AppendLine(head + NombreDe(s) + (estado && IsDelivered(s) ? " ✓" : ""));
+                    if (direccion) sb.AppendLine("   📍 " + DireccionDe(s));
+                    if (telefono && !string.IsNullOrWhiteSpace(s.Telefono)) sb.AppendLine("   📞 " + s.Telefono);
+                    if (ventaMeli && !string.IsNullOrWhiteSpace(VentaDe(s))) sb.AppendLine("   🧾 " + VentaDe(s));
+                    if (notas && !string.IsNullOrWhiteSpace(s.Notas)) sb.AppendLine("   📝 " + s.Notas);
+                }
+                sb.AppendLine();
+            }
+            return Content(sb.ToString().TrimEnd(), "text/plain; charset=utf-8");
+        }
+
+        // ---- Excel ----
+        if (format == "excel")
+        {
+            using var wb = new ClosedXML.Excel.XLWorkbook();
+            var ws = wb.AddWorksheet("Ruta");
+            ws.Cell(1, 1).Value = tituloBase;
+            ws.Cell(1, 1).Style.Font.Bold = true;
+            ws.Cell(1, 1).Style.Font.FontSize = 13;
+            ws.Cell(2, 1).Value = subtitulo;
+
+            int headerRow = 4;
+            for (int c = 0; c < colDefs.Count; c++)
+            {
+                var cell = ws.Cell(headerRow, c + 1);
+                cell.Value = colDefs[c].Header;
+                cell.Style.Font.Bold = true;
+                cell.Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.LightGray;
+            }
+            int fila = headerRow + 1;
+            foreach (var g in grupos)
+            {
+                if (driverId == null)
+                {
+                    ws.Cell(fila, 1).Value = $"▼ {g.DriverName} ({g.Stops.Count})";
+                    ws.Cell(fila, 1).Style.Font.Bold = true;
+                    if (colDefs.Count > 1) ws.Range(fila, 1, fila, colDefs.Count).Merge();
+                    fila++;
+                }
+                for (int i = 0; i < g.Stops.Count; i++)
+                {
+                    var s = g.Stops[i];
+                    for (int c = 0; c < colDefs.Count; c++)
+                        ws.Cell(fila, c + 1).Value = CellVal(s, colDefs[c].Key, i);
+                    if (estado && IsDelivered(s))
+                        ws.Range(fila, 1, fila, colDefs.Count).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromArgb(220, 252, 231);
+                    fila++;
+                }
+            }
+            ws.Columns().AdjustToContents();
+            using var ms = new MemoryStream();
+            wb.SaveAs(ms);
+            return File(ms.ToArray(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                $"ruta-{local:yyyy-MM-dd-HHmm}.xlsx");
+        }
+
+        // ---- PDF (por defecto) ----
+        var columnas = colDefs.Select(c => new MapeoRutaPdfService.Columna(c.Header, c.Weight)).ToList();
+        var pdfGrupos = grupos.Select(g => new MapeoRutaPdfService.Grupo(
+            g.DriverName, g.Color,
+            g.Stops.Select((s, i) => new MapeoRutaPdfService.Fila(
+                colDefs.Select(c => CellVal(s, c.Key, i)).ToArray(),
+                IsDelivered(s))).ToList()
+        )).ToList();
+        var pdf = _rutaPdf.Generar(tituloBase, subtitulo, columnas, pdfGrupos);
+        return File(pdf, "application/pdf", $"ruta-{local:yyyy-MM-dd-HHmm}.pdf");
     }
 }

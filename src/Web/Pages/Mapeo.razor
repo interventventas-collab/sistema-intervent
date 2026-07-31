@@ -346,6 +346,10 @@
                             @onclick="@(async () => { showConfigMenu = false; await GuardarSnapshotAhora(); })" disabled="@savingSnapshot">
                         <span>@(savingSnapshot ? "Guardando..." : "💾 Guardar ruta en el historial")</span>
                     </button>
+                    <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                            @onclick="@(async () => { showConfigMenu = false; await OpenExportModal(); })">
+                        <span>📤 Descargar / Compartir ruta</span>
+                    </button>
                 </div>
             }
         </div>
@@ -1212,6 +1216,10 @@
                             <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
                                     @onclick="@(async () => { showConfigMenu = false; await GuardarSnapshotAhora(); })" disabled="@savingSnapshot">
                                 <span>@(savingSnapshot ? "Guardando..." : "💾 Guardar ruta en el historial")</span>
+                            </button>
+                            <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                                    @onclick="@(async () => { showConfigMenu = false; await OpenExportModal(); })">
+                                <span>📤 Descargar / Compartir ruta</span>
                             </button>
                             <hr style="margin:0.3rem 0; border:none; border-top:1px solid #f3f4f6;" />
                             @* Ocultar entregados: antes era un tilde en la barra de arriba; ahora vive acá. *@
@@ -2141,6 +2149,60 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-primary" @onclick="() => showRutasReparto = false">Listo</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===== Descargar / Compartir ruta ===== *@
+@if (showExportModal)
+{
+    <div class="modal-overlay" @onclick="() => showExportModal = false">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width:540px;">
+            <div class="modal-header" style="background:#e0f2fe;">
+                <h3 style="margin:0;">📤 Descargar / Compartir ruta</h3>
+                <button class="btn-close" @onclick="() => showExportModal = false">&times;</button>
+            </div>
+            <div class="modal-body" style="max-height:72vh; overflow-y:auto;">
+                <div class="form-group">
+                    <label class="form-label">¿De quién?</label>
+                    <select class="form-input" @bind="exportDriverSel">
+                        <option value="0">Toda la ruta (todos los repartidores)</option>
+                        @if (drivers is not null)
+                        {
+                            @foreach (var d in drivers)
+                            {
+                                <option value="@d.Id">@d.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+
+                <label class="form-label" style="margin-top:0.7rem; display:block;">¿Qué info incluir?</label>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.35rem 0.9rem;">
+                    <label style="font-size:0.85rem; display:flex; align-items:center; gap:0.4rem;"><input type="checkbox" @bind="expOrden" /> Orden (1, 2, 3…)</label>
+                    <label style="font-size:0.85rem; display:flex; align-items:center; gap:0.4rem;"><input type="checkbox" @bind="expNombre" /> Nombre / cliente</label>
+                    <label style="font-size:0.85rem; display:flex; align-items:center; gap:0.4rem;"><input type="checkbox" @bind="expDireccion" /> Dirección</label>
+                    <label style="font-size:0.85rem; display:flex; align-items:center; gap:0.4rem;"><input type="checkbox" @bind="expTelefono" /> Teléfono</label>
+                    <label style="font-size:0.85rem; display:flex; align-items:center; gap:0.4rem;"><input type="checkbox" @bind="expNotas" /> Notas</label>
+                    <label style="font-size:0.85rem; display:flex; align-items:center; gap:0.4rem;"><input type="checkbox" @bind="expRepartidor" /> Repartidor</label>
+                    <label style="font-size:0.85rem; display:flex; align-items:center; gap:0.4rem;"><input type="checkbox" @bind="expEstado" /> Estado (entregado)</label>
+                    <label style="font-size:0.85rem; display:flex; align-items:center; gap:0.4rem;"><input type="checkbox" @bind="expVentaMeli" /> Nº de venta MeLi</label>
+                </div>
+
+                <div style="margin-top:0.6rem; border-top:1px solid #f3f4f6; padding-top:0.5rem;">
+                    <label style="font-size:0.85rem; display:flex; align-items:center; gap:0.4rem;"><input type="checkbox" @bind="expIncluirEntregados" /> Incluir paradas ya entregadas</label>
+                </div>
+
+                <div style="margin-top:1.1rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
+                    <button class="btn btn-secondary" style="flex:1; min-width:120px;" @onclick='() => DescargarRuta("pdf")' disabled="@exportBusy">📄 PDF</button>
+                    <button class="btn btn-secondary" style="flex:1; min-width:120px;" @onclick='() => DescargarRuta("excel")' disabled="@exportBusy">📊 Excel</button>
+                    <button class="btn btn-primary" style="flex:1; min-width:120px; background:#16a34a; border-color:#16a34a;" @onclick="CompartirWhatsapp" disabled="@exportBusy">💬 WhatsApp</button>
+                </div>
+                <p style="font-size:0.74rem; color:#6b7280; margin-top:0.7rem; line-height:1.35;">
+                    💬 <strong>WhatsApp</strong> arma el listado como texto y abre WhatsApp para que elijas a quién mandárselo.
+                    Para mandar el <strong>PDF o Excel</strong> como archivo, descargalo y adjuntalo vos en el chat.
+                </p>
             </div>
         </div>
     </div>
@@ -4638,6 +4700,74 @@
         porNumeroTexto = "";
         porNumeroResultados = new();
         showScanModal = true;
+    }
+
+    // ===== Descargar / Compartir ruta =====
+    private bool showExportModal = false;
+    private bool exportBusy = false;
+    private int exportDriverSel = 0; // 0 = toda la ruta; si no, el Id del repartidor
+    private bool expOrden = true, expNombre = true, expDireccion = true, expTelefono = true;
+    private bool expNotas = false, expRepartidor = true, expEstado = false, expVentaMeli = false;
+    private bool expIncluirEntregados = true;
+
+    private async Task OpenExportModal()
+    {
+        if (drivers is null) await LoadDrivers();
+        exportBusy = false;
+        showExportModal = true;
+    }
+
+    // Arma la parte de la URL con las columnas elegidas (misma para PDF, Excel y texto).
+    private string BuildExportQuery()
+    {
+        string B(bool v) => v ? "true" : "false";
+        var qs = new List<string>();
+        if (exportDriverSel != 0) qs.Add($"driverId={exportDriverSel}");
+        qs.Add($"orden={B(expOrden)}");
+        qs.Add($"nombre={B(expNombre)}");
+        qs.Add($"direccion={B(expDireccion)}");
+        qs.Add($"telefono={B(expTelefono)}");
+        qs.Add($"notas={B(expNotas)}");
+        qs.Add($"repartidor={B(expRepartidor)}");
+        qs.Add($"estado={B(expEstado)}");
+        qs.Add($"ventaMeli={B(expVentaMeli)}");
+        qs.Add($"incluirEntregados={B(expIncluirEntregados)}");
+        return string.Join("&", qs);
+    }
+
+    private async Task DescargarRuta(string format)
+    {
+        if (exportBusy) return;
+        exportBusy = true;
+        try
+        {
+            var url = $"/api/mapeo/stops/export?format={format}&{BuildExportQuery()}";
+            var ext = format == "excel" ? "xlsx" : "pdf";
+            var fecha = DateTime.Now.ToString("yyyy-MM-dd-HHmm");
+            await JS.InvokeVoidAsync("filesDownload.start", url, $"ruta-{fecha}.{ext}");
+            ToastService.Success(format == "excel" ? "Excel descargado" : "PDF descargado");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo descargar: " + ex.Message); }
+        finally { exportBusy = false; }
+    }
+
+    private async Task CompartirWhatsapp()
+    {
+        if (exportBusy) return;
+        exportBusy = true;
+        try
+        {
+            var texto = await Api.GetMapeoRutaTextoAsync(BuildExportQuery());
+            if (string.IsNullOrWhiteSpace(texto))
+            {
+                ToastService.Error("No se pudo armar el listado (¿hay paradas cargadas?).");
+                return;
+            }
+            var encoded = Uri.EscapeDataString(texto);
+            await JS.InvokeVoidAsync("open", $"https://wa.me/?text={encoded}", "_blank");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { exportBusy = false; }
     }
 
     private async Task TraerPorNumero()
