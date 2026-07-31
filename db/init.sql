@@ -2224,6 +2224,76 @@ BEGIN
 END
 GO
 
+-- 2026-07-31: datos personales / administrativos en la ficha del empleado
+-- (fecha de alta, datos bancarios, domicilio, teléfonos, mail). Todos opcionales (NULL).
+IF EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Empleados' AND xtype='U')
+   AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name='FechaAlta' AND Object_ID=OBJECT_ID('Nom_Empleados'))
+BEGIN
+    ALTER TABLE Nom_Empleados ADD FechaAlta DATE NULL;
+END
+GO
+IF EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Empleados' AND xtype='U')
+   AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Banco' AND Object_ID=OBJECT_ID('Nom_Empleados'))
+BEGIN
+    ALTER TABLE Nom_Empleados ADD Banco NVARCHAR(150) NULL;
+END
+GO
+IF EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Empleados' AND xtype='U')
+   AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Cbu' AND Object_ID=OBJECT_ID('Nom_Empleados'))
+BEGIN
+    ALTER TABLE Nom_Empleados ADD Cbu NVARCHAR(60) NULL;
+END
+GO
+IF EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Empleados' AND xtype='U')
+   AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Alias' AND Object_ID=OBJECT_ID('Nom_Empleados'))
+BEGIN
+    ALTER TABLE Nom_Empleados ADD Alias NVARCHAR(120) NULL;
+END
+GO
+IF EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Empleados' AND xtype='U')
+   AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Domicilio' AND Object_ID=OBJECT_ID('Nom_Empleados'))
+BEGIN
+    ALTER TABLE Nom_Empleados ADD Domicilio NVARCHAR(300) NULL;
+END
+GO
+IF EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Empleados' AND xtype='U')
+   AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name='TelefonoContacto' AND Object_ID=OBJECT_ID('Nom_Empleados'))
+BEGIN
+    ALTER TABLE Nom_Empleados ADD TelefonoContacto NVARCHAR(60) NULL;
+END
+GO
+IF EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Empleados' AND xtype='U')
+   AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name='TelefonoFamiliar' AND Object_ID=OBJECT_ID('Nom_Empleados'))
+BEGIN
+    ALTER TABLE Nom_Empleados ADD TelefonoFamiliar NVARCHAR(60) NULL;
+END
+GO
+IF EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Empleados' AND xtype='U')
+   AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Email' AND Object_ID=OBJECT_ID('Nom_Empleados'))
+BEGIN
+    ALTER TABLE Nom_Empleados ADD Email NVARCHAR(200) NULL;
+END
+GO
+
+-- 2026-07-31: documentación personal adjunta por empleado (DNI, contrato, certificados...).
+-- Contenido EN LA BASE (VARBINARY) para que entre en los backups. Borra en cascada con el empleado.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Nom_EmpleadoArchivos' AND xtype='U')
+BEGIN
+    CREATE TABLE Nom_EmpleadoArchivos (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        EmpleadoId INT NOT NULL,
+        FileName NVARCHAR(255) NOT NULL,
+        ContentType NVARCHAR(120) NOT NULL DEFAULT 'application/pdf',
+        FileSize BIGINT NOT NULL DEFAULT 0,
+        Contenido VARBINARY(MAX) NOT NULL,
+        UploadedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        UploadedBy NVARCHAR(120) NULL,
+        CONSTRAINT FK_NomEmpArch_Emp FOREIGN KEY (EmpleadoId) REFERENCES Nom_Empleados(Id) ON DELETE CASCADE
+    );
+    CREATE INDEX IX_NomEmpArch_Emp ON Nom_EmpleadoArchivos (EmpleadoId);
+END
+GO
+
 -- 2026-06-08: DiasTrabajados en Nom_Liquidaciones (solo se usa si empleado es modalidad diaria)
 IF EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Liquidaciones' AND xtype='U')
    AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name='DiasTrabajados' AND Object_ID=OBJECT_ID('Nom_Liquidaciones'))

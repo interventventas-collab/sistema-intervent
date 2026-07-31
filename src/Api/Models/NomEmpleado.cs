@@ -51,6 +51,28 @@ public class NomEmpleado
 
     public bool IsActive { get; set; } = true;
 
+    // 2026-07-31: datos personales / administrativos de la ficha del empleado.
+    // Fecha de alta (distinta de FechaIngreso — la puede usar el usuario como fecha de alta formal).
+    public DateTime? FechaAlta { get; set; }
+
+    // Datos bancarios (para pagar el sueldo por transferencia).
+    [MaxLength(150)]
+    public string? Banco { get; set; }
+    [MaxLength(60)]
+    public string? Cbu { get; set; }
+    [MaxLength(120)]
+    public string? Alias { get; set; }
+
+    // Contacto.
+    [MaxLength(300)]
+    public string? Domicilio { get; set; }
+    [MaxLength(60)]
+    public string? TelefonoContacto { get; set; }
+    [MaxLength(60)]
+    public string? TelefonoFamiliar { get; set; }
+    [MaxLength(200)]
+    public string? Email { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

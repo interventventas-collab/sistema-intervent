@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject IJSRuntime JS
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
@@ -173,6 +174,106 @@
                         </p>
                     }
                 </div>
+                @* 2026-07-31: datos personales / administrativos *@
+                <h4 style="margin: 1rem 0 0.5rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">Datos personales</h4>
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">📅 Fecha de alta</label>
+                        <input class="form-input" type="date" @bind="formFechaAlta" />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">✉️ Mail</label>
+                        <input class="form-input" type="email" @bind="formEmail" placeholder="Ej: juan@correo.com" />
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">🏠 Domicilio</label>
+                        <input class="form-input" @bind="formDomicilio" placeholder="Ej: Av. Siempre Viva 742, CABA" />
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">📞 Teléfono de contacto</label>
+                        <input class="form-input" @bind="formTelefonoContacto" placeholder="Ej: 11 5555-1234" />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">👨‍👩‍👧 Teléfono de un familiar</label>
+                        <input class="form-input" @bind="formTelefonoFamiliar" placeholder="Ej: 11 4444-5678" />
+                    </div>
+                </div>
+
+                @* Datos bancarios *@
+                <div style="background: #f0f9ff; border-radius: 8px; padding: 0.8rem 1rem; margin: 0.5rem 0;">
+                    <div style="font-size: 0.85rem; font-weight: 700; color: #1f2937; margin-bottom: 0.6rem;">🏦 Datos bancarios</div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Banco</label>
+                            <input class="form-input" @bind="formBanco" placeholder="Ej: Banco Galicia" />
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">CBU</label>
+                            <input class="form-input" @bind="formCbu" placeholder="22 dígitos" />
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Alias</label>
+                            <input class="form-input" @bind="formAlias" placeholder="Ej: juan.perez.mp" />
+                        </div>
+                    </div>
+                </div>
+
+                @* Documentación personal — solo cuando el empleado ya existe (necesita Id) *@
+                <div style="background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 8px; padding: 0.75rem; margin: 0.5rem 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                        <strong>📎 Documentación personal</strong>
+                        @if (isEditing)
+                        {
+                            <label class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.25rem 0.6rem; cursor: pointer; margin: 0;">
+                                @(subiendoArchivo ? "Subiendo..." : "⬆ Subir documento")
+                                <InputFile OnChange="OnArchivosSelected" multiple accept=".pdf,.jpg,.jpeg,.png,.webp" style="display: none;" disabled="@subiendoArchivo" />
+                            </label>
+                        }
+                    </div>
+                    @if (!isEditing)
+                    {
+                        <p style="font-size: 0.78rem; color: #6b7280; margin: 0;">💡 Primero guardá el empleado (botón "Crear"). Después volvé a abrirlo con ✏️ y vas a poder subir el DNI, contrato, certificados, etc.</p>
+                    }
+                    else
+                    {
+                        <p style="font-size: 0.72rem; color: #6b7280; margin: 0 0 0.5rem;">Subí DNI, contrato, certificados, etc. PDF o fotos, hasta 10 MB cada uno.</p>
+                        @if (!string.IsNullOrEmpty(archivoError))
+                        {
+                            <p style="color: #b91c1c; font-size: 0.8rem; margin: 0 0 0.4rem;">⚠ @archivoError</p>
+                        }
+                        @if (archivos is null)
+                        {
+                            <p style="font-size: 0.8rem; color: #6b7280; margin: 0;">Cargando...</p>
+                        }
+                        else if (archivos.Count == 0)
+                        {
+                            <p style="font-size: 0.8rem; color: #9ca3af; margin: 0;">Todavía no subiste ningún documento.</p>
+                        }
+                        else
+                        {
+                            @foreach (var a in archivos)
+                            {
+                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.4rem 0.5rem; background: white; border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 0.35rem;">
+                                    <div style="min-width: 0; flex: 1;">
+                                        <div style="font-size: 0.85rem; font-weight: 600; color: #1f2937; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@IconoArchivo(a.ContentType) @a.FileName</div>
+                                        <div style="font-size: 0.7rem; color: #9ca3af;">@FormatTamano(a.FileSize) · @a.UploadedAt.ToLocalTime().ToString("dd/MM/yyyy")</div>
+                                    </div>
+                                    <button class="btn btn-secondary" style="font-size: 0.72rem; padding: 0.2rem 0.5rem;" @onclick="() => DescargarArchivo(a)" disabled="@(descargandoArchivoId.HasValue)">
+                                        @(descargandoArchivoId == a.Id ? "..." : "⬇ Descargar")
+                                    </button>
+                                    <button class="btn" style="font-size: 0.8rem; padding: 0.2rem 0.45rem; background: #fee2e2; color: #b91c1c; border: none;" @onclick="() => BorrarArchivo(a)" title="Borrar documento">✕</button>
+                                </div>
+                            }
+                        }
+                    }
+                </div>
+
                 @if (isEditing)
                 {
                     <div class="form-group">
@@ -235,6 +336,20 @@
     private string formModalidadSueldo = "mensual";
     private decimal formJornalDiario;
     private bool formIsActive = true;
+    // 2026-07-31: datos personales / administrativos
+    private DateTime? formFechaAlta;
+    private string formBanco = "";
+    private string formCbu = "";
+    private string formAlias = "";
+    private string formDomicilio = "";
+    private string formTelefonoContacto = "";
+    private string formTelefonoFamiliar = "";
+    private string formEmail = "";
+    // 2026-07-31: documentación personal adjunta
+    private List<NomEmpleadoArchivoDto>? archivos;
+    private bool subiendoArchivo;
+    private int? descargandoArchivoId;
+    private string? archivoError;
     private bool showDeleteConfirm;
     private NomEmpleadoDto? empToDelete;
 
@@ -256,6 +371,9 @@
         formSueldoBase = 0m; formValorHora = 0m; formComisionPct = null; formComisionPorKg = 0m; formBonoFijo = 0m;
         formModalidadSueldo = "mensual"; formJornalDiario = 0m;
         formIsActive = true;
+        formFechaAlta = null; formBanco = ""; formCbu = ""; formAlias = "";
+        formDomicilio = ""; formTelefonoContacto = ""; formTelefonoFamiliar = ""; formEmail = "";
+        archivos = null; archivoError = null;
         formError = null; showForm = true;
     }
 
@@ -270,7 +388,14 @@
         formModalidadSueldo = string.IsNullOrEmpty(e.ModalidadSueldo) ? "mensual" : e.ModalidadSueldo;
         formJornalDiario = e.JornalDiario;
         formIsActive = e.IsActive;
+        formFechaAlta = e.FechaAlta;
+        formBanco = e.Banco ?? ""; formCbu = e.Cbu ?? ""; formAlias = e.Alias ?? "";
+        formDomicilio = e.Domicilio ?? ""; formTelefonoContacto = e.TelefonoContacto ?? "";
+        formTelefonoFamiliar = e.TelefonoFamiliar ?? ""; formEmail = e.Email ?? "";
         formError = null; showForm = true;
+        // cargar la documentación adjunta de este empleado
+        archivos = null; archivoError = null;
+        _ = CargarArchivos();
     }
 
     private void CloseForm() { showForm = false; formError = null; }
@@ -293,7 +418,11 @@
                     BonoFijo = formBonoFijo,
                     ModalidadSueldo = formModalidadSueldo,
                     JornalDiario = formJornalDiario,
-                    IsActive = formIsActive
+                    IsActive = formIsActive,
+                    FechaAlta = formFechaAlta,
+                    Banco = formBanco, Cbu = formCbu, Alias = formAlias,
+                    Domicilio = formDomicilio, TelefonoContacto = formTelefonoContacto,
+                    TelefonoFamiliar = formTelefonoFamiliar, Email = formEmail
                 });
                 if (updated is null) { formError = "No se pudo actualizar"; return; }
                 ToastService.Success("Empleado actualizado");
@@ -308,7 +437,11 @@
                     ComisionPorKg = formComisionPorKg,
                     BonoFijo = formBonoFijo,
                     ModalidadSueldo = formModalidadSueldo,
-                    JornalDiario = formJornalDiario
+                    JornalDiario = formJornalDiario,
+                    FechaAlta = formFechaAlta,
+                    Banco = formBanco, Cbu = formCbu, Alias = formAlias,
+                    Domicilio = formDomicilio, TelefonoContacto = formTelefonoContacto,
+                    TelefonoFamiliar = formTelefonoFamiliar, Email = formEmail
                 });
                 if (created is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success("Empleado creado");
@@ -337,4 +470,70 @@
 
     private static string FormatMoney(decimal v)
         => v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+
+    // ─── 2026-07-31: DOCUMENTACIÓN PERSONAL adjunta ───
+    private async Task CargarArchivos()
+    {
+        if (editingId is null) return;
+        try { archivos = await Api.GetEmpleadoArchivosAsync(editingId.Value) ?? new(); }
+        catch { archivos = new(); }
+        StateHasChanged();
+    }
+
+    private async Task OnArchivosSelected(InputFileChangeEventArgs e)
+    {
+        if (editingId is null) return;
+        subiendoArchivo = true; archivoError = null;
+        try
+        {
+            foreach (var file in e.GetMultipleFiles(maximumFileCount: 20))
+            {
+                if (file.Size > 10 * 1024 * 1024) { archivoError = $"\"{file.Name}\" es muy grande (máximo 10 MB)."; continue; }
+                using var ms = new MemoryStream();
+                await file.OpenReadStream(10 * 1024 * 1024).CopyToAsync(ms);
+                var b64 = Convert.ToBase64String(ms.ToArray());
+                var ct = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType;
+                var (archivo, err) = await Api.UploadEmpleadoArchivoAsync(editingId.Value, file.Name, ct, b64);
+                if (archivo is null) { archivoError = err ?? $"No se pudo subir \"{file.Name}\"."; }
+            }
+            await CargarArchivos();
+            if (string.IsNullOrEmpty(archivoError)) ToastService.Success("Documento(s) subido(s) ✓");
+        }
+        catch (Exception ex) { archivoError = "Error: " + ex.Message; }
+        finally { subiendoArchivo = false; }
+    }
+
+    private async Task DescargarArchivo(NomEmpleadoArchivoDto a)
+    {
+        if (editingId is null || descargandoArchivoId.HasValue) return;
+        descargandoArchivoId = a.Id;
+        try
+        {
+            var bytes = await Api.DownloadEmpleadoArchivoAsync(editingId.Value, a.Id);
+            if (bytes is null || bytes.Length == 0) { ToastService.Error("No se pudo descargar el archivo."); return; }
+            var b64 = Convert.ToBase64String(bytes);
+            await JS.InvokeVoidAsync("downloadBytesAsFile", a.FileName, b64, a.ContentType);
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { descargandoArchivoId = null; }
+    }
+
+    private async Task BorrarArchivo(NomEmpleadoArchivoDto a)
+    {
+        if (editingId is null) return;
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Borrar \"{a.FileName}\"?")) return;
+        var ok = await Api.DeleteEmpleadoArchivoAsync(editingId.Value, a.Id);
+        if (ok) { await CargarArchivos(); ToastService.Success("Documento borrado"); }
+        else ToastService.Error("No se pudo borrar el archivo.");
+    }
+
+    private static string IconoArchivo(string contentType)
+        => (contentType ?? "").StartsWith("image/") ? "🖼️" : "📄";
+
+    private static string FormatTamano(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:0.#} KB";
+        return $"{bytes / (1024.0 * 1024.0):0.#} MB";
+    }
 }

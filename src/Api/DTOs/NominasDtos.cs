@@ -2,13 +2,18 @@ namespace Api.DTOs;
 
 // ===== Empleados =====
 // 2026-06-08: agregado ModalidadSueldo ("mensual" | "diario") + JornalDiario.
+// 2026-07-31: agregados datos personales/administrativos (FechaAlta, banco, contacto, mail).
 public record NomEmpleadoDto(
     int Id, string Nombre, string? Documento, string? Puesto,
     DateTime FechaIngreso,
     decimal SueldoBase, decimal ValorHora, decimal? ComisionPorcentaje,
     decimal ComisionPorKg, decimal BonoFijo,
     string ModalidadSueldo, decimal JornalDiario,
-    bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt,
+    bool IsActive,
+    DateTime? FechaAlta, string? Banco, string? Cbu, string? Alias,
+    string? Domicilio, string? TelefonoContacto, string? TelefonoFamiliar, string? Email,
+    int ArchivosCount,
+    DateTime CreatedAt, DateTime? UpdatedAt,
     string? ApodoKiosko = null, string? ApodoRepartidor = null);
 
 public class CreateNomEmpleadoRequest
@@ -25,6 +30,15 @@ public class CreateNomEmpleadoRequest
     // 2026-06-08: modalidad de pago ("mensual" o "diario") + jornal diario en $.
     public string? ModalidadSueldo { get; set; }
     public decimal JornalDiario { get; set; }
+    // 2026-07-31: datos personales / administrativos
+    public DateTime? FechaAlta { get; set; }
+    public string? Banco { get; set; }
+    public string? Cbu { get; set; }
+    public string? Alias { get; set; }
+    public string? Domicilio { get; set; }
+    public string? TelefonoContacto { get; set; }
+    public string? TelefonoFamiliar { get; set; }
+    public string? Email { get; set; }
 }
 
 public class UpdateNomEmpleadoRequest
@@ -41,7 +55,21 @@ public class UpdateNomEmpleadoRequest
     public string? ModalidadSueldo { get; set; }
     public decimal? JornalDiario { get; set; }
     public bool? IsActive { get; set; }
+    // 2026-07-31: datos personales / administrativos (partial patch, null = no tocar)
+    public DateTime? FechaAlta { get; set; }
+    public string? Banco { get; set; }
+    public string? Cbu { get; set; }
+    public string? Alias { get; set; }
+    public string? Domicilio { get; set; }
+    public string? TelefonoContacto { get; set; }
+    public string? TelefonoFamiliar { get; set; }
+    public string? Email { get; set; }
 }
+
+// 2026-07-31: metadata de un documento personal del empleado (sin el contenido binario).
+public record NomEmpleadoArchivoDto(
+    int Id, int EmpleadoId, string FileName, string ContentType, long FileSize,
+    DateTime UploadedAt, string? UploadedBy);
 
 // ===== Liquidaciones =====
 public record NomPagoDto(

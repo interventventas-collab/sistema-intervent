@@ -16,6 +16,16 @@ public class NomEmpleadoDto
     public string ModalidadSueldo { get; set; } = "mensual";
     public decimal JornalDiario { get; set; }
     public bool IsActive { get; set; }
+    // 2026-07-31: datos personales / administrativos
+    public DateTime? FechaAlta { get; set; }
+    public string? Banco { get; set; }
+    public string? Cbu { get; set; }
+    public string? Alias { get; set; }
+    public string? Domicilio { get; set; }
+    public string? TelefonoContacto { get; set; }
+    public string? TelefonoFamiliar { get; set; }
+    public string? Email { get; set; }
+    public int ArchivosCount { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     // 2026-06-25: cómo aparece esta misma persona en otros módulos
@@ -37,6 +47,15 @@ public class CreateNomEmpleadoRequest
     public decimal BonoFijo { get; set; }
     public string? ModalidadSueldo { get; set; }
     public decimal JornalDiario { get; set; }
+    // 2026-07-31: datos personales / administrativos
+    public DateTime? FechaAlta { get; set; }
+    public string? Banco { get; set; }
+    public string? Cbu { get; set; }
+    public string? Alias { get; set; }
+    public string? Domicilio { get; set; }
+    public string? TelefonoContacto { get; set; }
+    public string? TelefonoFamiliar { get; set; }
+    public string? Email { get; set; }
 }
 
 public class UpdateNomEmpleadoRequest
@@ -53,6 +72,27 @@ public class UpdateNomEmpleadoRequest
     public string? ModalidadSueldo { get; set; }
     public decimal? JornalDiario { get; set; }
     public bool? IsActive { get; set; }
+    // 2026-07-31: datos personales / administrativos
+    public DateTime? FechaAlta { get; set; }
+    public string? Banco { get; set; }
+    public string? Cbu { get; set; }
+    public string? Alias { get; set; }
+    public string? Domicilio { get; set; }
+    public string? TelefonoContacto { get; set; }
+    public string? TelefonoFamiliar { get; set; }
+    public string? Email { get; set; }
+}
+
+// 2026-07-31: metadata de un documento personal del empleado — sin el contenido binario.
+public class NomEmpleadoArchivoDto
+{
+    public int Id { get; set; }
+    public int EmpleadoId { get; set; }
+    public string FileName { get; set; } = "";
+    public string ContentType { get; set; } = "application/pdf";
+    public long FileSize { get; set; }
+    public DateTime UploadedAt { get; set; }
+    public string? UploadedBy { get; set; }
 }
 
 public class NomPagoDto
