@@ -1377,9 +1377,17 @@
                     <button class="btn" style="margin-left:auto; font-size:0.72rem; padding:0.15rem 0.5rem; background:transparent; border:1px solid #92400e; color:#92400e; border-radius:6px;" @onclick="CancelarCorregirDomicilio">✕ Cancelar</button>
                 </div>
             }
-            <input id="mapeoSearchInput" type="text" class="form-input" autocomplete="off"
-                   placeholder="@(editandoPinStopId is not null ? "🔍 Buscá la dirección correcta y elegila (mueve el pin)…" : (corrigiendoDomicilioStopId is not null ? "🔍 Escribí el domicilio correcto y elegilo…" : "🔍 Buscar una dirección y sumarla al mapa…"))"
-                   style="width:100%; font-size:0.9rem; padding:0.5rem 0.75rem; border:1.5px solid @((editandoPinStopId is not null || corrigiendoDomicilioStopId is not null) ? "#f59e0b" : "#d1d5db"); border-radius:8px;" />
+            <div style="display:flex; gap:0.5rem; align-items:stretch;">
+                <input id="mapeoSearchInput" type="text" class="form-input" autocomplete="off"
+                       placeholder="@(editandoPinStopId is not null ? "🔍 Buscá la dirección correcta y elegila (mueve el pin)…" : (corrigiendoDomicilioStopId is not null ? "🔍 Escribí el domicilio correcto y elegilo…" : "🔍 Buscar una dirección y sumarla al mapa…"))"
+                       style="flex:1; font-size:1.05rem; padding:0.7rem 0.95rem; border:1.5px solid @((editandoPinStopId is not null || corrigiendoDomicilioStopId is not null) ? "#f59e0b" : (verDireccionAlTocar ? "#2563eb" : "#d1d5db")); border-radius:8px;" />
+                @* Botón "Ver dirección al tocar": prende/apaga el modo geolocalización inversa (tocá el mapa → te dice la calle y número). *@
+                <button type="button" @onclick="ToggleVerDireccion"
+                        style="white-space:nowrap; font-size:0.88rem; font-weight:600; padding:0 0.95rem; border-radius:8px; cursor:pointer; border:1.5px solid @(verDireccionAlTocar ? "#2563eb" : "#d1d5db"); background:@(verDireccionAlTocar ? "#2563eb" : "#ffffff"); color:@(verDireccionAlTocar ? "#ffffff" : "#374151");"
+                        title="Prendé esto y tocá cualquier punto del mapa: te digo la calle y número de ese lugar. Tocá de nuevo para apagar.">
+                    📍 @(verDireccionAlTocar ? "Tocá el mapa…" : "Ver dirección al tocar")
+                </button>
+            </div>
         </div>
         @* Mini-leyenda: qué forma de globito es cada tipo de envío. La forma indica el TIPO;
            el color sigue indicando el repartidor/asignación. Solo aparece si hay algo en el mapa. *@
@@ -3356,6 +3364,14 @@
     {
         traficoOn = !traficoOn;
         try { await JS.InvokeVoidAsync("mapeoFlex.setTraffic", traficoOn); } catch { }
+    }
+    // "Ver dirección al tocar" (geolocalización inversa): prende/apaga el modo en el que tocar
+    // el mapa muestra la calle+número de ese punto. Lo resuelve Google del lado del navegador.
+    private bool verDireccionAlTocar = false;
+    private async Task ToggleVerDireccion()
+    {
+        verDireccionAlTocar = !verDireccionAlTocar;
+        try { await JS.InvokeVoidAsync("mapeoFlex.setReverseGeoMode", verDireccionAlTocar); } catch { }
     }
     // Filtro de vehículo en el mapa: null = todos, 0 = sin asignar, >0 = slot N
     private int? vehiculoFiltro = null;
