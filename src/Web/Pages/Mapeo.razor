@@ -1029,10 +1029,8 @@
         }
         @if (mapaFullscreen)
         {
-            <button class="btn" style="position:absolute; top:10px; right:10px; z-index:500; font-size:0.8rem; font-weight:700; background:#111827; color:#fff; border:none; padding:0.4rem 0.8rem; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.3);"
-                    @onclick="VolverAlSistema" title="Volver al sistema (cierra esta pantalla del mapa)">
-                ← Volver
-            </button>
+            @* "← Volver" ya NO va acá flotando (tapaba el botón "Ver dirección al tocar").
+               Ahora vive en la fila del buscador, arriba. *@
             @* Columna de botones (dock). Aparece a la DERECHA por defecto; se puede arrastrar
                de la manija (⣿) a cualquier lado y la posición queda guardada. *@
             <div id="mapeoDock" class="mapeo-dock" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); z-index:530;">
@@ -1387,6 +1385,13 @@
                         title="Prendé esto y tocá cualquier punto del mapa: te digo la calle y número de ese lugar. Tocá de nuevo para apagar.">
                     📍 @(verDireccionAlTocar ? "Tocá el mapa…" : "Ver dirección al tocar")
                 </button>
+                @if (mapaFullscreen)
+                {
+                    <button type="button" @onclick="VolverAlSistema" title="Volver al sistema (cierra esta pantalla del mapa)"
+                            style="white-space:nowrap; font-size:0.88rem; font-weight:700; padding:0 0.95rem; border-radius:8px; cursor:pointer; border:none; background:#111827; color:#ffffff;">
+                        ← Volver
+                    </button>
+                }
             </div>
         </div>
         @* Mini-leyenda: qué forma de globito es cada tipo de envío. La forma indica el TIPO;
