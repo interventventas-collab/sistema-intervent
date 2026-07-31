@@ -252,6 +252,48 @@ public class HorasExtrasController : ControllerBase
             emp.MostrarAreaPersonal));   // 2026-07-31
     }
 
+    // ════════════════════════════════════════════════════════════════════════════
+    // "Mis horas" por MES (2026-07-31) — el empleado ve SOLO el horario entrada→salida
+    // de cada día, navegando por mes (nombre + año). Solo puede ir hasta 2 meses para atrás.
+    // ════════════════════════════════════════════════════════════════════════════
+    public record HorasMesDiaDto(DateTime Fecha, string? HoraEntrada, string? HoraSalida);
+    public record HorasMesDto(int Anio, int Mes, string MesLabel, bool PuedeAnterior, bool PuedeSiguiente, List<HorasMesDiaDto> Dias);
+
+    [HttpGet("publica/{slug}/{clave}/horas-mes")]
+    [AllowAnonymous]
+    public async Task<IActionResult> HorasMes(string slug, string clave, [FromQuery] int? anio = null, [FromQuery] int? mes = null)
+    {
+        var emp = await FindEmpleadoAsync(slug, clave);
+        if (emp is null) return NotFound(new { error = "Link inválido o empleado inactivo" });
+
+        var hoy = FechaArgentinaHoy();
+        var mesActual = new DateTime(hoy.Year, hoy.Month, 1);
+        var mesMin = mesActual.AddMonths(-2);   // tope: hasta 2 meses para atrás
+
+        // Mes pedido (default = actual), clampeado al rango permitido [mesMin, mesActual].
+        var pedido = (anio.HasValue && mes.HasValue && mes.Value >= 1 && mes.Value <= 12)
+            ? new DateTime(anio.Value, mes.Value, 1)
+            : mesActual;
+        if (pedido < mesMin) pedido = mesMin;
+        if (pedido > mesActual) pedido = mesActual;
+
+        var desde = pedido;
+        var hasta = pedido.AddMonths(1).AddDays(-1);
+
+        // Solo días con horario marcado (entrada o salida). Los de carga manual sin horario no van.
+        var regs = await _db.HorasExtrasRegistros
+            .Where(r => r.EmpleadoId == emp.Id && r.Fecha >= desde && r.Fecha <= hasta
+                        && (r.HoraEntrada != null || r.HoraSalida != null))
+            .OrderByDescending(r => r.Fecha)
+            .ToListAsync();
+
+        var dias = regs.Select(r => new HorasMesDiaDto(r.Fecha, FormatHora(r.HoraEntrada), FormatHora(r.HoraSalida))).ToList();
+        var es = new System.Globalization.CultureInfo("es-AR");
+        var label = pedido.ToString("MMMM yyyy", es);
+        label = char.ToUpper(label[0]) + label.Substring(1);   // "Julio 2026"
+        return Ok(new HorasMesDto(pedido.Year, pedido.Month, label, pedido > mesMin, pedido < mesActual, dias));
+    }
+
     /// <summary>Devuelve "HH:mm" o null. Lo usamos en el JSON para que el input type=time del browser
     /// lo entienda sin conversion extra.</summary>
     private static string? FormatHora(TimeSpan? t) =>

@@ -241,40 +241,34 @@
                     }
                 </div>
             }
+            @* 2026-07-31: vista por MES — el empleado ve solo el horario entrada→salida de cada día,
+               navegando de mes en mes (hasta 2 meses para atrás). Sin números de horas ni extras. *@
             <div class="he-history">
-                <div style="font-weight:700; color:#1f2937; margin: 0.8rem 0 0.3rem;">Últimos 7 días</div>
-                @if (datos.Ultimos7Dias.Count == 0)
+                <div style="display:flex; align-items:center; justify-content:space-between; margin:0.8rem 0 0.5rem; gap:0.5rem;">
+                    <button @onclick="MesAnterior" disabled="@(horasMes is null || !horasMes.PuedeAnterior)"
+                            style="width:38px; height:38px; border-radius:9px; border:2px solid #e5e7eb; background:white; font-size:1rem; cursor:pointer; @(horasMes is null || !horasMes.PuedeAnterior ? "opacity:0.35; cursor:default;" : "")">◀</button>
+                    <div style="font-weight:800; color:#1f2937; font-size:1.05rem;">@(horasMes?.MesLabel ?? "…")</div>
+                    <button @onclick="MesSiguiente" disabled="@(horasMes is null || !horasMes.PuedeSiguiente)"
+                            style="width:38px; height:38px; border-radius:9px; border:2px solid #e5e7eb; background:white; font-size:1rem; cursor:pointer; @(horasMes is null || !horasMes.PuedeSiguiente ? "opacity:0.35; cursor:default;" : "")">▶</button>
+                </div>
+                @if (horasMes is null)
                 {
-                    <p style="color:#6b7280; font-size:0.85rem; margin:0;">Sin cargas todavía esta semana.</p>
+                    <p style="color:#6b7280; font-size:0.85rem; margin:0; text-align:center; padding:0.5rem 0;">Cargando…</p>
+                }
+                else if (horasMes.Dias.Count == 0)
+                {
+                    <p style="color:#6b7280; font-size:0.85rem; margin:0; text-align:center; padding:0.5rem 0;">No hay días fichados en @horasMes.MesLabel.</p>
                 }
                 else
                 {
-                    @foreach (var r in datos.Ultimos7Dias)
+                    @foreach (var d in horasMes.Dias)
                     {
-                        var esHoy = r.Fecha.Date == datos.HoyFecha.Date;
-                        var tieneHorario = !string.IsNullOrEmpty(r.HoraEntrada) || !string.IsNullOrEmpty(r.HoraSalida);
+                        var esHoy = d.Fecha.Date == datos.HoyFecha.Date;
                         <div class="he-row @(esHoy ? "hoy" : "")">
-                            <span class="he-row-fecha" style="flex:1;">
-                                @FechaLabel(r.Fecha) @(esHoy ? "(hoy)" : "")
-                                @if (tieneHorario)
-                                {
-                                    <span style="display:block; font-size:0.72rem; color:#6b7280;">🕒 @(r.HoraEntrada ?? "—") → @(r.HoraSalida ?? "—")</span>
-                                }
+                            <span class="he-row-fecha" style="flex:1; text-transform:capitalize;">@FechaLabel(d.Fecha) @(esHoy ? "(hoy)" : "")</span>
+                            <span style="font-weight:700; color:#1f2937; font-size:0.95rem; white-space:nowrap;">
+                                🕒 @(string.IsNullOrEmpty(d.HoraEntrada) ? "—" : d.HoraEntrada) → @(string.IsNullOrEmpty(d.HoraSalida) ? "—" : d.HoraSalida)
                             </span>
-                            @* 2026-06-03 v2: "X h" azul al lado solo si el admin tildo "Mostrar horas trabajadas a la derecha de cada dia" *@
-                            @if (datos.MostrarHorasTrabajadasDia)
-                            {
-                                <span class="he-row-hs">@r.Cantidad.ToString("0.#") h</span>
-                            }
-                            @* 2026-06-03: extras del dia al lado, solo si el admin tildo "Mostrar extras al empleado".
-                               Verde si >0 (extras), rojo si <0 (falto horas), nada si =0 (justo). *@
-                            @if (datos.MostrarExtras && r.ExtrasDia.HasValue && r.ExtrasDia.Value != 0m)
-                            {
-                                var ex = r.ExtrasDia.Value;
-                                var signo = ex > 0 ? "+" : "−";
-                                var color = ex > 0 ? "#16a34a" : "#dc2626";
-                                <span style="font-weight:700; color:@color; margin-left:0.6rem; min-width:55px; text-align:right;">@signo@(Math.Abs(ex).ToString("0.#")) h</span>
-                            }
                         </div>
                     }
                 }
@@ -432,6 +426,8 @@
     // 2026-07-31: pestaña "Mi legajo" (datos + recibos). Solo si el admin la habilito.
     private MiLegajoDto? legajo;
     private int? descargandoReciboId;
+    // 2026-07-31: vista de horas por mes (en "Mis horas")
+    private HorasMesDto? horasMes;
     private decimal formCantidad;
     private string formObservaciones = "";
     private string formHoraEntrada = "";
@@ -466,6 +462,10 @@
         int EmpleadoId = 0, bool KioscoPersonal = false, bool TieneHuella = false,
         // 2026-07-31: si true, muestra la pestaña "Mi legajo" (datos + recibos)
         bool MostrarAreaPersonal = false);
+
+    // 2026-07-31: vista de horas por mes (solo horario entrada→salida)
+    public record HorasMesDiaDto(DateTime Fecha, string? HoraEntrada, string? HoraSalida);
+    public record HorasMesDto(int Anio, int Mes, string MesLabel, bool PuedeAnterior, bool PuedeSiguiente, List<HorasMesDiaDto> Dias);
 
     protected override async Task OnInitializedAsync()
     {
@@ -550,6 +550,8 @@
                 // 2026-06-22: probamos si el empleado tiene vinculo con Nominas (para tabs "Mis cobros").
                 // Falla silencioso si el endpoint aun no esta deployado.
                 _ = CargarCobrosAsync();
+                // 2026-07-31: cargamos el mes actual para la vista "Mis horas" por mes.
+                _ = CargarHorasMesAsync();
             }
         }
         catch { datos = null; }
@@ -860,5 +862,32 @@
     {
         string[] m = { "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre" };
         return (mes >= 1 && mes <= 12) ? m[mes] : mes.ToString();
+    }
+
+    // ─── 2026-07-31: "Mis horas" por mes (solo horario entrada→salida) ───
+    private async Task CargarHorasMesAsync(int? anio = null, int? mes = null)
+    {
+        try
+        {
+            var url = $"api/horas-extras/publica/{Uri.EscapeDataString(Slug)}/{Uri.EscapeDataString(Clave)}/horas-mes";
+            if (anio.HasValue && mes.HasValue) url += $"?anio={anio}&mes={mes}";
+            horasMes = await Http.GetFromJsonAsync<HorasMesDto>(url);
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    private async Task MesAnterior()
+    {
+        if (horasMes is null || !horasMes.PuedeAnterior) return;
+        var d = new DateTime(horasMes.Anio, horasMes.Mes, 1).AddMonths(-1);
+        await CargarHorasMesAsync(d.Year, d.Month);
+    }
+
+    private async Task MesSiguiente()
+    {
+        if (horasMes is null || !horasMes.PuedeSiguiente) return;
+        var d = new DateTime(horasMes.Anio, horasMes.Mes, 1).AddMonths(1);
+        await CargarHorasMesAsync(d.Year, d.Month);
     }
 }
