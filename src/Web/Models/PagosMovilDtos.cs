@@ -35,3 +35,14 @@ public record EditarPagoMovilRequest(string? Concepto, decimal? Monto, string? M
 // DTO del area personal del empleado (pestaña "Mis cobros")
 public record MisCobrosItemDto(int Id, DateTime FechaPago, string Concepto, string? Detalle, decimal Monto, string Metodo);
 public record MisCobrosDto(bool Vinculado, string? NomEmpleadoNombre, decimal TotalMes, decimal TotalAnio, List<MisCobrosItemDto> Items);
+
+// 2026-07-31: DTO del area personal — pestaña "Mi legajo" (datos del empleado + recibos descargables)
+public record MiLegajoArchivoDto(int Id, string FileName, string ContentType, long FileSize, DateTime UploadedAt);
+public record MiLegajoReciboDto(int LiquidacionId, int Anio, int Mes,
+    decimal NetoAPagar, decimal TotalPagado, decimal Saldo, string Estado,
+    List<MiLegajoArchivoDto> Archivos);
+public record MiLegajoDto(bool Habilitado, string Nombre, string? Puesto,
+    DateTime FechaIngreso, DateTime? FechaAlta,
+    string? Banco, string? Cbu, string? Alias,
+    string? Domicilio, string? TelefonoContacto, string? TelefonoFamiliar, string? Email,
+    List<MiLegajoReciboDto> Recibos);

@@ -119,6 +119,13 @@
                             <div style="font-size:0.72rem; color:#6b7280; margin-top:0.1rem;">En verde (+ extras) / rojo (− horas faltantes) al lado de cada día.</div>
                         </span>
                     </label>
+                    <label style="display:flex; gap:0.5rem; align-items:flex-start; cursor:pointer; font-size:0.88rem; border-top:1px dashed #86efac; padding-top:0.5rem;">
+                        <input type="checkbox" @bind="formMostrarAreaPersonal" style="margin-top:0.15rem;" />
+                        <span>
+                            <strong>📄 Mostrar "Mi legajo" al empleado</strong>
+                            <div style="font-size:0.72rem; color:#6b7280; margin-top:0.1rem;">Le agrega una pestaña con sus datos (alta, banco, contacto) y sus recibos de sueldo para descargar. Necesita que el empleado esté vinculado a Nóminas.</div>
+                        </span>
+                    </label>
                 </div>
             </div>
 
@@ -519,7 +526,9 @@
         // 2026-06-03 v4: mostrar este empleado en el kiosco /fichador
         bool MostrarEnFichador = true,
         // 2026-06-08: solo informativo (no puede fichar desde el link personal)
-        bool SoloInformativo = false);
+        bool SoloInformativo = false,
+        // 2026-07-31: mostrar la pestaña "Mi legajo" (datos + recibos) al empleado
+        bool MostrarAreaPersonal = false);
     public record AdminRegistroDto(int Id, int EmpleadoId, string EmpleadoNombre, DateTime Fecha,
         decimal Cantidad, string? Observaciones, string? HoraEntrada, string? HoraSalida,
         DateTime CreatedAt, DateTime? UpdatedAt,
@@ -634,6 +643,8 @@
     // 2026-06-03 v2: flags granulares de visibilidad
     private bool formMostrarCuadroCiclo = false;
     private bool formMostrarHorasTrabajadasDia = false;
+    // 2026-07-31: mostrar la pestaña "Mi legajo" al empleado
+    private bool formMostrarAreaPersonal = false;
     // 2026-06-27: WiFi/GPS/Kiosco/Solo-info por empleado se manejan desde Config fichada (pantalla unificada).
 
     // Carga manual (para acumulados)
@@ -750,6 +761,7 @@
         // 2026-06-03 v2: nuevos defaults OFF
         formMostrarCuadroCiclo = false;
         formMostrarHorasTrabajadasDia = false;
+        formMostrarAreaPersonal = false;   // 2026-07-31
     }
 
     private void ShowEditEmpleado(AdminEmpleadoDto e)
@@ -767,6 +779,7 @@
         // 2026-06-03 v2: flags granulares
         formMostrarCuadroCiclo = e.MostrarCuadroCiclo;
         formMostrarHorasTrabajadasDia = e.MostrarHorasTrabajadasDia;
+        formMostrarAreaPersonal = e.MostrarAreaPersonal;   // 2026-07-31
     }
 
     private async Task GuardarEmpleado()
@@ -796,7 +809,8 @@
                           CicloDiaFin = formCicloPersonalizado ? (int?)formCicloDiaFin : null,
                           ClearCiclo = !formCicloPersonalizado,
                           MostrarCuadroCiclo = formMostrarCuadroCiclo,
-                          MostrarHorasTrabajadasDia = formMostrarHorasTrabajadasDia });
+                          MostrarHorasTrabajadasDia = formMostrarHorasTrabajadasDia,
+                          MostrarAreaPersonal = formMostrarAreaPersonal });   // 2026-07-31
                           // 2026-06-27: MostrarEnFichador / SoloInformativo se setean desde Config fichada
                 if (resp.IsSuccessStatusCode) ToastService.Success("Empleado actualizado");
                 else { ToastService.Error("Error actualizando"); return; }
@@ -822,7 +836,10 @@
                                       MostrarExtrasAlEmpleado = formMostrarExtras,
                                       CicloDiaInicio = formCicloPersonalizado ? (int?)formCicloDiaInicio : null,
                                       CicloDiaFin = formCicloPersonalizado ? (int?)formCicloDiaFin : null,
-                                      ClearCiclo = !formCicloPersonalizado });
+                                      ClearCiclo = !formCicloPersonalizado,
+                                      MostrarCuadroCiclo = formMostrarCuadroCiclo,
+                                      MostrarHorasTrabajadasDia = formMostrarHorasTrabajadasDia,
+                                      MostrarAreaPersonal = formMostrarAreaPersonal });   // 2026-07-31
                         }
                     }
                     catch { /* no es critico — si fallo, queda con los defaults del backend */ }

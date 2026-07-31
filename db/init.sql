@@ -5872,6 +5872,14 @@ BEGIN
 END
 GO
 
+-- 2026-07-31: flag por empleado — si TRUE, el area personal muestra la pestaña "Mi legajo"
+-- (datos del empleado + recibos de sueldo descargables). El admin lo prende desde la ficha de Horario.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='MostrarAreaPersonal' AND Object_ID=Object_ID('HorasExtras_Empleados'))
+BEGIN
+    ALTER TABLE HorasExtras_Empleados ADD MostrarAreaPersonal BIT NOT NULL CONSTRAINT DF_HorasExtras_Empleados_MostrarAreaPersonal DEFAULT 0;
+END
+GO
+
 -- 2026-06-25: vinculo opcional entre Cafe_Repartidores y Nom_Empleados (paralelo al de HorasExtras).
 -- Permite que el dashboard cruce rendiciones del repartidor con sueldo del mismo empleado en nominas.
 -- NULL = no vinculado (solo aparece como repartidor). Vinculado = el dashboard sabe que es la misma persona.

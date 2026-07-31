@@ -134,7 +134,9 @@ public class HorasExtrasController : ControllerBase
         // 2026-06-27: para el "kiosco personal" (fichar con huella desde el area personal).
         // EmpleadoId: necesario para los endpoints de huella. KioscoPersonal: si la funcion esta
         // activa para este empleado. TieneHuella: si ya registro al menos una huella.
-        int EmpleadoId = 0, bool KioscoPersonal = false, bool TieneHuella = false);
+        int EmpleadoId = 0, bool KioscoPersonal = false, bool TieneHuella = false,
+        // 2026-07-31: si true, el celular muestra la pestaña "Mi legajo" (datos + recibos).
+        bool MostrarAreaPersonal = false);
 
     /// <summary>Busca un empleado por slug del nombre + clave (últimos 3 del DNI). Helper
     /// usado por todos los endpoints públicos. Devuelve null si no coincide nada activo.</summary>
@@ -246,7 +248,8 @@ public class HorasExtrasController : ControllerBase
             totalCiclo, extrasCiclo, emp.MostrarExtrasAlEmpleado,
             emp.MostrarCuadroCiclo, emp.MostrarHorasTrabajadasDia,
             emp.SoloInformativo,   // 2026-06-08
-            emp.Id, emp.KioscoPersonal, tieneHuella));   // 2026-06-27
+            emp.Id, emp.KioscoPersonal, tieneHuella,   // 2026-06-27
+            emp.MostrarAreaPersonal));   // 2026-07-31
     }
 
     /// <summary>Devuelve "HH:mm" o null. Lo usamos en el JSON para que el input type=time del browser
@@ -453,6 +456,86 @@ public class HorasExtrasController : ControllerBase
         return Ok(new MisCobrosDto(true, nomEmp?.Nombre, totalMes, totalAnio, pagos));
     }
 
+    // ════════════════════════════════════════════════════════════════════════════
+    // "Mi legajo" — pestaña del area personal del empleado (2026-07-31)
+    // Muestra los DATOS del empleado (alta, banco, contacto) + sus RECIBOS de sueldo
+    // descargables. Solo si el admin tildo MostrarAreaPersonal Y el empleado esta
+    // vinculado a Nominas (NomEmpleadoId). Mismo acceso por slug + clave (ultimos 3 DNI).
+    // ════════════════════════════════════════════════════════════════════════════
+
+    public record MiLegajoArchivoDto(int Id, string FileName, string ContentType, long FileSize, DateTime UploadedAt);
+    public record MiLegajoReciboDto(int LiquidacionId, int Anio, int Mes,
+        decimal NetoAPagar, decimal TotalPagado, decimal Saldo, string Estado,
+        List<MiLegajoArchivoDto> Archivos);
+    public record MiLegajoDto(bool Habilitado, string Nombre, string? Puesto,
+        DateTime FechaIngreso, DateTime? FechaAlta,
+        string? Banco, string? Cbu, string? Alias,
+        string? Domicilio, string? TelefonoContacto, string? TelefonoFamiliar, string? Email,
+        List<MiLegajoReciboDto> Recibos);
+
+    [HttpGet("publica/{slug}/{clave}/mi-legajo")]
+    [AllowAnonymous]
+    public async Task<IActionResult> MiLegajo(string slug, string clave)
+    {
+        var emp = await FindEmpleadoAsync(slug, clave);
+        if (emp is null) return NotFound(new { error = "Link inválido o empleado inactivo" });
+        // Debe estar habilitado por el admin Y vinculado a Nominas para tener datos/recibos.
+        if (!emp.MostrarAreaPersonal || emp.NomEmpleadoId is null)
+            return Ok(new MiLegajoDto(false, emp.Nombre, null, default, null, null, null, null, null, null, null, null, new List<MiLegajoReciboDto>()));
+
+        var nom = await _db.NomEmpleados.FindAsync(emp.NomEmpleadoId.Value);
+        if (nom is null)
+            return Ok(new MiLegajoDto(false, emp.Nombre, null, default, null, null, null, null, null, null, null, null, new List<MiLegajoReciboDto>()));
+
+        // Recibos = liquidaciones del empleado, con sus archivos adjuntos (recibo/nómina en PDF/foto).
+        var liqs = await _db.NomLiquidaciones
+            .Where(l => l.EmpleadoId == nom.Id)
+            .Include(l => l.Pagos)
+            .OrderByDescending(l => l.Anio).ThenByDescending(l => l.Mes)
+            .ToListAsync();
+        var liqIds = liqs.Select(l => l.Id).ToList();
+        var archivos = await _db.NomNominaArchivos
+            .Where(a => liqIds.Contains(a.LiquidacionId))
+            .Select(a => new { a.Id, a.LiquidacionId, a.FileName, a.ContentType, a.FileSize, a.UploadedAt })
+            .ToListAsync();
+
+        var recibos = liqs.Select(l =>
+        {
+            var pagado = l.Pagos.Sum(p => p.Monto);
+            var arch = archivos.Where(a => a.LiquidacionId == l.Id)
+                .Select(a => new MiLegajoArchivoDto(a.Id, a.FileName, a.ContentType, a.FileSize, a.UploadedAt))
+                .ToList();
+            return new MiLegajoReciboDto(l.Id, l.Anio, l.Mes, l.NetoAPagar, pagado, l.NetoAPagar - pagado, l.Estado, arch);
+        }).ToList();
+
+        return Ok(new MiLegajoDto(true, nom.Nombre, nom.Puesto,
+            nom.FechaIngreso, nom.FechaAlta,
+            nom.Banco, nom.Cbu, nom.Alias,
+            nom.Domicilio, nom.TelefonoContacto, nom.TelefonoFamiliar, nom.Email,
+            recibos));
+    }
+
+    /// <summary>Descarga un recibo (archivo de una liquidación) desde el área personal.
+    /// Valida slug+clave, que el empleado esté habilitado y vinculado, y que el archivo
+    /// pertenezca a una liquidación DE ESE empleado (para que nadie baje recibos de otro).</summary>
+    [HttpGet("publica/{slug}/{clave}/recibo/{archivoId:int}/download")]
+    [AllowAnonymous]
+    public async Task<IActionResult> DescargarRecibo(string slug, string clave, int archivoId)
+    {
+        var emp = await FindEmpleadoAsync(slug, clave);
+        if (emp is null) return NotFound(new { error = "Link inválido o empleado inactivo" });
+        if (!emp.MostrarAreaPersonal || emp.NomEmpleadoId is null)
+            return Forbid();
+
+        var a = await _db.NomNominaArchivos.FirstOrDefaultAsync(x => x.Id == archivoId);
+        if (a is null) return NotFound(new { error = "Recibo no encontrado" });
+        // El archivo debe colgar de una liquidación de ESTE empleado.
+        var liq = await _db.NomLiquidaciones.FirstOrDefaultAsync(l => l.Id == a.LiquidacionId);
+        if (liq is null || liq.EmpleadoId != emp.NomEmpleadoId.Value) return NotFound(new { error = "Recibo no encontrado" });
+
+        return File(a.Contenido, string.IsNullOrWhiteSpace(a.ContentType) ? "application/octet-stream" : a.ContentType, a.FileName);
+    }
+
     /// <summary>Resuelve la IP publica del cliente de la request. Cuando esta detras de Caddy/Nginx
     /// (prod), llega en X-Forwarded-For. Si no, toma la IP remota directa.</summary>
     private string? ResolverIpCliente()
@@ -578,7 +661,9 @@ public class HorasExtrasController : ControllerBase
         bool MostrarEnFichador,
         // 2026-06-08: SoloInformativo — la pagina personal del empleado oculta el form de
         // marcar entrada/salida. Solo puede ver sus horas. Util para forzar fichaje por kiosko.
-        bool SoloInformativo = false);
+        bool SoloInformativo = false,
+        // 2026-07-31: mostrar la pestaña "Mi legajo" (datos + recibos) en el celular del empleado.
+        bool MostrarAreaPersonal = false);
 
     /// <summary>Lista de empleados con totales (hoy / semana / mes) y la última vez que cargaron.</summary>
     [HttpGet("admin/empleados")]
@@ -685,7 +770,8 @@ public class HorasExtrasController : ControllerBase
                 e.MostrarCuadroCiclo, e.MostrarHorasTrabajadasDia,
                 e.ProbarModoNuevoFichada,
                 e.MostrarEnFichador,
-                e.SoloInformativo   // 2026-06-08
+                e.SoloInformativo,   // 2026-06-08
+                e.MostrarAreaPersonal   // 2026-07-31
             );
         }).ToList();
         return Ok(result);
@@ -782,6 +868,8 @@ public class HorasExtrasController : ControllerBase
         public bool? MostrarEnFichador { get; set; }
         // 2026-06-08: si true, la pagina personal del empleado es solo informativa (no puede fichar)
         public bool? SoloInformativo { get; set; }
+        // 2026-07-31: mostrar la pestaña "Mi legajo" (datos + recibos) en el celular del empleado
+        public bool? MostrarAreaPersonal { get; set; }
     }
 
     [HttpPut("admin/empleados/{id:int}")]
@@ -816,6 +904,7 @@ public class HorasExtrasController : ControllerBase
         if (req.ProbarModoNuevoFichada.HasValue) emp.ProbarModoNuevoFichada = req.ProbarModoNuevoFichada.Value;
         if (req.MostrarEnFichador.HasValue) emp.MostrarEnFichador = req.MostrarEnFichador.Value;
         if (req.SoloInformativo.HasValue) emp.SoloInformativo = req.SoloInformativo.Value;  // 2026-06-08
+        if (req.MostrarAreaPersonal.HasValue) emp.MostrarAreaPersonal = req.MostrarAreaPersonal.Value;  // 2026-07-31
         if (req.ClearCiclo)
         {
             emp.CicloDiaInicio = null;

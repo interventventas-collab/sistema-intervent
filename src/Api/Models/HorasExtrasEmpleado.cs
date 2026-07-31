@@ -51,6 +51,12 @@ public class HorasExtrasEmpleado
     /// Si false, solo se ve la fecha y el horario "08:00 → 19:30".</summary>
     public bool MostrarHorasTrabajadasDia { get; set; } = false;
 
+    /// <summary>2026-07-31: si true, el área personal del empleado muestra la pestaña "Mi legajo"
+    /// con sus datos (fecha de alta, banco, contacto) y sus recibos de sueldo descargables.
+    /// El admin lo prende empleado por empleado desde la ficha de Horario. Requiere que el
+    /// empleado esté vinculado a Nóminas (NomEmpleadoId) para tener recibos/datos que mostrar.</summary>
+    public bool MostrarAreaPersonal { get; set; } = false;
+
     /// <summary>2026-06-03 v3: piloto - flag por empleado para probar el modo nuevo de fichada.
     /// Si el toggle GLOBAL esta OFF pero este flag esta ON, solo ESTE empleado pasa por validacion
     /// de WiFi. Permite testear con un empleado de prueba sin afectar a los demas.</summary>

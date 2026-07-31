@@ -78,15 +78,22 @@
            Si no esta vinculado, solo se ve "Mis horas" (comportamiento historico, sin tabs). *@
         @if (cobros is not null && cobros.Vinculado)
         {
-            <div style="display:flex; gap:0.4rem; margin-bottom:0.7rem;">
+            <div style="display:flex; flex-wrap:wrap; gap:0.4rem; margin-bottom:0.7rem;">
                 <button @onclick="@(() => tabActiva = "horas")"
-                        style="flex:1; padding:0.7rem; font-weight:700; border-radius:10px; cursor:pointer; border:2px solid @(tabActiva == "horas" ? "#1d4ed8" : "#e5e7eb"); background:@(tabActiva == "horas" ? "#dbeafe" : "white"); color:@(tabActiva == "horas" ? "#1d4ed8" : "#6b7280");">
+                        style="flex:1; min-width:90px; padding:0.7rem 0.3rem; font-weight:700; font-size:0.9rem; border-radius:10px; cursor:pointer; border:2px solid @(tabActiva == "horas" ? "#1d4ed8" : "#e5e7eb"); background:@(tabActiva == "horas" ? "#dbeafe" : "white"); color:@(tabActiva == "horas" ? "#1d4ed8" : "#6b7280");">
                     ⏱ Mis horas
                 </button>
                 <button @onclick="@(() => { tabActiva = "cobros"; _ = CargarCobrosAsync(); })"
-                        style="flex:1; padding:0.7rem; font-weight:700; border-radius:10px; cursor:pointer; border:2px solid @(tabActiva == "cobros" ? "#16a34a" : "#e5e7eb"); background:@(tabActiva == "cobros" ? "#dcfce7" : "white"); color:@(tabActiva == "cobros" ? "#15803d" : "#6b7280");">
+                        style="flex:1; min-width:90px; padding:0.7rem 0.3rem; font-weight:700; font-size:0.9rem; border-radius:10px; cursor:pointer; border:2px solid @(tabActiva == "cobros" ? "#16a34a" : "#e5e7eb"); background:@(tabActiva == "cobros" ? "#dcfce7" : "white"); color:@(tabActiva == "cobros" ? "#15803d" : "#6b7280");">
                     💰 Mis cobros
                 </button>
+                @if (datos?.MostrarAreaPersonal == true)
+                {
+                    <button @onclick="@(() => { tabActiva = "legajo"; _ = CargarLegajoAsync(); })"
+                            style="flex:1; min-width:90px; padding:0.7rem 0.3rem; font-weight:700; font-size:0.9rem; border-radius:10px; cursor:pointer; border:2px solid @(tabActiva == "legajo" ? "#7c3aed" : "#e5e7eb"); background:@(tabActiva == "legajo" ? "#ede9fe" : "white"); color:@(tabActiva == "legajo" ? "#6d28d9" : "#6b7280");">
+                        📄 Mi legajo
+                    </button>
+                }
             </div>
         }
 
@@ -311,6 +318,99 @@
                 }
             </div>
         }
+
+        @if (tabActiva == "legajo")
+        {
+            <div class="he-card">
+                <h1 class="he-hello">📄 Mi legajo</h1>
+                <p class="he-fecha" style="text-transform:none;">@(legajo?.Nombre ?? datos?.Nombre)</p>
+
+                @if (legajo is null)
+                {
+                    <p style="text-align:center; color:#6b7280; padding:1rem 0;">Cargando…</p>
+                }
+                else if (!legajo.Habilitado)
+                {
+                    <p style="text-align:center; color:#6b7280; padding:1rem 0;">Todavía no hay datos para mostrar.</p>
+                }
+                else
+                {
+                    @* ── Mis datos ── *@
+                    <div style="margin-top:0.3rem; padding:0.7rem 0.9rem; background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px;">
+                        <div style="font-size:0.75rem; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:0.5rem;">👤 Mis datos</div>
+                        @if (!string.IsNullOrWhiteSpace(legajo.Puesto))
+                        { <div style="display:flex; justify-content:space-between; padding:0.25rem 0; font-size:0.9rem;"><span style="color:#6b7280;">Puesto</span><strong>@legajo.Puesto</strong></div> }
+                        <div style="display:flex; justify-content:space-between; padding:0.25rem 0; font-size:0.9rem;"><span style="color:#6b7280;">Fecha de ingreso</span><strong>@legajo.FechaIngreso.ToString("dd/MM/yyyy")</strong></div>
+                        @if (legajo.FechaAlta.HasValue)
+                        { <div style="display:flex; justify-content:space-between; padding:0.25rem 0; font-size:0.9rem;"><span style="color:#6b7280;">Fecha de alta</span><strong>@legajo.FechaAlta.Value.ToString("dd/MM/yyyy")</strong></div> }
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(legajo.Banco) || !string.IsNullOrWhiteSpace(legajo.Cbu) || !string.IsNullOrWhiteSpace(legajo.Alias))
+                    {
+                        <div style="margin-top:0.5rem; padding:0.7rem 0.9rem; background:#f0f9ff; border:1px solid #bae6fd; border-radius:10px;">
+                            <div style="font-size:0.75rem; font-weight:700; color:#0369a1; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:0.5rem;">🏦 Datos bancarios</div>
+                            @if (!string.IsNullOrWhiteSpace(legajo.Banco))
+                            { <div style="display:flex; justify-content:space-between; padding:0.25rem 0; font-size:0.9rem;"><span style="color:#6b7280;">Banco</span><strong>@legajo.Banco</strong></div> }
+                            @if (!string.IsNullOrWhiteSpace(legajo.Cbu))
+                            { <div style="display:flex; justify-content:space-between; gap:0.5rem; padding:0.25rem 0; font-size:0.9rem;"><span style="color:#6b7280;">CBU</span><strong style="word-break:break-all; text-align:right;">@legajo.Cbu</strong></div> }
+                            @if (!string.IsNullOrWhiteSpace(legajo.Alias))
+                            { <div style="display:flex; justify-content:space-between; padding:0.25rem 0; font-size:0.9rem;"><span style="color:#6b7280;">Alias</span><strong>@legajo.Alias</strong></div> }
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(legajo.Domicilio) || !string.IsNullOrWhiteSpace(legajo.TelefonoContacto) || !string.IsNullOrWhiteSpace(legajo.TelefonoFamiliar) || !string.IsNullOrWhiteSpace(legajo.Email))
+                    {
+                        <div style="margin-top:0.5rem; padding:0.7rem 0.9rem; background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px;">
+                            <div style="font-size:0.75rem; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:0.5rem;">📇 Contacto</div>
+                            @if (!string.IsNullOrWhiteSpace(legajo.Domicilio))
+                            { <div style="display:flex; justify-content:space-between; gap:0.5rem; padding:0.25rem 0; font-size:0.9rem;"><span style="color:#6b7280;">Domicilio</span><strong style="text-align:right;">@legajo.Domicilio</strong></div> }
+                            @if (!string.IsNullOrWhiteSpace(legajo.TelefonoContacto))
+                            { <div style="display:flex; justify-content:space-between; padding:0.25rem 0; font-size:0.9rem;"><span style="color:#6b7280;">Teléfono</span><strong>@legajo.TelefonoContacto</strong></div> }
+                            @if (!string.IsNullOrWhiteSpace(legajo.TelefonoFamiliar))
+                            { <div style="display:flex; justify-content:space-between; padding:0.25rem 0; font-size:0.9rem;"><span style="color:#6b7280;">Tel. familiar</span><strong>@legajo.TelefonoFamiliar</strong></div> }
+                            @if (!string.IsNullOrWhiteSpace(legajo.Email))
+                            { <div style="display:flex; justify-content:space-between; gap:0.5rem; padding:0.25rem 0; font-size:0.9rem;"><span style="color:#6b7280;">Mail</span><strong style="word-break:break-all; text-align:right;">@legajo.Email</strong></div> }
+                        </div>
+                    }
+
+                    @* ── Mis recibos ── *@
+                    <div style="font-size:0.75rem; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:0.03em; margin:0.9rem 0 0.4rem;">🧾 Mis recibos de sueldo</div>
+                    @if (legajo.Recibos.Count == 0)
+                    {
+                        <div style="text-align:center; padding:1rem 0; color:#6b7280; font-size:0.9rem;">Todavía no hay recibos cargados.</div>
+                    }
+                    else
+                    {
+                        @foreach (var r in legajo.Recibos)
+                        {
+                            <div style="padding:0.6rem 0.2rem; border-bottom:1px solid #f3f4f6;">
+                                <div style="display:flex; justify-content:space-between; align-items:baseline;">
+                                    <span style="font-size:0.95rem; color:#1f2937; font-weight:700;">@NombreMes(r.Mes) @r.Anio</span>
+                                    <span style="font-size:1rem; font-weight:700; color:#059669; white-space:nowrap;">$@r.NetoAPagar.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))</span>
+                                </div>
+                                @if (r.Archivos.Count == 0)
+                                {
+                                    <div style="font-size:0.78rem; color:#9ca3af; margin-top:0.2rem;">Sin recibo adjunto todavía.</div>
+                                }
+                                else
+                                {
+                                    <div style="margin-top:0.35rem; display:flex; flex-direction:column; gap:0.3rem;">
+                                        @foreach (var a in r.Archivos)
+                                        {
+                                            <button @onclick="() => DescargarReciboAsync(a)" disabled="@(descargandoReciboId.HasValue)"
+                                                    style="display:flex; align-items:center; gap:0.4rem; width:100%; text-align:left; padding:0.45rem 0.6rem; background:white; border:1px solid #e5e7eb; border-radius:8px; cursor:pointer; font-size:0.85rem; color:#1f2937;">
+                                                <span>@(descargandoReciboId == a.Id ? "⏳" : "⬇")</span>
+                                                <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@a.FileName</span>
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                }
+            </div>
+        }
     }
 
     @if (toastVisible)
@@ -338,6 +438,9 @@
     // 2026-06-22: estado de los tabs (horas / cobros). Solo aparece si el empleado esta vinculado.
     private string tabActiva = "horas";
     private MisCobrosDto? cobros;
+    // 2026-07-31: pestaña "Mi legajo" (datos + recibos). Solo si el admin la habilito.
+    private MiLegajoDto? legajo;
+    private int? descargandoReciboId;
     private decimal formCantidad;
     private string formObservaciones = "";
     private string formHoraEntrada = "";
@@ -369,7 +472,9 @@
         // 2026-06-08: si true, oculta el form de carga (solo lectura). Empleado ficha por kiosco.
         bool SoloInformativo = false,
         // 2026-06-27: kiosco personal (fichar con huella desde el area personal)
-        int EmpleadoId = 0, bool KioscoPersonal = false, bool TieneHuella = false);
+        int EmpleadoId = 0, bool KioscoPersonal = false, bool TieneHuella = false,
+        // 2026-07-31: si true, muestra la pestaña "Mi legajo" (datos + recibos)
+        bool MostrarAreaPersonal = false);
 
     protected override async Task OnInitializedAsync()
     {
@@ -725,5 +830,44 @@
         {
             cobros = new MisCobrosDto(false, null, 0m, 0m, new List<MisCobrosItemDto>());
         }
+    }
+
+    /// <summary>2026-07-31: carga los datos + recibos del empleado (pestaña "Mi legajo").
+    /// El backend valida la clave y que el admin haya habilitado el área personal.</summary>
+    private async Task CargarLegajoAsync()
+    {
+        try
+        {
+            legajo = await Http.GetFromJsonAsync<MiLegajoDto>(
+                $"api/horas-extras/publica/{Uri.EscapeDataString(Slug)}/{Uri.EscapeDataString(Clave)}/mi-legajo");
+            StateHasChanged();
+        }
+        catch
+        {
+            legajo = new MiLegajoDto(false, datos?.Nombre ?? "", null, default, null, null, null, null, null, null, null, null, new List<MiLegajoReciboDto>());
+        }
+    }
+
+    /// <summary>Descarga un recibo (el PDF/foto que el admin subió a la liquidación).</summary>
+    private async Task DescargarReciboAsync(MiLegajoArchivoDto a)
+    {
+        if (descargandoReciboId.HasValue) return;
+        descargandoReciboId = a.Id;
+        try
+        {
+            var bytes = await Http.GetByteArrayAsync(
+                $"api/horas-extras/publica/{Uri.EscapeDataString(Slug)}/{Uri.EscapeDataString(Clave)}/recibo/{a.Id}/download");
+            if (bytes is null || bytes.Length == 0) return;
+            var b64 = Convert.ToBase64String(bytes);
+            await JS.InvokeVoidAsync("downloadBytesAsFile", a.FileName, b64, a.ContentType);
+        }
+        catch { }
+        finally { descargandoReciboId = null; }
+    }
+
+    private static string NombreMes(int mes)
+    {
+        string[] m = { "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre" };
+        return (mes >= 1 && mes <= 12) ? m[mes] : mes.ToString();
     }
 }
