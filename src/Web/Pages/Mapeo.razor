@@ -40,6 +40,13 @@
     .mapeo-dock-handle:hover { color: rgba(255,255,255,0.85); }
     .mapeo-dock-handle:active { cursor: grabbing; }
     .mapeo-dock-handle .dot { width: 4px; height: 4px; border-radius: 999px; background: currentColor; }
+    /* Desplegables del dock: abren hacia ADENTRO del mapa según de qué lado esté el dock,
+       así nunca quedan cortados por el borde. La clase anchor-* la pone el JS al arrastrar. */
+    .mapeo-flyout { position: absolute; top: 0; background: white; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.25); padding: 0.3rem; z-index: 545; max-height: 72vh; overflow-y: auto; }
+    .mapeo-dock.anchor-left .mapeo-flyout { left: 100%; margin-left: 8px; }
+    .mapeo-dock.anchor-right .mapeo-flyout { right: 100%; margin-right: 8px; }
+    /* Antes de que el JS calcule el lado: el dock arranca a la derecha, así que abrimos a la izquierda. */
+    .mapeo-dock:not(.anchor-left):not(.anchor-right) .mapeo-flyout { right: 100%; margin-right: 8px; }
     .mapeo-status-pill { display: inline-block; padding: 0.05rem 0.4rem; border-radius: 4px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; }
     .copy-chip { display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.05rem 0.35rem; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 4px; cursor: pointer; transition: all 0.12s; }
     .copy-chip:hover { background: #dbeafe; border-color: #1d4ed8; color: #1d4ed8; }
@@ -1066,7 +1073,7 @@
                     </button>
                     @if (showZonasMenu)
                     {
-                        <div style="position:absolute; left:100%; top:0; margin-left:8px; background:white; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.25); padding:0.3rem; min-width:240px; z-index:540;">
+                        <div class="mapeo-flyout" style="min-width:240px;">
                             <div style="font-size:0.72rem; color:#6b7280; font-weight:700; padding:0.2rem 0.6rem;">ZONIFICAR</div>
                             <button class="btn" style="display:flex; width:100%; align-items:center; font-size:0.85rem; padding:0.45rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left; font-weight:600;"
                                     @onclick="@(async () => { showZonasMenu = false; await IniciarDibujoZona(); })">
@@ -1141,7 +1148,7 @@
                             </div>
                             @if (zonaDriverMenuId == z.Numero)
                             {
-                                <div style="position:absolute; left:100%; top:0; margin-left:8px; background:white; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.25); padding:0.3rem; min-width:210px; z-index:545;">
+                                <div class="mapeo-flyout" style="min-width:210px;">
                                     <div style="font-size:0.7rem; color:#6b7280; font-weight:700; padding:0.2rem 0.6rem;">Repartidor de la Zona @z.Numero</div>
                                     @foreach (var d in (drivers ?? new()).Where(d => d.IsActive))
                                     {
@@ -1176,7 +1183,7 @@
                     </button>
                     @if (showConfigMenu)
                     {
-                        <div style="position:absolute; left:100%; bottom:0; margin-left:8px; background:white; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.25); padding:0.3rem; min-width:240px; z-index:540;">
+                        <div class="mapeo-flyout" style="top:auto; bottom:0; min-width:240px;">
                             <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
                                     @onclick="@(async () => { showConfigMenu = false; await OpenStartPointModal(); })">
                                 <span>📍 Punto de partida</span>

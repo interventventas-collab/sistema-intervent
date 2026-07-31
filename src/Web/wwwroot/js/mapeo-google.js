@@ -585,9 +585,21 @@ window.mapeoMini = (function () {
 // 2026-07-30: barra negra (dock) arrastrable. Aparece a la derecha por defecto;
 // el usuario la arrastra de la manija a cualquier lado y la posición queda guardada
 // en el navegador (localStorage). Reengancha solo al re-render de Blazor.
+// Usa Pointer Events + setPointerCapture para que el arrastre no se pierda cuando el
+// puntero pasa por encima del mapa de Google (que si no se "come" los movimientos).
 window.mapeoDock = (function () {
     const KEY = 'mapeoDockPos';
     function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+    // Marca de qué lado del mapa quedó el dock, para que los desplegables abran hacia adentro.
+    function updateAnchor(dock, parent) {
+        if (!parent) return;
+        const pr = parent.getBoundingClientRect();
+        const dr = dock.getBoundingClientRect();
+        const enDerecha = (dr.left + dr.right) / 2 > (pr.left + pr.right) / 2;
+        dock.classList.toggle('anchor-right', enDerecha);
+        dock.classList.toggle('anchor-left', !enDerecha);
+    }
 
     // Aplica la posición guardada (si existe), clampeada dentro del mapa.
     function applySaved(dock, parent) {
@@ -612,6 +624,7 @@ window.mapeoDock = (function () {
             if (!handle) return;
 
             applySaved(dock, parent);
+            updateAnchor(dock, parent);
 
             if (dock.__dragBound) return; // no reenganchar dos veces
             dock.__dragBound = true;
@@ -620,31 +633,30 @@ window.mapeoDock = (function () {
 
             function onMove(e) {
                 if (!dragging) return;
-                const pt = e.touches ? e.touches[0] : e;
                 const pr = parent.getBoundingClientRect();
-                let nl = clamp(startLeft + (pt.clientX - startX), 0, pr.width - dock.offsetWidth);
-                let nt = clamp(startTop + (pt.clientY - startY), 0, pr.height - dock.offsetHeight);
+                let nl = clamp(startLeft + (e.clientX - startX), 0, pr.width - dock.offsetWidth);
+                let nt = clamp(startTop + (e.clientY - startY), 0, pr.height - dock.offsetHeight);
                 dock.style.left = nl + 'px';
                 dock.style.top = nt + 'px';
+                updateAnchor(dock, parent);
                 e.preventDefault();
             }
-            function onUp() {
+            function onUp(e) {
                 if (!dragging) return;
                 dragging = false;
-                document.removeEventListener('mousemove', onMove);
-                document.removeEventListener('mouseup', onUp);
-                document.removeEventListener('touchmove', onMove);
-                document.removeEventListener('touchend', onUp);
+                try { handle.releasePointerCapture(e.pointerId); } catch (x) { }
+                handle.removeEventListener('pointermove', onMove);
+                handle.removeEventListener('pointerup', onUp);
+                handle.removeEventListener('pointercancel', onUp);
                 try {
                     localStorage.setItem(KEY, JSON.stringify({
                         left: parseFloat(dock.style.left) || 0,
                         top: parseFloat(dock.style.top) || 0
                     }));
-                } catch (e) { /* localStorage lleno o bloqueado: no pasa nada */ }
+                } catch (x) { /* localStorage lleno o bloqueado: no pasa nada */ }
             }
             function onDown(e) {
                 dragging = true;
-                const pt = e.touches ? e.touches[0] : e;
                 const pr = parent.getBoundingClientRect();
                 const dr = dock.getBoundingClientRect();
                 // Fijamos left/top numéricos (convertimos desde right/transform del arranque).
@@ -654,16 +666,16 @@ window.mapeoDock = (function () {
                 dock.style.top = startTop + 'px';
                 dock.style.right = 'auto';
                 dock.style.transform = 'none';
-                startX = pt.clientX; startY = pt.clientY;
-                document.addEventListener('mousemove', onMove);
-                document.addEventListener('mouseup', onUp);
-                document.addEventListener('touchmove', onMove, { passive: false });
-                document.addEventListener('touchend', onUp);
+                startX = e.clientX; startY = e.clientY;
+                // Capturamos el puntero: aunque pase sobre el mapa, los pointermove siguen llegando acá.
+                try { handle.setPointerCapture(e.pointerId); } catch (x) { }
+                handle.addEventListener('pointermove', onMove);
+                handle.addEventListener('pointerup', onUp);
+                handle.addEventListener('pointercancel', onUp);
                 e.preventDefault();
             }
 
-            handle.addEventListener('mousedown', onDown);
-            handle.addEventListener('touchstart', onDown, { passive: false });
+            handle.addEventListener('pointerdown', onDown);
         }
     };
 })();
