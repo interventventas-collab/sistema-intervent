@@ -178,6 +178,17 @@
                                 🔗 Linkear
                             </button>
                         }
+                        @* 2026-08-01 — Etapa 2: armar un combo/pack para un SKU en rojo (huérfano),
+                           que la publicación descuente N × un producto base. *@
+                        @if (sku.estado == "sin_combo")
+                        {
+                            <button class="btn" style="font-size:0.78rem; padding:0.4rem 0.7rem; white-space:nowrap; background:#7c3aed; color:white; border:none; border-radius:5px;"
+                                    @onclick="() => AbrirModalArmar(skuLocal)"
+                                    @onclick:stopPropagation="true"
+                                    title="Armar este código como un combo/pack: N unidades de un producto base. Deja la publicación descontando stock al vender.">
+                                🧩 Armar
+                            </button>
+                        }
                         @* 2026-05-30 — Pieza 2: ofrecer crear producto del sistema si no existe uno con este SKU.
                            Puede haber combo igual (independiente) — el producto se usa para linkear el OEM/precio. *@
                         @if (!sku.productoSueltoId.HasValue)
@@ -549,6 +560,81 @@
     </div>
 }
 
+@* 2026-08-01 — Etapa 2: modal para armar un combo/pack desde un SKU MeLi huérfano *@
+@if (showArmarModal && armarSkuRow != null)
+{
+    <div class="modal-overlay" @onclick="CerrarModalArmar"
+         style="position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; display:flex; align-items:center; justify-content:center; padding:1rem;">
+        <div class="modal" style="max-width:540px; width:100%; background:white; border-radius:8px; box-shadow:0 10px 40px rgba(0,0,0,0.3); overflow:hidden;" @onclick:stopPropagation="true">
+            <div class="modal-header" style="padding:1rem 1.25rem; border-bottom:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin:0; font-size:1.1rem;">🧩 Armar combo / pack</h3>
+                <button class="btn-close" @onclick="CerrarModalArmar"
+                        style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:#6b7280; line-height:1; padding:0 0.4rem;">×</button>
+            </div>
+            <div class="modal-body" style="padding:1rem 1.25rem; max-height:70vh; overflow-y:auto;">
+                <p style="font-size:0.82rem; color:#6b7280; margin-bottom:0.8rem;">
+                    El código <strong style="font-family:monospace;">@armarSkuRow.sku</strong> es un pack.
+                    Elegí <strong>de qué producto</strong> es y <strong>cuántas unidades</strong> trae.
+                    Cuando se venda esta publicación, el sistema va a descontar esa cantidad automáticamente.
+                </p>
+
+                <div class="form-group">
+                    <label class="form-label">Este pack es de… (producto base) *</label>
+                    <input class="form-input" @bind="armarBuscar" @bind:event="oninput"
+                           @onkeyup="@((KeyboardEventArgs e) => BuscarProductosArmar())"
+                           placeholder="🔍 Buscá por código o nombre (ej: ABE-CHED)" />
+                    @if (armarResultados.Count > 0)
+                    {
+                        <div style="margin-top:0.3rem; max-height:180px; overflow-y:auto; background:white; border:1px solid #e5e7eb; border-radius:4px;">
+                            @foreach (var p in armarResultados)
+                            {
+                                <div @onclick="@(() => SeleccionarProductoArmar(p))"
+                                     style="padding:0.35rem 0.5rem; cursor:pointer; border-bottom:1px solid #f3f4f6; font-size:0.8rem; @(armarSeleccionado?.Id == p.Id ? "background:#dbeafe;" : "")">
+                                    <strong style="font-family:monospace; color:#1d4ed8;">@p.Sku</strong>
+                                    <span style="color:#374151;"> · @p.Nombre</span>
+                                    <span style="color:#6b7280; font-size:0.72rem;"> (stock: @p.StockUnidades)</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                    @if (armarSeleccionado is not null)
+                    {
+                        <div style="margin-top:0.4rem; font-size:0.8rem; color:#15803d;">
+                            ✓ Elegido: <strong>@armarSeleccionado.Sku</strong> · @armarSeleccionado.Nombre
+                        </div>
+                    }
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">¿Cuántas unidades trae el pack? *</label>
+                    <input class="form-input" type="number" min="1" step="1" @bind="armarCantidad"
+                           style="max-width:140px; text-align:right;" />
+                    @if (armarSeleccionado is not null && armarCantidad > 0)
+                    {
+                        <small style="display:block; margin-top:0.35rem; font-size:0.78rem; color:#374151;">
+                            Cada venta de <strong>@armarSkuRow.sku</strong> va a descontar
+                            <strong>@armarCantidad × @armarSeleccionado.Sku</strong>.
+                        </small>
+                    }
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Nombre (opcional)</label>
+                    <input class="form-input" @bind="armarNombre" placeholder="Se toma el título de MeLi si lo dejás vacío" maxlength="200" />
+                </div>
+            </div>
+            <div class="modal-footer" style="padding:0.85rem 1.25rem; border-top:1px solid #e5e7eb; display:flex; justify-content:flex-end; gap:0.5rem; background:#f9fafb;">
+                <button class="btn btn-secondary" @onclick="CerrarModalArmar" disabled="@armarGuardando">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmarArmarCombo"
+                        style="background:#7c3aed;"
+                        disabled="@(armarGuardando || armarSeleccionado is null || armarCantidad <= 0)">
+                    @(armarGuardando ? "Armando..." : "✅ Armar y aplicar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private SkusMeliResponse? response;
     private bool cargando;
@@ -566,6 +652,16 @@
     private string addBuscarProducto = "";
     private List<ProductoBuscadoRow> resultadosBusqueda = new();
     private ProductoBuscadoRow? productoAddSeleccionado;
+
+    // 2026-08-01 — Etapa 2: estado del modal "Armar combo/pack"
+    private bool showArmarModal;
+    private SkuRow? armarSkuRow;
+    private string armarBuscar = "";
+    private List<ProductoBuscadoRow> armarResultados = new();
+    private ProductoBuscadoRow? armarSeleccionado;
+    private decimal armarCantidad = 1;
+    private string armarNombre = "";
+    private bool armarGuardando;
     private System.Threading.Timer? debounceBuscar;
 
     public record ProductoBuscadoRow(int Id, string Sku, string Nombre, int StockUnidades);
@@ -999,6 +1095,81 @@
         productoAddSeleccionado = p;
         addBuscarProducto = $"{p.Sku} · {p.Nombre}";
         resultadosBusqueda = new();
+    }
+
+    // ═══ Etapa 2: Armar combo/pack desde un SKU huérfano ═══
+    private void AbrirModalArmar(SkuRow sku)
+    {
+        armarSkuRow = sku;
+        armarBuscar = "";
+        armarResultados = new();
+        armarSeleccionado = null;
+        armarCantidad = 1;
+        armarNombre = "";
+        showArmarModal = true;
+    }
+
+    private void CerrarModalArmar()
+    {
+        if (armarGuardando) return;
+        showArmarModal = false;
+        armarSkuRow = null;
+    }
+
+    private async Task BuscarProductosArmar()
+    {
+        if (string.IsNullOrWhiteSpace(armarBuscar) || armarBuscar.Trim().Length < 2)
+        {
+            armarResultados = new();
+            return;
+        }
+        try
+        {
+            var url = $"/api/cafe/productos/search?q={Uri.EscapeDataString(armarBuscar.Trim())}&limit=15";
+            var raw = await Http.GetFromJsonAsync<List<ProductoBuscadoRow>>(url);
+            armarResultados = raw ?? new();
+        }
+        catch { armarResultados = new(); }
+    }
+
+    private void SeleccionarProductoArmar(ProductoBuscadoRow p)
+    {
+        armarSeleccionado = p;
+        armarBuscar = $"{p.Sku} · {p.Nombre}";
+        armarResultados = new();
+    }
+
+    private async Task ConfirmarArmarCombo()
+    {
+        if (armarSkuRow is null) return;
+        if (armarSeleccionado is null) { ToastService.Warning("Elegí el producto base primero"); return; }
+        if (armarCantidad <= 0) { ToastService.Warning("La cantidad tiene que ser mayor a 0"); return; }
+        armarGuardando = true;
+        try
+        {
+            var body = new
+            {
+                baseProductoId = armarSeleccionado.Id,
+                cantidad = armarCantidad,
+                nombre = string.IsNullOrWhiteSpace(armarNombre) ? null : armarNombre.Trim(),
+                esCompuesto = false
+            };
+            var resp = await Http.PostAsJsonAsync($"/api/meli/skus-meli/{Uri.EscapeDataString(armarSkuRow.sku)}/armar-combo", body);
+            if (resp.IsSuccessStatusCode)
+            {
+                ToastService.Success($"✓ Armado: {armarSkuRow.sku} = {armarCantidad} × {armarSeleccionado.Sku}. La publicación ya descuenta stock.");
+                showArmarModal = false;
+                armarSkuRow = null;
+                await Recargar();
+            }
+            else
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                ToastService.Error("No se pudo armar: " + err);
+            }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { armarGuardando = false; }
     }
 
     private async Task AgregarComponente(string meliItemId, string sku)

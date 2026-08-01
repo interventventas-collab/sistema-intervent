@@ -1830,6 +1830,123 @@ public class MeliController : ControllerBase
         return Ok(new CrearProductoDesdeSkuResult(producto.Id, producto.Sku!, producto.Nombre, pubs.Count));
     }
 
+    public record ArmarComboDesdeSkuRequest(int BaseProductoId, decimal Cantidad, string? Nombre, bool? EsCompuesto);
+
+    /// <summary>2026-08-01 — Etapa 2 catálogo. "Armar" un SKU MeLi huérfano (en rojo, sin combo ni
+    /// producto) como un combo/pack de N unidades de un producto base. Hace TODO lo necesario para
+    /// que la publicación descuente stock al venderse:
+    ///   1) crea el Cafe_Combos (Sku + 1 item = producto base × cantidad) — para que quede clasificado
+    ///      y editable desde /cafe/skus-meli y /cafe/combos.
+    ///   2) crea los MeliItemComponentes (MLA → producto base × cantidad) — ESTA es la regla que
+    ///      realmente descuenta stock al vender.
+    ///   3) linkea las publicaciones (MeliItems.CafeComboId) — para que el SKU deje de estar en rojo.
+    ///   4) pushea el stock recalculado a MeLi.
+    /// Usado por el botón "🧩 Armar" en /cafe/skus-meli para los códigos sin_combo.</summary>
+    [HttpPost("skus-meli/{sku}/armar-combo")]
+    public async Task<IActionResult> ArmarComboDesdeSku(string sku,
+        [FromBody] ArmarComboDesdeSkuRequest req,
+        [FromServices] Api.Data.AppDbContext db,
+        [FromServices] MeliStockPushService pushSvc)
+    {
+        if (string.IsNullOrWhiteSpace(sku)) return BadRequest(new { error = "SKU vacío" });
+        sku = sku.Trim().ToUpperInvariant();
+        if (req is null || req.BaseProductoId <= 0) return BadRequest(new { error = "Falta elegir el producto base" });
+        if (req.Cantidad <= 0) return BadRequest(new { error = "La cantidad debe ser mayor a 0" });
+
+        // Producto base (ej ABE-CHED)
+        var baseProd = await db.CafeProductos.FirstOrDefaultAsync(p => p.Id == req.BaseProductoId);
+        if (baseProd is null) return NotFound(new { error = $"El producto base (id {req.BaseProductoId}) no existe" });
+
+        // No pisar un combo ya existente con ese SKU
+        var comboExistente = await db.CafeCombos.FirstOrDefaultAsync(c => c.Sku == sku);
+        if (comboExistente != null)
+            return BadRequest(new { error = $"Ya existe un combo con el código '{sku}'. Editá sus componentes en vez de armar uno nuevo." });
+
+        // Publicaciones MeLi con este SKU (activas o pausadas)
+        var pubs = await db.MeliItems
+            .Where(mi => mi.Sku == sku && (mi.Status == "active" || mi.Status == "paused"))
+            .ToListAsync();
+
+        var titulo = pubs.OrderByDescending(p => p.Id).Select(p => p.Title).FirstOrDefault();
+        var nombre = string.IsNullOrWhiteSpace(req.Nombre) ? (titulo ?? sku) : req.Nombre!.Trim();
+        if (nombre.Length > 200) nombre = nombre.Substring(0, 200);
+
+        var esCompuesto = req.EsCompuesto ?? false;
+        var cantInt = (int)Math.Round(req.Cantidad, MidpointRounding.AwayFromZero);
+        if (cantInt < 1) cantInt = 1;
+        var formato = baseProd.Categoria == "CAFE" ? "1KG" : "UNIT";
+
+        // 1) Crear el combo del sistema con 1 item (producto base × cantidad)
+        var combo = new Api.Models.CafeCombo
+        {
+            Sku = sku,
+            Nombre = nombre,
+            Categoria = baseProd.Categoria == "CAFE" ? "CAFE" : "OTROS",
+            EsCompuesto = esCompuesto,
+            IsActive = true,
+            Items = new List<Api.Models.CafeComboItem>
+            {
+                new Api.Models.CafeComboItem
+                {
+                    ProductoId = baseProd.Id,
+                    Cantidad = cantInt,
+                    Formato = formato,
+                    SortOrder = 0,
+                }
+            }
+        };
+        db.CafeCombos.Add(combo);
+        await db.SaveChangesAsync();
+
+        // 2) Por cada publicación: crear el componente que descuenta stock + linkear al combo
+        int compCreados = 0;
+        var mlaIds = new List<string>();
+        foreach (var pub in pubs)
+        {
+            mlaIds.Add(pub.MeliItemId);
+            pub.CafeComboId = combo.Id;
+
+            var dup = await db.MeliItemComponentes.AnyAsync(c =>
+                c.MeliItemId == pub.MeliItemId &&
+                c.CafeProductoId == baseProd.Id &&
+                c.MeliVariationId == null);
+            if (!dup)
+            {
+                db.MeliItemComponentes.Add(new Api.Models.MeliItemComponente
+                {
+                    MeliItemId = pub.MeliItemId,
+                    CafeProductoId = baseProd.Id,
+                    Cantidad = req.Cantidad,
+                    Source = "manual_ui",
+                    CreatedAt = DateTime.UtcNow,
+                });
+                compCreados++;
+            }
+        }
+        await db.SaveChangesAsync();
+
+        // 3) Push del stock recalculado a MeLi
+        string push = "disparado";
+        string? pushError = null;
+        if (mlaIds.Count > 0)
+        {
+            try { await pushSvc.PushStockForMeliItemsAsync(mlaIds); }
+            catch (Exception ex) { push = "error"; pushError = ex.Message; }
+        }
+        else push = "sin_pubs";
+
+        return Ok(new
+        {
+            ok = true,
+            comboId = combo.Id,
+            nombre,
+            pubsAfectadas = pubs.Count,
+            componentesCreados = compCreados,
+            push,
+            pushError
+        });
+    }
+
     /// <summary>Devuelve el valor global de meli.stock_push.reserva_interna (default 1).
     /// La UI lo muestra en la ficha producto para que el usuario sepa qué valor se aplica
     /// cuando el campo StockMinimoMeLi está vacío.</summary>
