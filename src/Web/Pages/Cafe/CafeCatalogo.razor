@@ -3,6 +3,7 @@
 @inject ApiClient Api
 @inject NavigationManager Navigation
 @inject ToastService ToastService
+@inject HttpClient Http
 
 <div style="padding:1rem 1.25rem;">
     <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.4rem;">
@@ -59,7 +60,8 @@
                 @foreach (var it in Filtrados.Take(mostrar))
                 {
                     var col = ColorTipo(it.Tipo);
-                    <div style="display:grid; grid-template-columns:150px 1fr 130px 90px 80px; gap:0.5rem; padding:0.55rem 0.9rem; border-bottom:1px solid #f3f4f6; align-items:center; @(it.IsActive ? "" : "opacity:.5;")">
+                    var esSinArmar = it.Tipo == "sin_armar";
+                    <div style="display:grid; grid-template-columns:150px 1fr 130px 90px 80px; gap:0.5rem; padding:0.55rem 0.9rem; border-bottom:1px solid #f3f4f6; align-items:center; @(esSinArmar ? "background:#fef2f2;" : "") @(it.IsActive ? "" : "opacity:.5;")">
                         <span style="font-family:monospace; font-size:0.82rem; color:#1d4ed8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@(string.IsNullOrEmpty(it.Sku) ? "—" : it.Sku)</span>
                         <span style="font-size:0.85rem;">
                             @it.Nombre
@@ -81,10 +83,21 @@
                             @(it.Stock.HasValue ? it.Stock.Value.ToString() + (it.StockEsArmable ? " arm." : "") : "—")
                         </span>
                         <span style="text-align:right;">
-                            <button class="btn btn-sm" @onclick="() => Navigation.NavigateTo(it.EditRoute)"
-                                    style="font-size:0.75rem; padding:0.25rem 0.6rem; background:#eef2ff; color:#3730a3; border:1px solid #c7d2fe; border-radius:5px; cursor:pointer;">
-                                Editar
-                            </button>
+                            @if (esSinArmar)
+                            {
+                                <button class="btn btn-sm" @onclick="() => AbrirModalArmar(it)"
+                                        style="font-size:0.75rem; padding:0.25rem 0.6rem; background:#7c3aed; color:white; border:none; border-radius:5px; cursor:pointer;"
+                                        title="Armar este código como combo/pack para que descuente stock al vender">
+                                    🧩 Armar
+                                </button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm" @onclick="() => Navigation.NavigateTo(it.EditRoute)"
+                                        style="font-size:0.75rem; padding:0.25rem 0.6rem; background:#eef2ff; color:#3730a3; border:1px solid #c7d2fe; border-radius:5px; cursor:pointer;">
+                                    Editar
+                                </button>
+                            }
                         </span>
                     </div>
                 }
@@ -102,11 +115,98 @@
     }
 </div>
 
+@* Modal: armar un combo/pack desde un código de MeLi sin armar *@
+@if (showArmarModal && armarItem != null)
+{
+    <div class="modal-overlay" @onclick="CerrarModalArmar"
+         style="position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; display:flex; align-items:center; justify-content:center; padding:1rem;">
+        <div class="modal" style="max-width:540px; width:100%; background:white; border-radius:8px; box-shadow:0 10px 40px rgba(0,0,0,0.3); overflow:hidden;" @onclick:stopPropagation="true">
+            <div class="modal-header" style="padding:1rem 1.25rem; border-bottom:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin:0; font-size:1.1rem;">🧩 Armar combo / pack</h3>
+                <button class="btn-close" @onclick="CerrarModalArmar"
+                        style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:#6b7280; line-height:1; padding:0 0.4rem;">×</button>
+            </div>
+            <div class="modal-body" style="padding:1rem 1.25rem; max-height:70vh; overflow-y:auto;">
+                <p style="font-size:0.82rem; color:#6b7280; margin-bottom:0.8rem;">
+                    El código <strong style="font-family:monospace;">@armarItem.Sku</strong> es un pack.
+                    Elegí <strong>de qué producto</strong> es y <strong>cuántas unidades</strong> trae.
+                    Cuando se venda esta publicación, el sistema va a descontar esa cantidad automáticamente.
+                </p>
+
+                <div class="form-group">
+                    <label class="form-label">Este pack es de… (producto base) *</label>
+                    <input class="form-input" @bind="armarBuscar" @bind:event="oninput"
+                           @onkeyup="BuscarProductosArmar"
+                           placeholder="🔍 Buscá por código o nombre (ej: ABE-CHED)" />
+                    @if (armarResultados.Count > 0)
+                    {
+                        <div style="margin-top:0.3rem; max-height:180px; overflow-y:auto; background:white; border:1px solid #e5e7eb; border-radius:4px;">
+                            @foreach (var p in armarResultados)
+                            {
+                                <div @onclick="@(() => SeleccionarProductoArmar(p))"
+                                     style="padding:0.35rem 0.5rem; cursor:pointer; border-bottom:1px solid #f3f4f6; font-size:0.8rem; @(armarSeleccionado?.Id == p.Id ? "background:#dbeafe;" : "")">
+                                    <strong style="font-family:monospace; color:#1d4ed8;">@p.Sku</strong>
+                                    <span style="color:#374151;"> · @p.Nombre</span>
+                                    <span style="color:#6b7280; font-size:0.72rem;"> (stock: @p.StockUnidades)</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                    @if (armarSeleccionado is not null)
+                    {
+                        <div style="margin-top:0.4rem; font-size:0.8rem; color:#15803d;">
+                            ✓ Elegido: <strong>@armarSeleccionado.Sku</strong> · @armarSeleccionado.Nombre
+                        </div>
+                    }
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">¿Cuántas unidades trae el pack? *</label>
+                    <input class="form-input" type="number" min="1" step="1" @bind="armarCantidad"
+                           style="max-width:140px; text-align:right;" />
+                    @if (armarSeleccionado is not null && armarCantidad > 0)
+                    {
+                        <small style="display:block; margin-top:0.35rem; font-size:0.78rem; color:#374151;">
+                            Cada venta de <strong>@armarItem.Sku</strong> va a descontar
+                            <strong>@armarCantidad × @armarSeleccionado.Sku</strong>.
+                        </small>
+                    }
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Nombre (opcional)</label>
+                    <input class="form-input" @bind="armarNombre" placeholder="Se toma el título de MeLi si lo dejás vacío" maxlength="200" />
+                </div>
+            </div>
+            <div class="modal-footer" style="padding:0.85rem 1.25rem; border-top:1px solid #e5e7eb; display:flex; justify-content:flex-end; gap:0.5rem; background:#f9fafb;">
+                <button class="btn btn-secondary" @onclick="CerrarModalArmar" disabled="@armarGuardando">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmarArmarCombo"
+                        style="background:#7c3aed;"
+                        disabled="@(armarGuardando || armarSeleccionado is null || armarCantidad <= 0)">
+                    @(armarGuardando ? "Armando..." : "✅ Armar y aplicar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private List<CafeCatalogoItemDto>? items;
     private string q = "";
     private string filtro = "todos";
     private int mostrar = 100;
+
+    // Estado del modal "Armar combo/pack"
+    private bool showArmarModal;
+    private CafeCatalogoItemDto? armarItem;
+    private string armarBuscar = "";
+    private List<ProductoBuscadoRow> armarResultados = new();
+    private ProductoBuscadoRow? armarSeleccionado;
+    private decimal armarCantidad = 1;
+    private string armarNombre = "";
+    private bool armarGuardando;
+
+    private record ProductoBuscadoRow(int Id, string Sku, string Nombre, int StockUnidades);
 
     private record FiltroDef(string Key, string Label);
     private static readonly FiltroDef[] Filtros = new[]
@@ -117,6 +217,7 @@
         new FiltroDef("compuesto", "Compuestos"),
         new FiltroDef("kit", "Kits"),
         new FiltroDef("servicio", "Servicios"),
+        new FiltroDef("sin_armar", "Sin armar"),
     };
 
     protected override async Task OnInitializedAsync()
@@ -150,6 +251,81 @@
     private int ContarTipo(string key)
         => items is null ? 0 : (key == "todos" ? items.Count : items.Count(i => i.Tipo == key));
 
+    // ═══ Armar combo/pack desde un código de MeLi sin armar ═══
+    private void AbrirModalArmar(CafeCatalogoItemDto it)
+    {
+        armarItem = it;
+        armarBuscar = "";
+        armarResultados = new();
+        armarSeleccionado = null;
+        armarCantidad = 1;
+        armarNombre = "";
+        showArmarModal = true;
+    }
+
+    private void CerrarModalArmar()
+    {
+        if (armarGuardando) return;
+        showArmarModal = false;
+        armarItem = null;
+    }
+
+    private async Task BuscarProductosArmar()
+    {
+        if (string.IsNullOrWhiteSpace(armarBuscar) || armarBuscar.Trim().Length < 2)
+        {
+            armarResultados = new();
+            return;
+        }
+        try
+        {
+            var url = $"/api/cafe/productos/search?q={Uri.EscapeDataString(armarBuscar.Trim())}&limit=15";
+            var raw = await Http.GetFromJsonAsync<List<ProductoBuscadoRow>>(url);
+            armarResultados = raw ?? new();
+        }
+        catch { armarResultados = new(); }
+    }
+
+    private void SeleccionarProductoArmar(ProductoBuscadoRow p)
+    {
+        armarSeleccionado = p;
+        armarBuscar = $"{p.Sku} · {p.Nombre}";
+        armarResultados = new();
+    }
+
+    private async Task ConfirmarArmarCombo()
+    {
+        if (armarItem is null || string.IsNullOrEmpty(armarItem.Sku)) return;
+        if (armarSeleccionado is null) { ToastService.Warning("Elegí el producto base primero"); return; }
+        if (armarCantidad <= 0) { ToastService.Warning("La cantidad tiene que ser mayor a 0"); return; }
+        armarGuardando = true;
+        try
+        {
+            var body = new
+            {
+                baseProductoId = armarSeleccionado.Id,
+                cantidad = armarCantidad,
+                nombre = string.IsNullOrWhiteSpace(armarNombre) ? null : armarNombre.Trim(),
+                esCompuesto = false
+            };
+            var resp = await Http.PostAsJsonAsync($"/api/meli/skus-meli/{Uri.EscapeDataString(armarItem.Sku)}/armar-combo", body);
+            if (resp.IsSuccessStatusCode)
+            {
+                ToastService.Success($"✓ Armado: {armarItem.Sku} = {armarCantidad} × {armarSeleccionado.Sku}. La publicación ya descuenta stock.");
+                showArmarModal = false;
+                armarItem = null;
+                items = await Api.GetCafeCatalogoAsync() ?? new();
+            }
+            else
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                ToastService.Error("No se pudo armar: " + err);
+            }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { armarGuardando = false; }
+    }
+
     private static string LabelTipo(string tipo) => tipo switch
     {
         "producto" => "Producto",
@@ -157,6 +333,7 @@
         "compuesto" => "Compuesto",
         "kit" => "Kit",
         "servicio" => "Servicio",
+        "sin_armar" => "Sin armar",
         _ => tipo,
     };
 
@@ -168,6 +345,7 @@
         "compuesto" => new("#EEEDFE", "#3C3489"),
         "kit" => new("#EAF3DE", "#27500A"),
         "servicio" => new("#E1F5EE", "#085041"),
+        "sin_armar" => new("#FCEBEB", "#791F1F"),
         _ => new("#F1EFE8", "#444441"),
     };
 }

@@ -97,6 +97,27 @@ public class CafeCatalogoController : ControllerBase
                 null, false, s.IsActive, s.Descripcion, "/cafe/servicios"));
         }
 
+        // ── SKUs de MercadoLibre SIN armar (huérfanos): están publicados en MeLi pero no
+        //    existen todavía como producto/combo/kit en el sistema. Se muestran en rojo
+        //    con el botón "🧩 Armar" para resolverlos sin salir de esta pantalla. ──
+        var skusSistema = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in productos) if (!string.IsNullOrEmpty(p.Sku)) skusSistema.Add(p.Sku!);
+        foreach (var c in combos) if (!string.IsNullOrEmpty(c.Sku)) skusSistema.Add(c.Sku!);
+        foreach (var k in kits) if (!string.IsNullOrEmpty(k.Sku)) skusSistema.Add(k.Sku);
+
+        var meliPubs = await _db.MeliItems.AsNoTracking()
+            .Where(mi => mi.Sku != null && mi.Sku != "" && (mi.Status == "active" || mi.Status == "paused"))
+            .Select(mi => new { mi.Sku, mi.Title })
+            .ToListAsync();
+
+        foreach (var g in meliPubs.Where(mi => !skusSistema.Contains(mi.Sku!)).GroupBy(mi => mi.Sku!))
+        {
+            var titulo = g.Select(x => x.Title).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t)) ?? g.Key;
+            items.Add(new CafeCatalogoItemDto(
+                0, "sin_armar", g.Key, titulo, null,
+                null, false, true, "publicación de MeLi sin armar", "/cafe/skus-meli"));
+        }
+
         var ordenado = items
             .OrderBy(i => string.IsNullOrEmpty(i.Sku) ? 1 : 0)
             .ThenBy(i => i.Sku)
