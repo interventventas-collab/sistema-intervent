@@ -37,7 +37,7 @@
     @* WhatsApp — conversaciones donde el último mensaje lo mandó el CLIENTE (sin responder).
        2026-07-22 pedido Osmar. Click en una conversación → abre /whatsapp con ese chat elegido.
        2026-07-29: movida acá arriba, al lado del mapa. *@
-    <div class="dashboard-detail-card mac-stat-card accent-green dash-hero-wa tres-card @(waOpen ? "" : "tres-collapsed")" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/whatsapp")' title="Ir a WhatsApp">
+    <div class="dashboard-detail-card mac-stat-card accent-green dash-hero-wa tres-card @(waOpen ? "" : "tres-collapsed")" style="cursor:pointer; position:relative;" @onclick="AbrirWhatsAppEnPestana" title="Abrir WhatsApp en una pestaña nueva">
         <div>
             <div class="mac-card-header">
                 <div class="mac-card-iconbox" style="background:#dcfce7; color:#16a34a;">
@@ -62,7 +62,7 @@
                         @foreach (var c in waConvs.Take(5))
                         {
                             var sinResponder = c.UltimoDireccion == "INCOMING";
-                            <div class="tres-row" style="cursor:pointer;" @onclick:stopPropagation="true" @onclick='() => AbrirChatWa(c.Numero)' title="Abrir este chat en /whatsapp">
+                            <div class="tres-row" style="cursor:pointer;" @onclick:stopPropagation="true" @onclick='() => AbrirChatWa(c.Numero)' title="Abrir este chat en una pestaña nueva">
                                 <span class="tres-row-main">
                                     <span class="tres-row-t">
                                         @if (sinResponder)
@@ -1770,8 +1770,11 @@
     }
 
     /// <summary>Abre /whatsapp con esa conversación ya seleccionada (la pantalla lee ?numero=).</summary>
-    private void AbrirChatWa(string numero)
-        => Navigation.NavigateTo($"/whatsapp?numero={Uri.EscapeDataString(numero)}");
+    // Abre ese chat puntual en una PESTAÑA NUEVA (igual que la card y el mapa).
+    private async Task AbrirChatWa(string numero)
+    {
+        try { await JS.InvokeVoidAsync("open", $"/whatsapp?numero={Uri.EscapeDataString(numero)}", "_blank"); } catch { }
+    }
 
     private static string WaPrettyNumero(string numero) => numero?.Replace("whatsapp:", "").Trim() ?? "";
 
@@ -1853,6 +1856,13 @@
     private async Task AbrirMapaEnPestana()
     {
         try { await JS.InvokeVoidAsync("open", "/mapeo?full=1", "_blank"); } catch { }
+    }
+
+    // 2026-07-31 (pedido Osmar): tocar la card de WhatsApp abre la pantalla en una PESTAÑA NUEVA
+    // (igual que el mapa), así el sistema queda en esta pestaña.
+    private async Task AbrirWhatsAppEnPestana()
+    {
+        try { await JS.InvokeVoidAsync("open", "/whatsapp", "_blank"); } catch { }
     }
 
     private List<MapeoStopDto>? mapeoStopsMini;
