@@ -247,7 +247,9 @@ public class WhatsAppTwilioController : ControllerBase
                 UltimoAt = g.Max(m => m.CreatedAt),
                 Total = g.Count(),
                 // 2026-07-23 (multi-línea): por qué línea nuestra conversa este número
-                Linea = g.OrderByDescending(m => m.CreatedAt).Where(m => m.LineaPhoneId != null).Select(m => m.LineaPhoneId).FirstOrDefault()
+                Linea = g.OrderByDescending(m => m.CreatedAt).Where(m => m.LineaPhoneId != null).Select(m => m.LineaPhoneId).FirstOrDefault(),
+                // 2026-07-31: canal del último mensaje (TWILIO/CLOUD/INSTAGRAM) para el iconito en el chat
+                Canal = g.OrderByDescending(m => m.CreatedAt).Select(m => m.Canal).FirstOrDefault()
             })
             .ToListAsync();
         // Nombre visible de cada línea (lo auto-registra el webhook en AppSettings)
@@ -279,7 +281,8 @@ public class WhatsAppTwilioController : ControllerBase
                 x.UltimoAt,
                 x.Total,
                 x.Linea,
-                LineaNumero = x.Linea != null && lineasNombres.TryGetValue(x.Linea, out var ln) ? ln : null
+                LineaNumero = x.Linea != null && lineasNombres.TryGetValue(x.Linea, out var ln) ? ln : null,
+                x.Canal
             };
         }).OrderByDescending(x => x.UltimoAt).ToList();
         return Ok(result);

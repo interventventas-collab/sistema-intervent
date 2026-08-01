@@ -18,28 +18,40 @@ public class WhatsAppOutboundService
 {
     private readonly MetaWhatsAppService _meta;
     private readonly TwilioWhatsAppService _twilio;
+    private readonly InstagramDmService _ig;
     private readonly AppDbContext _db;
     private readonly ILogger<WhatsAppOutboundService> _logger;
 
+    /// <summary>Prefijo con el que se guarda el número de una conversación de Instagram:
+    /// "ig:{IGSID}" (IGSID = id del usuario de Instagram). Así conviven WA e IG en la misma tabla.</summary>
+    public const string IgPrefix = "ig:";
+
     public WhatsAppOutboundService(MetaWhatsAppService meta, TwilioWhatsAppService twilio,
-        AppDbContext db, ILogger<WhatsAppOutboundService> logger)
+        InstagramDmService ig, AppDbContext db, ILogger<WhatsAppOutboundService> logger)
     {
         _meta = meta;
         _twilio = twilio;
+        _ig = ig;
         _db = db;
         _logger = logger;
     }
 
-    /// <summary>True si al menos un proveedor (Meta o Twilio) está configurado.</summary>
-    public bool AnyConfigured => _meta.IsConfigured || _twilio.IsConfigured;
+    /// <summary>True si al menos un canal (Meta WhatsApp, Twilio o Instagram) está configurado.</summary>
+    public bool AnyConfigured => _meta.IsConfigured || _twilio.IsConfigured || _ig.IsConfigured;
 
     public async Task<(string? Id, string Canal)> SendTextAsync(string numero, string body)
     {
         var (canal, linea) = await PickCanalYLineaAsync(numero);
+        if (canal == "INSTAGRAM")
+            return (await _ig.SendTextAsync(linea ?? "", IgsidDe(numero), body), "INSTAGRAM");
         if (canal == "CLOUD")
             return (await _meta.SendTextAsync(numero, body, lineaPhoneId: linea), "CLOUD");
         return (await _twilio.SendTextAsync(numero, body), "TWILIO");
     }
+
+    /// <summary>Saca el IGSID puro del "ig:{IGSID}" guardado como número de la conversación.</summary>
+    private static string IgsidDe(string numero)
+        => numero.StartsWith(IgPrefix, StringComparison.Ordinal) ? numero[IgPrefix.Length..] : numero;
 
     /// <summary>Envía un adjunto. <paramref name="nombreArchivo"/> es el nombre ORIGINAL (ej "factura.pdf"):
     /// se usa para saber si va como documento o como imagen. OJO: la URL del adjunto es del tipo
@@ -47,6 +59,15 @@ public class WhatsAppOutboundService
     public async Task<(string? Id, string Canal)> SendMediaAsync(string numero, string mediaUrl, string? caption = null, string? nombreArchivo = null)
     {
         var (canal, linea) = await PickCanalYLineaAsync(numero);
+        if (canal == "INSTAGRAM")
+        {
+            // IG DM solo manda imágenes por link; para PDF/otros mandamos el link como texto.
+            var esImagen = !EsDocumento(nombreArchivo);
+            if (esImagen)
+                return (await _ig.SendImageAsync(linea ?? "", IgsidDe(numero), mediaUrl), "INSTAGRAM");
+            var texto = string.IsNullOrWhiteSpace(caption) ? mediaUrl : $"{caption}\n{mediaUrl}";
+            return (await _ig.SendTextAsync(linea ?? "", IgsidDe(numero), texto), "INSTAGRAM");
+        }
         if (canal == "CLOUD")
         {
             var esDoc = EsDocumento(nombreArchivo);
@@ -66,6 +87,11 @@ public class WhatsAppOutboundService
             .OrderByDescending(m => m.CreatedAt)
             .Select(m => new { m.Canal, m.LineaPhoneId })
             .FirstOrDefaultAsync();
+
+        // Instagram: se reconoce por el prefijo "ig:" del número. La "línea" es el IG User ID
+        // de la cuenta (guardado en LineaPhoneId del último entrante).
+        if (numero.StartsWith(IgPrefix, StringComparison.Ordinal))
+            return ("INSTAGRAM", ultimo?.LineaPhoneId);
 
         if (ultimo?.Canal == "CLOUD" && _meta.IsConfigured) return ("CLOUD", ultimo.LineaPhoneId);
         if (ultimo?.Canal == "TWILIO" && _twilio.IsConfigured) return ("TWILIO", null);

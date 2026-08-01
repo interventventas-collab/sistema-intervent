@@ -111,6 +111,10 @@
                         <div class="wa-conv-body">
                             <div class="wa-conv-row1">
                                 <span class="wa-conv-name">
+                                    @if (c.Canal == "INSTAGRAM")
+                                    {
+                                        <span title="Mensaje directo de Instagram" style="margin-right:0.15rem;">📸</span>
+                                    }
                                     @(c.NombrePerfil ?? PrettyNumero(c.Numero))
                                     @if (!string.IsNullOrEmpty(c.Rol))
                                     {
@@ -1603,7 +1607,12 @@
         return "?";
     }
 
-    string PrettyNumero(string numero) => numero?.Replace("whatsapp:", "").Trim() ?? "";
+    string PrettyNumero(string numero)
+    {
+        if (string.IsNullOrEmpty(numero)) return "";
+        if (numero.StartsWith("ig:")) return "Usuario de Instagram"; // fallback si no tenemos el @usuario
+        return numero.Replace("whatsapp:", "").Trim();
+    }
 
     // 2026-07-23: buscador de la pestaña Contactos (miles tras la importación de clientes)
     string contactosBusqueda = "";

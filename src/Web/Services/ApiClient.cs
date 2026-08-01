@@ -6144,7 +6144,7 @@ public class ApiClient
     // ===== WhatsApp Twilio chat =====
     /// <summary>Linea/LineaNumero (2026-07-23): por qué número NUESTRO conversa este contacto —
     /// preparación multi-línea (id técnico + número visible). Null si todavía no se sabe.</summary>
-    public record TwConvDto(string Numero, string? NombrePerfil, string? Rol, int? ClienteId, string? ClienteNombre, string? UltimoMensaje, string? UltimoDireccion, DateTime UltimoAt, int Total, string? Linea, string? LineaNumero);
+    public record TwConvDto(string Numero, string? NombrePerfil, string? Rol, int? ClienteId, string? ClienteNombre, string? UltimoMensaje, string? UltimoDireccion, DateTime UltimoAt, int Total, string? Linea, string? LineaNumero, string? Canal = null);
     public record TwReaccionDto(string Emoji, int Count);
     public record TwMsgDto(int Id, string Direccion, string Numero, string? NombrePerfil, string? Cuerpo, string? MediaUrl, string? MediaFilename, int? NumMedia, bool Procesado, string? RespuestaEnviada, DateTime CreatedAt, string? EstadoEntrega, List<TwReaccionDto>? Reacciones);
     public record TwRespRapidaDto(int Id, string Nombre, string Texto, int Orden, bool Activo);

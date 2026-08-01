@@ -79,6 +79,14 @@ services:
       - META_WA_TOKEN=${META_WA_TOKEN:-}
       - META_WA_PHONE_ID=${META_WA_PHONE_ID:-}
       - META_WA_VERIFY_TOKEN=${META_WA_VERIFY_TOKEN:-}
+      # Instagram DM (Messages API oficial de Meta). Una terna ID/TOKEN por cuenta de IG.
+      # El webhook de IG usa el MISMO verify token que WhatsApp (META_WA_VERIFY_TOKEN).
+      - META_IG_FRIKAF_CAFE_ID=${META_IG_FRIKAF_CAFE_ID:-}
+      - META_IG_FRIKAF_CAFE_TOKEN=${META_IG_FRIKAF_CAFE_TOKEN:-}
+      - META_IG_INTERVENT_FRIKAF_ID=${META_IG_INTERVENT_FRIKAF_ID:-}
+      - META_IG_INTERVENT_FRIKAF_TOKEN=${META_IG_INTERVENT_FRIKAF_TOKEN:-}
+      - META_IG_ALQUILERES_ID=${META_IG_ALQUILERES_ID:-}
+      - META_IG_ALQUILERES_TOKEN=${META_IG_ALQUILERES_TOKEN:-}
       # Google Maps Platform (Routes API) para optimizar el orden de las rutas de reparto.
       - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY:-}
       # Clave del navegador para dibujar el mapa (Maps JavaScript API, restringida por dominio).

@@ -95,6 +95,16 @@ public class MetaWhatsAppWebhookController : ControllerBase
         if (!root.TryGetProperty("entry", out var entries) || entries.ValueKind != JsonValueKind.Array)
             return;
 
+        // Instagram DM: Meta postea al MISMO webhook pero con object="instagram" y un formato
+        // distinto (entry[].messaging[] estilo Messenger, no entry[].changes[].value.messages).
+        var objeto = root.TryGetProperty("object", out var objEl) ? objEl.GetString() : null;
+        if (objeto == "instagram")
+        {
+            var igSvc = sp.GetRequiredService<InstagramDmService>();
+            await ProcesarInstagramAsync(db, igSvc, entries, baseUrl);
+            return;
+        }
+
         foreach (var entry in entries.EnumerateArray())
         {
             if (!entry.TryGetProperty("changes", out var changes) || changes.ValueKind != JsonValueKind.Array)
@@ -141,6 +151,142 @@ public class MetaWhatsAppWebhookController : ControllerBase
                 foreach (var m in messages.EnumerateArray())
                     await ProcesarMensajeAsync(db, meta, pedidoSvc, listasCtrl, m, nombres, baseUrl, lineaId);
             }
+        }
+    }
+
+    // ═══════════════ INSTAGRAM DM (2026-07-31) ═══════════════
+    // Meta manda los DM de Instagram al MISMO webhook con object="instagram". El formato es
+    // estilo Messenger: entry[].messaging[] con sender/recipient/message. Guardamos en la MISMA
+    // bandeja (WhatsApp_TwilioMensajes) con Canal="INSTAGRAM", número "ig:{IGSID}" y LineaPhoneId =
+    // IG User ID de la cuenta, así se lee y responde desde la misma pantalla del chat (selector "Línea").
+
+    private async Task ProcesarInstagramAsync(AppDbContext db, InstagramDmService ig, JsonElement entries, string baseUrl)
+    {
+        foreach (var entry in entries.EnumerateArray())
+        {
+            // entry.id = IG User ID de NUESTRA cuenta (la línea). Con eso sabemos por cuál responder.
+            var cuentaId = entry.TryGetProperty("id", out var eid) ? eid.GetString() : null;
+            if (string.IsNullOrEmpty(cuentaId)) continue;
+
+            // Etiqueta visible de la línea en el chat (ej "IG @frikaf_cafe").
+            var cuenta = ig.CuentaPorId(cuentaId);
+            if (cuenta is not null)
+                await RegistrarLineaAsync(db, cuentaId!, $"IG @{cuenta.Label}");
+
+            if (!entry.TryGetProperty("messaging", out var messaging) || messaging.ValueKind != JsonValueKind.Array)
+                continue;
+
+            foreach (var ev in messaging.EnumerateArray())
+            {
+                if (!ev.TryGetProperty("message", out var message)) continue; // ignoramos reacciones/lecturas/etc.
+
+                var mid = message.TryGetProperty("mid", out var midEl) ? midEl.GetString() : null;
+                var esEco = message.TryGetProperty("is_echo", out var ecoEl) && ecoEl.ValueKind == JsonValueKind.True;
+
+                var senderId = ev.TryGetProperty("sender", out var s) && s.TryGetProperty("id", out var sid) ? sid.GetString() : null;
+                var recipientId = ev.TryGetProperty("recipient", out var r) && r.TryGetProperty("id", out var rid) ? rid.GetString() : null;
+
+                // is_echo=true → lo mandó NUESTRA cuenta (ej. desde la app de IG). El "otro" es el destinatario.
+                var direccion = esEco ? "OUTGOING" : "INCOMING";
+                var otroId = esEco ? recipientId : senderId;
+                if (string.IsNullOrEmpty(otroId)) continue;
+
+                // Deduplicar: Meta entrega "at least once" y además nos re-eco nuestros propios envíos.
+                if (!string.IsNullOrEmpty(mid) &&
+                    await db.WhatsAppTwilioMensajes.AnyAsync(x => x.TwilioMessageSid == mid))
+                {
+                    _logger.LogInformation("[Instagram DM] mid {Mid} ya procesado, salteo", mid);
+                    continue;
+                }
+
+                var texto = message.TryGetProperty("text", out var tEl) ? tEl.GetString() : null;
+
+                // Adjuntos: en IG la URL viene DIRECTA en el webhook (no un media_id como WhatsApp).
+                string? mediaUrl = null, mediaNombre = null;
+                if (message.TryGetProperty("attachments", out var atts) && atts.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var att in atts.EnumerateArray())
+                    {
+                        var tipoAtt = att.TryGetProperty("type", out var tp) ? tp.GetString() : null;
+                        var url = att.TryGetProperty("payload", out var pl) && pl.TryGetProperty("url", out var ul) ? ul.GetString() : null;
+                        if (string.IsNullOrWhiteSpace(url)) continue;
+                        (mediaUrl, mediaNombre) = await GuardarAdjuntoIgAsync(db, ig, url!, tipoAtt ?? "file", baseUrl);
+                        if (mediaUrl != null) break; // guardamos el primero; alcanza para verlo en el chat
+                        if (string.IsNullOrWhiteSpace(texto)) texto = $"[{tipoAtt} de Instagram]";
+                    }
+                }
+
+                var numero = WhatsAppOutboundService.IgPrefix + otroId;
+
+                // Nombre del contacto: solo lo buscamos para ENTRANTES de conversaciones nuevas (1 llamada API).
+                string? nombrePerfil = null;
+                if (direccion == "INCOMING")
+                {
+                    var yaTiene = await db.WhatsAppTwilioMensajes.AnyAsync(m => m.Numero == numero && m.NombrePerfil != null);
+                    if (!yaTiene)
+                    {
+                        var (username, name) = await ig.GetPerfilAsync(cuentaId!, otroId!);
+                        nombrePerfil = username != null ? "@" + username : name;
+                    }
+                }
+
+                db.WhatsAppTwilioMensajes.Add(new WhatsAppTwilioMensaje
+                {
+                    Direccion = direccion,
+                    Numero = numero,
+                    NombrePerfil = nombrePerfil,
+                    Cuerpo = texto,
+                    MediaUrl = mediaUrl,
+                    MediaFilename = mediaNombre,
+                    LineaPhoneId = cuentaId,
+                    NumMedia = mediaUrl != null ? 1 : 0,
+                    TwilioMessageSid = mid,
+                    Canal = "INSTAGRAM",
+                    Procesado = true,
+                    CreatedAt = DateTime.UtcNow
+                });
+                await db.SaveChangesAsync();
+                _logger.LogInformation("[Instagram DM] {Dir} {Numero} (@{Label}): {Body}", direccion, numero, cuenta?.Label, texto);
+            }
+        }
+    }
+
+    /// <summary>Baja un adjunto de Instagram (URL directa) y lo re-hostea igual que los de WhatsApp,
+    /// para que la pantalla del chat lo muestre. Devuelve (url pública, nombre) o (null, null).</summary>
+    private async Task<(string? Url, string? Nombre)> GuardarAdjuntoIgAsync(AppDbContext db, InstagramDmService ig,
+        string url, string tipo, string baseUrl)
+    {
+        try
+        {
+            var (bytes, contentType) = await ig.DownloadAsync(url);
+            if (bytes is null || bytes.Length == 0) return (null, null);
+
+            Directory.CreateDirectory(UploadsDir);
+            var ext = MetaWhatsAppService.ExtensionDesdeMime(contentType);
+            var token = GenerarToken();
+            var stored = token + ext;
+            await System.IO.File.WriteAllBytesAsync(Path.Combine(UploadsDir, stored), bytes);
+
+            var nombre = $"ig-{tipo}-{DateTime.Now:yyyyMMdd-HHmmss}{ext}";
+            db.WhatsAppTwilioUploads.Add(new WhatsAppTwilioUpload
+            {
+                Token = token,
+                OriginalFilename = nombre,
+                StoredFilename = stored,
+                ContentType = string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType!,
+                SizeBytes = bytes.LongLength,
+                CreatedAt = DateTime.UtcNow,
+                ExpiresAt = DateTime.UtcNow.AddYears(5) // lo que manda el cliente se conserva
+            });
+            await db.SaveChangesAsync();
+
+            _logger.LogInformation("[Instagram DM] Adjunto guardado: {Nombre} ({Bytes} bytes)", nombre, bytes.Length);
+            return ($"{baseUrl}/api/whatsapp/twilio/files/{token}{ext}", nombre);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Instagram DM] No pude guardar el adjunto de {Url}", url);
+            return (null, null);
         }
     }
 
