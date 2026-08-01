@@ -127,15 +127,20 @@
                                 <span class="wa-conv-name">
                                     @if (c.Canal == "INSTAGRAM")
                                     {
-                                        <span title="Mensaje directo de Instagram" style="margin-right:0.15rem;">📸</span>
+                                        @* 2026-07-31: Instagram → chip "IG" chico + el @usuario grande como nombre *@
+                                        <span class="wa-ig-tag" title="Mensaje directo de Instagram">IG</span>
+                                        <span>@MostrarNombreIg(c)</span>
                                     }
-                                    @(c.NombrePerfil ?? PrettyNumero(c.Numero))
+                                    else
+                                    {
+                                        @(c.NombrePerfil ?? PrettyNumero(c.Numero))
+                                    }
                                     @if (!string.IsNullOrEmpty(c.Rol))
                                     {
                                         <span class="wa-rol-tag">@RolEmoji(c.Rol)</span>
                                     }
-                                    @* etiqueta de línea, solo con 2+ líneas conectadas *@
-                                    @if (LineasDetectadas().Count > 1 && !string.IsNullOrEmpty(c.LineaNumero))
+                                    @* etiqueta de línea: solo para WhatsApp (en IG el @ ya es el nombre) y con 2+ líneas *@
+                                    @if (c.Canal != "INSTAGRAM" && LineasDetectadas().Count > 1 && !string.IsNullOrEmpty(c.LineaNumero))
                                     {
                                         <span style="font-size:0.6rem; background:#e0e7ff; color:#3730a3; padding:0.05rem 0.35rem; border-radius:999px; white-space:nowrap;" title="Escribió a este número nuestro">@c.LineaNumero</span>
                                     }
@@ -182,7 +187,7 @@
             <div class="wa-thread-header">
                 <div class="wa-avatar" style="@(AvatarColor(SelectedConv()))">@AvatarLetra(SelectedConv())</div>
                 <div style="flex:1;">
-                    <div style="font-weight:600;">@(SelectedConv()?.NombrePerfil ?? PrettyNumero(selectedNumero))</div>
+                    <div style="font-weight:600;">@(MostrarNombre(SelectedConv()))</div>
                     <div style="font-size:0.75rem; color:#6b7280; display:flex; gap:0.5rem; align-items:center;">
                         <span>@PrettyNumero(selectedNumero)</span>
                         @if (SelectedConv()?.ClienteId is int cid)
@@ -721,6 +726,10 @@
     .wa-conv-body { flex: 1; min-width: 0; }
     .wa-conv-row1 { display: flex; justify-content: space-between; gap: 0.5rem; }
     .wa-conv-name { font-weight: 600; font-size: 0.9rem; color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* 2026-07-31: chip "IG" con el degradé de Instagram, para las conversaciones de DM */
+    .wa-ig-tag { display: inline-block; font-size: 0.58rem; font-weight: 800; line-height: 1; color: #fff;
+        background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
+        padding: 0.15rem 0.3rem; border-radius: 4px; margin-right: 0.3rem; vertical-align: middle; letter-spacing: .02em; }
     .wa-conv-hora { font-size: 0.7rem; color: #9ca3af; flex-shrink: 0; }
     .wa-conv-row2 { display: flex; justify-content: space-between; gap: 0.5rem; margin-top: 0.15rem; }
     .wa-conv-last { font-size: 0.8rem; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
@@ -861,7 +870,7 @@
             <button class="btn btn-sm btn-outline-secondary" @onclick="CerrarAdjuntarServidor">×</button>
         </div>
         <div style="font-size:0.75rem; color:#6b7280; margin-top:0.25rem;">
-            Enviar a <strong>@(SelectedConv()?.NombrePerfil ?? PrettyNumero(selectedNumero ?? ""))</strong>
+            Enviar a <strong>@(MostrarNombre(SelectedConv()))</strong>
         </div>
         <div class="wa-srv-tabs">
             <button class="wa-srv-tab @(srvTab == "VENTA" ? "active" : "")" @onclick='() => CambiarTabServidor("VENTA")'>🧾 Facturas/Ventas</button>
@@ -1273,7 +1282,7 @@
     async Task BorrarConversacion()
     {
         if (selectedNumero is null) return;
-        var nombre = SelectedConv()?.NombrePerfil ?? PrettyNumero(selectedNumero);
+        var nombre = MostrarNombre(SelectedConv());
         var seguro = await JS.InvokeAsync<bool>("confirm",
             $"¿Borrar TODA la conversación con {nombre}?\n\nSe borra solo del sistema (el chat en el celular del cliente queda como está). Esto no se puede deshacer.");
         if (!seguro) return;
@@ -1624,8 +1633,27 @@
     string PrettyNumero(string numero)
     {
         if (string.IsNullOrEmpty(numero)) return "";
-        if (numero.StartsWith("ig:")) return "Usuario de Instagram"; // fallback si no tenemos el @usuario
+        if (numero.StartsWith("ig:")) return "Instagram"; // fallback si no tenemos el @usuario
         return numero.Replace("whatsapp:", "").Trim();
+    }
+
+    // 2026-07-31: nombre a mostrar para una conversación de Instagram = el @usuario si lo tenemos;
+    // si no, la @cuenta a la que escribió (de "IG @cuenta"); nunca "ig:..." ni "Usuario de Instagram".
+    string MostrarNombreIg(ApiClient.TwConvDto c)
+    {
+        if (!string.IsNullOrEmpty(c.NombrePerfil) && !c.NombrePerfil.StartsWith("ig:"))
+            return c.NombrePerfil;
+        if (!string.IsNullOrEmpty(c.LineaNumero) && c.LineaNumero.StartsWith("IG "))
+            return c.LineaNumero.Substring(3).Trim();
+        return "Instagram";
+    }
+
+    // Nombre a mostrar para cualquier conversación (WhatsApp o Instagram), reutilizable en la cabecera.
+    string MostrarNombre(ApiClient.TwConvDto? c)
+    {
+        if (c is null) return "";
+        if (c.Canal == "INSTAGRAM") return MostrarNombreIg(c);
+        return c.NombrePerfil ?? PrettyNumero(c.Numero);
     }
 
     // 2026-07-23: buscador de la pestaña Contactos (miles tras la importación de clientes)
