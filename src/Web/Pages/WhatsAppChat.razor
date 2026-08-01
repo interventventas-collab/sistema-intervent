@@ -77,6 +77,20 @@
             <button class="wa-filtro @(filtroRol=="cliente" ? "active" : "")" @onclick='() => filtroRol="cliente"'>🛍️ Clientes</button>
             <button class="wa-filtro @(filtroRol=="sin" ? "active" : "")" @onclick='() => filtroRol="sin"' title="Conversaciones sin contacto asignado">❓ Sin asignar</button>
         </div>
+        @* 2026-07-31: filtros por CUENTA (línea de WhatsApp o cuenta de Instagram). Default "Todas".
+           Solo aparecen cuando hay 2+ cuentas conectadas; con una sola no molestan. Reusan filtroLinea. *@
+        @{ var _lineasChips = LineasDetectadas(); }
+        @if (_lineasChips.Count > 1)
+        {
+            <div class="wa-filtros" style="border-top:1px solid #eef0f2; margin-top:.35rem; padding-top:.45rem;">
+                <button class="wa-filtro @(filtroLinea=="" ? "active" : "")" @onclick='() => filtroLinea=""' title="Ver los mensajes de todas las cuentas">📥 Todas</button>
+                @foreach (var l in _lineasChips)
+                {
+                    <button class="wa-filtro @(filtroLinea==l.Id ? "active" : "")" @onclick="() => filtroLinea=l.Id"
+                            title="Ver solo esta cuenta">@EtiquetaLineaChip(l.Numero, l.Id)</button>
+                }
+            </div>
+        }
         @* 2026-07-29 (Paso 2): el filtro por número NUESTRO se movió al selector "Línea" de la barra
            superior. Cuando hay un filtro de línea puesto, avisamos con un chip para que se note. *@
         @if (!string.IsNullOrEmpty(filtroLinea) && LineasDetectadas().FirstOrDefault(x => x.Id == filtroLinea) is var lf && lf.Numero != null)
@@ -1708,6 +1722,16 @@
     // "Todas las líneas"; sin ninguna detectada todavía = etiqueta genérica hasta que entre el 1er mensaje.
     bool showLineaMenu = false;
     void SeleccionarLinea(string id) { filtroLinea = id; showLineaMenu = false; }
+
+    // 2026-07-31: etiqueta corta para el chip de cada cuenta. Instagram viene como "IG @usuario"
+    // (lo registra el webhook) → 📸 @usuario; WhatsApp es un número → 📱 número.
+    string EtiquetaLineaChip(string? lineaNumero, string id)
+    {
+        var t = lineaNumero ?? id;
+        if (t.StartsWith("IG ", StringComparison.Ordinal))
+            return "📸 " + t.Substring(3).Trim();
+        return "📱 " + PrettyNumero(t);
+    }
     bool LineaActivaTieneNumero =>
         LineasDetectadas().Count == 1
         || (!string.IsNullOrEmpty(filtroLinea) && LineasDetectadas().Any(x => x.Id == filtroLinea));
