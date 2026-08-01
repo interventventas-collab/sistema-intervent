@@ -69,6 +69,7 @@ services:
       # WhatsApp Cloud API oficial de Meta (alternativa a Twilio, sin intermediario).
       - META_WA_TOKEN=${META_WA_TOKEN:-}
       - META_WA_PHONE_ID=${META_WA_PHONE_ID:-}
+      - META_WA_WABA_ID=${META_WA_WABA_ID:-}
       - META_WA_VERIFY_TOKEN=${META_WA_VERIFY_TOKEN:-}
       # Instagram DM (Messages API oficial de Meta). Una terna ID/TOKEN por cuenta de IG.
       # El webhook de IG usa el MISMO verify token que WhatsApp (META_WA_VERIFY_TOKEN).

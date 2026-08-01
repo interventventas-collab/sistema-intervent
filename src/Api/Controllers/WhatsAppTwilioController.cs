@@ -229,6 +229,85 @@ public class WhatsAppTwilioController : ControllerBase
         }
     }
 
+    // ===== 2026-08-01: INICIAR CONVERSACIÓN NUEVA con plantilla aprobada =====
+
+    /// <summary>Lista las plantillas APROBADAS de la WABA (para escribir primero, fuera de la ventana de 24h).</summary>
+    [HttpGet("plantillas")]
+    [Authorize]
+    public async Task<IActionResult> Plantillas()
+    {
+        var todas = await _meta.GetTemplatesAsync();
+        var aprobadas = todas
+            .Where(t => string.Equals(t.Status, "APPROVED", StringComparison.OrdinalIgnoreCase)
+                        && !string.Equals(t.Name, "hello_world", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(t => t.Category).ThenBy(t => t.Name)
+            .Select(t => new { t.Name, t.Language, t.Category, t.BodyText, t.VariableCount })
+            .ToList();
+        return Ok(aprobadas);
+    }
+
+    /// <summary>Lista las líneas de WhatsApp conectadas (phone_id + número visible) para elegir desde cuál iniciar.</summary>
+    [HttpGet("lineas")]
+    [Authorize]
+    public async Task<IActionResult> Lineas()
+    {
+        var lineas = await _db.AppSettings.AsNoTracking()
+            .Where(s => s.Key.StartsWith("whatsapp.linea."))
+            .OrderBy(s => s.Value)
+            .Select(s => new { PhoneId = s.Key.Substring("whatsapp.linea.".Length), Numero = s.Value })
+            .ToListAsync();
+        return Ok(lineas);
+    }
+
+    /// <summary>INICIA una conversación mandando una plantilla aprobada a un número. WhatsApp lo exige para
+    /// escribir primero. Guarda el saliente en la bandeja (Canal=CLOUD) para que aparezca en el chat.</summary>
+    [HttpPost("iniciar")]
+    [Authorize]
+    public async Task<IActionResult> Iniciar([FromBody] IniciarRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Numero) || string.IsNullOrWhiteSpace(req.Plantilla) || string.IsNullOrWhiteSpace(req.Idioma))
+            return BadRequest(new { error = "Número, plantilla e idioma son obligatorios" });
+        if (!_meta.IsConfigured)
+            return StatusCode(503, new { error = "WhatsApp Cloud (Meta) no está configurado" });
+
+        var digits = MetaWhatsAppService.NormalizeTo(req.Numero);
+        if (digits.Length < 10)
+            return BadRequest(new { error = "El número no parece válido. Poné el número completo con código de país (ej: 5491122525458)." });
+        var numeroStd = "whatsapp:+" + digits;
+
+        try
+        {
+            var vars = req.Variables ?? new List<string>();
+            var wamid = await _meta.SendTemplateAsync(digits, req.Plantilla, req.Idioma, vars, lineaPhoneId: req.LineaPhoneId);
+            if (wamid == null)
+                return StatusCode(502, new { error = "Meta rechazó el envío. Revisá el número, las variables o el método de pago de la cuenta de WhatsApp." });
+
+            var cuerpo = MetaWhatsAppService.RenderTemplateBody(req.CuerpoPreview, vars);
+            if (string.IsNullOrWhiteSpace(cuerpo)) cuerpo = $"[Plantilla: {req.Plantilla}]";
+            var msg = new WhatsAppTwilioMensaje
+            {
+                Direccion = "OUTGOING",
+                Numero = numeroStd,
+                Cuerpo = cuerpo,
+                TwilioMessageSid = wamid,
+                Canal = "CLOUD",
+                LineaPhoneId = req.LineaPhoneId,
+                Procesado = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            _db.WhatsAppTwilioMensajes.Add(msg);
+            await _db.SaveChangesAsync();
+            return Ok(new { ok = true, numero = numeroStd, sid = wamid, id = msg.Id });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error iniciando conversación WhatsApp por plantilla");
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+    public record IniciarRequest(string Numero, string Plantilla, string Idioma, string? LineaPhoneId, List<string>? Variables, string? CuerpoPreview);
+
     /// <summary>GET /api/whatsapp/twilio/conversaciones — lista numeros agrupados con ultimo mensaje.
     /// Si el numero esta en WhatsApp_TwilioContactos, devuelve NombreContacto + Rol (prevalece sobre NombrePerfil de WhatsApp).</summary>
     [HttpGet("conversaciones")]

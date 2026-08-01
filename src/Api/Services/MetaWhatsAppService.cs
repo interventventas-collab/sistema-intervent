@@ -29,6 +29,8 @@ public class MetaWhatsAppService
     private string Token => _config["META_WA_TOKEN"] ?? Environment.GetEnvironmentVariable("META_WA_TOKEN") ?? "";
     private string PhoneId => _config["META_WA_PHONE_ID"] ?? Environment.GetEnvironmentVariable("META_WA_PHONE_ID") ?? "";
     private string ApiVersion => _config["META_WA_API_VERSION"] ?? Environment.GetEnvironmentVariable("META_WA_API_VERSION") ?? "v21.0";
+    // 2026-08-01: WhatsApp Business Account (WABA) ID — necesario para listar las plantillas de mensajes.
+    private string WabaId => _config["META_WA_WABA_ID"] ?? Environment.GetEnvironmentVariable("META_WA_WABA_ID") ?? "";
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(Token) && !string.IsNullOrWhiteSpace(PhoneId);
 
@@ -184,6 +186,110 @@ public class MetaWhatsAppService
         return await PostMessageAsync(payload, to, ct, lineaPhoneId);
     }
 
+    /// <summary>2026-08-01: envía una PLANTILLA aprobada (para INICIAR conversación fuera de la ventana de 24h).
+    /// bodyParams son los valores de las variables {{1}}, {{2}}… del cuerpo (en orden). Devuelve el wamid o null.</summary>
+    public async Task<string?> SendTemplateAsync(string to, string templateName, string languageCode, IList<string>? bodyParams, CancellationToken ct = default, string? lineaPhoneId = null)
+    {
+        EnsureConfigured();
+        var template = new Dictionary<string, object?>
+        {
+            ["name"] = templateName,
+            ["language"] = new { code = languageCode }
+        };
+        if (bodyParams != null && bodyParams.Count > 0)
+        {
+            template["components"] = new object[]
+            {
+                new
+                {
+                    type = "body",
+                    parameters = bodyParams.Select(p => new { type = "text", text = p ?? "" }).ToArray()
+                }
+            };
+        }
+        var payload = new Dictionary<string, object?>
+        {
+            ["messaging_product"] = "whatsapp",
+            ["recipient_type"] = "individual",
+            ["to"] = NormalizeTo(to),
+            ["type"] = "template",
+            ["template"] = template
+        };
+        return await PostMessageAsync(payload, to, ct, lineaPhoneId);
+    }
+
+    /// <summary>2026-08-01: lista las plantillas de mensajes de la WABA (nombre, estado, categoría, idioma,
+    /// texto del cuerpo y cuántas variables tiene). Vacío si no hay WABA configurada o falla.</summary>
+    public async Task<List<PlantillaInfo>> GetTemplatesAsync(CancellationToken ct = default)
+    {
+        if (!IsConfigured || string.IsNullOrWhiteSpace(WabaId)) return new();
+        try
+        {
+            using var http = NewClient();
+            var resp = await http.GetAsync($"{WabaId}/message_templates?fields=name,status,category,language,components&limit=200", ct);
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Meta templates GET falló: {Status} {Body}", (int)resp.StatusCode, body);
+                return new();
+            }
+            using var doc = JsonDocument.Parse(body);
+            var list = new List<PlantillaInfo>();
+            if (doc.RootElement.TryGetProperty("data", out var data))
+            {
+                foreach (var t in data.EnumerateArray())
+                {
+                    var name = t.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
+                    var status = t.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
+                    var category = t.TryGetProperty("category", out var c) ? c.GetString() ?? "" : "";
+                    var language = t.TryGetProperty("language", out var l) ? l.GetString() ?? "" : "";
+                    var bodyText = "";
+                    if (t.TryGetProperty("components", out var comps))
+                    {
+                        foreach (var comp in comps.EnumerateArray())
+                        {
+                            if (comp.TryGetProperty("type", out var ctype) && string.Equals(ctype.GetString(), "BODY", StringComparison.OrdinalIgnoreCase))
+                            {
+                                bodyText = comp.TryGetProperty("text", out var txt) ? txt.GetString() ?? "" : "";
+                                break;
+                            }
+                        }
+                    }
+                    list.Add(new PlantillaInfo(name, status, category, language, bodyText, CountVariables(bodyText)));
+                }
+            }
+            return list;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error listando plantillas de Meta");
+            return new();
+        }
+    }
+
+    /// <summary>Cuenta las variables {{1}}, {{2}}… de un texto de plantilla (devuelve el número más alto).</summary>
+    private static int CountVariables(string body)
+    {
+        if (string.IsNullOrEmpty(body)) return 0;
+        var max = 0;
+        foreach (Match m in Regex.Matches(body, @"\{\{\s*(\d+)\s*\}\}"))
+            if (int.TryParse(m.Groups[1].Value, out var num) && num > max) max = num;
+        return max;
+    }
+
+    /// <summary>Reemplaza {{1}}, {{2}}… por los valores dados, para guardar en la bandeja lo que se mandó.</summary>
+    public static string RenderTemplateBody(string? bodyText, IList<string>? vars)
+    {
+        if (string.IsNullOrEmpty(bodyText)) return bodyText ?? "";
+        if (vars == null || vars.Count == 0) return bodyText;
+        return Regex.Replace(bodyText, @"\{\{\s*(\d+)\s*\}\}", m =>
+        {
+            if (int.TryParse(m.Groups[1].Value, out var idx) && idx >= 1 && idx <= vars.Count)
+                return vars[idx - 1] ?? "";
+            return m.Value;
+        });
+    }
+
     /// <summary>
     /// Baja un archivo que mandó un cliente (foto, PDF, audio…).
     /// Meta NO manda el archivo en el webhook: manda un <c>media_id</c>. Hay que hacer dos pasos:
@@ -292,3 +398,6 @@ public class MetaWhatsAppService
         }
     }
 }
+
+/// <summary>2026-08-01: info de una plantilla de mensajes de la WABA (para el selector de "Nueva conversación").</summary>
+public record PlantillaInfo(string Name, string Status, string Category, string Language, string BodyText, int VariableCount);

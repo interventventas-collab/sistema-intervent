@@ -6198,6 +6198,44 @@ public class ApiClient
         catch (Exception ex) { return (false, ex.Message); }
     }
 
+    // 2026-08-01: iniciar conversación nueva con plantilla aprobada
+    public record TwPlantillaDto(string Name, string Language, string Category, string BodyText, int VariableCount);
+    public record TwLineaDto(string PhoneId, string Numero);
+
+    public async Task<List<TwPlantillaDto>> GetTwPlantillasAsync()
+        => await _http.GetFromJsonAsync<List<TwPlantillaDto>>("/api/whatsapp/twilio/plantillas") ?? new();
+
+    public async Task<List<TwLineaDto>> GetTwLineasAsync()
+        => await _http.GetFromJsonAsync<List<TwLineaDto>>("/api/whatsapp/twilio/lineas") ?? new();
+
+    public async Task<(bool ok, string? error, string? numero)> IniciarTwConversacionAsync(string numero, string plantilla, string idioma, string? lineaPhoneId, List<string> variables, string cuerpoPreview)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/iniciar", new { Numero = numero, Plantilla = plantilla, Idioma = idioma, LineaPhoneId = lineaPhoneId, Variables = variables, CuerpoPreview = cuerpoPreview });
+            if (resp.IsSuccessStatusCode)
+            {
+                string? num = null;
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                    if (doc.RootElement.TryGetProperty("numero", out var nu)) num = nu.GetString();
+                }
+                catch { }
+                return (true, null, num);
+            }
+            string err = "Error iniciando la conversación";
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err;
+            }
+            catch { }
+            return (false, err, null);
+        }
+        catch (Exception ex) { return (false, ex.Message, null); }
+    }
+
     public async Task<List<TwRespRapidaDto>> GetTwRespuestasAsync()
         => await _http.GetFromJsonAsync<List<TwRespRapidaDto>>("/api/whatsapp/twilio/respuestas-rapidas") ?? new();
     public async Task<bool> CreateTwRespuestaAsync(TwRespUpsert r)
