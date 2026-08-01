@@ -198,6 +198,7 @@ public class AppDbContext : DbContext
     public DbSet<WhatsAppTwilioReaccion> WhatsAppTwilioReacciones => Set<WhatsAppTwilioReaccion>();
     public DbSet<WhatsAppTwilioDatoBancario> WhatsAppTwilioDatosBancarios => Set<WhatsAppTwilioDatoBancario>();
     public DbSet<WhatsAppTwilioUpload> WhatsAppTwilioUploads => Set<WhatsAppTwilioUpload>();
+    public DbSet<WhatsAppLineaConfig> WhatsAppLineasConfig => Set<WhatsAppLineaConfig>();
     public DbSet<WhatsAppSector> WhatsAppSectores => Set<WhatsAppSector>();
     public DbSet<WhatsAppSectorOperario> WhatsAppSectorOperarios => Set<WhatsAppSectorOperario>();
     public DbSet<MisAlerta> MisAlertas => Set<MisAlerta>();

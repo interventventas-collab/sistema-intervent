@@ -43,10 +43,14 @@
                 }
                 @foreach (var l in _lineas)
                 {
-                    <button class="wa-linea-opt @(filtroLinea==l.Id ? "sel" : "")" @onclick="@(() => SeleccionarLinea(l.Id))">
-                        <span>📱 @PrettyNumero(l.Numero)</span>
-                        @if (filtroLinea==l.Id) { <span class="wa-linea-check">✓</span> }
-                    </button>
+                    <div class="wa-linea-row">
+                        <button class="wa-linea-opt @(filtroLinea==l.Id ? "sel" : "")" @onclick="@(() => SeleccionarLinea(l.Id))">
+                            @if (LineaImg(l.Id) is string _img) { <img src="@_img" class="wa-linea-av" alt="" /> } else { <span class="wa-linea-av-emoji">📱</span> }
+                            <span>@LineaNombre(l.Id, l.Numero)</span>
+                            @if (filtroLinea==l.Id) { <span class="wa-linea-check">✓</span> }
+                        </button>
+                        <button class="wa-linea-edit" title="Ponerle nombre e imagen a esta línea" @onclick="@(() => AbrirEditLinea(l.Id, l.Numero))">✏️</button>
+                    </div>
                 }
                 @if (_lineas.Count <= 1)
                 {
@@ -101,7 +105,8 @@
         @if (!string.IsNullOrEmpty(filtroLinea) && LineasDetectadas().FirstOrDefault(x => x.Id == filtroLinea) is var lf && lf.Numero != null)
         {
             <div class="wa-linea-activa-chip">
-                📱 Viendo solo: <b>@PrettyNumero(lf.Numero)</b>
+                @if (LineaImg(lf.Id) is string _imv) { <img src="@_imv" class="wa-linea-av-xs" alt="" /> } else { <span>📱</span> }
+                Viendo solo: <b>@LineaNombre(lf.Id, lf.Numero)</b>
                 <button class="wa-linea-activa-x" @onclick='() => filtroLinea=""' title="Ver todas las líneas">×</button>
             </div>
         }
@@ -148,7 +153,7 @@
                                        es el remitente, así que acá va la cuenta (@frikaf_cafe) para saber por dónde entró. *@
                                     @if (LineasDetectadas().Count > 1 && !string.IsNullOrEmpty(c.LineaNumero))
                                     {
-                                        <span style="font-size:0.6rem; background:#e0e7ff; color:#3730a3; padding:0.05rem 0.35rem; border-radius:999px; white-space:nowrap;" title="Cuenta a la que te escribió">@BadgeCuenta(c.LineaNumero)</span>
+                                        <span class="wa-cuenta-tag" title="Cuenta a la que te escribió">@if (LineaImg(c.Linea) is string _imc) { <img src="@_imc" class="wa-linea-av-xs" alt="" /> }@LineaNombre(c.Linea, c.LineaNumero)</span>
                                     }
                                 </span>
                                 <span class="wa-conv-hora">@FormatHora(c.UltimoAt)</span>
@@ -402,7 +407,7 @@
             @if (LineasDetectadas().Count > 1 && SelectedConv()?.LineaNumero is string _lnResp)
             {
                 <div class="wa-composer-linea" title="La respuesta le llega desde este número tuyo, el mismo por el que el cliente te escribió.">
-                    📱 Le respondés desde <b>@PrettyNumero(_lnResp)</b>
+                    📱 Le respondés desde <b>@LineaNombre(SelectedConv()?.Linea, _lnResp)</b>
                 </div>
             }
             <div class="wa-composer">
@@ -582,6 +587,39 @@
                     </button>
                 </div>
             }
+        </div>
+    </div>
+}
+
+@* 2026-08-01: ponerle nombre + imagen a una línea (WhatsApp o Instagram) *@
+@if (showEditLinea)
+{
+    <div class="wa-modal-backdrop" @onclick="@(() => showEditLinea = false)"></div>
+    <div class="wa-modal" style="max-width:420px;">
+        <div class="wa-modal-header">
+            <h3 style="margin:0; flex:1; font-size:1.05rem;">🏷️ Nombre e imagen de la línea</h3>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="@(() => showEditLinea = false)">×</button>
+        </div>
+        <div class="wa-modal-body">
+            <div style="font-size:0.78rem; color:#6b7280; margin-bottom:0.7rem;">Línea real: <b>@(editLineaNumero ?? editLineaId)</b></div>
+            <div style="display:flex; align-items:center; gap:0.9rem; margin-bottom:0.9rem;">
+                <div class="wa-linea-av-big">
+                    @if (!string.IsNullOrEmpty(editLineaImg)) { <img src="@editLineaImg" alt="" /> } else { <span>📱</span> }
+                </div>
+                <div style="font-size:0.82rem;">
+                    <InputFile OnChange="OnEditLineaImg" accept="image/*" />
+                    @if (!string.IsNullOrEmpty(editLineaImg))
+                    {
+                        <div><button class="btn btn-sm btn-link" style="padding:0; font-size:0.8rem; color:#b91c1c;" @onclick="@(() => editLineaImg = null)">Quitar imagen</button></div>
+                    }
+                </div>
+            </div>
+            <label style="font-size:0.78rem; color:#6b7280; display:block;">Nombre</label>
+            <input class="form-control form-control-sm" @bind="editLineaNombre" placeholder="Ej: Ventas Café" maxlength="120" />
+            <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:1.1rem;">
+                <button class="btn btn-secondary btn-sm" @onclick="@(() => showEditLinea = false)">Cancelar</button>
+                <button class="btn btn-success btn-sm" disabled="@editLineaGuardando" @onclick="GuardarEditLinea">@(editLineaGuardando ? "Guardando…" : "✓ Guardar")</button>
+            </div>
         </div>
     </div>
 }
@@ -808,6 +846,19 @@
     .wa-linea-opt.sel { background: #eafcf1; color: #15803d; }
     .wa-linea-check { color: #22c55e; font-weight: 800; }
     .wa-linea-hint { font-size: 0.78rem; color: #64748b; padding: 0.5rem 0.7rem; line-height: 1.4; }
+    /* 2026-08-01: nombre + imagen por línea */
+    .wa-linea-row { display: flex; align-items: center; gap: 2px; }
+    .wa-linea-row .wa-linea-opt { flex: 1; justify-content: flex-start; min-width: 0; }
+    .wa-linea-opt > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wa-linea-check { margin-left: auto; }
+    .wa-linea-edit { background: none; border: none; cursor: pointer; padding: 4px 6px; font-size: .85rem; border-radius: 8px; opacity: .55; flex: 0 0 auto; }
+    .wa-linea-edit:hover { opacity: 1; background: #f1f5f9; }
+    .wa-linea-av { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; flex: 0 0 auto; }
+    .wa-linea-av-emoji { flex: 0 0 auto; }
+    .wa-linea-av-xs { width: 14px; height: 14px; border-radius: 50%; object-fit: cover; vertical-align: middle; margin-right: 3px; }
+    .wa-linea-av-big { width: 56px; height: 56px; border-radius: 50%; overflow: hidden; background: #f1f5f9; display: flex; align-items: center; justify-content: center; font-size: 1.6rem; flex: 0 0 auto; }
+    .wa-linea-av-big img { width: 100%; height: 100%; object-fit: cover; }
+    .wa-cuenta-tag { font-size: 0.6rem; background: #e0e7ff; color: #3730a3; padding: 0.05rem 0.35rem; border-radius: 999px; white-space: nowrap; display: inline-flex; align-items: center; }
     /* chip "viendo solo esta línea" en la barra lateral */
     .wa-linea-activa-chip { display: flex; align-items: center; gap: 0.4rem; margin: 0.5rem 0.7rem 0; padding: 0.4rem 0.7rem; background: #eafcf1; border: 1px solid #bbf7d0; border-radius: 10px; font-size: 0.8rem; color: #15803d; }
     .wa-linea-activa-x { margin-left: auto; background: none; border: none; font-size: 1.1rem; line-height: 1; color: #15803d; cursor: pointer; }
@@ -1169,6 +1220,7 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadConversaciones();
+        await LoadLineasConfig();
         if (!string.IsNullOrWhiteSpace(NumeroInicial))
             await SelectConv(NumeroInicial, conversaciones.FirstOrDefault(c => c.Numero == NumeroInicial)?.Linea);
         await LoadRespuestas();
@@ -1953,14 +2005,72 @@
     bool showLineaMenu = false;
     void SeleccionarLinea(string id) { filtroLinea = id; showLineaMenu = false; }
 
+    // === 2026-08-01: nombre + imagen personalizados por línea (WhatsApp e Instagram) ===
+    Dictionary<string, ApiClient.TwLineaConfigDto> lineaCfg = new();
+    async Task LoadLineasConfig()
+    {
+        try { lineaCfg = (await Api.GetTwLineasConfigAsync()).ToDictionary(x => x.LineaId, x => x); }
+        catch { }
+    }
+    // Nombre a mostrar: el personalizado si existe, sino el número/usuario prolijo.
+    string LineaNombre(string? id, string? numeroFallback)
+    {
+        if (id != null && lineaCfg.TryGetValue(id, out var c) && !string.IsNullOrWhiteSpace(c.Nombre)) return c.Nombre!;
+        var t = numeroFallback ?? id ?? "";
+        if (t.StartsWith("IG ", StringComparison.Ordinal)) return t.Substring(3).Trim();
+        return PrettyNumero(t);
+    }
+    string? LineaImg(string? id) => id != null && lineaCfg.TryGetValue(id, out var c) ? c.ImagenDataUrl : null;
+
+    // Edición del nombre/imagen de una línea
+    bool showEditLinea = false, editLineaGuardando = false;
+    string editLineaId = "", editLineaNombre = "";
+    string? editLineaImg = null, editLineaNumero = null;
+    void AbrirEditLinea(string id, string? numero)
+    {
+        editLineaId = id;
+        editLineaNumero = numero;
+        lineaCfg.TryGetValue(id, out var c);
+        editLineaNombre = c?.Nombre ?? "";
+        editLineaImg = c?.ImagenDataUrl;
+        showLineaMenu = false;
+        showEditLinea = true;
+    }
+    async Task OnEditLineaImg(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+        if (file.Size > 600_000) { Toast.Warning("La imagen es muy grande. Usá una menor a 500 KB."); return; }
+        try
+        {
+            using var ms = new MemoryStream();
+            await file.OpenReadStream(maxAllowedSize: 700_000).CopyToAsync(ms);
+            var mime = string.IsNullOrEmpty(file.ContentType) ? "image/png" : file.ContentType;
+            editLineaImg = $"data:{mime};base64,{Convert.ToBase64String(ms.ToArray())}";
+        }
+        catch { Toast.Error("No se pudo leer la imagen"); }
+        StateHasChanged();
+    }
+    async Task GuardarEditLinea()
+    {
+        editLineaGuardando = true;
+        StateHasChanged();
+        var (ok, err) = await Api.GuardarTwLineaConfigAsync(editLineaId, editLineaNombre, editLineaImg ?? "");
+        editLineaGuardando = false;
+        if (!ok) { Toast.Error(err ?? "No se pudo guardar"); return; }
+        Toast.Success("Línea actualizada ✓");
+        await LoadLineasConfig();
+        showEditLinea = false;
+        StateHasChanged();
+    }
+
     // 2026-07-31: etiqueta corta para el chip de cada cuenta. Instagram viene como "IG @usuario"
     // (lo registra el webhook) → 📸 @usuario; WhatsApp es un número → 📱 número.
     string EtiquetaLineaChip(string? lineaNumero, string id)
     {
         var t = lineaNumero ?? id;
-        if (t.StartsWith("IG ", StringComparison.Ordinal))
-            return "📸 " + t.Substring(3).Trim();
-        return "📱 " + PrettyNumero(t);
+        var emoji = t.StartsWith("IG ", StringComparison.Ordinal) ? "📸" : "📱";
+        return $"{emoji} {LineaNombre(id, lineaNumero)}";
     }
     bool LineaActivaTieneNumero =>
         LineasDetectadas().Count == 1
@@ -1972,9 +2082,9 @@
         if (!string.IsNullOrEmpty(filtroLinea))
         {
             var sel = ls.FirstOrDefault(x => x.Id == filtroLinea);
-            if (sel.Numero != null) return PrettyNumero(sel.Numero);
+            if (sel.Numero != null) return LineaNombre(sel.Id, sel.Numero);
         }
-        if (ls.Count == 1) return PrettyNumero(ls[0].Numero);
+        if (ls.Count == 1) return LineaNombre(ls[0].Id, ls[0].Numero);
         return "Todas las líneas";
     }
 

@@ -262,6 +262,58 @@ public class WhatsAppTwilioController : ControllerBase
         return Ok(lineas);
     }
 
+    /// <summary>2026-08-01: nombre + imagen personalizados de cada línea (WhatsApp e Instagram),
+    /// para identificarlas mejor. Devuelve TODAS las líneas conocidas (con o sin config).</summary>
+    [HttpGet("lineas-config")]
+    [Authorize]
+    public async Task<IActionResult> LineasConfig()
+    {
+        var lineas = await _db.AppSettings.AsNoTracking()
+            .Where(s => s.Key.StartsWith("whatsapp.linea."))
+            .Select(s => new { Id = s.Key.Substring("whatsapp.linea.".Length), Numero = s.Value })
+            .ToListAsync();
+        var cfg = await _db.WhatsAppLineasConfig.AsNoTracking().ToDictionaryAsync(c => c.LineaId, c => c);
+        var res = lineas.Select(l =>
+        {
+            cfg.TryGetValue(l.Id, out var c);
+            return new
+            {
+                LineaId = l.Id,
+                NumeroReal = l.Numero,
+                EsInstagram = (l.Numero ?? "").StartsWith("IG ", StringComparison.Ordinal),
+                Nombre = c?.Nombre,
+                ImagenDataUrl = c?.ImagenDataUrl
+            };
+        }).OrderBy(x => x.EsInstagram).ThenBy(x => x.NumeroReal).ToList();
+        return Ok(res);
+    }
+
+    public record LineaConfigUpsert(string LineaId, string? Nombre, string? ImagenDataUrl);
+
+    /// <summary>Guarda (o borra) el nombre/imagen de una línea. ImagenDataUrl: null = no tocar, "" = quitar.</summary>
+    [HttpPost("lineas-config")]
+    [Authorize]
+    public async Task<IActionResult> GuardarLineaConfig([FromBody] LineaConfigUpsert req)
+    {
+        if (string.IsNullOrWhiteSpace(req.LineaId))
+            return BadRequest(new { error = "Falta la línea" });
+        if (req.ImagenDataUrl != null && req.ImagenDataUrl.Length > 700_000)
+            return BadRequest(new { error = "La imagen es muy grande. Probá con una más chica (menos de 500 KB)." });
+
+        var cfg = await _db.WhatsAppLineasConfig.FirstOrDefaultAsync(c => c.LineaId == req.LineaId);
+        if (cfg == null)
+        {
+            cfg = new WhatsAppLineaConfig { LineaId = req.LineaId };
+            _db.WhatsAppLineasConfig.Add(cfg);
+        }
+        cfg.Nombre = string.IsNullOrWhiteSpace(req.Nombre) ? null : req.Nombre.Trim();
+        if (req.ImagenDataUrl != null)
+            cfg.ImagenDataUrl = req.ImagenDataUrl.Length == 0 ? null : req.ImagenDataUrl;
+        cfg.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
     /// <summary>INICIA una conversación mandando una plantilla aprobada a un número. WhatsApp lo exige para
     /// escribir primero. Guarda el saliente en la bandeja (Canal=CLOUD) para que aparezca en el chat.</summary>
     [HttpPost("iniciar")]

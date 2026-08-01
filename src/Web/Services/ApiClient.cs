@@ -6212,6 +6212,26 @@ public class ApiClient
     public async Task<List<TwLineaDto>> GetTwLineasAsync()
         => await _http.GetFromJsonAsync<List<TwLineaDto>>("/api/whatsapp/twilio/lineas") ?? new();
 
+    // 2026-08-01: nombre + imagen personalizados por línea (WhatsApp e Instagram)
+    public record TwLineaConfigDto(string LineaId, string? NumeroReal, bool EsInstagram, string? Nombre, string? ImagenDataUrl);
+
+    public async Task<List<TwLineaConfigDto>> GetTwLineasConfigAsync()
+        => await _http.GetFromJsonAsync<List<TwLineaConfigDto>>("/api/whatsapp/twilio/lineas-config") ?? new();
+
+    public async Task<(bool ok, string? error)> GuardarTwLineaConfigAsync(string lineaId, string? nombre, string? imagenDataUrl)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/lineas-config",
+                new { LineaId = lineaId, Nombre = nombre, ImagenDataUrl = imagenDataUrl });
+            if (resp.IsSuccessStatusCode) return (true, null);
+            string err = "Error al guardar";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync()); if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; } catch { }
+            return (false, err);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     public async Task<(bool ok, string? error, string? numero)> IniciarTwConversacionAsync(string numero, string plantilla, string idioma, string? lineaPhoneId, List<string> variables, string cuerpoPreview)
     {
         try
