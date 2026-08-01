@@ -139,10 +139,11 @@
                                     {
                                         <span class="wa-rol-tag">@RolEmoji(c.Rol)</span>
                                     }
-                                    @* etiqueta de línea: solo para WhatsApp (en IG el @ ya es el nombre) y con 2+ líneas *@
-                                    @if (c.Canal != "INSTAGRAM" && LineasDetectadas().Count > 1 && !string.IsNullOrEmpty(c.LineaNumero))
+                                    @* etiqueta de la CUENTA a la que escribió (con 2+ cuentas). Para IG el nombre grande
+                                       es el remitente, así que acá va la cuenta (@frikaf_cafe) para saber por dónde entró. *@
+                                    @if (LineasDetectadas().Count > 1 && !string.IsNullOrEmpty(c.LineaNumero))
                                     {
-                                        <span style="font-size:0.6rem; background:#e0e7ff; color:#3730a3; padding:0.05rem 0.35rem; border-radius:999px; white-space:nowrap;" title="Escribió a este número nuestro">@c.LineaNumero</span>
+                                        <span style="font-size:0.6rem; background:#e0e7ff; color:#3730a3; padding:0.05rem 0.35rem; border-radius:999px; white-space:nowrap;" title="Cuenta a la que te escribió">@BadgeCuenta(c.LineaNumero)</span>
                                     }
                                 </span>
                                 <span class="wa-conv-hora">@FormatHora(c.UltimoAt)</span>
@@ -1641,11 +1642,18 @@
     // si no, la @cuenta a la que escribió (de "IG @cuenta"); nunca "ig:..." ni "Usuario de Instagram".
     string MostrarNombreIg(ApiClient.TwConvDto c)
     {
+        // El nombre grande es el REMITENTE (@usuario). La cuenta a la que escribió va en la etiqueta chica.
         if (!string.IsNullOrEmpty(c.NombrePerfil) && !c.NombrePerfil.StartsWith("ig:"))
             return c.NombrePerfil;
-        if (!string.IsNullOrEmpty(c.LineaNumero) && c.LineaNumero.StartsWith("IG "))
-            return c.LineaNumero.Substring(3).Trim();
-        return "Instagram";
+        return "Instagram"; // todavía sin el @usuario del remitente
+    }
+
+    // Etiqueta chica de la cuenta a la que te escribieron: IG "IG @frikaf_cafe" → "@frikaf_cafe"; WhatsApp → número.
+    string BadgeCuenta(string? lineaNumero)
+    {
+        var t = lineaNumero ?? "";
+        if (t.StartsWith("IG ", StringComparison.Ordinal)) return t.Substring(3).Trim();
+        return PrettyNumero(t);
     }
 
     // Nombre a mostrar para cualquier conversación (WhatsApp o Instagram), reutilizable en la cabecera.

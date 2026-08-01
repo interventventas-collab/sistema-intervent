@@ -218,12 +218,17 @@ public class MetaWhatsAppWebhookController : ControllerBase
 
                 var numero = WhatsAppOutboundService.IgPrefix + otroId;
 
-                // Nombre del contacto: solo lo buscamos para ENTRANTES de conversaciones nuevas (1 llamada API).
+                // Nombre del remitente: reusamos el @usuario que ya tengamos guardado para este contacto
+                // (así TODOS los mensajes lo llevan, no solo el primero). Si no hay ninguno, lo pedimos a Instagram.
                 string? nombrePerfil = null;
                 if (direccion == "INCOMING")
                 {
-                    var yaTiene = await db.WhatsAppTwilioMensajes.AnyAsync(m => m.Numero == numero && m.NombrePerfil != null);
-                    if (!yaTiene)
+                    nombrePerfil = await db.WhatsAppTwilioMensajes
+                        .Where(m => m.Numero == numero && m.NombrePerfil != null)
+                        .OrderByDescending(m => m.CreatedAt)
+                        .Select(m => m.NombrePerfil)
+                        .FirstOrDefaultAsync();
+                    if (string.IsNullOrEmpty(nombrePerfil))
                     {
                         var (username, name) = await ig.GetPerfilAsync(cuentaId!, otroId!);
                         nombrePerfil = username != null ? "@" + username : name;

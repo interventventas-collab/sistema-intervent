@@ -241,7 +241,9 @@ public class WhatsAppTwilioController : ControllerBase
             .Select(g => new
             {
                 Numero = g.Key,
-                NombrePerfil = g.OrderByDescending(m => m.CreatedAt).Where(m => m.Direccion == "INCOMING").Select(m => m.NombrePerfil).FirstOrDefault(),
+                // 2026-07-31: el nombre de perfil más reciente que NO sea nulo (en IG a veces el 1er
+                // mensaje entra sin nombre y se completa en el siguiente; así no perdemos el remitente).
+                NombrePerfil = g.Where(m => m.Direccion == "INCOMING" && m.NombrePerfil != null).OrderByDescending(m => m.CreatedAt).Select(m => m.NombrePerfil).FirstOrDefault(),
                 UltimoMensaje = g.OrderByDescending(m => m.CreatedAt).Select(m => m.Cuerpo).FirstOrDefault(),
                 UltimoDireccion = g.OrderByDescending(m => m.CreatedAt).Select(m => m.Direccion).FirstOrDefault(),
                 UltimoAt = g.Max(m => m.CreatedAt),
