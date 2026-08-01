@@ -2211,6 +2211,10 @@ public class ApiClient
     public async Task<VincularOemsResultDto?> VincularOemsAutomaticoAsync()
         => await PostAsync<VincularOemsResultDto>("/api/meli/cotejo/vincular-oems", new { });
 
+    // --- Catalogo unificado (productos + combos + compuestos + kits + servicios) ---
+    public async Task<List<CafeCatalogoItemDto>?> GetCafeCatalogoAsync()
+        => await GetAsync<List<CafeCatalogoItemDto>>("/api/cafe/catalogo");
+
     // --- Kits (productos compuestos / BOM) ---
     public async Task<List<CafeKitDto>?> GetCafeKitsAsync(bool? activos = null, string? categoria = null)
     {

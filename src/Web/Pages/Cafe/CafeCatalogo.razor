@@ -1,0 +1,173 @@
+@page "/cafe/catalogo"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Navigation
+@inject ToastService ToastService
+
+<div style="padding:1rem 1.25rem;">
+    <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.4rem;">
+        <h2 style="margin:0; font-size:1.25rem;">📦 Catálogo — todos los códigos</h2>
+        @if (items is not null)
+        {
+            <span style="font-size:0.85rem; color:#6b7280;">@Filtrados.Count de @items.Count</span>
+        }
+    </div>
+    <p style="font-size:0.85rem; color:#6b7280; margin:0 0 0.9rem;">
+        Todos los códigos en un solo lugar: productos, combos, compuestos, kits y servicios.
+        Buscá el código y tocá <strong>Editar</strong> para ir a su pantalla.
+    </p>
+
+    @* ── Buscador ── *@
+    <input class="form-input" style="max-width:520px; margin-bottom:0.7rem;"
+           placeholder="🔍 Buscar por código o nombre..."
+           @bind="q" @bind:event="oninput" />
+
+    @* ── Filtros por tipo ── *@
+    <div style="display:flex; flex-wrap:wrap; gap:0.4rem; margin-bottom:1rem;">
+        @foreach (var f in Filtros)
+        {
+            var activo = filtro == f.Key;
+            <button @onclick="() => filtro = f.Key"
+                    style="font-size:0.8rem; padding:0.35rem 0.85rem; border-radius:999px; cursor:pointer;
+                           border:1px solid @(activo ? "#1d4ed8" : "#d1d5db");
+                           background:@(activo ? "#dbeafe" : "white");
+                           color:@(activo ? "#1e40af" : "#4b5563"); font-weight:@(activo ? "700" : "500");">
+                @f.Label @if (items is not null) { <span style="opacity:.65;">(@ContarTipo(f.Key))</span> }
+            </button>
+        }
+    </div>
+
+    @if (items is null)
+    {
+        <p style="color:#6b7280;">Cargando catálogo…</p>
+    }
+    else
+    {
+        <div style="border:1px solid #e5e7eb; border-radius:10px; overflow:hidden;">
+            <div style="display:grid; grid-template-columns:150px 1fr 130px 90px 80px; gap:0.5rem; padding:0.6rem 0.9rem; background:#f9fafb; border-bottom:1px solid #e5e7eb; font-size:0.75rem; color:#6b7280; font-weight:600;">
+                <span>Código</span><span>Nombre</span><span>Tipo</span><span style="text-align:right;">Stock</span><span></span>
+            </div>
+
+            @if (Filtrados.Count == 0)
+            {
+                <div style="padding:1.2rem 0.9rem; text-align:center; color:#9ca3af; font-size:0.85rem;">
+                    No hay códigos con ese filtro o esa búsqueda.
+                </div>
+            }
+            else
+            {
+                @foreach (var it in Filtrados.Take(mostrar))
+                {
+                    var col = ColorTipo(it.Tipo);
+                    <div style="display:grid; grid-template-columns:150px 1fr 130px 90px 80px; gap:0.5rem; padding:0.55rem 0.9rem; border-bottom:1px solid #f3f4f6; align-items:center; @(it.IsActive ? "" : "opacity:.5;")">
+                        <span style="font-family:monospace; font-size:0.82rem; color:#1d4ed8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@(string.IsNullOrEmpty(it.Sku) ? "—" : it.Sku)</span>
+                        <span style="font-size:0.85rem;">
+                            @it.Nombre
+                            @if (!string.IsNullOrEmpty(it.Detalle))
+                            {
+                                <span style="color:#9ca3af; font-size:0.78rem;"> · @it.Detalle</span>
+                            }
+                            @if (!it.IsActive)
+                            {
+                                <span style="color:#b91c1c; font-size:0.72rem; font-weight:600;"> · inactivo</span>
+                            }
+                        </span>
+                        <span>
+                            <span style="font-size:0.72rem; padding:0.12rem 0.5rem; border-radius:999px; background:@col.Bg; color:@col.Fg; font-weight:600;">
+                                @LabelTipo(it.Tipo)
+                            </span>
+                        </span>
+                        <span style="text-align:right; font-size:0.82rem; font-weight:600;" title="@(it.StockEsArmable ? "Cuántos podés armar con el stock actual" : "")">
+                            @(it.Stock.HasValue ? it.Stock.Value.ToString() + (it.StockEsArmable ? " arm." : "") : "—")
+                        </span>
+                        <span style="text-align:right;">
+                            <button class="btn btn-sm" @onclick="() => Navigation.NavigateTo(it.EditRoute)"
+                                    style="font-size:0.75rem; padding:0.25rem 0.6rem; background:#eef2ff; color:#3730a3; border:1px solid #c7d2fe; border-radius:5px; cursor:pointer;">
+                                Editar
+                            </button>
+                        </span>
+                    </div>
+                }
+                @if (Filtrados.Count > mostrar)
+                {
+                    <div style="padding:0.7rem; text-align:center;">
+                        <button class="btn btn-sm" @onclick="() => mostrar += 100"
+                                style="font-size:0.8rem; padding:0.35rem 0.9rem;">
+                            Ver más (@(Filtrados.Count - mostrar) restantes)
+                        </button>
+                    </div>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<CafeCatalogoItemDto>? items;
+    private string q = "";
+    private string filtro = "todos";
+    private int mostrar = 100;
+
+    private record FiltroDef(string Key, string Label);
+    private static readonly FiltroDef[] Filtros = new[]
+    {
+        new FiltroDef("todos", "Todos"),
+        new FiltroDef("producto", "Productos"),
+        new FiltroDef("combo", "Combos / packs"),
+        new FiltroDef("compuesto", "Compuestos"),
+        new FiltroDef("kit", "Kits"),
+        new FiltroDef("servicio", "Servicios"),
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            items = await Api.GetCafeCatalogoAsync() ?? new();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"No se pudo cargar el catálogo: {ex.Message}");
+            items = new();
+        }
+    }
+
+    private List<CafeCatalogoItemDto> Filtrados
+    {
+        get
+        {
+            if (items is null) return new();
+            var txt = q.Trim().ToLowerInvariant();
+            return items.Where(i =>
+                (filtro == "todos" || i.Tipo == filtro) &&
+                (txt.Length == 0
+                    || (i.Sku ?? "").ToLowerInvariant().Contains(txt)
+                    || i.Nombre.ToLowerInvariant().Contains(txt)))
+                .ToList();
+        }
+    }
+
+    private int ContarTipo(string key)
+        => items is null ? 0 : (key == "todos" ? items.Count : items.Count(i => i.Tipo == key));
+
+    private static string LabelTipo(string tipo) => tipo switch
+    {
+        "producto" => "Producto",
+        "combo" => "Combo",
+        "compuesto" => "Compuesto",
+        "kit" => "Kit",
+        "servicio" => "Servicio",
+        _ => tipo,
+    };
+
+    private record ColorDef(string Bg, string Fg);
+    private static ColorDef ColorTipo(string tipo) => tipo switch
+    {
+        "producto" => new("#E6F1FB", "#0C447C"),
+        "combo" => new("#FAEEDA", "#633806"),
+        "compuesto" => new("#EEEDFE", "#3C3489"),
+        "kit" => new("#EAF3DE", "#27500A"),
+        "servicio" => new("#E1F5EE", "#085041"),
+        _ => new("#F1EFE8", "#444441"),
+    };
+}

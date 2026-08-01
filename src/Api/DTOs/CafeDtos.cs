@@ -1122,3 +1122,18 @@ public class SaveBorradorRequest
     public int ItemsCount { get; set; }
     public decimal Total { get; set; }
 }
+
+// 2026-08-01: Catalogo unificado — junta productos, combos, compuestos, kits y servicios
+// en una sola lista buscable/filtrable. Solo LECTURA (cada fila enlaza a su editor actual).
+public record CafeCatalogoItemDto(
+    int Id,
+    string Tipo,            // producto | combo | compuesto | kit | servicio
+    string? Sku,
+    string Nombre,
+    string? Categoria,
+    int? Stock,            // null = no aplica (servicios); en combos/kits es el stock armable
+    bool StockEsArmable,   // true si Stock salio de "cuantos puedo armar"
+    bool IsActive,
+    string? Detalle,       // ej "4 × ABE-CHED" o "3 componentes"
+    string EditRoute       // a donde va la fila al tocar Editar
+);
