@@ -39,14 +39,16 @@ public class WhatsAppOutboundService
     /// <summary>True si al menos un canal (Meta WhatsApp, Twilio o Instagram) está configurado.</summary>
     public bool AnyConfigured => _meta.IsConfigured || _twilio.IsConfigured || _ig.IsConfigured;
 
-    public async Task<(string? Id, string Canal)> SendTextAsync(string numero, string body)
+    // 2026-08-01: devuelve además la Línea usada (para guardarla en el saliente y que el mismo
+    // contacto en 2 líneas NO se cruce). lineaOverride = mandar por una línea concreta (la del chat abierto).
+    public async Task<(string? Id, string Canal, string? Linea)> SendTextAsync(string numero, string body, string? lineaOverride = null)
     {
-        var (canal, linea) = await PickCanalYLineaAsync(numero);
+        var (canal, linea) = await PickCanalYLineaAsync(numero, lineaOverride);
         if (canal == "INSTAGRAM")
-            return (await _ig.SendTextAsync(linea ?? "", IgsidDe(numero), body), "INSTAGRAM");
+            return (await _ig.SendTextAsync(linea ?? "", IgsidDe(numero), body), "INSTAGRAM", linea);
         if (canal == "CLOUD")
-            return (await _meta.SendTextAsync(numero, body, lineaPhoneId: linea), "CLOUD");
-        return (await _twilio.SendTextAsync(numero, body), "TWILIO");
+            return (await _meta.SendTextAsync(numero, body, lineaPhoneId: linea), "CLOUD", linea);
+        return (await _twilio.SendTextAsync(numero, body), "TWILIO", null);
     }
 
     /// <summary>Saca el IGSID puro del "ig:{IGSID}" guardado como número de la conversación.</summary>
@@ -56,31 +58,31 @@ public class WhatsAppOutboundService
     /// <summary>Envía un adjunto. <paramref name="nombreArchivo"/> es el nombre ORIGINAL (ej "factura.pdf"):
     /// se usa para saber si va como documento o como imagen. OJO: la URL del adjunto es del tipo
     /// /files/{token} y NO tiene extensión, por eso NO se puede deducir el tipo desde la URL.</summary>
-    public async Task<(string? Id, string Canal)> SendMediaAsync(string numero, string mediaUrl, string? caption = null, string? nombreArchivo = null)
+    public async Task<(string? Id, string Canal, string? Linea)> SendMediaAsync(string numero, string mediaUrl, string? caption = null, string? nombreArchivo = null, string? lineaOverride = null)
     {
-        var (canal, linea) = await PickCanalYLineaAsync(numero);
+        var (canal, linea) = await PickCanalYLineaAsync(numero, lineaOverride);
         if (canal == "INSTAGRAM")
         {
             // IG DM solo manda imágenes por link; para PDF/otros mandamos el link como texto.
             var esImagen = !EsDocumento(nombreArchivo);
             if (esImagen)
-                return (await _ig.SendImageAsync(linea ?? "", IgsidDe(numero), mediaUrl), "INSTAGRAM");
+                return (await _ig.SendImageAsync(linea ?? "", IgsidDe(numero), mediaUrl), "INSTAGRAM", linea);
             var texto = string.IsNullOrWhiteSpace(caption) ? mediaUrl : $"{caption}\n{mediaUrl}";
-            return (await _ig.SendTextAsync(linea ?? "", IgsidDe(numero), texto), "INSTAGRAM");
+            return (await _ig.SendTextAsync(linea ?? "", IgsidDe(numero), texto), "INSTAGRAM", linea);
         }
         if (canal == "CLOUD")
         {
             var esDoc = EsDocumento(nombreArchivo);
             var id = await _meta.SendMediaAsync(numero, mediaUrl, caption, esDoc, nombreArchivo, lineaPhoneId: linea);
-            return (id, "CLOUD");
+            return (id, "CLOUD", linea);
         }
-        return (await _twilio.SendMediaAsync(numero, mediaUrl, caption), "TWILIO");
+        return (await _twilio.SendMediaAsync(numero, mediaUrl, caption), "TWILIO", null);
     }
 
     /// <summary>Elige el canal según el último entrante de ese número; fallback: Meta si está, sino Twilio.
     /// 2026-07-23 (multi-línea): además devuelve por QUÉ línea de Meta venía conversando ese número,
     /// así la respuesta sale siempre por la misma línea donde el cliente escribió (null = la default).</summary>
-    private async Task<(string Canal, string? Linea)> PickCanalYLineaAsync(string numero)
+    private async Task<(string Canal, string? Linea)> PickCanalYLineaAsync(string numero, string? lineaOverride = null)
     {
         var ultimo = await _db.WhatsAppTwilioMensajes
             .Where(m => m.Numero == numero && m.Direccion == "INCOMING")
@@ -89,9 +91,13 @@ public class WhatsAppOutboundService
             .FirstOrDefaultAsync();
 
         // Instagram: se reconoce por el prefijo "ig:" del número. La "línea" es el IG User ID
-        // de la cuenta (guardado en LineaPhoneId del último entrante).
+        // de la cuenta (guardado en LineaPhoneId del último entrante; o el override del chat abierto).
         if (numero.StartsWith(IgPrefix, StringComparison.Ordinal))
-            return ("INSTAGRAM", ultimo?.LineaPhoneId);
+            return ("INSTAGRAM", string.IsNullOrEmpty(lineaOverride) ? ultimo?.LineaPhoneId : lineaOverride);
+
+        // 2026-08-01: si el llamador indica una línea concreta (la del chat abierto), respondemos por
+        // ESA línea de Cloud API — así el mismo contacto escribiendo a 2 líneas nuestras no se cruza.
+        if (!string.IsNullOrEmpty(lineaOverride) && _meta.IsConfigured) return ("CLOUD", lineaOverride);
 
         if (ultimo?.Canal == "CLOUD" && _meta.IsConfigured) return ("CLOUD", ultimo.LineaPhoneId);
         if (ultimo?.Canal == "TWILIO" && _twilio.IsConfigured) return ("TWILIO", null);

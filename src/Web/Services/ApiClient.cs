@@ -6159,14 +6159,18 @@ public class ApiClient
     public async Task<List<TwConvDto>> GetTwConversacionesAsync()
         => await _http.GetFromJsonAsync<List<TwConvDto>>("/api/whatsapp/twilio/conversaciones") ?? new();
 
-    public async Task<List<TwMsgDto>> GetTwMensajesAsync(string numero)
-        => await _http.GetFromJsonAsync<List<TwMsgDto>>($"/api/whatsapp/twilio/mensajes?numero={Uri.EscapeDataString(numero)}") ?? new();
+    // 2026-08-01: linea = filtrar el hilo por línea (para no cruzar el mismo contacto en 2 líneas).
+    // Pasar "null" (sentinela) para la conversación de la línea sin registrar; null C# = no filtrar.
+    public async Task<List<TwMsgDto>> GetTwMensajesAsync(string numero, string? linea = null)
+        => await _http.GetFromJsonAsync<List<TwMsgDto>>(
+               $"/api/whatsapp/twilio/mensajes?numero={Uri.EscapeDataString(numero)}"
+               + (linea != null ? $"&linea={Uri.EscapeDataString(linea)}" : "")) ?? new();
 
-    public async Task<(bool ok, string? error)> SendTwMensajeAsync(string numero, string mensaje)
+    public async Task<(bool ok, string? error)> SendTwMensajeAsync(string numero, string mensaje, string? lineaPhoneId = null)
     {
         try
         {
-            var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/send", new { Numero = numero, Mensaje = mensaje });
+            var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/send", new { Numero = numero, Mensaje = mensaje, LineaPhoneId = lineaPhoneId });
             if (resp.IsSuccessStatusCode) return (true, null);
             string err = "Error enviando";
             try
@@ -6332,12 +6336,12 @@ public class ApiClient
         catch { return new(); }
     }
 
-    public async Task<(bool ok, string? error)> SendTwServerFileAsync(string numero, string tipo, int id, string? caption)
+    public async Task<(bool ok, string? error)> SendTwServerFileAsync(string numero, string tipo, int id, string? caption, string? lineaPhoneId = null)
     {
         try
         {
             var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/send-server-file",
-                new { Numero = numero, Tipo = tipo, Id = id, Caption = caption });
+                new { Numero = numero, Tipo = tipo, Id = id, Caption = caption, LineaPhoneId = lineaPhoneId });
             if (resp.IsSuccessStatusCode) return (true, null);
             string err = "Error";
             try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync()); if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; } catch { }
@@ -6346,12 +6350,12 @@ public class ApiClient
         catch (Exception ex) { return (false, ex.Message); }
     }
 
-    public async Task<(bool ok, string? error)> SendTwMediaAsync(string numero, string mediaUrl, string? caption, string? originalFilename)
+    public async Task<(bool ok, string? error)> SendTwMediaAsync(string numero, string mediaUrl, string? caption, string? originalFilename, string? lineaPhoneId = null)
     {
         try
         {
             var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/send-media",
-                new { Numero = numero, MediaUrl = mediaUrl, Caption = caption, OriginalFilename = originalFilename });
+                new { Numero = numero, MediaUrl = mediaUrl, Caption = caption, OriginalFilename = originalFilename, LineaPhoneId = lineaPhoneId });
             if (resp.IsSuccessStatusCode) return (true, null);
             string err = "Error";
             try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync()); if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; } catch { }

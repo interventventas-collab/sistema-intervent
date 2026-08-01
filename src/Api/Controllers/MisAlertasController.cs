@@ -308,14 +308,14 @@ public class MisAlertasController : ControllerBase
             {
                 tot++;
                 var numero = p.WhatsAppNumero!.StartsWith("whatsapp:") ? p.WhatsAppNumero : "whatsapp:" + p.WhatsAppNumero;
-                var (sid, canal) = await wa.SendTextAsync(numero, texto);
+                var (sid, canal, lin) = await wa.SendTextAsync(numero, texto);
                 if (sid != null)
                 {
                     ok++;
                     _db.WhatsAppTwilioMensajes.Add(new WhatsAppTwilioMensaje
                     {
                         Direccion = "OUTGOING", Numero = numero, Cuerpo = texto,
-                        TwilioMessageSid = sid, Canal = canal, Procesado = true, CreatedAt = DateTime.UtcNow
+                        TwilioMessageSid = sid, Canal = canal, LineaPhoneId = lin, Procesado = true, CreatedAt = DateTime.UtcNow
                     });
                     await _db.SaveChangesAsync();
                 }

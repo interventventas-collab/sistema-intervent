@@ -121,7 +121,7 @@ public class WhatsAppTwilioController : ControllerBase
     {
         try
         {
-            var (sid, canal) = await _outbound.SendTextAsync(numero, texto);
+            var (sid, canal, lin) = await _outbound.SendTextAsync(numero, texto);
             _db.WhatsAppTwilioMensajes.Add(new WhatsAppTwilioMensaje
             {
                 Direccion = "OUTGOING",
@@ -129,6 +129,7 @@ public class WhatsAppTwilioController : ControllerBase
                 Cuerpo = texto,
                 TwilioMessageSid = sid,
                 Canal = canal,
+                LineaPhoneId = lin,
                 Procesado = true,
                 CreatedAt = DateTime.UtcNow
             });
@@ -178,6 +179,7 @@ public class WhatsAppTwilioController : ControllerBase
                     Cuerpo = WhatsAppBotFlow.CuerpoNivel1 + " [botones: Frikaf / Intervent / Intereventos]",
                     TwilioMessageSid = sid,
                     Canal = "CLOUD",
+                    LineaPhoneId = lineaConv,
                     Procesado = true,
                     CreatedAt = DateTime.UtcNow
                 });
@@ -192,7 +194,7 @@ public class WhatsAppTwilioController : ControllerBase
         return Ok(new { ok = true, sid });
     }
 
-    public record SendRequest(string Numero, string Mensaje);
+    public record SendRequest(string Numero, string Mensaje, string? LineaPhoneId = null);
 
     /// <summary>POST /api/whatsapp/twilio/send — envia un mensaje desde el chat del dashboard.</summary>
     [HttpPost("send")]
@@ -207,7 +209,7 @@ public class WhatsAppTwilioController : ControllerBase
 
         try
         {
-            var (sid, canal) = await _outbound.SendTextAsync(req.Numero, req.Mensaje);
+            var (sid, canal, lin) = await _outbound.SendTextAsync(req.Numero, req.Mensaje, req.LineaPhoneId);
             var msg = new WhatsAppTwilioMensaje
             {
                 Direccion = "OUTGOING",
@@ -215,6 +217,7 @@ public class WhatsAppTwilioController : ControllerBase
                 Cuerpo = req.Mensaje,
                 TwilioMessageSid = sid,
                 Canal = canal,
+                LineaPhoneId = lin,
                 Procesado = true,
                 CreatedAt = DateTime.UtcNow
             };
@@ -316,10 +319,12 @@ public class WhatsAppTwilioController : ControllerBase
     {
         var conv = await _db.WhatsAppTwilioMensajes
             .AsNoTracking()
-            .GroupBy(m => m.Numero)
+            // 2026-08-01: agrupar por (Número + Línea) para que el MISMO contacto escribiendo a 2 líneas
+            // nuestras aparezca como 2 conversaciones separadas y no se crucen los hilos.
+            .GroupBy(m => new { m.Numero, m.LineaPhoneId })
             .Select(g => new
             {
-                Numero = g.Key,
+                Numero = g.Key.Numero,
                 // 2026-07-31: el nombre de perfil más reciente que NO sea nulo (en IG a veces el 1er
                 // mensaje entra sin nombre y se completa en el siguiente; así no perdemos el remitente).
                 NombrePerfil = g.Where(m => m.Direccion == "INCOMING" && m.NombrePerfil != null).OrderByDescending(m => m.CreatedAt).Select(m => m.NombrePerfil).FirstOrDefault(),
@@ -327,8 +332,8 @@ public class WhatsAppTwilioController : ControllerBase
                 UltimoDireccion = g.OrderByDescending(m => m.CreatedAt).Select(m => m.Direccion).FirstOrDefault(),
                 UltimoAt = g.Max(m => m.CreatedAt),
                 Total = g.Count(),
-                // 2026-07-23 (multi-línea): por qué línea nuestra conversa este número
-                Linea = g.OrderByDescending(m => m.CreatedAt).Where(m => m.LineaPhoneId != null).Select(m => m.LineaPhoneId).FirstOrDefault(),
+                // 2026-08-01: la línea es ahora parte de la clave del grupo (número+línea)
+                Linea = g.Key.LineaPhoneId,
                 // 2026-07-31: canal del último mensaje (TWILIO/CLOUD/INSTAGRAM) para el iconito en el chat
                 Canal = g.OrderByDescending(m => m.CreatedAt).Select(m => m.Canal).FirstOrDefault()
             })
@@ -669,10 +674,18 @@ public class WhatsAppTwilioController : ControllerBase
     /// <summary>GET /api/whatsapp/twilio/mensajes?numero=whatsapp:+34... — devuelve el hilo de un numero con reacciones.</summary>
     [HttpGet("mensajes")]
     [Authorize]
-    public async Task<IActionResult> Mensajes([FromQuery] string? numero, [FromQuery] int top = 200)
+    public async Task<IActionResult> Mensajes([FromQuery] string? numero, [FromQuery] string? linea = null, [FromQuery] int top = 200)
     {
         var q = _db.WhatsAppTwilioMensajes.AsNoTracking();
         if (!string.IsNullOrWhiteSpace(numero)) q = q.Where(m => m.Numero == numero);
+        // 2026-08-01: filtrar por LÍNEA para no mezclar hilos del mismo contacto en 2 líneas.
+        // Sentinela "null" = la conversación de la línea sin registrar (Twilio/legacy). Si el
+        // parámetro no viene (deep-links viejos), no se filtra (compatibilidad hacia atrás).
+        if (linea != null)
+        {
+            var lp = linea == "null" ? null : linea;
+            q = q.Where(m => m.LineaPhoneId == lp);
+        }
         var msgs = await q
             .OrderByDescending(m => m.CreatedAt)
             .Take(Math.Clamp(top, 1, 500))
@@ -776,7 +789,7 @@ public class WhatsAppTwilioController : ControllerBase
         return PhysicalFile(path, up.ContentType, up.OriginalFilename);
     }
 
-    public record SendMediaRequest(string Numero, string MediaUrl, string? Caption, string? OriginalFilename);
+    public record SendMediaRequest(string Numero, string MediaUrl, string? Caption, string? OriginalFilename, string? LineaPhoneId = null);
 
     /// <summary>POST /api/whatsapp/twilio/send-media — envia mensaje con adjunto via Twilio.</summary>
     [HttpPost("send-media")]
@@ -792,7 +805,7 @@ public class WhatsAppTwilioController : ControllerBase
         {
             // El nombre original importa: la URL /files/{token} no tiene extension, asi que
             // sin el no se puede saber si mandarlo como imagen o como documento.
-            var (sid, canal) = await _outbound.SendMediaAsync(req.Numero, req.MediaUrl, req.Caption, req.OriginalFilename);
+            var (sid, canal, lin) = await _outbound.SendMediaAsync(req.Numero, req.MediaUrl, req.Caption, req.OriginalFilename, req.LineaPhoneId);
             var msg = new WhatsAppTwilioMensaje
             {
                 Direccion = "OUTGOING",
@@ -803,6 +816,7 @@ public class WhatsAppTwilioController : ControllerBase
                 NumMedia = 1,
                 TwilioMessageSid = sid,
                 Canal = canal,
+                LineaPhoneId = lin,
                 Procesado = true,
                 CreatedAt = DateTime.UtcNow
             };
@@ -936,7 +950,7 @@ public class WhatsAppTwilioController : ControllerBase
         return BadRequest(new { error = "Tipo no soportado. Validos: UPLOAD, COBRANZA, VENTA, LISTA" });
     }
 
-    public record SendServerFileRequest(string Numero, string Tipo, int Id, string? Caption);
+    public record SendServerFileRequest(string Numero, string Tipo, int Id, string? Caption, string? LineaPhoneId = null);
 
     /// <summary>POST /api/whatsapp/twilio/send-server-file
     /// Envía un archivo del servidor al WhatsApp del numero indicado.</summary>
@@ -1082,7 +1096,7 @@ public class WhatsAppTwilioController : ControllerBase
 
         try
         {
-            var (sid, canal) = await _outbound.SendMediaAsync(req.Numero, mediaUrl, req.Caption, filename);
+            var (sid, canal, lin) = await _outbound.SendMediaAsync(req.Numero, mediaUrl, req.Caption, filename, req.LineaPhoneId);
             var msg = new WhatsAppTwilioMensaje
             {
                 Direccion = "OUTGOING",
@@ -1093,6 +1107,7 @@ public class WhatsAppTwilioController : ControllerBase
                 NumMedia = 1,
                 TwilioMessageSid = sid,
                 Canal = canal,
+                LineaPhoneId = lin,
                 Procesado = true,
                 CreatedAt = DateTime.UtcNow
             };

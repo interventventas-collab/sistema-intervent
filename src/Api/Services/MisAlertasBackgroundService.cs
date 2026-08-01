@@ -227,12 +227,12 @@ public class MisAlertasBackgroundService : BackgroundService
                         try
                         {
                             var numero = per.WhatsAppNumero!.StartsWith("whatsapp:") ? per.WhatsAppNumero : "whatsapp:" + per.WhatsAppNumero;
-                            var (sid, canal) = await wa.SendTextAsync(numero, texto);
+                            var (sid, canal, lin) = await wa.SendTextAsync(numero, texto);
                             if (sid != null)
                                 db.Set<WhatsAppTwilioMensaje>().Add(new WhatsAppTwilioMensaje
                                 {
                                     Direccion = "OUTGOING", Numero = numero, Cuerpo = texto,
-                                    TwilioMessageSid = sid, Canal = canal, Procesado = true, CreatedAt = DateTime.UtcNow
+                                    TwilioMessageSid = sid, Canal = canal, LineaPhoneId = lin, Procesado = true, CreatedAt = DateTime.UtcNow
                                 });
                         }
                         catch (Exception ex) { _logger.LogWarning(ex, "[Alertas] WhatsApp a {P} falló", per.Nombre); }

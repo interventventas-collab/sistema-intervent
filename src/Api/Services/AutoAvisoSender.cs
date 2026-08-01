@@ -85,14 +85,14 @@ public class AutoAvisoSender
                 try
                 {
                     var numero = p.WhatsAppNumero!.StartsWith("whatsapp:") ? p.WhatsAppNumero : "whatsapp:" + p.WhatsAppNumero;
-                    var (sid, canal) = await _wa.SendTextAsync(numero, c.WhatsAppTexto);
+                    var (sid, canal, lin) = await _wa.SendTextAsync(numero, c.WhatsAppTexto);
                     if (sid != null)
                     {
                         ok++;
                         _db.WhatsAppTwilioMensajes.Add(new WhatsAppTwilioMensaje
                         {
                             Direccion = "OUTGOING", Numero = numero, Cuerpo = c.WhatsAppTexto,
-                            TwilioMessageSid = sid, Canal = canal, Procesado = true, CreatedAt = DateTime.UtcNow
+                            TwilioMessageSid = sid, Canal = canal, LineaPhoneId = lin, Procesado = true, CreatedAt = DateTime.UtcNow
                         });
                         await _db.SaveChangesAsync(ct);
                     }

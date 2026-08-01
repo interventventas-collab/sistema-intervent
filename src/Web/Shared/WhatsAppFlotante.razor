@@ -237,7 +237,7 @@
     private async Task CargarMensajes()
     {
         if (chatAbierto is null) return;
-        try { msgs = await Api.GetTwMensajesAsync(chatAbierto.Numero); }
+        try { msgs = await Api.GetTwMensajesAsync(chatAbierto.Numero, chatAbierto.Linea ?? "null"); }
         catch { /* silencioso: es un refresco de fondo */ }
     }
 
@@ -248,7 +248,7 @@
         try
         {
             enviando = true;
-            var (ok, error) = await Api.SendTwMensajeAsync(chatAbierto.Numero, cuerpo);
+            var (ok, error) = await Api.SendTwMensajeAsync(chatAbierto.Numero, cuerpo, chatAbierto.Linea);
             if (ok)
             {
                 texto = "";

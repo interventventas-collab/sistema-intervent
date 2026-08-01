@@ -125,7 +125,7 @@
             {
                 @foreach (var c in conversacionesFiltradas)
                 {
-                    <div class="wa-conv-item @(selectedNumero == c.Numero ? "active" : "")" @onclick="() => SelectConv(c.Numero)">
+                    <div class="wa-conv-item @(selectedNumero == c.Numero && selectedLinea == c.Linea ? "active" : "")" @onclick="() => SelectConv(c.Numero, c.Linea)">
                         <div class="wa-avatar" style="@(AvatarColor(c))">@AvatarLetra(c)</div>
                         <div class="wa-conv-body">
                             <div class="wa-conv-row1">
@@ -1014,6 +1014,9 @@
     List<ApiClient.TwConvDto> conversaciones = new();
     List<ApiClient.TwMsgDto> mensajes = new();
     string? selectedNumero;
+    // 2026-08-01: la línea del chat abierto (junto con selectedNumero identifica la conversación).
+    // Así el mismo contacto en 2 líneas nuestras son 2 chats distintos y no se cruzan.
+    string? selectedLinea;
     string composerText = "";
     bool loadingConv = true, loadingMsg = false, sending = false, uploading = false, enviandoMenuRol = false;
     System.Threading.Timer? refreshTimer;
@@ -1167,7 +1170,7 @@
     {
         await LoadConversaciones();
         if (!string.IsNullOrWhiteSpace(NumeroInicial))
-            await SelectConv(NumeroInicial);
+            await SelectConv(NumeroInicial, conversaciones.FirstOrDefault(c => c.Numero == NumeroInicial)?.Linea);
         await LoadRespuestas();
         await LoadContactos();
         await LoadDatosBancarios();
@@ -1565,13 +1568,15 @@
         Toast.Success("Mensaje enviado ✓");
         showNuevaConv = false;
         await LoadConversaciones(silent: true);
-        if (!string.IsNullOrEmpty(numero)) await SelectConv(numero);
+        if (!string.IsNullOrEmpty(numero))
+            await SelectConv(numero, conversaciones.FirstOrDefault(c => c.Numero == numero)?.Linea);
         StateHasChanged();
     }
 
-    async Task SelectConv(string numero)
+    async Task SelectConv(string numero, string? linea)
     {
         selectedNumero = numero;
+        selectedLinea = linea;
         await LoadMensajes();
     }
 
@@ -1583,7 +1588,7 @@
     {
         if (selectedNumero == null) return;
         if (!silent) loadingMsg = true;
-        try { mensajes = await Api.GetTwMensajesAsync(selectedNumero); }
+        try { mensajes = await Api.GetTwMensajesAsync(selectedNumero, selectedLinea ?? "null"); }
         catch { }
         loadingMsg = false;
 
@@ -1612,7 +1617,7 @@
     {
         if (selectedNumero == null || string.IsNullOrWhiteSpace(composerText)) return;
         sending = true;
-        var (ok, err) = await Api.SendTwMensajeAsync(selectedNumero, composerText.Trim());
+        var (ok, err) = await Api.SendTwMensajeAsync(selectedNumero, composerText.Trim(), selectedLinea);
         sending = false;
         if (ok)
         {
@@ -1682,7 +1687,7 @@
             if (resp == null) { Toast.Error($"Error subiendo: {err}"); return; }
 
             // 2) Mandar el WhatsApp con la URL publica al numero seleccionado
-            var (ok, sendErr) = await Api.SendTwMediaAsync(selectedNumero, resp.Url, caption, fileName);
+            var (ok, sendErr) = await Api.SendTwMediaAsync(selectedNumero, resp.Url, caption, fileName, selectedLinea);
             if (!ok) { Toast.Error($"Error enviando: {sendErr}"); return; }
 
             composerText = "";
@@ -1785,7 +1790,7 @@
         srvEnviandoId = f.Id;
         StateHasChanged();
         var caption = composerText?.Trim();
-        var (ok, err) = await Api.SendTwServerFileAsync(selectedNumero, f.Tipo, f.Id, caption);
+        var (ok, err) = await Api.SendTwServerFileAsync(selectedNumero, f.Tipo, f.Id, caption, selectedLinea);
         srvEnviandoId = null;
         if (ok)
         {
@@ -1812,7 +1817,7 @@
         Nav.NavigateTo($"/cafe/ventas?pedidoId={pedidoId}");
     }
 
-    ApiClient.TwConvDto? SelectedConv() => conversaciones.FirstOrDefault(c => c.Numero == selectedNumero);
+    ApiClient.TwConvDto? SelectedConv() => conversaciones.FirstOrDefault(c => c.Numero == selectedNumero && c.Linea == selectedLinea);
 
     string AvatarLetra(ApiClient.TwConvDto? c)
     {
