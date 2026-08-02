@@ -1769,6 +1769,21 @@
             } catch (e) {}
         };
 
+        // 2026-08-02: version "dura" para abrir un chat y quedar SIEMPRE en el último mensaje.
+        // Reintenta varias veces (las imágenes/audios cambian la altura después de pintar y
+        // hacían que quedara a la mitad) y vuelve a bajar cuando cada imagen termina de cargar.
+        window.chatScrollToBottomHard = function (elementId) {
+            try {
+                var el = document.getElementById(elementId);
+                if (!el) return;
+                var jump = function () { el.scrollTop = el.scrollHeight; };
+                jump();
+                [50, 150, 300, 600, 1000].forEach(function (t) { setTimeout(jump, t); });
+                var imgs = el.querySelectorAll('img');
+                imgs.forEach(function (img) { if (!img.complete) { img.addEventListener('load', jump, { once: true }); } });
+            } catch (e) {}
+        };
+
         // 2026-07-06: grabar audio (nota de voz) y subirlo como adjunto del chat.
         // Usa MediaRecorder. Sube directo al endpoint por fetch (la cookie httpOnly viaja sola).
         window.chatAudio = (function () {

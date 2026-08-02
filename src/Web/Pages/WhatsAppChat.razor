@@ -281,18 +281,22 @@
                                             <a href="@m.MediaUrl" target="_blank" rel="noopener">
                                                 <img src="@m.MediaUrl" style="max-width:100%; max-height:300px; border-radius:6px; display:block;" alt="adjunto" />
                                             </a>
+                                            @* 2026-08-02: botón claro para descargar la imagen al teléfono/PC *@
+                                            <a href="@m.MediaUrl" download="@NombreDescarga(m)" class="wa-descargar-btn">⬇ Descargar</a>
                                         }
                                         else if (IsAudio(m.MediaUrl))
                                         {
                                             @* 2026-07-23: nota de voz — se escucha aca mismo, como en WhatsApp *@
                                             <audio controls preload="none" src="@m.MediaUrl" style="max-width:250px; height:40px; display:block; margin-bottom:0.2rem;"></audio>
+                                            <a href="@m.MediaUrl" download="@NombreDescarga(m)" class="wa-descargar-btn">⬇ Descargar</a>
                                         }
                                         else
                                         {
-                                            <a href="@m.MediaUrl" target="_blank" rel="noopener" style="display:flex; align-items:center; gap:0.4rem; padding:0.5rem; background:#f3f4f6; border-radius:6px; text-decoration:none; color:#374151; margin-bottom:0.3rem;">
+                                            <a href="@m.MediaUrl" download="@NombreDescarga(m)" style="display:flex; align-items:center; gap:0.4rem; padding:0.5rem; background:#f3f4f6; border-radius:6px; text-decoration:none; color:#374151; margin-bottom:0.3rem;">
                                                 <span style="font-size:1.5rem;">📎</span>
                                                 @* 2026-07-23 pedido Osmar: mostrar nombre y tipo del archivo (antes decía "Archivo adjunto" pelado) *@
-                                                <span style="font-size:0.85rem; flex:1;">@(string.IsNullOrWhiteSpace(m.MediaFilename) ? "Archivo adjunto" : m.MediaFilename)<br/><span style="font-size:0.7rem; color:#6b7280;">@WaTipoArchivo(m.MediaUrl, m.MediaFilename) · Click para abrir</span></span>
+                                                <span style="font-size:0.85rem; flex:1;">@(string.IsNullOrWhiteSpace(m.MediaFilename) ? "Archivo adjunto" : m.MediaFilename)<br/><span style="font-size:0.7rem; color:#6b7280;">@WaTipoArchivo(m.MediaUrl, m.MediaFilename) · Tocá para descargar</span></span>
+                                                <span style="font-size:1.1rem;">⬇</span>
                                             </a>
                                         }
                                     }
@@ -1097,13 +1101,25 @@
     /* 2026-08-02: flecha "volver" (oculta en escritorio, se ve solo en el celular) */
     .wa-volver-btn { display: none; background: transparent; border: 0; font-size: 1.6rem; line-height: 1; color: #128c7e; cursor: pointer; padding: 0 0.4rem 0 0; }
 
+    /* 2026-08-02: botón para descargar un archivo/imagen/audio recibido */
+    .wa-descargar-btn { display: inline-block; margin-top: 0.25rem; font-size: 0.72rem; color: #128c7e; text-decoration: none; background: #e7f7f1; border: 1px solid #b9e6d7; border-radius: 6px; padding: 0.15rem 0.5rem; }
+    .wa-descargar-btn:hover { background: #d5f0e6; }
+
+    /* 2026-08-02: en la pantalla de WhatsApp no tiene sentido el panel flotante de WhatsApp (ya estás adentro) */
+    .waf-panel, .waf-fab { display: none !important; }
+
     /* ===== 2026-08-02: MODO CELULAR estilo WhatsApp =====
        En pantallas chicas se ve O la lista O el chat, a pantalla completa (no las dos apretadas).
        Tocás un chat -> se abre el chat entero. Flecha "volver" -> volvés a la lista. */
     @@media (max-width: 820px) {
+        /* Punto 1: en el celular, dentro de WhatsApp mostramos SOLO el WhatsApp.
+           Ocultamos la botonera del menú del sistema (BÓVEDA, CALCUPRECIOS, Stock, Venta, etc.)
+           y dejamos la barra chica de arriba (☰ menú + Volver) para poder navegar. */
+        .main-wrapper .topbar-actions { display: none !important; }
+
         .wa-topbar { padding: 0.4rem 0.6rem 0; gap: 0.5rem; }
         .wa-tab-top { font-size: 0.85rem; }
-        .wa-outer { height: calc(100dvh - 100px); padding: 0; background: #fff; }
+        .wa-outer { height: calc(100dvh - 112px); padding: 0; background: #fff; }
         .wa-root { grid-template-columns: 1fr; gap: 0; max-width: 100%; }
         .wa-sidebar, .wa-thread { border-radius: 0; border-left: 0; border-right: 0; box-shadow: none; }
 
@@ -1859,7 +1875,9 @@
             await Task.Yield();
             StateHasChanged();
             await Task.Delay(60);
-            await JS.InvokeVoidAsync("chatScrollToBottom", "wa-messages-scroll");
+            // "Hard": reintenta mientras cargan imágenes/audios, así al abrir un chat
+            // siempre quedás en el último mensaje (no a la mitad).
+            await JS.InvokeVoidAsync("chatScrollToBottomHard", "wa-messages-scroll");
         }
         catch { /* si falla el scroll no rompemos el chat */ }
     }
@@ -2164,6 +2182,20 @@
     {
         if (string.IsNullOrEmpty(s)) return "";
         return System.Net.WebUtility.HtmlEncode(s).Replace("\n", "<br/>");
+    }
+
+    // 2026-08-02: nombre lindo para el archivo al descargarlo. Usa el nombre original si lo hay,
+    // si no arma uno con la fecha. El atributo download fuerza la descarga (la media es del mismo sitio).
+    string NombreDescarga(ApiClient.TwMsgDto m)
+    {
+        if (!string.IsNullOrWhiteSpace(m.MediaFilename)) return m.MediaFilename!;
+        var ext = System.IO.Path.GetExtension((m.MediaUrl ?? "").Split('?')[0]);
+        if (string.IsNullOrEmpty(ext))
+        {
+            if (IsImage(m.MediaUrl)) ext = ".jpg";
+            else if (IsAudio(m.MediaUrl)) ext = ".ogg";
+        }
+        return $"whatsapp-{m.CreatedAt:yyyyMMdd-HHmmss}{ext}";
     }
 
     bool IsImage(string? url)
