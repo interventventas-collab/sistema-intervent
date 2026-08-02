@@ -6200,6 +6200,26 @@ public class ApiClient
         catch (Exception ex) { return (false, ex.Message); }
     }
 
+    // 2026-08-02: compartir una tarjeta de contacto dentro de un chat de WhatsApp
+    public async Task<(bool ok, string? error)> EnviarTwContactoAsync(string numero, string contactoNombre, string contactoNumero, string? lineaPhoneId = null)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/send-contacto",
+                new { Numero = numero, ContactoNombre = contactoNombre, ContactoNumero = contactoNumero, LineaPhoneId = lineaPhoneId });
+            if (resp.IsSuccessStatusCode) return (true, null);
+            string err = "Error enviando contacto";
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err;
+            }
+            catch { }
+            return (false, err);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     public async Task<(bool ok, string? error)> SendTwMenuRolAsync(string numero)
     {
         try

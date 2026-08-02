@@ -1023,6 +1023,61 @@ public class WhatsAppTwilioController : ControllerBase
         }
     }
 
+    public record SendContactoRequest(string Numero, string ContactoNombre, string ContactoNumero, string? LineaPhoneId = null);
+
+    /// <summary>POST /api/whatsapp/twilio/send-contacto — comparte una tarjeta de contacto en un chat (Meta Cloud API).</summary>
+    [HttpPost("send-contacto")]
+    [Authorize]
+    public async Task<IActionResult> SendContacto([FromBody] SendContactoRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Numero) || string.IsNullOrWhiteSpace(req.ContactoNumero))
+            return BadRequest(new { error = "Faltan datos del contacto" });
+        if (!_meta.IsConfigured)
+            return StatusCode(503, new { error = "WhatsApp (Meta) no está configurado" });
+
+        // Línea: la del pedido, o si no vino, la de la conversación (última entrante).
+        var lineaConv = req.LineaPhoneId;
+        if (string.IsNullOrWhiteSpace(lineaConv))
+        {
+            lineaConv = await _db.WhatsAppTwilioMensajes.AsNoTracking()
+                .Where(x => x.Numero == req.Numero && x.Direccion == "INCOMING" && x.LineaPhoneId != null)
+                .OrderByDescending(x => x.Id).Select(x => x.LineaPhoneId).FirstOrDefaultAsync();
+        }
+
+        try
+        {
+            var nombre = string.IsNullOrWhiteSpace(req.ContactoNombre) ? req.ContactoNumero : req.ContactoNombre.Trim();
+            var wamid = await _meta.SendContactAsync(req.Numero, nombre, req.ContactoNumero, lineaPhoneId: lineaConv);
+            if (string.IsNullOrEmpty(wamid))
+                return StatusCode(502, new { error = "Meta rechazó el envío del contacto" });
+
+            // Lo guardamos con el mismo marcador que los entrantes, para mostrarlo como tarjeta.
+            var payloadCard = System.Text.Json.JsonSerializer.Serialize(new[]
+            {
+                new Dictionary<string, string> { ["n"] = nombre, ["t"] = MetaWhatsAppService.NormalizeTo(req.ContactoNumero) }
+            });
+            var msg = new WhatsAppTwilioMensaje
+            {
+                Direccion = "OUTGOING",
+                Numero = req.Numero,
+                Cuerpo = "CONTACTO_WA:" + payloadCard,
+                LineaPhoneId = lineaConv,
+                TwilioMessageSid = wamid,
+                Canal = "CLOUD",
+                Procesado = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            _db.WhatsAppTwilioMensajes.Add(msg);
+            await _db.SaveChangesAsync();
+            return Ok(new { ok = true, sid = wamid, id = msg.Id });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error enviando contacto WhatsApp");
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
     private static string GenerarToken()
     {
         var bytes = new byte[24];

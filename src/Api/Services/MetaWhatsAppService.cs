@@ -202,6 +202,42 @@ public class MetaWhatsAppService
         return await PostMessageAsync(payload, to, ct, lineaPhoneId);
     }
 
+    /// <summary>2026-08-02: envía un CONTACTO (tarjeta de contacto, type:contacts). El cliente lo
+    /// recibe como un contacto real de WhatsApp que puede guardar con un toque. Devuelve el wamid o null.</summary>
+    public async Task<string?> SendContactAsync(string to, string nombre, string numero, CancellationToken ct = default, string? lineaPhoneId = null)
+    {
+        EnsureConfigured();
+        var numeroLimpio = NormalizeTo(numero);                 // solo dígitos
+        var payload = new Dictionary<string, object?>
+        {
+            ["messaging_product"] = "whatsapp",
+            ["recipient_type"] = "individual",
+            ["to"] = NormalizeTo(to),
+            ["type"] = "contacts",
+            ["contacts"] = new[]
+            {
+                new Dictionary<string, object?>
+                {
+                    ["name"] = new Dictionary<string, object?>
+                    {
+                        ["formatted_name"] = string.IsNullOrWhiteSpace(nombre) ? numeroLimpio : nombre,
+                        ["first_name"] = string.IsNullOrWhiteSpace(nombre) ? numeroLimpio : nombre
+                    },
+                    ["phones"] = new[]
+                    {
+                        new Dictionary<string, object?>
+                        {
+                            ["phone"] = "+" + numeroLimpio,
+                            ["type"] = "CELL",
+                            ["wa_id"] = numeroLimpio
+                        }
+                    }
+                }
+            }
+        };
+        return await PostMessageAsync(payload, to, ct, lineaPhoneId);
+    }
+
     /// <summary>2026-08-01: envía una PLANTILLA aprobada (para INICIAR conversación fuera de la ventana de 24h).
     /// bodyParams son los valores de las variables {{1}}, {{2}}… del cuerpo (en orden). Devuelve el wamid o null.</summary>
     public async Task<string?> SendTemplateAsync(string to, string templateName, string languageCode, IList<string>? bodyParams, CancellationToken ct = default, string? lineaPhoneId = null)

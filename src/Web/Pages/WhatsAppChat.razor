@@ -300,7 +300,22 @@
                                             </a>
                                         }
                                     }
-                                    @if (!string.IsNullOrEmpty(m.Cuerpo))
+                                    @if (EsMensajeContacto(m.Cuerpo))
+                                    {
+                                        @* 2026-08-02: tarjeta de contacto compartido (recibido o enviado) *@
+                                        @foreach (var ct in ParseContactos(m.Cuerpo))
+                                        {
+                                            <div class="wa-contacto-card">
+                                                <span class="wa-contacto-ava">👤</span>
+                                                <div style="flex:1; min-width:0;">
+                                                    <div style="font-weight:600;">@ct.Nombre</div>
+                                                    <div style="font-size:0.78rem; color:#6b7280;">+@ct.Numero</div>
+                                                </div>
+                                                <button class="wa-contacto-btn" title="Abrir un chat con este contacto" @onclick="() => IrAContacto(ct.Numero)">💬 Escribir</button>
+                                            </div>
+                                        }
+                                    }
+                                    else if (!string.IsNullOrEmpty(m.Cuerpo))
                                     {
                                         <div class="wa-bubble-body">@((MarkupString)EscapeMsg(m.Cuerpo))</div>
                                     }
@@ -422,6 +437,34 @@
                     }
                 </div>
             }
+            @* 2026-08-02: Panel "Compartir contacto" — buscás un contacto y se lo mandás como tarjeta al chat *@
+            @if (showContactoPanel)
+            {
+                <div class="wa-saldo-panel">
+                    <div class="wa-saldo-head">
+                        <strong>👤 Compartir un contacto</strong>
+                        <button class="wa-saldo-x" @onclick="@(() => showContactoPanel = false)">×</button>
+                    </div>
+                    <input class="form-control wa-saldo-buscar" placeholder="Buscar contacto por nombre o número…"
+                           @bind="contactoQuery" @bind:event="oninput" @onkeyup="BuscarContactosCompartir" />
+                    @if (contactoBuscando)
+                    {
+                        <div class="wa-saldo-info">Buscando…</div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(contactoQuery) && contactoQuery.Length >= 2 && contactoResultados.Count == 0)
+                    {
+                        <div class="wa-saldo-info">Sin contactos con teléfono para esa búsqueda.</div>
+                    }
+                    @foreach (var cli in contactoResultados)
+                    {
+                        <button class="wa-saldo-cli" @onclick="() => CompartirContacto(cli)" disabled="@enviandoContacto">
+                            👤 <b>@cli.Nombre</b> <span style="color:#6b7280;">— @cli.Numero</span>
+                            <span style="font-size:0.65rem; color:#2563eb;">@cli.Origen</span>
+                        </button>
+                    }
+                    @if (enviandoContacto) { <div class="wa-saldo-info">Enviando contacto…</div> }
+                </div>
+            }
             @* 2026-07-29 (Paso 2): aviso de por QUÉ número tuyo sale la respuesta (el mismo por el que te
                escribió el cliente). Solo aparece con 2+ líneas, para no ensuciar cuando hay una sola. *@
             @if (LineasDetectadas().Count > 1 && SelectedConv()?.LineaNumero is string _lnResp)
@@ -442,6 +485,8 @@
                 <button class="wa-attach-btn wa-saldo-btn" title="Enviar saldo (deuda) de un cliente" @onclick="ToggleSaldoPanel" disabled="@(uploading || sending)">💰</button>
                 @* 2026-07-29: Pasar CBU / datos bancarios *@
                 <button class="wa-attach-btn wa-cbu-btn" title="Pasar un CBU / datos bancarios al cliente" @onclick="ToggleCbuPanel" disabled="@(uploading || sending)">🏦</button>
+                @* 2026-08-02: compartir una tarjeta de contacto *@
+                <button class="wa-attach-btn" title="Compartir un contacto (tarjeta con nombre y número)" @onclick="ToggleContactoPanel" disabled="@(uploading || sending)">👤</button>
                 @* 2026-08-01: nota de voz (micrófono) *@
                 @if (!grabandoAudio)
                 {
@@ -987,7 +1032,14 @@
     .wa-msg-row.out .wa-bubble::before { content: ''; position: absolute; right: -6px; top: 0; border: 6px solid transparent; border-top-color: #d9fdd3; border-right: 0; }
     .wa-msg-row.in .wa-bubble { background: white; }
     .wa-msg-row.out .wa-bubble { background: #d9fdd3; }
-    .wa-bubble-body { font-size: 0.92rem; color: #111827; word-wrap: break-word; white-space: pre-wrap; }
+    /* 2026-08-02: letra de los chats un poco más grande y en negrita (pedido Osmar) */
+    .wa-bubble-body { font-size: 1.02rem; font-weight: 600; color: #111827; word-wrap: break-word; white-space: pre-wrap; }
+
+    /* 2026-08-02: tarjeta de contacto compartido (recibido o enviado) */
+    .wa-contacto-card { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.6rem; background: rgba(0,0,0,0.04); border-radius: 8px; margin-bottom: 0.3rem; min-width: 200px; }
+    .wa-contacto-ava { width: 34px; height: 34px; border-radius: 50%; background: #25d366; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; }
+    .wa-contacto-btn { background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.25rem 0.5rem; font-size: 0.75rem; color: #128c7e; cursor: pointer; white-space: nowrap; }
+    .wa-contacto-btn:hover { background: #f0fdf4; }
     .wa-bubble-meta { font-size: 0.65rem; color: #6b7280; text-align: right; margin-top: 0.2rem; }
     .wa-composer { padding: 0.7rem 1rem 0.5rem; background: #fbfcfe; display: flex; gap: 0.55rem; align-items: flex-end; }
     /* 2026-07-29: cuadro de escribir MUCHO más alto (5x) para poder mandar textos largos. resize:vertical = lo podés estirar/achicar con la esquina. */
@@ -1489,6 +1541,79 @@
     {
         showCbuPanel = !showCbuPanel;
         if (showCbuPanel) showSaldoPanel = false;
+        if (showCbuPanel) showContactoPanel = false;
+    }
+
+    // ===== Compartir contacto (2026-08-02) =====
+    bool showContactoPanel = false, contactoBuscando = false, enviandoContacto = false;
+    string contactoQuery = "";
+    List<ApiClient.TwDestinatarioDto> contactoResultados = new();
+
+    void ToggleContactoPanel()
+    {
+        showContactoPanel = !showContactoPanel;
+        if (showContactoPanel) { showSaldoPanel = false; showCbuPanel = false; }
+        if (!showContactoPanel) { contactoQuery = ""; contactoResultados = new(); }
+    }
+
+    async Task BuscarContactosCompartir()
+    {
+        var q = (contactoQuery ?? "").Trim();
+        if (q.Length < 2) { contactoResultados = new(); return; }
+        contactoBuscando = true;
+        StateHasChanged();
+        try { contactoResultados = await Api.BuscarTwDestinatariosAsync(q); }
+        catch { contactoResultados = new(); }
+        contactoBuscando = false;
+        StateHasChanged();
+    }
+
+    async Task CompartirContacto(ApiClient.TwDestinatarioDto cli)
+    {
+        if (selectedNumero == null || enviandoContacto) return;
+        enviandoContacto = true;
+        var (ok, err) = await Api.EnviarTwContactoAsync(selectedNumero, cli.Nombre, cli.Numero, selectedLinea);
+        enviandoContacto = false;
+        if (ok)
+        {
+            showContactoPanel = false;
+            contactoQuery = ""; contactoResultados = new();
+            await LoadMensajes();
+            Toast.Success("Contacto compartido");
+        }
+        else { Toast.Error(err ?? "No se pudo enviar el contacto"); }
+    }
+
+    // ¿El cuerpo es una tarjeta de contacto? (marcador puesto por el webhook / el envío)
+    static bool EsMensajeContacto(string? cuerpo)
+        => !string.IsNullOrEmpty(cuerpo) && cuerpo.StartsWith("CONTACTO_WA:", StringComparison.Ordinal);
+
+    // Devuelve los contactos guardados en el cuerpo "CONTACTO_WA:[{n,t}]"
+    List<(string Nombre, string Numero)> ParseContactos(string? cuerpo)
+    {
+        var res = new List<(string, string)>();
+        if (!EsMensajeContacto(cuerpo)) return res;
+        try
+        {
+            var json = cuerpo!.Substring("CONTACTO_WA:".Length);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                var n = el.TryGetProperty("n", out var nn) ? nn.GetString() ?? "" : "";
+                var t = el.TryGetProperty("t", out var tt) ? tt.GetString() ?? "" : "";
+                if (string.IsNullOrWhiteSpace(n)) n = t;
+                res.Add((n, t));
+            }
+        }
+        catch { }
+        return res;
+    }
+
+    // Abre (o crea) la conversación con el número de un contacto compartido.
+    async Task IrAContacto(string numero)
+    {
+        var inbox = "whatsapp:+" + new string((numero ?? "").Where(char.IsDigit).ToArray());
+        await SelectConv(inbox, null);
     }
 
     // Arma el texto lindo que se le pasa al cliente. soloAlias = solo banco + alias (para el que no quiere el CBU largo).

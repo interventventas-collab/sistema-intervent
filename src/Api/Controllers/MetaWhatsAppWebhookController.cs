@@ -453,6 +453,11 @@ public class MetaWhatsAppWebhookController : ControllerBase
             case "interactive":
                 cuerpo = TryGetInteractive(m);
                 break;
+            case "contacts":
+                // 2026-08-02: nos compartieron uno o más contactos. Los guardamos con un marcador
+                // "CONTACTO_WA:" + JSON para mostrarlos como tarjeta (nombre + número + botón escribir).
+                cuerpo = ParseContactosEntrantes(m);
+                break;
             default:
                 cuerpo = null;
                 break;
@@ -725,6 +730,40 @@ public class MetaWhatsAppWebhookController : ControllerBase
         if (i.TryGetProperty("button_reply", out var br) && br.TryGetProperty("title", out var bt)) return bt.GetString();
         if (i.TryGetProperty("list_reply", out var lr) && lr.TryGetProperty("title", out var lt)) return lt.GetString();
         return null;
+    }
+
+    /// <summary>2026-08-02: arma el cuerpo de un mensaje de contactos entrante. Devuelve
+    /// "CONTACTO_WA:" + JSON [{n:nombre, t:numero}, …] para que el frontend lo muestre como tarjeta.</summary>
+    private static string? ParseContactosEntrantes(JsonElement m)
+    {
+        if (!m.TryGetProperty("contacts", out var contactos) || contactos.ValueKind != JsonValueKind.Array)
+            return null;
+        var lista = new List<Dictionary<string, string>>();
+        foreach (var c in contactos.EnumerateArray())
+        {
+            string nombre = "";
+            if (c.TryGetProperty("name", out var nm))
+            {
+                nombre = nm.TryGetProperty("formatted_name", out var fn) ? fn.GetString() ?? ""
+                       : nm.TryGetProperty("first_name", out var fi) ? fi.GetString() ?? "" : "";
+            }
+            string numero = "";
+            if (c.TryGetProperty("phones", out var phones) && phones.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var ph in phones.EnumerateArray())
+                {
+                    numero = ph.TryGetProperty("wa_id", out var wid) && !string.IsNullOrWhiteSpace(wid.GetString())
+                        ? wid.GetString()!
+                        : (ph.TryGetProperty("phone", out var phe) ? phe.GetString() ?? "" : "");
+                    if (!string.IsNullOrWhiteSpace(numero)) break;
+                }
+            }
+            numero = MetaWhatsAppService.NormalizeTo(numero);   // solo dígitos
+            if (string.IsNullOrWhiteSpace(nombre) && string.IsNullOrWhiteSpace(numero)) continue;
+            lista.Add(new Dictionary<string, string> { ["n"] = nombre, ["t"] = numero });
+        }
+        if (lista.Count == 0) return "[contacto]";
+        return "CONTACTO_WA:" + System.Text.Json.JsonSerializer.Serialize(lista);
     }
 
     /// <summary>Convierte el wa_id de Meta (dígitos, ej "5491122334455") al formato de la bandeja ("whatsapp:+5491122334455").</summary>
