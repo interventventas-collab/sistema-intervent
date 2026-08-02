@@ -204,7 +204,7 @@ services:
   # (gracias a "profiles: [turn]"). Asi una publicacion comun nunca lo prende sin querer.
   #
   # Requisitos para que funcione (se hacen el dia de la puesta en marcha):
-  #   1. PUBLIC_IP en el .env = IP publica del servidor de DonWeb.
+  #   1. TURN_EXTERNAL_IP en el .env = IP publica del servidor de DonWeb.
   #   2. TURN_USERNAME y TURN_CREDENTIAL en el .env (usuario/clave que elijas).
   #   3. Abrir en el firewall de DonWeb: 3478/udp, 3478/tcp y el rango 49160-49200/udp.
   #   4. En el .env de la API: TURN_URL=turn:LA_IP_PUBLICA:3478 (mismos user/credential).
@@ -223,7 +223,7 @@ services:
       - --listening-port=3478
       - --min-port=49160
       - --max-port=49200
-      - --external-ip=${PUBLIC_IP:-127.0.0.1}
+      - --external-ip=${TURN_EXTERNAL_IP:-127.0.0.1}
       - --no-cli
       - --no-tls
       - --no-dtls
