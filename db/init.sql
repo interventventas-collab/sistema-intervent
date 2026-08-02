@@ -6347,3 +6347,56 @@ BEGIN
           WHERE ChatId IS NOT NULL AND Proposito <> ''PREVENTAS''');
 END
 GO
+
+-- ============================================================================
+-- CAMINO AL PICKING (2026-08-02) — escalon 1
+-- Listas de picking CONGELADAS (foto de productos sumados) + items tildables +
+-- el celu del deposito habilitado para armar. Acceso publico por token (QR),
+-- pero solo desde el aparato habilitado.
+-- ============================================================================
+IF OBJECT_ID('Cafe_PickingLista','U') IS NULL
+CREATE TABLE Cafe_PickingLista (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    Token NVARCHAR(64) NOT NULL,
+    CreadaPor NVARCHAR(120) NULL,
+    VentaNumeros NVARCHAR(2000) NULL,
+    CantidadPedidos INT NOT NULL DEFAULT 0,
+    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='UX_CafePickingLista_Token')
+    CREATE UNIQUE INDEX UX_CafePickingLista_Token ON Cafe_PickingLista(Token) WHERE Token IS NOT NULL;
+GO
+
+IF OBJECT_ID('Cafe_PickingItem','U') IS NULL
+CREATE TABLE Cafe_PickingItem (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    PickingListaId INT NOT NULL,
+    Orden INT NOT NULL DEFAULT 0,
+    ProductoNombre NVARCHAR(300) NOT NULL,
+    Formato NVARCHAR(50) NULL,
+    Molienda NVARCHAR(50) NULL,
+    Sku NVARCHAR(100) NULL,
+    Categoria NVARCHAR(50) NULL,
+    Cantidad INT NOT NULL DEFAULT 0,
+    Tildado BIT NOT NULL DEFAULT 0,
+    TildadoAt DATETIME2 NULL
+);
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='IX_CafePickingItem_Lista' AND object_id=OBJECT_ID('Cafe_PickingItem'))
+    CREATE INDEX IX_CafePickingItem_Lista ON Cafe_PickingItem (PickingListaId);
+GO
+
+IF OBJECT_ID('Cafe_PickingDispositivo','U') IS NULL
+CREATE TABLE Cafe_PickingDispositivo (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    DeviceId NVARCHAR(80) NOT NULL,
+    Nombre NVARCHAR(160) NULL,
+    Activo BIT NOT NULL DEFAULT 1,
+    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    LastSeenAt DATETIME2 NULL
+);
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='UX_CafePickingDispositivo_DeviceId')
+    CREATE UNIQUE INDEX UX_CafePickingDispositivo_DeviceId ON Cafe_PickingDispositivo(DeviceId) WHERE DeviceId IS NOT NULL;
+GO

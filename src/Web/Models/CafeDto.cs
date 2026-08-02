@@ -618,6 +618,24 @@ public class CafePreparacionItemDto
     public int? UxB { get; set; }
 }
 
+// ── Camino al picking (2026-08-02) ──
+/// <summary>Respuesta al crear una lista de picking congelada desde los pedidos tildados.</summary>
+public class PickingCrearResult
+{
+    public string Token { get; set; } = "";
+    public int CantidadPedidos { get; set; }
+    public int CantidadItems { get; set; }
+}
+
+/// <summary>Estado del celu del deposito habilitado (para /cafe/preparacion).</summary>
+public class PickingDispositivoDto
+{
+    public bool Registrado { get; set; }
+    public string? Nombre { get; set; }
+    public DateTime? CreatedAt { get; set; }
+    public DateTime? LastSeenAt { get; set; }
+}
+
 public class CafeCambiarEstadoPreparacionRequest
 {
     /// <summary>Estado nuevo. Vacio o null = sacar la venta del flujo.</summary>

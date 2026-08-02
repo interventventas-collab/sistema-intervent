@@ -1,0 +1,250 @@
+@page "/picking/{token}"
+@attribute [AllowAnonymous]
+@layout Web.Layout.EmptyLayout
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+@* Camino al picking (escalon 1, 2026-08-02) — checklist para armar en el CELU DEL DEPOSITO.
+   Se abre sin login por el token del QR. La lista esta CONGELADA. Solo funciona en el celu
+   habilitado del deposito (regla del usuario: no usar telefonos personales). *@
+
+<style>
+    body { background: #0f172a; }
+    .pk-wrap { max-width: 640px; margin: 0 auto; padding: 0.6rem 0.6rem 3rem; color: #e2e8f0; }
+    .pk-head { text-align: center; padding: 0.9rem 0.5rem 0.6rem; }
+    .pk-title { font-size: 1.35rem; font-weight: 800; color: #fff; display:flex; align-items:center; justify-content:center; gap:0.4rem; }
+    .pk-sub { font-size: 0.85rem; color: #94a3b8; margin-top: 0.25rem; }
+    .pk-progress-wrap { background:#1e293b; border-radius:999px; height:14px; overflow:hidden; margin:0.7rem 0 0.3rem; }
+    .pk-progress-bar { background:#22c55e; height:100%; transition:width 0.3s; }
+    .pk-progress-txt { font-size:0.8rem; color:#94a3b8; text-align:center; }
+    .pk-card {
+        background:#1e293b; border-radius:14px; margin:0.55rem 0; padding:0.9rem 1rem;
+        display:flex; align-items:center; gap:0.9rem; cursor:pointer; user-select:none;
+        border:2px solid transparent; transition: all 0.12s;
+    }
+    .pk-card:active { transform: scale(0.99); }
+    .pk-card.done { background:#14321f; border-color:#22c55e; }
+    .pk-check {
+        width:38px; height:38px; border-radius:10px; flex:0 0 auto;
+        border:2px solid #475569; display:flex; align-items:center; justify-content:center;
+        font-size:1.4rem; color:#fff;
+    }
+    .pk-card.done .pk-check { background:#22c55e; border-color:#22c55e; }
+    .pk-cant { font-size:1.9rem; font-weight:800; color:#fb923c; min-width:52px; text-align:right; line-height:1; }
+    .pk-card.done .pk-cant { color:#4ade80; }
+    .pk-cant .x { font-size:0.9rem; color:#64748b; }
+    .pk-nombre { font-size:1.05rem; font-weight:700; color:#f1f5f9; line-height:1.2; }
+    .pk-card.done .pk-nombre { text-decoration:line-through; color:#64748b; }
+    .pk-tags { display:flex; flex-wrap:wrap; gap:0.3rem; margin-top:0.25rem; }
+    .pk-tag { font-size:0.72rem; font-weight:700; padding:0.1rem 0.45rem; border-radius:5px; }
+    .pk-tag-formato { background:#334155; color:#cbd5e1; }
+    .pk-tag-molienda { background:#422006; color:#fdba74; }
+    .pk-tag-sku { background:#1e3a5f; color:#93c5fd; font-family:monospace; }
+    .pk-msg { text-align:center; padding:2.5rem 1rem; color:#cbd5e1; }
+    .pk-msg .big { font-size:3rem; margin-bottom:0.5rem; }
+    .pk-btn {
+        display:block; width:100%; box-sizing:border-box; margin-top:1rem;
+        padding:0.9rem; border:none; border-radius:12px; font-size:1.05rem; font-weight:800; cursor:pointer;
+    }
+    .pk-btn-habilitar { background:#22c55e; color:#052e16; }
+    .pk-done-banner { background:#14321f; border:2px solid #22c55e; border-radius:14px; padding:1rem; text-align:center; color:#4ade80; font-weight:800; margin-top:0.8rem; font-size:1.1rem; }
+</style>
+
+<div class="pk-wrap">
+    @if (cargando)
+    {
+        <div class="pk-msg"><div class="big">⏳</div>Abriendo lista…</div>
+    }
+    else if (estado == "no_encontrada")
+    {
+        <div class="pk-msg"><div class="big">🚫</div>Esta lista no existe o venció.</div>
+    }
+    else if (estado == "no_habilitado")
+    {
+        <div class="pk-msg">
+            <div class="big">📵</div>
+            <div style="font-size:1.15rem; font-weight:800; color:#fff; margin-bottom:0.4rem;">Este celular no está habilitado</div>
+            <div>Para armar pedidos usá el <b>celular del depósito</b>.<br/>Si querés cambiar el celu habilitado, pedíselo al encargado desde la pantalla de pedidos.</div>
+        </div>
+    }
+    else if (estado == "sin_dispositivo")
+    {
+        <div class="pk-msg">
+            <div class="big">📱</div>
+            <div style="font-size:1.15rem; font-weight:800; color:#fff; margin-bottom:0.4rem;">Habilitar este celular</div>
+            <div>Todavía no hay un celular del depósito habilitado.<br/>Si <b>este es el celu del depósito</b>, tocá el botón para habilitarlo. Los demás celulares quedarán bloqueados.</div>
+            <button class="pk-btn pk-btn-habilitar" @onclick="Habilitar" disabled="@trabajando">
+                @(trabajando ? "Habilitando…" : "✅ Habilitar este celular como el del depósito")
+            </button>
+        </div>
+    }
+    else if (estado == "ok" && lista is not null)
+    {
+        var hechos = lista.Items.Count(i => i.Tildado);
+        var total = lista.Items.Count;
+        var pct = total == 0 ? 0 : (int)(hechos * 100.0 / total);
+        <div class="pk-head">
+            <div class="pk-title">🧺 Para armar</div>
+            <div class="pk-sub">
+                @lista.CantidadPedidos pedido@(lista.CantidadPedidos == 1 ? "" : "s")
+                @if (!string.IsNullOrEmpty(lista.VentaNumeros)) { <text> · @lista.VentaNumeros</text> }
+            </div>
+            <div class="pk-progress-wrap"><div class="pk-progress-bar" style="width:@(pct)%;"></div></div>
+            <div class="pk-progress-txt">@hechos de @total juntados</div>
+        </div>
+
+        @if (hechos == total && total > 0)
+        {
+            <div class="pk-done-banner">🎉 ¡Todo armado!</div>
+        }
+
+        @foreach (var it in lista.Items)
+        {
+            <div class="pk-card @(it.Tildado ? "done" : "")" @onclick="() => Toggle(it)">
+                <div class="pk-check">@(it.Tildado ? "✓" : "")</div>
+                <div class="pk-cant"><span class="x">×</span>@it.Cantidad</div>
+                <div style="flex:1; min-width:0;">
+                    <div class="pk-nombre">@it.ProductoNombre</div>
+                    <div class="pk-tags">
+                        @if (!string.IsNullOrEmpty(it.Formato) && it.Formato != "Unidad" && it.Formato != "UNIT")
+                        {
+                            <span class="pk-tag pk-tag-formato">@it.Formato</span>
+                        }
+                        @if (!string.IsNullOrEmpty(it.Molienda) && it.Categoria == "CAFE")
+                        {
+                            <span class="pk-tag pk-tag-molienda">@it.Molienda</span>
+                        }
+                        @if (!string.IsNullOrEmpty(it.Sku))
+                        {
+                            <span class="pk-tag pk-tag-sku">@it.Sku</span>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+
+    private bool cargando = true;
+    private bool trabajando = false;
+    private string estado = "";          // ok | sin_dispositivo | no_habilitado | no_encontrada
+    private string deviceId = "";
+    private PickingListaResp? lista;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // deviceId persistente por celular (localStorage). Es la "identidad" del aparato.
+        try
+        {
+            deviceId = await JS.InvokeAsync<string>("localStorage.getItem", "picking_device_id") ?? "";
+        }
+        catch { deviceId = ""; }
+        if (string.IsNullOrEmpty(deviceId))
+        {
+            deviceId = Guid.NewGuid().ToString("N");
+            try { await JS.InvokeVoidAsync("localStorage.setItem", "picking_device_id", deviceId); } catch { }
+        }
+        await Abrir();
+    }
+
+    private async Task Abrir()
+    {
+        cargando = true;
+        StateHasChanged();
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"api/public/picking/{Uri.EscapeDataString(Token)}/abrir", new { deviceId });
+            if (resp.StatusCode == System.Net.HttpStatusCode.NotFound) { estado = "no_encontrada"; return; }
+            var data = await resp.Content.ReadFromJsonAsync<AbrirResp>();
+            estado = data?.Estado ?? "no_encontrada";
+            lista = data?.Lista;
+        }
+        catch { estado = "no_encontrada"; }
+        finally { cargando = false; StateHasChanged(); }
+    }
+
+    private async Task Habilitar()
+    {
+        trabajando = true;
+        StateHasChanged();
+        try
+        {
+            var nombre = await NombreDispositivo();
+            var resp = await Http.PostAsJsonAsync($"api/public/picking/{Uri.EscapeDataString(Token)}/habilitar-dispositivo",
+                new { deviceId, nombre });
+            var data = await resp.Content.ReadFromJsonAsync<AbrirResp>();
+            estado = data?.Estado ?? "no_habilitado";
+            lista = data?.Lista;
+        }
+        catch { }
+        finally { trabajando = false; StateHasChanged(); }
+    }
+
+    private async Task Toggle(PickingItemResp it)
+    {
+        var nuevo = !it.Tildado;
+        it.Tildado = nuevo;   // optimista
+        StateHasChanged();
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"api/public/picking/{Uri.EscapeDataString(Token)}/item/{it.Id}",
+                new { deviceId, tildado = nuevo });
+            if (!resp.IsSuccessStatusCode)
+            {
+                it.Tildado = !nuevo;  // revertir si falla (ej. dejó de estar habilitado)
+                if ((int)resp.StatusCode == 403) { estado = "no_habilitado"; }
+                StateHasChanged();
+            }
+        }
+        catch { it.Tildado = !nuevo; StateHasChanged(); }
+    }
+
+    /// <summary>Nombre amigable del aparato (ej "Android · Chrome") para reconocerlo en el panel admin.</summary>
+    private async Task<string> NombreDispositivo()
+    {
+        try
+        {
+            var ua = await JS.InvokeAsync<string>("eval", "navigator.userAgent") ?? "";
+            string so = ua.Contains("Android") ? "Android"
+                : (ua.Contains("iPhone") || ua.Contains("iPad") || ua.Contains("iPod")) ? "iPhone/iPad"
+                : ua.Contains("Windows") ? "Windows"
+                : ua.Contains("Mac") ? "Mac"
+                : ua.Contains("Linux") ? "Linux" : "Celu";
+            string nav = ua.Contains("Edg") ? "Edge"
+                : ua.Contains("Chrome") ? "Chrome"
+                : ua.Contains("Firefox") ? "Firefox"
+                : ua.Contains("Safari") ? "Safari" : "";
+            return string.IsNullOrEmpty(nav) ? so : $"{so} · {nav}";
+        }
+        catch { return "Celu del depósito"; }
+    }
+
+    public class AbrirResp
+    {
+        public string Estado { get; set; } = "";
+        public PickingListaResp? Lista { get; set; }
+    }
+    public class PickingListaResp
+    {
+        public string Token { get; set; } = "";
+        public string? CreadaPor { get; set; }
+        public string? VentaNumeros { get; set; }
+        public int CantidadPedidos { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public List<PickingItemResp> Items { get; set; } = new();
+    }
+    public class PickingItemResp
+    {
+        public int Id { get; set; }
+        public string ProductoNombre { get; set; } = "";
+        public string? Formato { get; set; }
+        public string? Molienda { get; set; }
+        public string? Sku { get; set; }
+        public string? Categoria { get; set; }
+        public int Cantidad { get; set; }
+        public bool Tildado { get; set; }
+    }
+}

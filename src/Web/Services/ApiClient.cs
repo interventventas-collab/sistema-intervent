@@ -1647,6 +1647,19 @@ public class ApiClient
     public async Task<List<CafePreparacionVentaDto>?> GetCafePreparacionArmadosAsync(string rango = "7d")
         => await GetAsync<List<CafePreparacionVentaDto>>($"/api/cafe/ventas/preparacion/armados?rango={rango}");
 
+    // ─── Camino al picking (2026-08-02) ───
+    /// <summary>Crea una lista de picking CONGELADA sumando los productos de los pedidos tildados.</summary>
+    public async Task<PickingCrearResult?> CrearPickingAsync(List<int> ventaIds, string? operador)
+        => await PostAsync<PickingCrearResult>("/api/cafe/picking/crear", new { ventaIds, operador });
+
+    /// <summary>Devuelve el celu del deposito habilitado (o Registrado=false si no hay).</summary>
+    public async Task<PickingDispositivoDto?> GetPickingDispositivoAsync()
+        => await GetAsync<PickingDispositivoDto>("/api/cafe/picking/dispositivo");
+
+    /// <summary>"Olvida" el celu del deposito actual (para cambiar de aparato).</summary>
+    public async Task<bool> OlvidarPickingDispositivoAsync()
+        => await DeleteAsync("/api/cafe/picking/dispositivo");
+
     // ─── 2026-06-03: Config del modo nuevo de fichada (piloto WiFi + GPS) ───
     public record ConfigFichadaDto(bool ActivarModoNuevo, string? Wifi1Ip, string? Wifi1Label,
         string? Wifi2Ip, string? Wifi2Label, bool RequiereHuella, bool LoguearGps,

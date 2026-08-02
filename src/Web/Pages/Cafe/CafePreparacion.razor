@@ -464,6 +464,106 @@
         color: #6b7280;
         margin-left: auto;
     }
+
+    /* ── Camino al picking (2026-08-02): layout de 2 columnas — pedidos a la izquierda,
+       panel "Para armar" a la derecha. En celular se apila. ── */
+    .prep-layout { display: flex; gap: 1rem; align-items: flex-start; }
+    .prep-layout-main { flex: 1; min-width: 0; }
+    .prep-armar-panel {
+        width: 330px;
+        flex-shrink: 0;
+        position: sticky;
+        top: 8px;
+        background: white;
+        border: 2px solid #f59e0b;
+        border-radius: 12px;
+        box-shadow: 0 6px 20px rgba(245,158,11,0.15);
+        overflow: hidden;
+        max-height: calc(100vh - 20px);
+        display: flex;
+        flex-direction: column;
+    }
+    @@media (max-width: 900px) {
+        .prep-layout { flex-direction: column; }
+        .prep-armar-panel { width: 100%; position: static; max-height: none; }
+    }
+    .prep-armar-head {
+        padding: 0.7rem 0.9rem;
+        background: #fffbeb;
+        border-bottom: 1px solid #fde68a;
+        color: #92400e;
+    }
+    .prep-armar-title { font-size: 1.05rem; font-weight: 800; display: flex; align-items: center; gap: 0.4rem; }
+    .prep-armar-sub { font-size: 0.78rem; color: #b45309; margin-top: 0.15rem; }
+    .prep-armar-list { overflow-y: auto; padding: 0.3rem 0; }
+    .prep-armar-row {
+        display: grid;
+        grid-template-columns: 52px 1fr;
+        gap: 0.6rem;
+        align-items: center;
+        padding: 0.45rem 0.9rem;
+        border-bottom: 1px dashed #f3f4f6;
+    }
+    .prep-armar-row:last-child { border-bottom: none; }
+    .prep-armar-cant { font-size: 1.5rem; font-weight: 800; color: #ea580c; text-align: right; line-height: 1; }
+    .prep-armar-cant .x { font-size: 0.85rem; color: #9ca3af; font-weight: 600; }
+    .prep-armar-nombre { font-size: 0.92rem; font-weight: 700; color: #111827; line-height: 1.2; }
+    .prep-armar-tags { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.2rem; }
+    .prep-armar-foot { padding: 0.7rem 0.9rem; border-top: 1px solid #f3f4f6; background: #fafafa; }
+    .prep-btn-celu {
+        width: 100%;
+        padding: 0.7rem;
+        border: none;
+        border-radius: 8px;
+        background: #16a34a;
+        color: white;
+        font-size: 0.95rem;
+        font-weight: 800;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
+        transition: background 0.15s;
+    }
+    .prep-btn-celu:hover { background: #15803d; }
+    .prep-btn-celu:disabled { opacity: 0.6; cursor: default; }
+    .prep-armar-dispo { font-size: 0.74rem; color: #6b7280; margin-top: 0.55rem; line-height: 1.35; }
+    .prep-armar-dispo b { color: #166534; }
+    .prep-armar-dispo .olvidar { color: #b91c1c; cursor: pointer; text-decoration: underline; font-weight: 600; }
+
+    /* Modal del QR para llevar la lista al celu */
+    .prep-qr-overlay {
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,0.55);
+        display: flex; align-items: center; justify-content: center;
+        z-index: 1000;
+        padding: 1rem;
+    }
+    .prep-qr-modal {
+        background: white;
+        border-radius: 16px;
+        max-width: 380px; width: 100%;
+        padding: 1.4rem;
+        text-align: center;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+    }
+    .prep-qr-modal h3 { margin: 0 0 0.3rem; color: #111827; }
+    .prep-qr-modal .qr-img { width: 260px; height: 260px; margin: 0.8rem auto; display: block; border: 1px solid #e5e7eb; border-radius: 10px; }
+    .prep-qr-link {
+        font-size: 0.78rem;
+        color: #2563eb;
+        word-break: break-all;
+        background: #f3f4f6;
+        border-radius: 6px;
+        padding: 0.5rem;
+        margin: 0.5rem 0;
+    }
+    .prep-qr-hint { font-size: 0.85rem; color: #6b7280; margin: 0.4rem 0 0.9rem; }
+    .prep-qr-actions { display: flex; gap: 0.5rem; }
+    .prep-qr-actions button { flex: 1; padding: 0.6rem; border-radius: 8px; font-weight: 700; cursor: pointer; border: none; }
+    .prep-qr-copiar { background: #e5e7eb; color: #374151; }
+    .prep-qr-cerrar { background: #1e40af; color: white; }
 </style>
 
 <div class="content-container" style="padding: 0.8rem;">
@@ -532,27 +632,105 @@
         }
 
         @* ── PEDIDOS PARA ARMAR (todos los que están subidos a Drive y no están listos) ── *@
-        @if (ParaArmar.Count == 0)
-        {
-            <div class="prep-empty" style="padding:2rem; font-size:1rem;">
-                No hay pedidos para armar. ¡Buen trabajo! 🎉
-                <div style="margin-top:0.5rem; color:#6b7280; font-size:0.85rem;">
-                    Para que aparezcan acá, subí los comprobantes a Drive desde /cafe/ventas.
-                </div>
-            </div>
-        }
-        else
-        {
-            <div class="drive-pedidos-grid">
-                @foreach (var v in ParaArmarFiltrados)
+        <div class="prep-layout">
+            <div class="prep-layout-main">
+                @if (ParaArmar.Count == 0)
                 {
-                    <CardPedido Venta="v"
-                                SelectedForPrint="seleccionadosParaImprimir.Contains(v.Id)"
-                                OnAvanzar="() => Avanzar(v)"
-                                OnQuitarDelFlujo="() => QuitarDelFlujo(v)"
-                                OnImprimir="() => ImprimirUno(v)"
-                                OnToggleSelectForPrint="(sel) => ToggleSeleccion(v.Id, sel)" />
+                    <div class="prep-empty" style="padding:2rem; font-size:1rem;">
+                        No hay pedidos para armar. ¡Buen trabajo! 🎉
+                        <div style="margin-top:0.5rem; color:#6b7280; font-size:0.85rem;">
+                            Para que aparezcan acá, subí los comprobantes a Drive desde /cafe/ventas.
+                        </div>
+                    </div>
                 }
+                else
+                {
+                    <div class="drive-pedidos-grid">
+                        @foreach (var v in ParaArmarFiltrados)
+                        {
+                            <CardPedido Venta="v"
+                                        SelectedForPrint="seleccionadosParaImprimir.Contains(v.Id)"
+                                        OnAvanzar="() => Avanzar(v)"
+                                        OnQuitarDelFlujo="() => QuitarDelFlujo(v)"
+                                        OnImprimir="() => ImprimirUno(v)"
+                                        OnToggleSelectForPrint="(sel) => ToggleSeleccion(v.Id, sel)" />
+                        }
+                    </div>
+                }
+            </div>
+
+            @* ── PANEL "PARA ARMAR": resumen sumado de los pedidos tildados (2026-08-02) ── *@
+            @if (seleccionadosParaImprimir.Count > 0)
+            {
+                var resumen = ResumenParaArmar;
+                var totalUnidades = resumen.Sum(r => r.Cantidad);
+                <aside class="prep-armar-panel">
+                    <div class="prep-armar-head">
+                        <div class="prep-armar-title">🧺 Para armar</div>
+                        <div class="prep-armar-sub">
+                            @seleccionadosParaImprimir.Count pedido@(seleccionadosParaImprimir.Count == 1 ? "" : "s") ·
+                            @resumen.Count producto@(resumen.Count == 1 ? "" : "s") · @totalUnidades unidad@(totalUnidades == 1 ? "" : "es")
+                        </div>
+                    </div>
+                    <div class="prep-armar-list">
+                        @foreach (var r in resumen)
+                        {
+                            <div class="prep-armar-row">
+                                <div class="prep-armar-cant"><span class="x">×</span>@r.Cantidad</div>
+                                <div>
+                                    <div class="prep-armar-nombre">@r.Nombre</div>
+                                    @if (!string.IsNullOrEmpty(r.Formato) && r.Formato != "Unidad" && r.Formato != "UNIT"
+                                         || (!string.IsNullOrEmpty(r.Molienda) && r.Categoria == "CAFE"))
+                                    {
+                                        <div class="prep-armar-tags">
+                                            @if (!string.IsNullOrEmpty(r.Formato) && r.Formato != "Unidad" && r.Formato != "UNIT")
+                                            {
+                                                <span class="prep-tag prep-tag-formato">@r.Formato</span>
+                                            }
+                                            @if (!string.IsNullOrEmpty(r.Molienda) && r.Categoria == "CAFE")
+                                            {
+                                                <span class="prep-tag prep-tag-molienda">@r.Molienda</span>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    <div class="prep-armar-foot">
+                        <button class="prep-btn-celu" @onclick="LlevarAlCelu" disabled="@generandoPicking">
+                            @if (generandoPicking) { <span>Generando…</span> } else { <span>📱 Llevar al celu</span> }
+                        </button>
+                        <div class="prep-armar-dispo">
+                            @if (pickingDispositivo is not null && pickingDispositivo.Registrado)
+                            {
+                                <span>📱 Celu del depósito: <b>@(pickingDispositivo.Nombre ?? "habilitado")</b> · <span class="olvidar" @onclick="OlvidarDispositivo">cambiar celu</span></span>
+                            }
+                            else
+                            {
+                                <span>Ningún celu habilitado todavía. El <b>primer celular que abra la lista y toque "habilitar"</b> queda como el del depósito.</span>
+                            }
+                        </div>
+                    </div>
+                </aside>
+            }
+        </div>
+
+        @* Modal del QR: aparece al generar la lista para el celu *@
+        @if (mostrarQr && !string.IsNullOrEmpty(qrToken))
+        {
+            <div class="prep-qr-overlay" @onclick="CerrarQr">
+                <div class="prep-qr-modal" @onclick:stopPropagation="true">
+                    <h3>📱 Lista para el celu</h3>
+                    <div style="font-size:0.85rem; color:#6b7280;">Escaneá este código con el <b>celu del depósito</b></div>
+                    <img class="qr-img" src="@QrImgUrl" alt="QR" />
+                    <div class="prep-qr-hint">La lista queda congelada. En el celu vas tildando lo que ya juntaste ✅</div>
+                    <div class="prep-qr-link">@PickingUrl</div>
+                    <div class="prep-qr-actions">
+                        <button class="prep-qr-copiar" @onclick="CopiarLink">📋 Copiar link</button>
+                        <button class="prep-qr-cerrar" @onclick="CerrarQr">Listo</button>
+                    </div>
+                </div>
             </div>
         }
 
@@ -691,6 +869,47 @@
     // Seleccion multiple para imprimir varios juntos.
     private HashSet<int> seleccionadosParaImprimir = new();
 
+    // ── Camino al picking (2026-08-02) ──
+    private PickingDispositivoDto? pickingDispositivo;
+    private bool generandoPicking = false;
+    private bool mostrarQr = false;
+    private string? qrToken;
+    private string PickingUrl => string.IsNullOrEmpty(qrToken) ? "" : $"{Navigation.BaseUri.TrimEnd('/')}/picking/{qrToken}";
+    private string QrImgUrl => $"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={Uri.EscapeDataString(PickingUrl)}";
+
+    /// <summary>Fila del resumen "Para armar": un producto ya sumado.</summary>
+    public class ArmarResumenItem
+    {
+        public string Nombre { get; set; } = "";
+        public string? Formato { get; set; }
+        public string? Molienda { get; set; }
+        public string? Categoria { get; set; }
+        public int Cantidad { get; set; }
+    }
+
+    /// <summary>Suma los productos de los pedidos tildados, agrupando por nombre + formato + molienda
+    /// (mismo criterio que el backend al congelar la lista).</summary>
+    private List<ArmarResumenItem> ResumenParaArmar
+    {
+        get
+        {
+            if (lista is null) return new();
+            return lista.Where(v => seleccionadosParaImprimir.Contains(v.Id))
+                .SelectMany(v => v.Items)
+                .GroupBy(i => new { i.ProductoNombre, i.Formato, Molienda = i.Molienda ?? "" })
+                .Select(g => new ArmarResumenItem
+                {
+                    Nombre = g.Key.ProductoNombre,
+                    Formato = g.Key.Formato,
+                    Molienda = string.IsNullOrEmpty(g.Key.Molienda) ? null : g.Key.Molienda,
+                    Categoria = g.Select(x => x.Categoria).FirstOrDefault(),
+                    Cantidad = g.Sum(x => x.Cantidad)
+                })
+                .OrderBy(r => r.Categoria).ThenBy(r => r.Nombre).ThenBy(r => r.Formato)
+                .ToList();
+        }
+    }
+
     // El backend ya filtra por DriveSubidoAt != null + estados no-finalizados, así que mostramos todo lo que viene.
     private List<CafePreparacionVentaDto> ParaArmar => lista ?? new();
 
@@ -698,6 +917,8 @@
     {
         await Operator.LoadAsync();
         await Cargar();
+        // Camino al picking: estado del celu del deposito (no bloquea si falla)
+        try { pickingDispositivo = await Api.GetPickingDispositivoAsync(); } catch { }
         // Auto-refresh cada 10 segundos
         refreshTimer = new System.Threading.Timer(async _ => await InvokeAsync(Cargar), null, 10000, 10000);
     }
@@ -782,6 +1003,70 @@
     {
         seleccionadosParaImprimir.Clear();
         StateHasChanged();
+    }
+
+    // ── Camino al picking (2026-08-02) ──
+    /// <summary>Congela la lista de productos sumados y abre el QR para escanear desde el celu.</summary>
+    private async Task LlevarAlCelu()
+    {
+        if (seleccionadosParaImprimir.Count == 0) return;
+        generandoPicking = true;
+        StateHasChanged();
+        try
+        {
+            var res = await Api.CrearPickingAsync(seleccionadosParaImprimir.ToList(), Operator.Current);
+            if (res is not null && !string.IsNullOrEmpty(res.Token))
+            {
+                qrToken = res.Token;
+                mostrarQr = true;
+                ToastService.Success($"Lista lista: {res.CantidadItems} productos de {res.CantidadPedidos} pedidos ✅");
+            }
+            else
+            {
+                ToastService.Error("No se pudo generar la lista");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error: " + ex.Message);
+        }
+        finally
+        {
+            generandoPicking = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CerrarQr()
+    {
+        mostrarQr = false;
+        StateHasChanged();
+    }
+
+    private async Task CopiarLink()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", PickingUrl);
+            ToastService.Info("Link copiado 📋");
+        }
+        catch { ToastService.Info("Copiá el link manualmente"); }
+    }
+
+    /// <summary>"Olvida" el celu del deposito para poder habilitar otro aparato.</summary>
+    private async Task OlvidarDispositivo()
+    {
+        try
+        {
+            var ok = await Api.OlvidarPickingDispositivoAsync();
+            if (ok)
+            {
+                pickingDispositivo = await Api.GetPickingDispositivoAsync();
+                ToastService.Info("Listo. El próximo celu que abra una lista podrá habilitarse como el del depósito.");
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
 
     /// <summary>Imprimir UN ticket: abre el PDF en pestaña nueva y marca como impresa.</summary>
