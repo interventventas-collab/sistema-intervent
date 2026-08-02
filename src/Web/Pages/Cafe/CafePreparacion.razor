@@ -564,6 +564,32 @@
     .prep-qr-actions button { flex: 1; padding: 0.6rem; border-radius: 8px; font-weight: 700; cursor: pointer; border: none; }
     .prep-qr-copiar { background: #e5e7eb; color: #374151; }
     .prep-qr-cerrar { background: #1e40af; color: white; }
+
+    /* Cartelito SIEMPRE visible del celu del deposito habilitado (2026-08-02) */
+    .prep-celu-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.8rem;
+        border-radius: 10px;
+        font-size: 0.85rem;
+        margin: 0 0 1rem;
+    }
+    .prep-celu-chip.on { background: #f0fdf4; border: 1px solid #86efac; color: #166534; }
+    .prep-celu-chip.off { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+    .prep-celu-chip .nombre { font-weight: 800; }
+    .prep-celu-chip .cambiar {
+        margin-left: 0.3rem;
+        padding: 0.2rem 0.55rem;
+        border-radius: 6px;
+        border: 1px solid currentColor;
+        background: transparent;
+        color: inherit;
+        font-size: 0.76rem;
+        font-weight: 700;
+        cursor: pointer;
+    }
+    .prep-celu-chip .cambiar:hover { background: rgba(0,0,0,0.05); }
 </style>
 
 <div class="content-container" style="padding: 0.8rem;">
@@ -613,6 +639,23 @@
                     @onclick="@(() => filtroBusqueda = "")" title="Limpiar búsqueda">✕</button>
         }
     </div>
+
+    @* Cartelito SIEMPRE visible: cuál es el celu del depósito habilitado (2026-08-02) *@
+    @if (pickingDispositivo is not null && pickingDispositivo.Registrado)
+    {
+        <div class="prep-celu-chip on">
+            <span>📱 Celu del depósito:</span>
+            <span class="nombre">@(pickingDispositivo.Nombre ?? "habilitado")</span>
+            <span style="opacity:0.8;">· habilitado @HaceCuanto(pickingDispositivo.CreatedAt)</span>
+            <button class="cambiar" @onclick="OlvidarDispositivo" title="Liberar este celu para habilitar otro">Cambiar celu</button>
+        </div>
+    }
+    else
+    {
+        <div class="prep-celu-chip off">
+            <span>📵 Ningún celular del depósito habilitado todavía. El primero que abra una lista y toque "habilitar" queda registrado.</span>
+        </div>
+    }
 
     @if (loading && lista is null)
     {
@@ -929,6 +972,8 @@
         try
         {
             lista = await Api.GetCafePreparacionAsync(7) ?? new();
+            // Refresca el estado del celu del depósito (por si se habilitó desde el celular)
+            try { pickingDispositivo = await Api.GetPickingDispositivoAsync(); } catch { }
             ultimaActualizacion = DateTime.Now;
         }
         catch (Exception ex)
@@ -1056,6 +1101,9 @@
     /// <summary>"Olvida" el celu del deposito para poder habilitar otro aparato.</summary>
     private async Task OlvidarDispositivo()
     {
+        var confirmar = await JS.InvokeAsync<bool>("confirm",
+            "¿Liberar el celu del depósito? El celu actual va a quedar bloqueado y vas a tener que habilitar el nuevo desde el celular.");
+        if (!confirmar) return;
         try
         {
             var ok = await Api.OlvidarPickingDispositivoAsync();
