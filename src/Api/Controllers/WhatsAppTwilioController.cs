@@ -609,6 +609,83 @@ public class WhatsAppTwilioController : ControllerBase
         return Ok(list);
     }
 
+    /// <summary>
+    /// GET /api/whatsapp/twilio/destinatarios-buscar?q=texto
+    /// Buscador UNIFICADO de contactos para "Nueva conversacion": junta clientes del cafe,
+    /// contactos de conversaciones de WhatsApp (nombre de perfil), compradores de MercadoLibre
+    /// y la agenda de contactos de WhatsApp. Saca repetidos por numero.
+    /// </summary>
+    [HttpGet("destinatarios-buscar")]
+    [Authorize]
+    public async Task<IActionResult> BuscarDestinatarios([FromQuery] string q = "", [FromQuery] int top = 20)
+    {
+        q = (q ?? "").Trim();
+        if (q.Length < 2) return Ok(new List<object>());
+        int cap = Math.Clamp(top, 1, 50);
+        var acc = new List<(string Nombre, string? Tel, string Origen)>();
+
+        // 1) Clientes del cafe
+        int.TryParse(q, out var qNum);
+        acc.AddRange((await _db.CafeClientes.AsNoTracking()
+            .Where(c => (c.Nombre.Contains(q) || (qNum > 0 && c.CodigoInterno == qNum) || (c.Telefono != null && c.Telefono.Contains(q)))
+                        && c.Telefono != null && c.Telefono != "")
+            .OrderBy(c => c.Nombre).Take(cap)
+            .Select(c => new { c.Nombre, c.Telefono }).ToListAsync())
+            .Select(c => (c.Nombre, (string?)c.Telefono, "Cliente")));
+
+        // 2) Contactos de conversaciones de WhatsApp (por nombre de perfil o numero)
+        acc.AddRange((await _db.WhatsAppTwilioMensajes.AsNoTracking()
+            .Where(m => m.NombrePerfil != null && m.NombrePerfil != ""
+                        && (m.NombrePerfil.Contains(q) || m.Numero.Contains(q)))
+            .GroupBy(m => m.Numero)
+            .Select(g => new { Numero = g.Key, Nombre = g.Max(x => x.NombrePerfil) })
+            .Take(cap).ToListAsync())
+            .Select(m => (m.Nombre ?? "", (string?)m.Numero, "WhatsApp")));
+
+        // 3) Compradores de MercadoLibre (base "Telefonos")
+        acc.AddRange((await _db.MeliClientes.AsNoTracking()
+            .Where(c => c.Phone != null && c.Phone != ""
+                        && ((c.ReceiverName != null && c.ReceiverName.Contains(q))
+                            || (c.Nickname != null && c.Nickname.Contains(q))
+                            || c.Phone.Contains(q)))
+            .OrderByDescending(c => c.LastPurchaseAt).Take(cap)
+            .Select(c => new { Nombre = c.ReceiverName ?? c.Nickname, c.Phone }).ToListAsync())
+            .Select(c => (c.Nombre ?? "", (string?)c.Phone, "MercadoLibre")));
+
+        // 4) Agenda de contactos de WhatsApp
+        acc.AddRange((await _db.WhatsAppTwilioContactos.AsNoTracking()
+            .Where(c => c.Nombre.Contains(q) || c.Numero.Contains(q))
+            .Take(cap)
+            .Select(c => new { c.Nombre, c.Numero }).ToListAsync())
+            .Select(c => (c.Nombre, (string?)c.Numero, "Agenda")));
+
+        // Normalizar + sacar repetidos por numero
+        var vistos = new HashSet<string>();
+        var salida = new List<object>();
+        foreach (var (Nombre, Tel, Origen) in acc)
+        {
+            var num = NormalizarNumeroWa(Tel);
+            if (num.Length < 8) continue;                 // sin numero usable
+            if (!vistos.Add(num)) continue;               // ya lo tenemos
+            salida.Add(new { Nombre = string.IsNullOrWhiteSpace(Nombre) ? num : Nombre, Numero = num, Origen });
+            if (salida.Count >= cap) break;
+        }
+        return Ok(salida);
+    }
+
+    /// <summary>Deja un telefono en formato WhatsApp Argentina: 549 + area + abonado (solo digitos).</summary>
+    private static string NormalizarNumeroWa(string? tel)
+    {
+        var d = new string((tel ?? "").Where(char.IsDigit).ToArray());
+        if (string.IsNullOrEmpty(d)) return "";
+        if (d.StartsWith("00")) d = d.Substring(2);
+        d = d.TrimStart('0');
+        if (d.StartsWith("15")) d = d.Substring(2);
+        if (d.StartsWith("549")) return d;
+        if (d.StartsWith("54")) return "549" + d.Substring(2);
+        return "549" + d;
+    }
+
     [HttpPost("contactos")]
     [Authorize]
     public async Task<IActionResult> CrearContacto([FromBody] ContactoUpsert req)

@@ -565,10 +565,10 @@
                     </div>
                 }
 
-                @* 2026-08-02: buscar un cliente de tu base para completar el número solo *@
+                @* 2026-08-02: buscar un contacto en todas las fuentes para completar el número solo *@
                 <div style="margin-bottom:0.7rem; position:relative;">
-                    <label style="font-size:0.78rem; color:#6b7280; display:block;">Buscar en tus clientes</label>
-                    <input class="form-control form-control-sm" placeholder="Escribí el nombre del cliente…"
+                    <label style="font-size:0.78rem; color:#6b7280; display:block;">Buscar contacto (clientes, WhatsApp, MercadoLibre)</label>
+                    <input class="form-control form-control-sm" placeholder="Escribí un nombre o número…"
                            @bind="nvClienteQuery" @bind:event="oninput" @onkeyup="BuscarNvClientes" />
                     @if (nvClienteSeleccionado != null)
                     {
@@ -578,20 +578,20 @@
                     {
                         <div style="font-size:0.72rem; color:#9ca3af; margin-top:0.25rem;">Buscando…</div>
                     }
-                    else if (!string.IsNullOrWhiteSpace(nvClienteQuery) && nvClienteResultados.Count == 0)
+                    else if (!string.IsNullOrWhiteSpace(nvClienteQuery) && nvClienteQuery.Length >= 2 && nvClienteResultados.Count == 0)
                     {
-                        <div style="font-size:0.72rem; color:#9ca3af; margin-top:0.25rem;">Sin clientes con teléfono cargado para esa búsqueda.</div>
+                        <div style="font-size:0.72rem; color:#9ca3af; margin-top:0.25rem;">Sin contactos con teléfono para esa búsqueda.</div>
                     }
                     @if (nvClienteResultados.Count > 0)
                     {
-                        <div style="border:1px solid #e5e7eb; border-radius:8px; margin-top:0.3rem; max-height:180px; overflow-y:auto;">
-                            @foreach (var cli in nvClienteResultados.Take(10))
+                        <div style="border:1px solid #e5e7eb; border-radius:8px; margin-top:0.3rem; max-height:220px; overflow-y:auto;">
+                            @foreach (var cli in nvClienteResultados)
                             {
                                 <button type="button" class="btn btn-sm" style="display:block; width:100%; text-align:left; border:0; border-bottom:1px solid #f3f4f6; border-radius:0; font-size:0.82rem;"
                                         @onclick="() => SeleccionarNvCliente(cli)">
-                                    👤 @cli.Nombre
-                                    @(string.IsNullOrWhiteSpace(cli.CodigoInterno) ? "" : $"(#{cli.CodigoInterno})")
-                                    <span style="color:#9ca3af;">— @cli.Telefono</span>
+                                    👤 <b>@cli.Nombre</b>
+                                    <span style="color:#9ca3af;">— @cli.Numero</span>
+                                    <span style="font-size:0.65rem; color:#2563eb; background:#eff6ff; border-radius:6px; padding:0.05rem 0.35rem; margin-left:0.3rem;">@cli.Origen</span>
                                 </button>
                             }
                         </div>
@@ -1666,11 +1666,11 @@
     string nvNumero = "", nvPlantillaName = "";
     string? nvLineaPhoneId = null;
     List<string> nvVariables = new();
-    // 2026-08-02: buscador de clientes dentro del modal
+    // 2026-08-02: buscador UNIFICADO de contactos dentro del modal (café + WhatsApp + MeLi + agenda)
     string nvClienteQuery = "";
     string? nvClienteSeleccionado = null;
     bool nvBuscandoCliente = false;
-    List<ApiClient.TwClienteBuscarDto> nvClienteResultados = new();
+    List<ApiClient.TwDestinatarioDto> nvClienteResultados = new();
 
     async Task AbrirNuevaConv()
     {
@@ -1694,45 +1694,25 @@
         StateHasChanged();
     }
 
-    // 2026-08-02: buscar clientes de la base para completar el número solo
+    // 2026-08-02: buscar contactos en TODAS las fuentes (café, WhatsApp, MeLi, agenda) para completar el número solo
     async Task BuscarNvClientes()
     {
         var q = (nvClienteQuery ?? "").Trim();
         if (q.Length < 2) { nvClienteResultados = new(); return; }
         nvBuscandoCliente = true;
         StateHasChanged();
-        try
-        {
-            var res = await Api.BuscarTwClientesAsync(q);
-            // solo los que tienen teléfono cargado (si no, no hay a dónde escribir)
-            nvClienteResultados = res.Where(c => !string.IsNullOrWhiteSpace(c.Telefono)).ToList();
-        }
+        try { nvClienteResultados = await Api.BuscarTwDestinatariosAsync(q); }
         catch { nvClienteResultados = new(); }
         nvBuscandoCliente = false;
         StateHasChanged();
     }
 
-    void SeleccionarNvCliente(ApiClient.TwClienteBuscarDto cli)
+    void SeleccionarNvCliente(ApiClient.TwDestinatarioDto cli)
     {
-        nvNumero = NormalizarNumeroWa(cli.Telefono);
+        nvNumero = cli.Numero;               // ya viene normalizado del servidor
         nvClienteSeleccionado = cli.Nombre;
         nvClienteResultados = new();
         nvClienteQuery = "";
-    }
-
-    // Deja el número en formato WhatsApp Argentina: 54 9 + área + abonado (solo dígitos)
-    static string NormalizarNumeroWa(string? tel)
-    {
-        var d = new string((tel ?? "").Where(char.IsDigit).ToArray());
-        if (string.IsNullOrEmpty(d)) return "";
-        if (d.StartsWith("00")) d = d.Substring(2);       // 00 internacional
-        // quitar 0 inicial de característica nacional (ej: 011...)
-        if (d.StartsWith("0")) d = d.TrimStart('0');
-        // quitar 15 de celular viejo si quedó pegado al inicio
-        if (d.StartsWith("15")) d = d.Substring(2);
-        if (d.StartsWith("549")) return d;                 // ya viene completo
-        if (d.StartsWith("54")) return "549" + d.Substring(2); // 54 sin el 9 de celu
-        return "549" + d;                                  // número local → le anteponemos 54 9
     }
 
     ApiClient.TwPlantillaDto? PlantillaSel()
