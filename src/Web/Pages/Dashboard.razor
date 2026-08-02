@@ -18,6 +18,10 @@
 @* ═══ Fila hero: Mapa de Reparto (mitad izquierda) + WhatsApp (mitad derecha) ═══
    2026-07-29 pedido Osmar: la card del mapa deja de ocupar todo el ancho; comparte la
    fila con la card de WhatsApp (que antes vivía en la fila de 3 cards de más abajo). *@
+@* 2026-08-02: el usuario SOLO depósito NO debe ver el mapa ni WhatsApp — esta fila
+   se había quedado afuera del candado isDepositoOnly de más abajo. *@
+@if (!isDepositoOnly)
+{
 <div class="dash-hero-row">
 
     @* Card: Mapa de Reparto (Google Maps en vivo) — se toca y lleva al mapa completo *@
@@ -95,6 +99,7 @@
     </div>
 
 </div>
+} @* fin @if (!isDepositoOnly) — fila hero mapa + WhatsApp *@
 
 <style>
     /* 2026-07-29: fila hero = mapa (mitad) + WhatsApp (mitad), lado a lado.
