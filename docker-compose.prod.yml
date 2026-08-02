@@ -80,6 +80,12 @@ services:
       - META_WA_PHONE_ID=${META_WA_PHONE_ID:-}
       - META_WA_WABA_ID=${META_WA_WABA_ID:-}
       - META_WA_VERIFY_TOKEN=${META_WA_VERIFY_TOKEN:-}
+      # WhatsApp LLAMADAS de voz (softphone WebRTC en /llamadas). Apagado hasta terminar la puesta
+      # en marcha. TURN_* apuntan al servidor de audio (servicio "coturn", perfil "turn").
+      - WA_LLAMADAS_ENABLED=${WA_LLAMADAS_ENABLED:-}
+      - TURN_URL=${TURN_URL:-}
+      - TURN_USERNAME=${TURN_USERNAME:-}
+      - TURN_CREDENTIAL=${TURN_CREDENTIAL:-}
       # Instagram DM (Messages API oficial de Meta). Una terna ID/TOKEN por cuenta de IG.
       # El webhook de IG usa el MISMO verify token que WhatsApp (META_WA_VERIFY_TOKEN).
       - META_IG_FRIKAF_CAFE_ID=${META_IG_FRIKAF_CAFE_ID:-}
@@ -191,6 +197,36 @@ services:
     depends_on:
       - web-prod
     restart: unless-stopped
+
+  # --- Servidor de audio TURN/STUN para las LLAMADAS de WhatsApp (WebRTC) ---
+  # IMPORTANTE: NO arranca en la publicacion normal. Solo se enciende a proposito con:
+  #   docker compose -f docker-compose.prod.yml --profile turn up -d coturn
+  # (gracias a "profiles: [turn]"). Asi una publicacion comun nunca lo prende sin querer.
+  #
+  # Requisitos para que funcione (se hacen el dia de la puesta en marcha):
+  #   1. PUBLIC_IP en el .env = IP publica del servidor de DonWeb.
+  #   2. TURN_USERNAME y TURN_CREDENTIAL en el .env (usuario/clave que elijas).
+  #   3. Abrir en el firewall de DonWeb: 3478/udp, 3478/tcp y el rango 49160-49200/udp.
+  #   4. En el .env de la API: TURN_URL=turn:LA_IP_PUBLICA:3478 (mismos user/credential).
+  coturn:
+    image: coturn/coturn:4.6
+    container_name: aiml-coturn-prod
+    profiles: ["turn"]
+    network_mode: host
+    restart: unless-stopped
+    command:
+      - -n
+      - --realm=frikaf
+      - --fingerprint
+      - --lt-cred-mech
+      - --user=${TURN_USERNAME:-frikaf}:${TURN_CREDENTIAL:-cambiar-esta-clave}
+      - --listening-port=3478
+      - --min-port=49160
+      - --max-port=49200
+      - --external-ip=${PUBLIC_IP:-127.0.0.1}
+      - --no-cli
+      - --no-tls
+      - --no-dtls
 
 networks:
   aiml-prod-net:
