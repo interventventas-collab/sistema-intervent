@@ -431,6 +431,17 @@
                 <button class="wa-attach-btn wa-saldo-btn" title="Enviar saldo (deuda) de un cliente" @onclick="ToggleSaldoPanel" disabled="@(uploading || sending)">💰</button>
                 @* 2026-07-29: Pasar CBU / datos bancarios *@
                 <button class="wa-attach-btn wa-cbu-btn" title="Pasar un CBU / datos bancarios al cliente" @onclick="ToggleCbuPanel" disabled="@(uploading || sending)">🏦</button>
+                @* 2026-08-01: nota de voz (micrófono) *@
+                @if (!grabandoAudio)
+                {
+                    <button class="wa-attach-btn wa-mic-btn" title="Grabar nota de voz" @onclick="ToggleGrabarAudio" disabled="@(uploading || sending || enviandoAudio)">@(enviandoAudio ? "⏳" : "🎤")</button>
+                }
+                else
+                {
+                    <button class="wa-attach-btn wa-mic-rec" title="Parar y enviar" @onclick="ToggleGrabarAudio">⏹️</button>
+                    <button class="wa-attach-btn" title="Cancelar" @onclick="CancelarAudio">✖️</button>
+                    <span class="wa-mic-rec-label">● grabando…</span>
+                }
                 @* 2026-07-23: @bind:event="oninput" es CLAVE — sin esto el texto solo se guarda al salir del
    campo, y al apretar Enter el sistema veia el mensaje vacio (no enviaba nada). *@
 <textarea class="form-control" placeholder="Escribir mensaje… (Enter para enviar, Shift+Enter para renglón nuevo)" @bind="composerText" @bind:event="oninput" @onkeydown="OnComposerKey" rows="9"></textarea>
@@ -940,6 +951,9 @@
     .wa-attach-btn:hover { background: #e9f5ff; border-color: #25d366; transform: translateY(-1px); }
     .wa-attach-btn.uploading { background: #fff8e1; border-color: #ffc107; cursor: wait; animation: wa-attach-pulse 1s ease-in-out infinite; }
     @@keyframes wa-attach-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+    .wa-mic-btn:hover { background: #ffe9ec; border-color: #ef4444; }
+    .wa-mic-rec { background: #fee2e2; border-color: #ef4444; animation: wa-attach-pulse 1s ease-in-out infinite; }
+    .wa-mic-rec-label { display: inline-flex; align-items: center; font-size: 0.8rem; color: #dc2626; font-weight: 600; white-space: nowrap; }
     .wa-quick-replies { padding: 0.6rem 1rem 0.2rem; background: #fbfcfe; display: flex; gap: 0.45rem; flex-wrap: wrap; border-top: 1px solid #eef1f5; }
     .wa-chip { background: #eaf1fb; border: 1px solid #d5e3f7; color: #1d4ed8; padding: 0.42rem 0.95rem; border-radius: 999px; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.12s; white-space: nowrap; }
     .wa-chip:hover { background: #2563eb; color: #fff; border-color: #2563eb; transform: translateY(-1px); }
@@ -1080,6 +1094,49 @@
     // Así el mismo contacto en 2 líneas nuestras son 2 chats distintos y no se cruzan.
     string? selectedLinea;
     string composerText = "";
+
+    // === 2026-08-01: nota de voz (grabar con micrófono y enviar como audio nativo) ===
+    bool grabandoAudio = false, enviandoAudio = false;
+    class WaUploadRes { public string? Url { get; set; } public string? OriginalFilename { get; set; } }
+
+    async Task ToggleGrabarAudio()
+    {
+        if (selectedNumero == null) { Toast.Warning("Elegí un chat primero"); return; }
+        if (!grabandoAudio)
+        {
+            bool ok;
+            try { ok = await JS.InvokeAsync<bool>("waAudio.start"); }
+            catch { ok = false; }
+            if (!ok) { Toast.Error("No pude acceder al micrófono. Revisá los permisos del navegador (y que estés en HTTPS)."); return; }
+            grabandoAudio = true;
+        }
+        else
+        {
+            grabandoAudio = false;
+            enviandoAudio = true;
+            StateHasChanged();
+            WaUploadRes? res = null;
+            try { res = await JS.InvokeAsync<WaUploadRes?>("waAudio.stopAndUpload"); }
+            catch { }
+            if (res == null || string.IsNullOrEmpty(res.Url))
+            {
+                enviandoAudio = false;
+                Toast.Error("No se pudo grabar o subir el audio");
+                return;
+            }
+            var (ok, err) = await Api.SendTwMediaAsync(selectedNumero, res.Url, null, res.OriginalFilename, selectedLinea);
+            enviandoAudio = false;
+            if (!ok) Toast.Error(err ?? "No se pudo enviar la nota de voz");
+            else await LoadMensajes();
+            StateHasChanged();
+        }
+    }
+
+    async Task CancelarAudio()
+    {
+        grabandoAudio = false;
+        try { await JS.InvokeVoidAsync("waAudio.cancel"); } catch { }
+    }
     bool loadingConv = true, loadingMsg = false, sending = false, uploading = false, enviandoMenuRol = false;
     System.Threading.Timer? refreshTimer;
     Microsoft.AspNetCore.Components.ElementReference messagesScroll;

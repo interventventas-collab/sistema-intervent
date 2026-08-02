@@ -72,11 +72,25 @@ public class WhatsAppOutboundService
         }
         if (canal == "CLOUD")
         {
+            // 2026-08-01: si es audio (nota de voz), va como type:audio → llega con el play nativo.
+            if (EsAudio(nombreArchivo))
+            {
+                var idAudio = await _meta.SendAudioAsync(numero, mediaUrl, lineaPhoneId: linea);
+                return (idAudio, "CLOUD", linea);
+            }
             var esDoc = EsDocumento(nombreArchivo);
             var id = await _meta.SendMediaAsync(numero, mediaUrl, caption, esDoc, nombreArchivo, lineaPhoneId: linea);
             return (id, "CLOUD", linea);
         }
         return (await _twilio.SendMediaAsync(numero, mediaUrl, caption), "TWILIO", null);
+    }
+
+    /// <summary>Decide si el adjunto es un AUDIO (nota de voz) por su extensión.</summary>
+    private static bool EsAudio(string? nombreArchivo)
+    {
+        if (string.IsNullOrWhiteSpace(nombreArchivo)) return false;
+        var ext = Path.GetExtension(nombreArchivo).ToLowerInvariant();
+        return ext is ".ogg" or ".oga" or ".opus" or ".mp3" or ".m4a" or ".aac" or ".amr" or ".wav";
     }
 
     /// <summary>Elige el canal según el último entrante de ese número; fallback: Meta si está, sino Twilio.

@@ -790,13 +790,34 @@ public class WhatsAppTwilioController : ControllerBase
         var path = Path.Combine(UploadsDir, stored);
         using (var fs = System.IO.File.Create(path)) await file.CopyToAsync(fs);
 
+        var contentType = string.IsNullOrEmpty(file.ContentType) ? "application/octet-stream" : file.ContentType;
+        var originalFilename = file.FileName;
+
+        // 2026-08-01: notas de voz — WhatsApp solo acepta audio en OGG/OPUS. El navegador graba webm/mp4,
+        // así que si es audio lo convertimos con ffmpeg a ogg/opus mono para que llegue como nota de voz REAL.
+        if (contentType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase))
+        {
+            var oggStored = token + ".ogg";
+            var oggPath = Path.Combine(UploadsDir, oggStored);
+            if (await ConvertirAOggOpusAsync(path, oggPath))
+            {
+                try { System.IO.File.Delete(path); } catch { }
+                stored = oggStored;
+                ext = ".ogg";
+                contentType = "audio/ogg";
+                var baseName = Path.GetFileNameWithoutExtension(originalFilename);
+                originalFilename = (string.IsNullOrWhiteSpace(baseName) ? "audio" : baseName) + ".ogg";
+            }
+            // si ffmpeg falla, se queda el original y se manda como archivo común
+        }
+
         var up = new WhatsAppTwilioUpload
         {
             Token = token,
-            OriginalFilename = file.FileName,
+            OriginalFilename = originalFilename,
             StoredFilename = stored,
-            ContentType = string.IsNullOrEmpty(file.ContentType) ? "application/octet-stream" : file.ContentType,
-            SizeBytes = file.Length,
+            ContentType = contentType,
+            SizeBytes = new FileInfo(Path.Combine(UploadsDir, stored)).Length,
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddHours(24)
         };
@@ -806,6 +827,33 @@ public class WhatsAppTwilioController : ControllerBase
         // La extension va en la URL para que el chat sepa si mostrar vista previa de imagen.
         var url = $"{Request.Scheme}://{Request.Host}/api/whatsapp/twilio/files/{token}{ext}";
         return Ok(new UploadResp(token, url, up.OriginalFilename, up.SizeBytes, up.ContentType, up.ExpiresAt));
+    }
+
+    /// <summary>2026-08-01: convierte un audio (webm/mp4/...) a OGG/OPUS mono con ffmpeg (formato de nota
+    /// de voz que acepta WhatsApp). Devuelve true si salió bien. Si ffmpeg no está o falla, devuelve false.</summary>
+    private async Task<bool> ConvertirAOggOpusAsync(string input, string output)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "ffmpeg",
+                Arguments = $"-y -i \"{input}\" -vn -c:a libopus -b:a 32k -ar 48000 -ac 1 \"{output}\"",
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+                UseShellExecute = false
+            };
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p == null) return false;
+            var salioATiempo = await Task.Run(() => p.WaitForExit(30000));
+            if (!salioATiempo) { try { p.Kill(true); } catch { } return false; }
+            return p.ExitCode == 0 && System.IO.File.Exists(output) && new FileInfo(output).Length > 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "ffmpeg: no se pudo convertir el audio a ogg/opus");
+            return false;
+        }
     }
 
     /// <summary>GET /api/whatsapp/twilio/files/{token} — sirve el archivo publicamente (sin auth)

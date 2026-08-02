@@ -186,6 +186,22 @@ public class MetaWhatsAppService
         return await PostMessageAsync(payload, to, ct, lineaPhoneId);
     }
 
+    /// <summary>2026-08-01: envía un AUDIO como NOTA DE VOZ (type:audio). mediaUrl debe servir un
+    /// OGG/OPUS (u otro formato de audio que acepte WhatsApp) por HTTPS público. Devuelve el wamid o null.</summary>
+    public async Task<string?> SendAudioAsync(string to, string mediaUrl, CancellationToken ct = default, string? lineaPhoneId = null)
+    {
+        EnsureConfigured();
+        var payload = new Dictionary<string, object?>
+        {
+            ["messaging_product"] = "whatsapp",
+            ["recipient_type"] = "individual",
+            ["to"] = NormalizeTo(to),
+            ["type"] = "audio",
+            ["audio"] = new { link = mediaUrl }
+        };
+        return await PostMessageAsync(payload, to, ct, lineaPhoneId);
+    }
+
     /// <summary>2026-08-01: envía una PLANTILLA aprobada (para INICIAR conversación fuera de la ventana de 24h).
     /// bodyParams son los valores de las variables {{1}}, {{2}}… del cuerpo (en orden). Devuelve el wamid o null.</summary>
     public async Task<string?> SendTemplateAsync(string to, string templateName, string languageCode, IList<string>? bodyParams, CancellationToken ct = default, string? lineaPhoneId = null)

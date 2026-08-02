@@ -1823,6 +1823,59 @@
                 }
             };
         })();
+        // 2026-08-01: grabar nota de voz y subirla al endpoint de WhatsApp (la cookie httpOnly viaja sola).
+        // Sube a /api/whatsapp/twilio/upload; el server la convierte a ogg/opus (nota de voz real).
+        window.waAudio = (function () {
+            var rec = null, chunks = [], stream = null;
+            function pickMime() {
+                var opts = ['audio/ogg;codecs=opus', 'audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
+                for (var i = 0; i < opts.length; i++) {
+                    try { if (window.MediaRecorder && MediaRecorder.isTypeSupported(opts[i])) return opts[i]; } catch (e) {}
+                }
+                return '';
+            }
+            return {
+                start: async function () {
+                    try {
+                        if (!navigator.mediaDevices || !window.MediaRecorder) return false;
+                        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                        chunks = [];
+                        var mime = pickMime();
+                        rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+                        rec.ondataavailable = function (e) { if (e.data && e.data.size > 0) chunks.push(e.data); };
+                        rec.start();
+                        return true;
+                    } catch (e) { console.warn('waAudio.start', e); try { if (stream) stream.getTracks().forEach(t => t.stop()); } catch (_) {} return false; }
+                },
+                // Para de grabar y sube. Devuelve el objeto {url, originalFilename} o null.
+                stopAndUpload: function () {
+                    return new Promise(function (resolve) {
+                        if (!rec) { resolve(null); return; }
+                        rec.onstop = async function () {
+                            try {
+                                var type = rec.mimeType || 'audio/webm';
+                                var blob = new Blob(chunks, { type: type });
+                                if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+                                rec = null;
+                                if (!blob.size) { resolve(null); return; }
+                                var ext = type.indexOf('ogg') >= 0 ? 'ogg' : (type.indexOf('mp4') >= 0 ? 'm4a' : 'webm');
+                                var fd = new FormData();
+                                fd.append('file', blob, 'audio_' + Date.now() + '.' + ext);
+                                var res = await fetch('/api/whatsapp/twilio/upload', { method: 'POST', credentials: 'same-origin', body: fd });
+                                if (!res.ok) { resolve(null); return; }
+                                resolve(await res.json());
+                            } catch (e) { console.warn('waAudio.send', e); resolve(null); }
+                        };
+                        try { rec.stop(); } catch (e) { resolve(null); }
+                    });
+                },
+                cancel: function () {
+                    try { if (rec && rec.state !== 'inactive') rec.stop(); } catch (e) {}
+                    try { if (stream) stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+                    rec = null; chunks = [];
+                }
+            };
+        })();
         // Sonidito corto al recibir un mensaje nuevo (reusa Web Audio).
         window.chatDing = function () {
             try {
