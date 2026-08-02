@@ -26,6 +26,7 @@
                 <span class="waf-title waf-title-chat" title="@NombreDe(chatAbierto)">@NombreDe(chatAbierto)</span>
             }
             <span class="waf-spacer"></span>
+            <button class="waf-icon-btn" @onclick="ToggleSonido" title="@(sonidoActivo ? "Silenciar el sonido de avisos" : "Activar el sonido de avisos")">@(sonidoActivo ? "🔔" : "🔕")</button>
             <a class="waf-icon-btn" href="/whatsapp" target="_blank" title="Abrir en una pestaña aparte">↗</a>
             <button class="waf-icon-btn" @onclick="Close" title="Cerrar">×</button>
         </div>
@@ -184,19 +185,29 @@
     private PeriodicTimer? timer;
     private CancellationTokenSource? cts;
 
+    // 2026-08-01: el refresco corre SIEMPRE (aunque el panel esté cerrado) para poder avisar con
+    // sonido cuando entra un mensaje nuevo, sin importar en qué pantalla estés.
+    protected override void OnInitialized() => ArrancarRefresco();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !sonidoPrefCargada)
+        {
+            sonidoPrefCargada = true;
+            try
+            {
+                var v = await JS.InvokeAsync<string>("localStorage.getItem", "wa.sonido");
+                if (v == "0") { sonidoActivo = false; StateHasChanged(); }
+            }
+            catch { }
+        }
+    }
+
     /// <summary>Abre/cierra el panel. Lo llama el boton de WhatsApp de la topbar.</summary>
     public async Task ToggleAsync()
     {
         visible = !visible;
-        if (visible)
-        {
-            await CargarConversaciones();
-            ArrancarRefresco();
-        }
-        else
-        {
-            DetenerRefresco();
-        }
+        if (visible) await CargarConversaciones();
         StateHasChanged();
     }
 
@@ -204,7 +215,6 @@
     {
         visible = false;
         chatAbierto = null;
-        DetenerRefresco();
     }
 
     private void VolverALista()
@@ -285,9 +295,13 @@
         {
             while (timer is not null && await timer.WaitForNextTickAsync(ct))
             {
-                if (!visible) continue;
-                if (chatAbierto is null) await CargarConversaciones();
-                else await CargarMensajes();
+                // Siempre refrescamos la lista (para el sonido de aviso + el globito), aunque esté cerrado.
+                await CargarConversaciones();
+                await DetectarYSonarNuevos();
+                if (visible)
+                {
+                    if (chatAbierto is not null) await CargarMensajes();
+                }
                 await InvokeAsync(StateHasChanged);
             }
         }
@@ -301,6 +315,32 @@
         timer = null;
         cts?.Dispose();
         cts = null;
+    }
+
+    // ---------- Sonido de aviso (2026-08-01) ----------
+    private bool sonidoActivo = true;
+    private bool sonidoPrefCargada;
+    private DateTime? ultimoIncomingAt;
+
+    private async Task DetectarYSonarNuevos()
+    {
+        var incomings = convs.Where(c => c.UltimoDireccion == "INCOMING").Select(c => c.UltimoAt).ToList();
+        if (incomings.Count == 0) return;
+        var maxIn = incomings.Max();
+        if (ultimoIncomingAt is null) { ultimoIncomingAt = maxIn; return; } // primera vuelta: NO suena
+        if (maxIn > ultimoIncomingAt.Value)
+        {
+            ultimoIncomingAt = maxIn;
+            if (sonidoActivo) { try { await JS.InvokeVoidAsync("waNotifSound"); } catch { } }
+        }
+    }
+
+    private async Task ToggleSonido()
+    {
+        sonidoActivo = !sonidoActivo;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "wa.sonido", sonidoActivo ? "1" : "0"); } catch { }
+        if (sonidoActivo) { try { await JS.InvokeVoidAsync("waNotifSound"); } catch { } } // feedback al prender
+        StateHasChanged();
     }
 
     // ---------- Helpers de presentacion ----------
