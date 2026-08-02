@@ -306,6 +306,52 @@ public class MetaWhatsAppService
         });
     }
 
+    // ═══════════════ LLAMADAS DE VOZ (Meta Business Calling API, 2026-08-02) ═══════════════
+    // Para "contestar" una llamada entrante se le manda a Meta una acción sobre la llamada:
+    //   POST /{phone_number_id}/calls
+    //   { messaging_product:"whatsapp", call_id:"...", action:"accept|pre_accept|reject|terminate",
+    //     session:{ sdp_type:"answer", sdp:"..." } }   (session solo en accept/pre_accept)
+    // El SDP "answer" lo genera el softphone del navegador (WebRTC). El audio va aparte por WebRTC
+    // (STUN/TURN), no por esta API — esto es solo la señalización.
+
+    /// <summary>Manda una acción de llamada a Meta (accept/pre_accept/reject/terminate). Para accept y
+    /// pre_accept hay que pasar el sdpAnswer que generó el navegador. Devuelve (ok, textoError).</summary>
+    public async Task<(bool Ok, string? Error)> SendCallActionAsync(string callId, string action,
+        string? sdpAnswer = null, string? lineaPhoneId = null, CancellationToken ct = default)
+    {
+        EnsureConfigured();
+        var payload = new Dictionary<string, object?>
+        {
+            ["messaging_product"] = "whatsapp",
+            ["call_id"] = callId,
+            ["action"] = action
+        };
+        if ((action == "accept" || action == "pre_accept") && !string.IsNullOrWhiteSpace(sdpAnswer))
+            payload["session"] = new { sdp_type = "answer", sdp = sdpAnswer };
+
+        try
+        {
+            using var http = NewClient();
+            var json = JsonSerializer.Serialize(payload);
+            using var content = new StringContent(json, Encoding.UTF8, "application/json");
+            var resp = await http.PostAsync($"{lineaPhoneId ?? PhoneId}/calls", content, ct);
+            var respBody = await resp.Content.ReadAsStringAsync(ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Meta llamada acción {Action} FALLÓ para {CallId}: {Status} {Body}",
+                    action, callId, (int)resp.StatusCode, respBody);
+                return (false, respBody);
+            }
+            _logger.LogInformation("Meta llamada acción {Action} OK para {CallId}", action, callId);
+            return (true, null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error mandando acción {Action} de llamada {CallId} a Meta", action, callId);
+            return (false, ex.Message);
+        }
+    }
+
     /// <summary>
     /// Baja un archivo que mandó un cliente (foto, PDF, audio…).
     /// Meta NO manda el archivo en el webhook: manda un <c>media_id</c>. Hay que hacer dos pasos:
