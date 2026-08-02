@@ -565,10 +565,43 @@
                     </div>
                 }
 
+                @* 2026-08-02: buscar un cliente de tu base para completar el número solo *@
+                <div style="margin-bottom:0.7rem; position:relative;">
+                    <label style="font-size:0.78rem; color:#6b7280; display:block;">Buscar en tus clientes</label>
+                    <input class="form-control form-control-sm" placeholder="Escribí el nombre del cliente…"
+                           @bind="nvClienteQuery" @bind:event="oninput" @onkeyup="BuscarNvClientes" />
+                    @if (nvClienteSeleccionado != null)
+                    {
+                        <div style="font-size:0.72rem; color:#16a34a; margin-top:0.25rem;">✔️ Elegiste: <b>@nvClienteSeleccionado</b> — el número se completó abajo.</div>
+                    }
+                    @if (nvBuscandoCliente)
+                    {
+                        <div style="font-size:0.72rem; color:#9ca3af; margin-top:0.25rem;">Buscando…</div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(nvClienteQuery) && nvClienteResultados.Count == 0)
+                    {
+                        <div style="font-size:0.72rem; color:#9ca3af; margin-top:0.25rem;">Sin clientes con teléfono cargado para esa búsqueda.</div>
+                    }
+                    @if (nvClienteResultados.Count > 0)
+                    {
+                        <div style="border:1px solid #e5e7eb; border-radius:8px; margin-top:0.3rem; max-height:180px; overflow-y:auto;">
+                            @foreach (var cli in nvClienteResultados.Take(10))
+                            {
+                                <button type="button" class="btn btn-sm" style="display:block; width:100%; text-align:left; border:0; border-bottom:1px solid #f3f4f6; border-radius:0; font-size:0.82rem;"
+                                        @onclick="() => SeleccionarNvCliente(cli)">
+                                    👤 @cli.Nombre
+                                    @(string.IsNullOrWhiteSpace(cli.CodigoInterno) ? "" : $"(#{cli.CodigoInterno})")
+                                    <span style="color:#9ca3af;">— @cli.Telefono</span>
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+
                 <div style="margin-bottom:0.7rem;">
                     <label style="font-size:0.78rem; color:#6b7280; display:block;">Número de destino <span style="color:#dc2626;">*</span></label>
                     <input class="form-control form-control-sm" @bind="nvNumero" @bind:event="oninput" placeholder="Con código de país, ej: 5491122525458" />
-                    <span style="font-size:0.7rem; color:#9ca3af;">Solo números, con código de país (54) y el 9 de celular.</span>
+                    <span style="font-size:0.7rem; color:#9ca3af;">Solo números, con código de país (54) y el 9 de celular. Podés elegir un cliente arriba o escribirlo a mano.</span>
                 </div>
 
                 <div style="margin-bottom:0.7rem;">
@@ -1633,11 +1666,17 @@
     string nvNumero = "", nvPlantillaName = "";
     string? nvLineaPhoneId = null;
     List<string> nvVariables = new();
+    // 2026-08-02: buscador de clientes dentro del modal
+    string nvClienteQuery = "";
+    string? nvClienteSeleccionado = null;
+    bool nvBuscandoCliente = false;
+    List<ApiClient.TwClienteBuscarDto> nvClienteResultados = new();
 
     async Task AbrirNuevaConv()
     {
         showNuevaConv = true;
         nvNumero = ""; nvPlantillaName = ""; nvVariables = new();
+        nvClienteQuery = ""; nvClienteSeleccionado = null; nvClienteResultados = new();
         if (nvPlantillas.Count == 0 || nvLineas.Count == 0)
         {
             nvCargando = true;
@@ -1653,6 +1692,47 @@
         // Línea por defecto: la primera conectada (o null = la línea default del sistema)
         nvLineaPhoneId = nvLineas.FirstOrDefault()?.PhoneId;
         StateHasChanged();
+    }
+
+    // 2026-08-02: buscar clientes de la base para completar el número solo
+    async Task BuscarNvClientes()
+    {
+        var q = (nvClienteQuery ?? "").Trim();
+        if (q.Length < 2) { nvClienteResultados = new(); return; }
+        nvBuscandoCliente = true;
+        StateHasChanged();
+        try
+        {
+            var res = await Api.BuscarTwClientesAsync(q);
+            // solo los que tienen teléfono cargado (si no, no hay a dónde escribir)
+            nvClienteResultados = res.Where(c => !string.IsNullOrWhiteSpace(c.Telefono)).ToList();
+        }
+        catch { nvClienteResultados = new(); }
+        nvBuscandoCliente = false;
+        StateHasChanged();
+    }
+
+    void SeleccionarNvCliente(ApiClient.TwClienteBuscarDto cli)
+    {
+        nvNumero = NormalizarNumeroWa(cli.Telefono);
+        nvClienteSeleccionado = cli.Nombre;
+        nvClienteResultados = new();
+        nvClienteQuery = "";
+    }
+
+    // Deja el número en formato WhatsApp Argentina: 54 9 + área + abonado (solo dígitos)
+    static string NormalizarNumeroWa(string? tel)
+    {
+        var d = new string((tel ?? "").Where(char.IsDigit).ToArray());
+        if (string.IsNullOrEmpty(d)) return "";
+        if (d.StartsWith("00")) d = d.Substring(2);       // 00 internacional
+        // quitar 0 inicial de característica nacional (ej: 011...)
+        if (d.StartsWith("0")) d = d.TrimStart('0');
+        // quitar 15 de celular viejo si quedó pegado al inicio
+        if (d.StartsWith("15")) d = d.Substring(2);
+        if (d.StartsWith("549")) return d;                 // ya viene completo
+        if (d.StartsWith("54")) return "549" + d.Substring(2); // 54 sin el 9 de celu
+        return "549" + d;                                  // número local → le anteponemos 54 9
     }
 
     ApiClient.TwPlantillaDto? PlantillaSel()
