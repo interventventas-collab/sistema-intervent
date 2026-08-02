@@ -245,12 +245,12 @@
                 <button class="btn btn-outline-info btn-sm" @onclick="EnviarMenuRol" disabled="@enviandoMenuRol" title="Enviar a este contacto el menú '1-Cliente / 2-Proveedor / 3-Otros' para que se identifique">
                     @(enviandoMenuRol ? "⏳" : "❓") Menú rol
                 </button>
-                <button class="btn btn-outline-secondary btn-sm" @onclick="@(() => showConfig = true)" title="Configurar respuestas rápidas y contactos">
+                <button class="btn btn-outline-secondary btn-sm wa-icon-round" @onclick="@(() => showConfig = true)" title="Configurar respuestas rápidas y contactos">
                     ⚙️
                 </button>
                 @* 2026-07-23 pedido Osmar: borrar la conversación DEL SISTEMA (el chat en el celular
                    del cliente no se toca). Pide confirmación. *@
-                <button class="btn btn-outline-danger btn-sm" @onclick="BorrarConversacion" disabled="@borrandoConv" title="Borrar esta conversación del sistema (el celular del cliente no se toca)">
+                <button class="btn btn-outline-danger btn-sm wa-icon-round" @onclick="BorrarConversacion" disabled="@borrandoConv" title="Borrar esta conversación del sistema (el celular del cliente no se toca)">
                     @(borrandoConv ? "⏳" : "🗑")
                 </button>
             </div>
@@ -450,8 +450,8 @@
                 @* 2026-07-23: @bind:event="oninput" es CLAVE — sin esto el texto solo se guarda al salir del
    campo, y al apretar Enter el sistema veia el mensaje vacio (no enviaba nada). *@
 <textarea class="form-control" placeholder="Escribir mensaje… (Enter para enviar, Shift+Enter para renglón nuevo)" @bind="composerText" @bind:event="oninput" @onkeydown="OnComposerKey" rows="9"></textarea>
-                <button class="btn btn-success" @onclick="EnviarMensaje" disabled="@(string.IsNullOrWhiteSpace(composerText) || sending)">
-                    @(sending ? "Enviando…" : "📤 Enviar")
+                <button class="btn btn-success wa-enviar-btn @(sending ? "enviando" : "")" @onclick="EnviarMensaje" disabled="@(string.IsNullOrWhiteSpace(composerText) || sending)">
+                    @(sending ? "⏳ Enviando…" : "📤 Enviar")
                 </button>
             </div>
             <div style="font-size:0.7rem; color:#9ca3af; padding:0 1rem 0.6rem;">
@@ -931,7 +931,12 @@
        del .wa-thread. En pantalla ancha entran todos en una linea = no cambia nada. */
     .wa-thread-header { padding: 0.75rem 1.1rem; background: #fbfcfe; border-bottom: 1px solid #eef1f5; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
     /* 2026-07-29: botones del encabezado prolijos y parejos (pastilla redondeada), sin tocar la clase global .btn */
-    .wa-thread-header .btn { border-radius: 999px; font-size: 0.8rem; padding: 0.38rem 0.85rem; font-weight: 600; border-width: 1px; }
+    .wa-thread-header .btn { border-radius: 999px; font-size: 0.8rem; padding: 0.4rem 0.9rem; font-weight: 600; border-width: 1px; transition: transform .12s ease, box-shadow .12s ease, background-color .12s ease; }
+    /* 2026-08-01: efecto "teclado" — el botón se levanta con sombra al pasar por encima y se hunde al tocar */
+    .wa-thread-header .btn:hover { transform: translateY(-2px); box-shadow: 0 5px 14px rgba(15,23,42,0.16); }
+    .wa-thread-header .btn:active { transform: translateY(0); box-shadow: 0 2px 5px rgba(15,23,42,0.14); }
+    /* Los botones de solo-ícono (⚙ y 🗑) quedan redondos perfectos */
+    .wa-thread-header .btn.wa-icon-round { width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 1rem; }
     .wa-messages { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
     .wa-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; text-align: center; }
     .wa-msg-row { display: flex; }
@@ -951,7 +956,12 @@
     .wa-composer textarea:focus { border-color: #25d366; box-shadow: 0 0 0 3px rgba(37,211,102,0.15); }
     .wa-composer button { white-space: nowrap; }
     /* 2026-07-29: botón Enviar más grande y prolijo */
-    .wa-composer .btn-success { border-radius: 14px; padding: 0.65rem 1.2rem; font-weight: 700; box-shadow: 0 3px 10px rgba(37,211,102,0.35); }
+    .wa-composer .btn-success { border-radius: 14px; padding: 0.65rem 1.2rem; font-weight: 700; box-shadow: 0 3px 10px rgba(37,211,102,0.35); transition: transform .12s ease, box-shadow .12s ease; }
+    .wa-composer .btn-success:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(37,211,102,0.5); }
+    .wa-composer .btn-success:active:not(:disabled) { transform: translateY(0); box-shadow: 0 2px 6px rgba(37,211,102,0.4); }
+    /* 2026-08-01: el botón Enviar parpadea (verde) mientras se manda el mensaje */
+    .wa-enviar-btn.enviando { opacity: 1 !important; animation: wa-enviar-blink 0.55s ease-in-out infinite; }
+    @@keyframes wa-enviar-blink { 0%, 100% { box-shadow: 0 3px 10px rgba(37,211,102,0.4); filter: brightness(1); } 50% { box-shadow: 0 0 20px rgba(37,211,102,0.95); filter: brightness(1.25); } }
     /* 2026-07-29: panel Enviar saldo */
     .wa-saldo-btn { font-size: 1.2rem; }
     .wa-saldo-panel { margin: 0 1rem 0.3rem; padding: 0.6rem 0.7rem; background: #fff; border: 1px solid #d1d5db; border-radius: 10px; box-shadow: 0 4px 14px rgba(0,0,0,0.08); max-height: 46vh; overflow-y: auto; }
