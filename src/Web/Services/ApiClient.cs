@@ -6218,6 +6218,11 @@ public class ApiClient
     public async Task<List<TwLineaConfigDto>> GetTwLineasConfigAsync()
         => await _http.GetFromJsonAsync<List<TwLineaConfigDto>>("/api/whatsapp/twilio/lineas-config") ?? new();
 
+    // 2026-08-01: solo sonidos por línea (liviano, para refrescar seguido sin traer imágenes)
+    public record TwLineaSonidoDto(string LineaId, string? Sonido);
+    public async Task<List<TwLineaSonidoDto>> GetTwLineaSonidosAsync()
+        => await _http.GetFromJsonAsync<List<TwLineaSonidoDto>>("/api/whatsapp/twilio/lineas-sonidos") ?? new();
+
     public async Task<(bool ok, string? error)> GuardarTwLineaConfigAsync(string lineaId, string? nombre, string? imagenDataUrl, string? sonido = null)
     {
         try

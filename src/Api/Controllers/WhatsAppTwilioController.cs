@@ -291,6 +291,19 @@ public class WhatsAppTwilioController : ControllerBase
 
     public record LineaConfigUpsert(string LineaId, string? Nombre, string? ImagenDataUrl, string? Sonido = null);
 
+    /// <summary>2026-08-01: SOLO los sonidos por línea (liviano, sin imágenes) — para que el panel flotante
+    /// lo refresque cada 10s y los cambios de sonido tomen efecto sin recargar la página.</summary>
+    [HttpGet("lineas-sonidos")]
+    [Authorize]
+    public async Task<IActionResult> LineasSonidos()
+    {
+        var list = await _db.WhatsAppLineasConfig.AsNoTracking()
+            .Where(c => c.Sonido != null)
+            .Select(c => new { c.LineaId, c.Sonido })
+            .ToListAsync();
+        return Ok(list);
+    }
+
     /// <summary>Guarda (o borra) el nombre/imagen de una línea. ImagenDataUrl: null = no tocar, "" = quitar.</summary>
     [HttpPost("lineas-config")]
     [Authorize]

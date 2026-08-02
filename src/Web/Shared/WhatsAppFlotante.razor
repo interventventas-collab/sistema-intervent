@@ -298,6 +298,7 @@
             {
                 // Siempre refrescamos la lista (para el sonido de aviso + el globito), aunque esté cerrado.
                 await CargarConversaciones();
+                await CargarLineaSonidos();   // 2026-08-01: refrescar sonidos por línea (cambios sin recargar)
                 await DetectarYSonarNuevos();
                 if (visible)
                 {
@@ -329,8 +330,8 @@
     {
         try
         {
-            var cfg = await Api.GetTwLineasConfigAsync();
-            lineaSonidos = cfg.ToDictionary(x => x.LineaId, x => x.Sonido);
+            var list = await Api.GetTwLineaSonidosAsync();
+            lineaSonidos = list.ToDictionary(x => x.LineaId, x => x.Sonido);
         }
         catch { }
     }
