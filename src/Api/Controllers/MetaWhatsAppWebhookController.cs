@@ -119,6 +119,12 @@ public class MetaWhatsAppWebhookController : ControllerBase
                 if (value.TryGetProperty("statuses", out var statuses) && statuses.ValueKind == JsonValueKind.Array)
                     await ProcesarEstadosAsync(db, statuses);
 
+                // 2026-08-02: eventos de LLAMADA de voz (Meta Business Calling API). Meta manda
+                // "calls[]" cuando un cliente llama, atiende o corta. PRIMER LADRILLO: solo los
+                // registramos (todavia no se atiende audio en vivo). Ver ProcesarLlamadasAsync.
+                if (value.TryGetProperty("calls", out var calls) && calls.ValueKind == JsonValueKind.Array)
+                    await ProcesarLlamadasAsync(db, value, calls);
+
                 // Solo procesamos mensajes ENTRANTES abajo (los statuses ya se manejaron arriba).
                 if (!value.TryGetProperty("messages", out var messages) || messages.ValueKind != JsonValueKind.Array)
                     continue;
@@ -315,6 +321,72 @@ public class MetaWhatsAppWebhookController : ControllerBase
                 msg.EstadoEntrega = estado;
                 await db.SaveChangesAsync();
             }
+        }
+    }
+
+    /// <summary>2026-08-02: PRIMER LADRILLO de llamadas de voz. Registra cada evento de llamada
+    /// que Meta manda en value.calls[] (connect / terminate / etc). Todavia NO atiende audio:
+    /// esto es la base para tener el historial y, mas adelante, disparar el softphone del navegador.
+    /// Deduplica por (CallId, Evento) porque Meta entrega "at least once".</summary>
+    private async Task ProcesarLlamadasAsync(AppDbContext db, JsonElement value, JsonElement calls)
+    {
+        // La línea (a qué número nuestro entró la llamada) viene en value.metadata.
+        string? lineaId = null, lineaNumero = null;
+        if (value.TryGetProperty("metadata", out var md))
+        {
+            lineaId = md.TryGetProperty("phone_number_id", out var pid) ? pid.GetString() : null;
+            lineaNumero = md.TryGetProperty("display_phone_number", out var dpn) ? dpn.GetString() : null;
+        }
+
+        foreach (var call in calls.EnumerateArray())
+        {
+            var callId = call.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+            var evento = call.TryGetProperty("event", out var evEl) ? evEl.GetString() : null;
+
+            // Deduplicar: el mismo evento de la misma llamada puede llegar repetido.
+            if (!string.IsNullOrEmpty(callId) && !string.IsNullOrEmpty(evento) &&
+                await db.WhatsAppLlamadas.AnyAsync(x => x.CallId == callId && x.Evento == evento))
+            {
+                _logger.LogInformation("[Meta WA llamada] evento {Evento} de {CallId} ya registrado, salteo", evento, callId);
+                continue;
+            }
+
+            var from = call.TryGetProperty("from", out var fromEl) ? fromEl.GetString() : null;
+            var direccion = call.TryGetProperty("direction", out var dirEl) ? dirEl.GetString() : null;
+            var estado = call.TryGetProperty("status", out var stEl) ? stEl.GetString() : null;
+
+            int? duracion = null;
+            if (call.TryGetProperty("duration", out var durEl))
+            {
+                if (durEl.ValueKind == JsonValueKind.Number && durEl.TryGetInt32(out var d)) duracion = d;
+                else if (durEl.ValueKind == JsonValueKind.String && int.TryParse(durEl.GetString(), out var ds)) duracion = ds;
+            }
+
+            DateTime? ts = null;
+            if (call.TryGetProperty("timestamp", out var tsEl))
+            {
+                var tsStr = tsEl.ValueKind == JsonValueKind.String ? tsEl.GetString()
+                          : tsEl.ValueKind == JsonValueKind.Number ? tsEl.GetRawText() : null;
+                if (long.TryParse(tsStr, out var unix)) ts = DateTimeOffset.FromUnixTimeSeconds(unix).UtcDateTime;
+            }
+
+            db.WhatsAppLlamadas.Add(new WhatsAppLlamada
+            {
+                CallId = callId,
+                Numero = MetaWhatsAppService.NormalizeTo(from),
+                LineaPhoneId = lineaId,
+                LineaNumero = lineaNumero,
+                Evento = evento,
+                Direccion = direccion,
+                Estado = estado,
+                DuracionSegundos = duracion,
+                TimestampEvento = ts,
+                RecibidoAt = DateTime.UtcNow,
+                RawJson = call.GetRawText()
+            });
+            await db.SaveChangesAsync();
+            _logger.LogInformation("[Meta WA llamada] {Evento} de {From} (línea {Linea}) callId={CallId}",
+                evento, from, lineaNumero, callId);
         }
     }
 

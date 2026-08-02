@@ -5798,6 +5798,31 @@ BEGIN
 END
 GO
 
+-- 2026-08-02: WhatsApp - Llamadas de voz (Meta Business Calling API). PRIMER LADRILLO:
+-- solo registramos cada evento de llamada que llega al webhook (value.calls[]). Todavia
+-- NO se atiende audio en vivo. Ver Api/Models/WhatsAppLlamada.cs y el proyecto de voz.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_Llamadas')
+CREATE TABLE WhatsApp_Llamadas (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    CallId NVARCHAR(120) NULL,
+    Numero NVARCHAR(30) NULL,
+    LineaPhoneId NVARCHAR(40) NULL,
+    LineaNumero NVARCHAR(30) NULL,
+    Evento NVARCHAR(40) NULL,
+    Direccion NVARCHAR(30) NULL,
+    Estado NVARCHAR(60) NULL,
+    DuracionSegundos INT NULL,
+    TimestampEvento DATETIME2 NULL,
+    RecibidoAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    RawJson NVARCHAR(MAX) NULL
+);
+GO
+
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_Llamadas')
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_WaLlamadas_CallId')
+    CREATE INDEX IX_WaLlamadas_CallId ON WhatsApp_Llamadas(CallId);
+GO
+
 -- 2026-06-22: Modulo Pagos Movil. Bandeja de "precarga" de pagos hecha desde el celu
 -- por Osmar/German/Gabriel mientras estan fuera de la oficina. Una vez precargado,
 -- el pago queda en estado PENDIENTE hasta que alguien lo confirma desde la PC.
