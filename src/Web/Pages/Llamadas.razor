@@ -1,0 +1,370 @@
+@page "/llamadas"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject HttpClient Http
+@inject Web.Services.ToastService Toast
+@inject Microsoft.JSInterop.IJSRuntime JS
+@implements IDisposable
+
+<PageTitle>Llamadas de WhatsApp</PageTitle>
+
+<div class="llam-wrap">
+    <div class="llam-header">
+        <h2>📞 Llamadas de WhatsApp</h2>
+        <div class="llam-tabs">
+            <button class="@TabCls("telefono")" @onclick='() => tab = "telefono"'>☎️ Teléfono</button>
+            <button class="@TabCls("historial")" @onclick="IrHistorial">🕘 Historial</button>
+        </div>
+    </div>
+
+    @* Aviso de estado: si algo no está listo para atender de verdad *@
+    @if (!string.IsNullOrEmpty(aviso))
+    {
+        <div class="llam-aviso">@aviso</div>
+    }
+
+    @if (tab == "telefono")
+    {
+        <div class="llam-fono">
+            @if (estado == "idle")
+            {
+                <div class="llam-idle">
+                    <div class="llam-idle-icon">☎️</div>
+                    <p class="llam-idle-txt">Esperando llamadas…</p>
+                    <p class="llam-idle-sub">Cuando un cliente llame por WhatsApp, va a sonar acá.</p>
+                </div>
+            }
+            else if (estado == "entrante")
+            {
+                <div class="llam-entrante">
+                    <div class="llam-avatar llam-pulse">📞</div>
+                    <div class="llam-quien">@NombreONumero</div>
+                    <div class="llam-sub">Llamada entrante@(LineaTxt)</div>
+                    <div class="llam-botones">
+                        <button class="llam-btn llam-rechazar" @onclick="Rechazar" disabled="@ocupado">Rechazar</button>
+                        <button class="llam-btn llam-atender" @onclick="Atender" disabled="@ocupado">
+                            @(ocupado ? "Conectando…" : "Atender")
+                        </button>
+                    </div>
+                </div>
+            }
+            else if (estado == "enllamada")
+            {
+                <div class="llam-encurso">
+                    <div class="llam-avatar llam-verde">🟢</div>
+                    <div class="llam-quien">@NombreONumero</div>
+                    <div class="llam-sub">En llamada — @Cronometro</div>
+                    <div class="llam-botones">
+                        <button class="llam-btn llam-colgar" @onclick="Colgar">Colgar</button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="llam-historial">
+            @if (historial == null)
+            {
+                <p class="llam-idle-sub">Cargando…</p>
+            }
+            else if (historial.Count == 0)
+            {
+                <p class="llam-idle-sub">Todavía no hay llamadas registradas.</p>
+            }
+            else
+            {
+                <table class="llam-tabla">
+                    <thead>
+                        <tr><th>Cuándo</th><th>Número</th><th>Línea</th><th>Evento</th><th>Duración</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var h in historial)
+                        {
+                            <tr>
+                                <td>@FechaLocal(h.recibidoAt)</td>
+                                <td>@(string.IsNullOrEmpty(h.numero) ? "—" : "+" + h.numero)</td>
+                                <td>@(string.IsNullOrEmpty(h.lineaNumero) ? "—" : h.lineaNumero)</td>
+                                <td><span class="llam-chip llam-chip-@(h.evento)">@EventoTxt(h.evento)</span></td>
+                                <td>@(h.duracionSegundos.HasValue ? h.duracionSegundos + "s" : "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .llam-wrap { max-width: 720px; margin: 0 auto; padding: 16px; }
+    .llam-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .llam-header h2 { margin: 0; }
+    .llam-tabs { display: flex; gap: 6px; }
+    .llam-tabs button { border: 1px solid #d0d7de; background: #fff; border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: .9rem; }
+    .llam-tabs button.on { background: #128C7E; color: #fff; border-color: #128C7E; }
+    .llam-aviso { margin: 12px 0; padding: 10px 12px; background: #fff8e1; border: 1px solid #ffe08a; border-radius: 8px; font-size: .88rem; color: #7a5b00; }
+    .llam-fono { margin-top: 20px; background: #f6f8fa; border: 1px solid #e1e4e8; border-radius: 16px; padding: 36px 20px; min-height: 300px;
+                 display: flex; align-items: center; justify-content: center; }
+    .llam-idle, .llam-entrante, .llam-encurso { text-align: center; }
+    .llam-idle-icon { font-size: 56px; opacity: .5; }
+    .llam-idle-txt { font-size: 1.1rem; font-weight: 600; margin: 12px 0 4px; }
+    .llam-idle-sub { color: #6a737d; margin: 0; font-size: .9rem; }
+    .llam-avatar { font-size: 64px; width: 120px; height: 120px; line-height: 120px; border-radius: 50%; margin: 0 auto 16px;
+                   background: #e8f5e9; }
+    .llam-verde { background: #d3f3dd; }
+    .llam-pulse { animation: llampulse 1.1s infinite; }
+    @@keyframes llampulse { 0% { box-shadow: 0 0 0 0 rgba(18,140,126,.5); } 70% { box-shadow: 0 0 0 22px rgba(18,140,126,0); } 100% { box-shadow: 0 0 0 0 rgba(18,140,126,0); } }
+    .llam-quien { font-size: 1.4rem; font-weight: 700; }
+    .llam-sub { color: #6a737d; margin-top: 4px; }
+    .llam-botones { margin-top: 26px; display: flex; gap: 14px; justify-content: center; }
+    .llam-btn { border: none; border-radius: 30px; padding: 12px 28px; font-size: 1rem; font-weight: 600; cursor: pointer; color: #fff; }
+    .llam-btn:disabled { opacity: .6; cursor: default; }
+    .llam-atender { background: #25D366; }
+    .llam-rechazar { background: #e5484d; }
+    .llam-colgar { background: #e5484d; }
+    .llam-tabla { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: .88rem; }
+    .llam-tabla th, .llam-tabla td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eaecef; }
+    .llam-tabla th { color: #6a737d; font-weight: 600; }
+    .llam-chip { padding: 2px 8px; border-radius: 10px; font-size: .78rem; background: #eee; }
+    .llam-chip-connect { background: #d3f3dd; color: #12622f; }
+    .llam-chip-terminate, .llam-chip-colgada { background: #f1f3f5; color: #555; }
+    .llam-chip-reject, .llam-chip-rechazada, .llam-chip-failed { background: #fde2e1; color: #9b1c1c; }
+    .llam-chip-atendida { background: #cfe8ff; color: #0a4a8f; }
+</style>
+
+@code {
+    string tab = "telefono";
+    string estado = "idle";            // idle | entrante | enllamada
+    string? aviso;
+    bool ocupado;                      // deshabilita botones mientras conecta
+
+    LlamPendiente? actual;
+    List<LlamHist>? historial;
+
+    System.Threading.Timer? pollTimer;
+    System.Threading.Timer? cronoTimer;
+    int segundos;
+
+    string NombreONumero => actual is null ? "" :
+        (!string.IsNullOrEmpty(actual.nombre) ? actual.nombre! :
+         (!string.IsNullOrEmpty(actual.numero) ? "+" + actual.numero : "Número desconocido"));
+
+    string LineaTxt => actual is not null && !string.IsNullOrEmpty(actual.lineaNumero)
+        ? $" · línea {actual.lineaNumero}" : "";
+
+    string Cronometro => $"{segundos / 60:00}:{segundos % 60:00}";
+
+    string TabCls(string t) => tab == t ? "on" : "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarConfigAsync();
+        // Chequeo temprano de soporte del navegador (micrófono necesita HTTPS o localhost)
+        try
+        {
+            var sop = await JS.InvokeAsync<bool>("waLlamadas.soportado");
+            if (!sop)
+                aviso = "⚠️ Este navegador no puede usar micrófono/llamadas acá. Se necesita HTTPS (o localhost). En el sitio real (https) funciona.";
+        }
+        catch { }
+
+        pollTimer = new System.Threading.Timer(async _ => await Poll(), null, 1500, 2500);
+    }
+
+    async Task CargarConfigAsync()
+    {
+        try
+        {
+            var cfg = await Http.GetFromJsonAsync<LlamConfig>("/api/whatsapp/llamadas/config");
+            if (cfg?.iceServers is { Count: > 0 })
+                await JS.InvokeVoidAsync("waLlamadas.setIceServers", (object)cfg.iceServers);
+
+            if (cfg is { habilitado: false })
+                aviso = "ℹ️ Las llamadas todavía no están activadas en Meta (modo prueba). La pantalla ya funciona; falta prender el interruptor y montar el servidor de audio.";
+            else if (cfg is { turnConfigurado: false })
+                aviso = "ℹ️ Falta el servidor de audio (TURN) en DonWeb. Puede haber llamadas sin audio detrás de algunas redes hasta configurarlo.";
+        }
+        catch { /* si falla la config, seguimos con STUN por default */ }
+    }
+
+    async Task Poll()
+    {
+        // Solo buscamos llamadas nuevas cuando estamos libres o esperando que atiendan.
+        if (estado == "enllamada") return;
+        try
+        {
+            var pend = await Http.GetFromJsonAsync<List<LlamPendiente>>("/api/whatsapp/llamadas/pendientes");
+            await InvokeAsync(async () =>
+            {
+                if (pend is { Count: > 0 })
+                {
+                    var nueva = pend[0];
+                    if (estado == "idle" || actual?.callId != nueva.callId)
+                    {
+                        actual = nueva;
+                        estado = "entrante";
+                        ocupado = false;
+                        try { await JS.InvokeVoidAsync("waLlamadas.ringStart"); } catch { }
+                        StateHasChanged();
+                    }
+                }
+                else if (estado == "entrante")
+                {
+                    // El cliente cortó antes de que atendiéramos
+                    await ResetAsync();
+                }
+            });
+        }
+        catch { }
+    }
+
+    async Task Atender()
+    {
+        if (actual is null || string.IsNullOrEmpty(actual.sdpOffer)) return;
+        ocupado = true; StateHasChanged();
+        try { await JS.InvokeVoidAsync("waLlamadas.ringStop"); } catch { }
+
+        string? sdpAnswer = null;
+        try
+        {
+            sdpAnswer = await JS.InvokeAsync<string>("waLlamadas.answer", actual.sdpOffer);
+        }
+        catch
+        {
+            Toast.Error("No pude acceder al micrófono. Revisá los permisos del navegador.");
+            await ResetAsync();
+            return;
+        }
+
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("/api/whatsapp/llamadas/atender",
+                new { callId = actual.callId, sdpAnswer });
+            if (!resp.IsSuccessStatusCode)
+            {
+                Toast.Error("Meta no aceptó la llamada. Puede que falte activar las llamadas o el servidor de audio.");
+                try { await JS.InvokeVoidAsync("waLlamadas.hangup"); } catch { }
+                await ResetAsync();
+                return;
+            }
+            estado = "enllamada";
+            ocupado = false;
+            IniciarCrono();
+            StateHasChanged();
+        }
+        catch
+        {
+            Toast.Error("Error de conexión al atender la llamada.");
+            try { await JS.InvokeVoidAsync("waLlamadas.hangup"); } catch { }
+            await ResetAsync();
+        }
+    }
+
+    async Task Rechazar()
+    {
+        if (actual is null) return;
+        ocupado = true; StateHasChanged();
+        try { await Http.PostAsJsonAsync("/api/whatsapp/llamadas/rechazar", new { callId = actual.callId }); } catch { }
+        await ResetAsync();
+    }
+
+    async Task Colgar()
+    {
+        if (actual is null) return;
+        try { await Http.PostAsJsonAsync("/api/whatsapp/llamadas/colgar", new { callId = actual.callId }); } catch { }
+        try { await JS.InvokeVoidAsync("waLlamadas.hangup"); } catch { }
+        await ResetAsync();
+    }
+
+    async Task ResetAsync()
+    {
+        try { await JS.InvokeVoidAsync("waLlamadas.ringStop"); } catch { }
+        try { await JS.InvokeVoidAsync("waLlamadas.hangup"); } catch { }
+        DetenerCrono();
+        actual = null;
+        estado = "idle";
+        ocupado = false;
+        StateHasChanged();
+    }
+
+    void IniciarCrono()
+    {
+        segundos = 0;
+        cronoTimer = new System.Threading.Timer(async _ =>
+        {
+            segundos++;
+            await InvokeAsync(StateHasChanged);
+        }, null, 1000, 1000);
+    }
+
+    void DetenerCrono() { cronoTimer?.Dispose(); cronoTimer = null; segundos = 0; }
+
+    async Task IrHistorial()
+    {
+        tab = "historial";
+        historial = null;
+        StateHasChanged();
+        try { historial = await Http.GetFromJsonAsync<List<LlamHist>>("/api/whatsapp/llamadas/historial"); }
+        catch { historial = new(); }
+        StateHasChanged();
+    }
+
+    static string FechaLocal(DateTime utc) => utc.AddHours(-3).ToString("dd/MM HH:mm");
+
+    static string EventoTxt(string? ev) => ev switch
+    {
+        "connect" => "Entró",
+        "terminate" => "Cortó",
+        "reject" => "Rechazada (Meta)",
+        "failed" => "Falló",
+        "atendida" => "Atendida",
+        "rechazada" => "Rechazada",
+        "colgada" => "Colgada",
+        _ => ev ?? "—"
+    };
+
+    public void Dispose()
+    {
+        pollTimer?.Dispose();
+        cronoTimer?.Dispose();
+        try { _ = JS.InvokeVoidAsync("waLlamadas.hangup"); } catch { }
+        try { _ = JS.InvokeVoidAsync("waLlamadas.ringStop"); } catch { }
+    }
+
+    // ── modelos ──
+    class LlamConfig
+    {
+        public bool habilitado { get; set; }
+        public bool turnConfigurado { get; set; }
+        public List<IceServer> iceServers { get; set; } = new();
+    }
+    class IceServer
+    {
+        public string urls { get; set; } = "";
+        public string? username { get; set; }
+        public string? credential { get; set; }
+    }
+    class LlamPendiente
+    {
+        public string callId { get; set; } = "";
+        public string? numero { get; set; }
+        public string? lineaPhoneId { get; set; }
+        public string? lineaNumero { get; set; }
+        public string? sdpOffer { get; set; }
+        public string? nombre { get; set; }
+        public DateTime recibidoAt { get; set; }
+    }
+    class LlamHist
+    {
+        public int id { get; set; }
+        public string? callId { get; set; }
+        public string? numero { get; set; }
+        public string? lineaNumero { get; set; }
+        public string? evento { get; set; }
+        public string? direccion { get; set; }
+        public string? estado { get; set; }
+        public int? duracionSegundos { get; set; }
+        public DateTime? timestampEvento { get; set; }
+        public DateTime recibidoAt { get; set; }
+    }
+}

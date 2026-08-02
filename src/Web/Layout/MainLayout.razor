@@ -693,6 +693,9 @@
                                  IsActive="@IsActive("/whatsapp")" OnClick="@(() => NavigateTo("/whatsapp"))" />
                         <NavItem Href="/cafe/pedidos-whatsapp" Label="📥 WhatsApp · Pedidos" Icon="@SvgIcons.MessageCircle"
                                  IsActive="@(IsActive("/cafe/pedidos-whatsapp") || IsActive("/whatsapp/pedidos"))" OnClick="@(() => NavigateTo("/cafe/pedidos-whatsapp"))" />
+                        @* 2026-08-02: teléfono en la pantalla — atender llamadas de voz de WhatsApp (softphone WebRTC) *@
+                        <NavItem Href="/llamadas" Label="📞 WhatsApp · Llamadas" Icon="@SvgIcons.MessageCircle"
+                                 IsActive="@IsActive("/llamadas")" OnClick="@(() => NavigateTo("/llamadas"))" />
                         @* Stock unificado: entra a Stock masivo, y desde la pantalla hay boton para abrir Stock movil. *@
                         <NavItem Href="/cafe/stock-masivo" Label="📦 Stock" Icon="@SvgIcons.Package"
                                  IsActive="@(IsActive("/cafe/stock-masivo") || IsActive("/stock"))" OnClick="@(() => NavigateTo("/cafe/stock-masivo"))" />
