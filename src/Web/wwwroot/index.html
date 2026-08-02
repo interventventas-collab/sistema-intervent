@@ -1876,29 +1876,56 @@
                 }
             };
         })();
-        // 2026-08-01: sonido de aviso de WhatsApp (mensaje nuevo entrante). Web Audio, chime corto.
-        // Los navegadores bloquean el audio hasta que el usuario interactúa: por eso desbloqueamos el
-        // contexto en el primer click/tecla (listener de abajo), y así después puede sonar solo.
-        window.waNotifSound = function () {
+        // 2026-08-01: sonidos de aviso de WhatsApp (retro, hechos con Web Audio — sin archivos).
+        // waPlaySound(name) respeta el silencio maestro (localStorage wa.sonido); waTestSound(name)
+        // suena igual (para el botón "Probar"). El contexto de audio se desbloquea en el 1er click/tecla.
+        window.waSounds = (function () {
+            function nota(c, freq, t, dur, type, peak) {
+                var o = c.createOscillator(), g = c.createGain(), n = c.currentTime;
+                o.type = type || 'sine'; o.frequency.setValueAtTime(freq, n + t);
+                g.gain.setValueAtTime(0.0001, n + t);
+                g.gain.exponentialRampToValueAtTime(peak || 0.25, n + t + 0.015);
+                g.gain.exponentialRampToValueAtTime(0.0001, n + t + dur);
+                o.connect(g); g.connect(c.destination);
+                o.start(n + t); o.stop(n + t + dur + 0.03);
+            }
+            function sweep(c, f1, f2, t, dur, type, peak) {
+                var o = c.createOscillator(), g = c.createGain(), n = c.currentTime;
+                o.type = type || 'square';
+                o.frequency.setValueAtTime(f1, n + t);
+                o.frequency.exponentialRampToValueAtTime(f2, n + t + dur);
+                g.gain.setValueAtTime(peak || 0.2, n + t);
+                g.gain.exponentialRampToValueAtTime(0.0001, n + t + dur);
+                o.connect(g); g.connect(c.destination);
+                o.start(n + t); o.stop(n + t + dur + 0.03);
+            }
+            return {
+                chime:   function (c) { nota(c, 880, 0, 0.22, 'sine', 0.25); nota(c, 1174, 0.12, 0.22, 'sine', 0.25); },
+                msn:     function (c) { nota(c, 1318, 0, 0.15, 'sine', 0.28); nota(c, 988, 0.15, 0.30, 'sine', 0.28); },
+                coin:    function (c) { nota(c, 988, 0, 0.07, 'square', 0.2); nota(c, 1319, 0.07, 0.20, 'square', 0.2); },
+                powerup: function (c) { var f = [523, 659, 784, 1047, 1319]; for (var i = 0; i < f.length; i++) nota(c, f[i], i * 0.05, 0.13, 'square', 0.18); },
+                laser:   function (c) { sweep(c, 1200, 200, 0, 0.25, 'sawtooth', 0.2); },
+                levelup: function (c) { var f = [392, 523, 659, 784]; for (var i = 0; i < f.length; i++) nota(c, f[i], i * 0.09, 0.18, 'triangle', 0.2); }
+            };
+        })();
+        function _waCtx() {
+            var Ctx = window.AudioContext || window.webkitAudioContext;
+            if (!Ctx) return null;
+            window._waAudioCtx = window._waAudioCtx || new Ctx();
+            if (window._waAudioCtx.state === 'suspended') { try { window._waAudioCtx.resume(); } catch (e) {} }
+            return window._waAudioCtx;
+        }
+        window.waPlaySound = function (name) {
             try {
-                var Ctx = window.AudioContext || window.webkitAudioContext;
-                if (!Ctx) return;
-                window._waAudioCtx = window._waAudioCtx || new Ctx();
-                var ctx = window._waAudioCtx;
-                if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }
-                var now = ctx.currentTime;
-                var notas = [[880, 0], [1174, 0.12]]; // La → Re (chime tipo notificación)
-                notas.forEach(function (n) {
-                    var o = ctx.createOscillator(), g = ctx.createGain();
-                    o.type = 'sine'; o.frequency.value = n[0];
-                    g.gain.setValueAtTime(0.0001, now + n[1]);
-                    g.gain.exponentialRampToValueAtTime(0.25, now + n[1] + 0.02);
-                    g.gain.exponentialRampToValueAtTime(0.0001, now + n[1] + 0.22);
-                    o.connect(g); g.connect(ctx.destination);
-                    o.start(now + n[1]); o.stop(now + n[1] + 0.24);
-                });
-            } catch (e) { console.warn('waNotifSound', e); }
+                if (localStorage.getItem('wa.sonido') === '0') return; // silenciado (maestro)
+                var c = _waCtx(); if (!c) return;
+                (window.waSounds[name] || window.waSounds.chime)(c);
+            } catch (e) { console.warn('waPlaySound', e); }
         };
+        window.waTestSound = function (name) {
+            try { var c = _waCtx(); if (!c) return; (window.waSounds[name] || window.waSounds.chime)(c); } catch (e) {}
+        };
+        window.waNotifSound = function () { window.waPlaySound('chime'); };
         (function () {
             function unlock() {
                 try {

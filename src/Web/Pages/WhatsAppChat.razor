@@ -16,6 +16,11 @@
         <span class="wa-tab-top active">💬 Chats</span>
         <a href="/whatsapp/pedidos" class="wa-tab-top">📥 Pedidos y configuración</a>
     </div>
+    @* 2026-08-01: interruptor maestro del sonido de avisos (mismo que la campanita del panel flotante) *@
+    <button class="wa-sonido-toggle" @onclick="ToggleSonidoMaster"
+            title="@(sonidoMasterOn ? "Sonido de avisos ACTIVADO — tocá para silenciar" : "Sonido de avisos SILENCIADO — tocá para activar")">
+        @(sonidoMasterOn ? "🔔" : "🔕") <span class="wa-sonido-txt">@(sonidoMasterOn ? "Con sonido" : "Silenciado")</span>
+    </button>
     @* 2026-07-29 (Paso 2): el cartelito ahora es un SELECTOR. Tocándolo cambiás de línea o ves todas.
        Con una sola línea conectada muestra ese número y avisa que el 2° aparecerá acá. *@
     <div class="wa-linea-wrap">
@@ -636,6 +641,16 @@
             </div>
             <label style="font-size:0.78rem; color:#6b7280; display:block;">Nombre</label>
             <input class="form-control form-control-sm" @bind="editLineaNombre" placeholder="Ej: Ventas Café" maxlength="120" />
+
+            <label style="font-size:0.78rem; color:#6b7280; display:block; margin-top:0.7rem;">🔔 Sonido de aviso de esta línea</label>
+            <div style="display:flex; gap:0.4rem; align-items:center;">
+                <select class="form-control form-control-sm" @bind="editLineaSonido">
+                    @foreach (var s in SonidosDisponibles) { <option value="@s.Key">@s.Label</option> }
+                </select>
+                <button class="btn btn-outline-secondary btn-sm" title="Escuchar este sonido" @onclick="@(() => ProbarSonido(editLineaSonido))">▶</button>
+            </div>
+            <div style="font-size:0.7rem; color:#9ca3af; margin-top:0.2rem;">Cuando te escriban a esta línea, va a sonar así. Probalo con ▶.</div>
+
             <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:1.1rem;">
                 <button class="btn btn-secondary btn-sm" @onclick="@(() => showEditLinea = false)">Cancelar</button>
                 <button class="btn btn-success btn-sm" disabled="@editLineaGuardando" @onclick="GuardarEditLinea">@(editLineaGuardando ? "Guardando…" : "✓ Guardar")</button>
@@ -881,6 +896,9 @@
     .wa-cuenta-tag { font-size: 0.6rem; background: #e0e7ff; color: #3730a3; padding: 0.05rem 0.35rem; border-radius: 999px; white-space: nowrap; display: inline-flex; align-items: center; }
     .wa-header-linea { display: inline-flex; align-items: center; gap: 3px; font-size: 0.7rem; font-weight: 600; background: #eef2ff; color: #3730a3; padding: 2px 9px; border-radius: 999px; }
     .wa-header-linea img { width: 16px; height: 16px; }
+    .wa-sonido-toggle { display: inline-flex; align-items: center; gap: 5px; background: #fff; border: 1px solid #e6eaf0; border-radius: 999px; padding: 5px 12px; font-size: 0.95rem; font-weight: 600; color: #334155; cursor: pointer; }
+    .wa-sonido-toggle:hover { border-color: #25d366; background: #f0fff6; }
+    .wa-sonido-txt { font-size: 0.78rem; }
     /* chip "viendo solo esta línea" en la barra lateral */
     .wa-linea-activa-chip { display: flex; align-items: center; gap: 0.4rem; margin: 0.5rem 0.7rem 0; padding: 0.4rem 0.7rem; background: #eafcf1; border: 1px solid #bbf7d0; border-radius: 10px; font-size: 0.8rem; color: #15803d; }
     .wa-linea-activa-x { margin-left: auto; background: none; border: none; font-size: 1.1rem; line-height: 1; color: #15803d; cursor: pointer; }
@@ -1289,6 +1307,7 @@
     {
         await LoadConversaciones();
         await LoadLineasConfig();
+        await CargarSonidoMaster();
         if (!string.IsNullOrWhiteSpace(NumeroInicial))
             await SelectConv(NumeroInicial, conversaciones.FirstOrDefault(c => c.Numero == NumeroInicial)?.Linea);
         await LoadRespuestas();
@@ -2090,9 +2109,35 @@
     }
     string? LineaImg(string? id) => id != null && lineaCfg.TryGetValue(id, out var c) ? c.ImagenDataUrl : null;
 
-    // Edición del nombre/imagen de una línea
+    // 2026-08-01: sonidos de aviso disponibles (mismas claves que window.waSounds en index.html)
+    static readonly (string Key, string Label)[] SonidosDisponibles = new[]
+    {
+        ("chime", "🔔 Campanita (default)"),
+        ("msn", "🟢 Messenger (ding-dong)"),
+        ("coin", "🪙 Moneda"),
+        ("powerup", "⭐ Power-up"),
+        ("laser", "👾 Láser"),
+        ("levelup", "🎺 Level up")
+    };
+    async Task ProbarSonido(string key) { try { await JS.InvokeVoidAsync("waTestSound", key); } catch { } }
+
+    // Interruptor MAESTRO de sonido (mismo localStorage "wa.sonido" que lee el panel flotante al sonar)
+    bool sonidoMasterOn = true;
+    async Task CargarSonidoMaster()
+    {
+        try { var v = await JS.InvokeAsync<string>("localStorage.getItem", "wa.sonido"); sonidoMasterOn = v != "0"; }
+        catch { }
+    }
+    async Task ToggleSonidoMaster()
+    {
+        sonidoMasterOn = !sonidoMasterOn;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "wa.sonido", sonidoMasterOn ? "1" : "0"); } catch { }
+        if (sonidoMasterOn) await ProbarSonido("chime"); // feedback al prender
+    }
+
+    // Edición del nombre/imagen/sonido de una línea
     bool showEditLinea = false, editLineaGuardando = false;
-    string editLineaId = "", editLineaNombre = "";
+    string editLineaId = "", editLineaNombre = "", editLineaSonido = "chime";
     string? editLineaImg = null, editLineaNumero = null;
     void AbrirEditLinea(string id, string? numero)
     {
@@ -2101,6 +2146,7 @@
         lineaCfg.TryGetValue(id, out var c);
         editLineaNombre = c?.Nombre ?? "";
         editLineaImg = c?.ImagenDataUrl;
+        editLineaSonido = string.IsNullOrEmpty(c?.Sonido) ? "chime" : c!.Sonido!;
         showLineaMenu = false;
         showEditLinea = true;
     }
@@ -2123,7 +2169,7 @@
     {
         editLineaGuardando = true;
         StateHasChanged();
-        var (ok, err) = await Api.GuardarTwLineaConfigAsync(editLineaId, editLineaNombre, editLineaImg ?? "");
+        var (ok, err) = await Api.GuardarTwLineaConfigAsync(editLineaId, editLineaNombre, editLineaImg ?? "", editLineaSonido);
         editLineaGuardando = false;
         if (!ok) { Toast.Error(err ?? "No se pudo guardar"); return; }
         Toast.Success("Línea actualizada ✓");

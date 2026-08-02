@@ -282,13 +282,14 @@ public class WhatsAppTwilioController : ControllerBase
                 NumeroReal = l.Numero,
                 EsInstagram = (l.Numero ?? "").StartsWith("IG ", StringComparison.Ordinal),
                 Nombre = c?.Nombre,
-                ImagenDataUrl = c?.ImagenDataUrl
+                ImagenDataUrl = c?.ImagenDataUrl,
+                Sonido = c?.Sonido
             };
         }).OrderBy(x => x.EsInstagram).ThenBy(x => x.NumeroReal).ToList();
         return Ok(res);
     }
 
-    public record LineaConfigUpsert(string LineaId, string? Nombre, string? ImagenDataUrl);
+    public record LineaConfigUpsert(string LineaId, string? Nombre, string? ImagenDataUrl, string? Sonido = null);
 
     /// <summary>Guarda (o borra) el nombre/imagen de una línea. ImagenDataUrl: null = no tocar, "" = quitar.</summary>
     [HttpPost("lineas-config")]
@@ -309,6 +310,7 @@ public class WhatsAppTwilioController : ControllerBase
         cfg.Nombre = string.IsNullOrWhiteSpace(req.Nombre) ? null : req.Nombre.Trim();
         if (req.ImagenDataUrl != null)
             cfg.ImagenDataUrl = req.ImagenDataUrl.Length == 0 ? null : req.ImagenDataUrl;
+        cfg.Sonido = string.IsNullOrWhiteSpace(req.Sonido) ? null : req.Sonido.Trim();
         cfg.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return Ok(new { ok = true });

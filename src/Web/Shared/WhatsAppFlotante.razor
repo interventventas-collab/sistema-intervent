@@ -194,6 +194,7 @@
         if (firstRender && !sonidoPrefCargada)
         {
             sonidoPrefCargada = true;
+            await CargarLineaSonidos();
             try
             {
                 var v = await JS.InvokeAsync<string>("localStorage.getItem", "wa.sonido");
@@ -320,18 +321,37 @@
     // ---------- Sonido de aviso (2026-08-01) ----------
     private bool sonidoActivo = true;
     private bool sonidoPrefCargada;
-    private DateTime? ultimoIncomingAt;
+    private Dictionary<string, string?> lineaSonidos = new();      // LineaId -> clave de sonido
+    private Dictionary<string, DateTime> ultimoInPorLinea = new();  // LineaId -> último entrante visto
+    private bool sonidoSeedeado;
 
+    private async Task CargarLineaSonidos()
+    {
+        try
+        {
+            var cfg = await Api.GetTwLineasConfigAsync();
+            lineaSonidos = cfg.ToDictionary(x => x.LineaId, x => x.Sonido);
+        }
+        catch { }
+    }
+
+    // Detecta mensajes ENTRANTES nuevos por línea y suena el sonido elegido de ESA línea.
+    // El silencio maestro (localStorage wa.sonido) lo respeta waPlaySound en el JS.
     private async Task DetectarYSonarNuevos()
     {
-        var incomings = convs.Where(c => c.UltimoDireccion == "INCOMING").Select(c => c.UltimoAt).ToList();
-        if (incomings.Count == 0) return;
-        var maxIn = incomings.Max();
-        if (ultimoIncomingAt is null) { ultimoIncomingAt = maxIn; return; } // primera vuelta: NO suena
-        if (maxIn > ultimoIncomingAt.Value)
+        var porLinea = convs.Where(c => c.UltimoDireccion == "INCOMING")
+            .GroupBy(c => c.Linea ?? "∅")
+            .ToDictionary(g => g.Key, g => g.Max(x => x.UltimoAt));
+        if (!sonidoSeedeado) { ultimoInPorLinea = porLinea; sonidoSeedeado = true; return; } // 1ra vuelta: no suena
+        foreach (var kv in porLinea)
         {
-            ultimoIncomingAt = maxIn;
-            if (sonidoActivo) { try { await JS.InvokeVoidAsync("waNotifSound"); } catch { } }
+            var esNuevo = !ultimoInPorLinea.TryGetValue(kv.Key, out var prev) || kv.Value > prev;
+            ultimoInPorLinea[kv.Key] = kv.Value;
+            if (esNuevo)
+            {
+                var sonido = (kv.Key != "∅" && lineaSonidos.TryGetValue(kv.Key, out var s) && !string.IsNullOrEmpty(s)) ? s! : "chime";
+                try { await JS.InvokeVoidAsync("waPlaySound", sonido); } catch { }
+            }
         }
     }
 

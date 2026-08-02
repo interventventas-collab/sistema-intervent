@@ -13,5 +13,7 @@ public class WhatsAppLineaConfig
     [MaxLength(120)] public string? Nombre { get; set; }
     /// <summary>Imagen como data URL (data:image/...;base64,...). Es un avatar chico, va embebido.</summary>
     public string? ImagenDataUrl { get; set; }
+    /// <summary>2026-08-01: sonido de aviso de esta línea (clave: chime/msn/coin/powerup/laser/levelup). Null = default.</summary>
+    [MaxLength(30)] public string? Sonido { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
