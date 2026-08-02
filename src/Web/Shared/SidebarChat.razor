@@ -226,9 +226,11 @@
 <style>
     /* Chat embebido en el sidebar (tema oscuro). Prefijo .sbchat propio para no chocar
        con los estilos del chat grande (.chat-*). */
+    /* 2026-08-02: cajita chica de altura fija. Antes era flex:1 y se estiraba
+       llenando todo el hueco del menú (al depósito le tapaba toda la columna). */
     .sbchat {
-        flex: 1 1 auto;
-        min-height: 170px;
+        flex: 0 0 auto;
+        height: 300px;
         margin: 6px 8px 4px;
         display: flex;
         flex-direction: column;
@@ -294,8 +296,7 @@
     .sbchat-grabando { flex: 1; display: flex; align-items: center; gap: 6px; color: #f0a5a5; font-size: 0.72rem; }
     .sbchat-rec-dot { width: 9px; height: 9px; background: #e24b4a; border-radius: 50%; display: inline-block; animation: sbchat-pulse 1s ease-in-out infinite; }
 
-    /* Cuando hay chat en el sidebar, el menú deja de estirarse para que el chat ocupe
-       el espacio libre de abajo. Se desactiva si el sidebar está colapsado. */
-    .sidebar-with-chat:not(.collapsed) .sidebar-nav { flex: 0 1 auto; }
+    /* 2026-08-02: el chat es una cajita de altura fija (300px), el menú de arriba
+       usa su tamaño natural. Se oculta si el sidebar está colapsado. */
     .sidebar.collapsed .sbchat { display: none; }
 </style>
