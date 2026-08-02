@@ -3744,6 +3744,110 @@ public class CafeVentasController : ControllerBase
         return Ok(ventas);
     }
 
+    public record EscanearEtiquetaPrepRequest(string Code);
+
+    /// <summary>
+    /// Camino al picking (2026-08-02, paso 1-3): a partir de una ETIQUETA de venta de MeLi
+    /// escaneada (lector USB o cámara), devuelve el LISTADO DE PRODUCTOS de esa venta.
+    /// Funciona para Flex (QR con {"id":...}) y Correo/ME1 (código de barras con el nº de envío).
+    /// Reusa la misma logica que /api/mapeo/stops/scan-flex + by-number. Solo lectura local
+    /// (no sincroniza en vivo todavía): si la venta es muy nueva y no está sincronizada, avisa.
+    /// </summary>
+    [HttpPost("preparacion/escanear-etiqueta")]
+    public async Task<IActionResult> EscanearEtiquetaPreparacion([FromBody] EscanearEtiquetaPrepRequest req)
+    {
+        var num = ExtractShipmentIdFromCode(req?.Code);
+        if (num is null)
+            return Ok(new { ok = false, motivo = "sin_id", mensaje = "No pude leer el número de esa etiqueta. Probá de nuevo o tipealo a mano." });
+
+        // Resolver el envío (ShippingId) para juntar TODOS los productos de esa venta.
+        long? shippingId = null;
+        // (1) el código es directamente el nº de envío (shipment id)
+        var productos = await _db.MeliOrders.Where(o => o.ShippingId == num).ToListAsync();
+        if (productos.Count > 0) shippingId = num;
+        else
+        {
+            // (2) el código es el nº de venta (order id): busco la orden y agarro su envío + hermanos del mismo pack
+            var ord = await _db.MeliOrders.FirstOrDefaultAsync(o => o.MeliOrderId == num);
+            if (ord is not null)
+            {
+                if (ord.ShippingId is not null)
+                {
+                    productos = await _db.MeliOrders.Where(o => o.ShippingId == ord.ShippingId).ToListAsync();
+                    shippingId = ord.ShippingId;
+                }
+                else productos = new List<MeliOrder> { ord };
+            }
+            else
+            {
+                // (3) el código matchea un envío conocido (MeliShipments) → su orden → hermanos
+                var sh = await _db.MeliShipments.FirstOrDefaultAsync(s => s.MeliShipmentId == num);
+                if (sh?.MeliOrderId is not null)
+                {
+                    var ord2 = await _db.MeliOrders.FirstOrDefaultAsync(o => o.MeliOrderId == sh.MeliOrderId);
+                    if (ord2?.ShippingId is not null)
+                    {
+                        productos = await _db.MeliOrders.Where(o => o.ShippingId == ord2.ShippingId).ToListAsync();
+                        shippingId = ord2.ShippingId;
+                    }
+                    else if (ord2 is not null) productos = new List<MeliOrder> { ord2 };
+                }
+            }
+        }
+
+        if (productos.Count == 0)
+            return Ok(new { ok = false, motivo = "no_encontrado", numero = num,
+                mensaje = $"No encontré la venta de MercadoLibre para el código {num}. Puede ser de otra cuenta, o muy nueva (esperá unos minutos a que sincronice)." });
+
+        var primero = productos[0];
+        // Etiqueta amigable del tipo de envío
+        string tipo = (primero.LogisticType?.ToLowerInvariant()) switch
+        {
+            "self_service" => "Flex",
+            "fulfillment" => "Full",
+            _ => string.Equals(primero.ShippingMode, "me1", StringComparison.OrdinalIgnoreCase) ? "Correo (ME1)" : "Correo / Mercado Envíos"
+        };
+
+        return Ok(new
+        {
+            ok = true,
+            numeroEnvio = shippingId,
+            numeroVenta = primero.MeliOrderId,
+            comprador = primero.BuyerNickname,
+            cuenta = primero.MeliAccountId,
+            tipo,
+            estado = primero.Status,
+            cantidadProductos = productos.Sum(p => p.Quantity),
+            productos = productos
+                .OrderBy(p => p.ItemTitle)
+                .Select(p => new
+                {
+                    titulo = p.ItemTitle,
+                    cantidad = p.Quantity,
+                    itemId = p.ItemId,
+                    variationId = p.VariationId
+                }).ToList()
+        });
+    }
+
+    /// <summary>Saca el nº de envío de un código escaneado. Espeja ExtractShipmentId de
+    /// MapeoStopsController: prioriza el "id" del JSON del QR Flex, si no la corrida de dígitos
+    /// más larga (para códigos de barras de Correo).</summary>
+    private static long? ExtractShipmentIdFromCode(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return null;
+        var m = System.Text.RegularExpressions.Regex.Match(code, "\"id\"\\s*:\\s*\"?(\\d+)\"?");
+        string digits;
+        if (m.Success) digits = m.Groups[1].Value;
+        else
+        {
+            var runs = System.Text.RegularExpressions.Regex.Matches(code, "\\d+");
+            digits = runs.Count == 0 ? "" : runs.Cast<System.Text.RegularExpressions.Match>()
+                .Select(x => x.Value).OrderByDescending(x => x.Length).First();
+        }
+        return digits.Length >= 6 && long.TryParse(digits, out var val) ? val : (long?)null;
+    }
+
     /// <summary>Oculta UNA venta del tablero de Preparacion. La venta y el PDF en Drive
     /// siguen intactos — solo deja de mostrarse en /cafe/preparacion. Usado por el boton X
     /// de cada card y por "Limpiar tablero" (que llama a este endpoint en bucle).</summary>

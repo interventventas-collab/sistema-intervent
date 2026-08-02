@@ -1660,6 +1660,10 @@ public class ApiClient
     public async Task<bool> OlvidarPickingDispositivoAsync()
         => await DeleteAsync("/api/cafe/picking/dispositivo");
 
+    /// <summary>Escanea una etiqueta de venta MeLi (Flex/Correo) y trae su listado de productos.</summary>
+    public async Task<EscanearEtiquetaResult?> EscanearEtiquetaPreparacionAsync(string code)
+        => await PostAsync<EscanearEtiquetaResult>("/api/cafe/ventas/preparacion/escanear-etiqueta", new { code });
+
     // ─── 2026-06-03: Config del modo nuevo de fichada (piloto WiFi + GPS) ───
     public record ConfigFichadaDto(bool ActivarModoNuevo, string? Wifi1Ip, string? Wifi1Label,
         string? Wifi2Ip, string? Wifi2Label, bool RequiereHuella, bool LoguearGps,

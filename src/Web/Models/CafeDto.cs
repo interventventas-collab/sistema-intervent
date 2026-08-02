@@ -636,6 +636,29 @@ public class PickingDispositivoDto
     public DateTime? LastSeenAt { get; set; }
 }
 
+/// <summary>Resultado de escanear una etiqueta de venta MeLi en Preparación (2026-08-02).</summary>
+public class EscanearEtiquetaResult
+{
+    public bool Ok { get; set; }
+    public string? Motivo { get; set; }
+    public string? Mensaje { get; set; }
+    public long? NumeroEnvio { get; set; }
+    public long? NumeroVenta { get; set; }
+    public string? Comprador { get; set; }
+    public string? Tipo { get; set; }
+    public string? Estado { get; set; }
+    public int CantidadProductos { get; set; }
+    public List<EtiquetaProductoDto> Productos { get; set; } = new();
+}
+
+public class EtiquetaProductoDto
+{
+    public string Titulo { get; set; } = "";
+    public int Cantidad { get; set; }
+    public string? ItemId { get; set; }
+    public string? VariationId { get; set; }
+}
+
 public class CafeCambiarEstadoPreparacionRequest
 {
     /// <summary>Estado nuevo. Vacio o null = sacar la venta del flujo.</summary>

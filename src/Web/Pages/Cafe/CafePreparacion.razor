@@ -590,6 +590,29 @@
         cursor: pointer;
     }
     .prep-celu-chip .cambiar:hover { background: rgba(0,0,0,0.05); }
+
+    /* Escanear etiqueta de MercadoLibre (2026-08-02) */
+    .prep-scan-box { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 0.8rem 1rem; margin-bottom: 1rem; }
+    .prep-scan-title { font-weight: 800; color: #1e40af; display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.55rem; }
+    .prep-scan-row { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+    .prep-scan-input {
+        flex: 1; min-width: 240px;
+        padding: 0.65rem 0.85rem;
+        border: 2px solid #3b82f6;
+        border-radius: 8px;
+        font-size: 1rem;
+    }
+    .prep-scan-input:focus { outline: none; border-color: #1d4ed8; box-shadow: 0 0 0 3px rgba(59,130,246,0.2); }
+    .prep-scan-hint { font-size: 0.76rem; color: #64748b; margin-top: 0.4rem; }
+    .prep-scan-result { background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 0.7rem 0.9rem; margin-top: 0.6rem; }
+    .prep-scan-result-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 0.85rem; color: #374151; margin-bottom: 0.4rem; }
+    .prep-scan-badge { padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.72rem; font-weight: 800; }
+    .prep-scan-badge.flex { background: #e9d5ff; color: #6b21a8; }
+    .prep-scan-badge.correo { background: #dbeafe; color: #1e40af; }
+    .prep-scan-badge.full { background: #fef3c7; color: #92400e; }
+    .prep-scan-prod { display: grid; grid-template-columns: 50px 1fr; gap: 0.6rem; align-items: center; padding: 0.4rem 0; border-top: 1px dashed #f3f4f6; }
+    .prep-scan-prod-cant { font-size: 1.4rem; font-weight: 800; color: #2563eb; text-align: right; line-height: 1; }
+    .prep-scan-prod-tit { font-size: 0.92rem; font-weight: 600; color: #111827; line-height: 1.25; }
 </style>
 
 <div class="content-container" style="padding: 0.8rem;">
@@ -656,6 +679,43 @@
             <span>📵 Ningún celular del depósito habilitado todavía. El primero que abra una lista y toque "habilitar" queda registrado.</span>
         </div>
     }
+
+    @* Escanear etiqueta de MercadoLibre → trae el listado de productos de esa venta (2026-08-02) *@
+    <div class="prep-scan-box">
+        <div class="prep-scan-title">🏷️ Escanear etiqueta de MercadoLibre</div>
+        <div class="prep-scan-row">
+            <input @ref="scanInputRef" class="prep-scan-input" @bind="scanInput" @bind:event="oninput"
+                   @onkeydown="OnScanKey" disabled="@escaneando"
+                   placeholder="Apoyá el cursor acá y disparás con el lector (Flex o Correo)…" />
+            <button class="btn btn-secondary" @onclick="Escanear" disabled="@escaneando">
+                @(escaneando ? "Buscando…" : "🔍 Buscar")
+            </button>
+            @if (escaneos.Count > 0)
+            {
+                <button class="btn btn-secondary" @onclick="LimpiarEscaneos" style="color:#b91c1c; border-color:#fca5a5;">Limpiar</button>
+            }
+        </div>
+        <div class="prep-scan-hint">Con el lector USB: apoyá el cursor en la casilla y disparás la etiqueta (entra solo). También podés tipear el nº de envío o de venta y apretar Enter.</div>
+
+        @foreach (var s in escaneos)
+        {
+            <div class="prep-scan-result">
+                <div class="prep-scan-result-head">
+                    <span class="prep-scan-badge @TipoClass(s.Tipo)">@s.Tipo</span>
+                    <strong>@(string.IsNullOrEmpty(s.Comprador) ? "Comprador" : s.Comprador)</strong>
+                    @if (s.NumeroVenta.HasValue) { <span>· venta @s.NumeroVenta</span> }
+                    <span style="margin-left:auto; font-weight:700;">@s.CantidadProductos u.</span>
+                </div>
+                @foreach (var p in s.Productos)
+                {
+                    <div class="prep-scan-prod">
+                        <div class="prep-scan-prod-cant">×@p.Cantidad</div>
+                        <div class="prep-scan-prod-tit">@p.Titulo</div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
 
     @if (loading && lista is null)
     {
@@ -912,6 +972,12 @@
     // Seleccion multiple para imprimir varios juntos.
     private HashSet<int> seleccionadosParaImprimir = new();
 
+    // ── Escanear etiqueta MeLi (2026-08-02) ──
+    private string scanInput = "";
+    private bool escaneando = false;
+    private List<EscanearEtiquetaResult> escaneos = new();
+    private ElementReference scanInputRef;
+
     // ── Camino al picking (2026-08-02) ──
     private PickingDispositivoDto? pickingDispositivo;
     private bool generandoPicking = false;
@@ -1049,6 +1115,58 @@
         seleccionadosParaImprimir.Clear();
         StateHasChanged();
     }
+
+    // ── Escanear etiqueta MeLi (2026-08-02) ──
+    private async Task OnScanKey(KeyboardEventArgs e)
+    {
+        // El lector USB "tipea" el código y termina con Enter → disparamos la búsqueda.
+        if (e.Key == "Enter") await Escanear();
+    }
+
+    private async Task Escanear()
+    {
+        var code = scanInput?.Trim() ?? "";
+        if (string.IsNullOrEmpty(code)) return;
+        escaneando = true;
+        StateHasChanged();
+        try
+        {
+            var res = await Api.EscanearEtiquetaPreparacionAsync(code);
+            if (res is not null && res.Ok)
+            {
+                escaneos.Insert(0, res);
+                ToastService.Success($"{res.CantidadProductos} producto{(res.CantidadProductos == 1 ? "" : "s")} · {res.Comprador}");
+            }
+            else
+            {
+                ToastService.Error(res?.Mensaje ?? "No pude leer esa etiqueta");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error: " + ex.Message);
+        }
+        finally
+        {
+            escaneando = false;
+            scanInput = "";
+            StateHasChanged();
+            try { await scanInputRef.FocusAsync(); } catch { }
+        }
+    }
+
+    private void LimpiarEscaneos()
+    {
+        escaneos.Clear();
+        StateHasChanged();
+    }
+
+    private static string TipoClass(string? t) => t switch
+    {
+        "Flex" => "flex",
+        "Full" => "full",
+        _ => "correo"
+    };
 
     // ── Camino al picking (2026-08-02) ──
     /// <summary>Congela la lista de productos sumados y abre el QR para escanear desde el celu.</summary>
