@@ -3648,10 +3648,10 @@
                     id = s.Id,
                     lat = s.Latitude,
                     lng = s.Longitude,
-                    // Por default todos los marcadores son amarillos con estrella. Cuando se les
-                    // asigna un vehículo (V1, V2, ...) toman el color de ese V. Asi de un vistazo
-                    // sabes que esta sin asignar (amarillo) vs asignado (color del V).
-                    label = "★",
+                    // Pin sin número por defecto (queda limpio). El total de la zona se ve en la
+                    // lista de la izquierda. El color amarillo indica "sin asignar"; cuando se le
+                    // asigna un vehículo/repartidor toma su color. Recién se numera al ordenar la ruta.
+                    label = "",
                     color = "#eab308",
                     shape = esMe1 ? "square" : "circle",
                     dimmed = false,
@@ -3682,8 +3682,9 @@
                 // Prioridad de color: 1) vehiculo asignado, 2) driver asignado, 3) amarillo default
                 string color = st.AssignedVehicleSlot.HasValue ? VehicleColor(st.AssignedVehicleSlot.Value)
                               : (string.IsNullOrEmpty(st.AssignedDriverColor) ? "#eab308" : st.AssignedDriverColor!);
-                string label = st.OrderInRoute.HasValue ? st.OrderInRoute.Value.ToString()
-                              : (st.AssignedVehicleSlot.HasValue ? "V" + st.AssignedVehicleSlot : "★");
+                // Número SOLO cuando la parada tiene orden de ruta (armada a mano u optimizada).
+                // Sin orden → pin limpio, sin número (el total de la zona se ve en la lista).
+                string label = st.OrderInRoute.HasValue ? st.OrderInRoute.Value.ToString() : "";
                 // Forma del marker según el origen, para reconocer el tipo de un vistazo:
                 // CÍRCULO=Flex · CUADRADO=ME1 · ROMBO=Alquiler · TRIÁNGULO=Venta por fuera (café)
                 // · CÍRCULO=manual/favorito (default). El color sigue indicando el repartidor/asignación.
@@ -4685,7 +4686,7 @@
                 {
                     lat = s.Latitude,
                     lng = s.Longitude,
-                    label = s.OrderInRoute?.ToString() ?? (s.AssignedVehicleSlot.HasValue ? "V" + s.AssignedVehicleSlot : "★"),
+                    label = s.OrderInRoute?.ToString() ?? "",
                     color = string.IsNullOrEmpty(s.AssignedDriverColor) ? "#eab308" : s.AssignedDriverColor!,
                     shape = "circle",
                     delivered = s.Delivered || string.Equals(s.InternalStatus, "entregado", StringComparison.OrdinalIgnoreCase),
