@@ -6703,19 +6703,31 @@
     }
 
     /// <summary>2026-08-03: carga las líneas de WhatsApp conectadas y sus nombres lindos, y elige
-    /// por defecto "FRIKAF by INTERVENT". El endpoint /lineas solo trae líneas de WhatsApp
-    /// (las cuentas de Instagram NO mandan WhatsApp, por eso no aparecen acá).</summary>
+    /// por defecto "FRIKAF by INTERVENT". IMPORTANTE: el endpoint /lineas devuelve TODAS las cuentas
+    /// (WhatsApp e Instagram, todas guardadas como whatsapp.linea.{id}). Instagram NO manda WhatsApp,
+    /// así que las filtramos: se excluyen las marcadas EsInstagram en la config y, por las dudas,
+    /// las que arrancan con "IG " (fallback si no tienen config).</summary>
     private async Task LoadLineasWaAsync()
     {
-        try { lineasWa = await Api.GetTwLineasAsync(); }
-        catch { lineasWa = new(); }
+        List<ApiClient.TwLineaDto> todas;
+        try { todas = await Api.GetTwLineasAsync(); }
+        catch { todas = new(); }
+
+        var esInstagram = new HashSet<string>();
         try
         {
             var cfg = await Api.GetTwLineasConfigAsync();
             lineaNombreById = cfg.Where(c => !string.IsNullOrWhiteSpace(c.Nombre))
                                  .ToDictionary(c => c.LineaId, c => c.Nombre!);
+            foreach (var c in cfg.Where(c => c.EsInstagram)) esInstagram.Add(c.LineaId);
         }
         catch { lineaNombreById = new(); }
+
+        // Solo líneas de WhatsApp: fuera Instagram (por config EsInstagram o por número "IG …").
+        lineasWa = todas.Where(l => !esInstagram.Contains(l.PhoneId)
+                                    && !(l.Numero ?? "").StartsWith("IG ", StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+
         // Default: la línea llamada "FRIKAF by INTERVENT"; si no está, la primera disponible.
         if (string.IsNullOrEmpty(envioLineaPhoneId) && lineasWa.Count > 0)
         {
