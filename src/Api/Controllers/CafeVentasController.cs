@@ -2,6 +2,7 @@ using Api.Data;
 using Api.DTOs;
 using Api.Models;
 using Api.Services;
+using Microsoft.Extensions.DependencyInjection;
 using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -3750,8 +3751,8 @@ public class CafeVentasController : ControllerBase
     /// Camino al picking (2026-08-02, paso 1-3): a partir de una ETIQUETA de venta de MeLi
     /// escaneada (lector USB o cámara), devuelve el LISTADO DE PRODUCTOS de esa venta.
     /// Funciona para Flex (QR con {"id":...}) y Correo/ME1 (código de barras con el nº de envío).
-    /// Reusa la misma logica que /api/mapeo/stops/scan-flex + by-number. Solo lectura local
-    /// (no sincroniza en vivo todavía): si la venta es muy nueva y no está sincronizada, avisa.
+    /// Reusa la misma logica que /api/mapeo/stops/scan-flex + by-number. Si la venta no está
+    /// sincronizada localmente (vieja o recién hecha), la trae de MeLi EN VIVO en el momento.
     /// </summary>
     [HttpPost("preparacion/escanear-etiqueta")]
     public async Task<IActionResult> EscanearEtiquetaPreparacion([FromBody] EscanearEtiquetaPrepRequest req)
@@ -3760,44 +3761,19 @@ public class CafeVentasController : ControllerBase
         if (num is null)
             return Ok(new { ok = false, motivo = "sin_id", mensaje = "No pude leer el número de esa etiqueta. Probá de nuevo o tipealo a mano." });
 
-        // Resolver el envío (ShippingId) para juntar TODOS los productos de esa venta.
-        long? shippingId = null;
-        // (1) el código es directamente el nº de envío (shipment id)
-        var productos = await _db.MeliOrders.Where(o => o.ShippingId == num).ToListAsync();
-        if (productos.Count > 0) shippingId = num;
-        else
+        var (productos, shippingId) = await ResolverProductosDeVentaMeliAsync(num.Value);
+
+        // Fallback EN VIVO: si no está sincronizada, la traemos de MeLi en el momento
+        // (ventas viejas, o recién hechas que todavía no entraron por el sync automático).
+        if (productos.Count == 0)
         {
-            // (2) el código es el nº de venta (order id): busco la orden y agarro su envío + hermanos del mismo pack
-            var ord = await _db.MeliOrders.FirstOrDefaultAsync(o => o.MeliOrderId == num);
-            if (ord is not null)
-            {
-                if (ord.ShippingId is not null)
-                {
-                    productos = await _db.MeliOrders.Where(o => o.ShippingId == ord.ShippingId).ToListAsync();
-                    shippingId = ord.ShippingId;
-                }
-                else productos = new List<MeliOrder> { ord };
-            }
-            else
-            {
-                // (3) el código matchea un envío conocido (MeliShipments) → su orden → hermanos
-                var sh = await _db.MeliShipments.FirstOrDefaultAsync(s => s.MeliShipmentId == num);
-                if (sh?.MeliOrderId is not null)
-                {
-                    var ord2 = await _db.MeliOrders.FirstOrDefaultAsync(o => o.MeliOrderId == sh.MeliOrderId);
-                    if (ord2?.ShippingId is not null)
-                    {
-                        productos = await _db.MeliOrders.Where(o => o.ShippingId == ord2.ShippingId).ToListAsync();
-                        shippingId = ord2.ShippingId;
-                    }
-                    else if (ord2 is not null) productos = new List<MeliOrder> { ord2 };
-                }
-            }
+            await TraerVentaMeliEnVivoAsync(num.Value);
+            (productos, shippingId) = await ResolverProductosDeVentaMeliAsync(num.Value);
         }
 
         if (productos.Count == 0)
             return Ok(new { ok = false, motivo = "no_encontrado", numero = num,
-                mensaje = $"No encontré la venta de MercadoLibre para el código {num}. Puede ser de otra cuenta, o muy nueva (esperá unos minutos a que sincronice)." });
+                mensaje = $"No encontré la venta de MercadoLibre para el código {num}. Verificá el número; puede ser de otra cuenta que no está conectada." });
 
         var primero = productos[0];
         // Etiqueta amigable del tipo de envío
@@ -3846,6 +3822,65 @@ public class CafeVentasController : ControllerBase
                 .Select(x => x.Value).OrderByDescending(x => x.Length).First();
         }
         return digits.Length >= 6 && long.TryParse(digits, out var val) ? val : (long?)null;
+    }
+
+    /// <summary>Dado un número (envío u orden), junta TODOS los productos del mismo envío desde
+    /// la base LOCAL. Devuelve lista vacía si no está sincronizado. Prueba 3 caminos:
+    /// (1) como nº de envío, (2) como nº de orden→su envío, (3) como envío en MeliShipments→su orden.</summary>
+    private async Task<(List<MeliOrder> productos, long? shippingId)> ResolverProductosDeVentaMeliAsync(long num)
+    {
+        // (1) el número es directamente el nº de envío (shipment id)
+        var prods = await _db.MeliOrders.Where(o => o.ShippingId == num).ToListAsync();
+        if (prods.Count > 0) return (prods, num);
+
+        // (2) el número es el nº de venta (order id): agarro su envío + hermanos del mismo pack
+        var ord = await _db.MeliOrders.FirstOrDefaultAsync(o => o.MeliOrderId == num);
+        if (ord is not null)
+        {
+            if (ord.ShippingId is not null)
+                return (await _db.MeliOrders.Where(o => o.ShippingId == ord.ShippingId).ToListAsync(), ord.ShippingId);
+            return (new List<MeliOrder> { ord }, null);
+        }
+
+        // (3) el número matchea un envío conocido (MeliShipments) → su orden → hermanos
+        var sh = await _db.MeliShipments.FirstOrDefaultAsync(s => s.MeliShipmentId == num);
+        if (sh?.MeliOrderId is not null)
+        {
+            var ord2 = await _db.MeliOrders.FirstOrDefaultAsync(o => o.MeliOrderId == sh.MeliOrderId);
+            if (ord2?.ShippingId is not null)
+                return (await _db.MeliOrders.Where(o => o.ShippingId == ord2.ShippingId).ToListAsync(), ord2.ShippingId);
+            if (ord2 is not null) return (new List<MeliOrder> { ord2 }, null);
+        }
+
+        return (new List<MeliOrder>(), null);
+    }
+
+    /// <summary>Trae de MeLi EN VIVO una venta que no está sincronizada localmente. Prueba el número
+    /// como nº de ORDEN y como nº de ENVÍO (reusa MeliOrderService/MeliShipmentService). Best-effort:
+    /// si algo falla no rompe el escaneo, simplemente después no se encuentra y se avisa.</summary>
+    private async Task TraerVentaMeliEnVivoAsync(long num)
+    {
+        var account = await _db.MeliAccounts.OrderBy(a => a.Id).FirstOrDefaultAsync();
+        if (account is null) return;
+
+        using var scope = _scopeFactory.CreateScope();
+        var orderSvc = scope.ServiceProvider.GetRequiredService<MeliOrderService>();
+        var shipSvc = scope.ServiceProvider.GetRequiredService<MeliShipmentService>();
+
+        // (a) probar como nº de ORDEN (trae la orden + sus productos)
+        try { await orderSvc.SyncSingleOrderAsync(num, account); } catch { }
+
+        // (b) probar como nº de ENVÍO → sincronizo el envío, saco su orden y la sincronizo también
+        try
+        {
+            await shipSvc.SyncSingleShipmentAsync(num);
+            var sh = await _db.MeliShipments.FirstOrDefaultAsync(s => s.MeliShipmentId == num);
+            if (sh?.MeliOrderId is not null)
+            {
+                try { await orderSvc.SyncSingleOrderAsync(sh.MeliOrderId.Value, account); } catch { }
+            }
+        }
+        catch { }
     }
 
     /// <summary>Oculta UNA venta del tablero de Preparacion. La venta y el PDF en Drive
