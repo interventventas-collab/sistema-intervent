@@ -2647,10 +2647,23 @@
                                 @foreach (var per in copiaWaPersonas)
                                 {
                                     var on = copiaWaSeleccion.Contains(per.Id);
-                                    <label style="display:inline-flex; align-items:center; gap:0.3rem; padding:0.35rem 0.6rem; background:@(on ? "#eff6ff" : "white"); border:1px solid @(on ? "#3b82f6" : "#d1d5db"); border-radius:6px; font-size:0.78rem; cursor:pointer; user-select:none;">
+                                    <label style="display:inline-flex; align-items:center; gap:0.3rem; padding:0.35rem 0.6rem; background:@(on ? "#eff6ff" : "white"); border:1px solid @(on ? "#3b82f6" : "#d1d5db"); border-radius:999px; font-size:0.78rem; cursor:pointer; user-select:none;">
                                         <input type="checkbox" checked="@on" @onchange="e => ToggleCopiaWa(per.Id, (bool)e.Value!)" style="margin:0;" />
                                         <span>@per.Nombre</span>
                                     </label>
+                                }
+                                @* 2026-08-03: selector de línea (remitente) desde la que sale la copia a los internos.
+                                   Aparece solo cuando hay al menos uno tildado, para no ensuciar la fila. *@
+                                @if (copiaWaSeleccion.Count > 0 && lineasWa.Count > 0)
+                                {
+                                    <span style="font-size:0.72rem; color:#6b7280;">desde</span>
+                                    <select class="form-input" style="font-size:0.75rem; padding:0.35rem 0.55rem; border-radius:8px; max-width:210px; background:white;"
+                                            @bind="copiaLineaPhoneId" title="Desde qué línea de WhatsApp sale la copia a los internos">
+                                        @foreach (var l in lineasWa)
+                                        {
+                                            <option value="@l.PhoneId">🏪 @NombreLineaWa(l)</option>
+                                        }
+                                    </select>
                                 }
                             </div>
                         }
@@ -4962,7 +4975,10 @@
     // 2026-08-03: "WA Web" (abría wa.me a mano) y "WA Interno" (robot viejo Playwright, HOY DESCONECTADO)
     // se reemplazaron por UN solo envío al cliente por la API OFICIAL de Meta, eligiendo desde qué línea sale.
     private bool envioWhatsappApi;
-    private string? envioLineaPhoneId;                        // phone_id de la línea elegida
+    private string? envioLineaPhoneId;                        // phone_id de la línea elegida (envío al CLIENTE)
+    // 2026-08-03: línea (remitente) desde la que sale la COPIA a los internos (Osmar/Gabriel/German).
+    // Independiente de la del cliente; mismo default (FRIKAF by INTERVENT).
+    private string? copiaLineaPhoneId;
     private List<ApiClient.TwLineaDto> lineasWa = new();       // líneas de WhatsApp conectadas (sin Instagram)
     private Dictionary<string, string> lineaNombreById = new(); // phone_id -> nombre lindo configurado
     // 2026-07-24 (pedido Osmar): copia del comprobante por WhatsApp a personas internas
@@ -6774,12 +6790,15 @@
                         .ToList();
 
         // Default: la línea llamada "FRIKAF by INTERVENT"; si no está, la primera disponible.
-        if (string.IsNullOrEmpty(envioLineaPhoneId) && lineasWa.Count > 0)
+        // Mismo default para el envío al cliente y para la copia a los internos.
+        if (lineasWa.Count > 0)
         {
             var frikaf = lineasWa.FirstOrDefault(l =>
                 lineaNombreById.TryGetValue(l.PhoneId, out var n)
                 && string.Equals(n, "FRIKAF by INTERVENT", StringComparison.OrdinalIgnoreCase));
-            envioLineaPhoneId = frikaf?.PhoneId ?? lineasWa[0].PhoneId;
+            var defaultLinea = frikaf?.PhoneId ?? lineasWa[0].PhoneId;
+            if (string.IsNullOrEmpty(envioLineaPhoneId)) envioLineaPhoneId = defaultLinea;
+            if (string.IsNullOrEmpty(copiaLineaPhoneId)) copiaLineaPhoneId = defaultLinea;
         }
     }
 
@@ -6966,7 +6985,7 @@
                 try
                 {
                     var (ok, err) = await Api.SendTwServerFileAsync(numero, "VENTA", ventaId,
-                        caption: $"📄 Copia del comprobante {ventaNumero}");
+                        caption: $"📄 Copia del comprobante {ventaNumero}", lineaPhoneId: copiaLineaPhoneId);
                     if (ok) ToastService.Success($"📤 Copia enviada a {nombrePer}");
                     else ToastService.Error($"📤 Copia a {nombrePer} falló: {err}");
                 }
