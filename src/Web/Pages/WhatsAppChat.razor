@@ -97,10 +97,10 @@
         @if (_lineasChips.Count > 1)
         {
             <div class="wa-filtros" style="border-top:1px solid #eef0f2; margin-top:.35rem; padding-top:.45rem;">
-                <button class="wa-filtro @(filtroLinea=="" ? "active" : "")" @onclick='() => filtroLinea=""' title="Ver los mensajes de todas las cuentas">📥 Todas</button>
+                <button class="wa-filtro @(filtroLinea=="" ? "active" : "")" @onclick='() => SeleccionarLinea("")' title="Ver los mensajes de todas las cuentas">📥 Todas</button>
                 @foreach (var l in _lineasChips)
                 {
-                    <button class="wa-filtro @(filtroLinea==l.Id ? "active" : "")" @onclick="() => filtroLinea=l.Id"
+                    <button class="wa-filtro @(filtroLinea==l.Id ? "active" : "")" @onclick="() => SeleccionarLinea(l.Id)"
                             title="Ver solo esta cuenta">@EtiquetaLineaChip(l.Numero, l.Id)</button>
                 }
             </div>
@@ -112,7 +112,7 @@
             <div class="wa-linea-activa-chip">
                 @if (LineaImg(lf.Id) is string _imv) { <img src="@_imv" class="wa-linea-av-xs" alt="" /> } else { <span>📱</span> }
                 Viendo solo: <b>@LineaNombre(lf.Id, lf.Numero)</b>
-                <button class="wa-linea-activa-x" @onclick='() => filtroLinea=""' title="Ver todas las líneas">×</button>
+                <button class="wa-linea-activa-x" @onclick='() => SeleccionarLinea("")' title="Ver todas las líneas">×</button>
             </div>
         }
         <div class="wa-conv-list">
@@ -2637,7 +2637,15 @@
     // Con una sola línea = ese número; con varias y filtro puesto = ese número; con varias sin filtro =
     // "Todas las líneas"; sin ninguna detectada todavía = etiqueta genérica hasta que entre el 1er mensaje.
     bool showLineaMenu = false;
-    void SeleccionarLinea(string id) { filtroLinea = id; showLineaMenu = false; }
+    void SeleccionarLinea(string id)
+    {
+        showLineaMenu = false;
+        if (filtroLinea == id) return;   // es la misma línea: no tocar el chat abierto
+        filtroLinea = id;
+        // 2026-08-03 (pedido del usuario): al cambiar de línea remitente, cerrar el chat abierto
+        // así no queda a la vista una conversación de la línea anterior. Queda sin chat seleccionado.
+        VolverALista();
+    }
 
     // 2026-08-03: al abrir la pantalla, arrancar viendo la línea "FRIKAF by INTERVENT" (no "Todas").
     // Si hay una sola línea no hace falta filtrar. Corre una sola vez (OnInitializedAsync), así que si
