@@ -587,7 +587,10 @@ public class WhatsAppTwilioController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>GET /api/whatsapp/twilio/clientes-buscar?q=texto — busqueda liviana para autocomplete.</summary>
+    /// <summary>GET /api/whatsapp/twilio/clientes-buscar?q=texto — busqueda para autocomplete.
+    /// 2026-08-03: busca por MUCHOS campos (nombre, razón social, CUIT/DNI, teléfonos, email,
+    /// dirección, entre calles, localidad, ciudad, código y notas). Para números (CUIT/DNI/tel)
+    /// también compara ignorando guiones/espacios/+, así "20123456789" encuentra "20-12345678-9".</summary>
     [HttpGet("clientes-buscar")]
     [Authorize]
     public async Task<IActionResult> BuscarClientes([FromQuery] string q = "", [FromQuery] int top = 15)
@@ -597,14 +600,26 @@ public class WhatsAppTwilioController : ControllerBase
         if (!string.IsNullOrWhiteSpace(q))
         {
             int.TryParse(q, out var qNum);
-            query = query.Where(c => c.Nombre.Contains(q)
+            var qDigits = new string(q.Where(char.IsDigit).ToArray());
+            bool hasDigits = qDigits.Length >= 3;
+            query = query.Where(c =>
+                   c.Nombre.Contains(q)
+                || (c.RazonSocial != null && c.RazonSocial.Contains(q))
                 || (qNum > 0 && c.CodigoInterno == qNum)
-                || (c.Telefono != null && c.Telefono.Contains(q)));
+                || (c.Cuit != null && (c.Cuit.Contains(q) || (hasDigits && c.Cuit.Replace("-", "").Replace(".", "").Replace(" ", "").Contains(qDigits))))
+                || (c.Telefono != null && (c.Telefono.Contains(q) || (hasDigits && c.Telefono.Replace("-", "").Replace(" ", "").Replace("+", "").Contains(qDigits))))
+                || (c.Telefono2 != null && (c.Telefono2.Contains(q) || (hasDigits && c.Telefono2.Replace("-", "").Replace(" ", "").Replace("+", "").Contains(qDigits))))
+                || (c.Email != null && c.Email.Contains(q))
+                || (c.Direccion != null && c.Direccion.Contains(q))
+                || (c.EntreCalles != null && c.EntreCalles.Contains(q))
+                || (c.Localidad != null && c.Localidad.Contains(q))
+                || (c.Ciudad != null && c.Ciudad.Contains(q))
+                || (c.Notas != null && c.Notas.Contains(q)));   // por si el DNI u otro dato quedó acá
         }
         var list = await query
             .OrderBy(c => c.Nombre)
             .Take(Math.Clamp(top, 1, 50))
-            .Select(c => new { c.Id, c.Nombre, CodigoInterno = c.CodigoInterno.HasValue ? c.CodigoInterno.ToString() : null, c.Telefono })
+            .Select(c => new { c.Id, c.Nombre, CodigoInterno = c.CodigoInterno.HasValue ? c.CodigoInterno.ToString() : null, c.Telefono, c.Direccion, c.Localidad })
             .ToListAsync();
         return Ok(list);
     }

@@ -6306,7 +6306,7 @@ public class ApiClient
     public record TwContactoDto(int Id, string Numero, string Nombre, string Rol, string? Notas, bool Activo, int? ClienteId, string? ClienteNombre, string? ClienteCodigo);
     public record TwRespUpsert(string Nombre, string Texto, int Orden, bool Activo);
     public record TwContactoUpsert(string Numero, string Nombre, string Rol, string? Notas, bool Activo, int? ClienteId);
-    public record TwClienteBuscarDto(int Id, string Nombre, string? CodigoInterno, string? Telefono);
+    public record TwClienteBuscarDto(int Id, string Nombre, string? CodigoInterno, string? Telefono, string? Direccion = null, string? Localidad = null);
     public record TwDestinatarioDto(string Nombre, string Numero, string Origen);
     public async Task<List<TwDestinatarioDto>> BuscarTwDestinatariosAsync(string q)
         => await _http.GetFromJsonAsync<List<TwDestinatarioDto>>($"/api/whatsapp/twilio/destinatarios-buscar?q={Uri.EscapeDataString(q ?? "")}") ?? new();

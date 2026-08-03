@@ -634,9 +634,9 @@
         </div>
         <div class="wa-modal-body">
             <p style="font-size:0.82rem; color:#6b7280; margin:0 0 0.6rem;">
-                Buscá el cliente por <b>nombre</b>, <b>código</b> o <b>teléfono</b> y tocalo. Listo, queda asociado a este chat.
+                Buscá el cliente por <b>nombre</b>, <b>código</b>, <b>teléfono</b>, <b>CUIT/DNI</b>, <b>dirección</b>, <b>localidad</b> o <b>email</b> y tocalo. Listo, queda asociado a este chat.
             </p>
-            <input class="form-control" placeholder="Buscar cliente…" @bind="vincularQuery" @bind:event="oninput" @onkeyup="BuscarClientesVincular" autofocus />
+            <input class="form-control" placeholder="Buscar por nombre, teléfono, CUIT, dirección…" @bind="vincularQuery" @bind:event="oninput" @onkeyup="BuscarClientesVincular" autofocus />
             @if (vincularBuscando)
             {
                 <div style="padding:0.5rem; color:#9ca3af; font-size:0.85rem;">Buscando…</div>
@@ -649,9 +649,15 @@
                 @foreach (var cli in vincularResultados.Take(12))
                 {
                     <button class="wa-vincular-opt" @onclick="() => VincularAhora(cli)" disabled="@vinculando">
-                        🛍️ <b>@cli.Nombre</b>
-                        @if (!string.IsNullOrEmpty(cli.CodigoInterno)) { <span style="color:#6b7280; font-size:0.75rem;"> · #@cli.CodigoInterno</span> }
-                        @if (!string.IsNullOrEmpty(cli.Telefono)) { <span style="color:#9ca3af; font-size:0.72rem;"> · 📞 @cli.Telefono</span> }
+                        <div>
+                            🛍️ <b>@cli.Nombre</b>
+                            @if (!string.IsNullOrEmpty(cli.CodigoInterno)) { <span style="color:#6b7280; font-size:0.75rem;"> · #@cli.CodigoInterno</span> }
+                            @if (!string.IsNullOrEmpty(cli.Telefono)) { <span style="color:#9ca3af; font-size:0.72rem;"> · 📞 @cli.Telefono</span> }
+                        </div>
+                        @if (!string.IsNullOrEmpty(cli.Direccion) || !string.IsNullOrEmpty(cli.Localidad))
+                        {
+                            <div style="color:#9ca3af; font-size:0.72rem; margin-top:0.1rem;">📍 @($"{cli.Direccion} {cli.Localidad}".Trim())</div>
+                        }
                     </button>
                 }
             </div>
