@@ -69,6 +69,62 @@ window.scannerBarcode = (function () {
   return { start, stop };
 })();
 
+// 2026-08-03: "Modo pistola" — lector de código de barras/QR FÍSICO (el escáner USB que se
+// enchufa a la compu). Esos aparatos funcionan como un teclado: "escriben" el contenido del
+// código muy rápido y al final mandan Enter. Acá lo escuchamos: mientras está prendido,
+// juntamos las teclas y cuando llega el Enter le pasamos el código completo a Blazor.
+// Se prende/apaga con el botón de la barra negra del Mapeo.
+window.scannerWedge = (function () {
+  let ref = null;
+  let active = false;
+  let buf = '';
+  let lastAt = 0;
+
+  function onKey(e) {
+    if (!active) return;
+    // Mientras el modo está prendido, el teclado queda dedicado al escáner: no dejamos que
+    // las teclas se escriban en ningún casillero ni disparen atajos de la página.
+    e.preventDefault();
+    e.stopPropagation();
+
+    const now = (window.performance && performance.now) ? performance.now() : new Date().getTime();
+    // El escáner tipea muy rápido (pocos ms entre teclas). Si pasó mucho tiempo desde la última,
+    // arrancamos un código nuevo (así no se pega con restos de un escaneo anterior).
+    if (now - lastAt > 300) buf = '';
+    lastAt = now;
+
+    if (e.key === 'Enter') {
+      const code = buf;
+      buf = '';
+      if (code && code.length >= 3 && ref) {
+        ref.invokeMethodAsync('OnWedgeScan', code);
+      }
+      return;
+    }
+    // Solo caracteres imprimibles (letras, números, símbolos del JSON de la etiqueta).
+    if (e.key && e.key.length === 1) buf += e.key;
+  }
+
+  function start(dotnetRef) {
+    ref = dotnetRef;
+    buf = '';
+    lastAt = 0;
+    if (!active) {
+      active = true;
+      document.addEventListener('keydown', onKey, true);
+    }
+  }
+
+  function stop() {
+    active = false;
+    buf = '';
+    try { document.removeEventListener('keydown', onKey, true); } catch (e) {}
+    ref = null;
+  }
+
+  return { start, stop };
+})();
+
 // "Pip" al escanear: un beep corto + vibración. ok=true -> pip agudo/vibra corto;
 // ok=false -> tono grave/vibración doble (para avisar que algo no anduvo).
 window.scanBeep = function (ok) {

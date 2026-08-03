@@ -1064,6 +1064,17 @@
                 <button class="mapeo-dock-btn" @onclick="OpenScanModal" title="Escanear con el celular, o traer por número (venta/alquiler/Flex)">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
                 </button>
+                @* Modo pistola: leer con el escáner FÍSICO (USB). Se prende/apaga; mientras está
+                   verde, pasás las etiquetas por el escáner y las paradas caen solas al mapa. *@
+                <button class="mapeo-dock-btn @(wedgeOn ? "activo" : "")" @onclick="ToggleWedge"
+                        style="@(wedgeOn ? "background:#16a34a; color:#fff; border-color:#16a34a;" : "")"
+                        title="@(wedgeOn ? "Leyendo con el escáner… (tocá para apagar)" : "Leer con el escáner físico: pasá las etiquetas por adelante")">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"></path><path d="M17 3h2a2 2 0 0 1 2 2v2"></path><path d="M21 17v2a2 2 0 0 1-2 2h-2"></path><path d="M7 21H5a2 2 0 0 1-2-2v-2"></path><line x1="7" y1="7" x2="7" y2="17"></line><line x1="10.5" y1="7" x2="10.5" y2="17"></line><line x1="14" y1="7" x2="14" y2="17"></line><line x1="17.5" y1="7" x2="17.5" y2="17"></line></svg>
+                    @if (wedgeOn)
+                    {
+                        <span class="mapeo-dock-badge" style="background:#16a34a;">@wedgeCount</span>
+                    }
+                </button>
                 @* Agregar parada manual — ícono de globito (pin) de Google. *@
                 <button class="mapeo-dock-btn" @onclick="OpenAddStopModal" title="Agregar parada manual">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
@@ -4715,6 +4726,66 @@
     }
     private List<PorNumeroLineaVm> porNumeroResultados = new();
 
+    // ===== Modo pistola: escáner FÍSICO (USB) que "tipea" el código y manda Enter =====
+    private bool wedgeOn;         // true = está escuchando el escáner
+    private int wedgeCount;       // cuántas paradas se sumaron en esta sesión de escaneo
+    private bool wedgeBusy;       // evita procesar dos lecturas encimadas
+
+    private async Task ToggleWedge()
+    {
+        if (wedgeOn)
+        {
+            wedgeOn = false;
+            try { await JS.InvokeVoidAsync("scannerWedge.stop"); } catch { }
+            if (wedgeCount > 0) ToastService.Success($"✓ Listo: {wedgeCount} parada(s) agregada(s) con el escáner.");
+            else ToastService.Info("Escáner apagado.");
+            wedgeCount = 0;
+            return;
+        }
+        wedgeOn = true;
+        wedgeCount = 0;
+        if (selfRef is null) selfRef = DotNetObjectReference.Create(this);
+        try { await JS.InvokeVoidAsync("scannerWedge.start", selfRef); } catch { }
+        ToastService.Info("🟢 Escáner prendido: pasá las etiquetas por adelante.");
+    }
+
+    // Lo llama el JS cada vez que el escáner físico lee una etiqueta (código crudo del QR).
+    // Usa el mismo cerebro que el escaneo con el celu: reconoce venta / alquiler / MercadoLibre.
+    [JSInvokable]
+    public async Task OnWedgeScan(string code)
+    {
+        if (!wedgeOn || wedgeBusy || string.IsNullOrWhiteSpace(code)) return;
+        wedgeBusy = true;
+        try
+        {
+            var res = await Api.ScanFlexAsync(code.Trim());
+            var ok = res?.Ok ?? false;
+            var yaEstaba = res?.YaEstaba ?? false;
+            try { await JS.InvokeVoidAsync("scanBeep", ok); } catch { }
+            if (ok && !yaEstaba)
+            {
+                wedgeCount++;
+                await LoadStops();
+                await RenderMap(keepView: true);
+                ToastService.Success($"✓ {(string.IsNullOrWhiteSpace(res?.Nombre) ? "Parada" : res!.Nombre)} agregada.");
+            }
+            else if (ok && yaEstaba)
+            {
+                ToastService.Info($"↻ {(string.IsNullOrWhiteSpace(res?.Nombre) ? "Esa parada" : res!.Nombre)} ya estaba en el mapa.");
+            }
+            else
+            {
+                ToastService.Error(string.IsNullOrWhiteSpace(res?.Mensaje) ? "No pude leer ese código." : res!.Mensaje!);
+            }
+        }
+        catch (Exception ex)
+        {
+            try { await JS.InvokeVoidAsync("scanBeep", false); } catch { }
+            ToastService.Error("No pude agregar la parada: " + ex.Message);
+        }
+        finally { wedgeBusy = false; await InvokeAsync(StateHasChanged); }
+    }
+
     // Abre el cartel de Escanear y limpia lo que hubiera quedado de una carga por número anterior.
     private void OpenScanModal()
     {
@@ -5596,6 +5667,7 @@
     {
         if (autoRefreshTimer is not null) { await autoRefreshTimer.DisposeAsync(); autoRefreshTimer = null; }
         try { await JS.InvokeVoidAsync("mapeoFlex.destroy"); } catch { }
+        if (wedgeOn) { try { await JS.InvokeVoidAsync("scannerWedge.stop"); } catch { } }
         selfRef?.Dispose();
     }
 }
