@@ -659,6 +659,18 @@ public class EtiquetaProductoDto
     public int Cantidad { get; set; }
     public string? ItemId { get; set; }
     public string? VariationId { get; set; }
+    public string? Sku { get; set; }
+    public string? Thumbnail { get; set; }
+    public bool EsCombo { get; set; }
+    public List<EtiquetaComponenteDto> Componentes { get; set; } = new();
+}
+
+public class EtiquetaComponenteDto
+{
+    public string Nombre { get; set; } = "";
+    public string? Sku { get; set; }
+    public decimal Cantidad { get; set; }
+    public string? Formato { get; set; }
 }
 
 public class EtiquetaPreguntaDto

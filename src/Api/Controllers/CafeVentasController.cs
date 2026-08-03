@@ -3820,6 +3820,54 @@ public class CafeVentasController : ControllerBase
         }
         catch { /* best-effort: si MeLi no deja leer los mensajes, no rompe el escaneo */ }
 
+        // ── SKU + foto (de la publicación MeLi) y COMPONENTES (si es combo) ──
+        var itemInfo = (await _db.MeliItems
+                .Where(m => itemIds.Contains(m.MeliItemId))
+                .Select(m => new { m.MeliItemId, m.Sku, m.Thumbnail })
+                .ToListAsync())
+            .GroupBy(m => m.MeliItemId)
+            .ToDictionary(g => g.Key, g => g.First());
+
+        var comps = await _db.MeliItemComponentes
+            .Where(c => itemIds.Contains(c.MeliItemId))
+            .Include(c => c.Producto)
+            .ToListAsync();
+
+        var productosOut = productos
+            .OrderBy(p => p.ItemTitle)
+            .Select(p =>
+            {
+                itemInfo.TryGetValue(p.ItemId ?? "", out var mi);
+                var thumb = mi?.Thumbnail;
+                if (!string.IsNullOrEmpty(thumb) && thumb.StartsWith("http://"))
+                    thumb = "https://" + thumb.Substring("http://".Length);
+
+                // Componentes de ESTA variante (o los que aplican a todas, MeliVariationId null)
+                var componentes = comps
+                    .Where(c => c.MeliItemId == p.ItemId
+                        && (c.MeliVariationId == null || c.MeliVariationId == p.VariationId))
+                    .Select(c => new
+                    {
+                        nombre = c.Producto != null ? c.Producto.Nombre : "(producto)",
+                        sku = c.Producto != null ? c.Producto.Sku : null,
+                        cantidad = c.Cantidad,
+                        formato = c.Formato
+                    }).ToList();
+                bool esCombo = componentes.Count > 1 || componentes.Any(x => x.cantidad > 1);
+
+                return new
+                {
+                    titulo = p.ItemTitle,
+                    cantidad = p.Quantity,
+                    itemId = p.ItemId,
+                    variationId = p.VariationId,
+                    sku = mi?.Sku,
+                    thumbnail = thumb,
+                    esCombo,
+                    componentes
+                };
+            }).ToList();
+
         return Ok(new
         {
             ok = true,
@@ -3830,15 +3878,7 @@ public class CafeVentasController : ControllerBase
             tipo,
             estado = primero.Status,
             cantidadProductos = productos.Sum(p => p.Quantity),
-            productos = productos
-                .OrderBy(p => p.ItemTitle)
-                .Select(p => new
-                {
-                    titulo = p.ItemTitle,
-                    cantidad = p.Quantity,
-                    itemId = p.ItemId,
-                    variationId = p.VariationId
-                }).ToList(),
+            productos = productosOut,
             preguntas,
             mensajes
         });

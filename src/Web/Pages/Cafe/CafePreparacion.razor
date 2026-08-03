@@ -610,9 +610,16 @@
     .prep-scan-badge.flex { background: #e9d5ff; color: #6b21a8; }
     .prep-scan-badge.correo { background: #dbeafe; color: #1e40af; }
     .prep-scan-badge.full { background: #fef3c7; color: #92400e; }
-    .prep-scan-prod { display: grid; grid-template-columns: 50px 1fr; gap: 0.6rem; align-items: center; padding: 0.4rem 0; border-top: 1px dashed #f3f4f6; }
-    .prep-scan-prod-cant { font-size: 1.4rem; font-weight: 800; color: #2563eb; text-align: right; line-height: 1; }
+    .prep-scan-prod { display: flex; gap: 0.6rem; align-items: center; padding: 0.5rem 0; border-top: 1px dashed #f3f4f6; }
+    .prep-scan-prod-cant { font-size: 1.4rem; font-weight: 800; color: #2563eb; text-align: right; line-height: 1; min-width: 44px; flex: 0 0 auto; }
+    .prep-scan-thumb { width: 46px; height: 46px; object-fit: cover; border-radius: 8px; border: 1px solid #e5e7eb; flex: 0 0 auto; background: #f3f4f6; }
     .prep-scan-prod-tit { font-size: 0.92rem; font-weight: 600; color: #111827; line-height: 1.25; }
+    .prep-scan-prod-sku { display: inline-block; margin-top: 0.2rem; font-family: monospace; font-size: 0.72rem; font-weight: 700; background: #dbeafe; color: #1e40af; padding: 0.08rem 0.4rem; border-radius: 5px; }
+    .prep-scan-combo { margin-top: 0.35rem; padding: 0.4rem 0.55rem; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; }
+    .prep-scan-combo-h { font-size: 0.72rem; font-weight: 800; color: #166534; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 0.2rem; }
+    .prep-scan-combo-item { font-size: 0.85rem; color: #14532d; padding: 0.1rem 0; }
+    .prep-scan-combo-item .c { font-weight: 800; color: #15803d; }
+    .prep-scan-combo-item .csku { font-family: monospace; font-size: 0.74rem; color: #16a34a; }
     /* Mensajes de la venta + preguntas del comprador (2026-08-03) */
     .prep-scan-sub { font-size: 0.78rem; font-weight: 800; color: #6b7280; text-transform: uppercase; letter-spacing: 0.3px; margin: 0.7rem 0 0.35rem; border-top: 1px solid #f3f4f6; padding-top: 0.5rem; }
     .prep-scan-msg { font-size: 0.9rem; padding: 0.4rem 0.6rem; border-radius: 8px; margin: 0.3rem 0; line-height: 1.35; }
@@ -721,7 +728,37 @@
                 {
                     <div class="prep-scan-prod">
                         <div class="prep-scan-prod-cant">×@p.Cantidad</div>
-                        <div class="prep-scan-prod-tit">@p.Titulo</div>
+                        @if (!string.IsNullOrEmpty(p.Thumbnail))
+                        {
+                            <img class="prep-scan-thumb" src="@p.Thumbnail" alt="" loading="lazy" />
+                        }
+                        <div style="flex:1; min-width:0;">
+                            <div class="prep-scan-prod-tit">@p.Titulo</div>
+                            @if (!string.IsNullOrEmpty(p.Sku))
+                            {
+                                <span class="prep-scan-prod-sku">@p.Sku</span>
+                            }
+                            @if (p.EsCombo && p.Componentes.Count > 0)
+                            {
+                                <div class="prep-scan-combo">
+                                    <div class="prep-scan-combo-h">🧩 Contiene</div>
+                                    @foreach (var c in p.Componentes)
+                                    {
+                                        <div class="prep-scan-combo-item">
+                                            <span class="c">×@FmtCant(c.Cantidad)</span> @c.Nombre
+                                            @if (!string.IsNullOrEmpty(c.Formato) && c.Formato != "UNIT")
+                                            {
+                                                <text> · @c.Formato</text>
+                                            }
+                                            @if (!string.IsNullOrEmpty(c.Sku))
+                                            {
+                                                <span class="csku"> (@c.Sku)</span>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
                     </div>
                 }
 
@@ -1210,6 +1247,9 @@
         "Full" => "full",
         _ => "correo"
     };
+
+    /// <summary>Formatea la cantidad de un componente: entera sin decimales, si no con hasta 2.</summary>
+    private static string FmtCant(decimal c) => c == Math.Floor(c) ? ((long)c).ToString() : c.ToString("0.##");
 
     // ── Camino al picking (2026-08-02) ──
     /// <summary>Congela la lista de productos sumados y abre el QR para escanear desde el celu.</summary>
