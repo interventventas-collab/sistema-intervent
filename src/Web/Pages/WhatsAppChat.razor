@@ -1188,9 +1188,13 @@
         .wa-thread-header { padding: 0.5rem 0.6rem; gap: 0.3rem; }
         .wa-thread-header .btn { font-size: 0.66rem !important; padding: 0.2rem 0.4rem !important; }
 
-        /* Caja para escribir cómoda (no gigante) y botones grandes para el pulgar */
-        .wa-composer { padding: 0.5rem 0.6rem calc(0.5rem + env(safe-area-inset-bottom)); gap: 0.4rem; }
-        .wa-composer textarea { min-height: 44px !important; height: 44px !important; max-height: 120px !important; }
+        /* Caja para escribir cómoda (no gigante) y botones grandes para el pulgar.
+           2026-08-03: en el celu la casilla de texto va ARRIBA a todo el ancho (order:-1),
+           y los botoncitos + Enviar quedan en una fila DEBAJO. Antes todo iba en una sola
+           línea y el textarea quedaba un huequito finito (las letras se apilaban). */
+        .wa-composer { padding: 0.5rem 0.6rem calc(0.5rem + env(safe-area-inset-bottom)); gap: 0.4rem; flex-wrap: wrap; align-items: center; }
+        .wa-composer textarea { flex: 1 1 100% !important; order: -1; min-height: 90px !important; height: auto !important; max-height: 180px !important; }
+        .wa-composer .wa-enviar-btn { margin-left: auto; }
         .wa-attach-btn { width: 40px; height: 40px; font-size: 1.2rem; }
         .wa-messages { padding: 0.7rem; }
     }
