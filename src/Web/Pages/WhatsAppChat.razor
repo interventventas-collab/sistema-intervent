@@ -663,7 +663,7 @@
                 }
                 @* 2026-07-23: @bind:event="oninput" es CLAVE — sin esto el texto solo se guarda al salir del
    campo, y al apretar Enter el sistema veia el mensaje vacio (no enviaba nada). *@
-<textarea class="form-control wa-composer-input" placeholder="Escribir mensaje… (Enter para enviar, Shift+Enter para renglón nuevo)" @bind="composerText" @bind:event="oninput" rows="9"></textarea>
+<textarea class="form-control wa-composer-input" placeholder="Escribir mensaje… (Enter para enviar, Shift+Enter para renglón nuevo)" @bind="composerText" @bind:event="oninput" rows="3"></textarea>
                 <button class="btn btn-success wa-enviar-btn @(sending ? "enviando" : "")" @onclick="EnviarMensaje" disabled="@(string.IsNullOrWhiteSpace(composerText) || sending)">
                     @(sending ? "⏳ Enviando…" : "📤 Enviar")
                 </button>
@@ -1163,9 +1163,8 @@
     .wa-contacto-btn:hover { background: #f0fdf4; }
     .wa-bubble-meta { font-size: 0.65rem; color: #6b7280; text-align: right; margin-top: 0.2rem; }
     .wa-composer { padding: 0.7rem 1rem 0.5rem; background: #fbfcfe; display: flex; gap: 0.55rem; align-items: flex-end; }
-    /* 2026-07-29: cuadro de escribir MUCHO más alto (5x) para poder mandar textos largos. resize:vertical = lo podés estirar/achicar con la esquina. */
-    /* 2026-08-03: pedido Osmar — letra del cuadro de escribir al doble de tamaño y en negrita. */
-    .wa-composer textarea { resize: vertical; border-radius: 14px; flex: 1; min-height: 200px; border: 1px solid #dfe4ea; padding: 0.7rem 0.9rem; font-size: 1.9rem; font-weight: 700; line-height: 1.3; }
+    /* 2026-08-03: pedido Osmar — cuadro a ~3 renglones (antes 5x muy alto) para ver más de la conversación; letra al doble y en negrita. resize:vertical = lo podés estirar con la esquina si escribís algo largo. */
+    .wa-composer textarea { resize: vertical; border-radius: 14px; flex: 1; min-height: 145px; border: 1px solid #dfe4ea; padding: 0.7rem 0.9rem; font-size: 1.9rem; font-weight: 700; line-height: 1.3; }
     /* La ayudita gris (placeholder) NO va grande ni en negrita: chiquita y clarita para que se note que el cuadro está vacío. */
     .wa-composer textarea::placeholder { font-size: 1rem; font-weight: 400; color: #9ca3af; }
     .wa-composer textarea:focus { border-color: #25d366; box-shadow: 0 0 0 3px rgba(37,211,102,0.15); }
