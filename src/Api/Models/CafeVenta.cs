@@ -111,6 +111,20 @@ public class CafeVenta
     [MaxLength(200)]
     public string? TransporteDestino { get; set; }
 
+    /// <summary>2026-08-03: Transporte elegido del catalogo Cafe_Transportes (para el rotulo).
+    /// Si es null se usa el texto libre TransporteEmpresa/TransporteDestino (legacy).</summary>
+    public int? TransporteId { get; set; }
+
+    /// <summary>2026-08-03: Remitente alternativo (Cafe_Remitentes) para el rotulo.
+    /// Si es null, el rotulo usa los "Datos del negocio" de Cafe_Settings por default.</summary>
+    public int? RemitenteId { get; set; }
+
+    /// <summary>2026-08-03: Cantidad de bultos que se despachan (aparece en el rotulo). Null = sin especificar.</summary>
+    public int? CantidadBultos { get; set; }
+
+    /// <summary>2026-08-03: Si el envio es fragil (estampa "FRAGIL" en el rotulo).</summary>
+    public bool EsFragil { get; set; } = false;
+
     /// <summary>2026-06-05: Operador (persona) que cargó la venta. Toma el valor del header
     /// X-Operator-Name al crear. Sirve para mostrar iniciales en el listado y auditoria.</summary>
     [MaxLength(20)]

@@ -2672,6 +2672,60 @@ IF COL_LENGTH('Cafe_Ventas','ArcaWebserviceAccountId') IS NULL
     ALTER TABLE Cafe_Ventas ADD ArcaWebserviceAccountId INT NULL;
 GO
 
+-- 2026-08-03: Rotulos/etiquetas de transporte
+-- Catalogo de transportes (empresas de transporte con su sucursal/datos)
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Transportes' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_Transportes (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Nombre NVARCHAR(150) NOT NULL,
+        Direccion NVARCHAR(300) NULL,
+        Telefono NVARCHAR(100) NULL,
+        Localidad NVARCHAR(150) NULL,
+        Provincia NVARCHAR(150) NULL,
+        CodigoPostal NVARCHAR(20) NULL,
+        PagoDestino BIT NOT NULL DEFAULT 1,
+        Activo BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL
+    );
+END
+GO
+
+-- Remitentes alternativos para el rotulo (por defecto se usan los Datos del negocio de Cafe_Settings)
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Remitentes' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_Remitentes (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Nombre NVARCHAR(200) NOT NULL,
+        Cuit NVARCHAR(20) NULL,
+        NombreFantasia NVARCHAR(150) NULL,
+        Direccion NVARCHAR(300) NULL,
+        Telefono NVARCHAR(100) NULL,
+        Localidad NVARCHAR(150) NULL,
+        Provincia NVARCHAR(150) NULL,
+        CodigoPostal NVARCHAR(20) NULL,
+        Activo BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL
+    );
+END
+GO
+
+-- Campos de rotulo/transporte en la venta
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='TransporteId' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD TransporteId INT NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='RemitenteId' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD RemitenteId INT NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='CantidadBultos' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD CantidadBultos INT NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='EsFragil' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD EsFragil BIT NOT NULL DEFAULT 0;
+GO
+
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_VentaItems' AND xtype='U')
 BEGIN
     CREATE TABLE Cafe_VentaItems (
