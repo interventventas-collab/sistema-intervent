@@ -237,7 +237,7 @@
                         ✏️ Editar contacto
                     </button>
                 }
-                <button class="btn btn-outline-success btn-sm" @onclick="CargarComoPedido" title="Crear venta nueva precargando el último mensaje en las notas y el cliente vinculado">
+                <button class="btn btn-outline-success btn-sm" @onclick="AbrirPreviewPedido" title="Abre una ventana con el texto del pedido (el mensaje tildado, o el último si no tildaste nada) para revisarlo antes de crear la venta">
                     📋 Crear pedido
                 </button>
                 @* 2026-07-23 pedido Osmar: mandar una lista de precios personalizada de un toque *@
@@ -360,7 +360,7 @@
             {
                 <div class="wa-selection-bar">
                     <span style="font-size:0.85rem; font-weight:600;">✓ @mensajesSeleccionadosIds.Count seleccionado(s)</span>
-                    <button class="btn btn-success btn-sm" @onclick="AbrirVentanaVenta">📋 Crear venta (nueva ventana)</button>
+                    <button class="btn btn-success btn-sm" @onclick="AbrirPreviewPedido">📋 Crear venta</button>
                     <button class="btn btn-outline-secondary btn-sm" @onclick="@(() => mensajesSeleccionadosIds.Clear())">× Cancelar</button>
                 </div>
             }
@@ -512,6 +512,30 @@
     </div>
 </div>
 </div>
+
+@* 2026-08-03: ventana FLOTANTE (se puede mover) con el texto completo del pedido antes de crear la venta.
+   No lleva fondo oscuro a propósito: querés seguir viendo el chat mientras la movés y comparás. *@
+@if (showPedidoFloat)
+{
+    <div class="wa-float" id="wa-pedido-float">
+        <div class="wa-float-head" id="wa-pedido-float-head">
+            <span style="flex:1;">📋 Revisá el pedido (podés mover esta ventana y editar el texto)</span>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="@(() => showPedidoFloat = false)" title="Cerrar">×</button>
+        </div>
+        <div class="wa-float-body">
+            <label style="font-size:0.8rem; color:#6b7280; font-weight:600;">Texto que va a "Comentario para armado":</label>
+            <textarea class="form-control" @bind="pedidoFloatTexto" rows="10"
+                      style="font-size:0.95rem; line-height:1.35; resize:vertical;"
+                      placeholder="El texto del pedido…"></textarea>
+        </div>
+        <div class="wa-float-foot">
+            <button class="btn btn-outline-secondary btn-sm" @onclick="@(() => showPedidoFloat = false)">Cancelar</button>
+            <button class="btn btn-success btn-sm" @onclick="ConfirmarPedidoFloat" disabled="@creandoPedidoFloat">
+                @(creandoPedidoFloat ? "⏳ Creando…" : "✅ Crear venta")
+            </button>
+        </div>
+    </div>
+}
 
 @if (showQuickContact)
 {
@@ -1122,6 +1146,12 @@
     .wa-msg-row.in .wa-msg-check { order: -1; }
     .wa-msg-row.out .wa-msg-check { order: 99; margin-right: 0; margin-left: 0.4rem; }
     .wa-selection-bar { background: #d1fae5; border-top: 2px solid #25d366; padding: 0.5rem 1rem; display: flex; gap: 0.5rem; align-items: center; }
+    /* 2026-08-03: ventana flotante y arrastrable del preview del pedido */
+    .wa-float { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 460px; max-width: 94vw; background: #fff; border-radius: 10px; z-index: 2100; display: flex; flex-direction: column; box-shadow: 0 12px 40px rgba(0,0,0,0.35); border: 1px solid #d1d5db; }
+    .wa-float-head { background: #075e54; color: #fff; padding: 0.6rem 0.9rem; border-radius: 10px 10px 0 0; display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; font-weight: 600; user-select: none; touch-action: none; }
+    .wa-float-head .btn { --bs-btn-color:#fff; --bs-btn-border-color:rgba(255,255,255,0.6); }
+    .wa-float-body { padding: 0.85rem; display: flex; flex-direction: column; gap: 0.35rem; }
+    .wa-float-foot { padding: 0.7rem 0.9rem; border-top: 1px solid #e5e7eb; display: flex; justify-content: flex-end; gap: 0.5rem; }
     /* === Drawer Nueva Venta === */
     .wa-page-grid { width: 100%; }
     .wa-drawer { background: #fff; border-left: 1px solid #e5e7eb; display: flex; flex-direction: column; overflow: hidden; height: calc(100vh - 70px); }
@@ -1342,6 +1372,49 @@
     // === Selección de mensajes + Nueva Venta en ventana popup ===
     HashSet<int> mensajesSeleccionadosIds = new();
 
+    // 2026-08-03: ventana flotante de preview del pedido (se ve el texto completo, se puede mover y editar)
+    bool showPedidoFloat = false;
+    string pedidoFloatTexto = "";
+    bool creandoPedidoFloat = false;
+    bool _pedidoFloatAttachPending = false;
+
+    /// <summary>Arma el texto del pedido: si hay mensajes tildados usa esos (en orden), y si no hay
+    /// ninguno tildado cae al último mensaje que entró del cliente.</summary>
+    string TextoPedidoDesdeChat()
+    {
+        if (mensajesSeleccionadosIds.Count > 0)
+            return string.Join("\n", mensajes.Where(m => mensajesSeleccionadosIds.Contains(m.Id))
+                .OrderBy(m => m.CreatedAt)
+                .Where(m => !string.IsNullOrWhiteSpace(m.Cuerpo))
+                .Select(m => m.Cuerpo!));
+        return mensajes.LastOrDefault(m => m.Direccion == "INCOMING")?.Cuerpo ?? "";
+    }
+
+    /// <summary>Abre la ventana flotante con el texto para revisar antes de crear la venta.</summary>
+    void AbrirPreviewPedido()
+    {
+        var texto = TextoPedidoDesdeChat();
+        if (string.IsNullOrWhiteSpace(texto)) { Toast.Warning("No hay texto para el pedido. Tildá un mensaje."); return; }
+        pedidoFloatTexto = texto;
+        showPedidoFloat = true;
+        _pedidoFloatAttachPending = true;
+        StateHasChanged();
+    }
+
+    /// <summary>Confirma desde la ventana flotante: crea el pedido con el texto (ya editado si lo tocaron)
+    /// y abre Nueva Venta en una ventana nueva, dejando el chat abierto.</summary>
+    async Task ConfirmarPedidoFloat()
+    {
+        creandoPedidoFloat = true;
+        var pedidoId = await CrearPedidoRealAsync(pedidoFloatTexto);
+        creandoPedidoFloat = false;
+        if (pedidoId is null) return;
+        showPedidoFloat = false;
+        mensajesSeleccionadosIds.Clear();
+        var features = "width=1300,height=850,left=200,top=50,resizable=yes,scrollbars=yes,toolbar=no,menubar=no,location=no";
+        await JS.InvokeVoidAsync("open", $"/cafe/ventas?pedidoId={pedidoId}", "nueva-venta-wa", features);
+    }
+
     /// <summary>2026-07-23 (unificación): los botones del chat ya no van por un camino propio —
     /// crean un pedido REAL en la cola (la IA lo lee si está prendida) y abren Nueva Venta por el
     /// mismo circuito que todos (?pedidoId=). Devuelve el id del pedido creado, o null si falló.</summary>
@@ -1363,23 +1436,6 @@
         else mensajesSeleccionadosIds.Add(id);
     }
 
-    /// <summary>2026-06-20: abre Nueva Venta en una ventana popup separada (window.open) con tamaño
-    /// específico. Se ve la pantalla normal del modal de Nueva Venta, no embebida.</summary>
-    async Task AbrirVentanaVenta()
-    {
-        if (mensajesSeleccionadosIds.Count == 0) { Toast.Warning("Seleccioná al menos un mensaje"); return; }
-        var texto = string.Join("\n", mensajes.Where(m => mensajesSeleccionadosIds.Contains(m.Id))
-            .OrderBy(m => m.CreatedAt)
-            .Where(m => !string.IsNullOrWhiteSpace(m.Cuerpo))
-            .Select(m => m.Cuerpo!));
-        var pedidoId = await CrearPedidoRealAsync(texto);
-        if (pedidoId is null) return;
-        // width=1300, height=850, posicionado a la derecha. Resizable + scrollbars activos.
-        var features = "width=1300,height=850,left=200,top=50,resizable=yes,scrollbars=yes,toolbar=no,menubar=no,location=no";
-        await JS.InvokeVoidAsync("open", $"/cafe/ventas?pedidoId={pedidoId}", "nueva-venta-wa", features);
-        // Limpiamos la seleccion para evitar abrir 2 veces el mismo set
-        mensajesSeleccionadosIds.Clear();
-    }
     // Quick contact modal
     bool showQuickContact = false;
     string quickContactNumero = "", quickContactNombre = "", quickContactRol = "hermano", quickContactNotas = "";
@@ -1475,6 +1531,13 @@
             _pasteRef = DotNetObjectReference.Create(this);
             try { await JS.InvokeVoidAsync("waPaste.register", _pasteRef); }
             catch { /* si el JS no cargó, el clip 📎 sigue funcionando igual */ }
+        }
+        // 2026-08-03: cuando abrimos la ventana flotante del pedido, la hacemos arrastrable
+        if (_pedidoFloatAttachPending && showPedidoFloat)
+        {
+            _pedidoFloatAttachPending = false;
+            try { await JS.InvokeVoidAsync("waDraggable.attach", "wa-pedido-float-head", "wa-pedido-float"); }
+            catch { /* si el JS no cargó, la ventana igual funciona, solo que no se mueve */ }
         }
     }
 
@@ -2203,16 +2266,6 @@
             Toast.Error($"Error: {err}");
             StateHasChanged();
         }
-    }
-
-    async Task CargarComoPedido()
-    {
-        // 2026-07-23 (unificación): crea un pedido real con el último mensaje del cliente y abre
-        // Nueva Venta por el circuito único (?pedidoId=) — IA, comprobante y respuesta incluidos.
-        var ultimoIn = mensajes.LastOrDefault(m => m.Direccion == "INCOMING");
-        var pedidoId = await CrearPedidoRealAsync(ultimoIn?.Cuerpo ?? "");
-        if (pedidoId is null) return;
-        Nav.NavigateTo($"/cafe/ventas?pedidoId={pedidoId}");
     }
 
     ApiClient.TwConvDto? SelectedConv() => conversaciones.FirstOrDefault(c => c.Numero == selectedNumero && c.Linea == selectedLinea);
