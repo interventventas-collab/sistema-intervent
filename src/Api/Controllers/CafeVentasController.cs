@@ -337,6 +337,10 @@ public class CafeVentasController : ControllerBase
         v.PorTransporte,
         v.TransporteEmpresa,
         v.TransporteDestino,
+        v.TransporteId,
+        v.RemitenteId,
+        v.CantidadBultos,
+        v.EsFragil,
         v.CreadoPorOperador,
         // 2026-06-23: Concepto AFIP
         v.Concepto,
@@ -1380,6 +1384,10 @@ public class CafeVentasController : ControllerBase
             PorTransporte = req.PorTransporte,
             TransporteEmpresa = string.IsNullOrWhiteSpace(req.TransporteEmpresa) ? null : req.TransporteEmpresa.Trim(),
             TransporteDestino = string.IsNullOrWhiteSpace(req.TransporteDestino) ? null : req.TransporteDestino.Trim(),
+            TransporteId = req.TransporteId,
+            RemitenteId = req.RemitenteId,
+            CantidadBultos = req.CantidadBultos,
+            EsFragil = req.EsFragil,
             IsPaid = req.IsPaid,
             TipoComprobante = NormTipoComprobante(req.TipoComprobante),
             CondicionIva = NormCondicionIva(req.CondicionIva),
@@ -1548,6 +1556,10 @@ public class CafeVentasController : ControllerBase
             PorTransporte = req.PorTransporte,
             TransporteEmpresa = string.IsNullOrWhiteSpace(req.TransporteEmpresa) ? null : req.TransporteEmpresa.Trim(),
             TransporteDestino = string.IsNullOrWhiteSpace(req.TransporteDestino) ? null : req.TransporteDestino.Trim(),
+            TransporteId = req.TransporteId,
+            RemitenteId = req.RemitenteId,
+            CantidadBultos = req.CantidadBultos,
+            EsFragil = req.EsFragil,
             IsPaid = req.IsPaid,
             TipoComprobante = NormTipoComprobante(req.TipoComprobante),
             CondicionIva = NormCondicionIva(req.CondicionIva),
@@ -2626,6 +2638,10 @@ public class CafeVentasController : ControllerBase
         if (req.PorTransporte.HasValue) v.PorTransporte = req.PorTransporte.Value;
         if (req.TransporteEmpresa is not null) v.TransporteEmpresa = string.IsNullOrWhiteSpace(req.TransporteEmpresa) ? null : req.TransporteEmpresa.Trim();
         if (req.TransporteDestino is not null) v.TransporteDestino = string.IsNullOrWhiteSpace(req.TransporteDestino) ? null : req.TransporteDestino.Trim();
+        if (req.TransporteId.HasValue) v.TransporteId = req.TransporteId.Value == 0 ? null : req.TransporteId.Value;
+        if (req.RemitenteId.HasValue) v.RemitenteId = req.RemitenteId.Value == 0 ? null : req.RemitenteId.Value;
+        if (req.CantidadBultos.HasValue) v.CantidadBultos = req.CantidadBultos.Value;
+        if (req.EsFragil.HasValue) v.EsFragil = req.EsFragil.Value;
         if (req.IsPaid.HasValue) v.IsPaid = req.IsPaid.Value;
         if (req.EntregaPor is not null) v.EntregaPor = string.IsNullOrWhiteSpace(req.EntregaPor) ? null : req.EntregaPor.Trim();
         if (req.ComentarioArmado is not null) v.ComentarioArmado = string.IsNullOrWhiteSpace(req.ComentarioArmado) ? null : req.ComentarioArmado.Trim();

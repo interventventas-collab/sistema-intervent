@@ -444,6 +444,11 @@ public record CafeVentaDto(
     bool PorTransporte = false,
     string? TransporteEmpresa = null,
     string? TransporteDestino = null,
+    // 2026-08-03: Rotulo de transporte
+    int? TransporteId = null,
+    int? RemitenteId = null,
+    int? CantidadBultos = null,
+    bool EsFragil = false,
     // 2026-06-05: Quien cargo la venta (OSMAR/GERMAN/GABRIEL/etc). Null para ventas previas a la migracion.
     string? CreadoPorOperador = null,
     // 2026-06-23: Concepto AFIP. 1=Productos, 2=Servicios, 3=Productos y Servicios.
@@ -567,6 +572,10 @@ public class CreateCafeVentaRequest
     public bool PorTransporte { get; set; }
     public string? TransporteEmpresa { get; set; }
     public string? TransporteDestino { get; set; }
+    public int? TransporteId { get; set; }
+    public int? RemitenteId { get; set; }
+    public int? CantidadBultos { get; set; }
+    public bool EsFragil { get; set; }
     public bool IsPaid { get; set; }
     public string? TipoComprobante { get; set; }
     public string? CondicionIva { get; set; }
@@ -637,6 +646,10 @@ public class UpdateCafeVentaRequest
     public bool? PorTransporte { get; set; }
     public string? TransporteEmpresa { get; set; }
     public string? TransporteDestino { get; set; }
+    public int? TransporteId { get; set; }
+    public int? RemitenteId { get; set; }
+    public int? CantidadBultos { get; set; }
+    public bool? EsFragil { get; set; }
     public bool? IsPaid { get; set; }
     public List<CafeCotizarItemRequest>? Items { get; set; }
     public decimal? Descuento { get; set; }
