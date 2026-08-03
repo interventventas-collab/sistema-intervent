@@ -2603,35 +2603,26 @@
                             <span style="font-size: 0.68rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;">Enviar al emitir:</span>
 
                             @{ var chipMail = envioEmail; }
-                            <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipMail ? "#f0fdf4" : "white"); border: 1px solid @(chipMail ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;">
+                            <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.4rem 0.8rem; background: @(chipMail ? "#f0fdf4" : "white"); border: 1.5px solid @(chipMail ? "#16a34a" : "#d1d5db"); border-radius: 999px; font-size: 0.78rem; font-weight: @(chipMail ? "600" : "400"); cursor: pointer; user-select: none; transition: all .12s;">
                                 <input id="nv-envio-mail" type="checkbox" @bind="envioEmail" @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEnvioChip(e, 0))" style="margin: 0;" />
                                 <span>📧 Mail</span>
                             </label>
 
                             @* 2026-08-03: envío al cliente por la API OFICIAL de Meta (reemplaza WA Web + WA Interno).
-                               Requiere que el cliente haya escrito en las últimas 24 hs (ventana de Meta). *@
+                               Requiere que el cliente haya escrito en las últimas 24 hs (ventana de Meta).
+                               El selector de línea + destino se muestran en la cajita verde de abajo. *@
                             @{ var chipWaApi = envioWhatsappApi; }
-                            <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipWaApi ? "#f0fdf4" : "white"); border: 1px solid @(chipWaApi ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;"
+                            <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.4rem 0.8rem; background: @(chipWaApi ? "#f0fdf4" : "white"); border: 1.5px solid @(chipWaApi ? "#16a34a" : "#d1d5db"); border-radius: 999px; font-size: 0.78rem; font-weight: @(chipWaApi ? "600" : "400"); cursor: pointer; user-select: none; transition: all .12s;"
                                    title="Le manda el comprobante al cliente por el WhatsApp oficial (API de Meta). Necesita que el cliente te haya escrito en las últimas 24 hs.">
                                 <input id="nv-envio-waapi" type="checkbox" tabindex="-1" @bind="envioWhatsappApi" @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEnvioChip(e, 1))" style="margin: 0;" />
                                 <span>🟢 WhatsApp</span>
                             </label>
-                            @if (envioWhatsappApi && lineasWa.Count > 0)
-                            {
-                                <select class="form-input" style="font-size: 0.75rem; padding: 0.3rem 0.5rem; max-width: 230px;"
-                                        @bind="envioLineaPhoneId" title="Desde qué línea de WhatsApp le sale al cliente">
-                                    @foreach (var l in lineasWa)
-                                    {
-                                        <option value="@l.PhoneId">📤 @NombreLineaWa(l)</option>
-                                    }
-                                </select>
-                            }
 
                             @* 2026-07-14: los PRESUPUESTOS no van a preparación — no mostramos el chip. *@
                             @if (formTipoComprobante != "PRO")
                             {
                                 var chipDrive = envioDrive;
-                                <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; background: @(chipDrive ? "#f0fdf4" : "white"); border: 1px solid @(chipDrive ? "#16a34a" : "#d1d5db"); border-radius: 6px; font-size: 0.78rem; cursor: pointer; user-select: none;"
+                                <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.4rem 0.8rem; background: @(chipDrive ? "#f0fdf4" : "white"); border: 1.5px solid @(chipDrive ? "#16a34a" : "#d1d5db"); border-radius: 999px; font-size: 0.78rem; font-weight: @(chipDrive ? "600" : "400"); cursor: pointer; user-select: none; transition: all .12s;"
                                        title="Sube el PDF a Drive y aparece en /cafe/preparacion">
                                     <input id="nv-envio-drive" type="checkbox" tabindex="-1" @bind="envioDrive" @onkeydown="@((KeyboardEventArgs e) => OnKeyDownEnvioChip(e, 2))" style="margin: 0;" />
                                     <span>📁 Imprimir pedidos</span>
@@ -2639,7 +2630,7 @@
                             }
 
                             <button type="button"
-                                    style="font-size: 0.68rem; padding: 0.25rem 0.5rem; background:white; border:1px solid #9ca3af; border-radius:4px; cursor:pointer; color:#374151;"
+                                    style="font-size: 0.68rem; padding: 0.35rem 0.7rem; background:white; border:1px solid #9ca3af; border-radius:999px; cursor:pointer; color:#374151;"
                                     @onclick="MarcarTodosEnvios">
                                 @(envioEmail && envioWhatsappApi ? "Desmarcar" : "Marcar todos")
                             </button>
@@ -2664,27 +2655,81 @@
                             </div>
                         }
 
-                        @if (envioEmail || envioWhatsappApi)
+                        @* Mail: casillero simple para el destinatario *@
+                        @if (envioEmail)
                         {
-                            <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
-                                @if (envioEmail)
-                                {
-                                    <input type="email" class="form-input" placeholder="📧 email@cliente.com"
-                                           style="font-size: 0.75rem; padding: 0.3rem 0.5rem; max-width: 240px;"
-                                           @bind="envioEmailTo" />
-                                }
-                                @if (envioWhatsappApi)
-                                {
-                                    <input type="tel" class="form-input" placeholder="📱 11 1234 5678"
-                                           style="font-size: 0.75rem; padding: 0.3rem 0.5rem; max-width: 180px;"
-                                           @bind="envioWhatsappPhone" />
-                                }
+                            <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top:0.35rem;">
+                                <input type="email" class="form-input" placeholder="📧 email@cliente.com"
+                                       style="font-size: 0.78rem; padding: 0.45rem 0.7rem; border-radius: 8px; max-width: 260px;"
+                                       @bind="envioEmailTo" />
                             </div>
                         }
-                        @if (formClienteId == 0 && (envioEmail || envioWhatsappApi))
+
+                        @* 2026-08-03: cajita verde del envío por WhatsApp — deja clarísimo DESDE qué
+                           línea nuestra sale (arriba) y HACIA qué teléfono del cliente va (abajo). *@
+                        @if (envioWhatsappApi)
                         {
-                            <div style="font-size: 0.68rem; color: #9a3412; background: #fef3c7; padding: 0.25rem 0.4rem; border-radius: 4px;">
-                                ⚠ Sin cliente — completá los destinatarios a mano.
+                            var cliNombreWa = clientes?.FirstOrDefault(c => c.Id == formClienteId)?.Nombre;
+                            <div style="margin-top:0.5rem; border:1.5px solid #86efac; background:#f0fdf4; border-radius:14px; padding:0.8rem 0.9rem; max-width:520px;">
+                                <div style="display:flex; align-items:center; gap:0.35rem; margin-bottom:0.6rem; font-size:0.74rem; font-weight:700; color:#15803d;">
+                                    🟢 <span>Envío por WhatsApp oficial</span>
+                                </div>
+
+                                @* DESDE — nuestra línea *@
+                                <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.45rem;">
+                                    <div style="width:52px; flex-shrink:0; line-height:1.1;">
+                                        <div style="font-size:0.72rem; color:#374151; font-weight:600;">Desde</div>
+                                        <div style="font-size:0.64rem; color:#9ca3af;">tu línea</div>
+                                    </div>
+                                    <span style="color:#9ca3af;">↗</span>
+                                    @if (lineasWa.Count > 0)
+                                    {
+                                        <select class="form-input" style="flex:1; font-size:0.78rem; padding:0.45rem 0.6rem; border-radius:8px; background:white;"
+                                                @bind="envioLineaPhoneId" title="Desde qué línea de WhatsApp le sale al cliente">
+                                            @foreach (var l in lineasWa)
+                                            {
+                                                <option value="@l.PhoneId">🏪 @NombreLineaWa(l)</option>
+                                            }
+                                        </select>
+                                    }
+                                    else
+                                    {
+                                        <div style="flex:1; font-size:0.74rem; color:#9a3412; background:#fef3c7; border-radius:8px; padding:0.45rem 0.6rem;">
+                                            No hay líneas de WhatsApp conectadas.
+                                        </div>
+                                    }
+                                </div>
+
+                                @* PARA — el cliente *@
+                                <div style="display:flex; align-items:center; gap:0.5rem;">
+                                    <div style="width:52px; flex-shrink:0; line-height:1.1;">
+                                        <div style="font-size:0.72rem; color:#374151; font-weight:600;">Para</div>
+                                        <div style="font-size:0.64rem; color:#9ca3af;">el cliente</div>
+                                    </div>
+                                    <span style="color:#9ca3af;">↘</span>
+                                    <div style="flex:1; display:flex; align-items:center; gap:0.4rem; background:white; border:1px solid #d1d5db; border-radius:8px; padding:0.3rem 0.5rem;">
+                                        @if (!string.IsNullOrWhiteSpace(cliNombreWa))
+                                        {
+                                            <span style="font-size:0.78rem; white-space:nowrap; max-width:150px; overflow:hidden; text-overflow:ellipsis;" title="@cliNombreWa">👤 @cliNombreWa</span>
+                                            <span style="color:#d1d5db;">·</span>
+                                        }
+                                        <input type="tel" placeholder="📱 11 1234 5678"
+                                               style="flex:1; min-width:0; border:none; outline:none; font-size:0.78rem; background:transparent; padding:0.15rem 0;"
+                                               @bind="envioWhatsappPhone" />
+                                    </div>
+                                </div>
+
+                                @if (formClienteId == 0)
+                                {
+                                    <div style="font-size:0.68rem; color:#9a3412; margin-top:0.45rem;">
+                                        ⚠ Sin cliente — escribí el teléfono del cliente a mano.
+                                    </div>
+                                }
+
+                                @* Recordatorio de la regla de las 24 hs de Meta *@
+                                <div style="display:flex; align-items:center; gap:0.35rem; margin-top:0.6rem; padding-top:0.5rem; border-top:1px solid #bbf7d0; font-size:0.68rem; color:#4b5563;">
+                                    ⏱️ <span>Solo si el cliente te escribió en las últimas 24 hs.</span>
+                                </div>
                             </div>
                         }
                     }
