@@ -266,6 +266,56 @@ public class MeliOrderService
         return total;
     }
 
+    /// <summary>Un mensaje interno (post-venta) de una venta de MeLi.</summary>
+    public record MeliPackMessage(long FromUserId, string Text, DateTime? Date);
+
+    /// <summary>Trae EN VIVO los mensajes internos (post-venta) de una venta desde MeLi.
+    /// packId puede ser el pack_id o, para ventas sin pack, el order_id. Best-effort: si MeLi
+    /// no deja leerlos (permisos / sin conversación), devuelve lista vacía.</summary>
+    public async Task<List<MeliPackMessage>> GetPackMessagesAsync(long packId, MeliAccount account)
+    {
+        var result = new List<MeliPackMessage>();
+        var token = await _accountService.GetValidTokenAsync(account);
+        if (token is null) return result;
+
+        var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var url = $"https://api.mercadolibre.com/messages/packs/{packId}/sellers/{account.MeliUserId}?tag=post_sale&mark_as_read=false";
+        var response = await http.GetAsync(url);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+            response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            var newToken = await _accountService.GetValidTokenAsync(account, forceRefresh: true);
+            if (newToken is not null)
+            {
+                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", newToken);
+                response = await http.GetAsync(url);
+            }
+        }
+        if (!response.IsSuccessStatusCode) return result;
+
+        var json = await response.Content.ReadAsStringAsync();
+        var root = JsonDocument.Parse(json).RootElement;
+        if (!root.TryGetProperty("messages", out var msgs) || msgs.ValueKind != JsonValueKind.Array)
+            return result;
+
+        foreach (var m in msgs.EnumerateArray())
+        {
+            long fromId = 0;
+            if (m.TryGetProperty("from", out var from) && from.TryGetProperty("user_id", out var uid) && uid.TryGetInt64(out var f))
+                fromId = f;
+            string? text = m.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString() : null;
+            DateTime? date = null;
+            if (m.TryGetProperty("message_date", out var md) && md.TryGetProperty("created", out var cr)
+                && cr.ValueKind == JsonValueKind.String && DateTime.TryParse(cr.GetString(), out var d))
+                date = d;
+            if (!string.IsNullOrWhiteSpace(text))
+                result.Add(new MeliPackMessage(fromId, text!, date));
+        }
+        return result;
+    }
+
     /// <summary>2026-06-15: Re-chequea contra MeLi todas las órdenes paid en estado pre-despacho
     /// (etiqueta no impresa / no retiradas) de los últimos N días para refrescar el ShippingSubstatus.
     /// Sin esto las órdenes quedan "congeladas" en ready_to_print aunque ya estén impresas en MeLi,

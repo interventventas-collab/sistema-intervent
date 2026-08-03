@@ -613,6 +613,17 @@
     .prep-scan-prod { display: grid; grid-template-columns: 50px 1fr; gap: 0.6rem; align-items: center; padding: 0.4rem 0; border-top: 1px dashed #f3f4f6; }
     .prep-scan-prod-cant { font-size: 1.4rem; font-weight: 800; color: #2563eb; text-align: right; line-height: 1; }
     .prep-scan-prod-tit { font-size: 0.92rem; font-weight: 600; color: #111827; line-height: 1.25; }
+    /* Mensajes de la venta + preguntas del comprador (2026-08-03) */
+    .prep-scan-sub { font-size: 0.78rem; font-weight: 800; color: #6b7280; text-transform: uppercase; letter-spacing: 0.3px; margin: 0.7rem 0 0.35rem; border-top: 1px solid #f3f4f6; padding-top: 0.5rem; }
+    .prep-scan-msg { font-size: 0.9rem; padding: 0.4rem 0.6rem; border-radius: 8px; margin: 0.3rem 0; line-height: 1.35; }
+    .prep-scan-msg.in { background: #f1f5f9; color: #111827; }
+    .prep-scan-msg.out { background: #dbeafe; color: #1e3a8a; }
+    .prep-scan-msg .who { font-weight: 800; margin-right: 0.3rem; }
+    .prep-scan-q { padding: 0.35rem 0; border-bottom: 1px dashed #f3f4f6; }
+    .prep-scan-q:last-child { border-bottom: none; }
+    .prep-scan-q .q { font-size: 0.9rem; color: #111827; font-weight: 600; }
+    .prep-scan-q .a { font-size: 0.85rem; color: #166534; margin-top: 0.15rem; padding-left: 0.9rem; }
+    .prep-scan-q .a.sin { color: #b91c1c; }
 </style>
 
 <div class="content-container" style="padding: 0.8rem;">
@@ -712,6 +723,38 @@
                         <div class="prep-scan-prod-cant">×@p.Cantidad</div>
                         <div class="prep-scan-prod-tit">@p.Titulo</div>
                     </div>
+                }
+
+                @* Mensajes internos de la venta (post-venta) *@
+                @if (s.Mensajes.Count > 0)
+                {
+                    <div class="prep-scan-sub">📩 Mensajes de la venta</div>
+                    @foreach (var m in s.Mensajes)
+                    {
+                        <div class="prep-scan-msg @(m.De == "comprador" ? "in" : "out")">
+                            <span class="who">@(m.De == "comprador" ? "🛒 Comprador:" : "🏪 Vos:")</span>@m.Texto
+                        </div>
+                    }
+                }
+
+                @* Preguntas del comprador sobre el producto *@
+                @if (s.Preguntas.Count > 0)
+                {
+                    <div class="prep-scan-sub">❓ Preguntas del comprador</div>
+                    @foreach (var q in s.Preguntas)
+                    {
+                        <div class="prep-scan-q">
+                            <div class="q">❓ @q.Texto</div>
+                            @if (!string.IsNullOrEmpty(q.Respuesta))
+                            {
+                                <div class="a">↳ @q.Respuesta</div>
+                            }
+                            else
+                            {
+                                <div class="a sin">↳ sin responder</div>
+                            }
+                        </div>
+                    }
                 }
             </div>
         }

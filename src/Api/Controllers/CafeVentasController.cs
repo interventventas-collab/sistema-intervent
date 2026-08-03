@@ -3784,6 +3784,42 @@ public class CafeVentasController : ControllerBase
             _ => string.Equals(primero.ShippingMode, "me1", StringComparison.OrdinalIgnoreCase) ? "Correo (ME1)" : "Correo / Mercado Envíos"
         };
 
+        var buyerId = primero.BuyerId;
+
+        // ── PREGUNTAS del comprador sobre los productos de esta venta (ya guardadas por el robot) ──
+        var itemIds = productos.Select(p => p.ItemId).Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList();
+        var preguntas = await _db.MeliQuestions
+            .Where(q => q.FromUserId == buyerId && itemIds.Contains(q.ItemId))
+            .OrderBy(q => q.DateCreated)
+            .Select(q => new
+            {
+                texto = q.Text,
+                respuesta = q.AnswerText,
+                respondida = q.Status == "ANSWERED",
+                fecha = q.DateCreated
+            }).ToListAsync();
+
+        // ── MENSAJES internos de la venta (post-venta), EN VIVO desde MeLi ──
+        var mensajes = new List<object>();
+        try
+        {
+            var account = await _db.MeliAccounts.FirstOrDefaultAsync(a => a.Id == primero.MeliAccountId);
+            if (account is not null)
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var orderSvc = scope.ServiceProvider.GetRequiredService<MeliOrderService>();
+                var packOrOrder = primero.PackId ?? primero.MeliOrderId;
+                var msgs = await orderSvc.GetPackMessagesAsync(packOrOrder, account);
+                mensajes = msgs.Select(mm => (object)new
+                {
+                    de = mm.FromUserId == buyerId ? "comprador" : "vendedor",
+                    texto = mm.Text,
+                    fecha = mm.Date
+                }).ToList();
+            }
+        }
+        catch { /* best-effort: si MeLi no deja leer los mensajes, no rompe el escaneo */ }
+
         return Ok(new
         {
             ok = true,
@@ -3802,7 +3838,9 @@ public class CafeVentasController : ControllerBase
                     cantidad = p.Quantity,
                     itemId = p.ItemId,
                     variationId = p.VariationId
-                }).ToList()
+                }).ToList(),
+            preguntas,
+            mensajes
         });
     }
 

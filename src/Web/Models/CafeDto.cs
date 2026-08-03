@@ -649,6 +649,8 @@ public class EscanearEtiquetaResult
     public string? Estado { get; set; }
     public int CantidadProductos { get; set; }
     public List<EtiquetaProductoDto> Productos { get; set; } = new();
+    public List<EtiquetaPreguntaDto> Preguntas { get; set; } = new();
+    public List<EtiquetaMensajeDto> Mensajes { get; set; } = new();
 }
 
 public class EtiquetaProductoDto
@@ -657,6 +659,21 @@ public class EtiquetaProductoDto
     public int Cantidad { get; set; }
     public string? ItemId { get; set; }
     public string? VariationId { get; set; }
+}
+
+public class EtiquetaPreguntaDto
+{
+    public string Texto { get; set; } = "";
+    public string? Respuesta { get; set; }
+    public bool Respondida { get; set; }
+    public DateTime? Fecha { get; set; }
+}
+
+public class EtiquetaMensajeDto
+{
+    public string De { get; set; } = "";   // "comprador" | "vendedor"
+    public string Texto { get; set; } = "";
+    public DateTime? Fecha { get; set; }
 }
 
 public class CafeCambiarEstadoPreparacionRequest
