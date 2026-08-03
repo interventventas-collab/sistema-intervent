@@ -192,10 +192,142 @@
     <div class="wa-thread">
         @if (selectedNumero is null)
         {
-            <div class="wa-empty">
-                <div style="font-size:4rem; opacity:0.3;">💬</div>
-                <h3 style="color:#6b7280;">Seleccioná una conversación</h3>
-                <p style="color:#9ca3af; max-width:400px;">Acá vas a ver los mensajes de WhatsApp recibidos vía Twilio. Cuando alguien te escribe, aparece su número en la lista de la izquierda.</p>
+            @* 2026-08-03: el formulario de NUEVA CONVERSACIÓN vive acá, siempre a mano (ya no es una ventanita) *@
+            <div class="wa-nv-panel">
+                <div class="wa-nv-card">
+                    <div class="wa-nv-head">
+                        <span class="wa-nv-head-ico">✍️</span>
+                        <div>
+                            <div class="wa-nv-title">Nueva conversación</div>
+                            <div class="wa-nv-sub">Escribile primero a alguien con una plantilla aprobada</div>
+                        </div>
+                    </div>
+
+                    <div class="wa-nv-info">💡 Para escribirle <b>primero</b> a alguien (que no te escribió en las últimas 24h) WhatsApp pide una <b>plantilla aprobada</b>. Cuando te responde, ya le escribís libre.</div>
+
+                    @if (nvCargando)
+                    {
+                        <div class="wa-nv-muted" style="text-align:center; padding:1rem;">Cargando plantillas…</div>
+                    }
+                    else if (nvPlantillas.Count == 0)
+                    {
+                        <div style="text-align:center; padding:1rem; color:#b91c1c; font-size:0.9rem;">No hay plantillas aprobadas disponibles. Revisá que la cuenta de WhatsApp esté configurada.</div>
+                    }
+                    else
+                    {
+                        @if (nvLineas.Count > 1)
+                        {
+                            <div class="wa-nv-field">
+                                <label class="wa-nv-label">Enviar desde la línea</label>
+                                <select class="wa-nv-input" @bind="nvLineaPhoneId">
+                                    @foreach (var l in nvLineas)
+                                    {
+                                        <option value="@l.PhoneId">📱 @PrettyNumero(l.Numero)</option>
+                                    }
+                                </select>
+                            </div>
+                        }
+
+                        @* buscador estilo WhatsApp: una sola casilla (nombre o número) *@
+                        @if (nvClienteSeleccionado != null)
+                        {
+                            <div class="wa-nv-chip">
+                                <div class="wa-nv-avatar" style="background:#25d366;">@InicialDe(nvClienteSeleccionado)</div>
+                                <div style="flex:1; min-width:0; line-height:1.25;">
+                                    <div style="font-weight:700; color:#111; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Le vas a escribir a @nvClienteSeleccionado</div>
+                                    <div style="font-size:0.85rem; color:#16a34a;">@BonitoNumero(nvNumero)</div>
+                                </div>
+                                <button type="button" class="wa-nv-btn-ghost" @onclick="LimpiarNvCliente" title="Elegir otro contacto o número">✏️ Cambiar</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="wa-nv-field" style="position:relative;">
+                                <label class="wa-nv-label">¿A quién le escribís? <span style="color:#dc2626;">*</span></label>
+                                <input class="wa-nv-input wa-nv-search" placeholder="🔍 Escribí un nombre o un número…"
+                                       @bind="nvClienteQuery" @bind:event="oninput" @onkeyup="BuscarNvClientes" />
+                                <span class="wa-nv-hint">Buscá por nombre (clientes, WhatsApp, MercadoLibre) o pegá un número con el código de país (54).</span>
+
+                                @if (nvBuscandoCliente)
+                                {
+                                    <div class="wa-nv-muted">Buscando…</div>
+                                }
+                                @{ var directo = NvNumeroDirecto(); }
+                                @if (directo != null || nvClienteResultados.Count > 0)
+                                {
+                                    <div class="wa-nv-results">
+                                        @if (directo != null)
+                                        {
+                                            <button type="button" class="wa-nv-item" @onclick="() => UsarNumeroDirecto(directo)">
+                                                <div class="wa-nv-avatar" style="background:#2563eb;">📱</div>
+                                                <div style="flex:1; min-width:0;">
+                                                    <div style="font-weight:700; color:#111;">Enviar a este número nuevo</div>
+                                                    <div style="font-size:0.85rem; color:#2563eb;">@BonitoNumero(directo)</div>
+                                                </div>
+                                            </button>
+                                        }
+                                        @foreach (var cli in nvClienteResultados)
+                                        {
+                                            <button type="button" class="wa-nv-item" @onclick="() => SeleccionarNvCliente(cli)">
+                                                <div class="wa-nv-avatar">@InicialDe(cli.Nombre)</div>
+                                                <div style="flex:1; min-width:0;">
+                                                    <div style="font-weight:600; color:#111; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@cli.Nombre</div>
+                                                    <div style="font-size:0.85rem; color:#6b7280;">@BonitoNumero(cli.Numero)</div>
+                                                </div>
+                                                <span class="wa-nv-origen">@OrigenLindo(cli.Origen)</span>
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                                else if (!string.IsNullOrWhiteSpace(nvClienteQuery) && nvClienteQuery.Length >= 2 && !nvBuscandoCliente)
+                                {
+                                    <div class="wa-nv-muted">Sin contactos para esa búsqueda. Si es un número nuevo, escribilo completo con el código de país (54) y el 9 de celular.</div>
+                                }
+                            </div>
+                        }
+
+                        <div class="wa-nv-field">
+                            <label class="wa-nv-label">Plantilla <span style="color:#dc2626;">*</span></label>
+                            <select class="wa-nv-input" value="@nvPlantillaName" @onchange="OnPlantillaChange">
+                                <option value="">— Elegí una plantilla —</option>
+                                @foreach (var p in nvPlantillas)
+                                {
+                                    <option value="@p.Name">@NombrePlantillaLindo(p.Name) (@p.Category.ToLower())</option>
+                                }
+                            </select>
+                        </div>
+
+                        @if (PlantillaSel() is {} pSel)
+                        {
+                            @if (pSel.VariableCount > 0)
+                            {
+                                <div class="wa-nv-field">
+                                    <label class="wa-nv-label">Completá los datos de la plantilla</label>
+                                    @for (int i = 0; i < pSel.VariableCount; i++)
+                                    {
+                                        var idx = i;
+                                        <input class="wa-nv-input" style="margin-bottom:0.4rem;"
+                                               placeholder="@PlaceholderVariable(idx)"
+                                               value="@(idx < nvVariables.Count ? nvVariables[idx] : "")"
+                                               @oninput="e => SetVariable(idx, e.Value?.ToString() ?? string.Empty)" />
+                                    }
+                                </div>
+                            }
+
+                            <div class="wa-nv-field">
+                                <label class="wa-nv-label">Vista previa del mensaje</label>
+                                <div class="wa-nv-preview">@PreviewTexto()</div>
+                            </div>
+                        }
+
+                        <div class="wa-nv-actions">
+                            <button class="wa-nv-btn-ghost" @onclick="AbrirNuevaConv" title="Limpiar y empezar de nuevo">🧹 Limpiar</button>
+                            <button class="wa-nv-send" disabled="@(nvEnviando || PlantillaSel() == null || string.IsNullOrWhiteSpace(nvNumero))" @onclick="EnviarNuevaConv">
+                                @(nvEnviando ? "Enviando…" : "📨 Enviar mensaje")
+                            </button>
+                        </div>
+                    }
+                </div>
             </div>
         }
         else
@@ -686,148 +818,6 @@
     </div>
 }
 
-@* 2026-08-01: NUEVA CONVERSACIÓN — escribir primero a alguien con una plantilla aprobada *@
-@if (showNuevaConv)
-{
-    <div class="wa-modal-backdrop" @onclick="@(() => showNuevaConv = false)"></div>
-    <div class="wa-modal" style="max-width:560px;">
-        <div class="wa-modal-header">
-            <h3 style="margin:0; flex:1; font-size:1.05rem;">✍️ Nueva conversación</h3>
-            <button class="btn btn-sm btn-outline-secondary" @onclick="@(() => showNuevaConv = false)">×</button>
-        </div>
-        <div class="wa-modal-body">
-            <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:0.5rem 0.7rem; font-size:0.78rem; color:#1e40af; margin-bottom:0.8rem;">
-                💡 Para escribirle <b>primero</b> a alguien (que no te escribió en las últimas 24h) WhatsApp exige usar una <b>plantilla aprobada</b>. Cuando la persona te responde, ya le podés escribir libre.
-            </div>
-
-            @if (nvCargando)
-            {
-                <div style="text-align:center; padding:1rem; color:#6b7280;">Cargando plantillas…</div>
-            }
-            else if (nvPlantillas.Count == 0)
-            {
-                <div style="text-align:center; padding:1rem; color:#b91c1c; font-size:0.85rem;">No hay plantillas aprobadas disponibles. Revisá que la cuenta de WhatsApp esté configurada.</div>
-            }
-            else
-            {
-                @* Línea (solo si hay más de una) *@
-                @if (nvLineas.Count > 1)
-                {
-                    <div style="margin-bottom:0.7rem;">
-                        <label style="font-size:0.78rem; color:#6b7280; display:block;">Enviar desde la línea</label>
-                        <select class="form-control form-control-sm" @bind="nvLineaPhoneId">
-                            @foreach (var l in nvLineas)
-                            {
-                                <option value="@l.PhoneId">📱 @PrettyNumero(l.Numero)</option>
-                            }
-                        </select>
-                    </div>
-                }
-
-                @* 2026-08-03: buscador ESTILO WHATSAPP — una sola casilla (nombre o número), como el WhatsApp de verdad *@
-                @if (nvClienteSeleccionado != null)
-                {
-                    @* Ya elegiste a alguien: tarjetita clara con opción de cambiar *@
-                    <div style="display:flex; align-items:center; gap:0.6rem; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:0.55rem 0.7rem; margin-bottom:0.8rem;">
-                        <div class="wa-nv-avatar" style="background:#25d366;">@InicialDe(nvClienteSeleccionado)</div>
-                        <div style="flex:1; min-width:0; line-height:1.25;">
-                            <div style="font-weight:600; color:#111; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Le vas a escribir a @nvClienteSeleccionado</div>
-                            <div style="font-size:0.82rem; color:#16a34a;">@BonitoNumero(nvNumero)</div>
-                        </div>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="LimpiarNvCliente" title="Elegir otro contacto o número">✏️ Cambiar</button>
-                    </div>
-                }
-                else
-                {
-                    <div style="margin-bottom:0.8rem; position:relative;">
-                        <label style="font-size:0.78rem; color:#6b7280; display:block;">¿A quién le escribís? <span style="color:#dc2626;">*</span></label>
-                        <input class="form-control" placeholder="🔍 Escribí un nombre o un número…"
-                               @bind="nvClienteQuery" @bind:event="oninput" @onkeyup="BuscarNvClientes" />
-                        <span style="font-size:0.7rem; color:#9ca3af;">Buscá por nombre (clientes, WhatsApp, MercadoLibre) o pegá un número con el código de país (54).</span>
-
-                        @if (nvBuscandoCliente)
-                        {
-                            <div style="font-size:0.78rem; color:#9ca3af; margin-top:0.4rem;">Buscando…</div>
-                        }
-                        @{ var directo = NvNumeroDirecto(); }
-                        @if (directo != null || nvClienteResultados.Count > 0)
-                        {
-                            <div style="border:1px solid #e5e7eb; border-radius:10px; margin-top:0.4rem; max-height:300px; overflow-y:auto; box-shadow:0 6px 18px rgba(0,0,0,0.08);">
-                                @if (directo != null)
-                                {
-                                    <button type="button" class="wa-nv-item" @onclick="() => UsarNumeroDirecto(directo)">
-                                        <div class="wa-nv-avatar" style="background:#2563eb;">📱</div>
-                                        <div style="flex:1; min-width:0;">
-                                            <div style="font-weight:600; color:#111;">Enviar a este número nuevo</div>
-                                            <div style="font-size:0.82rem; color:#2563eb;">@BonitoNumero(directo)</div>
-                                        </div>
-                                    </button>
-                                }
-                                @foreach (var cli in nvClienteResultados)
-                                {
-                                    <button type="button" class="wa-nv-item" @onclick="() => SeleccionarNvCliente(cli)">
-                                        <div class="wa-nv-avatar">@InicialDe(cli.Nombre)</div>
-                                        <div style="flex:1; min-width:0;">
-                                            <div style="font-weight:600; color:#111; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@cli.Nombre</div>
-                                            <div style="font-size:0.82rem; color:#6b7280;">@BonitoNumero(cli.Numero)</div>
-                                        </div>
-                                        <span class="wa-nv-origen">@OrigenLindo(cli.Origen)</span>
-                                    </button>
-                                }
-                            </div>
-                        }
-                        else if (!string.IsNullOrWhiteSpace(nvClienteQuery) && nvClienteQuery.Length >= 2 && !nvBuscandoCliente)
-                        {
-                            <div style="font-size:0.78rem; color:#9ca3af; margin-top:0.4rem;">Sin contactos para esa búsqueda. Si es un número nuevo, escribilo completo con el código de país (54) y el 9 de celular.</div>
-                        }
-                    </div>
-                }
-
-                <div style="margin-bottom:0.7rem;">
-                    <label style="font-size:0.78rem; color:#6b7280; display:block;">Plantilla <span style="color:#dc2626;">*</span></label>
-                    <select class="form-control form-control-sm" value="@nvPlantillaName" @onchange="OnPlantillaChange">
-                        <option value="">— Elegí una plantilla —</option>
-                        @foreach (var p in nvPlantillas)
-                        {
-                            <option value="@p.Name">@NombrePlantillaLindo(p.Name) (@p.Category.ToLower())</option>
-                        }
-                    </select>
-                </div>
-
-                @if (PlantillaSel() is {} pSel)
-                {
-                    @if (pSel.VariableCount > 0)
-                    {
-                        <div style="margin-bottom:0.6rem;">
-                            <label style="font-size:0.78rem; color:#6b7280; display:block; margin-bottom:0.3rem;">Completá los datos de la plantilla</label>
-                            @for (int i = 0; i < pSel.VariableCount; i++)
-                            {
-                                var idx = i;
-                                <input class="form-control form-control-sm" style="margin-bottom:0.35rem;"
-                                       placeholder="@PlaceholderVariable(idx)"
-                                       value="@(idx < nvVariables.Count ? nvVariables[idx] : "")"
-                                       @oninput="e => SetVariable(idx, e.Value?.ToString() ?? string.Empty)" />
-                            }
-                        </div>
-                    }
-
-                    <div style="margin-bottom:0.5rem;">
-                        <label style="font-size:0.78rem; color:#6b7280; display:block;">Vista previa del mensaje</label>
-                        <div style="background:#dcf8c6; border-radius:8px; padding:0.6rem 0.8rem; font-size:0.9rem; white-space:pre-wrap; color:#111;">@PreviewTexto()</div>
-                    </div>
-                }
-
-                <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:1rem;">
-                    <button class="btn btn-secondary btn-sm" @onclick="@(() => showNuevaConv = false)">Cancelar</button>
-                    <button class="btn btn-success btn-sm" disabled="@(nvEnviando || PlantillaSel() == null || string.IsNullOrWhiteSpace(nvNumero))" @onclick="EnviarNuevaConv">
-                        @(nvEnviando ? "Enviando…" : "📨 Enviar")
-                    </button>
-                </div>
-            }
-        </div>
-    </div>
-}
-
 @* 2026-08-01: ponerle nombre + imagen a una línea (WhatsApp o Instagram) *@
 @if (showEditLinea)
 {
@@ -1225,6 +1215,31 @@
     .wa-nv-item:last-child { border-bottom: 0; }
     .wa-nv-item:hover { background: #f0fdf4; }
     .wa-nv-origen { font-size: 0.66rem; color: #2563eb; background: #eff6ff; border-radius: 6px; padding: 0.1rem 0.4rem; flex-shrink: 0; }
+    /* 2026-08-03: panel INLINE de "Nueva conversación" (moderno, redondeado) */
+    .wa-nv-panel { flex: 1; display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 2rem 1rem; background: #f7f9fb; }
+    .wa-nv-card { width: 100%; max-width: 540px; background: #fff; border-radius: 22px; padding: 1.6rem 1.7rem; box-shadow: 0 12px 40px rgba(0,0,0,0.08); border: 1px solid #eef1f5; }
+    .wa-nv-head { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 1rem; }
+    .wa-nv-head-ico { font-size: 1.7rem; background: #dcf8c6; width: 52px; height: 52px; border-radius: 16px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .wa-nv-title { font-size: 1.35rem; font-weight: 800; color: #111827; line-height: 1.1; }
+    .wa-nv-sub { font-size: 0.85rem; color: #6b7280; }
+    .wa-nv-info { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 14px; padding: 0.7rem 0.9rem; font-size: 0.82rem; color: #1e40af; margin-bottom: 1.1rem; }
+    .wa-nv-field { margin-bottom: 1rem; }
+    .wa-nv-label { display: block; font-size: 0.82rem; font-weight: 600; color: #374151; margin-bottom: 0.35rem; }
+    .wa-nv-hint { display: block; font-size: 0.72rem; color: #9ca3af; margin-top: 0.35rem; }
+    .wa-nv-muted { font-size: 0.8rem; color: #9ca3af; margin-top: 0.5rem; }
+    .wa-nv-input { width: 100%; border: 2px solid #e5e7eb; border-radius: 14px; padding: 0.75rem 0.95rem; font-size: 0.95rem; background: #fff; color: #111; transition: border-color .15s, box-shadow .15s; }
+    .wa-nv-input:focus { outline: none; border-color: #25d366; box-shadow: 0 0 0 3px rgba(37,211,102,0.15); }
+    .wa-nv-search { font-size: 1.02rem; }
+    .wa-nv-results { border: 1px solid #e5e7eb; border-radius: 14px; margin-top: 0.5rem; max-height: 300px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+    .wa-nv-chip { display: flex; align-items: center; gap: 0.7rem; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 16px; padding: 0.7rem 0.85rem; margin-bottom: 1rem; }
+    .wa-nv-preview { background: #dcf8c6; border-radius: 14px; padding: 0.8rem 1rem; font-size: 0.92rem; white-space: pre-wrap; color: #111; }
+    .wa-nv-actions { display: flex; gap: 0.7rem; align-items: center; margin-top: 1.2rem; }
+    .wa-nv-send { flex: 1; border: none; border-radius: 16px; padding: 0.9rem 1.4rem; font-size: 1.05rem; font-weight: 700; color: #fff; background: #25d366; cursor: pointer; box-shadow: 0 6px 16px rgba(37,211,102,0.35); transition: filter .15s, transform .05s; }
+    .wa-nv-send:hover:not(:disabled) { filter: brightness(1.05); }
+    .wa-nv-send:active:not(:disabled) { transform: translateY(1px); }
+    .wa-nv-send:disabled { background: #cbd5d3; box-shadow: none; cursor: not-allowed; }
+    .wa-nv-btn-ghost { border: 2px solid #e5e7eb; background: #fff; border-radius: 14px; padding: 0.7rem 1rem; font-size: 0.9rem; font-weight: 600; color: #374151; cursor: pointer; }
+    .wa-nv-btn-ghost:hover { background: #f9fafb; }
     /* Filtros sidebar */
     .wa-filtros { display: flex; gap: 0.3rem; padding: 0.55rem 0.7rem; border-bottom: 1px solid #eef1f5; background: #fbfcfe; flex-wrap: wrap; }
     .wa-filtro { background: #fff; border: 1px solid #dfe4ea; color: #475569; padding: 0.3rem 0.75rem; border-radius: 999px; font-size: 0.76rem; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.12s; }
@@ -1753,6 +1768,9 @@
         await LoadLineasConfig();
         AplicarLineaPorDefecto();
         await CargarSonidoMaster();
+        // 2026-08-03: dejar listo el panel de "Nueva conversación" (se muestra cuando no hay chat abierto)
+        await EnsureNvCargado();
+        nvLineaPhoneId ??= nvLineas.FirstOrDefault()?.PhoneId;
         if (!string.IsNullOrWhiteSpace(NumeroInicial))
             await SelectConv(NumeroInicial, conversaciones.FirstOrDefault(c => c.Numero == NumeroInicial)?.Linea);
         await LoadRespuestas();
@@ -2142,7 +2160,7 @@
     }
 
     // === 2026-08-01: NUEVA CONVERSACIÓN (escribir primero con plantilla aprobada) ===
-    bool showNuevaConv = false, nvCargando = false, nvEnviando = false;
+    bool nvCargando = false, nvEnviando = false;
     List<ApiClient.TwPlantillaDto> nvPlantillas = new();
     List<ApiClient.TwLineaDto> nvLineas = new();
     string nvNumero = "", nvPlantillaName = "";
@@ -2154,44 +2172,55 @@
     bool nvBuscandoCliente = false;
     List<ApiClient.TwDestinatarioDto> nvClienteResultados = new();
 
+    // 2026-08-03: ahora el formulario vive inline en el panel derecho. "Abrir" = deseleccionar el chat + limpiar.
     async Task AbrirNuevaConv()
     {
-        showNuevaConv = true;
+        VolverALista();   // deseleccionar el chat abierto => se ve el panel de nueva conversación
         nvNumero = ""; nvPlantillaName = ""; nvVariables = new();
         nvClienteQuery = ""; nvClienteSeleccionado = null; nvClienteResultados = new();
-        if (nvPlantillas.Count == 0 || nvLineas.Count == 0)
-        {
-            nvCargando = true;
-            StateHasChanged();
-            try
-            {
-                nvPlantillas = await Api.GetTwPlantillasAsync();
-                nvLineas = await Api.GetTwLineasAsync();
-            }
-            catch { }
-            nvCargando = false;
-        }
+        await EnsureNvCargado();
         // Línea por defecto: la primera conectada (o null = la línea default del sistema)
         nvLineaPhoneId = nvLineas.FirstOrDefault()?.PhoneId;
         StateHasChanged();
     }
 
-    // 2026-08-03: abrir "Nueva conversación" YA con el número (y la línea) del chat abierto, para elegir plantilla directo
+    // Cargar plantillas + líneas una sola vez (para tener el panel siempre listo)
+    async Task EnsureNvCargado()
+    {
+        if (nvPlantillas.Count > 0 && nvLineas.Count > 0) return;
+        nvCargando = true;
+        StateHasChanged();
+        try
+        {
+            nvPlantillas = await Api.GetTwPlantillasAsync();
+            nvLineas = await Api.GetTwLineasAsync();
+        }
+        catch { }
+        nvCargando = false;
+    }
+
+    // 2026-08-03: dejar el panel de "Nueva conversación" YA con el número (y la línea) del chat abierto, para elegir plantilla directo
     async Task EscribirConPlantilla()
     {
-        await AbrirNuevaConv();
+        // Capturar datos del chat ANTES de deseleccionarlo
         var num = new string((selectedNumero ?? "").Where(char.IsDigit).ToArray());
-        if (string.IsNullOrWhiteSpace(num)) return;
-        nvNumero = num;
         var conv = SelectedConv();
-        nvClienteSeleccionado = !string.IsNullOrWhiteSpace(conv?.ClienteNombre) ? conv!.ClienteNombre
+        var nombre = !string.IsNullOrWhiteSpace(conv?.ClienteNombre) ? conv!.ClienteNombre
             : (!string.IsNullOrWhiteSpace(conv?.NombrePerfil) ? conv!.NombrePerfil
             : "este contacto");
+        var lineaChat = new string((conv?.Linea ?? "").Where(char.IsDigit).ToArray());
+
+        await AbrirNuevaConv();   // deselecciona el chat y limpia el panel
+        if (string.IsNullOrWhiteSpace(num)) return;
+        nvNumero = num;
+        nvClienteSeleccionado = nombre;
         // Intentar mandar desde la MISMA línea por la que llegó el chat
-        var linMatch = nvLineas.FirstOrDefault(l =>
-            new string((l.Numero ?? "").Where(char.IsDigit).ToArray()) == new string((conv?.Linea ?? "").Where(char.IsDigit).ToArray())
-            && !string.IsNullOrEmpty(new string((l.Numero ?? "").Where(char.IsDigit).ToArray())));
-        if (linMatch != null) nvLineaPhoneId = linMatch.PhoneId;
+        if (!string.IsNullOrEmpty(lineaChat))
+        {
+            var linMatch = nvLineas.FirstOrDefault(l =>
+                new string((l.Numero ?? "").Where(char.IsDigit).ToArray()) == lineaChat);
+            if (linMatch != null) nvLineaPhoneId = linMatch.PhoneId;
+        }
         StateHasChanged();
     }
 
@@ -2333,7 +2362,9 @@
         nvEnviando = false;
         if (!ok) { Toast.Error(err ?? "No se pudo enviar"); return; }
         Toast.Success("Mensaje enviado ✓");
-        showNuevaConv = false;
+        // limpiar el panel para el próximo, y abrir el chat recién creado abajo
+        nvNumero = ""; nvPlantillaName = ""; nvVariables = new();
+        nvClienteSeleccionado = null; nvClienteQuery = "";
         await LoadConversaciones(silent: true);
         if (!string.IsNullOrEmpty(numero))
             await SelectConv(numero, conversaciones.FirstOrDefault(c => c.Numero == numero)?.Linea);
