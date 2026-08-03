@@ -663,7 +663,7 @@
                 }
                 @* 2026-07-23: @bind:event="oninput" es CLAVE — sin esto el texto solo se guarda al salir del
    campo, y al apretar Enter el sistema veia el mensaje vacio (no enviaba nada). *@
-<textarea class="form-control" placeholder="Escribir mensaje… (Enter para enviar, Shift+Enter para renglón nuevo)" @bind="composerText" @bind:event="oninput" @onkeydown="OnComposerKey" rows="9"></textarea>
+<textarea class="form-control wa-composer-input" placeholder="Escribir mensaje… (Enter para enviar, Shift+Enter para renglón nuevo)" @bind="composerText" @bind:event="oninput" rows="9"></textarea>
                 <button class="btn btn-success wa-enviar-btn @(sending ? "enviando" : "")" @onclick="EnviarMensaje" disabled="@(string.IsNullOrWhiteSpace(composerText) || sending)">
                     @(sending ? "⏳ Enviando…" : "📤 Enviar")
                 </button>
@@ -1791,6 +1791,9 @@
             _pasteRef = DotNetObjectReference.Create(this);
             try { await JS.InvokeVoidAsync("waPaste.register", _pasteRef); }
             catch { /* si el JS no cargó, el clip 📎 sigue funcionando igual */ }
+            // 2026-08-03: Enter para enviar como WhatsApp (frena el salto de línea y manda limpio).
+            try { await JS.InvokeVoidAsync("waComposer.register", _pasteRef); }
+            catch { /* si el JS no cargó, igual podés enviar con el botón verde */ }
         }
         // 2026-08-03: cuando abrimos la ventana flotante del pedido, la hacemos arrastrable
         if (_pedidoFloatAttachPending && showPedidoFloat)
@@ -2457,29 +2460,73 @@
         catch { /* si falla el scroll no rompemos el chat */ }
     }
 
+    // 2026-08-03: id temporal (negativo) para los mensajes "optimistas" que muestro
+    // al toque mientras viajan al servidor. Negativo para no chocar con ids reales.
+    int _tempMsgId = -1;
+
+    // El botón verde "Enviar" usa esta vía.
     async Task EnviarMensaje()
     {
-        if (selectedNumero == null || string.IsNullOrWhiteSpace(composerText)) return;
+        if (selectedNumero == null || sending || string.IsNullOrWhiteSpace(composerText)) return;
+        var texto = composerText;
+        composerText = "";
+        await EnviarTexto(texto);
+    }
+
+    // 2026-08-03: el JS (wa-composer.js) llama acá cuando apretás Enter. Ya vació el
+    // cuadro en pantalla; nosotros mandamos el texto que nos pasó.
+    [JSInvokable]
+    public async Task EnviarDesdeComposer(string texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) { composerText = ""; StateHasChanged(); return; }
+        // Si estamos en medio de otro envío o no hay chat, devolvemos el texto al cuadro
+        // (el JS ya lo había vaciado) para no perderlo.
+        if (sending || selectedNumero == null)
+        {
+            composerText = texto;
+            StateHasChanged();
+            return;
+        }
+        composerText = "";
+        await EnviarTexto(texto);
+    }
+
+    // Envío real + aparición instantánea (como WhatsApp): agrego el mensaje a la lista
+    // al toque, y cuando el servidor confirma recargo para traer el mensaje real (con
+    // sus tilditos de estado). Si falla, lo saco y devuelvo el texto al cuadro.
+    async Task EnviarTexto(string texto)
+    {
+        if (selectedNumero == null || sending) return;
+        texto = texto?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(texto)) return;
+
+        var numero = selectedNumero;
+        var linea = selectedLinea;
+
+        var tempId = _tempMsgId--;
+        var temp = new ApiClient.TwMsgDto(
+            tempId, "OUTGOING", numero, null, texto, null, null, null,
+            false, null, DateTime.Now, "SENDING", null);
+        mensajes.Add(temp);
         sending = true;
-        var (ok, err) = await Api.SendTwMensajeAsync(selectedNumero, composerText.Trim(), selectedLinea);
+        StateHasChanged();
+        await ScrollAlUltimoMensaje();
+
+        var (ok, err) = await Api.SendTwMensajeAsync(numero, texto, linea);
         sending = false;
+
         if (ok)
         {
-            composerText = "";
-            await LoadMensajes();
+            // Solo recargo si seguís en el mismo chat (por si cambiaste mientras mandaba).
+            if (selectedNumero == numero && selectedLinea == linea) await LoadMensajes();
             await LoadConversaciones(silent: true);
         }
         else
         {
+            mensajes.RemoveAll(m => m.Id == tempId);
+            if (selectedNumero == numero) composerText = texto; // no se pierde lo que escribiste
+            StateHasChanged();
             Toast.Error($"Error al enviar: {err}");
-        }
-    }
-
-    async Task OnComposerKey(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter" && !e.ShiftKey)
-        {
-            await EnviarMensaje();
         }
     }
 
@@ -2999,6 +3046,7 @@
         refreshTimer?.Dispose();
         // Sacar el listener de pegado al salir de la pantalla (evita que Ctrl+V dispare avisos en otras páginas).
         try { _ = JS.InvokeVoidAsync("waPaste.unregister"); } catch { }
+        try { _ = JS.InvokeVoidAsync("waComposer.unregister"); } catch { }
         _pasteRef?.Dispose();
     }
 }
