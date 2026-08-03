@@ -645,7 +645,7 @@
             {
                 <div style="padding:0.5rem; color:#9ca3af; font-size:0.85rem;">Sin resultados. Probá con otro dato.</div>
             }
-            <div style="margin-top:0.4rem; max-height:280px; overflow-y:auto;">
+            <div style="margin-top:0.4rem; max-height:220px; overflow-y:auto;">
                 @foreach (var cli in vincularResultados.Take(12))
                 {
                     <button class="wa-vincular-opt" @onclick="() => VincularAhora(cli)" disabled="@vinculando">
@@ -654,6 +654,20 @@
                         @if (!string.IsNullOrEmpty(cli.Telefono)) { <span style="color:#9ca3af; font-size:0.72rem;"> · 📞 @cli.Telefono</span> }
                     </button>
                 }
+            </div>
+
+            @* 2026-08-03 (idea 3): crear un cliente nuevo con este número, sin salir del chat *@
+            <div class="wa-vincular-nuevo">
+                <div style="font-size:0.78rem; color:#6b7280; margin-bottom:0.35rem;">
+                    ¿No está en la lista? Creá un cliente nuevo
+                    @if (!selectedNumero.StartsWith("ig:")) { <span>con el número <b>@PrettyNumero(selectedNumero)</b></span> }:
+                </div>
+                <div style="display:flex; gap:0.4rem;">
+                    <input class="form-control form-control-sm" placeholder="Nombre del cliente nuevo" @bind="nuevoCliNombre" @bind:event="oninput" style="flex:1;" />
+                    <button class="btn btn-sm btn-success" @onclick="CrearYVincular" disabled="@(creandoCli || vinculando)" style="white-space:nowrap; font-weight:600;">
+                        @(creandoCli ? "⏳ Creando…" : "➕ Crear y vincular")
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -1153,6 +1167,7 @@
     .wa-vincular-opt { display: block; width: 100%; text-align: left; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.55rem 0.65rem; margin-bottom: 0.35rem; font-size: 0.9rem; cursor: pointer; transition: all .12s; }
     .wa-vincular-opt:hover:not(:disabled) { background: #ecfdf5; border-color: #16a34a; }
     .wa-vincular-opt:disabled { opacity: 0.6; cursor: wait; }
+    .wa-vincular-nuevo { margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px dashed #e5e7eb; }
     .wa-attach-btn { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 50%; background: #fff; border: 1px solid #e0e0e0; cursor: pointer; font-size: 1.3rem; transition: all .15s; user-select: none; }
     .wa-attach-btn:hover { background: #e9f5ff; border-color: #25d366; transform: translateY(-1px); }
     .wa-attach-btn.uploading { background: #fff8e1; border-color: #ffc107; cursor: wait; animation: wa-attach-pulse 1s ease-in-out infinite; }
@@ -1569,6 +1584,8 @@
     bool vincularBuscando = false;
     bool vinculando = false;
     List<ApiClient.TwClienteBuscarDto> vincularResultados = new();
+    string nuevoCliNombre = "";   // idea 3: nombre del cliente nuevo a crear desde el buscador
+    bool creandoCli = false;
 
     ApiClient.TwSugerenciaCliente? sugerenciaCliente = null;
     // Chats donde el usuario dijo "No" a la sugerencia (para no volver a preguntar en esta sesión).
@@ -1582,7 +1599,31 @@
         vincularQuery = "";
         vincularResultados = new();
         vincularBuscando = false;
+        // Prefijamos el nombre del cliente nuevo con el del perfil de WhatsApp (si lo hay), para
+        // que crear sea de un toque. El usuario lo puede editar.
+        var perfil = SelectedConv()?.NombrePerfil;
+        nuevoCliNombre = (!string.IsNullOrWhiteSpace(perfil) && !perfil.StartsWith("ig:")) ? perfil! : "";
+        creandoCli = false;
         showVincular = true;
+    }
+
+    // Idea 3: crea un cliente nuevo (nombre + este número de teléfono) y lo vincula al chat, todo junto.
+    async Task CrearYVincular()
+    {
+        if (selectedNumero == null || creandoCli || vinculando) return;
+        var nombre = (nuevoCliNombre ?? "").Trim();
+        if (nombre.Length < 2) { Toast.Warning("Escribí el nombre del cliente nuevo."); return; }
+        creandoCli = true;
+        try
+        {
+            var tel = selectedNumero.StartsWith("ig:") ? null : PrettyNumero(selectedNumero);
+            var nuevo = await Api.CreateCafeClienteAsync(new CreateCafeClienteRequest { Nombre = nombre, Telefono = tel, Tipo = "OTRO" });
+            if (nuevo is null) { Toast.Error("No pude crear el cliente. Probá de nuevo."); return; }
+            await VincularNumeroACliente(nuevo.Id, nuevo.Nombre);
+            showVincular = false;
+        }
+        catch { Toast.Error("No pude crear el cliente. Probá de nuevo."); }
+        finally { creandoCli = false; }
     }
 
     async Task BuscarClientesVincular()
