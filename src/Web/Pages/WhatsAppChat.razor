@@ -471,7 +471,10 @@
                                                     <div style="font-weight:600;">@ct.Nombre</div>
                                                     <div style="font-size:0.78rem; color:#6b7280;">+@ct.Numero</div>
                                                 </div>
-                                                <button class="wa-contacto-btn" title="Abrir un chat con este contacto" @onclick="() => IrAContacto(ct.Numero)">💬 Escribir</button>
+                                                <div style="display:flex; flex-direction:column; gap:0.3rem; flex-shrink:0;">
+                                                    <button class="wa-contacto-btn" title="Escribirle a este contacto" @onclick="() => EscribirAContactoCompartido(ct.Nombre, ct.Numero)" @onclick:stopPropagation="true">💬 Escribir</button>
+                                                    <button class="wa-contacto-btn" title="Guardar este contacto en tu agenda" @onclick="() => AgendarContactoCompartido(ct.Nombre, ct.Numero)" @onclick:stopPropagation="true">➕ Agendar</button>
+                                                </div>
                                             </div>
                                         }
                                     }
@@ -1933,11 +1936,42 @@
         return res;
     }
 
-    // Abre (o crea) la conversación con el número de un contacto compartido.
-    async Task IrAContacto(string numero)
+    // 2026-08-03: "Escribir" a un contacto compartido. Si ya existe un chat con ese número, lo abre.
+    // Si es nuevo, abre el panel de "Nueva conversación" ya cargado (porque a un número nuevo hay que
+    // escribirle con plantilla — regla de las 24h de WhatsApp).
+    async Task EscribirAContactoCompartido(string? nombre, string? numero)
     {
-        var inbox = "whatsapp:+" + new string((numero ?? "").Where(char.IsDigit).ToArray());
-        await SelectConv(inbox, null);
+        var digs = new string((numero ?? "").Where(char.IsDigit).ToArray());
+        if (string.IsNullOrWhiteSpace(digs)) { Toast.Warning("Ese contacto no trae un número válido"); return; }
+        var existente = conversaciones.FirstOrDefault(c =>
+            new string((c.Numero ?? "").Where(char.IsDigit).ToArray()) == digs);
+        if (existente != null)
+        {
+            await SelectConv(existente.Numero, existente.Linea);   // ya hablaste con él: abrí ese chat
+            return;
+        }
+        await AbrirNuevaConv();   // contacto nuevo: dejá el panel de nueva conversación listo
+        nvNumero = digs;
+        nvClienteSeleccionado = string.IsNullOrWhiteSpace(nombre) ? "este contacto" : nombre;
+        StateHasChanged();
+    }
+
+    // 2026-08-03: "Agendar" un contacto compartido = abrir el form de contacto ya con nombre y número puestos.
+    void AgendarContactoCompartido(string? nombre, string? numero)
+    {
+        var digs = new string((numero ?? "").Where(char.IsDigit).ToArray());
+        if (string.IsNullOrWhiteSpace(digs)) { Toast.Warning("Ese contacto no trae un número válido"); return; }
+        if (EstaEnContactos(digs)) { Toast.Warning("Ese contacto ya está en tu agenda"); return; }
+        quickContactNumero = digs;
+        quickContactNombre = string.IsNullOrWhiteSpace(nombre) ? "" : nombre;
+        quickContactRol = "cliente";
+        quickContactNotas = "";
+        quickContactClienteId = null;
+        quickContactClienteNombre = null;
+        quickContactClienteQuery = "";
+        clienteResultadosQuick = new();
+        showQuickContact = true;
+        StateHasChanged();
     }
 
     // Arma el texto lindo que se le pasa al cliente. soloAlias = solo banco + alias (para el que no quiere el CBU largo).
