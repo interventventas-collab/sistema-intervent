@@ -253,6 +253,13 @@
                 <button class="btn btn-outline-info btn-sm" @onclick="EnviarMenuRol" disabled="@enviandoMenuRol" title="Enviar a este contacto el menú '1-Cliente / 2-Proveedor / 3-Otros' para que se identifique">
                     @(enviandoMenuRol ? "⏳" : "❓") Menú rol
                 </button>
+                @* 2026-08-03: escribirle con plantilla aprobada (sirve cuando pasaron +24hs y no se puede escribir libre) *@
+                @if (SelectedConv()?.Canal != "INSTAGRAM")
+                {
+                    <button class="btn btn-outline-success btn-sm" @onclick="EscribirConPlantilla" title="Escribirle con una plantilla aprobada (necesario cuando pasaron más de 24hs desde su último mensaje)">
+                        ✍️ Plantilla
+                    </button>
+                }
                 <button class="btn btn-outline-secondary btn-sm wa-icon-round" @onclick="@(() => showConfig = true)" title="Configurar respuestas rápidas y contactos">
                     ⚙️
                 </button>
@@ -717,44 +724,64 @@
                     </div>
                 }
 
-                @* 2026-08-02: buscar un contacto en todas las fuentes para completar el número solo *@
-                <div style="margin-bottom:0.7rem; position:relative;">
-                    <label style="font-size:0.78rem; color:#6b7280; display:block;">Buscar contacto (clientes, WhatsApp, MercadoLibre)</label>
-                    <input class="form-control form-control-sm" placeholder="Escribí un nombre o número…"
-                           @bind="nvClienteQuery" @bind:event="oninput" @onkeyup="BuscarNvClientes" />
-                    @if (nvClienteSeleccionado != null)
-                    {
-                        <div style="font-size:0.72rem; color:#16a34a; margin-top:0.25rem;">✔️ Elegiste: <b>@nvClienteSeleccionado</b> — el número se completó abajo.</div>
-                    }
-                    @if (nvBuscandoCliente)
-                    {
-                        <div style="font-size:0.72rem; color:#9ca3af; margin-top:0.25rem;">Buscando…</div>
-                    }
-                    else if (!string.IsNullOrWhiteSpace(nvClienteQuery) && nvClienteQuery.Length >= 2 && nvClienteResultados.Count == 0)
-                    {
-                        <div style="font-size:0.72rem; color:#9ca3af; margin-top:0.25rem;">Sin contactos con teléfono para esa búsqueda.</div>
-                    }
-                    @if (nvClienteResultados.Count > 0)
-                    {
-                        <div style="border:1px solid #e5e7eb; border-radius:8px; margin-top:0.3rem; max-height:220px; overflow-y:auto;">
-                            @foreach (var cli in nvClienteResultados)
-                            {
-                                <button type="button" class="btn btn-sm" style="display:block; width:100%; text-align:left; border:0; border-bottom:1px solid #f3f4f6; border-radius:0; font-size:0.82rem;"
-                                        @onclick="() => SeleccionarNvCliente(cli)">
-                                    👤 <b>@cli.Nombre</b>
-                                    <span style="color:#9ca3af;">— @cli.Numero</span>
-                                    <span style="font-size:0.65rem; color:#2563eb; background:#eff6ff; border-radius:6px; padding:0.05rem 0.35rem; margin-left:0.3rem;">@cli.Origen</span>
-                                </button>
-                            }
+                @* 2026-08-03: buscador ESTILO WHATSAPP — una sola casilla (nombre o número), como el WhatsApp de verdad *@
+                @if (nvClienteSeleccionado != null)
+                {
+                    @* Ya elegiste a alguien: tarjetita clara con opción de cambiar *@
+                    <div style="display:flex; align-items:center; gap:0.6rem; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:0.55rem 0.7rem; margin-bottom:0.8rem;">
+                        <div class="wa-nv-avatar" style="background:#25d366;">@InicialDe(nvClienteSeleccionado)</div>
+                        <div style="flex:1; min-width:0; line-height:1.25;">
+                            <div style="font-weight:600; color:#111; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Le vas a escribir a @nvClienteSeleccionado</div>
+                            <div style="font-size:0.82rem; color:#16a34a;">@BonitoNumero(nvNumero)</div>
                         </div>
-                    }
-                </div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="LimpiarNvCliente" title="Elegir otro contacto o número">✏️ Cambiar</button>
+                    </div>
+                }
+                else
+                {
+                    <div style="margin-bottom:0.8rem; position:relative;">
+                        <label style="font-size:0.78rem; color:#6b7280; display:block;">¿A quién le escribís? <span style="color:#dc2626;">*</span></label>
+                        <input class="form-control" placeholder="🔍 Escribí un nombre o un número…"
+                               @bind="nvClienteQuery" @bind:event="oninput" @onkeyup="BuscarNvClientes" />
+                        <span style="font-size:0.7rem; color:#9ca3af;">Buscá por nombre (clientes, WhatsApp, MercadoLibre) o pegá un número con el código de país (54).</span>
 
-                <div style="margin-bottom:0.7rem;">
-                    <label style="font-size:0.78rem; color:#6b7280; display:block;">Número de destino <span style="color:#dc2626;">*</span></label>
-                    <input class="form-control form-control-sm" @bind="nvNumero" @bind:event="oninput" placeholder="Con código de país, ej: 5491122525458" />
-                    <span style="font-size:0.7rem; color:#9ca3af;">Solo números, con código de país (54) y el 9 de celular. Podés elegir un cliente arriba o escribirlo a mano.</span>
-                </div>
+                        @if (nvBuscandoCliente)
+                        {
+                            <div style="font-size:0.78rem; color:#9ca3af; margin-top:0.4rem;">Buscando…</div>
+                        }
+                        @{ var directo = NvNumeroDirecto(); }
+                        @if (directo != null || nvClienteResultados.Count > 0)
+                        {
+                            <div style="border:1px solid #e5e7eb; border-radius:10px; margin-top:0.4rem; max-height:300px; overflow-y:auto; box-shadow:0 6px 18px rgba(0,0,0,0.08);">
+                                @if (directo != null)
+                                {
+                                    <button type="button" class="wa-nv-item" @onclick="() => UsarNumeroDirecto(directo)">
+                                        <div class="wa-nv-avatar" style="background:#2563eb;">📱</div>
+                                        <div style="flex:1; min-width:0;">
+                                            <div style="font-weight:600; color:#111;">Enviar a este número nuevo</div>
+                                            <div style="font-size:0.82rem; color:#2563eb;">@BonitoNumero(directo)</div>
+                                        </div>
+                                    </button>
+                                }
+                                @foreach (var cli in nvClienteResultados)
+                                {
+                                    <button type="button" class="wa-nv-item" @onclick="() => SeleccionarNvCliente(cli)">
+                                        <div class="wa-nv-avatar">@InicialDe(cli.Nombre)</div>
+                                        <div style="flex:1; min-width:0;">
+                                            <div style="font-weight:600; color:#111; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@cli.Nombre</div>
+                                            <div style="font-size:0.82rem; color:#6b7280;">@BonitoNumero(cli.Numero)</div>
+                                        </div>
+                                        <span class="wa-nv-origen">@OrigenLindo(cli.Origen)</span>
+                                    </button>
+                                }
+                            </div>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(nvClienteQuery) && nvClienteQuery.Length >= 2 && !nvBuscandoCliente)
+                        {
+                            <div style="font-size:0.78rem; color:#9ca3af; margin-top:0.4rem;">Sin contactos para esa búsqueda. Si es un número nuevo, escribilo completo con el código de país (54) y el 9 de celular.</div>
+                        }
+                    </div>
+                }
 
                 <div style="margin-bottom:0.7rem;">
                     <label style="font-size:0.78rem; color:#6b7280; display:block;">Plantilla <span style="color:#dc2626;">*</span></label>
@@ -1192,6 +1219,12 @@
     .wa-tab:hover { color: #25d366; }
     .wa-tab.active { color: #25d366; border-bottom-color: #25d366; font-weight: 600; background: #fff; }
     .wa-modal-body { padding: 1rem; overflow-y: auto; flex: 1; }
+    /* 2026-08-03: buscador estilo WhatsApp en "Nueva conversación" */
+    .wa-nv-avatar { width: 40px; height: 40px; border-radius: 50%; background: #64748b; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.05rem; flex-shrink: 0; }
+    .wa-nv-item { display: flex; align-items: center; gap: 0.65rem; width: 100%; text-align: left; border: 0; border-bottom: 1px solid #f3f4f6; background: #fff; padding: 0.55rem 0.7rem; cursor: pointer; }
+    .wa-nv-item:last-child { border-bottom: 0; }
+    .wa-nv-item:hover { background: #f0fdf4; }
+    .wa-nv-origen { font-size: 0.66rem; color: #2563eb; background: #eff6ff; border-radius: 6px; padding: 0.1rem 0.4rem; flex-shrink: 0; }
     /* Filtros sidebar */
     .wa-filtros { display: flex; gap: 0.3rem; padding: 0.55rem 0.7rem; border-bottom: 1px solid #eef1f5; background: #fbfcfe; flex-wrap: wrap; }
     .wa-filtro { background: #fff; border: 1px solid #dfe4ea; color: #475569; padding: 0.3rem 0.75rem; border-radius: 999px; font-size: 0.76rem; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.12s; }
@@ -2143,6 +2176,25 @@
         StateHasChanged();
     }
 
+    // 2026-08-03: abrir "Nueva conversación" YA con el número (y la línea) del chat abierto, para elegir plantilla directo
+    async Task EscribirConPlantilla()
+    {
+        await AbrirNuevaConv();
+        var num = new string((selectedNumero ?? "").Where(char.IsDigit).ToArray());
+        if (string.IsNullOrWhiteSpace(num)) return;
+        nvNumero = num;
+        var conv = SelectedConv();
+        nvClienteSeleccionado = !string.IsNullOrWhiteSpace(conv?.ClienteNombre) ? conv!.ClienteNombre
+            : (!string.IsNullOrWhiteSpace(conv?.NombrePerfil) ? conv!.NombrePerfil
+            : "este contacto");
+        // Intentar mandar desde la MISMA línea por la que llegó el chat
+        var linMatch = nvLineas.FirstOrDefault(l =>
+            new string((l.Numero ?? "").Where(char.IsDigit).ToArray()) == new string((conv?.Linea ?? "").Where(char.IsDigit).ToArray())
+            && !string.IsNullOrEmpty(new string((l.Numero ?? "").Where(char.IsDigit).ToArray())));
+        if (linMatch != null) nvLineaPhoneId = linMatch.PhoneId;
+        StateHasChanged();
+    }
+
     // 2026-08-02: buscar contactos en TODAS las fuentes (café, WhatsApp, MeLi, agenda) para completar el número solo
     async Task BuscarNvClientes()
     {
@@ -2163,6 +2215,63 @@
         nvClienteResultados = new();
         nvClienteQuery = "";
     }
+
+    // 2026-08-03: si lo que se escribió parece un número (sin letras y con 8+ dígitos), ofrecer mandarle directo
+    string? NvNumeroDirecto()
+    {
+        var q = nvClienteQuery ?? "";
+        if (q.Any(char.IsLetter)) return null;
+        var digs = new string(q.Where(char.IsDigit).ToArray());
+        return digs.Length >= 8 ? digs : null;
+    }
+
+    void UsarNumeroDirecto(string digitos)
+    {
+        nvNumero = digitos;
+        nvClienteSeleccionado = "un número nuevo";
+        nvClienteResultados = new();
+        nvClienteQuery = "";
+    }
+
+    void LimpiarNvCliente()
+    {
+        nvNumero = "";
+        nvClienteSeleccionado = null;
+        nvClienteResultados = new();
+        nvClienteQuery = "";
+    }
+
+    // Inicial para el circulito (avatar) — como en WhatsApp
+    static string InicialDe(string? nombre)
+    {
+        var n = (nombre ?? "").TrimStart();
+        return string.IsNullOrEmpty(n) ? "👤" : n.Substring(0, 1).ToUpperInvariant();
+    }
+
+    // Número lindo para mostrar: "+54 9 11 6402-7710" cuando se puede, si no "+" y los dígitos
+    static string BonitoNumero(string? numero)
+    {
+        var d = new string((numero ?? "").Where(char.IsDigit).ToArray());
+        if (d.Length == 0) return numero ?? "";
+        if (d.StartsWith("549") && d.Length >= 12)
+        {
+            var resto = d.Substring(3);               // área + abonado
+            var area = resto.Length >= 10 ? resto.Substring(0, 2) : resto.Substring(0, Math.Max(0, resto.Length - 8));
+            var abon = resto.Substring(area.Length);
+            var mitad = abon.Length / 2;
+            return $"+54 9 {area} {abon.Substring(0, mitad)}-{abon.Substring(mitad)}";
+        }
+        return "+" + d;
+    }
+
+    static string OrigenLindo(string? origen) => origen switch
+    {
+        "MercadoLibre" => "MeLi",
+        "WhatsApp" => "WhatsApp",
+        "Cliente" => "Cliente",
+        "Agenda" => "Agenda",
+        _ => origen ?? ""
+    };
 
     ApiClient.TwPlantillaDto? PlantillaSel()
         => nvPlantillas.FirstOrDefault(p => p.Name == nvPlantillaName);
