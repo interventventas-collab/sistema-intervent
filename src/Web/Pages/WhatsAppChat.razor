@@ -320,7 +320,7 @@
                                         <div class="wa-bubble-body">@((MarkupString)EscapeMsg(m.Cuerpo))</div>
                                     }
                                     <div class="wa-bubble-meta">
-                                        @FormatHora(m.CreatedAt)
+                                        @FormatHoraMsg(m.CreatedAt)
                                         @* 2026-07-24: tilditos de estado, solo en los mensajes que MANDAMOS *@
                                         @if (m.Direccion == "OUTGOING")
                                         {
@@ -2299,6 +2299,18 @@
         if (local.Date == ahora.Date) return local.ToString("HH:mm");
         if (local.Date == ahora.Date.AddDays(-1)) return "Ayer";
         return local.ToString("dd/MM");
+    }
+
+    // 2026-08-03: para cada mensaje del chat SIEMPRE mostramos la hora, y sumamos la fecha
+    // cuando no es de hoy. Así nunca se pierde a qué hora/día escribieron. (La lista de la
+    // izquierda sigue usando FormatHora, que es más compacto.)
+    string FormatHoraMsg(DateTime utc)
+    {
+        var local = utc.ToArTime();
+        var ahora = DateTime.Now;
+        if (local.Date == ahora.Date) return local.ToString("HH:mm");
+        if (local.Date == ahora.Date.AddDays(-1)) return "Ayer " + local.ToString("HH:mm");
+        return local.ToString("dd/MM HH:mm");
     }
 
     string TruncateText(string? s, int max)
