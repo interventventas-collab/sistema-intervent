@@ -6478,6 +6478,27 @@ public class ApiClient
     public async Task<List<TwClienteBuscarDto>> BuscarTwClientesAsync(string q)
         => await _http.GetFromJsonAsync<List<TwClienteBuscarDto>>($"/api/whatsapp/twilio/clientes-buscar?q={Uri.EscapeDataString(q ?? "")}") ?? new();
 
+    // 2026-08-03: asociar un chat a un cliente del sistema en UN paso (o desvincular con clienteId=null).
+    public record TwVincularResult(bool Ok, int? ClienteId, string? ClienteNombre, string? ClienteCodigo);
+    public async Task<TwVincularResult?> VincularTwClienteAsync(string numero, int? clienteId)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/contactos/vincular-cliente", new { numero, clienteId });
+            if (!resp.IsSuccessStatusCode) return null;
+            return await resp.Content.ReadFromJsonAsync<TwVincularResult>();
+        }
+        catch { return null; }
+    }
+
+    // 2026-08-03: sugerencia automática de cliente por coincidencia de teléfono (para el cartelito).
+    public record TwSugerenciaCliente(int Id, string Nombre, string? CodigoInterno);
+    public async Task<TwSugerenciaCliente?> SugerenciaClienteAsync(string numero)
+    {
+        try { return await _http.GetFromJsonAsync<TwSugerenciaCliente?>($"/api/whatsapp/twilio/contactos/sugerencia-cliente?numero={Uri.EscapeDataString(numero ?? "")}"); }
+        catch { return null; }
+    }
+
     // 2026-07-29: saldo (deuda actual) de un cliente, para el botón "Enviar saldo" del chat.
     // Reusa el estado de cuenta ya existente; solo nos quedamos con el número final.
     public record ClienteSaldoDto(int ClienteId, string ClienteNombre, decimal Saldo);

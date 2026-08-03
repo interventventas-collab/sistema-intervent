@@ -725,6 +725,77 @@ public class WhatsAppTwilioController : ControllerBase
         return Ok(c);
     }
 
+    // ===== Vincular un chat a un cliente del sistema EN UN PASO (asociar fácil) =====
+    public record VincularClienteRequest(string Numero, int? ClienteId);
+
+    /// <summary>2026-08-03: POST contactos/vincular-cliente — asocia (o desasocia) un número de
+    /// WhatsApp a un cliente del sistema en UN solo paso, sin pedir nombre ni rol. Si el contacto
+    /// no existía, lo crea con el nombre del cliente y rol "cliente". Si ClienteId viene null,
+    /// desvincula (deja el contacto pero sin cliente).</summary>
+    [HttpPost("contactos/vincular-cliente")]
+    [Authorize]
+    public async Task<IActionResult> VincularCliente([FromBody] VincularClienteRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req?.Numero))
+            return BadRequest(new { error = "Falta el número" });
+        var numero = req!.Numero.Trim();
+        if (!numero.StartsWith("whatsapp:")) numero = "whatsapp:" + numero;
+
+        string? cliNombre = null; string? cliCodigo = null;
+        if (req.ClienteId.HasValue)
+        {
+            var cli = await _db.CafeClientes.AsNoTracking()
+                .Where(x => x.Id == req.ClienteId.Value)
+                .Select(x => new { x.Nombre, x.CodigoInterno })
+                .FirstOrDefaultAsync();
+            if (cli == null) return BadRequest(new { error = "No encontré ese cliente" });
+            cliNombre = cli.Nombre;
+            cliCodigo = cli.CodigoInterno?.ToString();
+        }
+
+        var c = await _db.WhatsAppTwilioContactos.FirstOrDefaultAsync(x => x.Numero == numero);
+        if (c == null)
+        {
+            if (req.ClienteId == null) return Ok(new { ok = true, clienteId = (int?)null });
+            _db.WhatsAppTwilioContactos.Add(new WhatsAppTwilioContacto
+            {
+                Numero = numero,
+                Nombre = string.IsNullOrWhiteSpace(cliNombre) ? numero.Replace("whatsapp:", "") : cliNombre!,
+                Rol = "cliente",
+                Activo = true,
+                ClienteId = req.ClienteId
+            });
+        }
+        else
+        {
+            c.ClienteId = req.ClienteId;
+            // Si el contacto estaba sin nombre y ahora lo vinculamos, le ponemos el del cliente.
+            if (req.ClienteId.HasValue && string.IsNullOrWhiteSpace(c.Nombre) && !string.IsNullOrWhiteSpace(cliNombre))
+                c.Nombre = cliNombre!;
+        }
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, clienteId = req.ClienteId, clienteNombre = cliNombre, clienteCodigo = cliCodigo });
+    }
+
+    /// <summary>2026-08-03: GET contactos/sugerencia-cliente?numero=whatsapp:+549... — busca un
+    /// cliente cuyo teléfono coincida con el número del chat, para ofrecer vincularlo de un toque.
+    /// Compara por los últimos 8 dígitos (el "abonado"), que casi siempre coinciden aunque el
+    /// teléfono del cliente esté guardado con o sin 54/9/15/código de área. Devuelve null si no hay.</summary>
+    [HttpGet("contactos/sugerencia-cliente")]
+    [Authorize]
+    public async Task<IActionResult> SugerenciaCliente([FromQuery] string numero = "")
+    {
+        var digits = new string((numero ?? "").Where(char.IsDigit).ToArray());
+        if (digits.Length < 8) return Ok((object?)null);
+        var tail = digits.Substring(digits.Length - 8);
+        var match = await _db.CafeClientes.AsNoTracking()
+            .Where(c => c.Telefono != null && c.Telefono != "" && c.Telefono.Contains(tail))
+            .OrderBy(c => c.Nombre)
+            .Select(c => new { c.Id, c.Nombre, CodigoInterno = c.CodigoInterno.HasValue ? c.CodigoInterno.ToString() : null })
+            .FirstOrDefaultAsync();
+        return Ok(match == null ? null : (object)match);
+    }
+
     /// <summary>2026-07-23 (pedido Osmar): borra una conversación completa (todos los mensajes de
     /// ese número + sus reacciones) DEL SISTEMA. El chat en el celular del cliente no se toca.
     /// El contacto (si existe) queda: si vuelve a escribir, arranca conversación nueva con su nombre.</summary>

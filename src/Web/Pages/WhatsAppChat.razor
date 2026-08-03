@@ -225,6 +225,12 @@
                         }
                     </div>
                 </div>
+                @if (SelectedConv()?.ClienteId is null)
+                {
+                    <button class="btn btn-sm btn-outline-success" @onclick="AbrirVincularCliente" title="Asociar este chat a un cliente del sistema en un paso" style="font-weight:600;">
+                        🔗 Vincular cliente
+                    </button>
+                }
                 @if (!EstaEnContactos(selectedNumero))
                 {
                     <button class="btn btn-outline-primary btn-sm" @onclick="AbrirAsignarContacto" title="Agregar este número como contacto">
@@ -256,6 +262,21 @@
                     @(borrandoConv ? "⏳" : "🗑")
                 </button>
             </div>
+
+            @* 2026-08-03: cartelito que ADIVINA el cliente por el teléfono y ofrece vincularlo de un toque *@
+            @if (SelectedConv()?.ClienteId is null && sugerenciaCliente is not null)
+            {
+                <div class="wa-sug-cliente">
+                    <span style="font-size:1.1rem;">💡</span>
+                    <div style="flex:1; line-height:1.3;">
+                        ¿Este chat es de <b>@sugerenciaCliente.Nombre</b>@(string.IsNullOrWhiteSpace(sugerenciaCliente.CodigoInterno) ? "" : $" (#{sugerenciaCliente.CodigoInterno})")?
+                    </div>
+                    <button class="btn btn-sm btn-success" @onclick="VincularSugerido" disabled="@vinculando" style="font-weight:600; white-space:nowrap;">
+                        @(vinculando ? "⏳" : "✓ Sí, vincular")
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="DescartarSugerencia" disabled="@vinculando" style="white-space:nowrap;">No</button>
+                </div>
+            }
 
             @* 2026-07-23: id para poder bajar el scroll al ultimo mensaje (como WhatsApp de verdad) *@
             <div class="wa-messages" id="wa-messages-scroll" @ref="messagesScroll">
@@ -597,6 +618,42 @@
             <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:1rem;">
                 <button class="btn btn-secondary btn-sm" @onclick="@(() => showQuickContact = false)">Cancelar</button>
                 <button class="btn btn-success btn-sm" @onclick="GuardarQuickContact">✓ Guardar contacto</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* 2026-08-03: VINCULAR CLIENTE (idea "asociar fácil") — un solo buscador, sin pedir nombre ni rol *@
+@if (showVincular)
+{
+    <div class="wa-modal-backdrop" @onclick="@(() => showVincular = false)"></div>
+    <div class="wa-modal" style="max-width:460px;" @onclick:stopPropagation="true">
+        <div class="wa-modal-header">
+            <h3 style="margin:0; flex:1; font-size:1.05rem;">🔗 Vincular cliente</h3>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="@(() => showVincular = false)">×</button>
+        </div>
+        <div class="wa-modal-body">
+            <p style="font-size:0.82rem; color:#6b7280; margin:0 0 0.6rem;">
+                Buscá el cliente por <b>nombre</b>, <b>código</b> o <b>teléfono</b> y tocalo. Listo, queda asociado a este chat.
+            </p>
+            <input class="form-control" placeholder="Buscar cliente…" @bind="vincularQuery" @bind:event="oninput" @onkeyup="BuscarClientesVincular" autofocus />
+            @if (vincularBuscando)
+            {
+                <div style="padding:0.5rem; color:#9ca3af; font-size:0.85rem;">Buscando…</div>
+            }
+            else if (!string.IsNullOrWhiteSpace(vincularQuery) && vincularResultados.Count == 0)
+            {
+                <div style="padding:0.5rem; color:#9ca3af; font-size:0.85rem;">Sin resultados. Probá con otro dato.</div>
+            }
+            <div style="margin-top:0.4rem; max-height:280px; overflow-y:auto;">
+                @foreach (var cli in vincularResultados.Take(12))
+                {
+                    <button class="wa-vincular-opt" @onclick="() => VincularAhora(cli)" disabled="@vinculando">
+                        🛍️ <b>@cli.Nombre</b>
+                        @if (!string.IsNullOrEmpty(cli.CodigoInterno)) { <span style="color:#6b7280; font-size:0.75rem;"> · #@cli.CodigoInterno</span> }
+                        @if (!string.IsNullOrEmpty(cli.Telefono)) { <span style="color:#9ca3af; font-size:0.72rem;"> · 📞 @cli.Telefono</span> }
+                    </button>
+                }
             </div>
         </div>
     </div>
@@ -1090,6 +1147,12 @@
     .wa-cbu-solo-alias { margin-left: 1rem; width: calc(100% - 1rem); background: #fbfbfd; font-size: 0.8rem; color: #6b7280; }
     .wa-saldo-cli:disabled { opacity: 0.6; cursor: wait; }
     .wa-saldo-info { font-size: 0.8rem; color: #6b7280; padding: 0.2rem 0.1rem; }
+    /* 2026-08-03: cartelito que adivina el cliente por teléfono */
+    .wa-sug-cliente { display: flex; align-items: center; gap: 0.55rem; margin: 0.5rem 1rem 0; padding: 0.55rem 0.75rem; background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; font-size: 0.88rem; color: #374151; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+    /* 2026-08-03: opciones del buscador de "Vincular cliente" */
+    .wa-vincular-opt { display: block; width: 100%; text-align: left; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.55rem 0.65rem; margin-bottom: 0.35rem; font-size: 0.9rem; cursor: pointer; transition: all .12s; }
+    .wa-vincular-opt:hover:not(:disabled) { background: #ecfdf5; border-color: #16a34a; }
+    .wa-vincular-opt:disabled { opacity: 0.6; cursor: wait; }
     .wa-attach-btn { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 50%; background: #fff; border: 1px solid #e0e0e0; cursor: pointer; font-size: 1.3rem; transition: all .15s; user-select: none; }
     .wa-attach-btn:hover { background: #e9f5ff; border-color: #25d366; transform: translateY(-1px); }
     .wa-attach-btn.uploading { background: #fff8e1; border-color: #ffc107; cursor: wait; animation: wa-attach-pulse 1s ease-in-out infinite; }
@@ -1498,6 +1561,101 @@
             await LoadConversaciones(silent: true);
         }
         else Toast.Error(err ?? "Error al guardar");
+    }
+
+    // ===== Vincular cliente en un paso (idea 1) + sugerencia automática por teléfono (idea 2) =====
+    bool showVincular = false;
+    string vincularQuery = "";
+    bool vincularBuscando = false;
+    bool vinculando = false;
+    List<ApiClient.TwClienteBuscarDto> vincularResultados = new();
+
+    ApiClient.TwSugerenciaCliente? sugerenciaCliente = null;
+    // Chats donde el usuario dijo "No" a la sugerencia (para no volver a preguntar en esta sesión).
+    readonly HashSet<string> sugerenciasDescartadas = new();
+
+    string ClaveChat() => $"{selectedNumero}|{selectedLinea}";
+
+    void AbrirVincularCliente()
+    {
+        if (selectedNumero == null) return;
+        vincularQuery = "";
+        vincularResultados = new();
+        vincularBuscando = false;
+        showVincular = true;
+    }
+
+    async Task BuscarClientesVincular()
+    {
+        var q = (vincularQuery ?? "").Trim();
+        if (q.Length < 1) { vincularResultados = new(); return; }
+        vincularBuscando = true;
+        try { vincularResultados = await Api.BuscarTwClientesAsync(q); }
+        catch { vincularResultados = new(); }
+        vincularBuscando = false;
+    }
+
+    async Task VincularAhora(ApiClient.TwClienteBuscarDto cli)
+    {
+        if (selectedNumero == null || vinculando) return;
+        await VincularNumeroACliente(cli.Id, cli.Nombre);
+        showVincular = false;
+    }
+
+    async Task VincularSugerido()
+    {
+        if (sugerenciaCliente == null) return;
+        await VincularNumeroACliente(sugerenciaCliente.Id, sugerenciaCliente.Nombre);
+    }
+
+    void DescartarSugerencia()
+    {
+        sugerenciasDescartadas.Add(ClaveChat());
+        sugerenciaCliente = null;
+    }
+
+    // Llama al backend, y al volver refresca contactos + conversaciones para que el chat
+    // muestre al toque el cartel "🛍️ Cliente: ..." y se esconda el botón de vincular.
+    async Task VincularNumeroACliente(int clienteId, string clienteNombre)
+    {
+        if (selectedNumero == null) return;
+        vinculando = true;
+        try
+        {
+            var res = await Api.VincularTwClienteAsync(selectedNumero, clienteId);
+            if (res?.Ok == true)
+            {
+                sugerenciaCliente = null;
+                sugerenciasDescartadas.Remove(ClaveChat());
+                await LoadContactos();
+                await LoadConversaciones(silent: true);
+                Toast.Success($"🔗 Chat vinculado a {clienteNombre}");
+            }
+            else Toast.Error("No pude vincular. Probá de nuevo.");
+        }
+        catch { Toast.Error("No pude vincular. Probá de nuevo."); }
+        finally { vinculando = false; }
+    }
+
+    // Se llama al abrir/cambiar de chat: si no tiene cliente y no fue descartado, le pregunta al
+    // backend si hay un cliente con ese mismo teléfono y arma el cartelito.
+    async Task BuscarSugerenciaCliente()
+    {
+        sugerenciaCliente = null;
+        if (selectedNumero == null) return;
+        if (SelectedConv()?.ClienteId is not null) return;      // ya está vinculado
+        if (sugerenciasDescartadas.Contains(ClaveChat())) return; // dijo "No" hace un rato
+        try
+        {
+            var sug = await Api.SugerenciaClienteAsync(selectedNumero);
+            // Puede haber cambiado de chat mientras respondía el server: confirmamos que sigue siendo este.
+            if (sug is not null && SelectedConv()?.ClienteId is null && !sugerenciasDescartadas.Contains(ClaveChat()))
+            {
+                sugerenciaCliente = sug;
+                StateHasChanged();
+            }
+        }
+        catch { }
     }
     // nuevos
     string nuevaRespNombre = "", nuevaRespTexto = "";
@@ -2030,7 +2188,9 @@
     {
         selectedNumero = numero;
         selectedLinea = linea;
+        sugerenciaCliente = null;   // limpiar la del chat anterior mientras carga este
         await LoadMensajes();
+        await BuscarSugerenciaCliente();
     }
 
     // 2026-08-02: volver a la lista de chats (modo celular)
@@ -2038,6 +2198,7 @@
     {
         selectedNumero = null;
         selectedLinea = null;
+        sugerenciaCliente = null;
     }
 
     // 2026-07-23: para saber si entraron mensajes nuevos y bajar el scroll solo en ese caso
