@@ -1513,6 +1513,7 @@
     {
         await LoadConversaciones();
         await LoadLineasConfig();
+        AplicarLineaPorDefecto();
         await CargarSonidoMaster();
         if (!string.IsNullOrWhiteSpace(NumeroInicial))
             await SelectConv(NumeroInicial, conversaciones.FirstOrDefault(c => c.Numero == NumeroInicial)?.Linea);
@@ -2429,6 +2430,18 @@
     // "Todas las líneas"; sin ninguna detectada todavía = etiqueta genérica hasta que entre el 1er mensaje.
     bool showLineaMenu = false;
     void SeleccionarLinea(string id) { filtroLinea = id; showLineaMenu = false; }
+
+    // 2026-08-03: al abrir la pantalla, arrancar viendo la línea "FRIKAF by INTERVENT" (no "Todas").
+    // Si hay una sola línea no hace falta filtrar. Corre una sola vez (OnInitializedAsync), así que si
+    // después el usuario elige otra línea o "Todas", queda como la dejó (el timer no lo pisa).
+    void AplicarLineaPorDefecto()
+    {
+        var ls = LineasDetectadas();
+        if (ls.Count <= 1) return;
+        var frikaf = ls.FirstOrDefault(l =>
+            string.Equals(LineaNombre(l.Id, l.Numero), "FRIKAF by INTERVENT", StringComparison.OrdinalIgnoreCase));
+        if (frikaf.Id != null) filtroLinea = frikaf.Id;
+    }
 
     // === 2026-08-01: nombre + imagen personalizados por línea (WhatsApp e Instagram) ===
     Dictionary<string, ApiClient.TwLineaConfigDto> lineaCfg = new();
