@@ -462,6 +462,10 @@ public class CafeVentaDto
     public bool PorTransporte { get; set; }
     public string? TransporteEmpresa { get; set; }
     public string? TransporteDestino { get; set; }
+    public int? TransporteId { get; set; }
+    public int? RemitenteId { get; set; }
+    public int? CantidadBultos { get; set; }
+    public bool EsFragil { get; set; }
     /// <summary>2026-06-05: Operador que cargo la venta (OSMAR/GERMAN/GABRIEL/etc). Null para
     /// ventas previas al feature.</summary>
     public string? CreadoPorOperador { get; set; }
@@ -805,6 +809,10 @@ public class CreateCafeVentaRequest
     public bool PorTransporte { get; set; }
     public string? TransporteEmpresa { get; set; }
     public string? TransporteDestino { get; set; }
+    public int? TransporteId { get; set; }
+    public int? RemitenteId { get; set; }
+    public int? CantidadBultos { get; set; }
+    public bool EsFragil { get; set; }
     public bool IsPaid { get; set; }
     public string? TipoComprobante { get; set; }
     public string? CondicionIva { get; set; }
@@ -864,6 +872,10 @@ public class UpdateCafeVentaRequest
     public bool? PorTransporte { get; set; }
     public string? TransporteEmpresa { get; set; }
     public string? TransporteDestino { get; set; }
+    public int? TransporteId { get; set; }
+    public int? RemitenteId { get; set; }
+    public int? CantidadBultos { get; set; }
+    public bool? EsFragil { get; set; }
     public bool? IsPaid { get; set; }
     public List<CafeCotizarItemRequest>? Items { get; set; }
     public decimal? Descuento { get; set; }

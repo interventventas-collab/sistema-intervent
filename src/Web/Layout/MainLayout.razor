@@ -864,7 +864,7 @@
                 @* ───────── 7. CONFIG / TEMPORAL ───────── *@
                 <NavGroup Label="⚙️ Config / Temporal" Icon="@SvgIcons.Settings" FlyoutMode="true"
                           HasActiveChild="@(IsActive("/cafe/configuracion") || IsActive("/cafe/cotejo") || IsActive("/cafe/saldos") || IsActive("/cafe/maquinas") || IsActive("/cafe/arca/errores"))">
-                    <NavItem Href="/cafe/configuracion" Label="Configuración" Icon="@SvgIcons.Settings"
+                    <NavItem Href="/cafe/configuracion" Label="⚙️ Configuración del sistema" Icon="@SvgIcons.Settings"
                              IsActive="@IsActive("/cafe/configuracion")" OnClick="@(() => NavigateTo("/cafe/configuracion"))" />
                     <NavItem Href="/cafe/arca/errores" Label="⚠ Errores ARCA" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/cafe/arca/errores")" OnClick="@(() => NavigateTo("/cafe/arca/errores"))" />

@@ -6,7 +6,7 @@
 
 <div class="card">
     <div class="card-header">
-        <h3>⚙️ Configuración del módulo Café</h3>
+        <h3>⚙️ Configuración del sistema</h3>
     </div>
     <div class="card-body">
         @if (loading)
@@ -223,6 +223,92 @@
                     @(saving ? "Guardando..." : "Guardar configuración")
                 </button>
             </div>
+
+            <hr style="margin: 1.6rem 0 1rem;" />
+            <h4 style="margin: 0 0 0.3rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">🚚 Transportes (para rótulos/etiquetas)</h4>
+            <p style="font-size: 0.8rem; color: #6b7280; margin: 0 0 0.7rem;">
+                Empresas de transporte para despachar ventas. Se eligen al marcar <strong>Transporte</strong> en una venta y con estos datos se arma el rótulo/etiqueta.
+            </p>
+
+            @if (transportes.Count == 0)
+            {
+                <p style="font-size: 0.82rem; color: #9ca3af; margin: 0 0 0.6rem;">Todavía no cargaste ningún transporte. Agregá el primero abajo 👇</p>
+            }
+            else
+            {
+                <div style="display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.9rem;">
+                    @foreach (var t in transportes)
+                    {
+                        <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.5rem 0.7rem; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
+                            <div>
+                                <strong>@t.Nombre</strong>
+                                @if (t.PagoDestino)
+                                {
+                                    <span style="background: #fef3c7; color: #92400e; font-size: 0.68rem; padding: 0.05rem 0.35rem; border-radius: 999px; margin-left: 0.35rem;">Pago destino</span>
+                                }
+                                <div style="font-size: 0.75rem; color: #6b7280; margin-top: 0.1rem;">
+                                    @{
+                                        var partes = new[] { t.Direccion, t.Telefono, t.Localidad, t.Provincia }
+                                            .Where(x => !string.IsNullOrWhiteSpace(x));
+                                    }
+                                    @(partes.Any() ? string.Join(" · ", partes) : "(sin datos de dirección)")
+                                    @(string.IsNullOrWhiteSpace(t.CodigoPostal) ? "" : $" · CP {t.CodigoPostal}")
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 0.3rem;">
+                                <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem;" @onclick="() => EditTransporte(t)">✏️</button>
+                                <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem;" @onclick="() => DeleteTransporte(t)">🗑</button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
+            <div style="border: 1px dashed #cbd5e1; border-radius: 8px; padding: 0.7rem 0.8rem; background: #f9fafb;">
+                <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.5rem;">@(tEdit.Id == 0 ? "➕ Nuevo transporte" : "✏️ Editando transporte")</div>
+                <div class="form-row">
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Nombre *</label>
+                        <input class="form-input" @bind="tEdit.Nombre" placeholder="Ej: Vía Cargo" />
+                    </div>
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Dirección de la sucursal</label>
+                        <input class="form-input" @bind="tEdit.Direccion" placeholder="Ej: Quaranta 3505" />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Teléfono</label>
+                        <input class="form-input" @bind="tEdit.Telefono" placeholder="(0376) 4471778" />
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Localidad</label>
+                        <input class="form-input" @bind="tEdit.Localidad" placeholder="Ej: Posadas" />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Provincia</label>
+                        <input class="form-input" @bind="tEdit.Provincia" placeholder="Ej: Misiones" />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">CP</label>
+                        <input class="form-input" @bind="tEdit.CodigoPostal" placeholder="3300" />
+                    </div>
+                    <div class="form-group" style="flex: 1; display: flex; align-items: flex-end;">
+                        <label style="font-size: 0.82rem; display: flex; align-items: center; gap: 0.3rem;">
+                            <input type="checkbox" @bind="tEdit.PagoDestino" /> Pago en destino
+                        </label>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 0.4rem; justify-content: flex-end;">
+                    @if (tEdit.Id != 0)
+                    {
+                        <button class="btn btn-secondary" @onclick="CancelTransporteEdit">Cancelar</button>
+                    }
+                    <button class="btn btn-primary" @onclick="SaveTransporte" disabled="@savingT">
+                        @(savingT ? "Guardando..." : (tEdit.Id == 0 ? "Agregar transporte" : "Guardar cambios"))
+                    </button>
+                </div>
+            </div>
         }
     </div>
 </div>
@@ -230,6 +316,63 @@
 @code {
     private bool loading = true;
     private bool saving;
+
+    // === Transportes (rótulos/etiquetas) ===
+    private List<CafeTransporteDto> transportes = new();
+    private TransporteEdit tEdit = new();
+    private bool savingT;
+
+    private class TransporteEdit
+    {
+        public int Id;
+        public string? Nombre, Direccion, Telefono, Localidad, Provincia, CodigoPostal;
+        public bool PagoDestino = true;
+    }
+
+    private async Task LoadTransportes()
+    {
+        transportes = await Api.GetTransportesAsync(false) ?? new();
+    }
+
+    private void EditTransporte(CafeTransporteDto t)
+    {
+        tEdit = new TransporteEdit
+        {
+            Id = t.Id, Nombre = t.Nombre, Direccion = t.Direccion, Telefono = t.Telefono,
+            Localidad = t.Localidad, Provincia = t.Provincia, CodigoPostal = t.CodigoPostal,
+            PagoDestino = t.PagoDestino
+        };
+    }
+
+    private void CancelTransporteEdit() => tEdit = new TransporteEdit();
+
+    private async Task SaveTransporte()
+    {
+        if (string.IsNullOrWhiteSpace(tEdit.Nombre)) { ToastService.Error("Poné el nombre del transporte"); return; }
+        savingT = true;
+        var req = new UpsertTransporteRequest(tEdit.Nombre, tEdit.Direccion, tEdit.Telefono,
+            tEdit.Localidad, tEdit.Provincia, tEdit.CodigoPostal, tEdit.PagoDestino, true);
+        if (tEdit.Id == 0)
+        {
+            var (item, error) = await Api.CrearTransporteAsync(req);
+            if (error is not null) ToastService.Error(error);
+            else { ToastService.Success("Transporte agregado"); tEdit = new TransporteEdit(); await LoadTransportes(); }
+        }
+        else
+        {
+            var (item, error) = await Api.ActualizarTransporteAsync(tEdit.Id, req);
+            if (error is not null) ToastService.Error(error);
+            else { ToastService.Success("Transporte actualizado"); tEdit = new TransporteEdit(); await LoadTransportes(); }
+        }
+        savingT = false;
+    }
+
+    private async Task DeleteTransporte(CafeTransporteDto t)
+    {
+        var (ok, error) = await Api.EliminarTransporteAsync(t.Id);
+        if (!ok) ToastService.Error(error ?? "No se pudo borrar el transporte");
+        else { ToastService.Success("Transporte borrado"); await LoadTransportes(); }
+    }
     private decimal costoFracc = 1000;
     private decimal redondeo = 1000;
     private decimal margenBar = 40;
@@ -308,6 +451,7 @@
             }
         }
         catch { ToastService.Error("Error al cargar la configuración"); }
+        try { await LoadTransportes(); } catch { /* no bloquear la config si falla la lista */ }
         loading = false;
     }
 

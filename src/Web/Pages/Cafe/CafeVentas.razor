@@ -668,6 +668,10 @@
                                               title="@trTitle">
                                             🚛 TRANSPORTE
                                         </span>
+                                        <a href="@Api.BuildRotuloUrl(v.Id, "a4")" target="_blank" title="Imprimir rótulo A4"
+                                           style="display:inline-block; padding:0.15rem 0.45rem; background:#e0e7ff; color:#3730a3; border-radius:999px; font-size:0.7rem; font-weight:800; margin-left:0.2rem; text-decoration:none;">🏷️ A4</a>
+                                        <a href="@Api.BuildRotuloUrl(v.Id, "termica")" target="_blank" title="Imprimir etiqueta térmica 10×15 (Zebra)"
+                                           style="display:inline-block; padding:0.15rem 0.45rem; background:#dcfce7; color:#166534; border-radius:999px; font-size:0.7rem; font-weight:800; margin-left:0.2rem; text-decoration:none;">🏷️ Térmica</a>
                                     }
                                 </td>
                                 <td class="actions-cell">
@@ -2555,10 +2559,36 @@
                     @* Inputs de transporte (cuando aplica) *@
                     @if (formPorTransporte)
                     {
-                        <div style="display: inline-flex; gap: 0.35rem; flex-basis: 100%;">
-                            <input class="form-input" @bind="formTransporteEmpresa" placeholder="Empresa (Andreani, Cruz del Sur…)" style="font-size: 0.78rem; padding: 0.3rem 0.5rem; flex: 1; max-width: 320px;" />
-                            <input class="form-input" @bind="formTransporteDestino" placeholder="Destino (ciudad/sucursal)" style="font-size: 0.78rem; padding: 0.3rem 0.5rem; flex: 1; max-width: 320px;" />
+                        <div style="display: inline-flex; gap: 0.4rem; flex-basis: 100%; flex-wrap: wrap; align-items: center; margin-top: 0.2rem;">
+                            <select class="form-input" @bind="formTransporteId" style="font-size: 0.78rem; padding: 0.3rem 0.5rem; min-width: 200px;">
+                                <option value="0">— Elegí transporte —</option>
+                                @foreach (var tr in ventaTransportes)
+                                {
+                                    <option value="@tr.Id">@tr.Nombre@(string.IsNullOrWhiteSpace(tr.Localidad) ? "" : $" · {tr.Localidad}")</option>
+                                }
+                            </select>
+                            <a href="/cafe/configuracion" target="_blank" title="Agregar o editar transportes" style="font-size: 0.72rem; color: #2563eb; text-decoration: none; white-space: nowrap;">⚙ administrar</a>
+
+                            <span style="font-size: 0.7rem; color: #92400e;">Bultos:</span>
+                            <input type="number" min="1" class="form-input" @bind="formCantidadBultos" style="font-size: 0.78rem; padding: 0.3rem 0.4rem; width: 64px;" />
+
+                            <label style="font-size: 0.75rem; display: inline-flex; align-items: center; gap: 0.25rem; cursor: pointer;">
+                                <input type="checkbox" @bind="formEsFragil" style="margin: 0;" /> Frágil
+                            </label>
                         </div>
+                        @if (formTransporteId == 0)
+                        {
+                            <div style="display: inline-flex; gap: 0.35rem; flex-basis: 100%; margin-top: 0.25rem;">
+                                <input class="form-input" @bind="formTransporteEmpresa" placeholder="…o escribí la empresa a mano (Andreani, Cruz del Sur…)" style="font-size: 0.78rem; padding: 0.3rem 0.5rem; flex: 1; max-width: 320px;" />
+                                <input class="form-input" @bind="formTransporteDestino" placeholder="Destino (ciudad/sucursal)" style="font-size: 0.78rem; padding: 0.3rem 0.5rem; flex: 1; max-width: 320px;" />
+                            </div>
+                        }
+                        @if (!ventaTransportes.Any())
+                        {
+                            <div style="flex-basis: 100%; font-size: 0.7rem; color: #9ca3af; margin-top: 0.15rem;">
+                                No tenés transportes cargados. Podés escribir a mano o cargarlos en <a href="/cafe/configuracion" target="_blank" style="color: #2563eb;">Configuración del sistema</a>.
+                            </div>
+                        }
                     }
                 </div>
             }
@@ -4856,6 +4886,10 @@
     private bool formPorTransporte = false;
     private string formTransporteEmpresa = "";
     private string formTransporteDestino = "";
+    private int formTransporteId = 0;
+    private int? formCantidadBultos;
+    private bool formEsFragil = false;
+    private List<CafeTransporteDto> ventaTransportes = new();
     private bool formIsPaid;
     private string formEntregaPor = "";
     // 2026-06-02: Comentario INTERNO para el armado. Se muestra como post-it en /cafe/preparacion. No sale en PDF.
@@ -5524,6 +5558,9 @@
         // 2026-07-24: personas internas con WhatsApp (para el chip "copia por WhatsApp al emitir")
         try { copiaWaPersonas = (await Api.GetAutoPersonasAsync()).Where(p => !string.IsNullOrWhiteSpace(p.WhatsAppNumero)).ToList(); }
         catch { copiaWaPersonas = new(); }
+        // 2026-08-03: transportes para el selector del rótulo (cuando la venta va por transporte)
+        try { ventaTransportes = await Api.GetTransportesAsync(false) ?? new(); }
+        catch { ventaTransportes = new(); }
         // Si la URL es /cafe/presupuestos, pre-filtrar por PRO
         if (ModoPresupuestos) { filtroTipo = "PRO"; }
         // 2026-06-23: catalogos (clientes/productos/combos = 5-9 MB) en background — antes
@@ -6142,6 +6179,7 @@
         comboSearch = ""; comboSearchOpen = false;
         formWeekDays = new(); formEnRadar = false; formRetira = false; formIsPaid = false; formEntregaPor = "";
         formPorTransporte = false; formTransporteEmpresa = ""; formTransporteDestino = "";
+        formTransporteId = 0; formCantidadBultos = null; formEsFragil = false;
         formComentarioArmado = "";
         // Reset del panel "Enviar al cliente" — todos los checkboxes empiezan apagados
         // para que nunca mandes algo sin querer. El operador tilda lo que necesite por venta.
@@ -6455,7 +6493,7 @@
 
     /// <summary>2026-06-05: Toggle de "TRANSPORTE" — la venta se despacha por empresa de transporte.
     /// Excluyente con EN RADAR y RETIRA.</summary>
-    private void ToggleTransporte()
+    private async Task ToggleTransporte()
     {
         if (formPorTransporte)
         {
@@ -6466,6 +6504,8 @@
             formPorTransporte = true;
             formEnRadar = false;
             formRetira = false;
+            // Traer la lista de transportes para el selector (fresca por si agregaron uno)
+            try { ventaTransportes = await Api.GetTransportesAsync(false) ?? new(); } catch { }
         }
     }
 
@@ -6951,6 +6991,9 @@
                     PorTransporte = formPorTransporte,
                     TransporteEmpresa = formPorTransporte ? formTransporteEmpresa : null,
                     TransporteDestino = formPorTransporte ? formTransporteDestino : null,
+                    TransporteId = formPorTransporte && formTransporteId != 0 ? formTransporteId : (int?)null,
+                    CantidadBultos = formPorTransporte ? formCantidadBultos : null,
+                    EsFragil = formPorTransporte && formEsFragil,
                     IsPaid = formIsPaid,
                     // Importante: mandamos el tipo ORIGINAL (X/PRO) si lo era, asi el backend acepta el Update sin
                     // dejarla en estado "FA sin CAE". Si ya estaba FA-sin-CAE de antes, mandamos FA igual — el backend
@@ -8222,6 +8265,9 @@
                 PorTransporte = formPorTransporte,
                 TransporteEmpresa = formPorTransporte ? formTransporteEmpresa : null,
                 TransporteDestino = formPorTransporte ? formTransporteDestino : null,
+                TransporteId = formPorTransporte && formTransporteId != 0 ? formTransporteId : (int?)null,
+                CantidadBultos = formPorTransporte ? formCantidadBultos : null,
+                EsFragil = formPorTransporte && formEsFragil,
                 IsPaid = formIsPaid,
                 TipoComprobante = formTipoComprobante,
                 CondicionIva = formCondicionIva,
@@ -8330,6 +8376,9 @@
                 PorTransporte = formPorTransporte,
                 TransporteEmpresa = formPorTransporte ? formTransporteEmpresa : null,
                 TransporteDestino = formPorTransporte ? formTransporteDestino : null,
+                TransporteId = formPorTransporte && formTransporteId != 0 ? formTransporteId : (int?)null,
+                CantidadBultos = formPorTransporte ? formCantidadBultos : null,
+                EsFragil = formPorTransporte && formEsFragil,
                     IsPaid = formIsPaid,
                     TipoComprobante = formTipoComprobante,
                     CondicionIva = formCondicionIva,
@@ -8419,6 +8468,9 @@
                 PorTransporte = formPorTransporte,
                 TransporteEmpresa = formPorTransporte ? formTransporteEmpresa : null,
                 TransporteDestino = formPorTransporte ? formTransporteDestino : null,
+                TransporteId = formPorTransporte && formTransporteId != 0 ? formTransporteId : (int?)null,
+                CantidadBultos = formPorTransporte ? formCantidadBultos : null,
+                EsFragil = formPorTransporte && formEsFragil,
                     IsPaid = false,  // NUNCA marcar pagado al crear — el flag se sincroniza por la cobranza
                     TipoComprobante = formTipoComprobante,
                     CondicionIva = formCondicionIva,
@@ -8975,6 +9027,9 @@
         formPorTransporte = v.PorTransporte;
         formTransporteEmpresa = v.TransporteEmpresa ?? "";
         formTransporteDestino = v.TransporteDestino ?? "";
+        formTransporteId = v.TransporteId ?? 0;
+        formCantidadBultos = v.CantidadBultos;
+        formEsFragil = v.EsFragil;
         formIsPaid = v.IsPaid;
         formEntregaPor = v.EntregaPor ?? "";
         formComentarioArmado = v.ComentarioArmado ?? "";

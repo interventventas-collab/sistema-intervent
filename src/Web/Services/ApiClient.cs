@@ -5413,6 +5413,112 @@ public class ApiClient
         catch (Exception ex) { return (false, ex.Message); }
     }
 
+    // ===== Rotulos Cafe: Transportes (catalogo) =====
+    public async Task<List<CafeTransporteDto>?> GetTransportesAsync(bool incluirInactivos = false)
+        => await GetAsync<List<CafeTransporteDto>>($"/api/cafe/transportes?incluirInactivos={(incluirInactivos ? "true" : "false")}");
+
+    public async Task<(CafeTransporteDto? item, string? error)> CrearTransporteAsync(UpsertTransporteRequest req)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/cafe/transportes", req);
+            if (resp.IsSuccessStatusCode)
+                return (await resp.Content.ReadFromJsonAsync<CafeTransporteDto>(), null);
+            string err = "Error";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                  if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; }
+            catch { }
+            return (null, err);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    public async Task<(CafeTransporteDto? item, string? error)> ActualizarTransporteAsync(int id, UpsertTransporteRequest req)
+    {
+        try
+        {
+            var resp = await _http.PutAsJsonAsync($"/api/cafe/transportes/{id}", req);
+            if (resp.IsSuccessStatusCode)
+                return (await resp.Content.ReadFromJsonAsync<CafeTransporteDto>(), null);
+            string err = "Error";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                  if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; }
+            catch { }
+            return (null, err);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    public async Task<(bool ok, string? error)> EliminarTransporteAsync(int id)
+    {
+        try
+        {
+            var resp = await _http.DeleteAsync($"/api/cafe/transportes/{id}");
+            if (resp.IsSuccessStatusCode) return (true, null);
+            string err = "Error";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                  if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; }
+            catch { }
+            return (false, err);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
+    // ===== Rotulos Cafe: Remitentes (catalogo) =====
+    public async Task<List<CafeRemitenteDto>?> GetRemitentesAsync(bool incluirInactivos = false)
+        => await GetAsync<List<CafeRemitenteDto>>($"/api/cafe/remitentes?incluirInactivos={(incluirInactivos ? "true" : "false")}");
+
+    public async Task<(CafeRemitenteDto? item, string? error)> CrearRemitenteAsync(UpsertRemitenteRequest req)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/cafe/remitentes", req);
+            if (resp.IsSuccessStatusCode)
+                return (await resp.Content.ReadFromJsonAsync<CafeRemitenteDto>(), null);
+            string err = "Error";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                  if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; }
+            catch { }
+            return (null, err);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    public async Task<(CafeRemitenteDto? item, string? error)> ActualizarRemitenteAsync(int id, UpsertRemitenteRequest req)
+    {
+        try
+        {
+            var resp = await _http.PutAsJsonAsync($"/api/cafe/remitentes/{id}", req);
+            if (resp.IsSuccessStatusCode)
+                return (await resp.Content.ReadFromJsonAsync<CafeRemitenteDto>(), null);
+            string err = "Error";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                  if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; }
+            catch { }
+            return (null, err);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    public async Task<(bool ok, string? error)> EliminarRemitenteAsync(int id)
+    {
+        try
+        {
+            var resp = await _http.DeleteAsync($"/api/cafe/remitentes/{id}");
+            if (resp.IsSuccessStatusCode) return (true, null);
+            string err = "Error";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                  if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; }
+            catch { }
+            return (false, err);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
+    // ===== Rotulos Cafe: URL del PDF del rotulo =====
+    public string BuildRotuloUrl(int ventaId, string formato) =>
+        $"/api/cafe/rotulo/{ventaId}?formato={Uri.EscapeDataString(formato)}";
+
     // ===== 2026-06-15: PIN por operador =====
     /// <summary>Valida el PIN del operador. Devuelve (ok, mensajeError).</summary>
     public async Task<(bool ok, string? error)> ValidarOperadorPinAsync(string nombre, string pin)
