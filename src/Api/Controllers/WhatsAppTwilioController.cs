@@ -811,6 +811,35 @@ public class WhatsAppTwilioController : ControllerBase
         return Ok(match == null ? null : (object)match);
     }
 
+    /// <summary>2026-08-03: GET contactos/numero-cliente/{clienteId} — devuelve el número de WhatsApp
+    /// del chat VINCULADO a ese cliente (formato "whatsapp:+549…"), para poder enviarle el comprobante
+    /// desde una venta aunque su ficha no tenga teléfono cargado. Si el cliente tiene más de un chat
+    /// vinculado, elige el que tuvo actividad más reciente. Devuelve null si no hay ninguno.</summary>
+    [HttpGet("contactos/numero-cliente/{clienteId:int}")]
+    [Authorize]
+    public async Task<IActionResult> NumeroDeCliente(int clienteId)
+    {
+        var numeros = await _db.WhatsAppTwilioContactos.AsNoTracking()
+            .Where(c => c.ClienteId == clienteId && c.Numero != "")
+            .Select(c => new { c.Numero, c.CreatedAt })
+            .ToListAsync();
+        if (numeros.Count == 0) return Ok((object?)null);
+
+        // Elegimos el número con el mensaje más reciente; si ninguno tiene mensajes, el contacto más nuevo.
+        var soloNums = numeros.Select(n => n.Numero).ToList();
+        var ultimaActividad = await _db.WhatsAppTwilioMensajes.AsNoTracking()
+            .Where(m => soloNums.Contains(m.Numero))
+            .GroupBy(m => m.Numero)
+            .Select(g => new { Numero = g.Key, Ult = g.Max(m => m.CreatedAt) })
+            .ToListAsync();
+
+        string elegido = ultimaActividad.Count > 0
+            ? ultimaActividad.OrderByDescending(x => x.Ult).First().Numero
+            : numeros.OrderByDescending(n => n.CreatedAt).First().Numero;
+
+        return Ok(new { numero = elegido });
+    }
+
     /// <summary>2026-07-23 (pedido Osmar): borra una conversación completa (todos los mensajes de
     /// ese número + sus reacciones) DEL SISTEMA. El chat en el celular del cliente no se toca.
     /// El contacto (si existe) queda: si vuelve a escribir, arranca conversación nueva con su nombre.</summary>

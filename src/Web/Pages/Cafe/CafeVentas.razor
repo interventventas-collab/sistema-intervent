@@ -6940,21 +6940,37 @@
         //    desde la línea elegida (por defecto FRIKAF by INTERVENT). SOLO funciona si el cliente
         //    escribió en las últimas 24 hs (ventana de Meta) y el número tiene WhatsApp; si no, falla
         //    con un aviso claro (no se rompe nada, los otros canales igual se intentan).
-        if (envioWhatsappApi && !string.IsNullOrWhiteSpace(envioWhatsappPhone))
+        if (envioWhatsappApi)
         {
             var destinoWa = envioWhatsappPhone;
-            var lineaWa = envioLineaPhoneId;
-            var capWa = MensajeWhatsApp();
-            tasks.Add(Task.Run(async () =>
+            // 2026-08-03: si no hay teléfono a mano, último intento buscando el chat de WhatsApp
+            // vinculado al cliente (así funciona aunque la ficha no tenga teléfono cargado).
+            if (string.IsNullOrWhiteSpace(destinoWa) && formClienteId > 0)
             {
-                try
+                var numChat = await Api.GetTwNumeroDeClienteAsync(formClienteId);
+                if (!string.IsNullOrWhiteSpace(numChat)) destinoWa = numChat!.Replace("whatsapp:", "");
+            }
+            if (string.IsNullOrWhiteSpace(destinoWa))
+            {
+                // 2026-08-03: antes esto fallaba EN SILENCIO (no había número → no se enviaba y no avisaba).
+                // Ahora avisamos claro para que el usuario sepa por qué no salió y qué hacer.
+                ToastService.Error("🟢 No se pudo enviar por WhatsApp: el cliente no tiene teléfono en la ficha ni un chat de WhatsApp vinculado. Cargale el teléfono o vinculá su chat y reenvialo.");
+            }
+            else
+            {
+                var lineaWa = envioLineaPhoneId;
+                var capWa = MensajeWhatsApp();
+                tasks.Add(Task.Run(async () =>
                 {
-                    var (sent, err) = await Api.SendTwServerFileAsync(destinoWa, "VENTA", ventaId, capWa, lineaWa);
-                    if (sent) ToastService.Success($"🟢 WhatsApp enviado al cliente ({destinoWa})");
-                    else ToastService.Error($"🟢 No se pudo enviar por WhatsApp: {err}. Suele pasar si el cliente no te escribió en las últimas 24 hs o el número no tiene WhatsApp.");
-                }
-                catch (Exception ex) { ToastService.Error($"🟢 WhatsApp error: {ex.Message}"); }
-            }));
+                    try
+                    {
+                        var (sent, err) = await Api.SendTwServerFileAsync(destinoWa, "VENTA", ventaId, capWa, lineaWa);
+                        if (sent) ToastService.Success($"🟢 WhatsApp enviado al cliente ({destinoWa})");
+                        else ToastService.Error($"🟢 No se pudo enviar por WhatsApp: {err}. Suele pasar si el cliente no te escribió en las últimas 24 hs o el número no tiene WhatsApp.");
+                    }
+                    catch (Exception ex) { ToastService.Error($"🟢 WhatsApp error: {ex.Message}"); }
+                }));
+            }
         }
 
         // 2) Email: corre en paralelo en el backend.
@@ -7227,6 +7243,16 @@
                 // Auto-poblar destinatarios del panel "Enviar al cliente" con los datos del cliente.
                 envioEmailTo = c.Email ?? "";
                 envioWhatsappPhone = c.Telefono ?? "";
+                // 2026-08-03: si la ficha NO tiene teléfono pero el cliente ya tiene un chat de
+                // WhatsApp vinculado, usamos ese número para poder enviarle el comprobante igual
+                // (ej. Marcelo D'Urso, cargado sin teléfono pero con chat abierto). El backend lo
+                // normaliza a whatsapp:+549… al enviar, así que cae en el mismo chat.
+                if (string.IsNullOrWhiteSpace(envioWhatsappPhone))
+                {
+                    var numChat = await Api.GetTwNumeroDeClienteAsync(formClienteId);
+                    if (!string.IsNullOrWhiteSpace(numChat))
+                        envioWhatsappPhone = numChat!.Replace("whatsapp:", "");
+                }
                 // 2026-07-02: traer el link de Maps del cliente si tiene y el form está vacío
                 if (string.IsNullOrWhiteSpace(formMapeoLink) && !string.IsNullOrWhiteSpace(c.MapeoLink))
                     formMapeoLink = c.MapeoLink!;

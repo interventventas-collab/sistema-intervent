@@ -6313,6 +6313,19 @@ public class ApiClient
     public async Task<List<TwConvDto>> GetTwConversacionesAsync()
         => await _http.GetFromJsonAsync<List<TwConvDto>>("/api/whatsapp/twilio/conversaciones") ?? new();
 
+    // 2026-08-03: número de WhatsApp del chat vinculado a un cliente (para enviar el comprobante
+    // desde una venta aunque la ficha del cliente no tenga teléfono cargado). Devuelve null si no hay.
+    public async Task<string?> GetTwNumeroDeClienteAsync(int clienteId)
+    {
+        try
+        {
+            var r = await _http.GetFromJsonAsync<TwNumeroClienteDto>($"/api/whatsapp/twilio/contactos/numero-cliente/{clienteId}");
+            return string.IsNullOrWhiteSpace(r?.numero) ? null : r!.numero;
+        }
+        catch { return null; }
+    }
+    private class TwNumeroClienteDto { public string? numero { get; set; } }
+
     // 2026-08-01: linea = filtrar el hilo por línea (para no cruzar el mismo contacto en 2 líneas).
     // Pasar "null" (sentinela) para la conversación de la línea sin registrar; null C# = no filtrar.
     public async Task<List<TwMsgDto>> GetTwMensajesAsync(string numero, string? linea = null)
