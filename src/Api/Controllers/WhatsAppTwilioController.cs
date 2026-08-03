@@ -1294,6 +1294,12 @@ public class WhatsAppTwilioController : ControllerBase
         if (string.IsNullOrWhiteSpace(req.Numero)) return BadRequest(new { error = "Numero obligatorio" });
         if (!_outbound.AnyConfigured) return StatusCode(503, new { error = "WhatsApp no configurado (ni Meta ni Twilio)" });
 
+        // 2026-08-03: normalizamos el destino al MISMO formato que guarda la bandeja
+        // ("whatsapp:+549…"). Si mandamos el número crudo de la ficha (ej "11 5994-5852"),
+        // el mensaje abría una conversación nueva huérfana en vez de sumarse al chat del
+        // cliente, y encima la Cloud API podía no entregarlo (le faltaba el 549).
+        var numeroNorm = MetaWhatsAppService.ToInboxWhatsApp(req.Numero);
+
         string mediaUrl;
         string filename;
 
@@ -1351,7 +1357,7 @@ public class WhatsAppTwilioController : ControllerBase
                     StoredFilename = stored,
                     ContentType = "application/pdf",
                     SizeBytes = bytes.Length,
-                    NumeroDestino = req.Numero,
+                    NumeroDestino = numeroNorm,
                     CreatedAt = DateTime.UtcNow,
                     ExpiresAt = DateTime.UtcNow.AddHours(24)
                 };
@@ -1386,7 +1392,7 @@ public class WhatsAppTwilioController : ControllerBase
                     StoredFilename = stored,
                     ContentType = "application/pdf",
                     SizeBytes = bytes.Length,
-                    NumeroDestino = req.Numero,
+                    NumeroDestino = numeroNorm,
                     CreatedAt = DateTime.UtcNow,
                     ExpiresAt = DateTime.UtcNow.AddHours(24)
                 };
@@ -1414,7 +1420,7 @@ public class WhatsAppTwilioController : ControllerBase
                     StoredFilename = stored,
                     ContentType = "application/pdf",
                     SizeBytes = bytes.Length,
-                    NumeroDestino = req.Numero,
+                    NumeroDestino = numeroNorm,
                     CreatedAt = DateTime.UtcNow,
                     ExpiresAt = DateTime.UtcNow.AddHours(24)
                 };
@@ -1429,11 +1435,11 @@ public class WhatsAppTwilioController : ControllerBase
 
         try
         {
-            var (sid, canal, lin) = await _outbound.SendMediaAsync(req.Numero, mediaUrl, req.Caption, filename, req.LineaPhoneId);
+            var (sid, canal, lin) = await _outbound.SendMediaAsync(numeroNorm, mediaUrl, req.Caption, filename, req.LineaPhoneId);
             var msg = new WhatsAppTwilioMensaje
             {
                 Direccion = "OUTGOING",
-                Numero = req.Numero,
+                Numero = numeroNorm,
                 Cuerpo = req.Caption ?? "",
                 MediaUrl = mediaUrl,
                 MediaFilename = filename,

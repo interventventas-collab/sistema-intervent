@@ -41,6 +41,38 @@ public class MetaWhatsAppService
         return Regex.Replace(to, "\\D", "");
     }
 
+    /// <summary>
+    /// Normaliza un teléfono al formato canónico de la bandeja: "whatsapp:+&lt;E164&gt;".
+    /// Pensado para números argentinos que en la ficha del cliente vienen sueltos
+    /// (ej "11 5994-5852", "011 5994-5852", "+54 9 11 5994-5852") para que caigan en la
+    /// MISMA conversación que abre el webhook de Meta (wa_id "5491159945852") y para que
+    /// la Cloud API los entregue (necesita el código de país + el 9 de celular).
+    /// Idempotente: si ya viene "whatsapp:+549..." lo deja igual.
+    /// </summary>
+    public static string ToInboxWhatsApp(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return raw ?? "";
+        var digits = NormalizeTo(raw);
+        if (string.IsNullOrEmpty(digits)) return raw;
+
+        if (digits.StartsWith("549"))
+        {
+            // ya es canónico argentino (país 54 + 9 de celular)
+        }
+        else if (digits.StartsWith("54"))
+        {
+            // "54" + local, pero sin el 9 de celular → se lo insertamos
+            digits = "549" + digits.Substring(2);
+        }
+        else
+        {
+            // número local sin país (ej "1159945852" o "0111559945852"): sacamos
+            // ceros de discado nacional al inicio y le anteponemos "549".
+            digits = "549" + digits.TrimStart('0');
+        }
+        return $"whatsapp:+{digits}";
+    }
+
     private HttpClient NewClient()
     {
         var http = _httpFactory.CreateClient();
