@@ -430,9 +430,50 @@ public class CafeClientesController : ControllerBase
     {
         var c = await _db.CafeClientes.FindAsync(id);
         if (c is null) return NotFound(new { error = "Cliente no encontrado" });
-        _db.CafeClientes.Remove(c);
+
+        // Un cliente NO se puede borrar del todo si tiene movimientos historicos
+        // (ventas, cobranzas o cheques): borrarlo rompe la trazabilidad de esos registros.
+        // En ese caso lo "eliminamos" de forma suave: lo marcamos Inactivo y el frontend
+        // lo oculta de la lista. Asi el usuario igual se lo saca de encima.
+        var tieneVentas = await _db.CafeVentas.AnyAsync(v => v.ClienteId == id);
+        var tieneCobranzas = await _db.CafeCobranzas.AnyAsync(x => x.ClienteId == id);
+        var tieneCheques = await _db.CafeCheques.AnyAsync(x => x.ClienteOrigenId == id);
+
+        if (!tieneVentas && !tieneCobranzas && !tieneCheques)
+        {
+            // No tiene nada enganchado (de lo conocido) -> intentamos el borrado real.
+            _db.CafeClientes.Remove(c);
+            try
+            {
+                await _db.SaveChangesAsync();
+                return Ok(new { deleted = true });
+            }
+            catch (DbUpdateException)
+            {
+                // Quedaba algo enganchado que no chequeamos arriba (otra tabla con FK).
+                // Limpiamos el intento fallido y caemos al borrado suave.
+                _db.ChangeTracker.Clear();
+                c = await _db.CafeClientes.FindAsync(id);
+                if (c is null) return Ok(new { deleted = true });
+            }
+        }
+
+        // Borrado suave: marcar Inactivo.
+        var motivos = new List<string>();
+        if (tieneVentas) motivos.Add("ventas");
+        if (tieneCobranzas) motivos.Add("cobranzas");
+        if (tieneCheques) motivos.Add("cheques");
+        var detalle = motivos.Count > 0 ? string.Join(" y ", motivos) : "movimientos";
+
+        c!.IsActive = false;
+        c.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return Ok(new { deleted = true });
+        return Conflict(new
+        {
+            softDeleted = true,
+            error = $"No se puede borrar del todo: el cliente tiene {detalle} registradas en el sistema. " +
+                    "Lo marcamos como Inactivo y lo sacamos de la lista."
+        });
     }
 
     private static string NormTipo(string? t)

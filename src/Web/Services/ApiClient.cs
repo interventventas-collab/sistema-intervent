@@ -1061,8 +1061,36 @@ public class ApiClient
     public async Task<CafeClienteDto?> UpdateCafeClienteAsync(int id, UpdateCafeClienteRequest request)
         => await PutAsync<CafeClienteDto>($"/api/cafe/clientes/{id}", request);
 
-    public async Task<bool> DeleteCafeClienteAsync(int id)
-        => await DeleteAsync($"/api/cafe/clientes/{id}");
+    // 2026-08-03: el borrado de cliente puede terminar en "borrado suave" (marcar Inactivo)
+    // cuando el cliente tiene movimientos historicos. Devolvemos el resultado detallado
+    // para que la pantalla muestre el mensaje correcto en vez de fallar en silencio.
+    public async Task<DeleteClienteResult> DeleteCafeClienteAsync(int id)
+    {
+        await SetAuthHeaderAsync();
+        var response = await _http.DeleteAsync($"/api/cafe/clientes/{id}");
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            await HandleUnauthorizedAsync();
+            return new DeleteClienteResult(false, false, "Tu sesión expiró. Volvé a entrar.");
+        }
+        var body = await response.Content.ReadAsStringAsync();
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            bool deleted = root.TryGetProperty("deleted", out var d) && d.GetBoolean();
+            bool soft = root.TryGetProperty("softDeleted", out var s) && s.GetBoolean();
+            string? msg = root.TryGetProperty("error", out var e) ? e.GetString() : null;
+            if (deleted) return new DeleteClienteResult(true, false, null);
+            if (soft) return new DeleteClienteResult(false, true, msg);
+            return new DeleteClienteResult(false, false, msg);
+        }
+        catch
+        {
+            if (response.IsSuccessStatusCode) return new DeleteClienteResult(true, false, null);
+            return new DeleteClienteResult(false, false, $"Error {(int)response.StatusCode}");
+        }
+    }
 
     // 2026-07-29: direcciones de entrega múltiples por cliente
     public async Task<List<CafeDireccionDto>> GetCafeDireccionesAsync(int clienteId)
@@ -6841,3 +6869,7 @@ public class ApiClient
     public async Task<bool> ToggleAutoRespondedorAsync(string key, bool enabled)
         => (await _http.PostAsJsonAsync($"/api/automatizaciones/respondedores/{key}/toggle", new { Enabled = enabled })).IsSuccessStatusCode;
 }
+
+// 2026-08-03: resultado del borrado de cliente.
+// Deleted = se borro de verdad. SoftDeleted = no se pudo borrar (tiene movimientos) y quedo Inactivo.
+public record DeleteClienteResult(bool Deleted, bool SoftDeleted, string? Message);

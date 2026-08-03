@@ -16,6 +16,9 @@
             <input class="form-input" style="min-width: 280px; font-size: 0.9rem;"
                    @bind="filtro" @bind:event="oninput"
                    placeholder="🔍 Buscar por código, nombre, CUIT, tel, email, dirección, localidad, CP..." />
+            <label style="display: flex; align-items: center; gap: 0.3rem; font-size: 0.82rem; color: #6b7280; cursor: pointer; user-select: none;" title="Los clientes marcados como Inactivos se ocultan de la lista">
+                <input type="checkbox" @bind="mostrarInactivos" style="cursor: pointer;" /> Mostrar inactivos
+            </label>
             <button class="btn btn-secondary" @onclick="AbrirLinkModal" title="Enlace para que el cliente cargue sus datos solo">🔗 Enlace de alta</button>
             <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo Cliente</button>
         </div>
@@ -634,6 +637,8 @@
 @code {
     private List<CafeClienteDto>? clientes;
     private bool loading = true;
+    // 2026-08-03: por defecto NO mostramos los clientes Inactivos (eliminados suaves).
+    private bool mostrarInactivos = false;
     private string filtro = "";
 
     // Clientes cargados por el propio cliente desde el enlace público, pendientes de terminar.
@@ -706,6 +711,10 @@
                 }
                 baseList = clientes.Where(c => match(c, f));
             }
+            // 2026-08-03: por defecto ocultamos los clientes Inactivos (los "eliminados suaves").
+            // El interruptor "Mostrar inactivos" los vuelve a mostrar.
+            if (!mostrarInactivos)
+                baseList = baseList.Where(c => c.IsActive);
             // Prioridad de orden:
             //   1) Con CodigoInterno asignado → primero, ordenados por el código (1, 2, 3, ...)
             //   2) Sin CodigoInterno → después, ordenados por nombre
@@ -1302,8 +1311,22 @@
         if (toDelete is null) return;
         try
         {
-            var ok = await Api.DeleteCafeClienteAsync(toDelete.Id);
-            if (ok) { ToastService.Success("Cliente eliminado"); await Load(); }
+            var r = await Api.DeleteCafeClienteAsync(toDelete.Id);
+            if (r.Deleted)
+            {
+                ToastService.Success("Cliente eliminado");
+                await Load();
+            }
+            else if (r.SoftDeleted)
+            {
+                // No se pudo borrar del todo (tiene movimientos) -> quedo Inactivo y se oculta.
+                ToastService.Info(r.Message ?? "El cliente quedó marcado como Inactivo y se ocultó de la lista.");
+                await Load();
+            }
+            else
+            {
+                ToastService.Error(r.Message ?? "No se pudo eliminar el cliente.");
+            }
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { showDeleteConfirm = false; toDelete = null; }
