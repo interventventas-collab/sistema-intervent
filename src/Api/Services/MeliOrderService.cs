@@ -224,6 +224,48 @@ public class MeliOrderService
         return n;
     }
 
+    /// <summary>Sincroniza TODAS las órdenes de un PACK (paquete/carrito) desde MeLi.
+    /// Importante: el número que ve el vendedor en su panel muchas veces es el pack_id, NO el
+    /// order_id → /orders/{packId} da 404, pero /packs/{packId} lista las órdenes reales.
+    /// Devuelve cuántas órdenes sincronizó (0 si el pack no existe / no es un pack).</summary>
+    public async Task<int> SyncPackAsync(long packId, MeliAccount account)
+    {
+        var token = await _accountService.GetValidTokenAsync(account);
+        if (token is null)
+            throw new InvalidOperationException($"Token invalido para cuenta {account.Nickname}");
+
+        var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var response = await http.GetAsync($"https://api.mercadolibre.com/packs/{packId}");
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+            response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            var newToken = await _accountService.GetValidTokenAsync(account, forceRefresh: true);
+            if (newToken is not null)
+            {
+                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", newToken);
+                response = await http.GetAsync($"https://api.mercadolibre.com/packs/{packId}");
+            }
+        }
+        if (!response.IsSuccessStatusCode) return 0;
+
+        var json = await response.Content.ReadAsStringAsync();
+        var root = JsonDocument.Parse(json).RootElement;
+        if (!root.TryGetProperty("orders", out var ordersEl) || ordersEl.ValueKind != JsonValueKind.Array)
+            return 0;
+
+        int total = 0;
+        foreach (var o in ordersEl.EnumerateArray())
+        {
+            if (o.TryGetProperty("id", out var idEl) && idEl.TryGetInt64(out var oid))
+            {
+                try { total += await SyncSingleOrderAsync(oid, account); } catch { }
+            }
+        }
+        return total;
+    }
+
     /// <summary>2026-06-15: Re-chequea contra MeLi todas las órdenes paid en estado pre-despacho
     /// (etiqueta no impresa / no retiradas) de los últimos N días para refrescar el ShippingSubstatus.
     /// Sin esto las órdenes quedan "congeladas" en ready_to_print aunque ya estén impresas en MeLi,

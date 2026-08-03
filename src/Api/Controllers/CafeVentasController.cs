@@ -3833,7 +3833,12 @@ public class CafeVentasController : ControllerBase
         var prods = await _db.MeliOrders.Where(o => o.ShippingId == num).ToListAsync();
         if (prods.Count > 0) return (prods, num);
 
-        // (2) el número es el nº de venta (order id): agarro su envío + hermanos del mismo pack
+        // (2) el número es un nº de PACK (paquete/carrito) — el que ve el vendedor suele ser este
+        var packProds = await _db.MeliOrders.Where(o => o.PackId == num).ToListAsync();
+        if (packProds.Count > 0)
+            return (packProds, packProds.FirstOrDefault(o => o.ShippingId != null)?.ShippingId);
+
+        // (3) el número es el nº de venta (order id): agarro su envío + hermanos del mismo pack
         var ord = await _db.MeliOrders.FirstOrDefaultAsync(o => o.MeliOrderId == num);
         if (ord is not null)
         {
@@ -3870,7 +3875,11 @@ public class CafeVentasController : ControllerBase
         // (a) probar como nº de ORDEN (trae la orden + sus productos)
         try { await orderSvc.SyncSingleOrderAsync(num, account); } catch { }
 
-        // (b) probar como nº de ENVÍO → sincronizo el envío, saco su orden y la sincronizo también
+        // (b) probar como nº de PACK (paquete/carrito): el nº que ve el vendedor en su panel
+        // muchas veces es el pack_id, no el order_id. /packs/{num} lista las órdenes reales.
+        try { await orderSvc.SyncPackAsync(num, account); } catch { }
+
+        // (c) probar como nº de ENVÍO → sincronizo el envío, saco su orden y la sincronizo también
         try
         {
             await shipSvc.SyncSingleShipmentAsync(num);
