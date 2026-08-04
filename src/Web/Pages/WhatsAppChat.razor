@@ -251,9 +251,14 @@
                             <div class="wa-nv-field">
                                 <label class="wa-nv-label">Enviar desde la línea</label>
                                 <select class="wa-nv-input" @bind="nvLineaPhoneId">
-                                    @foreach (var l in nvLineas)
+                                    @* La línea elegida queda primera. Cada opción muestra el nombre (ej "FRIKAF by INTERVENT") + el número *@
+                                    @foreach (var l in nvLineas.OrderByDescending(x => x.PhoneId == nvLineaPhoneId))
                                     {
-                                        <option value="@l.PhoneId">📱 @PrettyNumero(l.Numero)</option>
+                                        var esIg = (l.Numero ?? "").StartsWith("IG ", StringComparison.Ordinal);
+                                        var nom = LineaNombre(l.PhoneId, l.Numero);
+                                        var pretty = PrettyNumero(l.Numero);
+                                        var extra = (!esIg && nom != pretty) ? $" · {pretty}" : "";
+                                        <option value="@l.PhoneId" @key="l.PhoneId">@(esIg ? "📷 " : "📱 ")@nom@extra</option>
                                     }
                                 </select>
                             </div>
@@ -2054,7 +2059,7 @@
         await CargarSonidoMaster();
         // 2026-08-03: dejar listo el panel de "Nueva conversación" (se muestra cuando no hay chat abierto)
         await EnsureNvCargado();
-        nvLineaPhoneId ??= nvLineas.FirstOrDefault()?.PhoneId;
+        nvLineaPhoneId ??= LineaDefaultPhoneId();
         if (!string.IsNullOrWhiteSpace(NumeroInicial))
             await SelectConv(NumeroInicial, conversaciones.FirstOrDefault(c => c.Numero == NumeroInicial)?.Linea);
         await LoadRespuestas();
@@ -2608,8 +2613,8 @@
         nvNumero = ""; nvPlantillaName = ""; nvVariables = new();
         nvClienteQuery = ""; nvClienteSeleccionado = null; nvClienteResultados = new();
         await EnsureNvCargado();
-        // Línea por defecto: la primera conectada (o null = la línea default del sistema)
-        nvLineaPhoneId = nvLineas.FirstOrDefault()?.PhoneId;
+        // Línea por defecto: FRIKAF by INTERVENT si está (la principal), sino la primera conectada
+        nvLineaPhoneId = LineaDefaultPhoneId();
         StateHasChanged();
     }
 
@@ -3315,6 +3320,15 @@
         var frikaf = ls.FirstOrDefault(l =>
             string.Equals(LineaNombre(l.Id, l.Numero), "FRIKAF by INTERVENT", StringComparison.OrdinalIgnoreCase));
         if (frikaf.Id != null) filtroLinea = frikaf.Id;
+    }
+
+    // 2026-08-04: línea que viene elegida por defecto en "Nueva conversación": FRIKAF by INTERVENT
+    // si está conectada (es la principal), sino la primera que haya.
+    string? LineaDefaultPhoneId()
+    {
+        var frikaf = nvLineas.FirstOrDefault(l =>
+            string.Equals(LineaNombre(l.PhoneId, l.Numero), "FRIKAF by INTERVENT", StringComparison.OrdinalIgnoreCase));
+        return (frikaf ?? nvLineas.FirstOrDefault())?.PhoneId;
     }
 
     // === 2026-08-01: nombre + imagen personalizados por línea (WhatsApp e Instagram) ===
