@@ -40,6 +40,9 @@ public class AutomatizacionesController : ControllerBase
         List<int> Destinatarios, DateTime? LastRunAt, bool? LastRunOk, string? LastRunDetalle);
     public record LineaDto(string PhoneId, string Numero, string? Nombre);
     public record RespondedorDto(string Key, string Nombre, string Descripcion, bool Enabled, string? LinkConfig);
+    // 2026-08-03: menú interno de empleados por WhatsApp (palabra clave por persona → opciones).
+    public record MenuEmpleadoDto(int Id, string Codigo, string Nombre, bool OpStock, bool OpPrecios,
+        bool OpPedidos, bool OpSaldos, bool OpFacturas, string? SoloDesdeNumero, bool Activo);
 
     private static readonly (string Key, string Nombre, string Descripcion)[] Avisos =
     {
@@ -86,7 +89,12 @@ public class AutomatizacionesController : ControllerBase
             return new RespondedorDto(r.Key, r.Nombre, r.Descripcion, enabled, r.LinkConfig);
         }).ToList();
 
-        return Ok(new { personas, avisos, respondedores, lineas = lineasDto });
+        var menuEmpleados = await _db.AutoMenuEmpleados.AsNoTracking().OrderBy(e => e.Id)
+            .Select(e => new MenuEmpleadoDto(e.Id, e.Codigo, e.Nombre, e.OpStock, e.OpPrecios,
+                e.OpPedidos, e.OpSaldos, e.OpFacturas, e.SoloDesdeNumero, e.Activo))
+            .ToListAsync();
+
+        return Ok(new { personas, avisos, respondedores, lineas = lineasDto, menuEmpleados });
     }
 
     /// <summary>2026-07-24: lista liviana de personas (para el selector "copia por WhatsApp" al
@@ -189,6 +197,61 @@ public class AutomatizacionesController : ControllerBase
         var s = await _db.AppSettings.FirstOrDefaultAsync(x => x.Key == r.SettingKey);
         if (s is null) _db.AppSettings.Add(new AppSetting { Key = r.SettingKey, Value = req.Enabled ? "true" : "false", UpdatedAt = DateTime.UtcNow });
         else { s.Value = req.Enabled ? "true" : "false"; s.UpdatedAt = DateTime.UtcNow; }
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    // ───────── Menú de empleados por WhatsApp (2026-08-03) ─────────
+    public record MenuEmpleadoUpsert(string Codigo, string Nombre, bool OpStock, bool OpPrecios,
+        bool OpPedidos, bool OpSaldos, bool OpFacturas, string? SoloDesdeNumero, bool Activo);
+
+    [HttpPost("menu-empleado")]
+    public async Task<IActionResult> CrearMenuEmpleado([FromBody] MenuEmpleadoUpsert req)
+    {
+        var codigo = (req.Codigo ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(codigo)) return BadRequest(new { error = "Falta la palabra clave" });
+        if (string.IsNullOrWhiteSpace(req.Nombre)) return BadRequest(new { error = "Falta el nombre" });
+        if (await _db.AutoMenuEmpleados.AnyAsync(e => e.Codigo == codigo))
+            return BadRequest(new { error = $"Ya existe un empleado con la palabra clave «{codigo}». Elegí otra." });
+
+        _db.AutoMenuEmpleados.Add(new AutoMenuEmpleado
+        {
+            Codigo = codigo, Nombre = req.Nombre.Trim(),
+            OpStock = req.OpStock, OpPrecios = req.OpPrecios, OpPedidos = req.OpPedidos,
+            OpSaldos = req.OpSaldos, OpFacturas = req.OpFacturas,
+            SoloDesdeNumero = Norm(req.SoloDesdeNumero), Activo = req.Activo,
+            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    [HttpPost("menu-empleado/{id:int}")]
+    public async Task<IActionResult> EditarMenuEmpleado(int id, [FromBody] MenuEmpleadoUpsert req)
+    {
+        var e = await _db.AutoMenuEmpleados.FindAsync(id);
+        if (e is null) return NotFound();
+        var codigo = (req.Codigo ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(codigo)) return BadRequest(new { error = "Falta la palabra clave" });
+        if (await _db.AutoMenuEmpleados.AnyAsync(x => x.Codigo == codigo && x.Id != id))
+            return BadRequest(new { error = $"Ya existe otro empleado con la palabra clave «{codigo}»." });
+
+        e.Codigo = codigo;
+        e.Nombre = string.IsNullOrWhiteSpace(req.Nombre) ? e.Nombre : req.Nombre.Trim();
+        e.OpStock = req.OpStock; e.OpPrecios = req.OpPrecios; e.OpPedidos = req.OpPedidos;
+        e.OpSaldos = req.OpSaldos; e.OpFacturas = req.OpFacturas;
+        e.SoloDesdeNumero = Norm(req.SoloDesdeNumero); e.Activo = req.Activo;
+        e.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    [HttpDelete("menu-empleado/{id:int}")]
+    public async Task<IActionResult> EliminarMenuEmpleado(int id)
+    {
+        var e = await _db.AutoMenuEmpleados.FindAsync(id);
+        if (e is null) return NotFound();
+        _db.AutoMenuEmpleados.Remove(e);
         await _db.SaveChangesAsync();
         return Ok(new { ok = true });
     }

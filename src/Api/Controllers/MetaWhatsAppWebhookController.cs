@@ -89,6 +89,8 @@ public class MetaWhatsAppWebhookController : ControllerBase
         var pedidoSvc = sp.GetRequiredService<WhatsAppPedidoService>();
         // 2026-07-23: para que el bot pueda mandar la lista de precios en PDF (opción del nivel 2)
         var listasCtrl = sp.GetRequiredService<Api.Controllers.CafeListasCustomController>();
+        // 2026-08-03: bot interno de empleados (palabra clave por persona → menú de consultas)
+        var empBot = sp.GetRequiredService<WhatsAppEmpleadoBotService>();
 
         using var doc = JsonDocument.Parse(raw);
         var root = doc.RootElement;
@@ -155,7 +157,7 @@ public class MetaWhatsAppWebhookController : ControllerBase
                 }
 
                 foreach (var m in messages.EnumerateArray())
-                    await ProcesarMensajeAsync(db, meta, pedidoSvc, listasCtrl, m, nombres, baseUrl, lineaId);
+                    await ProcesarMensajeAsync(db, meta, pedidoSvc, listasCtrl, empBot, m, nombres, baseUrl, lineaId);
             }
         }
     }
@@ -402,6 +404,7 @@ public class MetaWhatsAppWebhookController : ControllerBase
 
     private async Task ProcesarMensajeAsync(AppDbContext db, MetaWhatsAppService meta,
         WhatsAppPedidoService pedidoSvc, Api.Controllers.CafeListasCustomController listasCtrl,
+        WhatsAppEmpleadoBotService empBot,
         JsonElement m, Dictionary<string, string> nombres, string baseUrl, string? lineaId)
     {
         var wamid = m.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
@@ -484,6 +487,13 @@ public class MetaWhatsAppWebhookController : ControllerBase
         db.WhatsAppTwilioMensajes.Add(msg);
         await db.SaveChangesAsync();
         _logger.LogInformation("[Meta WA webhook] IN {Numero} ({Name}): {Body}", numero, nombrePerfil, cuerpo);
+
+        // 2026-08-03: BOT INTERNO DE EMPLEADOS. Si el mensaje es una palabra clave de empleado, una
+        // opción de su menú, o la respuesta a una consulta pendiente, lo atiende el bot de empleados
+        // y cortamos acá (no dispara pedido ni bienvenida).
+        var idBotEmpleado = tipo == "interactive" ? TryGetInteractiveId(m) : null;
+        if (await empBot.TryHandleAsync(fromWaId!, numero, tipo, idBotEmpleado, cuerpo, lineaId))
+            return;
 
         // Si es un trigger de pedido (## o #NUMERO), meterlo en la MISMA cola de pedidos con IA.
         if (WhatsAppPedidoService.EsTriggerValido(cuerpo))

@@ -6301,6 +6301,34 @@ IF OBJECT_ID('dbo.Auto_Config') IS NOT NULL AND COL_LENGTH('Auto_Config','LineaP
     ALTER TABLE dbo.Auto_Config ADD LineaPhoneId NVARCHAR(40) NULL;
 GO
 
+-- 2026-08-03: Menú interno de empleados por WhatsApp. Cada empleado tiene SU palabra clave
+-- (identidad) y qué opciones puede consultar. Auto_MenuEstado = memoria corta del bot.
+IF OBJECT_ID('dbo.Auto_MenuEmpleado') IS NULL
+CREATE TABLE dbo.Auto_MenuEmpleado (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    Codigo NVARCHAR(30) NOT NULL,
+    Nombre NVARCHAR(80) NOT NULL,
+    OpStock BIT NOT NULL DEFAULT 1,
+    OpPrecios BIT NOT NULL DEFAULT 1,
+    OpPedidos BIT NOT NULL DEFAULT 1,
+    OpSaldos BIT NOT NULL DEFAULT 1,
+    OpFacturas BIT NOT NULL DEFAULT 1,
+    SoloDesdeNumero NVARCHAR(40) NULL,
+    Activo BIT NOT NULL DEFAULT 1,
+    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    UpdatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+GO
+IF OBJECT_ID('dbo.Auto_MenuEstado') IS NULL
+CREATE TABLE dbo.Auto_MenuEstado (
+    Numero NVARCHAR(60) NOT NULL PRIMARY KEY,
+    Codigo NVARCHAR(30) NOT NULL DEFAULT '',
+    Esperando NVARCHAR(20) NOT NULL DEFAULT '',
+    ExpiraAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    UpdatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+GO
+
 -- 2026-07-10: correos detectados por alertas EMAIL_REMITENTE (para la card "Correos importantes").
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='Mis_Alertas_Correos')
 CREATE TABLE Mis_Alertas_Correos (

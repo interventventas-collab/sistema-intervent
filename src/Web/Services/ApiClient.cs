@@ -6881,7 +6881,12 @@ public class ApiClient
     public record AutoRespondedorDto(string Key, string Nombre, string Descripcion, bool Enabled, string? LinkConfig);
     // 2026-08-03: línea de WhatsApp elegible para "sale desde" (PhoneId de Meta + número visible + nombre lindo).
     public record AutoLineaDto(string PhoneId, string Numero, string? Nombre);
-    public record AutomatizacionesDto(List<AutoPersonaDto> Personas, List<AutoAvisoDto> Avisos, List<AutoRespondedorDto> Respondedores, List<AutoLineaDto>? Lineas = null);
+    // 2026-08-03: menú interno de empleados por WhatsApp (palabra clave por persona → opciones).
+    public record AutoMenuEmpleadoDto(int Id, string Codigo, string Nombre, bool OpStock, bool OpPrecios,
+        bool OpPedidos, bool OpSaldos, bool OpFacturas, string? SoloDesdeNumero, bool Activo);
+    public record AutoMenuEmpleadoUpsert(string Codigo, string Nombre, bool OpStock, bool OpPrecios,
+        bool OpPedidos, bool OpSaldos, bool OpFacturas, string? SoloDesdeNumero, bool Activo);
+    public record AutomatizacionesDto(List<AutoPersonaDto> Personas, List<AutoAvisoDto> Avisos, List<AutoRespondedorDto> Respondedores, List<AutoLineaDto>? Lineas = null, List<AutoMenuEmpleadoDto>? MenuEmpleados = null);
     public record AutoPersonaUpsert(string Nombre, long? TelegramChatId, string? WhatsAppNumero, string? Email, bool Activo);
     public record AutoAvisoConfigReq(bool Enabled, string Dias, int Hora,
         bool CanalCampanita, bool CanalTelegram, bool CanalWhatsApp, bool CanalEmail, List<int> Destinatarios, string? LineaPhoneId = null);
@@ -6904,6 +6909,18 @@ public class ApiClient
     }
     public async Task<bool> ToggleAutoRespondedorAsync(string key, bool enabled)
         => (await _http.PostAsJsonAsync($"/api/automatizaciones/respondedores/{key}/toggle", new { Enabled = enabled })).IsSuccessStatusCode;
+
+    // 2026-08-03: menú de empleados por WhatsApp. Guardar devuelve (ok, error) para mostrar
+    // mensajes como "ya existe esa palabra clave".
+    public async Task<(bool Ok, string? Error)> SaveAutoMenuEmpleadoAsync(int? id, AutoMenuEmpleadoUpsert req)
+    {
+        var resp = await _http.PostAsJsonAsync(id.HasValue ? $"/api/automatizaciones/menu-empleado/{id}" : "/api/automatizaciones/menu-empleado", req);
+        if (resp.IsSuccessStatusCode) return (true, null);
+        try { var e = await resp.Content.ReadFromJsonAsync<ErrorResp>(); return (false, e?.Error); }
+        catch { return (false, null); }
+    }
+    public async Task<bool> DeleteAutoMenuEmpleadoAsync(int id)
+        => (await _http.DeleteAsync($"/api/automatizaciones/menu-empleado/{id}")).IsSuccessStatusCode;
 }
 
 // 2026-08-03: resultado del borrado de cliente.

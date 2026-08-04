@@ -298,6 +298,74 @@
                 </div>
             }
         </div>
+
+        @* ═══════════ MENÚ WHATSAPP EMPLEADOS (2026-08-03) ═══════════ *@
+        <div class="auto-seccion-titulo">
+            📋 MENÚ WHATSAPP EMPLEADOS — cada uno escribe SU palabra clave y le llega el menú
+        </div>
+        <div class="auto-card-desc" style="margin:-0.4rem 0 0.8rem;">
+            El empleado le manda su palabra clave al WhatsApp de la empresa (ej <b>1983</b>) y le llega un menú
+            con SOLO las opciones que le tildes. La palabra clave lo identifica: es su usuario y su clave a la vez.
+        </div>
+
+        @foreach (var me in menuEmp)
+        {
+            <div class="auto-card auto-card-mini @(me.Activo ? "" : "auto-card-off")" style="margin-bottom:0.7rem;">
+                <div class="auto-fila" style="flex-wrap:wrap;">
+                    <span class="auto-lbl">👤 Nombre</span>
+                    <input class="auto-input-txt" style="width:150px;" @bind="me.Nombre" placeholder="Gabriel" />
+                    <span class="auto-lbl" style="min-width:auto;">🔑 Palabra clave</span>
+                    <input class="auto-input-txt" style="width:110px;" @bind="me.Codigo" placeholder="1983" />
+                    <label class="auto-switch" title="@(me.Activo ? "Apagar" : "Prender")" style="margin-left:6px;">
+                        <input type="checkbox" @bind="me.Activo" />
+                        <span class="auto-slider"></span>
+                    </label>
+                </div>
+                <div class="auto-fila" style="flex-wrap:wrap;">
+                    <span class="auto-lbl">Puede consultar</span>
+                    <label class="auto-tilde"><input type="checkbox" @bind="me.OpStock" /> 📦 Stock</label>
+                    <label class="auto-tilde"><input type="checkbox" @bind="me.OpPrecios" /> 💲 Precios</label>
+                    <label class="auto-tilde"><input type="checkbox" @bind="me.OpPedidos" /> 🧾 Pedidos del día</label>
+                    <label class="auto-tilde"><input type="checkbox" @bind="me.OpSaldos" /> 💰 Saldo de cliente</label>
+                    <label class="auto-tilde"><input type="checkbox" @bind="me.OpFacturas" /> 📄 Facturas de cliente</label>
+                </div>
+                <div class="auto-fila" style="flex-wrap:wrap;">
+                    <span class="auto-lbl">🔒 Solo desde</span>
+                    <input class="auto-input-txt" style="width:180px;" @bind="me.SoloDesdeNumero" placeholder="(opcional) +549…" />
+                    <span style="font-size:0.65rem; color:#64748b;">si lo cargás, la clave solo funciona desde ese celular</span>
+                    <span style="flex:1;"></span>
+                    <button class="auto-btn auto-btn-probar" @onclick="() => GuardarMenuEmp(me)">💾 Guardar</button>
+                    <button class="auto-btn" style="border-color:#7f1d1d; color:#fca5a5;" @onclick="() => BorrarMenuEmp(me)">🗑</button>
+                </div>
+            </div>
+        }
+
+        @if (nuevoEmpOpen)
+        {
+            <div class="auto-card auto-card-mini" style="margin-bottom:0.7rem; border-color:#22d3ee;">
+                <div class="auto-fila" style="flex-wrap:wrap;">
+                    <span class="auto-lbl">👤 Nombre</span>
+                    <input class="auto-input-txt" style="width:150px;" @bind="neNombre" placeholder="Gabriel" />
+                    <span class="auto-lbl" style="min-width:auto;">🔑 Palabra clave</span>
+                    <input class="auto-input-txt" style="width:110px;" @bind="neCodigo" placeholder="1983" />
+                </div>
+                <div class="auto-fila" style="flex-wrap:wrap;">
+                    <span class="auto-lbl">Puede consultar</span>
+                    <label class="auto-tilde"><input type="checkbox" @bind="neStock" /> 📦 Stock</label>
+                    <label class="auto-tilde"><input type="checkbox" @bind="nePrecios" /> 💲 Precios</label>
+                    <label class="auto-tilde"><input type="checkbox" @bind="nePedidos" /> 🧾 Pedidos del día</label>
+                    <label class="auto-tilde"><input type="checkbox" @bind="neSaldos" /> 💰 Saldo de cliente</label>
+                    <label class="auto-tilde"><input type="checkbox" @bind="neFacturas" /> 📄 Facturas de cliente</label>
+                    <span style="flex:1;"></span>
+                    <button class="auto-btn auto-btn-probar" @onclick="GuardarNuevoEmp">✔ Agregar</button>
+                    <button class="auto-btn" @onclick="() => { nuevoEmpOpen = false; }">Cancelar</button>
+                </div>
+            </div>
+        }
+        else
+        {
+            <button class="auto-btn auto-btn-probar" @onclick="AbrirNuevoEmp">➕ Agregar empleado al menú</button>
+        }
     }
 </div>
 
@@ -462,6 +530,54 @@
         else Toast.Error("No se pudo agregar");
     }
 
+    // 📋 Menú WhatsApp empleados (edición al paso)
+    class MenuEmpVm
+    {
+        public int Id;
+        public string Codigo = "", Nombre = "";
+        public bool OpStock, OpPrecios, OpPedidos, OpSaldos, OpFacturas, Activo = true;
+        public string? SoloDesdeNumero;
+    }
+    List<MenuEmpVm> menuEmp = new();
+    bool nuevoEmpOpen;
+    string neNombre = "", neCodigo = "", neSolo = "";
+    bool neStock = true, nePrecios = true, nePedidos = true, neSaldos = true, neFacturas = true;
+
+    void AbrirNuevoEmp()
+    {
+        nuevoEmpOpen = true;
+        neNombre = neCodigo = neSolo = "";
+        neStock = nePrecios = nePedidos = neSaldos = neFacturas = true;
+    }
+
+    async Task GuardarNuevoEmp()
+    {
+        if (string.IsNullOrWhiteSpace(neNombre)) { Toast.Error("Poné un nombre"); return; }
+        if (string.IsNullOrWhiteSpace(neCodigo)) { Toast.Error("Poné una palabra clave"); return; }
+        var (ok, err) = await Api.SaveAutoMenuEmpleadoAsync(null, new ApiClient.AutoMenuEmpleadoUpsert(
+            neCodigo.Trim(), neNombre.Trim(), neStock, nePrecios, nePedidos, neSaldos, neFacturas, null, true));
+        if (ok) { Toast.Success("Empleado agregado al menú"); nuevoEmpOpen = false; await Cargar(); }
+        else Toast.Error(err ?? "No se pudo agregar");
+    }
+
+    async Task GuardarMenuEmp(MenuEmpVm me)
+    {
+        if (string.IsNullOrWhiteSpace(me.Nombre)) { Toast.Error("Poné un nombre"); return; }
+        if (string.IsNullOrWhiteSpace(me.Codigo)) { Toast.Error("Poné una palabra clave"); return; }
+        var (ok, err) = await Api.SaveAutoMenuEmpleadoAsync(me.Id, new ApiClient.AutoMenuEmpleadoUpsert(
+            me.Codigo.Trim(), me.Nombre.Trim(), me.OpStock, me.OpPrecios, me.OpPedidos, me.OpSaldos,
+            me.OpFacturas, string.IsNullOrWhiteSpace(me.SoloDesdeNumero) ? null : me.SoloDesdeNumero.Trim(), me.Activo));
+        if (ok) { Toast.Success("Guardado"); await Cargar(); }
+        else Toast.Error(err ?? "No se pudo guardar");
+    }
+
+    async Task BorrarMenuEmp(MenuEmpVm me)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Sacar a {me.Nombre} del menú de empleados?")) return;
+        if (await Api.DeleteAutoMenuEmpleadoAsync(me.Id)) { Toast.Success("Borrado"); await Cargar(); }
+        else Toast.Error("No se pudo borrar");
+    }
+
     // ⚡ Alertas por condición (edición al paso)
     List<ApiClient.AlertaDto>? alertas;
     class AlertaEdit { public decimal? Umbral; public string? TextoParam; public List<int> Destinatarios = new(); }
@@ -619,6 +735,13 @@
         try { await CargarAlertas(); } catch { /* si falla, la sección muestra "cargando" y no rompe el resto */ }
         edit.Clear();
         if (data is null) return;
+        menuEmp = (data.MenuEmpleados ?? new()).Select(m => new MenuEmpVm
+        {
+            Id = m.Id, Codigo = m.Codigo, Nombre = m.Nombre,
+            OpStock = m.OpStock, OpPrecios = m.OpPrecios, OpPedidos = m.OpPedidos,
+            OpSaldos = m.OpSaldos, OpFacturas = m.OpFacturas,
+            SoloDesdeNumero = m.SoloDesdeNumero, Activo = m.Activo
+        }).ToList();
         foreach (var a in data.Avisos)
         {
             edit[a.Key] = new AvisoEdit

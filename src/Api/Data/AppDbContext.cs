@@ -33,6 +33,8 @@ public class AppDbContext : DbContext
     public DbSet<AutoPersona> AutoPersonas => Set<AutoPersona>();
     public DbSet<AutoConfig> AutoConfigs => Set<AutoConfig>();
     public DbSet<AutoDestinatario> AutoDestinatarios => Set<AutoDestinatario>();
+    public DbSet<AutoMenuEmpleado> AutoMenuEmpleados => Set<AutoMenuEmpleado>();
+    public DbSet<AutoMenuEstado> AutoMenuEstados => Set<AutoMenuEstado>();
     public DbSet<WhatsAppPedidosTelefono> WhatsAppPedidosTelefonos => Set<WhatsAppPedidosTelefono>();
     public DbSet<MeliQuestion> MeliQuestions => Set<MeliQuestion>();
     public DbSet<MeliAutoReplyMessage> MeliAutoReplyMessages => Set<MeliAutoReplyMessage>();
