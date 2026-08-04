@@ -93,7 +93,8 @@ window.scannerWedge = (function () {
     if (now - lastAt > 300) buf = '';
     lastAt = now;
 
-    if (e.key === 'Enter') {
+    // Fin de la lectura: el escáner manda Enter (de la fila o del teclado numérico).
+    if (e.key === 'Enter' || e.code === 'Enter' || e.code === 'NumpadEnter') {
       const code = buf;
       buf = '';
       if (code && code.length >= 3 && ref) {
@@ -101,7 +102,16 @@ window.scannerWedge = (function () {
       }
       return;
     }
-    // Solo caracteres imprimibles (letras, números, símbolos del JSON de la etiqueta).
+
+    // NÚMEROS: los sacamos de la TECLA FÍSICA (e.code), no de la letra que "llega".
+    // Así el número del envío sale bien aunque el escáner nuevo venga con otro idioma de
+    // teclado (US, etc.) o con el teclado numérico en modo flechas (NumLock apagado), que es
+    // lo que hace que "escriba torcido" y el sistema no encuentre el envío. La tecla física
+    // no cambia con el idioma, así que el número siempre queda correcto.
+    const dig = /^(?:Digit|Numpad)([0-9])$/.exec(e.code || '');
+    if (dig) { buf += dig[1]; return; }
+
+    // El resto (letras y símbolos) va tal cual, cuando llega como un caracter normal.
     if (e.key && e.key.length === 1) buf += e.key;
   }
 

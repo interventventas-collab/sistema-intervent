@@ -920,18 +920,21 @@ public class MapeoStopsController : ControllerBase
     private static long? ExtractShipmentId(string? code)
     {
         if (string.IsNullOrWhiteSpace(code)) return null;
-        // Preferimos el campo "id" del JSON del QR: {"id":"47599650926",...}
-        var m = System.Text.RegularExpressions.Regex.Match(code, "\"id\"\\s*:\\s*\"?(\\d+)\"?");
-        string digits;
-        if (m.Success) digits = m.Groups[1].Value;
-        else
+        // Preferimos el campo "id" del JSON del QR: {"id":"47599650926",...}. Aceptamos que las
+        // comillas o los dos puntos vengan cambiados/faltando (pasa con escaneres fisicos mal
+        // configurados). El lookbehind evita confundirlo con "sender_id" o "security_digit".
+        var m = System.Text.RegularExpressions.Regex.Match(code, "(?<![A-Za-z0-9_])id\"?\\s*:?\\s*\"?(\\d{6,})");
+        if (m.Success && long.TryParse(m.Groups[1].Value, out var vid)) return vid;
+        // Respaldo: la corrida de digitos mas larga que sea un numero valido (>= 6 digitos).
+        foreach (var run in System.Text.RegularExpressions.Regex.Matches(code, "\\d+")
+                     .Cast<System.Text.RegularExpressions.Match>()
+                     .Select(x => x.Value)
+                     .Where(v => v.Length >= 6)
+                     .OrderByDescending(v => v.Length))
         {
-            // Respaldo: la corrida de digitos mas larga del texto (por si viene un codigo distinto).
-            var runs = System.Text.RegularExpressions.Regex.Matches(code, "\\d+");
-            digits = runs.Count == 0 ? "" : runs.Cast<System.Text.RegularExpressions.Match>()
-                .Select(x => x.Value).OrderByDescending(x => x.Length).First();
+            if (long.TryParse(run, out var v)) return v;
         }
-        return digits.Length >= 6 && long.TryParse(digits, out var val) ? val : (long?)null;
+        return null;
     }
 
     /// <summary>Saca el token de una URL de comprobante de VENTA (.../repartidor/{token}). null si no aplica.</summary>
