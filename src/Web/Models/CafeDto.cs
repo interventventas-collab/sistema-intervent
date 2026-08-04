@@ -620,6 +620,9 @@ public class CafePreparacionItemDto
     /// <summary>2026-06-17: unidades por bulto del producto. Cuando el item es Formato="BULTO",
     /// el armador necesita saber cuantas unidades vienen en cada bulto para contar bien al armar.</summary>
     public int? UxB { get; set; }
+    /// <summary>2026-08-03: foto (thumbnail de la publicación MeLi vinculada) para mostrar una mini
+    /// imagen del producto en el tablero. Null si el producto no tiene publicación MeLi linkeada.</summary>
+    public string? Thumbnail { get; set; }
 }
 
 // ── Camino al picking (2026-08-02) ──

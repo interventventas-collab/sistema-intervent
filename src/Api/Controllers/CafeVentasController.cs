@@ -3754,7 +3754,17 @@ public class CafeVentasController : ControllerBase
                     comboOrigenNombre = i.ComboOrigenId != null ? _db.Set<CafeCombo>().Where(c => c.Id == i.ComboOrigenId).Select(c => c.Nombre).FirstOrDefault() : null,
                     comboOrigenSku = i.ComboOrigenId != null ? _db.Set<CafeCombo>().Where(c => c.Id == i.ComboOrigenId).Select(c => c.Sku).FirstOrDefault() : null,
                     // 2026-06-17: unidades por bulto del producto — el armador necesita saber cuantas unidades trae cada bulto
-                    uxB = i.ProductoId != null ? _db.CafeProductos.Where(p => p.Id == i.ProductoId).Select(p => p.UxB).FirstOrDefault() : null
+                    uxB = i.ProductoId != null ? _db.CafeProductos.Where(p => p.Id == i.ProductoId).Select(p => p.UxB).FirstOrDefault() : null,
+                    // 2026-08-03: fotito del producto (thumbnail de la publicación MeLi vinculada) para
+                    // mostrar una mini imagen en el tablero y poder verla más grande al tocarla.
+                    // Toma la publicación activa más reciente linkeada a ese producto de café.
+                    thumbnail = i.ProductoId != null
+                        ? _db.MeliItems
+                            .Where(mi => mi.CafeProductoId == i.ProductoId && mi.Thumbnail != null && mi.Status == "active")
+                            .OrderByDescending(mi => mi.UpdatedAt)
+                            .Select(mi => mi.Thumbnail)
+                            .FirstOrDefault()
+                        : null
                 }).ToList()
             })
             .ToListAsync();

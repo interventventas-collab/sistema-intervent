@@ -189,6 +189,14 @@
                          style="@(it.ComboOrigenId.HasValue ? "margin-left: 0.8rem; border-left: 2px dashed #fdba74;" : "")">
                         <input type="checkbox" class="prep-check" checked="@tildado" @onclick="() => ToggleTildado(it.Id)" />
                         <div class="prep-item-cant"><span class="x">×</span> @it.Cantidad</div>
+                        @* 2026-08-03: mini foto del producto (de la publicación MeLi). Tocarla la abre grande. *@
+                        @if (!string.IsNullOrEmpty(it.Thumbnail))
+                        {
+                            <img src="@FixHttps(it.Thumbnail)" alt="@it.ProductoNombre"
+                                 @onclick="() => AbrirFoto(it.Thumbnail, it.ProductoNombre)"
+                                 title="Tocá para verla más grande"
+                                 style="width:42px; height:42px; object-fit:cover; border-radius:6px; border:1px solid #e5e7eb; cursor:pointer; flex-shrink:0; background:#fff;" />
+                        }
                         <div>
                             <div class="prep-item-desc-prod prep-item-desc">
                                 @it.ProductoNombre
@@ -244,6 +252,24 @@
     }
 </div>
 
+@* 2026-08-03: pantallita para ver la foto del producto en grande. Se cierra tocando afuera o la ✕. *@
+@if (!string.IsNullOrEmpty(fotoGrande))
+{
+    <div @onclick="CerrarFoto"
+         style="position:fixed; inset:0; background:rgba(0,0,0,0.75); display:flex; align-items:center; justify-content:center; z-index:9999; padding:1rem;">
+        <div @onclick:stopPropagation="true"
+             style="background:#fff; border-radius:12px; padding:0.8rem; max-width:min(90vw,520px); box-shadow:0 10px 40px rgba(0,0,0,0.5);">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:0.6rem; margin-bottom:0.5rem;">
+                <span style="font-weight:600; font-size:0.95rem; color:#111827; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@fotoGrandeNombre</span>
+                <button @onclick="CerrarFoto" title="Cerrar"
+                        style="border:none; background:#f3f4f6; border-radius:8px; width:32px; height:32px; font-size:1rem; cursor:pointer; line-height:1; flex-shrink:0;">✕</button>
+            </div>
+            <img src="@fotoGrande" alt="@fotoGrandeNombre"
+                 style="display:block; width:100%; max-height:70vh; object-fit:contain; border-radius:8px;" />
+        </div>
+    </div>
+}
+
 @code {
     [Parameter, EditorRequired] public CafePreparacionVentaDto Venta { get; set; } = null!;
     [Parameter] public EventCallback OnAvanzar { get; set; }
@@ -260,6 +286,43 @@
 
     // IDs de items tildados (solo visual, no se persiste).
     private HashSet<int> tildados = new();
+
+    // 2026-08-03: foto del producto abierta en grande (lightbox). Null = cerrada.
+    private string? fotoGrande;
+    private string? fotoGrandeNombre;
+
+    private void AbrirFoto(string? thumbUrl, string nombre)
+    {
+        if (string.IsNullOrEmpty(thumbUrl)) return;
+        fotoGrande = FotoGrandeUrl(thumbUrl);
+        fotoGrandeNombre = nombre;
+    }
+
+    private void CerrarFoto()
+    {
+        fotoGrande = null;
+        fotoGrandeNombre = null;
+    }
+
+    // MeLi guarda muchas thumbs en http:// y el browser en HTTPS las bloquea. Forzamos https.
+    private static string FixHttps(string url) =>
+        url.StartsWith("http://") ? "https://" + url.Substring("http://".Length) : url;
+
+    // La thumb de MeLi es chica. Para verla más grande pedimos una variante de mayor tamaño.
+    // MeLi tiene dos formatos de URL de imagen y en cada uno el "tamaño" se pide distinto:
+    //  1) D_NQ_NP_...        → la variante 2X es más grande (D_NQ_NP_ → D_NQ_NP_2X_)
+    //  2) D_1234-MLA..-I.jpg → la letra antes de .jpg es el tamaño; -O es el grande (-I → -O)
+    // Si no matchea ninguno, queda igual (nunca rompe, peor caso se ve como la thumb).
+    private static string FotoGrandeUrl(string thumbUrl)
+    {
+        var u = FixHttps(thumbUrl);
+        if (u.Contains("D_NQ_NP_") && !u.Contains("2X_"))
+            return u.Replace("D_NQ_NP_", "D_NQ_NP_2X_");
+        var dot = u.LastIndexOf(".jpg", StringComparison.OrdinalIgnoreCase);
+        if (dot > 2 && u[dot - 2] == '-')
+            return u.Substring(0, dot - 1) + "O" + u.Substring(dot);
+        return u;
+    }
 
     private void ToggleTildado(int itemId)
     {
