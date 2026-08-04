@@ -159,7 +159,19 @@
                 @foreach (var c in conversacionesFiltradas)
                 {
                     <div class="wa-conv-item @(selectedNumero == c.Numero && selectedLinea == c.Linea ? "active" : "") @(EsPasadaAMi(c) ? "wa-conv-pasada" : "")" @onclick="() => SelectConv(c.Numero, c.Linea)">
-                        <div class="wa-avatar" style="@(AvatarColor(c))">@AvatarLetra(c)</div>
+                        <div class="wa-avatar-col">
+                            <div class="wa-avatar-circle">
+                                <div class="wa-avatar" style="@(AvatarColor(c))">@AvatarLetra(c)</div>
+                                @if (!string.IsNullOrEmpty(c.Rol))
+                                {
+                                    <span class="wa-avatar-rol">@(RolEmoji(c.Rol) is string _re && _re != "" ? _re : "🏷️")</span>
+                                }
+                            </div>
+                            @if (!string.IsNullOrEmpty(c.Rol))
+                            {
+                                <span class="wa-avatar-rol-label">@RolLabel(c.Rol)</span>
+                            }
+                        </div>
                         <div class="wa-conv-body">
                             <div class="wa-conv-row1">
                                 <span class="wa-conv-name">
@@ -173,10 +185,7 @@
                                     {
                                         @(c.NombrePerfil ?? PrettyNumero(c.Numero))
                                     }
-                                    @if (!string.IsNullOrEmpty(c.Rol))
-                                    {
-                                        <span class="wa-rol-tag">@RolEmoji(c.Rol)</span>
-                                    }
+                                    @* 2026-08-05: la categoría ahora se ve como emojito pisando el avatar (más copado) *@
                                     @* etiqueta de la CUENTA a la que escribió (con 2+ cuentas). Para IG el nombre grande
                                        es el remitente, así que acá va la cuenta (@frikaf_cafe) para saber por dónde entró. *@
                                     @if (LineasDetectadas().Count > 1 && !string.IsNullOrEmpty(c.LineaNumero))
@@ -410,7 +419,14 @@
             <div class="wa-thread-header">
                 @* 2026-08-02: flecha para volver a la lista (solo celular) *@
                 <button class="wa-volver-btn" @onclick="VolverALista" title="Volver a la lista de chats">←</button>
-                <div class="wa-avatar" style="@(AvatarColor(SelectedConv()))">@AvatarLetra(SelectedConv())</div>
+                @* 2026-08-05: avatar con la categoría encima; se toca para cambiarla al toque *@
+                <button class="wa-avatar-col wa-avatar-btn" @onclick="() => rolMenuConv = SelectedConv()" title="Categoría del contacto — tocá para cambiarla">
+                    <div class="wa-avatar-circle">
+                        <div class="wa-avatar" style="@(AvatarColor(SelectedConv()))">@AvatarLetra(SelectedConv())</div>
+                        <span class="wa-avatar-rol wa-avatar-rol-lg">@(RolEmoji(SelectedConv()?.Rol) is string _hre && _hre != "" ? _hre : "🏷️")</span>
+                    </div>
+                    <span class="wa-avatar-rol-label">@RolLabel(SelectedConv()?.Rol)</span>
+                </button>
                 <div style="flex:1;">
                     <div style="font-weight:600; display:flex; align-items:center; gap:0.45rem; flex-wrap:wrap;">
                         <span>@(MostrarNombre(SelectedConv()))</span>
@@ -1333,6 +1349,14 @@
     .wa-conv-item { display: flex; gap: 0.75rem; padding: 0.7rem 1rem; border-bottom: 1px solid #f3f4f6; cursor: pointer; transition: background 0.1s; border-left: 3px solid transparent; }
     .wa-conv-item:hover { background: #f7faf8; }
     .wa-conv-item.active { background: #eafcf1; border-left-color: #25d366; }
+    /* 2026-08-05: categoría = emojito pisando el avatar + palabra abajo (lista y chat abierto) */
+    .wa-avatar-col { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 0 0 auto; }
+    .wa-avatar-circle { position: relative; display: inline-block; }
+    .wa-avatar-rol { position: absolute; bottom: -3px; right: -4px; font-size: 0.9rem; line-height: 1; background: #fff; border-radius: 50%; padding: 1px 2px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+    .wa-avatar-rol-label { font-size: 0.6rem; font-weight: 700; color: #64748b; line-height: 1; text-align: center; max-width: 60px; }
+    .wa-avatar-btn { background: transparent; border: none; padding: 0; cursor: pointer; }
+    .wa-avatar-btn:hover .wa-avatar-rol { transform: scale(1.12); }
+    .wa-avatar-rol-lg { font-size: 1.1rem; bottom: -4px; right: -5px; }
     /* 2026-08-05: botón 🏷️ para poner categoría directo desde la lista + su menú */
     .wa-conv-rolbtn { flex: 0 0 auto; align-self: center; background: transparent; border: none; cursor: pointer; font-size: 1rem; opacity: 0.5; padding: 0.15rem 0.3rem; border-radius: 6px; }
     .wa-conv-item:hover .wa-conv-rolbtn { opacity: 1; }
@@ -3651,6 +3675,15 @@
         "cliente" => "🛍️",
         "proveedor" => "🚚",
         _ => ""
+    };
+    string RolLabel(string? rol) => rol switch
+    {
+        "hermano" => "Hermano",
+        "empleado" => "Empleado",
+        "cliente" => "Cliente",
+        "proveedor" => "Proveedor",
+        "otro" => "Otro",
+        _ => "Sin categoría"
     };
 
     string AvatarColor(ApiClient.TwConvDto c)
