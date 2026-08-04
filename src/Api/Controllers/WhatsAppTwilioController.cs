@@ -860,6 +860,42 @@ public class WhatsAppTwilioController : ControllerBase
         return Ok(c);
     }
 
+    // 2026-08-05: poner la CATEGORÍA (rol) de un contacto directo desde la lista, sin abrir el chat.
+    // Crea el contacto si no existía (con el nombre de perfil), o solo le cambia el rol si ya estaba.
+    public record ContactoRolRequest(string Numero, string Rol, string? Nombre = null);
+
+    [HttpPost("contacto-rol")]
+    [Authorize]
+    public async Task<IActionResult> SetContactoRol([FromBody] ContactoRolRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Numero) || string.IsNullOrWhiteSpace(req.Rol))
+            return BadRequest(new { error = "Falta el número o la categoría" });
+        // El número llega como lo guarda el sistema ("whatsapp:+549…" o "ig:…"). Se respeta tal cual
+        // para que enganche con la conversación (el join es por Numero exacto).
+        var numero = req.Numero.Trim();
+        if (!numero.StartsWith("whatsapp:") && !numero.StartsWith("ig:")) numero = "whatsapp:" + numero;
+        var rol = req.Rol.Trim();
+        var c = await _db.WhatsAppTwilioContactos.FirstOrDefaultAsync(x => x.Numero == numero);
+        if (c == null)
+        {
+            c = new WhatsAppTwilioContacto
+            {
+                Numero = numero,
+                Nombre = string.IsNullOrWhiteSpace(req.Nombre) ? numero.Replace("whatsapp:", "").Replace("ig:", "") : req.Nombre!.Trim(),
+                Rol = rol,
+                Activo = true
+            };
+            _db.WhatsAppTwilioContactos.Add(c);
+        }
+        else
+        {
+            c.Rol = rol;
+            c.Activo = true;
+        }
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
     // ===== Vincular un chat a un cliente del sistema EN UN PASO (asociar fácil) =====
     public record VincularClienteRequest(string Numero, int? ClienteId);
 
