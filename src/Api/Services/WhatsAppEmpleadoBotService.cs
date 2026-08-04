@@ -76,6 +76,17 @@ public class WhatsAppEmpleadoBotService
             if (estado is not null && !string.IsNullOrEmpty(estado.Esperando))
             {
                 if (estado.ExpiraAt < DateTime.UtcNow) { await LimpiarEstadoAsync(numero); return false; }
+
+                // Puerta de salida: si escribe una palabra de salida, el bot lo suelta y a partir de
+                // ahí puede hablar normal (que caiga como si fuera un chat común). 2026-08-04.
+                if (EsPalabraDeSalida(texto))
+                {
+                    await LimpiarEstadoAsync(numero);
+                    await ResponderAsync(fromWaId, numero,
+                        "👋 Listo, saliste del menú. Cuando quieras volver a consultar, escribí tu clave.", lineaId);
+                    return true;
+                }
+
                 var empEstado = await _db.AutoMenuEmpleados.AsNoTracking()
                     .FirstOrDefaultAsync(e => e.Activo && e.Codigo == estado.Codigo);
                 if (empEstado is null) { await LimpiarEstadoAsync(numero); return false; }
@@ -90,7 +101,7 @@ public class WhatsAppEmpleadoBotService
 
                 var (resp, clienteId) = await ResolverConsultaAsync(estado.Esperando, texto, empEstado);
                 await GuardarUltimoClienteAsync(numero, clienteId); // recordar para el "DOC" (y refresca vencimiento)
-                await ResponderAsync(fromWaId, numero, resp, lineaId);
+                await ResponderAsync(fromWaId, numero, resp + PieSalir, lineaId);
                 return true;
             }
 
@@ -159,7 +170,7 @@ public class WhatsAppEmpleadoBotService
         if (accion == "saldos" || accion == "facturas")
         {
             var listado = await ConstruirListadoDeudoresAsync(accion);
-            await ResponderLargoAsync(fromWaId, numero, listado, lineaId);
+            await ResponderLargoAsync(fromWaId, numero, listado + PieSalir, lineaId);
             return true;
         }
 
@@ -169,7 +180,7 @@ public class WhatsAppEmpleadoBotService
             "precios"  => "💲 Escribí el nombre o código del producto y te digo el precio.",
             _ => "Escribí el dato que querés consultar."
         };
-        await ResponderAsync(fromWaId, numero, pregunta, lineaId);
+        await ResponderAsync(fromWaId, numero, pregunta + PieSalir, lineaId);
         return true;
     }
 
@@ -438,6 +449,16 @@ public class WhatsAppEmpleadoBotService
         var e = await _db.AutoMenuEstados.FirstOrDefaultAsync(x => x.Numero == numero);
         if (e is not null) { _db.AutoMenuEstados.Remove(e); await _db.SaveChangesAsync(); }
     }
+
+    // 2026-08-04: palabras que hacen SALIR del menú (soltar el bot para poder hablar normal).
+    private static readonly HashSet<string> PalabrasSalida = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "salir", "chau", "chao", "listo", "gracias", "cancelar", "cancela", "no", "0", "basta", "fin", "terminar"
+    };
+    private static bool EsPalabraDeSalida(string texto) => PalabrasSalida.Contains((texto ?? "").Trim());
+
+    /// <summary>Cartelito que se agrega a las preguntas del bot para que el empleado sepa cómo cortar.</summary>
+    private const string PieSalir = "\n\n_(escribí *salir* para terminar)_";
 
     // ─────────────── Envío ───────────────
 
