@@ -240,13 +240,22 @@
             <div class="wa-nv-panel">
                 <div class="wa-nv-card">
                     <div class="wa-nv-head">
-                        <span class="wa-nv-head-ico">✍️</span>
+                        <span class="wa-nv-head-ico">@(LineaEsInstagram(filtroLinea) ? "📷" : "✍️")</span>
                         <div>
-                            <div class="wa-nv-title">Nueva conversación</div>
-                            <div class="wa-nv-sub">Escribile primero a alguien con una plantilla aprobada</div>
+                            <div class="wa-nv-title">@(LineaEsInstagram(filtroLinea) ? "Instagram" : "Nueva conversación")</div>
+                            <div class="wa-nv-sub">@(LineaEsInstagram(filtroLinea) ? "En Instagram solo respondés a quien te escribió" : "Escribile primero a alguien con una plantilla aprobada")</div>
                         </div>
                     </div>
 
+                    @* 2026-08-05: en Instagram NO se puede escribir primero (no hay plantillas). Solo se responde. *@
+                    @if (LineaEsInstagram(filtroLinea))
+                    {
+                        <div class="wa-nv-info" style="background:#fdf2f8; border-color:#f9a8d4; color:#9d174d;">
+                            📷 Estás parado en <b>Instagram (@LineaNombre(filtroLinea, null))</b>. Acá <b>no se puede escribir primero</b>: en Instagram solo podés <b>responder</b> a quien te haya mandado un mensaje directo (y dentro de las 24hs). Elegí una charla de la izquierda para responderle.
+                        </div>
+                    }
+                    else
+                    {
                     <div class="wa-nv-info">💡 Para escribirle <b>primero</b> a alguien (que no te escribió en las últimas 24h) WhatsApp pide una <b>plantilla aprobada</b>. Cuando te responde, ya le escribís libre.</div>
 
                     @if (nvCargando)
@@ -375,6 +384,7 @@
                                 @(nvEnviando ? "Enviando…" : "📨 Enviar mensaje")
                             </button>
                         </div>
+                    }
                     }
                 </div>
             </div>
@@ -3347,9 +3357,25 @@
         showLineaMenu = false;
         if (filtroLinea == id) return;   // es la misma línea: no tocar el chat abierto
         filtroLinea = id;
+        // 2026-08-05: que "Nueva conversación" mande SIEMPRE desde la misma línea que elegiste arriba
+        // (antes quedaba en FRIKAF por defecto aunque eligieras FIJO TRANSRADIO → confundía).
+        if (!string.IsNullOrEmpty(id) && nvLineas.Any(l => l.PhoneId == id)) nvLineaPhoneId = id;
+        else if (string.IsNullOrEmpty(id)) nvLineaPhoneId = LineaDefaultPhoneId();
         // 2026-08-03 (pedido del usuario): al cambiar de línea remitente, cerrar el chat abierto
         // así no queda a la vista una conversación de la línea anterior. Queda sin chat seleccionado.
         VolverALista();
+    }
+
+    // 2026-08-05: ¿la línea elegida arriba es una cuenta de Instagram? Se reconoce por el prefijo "IG "
+    // de su etiqueta/número. Sirve para NO mostrar el formulario de "escribir primero con plantilla"
+    // (eso es solo de WhatsApp; en Instagram solo se puede RESPONDER a quien te escribió).
+    bool LineaEsInstagram(string? id)
+    {
+        if (string.IsNullOrEmpty(id)) return false;
+        var det = LineasDetectadas().FirstOrDefault(x => x.Id == id);
+        if ((det.Numero ?? "").StartsWith("IG ", StringComparison.Ordinal)) return true;
+        var nv = nvLineas.FirstOrDefault(x => x.PhoneId == id);
+        return (nv?.Numero ?? "").StartsWith("IG ", StringComparison.Ordinal);
     }
 
     // 2026-08-03: al abrir la pantalla, arrancar viendo la línea "FRIKAF by INTERVENT" (no "Todas").
