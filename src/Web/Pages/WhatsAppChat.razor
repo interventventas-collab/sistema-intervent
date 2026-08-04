@@ -380,6 +380,7 @@
                     </div>
                     <div style="font-size:0.75rem; color:#6b7280; display:flex; gap:0.5rem; align-items:center;">
                         <span>@PrettyNumero(selectedNumero)</span>
+                        <button class="wa-num-edit" @onclick="AbrirCorregirNumero" title="Corregir el número de este chat (si quedó mal cargado)">✏️</button>
                         @if (SelectedConv()?.ClienteId is int cid)
                         {
                             <a href="/cafe/clientes/@cid" target="_blank" class="wa-cliente-badge" title="Ver ficha del cliente">
@@ -830,6 +831,38 @@
     </div>
 }
 
+@* 2026-08-04: CORREGIR NÚMERO de un chat (ej quedó mal cargado con 549 pegado a un extranjero) *@
+@if (showCorregirNum)
+{
+    <div class="wa-modal-backdrop" @onclick="@(() => showCorregirNum = false)"></div>
+    <div class="wa-modal" style="max-width:460px;">
+        <div class="wa-modal-header">
+            <h3 style="margin:0; flex:1; font-size:1.05rem;">✏️ Corregir número</h3>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="@(() => showCorregirNum = false)">×</button>
+        </div>
+        <div class="wa-modal-body">
+            <p style="font-size:0.82rem; color:#6b7280; margin:0 0 0.7rem;">
+                Escribí el número correcto <strong>con el "+" y el código de país</strong> (ej. España: <code>+34 642265173</code>, Argentina: <code>+54 9 11 2252-5458</code>).
+                Se mueven todos los mensajes de este chat al número correcto. El celular del cliente no se toca.
+            </p>
+            <div style="margin-bottom:0.5rem;">
+                <label style="font-size:0.78rem; color:#6b7280; display:block;">Número actual (mal)</label>
+                <input class="form-control form-control-sm" value="@PrettyNumero(selectedNumero)" readonly style="background:#f9fafb;" />
+            </div>
+            <div style="margin-bottom:0.7rem;">
+                <label style="font-size:0.78rem; color:#6b7280; display:block;">Número correcto <span style="color:#dc2626;">*</span></label>
+                <input class="form-control form-control-sm" @bind="corregirNumValor" placeholder="+34 642265173" />
+            </div>
+            <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:1rem;">
+                <button class="btn btn-secondary btn-sm" @onclick="@(() => showCorregirNum = false)">Cancelar</button>
+                <button class="btn btn-success btn-sm" @onclick="GuardarCorregirNumero" disabled="@corregirNumGuardando">
+                    @(corregirNumGuardando ? "⏳ Guardando..." : "✓ Corregir")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @* 2026-08-03: VINCULAR CLIENTE (idea "asociar fácil") — un solo buscador, sin pedir nombre ni rol *@
 @if (showVincular)
 {
@@ -1225,6 +1258,8 @@
     .wa-thread-header .btn:active { transform: translateY(0); box-shadow: 0 2px 5px rgba(15,23,42,0.14); }
     /* Los botones de solo-ícono (⚙ y 🗑) quedan redondos perfectos */
     .wa-thread-header .btn.wa-icon-round { width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 1rem; }
+    .wa-num-edit { background: none; border: none; padding: 0 2px; cursor: pointer; font-size: 0.8rem; line-height: 1; opacity: 0.55; }
+    .wa-num-edit:hover { opacity: 1; }
     .wa-messages { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
     .wa-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; text-align: center; }
     .wa-msg-row { display: flex; }
@@ -1724,6 +1759,38 @@
     {
         showConfig = true;
         configTab = "cont";
+    }
+
+    // 2026-08-04: corregir el número de un chat que quedó mal cargado.
+    bool showCorregirNum = false;
+    string corregirNumValor = "";
+    bool corregirNumGuardando = false;
+
+    void AbrirCorregirNumero()
+    {
+        if (selectedNumero == null) return;
+        // pre-cargo el número actual (con "+") para que solo tenga que retocarlo
+        corregirNumValor = "+" + new string((selectedNumero ?? "").Where(char.IsDigit).ToArray());
+        showCorregirNum = true;
+    }
+
+    async Task GuardarCorregirNumero()
+    {
+        if (selectedNumero == null) return;
+        if (string.IsNullOrWhiteSpace(corregirNumValor)) { Toast.Warning("Poné el número correcto"); return; }
+        corregirNumGuardando = true;
+        StateHasChanged();
+        var (ok, err, numero) = await Api.CorregirTwNumeroAsync(selectedNumero, corregirNumValor.Trim());
+        corregirNumGuardando = false;
+        if (!ok) { Toast.Error(err ?? "No se pudo corregir"); return; }
+        Toast.Success("Número corregido ✓");
+        showCorregirNum = false;
+        var lineaAnterior = selectedLinea;
+        await LoadContactos();
+        await LoadConversaciones(silent: true);
+        if (!string.IsNullOrEmpty(numero))
+            await SelectConv(numero, conversaciones.FirstOrDefault(c => c.Numero == numero)?.Linea ?? lineaAnterior);
+        StateHasChanged();
     }
 
     async Task BuscarClientesQuick()

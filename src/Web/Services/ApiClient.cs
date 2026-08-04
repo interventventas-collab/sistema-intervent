@@ -6481,6 +6481,25 @@ public class ApiClient
         catch (Exception ex) { return (false, ex.Message, null); }
     }
 
+    // 2026-08-04: corregir el número de un chat que quedó mal cargado (mueve mensajes + contacto).
+    public async Task<(bool ok, string? error, string? numero)> CorregirTwNumeroAsync(string numeroViejo, string numeroNuevo)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/conversaciones/corregir-numero",
+                new { NumeroViejo = numeroViejo, NumeroNuevo = numeroNuevo });
+            using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            if (resp.IsSuccessStatusCode)
+            {
+                string? num = doc.RootElement.TryGetProperty("numero", out var nu) ? nu.GetString() : null;
+                return (true, null, num);
+            }
+            string err = doc.RootElement.TryGetProperty("error", out var e) ? (e.GetString() ?? "No se pudo corregir") : "No se pudo corregir";
+            return (false, err, null);
+        }
+        catch (Exception ex) { return (false, ex.Message, null); }
+    }
+
     public async Task<List<TwRespRapidaDto>> GetTwRespuestasAsync()
         => await _http.GetFromJsonAsync<List<TwRespRapidaDto>>("/api/whatsapp/twilio/respuestas-rapidas") ?? new();
     public async Task<bool> CreateTwRespuestaAsync(TwRespUpsert r)

@@ -781,12 +781,26 @@ public class WhatsAppTwilioController : ControllerBase
         return Ok(salida);
     }
 
-    /// <summary>Deja un telefono en formato WhatsApp Argentina: 549 + area + abonado (solo digitos).</summary>
+    /// <summary>Deja un telefono en formato WhatsApp (solo digitos, con codigo de pais).
+    /// Por defecto asume ARGENTINA y completa 549. PERO si el numero ya vino con codigo de pais
+    /// explicito ("+34…" de España, "0034…", etc.) lo RESPETA y NO le pega el 549 adelante.
+    /// 2026-08-04: antes le metia 549 a cualquier numero → rompia los del exterior.</summary>
     private static string NormalizarNumeroWa(string? tel)
     {
-        var d = new string((tel ?? "").Where(char.IsDigit).ToArray());
+        if (string.IsNullOrWhiteSpace(tel)) return "";
+        var raw = tel.Trim();
+        // ¿Trae codigo de pais explicito? El "+" o el prefijo internacional "00".
+        bool traeCodigoPais = raw.StartsWith("+") || raw.StartsWith("00");
+        var d = new string(raw.Where(char.IsDigit).ToArray());
         if (string.IsNullOrEmpty(d)) return "";
         if (d.StartsWith("00")) d = d.Substring(2);
+        if (traeCodigoPais)
+        {
+            // Ya sabemos el pais. Si es argentino (+54) igual dejamos el 9 que WhatsApp exige.
+            if (d.StartsWith("54") && !d.StartsWith("549")) return "549" + d.Substring(2);
+            return d;   // ej España "34642265173" → tal cual, SIN 549
+        }
+        // Sin "+": asumimos que es un numero argentino local (ej "11 2252-5458").
         d = d.TrimStart('0');
         if (d.StartsWith("15")) d = d.Substring(2);
         if (d.StartsWith("549")) return d;
@@ -952,6 +966,41 @@ public class WhatsAppTwilioController : ControllerBase
         await _db.SaveChangesAsync();
         _logger.LogInformation("Conversación {Numero} borrada ({Count} mensajes)", numero, msgs.Count);
         return Ok(new { ok = true, borrados = msgs.Count });
+    }
+
+    // ===== Corregir el numero de una conversacion (cuando quedo mal cargado) =====
+    public record CorregirNumeroRequest(string NumeroViejo, string NumeroNuevo);
+
+    /// <summary>2026-08-04: POST conversaciones/corregir-numero — cambia el numero de un chat que quedo
+    /// mal (ej un español al que se le pego el 549). MUEVE todos los mensajes y, si estaba en la agenda,
+    /// tambien el contacto, al numero correcto. El chat en el celular del cliente no se toca.</summary>
+    [HttpPost("conversaciones/corregir-numero")]
+    [Authorize]
+    public async Task<IActionResult> CorregirNumero([FromBody] CorregirNumeroRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.NumeroViejo) || string.IsNullOrWhiteSpace(req.NumeroNuevo))
+            return BadRequest(new { error = "Faltan datos" });
+
+        var digitsNuevo = NormalizarNumeroWa(req.NumeroNuevo);
+        if (digitsNuevo.Length < 8)
+            return BadRequest(new { error = "El numero nuevo no parece valido. Poné el número completo con código de país (ej +34 642265173)." });
+        var numeroNuevoStd = "whatsapp:+" + digitsNuevo;
+
+        if (numeroNuevoStd == req.NumeroViejo)
+            return Ok(new { ok = true, numero = numeroNuevoStd, cambiados = 0 });
+
+        var msgs = await _db.WhatsAppTwilioMensajes.Where(m => m.Numero == req.NumeroViejo).ToListAsync();
+        if (msgs.Count == 0) return NotFound(new { error = "No hay mensajes de ese número" });
+        foreach (var m in msgs) m.Numero = numeroNuevoStd;
+
+        // Si el numero viejo ya existia en la agenda, moverlo tambien (salvo que el nuevo ya este cargado).
+        var contViejo = await _db.WhatsAppTwilioContactos.FirstOrDefaultAsync(c => c.Numero == req.NumeroViejo);
+        if (contViejo != null && !await _db.WhatsAppTwilioContactos.AnyAsync(c => c.Numero == numeroNuevoStd))
+            contViejo.Numero = numeroNuevoStd;
+
+        await _db.SaveChangesAsync();
+        _logger.LogInformation("Numero corregido: {Viejo} → {Nuevo} ({Count} mensajes)", req.NumeroViejo, numeroNuevoStd, msgs.Count);
+        return Ok(new { ok = true, numero = numeroNuevoStd, cambiados = msgs.Count });
     }
 
     // ===== Reacciones a mensajes =====
