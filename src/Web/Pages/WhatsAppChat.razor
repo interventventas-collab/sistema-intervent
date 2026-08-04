@@ -227,10 +227,26 @@
                                 </div>
                             }
                         </div>
+                        @* 2026-08-05: poner la categoría directo desde la lista, sin abrir el chat *@
+                        <button class="wa-conv-rolbtn" title="Poner categoría (Cliente / Empleado / …)" @onclick:stopPropagation="true" @onclick="() => rolMenuConv = c">🏷️</button>
                     </div>
                 }
             }
         </div>
+        @* menú de categoría rápida (se abre con el 🏷️ de cada conversación) *@
+        @if (rolMenuConv is not null)
+        {
+            <div class="wa-rolmenu-backdrop" @onclick="() => rolMenuConv = null"></div>
+            <div class="wa-rolmenu">
+                <div class="wa-rolmenu-title">🏷️ Categoría de <b>@MostrarNombre(rolMenuConv)</b></div>
+                <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("cliente")'>🛍️ Cliente</button>
+                <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("empleado")'>👷 Empleado</button>
+                <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("hermano")'>👨‍👦 Hermano</button>
+                <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("proveedor")'>🚚 Proveedor</button>
+                <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("otro")'>🏷️ Otro</button>
+                <button class="wa-rolmenu-cancel" @onclick="() => rolMenuConv = null">Cancelar</button>
+            </div>
+        }
     </div>
 
     <div class="wa-thread">
@@ -1317,6 +1333,16 @@
     .wa-conv-item { display: flex; gap: 0.75rem; padding: 0.7rem 1rem; border-bottom: 1px solid #f3f4f6; cursor: pointer; transition: background 0.1s; border-left: 3px solid transparent; }
     .wa-conv-item:hover { background: #f7faf8; }
     .wa-conv-item.active { background: #eafcf1; border-left-color: #25d366; }
+    /* 2026-08-05: botón 🏷️ para poner categoría directo desde la lista + su menú */
+    .wa-conv-rolbtn { flex: 0 0 auto; align-self: center; background: transparent; border: none; cursor: pointer; font-size: 1rem; opacity: 0.5; padding: 0.15rem 0.3rem; border-radius: 6px; }
+    .wa-conv-item:hover .wa-conv-rolbtn { opacity: 1; }
+    .wa-conv-rolbtn:hover { background: #e2e8f0; }
+    .wa-rolmenu-backdrop { position: fixed; inset: 0; z-index: 1090; background: rgba(0,0,0,0.15); }
+    .wa-rolmenu { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 1100; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 18px 50px rgba(0,0,0,0.22); padding: 0.6rem; min-width: 235px; }
+    .wa-rolmenu-title { font-size: 0.85rem; color: #334155; padding: 0.3rem 0.5rem 0.5rem; border-bottom: 1px solid #f1f5f9; margin-bottom: 0.35rem; }
+    .wa-rolmenu-op { display: block; width: 100%; text-align: left; background: transparent; border: none; padding: 0.5rem 0.6rem; border-radius: 7px; font-size: 0.88rem; color: #334155; cursor: pointer; }
+    .wa-rolmenu-op:hover { background: #f1f5f9; }
+    .wa-rolmenu-cancel { display: block; width: 100%; text-align: center; background: #f8fafc; border: 1px solid #e5e7eb; margin-top: 0.4rem; padding: 0.45rem; border-radius: 7px; font-size: 0.82rem; color: #64748b; cursor: pointer; }
     .wa-avatar { width: 46px; height: 46px; border-radius: 50%; background: #25d366; color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.05rem; flex-shrink: 0; }
     .wa-conv-body { flex: 1; min-width: 0; }
     .wa-conv-row1 { display: flex; justify-content: space-between; gap: 0.5rem; }
@@ -1941,6 +1967,24 @@
         quickContactClienteNombre = cli.Nombre;
         clienteResultadosQuick = new();
         quickContactClienteQuery = "";
+    }
+
+    // 2026-08-05: poner la categoría (rol) directo desde la lista, con el 🏷️ de cada conversación
+    ApiClient.TwConvDto? rolMenuConv = null;
+    async Task AsignarRolRapido(string rol)
+    {
+        var c = rolMenuConv;
+        rolMenuConv = null;
+        if (c == null) return;
+        var nombre = string.IsNullOrWhiteSpace(c.NombrePerfil) ? null : c.NombrePerfil;
+        var (ok, err) = await Api.SetTwContactoRolAsync(c.Numero, rol, nombre);
+        if (ok)
+        {
+            Toast.Success("Categoría asignada ✓");
+            await LoadContactos();
+            await LoadConversaciones(silent: true);
+        }
+        else Toast.Error(err ?? "No se pudo poner la categoría");
     }
 
     async Task GuardarQuickContact()

@@ -6533,6 +6533,19 @@ public class ApiClient
     }
     public async Task<bool> UpdateTwContactoAsync(int id, TwContactoUpsert c)
         => (await _http.PutAsJsonAsync($"/api/whatsapp/twilio/contactos/{id}", c)).IsSuccessStatusCode;
+    // 2026-08-05: poner la categoría (rol) de un contacto directo desde la lista (crea o actualiza).
+    public async Task<(bool ok, string? error)> SetTwContactoRolAsync(string numero, string rol, string? nombre)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/contacto-rol", new { Numero = numero, Rol = rol, Nombre = nombre });
+            if (resp.IsSuccessStatusCode) return (true, null);
+            string err = "Error";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync()); if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; } catch { }
+            return (false, err);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
     public async Task<bool> DeleteTwContactoAsync(int id)
         => (await _http.DeleteAsync($"/api/whatsapp/twilio/contactos/{id}")).IsSuccessStatusCode;
 
