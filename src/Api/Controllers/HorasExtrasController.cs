@@ -26,12 +26,15 @@ public class HorasExtrasController : ControllerBase
     private readonly IFido2 _fido2;
     private readonly IMemoryCache _cache;
     private readonly Services.TelegramService _telegram;
-    public HorasExtrasController(AppDbContext db, IFido2 fido2, IMemoryCache cache, Services.TelegramService telegram)
+    private readonly Services.WhatsAppOutboundService _wa;
+    public HorasExtrasController(AppDbContext db, IFido2 fido2, IMemoryCache cache, Services.TelegramService telegram,
+        Services.WhatsAppOutboundService wa)
     {
         _db = db;
         _fido2 = fido2;
         _cache = cache;
         _telegram = telegram;
+        _wa = wa;
     }
 
     /// <summary>2026-07-10: avisa al Telegram del dueño cuando alguien ficha (entrada/salida). Si es
@@ -45,7 +48,7 @@ public class HorasExtrasController : ControllerBase
             // FICHADA), con elección de canal: campanita 🔔 y/o Telegram 📲.
             var alerta = await _db.MisAlertas.FirstOrDefaultAsync(x => x.Tipo == "FICHADA");
             if (alerta is null || !alerta.Activa) return;
-            if (!alerta.CanalTelegram && !alerta.CanalCampanita) return;
+            if (!alerta.CanalTelegram && !alerta.CanalCampanita && !alerta.CanalWhatsApp) return;
 
             var texto = $"🕐 {emp.Nombre} fichó {tipo} — {horaTxt}";
 
@@ -77,6 +80,31 @@ public class HorasExtrasController : ControllerBase
                 {
                     var (ok, _) = await _telegram.SendMessageAsync(texto, categoria: "FICHADAS");
                     enviadoTg = ok;
+                }
+            }
+
+            // 2026-08-03: WhatsApp (si está tildado). Va a las personas tildadas para esta alerta
+            // (Auto_Destinatarios "alerta:{id}"), por la línea elegida en Automatizaciones.
+            if (alerta.CanalWhatsApp)
+            {
+                var idsDest = await _db.AutoDestinatarios.Where(d => d.AutoKey == $"alerta:{alerta.Id}")
+                    .Select(d => d.PersonaId).ToListAsync();
+                var personas = await _db.AutoPersonas
+                    .Where(p => p.Activo && idsDest.Contains(p.Id) && p.WhatsAppNumero != null).ToListAsync();
+                foreach (var per in personas)
+                {
+                    try
+                    {
+                        var num = per.WhatsAppNumero!.StartsWith("whatsapp:") ? per.WhatsAppNumero : "whatsapp:" + per.WhatsAppNumero;
+                        var (sid, canal, lin) = await _wa.SendTextAsync(num, texto, lineaOverride: alerta.LineaPhoneId);
+                        if (sid != null)
+                            _db.WhatsAppTwilioMensajes.Add(new WhatsAppTwilioMensaje
+                            {
+                                Direccion = "OUTGOING", Numero = num, Cuerpo = texto,
+                                TwilioMessageSid = sid, Canal = canal, LineaPhoneId = lin, Procesado = true, CreatedAt = DateTime.UtcNow
+                            });
+                    }
+                    catch { /* seguir con el resto */ }
                 }
             }
 

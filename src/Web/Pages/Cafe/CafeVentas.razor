@@ -6890,17 +6890,21 @@
                     catch (Exception ex) { ToastService.Error($"📧 Email error: {ex.Message}"); }
                 }));
             }
+            // 2026-08-03: reenvío por WhatsApp — MIGRADO a la API oficial de Meta (send-server-file VENTA),
+            // el mismo circuito del envío al cliente. Antes usaba el Playwright/WhatsApp Web viejo, que está
+            // DESCONECTADO (por eso el reenvío no salía). OJO: la API oficial necesita que el cliente te haya
+            // escrito en las últimas 24 hs.
             if (reenvioWhatsappInterno && !string.IsNullOrWhiteSpace(reenvioWhatsappPhone))
             {
                 tasks.Add(Task.Run(async () =>
                 {
                     try
                     {
-                        var (sent, err) = await Api.SendCafeVentaWhatsappInternoAsync(v.Id, reenvioWhatsappPhone, caption: MensajeWA());
-                        if (sent) ToastService.Success($"🚀 WhatsApp enviado a {reenvioWhatsappPhone}");
-                        else ToastService.Error($"🚀 WhatsApp Interno falló: {err}");
+                        var (sent, err) = await Api.SendTwServerFileAsync(reenvioWhatsappPhone, "VENTA", v.Id, MensajeWA(), null);
+                        if (sent) ToastService.Success($"🟢 WhatsApp enviado a {reenvioWhatsappPhone}");
+                        else ToastService.Error($"🟢 WhatsApp falló: {err}. Suele pasar si el cliente no te escribió en las últimas 24 hs o el número no tiene WhatsApp.");
                     }
-                    catch (Exception ex) { ToastService.Error($"🚀 WhatsApp Interno error: {ex.Message}"); }
+                    catch (Exception ex) { ToastService.Error($"🟢 WhatsApp error: {ex.Message}"); }
                 }));
             }
             if (tasks.Count > 0)
