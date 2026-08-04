@@ -6292,6 +6292,15 @@ IF COL_LENGTH('Mis_Alertas','TextoParam') IS NULL
     ALTER TABLE Mis_Alertas ADD TextoParam NVARCHAR(300) NULL;
 GO
 
+-- 2026-08-03: selector de LÍNEA de WhatsApp por aviso/alerta (desde cuál de las líneas con API
+-- oficial de Meta sale). NULL = línea por defecto (META_WA_PHONE_ID). Aplica al canal 📱 WhatsApp.
+IF COL_LENGTH('Mis_Alertas','LineaPhoneId') IS NULL
+    ALTER TABLE Mis_Alertas ADD LineaPhoneId NVARCHAR(40) NULL;
+GO
+IF OBJECT_ID('dbo.Auto_Config') IS NOT NULL AND COL_LENGTH('Auto_Config','LineaPhoneId') IS NULL
+    ALTER TABLE dbo.Auto_Config ADD LineaPhoneId NVARCHAR(40) NULL;
+GO
+
 -- 2026-07-10: correos detectados por alertas EMAIL_REMITENTE (para la card "Correos importantes").
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='Mis_Alertas_Correos')
 CREATE TABLE Mis_Alertas_Correos (

@@ -31,6 +31,9 @@ public class AutoConfig
     public bool CanalTelegram { get; set; } = true;
     public bool CanalWhatsApp { get; set; }
     public bool CanalEmail { get; set; }
+    /// <summary>2026-08-03: desde QUÉ línea de WhatsApp (phone_id de Meta) sale este aviso.
+    /// null = la línea por defecto (META_WA_PHONE_ID). Solo aplica al canal 📱 WhatsApp.</summary>
+    [MaxLength(40)] public string? LineaPhoneId { get; set; }
     public DateTime? LastRunAt { get; set; }
     public bool? LastRunOk { get; set; }
     [MaxLength(300)] public string? LastRunDetalle { get; set; }

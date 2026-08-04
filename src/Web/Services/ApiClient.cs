@@ -1398,12 +1398,12 @@ public class ApiClient
     public record AlertaDto(int Id, string Tipo, decimal? Umbral, string? TextoParam, string Mensaje,
         bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool CanalTelegram, bool Activa, List<string> Roles,
         bool EstaDisparada, bool Vista, string? UltimoDetalle, DateTime? DisparadaAt, bool EsSistema = false,
-        List<int>? Destinatarios = null);
+        List<int>? Destinatarios = null, string? LineaPhoneId = null);
     public record AlertaUpsertRequest(string Tipo, decimal? Umbral, string? TextoParam, string Mensaje,
         bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool CanalTelegram, bool Activa, List<string>? Roles,
-        List<int>? Destinatarios = null);
+        List<int>? Destinatarios = null, string? LineaPhoneId = null);
     // 2026-07-11: alertas del sistema (Ventas MeLi / Fichadas): prender/apagar + canal.
-    public record SistemaAlertaRequest(bool Activa, bool CanalCampanita, bool CanalTelegram, bool? CanalWhatsApp = null, bool? CanalCorreo = null, List<int>? Destinatarios = null);
+    public record SistemaAlertaRequest(bool Activa, bool CanalCampanita, bool CanalTelegram, bool? CanalWhatsApp = null, bool? CanalCorreo = null, List<int>? Destinatarios = null, string? LineaPhoneId = null, bool LineaSet = false);
     public record CorreoImportanteDto(int Id, string? Remitente, string? RemitenteEmail, string? Asunto,
         string? Adelanto, DateTime? Fecha, bool TieneAdjuntos, string? Adjuntos, string? GmailLink);
     public record ConfigCorreoAlertasDto(string? Host, int Port, string? Usuario, bool TieneClave, bool Configurada);
@@ -6877,12 +6877,14 @@ public class ApiClient
     public record AutoPersonaDto(int Id, string Nombre, long? TelegramChatId, string? WhatsAppNumero, string? Email, bool Activo);
     public record AutoAvisoDto(string Key, string Nombre, string Descripcion, bool Enabled, string Dias, int Hora,
         bool CanalCampanita, bool CanalTelegram, bool CanalWhatsApp, bool CanalEmail,
-        List<int> Destinatarios, DateTime? LastRunAt, bool? LastRunOk, string? LastRunDetalle);
+        List<int> Destinatarios, DateTime? LastRunAt, bool? LastRunOk, string? LastRunDetalle, string? LineaPhoneId = null);
     public record AutoRespondedorDto(string Key, string Nombre, string Descripcion, bool Enabled, string? LinkConfig);
-    public record AutomatizacionesDto(List<AutoPersonaDto> Personas, List<AutoAvisoDto> Avisos, List<AutoRespondedorDto> Respondedores);
+    // 2026-08-03: línea de WhatsApp elegible para "sale desde" (PhoneId de Meta + número visible + nombre lindo).
+    public record AutoLineaDto(string PhoneId, string Numero, string? Nombre);
+    public record AutomatizacionesDto(List<AutoPersonaDto> Personas, List<AutoAvisoDto> Avisos, List<AutoRespondedorDto> Respondedores, List<AutoLineaDto>? Lineas = null);
     public record AutoPersonaUpsert(string Nombre, long? TelegramChatId, string? WhatsAppNumero, string? Email, bool Activo);
     public record AutoAvisoConfigReq(bool Enabled, string Dias, int Hora,
-        bool CanalCampanita, bool CanalTelegram, bool CanalWhatsApp, bool CanalEmail, List<int> Destinatarios);
+        bool CanalCampanita, bool CanalTelegram, bool CanalWhatsApp, bool CanalEmail, List<int> Destinatarios, string? LineaPhoneId = null);
 
     public async Task<AutomatizacionesDto?> GetAutomatizacionesAsync()
         => await GetAsync<AutomatizacionesDto>("/api/automatizaciones");

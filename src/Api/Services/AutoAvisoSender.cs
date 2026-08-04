@@ -85,7 +85,8 @@ public class AutoAvisoSender
                 try
                 {
                     var numero = p.WhatsAppNumero!.StartsWith("whatsapp:") ? p.WhatsAppNumero : "whatsapp:" + p.WhatsAppNumero;
-                    var (sid, canal, lin) = await _wa.SendTextAsync(numero, c.WhatsAppTexto);
+                    // 2026-08-03: si el aviso tiene línea elegida, sale por esa; sino, la default.
+                    var (sid, canal, lin) = await _wa.SendTextAsync(numero, c.WhatsAppTexto, lineaOverride: cfg.LineaPhoneId);
                     if (sid != null)
                     {
                         ok++;

@@ -36,8 +36,9 @@ public class AutomatizacionesController : ControllerBase
 
     public record PersonaDto(int Id, string Nombre, long? TelegramChatId, string? WhatsAppNumero, string? Email, bool Activo);
     public record AvisoDto(string Key, string Nombre, string Descripcion, bool Enabled, string Dias, int Hora,
-        bool CanalCampanita, bool CanalTelegram, bool CanalWhatsApp, bool CanalEmail,
+        bool CanalCampanita, bool CanalTelegram, bool CanalWhatsApp, bool CanalEmail, string? LineaPhoneId,
         List<int> Destinatarios, DateTime? LastRunAt, bool? LastRunOk, string? LastRunDetalle);
+    public record LineaDto(string PhoneId, string Numero, string? Nombre);
     public record RespondedorDto(string Key, string Nombre, string Descripcion, bool Enabled, string? LinkConfig);
 
     private static readonly (string Key, string Nombre, string Descripcion)[] Avisos =
@@ -59,10 +60,22 @@ public class AutomatizacionesController : ControllerBase
         {
             var c = configs.FirstOrDefault(x => x.AutoKey == a.Key) ?? new AutoConfig { AutoKey = a.Key };
             return new AvisoDto(a.Key, a.Nombre, a.Descripcion, c.Enabled, c.Dias, c.Hora,
-                c.CanalCampanita, c.CanalTelegram, c.CanalWhatsApp, c.CanalEmail,
+                c.CanalCampanita, c.CanalTelegram, c.CanalWhatsApp, c.CanalEmail, c.LineaPhoneId,
                 destinos.Where(d => d.AutoKey == a.Key).Select(d => d.PersonaId).ToList(),
                 c.LastRunAt, c.LastRunOk, c.LastRunDetalle);
         }).ToList();
+
+        // 2026-08-03: líneas de WhatsApp disponibles (para el selector "sale desde"). Solo las de
+        // WhatsApp real (no Instagram). PhoneId vacío en el selector = línea por defecto.
+        var lineasCfg = await _db.WhatsAppLineasConfig.AsNoTracking().ToDictionaryAsync(x => x.LineaId, x => x.Nombre);
+        var lineas = await _db.AppSettings.AsNoTracking()
+            .Where(s => s.Key.StartsWith("whatsapp.linea."))
+            .Select(s => new { PhoneId = s.Key.Substring("whatsapp.linea.".Length), Numero = s.Value })
+            .ToListAsync();
+        var lineasDto = lineas
+            .Where(l => !(l.Numero ?? "").StartsWith("IG ", StringComparison.Ordinal))
+            .Select(l => new LineaDto(l.PhoneId, l.Numero ?? "", lineasCfg.TryGetValue(l.PhoneId, out var n) ? n : null))
+            .OrderBy(l => l.Numero).ToList();
 
         var settings = await _db.AppSettings.AsNoTracking()
             .Where(s => Respondedores.Select(r => r.SettingKey).Contains(s.Key)).ToListAsync();
@@ -73,7 +86,7 @@ public class AutomatizacionesController : ControllerBase
             return new RespondedorDto(r.Key, r.Nombre, r.Descripcion, enabled, r.LinkConfig);
         }).ToList();
 
-        return Ok(new { personas, avisos, respondedores });
+        return Ok(new { personas, avisos, respondedores, lineas = lineasDto });
     }
 
     /// <summary>2026-07-24: lista liviana de personas (para el selector "copia por WhatsApp" al
@@ -114,7 +127,8 @@ public class AutomatizacionesController : ControllerBase
     }
 
     public record AvisoConfigReq(bool Enabled, string Dias, int Hora,
-        bool CanalCampanita, bool CanalTelegram, bool CanalWhatsApp, bool CanalEmail, List<int> Destinatarios);
+        bool CanalCampanita, bool CanalTelegram, bool CanalWhatsApp, bool CanalEmail, List<int> Destinatarios,
+        string? LineaPhoneId = null);
 
     [HttpPost("avisos/{key}")]
     public async Task<IActionResult> GuardarAviso(string key, [FromBody] AvisoConfigReq req)
@@ -129,6 +143,7 @@ public class AutomatizacionesController : ControllerBase
         c.CanalTelegram = req.CanalTelegram;
         c.CanalWhatsApp = req.CanalWhatsApp;
         c.CanalEmail = req.CanalEmail;
+        c.LineaPhoneId = string.IsNullOrWhiteSpace(req.LineaPhoneId) ? null : req.LineaPhoneId.Trim();
         c.UpdatedAt = DateTime.UtcNow;
 
         var viejos = _db.AutoDestinatarios.Where(d => d.AutoKey == key);

@@ -227,7 +227,8 @@ public class MisAlertasBackgroundService : BackgroundService
                         try
                         {
                             var numero = per.WhatsAppNumero!.StartsWith("whatsapp:") ? per.WhatsAppNumero : "whatsapp:" + per.WhatsAppNumero;
-                            var (sid, canal, lin) = await wa.SendTextAsync(numero, texto);
+                            // 2026-08-03: si la alerta tiene línea elegida, sale por esa; sino, la default.
+                            var (sid, canal, lin) = await wa.SendTextAsync(numero, texto, lineaOverride: alerta.LineaPhoneId);
                             if (sid != null)
                                 db.Set<WhatsAppTwilioMensaje>().Add(new WhatsAppTwilioMensaje
                                 {

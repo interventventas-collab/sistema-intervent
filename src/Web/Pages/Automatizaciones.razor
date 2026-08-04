@@ -119,6 +119,21 @@
                         <label class="auto-tilde"><input type="checkbox" checked="@a2(a).CanalEmail" @onchange="e => { a2(a).CanalEmail = (bool)e.Value!; _ = GuardarAviso(a.Key); }" /> 📧 Correo</label>
                     </div>
 
+                    @if (a2(a).CanalWhatsApp && (data.Lineas?.Count ?? 0) > 0)
+                    {
+                        <div class="auto-fila">
+                            <span class="auto-lbl">📱 Sale desde</span>
+                            <select class="auto-hora" style="min-width:190px;" value="@(a2(a).LineaPhoneId ?? "")"
+                                    @onchange="e => { a2(a).LineaPhoneId = string.IsNullOrEmpty(e.Value?.ToString()) ? null : e.Value!.ToString(); _ = GuardarAviso(a.Key); }">
+                                <option value="">📲 Línea por defecto</option>
+                                @foreach (var ln in data.Lineas!)
+                                {
+                                    <option value="@ln.PhoneId">@LineaLabel(ln)</option>
+                                }
+                            </select>
+                        </div>
+                    }
+
                     <div class="auto-fila">
                         <span class="auto-lbl">¿A quién?</span>
                         @foreach (var p in data.Personas.Where(x => x.Activo))
@@ -209,6 +224,21 @@
                                 <label class="auto-tilde"><input type="checkbox" checked="@al.CanalWhatsApp" @onchange="e => CambiarCanal(al, 'w', (bool)e.Value!)" /> 📱 WhatsApp</label>
                                 <label class="auto-tilde"><input type="checkbox" checked="@al.CanalCorreo" @onchange="e => CambiarCanal(al, 'm', (bool)e.Value!)" /> 📧 Correo</label>
                             </div>
+
+                            @if (al.CanalWhatsApp && (data?.Lineas?.Count ?? 0) > 0)
+                            {
+                                <div class="auto-fila">
+                                    <span class="auto-lbl">📱 Sale desde</span>
+                                    <select class="auto-hora" style="min-width:190px;" value="@(al.LineaPhoneId ?? "")"
+                                            @onchange="e => CambiarLineaAlerta(al, string.IsNullOrEmpty(e.Value?.ToString()) ? null : e.Value!.ToString())">
+                                        <option value="">📲 Línea por defecto</option>
+                                        @foreach (var ln in data!.Lineas!)
+                                        {
+                                            <option value="@ln.PhoneId">@LineaLabel(ln)</option>
+                                        }
+                                    </select>
+                                </div>
+                            }
 
                             @* ¿A quién? — personas tildadas para ESTA alerta (Telegram/WhatsApp/correo) *@
                             <div class="auto-fila">
@@ -411,6 +441,7 @@
         public HashSet<int> DiasSet = new();
         public int Hora;
         public bool CanalCampanita, CanalTelegram, CanalWhatsApp, CanalEmail;
+        public string? LineaPhoneId;
         public List<int> Destinatarios = new();
     }
     readonly Dictionary<string, AvisoEdit> edit = new();
@@ -453,6 +484,10 @@
     // OJO CULTURA: el navegador exige punto decimal en los input type=number; si renderizamos
     // "14,00" (formato es-AR) el casillero queda VACÍO aunque el dato esté guardado. Por eso
     // formateamos con invariant y parseamos aceptando coma o punto.
+    // 2026-08-03: etiqueta linda de una línea para el selector "sale desde" (nombre + número).
+    static string LineaLabel(ApiClient.AutoLineaDto ln)
+        => string.IsNullOrWhiteSpace(ln.Nombre) ? $"📱 {ln.Numero}" : $"📱 {ln.Nombre} ({ln.Numero})";
+
     static string FmtDec(decimal? v) => v?.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) ?? "";
     static decimal? ParseDec(object? v)
     {
@@ -475,7 +510,7 @@
         var e = alEdit[a.Id];
         var (res, err) = await Api.ActualizarAlertaAsync(a.Id, new ApiClient.AlertaUpsertRequest(
             a.Tipo, e.Umbral, e.TextoParam, a.Mensaje,
-            a.CanalCampanita, a.CanalWhatsApp, a.CanalCorreo, a.CanalTelegram, a.Activa, a.Roles, e.Destinatarios));
+            a.CanalCampanita, a.CanalWhatsApp, a.CanalCorreo, a.CanalTelegram, a.Activa, a.Roles, e.Destinatarios, a.LineaPhoneId));
         if (res is not null) { Toast.Success("Guardado"); await CargarAlertas(); }
         else Toast.Error(err ?? "No se pudo guardar");
     }
@@ -493,7 +528,7 @@
         else
         {
             var (res, _) = await Api.ActualizarAlertaAsync(a.Id, new ApiClient.AlertaUpsertRequest(
-                a.Tipo, ed.Umbral, ed.TextoParam, a.Mensaje, camp, wa, mail, tg, a.Activa, a.Roles, ed.Destinatarios));
+                a.Tipo, ed.Umbral, ed.TextoParam, a.Mensaje, camp, wa, mail, tg, a.Activa, a.Roles, ed.Destinatarios, a.LineaPhoneId));
             ok = res is not null;
         }
         if (ok) { Toast.Success("Guardado"); await CargarAlertas(); }
@@ -513,10 +548,30 @@
             var e = alEdit[a.Id];
             var (res, _) = await Api.ActualizarAlertaAsync(a.Id, new ApiClient.AlertaUpsertRequest(
                 a.Tipo, e.Umbral, e.TextoParam, a.Mensaje,
-                a.CanalCampanita, a.CanalWhatsApp, a.CanalCorreo, a.CanalTelegram, a.Activa, a.Roles, l));
+                a.CanalCampanita, a.CanalWhatsApp, a.CanalCorreo, a.CanalTelegram, a.Activa, a.Roles, l, a.LineaPhoneId));
             ok = res is not null;
         }
         if (ok) { Toast.Success("Guardado"); await CargarAlertas(); }
+        else Toast.Error("No se pudo guardar");
+    }
+
+    // 2026-08-03: cambiar desde qué línea de WhatsApp sale esta alerta.
+    async Task CambiarLineaAlerta(ApiClient.AlertaDto a, string? phoneId)
+    {
+        bool ok;
+        if (a.EsSistema)
+            ok = await Api.UpdateSistemaAlertaAsync(a.Tipo, new ApiClient.SistemaAlertaRequest(
+                a.Activa, a.CanalCampanita, a.CanalTelegram, a.CanalWhatsApp, a.CanalCorreo,
+                alEdit[a.Id].Destinatarios, phoneId, LineaSet: true));
+        else
+        {
+            var e = alEdit[a.Id];
+            var (res, _) = await Api.ActualizarAlertaAsync(a.Id, new ApiClient.AlertaUpsertRequest(
+                a.Tipo, e.Umbral, e.TextoParam, a.Mensaje,
+                a.CanalCampanita, a.CanalWhatsApp, a.CanalCorreo, a.CanalTelegram, a.Activa, a.Roles, e.Destinatarios, phoneId));
+            ok = res is not null;
+        }
+        if (ok) { Toast.Success("Línea guardada"); await CargarAlertas(); }
         else Toast.Error("No se pudo guardar");
     }
 
@@ -574,6 +629,7 @@
                 Hora = a.Hora,
                 CanalCampanita = a.CanalCampanita, CanalTelegram = a.CanalTelegram,
                 CanalWhatsApp = a.CanalWhatsApp, CanalEmail = a.CanalEmail,
+                LineaPhoneId = a.LineaPhoneId,
                 Destinatarios = a.Destinatarios.ToList()
             };
         }
@@ -597,7 +653,7 @@
         var e = edit[key];
         var ok = await Api.SaveAutoAvisoAsync(key, new ApiClient.AutoAvisoConfigReq(
             e.Enabled, string.Join(",", e.DiasSet.OrderBy(x => x)), e.Hora,
-            e.CanalCampanita, e.CanalTelegram, e.CanalWhatsApp, e.CanalEmail, e.Destinatarios));
+            e.CanalCampanita, e.CanalTelegram, e.CanalWhatsApp, e.CanalEmail, e.Destinatarios, e.LineaPhoneId));
         if (ok) { Toast.Success("Guardado"); await Cargar(); }
         else Toast.Error("No se pudo guardar");
     }

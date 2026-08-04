@@ -60,11 +60,11 @@ public class MisAlertasController : ControllerBase
     public record AlertaDto(int Id, string Tipo, decimal? Umbral, string? TextoParam, string Mensaje,
         bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool CanalTelegram, bool Activa, List<string> Roles,
         bool EstaDisparada, bool Vista, string? UltimoDetalle, DateTime? DisparadaAt, bool EsSistema,
-        List<int> Destinatarios);
+        List<int> Destinatarios, string? LineaPhoneId);
 
     public record AlertaUpsertRequest(string Tipo, decimal? Umbral, string? TextoParam, string Mensaje,
         bool CanalCampanita, bool CanalWhatsApp, bool CanalCorreo, bool CanalTelegram, bool Activa, List<string>? Roles,
-        List<int>? Destinatarios = null);
+        List<int>? Destinatarios = null, string? LineaPhoneId = null);
 
     private static List<string> ParseRoles(string? alcance)
         => string.IsNullOrWhiteSpace(alcance)
@@ -75,7 +75,7 @@ public class MisAlertasController : ControllerBase
         a.Id, a.Tipo, a.Umbral, a.TextoParam, a.Mensaje,
         a.CanalCampanita, a.CanalWhatsApp, a.CanalCorreo, a.CanalTelegram, a.Activa, ParseRoles(a.Alcance),
         a.EstaDisparada, a.Vista, a.UltimoDetalle, a.DisparadaAt, TiposSistema.Contains(a.Tipo),
-        destinatarios ?? new List<int>());
+        destinatarios ?? new List<int>(), a.LineaPhoneId);
 
     /// <summary>Destinatarios (personas de la libretita) de una alerta. Clave "alerta:{id}" en Auto_Destinatarios.</summary>
     private async Task<List<int>> DestinatariosDeAsync(int alertaId) =>
@@ -163,7 +163,8 @@ public class MisAlertasController : ControllerBase
             CanalCorreo = r.CanalCorreo,
             CanalTelegram = r.CanalTelegram,
             Activa = r.Activa,
-            Alcance = alcance!
+            Alcance = alcance!,
+            LineaPhoneId = string.IsNullOrWhiteSpace(r.LineaPhoneId) ? null : r.LineaPhoneId.Trim()
         };
         _db.MisAlertas.Add(a);
         await _db.SaveChangesAsync();
@@ -195,6 +196,7 @@ public class MisAlertasController : ControllerBase
         a.CanalTelegram = r.CanalTelegram;
         a.Activa = r.Activa;
         a.Alcance = alcance!;
+        a.LineaPhoneId = string.IsNullOrWhiteSpace(r.LineaPhoneId) ? null : r.LineaPhoneId.Trim();
         if (redefinio) { a.EstaDisparada = false; a.Vista = false; a.UltimoDetalle = null; }
         a.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
@@ -230,7 +232,7 @@ public class MisAlertasController : ControllerBase
     }
 
     // ---------- Alertas del sistema (Ventas MeLi / Fichadas): prender/apagar + elegir canal ----------
-    public record SistemaAlertaRequest(bool Activa, bool CanalCampanita, bool CanalTelegram, bool? CanalWhatsApp = null, bool? CanalCorreo = null, List<int>? Destinatarios = null);
+    public record SistemaAlertaRequest(bool Activa, bool CanalCampanita, bool CanalTelegram, bool? CanalWhatsApp = null, bool? CanalCorreo = null, List<int>? Destinatarios = null, string? LineaPhoneId = null, bool LineaSet = false);
 
     /// <summary>Prende/apaga una alerta del sistema y elige por dónde avisa (campanita y/o Telegram).
     /// Son compartidas (no por rol): cualquiera con acceso a Mis Alertas las configura.</summary>
@@ -247,6 +249,9 @@ public class MisAlertasController : ControllerBase
         // 2026-07-23: canales nuevos (van a las personas de la libretita de Automatizaciones)
         if (r.CanalWhatsApp.HasValue) a.CanalWhatsApp = r.CanalWhatsApp.Value;
         if (r.CanalCorreo.HasValue) a.CanalCorreo = r.CanalCorreo.Value;
+        // 2026-08-03: la línea solo se toca cuando el que llama lo pide (LineaSet), así prender/apagar
+        // o tildar un canal NO borra la línea elegida.
+        if (r.LineaSet) a.LineaPhoneId = string.IsNullOrWhiteSpace(r.LineaPhoneId) ? null : r.LineaPhoneId.Trim();
         // Si se apaga o se saca la campanita, limpiamos el estado de "disparada" para que no quede colgado.
         if (!a.Activa || !a.CanalCampanita) { a.EstaDisparada = false; a.Vista = false; a.UltimoDetalle = null; }
         a.UpdatedAt = DateTime.UtcNow;
@@ -308,7 +313,7 @@ public class MisAlertasController : ControllerBase
             {
                 tot++;
                 var numero = p.WhatsAppNumero!.StartsWith("whatsapp:") ? p.WhatsAppNumero : "whatsapp:" + p.WhatsAppNumero;
-                var (sid, canal, lin) = await wa.SendTextAsync(numero, texto);
+                var (sid, canal, lin) = await wa.SendTextAsync(numero, texto, lineaOverride: a.LineaPhoneId);
                 if (sid != null)
                 {
                     ok++;

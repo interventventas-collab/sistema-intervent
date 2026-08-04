@@ -57,6 +57,11 @@ public class MisAlerta
     /// cuando salte. Se elige por-alerta desde la pantalla Mis Alertas.</summary>
     public bool CanalTelegram { get; set; } = false;
 
+    /// <summary>2026-08-03: desde QUÉ línea de WhatsApp (phone_id de Meta) sale esta alerta.
+    /// null = la línea por defecto (META_WA_PHONE_ID). Solo aplica al canal 📱 WhatsApp.</summary>
+    [MaxLength(40)]
+    public string? LineaPhoneId { get; set; }
+
     /// <summary>Interruptor prender/apagar sin borrar la regla.</summary>
     public bool Activa { get; set; } = true;
 
