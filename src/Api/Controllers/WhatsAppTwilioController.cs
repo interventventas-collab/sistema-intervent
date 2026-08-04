@@ -769,15 +769,28 @@ public class WhatsAppTwilioController : ControllerBase
 
         // Normalizar + sacar repetidos por numero
         var vistos = new HashSet<string>();
-        var salida = new List<object>();
+        var items = new List<(string Nombre, string Numero, string Origen)>();
         foreach (var (Nombre, Tel, Origen) in acc)
         {
             var num = NormalizarNumeroWa(Tel);
             if (num.Length < 8) continue;                 // sin numero usable
             if (!vistos.Add(num)) continue;               // ya lo tenemos
-            salida.Add(new { Nombre = string.IsNullOrWhiteSpace(Nombre) ? num : Nombre, Numero = num, Origen });
-            if (salida.Count >= cap) break;
+            items.Add((string.IsNullOrWhiteSpace(Nombre) ? num : Nombre, num, Origen));
+            if (items.Count >= cap) break;
         }
+
+        // 2026-08-04: ¿le puedo escribir LIBRE? WhatsApp solo deja si el contacto nos escribió
+        // en las ultimas 24hs. Marcamos "Disponible" a los que tienen un ENTRANTE reciente.
+        var nums = items.Select(i => i.Numero).ToList();
+        var limite = DateTime.UtcNow.AddHours(-24);
+        var disponibles = (await _db.WhatsAppTwilioMensajes.AsNoTracking()
+            .Where(m => m.Direccion == "INCOMING" && m.CreatedAt >= limite && nums.Contains(m.Numero))
+            .Select(m => m.Numero).Distinct().ToListAsync())
+            .ToHashSet();
+
+        var salida = items
+            .Select(i => new { i.Nombre, i.Numero, i.Origen, Disponible = disponibles.Contains(i.Numero) })
+            .ToList<object>();
         return Ok(salida);
     }
 

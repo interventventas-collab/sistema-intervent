@@ -644,6 +644,14 @@
                                     <div style="flex:1; min-width:0;">
                                         <div style="font-weight:600; color:#111; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@cli.Nombre</div>
                                         <div style="font-size:0.85rem; color:#6b7280;">@BonitoNumero(cli.Numero)</div>
+                                        @if (cli.Disponible)
+                                        {
+                                            <span class="wa-fwd-badge ok">🟢 le podés escribir</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="wa-fwd-badge no">🔒 fuera de 24 hs · necesita plantilla</span>
+                                        }
                                     </div>
                                     <span style="color:#16a34a; font-weight:700;">@(ya ? "✓" : "")</span>
                                 </button>
@@ -1528,6 +1536,9 @@
     .wa-fwd-list { overflow-y: auto; flex: 1; min-height: 60px; max-height: 40vh; margin-top: 0.4rem; border: 1px solid #f3f4f6; border-radius: 8px; }
     .wa-fwd-sel { background: #f0fdf4; }
     .wa-fwd-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.7rem; }
+    .wa-fwd-badge { display: inline-block; margin-top: 0.15rem; font-size: 0.68rem; padding: 0.05rem 0.4rem; border-radius: 999px; }
+    .wa-fwd-badge.ok { background: #dcfce7; color: #166534; }
+    .wa-fwd-badge.no { background: #f3f4f6; color: #9ca3af; }
 
     /* 2026-08-02: flecha "volver" (oculta en escritorio, se ve solo en el celular) */
     .wa-volver-btn { display: none; background: transparent; border: 0; font-size: 1.6rem; line-height: 1; color: #128c7e; cursor: pointer; padding: 0 0.4rem 0 0; }
