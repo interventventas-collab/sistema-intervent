@@ -127,22 +127,9 @@
                 </div>
             }
         </div>
-        @* 2026-07-31: filtros por CUENTA (línea de WhatsApp o cuenta de Instagram). Default "Todas".
-           Solo aparecen cuando hay 2+ cuentas conectadas; con una sola no molestan. Reusan filtroLinea. *@
-        @{ var _lineasChips = LineasDetectadas(); }
-        @if (_lineasChips.Count > 1)
-        {
-            <div class="wa-filtros" style="border-top:1px solid #eef0f2; margin-top:.35rem; padding-top:.45rem;">
-                <button class="wa-filtro @(filtroLinea=="" ? "active" : "")" @onclick='() => SeleccionarLinea("")' title="Ver los mensajes de todas las cuentas">📥 Todas</button>
-                @foreach (var l in _lineasChips)
-                {
-                    <button class="wa-filtro @(filtroLinea==l.Id ? "active" : "")" @onclick="() => SeleccionarLinea(l.Id)"
-                            title="Ver solo esta cuenta">@EtiquetaLineaChip(l.Numero, l.Id)</button>
-                }
-            </div>
-        }
-        @* 2026-07-29 (Paso 2): el filtro por número NUESTRO se movió al selector "Línea" de la barra
-           superior. Cuando hay un filtro de línea puesto, avisamos con un chip para que se note. *@
+        @* 2026-08-05: los chips de línea/cuenta que estaban acá se sacaron — hacían lo MISMO que el
+           selector "LÍNEA" de la barra superior (ambos usan filtroLinea). Estaba duplicado al pedo.
+           Queda solo el cartelito "Viendo solo: X" de abajo como aviso + atajo para volver a todas. *@
         @if (!string.IsNullOrEmpty(filtroLinea) && LineasDetectadas().FirstOrDefault(x => x.Id == filtroLinea) is var lf && lf.Numero != null)
         {
             <div class="wa-linea-activa-chip">
