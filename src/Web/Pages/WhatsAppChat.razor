@@ -590,7 +590,77 @@
                 <div class="wa-selection-bar">
                     <span style="font-size:0.85rem; font-weight:600;">✓ @mensajesSeleccionadosIds.Count seleccionado(s)</span>
                     <button class="btn btn-success btn-sm" @onclick="AbrirPreviewPedido">📋 Crear venta</button>
+                    <button class="btn btn-primary btn-sm" @onclick="AbrirReenviar">↪ Reenviar</button>
                     <button class="btn btn-outline-secondary btn-sm" @onclick="@(() => mensajesSeleccionadosIds.Clear())">× Cancelar</button>
+                </div>
+            }
+            @* 2026-08-04: Reenviar los mensajes tildados a uno o varios contactos (como WhatsApp) *@
+            @if (showReenviar)
+            {
+                <div class="wa-fwd-overlay" @onclick="CerrarReenviar"></div>
+                <div class="wa-fwd-modal" @onclick:stopPropagation="true">
+                    <div class="wa-fwd-head">
+                        <strong>↪ Reenviar @mensajesSeleccionadosIds.Count mensaje(s)</strong>
+                        <button class="wa-fwd-x" @onclick="CerrarReenviar">×</button>
+                    </div>
+                    <div class="wa-fwd-sub">Elegí uno o varios contactos. A todos les llega lo mismo.</div>
+
+                    @if (reenviarDestinos.Count > 0)
+                    {
+                        <div class="wa-fwd-chips">
+                            @foreach (var d in reenviarDestinos)
+                            {
+                                <span class="wa-fwd-chip">@d.Nombre <button @onclick="() => QuitarDestino(d)" title="Quitar">×</button></span>
+                            }
+                        </div>
+                    }
+
+                    <input class="wa-nv-input wa-nv-search" placeholder="🔍 Buscá un nombre o un número…"
+                           @bind="reenviarQuery" @bind:event="oninput" @onkeyup="BuscarReenviarDestinos" />
+
+                    @if (reenviarBuscando)
+                    {
+                        <div class="wa-nv-muted">Buscando…</div>
+                    }
+                    @{ var fwdDirecto = ReenviarNumeroDirecto(); }
+                    @if (fwdDirecto != null || reenviarResultados.Count > 0)
+                    {
+                        <div class="wa-fwd-list">
+                            @if (fwdDirecto != null)
+                            {
+                                <button type="button" class="wa-nv-item" @onclick="() => AgregarDestinoDirecto(fwdDirecto)">
+                                    <div class="wa-nv-avatar" style="background:#2563eb;">📱</div>
+                                    <div style="flex:1; min-width:0;">
+                                        <div style="font-weight:700; color:#111;">Reenviar a este número</div>
+                                        <div style="font-size:0.85rem; color:#2563eb;">@BonitoNumero(fwdDirecto)</div>
+                                    </div>
+                                </button>
+                            }
+                            @foreach (var cli in reenviarResultados)
+                            {
+                                var ya = reenviarDestinos.Any(x => x.Numero == cli.Numero);
+                                <button type="button" class="wa-nv-item @(ya ? "wa-fwd-sel" : "")" @onclick="() => ToggleDestino(cli)">
+                                    <div class="wa-nv-avatar">@InicialDe(cli.Nombre)</div>
+                                    <div style="flex:1; min-width:0;">
+                                        <div style="font-weight:600; color:#111; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@cli.Nombre</div>
+                                        <div style="font-size:0.85rem; color:#6b7280;">@BonitoNumero(cli.Numero)</div>
+                                    </div>
+                                    <span style="color:#16a34a; font-weight:700;">@(ya ? "✓" : "")</span>
+                                </button>
+                            }
+                        </div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(reenviarQuery) && reenviarQuery.Length >= 2 && !reenviarBuscando)
+                    {
+                        <div class="wa-nv-muted">Sin contactos para esa búsqueda. Si es un número nuevo, escribilo completo con el 54.</div>
+                    }
+
+                    <div class="wa-fwd-actions">
+                        <button class="btn btn-outline-secondary btn-sm" @onclick="CerrarReenviar">Cancelar</button>
+                        <button class="btn btn-success btn-sm" disabled="@(reenviarDestinos.Count == 0 || reenviando)" @onclick="ConfirmarReenviar">
+                            @(reenviando ? "Enviando…" : $"↪ Reenviar a {reenviarDestinos.Count}")
+                        </button>
+                    </div>
                 </div>
             }
             @if (respuestas.Any(r => r.Activo))
@@ -1446,6 +1516,19 @@
     .wa-srv-upload-btn.cargando { background: #9ca3af; cursor: wait; }
     .wa-srv-upload-hint { font-size: 0.72rem; color: #6b7280; margin-top: 0.4rem; }
 
+    /* 2026-08-04: reenviar mensajes a uno o varios contactos */
+    .wa-fwd-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 1090; }
+    .wa-fwd-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: white; border-radius: 12px; padding: 1rem 1.1rem; box-shadow: 0 20px 60px rgba(0,0,0,0.25); z-index: 1100; width: 92%; max-width: 460px; max-height: 82vh; display: flex; flex-direction: column; }
+    .wa-fwd-head { display: flex; justify-content: space-between; align-items: center; font-size: 1rem; }
+    .wa-fwd-x { background: transparent; border: none; font-size: 1.4rem; line-height: 1; cursor: pointer; color: #6b7280; }
+    .wa-fwd-sub { font-size: 0.8rem; color: #6b7280; margin: 0.25rem 0 0.6rem; }
+    .wa-fwd-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.5rem; }
+    .wa-fwd-chip { background: #dcfce7; color: #166534; border-radius: 999px; padding: 0.2rem 0.55rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.3rem; }
+    .wa-fwd-chip button { background: transparent; border: none; color: #166534; cursor: pointer; font-size: 0.95rem; line-height: 1; padding: 0; }
+    .wa-fwd-list { overflow-y: auto; flex: 1; min-height: 60px; max-height: 40vh; margin-top: 0.4rem; border: 1px solid #f3f4f6; border-radius: 8px; }
+    .wa-fwd-sel { background: #f0fdf4; }
+    .wa-fwd-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.7rem; }
+
     /* 2026-08-02: flecha "volver" (oculta en escritorio, se ve solo en el celular) */
     .wa-volver-btn { display: none; background: transparent; border: 0; font-size: 1.6rem; line-height: 1; color: #128c7e; cursor: pointer; padding: 0 0.4rem 0 0; }
 
@@ -2099,6 +2182,117 @@
             Toast.Success("Contacto compartido");
         }
         else { Toast.Error(err ?? "No se pudo enviar el contacto"); }
+    }
+
+    // ===== Reenviar mensajes a uno o varios contactos (2026-08-04) =====
+    bool showReenviar = false, reenviarBuscando = false, reenviando = false;
+    string reenviarQuery = "";
+    List<ApiClient.TwDestinatarioDto> reenviarResultados = new();
+    List<ApiClient.TwDestinatarioDto> reenviarDestinos = new();
+
+    void AbrirReenviar()
+    {
+        if (mensajesSeleccionadosIds.Count == 0) { Toast.Warning("Tocá primero el mensaje, la foto o el archivo que querés reenviar"); return; }
+        reenviarQuery = ""; reenviarResultados = new(); reenviarDestinos = new();
+        showReenviar = true;
+    }
+
+    void CerrarReenviar()
+    {
+        showReenviar = false;
+        reenviarQuery = ""; reenviarResultados = new(); reenviarDestinos = new();
+    }
+
+    async Task BuscarReenviarDestinos()
+    {
+        var q = (reenviarQuery ?? "").Trim();
+        if (q.Length < 2) { reenviarResultados = new(); return; }
+        reenviarBuscando = true; StateHasChanged();
+        try { reenviarResultados = await Api.BuscarTwDestinatariosAsync(q); }
+        catch { reenviarResultados = new(); }
+        reenviarBuscando = false; StateHasChanged();
+    }
+
+    // Si lo escrito parece un número (sin letras, 8+ dígitos), ofrecer mandarle directo
+    string? ReenviarNumeroDirecto()
+    {
+        var q = reenviarQuery ?? "";
+        if (q.Any(char.IsLetter)) return null;
+        var digs = new string(q.Where(char.IsDigit).ToArray());
+        return digs.Length >= 8 ? digs : null;
+    }
+
+    void ToggleDestino(ApiClient.TwDestinatarioDto cli)
+    {
+        var ya = reenviarDestinos.FirstOrDefault(x => x.Numero == cli.Numero);
+        if (ya != null) reenviarDestinos.Remove(ya);
+        else reenviarDestinos.Add(cli);
+    }
+
+    void QuitarDestino(ApiClient.TwDestinatarioDto cli)
+        => reenviarDestinos.RemoveAll(x => x.Numero == cli.Numero);
+
+    void AgregarDestinoDirecto(string digitos)
+    {
+        if (!reenviarDestinos.Any(x => x.Numero == digitos))
+            reenviarDestinos.Add(new ApiClient.TwDestinatarioDto("Número nuevo", digitos, "Directo"));
+        reenviarQuery = ""; reenviarResultados = new();
+    }
+
+    async Task ConfirmarReenviar()
+    {
+        if (reenviarDestinos.Count == 0 || reenviando) return;
+        var msgs = mensajes.Where(m => mensajesSeleccionadosIds.Contains(m.Id))
+                           .OrderBy(m => m.CreatedAt).ToList();
+        if (msgs.Count == 0) { Toast.Warning("No hay mensajes seleccionados"); return; }
+
+        reenviando = true; StateHasChanged();
+        int ok = 0, fail = 0;
+        // Línea = null: el sistema resuelve solo la línea del destinatario (donde tiene la ventana de 24hs abierta).
+        foreach (var d in reenviarDestinos)
+        {
+            foreach (var m in msgs)
+            {
+                try
+                {
+                    bool enviado;
+                    if (EsMensajeContacto(m.Cuerpo))
+                    {
+                        enviado = true;
+                        foreach (var ct in ParseContactos(m.Cuerpo))
+                        {
+                            var (cok, _) = await Api.EnviarTwContactoAsync(d.Numero, ct.Nombre, ct.Numero, null);
+                            if (!cok) enviado = false;
+                        }
+                    }
+                    else if (!string.IsNullOrEmpty(m.MediaUrl))
+                    {
+                        var (mok, _) = await Api.SendTwMediaAsync(d.Numero, m.MediaUrl!, m.Cuerpo, m.MediaFilename, null);
+                        enviado = mok;
+                    }
+                    else if (!string.IsNullOrWhiteSpace(m.Cuerpo))
+                    {
+                        var (tok, _) = await Api.SendTwMensajeAsync(d.Numero, m.Cuerpo!, null);
+                        enviado = tok;
+                    }
+                    else { continue; } // nada reenviable en este mensaje (ej. solo una reacción)
+
+                    if (enviado) ok++; else fail++;
+                }
+                catch { fail++; }
+            }
+        }
+        reenviando = false;
+
+        // Por si le reenviaste al chat que está abierto, refrescamos para verlo.
+        await LoadMensajes(silent: true);
+
+        if (fail == 0) Toast.Success($"Reenviado ✓ ({ok} envío(s))");
+        else if (ok == 0) Toast.Error("No se pudo reenviar. Puede ser que esos contactos no te escribieron en las últimas 24 hs (WhatsApp no deja mandarles algo libre hasta que respondan).");
+        else Toast.Warning($"Reenviado a algunos: {ok} sí, {fail} no (los que fallaron seguro están fuera de las 24 hs).");
+
+        CerrarReenviar();
+        mensajesSeleccionadosIds.Clear();
     }
 
     // ¿El cuerpo es una tarjeta de contacto? (marcador puesto por el webhook / el envío)
