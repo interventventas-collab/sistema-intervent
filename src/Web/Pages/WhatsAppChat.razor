@@ -2,6 +2,7 @@
 @page "/whatsapp/chat"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @inject Web.Services.ApiClient Api
+@inject Web.Services.OperatorService Op
 @inject Web.Services.ToastService Toast
 @inject Microsoft.AspNetCore.Components.NavigationManager Nav
 @inject Microsoft.JSInterop.IJSRuntime JS
@@ -90,6 +91,15 @@
             <button class="wa-filtro @(filtroRol=="empleado" ? "active" : "")" @onclick='() => filtroRol="empleado"'>👷 Empleados</button>
             <button class="wa-filtro @(filtroRol=="cliente" ? "active" : "")" @onclick='() => filtroRol="cliente"'>🛍️ Clientes</button>
             <button class="wa-filtro @(filtroRol=="sin" ? "active" : "")" @onclick='() => filtroRol="sin"' title="Conversaciones sin contacto asignado">❓ Sin asignar</button>
+            @* 2026-08-04: filtros por responsable / estado (pasar de uno a otro) *@
+            @if (!string.IsNullOrEmpty(OperadorActual))
+            {
+                <button class="wa-filtro @(filtroRol=="mios" ? "active" : "")" @onclick='() => filtroRol="mios"' title="Las charlas que te pasaron a vos">
+                    🙋 Míos@if (MisPendientes() > 0) { <span class="wa-mios-badge">@MisPendientes()</span> }
+                </button>
+            }
+            <button class="wa-filtro @(filtroRol=="en_curso" ? "active" : "")" @onclick='() => filtroRol="en_curso"'>🟡 En curso</button>
+            <button class="wa-filtro @(filtroRol=="finalizada" ? "active" : "")" @onclick='() => filtroRol="finalizada"'>🟢 Finalizadas</button>
         </div>
         @* 2026-07-31: filtros por CUENTA (línea de WhatsApp o cuenta de Instagram). Default "Todas".
            Solo aparecen cuando hay 2+ cuentas conectadas; con una sola no molestan. Reusan filtroLinea. *@
@@ -135,7 +145,7 @@
             {
                 @foreach (var c in conversacionesFiltradas)
                 {
-                    <div class="wa-conv-item @(selectedNumero == c.Numero && selectedLinea == c.Linea ? "active" : "")" @onclick="() => SelectConv(c.Numero, c.Linea)">
+                    <div class="wa-conv-item @(selectedNumero == c.Numero && selectedLinea == c.Linea ? "active" : "") @(EsPasadaAMi(c) ? "wa-conv-pasada" : "")" @onclick="() => SelectConv(c.Numero, c.Linea)">
                         <div class="wa-avatar" style="@(AvatarColor(c))">@AvatarLetra(c)</div>
                         <div class="wa-conv-body">
                             <div class="wa-conv-row1">
@@ -182,6 +192,27 @@
                                     <span class="wa-conv-leido" title="Ya le respondiste">✓ respondido</span>
                                 }
                             </div>
+                            @* 2026-08-04: estado + a quién se la pasaron *@
+                            @if (c.Estado != "nueva" || !string.IsNullOrEmpty(c.AsignadoOperador))
+                            {
+                                <div class="wa-conv-row3">
+                                    @if (c.Estado != "nueva")
+                                    {
+                                        <span class="wa-estado-chip" style="background:@EstadoColor(c.Estado);">@EstadoLabel(c.Estado)</span>
+                                    }
+                                    @if (!string.IsNullOrEmpty(c.AsignadoOperador))
+                                    {
+                                        @if (EsPasadaAMi(c))
+                                        {
+                                            <span class="wa-pasada-chip" title="@($"Te la pasó {c.AsignadoPor}")">🔔 Te la pasó @c.AsignadoPor</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="wa-asignado-chip" title="@($"Responsable: {c.AsignadoOperador}")"><span class="wa-asignado-ini" style="background:@OperadorColor(c.AsignadoOperador);">@OperadorIni(c.AsignadoOperador)</span> @c.AsignadoOperador</span>
+                                        }
+                                    }
+                                </div>
+                            }
                         </div>
                     </div>
                 }
@@ -400,6 +431,44 @@
                 <button class="btn btn-outline-danger btn-sm wa-icon-round" @onclick="BorrarConversacion" disabled="@borrandoConv" title="Borrar esta conversación del sistema (el celular del cliente no se toca)">
                     @(borrandoConv ? "⏳" : "🗑")
                 </button>
+            </div>
+
+            @* 2026-08-04: barra para PASAR la charla a otra persona y ponerle ESTADO (en curso / finalizada). *@
+            <div class="wa-coord-bar">
+                <div class="wa-coord-grupo">
+                    <span class="wa-coord-lbl">Estado:</span>
+                    @foreach (var e in EstadosLista)
+                    {
+                        var actual = (SelectedConv()?.Estado ?? "nueva") == e.Key;
+                        <button class="wa-estado-btn @(actual ? "activo" : "")"
+                                style="@(actual ? $"background:{EstadoColor(e.Key)};border-color:{EstadoColor(e.Key)};color:#fff;" : "")"
+                                @onclick="() => CambiarEstado(e.Key)">@e.Label</button>
+                    }
+                </div>
+                <div class="wa-coord-grupo">
+                    <span class="wa-coord-lbl">Pasar a:</span>
+                    @foreach (var op in OperadoresPasar)
+                    {
+                        var esResp = string.Equals(SelectedConv()?.AsignadoOperador, op, StringComparison.OrdinalIgnoreCase);
+                        <button class="wa-pasar-btn @(esResp ? "activo" : "")"
+                                style="@(esResp ? $"background:{OperadorColor(op)};border-color:{OperadorColor(op)};color:#fff;" : "")"
+                                @onclick="() => PasarA(op)" title="@($"Pasarle esta charla a {op}")">
+                            <span class="wa-asignado-ini" style="background:@OperadorColor(op);">@OperadorIni(op)</span> @op
+                        </button>
+                    }
+                    @if (!string.IsNullOrEmpty(SelectedConv()?.AsignadoOperador))
+                    {
+                        <button class="wa-pasar-quitar" @onclick="QuitarAsignacion" title="Sacar el responsable (queda sin asignar)">✕ quitar</button>
+                    }
+                    <input class="wa-coord-nota" placeholder="Nota (opcional): ej. falta coordinar entrega…"
+                           @bind="asignarNota" @bind:event="oninput" maxlength="300" />
+                </div>
+                @if (!string.IsNullOrEmpty(SelectedConv()?.AsignadoOperador))
+                {
+                    <div class="wa-coord-info">
+                        Ahora la tiene <b>@SelectedConv()?.AsignadoOperador</b>@if (!string.IsNullOrEmpty(SelectedConv()?.AsignadoPor) && !string.Equals(SelectedConv()?.AsignadoPor, SelectedConv()?.AsignadoOperador, StringComparison.OrdinalIgnoreCase)) { <text> · se la pasó @SelectedConv()?.AsignadoPor</text> }@if (!string.IsNullOrEmpty(SelectedConv()?.AsignadoNota)) { <text> — “@SelectedConv()?.AsignadoNota”</text> }
+                    </div>
+                }
             </div>
 
             @* 2026-08-03: cartelito que ADIVINA el cliente por el teléfono y ofrece vincularlo de un toque *@
@@ -1126,6 +1195,24 @@
     .wa-conv-last { font-size: 0.8rem; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
     .wa-conv-count { background: #25d366; color: white; font-size: 0.68rem; font-weight: 700; padding: 0.1rem 0.45rem; border-radius: 10px; text-align: center; }
     .wa-conv-leido { color: #9ca3af; font-size: 0.66rem; white-space: nowrap; }
+    /* 2026-08-04: estado + responsable (pasar de uno a otro) */
+    .wa-conv-pasada { background: #fff7ed; border-left-color: #f59e0b; }
+    .wa-conv-pasada:hover { background: #fef0dc; }
+    .wa-conv-row3 { display: flex; gap: 0.35rem; flex-wrap: wrap; align-items: center; margin-top: 0.25rem; }
+    .wa-estado-chip { color: #fff; font-size: 0.63rem; font-weight: 700; padding: 0.08rem 0.42rem; border-radius: 8px; letter-spacing: .2px; }
+    .wa-pasada-chip { background: #f59e0b; color: #fff; font-size: 0.63rem; font-weight: 700; padding: 0.08rem 0.42rem; border-radius: 8px; }
+    .wa-asignado-chip { display: inline-flex; align-items: center; gap: 0.25rem; background: #eef2ff; color: #3730a3; font-size: 0.63rem; font-weight: 700; padding: 0.08rem 0.42rem 0.08rem 0.1rem; border-radius: 8px; }
+    .wa-asignado-ini { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; color: #fff; font-size: 0.55rem; font-weight: 800; }
+    .wa-mios-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; margin-left: 3px; background: #ef4444; color: #fff; font-size: 0.62rem; font-weight: 800; border-radius: 9px; }
+    /* Barra de coordinación (estado + pasar a) debajo del encabezado del chat */
+    .wa-coord-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding: 0.5rem 1.1rem; background: #f8fafc; border-bottom: 1px solid #eef1f5; }
+    .wa-coord-grupo { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; }
+    .wa-coord-lbl { font-size: 0.72rem; font-weight: 700; color: #64748b; margin-right: 0.1rem; }
+    .wa-estado-btn, .wa-pasar-btn { display: inline-flex; align-items: center; gap: 0.3rem; background: #fff; border: 1px solid #d7dce3; color: #334155; font-size: 0.74rem; font-weight: 600; padding: 0.24rem 0.6rem; border-radius: 999px; cursor: pointer; transition: transform .1s ease, box-shadow .1s ease; }
+    .wa-estado-btn:hover, .wa-pasar-btn:hover { box-shadow: 0 2px 6px rgba(15,23,42,0.1); transform: translateY(-1px); }
+    .wa-pasar-quitar { background: #fff; border: 1px solid #e5c1c1; color: #b91c1c; font-size: 0.72rem; font-weight: 600; padding: 0.24rem 0.55rem; border-radius: 999px; cursor: pointer; }
+    .wa-coord-nota { border: 1px solid #d7dce3; border-radius: 999px; font-size: 0.74rem; padding: 0.24rem 0.7rem; min-width: 220px; flex: 1; }
+    .wa-coord-info { flex-basis: 100%; font-size: 0.72rem; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 0.25rem 0.6rem; }
     /* Tilditos de estado en los mensajes que mandamos */
     .wa-tilde { color: #8a8a8a; font-size: 0.72rem; margin-left: 3px; letter-spacing: -1px; }
     .wa-tilde-read { color: #34b7f1; }
@@ -2415,8 +2502,16 @@
         selectedNumero = numero;
         selectedLinea = linea;
         sugerenciaCliente = null;   // limpiar la del chat anterior mientras carga este
+        asignarNota = "";           // 2026-08-04: la nota de "pasar a" es por-chat
         await LoadMensajes();
         await BuscarSugerenciaCliente();
+        // 2026-08-04: si esta charla me la pasaron a mí y no la había abierto, apago el aviso.
+        var conv = SelectedConv();
+        if (conv != null && EsPasadaAMi(conv))
+        {
+            await Api.MarcarConvVistoAsync(numero, linea);
+            await LoadConversaciones(silent: true);
+        }
     }
 
     // 2026-08-02: volver a la lista de chats (modo celular)
@@ -3008,7 +3103,69 @@
         if (string.IsNullOrEmpty(filtroRol)) return true;
         if (filtroRol == "pedido") return EsPedido(c.UltimoMensaje);
         if (filtroRol == "sin") return string.IsNullOrEmpty(c.Rol);
+        // 2026-08-04: filtros por responsable / estado
+        if (filtroRol == "mios") return !string.IsNullOrEmpty(OperadorActual)
+            && string.Equals(c.AsignadoOperador, OperadorActual, StringComparison.OrdinalIgnoreCase);
+        if (filtroRol == "en_curso") return c.Estado == "en_curso";
+        if (filtroRol == "esperando") return c.Estado == "esperando";
+        if (filtroRol == "finalizada") return c.Estado == "finalizada";
         return c.Rol == filtroRol;
+    }
+
+    // ===== 2026-08-04: pasar la charla a otro + estados =====
+    // Operadores a los que se puede pasar. DEPOSITO queda preparado pero OCULTO por ahora
+    // (agregarlo acá cuando el usuario quiera que Depósito lo empiece a ver).
+    static readonly string[] OperadoresPasar = { "OSMAR", "GERMAN", "GABRIEL" };
+    static readonly (string Key, string Label)[] EstadosLista =
+    {
+        ("nueva", "Nueva"), ("en_curso", "En curso"), ("esperando", "Esperando"), ("finalizada", "Finalizada")
+    };
+    string asignarNota = "";
+    string? OperadorActual => string.IsNullOrWhiteSpace(Op.Current) ? null : Op.Current!.Trim().ToUpperInvariant();
+
+    // Charla que ME pasaron a mí y todavía no abrí (dispara el aviso 🔔).
+    bool EsPasadaAMi(ApiClient.TwConvDto c) =>
+        !string.IsNullOrEmpty(OperadorActual)
+        && string.Equals(c.AsignadoOperador, OperadorActual, StringComparison.OrdinalIgnoreCase)
+        && !c.AsignadoVisto;
+    int MisPendientes() => string.IsNullOrEmpty(OperadorActual) ? 0 : conversaciones.Count(EsPasadaAMi);
+
+    string EstadoLabel(string? e) => e switch
+    {
+        "en_curso" => "En curso", "esperando" => "Esperando", "finalizada" => "Finalizada", _ => "Nueva"
+    };
+    string EstadoColor(string? e) => e switch
+    {
+        "en_curso" => "#f59e0b", "esperando" => "#f97316", "finalizada" => "#16a34a", _ => "#3b82f6"
+    };
+    string OperadorColor(string? op) => Web.Services.OperatorService.ShortBgColor(op);
+    string OperadorIni(string? op) => Web.Services.OperatorService.ShortLabel(op);
+
+    async Task PasarA(string operador)
+    {
+        if (selectedNumero == null) return;
+        var ok = await Api.AsignarConversacionAsync(selectedNumero, selectedLinea, operador, asignarNota);
+        if (ok)
+        {
+            Toast.Success(string.Equals(operador, OperadorActual, StringComparison.OrdinalIgnoreCase)
+                ? "La tomaste vos" : $"Se la pasaste a {operador}");
+            asignarNota = "";
+            await LoadConversaciones(silent: true);
+        }
+        else Toast.Error("No se pudo pasar la conversación");
+    }
+    async Task QuitarAsignacion()
+    {
+        if (selectedNumero == null) return;
+        var ok = await Api.AsignarConversacionAsync(selectedNumero, selectedLinea, null, null);
+        if (ok) { asignarNota = ""; await LoadConversaciones(silent: true); }
+    }
+    async Task CambiarEstado(string estado)
+    {
+        if (selectedNumero == null) return;
+        var ok = await Api.CambiarEstadoConversacionAsync(selectedNumero, selectedLinea, estado);
+        if (ok) await LoadConversaciones(silent: true);
+        else Toast.Error("No se pudo cambiar el estado");
     }
 
     // Heuristica simple: si el mensaje contiene palabras tipicas de pedido.

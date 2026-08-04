@@ -210,6 +210,7 @@ public class AppDbContext : DbContext
     public DbSet<WhatsAppSector> WhatsAppSectores => Set<WhatsAppSector>();
     public DbSet<WhatsAppSectorOperario> WhatsAppSectorOperarios => Set<WhatsAppSectorOperario>();
     public DbSet<WhatsAppLlamada> WhatsAppLlamadas => Set<WhatsAppLlamada>();
+    public DbSet<WhatsAppConversacion> WhatsAppConversaciones => Set<WhatsAppConversacion>();
     public DbSet<MisAlerta> MisAlertas => Set<MisAlerta>();
     public DbSet<MisAlertaCorreo> MisAlertasCorreos => Set<MisAlertaCorreo>();
     public DbSet<MisAlertaHistorial> MisAlertasHistorial => Set<MisAlertaHistorial>();

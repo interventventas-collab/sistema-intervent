@@ -417,11 +417,18 @@ public class WhatsAppTwilioController : ControllerBase
             .Where(x => clienteIds.Contains(x.Id))
             .Select(x => new { x.Id, x.Nombre, x.CodigoInterno })
             .ToDictionaryAsync(x => x.Id);
+        // 2026-08-04: estado + responsable por conversación (número+línea). Solo hay fila si alguien
+        // le puso estado o la pasó a otra persona; si no, se muestra "nueva" y sin asignar.
+        var estados = await _db.WhatsAppConversaciones.AsNoTracking().ToListAsync();
+        var estadoMap = estados
+            .GroupBy(e => (e.Numero, e.LineaPhoneId ?? ""))
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(e => e.Id).First());
         var result = conv.Select(x =>
         {
             contactos.TryGetValue(x.Numero, out var c);
             string? clienteNombre = null;
             if (c?.ClienteId != null && clientes.TryGetValue(c.ClienteId.Value, out var cli)) clienteNombre = cli.Nombre;
+            estadoMap.TryGetValue((x.Numero, x.Linea ?? ""), out var est);
             return new
             {
                 x.Numero,
@@ -435,10 +442,96 @@ public class WhatsAppTwilioController : ControllerBase
                 x.Total,
                 x.Linea,
                 LineaNumero = x.Linea != null && lineasNombres.TryGetValue(x.Linea, out var ln) ? ln : null,
-                x.Canal
+                x.Canal,
+                Estado = est?.Estado ?? "nueva",
+                AsignadoOperador = est?.AsignadoOperador,
+                AsignadoPor = est?.AsignadoPor,
+                AsignadoNota = est?.AsignadoNota,
+                // Si no hay asignación pendiente, "visto"=true (no dispara el aviso). Solo es false
+                // cuando alguien la pasó a otra persona y esa persona todavía no la abrió.
+                AsignadoVisto = est == null || est.AsignadoOperador == null || est.AsignadoVisto
             };
         }).OrderByDescending(x => x.UltimoAt).ToList();
         return Ok(result);
+    }
+
+    // ===== 2026-08-04: pasar/asignar conversación + estado (en curso / finalizada / etc) =====
+    public record AsignarConvRequest(string Numero, string? LineaPhoneId, string? Operador, string? Nota);
+    public record EstadoConvRequest(string Numero, string? LineaPhoneId, string Estado);
+    public record VistoConvRequest(string Numero, string? LineaPhoneId);
+
+    private static readonly string[] EstadosValidos = { "nueva", "en_curso", "esperando", "finalizada" };
+    private static string? NormOp(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim().ToUpperInvariant();
+
+    /// <summary>Busca (o crea en memoria) la fila de estado de una conversación por número+línea.</summary>
+    private async Task<WhatsAppConversacion> GetOrCreateConvAsync(string numero, string? linea)
+    {
+        var lin = string.IsNullOrEmpty(linea) ? null : linea;
+        var row = lin == null
+            ? await _db.WhatsAppConversaciones.FirstOrDefaultAsync(cc => cc.Numero == numero && cc.LineaPhoneId == null)
+            : await _db.WhatsAppConversaciones.FirstOrDefaultAsync(cc => cc.Numero == numero && cc.LineaPhoneId == lin);
+        if (row == null)
+        {
+            row = new WhatsAppConversacion { Numero = numero, LineaPhoneId = lin };
+            _db.WhatsAppConversaciones.Add(row);
+        }
+        return row;
+    }
+
+    /// <summary>POST conversaciones/asignar — pasar la charla a un operador (OSMAR/GERMAN/GABRIEL/...).
+    /// Operador null = sacar la asignación. El que la recibe la ve como pendiente (aviso) hasta abrirla.</summary>
+    [HttpPost("conversaciones/asignar")]
+    [Authorize]
+    public async Task<IActionResult> AsignarConversacion([FromBody] AsignarConvRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req?.Numero)) return BadRequest(new { error = "Falta el número" });
+        var quien = NormOp(Request.Headers["X-Operator-Name"].FirstOrDefault());
+        var target = NormOp(req.Operador);
+        var row = await GetOrCreateConvAsync(req.Numero, req.LineaPhoneId);
+        row.AsignadoOperador = target;
+        row.AsignadoPor = target == null ? null : quien;
+        row.AsignadoNota = string.IsNullOrWhiteSpace(req.Nota) ? null : req.Nota.Trim();
+        row.AsignadoAt = target == null ? null : DateTime.UtcNow;
+        // Si me la asigno a mí mismo (o la desasigno), no hay aviso pendiente.
+        row.AsignadoVisto = target == null || target == quien;
+        row.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>POST conversaciones/estado — marcar la charla como en curso / esperando / finalizada / nueva.</summary>
+    [HttpPost("conversaciones/estado")]
+    [Authorize]
+    public async Task<IActionResult> CambiarEstadoConversacion([FromBody] EstadoConvRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req?.Numero)) return BadRequest(new { error = "Falta el número" });
+        var est = (req.Estado ?? "").Trim().ToLowerInvariant();
+        if (!EstadosValidos.Contains(est)) return BadRequest(new { error = "Estado inválido" });
+        var row = await GetOrCreateConvAsync(req.Numero, req.LineaPhoneId);
+        row.Estado = est;
+        row.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>POST conversaciones/visto — el que la recibió la abrió: apaga el aviso "te la pasó X".</summary>
+    [HttpPost("conversaciones/visto")]
+    [Authorize]
+    public async Task<IActionResult> MarcarConvVisto([FromBody] VistoConvRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req?.Numero)) return BadRequest(new { error = "Falta el número" });
+        var lin = string.IsNullOrEmpty(req.LineaPhoneId) ? null : req.LineaPhoneId;
+        var numero = req.Numero;
+        var row = lin == null
+            ? await _db.WhatsAppConversaciones.FirstOrDefaultAsync(cc => cc.Numero == numero && cc.LineaPhoneId == null)
+            : await _db.WhatsAppConversaciones.FirstOrDefaultAsync(cc => cc.Numero == numero && cc.LineaPhoneId == lin);
+        if (row != null && !row.AsignadoVisto)
+        {
+            row.AsignadoVisto = true;
+            row.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+        }
+        return Ok(new { ok = true });
     }
 
     // ===== Respuestas rapidas CRUD =====

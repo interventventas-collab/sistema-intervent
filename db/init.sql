@@ -5812,6 +5812,27 @@ CREATE TABLE Cafe_Marcas (
 );
 GO
 
+-- 2026-08-04: estado + responsable por conversación de WhatsApp/Instagram (pasar de uno a otro).
+-- Una conversación = (Numero + LineaPhoneId). Solo hay fila si alguien le puso estado o la pasó.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_Conversaciones')
+CREATE TABLE WhatsApp_Conversaciones (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    Numero NVARCHAR(30) NOT NULL,
+    LineaPhoneId NVARCHAR(30) NULL,
+    Estado NVARCHAR(20) NOT NULL DEFAULT 'nueva',   -- nueva | en_curso | esperando | finalizada
+    AsignadoOperador NVARCHAR(40) NULL,             -- OSMAR/GERMAN/GABRIEL/DEPOSITO (firma del operador)
+    AsignadoPor NVARCHAR(40) NULL,                  -- quién la pasó (aviso "te la pasó X")
+    AsignadoNota NVARCHAR(300) NULL,
+    AsignadoAt DATETIME2 NULL,
+    AsignadoVisto BIT NOT NULL DEFAULT 0,           -- el que la recibió ya la abrió
+    UpdatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+GO
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_Conversaciones')
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_WaConv_NumeroLinea')
+    CREATE UNIQUE INDEX UX_WaConv_NumeroLinea ON WhatsApp_Conversaciones (Numero, LineaPhoneId);
+GO
+
 -- 2026-06-20: WhatsApp - Sectores + Operarios. Permite derivar conversaciones del chat
 -- entrante a un sector (Cafe, Ventas, Alquileres, etc) y opcionalmente a un operario
 -- especifico. Cada usuario del sistema puede pertenecer a varios sectores.

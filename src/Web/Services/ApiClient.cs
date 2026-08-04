@@ -6299,7 +6299,9 @@ public class ApiClient
     // ===== WhatsApp Twilio chat =====
     /// <summary>Linea/LineaNumero (2026-07-23): por qué número NUESTRO conversa este contacto —
     /// preparación multi-línea (id técnico + número visible). Null si todavía no se sabe.</summary>
-    public record TwConvDto(string Numero, string? NombrePerfil, string? Rol, int? ClienteId, string? ClienteNombre, string? UltimoMensaje, string? UltimoDireccion, DateTime UltimoAt, int Total, string? Linea, string? LineaNumero, string? Canal = null);
+    public record TwConvDto(string Numero, string? NombrePerfil, string? Rol, int? ClienteId, string? ClienteNombre, string? UltimoMensaje, string? UltimoDireccion, DateTime UltimoAt, int Total, string? Linea, string? LineaNumero, string? Canal = null,
+        // 2026-08-04: estado + responsable de la conversación (pasar de uno a otro).
+        string Estado = "nueva", string? AsignadoOperador = null, string? AsignadoPor = null, string? AsignadoNota = null, bool AsignadoVisto = true);
     public record TwReaccionDto(string Emoji, int Count);
     public record TwMsgDto(int Id, string Direccion, string Numero, string? NombrePerfil, string? Cuerpo, string? MediaUrl, string? MediaFilename, int? NumMedia, bool Procesado, string? RespuestaEnviada, DateTime CreatedAt, string? EstadoEntrega, List<TwReaccionDto>? Reacciones);
     public record TwRespRapidaDto(int Id, string Nombre, string Texto, int Orden, bool Activo);
@@ -6312,6 +6314,33 @@ public class ApiClient
         => await _http.GetFromJsonAsync<List<TwDestinatarioDto>>($"/api/whatsapp/twilio/destinatarios-buscar?q={Uri.EscapeDataString(q ?? "")}") ?? new();
     public async Task<List<TwConvDto>> GetTwConversacionesAsync()
         => await _http.GetFromJsonAsync<List<TwConvDto>>("/api/whatsapp/twilio/conversaciones") ?? new();
+
+    // 2026-08-04: pasar/asignar una conversación a un operador + ponerle estado. linea puede ser null.
+    public async Task<bool> AsignarConversacionAsync(string numero, string? linea, string? operador, string? nota)
+    {
+        try
+        {
+            var r = await _http.PostAsJsonAsync("/api/whatsapp/twilio/conversaciones/asignar",
+                new { Numero = numero, LineaPhoneId = linea, Operador = operador, Nota = nota });
+            return r.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
+    public async Task<bool> CambiarEstadoConversacionAsync(string numero, string? linea, string estado)
+    {
+        try
+        {
+            var r = await _http.PostAsJsonAsync("/api/whatsapp/twilio/conversaciones/estado",
+                new { Numero = numero, LineaPhoneId = linea, Estado = estado });
+            return r.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
+    public async Task MarcarConvVistoAsync(string numero, string? linea)
+    {
+        try { await _http.PostAsJsonAsync("/api/whatsapp/twilio/conversaciones/visto", new { Numero = numero, LineaPhoneId = linea }); }
+        catch { }
+    }
 
     // 2026-08-03: número de WhatsApp del chat vinculado a un cliente (para enviar el comprobante
     // desde una venta aunque la ficha del cliente no tenga teléfono cargado). Devuelve null si no hay.
