@@ -6584,6 +6584,29 @@ public class ApiClient
         catch (Exception ex) { return (null, ex.Message); }
     }
 
+    // ── Catálogos permanentes (PDF/documentos/imágenes) ──
+    public record TwCatalogoResp(int Id, string OriginalFilename, long SizeBytes, string ContentType, DateTime CreatedAt);
+    public async Task<(TwCatalogoResp? resp, string? error)> UploadTwCatalogoAsync(System.IO.Stream stream, string filename, string contentType)
+    {
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            var file = new StreamContent(stream);
+            file.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(string.IsNullOrEmpty(contentType) ? "application/octet-stream" : contentType);
+            content.Add(file, "file", filename);
+            var resp = await _http.PostAsync("/api/whatsapp/twilio/catalogo-upload", content);
+            if (resp.IsSuccessStatusCode)
+                return (await resp.Content.ReadFromJsonAsync<TwCatalogoResp>(), null);
+            string err = "Error subiendo catálogo";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync()); if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; } catch { }
+            return (null, err);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    public async Task<bool> DeleteTwCatalogoAsync(int id)
+        => (await _http.DeleteAsync($"/api/whatsapp/twilio/catalogo/{id}")).IsSuccessStatusCode;
+
     public record TwServerFileDto(string Tipo, int Id, string Label, string? SubLabel, string? Info, DateTime Fecha);
     public async Task<List<TwServerFileDto>> GetTwServerFilesAsync(string tipo, string? search = null)
     {

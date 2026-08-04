@@ -1189,6 +1189,54 @@ public class WhatsAppTwilioController : ControllerBase
         return PhysicalFile(path, up.ContentType, up.OriginalFilename);
     }
 
+    // ===== CATALOGOS — archivos permanentes (PDF/documentos/imagenes) =====
+    // A diferencia de los uploads de "Mis subidos" (24h), estos quedan guardados para siempre.
+    // Se guardan en el mismo volume /data/whatsapp-uploads (que NO se purga solo).
+
+    public record CatalogoDto(int Id, string OriginalFilename, long SizeBytes, string ContentType, DateTime CreatedAt);
+
+    /// <summary>POST /api/whatsapp/twilio/catalogo-upload — sube un catalogo permanente.</summary>
+    [HttpPost("catalogo-upload")]
+    [Authorize]
+    [RequestSizeLimit(20 * 1024 * 1024)]
+    public async Task<IActionResult> CatalogoUpload([FromForm] IFormFile? file)
+    {
+        if (file == null || file.Length == 0) return BadRequest(new { error = "No se recibio archivo" });
+        if (file.Length > 16 * 1024 * 1024) return BadRequest(new { error = "El archivo supera el limite de 16 MB que admite WhatsApp" });
+
+        Directory.CreateDirectory(UploadsDir);
+        var token = GenerarToken();
+        var ext = Path.GetExtension(file.FileName);
+        var stored = token + ext;
+        using (var fs = System.IO.File.Create(Path.Combine(UploadsDir, stored))) await file.CopyToAsync(fs);
+
+        var cat = new WhatsAppCatalogo
+        {
+            Token = token,
+            OriginalFilename = file.FileName,
+            StoredFilename = stored,
+            ContentType = string.IsNullOrEmpty(file.ContentType) ? "application/octet-stream" : file.ContentType,
+            SizeBytes = new FileInfo(Path.Combine(UploadsDir, stored)).Length,
+            CreatedAt = DateTime.UtcNow
+        };
+        _db.WhatsAppCatalogos.Add(cat);
+        await _db.SaveChangesAsync();
+        return Ok(new CatalogoDto(cat.Id, cat.OriginalFilename, cat.SizeBytes, cat.ContentType, cat.CreatedAt));
+    }
+
+    /// <summary>DELETE /api/whatsapp/twilio/catalogo/{id} — borra un catalogo (fila + archivo).</summary>
+    [HttpDelete("catalogo/{id:int}")]
+    [Authorize]
+    public async Task<IActionResult> CatalogoDelete(int id)
+    {
+        var cat = await _db.WhatsAppCatalogos.FirstOrDefaultAsync(c => c.Id == id);
+        if (cat == null) return NotFound(new { error = "Catalogo no encontrado" });
+        try { var p = Path.Combine(UploadsDir, cat.StoredFilename); if (System.IO.File.Exists(p)) System.IO.File.Delete(p); } catch { }
+        _db.WhatsAppCatalogos.Remove(cat);
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
     public record SendMediaRequest(string Numero, string MediaUrl, string? Caption, string? OriginalFilename, string? LineaPhoneId = null);
 
     /// <summary>POST /api/whatsapp/twilio/send-media — envia mensaje con adjunto via Twilio.</summary>
@@ -1402,7 +1450,21 @@ public class WhatsAppTwilioController : ControllerBase
                 .ToListAsync();
             return Ok(list);
         }
-        return BadRequest(new { error = "Tipo no soportado. Validos: UPLOAD, COBRANZA, VENTA, LISTA" });
+        if (tipo == "CATALOGO")
+        {
+            // 2026-08-04: catalogos permanentes (PDF/documentos/imagenes). No expiran.
+            var q = _db.WhatsAppCatalogos.AsQueryable();
+            if (s != null) q = q.Where(c => c.OriginalFilename.Contains(s));
+            var list = await q.OrderByDescending(c => c.CreatedAt).Take(take)
+                .Select(c => new ServerFileDto(
+                    "CATALOGO", c.Id, c.OriginalFilename,
+                    $"{FormatSize(c.SizeBytes)} · {c.ContentType}",
+                    null,
+                    c.CreatedAt))
+                .ToListAsync();
+            return Ok(list);
+        }
+        return BadRequest(new { error = "Tipo no soportado. Validos: UPLOAD, COBRANZA, VENTA, LISTA, CATALOGO" });
     }
 
     public record SendServerFileRequest(string Numero, string Tipo, int Id, string? Caption, string? LineaPhoneId = null);
@@ -1551,8 +1613,38 @@ public class WhatsAppTwilioController : ControllerBase
                 mediaUrl = $"{Request.Scheme}://{Request.Host}/api/whatsapp/twilio/files/{token}{Path.GetExtension(stored)}";
                 break;
             }
+            case "CATALOGO":
+            {
+                // 2026-08-04: catalogo permanente. Reusa el archivo ya guardado creando un token
+                // de descarga temporal (24h) para que Meta lo baje; el catalogo NO se toca.
+                var cat = await _db.WhatsAppCatalogos.FirstOrDefaultAsync(c => c.Id == req.Id);
+                if (cat == null) return NotFound(new { error = "Catalogo no encontrado" });
+                var srcPath = Path.Combine(UploadsDir, cat.StoredFilename);
+                if (!System.IO.File.Exists(srcPath)) return NotFound(new { error = "El archivo del catalogo no esta en el servidor" });
+                filename = cat.OriginalFilename;
+
+                Directory.CreateDirectory(UploadsDir);
+                var token = GenerarToken();
+                var stored = token + Path.GetExtension(cat.StoredFilename);
+                System.IO.File.Copy(srcPath, Path.Combine(UploadsDir, stored), overwrite: true);
+                var up = new WhatsAppTwilioUpload
+                {
+                    Token = token,
+                    OriginalFilename = filename,
+                    StoredFilename = stored,
+                    ContentType = cat.ContentType,
+                    SizeBytes = cat.SizeBytes,
+                    NumeroDestino = numeroNorm,
+                    CreatedAt = DateTime.UtcNow,
+                    ExpiresAt = DateTime.UtcNow.AddHours(24)
+                };
+                _db.WhatsAppTwilioUploads.Add(up);
+                await _db.SaveChangesAsync();
+                mediaUrl = $"{Request.Scheme}://{Request.Host}/api/whatsapp/twilio/files/{token}{Path.GetExtension(stored)}";
+                break;
+            }
             default:
-                return BadRequest(new { error = "Tipo no soportado. Validos: UPLOAD, COBRANZA, VENTA, LISTA" });
+                return BadRequest(new { error = "Tipo no soportado. Validos: UPLOAD, COBRANZA, VENTA, LISTA, CATALOGO" });
         }
 
         try

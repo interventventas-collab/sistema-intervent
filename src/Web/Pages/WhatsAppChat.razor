@@ -1402,7 +1402,15 @@
     .wa-srv-send-btn { background: #25d366; color: white; border: none; padding: 0.35rem 0.8rem; border-radius: 6px; cursor: pointer; font-size: 0.8rem; white-space: nowrap; }
     .wa-srv-send-btn:hover { background: #1ea953; }
     .wa-srv-send-btn:disabled { background: #9ca3af; cursor: wait; }
+    .wa-srv-del-btn { background: transparent; border: none; cursor: pointer; font-size: 1rem; padding: 0.2rem 0.3rem; border-radius: 6px; }
+    .wa-srv-del-btn:hover { background: #fee2e2; }
     .wa-srv-empty { padding: 2rem; text-align: center; color: #9ca3af; font-size: 0.85rem; }
+    /* 2026-08-04: subir catálogo permanente */
+    .wa-srv-upload { margin: 0 0 0.6rem; padding: 0.6rem 0.8rem; background: #f0fdf4; border: 1px dashed #86efac; border-radius: 8px; text-align: center; }
+    .wa-srv-upload-btn { display: inline-block; background: #25d366; color: white; padding: 0.45rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600; }
+    .wa-srv-upload-btn:hover { background: #1ea953; }
+    .wa-srv-upload-btn.cargando { background: #9ca3af; cursor: wait; }
+    .wa-srv-upload-hint { font-size: 0.72rem; color: #6b7280; margin-top: 0.4rem; }
 
     /* 2026-08-02: flecha "volver" (oculta en escritorio, se ve solo en el celular) */
     .wa-volver-btn { display: none; background: transparent; border: 0; font-size: 1.6rem; line-height: 1; color: #128c7e; cursor: pointer; padding: 0 0.4rem 0 0; }
@@ -1469,8 +1477,20 @@
             <button class="wa-srv-tab @(srvTab == "VENTA" ? "active" : "")" @onclick='() => CambiarTabServidor("VENTA")'>🧾 Facturas/Ventas</button>
             <button class="wa-srv-tab @(srvTab == "COBRANZA" ? "active" : "")" @onclick='() => CambiarTabServidor("COBRANZA")'>💰 Recibos cobranza</button>
             <button class="wa-srv-tab @(srvTab == "LISTA" ? "active" : "")" @onclick='() => CambiarTabServidor("LISTA")'>💲 Listas de precios</button>
+            <button class="wa-srv-tab @(srvTab == "CATALOGO" ? "active" : "")" @onclick='() => CambiarTabServidor("CATALOGO")'>📚 Catálogos</button>
             <button class="wa-srv-tab @(srvTab == "UPLOAD" ? "active" : "")" @onclick='() => CambiarTabServidor("UPLOAD")'>📁 Mis subidos</button>
         </div>
+        @if (srvTab == "CATALOGO")
+        {
+            <div class="wa-srv-upload">
+                <label class="wa-srv-upload-btn @(catSubiendo ? "cargando" : "")">
+                    @(catSubiendo ? "⏳ Subiendo…" : "⬆️ Subir catálogo (PDF, documento o imagen)")
+                    <InputFile OnChange="OnCatalogoSeleccionado" disabled="@catSubiendo"
+                               accept=".pdf,.doc,.docx,.xls,.xlsx,image/*" style="display:none;" />
+                </label>
+                <div class="wa-srv-upload-hint">Estos archivos quedan guardados para siempre (no se borran a las 24 hs).</div>
+            </div>
+        }
         <input class="wa-srv-search" placeholder="@SrvSearchPlaceholder()"
                value="@srvSearch" @oninput="OnSrvSearchInput" />
         <div class="wa-srv-list">
@@ -1501,6 +1521,10 @@
                         <button class="wa-srv-send-btn" @onclick="() => EnviarServerFile(f)" disabled="@(srvEnviandoId == f.Id)">
                             @(srvEnviandoId == f.Id ? "Enviando…" : "📤 Enviar")
                         </button>
+                        @if (f.Tipo == "CATALOGO")
+                        {
+                            <button class="wa-srv-del-btn" title="Borrar catálogo" @onclick="() => BorrarCatalogo(f)">🗑️</button>
+                        }
                     </div>
                 }
             }
@@ -2715,8 +2739,45 @@
         "VENTA" => "🔍 Nº venta, cliente o código...",
         "COBRANZA" => "🔍 Nº recibo, cliente o código...",
         "LISTA" => "🔍 Nombre de la lista o cliente...",
+        "CATALOGO" => "🔍 Nombre del catálogo...",
         _ => "🔍 Nombre del archivo..."
     };
+
+    // ===== Catálogos permanentes =====
+    bool catSubiendo = false;
+
+    async Task OnCatalogoSeleccionado(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+        if (file.Size > MaxUploadBytes) { Toast.Error($"El archivo {file.Name} supera los 16 MB"); return; }
+        catSubiendo = true;
+        StateHasChanged();
+        try
+        {
+            using var stream = file.OpenReadStream(MaxUploadBytes);
+            var (resp, err) = await Api.UploadTwCatalogoAsync(stream, file.Name, file.ContentType);
+            if (resp != null)
+            {
+                Toast.Success($"📚 Catálogo \"{resp.OriginalFilename}\" guardado");
+                await CargarServerFiles();
+            }
+            else Toast.Error($"Error: {err}");
+        }
+        catch (Exception ex) { Toast.Error($"Error: {ex.Message}"); }
+        finally { catSubiendo = false; StateHasChanged(); }
+    }
+
+    async Task BorrarCatalogo(ApiClient.TwServerFileDto f)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Borrar el catálogo \"{f.Label}\"? Esta acción no se puede deshacer.")) return;
+        if (await Api.DeleteTwCatalogoAsync(f.Id))
+        {
+            Toast.Success("Catálogo borrado");
+            await CargarServerFiles();
+        }
+        else Toast.Error("No se pudo borrar el catálogo");
+    }
 
     // 2026-07-23 pedido Osmar: acceso directo "a la vista" para mandar una lista de precios
     async Task AbrirAdjuntarLista()
