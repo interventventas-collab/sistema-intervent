@@ -1345,7 +1345,20 @@ public class WhatsAppTwilioController : ControllerBase
     // Busca/lista archivos que ya viven en el sistema (uploads previos, cobranzas, etc).
     // El operador los puede elegir sin tener que descargarlos a su PC y resubirlos.
 
-    public record ServerFileDto(string Tipo, int Id, string Label, string? SubLabel, string? Info, DateTime Fecha);
+    public record ServerFileDto(string Tipo, int Id, string Label, string? SubLabel, string? Info, DateTime Fecha, string? PreviewUrl = null, string? Icon = null);
+
+    /// <summary>Emoji segun el tipo de archivo, para mostrar en la lista cuando no hay miniatura real.</summary>
+    private static string IconoPorTipo(string? contentType)
+    {
+        if (string.IsNullOrEmpty(contentType)) return "📎";
+        if (contentType.StartsWith("application/pdf", StringComparison.OrdinalIgnoreCase)) return "📄";
+        if (contentType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase)) return "🎵";
+        if (contentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)) return "🎬";
+        if (contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) return "🖼️";
+        if (contentType.Contains("word") || contentType.Contains("document")) return "📝";
+        if (contentType.Contains("sheet") || contentType.Contains("excel")) return "📊";
+        return "📎";
+    }
 
     /// <summary>GET /api/whatsapp/twilio/server-files?tipo=UPLOAD|COBRANZA&amp;search=&amp;take=20
     /// Lista archivos disponibles en el servidor para adjuntar al chat.</summary>
@@ -1368,7 +1381,10 @@ public class WhatsAppTwilioController : ControllerBase
                     "UPLOAD", u.Id, u.OriginalFilename,
                     $"{FormatSize(u.SizeBytes)} · {u.ContentType}",
                     u.NumeroDestino != null ? $"Mandado antes a {u.NumeroDestino}" : null,
-                    u.CreatedAt))
+                    u.CreatedAt,
+                    // Miniatura real solo para imagenes: el endpoint /files/{token} las sirve "inline".
+                    u.ContentType.StartsWith("image/") ? $"/api/whatsapp/twilio/files/{u.Token}" : null,
+                    IconoPorTipo(u.ContentType)))
                 .ToListAsync();
             return Ok(list);
         }
@@ -1390,7 +1406,7 @@ public class WhatsAppTwilioController : ControllerBase
                     "COBRANZA", c.Id, $"Recibo {c.Numero}",
                     c.Cliente != null ? c.Cliente.Nombre : "—",
                     $"${c.Total:N0}",
-                    c.Fecha))
+                    c.Fecha, null, "📄"))
                 .ToListAsync();
             return Ok(list);
         }
@@ -1429,7 +1445,7 @@ public class WhatsAppTwilioController : ControllerBase
                 // Importe: el total CON IVA de la factura si está autorizada; sino el total de la venta.
                 var monto = (autorizada && v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0) ? v.ArcaImpTotal.Value : v.Total;
                 var info = $"${monto:N0}" + (autorizada ? " c/IVA" : "");
-                return new ServerFileDto("VENTA", v.Id, label, v.Cliente, info, v.Fecha);
+                return new ServerFileDto("VENTA", v.Id, label, v.Cliente, info, v.Fecha, null, "📄");
             }).ToList();
             return Ok(list);
         }
@@ -1443,10 +1459,10 @@ public class WhatsAppTwilioController : ControllerBase
                     || (l.NumeroLista != null && l.NumeroLista.Contains(s)));
             var list = await q.OrderBy(l => l.Nombre).Take(take)
                 .Select(l => new ServerFileDto(
-                    "LISTA", l.Id, $"💲 {l.Nombre}",
+                    "LISTA", l.Id, l.Nombre,
                     l.ClienteNav != null ? $"Cliente: {l.ClienteNav.Nombre}" : (l.TipoCliente ?? "General"),
                     l.NumeroLista != null ? $"Lista N° {l.NumeroLista}" : "",
-                    l.UpdatedAt))
+                    l.UpdatedAt, null, "📄"))
                 .ToListAsync();
             return Ok(list);
         }
@@ -1460,7 +1476,7 @@ public class WhatsAppTwilioController : ControllerBase
                     "CATALOGO", c.Id, c.OriginalFilename,
                     $"{FormatSize(c.SizeBytes)} · {c.ContentType}",
                     null,
-                    c.CreatedAt))
+                    c.CreatedAt, null, IconoPorTipo(c.ContentType)))
                 .ToListAsync();
             return Ok(list);
         }

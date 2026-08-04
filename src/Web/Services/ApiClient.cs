@@ -6607,7 +6607,7 @@ public class ApiClient
     public async Task<bool> DeleteTwCatalogoAsync(int id)
         => (await _http.DeleteAsync($"/api/whatsapp/twilio/catalogo/{id}")).IsSuccessStatusCode;
 
-    public record TwServerFileDto(string Tipo, int Id, string Label, string? SubLabel, string? Info, DateTime Fecha);
+    public record TwServerFileDto(string Tipo, int Id, string Label, string? SubLabel, string? Info, DateTime Fecha, string? PreviewUrl = null, string? Icon = null);
     public async Task<List<TwServerFileDto>> GetTwServerFilesAsync(string tipo, string? search = null)
     {
         try
