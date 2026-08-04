@@ -209,6 +209,14 @@ window.mapeoFlex = (function () {
                     if (infoWindow) { infoWindow.close(); infoOpen = false; }
                     if (dotNetRef) dotNetRef.invokeMethodAsync('EliminarParadaDesdePopup', markerId);
                 },
+                // 2026-08-04: poner esta parada en un puesto puntual de la ruta y correr las demás.
+                // Cerramos el globito antes de recalcular así renderMarkers puede redibujar los números.
+                setOrder: function (markerId, pos) {
+                    var n = parseInt(pos, 10);
+                    if (!n || n < 1) { alert('Escribí un número de puesto (1, 2, 3…).'); return; }
+                    if (infoWindow) { infoWindow.close(); infoOpen = false; }
+                    if (dotNetRef) dotNetRef.invokeMethodAsync('PonerEnPuestoDesdePopup', markerId, n);
+                },
                 // "Ver dirección al tocar": copia al portapapeles la dirección del globito.
                 copyReverseAddress: function (btn) {
                     if (!lastReverseAddr) return;
