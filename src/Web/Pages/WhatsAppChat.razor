@@ -83,23 +83,49 @@
                 ✍️ Nueva conversación
             </button>
         </div>
-        @* 2026-06-20: filtros por rol *@
-        <div class="wa-filtros">
-            <button class="wa-filtro @(filtroRol=="" ? "active" : "")" @onclick='() => filtroRol=""'>Todos</button>
-            <button class="wa-filtro @(filtroRol=="pedido" ? "active" : "")" @onclick='() => filtroRol="pedido"' title="Conversaciones con mensaje tipo pedido">📋 Pedidos</button>
-            <button class="wa-filtro @(filtroRol=="hermano" ? "active" : "")" @onclick='() => filtroRol="hermano"'>👨‍👦 Hermanos</button>
-            <button class="wa-filtro @(filtroRol=="empleado" ? "active" : "")" @onclick='() => filtroRol="empleado"'>👷 Empleados</button>
-            <button class="wa-filtro @(filtroRol=="cliente" ? "active" : "")" @onclick='() => filtroRol="cliente"'>🛍️ Clientes</button>
-            <button class="wa-filtro @(filtroRol=="sin" ? "active" : "")" @onclick='() => filtroRol="sin"' title="Conversaciones sin contacto asignado">❓ Sin asignar</button>
-            @* 2026-08-04: filtros por responsable / estado (pasar de uno a otro) *@
-            @if (!string.IsNullOrEmpty(OperadorActual))
+        @* 2026-08-05: un solo botón "Todos ▾" que despliega la lista de filtros (antes era una fila
+           llena de botones que mareaba). Arranca siempre en "Todos". *@
+        <div class="wa-filtro-wrap">
+            <button class="wa-filtro-toggle @(filtroRol!="" ? "activo" : "")" @onclick="() => showFiltroMenu = !showFiltroMenu" title="Filtrar las conversaciones">
+                <span>@FiltroRolLabel()</span>
+                @if (filtroRol=="mios" && MisPendientes() > 0)
+                {
+                    <span class="wa-mios-badge">@MisPendientes()</span>
+                }
+                <span class="wa-filtro-caret">▾</span>
+            </button>
+            @if (filtroRol != "")
             {
-                <button class="wa-filtro @(filtroRol=="mios" ? "active" : "")" @onclick='() => filtroRol="mios"' title="Las charlas que te pasaron a vos">
-                    🙋 Míos@if (MisPendientes() > 0) { <span class="wa-mios-badge">@MisPendientes()</span> }
-                </button>
+                <button class="wa-filtro-clear" title="Ver todas otra vez" @onclick='() => PickFiltro("")'>×</button>
             }
-            <button class="wa-filtro @(filtroRol=="en_curso" ? "active" : "")" @onclick='() => filtroRol="en_curso"'>🟡 En curso</button>
-            <button class="wa-filtro @(filtroRol=="finalizada" ? "active" : "")" @onclick='() => filtroRol="finalizada"'>🟢 Finalizadas</button>
+            @if (showFiltroMenu)
+            {
+                <div class="wa-filtro-backdrop" @onclick="() => showFiltroMenu = false"></div>
+                <div class="wa-filtro-menu">
+                    <button class="wa-filtro-op @(filtroRol=="" ? "sel" : "")" @onclick='() => PickFiltro("")'>📥 Todos</button>
+
+                    <div class="wa-filtro-grup">Estado de la charla</div>
+                    <button class="wa-filtro-op @(filtroRol=="en_curso" ? "sel" : "")" @onclick='() => PickFiltro("en_curso")'>🟡 En curso</button>
+                    <button class="wa-filtro-op @(filtroRol=="finalizada" ? "sel" : "")" @onclick='() => PickFiltro("finalizada")'>🟢 Finalizadas</button>
+                    @if (!string.IsNullOrEmpty(OperadorActual))
+                    {
+                        <button class="wa-filtro-op @(filtroRol=="mios" ? "sel" : "")" @onclick='() => PickFiltro("mios")'>
+                            🙋 Míos
+                            @if (MisPendientes() > 0)
+                            {
+                                <span class="wa-mios-badge">@MisPendientes()</span>
+                            }
+                        </button>
+                    }
+
+                    <div class="wa-filtro-grup">Tipo de contacto</div>
+                    <button class="wa-filtro-op @(filtroRol=="cliente" ? "sel" : "")" @onclick='() => PickFiltro("cliente")'>🛍️ Clientes</button>
+                    <button class="wa-filtro-op @(filtroRol=="empleado" ? "sel" : "")" @onclick='() => PickFiltro("empleado")'>👷 Empleados</button>
+                    <button class="wa-filtro-op @(filtroRol=="hermano" ? "sel" : "")" @onclick='() => PickFiltro("hermano")'>👨‍👦 Hermanos</button>
+                    <button class="wa-filtro-op @(filtroRol=="sin" ? "sel" : "")" @onclick='() => PickFiltro("sin")' title="Charlas de gente sin tipo asignado">❓ Sin asignar</button>
+                    <button class="wa-filtro-op @(filtroRol=="pedido" ? "sel" : "")" @onclick='() => PickFiltro("pedido")' title="Charlas donde el último mensaje parece un pedido">📋 Pedidos</button>
+                </div>
+            }
         </div>
         @* 2026-07-31: filtros por CUENTA (línea de WhatsApp o cuenta de Instagram). Default "Todas".
            Solo aparecen cuando hay 2+ cuentas conectadas; con una sola no molestan. Reusan filtroLinea. *@
@@ -1451,6 +1477,20 @@
     .wa-filtro { background: #fff; border: 1px solid #dfe4ea; color: #475569; padding: 0.3rem 0.75rem; border-radius: 999px; font-size: 0.76rem; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.12s; }
     .wa-filtro:hover { background: #f1f5f9; }
     .wa-filtro.active { background: #25d366; color: #fff; border-color: #25d366; font-weight: 700; }
+    /* 2026-08-05: filtro desplegable (un solo botón "Todos ▾") */
+    .wa-filtro-wrap { position: relative; display: flex; align-items: center; gap: 0.35rem; padding: 0.55rem 0.7rem; border-bottom: 1px solid #eef1f5; background: #fbfcfe; }
+    .wa-filtro-toggle { display: inline-flex; align-items: center; gap: 0.4rem; background: #fff; border: 1px solid #dfe4ea; color: #334155; padding: 0.38rem 0.85rem; border-radius: 999px; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
+    .wa-filtro-toggle:hover { background: #f1f5f9; }
+    .wa-filtro-toggle.activo { background: #25d366; color: #fff; border-color: #25d366; }
+    .wa-filtro-caret { font-size: 0.68rem; opacity: 0.85; }
+    .wa-filtro-clear { background: #fff; border: 1px solid #dfe4ea; color: #64748b; width: 26px; height: 26px; border-radius: 999px; cursor: pointer; font-size: 0.95rem; line-height: 1; }
+    .wa-filtro-clear:hover { background: #fee2e2; color: #b91c1c; border-color: #fecaca; }
+    .wa-filtro-backdrop { position: fixed; inset: 0; z-index: 40; }
+    .wa-filtro-menu { position: absolute; top: calc(100% - 0.15rem); left: 0.7rem; z-index: 50; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; box-shadow: 0 12px 30px rgba(0,0,0,0.15); padding: 0.35rem; min-width: 215px; max-height: 62vh; overflow-y: auto; }
+    .wa-filtro-op { display: flex; align-items: center; gap: 0.4rem; width: 100%; text-align: left; background: transparent; border: none; padding: 0.46rem 0.6rem; border-radius: 7px; font-size: 0.83rem; color: #334155; cursor: pointer; }
+    .wa-filtro-op:hover { background: #f1f5f9; }
+    .wa-filtro-op.sel { background: #dcfce7; color: #166534; font-weight: 700; }
+    .wa-filtro-grup { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.03em; color: #9ca3af; padding: 0.45rem 0.6rem 0.2rem; }
     .wa-rol-tag { font-size: 0.7rem; margin-left: 0.2rem; }
     .wa-pedido-chip { background: #fef3c7; color: #92400e; font-size: 0.65rem; font-weight: 700; padding: 0.05rem 0.3rem; border-radius: 4px; margin-right: 0.3rem; }
     /* Cliente vinculado */
@@ -3285,6 +3325,21 @@
 
     // ===== Filtros / detección de pedido =====
     string filtroRol = "";
+    // 2026-08-05: menú desplegable de filtros (un solo botón "Todos ▾" en vez de la fila de botones)
+    bool showFiltroMenu = false;
+    void PickFiltro(string r) { filtroRol = r; showFiltroMenu = false; }
+    string FiltroRolLabel() => filtroRol switch
+    {
+        "pedido" => "📋 Pedidos",
+        "hermano" => "👨‍👦 Hermanos",
+        "empleado" => "👷 Empleados",
+        "cliente" => "🛍️ Clientes",
+        "sin" => "❓ Sin asignar",
+        "mios" => "🙋 Míos",
+        "en_curso" => "🟡 En curso",
+        "finalizada" => "🟢 Finalizadas",
+        _ => "📥 Todos"
+    };
     List<ApiClient.TwConvDto> conversacionesFiltradas => conversaciones.Where(MatchFiltro).ToList();
 
     // 2026-07-23 (multi-línea): cuando haya 2+ números nuestros conectados, aparece el filtro por
