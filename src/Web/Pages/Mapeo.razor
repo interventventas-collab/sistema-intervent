@@ -1018,6 +1018,40 @@
                         @onclick="CancelarZona">✕ Cancelar</button>
             </div>
         }
+        @* ═════════ Barra flotante: Ordenar a mano (numerar por zona tocando los globitos) ═════════ *@
+        @if (modoOrden)
+        {
+            var ordDriverIds = (stops ?? new()).Where(s => s.AssignedDriverId.HasValue)
+                .Select(s => s.AssignedDriverId!.Value).Distinct().OrderBy(x => x).ToList();
+            var ordStopsZona = (stops ?? new()).Where(s => s.AssignedDriverId == ordenDriverId).ToList();
+            var ordColor = ordStopsZona.Select(s => s.AssignedDriverColor).FirstOrDefault(c => !string.IsNullOrEmpty(c)) ?? "#1d4ed8";
+            var ordNumeradas = ordStopsZona.Count(s => s.OrderInRoute.HasValue);
+            var ordProximo = ordStopsZona.Select(s => s.OrderInRoute ?? 0).DefaultIfEmpty(0).Max() + 1;
+            var ordNombre = drivers?.FirstOrDefault(d => d.Id == ordenDriverId)?.Nombre ?? "la zona";
+            <div style="position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:600; background:@ordColor; color:#fff; border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,0.4); padding:0.55rem 0.8rem; display:flex; flex-direction:column; gap:0.4rem; max-width:94vw;">
+                <div style="display:flex; gap:0.55rem; align-items:center; flex-wrap:wrap;">
+                    <span style="font-size:0.9rem; font-weight:800;">🔢 Ordenar a mano</span>
+                    <select class="form-input" style="font-size:0.82rem; max-width:210px; color:#1f2937;" @bind="ordenDriverId" @bind:after="OnDriverOrdenChanged">
+                        @foreach (var did in ordDriverIds)
+                        {
+                            var nom = drivers?.FirstOrDefault(d => d.Id == did)?.Nombre ?? $"Repartidor {did}";
+                            var cant = (stops ?? new()).Count(s => s.AssignedDriverId == did);
+                            <option value="@did">📍 @nom (@cant)</option>
+                        }
+                    </select>
+                    <span style="font-size:0.82rem; font-weight:800; background:#fff; color:@ordColor; border-radius:8px; padding:0.2rem 0.55rem;">Próximo: #@ordProximo</span>
+                    <span style="font-size:0.76rem; font-weight:700; opacity:0.95;">@ordNumeradas/@ordStopsZona.Count listas</span>
+                    <button class="btn" style="font-size:0.8rem; font-weight:700; background:rgba(255,255,255,0.18); color:#fff; border:1px solid rgba(255,255,255,0.6); padding:0.3rem 0.6rem; border-radius:8px; cursor:pointer;"
+                            @onclick="ResetOrdenDeLaZona" disabled="@assigningSlot">🔄 Reiniciar</button>
+                    <button class="btn" style="font-size:0.82rem; font-weight:800; background:#16a34a; color:#fff; border:none; padding:0.32rem 0.8rem; border-radius:8px; cursor:pointer;"
+                            @onclick="ToggleModoOrden">✓ Listo (dibujar ruta)</button>
+                </div>
+                <div style="font-size:0.76rem; opacity:0.95; line-height:1.35;">
+                    Tocá los globitos de <strong>@ordNombre</strong> en el orden de entrega — se numeran 1, 2, 3…
+                    Tocá uno ya numerado para sacarlo. Cambiá de zona con el desplegable. Al terminar, apretá <strong>Listo</strong> y se dibuja la ruta.
+                </div>
+            </div>
+        }
         @if (viewingSnapshot)
         {
             @* Cartel: estás mirando la foto de un día anterior (modo solo mirar). *@
@@ -1107,6 +1141,11 @@
                         </div>
                     }
                 </div>
+                @* Ordenar a mano: numerar los envíos de cada zona tocándolos en el mapa (1, 2, 3…). *@
+                <button class="mapeo-dock-btn @(modoOrden ? "activo" : "")" @onclick="ToggleModoOrden"
+                        title="Ordenar a mano: tocá los envíos de una zona en el orden de entrega y se numeran 1, 2, 3…">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="6" x2="21" y2="6"></line><line x1="10" y1="12" x2="21" y2="12"></line><line x1="10" y1="18" x2="21" y2="18"></line><text x="2.5" y="8.5" font-size="7" font-weight="700" stroke="none" fill="currentColor">1</text><text x="2.5" y="14.5" font-size="7" font-weight="700" stroke="none" fill="currentColor">2</text><text x="2.5" y="20.5" font-size="7" font-weight="700" stroke="none" fill="currentColor">3</text></svg>
+                </button>
                 @* Prender/apagar el tránsito (embotellamientos). Arranca apagado = mapa limpio. Ícono semáforo. *@
                 <button class="mapeo-dock-btn @(traficoOn ? "activo" : "")" @onclick="ToggleTrafico"
                         title="@(traficoOn ? "Tránsito ENCENDIDO — tocá para apagar" : "Ver tránsito (embotellamientos en rojo/amarillo/verde)")">
@@ -3427,6 +3466,11 @@
     private bool modoAsignacion;
     // Modo orden visual (numerar paradas con clicks en el mapa)
     private bool modoOrden;
+    // Modo orden POR ZONA (repartidor): la zona que se está numerando a mano.
+    private int? ordenDriverId;
+    // Al entrar al modo orden mostramos SOLO una zona; guardamos qué se veía para restaurarlo al salir.
+    private HashSet<int> ordenBackupZonasOcultas = new();
+    private bool ordenBackupSinAsignar;
     private int ordenVehiculoSeleccionado = 1;
     private int cantidadVehiculos = 2;
     private int vehiculoSeleccionado = 1;
@@ -4307,8 +4351,7 @@
 
         if (modoOrden)
         {
-            // Numerar todas las paradas del V activo en secuencia. Las que no son del V activo
-            // se saltan con un toast informativo.
+            // Numerar en secuencia las paradas de la ZONA activa. Las de otra zona se saltan.
             int salteadas = 0;
             foreach (var id in ids)
             {
@@ -4316,11 +4359,11 @@
                 var stopId = -1000 - id;
                 var st = stops?.FirstOrDefault(x => x.Id == stopId);
                 if (st is null) continue;
-                if (st.AssignedVehicleSlot != ordenVehiculoSeleccionado) { salteadas++; continue; }
+                if (st.AssignedDriverId != ordenDriverId) { salteadas++; continue; }
                 if (st.OrderInRoute.HasValue) continue; // ya numerada, dejamos como está
                 await OnMarkerOrden(st);
             }
-            if (salteadas > 0) ToastService.Info($"{salteadas} paradas del cluster no son del V{ordenVehiculoSeleccionado} y se saltaron");
+            if (salteadas > 0) ToastService.Info($"{salteadas} paradas del grupo son de otra zona y se saltaron");
             return;
         }
 
@@ -4985,23 +5028,93 @@
     // ===== Modo orden visual =====
     private async Task ToggleModoOrden()
     {
-        modoOrden = !modoOrden;
-        if (modoOrden)
+        if (!modoOrden)
         {
+            // ENTRAR: numerar a mano, por zona (repartidor). Primero tiene que haber zonas armadas.
+            ReconstruirZonasCreadas();
+            var zonas = (stops ?? new()).Where(s => s.AssignedDriverId.HasValue)
+                .Select(s => s.AssignedDriverId!.Value).Distinct().OrderBy(x => x).ToList();
+            if (zonas.Count == 0)
+            {
+                ToastService.Info("Primero armá las zonas (asigná un repartidor a los envíos). Después numerás cada zona tocando los globitos.");
+                return;
+            }
+            modoOrden = true;
             modoAsignacion = false;
-            var firstSlot = stops?.Where(s => s.AssignedVehicleSlot.HasValue)
-                .Select(s => s.AssignedVehicleSlot!.Value).OrderBy(x => x).FirstOrDefault();
-            if (firstSlot.HasValue && firstSlot.Value > 0) ordenVehiculoSeleccionado = firstSlot.Value;
-            vehiculoFiltro = ordenVehiculoSeleccionado;
-            // NO auto-numeramos al entrar: el usuario reportó que tener todo pre-numerado le obliga
-            // a destildar uno por uno para rehacer la ruta. Ahora se entra "en blanco" y existe
-            // un botón "🤖 Auto-ordenar" opcional en la barra para quien lo quiera.
+            // Arrancamos por la primera zona (o mantenemos la anterior si todavía tiene paradas).
+            if (!ordenDriverId.HasValue || !zonas.Contains(ordenDriverId.Value))
+                ordenDriverId = zonas.First();
+            // Guardamos qué se veía y dejamos SOLO la zona a numerar.
+            ordenBackupZonasOcultas = new HashSet<int>(zonasOcultasMapa);
+            ordenBackupSinAsignar = sinAsignarOcultos;
+            MostrarSoloZonaOrden(ordenDriverId!.Value);
+            // Sacamos cualquier línea de ruta vieja: la dibujamos recién al terminar (apretar "Listo").
+            rutasResumen = new();
+            try { await JS.InvokeVoidAsync("mapeoFlex.clearRoutes"); } catch { }
+            await RenderMap();
+            await FocoZonaDriver(ordenDriverId.Value);
         }
         else
         {
-            vehiculoFiltro = null;
+            // SALIR: restauramos lo que se veía y dibujamos la ruta ahora (la línea recién al final).
+            modoOrden = false;
+            zonasOcultasMapa = new HashSet<int>(ordenBackupZonasOcultas);
+            sinAsignarOcultos = ordenBackupSinAsignar;
+            await RenderMap();
+            await CargarYDibujarRutas(single: false);
         }
+        StateHasChanged();
+    }
+
+    // Deja visible SOLO la zona (repartidor) que se está numerando: oculta las otras zonas y las sin-asignar.
+    private void MostrarSoloZonaOrden(int driverId)
+    {
+        var otras = (stops ?? new()).Where(s => s.AssignedDriverId.HasValue && s.AssignedDriverId!.Value != driverId)
+            .Select(s => s.AssignedDriverId!.Value).Distinct();
+        zonasOcultasMapa = new HashSet<int>(otras);
+        sinAsignarOcultos = true;
+    }
+
+    // Encuadra el mapa sobre las paradas de un repartidor.
+    private async Task FocoZonaDriver(int driverId)
+    {
+        var pts = (stops ?? new())
+            .Where(s => s.AssignedDriverId == driverId && s.Latitude != 0 && s.Longitude != 0)
+            .Select(s => new double[] { (double)s.Latitude, (double)s.Longitude })
+            .ToArray();
+        if (pts.Length == 0) return;
+        try { await JS.InvokeVoidAsync("mapeoFlex.fitPoints", new object[] { pts }); } catch { }
+    }
+
+    // Cambió la zona en el desplegable del modo orden: mostramos solo esa y encuadramos.
+    private async Task OnDriverOrdenChanged()
+    {
+        if (!ordenDriverId.HasValue) return;
+        MostrarSoloZonaOrden(ordenDriverId.Value);
         await RenderMap();
+        await FocoZonaDriver(ordenDriverId.Value);
+    }
+
+    // Borra el orden manual de la zona activa para volver a numerarla desde cero.
+    private async Task ResetOrdenDeLaZona()
+    {
+        if (!ordenDriverId.HasValue) return;
+        var nom = drivers?.FirstOrDefault(d => d.Id == ordenDriverId)?.Nombre ?? "esta zona";
+        if (!await ConfirmAsync($"¿Borrar el orden de {nom} y empezar de nuevo?")) return;
+        assigningSlot = true;
+        try
+        {
+            var paradas = stops?.Where(x => x.AssignedDriverId == ordenDriverId && x.OrderInRoute.HasValue).ToList() ?? new();
+            foreach (var s in paradas)
+            {
+                s.OrderInRoute = null;
+                await Api.UpdateMapeoStopAsync(s.Id, new { orderInRoute = 0 });
+            }
+            await RenderMap();
+            ToastService.Success("Orden reiniciado");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { assigningSlot = false; }
     }
 
     private async Task OnVehiculoOrdenChanged()
@@ -5031,12 +5144,14 @@
         catch { /* tolerar */ }
     }
 
-    /// <summary>Click en un marker en modo orden — asigna o desasigna el siguiente número.</summary>
+    /// <summary>Click en un marker en modo orden — numera o desnumera dentro de la ZONA activa (repartidor).</summary>
     private async Task OnMarkerOrden(MapeoStopDto s)
     {
-        if (s.AssignedVehicleSlot != ordenVehiculoSeleccionado)
+        if (!ordenDriverId.HasValue) return;
+        if (s.AssignedDriverId != ordenDriverId)
         {
-            ToastService.Info($"Esa parada no es del V{ordenVehiculoSeleccionado}");
+            var nom = drivers?.FirstOrDefault(d => d.Id == ordenDriverId)?.Nombre ?? "otra zona";
+            ToastService.Info($"Esa parada es de otra zona. Estás numerando la de {nom} — cambiá de zona arriba para tocarla.");
             return;
         }
         assigningSlot = true;
@@ -5048,10 +5163,10 @@
                 int removedOrder = s.OrderInRoute.Value;
                 s.OrderInRoute = null;
                 await Api.UpdateMapeoStopAsync(s.Id, new { orderInRoute = 0 });
-                // Ajustar las siguientes
+                // Ajustar las siguientes (de la MISMA zona)
                 if (stops is not null)
                 {
-                    foreach (var other in stops.Where(x => x.AssignedVehicleSlot == ordenVehiculoSeleccionado
+                    foreach (var other in stops.Where(x => x.AssignedDriverId == ordenDriverId
                                                        && x.Id != s.Id
                                                        && x.OrderInRoute.HasValue
                                                        && x.OrderInRoute.Value > removedOrder))
@@ -5064,8 +5179,8 @@
             }
             else
             {
-                // Asignar el siguiente número
-                int max = stops!.Where(x => x.AssignedVehicleSlot == ordenVehiculoSeleccionado)
+                // Asignar el siguiente número (el mayor de la zona + 1)
+                int max = stops!.Where(x => x.AssignedDriverId == ordenDriverId)
                     .Max(x => x.OrderInRoute ?? 0);
                 int proximo = max + 1;
                 s.OrderInRoute = proximo;
