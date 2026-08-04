@@ -3761,6 +3761,14 @@
                 var horaEntregaStopHtml = entregadaStop
                     ? $"<div style='margin-top:0.35rem; color:#15803d; font-weight:700; font-size:0.72rem;'>✔ Entregado{(st.DateDelivered.HasValue ? " · 🕒 " + st.DateDelivered.Value.ToArTime().ToString("dd/MM 'a las' HH:mm") + " hs" : "")}</div>"
                     : "";
+                // 2026-08-04: cajita "Puesto en la ruta" dentro del globito. El usuario escribe el número
+                // que quiere y aprieta "Poner acá" → la parada queda en ese puesto y corre las demás de la
+                // misma zona hacia adelante. Solo aparece si la parada está en una zona (repartidor o V).
+                var tieneZonaStop = st.AssignedDriverId.HasValue || st.AssignedVehicleSlot.HasValue;
+                var puestoActualStop = st.OrderInRoute?.ToString() ?? "";
+                var puestoRowHtml = tieneZonaStop
+                    ? $"<div style='margin-top:0.35rem; display:flex; align-items:center; gap:0.25rem;'><span title='Puesto en la ruta'>🔢</span><input type='number' min='1' id='pos-{markerId}' value='{puestoActualStop}' placeholder='N°' onclick=\"event.stopPropagation();\" style='width:56px; padding:0.15rem 0.25rem; border:2px solid {driverBorde}; border-radius:4px; font-size:0.72rem;'/><button onclick=\"window.mapeoActions.setOrder({markerId}, document.getElementById('pos-{markerId}').value); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:#1d4ed8; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>👉 Poner acá</button></div>"
+                    : "";
                 return (object)new
                 {
                     id = markerId,
@@ -3774,7 +3782,7 @@
                     // Candado: si la parada está desbloqueada, su pin se puede arrastrar para ajustar la ubicación.
                     draggable = paradasDesbloqueadas.Contains(st.Id),
                     stopId = st.Id,
-                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· V{st.AssignedVehicleSlot}</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}{horaEntregaStopHtml}<div style='margin-top:0.35rem; display:flex; align-items:center; gap:0.25rem;'><span title='Repartidor asignado'>🚚</span><select onchange=\"window.mapeoActions.assignDriver({markerId}, this.value); event.stopPropagation();\" onclick=\"event.stopPropagation();\" style='flex:1; max-width:170px; padding:0.15rem 0.25rem; border:2px solid {driverBorde}; border-radius:4px; font-size:0.72rem; background:white;'>{driverOpts}</select></div><div style='margin-top:0.35rem; display:flex; gap:0.3rem; flex-wrap:wrap;'><button onclick=\"window.mapeoActions.toggleRoute({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:{btnBgSt}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxtSt}</button><button onclick=\"window.mapeoActions.correctLocation({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#92400e; border:1px solid #f59e0b; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>📍 Corregir ubicación</button><button onclick=\"window.mapeoActions.removeStop({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#b91c1c; border:1px solid #fca5a5; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>🗑 Quitar del mapa</button></div></div>"
+                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· V{st.AssignedVehicleSlot}</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}{horaEntregaStopHtml}<div style='margin-top:0.35rem; display:flex; align-items:center; gap:0.25rem;'><span title='Repartidor asignado'>🚚</span><select onchange=\"window.mapeoActions.assignDriver({markerId}, this.value); event.stopPropagation();\" onclick=\"event.stopPropagation();\" style='flex:1; max-width:170px; padding:0.15rem 0.25rem; border:2px solid {driverBorde}; border-radius:4px; font-size:0.72rem; background:white;'>{driverOpts}</select></div>{puestoRowHtml}<div style='margin-top:0.35rem; display:flex; gap:0.3rem; flex-wrap:wrap;'><button onclick=\"window.mapeoActions.toggleRoute({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:{btnBgSt}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxtSt}</button><button onclick=\"window.mapeoActions.correctLocation({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#92400e; border:1px solid #f59e0b; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>📍 Corregir ubicación</button><button onclick=\"window.mapeoActions.removeStop({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#b91c1c; border:1px solid #fca5a5; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>🗑 Quitar del mapa</button></div></div>"
                 };
             }));
         }
@@ -4304,6 +4312,93 @@
         if (st is null) return;
         await DeleteStop(st);
         StateHasChanged();
+    }
+
+    // 2026-08-04: botón "👉 Poner acá" del globito. Mete la parada en el puesto que el usuario
+    // escribió y reacomoda las demás de la MISMA zona (repartidor si tiene; si no, el vehículo V).
+    // - Si la parada no tenía número: inserta y corre +1 a todas las que estaban en ese puesto o más adelante.
+    // - Si ya tenía número: la mueve del puesto viejo al nuevo y corre las del medio (sin dejar huecos).
+    [JSInvokable]
+    public async Task PonerEnPuestoDesdePopup(int markerId, int puesto)
+    {
+        if (markerId > -1000) return; // solo paradas (stops)
+        var stopId = -1000 - markerId;
+        var s = stops?.FirstOrDefault(x => x.Id == stopId);
+        if (s is null) return;
+
+        // Zona a la que pertenece: preferimos repartidor; si no tiene, el vehículo V.
+        Func<MapeoStopDto, bool> mismaZona;
+        if (s.AssignedDriverId.HasValue)
+            mismaZona = x => x.AssignedDriverId == s.AssignedDriverId;
+        else if (s.AssignedVehicleSlot.HasValue)
+            mismaZona = x => x.AssignedVehicleSlot == s.AssignedVehicleSlot;
+        else
+        {
+            ToastService.Info("Primero asigná este envío a un repartidor (o a un vehículo) para poder darle un puesto en la ruta.");
+            return;
+        }
+
+        var zona = (stops ?? new()).Where(mismaZona).ToList();
+        if (zona.Count == 0) return;
+
+        int numeradas = zona.Count(x => x.OrderInRoute.HasValue);
+        int? viejo = s.OrderInRoute;
+        // El puesto más alto posible: si el que muevo YA estaba numerado, es 'numeradas';
+        // si es nuevo (se suma a la cola), es 'numeradas + 1'.
+        int tope = viejo.HasValue ? numeradas : numeradas + 1;
+        if (tope < 1) tope = 1;
+        int nuevo = Math.Clamp(puesto, 1, tope);
+
+        if (viejo.HasValue && viejo.Value == nuevo)
+        {
+            ToastService.Info($"Ya estaba en el puesto #{nuevo}.");
+            return;
+        }
+
+        assigningSlot = true;
+        try
+        {
+            if (viejo.HasValue)
+            {
+                if (nuevo < viejo.Value)
+                {
+                    // Sube en la lista: +1 a los que estaban entre el puesto nuevo y el viejo.
+                    foreach (var o in zona.Where(x => x.Id != s.Id && x.OrderInRoute.HasValue
+                                                   && x.OrderInRoute!.Value >= nuevo && x.OrderInRoute.Value < viejo.Value))
+                    {
+                        o.OrderInRoute = o.OrderInRoute!.Value + 1;
+                        await Api.UpdateMapeoStopAsync(o.Id, new { orderInRoute = o.OrderInRoute });
+                    }
+                }
+                else
+                {
+                    // Baja en la lista: -1 a los que estaban entre el viejo y el nuevo.
+                    foreach (var o in zona.Where(x => x.Id != s.Id && x.OrderInRoute.HasValue
+                                                   && x.OrderInRoute!.Value > viejo.Value && x.OrderInRoute.Value <= nuevo))
+                    {
+                        o.OrderInRoute = o.OrderInRoute!.Value - 1;
+                        await Api.UpdateMapeoStopAsync(o.Id, new { orderInRoute = o.OrderInRoute });
+                    }
+                }
+            }
+            else
+            {
+                // Parada nueva a un puesto del medio: +1 a todas las de ese puesto en adelante.
+                foreach (var o in zona.Where(x => x.Id != s.Id && x.OrderInRoute.HasValue
+                                               && x.OrderInRoute!.Value >= nuevo))
+                {
+                    o.OrderInRoute = o.OrderInRoute!.Value + 1;
+                    await Api.UpdateMapeoStopAsync(o.Id, new { orderInRoute = o.OrderInRoute });
+                }
+            }
+
+            s.OrderInRoute = nuevo;
+            await Api.UpdateMapeoStopAsync(s.Id, new { orderInRoute = nuevo });
+            await RenderMap();
+            ToastService.Success($"Puesto #{nuevo} asignado — reacomodé los demás.");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { assigningSlot = false; StateHasChanged(); }
     }
 
     /// <summary>
