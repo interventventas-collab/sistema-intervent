@@ -492,7 +492,7 @@ public class MetaWhatsAppWebhookController : ControllerBase
         // opción de su menú, o la respuesta a una consulta pendiente, lo atiende el bot de empleados
         // y cortamos acá (no dispara pedido ni bienvenida).
         var idBotEmpleado = tipo == "interactive" ? TryGetInteractiveId(m) : null;
-        if (await empBot.TryHandleAsync(fromWaId!, numero, tipo, idBotEmpleado, cuerpo, lineaId))
+        if (await empBot.TryHandleAsync(fromWaId!, numero, tipo, idBotEmpleado, cuerpo, lineaId, baseUrl))
             return;
 
         // Si es un trigger de pedido (## o #NUMERO), meterlo en la MISMA cola de pedidos con IA.

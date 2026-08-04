@@ -52,6 +52,10 @@ public class AutoMenuEstado
     /// <summary>Qué dato estamos esperando: stock | precios | saldos | facturas. Vacío = nada.</summary>
     [MaxLength(20)] public string Esperando { get; set; } = "";
 
+    /// <summary>2026-08-04: último cliente que consultó (saldo/facturas). Sirve para que, si
+    /// responde "DOC", sepamos de qué cliente mandar el PDF de la última factura.</summary>
+    public int? UltimoClienteId { get; set; }
+
     public DateTime ExpiraAt { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

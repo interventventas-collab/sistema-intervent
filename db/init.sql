@@ -6324,9 +6324,13 @@ CREATE TABLE dbo.Auto_MenuEstado (
     Numero NVARCHAR(60) NOT NULL PRIMARY KEY,
     Codigo NVARCHAR(30) NOT NULL DEFAULT '',
     Esperando NVARCHAR(20) NOT NULL DEFAULT '',
+    UltimoClienteId INT NULL,
     ExpiraAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
     UpdatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
 );
+GO
+IF OBJECT_ID('dbo.Auto_MenuEstado') IS NOT NULL AND COL_LENGTH('Auto_MenuEstado','UltimoClienteId') IS NULL
+    ALTER TABLE dbo.Auto_MenuEstado ADD UltimoClienteId INT NULL;
 GO
 
 -- 2026-07-10: correos detectados por alertas EMAIL_REMITENTE (para la card "Correos importantes").

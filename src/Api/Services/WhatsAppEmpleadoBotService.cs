@@ -1,8 +1,10 @@
 using System.Globalization;
+using System.IO;
 using System.Text;
 using Api.Data;
 using Api.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Api.Services;
 
@@ -23,18 +25,22 @@ public class WhatsAppEmpleadoBotService
     private readonly AppDbContext _db;
     private readonly MetaWhatsAppService _meta;
     private readonly CafeSaldosService _saldos;
+    private readonly IServiceProvider _sp;
     private readonly ILogger<WhatsAppEmpleadoBotService> _log;
 
+    // Mismo directorio/volumen que usan los adjuntos del chat (para servir el PDF por URL pública).
+    private const string UploadsDir = "/data/whatsapp-uploads";
+
     public WhatsAppEmpleadoBotService(AppDbContext db, MetaWhatsAppService meta,
-        CafeSaldosService saldos, ILogger<WhatsAppEmpleadoBotService> log)
+        CafeSaldosService saldos, IServiceProvider sp, ILogger<WhatsAppEmpleadoBotService> log)
     {
-        _db = db; _meta = meta; _saldos = saldos; _log = log;
+        _db = db; _meta = meta; _saldos = saldos; _sp = sp; _log = log;
     }
 
     /// <summary>Intenta atender el mensaje como parte del bot de empleados. Devuelve true si lo
     /// manejó (el webhook NO debe seguir con pedido/bienvenida). false = no era para este bot.</summary>
     public async Task<bool> TryHandleAsync(string fromWaId, string numero, string? tipo,
-        string? idTocado, string? cuerpo, string? lineaId)
+        string? idTocado, string? cuerpo, string? lineaId, string baseUrl)
     {
         try
         {
@@ -74,8 +80,16 @@ public class WhatsAppEmpleadoBotService
                     .FirstOrDefaultAsync(e => e.Activo && e.Codigo == estado.Codigo);
                 if (empEstado is null) { await LimpiarEstadoAsync(numero); return false; }
 
-                var resp = await ResolverConsultaAsync(estado.Esperando, texto, empEstado);
-                await RefrescarEstadoAsync(numero); // sigue esperando el mismo tipo de dato
+                // "DOC" → mandar el PDF de la última factura del cliente que acaba de consultar.
+                if (texto.Equals("DOC", StringComparison.OrdinalIgnoreCase))
+                {
+                    await EnviarPdfUltimaFacturaAsync(fromWaId, numero, estado.UltimoClienteId, lineaId, baseUrl);
+                    await RefrescarEstadoAsync(numero);
+                    return true;
+                }
+
+                var (resp, clienteId) = await ResolverConsultaAsync(estado.Esperando, texto, empEstado);
+                await GuardarUltimoClienteAsync(numero, clienteId); // recordar para el "DOC" (y refresca vencimiento)
                 await ResponderAsync(fromWaId, numero, resp, lineaId);
                 return true;
             }
@@ -132,7 +146,7 @@ public class WhatsAppEmpleadoBotService
         // "pedidos" no necesita que escriba nada → contestamos al toque.
         if (accion == "pedidos")
         {
-            var resp = await ResolverConsultaAsync("pedidos", "", emp);
+            var (resp, _) = await ResolverConsultaAsync("pedidos", "", emp);
             await ResponderAsync(fromWaId, numero, resp, lineaId);
             return true;
         }
@@ -171,14 +185,16 @@ public class WhatsAppEmpleadoBotService
 
     // ─────────────── Consultas ───────────────
 
-    private async Task<string> ResolverConsultaAsync(string accion, string dato, AutoMenuEmpleado emp) => accion switch
+    /// <summary>Resuelve una consulta. Devuelve el texto de respuesta y, si aplicó a UN cliente
+    /// puntual (saldo/facturas por número o nombre único), su Id (para el "DOC").</summary>
+    private async Task<(string Texto, int? ClienteId)> ResolverConsultaAsync(string accion, string dato, AutoMenuEmpleado emp) => accion switch
     {
-        "stock"    => await ConsultarProductoAsync(dato, precios: false),
-        "precios"  => await ConsultarProductoAsync(dato, precios: true),
-        "pedidos"  => await ConsultarPedidosDelDiaAsync(),
+        "stock"    => (await ConsultarProductoAsync(dato, precios: false), null),
+        "precios"  => (await ConsultarProductoAsync(dato, precios: true), null),
+        "pedidos"  => (await ConsultarPedidosDelDiaAsync(), null),
         "saldos"   => await ConsultarSaldoAsync(dato),
         "facturas" => await ConsultarFacturasAsync(dato),
-        _ => "No entendí la consulta. Escribí tu palabra clave para volver a ver el menú."
+        _ => ("No entendí la consulta. Escribí tu palabra clave para volver a ver el menú.", null)
     };
 
     private async Task<string> ConsultarProductoAsync(string q, bool precios)
@@ -263,18 +279,18 @@ public class WhatsAppEmpleadoBotService
         return titulo + "\n" + string.Join("\n", lineas) + pie;
     }
 
-    private async Task<string> ConsultarSaldoAsync(string q)
+    private async Task<(string, int?)> ConsultarSaldoAsync(string q)
     {
         q = q.Trim();
         // ¿Respondió con un NÚMERO de cliente? → detalle completo de ese cliente.
         if (EsNumeroCliente(q, out var codigo))
         {
             var cli = await _db.CafeClientes.AsNoTracking().FirstOrDefaultAsync(c => c.CodigoInterno == codigo);
-            if (cli is null) return $"No encontré ningún cliente con el número #{q}. Probá con otro número o escribí el nombre.";
+            if (cli is null) return ($"No encontré ningún cliente con el número #{q}. Probá con otro número o escribí el nombre.", null);
             return await DetalleClienteAsync(cli);
         }
 
-        if (q.Length < 2) return "Escribí al menos 2 letras del nombre del cliente (o el número de cliente).";
+        if (q.Length < 2) return ("Escribí al menos 2 letras del nombre del cliente (o el número de cliente).", null);
         var saldos = await _saldos.GetSaldosPendientesAsync();
         var match = saldos
             .Where(s => (s.Nombre ?? "").IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0)
@@ -283,29 +299,29 @@ public class WhatsAppEmpleadoBotService
             .ToList();
 
         if (match.Count == 0)
-            return $"No encontré ningún cliente con deuda que coincida con «{q}». (Si no debe nada, no aparece en la lista.)";
+            return ($"No encontré ningún cliente con deuda que coincida con «{q}». (Si no debe nada, no aparece en la lista.)", null);
 
         var lineas = match.Select(s =>
         {
             var cod = s.CodigoInterno.HasValue ? $"#{s.CodigoInterno} " : "";
             return $"• {cod}{s.Nombre}: {Money(s.SaldoPendiente)}";
         });
-        return $"💰 Coincidencias con «{q}»:\n" + string.Join("\n", lineas)
-             + "\n\n👉 Respondé con el número para el detalle, o escribí otro nombre.";
+        return ($"💰 Coincidencias con «{q}»:\n" + string.Join("\n", lineas)
+             + "\n\n👉 Respondé con el número para el detalle, o escribí otro nombre.", null);
     }
 
-    private async Task<string> ConsultarFacturasAsync(string q)
+    private async Task<(string, int?)> ConsultarFacturasAsync(string q)
     {
         q = q.Trim();
         // ¿Respondió con un NÚMERO de cliente? → sus facturas.
         if (EsNumeroCliente(q, out var codigo))
         {
             var cli = await _db.CafeClientes.AsNoTracking().FirstOrDefaultAsync(c => c.CodigoInterno == codigo);
-            if (cli is null) return $"No encontré ningún cliente con el número #{q}. Probá con otro número o escribí el nombre.";
+            if (cli is null) return ($"No encontré ningún cliente con el número #{q}. Probá con otro número o escribí el nombre.", null);
             return await FacturasDeClienteAsync(cli);
         }
 
-        if (q.Length < 2) return "Escribí al menos 2 letras del nombre del cliente (o el número de cliente).";
+        if (q.Length < 2) return ("Escribí al menos 2 letras del nombre del cliente (o el número de cliente).", null);
         var clientes = await _db.CafeClientes.AsNoTracking()
             .Where(c => c.Nombre.Contains(q) || (c.RazonSocial != null && c.RazonSocial.Contains(q)))
             .OrderBy(c => c.Nombre)
@@ -313,20 +329,20 @@ public class WhatsAppEmpleadoBotService
             .ToListAsync();
 
         if (clientes.Count == 0)
-            return $"No encontré ningún cliente con «{q}».";
+            return ($"No encontré ningún cliente con «{q}».", null);
 
         if (clientes.Count > 1)
         {
             var nombres = clientes.Select(c => $"• {(c.CodigoInterno.HasValue ? $"#{c.CodigoInterno} " : "")}{c.Nombre}");
-            return $"Encontré varios clientes con «{q}». Respondé con el número o afiná el nombre:\n" + string.Join("\n", nombres)
-                 + "\n\n👉 Respondé con el número, o escribí otro nombre.";
+            return ($"Encontré varios clientes con «{q}». Respondé con el número o afiná el nombre:\n" + string.Join("\n", nombres)
+                 + "\n\n👉 Respondé con el número, o escribí otro nombre.", null);
         }
 
         return await FacturasDeClienteAsync(clientes[0]);
     }
 
     /// <summary>Detalle de cuenta de un cliente: saldo (con desglose cotización/factura) + últimas facturas.</summary>
-    private async Task<string> DetalleClienteAsync(CafeCliente cli)
+    private async Task<(string, int?)> DetalleClienteAsync(CafeCliente cli)
     {
         var saldos = await _saldos.GetSaldosPendientesAsync();
         var s = saldos.FirstOrDefault(x => x.ClienteId == cli.Id);
@@ -351,13 +367,14 @@ public class WhatsAppEmpleadoBotService
             sb.Append("📄 Últimas facturas:\n");
             foreach (var v in ventas)
                 sb.Append($" • {v.Numero} — {v.Fecha:dd/MM/yy} — {Money(v.Total)} {(v.IsPaid ? "✅ pagada" : "⏳ impaga")}\n");
+            sb.Append("\n📎 Respondé DOC para recibir el PDF de la última factura.");
         }
-        sb.Append("\n👉 Respondé otro número/nombre, o tu palabra clave para el menú.");
-        return sb.ToString();
+        sb.Append("\n👉 O respondé otro número/nombre, o tu palabra clave para el menú.");
+        return (sb.ToString(), cli.Id);
     }
 
     /// <summary>Solo las últimas facturas de un cliente (para la opción 📄 Facturas).</summary>
-    private async Task<string> FacturasDeClienteAsync(CafeCliente cli)
+    private async Task<(string, int?)> FacturasDeClienteAsync(CafeCliente cli)
     {
         var ventas = await _db.CafeVentas.AsNoTracking()
             .Where(v => v.ClienteId == cli.Id && v.Estado != "anulado")
@@ -365,12 +382,13 @@ public class WhatsAppEmpleadoBotService
 
         var cod = cli.CodigoInterno.HasValue ? $"(#{cli.CodigoInterno})" : "";
         if (ventas.Count == 0)
-            return $"📄 {cli.Nombre} {cod}".TrimEnd() + " no tiene facturas cargadas."
-                 + "\n\n👉 Respondé otro número/nombre, o tu palabra clave para el menú.";
+            return ($"📄 {cli.Nombre} {cod}".TrimEnd() + " no tiene facturas cargadas."
+                 + "\n\n👉 Respondé otro número/nombre, o tu palabra clave para el menú.", cli.Id);
 
         var lineas = ventas.Select(v => $" • {v.Numero} — {v.Fecha:dd/MM/yy} — {Money(v.Total)} {(v.IsPaid ? "✅ pagada" : "⏳ impaga")}");
-        return $"📄 Últimas facturas de {cli.Nombre} {cod}".TrimEnd() + ":\n" + string.Join("\n", lineas)
-             + "\n\n👉 Respondé otro número/nombre, o tu palabra clave para el menú.";
+        return ($"📄 Últimas facturas de {cli.Nombre} {cod}".TrimEnd() + ":\n" + string.Join("\n", lineas)
+             + "\n\n📎 Respondé DOC para recibir el PDF de la última factura."
+             + "\n👉 O respondé otro número/nombre, o tu palabra clave para el menú.", cli.Id);
     }
 
     /// <summary>True si el texto es un número de cliente (solo dígitos, 1..7 cifras).</summary>
@@ -389,6 +407,18 @@ public class WhatsAppEmpleadoBotService
         if (e is null) { e = new AutoMenuEstado { Numero = numero }; _db.AutoMenuEstados.Add(e); }
         e.Codigo = codigo;
         e.Esperando = esperando;
+        e.UltimoClienteId = null; // arranca una opción nueva, todavía no eligió cliente
+        e.ExpiraAt = DateTime.UtcNow.AddMinutes(15);
+        e.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+    }
+
+    /// <summary>Guarda el último cliente consultado (para el "DOC") y refresca el vencimiento.</summary>
+    private async Task GuardarUltimoClienteAsync(string numero, int? clienteId)
+    {
+        var e = await _db.AutoMenuEstados.FirstOrDefaultAsync(x => x.Numero == numero);
+        if (e is null) return;
+        if (clienteId.HasValue) e.UltimoClienteId = clienteId;
         e.ExpiraAt = DateTime.UtcNow.AddMinutes(15);
         e.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
@@ -437,13 +467,17 @@ public class WhatsAppEmpleadoBotService
         if (sb.Length > 0) await ResponderAsync(fromWaId, numero, sb.ToString().TrimEnd(), lineaId);
     }
 
-    private async Task RegistrarSalienteAsync(string numero, string cuerpo, string? sid, string? lineaId)
+    private async Task RegistrarSalienteAsync(string numero, string cuerpo, string? sid, string? lineaId,
+        string? mediaUrl = null, string? mediaFilename = null)
     {
         _db.WhatsAppTwilioMensajes.Add(new WhatsAppTwilioMensaje
         {
             Direccion = "OUTGOING",
             Numero = numero,
             Cuerpo = cuerpo,
+            MediaUrl = mediaUrl,
+            MediaFilename = mediaFilename,
+            NumMedia = mediaUrl != null ? 1 : 0,
             LineaPhoneId = lineaId,
             TwilioMessageSid = sid,
             Canal = "CLOUD",
@@ -451,6 +485,59 @@ public class WhatsAppEmpleadoBotService
             CreatedAt = DateTime.UtcNow
         });
         await _db.SaveChangesAsync();
+    }
+
+    /// <summary>2026-08-04: manda el PDF de la ÚLTIMA factura del cliente consultado (respuesta "DOC").
+    /// Genera el PDF con el mismo circuito que el sistema (CafeVentasController.GenerarPdfBytesAsync),
+    /// lo guarda como adjunto servible por URL y lo manda por la API oficial de Meta.</summary>
+    private async Task EnviarPdfUltimaFacturaAsync(string fromWaId, string numero, int? clienteId, string? lineaId, string baseUrl)
+    {
+        if (clienteId is null)
+        {
+            await ResponderAsync(fromWaId, numero, "Primero elegí un cliente (respondé un número o el nombre) y después escribí DOC.", lineaId);
+            return;
+        }
+
+        var venta = await _db.CafeVentas
+            .Include(x => x.Items).ThenInclude(i => i.ProductoNav)
+            .Where(v => v.ClienteId == clienteId && v.Estado != "anulado")
+            .OrderByDescending(v => v.Fecha)
+            .FirstOrDefaultAsync();
+        if (venta is null)
+        {
+            await ResponderAsync(fromWaId, numero, "Ese cliente no tiene facturas para mandarte.", lineaId);
+            return;
+        }
+
+        try
+        {
+            var ventasCtrl = _sp.GetRequiredService<Api.Controllers.CafeVentasController>();
+            var cfg = await _db.CafeSettings.FindAsync(1);
+            var bytes = await ventasCtrl.GenerarPdfBytesAsync(venta, cfg);
+            var filename = Api.Controllers.CafeVentasController.BuildPdfFilename(venta);
+
+            Directory.CreateDirectory(UploadsDir);
+            var token = Guid.NewGuid().ToString("N");
+            var stored = token + ".pdf";
+            await File.WriteAllBytesAsync(Path.Combine(UploadsDir, stored), bytes);
+            _db.WhatsAppTwilioUploads.Add(new WhatsAppTwilioUpload
+            {
+                Token = token, OriginalFilename = filename, StoredFilename = stored,
+                ContentType = "application/pdf", SizeBytes = bytes.Length, NumeroDestino = numero,
+                CreatedAt = DateTime.UtcNow, ExpiresAt = DateTime.UtcNow.AddHours(24)
+            });
+            await _db.SaveChangesAsync();
+
+            var mediaUrl = $"{baseUrl}/api/whatsapp/twilio/files/{token}.pdf";
+            var caption = $"📄 Comprobante {venta.Numero}";
+            var sid = await _meta.SendMediaAsync(fromWaId, mediaUrl, caption, isDocument: true, filename: filename, lineaPhoneId: lineaId);
+            await RegistrarSalienteAsync(numero, caption, sid, lineaId, mediaUrl, filename);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "[BotEmpleado] no pude generar/enviar el PDF de la venta a {Num}", numero);
+            await ResponderAsync(fromWaId, numero, "Uf, no pude generar el PDF de la factura. Probá de nuevo en un ratito.", lineaId);
+        }
     }
 
     /// <summary>Formatea plata al estilo argentino ($1.234.567) sin depender de la cultura del server.</summary>
