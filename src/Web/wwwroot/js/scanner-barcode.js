@@ -80,6 +80,22 @@ window.scannerWedge = (function () {
   let buf = '';
   let lastAt = 0;
 
+  // Tecla física (e.code) -> [caracter sin Shift, caracter con Shift] en un teclado US.
+  // Cubre dígitos (fila y numérico) y todos los símbolos que aparecen en enlaces/QR
+  // (barras, guiones, dos puntos, etc.). Las letras se resuelven aparte (Key*).
+  const KEYMAP = {
+    Digit0: ['0', ')'], Digit1: ['1', '!'], Digit2: ['2', '@'], Digit3: ['3', '#'], Digit4: ['4', '$'],
+    Digit5: ['5', '%'], Digit6: ['6', '^'], Digit7: ['7', '&'], Digit8: ['8', '*'], Digit9: ['9', '('],
+    Numpad0: ['0', '0'], Numpad1: ['1', '1'], Numpad2: ['2', '2'], Numpad3: ['3', '3'], Numpad4: ['4', '4'],
+    Numpad5: ['5', '5'], Numpad6: ['6', '6'], Numpad7: ['7', '7'], Numpad8: ['8', '8'], Numpad9: ['9', '9'],
+    NumpadDivide: ['/', '/'], NumpadMultiply: ['*', '*'], NumpadSubtract: ['-', '-'],
+    NumpadAdd: ['+', '+'], NumpadDecimal: ['.', '.'],
+    Minus: ['-', '_'], Equal: ['=', '+'],
+    BracketLeft: ['[', '{'], BracketRight: [']', '}'], Backslash: ['\\', '|'],
+    Semicolon: [';', ':'], Quote: ["'", '"'], Backquote: ['`', '~'],
+    Comma: [',', '<'], Period: ['.', '>'], Slash: ['/', '?'], Space: [' ', ' ']
+  };
+
   function onKey(e) {
     if (!active) return;
     // Mientras el modo está prendido, el teclado queda dedicado al escáner: no dejamos que
@@ -103,15 +119,24 @@ window.scannerWedge = (function () {
       return;
     }
 
-    // NÚMEROS: los sacamos de la TECLA FÍSICA (e.code), no de la letra que "llega".
-    // Así el número del envío sale bien aunque el escáner nuevo venga con otro idioma de
-    // teclado (US, etc.) o con el teclado numérico en modo flechas (NumLock apagado), que es
-    // lo que hace que "escriba torcido" y el sistema no encuentre el envío. La tecla física
-    // no cambia con el idioma, así que el número siempre queda correcto.
-    const dig = /^(?:Digit|Numpad)([0-9])$/.exec(e.code || '');
-    if (dig) { buf += dig[1]; return; }
+    // Leemos TODO por la TECLA FÍSICA (e.code), no por la letra/símbolo que "llega".
+    // Así el código sale bien aunque la pistola esté configurada con otro idioma de
+    // teclado (US, Latinoamérica, etc.) o el teclado numérico en modo flechas (NumLock
+    // apagado). Los QR/enlaces son siempre ASCII de un teclado US, así que reconstruimos
+    // exactamente eso: cada tecla física del layout US -> su caracter (sin Shift / con Shift).
+    // Antes solo arreglábamos los NÚMEROS; por eso las etiquetas de MercadoLibre (que son
+    // números) andaban, pero los comprobantes de venta/alquiler (enlaces con "/", "-", "_", etc.)
+    // llegaban torcidos y el sistema no los reconocía.
 
-    // El resto (letras y símbolos) va tal cual, cuando llega como un caracter normal.
+    // Letras: por tecla física, mayúscula/minúscula según Shift.
+    const letra = /^Key([A-Z])$/.exec(e.code || '');
+    if (letra) { buf += e.shiftKey ? letra[1] : letra[1].toLowerCase(); return; }
+
+    // Números y símbolos: por tecla física (layout US), variante sin Shift / con Shift.
+    const par = KEYMAP[e.code];
+    if (par) { buf += e.shiftKey ? par[1] : par[0]; return; }
+
+    // Respaldo: si no reconocemos la tecla física, usamos el caracter que llegó.
     if (e.key && e.key.length === 1) buf += e.key;
   }
 
