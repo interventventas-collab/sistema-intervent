@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using Api.Data;
 using Api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -136,14 +137,22 @@ public class WhatsAppEmpleadoBotService
             return true;
         }
 
-        // El resto pide un dato → dejamos el bot "esperando" y preguntamos.
+        // El resto pide un dato → dejamos el bot "esperando".
         await GuardarEstadoAsync(numero, codigo, accion);
+
+        // Saldos y Facturas: le mandamos el LISTADO de clientes que deben (con su número
+        // abreviado #código), así responde con el número y no tiene que escribir el nombre.
+        if (accion == "saldos" || accion == "facturas")
+        {
+            var listado = await ConstruirListadoDeudoresAsync(accion);
+            await ResponderLargoAsync(fromWaId, numero, listado, lineaId);
+            return true;
+        }
+
         var pregunta = accion switch
         {
             "stock"    => "📦 Escribí el nombre o código del producto y te digo el stock.",
             "precios"  => "💲 Escribí el nombre o código del producto y te digo el precio.",
-            "saldos"   => "💰 Escribí el nombre del cliente y te digo cuánto debe.",
-            "facturas" => "📄 Escribí el nombre del cliente y te muestro sus últimas facturas.",
             _ => "Escribí el dato que querés consultar."
         };
         await ResponderAsync(fromWaId, numero, pregunta, lineaId);
@@ -227,33 +236,80 @@ public class WhatsAppEmpleadoBotService
              + "\n\nEscribí tu palabra clave para volver al menú.";
     }
 
+    /// <summary>Listado de clientes que deben, ordenado de mayor a menor, con su número abreviado
+    /// (#CódigoInterno). El empleado responde con el número para ver el detalle.</summary>
+    private async Task<string> ConstruirListadoDeudoresAsync(string accion)
+    {
+        var saldos = (await _saldos.GetSaldosPendientesAsync())
+            .Where(s => s.SaldoPendiente > 0)
+            .OrderByDescending(s => s.SaldoPendiente)
+            .ToList();
+
+        var titulo = accion == "facturas"
+            ? $"📄 FACTURAS POR CLIENTE — clientes con saldo ({saldos.Count}), de mayor a menor:"
+            : $"💰 CLIENTES QUE DEBEN ({saldos.Count}), de mayor a menor:";
+
+        if (saldos.Count == 0)
+            return "No hay clientes con saldo pendiente ahora. Igual podés escribir el nombre de un cliente para consultarlo.";
+
+        var lineas = saldos.Select(s =>
+        {
+            var cod = s.CodigoInterno.HasValue ? $"#{s.CodigoInterno}" : "#—";
+            return $"{cod}  {s.Nombre} — {Money(s.SaldoPendiente)}";
+        });
+        var pie = accion == "facturas"
+            ? "\n\n👉 Respondé con el número (ej: 134) para ver sus facturas, o escribí el nombre."
+            : "\n\n👉 Respondé con el número (ej: 134) para ver el detalle, o escribí el nombre.";
+        return titulo + "\n" + string.Join("\n", lineas) + pie;
+    }
+
     private async Task<string> ConsultarSaldoAsync(string q)
     {
         q = q.Trim();
-        if (q.Length < 2) return "Escribí al menos 2 letras del nombre del cliente.";
+        // ¿Respondió con un NÚMERO de cliente? → detalle completo de ese cliente.
+        if (EsNumeroCliente(q, out var codigo))
+        {
+            var cli = await _db.CafeClientes.AsNoTracking().FirstOrDefaultAsync(c => c.CodigoInterno == codigo);
+            if (cli is null) return $"No encontré ningún cliente con el número #{q}. Probá con otro número o escribí el nombre.";
+            return await DetalleClienteAsync(cli);
+        }
+
+        if (q.Length < 2) return "Escribí al menos 2 letras del nombre del cliente (o el número de cliente).";
         var saldos = await _saldos.GetSaldosPendientesAsync();
         var match = saldos
             .Where(s => (s.Nombre ?? "").IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0)
             .OrderByDescending(s => Math.Abs(s.SaldoPendiente))
-            .Take(8)
+            .Take(10)
             .ToList();
 
         if (match.Count == 0)
-            return $"No encontré ningún cliente con deuda que coincida con «{q}». (Si no debe nada, no aparece acá.)";
+            return $"No encontré ningún cliente con deuda que coincida con «{q}». (Si no debe nada, no aparece en la lista.)";
 
-        var lineas = match.Select(s => $"• {s.Nombre}: {Money(s.SaldoPendiente)}");
-        return $"💰 Saldo de clientes (coincidencias con «{q}»):\n" + string.Join("\n", lineas)
-             + "\n\nEscribí otro cliente, o tu palabra clave para el menú.";
+        var lineas = match.Select(s =>
+        {
+            var cod = s.CodigoInterno.HasValue ? $"#{s.CodigoInterno} " : "";
+            return $"• {cod}{s.Nombre}: {Money(s.SaldoPendiente)}";
+        });
+        return $"💰 Coincidencias con «{q}»:\n" + string.Join("\n", lineas)
+             + "\n\n👉 Respondé con el número para el detalle, o escribí otro nombre.";
     }
 
     private async Task<string> ConsultarFacturasAsync(string q)
     {
         q = q.Trim();
-        if (q.Length < 2) return "Escribí al menos 2 letras del nombre del cliente.";
+        // ¿Respondió con un NÚMERO de cliente? → sus facturas.
+        if (EsNumeroCliente(q, out var codigo))
+        {
+            var cli = await _db.CafeClientes.AsNoTracking().FirstOrDefaultAsync(c => c.CodigoInterno == codigo);
+            if (cli is null) return $"No encontré ningún cliente con el número #{q}. Probá con otro número o escribí el nombre.";
+            return await FacturasDeClienteAsync(cli);
+        }
+
+        if (q.Length < 2) return "Escribí al menos 2 letras del nombre del cliente (o el número de cliente).";
         var clientes = await _db.CafeClientes.AsNoTracking()
             .Where(c => c.Nombre.Contains(q) || (c.RazonSocial != null && c.RazonSocial.Contains(q)))
             .OrderBy(c => c.Nombre)
-            .Take(5)
+            .Take(8)
             .ToListAsync();
 
         if (clientes.Count == 0)
@@ -261,28 +317,68 @@ public class WhatsAppEmpleadoBotService
 
         if (clientes.Count > 1)
         {
-            var nombres = clientes.Select(c => $"• {c.Nombre}");
-            return $"Encontré varios clientes con «{q}». Afiná el nombre:\n" + string.Join("\n", nombres)
-                 + "\n\nEscribí otro nombre, o tu palabra clave para el menú.";
+            var nombres = clientes.Select(c => $"• {(c.CodigoInterno.HasValue ? $"#{c.CodigoInterno} " : "")}{c.Nombre}");
+            return $"Encontré varios clientes con «{q}». Respondé con el número o afiná el nombre:\n" + string.Join("\n", nombres)
+                 + "\n\n👉 Respondé con el número, o escribí otro nombre.";
         }
 
-        var cli = clientes[0];
+        return await FacturasDeClienteAsync(clientes[0]);
+    }
+
+    /// <summary>Detalle de cuenta de un cliente: saldo (con desglose cotización/factura) + últimas facturas.</summary>
+    private async Task<string> DetalleClienteAsync(CafeCliente cli)
+    {
+        var saldos = await _saldos.GetSaldosPendientesAsync();
+        var s = saldos.FirstOrDefault(x => x.ClienteId == cli.Id);
+        var cod = cli.CodigoInterno.HasValue ? $"(#{cli.CodigoInterno})" : "";
+
+        var sb = new StringBuilder();
+        sb.Append($"📋 {cli.Nombre} {cod}".TrimEnd()).Append('\n');
+        if (s is not null && s.SaldoPendiente != 0)
+        {
+            sb.Append($"💰 Debe: {Money(s.SaldoPendiente)} — hace {s.DiasMasAntigua} días\n");
+            if (s.SaldoCotizacion != 0) sb.Append($"   • Cotización (X): {Money(s.SaldoCotizacion)}\n");
+            if (s.SaldoFactura != 0) sb.Append($"   • Factura (A/B/C): {Money(s.SaldoFactura)}\n");
+            sb.Append($"   • {s.CantidadVentasPendientes} comprobantes pendientes\n");
+        }
+        else sb.Append("💰 No tiene saldo pendiente.\n");
+
         var ventas = await _db.CafeVentas.AsNoTracking()
             .Where(v => v.ClienteId == cli.Id && v.Estado != "anulado")
-            .OrderByDescending(v => v.Fecha)
-            .Take(6)
-            .ToListAsync();
-
-        if (ventas.Count == 0)
-            return $"📄 {cli.Nombre} no tiene facturas cargadas.";
-
-        var lineas = ventas.Select(v =>
+            .OrderByDescending(v => v.Fecha).Take(6).ToListAsync();
+        if (ventas.Count > 0)
         {
-            var estado = v.IsPaid ? "✅ pagada" : "⏳ impaga";
-            return $"• {v.Numero} — {v.Fecha:dd/MM/yy} — {Money(v.Total)} {estado}";
-        });
-        return $"📄 Últimas facturas de {cli.Nombre}:\n" + string.Join("\n", lineas)
-             + "\n\nEscribí otro cliente, o tu palabra clave para el menú.";
+            sb.Append("📄 Últimas facturas:\n");
+            foreach (var v in ventas)
+                sb.Append($" • {v.Numero} — {v.Fecha:dd/MM/yy} — {Money(v.Total)} {(v.IsPaid ? "✅ pagada" : "⏳ impaga")}\n");
+        }
+        sb.Append("\n👉 Respondé otro número/nombre, o tu palabra clave para el menú.");
+        return sb.ToString();
+    }
+
+    /// <summary>Solo las últimas facturas de un cliente (para la opción 📄 Facturas).</summary>
+    private async Task<string> FacturasDeClienteAsync(CafeCliente cli)
+    {
+        var ventas = await _db.CafeVentas.AsNoTracking()
+            .Where(v => v.ClienteId == cli.Id && v.Estado != "anulado")
+            .OrderByDescending(v => v.Fecha).Take(8).ToListAsync();
+
+        var cod = cli.CodigoInterno.HasValue ? $"(#{cli.CodigoInterno})" : "";
+        if (ventas.Count == 0)
+            return $"📄 {cli.Nombre} {cod}".TrimEnd() + " no tiene facturas cargadas."
+                 + "\n\n👉 Respondé otro número/nombre, o tu palabra clave para el menú.";
+
+        var lineas = ventas.Select(v => $" • {v.Numero} — {v.Fecha:dd/MM/yy} — {Money(v.Total)} {(v.IsPaid ? "✅ pagada" : "⏳ impaga")}");
+        return $"📄 Últimas facturas de {cli.Nombre} {cod}".TrimEnd() + ":\n" + string.Join("\n", lineas)
+             + "\n\n👉 Respondé otro número/nombre, o tu palabra clave para el menú.";
+    }
+
+    /// <summary>True si el texto es un número de cliente (solo dígitos, 1..7 cifras).</summary>
+    private static bool EsNumeroCliente(string q, out int codigo)
+    {
+        codigo = 0;
+        var t = q.TrimStart('#').Trim();
+        return t.Length is >= 1 and <= 7 && t.All(char.IsDigit) && int.TryParse(t, out codigo);
     }
 
     // ─────────────── Estado (memoria corta) ───────────────
@@ -319,6 +415,26 @@ public class WhatsAppEmpleadoBotService
     {
         var sid = await _meta.SendTextAsync(fromWaId, texto, lineaPhoneId: lineaId);
         await RegistrarSalienteAsync(numero, texto, sid, lineaId);
+    }
+
+    /// <summary>Manda un texto largo partiéndolo en varios mensajes (WhatsApp corta ~4096 chars).
+    /// Parte por renglones para no cortar una línea al medio.</summary>
+    private async Task ResponderLargoAsync(string fromWaId, string numero, string texto, string? lineaId)
+    {
+        const int MAX = 3500;
+        if (texto.Length <= MAX) { await ResponderAsync(fromWaId, numero, texto, lineaId); return; }
+
+        var sb = new StringBuilder();
+        foreach (var linea in texto.Split('\n'))
+        {
+            if (sb.Length + linea.Length + 1 > MAX && sb.Length > 0)
+            {
+                await ResponderAsync(fromWaId, numero, sb.ToString().TrimEnd(), lineaId);
+                sb.Clear();
+            }
+            sb.Append(linea).Append('\n');
+        }
+        if (sb.Length > 0) await ResponderAsync(fromWaId, numero, sb.ToString().TrimEnd(), lineaId);
     }
 
     private async Task RegistrarSalienteAsync(string numero, string cuerpo, string? sid, string? lineaId)
