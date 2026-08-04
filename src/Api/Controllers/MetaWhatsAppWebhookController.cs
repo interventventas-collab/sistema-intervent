@@ -543,9 +543,12 @@ public class MetaWhatsAppWebhookController : ControllerBase
             if (nivel == "1")
             {
                 // Eligió empresa → mandar la lista de opciones (nivel 2)
+                // 2026-08-04: sale por la MISMA línea a la que escribió el cliente (lineaId). Antes no
+                // se pasaba y caía a la línea por defecto → mensaje fuera de la ventana de 24hs de ESA
+                // otra línea → Meta lo rechazaba (failed) y el cliente no recibía nada tras tocar el botón.
                 var sid = await meta.SendListAsync(fromWaId, WhatsAppBotFlow.CuerpoNivel2(empresa),
-                    WhatsAppBotFlow.BotonListaNivel2, WhatsAppBotFlow.FilasNivel2(empresa));
-                await RegistrarSalienteAsync(db, numero, WhatsAppBotFlow.CuerpoNivel2(empresa) + " [opciones]", sid);
+                    WhatsAppBotFlow.BotonListaNivel2, WhatsAppBotFlow.FilasNivel2(empresa), lineaPhoneId: lineaId);
+                await RegistrarSalienteAsync(db, numero, WhatsAppBotFlow.CuerpoNivel2(empresa) + " [opciones]", sid, lineaId: lineaId);
                 return;
             }
 
