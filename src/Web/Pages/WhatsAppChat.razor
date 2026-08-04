@@ -122,6 +122,8 @@
                     <button class="wa-filtro-op @(filtroRol=="cliente" ? "sel" : "")" @onclick='() => PickFiltro("cliente")'>🛍️ Clientes</button>
                     <button class="wa-filtro-op @(filtroRol=="empleado" ? "sel" : "")" @onclick='() => PickFiltro("empleado")'>👷 Empleados</button>
                     <button class="wa-filtro-op @(filtroRol=="hermano" ? "sel" : "")" @onclick='() => PickFiltro("hermano")'>👨‍👦 Hermanos</button>
+                    <button class="wa-filtro-op @(filtroRol=="alquiler" ? "sel" : "")" @onclick='() => PickFiltro("alquiler")'>🎪 Alquiler</button>
+                    <button class="wa-filtro-op @(filtroRol=="cafe" ? "sel" : "")" @onclick='() => PickFiltro("cafe")'>☕ Café</button>
                     <button class="wa-filtro-op @(filtroRol=="sin" ? "sel" : "")" @onclick='() => PickFiltro("sin")' title="Charlas de gente sin tipo asignado">❓ Sin asignar</button>
                     <button class="wa-filtro-op @(filtroRol=="pedido" ? "sel" : "")" @onclick='() => PickFiltro("pedido")' title="Charlas donde el último mensaje parece un pedido">📋 Pedidos</button>
                 </div>
@@ -252,6 +254,8 @@
                 <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("empleado")'>👷 Empleado</button>
                 <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("hermano")'>👨‍👦 Hermano</button>
                 <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("proveedor")'>🚚 Proveedor</button>
+                <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("alquiler")'>🎪 Alquiler</button>
+                <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("cafe")'>☕ Café</button>
                 <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("otro")'>🏷️ Otro</button>
                 <button class="wa-rolmenu-cancel" @onclick="() => rolMenuConv = null">Cancelar</button>
             </div>
@@ -928,6 +932,8 @@
                     <option value="empleado">👷 Empleado</option>
                     <option value="cliente">🛍️ Cliente</option>
                     <option value="proveedor">🚚 Proveedor</option>
+                    <option value="alquiler">🎪 Alquiler</option>
+                    <option value="cafe">☕ Café</option>
                     <option value="otro">Otro</option>
                 </select>
             </div>
@@ -1226,6 +1232,8 @@
                                         <option value="empleado">Empleado</option>
                                         <option value="cliente">Cliente</option>
                                         <option value="proveedor">Proveedor</option>
+                                        <option value="alquiler">Alquiler</option>
+                                        <option value="cafe">Café</option>
                                         <option value="otro">Otro</option>
                                     </select>
                                 </td>
@@ -1272,6 +1280,8 @@
                                     <option value="empleado">Empleado</option>
                                     <option value="cliente">Cliente</option>
                                     <option value="proveedor">Proveedor</option>
+                                    <option value="alquiler">Alquiler</option>
+                                    <option value="cafe">Café</option>
                                     <option value="otro">Otro</option>
                                 </select>
                             </td>
@@ -3674,6 +3684,8 @@
         "empleado" => "👷",
         "cliente" => "🛍️",
         "proveedor" => "🚚",
+        "alquiler" => "🎪",
+        "cafe" => "☕",
         _ => ""
     };
     string RolLabel(string? rol) => rol switch
@@ -3682,6 +3694,8 @@
         "empleado" => "Empleado",
         "cliente" => "Cliente",
         "proveedor" => "Proveedor",
+        "alquiler" => "Alquiler",
+        "cafe" => "Café",
         "otro" => "Otro",
         _ => "Sin categoría"
     };
@@ -3694,6 +3708,8 @@
             "empleado" => "#f59e0b",
             "cliente" => "#10b981",
             "proveedor" => "#8b5cf6",
+            "alquiler" => "#ec4899",
+            "cafe" => "#b45309",
             _ => "#25d366"
         };
         return $"background:{bg};";
