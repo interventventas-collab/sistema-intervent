@@ -6,6 +6,7 @@
 @inject Web.Services.ToastService Toast
 @inject Microsoft.AspNetCore.Components.NavigationManager Nav
 @inject Microsoft.JSInterop.IJSRuntime JS
+@inject Web.Services.AuthService AuthSvc
 @implements IDisposable
 
 <PageTitle>WhatsApp — Chat</PageTitle>
@@ -968,6 +969,26 @@
                abajo del cuadro de escribir, uno al lado del otro, para ocupar menos alto. *@
             @if (Ventana24Abierta() || EsChatInstagram())
             {
+                @* 2026-08-05: FIRMA de Depósito — quién responde. Lo que escriban sale firmado
+                   "OK (alex)". Obligatorio: si no eligieron, no deja enviar. Solo para Depósito. *@
+                @if (esDeposito)
+                {
+                    <div class="wa-firma-bar">
+                        <span class="wa-firma-lbl">✍️ Responde:</span>
+                        @foreach (var f in FirmantesDeposito)
+                        {
+                            <button class="wa-firma-op @(firmante == f ? "sel" : "")" @onclick="() => ElegirFirmante(f)">@f</button>
+                        }
+                        @if (!string.IsNullOrEmpty(firmante))
+                        {
+                            <span class="wa-firma-hint">sale como <b>… (@firmante)</b></span>
+                        }
+                        else
+                        {
+                            <span class="wa-firma-hint wa-firma-falta">👈 elegí quién responde</span>
+                        }
+                    </div>
+                }
                 <div class="wa-composer">
                     @* 2026-08-05: columna izquierda = miniatura del Menú rol (arriba) + íconos redondos (abajo) *@
                     <div class="wa-composer-left">
@@ -1717,6 +1738,17 @@
     .wa-contacto-btn { background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.25rem 0.5rem; font-size: 0.75rem; color: #128c7e; cursor: pointer; white-space: nowrap; }
     .wa-contacto-btn:hover { background: #f0fdf4; }
     .wa-bubble-meta { font-size: 0.65rem; color: #6b7280; text-align: right; margin-top: 0.2rem; }
+    /* 2026-08-05: barra de FIRMA de Depósito (quién responde) arriba del cajón de escribir. */
+    .wa-firma-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+        padding: 0.5rem 1rem 0; background: #fbfcfe; }
+    .wa-firma-lbl { font-size: 0.8rem; font-weight: 800; color: #374151; margin-right: 2px; }
+    .wa-firma-op { border: 1px solid #d1d5db; background: #fff; color: #374151; font-weight: 700;
+        font-size: 0.82rem; padding: 4px 12px; border-radius: 999px; cursor: pointer; text-transform: capitalize; }
+    .wa-firma-op:hover { background: #f3f4f6; }
+    .wa-firma-op.sel { background: #16a34a; border-color: #16a34a; color: #fff; box-shadow: 0 2px 6px rgba(22,163,74,0.35); }
+    .wa-firma-hint { font-size: 0.74rem; color: #6b7280; margin-left: 4px; }
+    .wa-firma-hint.wa-firma-falta { color: #dc2626; font-weight: 700; }
+
     .wa-composer { padding: 0.7rem 1rem 0.5rem; background: #fbfcfe; display: flex; gap: 0.55rem; align-items: flex-end; }
     /* 2026-08-03: pedido Osmar — cuadro a ~3 renglones (antes 5x muy alto) para ver más de la conversación; letra al doble y en negrita. resize:vertical = lo podés estirar con la esquina si escribís algo largo. */
     .wa-composer textarea { resize: vertical; border-radius: 14px; flex: 1; min-height: 145px; border: 1px solid #dfe4ea; padding: 0.7rem 0.9rem; font-size: 1.9rem; font-weight: 700; line-height: 1.3; }
@@ -2641,8 +2673,25 @@
     public string? SoloParam { get; set; }
     private bool soloMode => SoloParam == "1";
 
+    // 2026-08-05: FIRMA de Depósito. Cuando responde un usuario de Depósito, el mensaje sale
+    // firmado con quién contesta → "OK (alex)". Lista fija de empleados (pedido del usuario).
+    private static readonly string[] FirmantesDeposito = { "alex", "nacho", "benja", "rodri", "gon", "ger" };
+    private bool esDeposito;
+    private string? firmante;   // empleado elegido (se recuerda en localStorage)
+
     protected override async Task OnInitializedAsync()
     {
+        // ¿El que entró es un usuario SOLO de Depósito? (mismo criterio que el Dashboard)
+        var user = await AuthSvc.GetUserAsync();
+        var perms = user?.Permissions ?? new();
+        esDeposito = perms.Contains("deposito") && !perms.Contains("cafe") && !perms.Contains("oficina");
+        if (esDeposito)
+        {
+            try { firmante = await JS.InvokeAsync<string?>("localStorage.getItem", "wa_firmante_deposito"); }
+            catch { }
+            if (!FirmantesDeposito.Contains(firmante)) firmante = null; // por si quedó uno viejo
+        }
+
         await LoadConversaciones();
         await LoadLineasConfig();
         AplicarLineaPorDefecto();
@@ -3541,6 +3590,14 @@
     // al toque mientras viajan al servidor. Negativo para no chocar con ids reales.
     int _tempMsgId = -1;
 
+    // 2026-08-05: elegir quién de Depósito responde (se recuerda para la próxima).
+    async Task ElegirFirmante(string f)
+    {
+        firmante = f;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "wa_firmante_deposito", f); }
+        catch { }
+    }
+
     // El botón verde "Enviar" usa esta vía.
     async Task EnviarMensaje()
     {
@@ -3576,6 +3633,20 @@
         if (selectedNumero == null || sending) return;
         texto = texto?.Trim() ?? "";
         if (string.IsNullOrWhiteSpace(texto)) return;
+
+        // 2026-08-05: Depósito SIEMPRE firma quién responde → "OK (alex)". Si no eligieron
+        // el empleado, no se envía y se avisa (devolvemos el texto al cuadro para no perderlo).
+        if (esDeposito)
+        {
+            if (string.IsNullOrWhiteSpace(firmante))
+            {
+                Toast.Warning("Elegí quién responde (arriba del cuadro de escribir).");
+                composerText = texto;
+                StateHasChanged();
+                return;
+            }
+            texto = $"{texto} ({firmante})";
+        }
 
         var numero = selectedNumero;
         var linea = selectedLinea;
