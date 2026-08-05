@@ -589,7 +589,7 @@ public class CafeVentasController : ControllerBase
     /// otro endpoint (el de ARCA) — este es solo para los tipos X y PRO.
     /// </summary>
     [HttpGet("{id:int}/pdf")]
-    public async Task<IActionResult> GetPdf(int id)
+    public async Task<IActionResult> GetPdf(int id, [FromQuery] bool inline = false)
     {
         // Include ProductoNav para que el PDF pueda mostrar el SKU del producto al lado del nombre
         var v = await _db.CafeVentas.Include(x => x.Items).ThenInclude(i => i.ProductoNav).FirstOrDefaultAsync(x => x.Id == id);
@@ -608,7 +608,9 @@ public class CafeVentasController : ControllerBase
         if (esFacturaArca && autorizada)
         {
             var pdfBytes = BuildArcaPdf(v, cfg!);
-            return File(pdfBytes, "application/pdf", BuildPdfFilename(v));
+            // inline=true → sin nombre de archivo, para que el navegador lo MUESTRE embebido (vista
+            // previa en iframe) en vez de descargarlo. Por default sigue descargando como antes.
+            return inline ? File(pdfBytes, "application/pdf") : File(pdfBytes, "application/pdf", BuildPdfFilename(v));
         }
 
         var qr = await _qrRepartidorService.GenerarQrAsync(v.PublicToken);
@@ -617,7 +619,7 @@ public class CafeVentasController : ControllerBase
         var combosMap = await BuildCombosMapAsync(comboIds);
         await HydrateCfgFromEmisorAsync(cfg);
         var bytes = _pdfService.GenerarPdfBytes(v, cfg, qr, combosMap);
-        return File(bytes, "application/pdf", BuildPdfFilename(v));
+        return inline ? File(bytes, "application/pdf") : File(bytes, "application/pdf", BuildPdfFilename(v));
     }
 
     /// <summary>
