@@ -20,22 +20,30 @@
    fila con la card de WhatsApp (que antes vivía en la fila de 3 cards de más abajo). *@
 @* 2026-08-02: el usuario SOLO depósito NO debe ver el mapa ni WhatsApp — esta fila
    se había quedado afuera del candado isDepositoOnly de más abajo. *@
-@if (!isDepositoOnly)
+@* 2026-08-05: el mapa grande pasó a una card CHICA en la fila de abajo (junto a
+   Preparación / Alquileres / me1). Acá arriba, en su lugar, queda FIJA la conversación
+   importante de WhatsApp (Gabriel + FIJO TRANSRADIO). El usuario "depósito" también la
+   ve, pero SOLO esa: el resto del dashboard le sigue oculto. *@
+
+@if (isDepositoOnly)
+{
+    <div class="dash-pinned-solo">
+        <PinnedWaChat Numero="@PinnedWaNumero" LineaPhoneId="@PinnedWaLinea"
+                      TituloContacto="@PinnedWaTitulo" NombreLinea="@PinnedWaNombreLinea"
+                      PuedeAbrirEnGrande="false" />
+    </div>
+}
+else
 {
 <div class="dash-hero-row">
 
-    @* Card: Mapa de Reparto (Google Maps en vivo) — se toca y lleva al mapa completo *@
-    <div class="dash-mapcard" @onclick="AbrirMapaEnPestana" title="Abrir el mapa de reparto en una pestaña nueva">
-        <div class="dash-mapcard-map" id="dashMiniMap"></div>
-        <div class="dash-mapcard-grad"></div>
-        <div class="dash-mapcard-badge">✨ NUEVO · Google Maps</div>
-        <div class="dash-mapcard-body">
-            <div class="dash-mapcard-title">🗺️ Mapa de Reparto</div>
-            <div class="dash-mapcard-sub">
-                @((mapeoStopsMini?.Count ?? 0)) @((mapeoStopsMini?.Count ?? 0) == 1 ? "parada" : "paradas") en el mapa · rutas optimizadas por calles reales de Google
-            </div>
-            <div class="dash-mapcard-cta">Abrir el mapa completo →</div>
-        </div>
+    @* Conversación importante FIJADA (reemplaza a la card grande del mapa de reparto).
+       Va dentro de un contenedor de altura fija para que NO se estire con todos los
+       mensajes: el chat scrollea adentro de la card. *@
+    <div class="dash-hero-pinned">
+        <PinnedWaChat Numero="@PinnedWaNumero" LineaPhoneId="@PinnedWaLinea"
+                      TituloContacto="@PinnedWaTitulo" NombreLinea="@PinnedWaNombreLinea"
+                      PuedeAbrirEnGrande="true" />
     </div>
 
     @* WhatsApp — conversaciones donde el último mensaje lo mandó el CLIENTE (sin responder).
@@ -99,16 +107,25 @@
     </div>
 
 </div>
-} @* fin @if (!isDepositoOnly) — fila hero mapa + WhatsApp *@
+} @* fin @if (isDepositoOnly)…else — fila hero (chat fijado + WhatsApp) *@
 
 <style>
-    /* 2026-07-29: fila hero = mapa (mitad) + WhatsApp (mitad), lado a lado.
-       En celu se apilan (mapa arriba, WhatsApp abajo). */
+    /* 2026-08-05: fila hero = conversación fijada (mitad) + WhatsApp (mitad), lado a lado.
+       En celu se apilan (chat arriba, WhatsApp abajo). */
     .dash-hero-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;
         align-items: stretch; margin-bottom: 1rem; }
     @@media (max-width: 900px) { .dash-hero-row { grid-template-columns: 1fr; } }
-    /* la card de WhatsApp dentro de la fila hero ocupa toda la altura del mapa */
+    /* la card de WhatsApp dentro de la fila hero ocupa toda la altura del chat fijado */
     .dash-hero-wa { margin-top: 0 !important; height: 100%; }
+
+    /* 2026-08-05: la conversación fijada NO debe estirar la fila con todos los mensajes.
+       Altura fija en desktop → el chat scrollea adentro. En celu, algo más alto. */
+    .dash-hero-pinned { height: 400px; }
+    @@media (max-width: 900px) { .dash-hero-pinned { height: 70vh; min-height: 360px; } }
+
+    /* 2026-08-05: usuario "depósito" ve SOLO la conversación fijada, centrada y con
+       una altura cómoda para leer y escribir. */
+    .dash-pinned-solo { max-width: 720px; margin: 0 auto 1rem; height: 72vh; min-height: 420px; }
 
     .dash-mapcard { position: relative; height: 100%; min-height: 240px; border-radius: 16px; overflow: hidden; cursor: pointer;
         box-shadow: 0 4px 16px rgba(0,0,0,0.12); border: 1px solid #e5e7eb; background: #0f172a;
@@ -586,6 +603,20 @@
     </div>
 
     @* 2026-07-29: la card de WhatsApp se movió arriba, al lado del mapa (fila hero). *@
+
+    @* 2026-08-05: el Mapa de Reparto pasó de card grande (arriba) a esta card CHICA,
+       en línea con Preparación / Alquileres / me1. Sigue con el mapa vivo (id dashMiniMap). *@
+    <div class="dash-mapcard dash-mapcard-mini" @onclick="AbrirMapaEnPestana" title="Abrir el mapa de reparto en una pestaña nueva">
+        <div class="dash-mapcard-map" id="dashMiniMap"></div>
+        <div class="dash-mapcard-grad"></div>
+        <div class="dash-mapcard-badge">🗺️ Google Maps</div>
+        <div class="dash-mapcard-body">
+            <div class="dash-mapcard-title dash-mapcard-title-mini">Mapa de Reparto</div>
+            <div class="dash-mapcard-sub">
+                @((mapeoStopsMini?.Count ?? 0)) @((mapeoStopsMini?.Count ?? 0) == 1 ? "parada" : "paradas") · abrir el mapa completo →
+            </div>
+        </div>
+    </div>
 
 </div>
 
@@ -1438,7 +1469,7 @@
        2026-07-29: WhatsApp se movió arriba junto al mapa → vuelven a ser 3 columnas. */
     .dashboard-tres-cards {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(4, 1fr);
         gap: 1.5rem;
         margin-top: 1.5rem;
     }
@@ -1448,6 +1479,9 @@
     @@media (max-width: 900px) {
         .dashboard-tres-cards { grid-template-columns: 1fr; }
     }
+    /* 2026-08-05: el Mapa de Reparto ahora es una card chica más de esta fila. */
+    .dash-mapcard-mini { min-height: 236px; box-shadow: none; border: 1px solid #e5e7eb; }
+    .dash-mapcard-title-mini { font-size: 1.05rem; }
     .tres-card { min-height: 236px; }
     .tres-card.tres-collapsed { min-height: 0; }
     .tres-card-foot {
@@ -1711,6 +1745,14 @@
     private bool isDepositoOnly => userPermissions.Contains("deposito")
         && !userPermissions.Contains("cafe")
         && !userPermissions.Contains("oficina");
+
+    // 2026-08-05: conversación de WhatsApp FIJADA en el Dashboard (la más importante).
+    // Por ahora apunta a Gabriel Palanica por la línea FIJO TRANSRADIO (phoneId real de PROD).
+    // Fase 2: hacer esto elegible desde la pantalla en vez de hardcodearlo.
+    private const string PinnedWaNumero = "whatsapp:+5491158464160";
+    private const string PinnedWaLinea = "1195191513683780"; // FIJO TRANSRADIO
+    private const string PinnedWaTitulo = "Gabriel Palanica";
+    private const string PinnedWaNombreLinea = "FIJO TRANSRADIO";
 
     // Widgets nuevos
     // 2026-07-08: dólar y disco se movieron a los chips de arriba (MainLayout .topstrip).

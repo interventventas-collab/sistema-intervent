@@ -12,7 +12,9 @@
 
 @* 2026-07-23: solapas del sector WhatsApp unificado (pedido Osmar) — chats + pedidos, todo junto *@
 @* 2026-07-29: barra superior rediseñada + cartelito "Línea activa" (para saber SIEMPRE con qué WhatsApp trabajás, ya que va a haber un 2° número) *@
-<div class="wa-topbar">
+@* 2026-08-05: en modo "una sola conversación" (solo=1) escondemos la barra superior entera:
+   no hace falta el selector de líneas ni las solapas, porque se ve un único chat fijado. *@
+<div class="wa-topbar" style="@(soloMode ? "display:none;" : "")">
     <div class="wa-tabs-top">
         <span class="wa-tab-top active">💬 Chats</span>
         <a href="/whatsapp/pedidos" class="wa-tab-top">📥 Pedidos y configuración</a>
@@ -68,7 +70,9 @@
 </div>
 
 <div class="wa-outer">
-<div class="wa-root @(selectedNumero is null ? "" : "wa-chat-abierto")">
+<div class="wa-root @(selectedNumero is null ? "" : "wa-chat-abierto") @(soloMode ? "wa-solo" : "")">
+    @if (!soloMode)
+    {
     <div class="wa-sidebar">
         @* 2026-08-05: encabezado rediseñado — buscador tipo píldora + botón moderno *@
         <div class="wa-side-header">
@@ -267,6 +271,7 @@
             </div>
         }
     </div>
+    } @* fin @if (!soloMode) — lista lateral de conversaciones *@
 
     <div class="wa-thread">
         @if (selectedNumero is null)
@@ -1546,6 +1551,8 @@
        separadas por un gap, con sombra suave (estilo del resto del sistema). */
     .wa-outer { display: flex; justify-content: center; height: calc(100vh - 104px); background: #eef1f5; padding: 0.7rem 1rem 1rem; }
     .wa-root { display: grid; grid-template-columns: 340px 1fr; width: 100%; max-width: 1500px; background: transparent; box-shadow: none; gap: 0.8rem; overflow: hidden; }
+    /* 2026-08-05: modo "una sola conversación" — sin lista lateral, el chat ocupa todo el ancho. */
+    .wa-root.wa-solo { grid-template-columns: 1fr; max-width: 1100px; }
     .wa-sidebar { background: #fff; border: 1px solid #e6eaf0; border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 6px 20px rgba(15,23,42,0.06); }
     .wa-side-header { padding: 1rem 1rem 0.85rem; border-bottom: 1px solid #eef1f5; background: #fbfcfe; }
     /* 2026-08-05: encabezado moderno (buscador píldora + botón con degradé) */
@@ -2622,6 +2629,18 @@
     [SupplyParameterFromQuery(Name = "numero")]
     public string? NumeroInicial { get; set; }
 
+    // 2026-08-05: línea (phoneId) del chat inicial, para elegir el hilo correcto cuando el mismo
+    // contacto tiene charlas por 2 líneas distintas.
+    [SupplyParameterFromQuery(Name = "linea")]
+    public string? LineaInicial { get; set; }
+
+    // 2026-08-05: modo "una sola conversación" (solo=1). Se usa desde la conversación FIJADA del
+    // Dashboard: abre SOLO ese chat, sin la lista lateral ni el selector de líneas, así no se puede
+    // saltar a otras conversaciones.
+    [SupplyParameterFromQuery(Name = "solo")]
+    public string? SoloParam { get; set; }
+    private bool soloMode => SoloParam == "1";
+
     protected override async Task OnInitializedAsync()
     {
         await LoadConversaciones();
@@ -2632,7 +2651,14 @@
         await EnsureNvCargado();
         nvLineaPhoneId ??= LineaDefaultPhoneId();
         if (!string.IsNullOrWhiteSpace(NumeroInicial))
-            await SelectConv(NumeroInicial, conversaciones.FirstOrDefault(c => c.Numero == NumeroInicial)?.Linea);
+        {
+            // Elegimos el hilo por número + línea. Si esa combinación exacta no está (típico en
+            // DESARROLLO), caemos al hilo del mismo número por cualquier línea para no quedar vacíos.
+            var conv = conversaciones.FirstOrDefault(c => c.Numero == NumeroInicial
+                            && (string.IsNullOrEmpty(LineaInicial) || c.Linea == LineaInicial))
+                        ?? conversaciones.FirstOrDefault(c => c.Numero == NumeroInicial);
+            await SelectConv(NumeroInicial, conv?.Linea);
+        }
         await LoadRespuestas();
         await LoadContactos();
         await LoadDatosBancarios();
