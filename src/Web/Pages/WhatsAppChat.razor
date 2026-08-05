@@ -1038,6 +1038,10 @@
                     <textarea class="form-control wa-composer-input" placeholder="Escribir mensaje… (Enter para enviar, Shift+Enter para renglón nuevo)" @bind="composerText" @bind:event="oninput" rows="3"></textarea>
                     @* 2026-08-05: columna derecha = respuestas rápidas (desplegable) arriba + botón Enviar abajo *@
                     <div class="wa-composer-right">
+                        @* 2026-08-05: botón rápido para pasar el link de alta de clientes *@
+                        <button class="wa-alta-cliente-btn" @onclick="InsertarLinkAltaCliente" title="Insertar el link de alta de clientes en el mensaje">
+                            🔗 Alta de clientes
+                        </button>
                         @if (respuestas.Any(r => r.Activo) && (Ventana24Abierta() || EsChatInstagram()))
                         {
                             <div class="wa-qr">
@@ -1856,6 +1860,8 @@
     /* 2026-08-05: contador de la ventana de 24hs (reloj de arena + estado) */
     /* 2026-08-05: columna derecha del composer = desplegable de respuestas rápidas (arriba) + Enviar (abajo) */
     .wa-composer-right { display: flex; flex-direction: column; gap: 0.4rem; align-items: stretch; justify-content: flex-end; flex-shrink: 0; }
+    .wa-alta-cliente-btn { width: 100%; background: #ecfdf5; border: 1px solid #a7f3d0; color: #047857; border-radius: 12px; padding: 0.5rem 0.8rem; font-size: 0.82rem; font-weight: 700; cursor: pointer; white-space: nowrap; transition: all .12s; }
+    .wa-alta-cliente-btn:hover { background: #d1fae5; border-color: #6ee7b7; }
     .wa-qr { position: relative; }
     .wa-qr-toggle { width: 100%; background: #f0f9ff; border: 1px solid #bae6fd; color: #0369a1; border-radius: 12px; padding: 0.5rem 0.8rem; font-size: 0.82rem; font-weight: 700; cursor: pointer; white-space: nowrap; transition: all .12s; }
     .wa-qr-toggle:hover { background: #e0f2fe; border-color: #7dd3fc; }
@@ -3173,6 +3179,13 @@
     {
         var texto = ReemplazarVariables(r.Texto);
         composerText = string.IsNullOrWhiteSpace(composerText) ? texto : composerText + " " + texto;
+    }
+
+    // 2026-08-05: link fijo de alta de clientes, para pasarlo con un click
+    void InsertarLinkAltaCliente()
+    {
+        const string link = "https://app.palanica.com.ar/alta-cliente";
+        composerText = string.IsNullOrWhiteSpace(composerText) ? link : composerText + " " + link;
     }
 
     // 2026-06-20: reemplaza {nombre}, {numero} con datos del contacto seleccionado.
