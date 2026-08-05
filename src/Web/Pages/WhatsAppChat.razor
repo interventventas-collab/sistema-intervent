@@ -2691,11 +2691,15 @@
         var user = await AuthSvc.GetUserAsync();
         var perms = user?.Permissions ?? new();
         esDeposito = perms.Contains("deposito") && !perms.Contains("cafe") && !perms.Contains("oficina");
+        // 2026-08-05: NO recordar el último firmante. Cada vez que se abre la pantalla arranca
+        // en blanco y el que responde tiene que pinchar SÍ o SÍ su nombre antes de enviar (así
+        // nadie manda firmando con el nombre de otro por error). Limpiamos el valor viejo por si
+        // quedó guardado de antes.
+        firmante = null;
         if (esDeposito)
         {
-            try { firmante = await JS.InvokeAsync<string?>("localStorage.getItem", "wa_firmante_deposito"); }
+            try { await JS.InvokeVoidAsync("localStorage.removeItem", "wa_firmante_deposito"); }
             catch { }
-            if (!FirmantesDeposito.Contains(firmante)) firmante = null; // por si quedó uno viejo
         }
 
         await LoadConversaciones();
@@ -3606,9 +3610,10 @@
     // 2026-08-05: elegir quién de Depósito responde (se recuerda para la próxima).
     async Task ElegirFirmante(string f)
     {
+        // 2026-08-05: se elige solo para esta sesión abierta; NO se guarda para la próxima vez.
+        // Al recargar/reabrir la pantalla vuelve a arrancar en blanco (obliga a re-elegir).
         firmante = f;
-        try { await JS.InvokeVoidAsync("localStorage.setItem", "wa_firmante_deposito", f); }
-        catch { }
+        await Task.CompletedTask;
     }
 
     // El botón verde "Enviar" usa esta vía.
