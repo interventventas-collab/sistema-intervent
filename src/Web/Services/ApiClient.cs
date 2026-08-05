@@ -6416,11 +6416,11 @@ public class ApiClient
         catch (Exception ex) { return (false, ex.Message); }
     }
 
-    public async Task<(bool ok, string? error)> SendTwMenuRolAsync(string numero)
+    public async Task<(bool ok, string? error)> SendTwMenuRolAsync(string numero, string? lineaPhoneId = null)
     {
         try
         {
-            var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/menu-rol", new { Numero = numero });
+            var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/menu-rol", new { Numero = numero, LineaPhoneId = lineaPhoneId });
             if (resp.IsSuccessStatusCode) return (true, null);
             string err = "Error enviando menú";
             try

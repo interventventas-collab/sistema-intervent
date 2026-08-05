@@ -3434,7 +3434,9 @@
     {
         if (string.IsNullOrEmpty(selectedNumero)) return;
         enviandoMenuRol = true;
-        var (ok, err) = await Api.SendTwMenuRolAsync(selectedNumero);
+        // 2026-08-05: el menú tiene que salir por la MISMA línea del chat abierto (no por la última
+        // línea que escribió el contacto ni por la línea API por defecto).
+        var (ok, err) = await Api.SendTwMenuRolAsync(selectedNumero, selectedLinea);
         enviandoMenuRol = false;
         if (ok)
         {
