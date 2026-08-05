@@ -70,17 +70,23 @@
 <div class="wa-outer">
 <div class="wa-root @(selectedNumero is null ? "" : "wa-chat-abierto")">
     <div class="wa-sidebar">
+        @* 2026-08-05: encabezado rediseñado — buscador tipo píldora + botón moderno *@
         <div class="wa-side-header">
-            <div style="font-weight:600; font-size:1.05rem;">💬 Conversaciones</div>
-            <div style="font-size:0.75rem; color:#6b7280; margin-top:0.2rem;">@conversacionesFiltradas.Count de @conversaciones.Count chats</div>
-            @* 2026-07-24: buscador de conversaciones (por nombre, número o cliente) *@
-            <input class="form-control form-control-sm" style="margin-top:0.4rem; font-size:0.85rem;"
-                   placeholder="🔍 Buscar contacto…"
-                   value="@filtroTexto" @oninput="e => filtroTexto = e.Value?.ToString() ?? string.Empty" />
-            @* 2026-08-01: escribir primero a alguien (con plantilla aprobada) *@
-            <button class="btn btn-success btn-sm" style="margin-top:0.45rem; width:100%; font-weight:600;"
-                    @onclick="AbrirNuevaConv" title="Escribirle primero a alguien usando una plantilla aprobada">
-                ✍️ Nueva conversación
+            <div class="wa-side-title-row">
+                <span class="wa-side-title">💬 Conversaciones</span>
+                <span class="wa-side-count" title="Conversaciones que estás viendo / total">@conversacionesFiltradas.Count / @conversaciones.Count</span>
+            </div>
+            <div class="wa-search-box">
+                <span class="wa-search-ico">🔍</span>
+                <input class="wa-search-input" placeholder="Buscar contacto…"
+                       value="@filtroTexto" @oninput="e => filtroTexto = e.Value?.ToString() ?? string.Empty" />
+                @if (!string.IsNullOrEmpty(filtroTexto))
+                {
+                    <button class="wa-search-clear" @onclick="() => filtroTexto = string.Empty" title="Limpiar búsqueda">×</button>
+                }
+            </div>
+            <button class="wa-nueva-btn" @onclick="AbrirNuevaConv" title="Escribirle primero a alguien usando una plantilla aprobada">
+                <span class="wa-nueva-ico">✍️</span> Nueva conversación
             </button>
         </div>
         @* 2026-08-05: un solo botón "Todos ▾" que despliega la lista de filtros (antes era una fila
@@ -1305,6 +1311,20 @@
     .wa-root { display: grid; grid-template-columns: 340px 1fr; width: 100%; max-width: 1500px; background: transparent; box-shadow: none; gap: 0.8rem; overflow: hidden; }
     .wa-sidebar { background: #fff; border: 1px solid #e6eaf0; border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 6px 20px rgba(15,23,42,0.06); }
     .wa-side-header { padding: 1rem 1rem 0.85rem; border-bottom: 1px solid #eef1f5; background: #fbfcfe; }
+    /* 2026-08-05: encabezado moderno (buscador píldora + botón con degradé) */
+    .wa-side-title-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+    .wa-side-title { font-weight: 700; font-size: 1.05rem; color: #111827; }
+    .wa-side-count { font-size: 0.7rem; color: #64748b; font-weight: 700; background: #eef2f7; padding: 0.14rem 0.5rem; border-radius: 999px; white-space: nowrap; }
+    .wa-search-box { position: relative; display: flex; align-items: center; gap: 0.15rem; margin-top: 0.75rem; background: #eef1f5; border: 1.5px solid transparent; border-radius: 12px; padding: 0 0.7rem; transition: background 0.15s, border-color 0.15s, box-shadow 0.15s; }
+    .wa-search-box:focus-within { background: #fff; border-color: #25d366; box-shadow: 0 0 0 3px rgba(37,211,102,0.14); }
+    .wa-search-ico { font-size: 0.9rem; opacity: 0.5; }
+    .wa-search-input { flex: 1; min-width: 0; border: none; background: transparent; outline: none; padding: 0.6rem 0.5rem; font-size: 0.9rem; color: #111827; }
+    .wa-search-clear { flex: 0 0 auto; background: #d5dbe3; border: none; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; color: #475569; font-size: 0.95rem; line-height: 1; display: flex; align-items: center; justify-content: center; }
+    .wa-search-clear:hover { background: #b9c2cd; color: #1f2937; }
+    .wa-nueva-btn { display: flex; align-items: center; justify-content: center; gap: 0.5rem; width: 100%; margin-top: 0.65rem; padding: 0.7rem; border: none; border-radius: 12px; background: linear-gradient(135deg, #2bd672, #12b455); color: #fff; font-weight: 700; font-size: 0.92rem; cursor: pointer; box-shadow: 0 4px 12px rgba(37,211,102,0.30); transition: transform 0.12s, box-shadow 0.12s; }
+    .wa-nueva-btn:hover { transform: translateY(-1px); box-shadow: 0 7px 18px rgba(37,211,102,0.40); }
+    .wa-nueva-btn:active { transform: translateY(0); box-shadow: 0 3px 9px rgba(37,211,102,0.30); }
+    .wa-nueva-ico { font-size: 1rem; }
 
     /* Barra superior: solapas + cartelito de línea activa */
     .wa-topbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; padding: 0.6rem 1rem 0; flex-wrap: wrap; }
