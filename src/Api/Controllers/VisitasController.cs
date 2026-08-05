@@ -160,28 +160,31 @@ public class VisitasController : ControllerBase
             return BadRequest(new { error = "No hay teléfono para enviar. Cargá el número del cliente." });
         var destino = MetaWhatsAppService.ToInboxWhatsApp(crudo);
 
+        // Le mandamos el PDF del recibo COMO ARCHIVO adjunto (documento), no un link. Meta baja el
+        // PDF de nuestro endpoint público, así que necesita la URL pública configurada.
         var baseUrl = (await _db.AppSettings.FindAsync("mapeo.public_base_url"))?.Value;
-        string? url = (!string.IsNullOrWhiteSpace(baseUrl) && !string.IsNullOrWhiteSpace(v.PublicToken))
-            ? $"{baseUrl.TrimEnd('/')}/visita/{v.PublicToken}"
-            : null;
-        var num = v.Numero.ToString("D4");
-        var mensaje = url is not null
-            ? $"Hola! Te paso el recibo de tu visita N° {num}:\n\n{url}\n\nCualquier cosa avisame. Gracias!"
-            : $"Hola! Te paso el recibo de tu visita N° {num}. Cualquier cosa avisame. Gracias!";
+        if (string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(v.PublicToken))
+            return StatusCode(503, new { error = "No está configurada la dirección pública del sistema (mapeo.public_base_url), no puedo enviar el PDF." });
+        var num = v.Numero.ToString("0000");
+        var mediaUrl = $"{baseUrl.TrimEnd('/')}/api/visitas/publica/{v.PublicToken}/recibo.pdf";
+        var filename = $"Visita-{num}.pdf";
+        var caption = $"Hola! Te paso el recibo de tu visita N° {num}. Cualquier cosa avisame. Gracias!";
 
         try
         {
-            var (msgId, canal, lin) = await _outbound.SendTextAsync(destino, mensaje, req?.LineaPhoneId);
+            var (msgId, canal, lin) = await _outbound.SendMediaAsync(destino, mediaUrl, caption, filename, req?.LineaPhoneId);
             if (msgId is null)
-                return StatusCode(503, new { error = "WhatsApp no lo aceptó. Suele pasar cuando el cliente NO te escribió en las últimas 24hs: Meta solo deja mandar texto libre dentro de esa ventana. Esperá a que el cliente escriba, o mandale el link por otro medio." });
+                return StatusCode(503, new { error = "WhatsApp no lo aceptó. Suele pasar cuando el cliente NO te escribió en las últimas 24hs: Meta solo deja mandar dentro de esa ventana. Esperá a que el cliente escriba." });
 
-            // Registrar el saliente para que aparezca en el chat del cliente y se le pueda seguir
-            // el estado de entrega (igual que el envío del chat). Numero en formato canónico del inbox.
+            // Registrar el saliente (con el PDF) para que aparezca en el chat del cliente y se le
+            // pueda seguir el estado de entrega. Numero en formato canónico del inbox.
             _db.WhatsAppTwilioMensajes.Add(new WhatsAppTwilioMensaje
             {
                 Direccion = "OUTGOING",
                 Numero = destino,
-                Cuerpo = mensaje,
+                Cuerpo = caption,
+                MediaUrl = mediaUrl,
+                MediaFilename = filename,
                 TwilioMessageSid = msgId,
                 Canal = canal,
                 LineaPhoneId = lin,
