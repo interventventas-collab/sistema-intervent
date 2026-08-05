@@ -859,17 +859,7 @@
                     </div>
                 </div>
             }
-            @if (respuestas.Any(r => r.Activo) && (Ventana24Abierta() || EsChatInstagram()))
-            {
-                <div class="wa-quick-replies">
-                    @foreach (var r in respuestas.Where(x => x.Activo).OrderBy(x => x.Orden))
-                    {
-                        <button class="wa-chip" @onclick="() => InsertarRespuesta(r)" title="@r.Texto">
-                            @r.Nombre
-                        </button>
-                    }
-                </div>
-            }
+            @* 2026-08-05: las respuestas rápidas se movieron a un desplegable arriba del botón Enviar (más abajo) *@
             @* 2026-07-29: Panel "Enviar saldo" — pone la deuda del cliente en el cuadro de mensaje (revisás y mandás con Enter) *@
             @if (showSaldoPanel)
             {
@@ -960,30 +950,8 @@
                     @if (enviandoContacto) { <div class="wa-saldo-info">Enviando contacto…</div> }
                 </div>
             }
-            @* 2026-07-29 (Paso 2): aviso de por QUÉ número tuyo sale la respuesta (el mismo por el que te
-               escribió el cliente). Solo aparece con 2+ líneas, para no ensuciar cuando hay una sola. *@
-            @if (LineasDetectadas().Count > 1 && SelectedConv()?.LineaNumero is string _lnResp)
-            {
-                <div class="wa-composer-linea" title="La respuesta le llega desde este número tuyo, el mismo por el que el cliente te escribió.">
-                    📱 Le respondés desde <b>@LineaNombre(SelectedConv()?.Linea, _lnResp)</b>
-                </div>
-            }
-            @* 2026-08-05: contador de la ventana de 24hs + (si se cerró) selector de plantilla acá mismo *@
-            @if (Restante24hs() is TimeSpan _tv && _tv > TimeSpan.Zero)
-            {
-                <div class="wa-vent24 @(_tv.TotalHours < 1 ? "urgente" : "ok")" title="Tiempo que te queda para escribirle sin plantilla. Se reinicia cada vez que el cliente te escribe.">
-                    <span class="wa-vent24-reloj">⏳</span>
-                    <span>Te quedan <b>@FormatoRestante(_tv)</b> para escribirle libre</span>
-                </div>
-            }
-            else
-            {
-                <div class="wa-vent24 cerrada" title="Se cerró la ventana de 24 hs">
-                    <span class="wa-vent24-dot"></span>
-                    <span>@(UltimoEntranteAt() == null ? "Todavía no te escribió — arrancá con una plantilla" : "Se cerró la ventana de 24 hs")</span>
-                </div>
-            }
-
+            @* 2026-08-05: los dos carteles verdes ("Le respondés desde…" y "Te quedan…") se movieron
+               abajo del cuadro de escribir, uno al lado del otro, para ocupar menos alto. *@
             @if (Ventana24Abierta() || EsChatInstagram())
             {
                 <div class="wa-composer">
@@ -1033,9 +1001,31 @@
                     @* 2026-07-23: @bind:event="oninput" es CLAVE — sin esto el texto solo se guarda al salir del
    campo, y al apretar Enter el sistema veia el mensaje vacio (no enviaba nada). *@
                     <textarea class="form-control wa-composer-input" placeholder="Escribir mensaje… (Enter para enviar, Shift+Enter para renglón nuevo)" @bind="composerText" @bind:event="oninput" rows="3"></textarea>
-                    <button class="btn btn-success wa-enviar-btn @(sending ? "enviando" : "")" @onclick="EnviarMensaje" disabled="@(string.IsNullOrWhiteSpace(composerText) || sending)">
-                        @(sending ? "⏳ Enviando…" : "📤 Enviar")
-                    </button>
+                    @* 2026-08-05: columna derecha = respuestas rápidas (desplegable) arriba + botón Enviar abajo *@
+                    <div class="wa-composer-right">
+                        @if (respuestas.Any(r => r.Activo) && (Ventana24Abierta() || EsChatInstagram()))
+                        {
+                            <div class="wa-qr">
+                                <button class="wa-qr-toggle @(showQuickReplies ? "abierto" : "")" @onclick="@(() => showQuickReplies = !showQuickReplies)" title="Respuestas rápidas guardadas — insertan el texto en el mensaje">
+                                    ⚡ Respuestas @(showQuickReplies ? "▾" : "▴")
+                                </button>
+                                @if (showQuickReplies)
+                                {
+                                    <div class="wa-qr-dropdown">
+                                        @foreach (var r in respuestas.Where(x => x.Activo).OrderBy(x => x.Orden))
+                                        {
+                                            <button class="wa-chip" @onclick="@(() => { InsertarRespuesta(r); showQuickReplies = false; })" title="@r.Texto">
+                                                @r.Nombre
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                        <button class="btn btn-success wa-enviar-btn @(sending ? "enviando" : "")" @onclick="EnviarMensaje" disabled="@(string.IsNullOrWhiteSpace(composerText) || sending)">
+                            @(sending ? "⏳ Enviando…" : "📤 Enviar")
+                        </button>
+                    </div>
                 </div>
                 <div style="font-size:0.7rem; color:#9ca3af; padding:0 1rem 0.6rem;">
                     💡 <strong>Regla de WhatsApp:</strong> podés responder gratis a quien te haya escrito en las últimas 24 hs. Para escribir primero hacen falta plantillas aprobadas por Meta.
@@ -1100,6 +1090,29 @@
                     }
                 </div>
             }
+            @* 2026-08-05: los DOS carteles verdes, uno al lado del otro, debajo del cuadro de escribir *@
+            <div class="wa-avisos-row">
+                @if (LineasDetectadas().Count > 1 && SelectedConv()?.LineaNumero is string _lnResp)
+                {
+                    <div class="wa-composer-linea" title="La respuesta le llega desde este número tuyo, el mismo por el que el cliente te escribió.">
+                        📱 Le respondés desde <b>@LineaNombre(SelectedConv()?.Linea, _lnResp)</b>
+                    </div>
+                }
+                @if (Restante24hs() is TimeSpan _tv && _tv > TimeSpan.Zero)
+                {
+                    <div class="wa-vent24 @(_tv.TotalHours < 1 ? "urgente" : "ok")" title="Tiempo que te queda para escribirle sin plantilla. Se reinicia cada vez que el cliente te escribe.">
+                        <span class="wa-vent24-reloj">⏳</span>
+                        <span>Te quedan <b>@FormatoRestante(_tv)</b> para escribirle libre</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="wa-vent24 cerrada" title="Se cerró la ventana de 24 hs">
+                        <span class="wa-vent24-dot"></span>
+                        <span>@(UltimoEntranteAt() == null ? "Todavía no te escribió — arrancá con una plantilla" : "Se cerró la ventana de 24 hs")</span>
+                    </div>
+                }
+            </div>
         }
     </div>
 </div>
@@ -1786,6 +1799,18 @@
     .wa-mic-rec-label { display: inline-flex; align-items: center; font-size: 0.8rem; color: #dc2626; font-weight: 600; white-space: nowrap; }
     .wa-quick-replies { padding: 0.6rem 1rem 0.2rem; background: #fbfcfe; display: flex; gap: 0.45rem; flex-wrap: wrap; border-top: 1px solid #eef1f5; }
     /* 2026-08-05: contador de la ventana de 24hs (reloj de arena + estado) */
+    /* 2026-08-05: columna derecha del composer = desplegable de respuestas rápidas (arriba) + Enviar (abajo) */
+    .wa-composer-right { display: flex; flex-direction: column; gap: 0.4rem; align-items: stretch; justify-content: flex-end; flex-shrink: 0; }
+    .wa-qr { position: relative; }
+    .wa-qr-toggle { width: 100%; background: #f0f9ff; border: 1px solid #bae6fd; color: #0369a1; border-radius: 12px; padding: 0.5rem 0.8rem; font-size: 0.82rem; font-weight: 700; cursor: pointer; white-space: nowrap; transition: all .12s; }
+    .wa-qr-toggle:hover { background: #e0f2fe; border-color: #7dd3fc; }
+    .wa-qr-toggle.abierto { background: #0284c7; border-color: #0284c7; color: #fff; }
+    .wa-qr-dropdown { position: absolute; bottom: calc(100% + 6px); right: 0; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 10px 28px rgba(0,0,0,0.18); padding: 0.5rem; display: flex; flex-direction: column; gap: 0.32rem; min-width: 190px; max-height: 340px; overflow-y: auto; z-index: 60; }
+    .wa-qr-dropdown .wa-chip { width: 100%; text-align: center; }
+    /* 2026-08-05: los dos carteles verdes, uno al lado del otro, debajo del composer */
+    .wa-avisos-row { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.35rem 1rem 0.5rem; }
+    .wa-avisos-row .wa-composer-linea { margin: 0; border-radius: 999px; padding: 0.42rem 0.85rem; flex: 0 1 auto; }
+    .wa-avisos-row .wa-vent24 { margin: 0; }
     .wa-vent24 { display: inline-flex; align-items: center; gap: 0.5rem; margin: 0.55rem 1rem 0; padding: 0.42rem 0.85rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
     .wa-vent24.ok { background: #ecfdf5; color: #15803d; border: 1px solid #a7f3d0; }
     .wa-vent24.urgente { background: #fffbeb; color: #b45309; border: 1px solid #fcd34d; }
@@ -2154,6 +2179,7 @@
     List<ApiClient.TwRespRapidaDto> respuestas = new();
     List<ApiClient.TwContactoDto> contactos = new();
     bool showConfig = false;
+    bool showQuickReplies = false;   // 2026-08-05: desplegable de respuestas rápidas arriba del botón Enviar
     string configTab = "resp";
     // 2026-07-29: Datos bancarios / CBUs
     List<ApiClient.TwCbuDto> datosBancarios = new();
@@ -3376,6 +3402,7 @@
         chatPlantillaName = ""; chatVariables = new();   // 2026-08-05: resetear el selector de plantilla al cambiar de chat
         sugerenciaCliente = null;   // limpiar la del chat anterior mientras carga este
         mostrarFichaCliente = false; fichaCliente = null; previewFacturaId = null;   // 2026-08-05: cerrar la ficha del cliente al cambiar de chat
+        showQuickReplies = false;   // 2026-08-05: cerrar el desplegable de respuestas rápidas al cambiar de chat
         asignarNota = "";           // 2026-08-04: la nota de "pasar a" es por-chat
         await LoadMensajes();
         await BuscarSugerenciaCliente();
