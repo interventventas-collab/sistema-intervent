@@ -430,6 +430,154 @@ public class MeliItemService
         return new MeliItemsResponse(items, total);
     }
 
+    // ==========================================================================
+    // 2026-08-04: SALUD / INFRACCIONES de publicaciones.
+    // Le pregunta a MeLi (dato FRESCO, no de la DB) qué publicaciones están
+    // pausadas / en revisión / suspendidas, y trae el MOTIVO real (sub_status +
+    // health) traducido a castellano. NO modifica nada: solo informa qué hay que
+    // arreglar para que la publicación vuelva a estar activa.
+    // ==========================================================================
+
+    // Estados de MeLi que consideramos "con problema" y consultamos por cuenta.
+    private static readonly string[] SaludStatusesAConsultar = { "paused", "under_review", "inactive", "payment_required" };
+
+    /// <summary>Traduce un código de sub_status de MeLi a un motivo entendible + qué hacer.</summary>
+    private static (string motivo, string queHacer) TraducirSubStatus(string subStatus) => subStatus switch
+    {
+        "out_of_stock"              => ("Sin stock (MeLi la pausó porque la cantidad quedó en 0).", "Cargar stock y reactivar."),
+        "suspended"                 => ("Suspendida por MercadoLibre (infracción a las políticas).", "Entrá a la publicación en MeLi, mirá el detalle de la infracción, corregí lo que pide y apelá/reactivá."),
+        "banned"                    => ("Dada de baja por MercadoLibre (infracción grave).", "Revisar el motivo en MeLi. Puede no ser recuperable; a veces hay que crear una publicación nueva corregida."),
+        "under_review"              => ("En revisión por MercadoLibre.", "Esperar a que MeLi termine de revisarla; no hay que hacer nada salvo que pidan un cambio."),
+        "waiting_for_patch"         => ("Faltan completar datos obligatorios (ficha técnica incompleta).", "Completar los datos/atributos que MeLi marca como faltantes."),
+        "pending_documentation"     => ("MeLi pide documentación para habilitarla.", "Subir la documentación que solicita MeLi."),
+        "forbidden"                 => ("Producto no permitido para publicar.", "Revisar si el producto está en una categoría prohibida."),
+        "freeze"                    => ("Congelada por MercadoLibre.", "Revisar el motivo en MeLi."),
+        "picture_download_pending"  => ("Fotos pendientes de procesar por MeLi.", "Esperar unos minutos; suele resolverse solo."),
+        "deleted"                   => ("Eliminada.", "Ya no se puede recuperar; crear una nueva si hace falta."),
+        "expired"                   => ("Vencida (se cumplió el plazo de publicación).", "Reactivar la publicación."),
+        _                           => ($"Marcada por MeLi como \"{subStatus}\".", "Revisar el detalle en la publicación de MeLi.")
+    };
+
+    private static string TraducirStatus(string status) => status switch
+    {
+        "active"           => "Activa",
+        "paused"           => "Pausada",
+        "under_review"     => "En revisión",
+        "inactive"         => "Inactiva",
+        "payment_required" => "Falta pago",
+        "closed"           => "Cerrada",
+        _                  => status
+    };
+
+    /// <summary>
+    /// Revisa la salud de las publicaciones consultando MeLi en vivo. Junta las que están
+    /// pausadas / en revisión / suspendidas y devuelve el motivo. NO toca ninguna publicación.
+    /// </summary>
+    public async Task<MeliSaludResponse> RevisarSaludAsync(int? soloAccountId = null, CancellationToken ct = default)
+    {
+        var accounts = await _accountService.GetAllAccountEntitiesAsync();
+        if (soloAccountId.HasValue)
+            accounts = accounts.Where(a => a.Id == soloAccountId.Value).ToList();
+
+        var errores = new List<string>();
+        var problemas = new List<MeliSaludItemDto>();
+        int totalRevisadas = 0;
+
+        foreach (var account in accounts)
+        {
+            var token = await _accountService.GetValidTokenAsync(account);
+            if (token is null)
+            {
+                errores.Add($"{account.Nickname}: token vencido, reconectá la cuenta en Integraciones → MercadoLibre.");
+                continue;
+            }
+
+            var http = _httpFactory.CreateClient();
+            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            // 1) Juntar los MLA ids con problema (frescos de MeLi), por cada estado.
+            var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var st in SaludStatusesAConsultar)
+            {
+                string? scrollId = null; bool first = true;
+                while (!ct.IsCancellationRequested)
+                {
+                    var url = $"https://api.mercadolibre.com/users/{account.MeliUserId}/items/search?search_type=scan&limit=100&status={st}";
+                    if (!first && !string.IsNullOrEmpty(scrollId)) url += $"&scroll_id={scrollId}";
+                    var resp = await http.GetAsync(url, ct);
+                    if (!resp.IsSuccessStatusCode) break;
+                    var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct)).RootElement;
+                    int c = 0;
+                    if (doc.TryGetProperty("results", out var results))
+                        foreach (var idEl in results.EnumerateArray()) { var s = idEl.GetString(); if (!string.IsNullOrEmpty(s)) ids.Add(s); c++; }
+                    scrollId = doc.TryGetProperty("scroll_id", out var sd) && sd.ValueKind != JsonValueKind.Null ? sd.GetString() : null;
+                    first = false;
+                    if (c == 0 || string.IsNullOrEmpty(scrollId)) break;
+                }
+            }
+
+            // 2) Traer el detalle en lotes de 20 (id, título, estado, sub_status, health, permalink, thumbnail, stock).
+            var idList = ids.ToList();
+            for (int i = 0; i < idList.Count && !ct.IsCancellationRequested; i += 20)
+            {
+                var batch = idList.Skip(i).Take(20).ToList();
+                var attrs = "id,title,status,sub_status,health,permalink,thumbnail,available_quantity";
+                var resp = await http.GetAsync($"https://api.mercadolibre.com/items?ids={string.Join(",", batch)}&attributes={attrs}", ct);
+                if (!resp.IsSuccessStatusCode) continue;
+                var arr = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct)).RootElement;
+                foreach (var itemResult in arr.EnumerateArray())
+                {
+                    if (!itemResult.TryGetProperty("code", out var codeEl) || codeEl.GetInt32() != 200) continue;
+                    var body = itemResult.GetProperty("body");
+                    totalRevisadas++;
+
+                    var mlaId = body.TryGetProperty("id", out var idp) ? idp.GetString() ?? "" : "";
+                    var title = body.TryGetProperty("title", out var tp) ? tp.GetString() ?? "" : "";
+                    var status = body.TryGetProperty("status", out var stp) ? stp.GetString() ?? "" : "";
+                    var permalink = body.TryGetProperty("permalink", out var pp) && pp.ValueKind == JsonValueKind.String ? pp.GetString() : null;
+                    var thumb = body.TryGetProperty("thumbnail", out var thp) && thp.ValueKind == JsonValueKind.String ? thp.GetString() : null;
+                    int avail = body.TryGetProperty("available_quantity", out var aqp) && aqp.ValueKind == JsonValueKind.Number ? aqp.GetInt32() : 0;
+                    double? health = body.TryGetProperty("health", out var hp) && hp.ValueKind == JsonValueKind.Number ? hp.GetDouble() : (double?)null;
+
+                    var subStatus = new List<string>();
+                    if (body.TryGetProperty("sub_status", out var ssp) && ssp.ValueKind == JsonValueKind.Array)
+                        foreach (var s in ssp.EnumerateArray()) { var v = s.GetString(); if (!string.IsNullOrEmpty(v)) subStatus.Add(v); }
+
+                    // Armar motivo + qué hacer. Si hay sub_status, ese manda; si no, el estado.
+                    string motivo, queHacer;
+                    if (subStatus.Count > 0)
+                    {
+                        var traducidos = subStatus.Select(TraducirSubStatus).ToList();
+                        motivo = string.Join(" ", traducidos.Select(t => t.motivo));
+                        queHacer = string.Join(" ", traducidos.Select(t => t.queHacer).Distinct());
+                    }
+                    else if (status == "under_review")
+                    {
+                        (motivo, queHacer) = ("En revisión por MercadoLibre.", "Esperar a que MeLi termine de revisarla.");
+                    }
+                    else
+                    {
+                        (motivo, queHacer) = ($"Publicación {TraducirStatus(status).ToLower()}.", "Revisar en MeLi por qué no está activa.");
+                    }
+
+                    problemas.Add(new MeliSaludItemDto(
+                        mlaId, account.Id, account.Nickname, title,
+                        status, TraducirStatus(status),
+                        subStatus, motivo, queHacer,
+                        health, permalink, thumb, avail));
+                }
+            }
+        }
+
+        var ordenadas = problemas
+            .OrderBy(p => p.Status == "under_review" ? 1 : 0) // primero lo accionable, después "en revisión"
+            .ThenBy(p => p.AccountNickname)
+            .ThenBy(p => p.Title)
+            .ToList();
+
+        return new MeliSaludResponse(totalRevisadas, ordenadas.Count, ordenadas, errores);
+    }
+
     public async Task<MeliItemDto> UpdateItemAsync(string meliItemId, UpdateMeliItemRequest request)
     {
         var item = await _db.MeliItems

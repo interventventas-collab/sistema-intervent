@@ -477,6 +477,12 @@
                         ✏️ Editar contacto
                     </button>
                 }
+                @if (SelectedConv()?.ClienteId is int)
+                {
+                    <button class="btn btn-sm @(mostrarFichaCliente ? "btn-primary" : "btn-outline-primary")" @onclick="ToggleFichaCliente" title="Ver la ficha del cliente (saldo, últimas facturas, ubicación) sin salir del chat" style="font-weight:600;">
+                        @(mostrarFichaCliente ? "▲ Ocultar cliente" : "👁️ Ver cliente")
+                    </button>
+                }
                 <button class="btn btn-outline-success btn-sm" @onclick="AbrirPreviewPedido" title="Abre una ventana con el texto del pedido (el mensaje tildado, o el último si no tildaste nada) para revisarlo antes de crear la venta">
                     📋 Crear pedido
                 </button>

@@ -111,6 +111,76 @@ public class CafeClientesController : ControllerBase
         return Ok(new EstadoCuentaDto(id, cliente.Nombre, acum, result));
     }
 
+    // 2026-08-05: ficha rápida del cliente para mostrar DENTRO del chat de WhatsApp (tarjeta
+    // desplegable). Junta en una sola llamada: datos de contacto + link de Maps + saldo de cuenta
+    // corriente + últimas N facturas/ventas con su estado (pagada / debe $X). Así el operador ve
+    // todo sin salir de la conversación.
+    public record FichaChatVentaDto(
+        int Id, DateTime Fecha, string Numero, string? Tipo, decimal Total, decimal Pagado, decimal Saldo, string Estado);
+    public record FichaChatDto(
+        int ClienteId, string Nombre, string? RazonSocial, string? Cuit, string? CondicionIva,
+        string? Telefono, string? Telefono2, string? Email, string? Direccion, string? Localidad,
+        string? MapeoLink, string? Notas, string? ComentariosComprobante,
+        int? CodigoInterno, decimal Saldo, List<FichaChatVentaDto> Ventas);
+
+    [HttpGet("{id:int}/ficha-chat")]
+    public async Task<IActionResult> FichaChat(int id, [FromQuery] int limitVentas = 8)
+    {
+        var c = await _db.CafeClientes.FindAsync(id);
+        if (c is null) return NotFound(new { error = "Cliente no encontrado" });
+
+        // Todas las ventas vigentes del cliente (sin presupuestos PRO, que no son deuda),
+        // más recientes primero. Sirven para el saldo total y para el listado de facturas.
+        var ventas = await _db.CafeVentas
+            .Where(v => v.ClienteId == id && v.Estado != "anulado" && v.TipoComprobante != "PRO")
+            .Select(v => new { v.Id, v.Fecha, v.Numero, v.Total, v.ArcaImpTotal, v.TipoComprobante, v.Estado })
+            .OrderByDescending(v => v.Fecha).ThenByDescending(v => v.Id)
+            .ToListAsync();
+
+        // Saldo de cuenta corriente = mismo cálculo que EstadoCuenta: ventas (debe) menos
+        // notas de crédito y cobranzas (haber).
+        var cobranzasTotal = await _db.CafeCobranzas
+            .Where(cb => cb.ClienteId == id && cb.Estado == "VIGENTE")
+            .SumAsync(cb => (decimal?)(cb.Total + cb.Retenciones)) ?? 0m;
+        decimal debe = 0m, haberNc = 0m;
+        foreach (var v in ventas)
+        {
+            var monto = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
+            var esNc = v.TipoComprobante is not null && v.TipoComprobante.StartsWith("NC", StringComparison.OrdinalIgnoreCase);
+            if (esNc) haberNc += monto; else debe += monto;
+        }
+        var saldo = debe - haberNc - cobranzasTotal;
+
+        // Cuánto se pagó de cada venta (cobranzas VIGENTES imputadas a esa venta), para mostrar
+        // "Pagada" o "Debe $X" en cada factura del listado.
+        var ventaIds = ventas.Select(v => v.Id).ToList();
+        var pagadosDict = ventaIds.Count == 0
+            ? new Dictionary<int, decimal>()
+            : (await _db.CafeCobranzasComprobantes
+                .Where(cc => cc.VentaId != null && ventaIds.Contains(cc.VentaId!.Value) && cc.Cobranza!.Estado == "VIGENTE")
+                .GroupBy(cc => cc.VentaId!.Value)
+                .Select(g => new { VentaId = g.Key, Pagado = g.Sum(x => x.Importe) })
+                .ToListAsync())
+              .ToDictionary(p => p.VentaId, p => p.Pagado);
+
+        var limite = Math.Clamp(limitVentas, 1, 50);
+        var ventasDto = ventas.Take(limite).Select(v =>
+        {
+            var totalCobrar = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
+            var pagado = pagadosDict.TryGetValue(v.Id, out var p) ? p : 0m;
+            var esNc = v.TipoComprobante is not null && v.TipoComprobante.StartsWith("NC", StringComparison.OrdinalIgnoreCase);
+            // En una Nota de Crédito no tiene sentido "debe/pagada": es una devolución.
+            var saldoV = esNc ? 0m : totalCobrar - pagado;
+            return new FichaChatVentaDto(v.Id, v.Fecha, v.Numero ?? $"#{v.Id}", v.TipoComprobante, totalCobrar, pagado, saldoV, v.Estado ?? "");
+        }).ToList();
+
+        return Ok(new FichaChatDto(
+            c.Id, c.Nombre, c.RazonSocial, c.Cuit, c.CondicionIvaDefault,
+            c.Telefono, c.Telefono2, c.Email, c.Direccion, c.Localidad,
+            c.MapeoLink, c.Notas, c.ComentariosComprobante,
+            c.CodigoInterno, saldo, ventasDto));
+    }
+
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateCafeClienteRequest req)
     {

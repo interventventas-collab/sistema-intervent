@@ -1,0 +1,214 @@
+@page "/publicaciones/salud"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject NavigationManager Nav
+
+@* Pantalla de SALUD / INFRACCIONES: le pregunta a MeLi en vivo qué publicaciones están
+   pausadas / en revisión / suspendidas y muestra el MOTIVO traducido + qué hacer.
+   NO modifica ninguna publicación — solo informa qué hay para arreglar. *@
+
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
+        <h3 style="margin:0;">🩺 Salud de Publicaciones</h3>
+        <div style="display:flex; gap:0.5rem;">
+            <button class="btn btn-secondary" @onclick='() => Nav.NavigateTo("/publicaciones")'>← Volver a Publicaciones</button>
+            <button class="btn btn-primary" @onclick="Revisar" disabled="@isRunning">
+                @if (isRunning)
+                {
+                    <span><i class="fa-solid fa-arrows-rotate fa-spin"></i> Revisando... (~1-2 min)</span>
+                }
+                else
+                {
+                    <span><i class="fa-solid fa-heart-pulse"></i> Revisar salud ahora</span>
+                }
+            </button>
+        </div>
+    </div>
+
+    <div class="card-body">
+        <div style="background:#eff6ff; border:1px solid #93c5fd; padding:0.85rem 1rem; border-radius:6px; margin-bottom:1rem; color:#1e3a8a; font-size:0.9rem;">
+            <strong>¿Qué hace esto?</strong>
+            Le pregunta a MercadoLibre <strong>en el momento</strong> cuáles de tus publicaciones están
+            <strong>pausadas, en revisión o suspendidas</strong>, y te muestra el <strong>motivo</strong> de cada una
+            y qué habría que hacer para que vuelva a estar activa.
+            <strong>No modifica nada</strong> — es solo un diagnóstico para que decidas qué arreglar.
+        </div>
+
+        @if (isRunning)
+        {
+            <div style="padding:2rem; text-align:center; color:#6b7280;">
+                <i class="fa-solid fa-arrows-rotate fa-spin" style="font-size:2rem;"></i>
+                <p style="margin-top:0.6rem;">Consultando MercadoLibre cuenta por cuenta. Puede tardar 1-2 minutos.</p>
+            </div>
+        }
+        else if (result is null)
+        {
+            <p class="text-muted">Hacé clic en <strong>"Revisar salud ahora"</strong> para ver qué publicaciones tienen problemas.</p>
+        }
+        else
+        {
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:0.75rem; margin-bottom:1.25rem;">
+                <div class="salud-stat-card stat-info">
+                    <div class="salud-stat-label">Publicaciones revisadas</div>
+                    <div class="salud-stat-value">@result.TotalRevisadas.ToString("N0")</div>
+                </div>
+                <div class="salud-stat-card @(result.ConProblemas > 0 ? "stat-warning" : "stat-ok")">
+                    <div class="salud-stat-label">Con algo para arreglar</div>
+                    <div class="salud-stat-value">@result.ConProblemas.ToString("N0")</div>
+                </div>
+            </div>
+
+            @if (result.Errores.Count > 0)
+            {
+                <div style="background:#fee2e2; border:1px solid #fca5a5; padding:0.7rem 1rem; border-radius:6px; color:#991b1b; margin-bottom:1rem;">
+                    @foreach (var e in result.Errores)
+                    {
+                        <div>⚠ @e</div>
+                    }
+                </div>
+            }
+
+            @if (result.ConProblemas == 0)
+            {
+                <div style="background:#dcfce7; border:1px solid #86efac; padding:0.9rem 1rem; border-radius:6px; color:#14532d;">
+                    ✅ ¡Todo en orden! No hay publicaciones pausadas ni con infracciones para revisar.
+                </div>
+            }
+            else
+            {
+                <!-- Filtro por cuenta -->
+                @if (cuentas.Count > 1)
+                {
+                    <div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.9rem;">
+                        <button class="chip @(filtroCuenta is null ? "chip-on" : "")" @onclick="() => filtroCuenta = null">Todas (@result.Items.Count)</button>
+                        @foreach (var c in cuentas)
+                        {
+                            var n = result.Items.Count(i => i.AccountNickname == c);
+                            <button class="chip @(filtroCuenta == c ? "chip-on" : "")" @onclick="() => filtroCuenta = c">@c (@n)</button>
+                        }
+                    </div>
+                }
+
+                <div style="overflow-x:auto;">
+                    <table class="salud-table">
+                        <thead>
+                            <tr>
+                                <th style="width:52px;"></th>
+                                <th>Publicación</th>
+                                <th>Estado</th>
+                                <th>Motivo</th>
+                                <th>Qué hacer</th>
+                                <th style="width:70px;">Ver</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var it in Filtradas)
+                            {
+                                <tr>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(it.Thumbnail))
+                                        {
+                                            <img src="@it.Thumbnail" alt="" style="width:44px; height:44px; object-fit:cover; border-radius:6px; border:1px solid #e5e7eb;" />
+                                        }
+                                    </td>
+                                    <td>
+                                        <div style="font-weight:600; color:#111827; line-height:1.2;">@it.Title</div>
+                                        <div style="font-size:0.75rem; color:#9ca3af;">
+                                            @it.MeliItemId · @it.AccountNickname
+                                            @if (it.AvailableQuantity == 0) { <span style="color:#b91c1c;"> · sin stock</span> }
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="estado-badge estado-@it.Status">@it.StatusLabel</span>
+                                        @if (it.Health.HasValue)
+                                        {
+                                            <div style="font-size:0.72rem; color:@(it.Health < 0.7 ? "#b45309" : "#6b7280"); margin-top:0.2rem;">
+                                                Calidad @((int)Math.Round(it.Health.Value * 100))%
+                                            </div>
+                                        }
+                                    </td>
+                                    <td style="font-size:0.85rem; color:#374151; max-width:280px;">@it.Motivo</td>
+                                    <td style="font-size:0.82rem; color:#4b5563; max-width:260px;">@it.QueHacer</td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(it.Permalink))
+                                        {
+                                            <a href="@it.Permalink" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">Abrir</a>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <p style="color:#6b7280; font-size:0.8rem; margin-top:0.75rem;">
+                    Mostrando @Filtradas.Count() de @result.ConProblemas publicaciones con problemas.
+                    Este listado es solo informativo — para arreglarlas hay que corregir cada una y reactivarla.
+                </p>
+            }
+        }
+    </div>
+</div>
+
+<style>
+    .salud-stat-card { background:white; border:1px solid #e5e7eb; border-radius:8px; padding:0.85rem 1rem; text-align:center; }
+    .salud-stat-label { font-size:0.75rem; color:#6b7280; margin-bottom:0.25rem; }
+    .salud-stat-value { font-size:1.65rem; font-weight:700; color:#111827; }
+    .stat-warning { border-color:#fca5a5; background:#fee2e2; }
+    .stat-ok { border-color:#86efac; background:#f0fdf4; }
+    .stat-info { border-color:#93c5fd; background:#eff6ff; }
+
+    .salud-table { width:100%; border-collapse:collapse; font-size:0.9rem; }
+    .salud-table thead th { text-align:left; padding:0.5rem 0.6rem; border-bottom:2px solid #e5e7eb; color:#6b7280; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.03em; }
+    .salud-table tbody td { padding:0.6rem; border-bottom:1px solid #f3f4f6; vertical-align:top; }
+    .salud-table tbody tr:hover { background:#fafafa; }
+
+    .estado-badge { display:inline-block; padding:0.2rem 0.55rem; border-radius:999px; font-size:0.75rem; font-weight:600; }
+    .estado-paused { background:#fef3c7; color:#92400e; }
+    .estado-under_review { background:#e0e7ff; color:#3730a3; }
+    .estado-inactive { background:#f3f4f6; color:#4b5563; }
+    .estado-payment_required { background:#fee2e2; color:#991b1b; }
+    .estado-closed { background:#f3f4f6; color:#6b7280; }
+
+    .chip { padding:0.3rem 0.7rem; border-radius:999px; border:1px solid #d1d5db; background:white; color:#374151; font-size:0.82rem; cursor:pointer; }
+    .chip-on { background:#2563eb; border-color:#2563eb; color:white; }
+</style>
+
+@code {
+    private MeliSaludResponse? result;
+    private bool isRunning;
+    private string? filtroCuenta;
+
+    private List<string> cuentas => result?.Items.Select(i => i.AccountNickname).Distinct().OrderBy(x => x).ToList() ?? new();
+
+    private IEnumerable<MeliSaludItemDto> Filtradas =>
+        filtroCuenta is null ? (result?.Items ?? new()) : (result?.Items.Where(i => i.AccountNickname == filtroCuenta) ?? Enumerable.Empty<MeliSaludItemDto>());
+
+    private async Task Revisar()
+    {
+        isRunning = true;
+        result = null;
+        filtroCuenta = null;
+        StateHasChanged();
+        try
+        {
+            result = await Api.GetMeliSaludAsync();
+            if (result is null)
+                ToastService.Error("No se pudo revisar. Reintentá en unos segundos.");
+            else if (result.ConProblemas == 0)
+                ToastService.Success("Todo en orden — no hay publicaciones con problemas.");
+            else
+                ToastService.Success($"{result.ConProblemas} publicaciones para revisar.");
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error al revisar salud: {ex.Message}");
+        }
+        finally
+        {
+            isRunning = false;
+            StateHasChanged();
+        }
+    }
+}

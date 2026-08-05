@@ -140,6 +140,22 @@ public class ApiClient
         return await GetAsync<MeliItemDetailsDto>($"/api/meli/items/{meliItemId}/details");
     }
 
+    // --- 2026-08-04: Salud / infracciones de publicaciones (por qué están pausadas y qué hacer) ---
+    // Usa el cliente de timeout largo porque consulta MeLi en vivo (puede tardar 1-2 min).
+    public async Task<MeliSaludResponse?> GetMeliSaludAsync(int? accountId = null)
+    {
+        var url = accountId.HasValue ? $"/api/meli/items/salud?accountId={accountId.Value}" : "/api/meli/items/salud";
+        await SetAuthHeaderAsync();
+        var response = await _httpLong.GetAsync(url);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            await HandleUnauthorizedAsync();
+            return default;
+        }
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<MeliSaludResponse>();
+    }
+
     // --- 2026-07-21: Gestion de fotos de publicaciones (Etapa 1) ---
     public async Task<MeliItemPicturesDto?> GetMeliItemPicturesAsync(string meliItemId)
     {
@@ -6579,6 +6595,19 @@ public class ApiClient
     public async Task<ClienteSaldoDto?> GetClienteSaldoAsync(int clienteId)
     {
         try { return await _http.GetFromJsonAsync<ClienteSaldoDto>($"/api/cafe/clientes/{clienteId}/estado-cuenta"); }
+        catch { return null; }
+    }
+
+    // 2026-08-05: ficha rápida del cliente para la tarjeta desplegable dentro del chat.
+    public record FichaChatVentaDto(int Id, DateTime Fecha, string Numero, string? Tipo, decimal Total, decimal Pagado, decimal Saldo, string Estado);
+    public record FichaChatDto(
+        int ClienteId, string Nombre, string? RazonSocial, string? Cuit, string? CondicionIva,
+        string? Telefono, string? Telefono2, string? Email, string? Direccion, string? Localidad,
+        string? MapeoLink, string? Notas, string? ComentariosComprobante,
+        int? CodigoInterno, decimal Saldo, List<FichaChatVentaDto> Ventas);
+    public async Task<FichaChatDto?> GetFichaChatAsync(int clienteId)
+    {
+        try { return await _http.GetFromJsonAsync<FichaChatDto>($"/api/cafe/clientes/{clienteId}/ficha-chat"); }
         catch { return null; }
     }
 
