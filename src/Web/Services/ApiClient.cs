@@ -961,6 +961,26 @@ public class ApiClient
     public async Task<bool> DeleteVisitaAsync(int id)
         => await DeleteAsync($"/api/visitas/{id}");
 
+    /// <summary>Suma la visita al mapa de reparto como parada. Devuelve un mensaje para mostrar.</summary>
+    public async Task<(bool ok, string? mensaje)> SumarVisitaAlMapaAsync(int id)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync($"/api/visitas/{id}/sumar-al-mapa", new { });
+            var txt = await resp.Content.ReadAsStringAsync();
+            string? msg = null;
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(txt);
+                if (doc.RootElement.TryGetProperty("mensaje", out var m)) msg = m.GetString();
+                else if (doc.RootElement.TryGetProperty("error", out var e)) msg = e.GetString();
+            }
+            catch { }
+            return (resp.IsSuccessStatusCode, msg);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     /// <summary>Envía el recibo de la visita al cliente por WhatsApp API desde la línea elegida.</summary>
     public async Task<(bool ok, string? error)> EnviarVisitaWhatsAppAsync(int id, string? numero, string? lineaPhoneId)
     {
