@@ -135,6 +135,7 @@
                             </div>
                             <div class="vis-item-acciones">
                                 <button class="vis-btn-mini" @onclick="() => VerRecibo(v)">🧾 Ver recibo / QR</button>
+                                <button class="vis-btn-mini" disabled="@(sumandoMapaId == v.Id)" @onclick="() => SumarAlMapa(v)">🗺 @(sumandoMapaId == v.Id ? "Sumando..." : "Sumar al mapa")</button>
                                 <button class="vis-btn-mini danger" @onclick="() => Eliminar(v)">🗑 Borrar</button>
                             </div>
                         </div>
@@ -423,6 +424,19 @@
     private void CerrarRecibo() => recibo = null;
 
     private string LinkRecibo(VisitaDto v) => Nav.BaseUri.TrimEnd('/') + "/visita/" + v.PublicToken;
+
+    private int? sumandoMapaId = null;
+    private async Task SumarAlMapa(VisitaDto v)
+    {
+        sumandoMapaId = v.Id;
+        try
+        {
+            var (ok, msg) = await Api.SumarVisitaAlMapaAsync(v.Id);
+            if (ok) Toast.Success("🗺 " + (msg ?? "Agregada al mapa"));
+            else Toast.Error("No se pudo sumar al mapa: " + (msg ?? ""));
+        }
+        finally { sumandoMapaId = null; }
+    }
 
     private async Task Eliminar(VisitaDto v)
     {

@@ -20,12 +20,14 @@ public class VisitasController : ControllerBase
     private readonly AppDbContext _db;
     private readonly QrRepartidorService _qr;
     private readonly WhatsAppOutboundService _outbound;
+    private readonly VisitaMapeoService _mapeo;
 
-    public VisitasController(AppDbContext db, QrRepartidorService qr, WhatsAppOutboundService outbound)
+    public VisitasController(AppDbContext db, QrRepartidorService qr, WhatsAppOutboundService outbound, VisitaMapeoService mapeo)
     {
         _db = db;
         _qr = qr;
         _outbound = outbound;
+        _mapeo = mapeo;
     }
 
     private static VisitaDto Map(Visita v) => new(
@@ -122,9 +124,23 @@ public class VisitasController : ControllerBase
     {
         var v = await _db.Visitas.FindAsync(id);
         if (v is null) return NotFound(new { error = "Visita no encontrada" });
+        // Sacar también la parada del mapa (si estaba), para no dejar huérfanos.
+        var refId = id.ToString();
+        var stop = await _db.MapeoStops.FirstOrDefaultAsync(s => s.Origin == "visita" && s.OriginRefId == refId);
+        if (stop is not null) _db.MapeoStops.Remove(stop);
         _db.Visitas.Remove(v);
         await _db.SaveChangesAsync();
         return Ok(new { deleted = true });
+    }
+
+    /// <summary>Suma la visita al mapa de reparto como una parada (Origin='visita'). Etapa 3.</summary>
+    [HttpPost("{id:int}/sumar-al-mapa")]
+    public async Task<IActionResult> SumarAlMapa(int id)
+    {
+        var v = await _db.Visitas.FindAsync(id);
+        if (v is null) return NotFound(new { error = "Visita no encontrada" });
+        var r = await _mapeo.SumarVisitaAsync(v);
+        return Ok(new { ok = r.Ok, yaEstaba = r.YaEstaba, mensaje = r.Mensaje, sinUbicacion = r.SinUbicacion, stopId = r.StopId });
     }
 
     /// <summary>Envia el link del recibo de la visita al cliente por WhatsApp (API oficial Meta),
