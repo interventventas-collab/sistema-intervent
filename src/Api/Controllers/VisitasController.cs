@@ -171,9 +171,25 @@ public class VisitasController : ControllerBase
 
         try
         {
-            var (msgId, canal, _) = await _outbound.SendTextAsync(destino, mensaje, req?.LineaPhoneId);
+            var (msgId, canal, lin) = await _outbound.SendTextAsync(destino, mensaje, req?.LineaPhoneId);
             if (msgId is null)
-                return StatusCode(503, new { error = "No se pudo enviar (WhatsApp no configurado o fuera de la ventana de 24hs)." });
+                return StatusCode(503, new { error = "WhatsApp no lo aceptó. Suele pasar cuando el cliente NO te escribió en las últimas 24hs: Meta solo deja mandar texto libre dentro de esa ventana. Esperá a que el cliente escriba, o mandale el link por otro medio." });
+
+            // Registrar el saliente para que aparezca en el chat del cliente y se le pueda seguir
+            // el estado de entrega (igual que el envío del chat). Numero en formato canónico del inbox.
+            _db.WhatsAppTwilioMensajes.Add(new WhatsAppTwilioMensaje
+            {
+                Direccion = "OUTGOING",
+                Numero = destino,
+                Cuerpo = mensaje,
+                TwilioMessageSid = msgId,
+                Canal = canal,
+                LineaPhoneId = lin,
+                Procesado = true,
+                CreatedAt = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync();
+
             return Ok(new { ok = true, canal });
         }
         catch (Exception ex)
