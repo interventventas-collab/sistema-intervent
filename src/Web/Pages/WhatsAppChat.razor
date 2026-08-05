@@ -741,7 +741,7 @@
                     </div>
                 </div>
             }
-            @if (respuestas.Any(r => r.Activo))
+            @if (respuestas.Any(r => r.Activo) && (Ventana24Abierta() || EsChatInstagram()))
             {
                 <div class="wa-quick-replies">
                     @foreach (var r in respuestas.Where(x => x.Activo).OrderBy(x => x.Orden))
@@ -850,41 +850,119 @@
                     📱 Le respondés desde <b>@LineaNombre(SelectedConv()?.Linea, _lnResp)</b>
                 </div>
             }
-            <div class="wa-composer">
-                @* Botón adjuntar archivo de la PC *@
-                <label class="wa-attach-btn @(uploading ? "uploading" : "")" title="Adjuntar archivo de tu PC (máx 16 MB)">
-                    <InputFile OnChange="OnArchivoSeleccionado" disabled="@(uploading || sending)" style="display:none;" />
-                    @(uploading ? "⏳" : "📎")
-                </label>
-                @* Botón adjuntar desde el servidor *@
-                <button class="wa-attach-btn" title="Adjuntar del servidor (cobranzas, uploads previos)" @onclick="AbrirAdjuntarServidor" disabled="@(uploading || sending)">🗂️</button>
-                @* 2026-07-29: Enviar saldo de un cliente *@
-                <button class="wa-attach-btn wa-saldo-btn" title="Enviar saldo (deuda) de un cliente" @onclick="ToggleSaldoPanel" disabled="@(uploading || sending)">💰</button>
-                @* 2026-07-29: Pasar CBU / datos bancarios *@
-                <button class="wa-attach-btn wa-cbu-btn" title="Pasar un CBU / datos bancarios al cliente" @onclick="ToggleCbuPanel" disabled="@(uploading || sending)">🏦</button>
-                @* 2026-08-02: compartir una tarjeta de contacto *@
-                <button class="wa-attach-btn" title="Compartir un contacto (tarjeta con nombre y número)" @onclick="ToggleContactoPanel" disabled="@(uploading || sending)">👤</button>
-                @* 2026-08-01: nota de voz (micrófono) *@
-                @if (!grabandoAudio)
-                {
-                    <button class="wa-attach-btn wa-mic-btn" title="Grabar nota de voz" @onclick="ToggleGrabarAudio" disabled="@(uploading || sending || enviandoAudio)">@(enviandoAudio ? "⏳" : "🎤")</button>
-                }
-                else
-                {
-                    <button class="wa-attach-btn wa-mic-rec" title="Parar y enviar" @onclick="ToggleGrabarAudio">⏹️</button>
-                    <button class="wa-attach-btn" title="Cancelar" @onclick="CancelarAudio">✖️</button>
-                    <span class="wa-mic-rec-label">● grabando…</span>
-                }
-                @* 2026-07-23: @bind:event="oninput" es CLAVE — sin esto el texto solo se guarda al salir del
+            @* 2026-08-05: contador de la ventana de 24hs + (si se cerró) selector de plantilla acá mismo *@
+            @if (Restante24hs() is TimeSpan _tv && _tv > TimeSpan.Zero)
+            {
+                <div class="wa-vent24 @(_tv.TotalHours < 1 ? "urgente" : "ok")" title="Tiempo que te queda para escribirle sin plantilla. Se reinicia cada vez que el cliente te escribe.">
+                    <span class="wa-vent24-reloj">⏳</span>
+                    <span>Te quedan <b>@FormatoRestante(_tv)</b> para escribirle libre</span>
+                </div>
+            }
+            else
+            {
+                <div class="wa-vent24 cerrada" title="Se cerró la ventana de 24 hs">
+                    <span class="wa-vent24-dot"></span>
+                    <span>@(UltimoEntranteAt() == null ? "Todavía no te escribió — arrancá con una plantilla" : "Se cerró la ventana de 24 hs")</span>
+                </div>
+            }
+
+            @if (Ventana24Abierta() || EsChatInstagram())
+            {
+                <div class="wa-composer">
+                    @* Botón adjuntar archivo de la PC *@
+                    <label class="wa-attach-btn @(uploading ? "uploading" : "")" title="Adjuntar archivo de tu PC (máx 16 MB)">
+                        <InputFile OnChange="OnArchivoSeleccionado" disabled="@(uploading || sending)" style="display:none;" />
+                        @(uploading ? "⏳" : "📎")
+                    </label>
+                    @* Botón adjuntar desde el servidor *@
+                    <button class="wa-attach-btn" title="Adjuntar del servidor (cobranzas, uploads previos)" @onclick="AbrirAdjuntarServidor" disabled="@(uploading || sending)">🗂️</button>
+                    @* 2026-07-29: Enviar saldo de un cliente *@
+                    <button class="wa-attach-btn wa-saldo-btn" title="Enviar saldo (deuda) de un cliente" @onclick="ToggleSaldoPanel" disabled="@(uploading || sending)">💰</button>
+                    @* 2026-07-29: Pasar CBU / datos bancarios *@
+                    <button class="wa-attach-btn wa-cbu-btn" title="Pasar un CBU / datos bancarios al cliente" @onclick="ToggleCbuPanel" disabled="@(uploading || sending)">🏦</button>
+                    @* 2026-08-02: compartir una tarjeta de contacto *@
+                    <button class="wa-attach-btn" title="Compartir un contacto (tarjeta con nombre y número)" @onclick="ToggleContactoPanel" disabled="@(uploading || sending)">👤</button>
+                    @* 2026-08-01: nota de voz (micrófono) *@
+                    @if (!grabandoAudio)
+                    {
+                        <button class="wa-attach-btn wa-mic-btn" title="Grabar nota de voz" @onclick="ToggleGrabarAudio" disabled="@(uploading || sending || enviandoAudio)">@(enviandoAudio ? "⏳" : "🎤")</button>
+                    }
+                    else
+                    {
+                        <button class="wa-attach-btn wa-mic-rec" title="Parar y enviar" @onclick="ToggleGrabarAudio">⏹️</button>
+                        <button class="wa-attach-btn" title="Cancelar" @onclick="CancelarAudio">✖️</button>
+                        <span class="wa-mic-rec-label">● grabando…</span>
+                    }
+                    @* 2026-07-23: @bind:event="oninput" es CLAVE — sin esto el texto solo se guarda al salir del
    campo, y al apretar Enter el sistema veia el mensaje vacio (no enviaba nada). *@
-<textarea class="form-control wa-composer-input" placeholder="Escribir mensaje… (Enter para enviar, Shift+Enter para renglón nuevo)" @bind="composerText" @bind:event="oninput" rows="3"></textarea>
-                <button class="btn btn-success wa-enviar-btn @(sending ? "enviando" : "")" @onclick="EnviarMensaje" disabled="@(string.IsNullOrWhiteSpace(composerText) || sending)">
-                    @(sending ? "⏳ Enviando…" : "📤 Enviar")
-                </button>
-            </div>
-            <div style="font-size:0.7rem; color:#9ca3af; padding:0 1rem 0.6rem;">
-                💡 <strong>Regla de WhatsApp:</strong> podés responder gratis a quien te haya escrito en las últimas 24 hs. Para escribir primero hacen falta plantillas aprobadas por Meta.
-            </div>
+                    <textarea class="form-control wa-composer-input" placeholder="Escribir mensaje… (Enter para enviar, Shift+Enter para renglón nuevo)" @bind="composerText" @bind:event="oninput" rows="3"></textarea>
+                    <button class="btn btn-success wa-enviar-btn @(sending ? "enviando" : "")" @onclick="EnviarMensaje" disabled="@(string.IsNullOrWhiteSpace(composerText) || sending)">
+                        @(sending ? "⏳ Enviando…" : "📤 Enviar")
+                    </button>
+                </div>
+                <div style="font-size:0.7rem; color:#9ca3af; padding:0 1rem 0.6rem;">
+                    💡 <strong>Regla de WhatsApp:</strong> podés responder gratis a quien te haya escrito en las últimas 24 hs. Para escribir primero hacen falta plantillas aprobadas por Meta.
+                </div>
+            }
+            else if (EsChatInstagram())
+            {
+                <div class="wa-plantilla-chat wa-plantilla-chat-ig">
+                    <div class="wa-plantilla-chat-head">
+                        <span class="wa-plantilla-chat-ico">📷</span>
+                        <div>
+                            <div class="wa-plantilla-chat-title">Pasaron más de 24 hs</div>
+                            <div class="wa-plantilla-chat-sub">En Instagram no se puede escribir fuera de las 24 hs (no hay plantillas). Hay que esperar a que te vuelva a escribir.</div>
+                        </div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                @* Ventana cerrada en WhatsApp → elegí una plantilla acá mismo, sin salir del chat *@
+                <div class="wa-plantilla-chat">
+                    <div class="wa-plantilla-chat-head">
+                        <span class="wa-plantilla-chat-ico">✍️</span>
+                        <div>
+                            <div class="wa-plantilla-chat-title">Escribile con una plantilla</div>
+                            <div class="wa-plantilla-chat-sub">Como pasaron más de 24 hs, WhatsApp pide una plantilla aprobada para volver a escribirle. Cuando te responda, ya le escribís libre otra vez.</div>
+                        </div>
+                    </div>
+                    @if (nvPlantillas.Count == 0)
+                    {
+                        <div class="wa-plantilla-chat-empty">No hay plantillas aprobadas disponibles. Revisá la configuración de WhatsApp.</div>
+                    }
+                    else
+                    {
+                        <select class="wa-nv-input" value="@chatPlantillaName" @onchange="OnChatPlantillaChange">
+                            <option value="">— Elegí una plantilla —</option>
+                            @foreach (var p in nvPlantillas)
+                            {
+                                <option value="@p.Name">@NombrePlantillaLindo(p.Name) (@p.Category.ToLower())</option>
+                            }
+                        </select>
+                        @if (ChatPlantillaSel() is {} cpSel)
+                        {
+                            @if (cpSel.VariableCount > 0)
+                            {
+                                <div style="margin-top:0.5rem;">
+                                    @for (int i = 0; i < cpSel.VariableCount; i++)
+                                    {
+                                        var idx = i;
+                                        <input class="wa-nv-input" style="margin-bottom:0.4rem;"
+                                               placeholder="@PlaceholderVar(cpSel, idx)"
+                                               value="@(idx < chatVariables.Count ? chatVariables[idx] : "")"
+                                               @oninput="e => SetChatVariable(idx, e.Value?.ToString() ?? string.Empty)" />
+                                    }
+                                </div>
+                            }
+                            <div class="wa-nv-preview" style="margin-top:0.5rem;">@ChatPreviewTexto()</div>
+                            <button class="wa-nueva-btn" style="margin-top:0.6rem;" disabled="@chatPlantillaEnviando" @onclick="EnviarPlantillaEnChat">
+                                <span class="wa-nueva-ico">📨</span> @(chatPlantillaEnviando ? "Enviando…" : "Enviar plantilla")
+                            </button>
+                        }
+                    }
+                </div>
+            }
         }
     </div>
 </div>
@@ -1508,6 +1586,26 @@
     .wa-mic-rec { background: #fee2e2; border-color: #ef4444; animation: wa-attach-pulse 1s ease-in-out infinite; }
     .wa-mic-rec-label { display: inline-flex; align-items: center; font-size: 0.8rem; color: #dc2626; font-weight: 600; white-space: nowrap; }
     .wa-quick-replies { padding: 0.6rem 1rem 0.2rem; background: #fbfcfe; display: flex; gap: 0.45rem; flex-wrap: wrap; border-top: 1px solid #eef1f5; }
+    /* 2026-08-05: contador de la ventana de 24hs (reloj de arena + estado) */
+    .wa-vent24 { display: inline-flex; align-items: center; gap: 0.5rem; margin: 0.55rem 1rem 0; padding: 0.42rem 0.85rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
+    .wa-vent24.ok { background: #ecfdf5; color: #15803d; border: 1px solid #a7f3d0; }
+    .wa-vent24.urgente { background: #fffbeb; color: #b45309; border: 1px solid #fcd34d; }
+    .wa-vent24.cerrada { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+    .wa-vent24-reloj { display: inline-block; animation: waReloj 3s ease-in-out infinite; }
+    @@keyframes waReloj { 0%, 65% { transform: rotate(0deg); } 80%, 100% { transform: rotate(180deg); } }
+    .wa-vent24-dot { width: 9px; height: 9px; border-radius: 50%; background: #ef4444; box-shadow: 0 0 0 0 rgba(239,68,68,0.5); animation: waPulse 1.6s infinite; }
+    @@keyframes waPulse { 0% { box-shadow: 0 0 0 0 rgba(239,68,68,0.5); } 70% { box-shadow: 0 0 0 7px rgba(239,68,68,0); } 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); } }
+    /* 2026-08-05: selector de plantilla dentro del chat (ventana cerrada) */
+    .wa-plantilla-chat { margin: 0.55rem 1rem 0.8rem; padding: 0.9rem; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 14px; }
+    .wa-plantilla-chat.wa-plantilla-chat-ig { background: #fdf2f8; border-color: #f9a8d4; }
+    .wa-plantilla-chat-head { display: flex; gap: 0.6rem; align-items: flex-start; }
+    .wa-plantilla-chat-ico { font-size: 1.4rem; line-height: 1; }
+    .wa-plantilla-chat-title { font-weight: 700; color: #9a3412; font-size: 0.95rem; }
+    .wa-plantilla-chat.wa-plantilla-chat-ig .wa-plantilla-chat-title { color: #9d174d; }
+    .wa-plantilla-chat-sub { font-size: 0.77rem; color: #b45309; margin-top: 0.12rem; line-height: 1.35; }
+    .wa-plantilla-chat.wa-plantilla-chat-ig .wa-plantilla-chat-sub { color: #be185d; }
+    .wa-plantilla-chat > select { margin-top: 0.7rem; }
+    .wa-plantilla-chat-empty { font-size: 0.85rem; color: #b91c1c; text-align: center; padding: 0.6rem; }
     .wa-chip { background: #eaf1fb; border: 1px solid #d5e3f7; color: #1d4ed8; padding: 0.42rem 0.95rem; border-radius: 999px; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.12s; white-space: nowrap; }
     .wa-chip:hover { background: #2563eb; color: #fff; border-color: #2563eb; transform: translateY(-1px); }
     .wa-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2000; }
@@ -2907,12 +3005,75 @@
 
     string NombrePlantillaLindo(string name) => name.Replace("_", " ");
 
-    string PlaceholderVariable(int idx)
+    string PlaceholderVariable(int idx) => PlaceholderVar(PlantillaSel(), idx);
+    string PlaceholderVar(ApiClient.TwPlantillaDto? p, int idx)
     {
-        var p = PlantillaSel();
         if (p != null && (p.Name.Contains("deuda") || p.Name.Contains("pago")))
             return idx == 0 ? "Nombre del cliente" : "Monto (ej: $5.000)";
         return idx == 0 ? "Nombre del cliente" : $"Dato {idx + 1}";
+    }
+
+    // ===== 2026-08-05: contador de la ventana de 24hs + enviar plantilla dentro del chat =====
+    // La ventana se calcula desde el ÚLTIMO mensaje que entró (INCOMING) + 24hs. Se recalcula solo
+    // porque el refreshTimer redibuja cada 10s.
+    DateTime? UltimoEntranteAt()
+        => mensajes.Where(m => m.Direccion == "INCOMING").Select(m => (DateTime?)m.CreatedAt).Max();
+    TimeSpan? Restante24hs()
+    {
+        var ult = UltimoEntranteAt();
+        return ult == null ? null : ult.Value.AddHours(24) - DateTime.UtcNow;
+    }
+    bool Ventana24Abierta() => Restante24hs() is TimeSpan t && t > TimeSpan.Zero;
+    bool EsChatInstagram()
+        => (selectedNumero?.StartsWith("ig:") ?? false) || SelectedConv()?.Canal == "INSTAGRAM";
+    string FormatoRestante(TimeSpan t)
+    {
+        if (t <= TimeSpan.Zero) return "0 min";
+        int h = (int)t.TotalHours, m = t.Minutes;
+        if (h >= 1) return $"{h} h {m} min";
+        if (m >= 1) return $"{m} min";
+        return "menos de 1 min";
+    }
+
+    // Selector de plantilla DENTRO del chat (estado propio, no pisa el de "Nueva conversación")
+    string chatPlantillaName = "";
+    List<string> chatVariables = new();
+    bool chatPlantillaEnviando = false;
+    ApiClient.TwPlantillaDto? ChatPlantillaSel() => nvPlantillas.FirstOrDefault(p => p.Name == chatPlantillaName);
+    void OnChatPlantillaChange(ChangeEventArgs e)
+    {
+        chatPlantillaName = e.Value?.ToString() ?? "";
+        var count = ChatPlantillaSel()?.VariableCount ?? 0;
+        chatVariables = Enumerable.Range(0, count).Select(_ => "").ToList();
+    }
+    void SetChatVariable(int idx, string val)
+    {
+        while (chatVariables.Count <= idx) chatVariables.Add("");
+        chatVariables[idx] = val;
+    }
+    string ChatPreviewTexto()
+    {
+        var p = ChatPlantillaSel();
+        return p == null ? "" : RenderPreview(p.BodyText, chatVariables);
+    }
+    async Task EnviarPlantillaEnChat()
+    {
+        var p = ChatPlantillaSel();
+        if (p == null) { Toast.Warning("Elegí una plantilla"); return; }
+        if (selectedNumero == null) return;
+        for (int i = 0; i < p.VariableCount; i++)
+            if (i >= chatVariables.Count || string.IsNullOrWhiteSpace(chatVariables[i]))
+            { Toast.Warning("Completá todos los datos de la plantilla"); return; }
+        var digits = new string(selectedNumero.Where(char.IsDigit).ToArray());
+        chatPlantillaEnviando = true;
+        StateHasChanged();
+        var (ok, err, _) = await Api.IniciarTwConversacionAsync(digits, p.Name, p.Language, selectedLinea, chatVariables, p.BodyText);
+        chatPlantillaEnviando = false;
+        if (!ok) { Toast.Error(err ?? "No se pudo enviar la plantilla"); return; }
+        Toast.Success("Plantilla enviada ✓");
+        chatPlantillaName = ""; chatVariables = new();
+        await LoadMensajes(silent: true);
+        await LoadConversaciones(silent: true);
     }
 
     async Task EnviarNuevaConv()
@@ -2944,6 +3105,7 @@
     {
         selectedNumero = numero;
         selectedLinea = linea;
+        chatPlantillaName = ""; chatVariables = new();   // 2026-08-05: resetear el selector de plantilla al cambiar de chat
         sugerenciaCliente = null;   // limpiar la del chat anterior mientras carga este
         asignarNota = "";           // 2026-08-04: la nota de "pasar a" es por-chat
         await LoadMensajes();
