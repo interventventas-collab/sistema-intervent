@@ -196,6 +196,31 @@ public record MeliItemDto(
 
 public record MeliItemsResponse(List<MeliItemDto> Items, int Total);
 
+// 2026-08-04: Salud / infracciones de una publicación (motivo por el que no está activa).
+public record MeliSaludItemDto(
+    string MeliItemId,
+    int AccountId,
+    string AccountNickname,
+    string Title,
+    string Status,
+    string StatusLabel,
+    List<string> SubStatus,
+    string Motivo,
+    string QueHacer,
+    double? Health,
+    string? Permalink,
+    string? Thumbnail,
+    int AvailableQuantity
+);
+
+// TotalRevisadas = cuántas publicaciones se miraron. ConProblemas = cuántas tienen algo para arreglar.
+public record MeliSaludResponse(
+    int TotalRevisadas,
+    int ConProblemas,
+    List<MeliSaludItemDto> Items,
+    List<string> Errores
+);
+
 public record MeliItemSyncResult(int TotalSynced, int TotalErrors, List<string> Errors);
 
 public record MeliItemSyncSingleResult(string Action, string AccountNickname, MeliItemDto Item);

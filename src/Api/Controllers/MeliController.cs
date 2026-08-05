@@ -1005,6 +1005,22 @@ public class MeliController : ControllerBase
         return Ok(details);
     }
 
+    /// <summary>2026-08-04: revisa (en vivo contra MeLi) qué publicaciones están pausadas /
+    /// en revisión / suspendidas y devuelve el motivo traducido. NO modifica nada.</summary>
+    [HttpGet("items/salud")]
+    public async Task<IActionResult> GetItemsSalud([FromQuery] int? accountId, CancellationToken ct)
+    {
+        try
+        {
+            var result = await _itemService.RevisarSaludAsync(accountId, ct);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     /// <summary>2026-07-21: trae todas las fotos de una publicacion para el gestor de fotos.</summary>
     [HttpGet("items/{meliItemId}/pictures")]
     public async Task<IActionResult> GetItemPictures(string meliItemId)

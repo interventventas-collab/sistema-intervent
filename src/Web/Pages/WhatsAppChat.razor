@@ -477,6 +477,12 @@
                         ✏️ Editar contacto
                     </button>
                 }
+                @if (SelectedConv()?.ClienteId is int)
+                {
+                    <button class="btn btn-sm @(mostrarFichaCliente ? "btn-primary" : "btn-outline-primary")" @onclick="ToggleFichaCliente" title="Ver la ficha del cliente (saldo, últimas facturas, ubicación) sin salir del chat" style="font-weight:600;">
+                        @(mostrarFichaCliente ? "▲ Ocultar cliente" : "👁️ Ver cliente")
+                    </button>
+                }
                 <button class="btn btn-outline-success btn-sm" @onclick="AbrirPreviewPedido" title="Abre una ventana con el texto del pedido (el mensaje tildado, o el último si no tildaste nada) para revisarlo antes de crear la venta">
                     📋 Crear pedido
                 </button>
@@ -537,6 +543,93 @@
                     </div>
                 }
             </div>
+
+            @* 2026-08-05: FICHA DEL CLIENTE — tarjeta desplegable con datos, saldo, ubicación y últimas facturas *@
+            @if (mostrarFichaCliente && SelectedConv()?.ClienteId is int fichaCid)
+            {
+                <div class="wa-ficha">
+                    @if (cargandoFicha)
+                    {
+                        <div class="wa-ficha-load">⏳ Cargando ficha del cliente…</div>
+                    }
+                    else if (fichaCliente is null)
+                    {
+                        <div class="wa-ficha-load">No se pudo cargar la ficha del cliente.</div>
+                    }
+                    else
+                    {
+                        <div class="wa-ficha-top">
+                            <div class="wa-ficha-nombre">
+                                🛍️ <b>@fichaCliente.Nombre</b>
+                                @if (fichaCliente.CodigoInterno is int codi) { <span class="wa-ficha-cod">#@codi</span> }
+                                @if (!string.IsNullOrWhiteSpace(fichaCliente.CondicionIva)) { <span class="wa-ficha-chip">@fichaCliente.CondicionIva</span> }
+                            </div>
+                            <button class="wa-ficha-x" @onclick="@(() => mostrarFichaCliente = false)" title="Cerrar">×</button>
+                        </div>
+
+                        <div class="wa-ficha-cols">
+                            @* Columna 1: datos de contacto + ubicación *@
+                            <div class="wa-ficha-datos">
+                                @if (!string.IsNullOrWhiteSpace(fichaCliente.RazonSocial)) { <div><span class="wa-ficha-lbl">Razón social:</span> @fichaCliente.RazonSocial</div> }
+                                @if (!string.IsNullOrWhiteSpace(fichaCliente.Cuit)) { <div><span class="wa-ficha-lbl">CUIT:</span> @fichaCliente.Cuit</div> }
+                                @if (!string.IsNullOrWhiteSpace(fichaCliente.Telefono)) { <div><span class="wa-ficha-lbl">Tel:</span> @fichaCliente.Telefono @(string.IsNullOrWhiteSpace(fichaCliente.Telefono2) ? "" : $" / {fichaCliente.Telefono2}")</div> }
+                                @if (!string.IsNullOrWhiteSpace(fichaCliente.Email)) { <div><span class="wa-ficha-lbl">Mail:</span> @fichaCliente.Email</div> }
+                                @if (!string.IsNullOrWhiteSpace(fichaCliente.Direccion) || !string.IsNullOrWhiteSpace(fichaCliente.Localidad))
+                                {
+                                    <div><span class="wa-ficha-lbl">Dirección:</span> @fichaCliente.Direccion@(string.IsNullOrWhiteSpace(fichaCliente.Localidad) ? "" : $", {fichaCliente.Localidad}")</div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(fichaCliente.Notas)) { <div class="wa-ficha-notas">📝 @fichaCliente.Notas</div> }
+                                <div class="wa-ficha-acc">
+                                    @if (!string.IsNullOrWhiteSpace(fichaCliente.MapeoLink))
+                                    {
+                                        <a href="@fichaCliente.MapeoLink" target="_blank" class="wa-ficha-btn maps" title="Abrir la ubicación del cliente en Google Maps">📍 Ver en el mapa</a>
+                                    }
+                                    <a href="/cafe/clientes/@fichaCid" target="_blank" class="wa-ficha-btn" title="Abrir la ficha completa del cliente en otra pestaña">📂 Ficha completa</a>
+                                </div>
+                            </div>
+
+                            @* Columna 2: saldo + facturas *@
+                            <div class="wa-ficha-plata">
+                                <div class="wa-ficha-saldo @(fichaCliente.Saldo > 0.01m ? "debe" : "aldia")">
+                                    <span class="wa-ficha-saldo-lbl">@(fichaCliente.Saldo > 0.01m ? "Debe" : "Cuenta al día")</span>
+                                    <span class="wa-ficha-saldo-monto">$@fichaCliente.Saldo.ToString("N2")</span>
+                                </div>
+                                <div class="wa-ficha-facs-titulo">Últimas facturas</div>
+                                @if (fichaCliente.Ventas.Count == 0)
+                                {
+                                    <div class="wa-ficha-vacio">Este cliente todavía no tiene facturas.</div>
+                                }
+                                else
+                                {
+                                    <div class="wa-ficha-facs">
+                                        @foreach (var v in fichaCliente.Ventas)
+                                        {
+                                            <a href="/api/cafe/ventas/@v.Id/pdf" target="_blank" class="wa-ficha-fac" title="Abrir el PDF de este comprobante">
+                                                <span class="wa-ficha-fac-tipo">@(string.IsNullOrWhiteSpace(v.Tipo) ? "—" : v.Tipo)</span>
+                                                <span class="wa-ficha-fac-num">@v.Numero</span>
+                                                <span class="wa-ficha-fac-fecha">@v.Fecha.ToString("dd/MM/yy")</span>
+                                                <span class="wa-ficha-fac-total">$@v.Total.ToString("N2")</span>
+                                                @if (v.Tipo is not null && v.Tipo.StartsWith("NC"))
+                                                {
+                                                    <span class="wa-ficha-fac-estado nc">N. Crédito</span>
+                                                }
+                                                else if (v.Saldo > 0.01m)
+                                                {
+                                                    <span class="wa-ficha-fac-estado debe">Debe $@v.Saldo.ToString("N0")</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="wa-ficha-fac-estado pagada">✓ Pagada</span>
+                                                }
+                                            </a>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
 
             @* 2026-08-03: cartelito que ADIVINA el cliente por el teléfono y ofrece vincularlo de un toque *@
             @if (SelectedConv()?.ClienteId is null && sugerenciaCliente is not null)
@@ -1573,6 +1666,46 @@
     .wa-saldo-info { font-size: 0.8rem; color: #6b7280; padding: 0.2rem 0.1rem; }
     /* 2026-08-03: cartelito que adivina el cliente por teléfono */
     .wa-sug-cliente { display: flex; align-items: center; gap: 0.55rem; margin: 0.5rem 1rem 0; padding: 0.55rem 0.75rem; background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; font-size: 0.88rem; color: #374151; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+    /* 2026-08-05: ficha del cliente desplegable dentro del chat */
+    .wa-ficha { margin: 0.55rem 1rem 0; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.07); overflow: hidden; animation: waFichaIn .16s ease; }
+    @@keyframes waFichaIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+    .wa-ficha-load { padding: 1rem; text-align: center; color: #6b7280; font-size: 0.9rem; }
+    .wa-ficha-top { display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0.85rem; background: #f0fdf4; border-bottom: 1px solid #dcfce7; }
+    .wa-ficha-nombre { font-size: 0.98rem; color: #14532d; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+    .wa-ficha-cod { background: #d1fae5; color: #047857; font-size: 0.72rem; padding: 0.05rem 0.4rem; border-radius: 5px; font-weight: 600; }
+    .wa-ficha-chip { background: #e0e7ff; color: #3730a3; font-size: 0.7rem; padding: 0.05rem 0.4rem; border-radius: 5px; font-weight: 600; }
+    .wa-ficha-x { background: none; border: none; font-size: 1.4rem; line-height: 1; color: #9ca3af; cursor: pointer; padding: 0 0.2rem; }
+    .wa-ficha-x:hover { color: #ef4444; }
+    .wa-ficha-cols { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.75rem 0.85rem; }
+    .wa-ficha-datos { flex: 1 1 240px; min-width: 220px; font-size: 0.84rem; color: #374151; line-height: 1.7; }
+    .wa-ficha-lbl { color: #9ca3af; font-size: 0.78rem; }
+    .wa-ficha-notas { margin-top: 0.35rem; background: #fffbeb; border: 1px solid #fde68a; border-radius: 7px; padding: 0.35rem 0.5rem; font-size: 0.8rem; line-height: 1.4; }
+    .wa-ficha-acc { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.6rem; }
+    .wa-ficha-btn { display: inline-flex; align-items: center; gap: 0.25rem; background: #f3f4f6; border: 1px solid #e5e7eb; color: #374151; border-radius: 8px; padding: 0.35rem 0.6rem; font-size: 0.8rem; font-weight: 600; text-decoration: none; transition: all .12s; }
+    .wa-ficha-btn:hover { background: #e5e7eb; }
+    .wa-ficha-btn.maps { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+    .wa-ficha-btn.maps:hover { background: #dbeafe; }
+    .wa-ficha-plata { flex: 1 1 300px; min-width: 260px; }
+    .wa-ficha-saldo { display: flex; align-items: center; justify-content: space-between; padding: 0.55rem 0.75rem; border-radius: 10px; margin-bottom: 0.6rem; }
+    .wa-ficha-saldo.debe { background: #fef2f2; border: 1px solid #fecaca; }
+    .wa-ficha-saldo.aldia { background: #f0fdf4; border: 1px solid #bbf7d0; }
+    .wa-ficha-saldo-lbl { font-size: 0.82rem; font-weight: 600; color: #6b7280; }
+    .wa-ficha-saldo-monto { font-size: 1.25rem; font-weight: 800; }
+    .wa-ficha-saldo.debe .wa-ficha-saldo-monto { color: #dc2626; }
+    .wa-ficha-saldo.aldia .wa-ficha-saldo-monto { color: #16a34a; }
+    .wa-ficha-facs-titulo { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; color: #9ca3af; font-weight: 700; margin-bottom: 0.35rem; }
+    .wa-ficha-vacio { font-size: 0.84rem; color: #9ca3af; padding: 0.3rem 0; }
+    .wa-ficha-facs { display: flex; flex-direction: column; gap: 0.3rem; max-height: 220px; overflow-y: auto; }
+    .wa-ficha-fac { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.55rem; background: #f9fafb; border: 1px solid #eef1f5; border-radius: 8px; text-decoration: none; color: #374151; font-size: 0.82rem; transition: all .12s; }
+    .wa-ficha-fac:hover { background: #f1f5f9; border-color: #e2e8f0; }
+    .wa-ficha-fac-tipo { background: #e5e7eb; color: #374151; font-size: 0.68rem; font-weight: 700; padding: 0.05rem 0.35rem; border-radius: 4px; min-width: 2rem; text-align: center; }
+    .wa-ficha-fac-num { font-weight: 600; }
+    .wa-ficha-fac-fecha { color: #9ca3af; font-size: 0.76rem; }
+    .wa-ficha-fac-total { margin-left: auto; font-weight: 700; }
+    .wa-ficha-fac-estado { font-size: 0.7rem; font-weight: 700; padding: 0.08rem 0.4rem; border-radius: 5px; white-space: nowrap; }
+    .wa-ficha-fac-estado.pagada { background: #dcfce7; color: #15803d; }
+    .wa-ficha-fac-estado.debe { background: #fee2e2; color: #b91c1c; }
+    .wa-ficha-fac-estado.nc { background: #ede9fe; color: #6d28d9; }
     /* 2026-08-03: opciones del buscador de "Vincular cliente" */
     .wa-vincular-opt { display: block; width: 100%; text-align: left; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.55rem 0.65rem; margin-bottom: 0.35rem; font-size: 0.9rem; cursor: pointer; transition: all .12s; }
     .wa-vincular-opt:hover:not(:disabled) { background: #ecfdf5; border-color: #16a34a; }
@@ -2166,6 +2299,26 @@
     ApiClient.TwSugerenciaCliente? sugerenciaCliente = null;
     // Chats donde el usuario dijo "No" a la sugerencia (para no volver a preguntar en esta sesión).
     readonly HashSet<string> sugerenciasDescartadas = new();
+
+    // 2026-08-05: ficha del cliente desplegable dentro del chat.
+    bool mostrarFichaCliente = false;
+    bool cargandoFicha = false;
+    ApiClient.FichaChatDto? fichaCliente = null;
+
+    /// <summary>Abre/cierra la tarjeta de ficha del cliente. Al abrir, la carga desde la API.</summary>
+    async Task ToggleFichaCliente()
+    {
+        if (mostrarFichaCliente) { mostrarFichaCliente = false; return; }
+        if (SelectedConv()?.ClienteId is not int cid) return;
+        mostrarFichaCliente = true;
+        // Si ya tenemos la ficha de ESTE mismo cliente cargada, no la volvemos a pedir.
+        if (fichaCliente is not null && fichaCliente.ClienteId == cid) return;
+        cargandoFicha = true;
+        fichaCliente = null;
+        StateHasChanged();
+        try { fichaCliente = await Api.GetFichaChatAsync(cid); }
+        finally { cargandoFicha = false; StateHasChanged(); }
+    }
 
     string ClaveChat() => $"{selectedNumero}|{selectedLinea}";
 
@@ -3107,6 +3260,7 @@
         selectedLinea = linea;
         chatPlantillaName = ""; chatVariables = new();   // 2026-08-05: resetear el selector de plantilla al cambiar de chat
         sugerenciaCliente = null;   // limpiar la del chat anterior mientras carga este
+        mostrarFichaCliente = false; fichaCliente = null;   // 2026-08-05: cerrar la ficha del cliente al cambiar de chat
         asignarNota = "";           // 2026-08-04: la nota de "pasar a" es por-chat
         await LoadMensajes();
         await BuscarSugerenciaCliente();
@@ -3125,6 +3279,7 @@
         selectedNumero = null;
         selectedLinea = null;
         sugerenciaCliente = null;
+        mostrarFichaCliente = false; fichaCliente = null;
     }
 
     // 2026-07-23: para saber si entraron mensajes nuevos y bajar el scroll solo en ese caso

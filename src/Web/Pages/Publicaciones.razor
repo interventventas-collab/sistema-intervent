@@ -164,6 +164,10 @@
         <button class="btn btn-secondary" @onclick='() => Nav.NavigateTo("/publicaciones/auditoria")' title="Comparar lista de MLAs entre MeLi y el sistema">
             <i class="fa-solid fa-magnifying-glass"></i> Auditar vs MeLi
         </button>
+        @* 2026-08-04: diagnóstico de salud/infracciones — qué publicaciones están pausadas y por qué. *@
+        <button class="btn btn-secondary" @onclick='() => Nav.NavigateTo("/publicaciones/salud")' title="Ver qué publicaciones están pausadas o con infracciones y el motivo">
+            <i class="fa-solid fa-heart-pulse"></i> Salud / Infracciones
+        </button>
         @* 2026-07-21: escanea las infracciones de la cuenta y marca las publicaciones con foto en infracción (🚩). *@
         <button class="btn" style="background:#ea580c; color:white; font-weight:700;"
                 @onclick="BuscarInfraccionesFoto" disabled="@scanningInfractions"
