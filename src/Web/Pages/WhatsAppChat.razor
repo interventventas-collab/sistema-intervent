@@ -756,9 +756,19 @@
                                     <div class="wa-reacciones">
                                         @foreach (var r in m.Reacciones)
                                         {
-                                            <button class="wa-reaccion-chip" @onclick="() => ReaccionarA(m.Id, r.Emoji)" title="Click para quitar">
-                                                @r.Emoji @if (r.Count > 1) { <span>@r.Count</span> }
-                                            </button>
+                                            @if (r.EsCliente)
+                                            {
+                                                @* Reacción del cliente: solo se muestra, no se toca (no podemos quitar la reacción de otro) *@
+                                                <span class="wa-reaccion-chip cliente" title="Reacción del cliente">
+                                                    @r.Emoji @if (r.Count > 1) { <span>@r.Count</span> }
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <button class="wa-reaccion-chip" @onclick="() => ReaccionarA(m.Id, r.Emoji)" title="Click para quitar">
+                                                    @r.Emoji @if (r.Count > 1) { <span>@r.Count</span> }
+                                                </button>
+                                            }
                                         }
                                     </div>
                                 }
@@ -1885,6 +1895,10 @@
     .wa-reaccion-chip { background: #fff; border: 1px solid #d1d5db; padding: 0.1rem 0.4rem; border-radius: 12px; font-size: 0.78rem; cursor: pointer; transition: background 0.1s; }
     .wa-reaccion-chip:hover { background: #fee2e2; }
     .wa-reaccion-chip span { color: #6b7280; font-size: 0.7rem; margin-left: 0.15rem; }
+    /* 2026-08-05: reacción del CLIENTE (la puso él desde su WhatsApp). Fondo verdecito y cursor normal
+       para diferenciarla de las nuestras — no se puede quitar la reacción de otra persona. */
+    .wa-reaccion-chip.cliente { background: #dcfce7; border-color: #86efac; cursor: default; }
+    .wa-reaccion-chip.cliente:hover { background: #dcfce7; }
     /* === Selección de burbujas para crear venta === */
     .wa-msg-row { cursor: pointer; padding: 0.15rem 0.25rem; border-radius: 6px; transition: background 0.1s; align-items: flex-start; }
     .wa-msg-row:hover { background: rgba(37, 211, 102, 0.05); }
