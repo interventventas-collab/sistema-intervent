@@ -4316,8 +4316,11 @@
 
     // 2026-08-04: botón "👉 Poner acá" del globito. Mete la parada en el puesto que el usuario
     // escribió y reacomoda las demás de la MISMA zona (repartidor si tiene; si no, el vehículo V).
-    // - Si la parada no tenía número: inserta y corre +1 a todas las que estaban en ese puesto o más adelante.
-    // - Si ya tenía número: la mueve del puesto viejo al nuevo y corre las del medio (sin dejar huecos).
+    // 2026-08-05: ahora TODO el reacomodo lo hace el servidor en UN SOLO guardado atómico
+    // (endpoint poner-en-puesto). Antes se corrían las paradas una por una desde acá con muchos
+    // guardados sueltos y, si se cortaba a mitad, quedaban números repetidos y saltos (ej: tres
+    // paradas en el puesto 13). Además el servidor renumera la zona limpia 1..N, así que también
+    // auto-corrige cualquier repetido/salto que hubiera quedado de antes.
     [JSInvokable]
     public async Task PonerEnPuestoDesdePopup(int markerId, int puesto)
     {
@@ -4326,76 +4329,23 @@
         var s = stops?.FirstOrDefault(x => x.Id == stopId);
         if (s is null) return;
 
-        // Zona a la que pertenece: preferimos repartidor; si no tiene, el vehículo V.
-        Func<MapeoStopDto, bool> mismaZona;
-        if (s.AssignedDriverId.HasValue)
-            mismaZona = x => x.AssignedDriverId == s.AssignedDriverId;
-        else if (s.AssignedVehicleSlot.HasValue)
-            mismaZona = x => x.AssignedVehicleSlot == s.AssignedVehicleSlot;
-        else
+        if (!s.AssignedDriverId.HasValue && !s.AssignedVehicleSlot.HasValue)
         {
             ToastService.Info("Primero asigná este envío a un repartidor (o a un vehículo) para poder darle un puesto en la ruta.");
-            return;
-        }
-
-        var zona = (stops ?? new()).Where(mismaZona).ToList();
-        if (zona.Count == 0) return;
-
-        int numeradas = zona.Count(x => x.OrderInRoute.HasValue);
-        int? viejo = s.OrderInRoute;
-        // El puesto más alto posible: si el que muevo YA estaba numerado, es 'numeradas';
-        // si es nuevo (se suma a la cola), es 'numeradas + 1'.
-        int tope = viejo.HasValue ? numeradas : numeradas + 1;
-        if (tope < 1) tope = 1;
-        int nuevo = Math.Clamp(puesto, 1, tope);
-
-        if (viejo.HasValue && viejo.Value == nuevo)
-        {
-            ToastService.Info($"Ya estaba en el puesto #{nuevo}.");
             return;
         }
 
         assigningSlot = true;
         try
         {
-            if (viejo.HasValue)
-            {
-                if (nuevo < viejo.Value)
-                {
-                    // Sube en la lista: +1 a los que estaban entre el puesto nuevo y el viejo.
-                    foreach (var o in zona.Where(x => x.Id != s.Id && x.OrderInRoute.HasValue
-                                                   && x.OrderInRoute!.Value >= nuevo && x.OrderInRoute.Value < viejo.Value))
-                    {
-                        o.OrderInRoute = o.OrderInRoute!.Value + 1;
-                        await Api.UpdateMapeoStopAsync(o.Id, new { orderInRoute = o.OrderInRoute });
-                    }
-                }
-                else
-                {
-                    // Baja en la lista: -1 a los que estaban entre el viejo y el nuevo.
-                    foreach (var o in zona.Where(x => x.Id != s.Id && x.OrderInRoute.HasValue
-                                                   && x.OrderInRoute!.Value > viejo.Value && x.OrderInRoute.Value <= nuevo))
-                    {
-                        o.OrderInRoute = o.OrderInRoute!.Value - 1;
-                        await Api.UpdateMapeoStopAsync(o.Id, new { orderInRoute = o.OrderInRoute });
-                    }
-                }
-            }
-            else
-            {
-                // Parada nueva a un puesto del medio: +1 a todas las de ese puesto en adelante.
-                foreach (var o in zona.Where(x => x.Id != s.Id && x.OrderInRoute.HasValue
-                                               && x.OrderInRoute!.Value >= nuevo))
-                {
-                    o.OrderInRoute = o.OrderInRoute!.Value + 1;
-                    await Api.UpdateMapeoStopAsync(o.Id, new { orderInRoute = o.OrderInRoute });
-                }
-            }
-
-            s.OrderInRoute = nuevo;
-            await Api.UpdateMapeoStopAsync(s.Id, new { orderInRoute = nuevo });
+            // Un solo guardado en el servidor: mete la parada en el puesto y renumera toda la zona 1..N.
+            await Api.PonerEnPuestoMapeoAsync(s.Id, puesto);
+            await LoadStops();   // traemos los números ya renumerados
             await RenderMap();
-            ToastService.Success($"Puesto #{nuevo} asignado — reacomodé los demás.");
+            var final = stops?.FirstOrDefault(x => x.Id == stopId)?.OrderInRoute;
+            ToastService.Success(final.HasValue
+                ? $"Puesto #{final} asignado — reacomodé los demás."
+                : "Puesto asignado — reacomodé los demás.");
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { assigningSlot = false; StateHasChanged(); }
