@@ -472,8 +472,29 @@ public class MetaWhatsAppWebhookController : ControllerBase
                 // "CONTACTO_WA:" + JSON para mostrarlos como tarjeta (nombre + número + botón escribir).
                 cuerpo = ParseContactosEntrantes(m);
                 break;
+            case "location":
+                // 2026-08-05: ubicación compartida → texto + link a Google Maps (antes salía vacío).
+                cuerpo = TryGetUbicacion(m);
+                break;
+            case "order":
+                // 2026-08-05: pedido armado desde el catálogo (carrito).
+                cuerpo = TryGetPedidoCatalogo(m);
+                break;
+            case "system":
+                // 2026-08-05: aviso de sistema (ej: el cliente cambió su número de teléfono).
+                cuerpo = TryGetSistema(m);
+                break;
             default:
-                cuerpo = null;
+                // 2026-08-05: cualquier tipo que no sepamos mostrar (unsupported, unknown, encuestas,
+                // "ver una vez", tipos nuevos de WhatsApp…). Antes quedaba en BLANCO. Ahora dejamos un
+                // cartel con el TIPO + el textito de error de Meta (si vino), para saber qué intentaron
+                // mandar. Además lo registramos en el log con el payload crudo para diagnosticar.
+                var errMsg = TryGetPrimerErrorMensaje(m);
+                cuerpo = string.IsNullOrWhiteSpace(errMsg)
+                    ? $"📎 Mensaje de tipo «{tipo}» — WhatsApp no permite mostrarlo acá."
+                    : $"📎 Mensaje de tipo «{tipo}» — {errMsg}";
+                _logger.LogWarning("[Meta WA webhook] tipo NO soportado '{Tipo}' de {From}. Payload: {Raw}",
+                    tipo, fromWaId, m.GetRawText());
                 break;
         }
 
@@ -812,6 +833,63 @@ public class MetaWhatsAppWebhookController : ControllerBase
         if (!m.TryGetProperty("interactive", out var i)) return null;
         if (i.TryGetProperty("button_reply", out var br) && br.TryGetProperty("title", out var bt)) return bt.GetString();
         if (i.TryGetProperty("list_reply", out var lr) && lr.TryGetProperty("title", out var lt)) return lt.GetString();
+        return null;
+    }
+
+    // 2026-08-05: coordenada (lat/lng) que Meta puede mandar como número o como string.
+    private static string? NumOStr(JsonElement o, string key)
+        => o.TryGetProperty(key, out var e)
+            ? (e.ValueKind == JsonValueKind.Number ? e.GetRawText() : e.GetString())
+            : null;
+
+    /// <summary>2026-08-05: mensaje de UBICACIÓN entrante → texto legible + link a Google Maps.</summary>
+    private static string TryGetUbicacion(JsonElement m)
+    {
+        if (!m.TryGetProperty("location", out var loc)) return "📍 Ubicación (sin datos)";
+        var lat = NumOStr(loc, "latitude");
+        var lng = NumOStr(loc, "longitude");
+        var nombre = loc.TryGetProperty("name", out var nEl) ? nEl.GetString() : null;
+        var direccion = loc.TryGetProperty("address", out var aEl) ? aEl.GetString() : null;
+        var partes = new List<string> { "📍 Ubicación" };
+        if (!string.IsNullOrWhiteSpace(nombre)) partes.Add(nombre!);
+        if (!string.IsNullOrWhiteSpace(direccion)) partes.Add(direccion!);
+        if (!string.IsNullOrWhiteSpace(lat) && !string.IsNullOrWhiteSpace(lng))
+            partes.Add($"https://www.google.com/maps?q={lat},{lng}");
+        return string.Join("\n", partes);
+    }
+
+    /// <summary>2026-08-05: pedido armado desde el catálogo (carrito) → resumen legible.</summary>
+    private static string TryGetPedidoCatalogo(JsonElement m)
+    {
+        if (!m.TryGetProperty("order", out var ord)) return "🛒 Pedido del catálogo";
+        var items = ord.TryGetProperty("product_items", out var pit) && pit.ValueKind == JsonValueKind.Array
+            ? pit.GetArrayLength() : 0;
+        var nota = ord.TryGetProperty("text", out var tEl) ? tEl.GetString() : null;
+        var cuerpo = $"🛒 Pedido del catálogo — {items} producto(s)";
+        if (!string.IsNullOrWhiteSpace(nota)) cuerpo += $"\n{nota}";
+        return cuerpo;
+    }
+
+    /// <summary>2026-08-05: mensaje de sistema (ej: el cliente cambió su número).</summary>
+    private static string TryGetSistema(JsonElement m)
+        => m.TryGetProperty("system", out var s) && s.TryGetProperty("body", out var b) && !string.IsNullOrWhiteSpace(b.GetString())
+            ? "⚙️ " + b.GetString()
+            : "⚙️ Mensaje de sistema de WhatsApp";
+
+    /// <summary>2026-08-05: cuando WhatsApp marca un mensaje como "no soportado", suele venir un
+    /// array "errors" con un título/detalle que aclara qué era. Devuelve ese texto o null.</summary>
+    private static string? TryGetPrimerErrorMensaje(JsonElement m)
+    {
+        if (!m.TryGetProperty("errors", out var errs) || errs.ValueKind != JsonValueKind.Array || errs.GetArrayLength() == 0)
+            return null;
+        var e = errs[0];
+        if (e.TryGetProperty("error_data", out var ed) && ed.TryGetProperty("details", out var det)
+            && !string.IsNullOrWhiteSpace(det.GetString()))
+            return det.GetString();
+        if (e.TryGetProperty("title", out var ti) && !string.IsNullOrWhiteSpace(ti.GetString()))
+            return ti.GetString();
+        if (e.TryGetProperty("message", out var ms) && !string.IsNullOrWhiteSpace(ms.GetString()))
+            return ms.GetString();
         return null;
     }
 

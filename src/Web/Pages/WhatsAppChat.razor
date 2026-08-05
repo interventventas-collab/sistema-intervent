@@ -4005,7 +4005,13 @@
     string EscapeMsg(string? s)
     {
         if (string.IsNullOrEmpty(s)) return "";
-        return System.Net.WebUtility.HtmlEncode(s).Replace("\n", "<br/>");
+        var enc = System.Net.WebUtility.HtmlEncode(s);
+        // 2026-08-05: links clickeables (ej: la ubicación con su link de Google Maps). Se hace
+        // DESPUÉS de encodear, así el texto ya está saneado (no hay < > " sueltos que rompan el HTML).
+        enc = System.Text.RegularExpressions.Regex.Replace(
+            enc, @"https?://[^\s<]+",
+            mm => $"<a href=\"{mm.Value}\" target=\"_blank\" rel=\"noopener noreferrer\">{mm.Value}</a>");
+        return enc.Replace("\n", "<br/>");
     }
 
     // 2026-08-02: nombre lindo para el archivo al descargarlo. Usa el nombre original si lo hay,
