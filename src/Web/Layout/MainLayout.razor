@@ -1552,6 +1552,10 @@
                             <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/cafe/ventas"))">
                                 <span class="ico">🛒</span> Ventas
                             </button>
+                            @* 2026-08-05: acceso rápido a Visitas, entre Ventas y Cobranzas *@
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/visitas"))">
+                                <span class="ico">📋</span> Visitas
+                            </button>
                             <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/cafe/tesoreria/cobranzas"))">
                                 <span class="ico">📥</span> Cobranzas
                             </button>
