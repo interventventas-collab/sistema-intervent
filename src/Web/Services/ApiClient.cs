@@ -961,6 +961,37 @@ public class ApiClient
     public async Task<bool> DeleteVisitaAsync(int id)
         => await DeleteAsync($"/api/visitas/{id}");
 
+    // Preparación de pedidos (tablero de Osmar) para visitas
+    public async Task<bool> MandarVisitaPreparacionAsync(int id)
+    {
+        try { var r = await _http.PostAsJsonAsync($"/api/visitas/{id}/mandar-preparacion", new { }); return r.IsSuccessStatusCode; }
+        catch { return false; }
+    }
+
+    public async Task<List<VisitaPreparacionDto>?> GetVisitasPreparacionAsync()
+        => await GetAsync<List<VisitaPreparacionDto>>("/api/visitas/preparacion");
+
+    public async Task<List<VisitaPreparacionDto>?> GetVisitasPreparacionArmadosAsync(int dias = 7)
+        => await GetAsync<List<VisitaPreparacionDto>>($"/api/visitas/preparacion/armados?dias={dias}");
+
+    public async Task<bool> MarcarVisitaArmadaAsync(int id)
+    {
+        try { var r = await _http.PostAsJsonAsync($"/api/visitas/{id}/preparacion/armada", new { }); return r.IsSuccessStatusCode; }
+        catch { return false; }
+    }
+
+    public async Task<bool> VolverAArmarVisitaAsync(int id)
+    {
+        try { var r = await _http.PostAsJsonAsync($"/api/visitas/{id}/preparacion/volver", new { }); return r.IsSuccessStatusCode; }
+        catch { return false; }
+    }
+
+    public async Task<bool> QuitarVisitaDePreparacionAsync(int id)
+    {
+        try { var r = await _http.PostAsJsonAsync($"/api/visitas/{id}/preparacion/quitar", new { }); return r.IsSuccessStatusCode; }
+        catch { return false; }
+    }
+
     /// <summary>Suma la visita al mapa de reparto como parada. Devuelve un mensaje para mostrar.</summary>
     public async Task<(bool ok, string? mensaje)> SumarVisitaAlMapaAsync(int id)
     {

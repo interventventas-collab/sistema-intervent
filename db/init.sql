@@ -2523,6 +2523,17 @@ BEGIN
     ALTER TABLE Visitas ADD Numero INT NOT NULL DEFAULT 0;
 END
 GO
+-- 2026-08-05: preparacion de pedidos (tablero de Osmar) para visitas
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id=OBJECT_ID('Visitas') AND name='EnPreparacion')
+BEGIN
+    ALTER TABLE Visitas ADD EnPreparacion BIT NOT NULL DEFAULT 0;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id=OBJECT_ID('Visitas') AND name='PreparadoAt')
+BEGIN
+    ALTER TABLE Visitas ADD PreparadoAt DATETIME2 NULL;
+END
+GO
 -- Backfill de visitas viejas: numera por orden de creacion las que quedaron en 0
 IF EXISTS (SELECT 1 FROM Visitas WHERE Numero = 0)
 BEGIN

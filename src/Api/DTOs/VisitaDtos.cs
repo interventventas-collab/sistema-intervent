@@ -65,6 +65,20 @@ public class MarcarVisitaRealizadaRequest
     public string? Comentario { get; set; }
 }
 
+/// <summary>Tarjeta de visita en el tablero de Preparación de pedidos.</summary>
+public record VisitaPreparacionDto(
+    int Id,
+    int Numero,
+    string ClienteNombre,
+    string? Direccion,
+    string? Localidad,
+    string? Telefono,
+    string Descripcion,
+    string? PublicToken,
+    bool TieneFirma,
+    DateTime? PreparadoAt,
+    DateTime CreatedAt);
+
 /// <summary>Body para enviar el recibo de la visita al cliente por WhatsApp API.</summary>
 public class EnviarVisitaWhatsAppRequest
 {

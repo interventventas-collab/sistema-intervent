@@ -267,6 +267,19 @@
     @@media (max-width: 768px) {
         .drive-pedidos-grid { grid-template-columns: 1fr; }
     }
+    /* Tarjetas de VISITAS en el tablero de preparación (2026-08-05) */
+    .vprep-card { background:#fff; border:1px solid #c7d2fe; border-left:4px solid #6366f1; border-radius:10px; padding:0.7rem 0.8rem; }
+    .vprep-top { display:flex; justify-content:space-between; align-items:center; gap:0.5rem; }
+    .vprep-num { font-weight:800; color:#3730a3; font-size:0.9rem; }
+    .vprep-pdf { background:#eef2ff; color:#3730a3; border:1px solid #c7d2fe; border-radius:6px; padding:0.25rem 0.55rem; font-size:0.8rem; font-weight:700; text-decoration:none; }
+    .vprep-pdf:hover { background:#e0e7ff; }
+    .vprep-cliente { font-weight:700; color:#111827; margin-top:0.35rem; }
+    .vprep-dir, .vprep-tel { font-size:0.82rem; color:#6b7280; }
+    .vprep-desc { margin-top:0.4rem; background:#f9fafb; border-radius:8px; padding:0.5rem 0.6rem; font-size:0.88rem; color:#374151; white-space:pre-wrap; }
+    .vprep-actions { display:flex; gap:0.5rem; margin-top:0.6rem; }
+    .vprep-btn-listo { flex:1; background:#16a34a; color:#fff; border:none; border-radius:8px; padding:0.55rem; font-weight:700; cursor:pointer; }
+    .vprep-btn-listo:hover { background:#15803d; }
+    .vprep-btn-quitar { background:#f3f4f6; color:#6b7280; border:1px solid #e5e7eb; border-radius:8px; padding:0.55rem 0.7rem; cursor:pointer; font-weight:700; }
     /* Boton "Ver composicion" debajo del header, antes del body. Por default cerrado. */
     .prep-btn-ver-comp {
         width: 100%;
@@ -906,6 +919,40 @@
             }
         </div>
 
+        @* ── VISITAS PARA PREPARAR (módulo Visitas, 2026-08-05) ── *@
+        @if (visitasPrep.Count > 0)
+        {
+            <div class="prep-section-header armar" style="margin-top:1.5rem; display:flex; align-items:center;">
+                <span>📋 Visitas para preparar</span>
+                <span style="margin-left:auto; font-weight:700;">@visitasPrep.Count</span>
+            </div>
+            <div class="drive-pedidos-grid">
+                @foreach (var vp in visitasPrep)
+                {
+                    <div class="vprep-card">
+                        <div class="vprep-top">
+                            <span class="vprep-num">📋 Visita N° @vp.Numero.ToString("D4")</span>
+                            <a class="vprep-pdf" href="@($"/api/visitas/publica/{vp.PublicToken}/recibo.pdf")" target="_blank" title="Abrir / imprimir el recibo PDF">📄 PDF</a>
+                        </div>
+                        <div class="vprep-cliente">@vp.ClienteNombre</div>
+                        @if (!string.IsNullOrWhiteSpace(vp.Direccion))
+                        {
+                            <div class="vprep-dir">📍 @vp.Direccion@(string.IsNullOrWhiteSpace(vp.Localidad) ? "" : ", " + vp.Localidad)</div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(vp.Telefono))
+                        {
+                            <div class="vprep-tel">📞 @vp.Telefono</div>
+                        }
+                        <div class="vprep-desc">@vp.Descripcion</div>
+                        <div class="vprep-actions">
+                            <button class="vprep-btn-listo" @onclick="() => MarcarVisitaArmada(vp)">✅ Marcar armada</button>
+                            <button class="vprep-btn-quitar" @onclick="() => QuitarVisita(vp)" title="Sacar del tablero">✕</button>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
         @* Modal del QR: aparece al generar la lista para el celu *@
         @if (mostrarQr && !string.IsNullOrEmpty(qrToken))
         {
@@ -1109,6 +1156,23 @@
     // El backend ya filtra por DriveSubidoAt != null + estados no-finalizados, así que mostramos todo lo que viene.
     private List<CafePreparacionVentaDto> ParaArmar => lista ?? new();
 
+    // ── Visitas en el tablero de preparación (2026-08-05) ──
+    private List<VisitaPreparacionDto> visitasPrep = new();
+
+    private async Task MarcarVisitaArmada(VisitaPreparacionDto vp)
+    {
+        var ok = await Api.MarcarVisitaArmadaAsync(vp.Id);
+        if (ok) { ToastService.Success($"Visita N° {vp.Numero:0000} armada ✅"); await Cargar(); }
+        else ToastService.Error("No se pudo marcar la visita como armada");
+    }
+
+    private async Task QuitarVisita(VisitaPreparacionDto vp)
+    {
+        var ok = await Api.QuitarVisitaDePreparacionAsync(vp.Id);
+        if (ok) { ToastService.Info("Visita sacada del tablero"); await Cargar(); }
+        else ToastService.Error("No se pudo sacar la visita");
+    }
+
     protected override async Task OnInitializedAsync()
     {
         await Operator.LoadAsync();
@@ -1125,6 +1189,7 @@
         try
         {
             lista = await Api.GetCafePreparacionAsync(7) ?? new();
+            visitasPrep = await Api.GetVisitasPreparacionAsync() ?? new();
             // Refresca el estado del celu del depósito (por si se habilitó desde el celular)
             try { pickingDispositivo = await Api.GetPickingDispositivoAsync(); } catch { }
             ultimaActualizacion = DateTime.Now;
