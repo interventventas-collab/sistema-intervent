@@ -1,0 +1,160 @@
+@page "/visita/{Token}"
+@attribute [AllowAnonymous]
+@layout Web.Layout.LoginLayout
+@inject HttpClient Http
+@using System.Net
+@using System.Net.Http.Json
+
+@* ════════════════════════════════════════════════════════════════════════════
+   Pagina PUBLICA (sin login) del recibo de visita. Se abre al escanear el QR.
+   Muestra la visita + firma y permite marcarla como "realizada" + comentario.
+   ════════════════════════════════════════════════════════════════════════════ *@
+
+<style>
+    body { background: #f1f5f9; min-height: 100vh; }
+    .vp-wrap { max-width: 620px; margin: 0 auto; padding: 0.8rem; }
+    .vp-card { background: #fff; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); padding: 1.2rem; margin-bottom: 0.8rem; }
+    .vp-h1 { font-size: 1.3rem; font-weight: 800; margin: 0 0 0.2rem; color: #111827; }
+    .vp-sub { font-size: 0.85rem; color: #6b7280; margin: 0; }
+    .vp-badge { display: inline-block; padding: 0.25rem 0.7rem; border-radius: 20px; font-size: 0.78rem; font-weight: 700; }
+    .vp-badge.pend { background: #fef3c7; color: #92400e; }
+    .vp-badge.ok { background: #d1fae5; color: #065f46; }
+    .vp-lbl { display: block; font-size: 0.72rem; text-transform: uppercase; font-weight: 700; color: #6b7280; margin-bottom: 0.2rem; }
+    .vp-desc { font-size: 1rem; color: #111827; white-space: pre-wrap; line-height: 1.5; }
+    .vp-firma { max-width: 100%; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
+    .vp-textarea { width: 100%; padding: 0.7rem; border: 1px solid #d1d5db; border-radius: 8px; font-size: 0.95rem; box-sizing: border-box; }
+    .vp-btn { display: block; width: 100%; padding: 0.95rem; background: #15803d; color: #fff; border: none; border-radius: 10px; font-size: 1.05rem; font-weight: 700; cursor: pointer; margin-top: 0.7rem; }
+    .vp-btn:disabled { opacity: 0.6; }
+    .vp-error { background: #fef2f2; border: 1px solid #fca5a5; color: #7f1d1d; padding: 1rem; border-radius: 8px; text-align: center; }
+    .vp-ok-box { background: #ecfdf5; border: 1px solid #6ee7b7; color: #065f46; padding: 0.9rem; border-radius: 8px; text-align: center; font-weight: 600; }
+    .vp-loading { text-align: center; padding: 3rem 1rem; color: #6b7280; }
+</style>
+
+<div class="vp-wrap">
+    @if (loading)
+    {
+        <div class="vp-card vp-loading"><div style="font-size:2rem;">⏳</div><div>Cargando...</div></div>
+    }
+    else if (errorMsg is not null)
+    {
+        <div class="vp-card"><div class="vp-error"><strong>No se pudo cargar el recibo</strong><br /><span style="font-size:0.88rem;">@errorMsg</span></div></div>
+    }
+    else if (v is not null)
+    {
+        <div class="vp-card">
+            <div style="display:flex; justify-content:space-between; align-items:start; gap:0.5rem; flex-wrap:wrap;">
+                <div>
+                    <p class="vp-h1">🧾 Recibo de visita</p>
+                    <p class="vp-sub">@v.CreatedAt.ToLocalTime().ToString("dddd dd/MM/yyyy HH:mm", new System.Globalization.CultureInfo("es-AR"))</p>
+                </div>
+                <span class="vp-badge @(v.Estado == "realizada" ? "ok" : "pend")">
+                    @(v.Estado == "realizada" ? "✓ Realizada" : "⏳ Pendiente")
+                </span>
+            </div>
+        </div>
+
+        <div class="vp-card">
+            <span class="vp-lbl">Cliente</span>
+            <div style="font-size:1.05rem; font-weight:600; color:#111827;">@v.ClienteNombre</div>
+            @if (!string.IsNullOrWhiteSpace(v.Direccion))
+            {
+                <div class="vp-sub">@v.Direccion@(string.IsNullOrWhiteSpace(v.Localidad) ? "" : ", " + v.Localidad)</div>
+            }
+            @if (!string.IsNullOrWhiteSpace(v.Telefono))
+            {
+                <div class="vp-sub">📞 @v.Telefono</div>
+            }
+        </div>
+
+        <div class="vp-card">
+            <span class="vp-lbl">Descripción</span>
+            <div class="vp-desc">@v.Descripcion</div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(v.FirmaBase64))
+        {
+            <div class="vp-card">
+                <span class="vp-lbl">Firma del cliente@(string.IsNullOrWhiteSpace(v.NombreFirmante) ? "" : " — " + v.NombreFirmante)</span>
+                <img class="vp-firma" src="@v.FirmaBase64" alt="Firma" />
+            </div>
+        }
+
+        <div class="vp-card">
+            @if (v.Estado == "realizada")
+            {
+                <div class="vp-ok-box">
+                    ✓ Visita marcada como realizada@(v.RealizadaAt is null ? "" : " el " + v.RealizadaAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm"))
+                    @if (!string.IsNullOrWhiteSpace(v.ComentarioResolucion))
+                    {
+                        <div style="margin-top:0.4rem; font-weight:400;">💬 @v.ComentarioResolucion</div>
+                    }
+                </div>
+            }
+            else
+            {
+                <span class="vp-lbl">¿Ya hiciste la visita?</span>
+                <textarea class="vp-textarea" rows="3" @bind="comentario" placeholder="Comentario (opcional): qué se hizo, si el cliente no estaba, etc."></textarea>
+                <button class="vp-btn" disabled="@marcando" @onclick="MarcarRealizada">
+                    @(marcando ? "Guardando..." : "✅ Marcar visita realizada")
+                </button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Token { get; set; }
+
+    private bool loading = true;
+    private bool marcando = false;
+    private string? errorMsg;
+    private string comentario = "";
+    private VisitaPublicaModel? v;
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        if (string.IsNullOrWhiteSpace(Token)) { errorMsg = "Link inválido"; loading = false; return; }
+        try
+        {
+            var resp = await Http.GetAsync($"api/visitas/publica/{Uri.EscapeDataString(Token)}");
+            if (resp.StatusCode == HttpStatusCode.NotFound) { errorMsg = "La visita no existe o el link expiró"; return; }
+            if (!resp.IsSuccessStatusCode) { errorMsg = "Error cargando: " + resp.StatusCode; return; }
+            v = await resp.Content.ReadFromJsonAsync<VisitaPublicaModel>();
+            if (v is null) errorMsg = "Recibo vacío";
+        }
+        catch (Exception ex) { errorMsg = ex.Message; }
+        finally { loading = false; }
+    }
+
+    private async Task MarcarRealizada()
+    {
+        marcando = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"api/visitas/publica/{Uri.EscapeDataString(Token!)}/realizada",
+                new { Comentario = comentario });
+            if (resp.IsSuccessStatusCode) await Cargar();
+            else errorMsg = "No se pudo marcar: " + resp.StatusCode;
+        }
+        catch (Exception ex) { errorMsg = ex.Message; }
+        finally { marcando = false; }
+    }
+
+    public class VisitaPublicaModel
+    {
+        public int Id { get; set; }
+        public string ClienteNombre { get; set; } = "";
+        public string? Direccion { get; set; }
+        public string? Localidad { get; set; }
+        public string? Telefono { get; set; }
+        public string Descripcion { get; set; } = "";
+        public string Estado { get; set; } = "pendiente";
+        public string? FirmaBase64 { get; set; }
+        public string? NombreFirmante { get; set; }
+        public string? ComentarioResolucion { get; set; }
+        public DateTime? RealizadaAt { get; set; }
+        public DateTime CreatedAt { get; set; }
+    }
+}

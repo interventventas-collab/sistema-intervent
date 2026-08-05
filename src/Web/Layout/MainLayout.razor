@@ -691,9 +691,12 @@
                    8. Documentación (al final) *@
                 <NavGroup Label="⭐ Favoritos" Icon="@SvgIcons.Dashboard" FlyoutMode="true"
                           Highlight="true" DefaultExpanded="true"
-                          HasActiveChild="@(IsActive("/cafe/ventas") || IsActive("/cafe/tesoreria/cobranzas") || IsActive("/cafe/pedidos-whatsapp") || IsActive("/cafe/productos") || IsActive("/cafe/listas-precios") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/historial-stock") || IsActive("/cafe/clientes") || IsActive("/mapeo") || IsActive("/cafe/clientes-mapeados") || IsActive("/documentacion"))">
+                          HasActiveChild="@(IsActive("/cafe/ventas") || IsActive("/visitas") || IsActive("/cafe/tesoreria/cobranzas") || IsActive("/cafe/pedidos-whatsapp") || IsActive("/cafe/productos") || IsActive("/cafe/listas-precios") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/historial-stock") || IsActive("/cafe/clientes") || IsActive("/mapeo") || IsActive("/cafe/clientes-mapeados") || IsActive("/documentacion"))">
                     <NavItem Href="/cafe/ventas" Label="🛒 Ventas" Icon="@SvgIcons.ShoppingBag"
                              IsActive="@IsActive("/cafe/ventas")" OnClick="@(() => NavigateTo("/cafe/ventas"))" />
+                    @* 2026-08-05: Visitas — recibo de visita / cambio con QR y firma *@
+                    <NavItem Href="/visitas" Label="📋 Visitas" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/visitas")" OnClick="@(() => NavigateTo("/visitas"))" />
                     @if (HasPerm("cafe-tesoreria"))
                     {
                         <NavItem Href="/cafe/tesoreria/cobranzas" Label="📥 Cobranzas" Icon="@SvgIcons.ShoppingBag"

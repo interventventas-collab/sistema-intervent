@@ -2485,6 +2485,39 @@ END
 GO
 
 -- ============================================================
+-- VISITAS (2026-08-05): recibos de visita / cambio de producto.
+-- Similar a una venta pero centrado en una descripcion libre, con QR,
+-- firma del cliente y seguimiento (pendiente -> realizada).
+-- ============================================================
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Visitas' AND xtype='U')
+BEGIN
+    CREATE TABLE Visitas (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ClienteId INT NULL,
+        ClienteNombre NVARCHAR(200) NOT NULL,
+        Direccion NVARCHAR(500) NULL,
+        Localidad NVARCHAR(150) NULL,
+        Telefono NVARCHAR(50) NULL,
+        Descripcion NVARCHAR(MAX) NOT NULL,
+        Estado NVARCHAR(20) NOT NULL DEFAULT 'pendiente',
+        FirmaBase64 NVARCHAR(MAX) NULL,
+        NombreFirmante NVARCHAR(200) NULL,
+        PublicToken NVARCHAR(64) NULL,
+        ComentarioResolucion NVARCHAR(MAX) NULL,
+        RealizadaAt DATETIME2 NULL,
+        MapeoLat DECIMAL(10,7) NULL,
+        MapeoLng DECIMAL(10,7) NULL,
+        CreadoPor NVARCHAR(100) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL
+    );
+    CREATE INDEX IX_Visitas_CreatedAt ON Visitas (CreatedAt DESC);
+    CREATE UNIQUE NONCLUSTERED INDEX IX_Visitas_PublicToken
+        ON Visitas(PublicToken) WHERE PublicToken IS NOT NULL;
+END
+GO
+
+-- ============================================================
 -- MODULO CAFE (independiente del resto)
 -- Negocio de venta de cafe e insumos. Tablas prefijadas con Cafe_.
 -- ============================================================

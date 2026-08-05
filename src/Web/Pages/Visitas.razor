@@ -1,0 +1,368 @@
+@page "/visitas"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService Toast
+@inject AuthService Auth
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@using Web.Models
+
+@* ════════════════════════════════════════════════════════════════════════════
+   VISITAS (2026-08-05). Recibo de visita / cambio de producto. Se elige un
+   cliente (o se carga suelto), se escribe una descripcion libre, el cliente
+   firma, y se genera un recibo con QR. Etapa 1: alta + recibo + firma + listado.
+   ════════════════════════════════════════════════════════════════════════════ *@
+
+<div class="vis-wrap">
+    <div class="vis-header">
+        <div>
+            <h1 class="vis-title">📋 Visitas</h1>
+            <p class="vis-sub">Recibo de una visita o cambio de producto, con QR y firma del cliente.</p>
+        </div>
+    </div>
+
+    <div class="vis-grid">
+        @* ─────────────── Formulario Nueva Visita ─────────────── *@
+        <div class="vis-card">
+            <h2 class="vis-card-title">Nueva visita</h2>
+
+            @* Cliente *@
+            <label class="vis-label">Cliente</label>
+            @if (clienteSel is not null)
+            {
+                <div class="vis-cliente-sel">
+                    <div>
+                        <strong>@clienteSel.Nombre</strong>
+                        @if (!string.IsNullOrWhiteSpace(clienteSel.Codigo)) { <span class="vis-cod">#@clienteSel.Codigo</span> }
+                        <div class="vis-cliente-dir">@(DireccionDe(clienteSel) ?? "sin domicilio")</div>
+                    </div>
+                    <button class="vis-btn-mini" @onclick="QuitarCliente">✕ quitar</button>
+                </div>
+            }
+            else
+            {
+                <input class="vis-input" placeholder="Buscar cliente por nombre o código..."
+                       @bind="filtroCliente" @bind:event="oninput" />
+                @if (!string.IsNullOrWhiteSpace(filtroCliente))
+                {
+                    <div class="vis-cliente-list">
+                        @foreach (var c in ClientesFiltrados())
+                        {
+                            <div class="vis-cliente-item" @onclick="() => SeleccionarCliente(c)">
+                                <strong>@c.Nombre</strong>
+                                @if (!string.IsNullOrWhiteSpace(c.Codigo)) { <span class="vis-cod">#@c.Codigo</span> }
+                                <div class="vis-cliente-dir">@(DireccionDe(c) ?? "sin domicilio")</div>
+                            </div>
+                        }
+                        @if (!ClientesFiltrados().Any())
+                        {
+                            <div class="vis-cliente-empty">Sin resultados. Podés cargar los datos a mano abajo 👇</div>
+                        }
+                    </div>
+                }
+            }
+
+            @* Datos (editables, se prellenan si elegís un cliente) *@
+            <div class="vis-datos">
+                <div>
+                    <label class="vis-label">Nombre</label>
+                    <input class="vis-input" @bind="form.ClienteNombre" placeholder="Nombre de quien se visita" />
+                </div>
+                <div>
+                    <label class="vis-label">Domicilio</label>
+                    <input class="vis-input" @bind="form.Direccion" placeholder="Dirección" />
+                </div>
+                <div class="vis-datos-2">
+                    <div>
+                        <label class="vis-label">Localidad</label>
+                        <input class="vis-input" @bind="form.Localidad" placeholder="Localidad" />
+                    </div>
+                    <div>
+                        <label class="vis-label">Teléfono</label>
+                        <input class="vis-input" @bind="form.Telefono" placeholder="Teléfono" />
+                    </div>
+                </div>
+            </div>
+
+            @* Descripción libre *@
+            <label class="vis-label">Descripción / motivo <span class="vis-req">*</span></label>
+            <textarea class="vis-textarea" @bind="form.Descripcion" rows="4"
+                      placeholder="Ej: Se cambió la cafetera que vino fallada por una nueva. / Visita para revisar la máquina que no anda."></textarea>
+
+            @* Firma *@
+            <label class="vis-label">Firma del cliente (opcional)</label>
+            <div class="vis-firma-box">
+                <canvas id="visitaFirma" class="vis-firma-canvas"></canvas>
+            </div>
+            <div class="vis-firma-acciones">
+                <button class="vis-btn-mini" @onclick="LimpiarFirma">🧹 Borrar firma</button>
+                <input class="vis-input vis-firmante" @bind="form.NombreFirmante" placeholder="Aclaración (nombre de quien firma)" />
+            </div>
+
+            <button class="vis-btn-primary" disabled="@guardando" @onclick="Guardar">
+                @(guardando ? "Generando..." : "✅ Generar recibo de visita")
+            </button>
+        </div>
+
+        @* ─────────────── Listado ─────────────── *@
+        <div class="vis-card">
+            <h2 class="vis-card-title">Últimas visitas</h2>
+            @if (visitas is null)
+            {
+                <p class="vis-muted">Cargando...</p>
+            }
+            else if (!visitas.Any())
+            {
+                <p class="vis-muted">Todavía no hay visitas cargadas.</p>
+            }
+            else
+            {
+                <div class="vis-lista">
+                    @foreach (var v in visitas)
+                    {
+                        <div class="vis-item">
+                            <div class="vis-item-top">
+                                <strong>@v.ClienteNombre</strong>
+                                <span class="vis-estado @(v.Estado == "realizada" ? "ok" : "pend")">
+                                    @(v.Estado == "realizada" ? "✓ Realizada" : "⏳ Pendiente")
+                                </span>
+                            </div>
+                            <div class="vis-item-desc">@v.Descripcion</div>
+                            <div class="vis-item-meta">
+                                @v.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                                @if (v.TieneFirma) { <span> · ✍️ firmada</span> }
+                                @if (!string.IsNullOrWhiteSpace(v.ComentarioResolucion)) { <span> · 💬 @v.ComentarioResolucion</span> }
+                            </div>
+                            <div class="vis-item-acciones">
+                                <button class="vis-btn-mini" @onclick="() => VerRecibo(v)">🧾 Ver recibo / QR</button>
+                                <button class="vis-btn-mini danger" @onclick="() => Eliminar(v)">🗑 Borrar</button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@* ─────────────── Modal recibo (con QR) ─────────────── *@
+@if (recibo is not null)
+{
+    <div class="vis-modal-bg" @onclick="CerrarRecibo">
+        <div class="vis-modal" @onclick:stopPropagation="true">
+            <h2 class="vis-card-title">🧾 Recibo de visita</h2>
+            <div class="vis-recibo-cliente">
+                <strong>@recibo.ClienteNombre</strong>
+                @if (!string.IsNullOrWhiteSpace(recibo.Direccion)) { <div class="vis-muted">@recibo.Direccion</div> }
+            </div>
+            <div class="vis-recibo-desc">@recibo.Descripcion</div>
+
+            @if (!string.IsNullOrWhiteSpace(recibo.PublicToken))
+            {
+                <div class="vis-qr-box">
+                    <img class="vis-qr" src="@($"/api/visitas/{recibo.Id}/qr")"
+                         alt="QR" onerror="this.style.display='none';this.nextElementSibling.style.display='block';" />
+                    <div class="vis-qr-fallback" style="display:none;">
+                        ⚠️ El QR se genera cuando esté configurada la dirección pública del sistema.
+                        Igual podés usar el link de abajo.
+                    </div>
+                    <div class="vis-muted vis-qr-cap">Escaneá para abrir y hacer seguimiento</div>
+                </div>
+
+                <a class="vis-btn-primary" href="@LinkRecibo(recibo)" target="_blank">🖨 Abrir recibo (imprimir)</a>
+                <a class="vis-btn-wa" href="@LinkWhatsApp(recibo)" target="_blank">💬 Compartir por WhatsApp</a>
+            }
+
+            <button class="vis-btn-mini vis-cerrar" @onclick="CerrarRecibo">Cerrar</button>
+        </div>
+    </div>
+}
+
+<style>
+    .vis-wrap { max-width: 1100px; margin: 0 auto; padding: 1rem; }
+    .vis-header { margin-bottom: 1rem; }
+    .vis-title { font-size: 1.5rem; font-weight: 800; margin: 0; color: var(--text-primary, #111827); }
+    .vis-sub { font-size: 0.9rem; color: var(--text-secondary, #6b7280); margin: 0.2rem 0 0; }
+    .vis-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @@media (max-width: 850px) { .vis-grid { grid-template-columns: 1fr; } }
+    .vis-card { background: var(--bg-card, #fff); border: 1px solid var(--border, #e5e7eb); border-radius: 12px; padding: 1rem; }
+    .vis-card-title { font-size: 1.1rem; font-weight: 700; margin: 0 0 0.8rem; color: var(--text-primary, #111827); }
+    .vis-label { display: block; font-size: 0.78rem; font-weight: 600; text-transform: uppercase; color: var(--text-secondary, #6b7280); margin: 0.7rem 0 0.25rem; }
+    .vis-req { color: #dc2626; }
+    .vis-input, .vis-textarea { width: 100%; padding: 0.6rem 0.7rem; border: 1px solid var(--border, #d1d5db); border-radius: 8px; font-size: 0.95rem; box-sizing: border-box; background: var(--bg-input, #fff); color: var(--text-primary, #111827); }
+    .vis-textarea { resize: vertical; }
+    .vis-datos-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+    .vis-cliente-sel { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 8px; padding: 0.6rem 0.7rem; }
+    .vis-cliente-dir { font-size: 0.82rem; color: var(--text-secondary, #6b7280); }
+    .vis-cod { font-size: 0.75rem; color: #6b7280; margin-left: 0.3rem; }
+    .vis-cliente-list { border: 1px solid var(--border, #e5e7eb); border-radius: 8px; max-height: 230px; overflow-y: auto; margin-top: 0.3rem; }
+    .vis-cliente-item { padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--border, #f3f4f6); cursor: pointer; }
+    .vis-cliente-item:hover { background: var(--bg-hover, #f9fafb); }
+    .vis-cliente-empty { padding: 0.7rem; font-size: 0.85rem; color: var(--text-secondary, #6b7280); }
+    .vis-firma-box { border: 1px dashed #9ca3af; border-radius: 8px; background: #fff; }
+    .vis-firma-canvas { width: 100%; height: 140px; display: block; touch-action: none; border-radius: 8px; }
+    .vis-firma-acciones { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.4rem; }
+    .vis-firmante { flex: 1; }
+    .vis-btn-primary { display: block; width: 100%; text-align: center; margin-top: 1rem; padding: 0.85rem; background: #15803d; color: #fff; border: none; border-radius: 10px; font-size: 1rem; font-weight: 700; cursor: pointer; text-decoration: none; }
+    .vis-btn-primary:hover { background: #166534; }
+    .vis-btn-primary:disabled { opacity: 0.6; cursor: default; }
+    .vis-btn-wa { display: block; width: 100%; text-align: center; margin-top: 0.5rem; padding: 0.8rem; background: #22c55e; color: #fff; border: none; border-radius: 10px; font-weight: 700; text-decoration: none; }
+    .vis-btn-mini { padding: 0.4rem 0.7rem; background: var(--bg-hover, #f3f4f6); border: 1px solid var(--border, #e5e7eb); border-radius: 7px; font-size: 0.82rem; cursor: pointer; color: var(--text-primary, #374151); }
+    .vis-btn-mini.danger { color: #b91c1c; }
+    .vis-btn-mini:hover { background: #e5e7eb; }
+    .vis-muted { color: var(--text-secondary, #6b7280); font-size: 0.85rem; }
+    .vis-lista { display: flex; flex-direction: column; gap: 0.6rem; max-height: 70vh; overflow-y: auto; }
+    .vis-item { border: 1px solid var(--border, #e5e7eb); border-radius: 10px; padding: 0.7rem; }
+    .vis-item-top { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+    .vis-estado { font-size: 0.72rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 20px; }
+    .vis-estado.pend { background: #fef3c7; color: #92400e; }
+    .vis-estado.ok { background: #d1fae5; color: #065f46; }
+    .vis-item-desc { font-size: 0.9rem; margin: 0.3rem 0; color: var(--text-primary, #374151); white-space: pre-wrap; }
+    .vis-item-meta { font-size: 0.75rem; color: var(--text-secondary, #9ca3af); }
+    .vis-item-acciones { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
+    .vis-modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1rem; }
+    .vis-modal { background: var(--bg-card, #fff); border-radius: 14px; padding: 1.2rem; max-width: 420px; width: 100%; max-height: 92vh; overflow-y: auto; }
+    .vis-recibo-cliente { margin-bottom: 0.5rem; }
+    .vis-recibo-desc { background: var(--bg-hover, #f9fafb); border-radius: 8px; padding: 0.7rem; font-size: 0.92rem; white-space: pre-wrap; margin-bottom: 0.8rem; }
+    .vis-qr-box { text-align: center; margin: 0.5rem 0 1rem; }
+    .vis-qr { width: 200px; height: 200px; }
+    .vis-qr-cap { margin-top: 0.3rem; }
+    .vis-qr-fallback { font-size: 0.85rem; color: #92400e; background: #fef3c7; border-radius: 8px; padding: 0.6rem; }
+    .vis-cerrar { display: block; width: 100%; margin-top: 0.8rem; text-align: center; }
+</style>
+
+@code {
+    private List<CafeClienteDto> clientes = new();
+    private List<VisitaDto>? visitas;
+    private CafeClienteDto? clienteSel;
+    private string filtroCliente = "";
+    private CreateVisitaRequest form = new();
+    private bool guardando = false;
+    private bool firmaLista = false;
+    private VisitaDto? recibo;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var cs = await Api.GetCafeClientesAsync();
+        if (cs is not null) clientes = cs;
+        await CargarVisitas();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Inicializa el canvas de firma una sola vez (cuando ya esta en el DOM).
+        if (!firmaLista)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("firmaCanvas.setup", "visitaFirma");
+                firmaLista = true;
+            }
+            catch { /* el canvas todavia no esta */ }
+        }
+    }
+
+    private async Task CargarVisitas()
+    {
+        visitas = await Api.GetVisitasAsync() ?? new();
+        StateHasChanged();
+    }
+
+    private IEnumerable<CafeClienteDto> ClientesFiltrados()
+    {
+        var f = filtroCliente.Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(f)) return Enumerable.Empty<CafeClienteDto>();
+        return clientes.Where(c =>
+            (c.Nombre?.ToLowerInvariant().Contains(f) ?? false) ||
+            (c.Codigo?.ToLowerInvariant().Contains(f) ?? false) ||
+            (c.RazonSocial?.ToLowerInvariant().Contains(f) ?? false))
+            .Take(30);
+    }
+
+    private static string? DireccionDe(CafeClienteDto c)
+        => !string.IsNullOrWhiteSpace(c.DomicilioEntrega) ? c.DomicilioEntrega
+         : !string.IsNullOrWhiteSpace(c.Direccion) ? c.Direccion : null;
+
+    private void SeleccionarCliente(CafeClienteDto c)
+    {
+        clienteSel = c;
+        filtroCliente = "";
+        form.ClienteId = c.Id;
+        form.ClienteNombre = c.RazonSocial ?? c.Nombre;
+        form.Direccion = DireccionDe(c);
+        form.Localidad = c.Localidad;
+        form.Telefono = c.Telefono;
+        form.MapeoLat = c.MapeoLat;
+        form.MapeoLng = c.MapeoLng;
+    }
+
+    private void QuitarCliente()
+    {
+        clienteSel = null;
+        form.ClienteId = null;
+        form.MapeoLat = null;
+        form.MapeoLng = null;
+    }
+
+    private async Task LimpiarFirma()
+    {
+        try { await JS.InvokeVoidAsync("firmaCanvas.clear", "visitaFirma"); } catch { }
+    }
+
+    private async Task Guardar()
+    {
+        if (string.IsNullOrWhiteSpace(form.ClienteNombre)) { Toast.Warning("Poné el nombre de quien se visita"); return; }
+        if (string.IsNullOrWhiteSpace(form.Descripcion)) { Toast.Warning("Escribí la descripción / motivo"); return; }
+
+        guardando = true;
+        try
+        {
+            try { form.FirmaBase64 = await JS.InvokeAsync<string?>("firmaCanvas.get", "visitaFirma"); } catch { form.FirmaBase64 = null; }
+            var user = await Auth.GetUserAsync();
+            form.CreadoPor = user?.Username;
+
+            var creada = await Api.CreateVisitaAsync(form);
+            if (creada is null) { Toast.Error("No se pudo guardar la visita"); return; }
+
+            Toast.Success("Visita guardada ✅");
+            recibo = creada;
+            await CargarVisitas();
+            ResetForm();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error("Error: " + ex.Message);
+        }
+        finally
+        {
+            guardando = false;
+        }
+    }
+
+    private void ResetForm()
+    {
+        form = new CreateVisitaRequest();
+        clienteSel = null;
+        filtroCliente = "";
+        _ = LimpiarFirma();
+    }
+
+    private void VerRecibo(VisitaDto v) => recibo = v;
+    private void CerrarRecibo() => recibo = null;
+
+    private string LinkRecibo(VisitaDto v) => Nav.BaseUri.TrimEnd('/') + "/visita/" + v.PublicToken;
+
+    private string LinkWhatsApp(VisitaDto v)
+    {
+        var txt = $"Recibo de visita: {LinkRecibo(v)}";
+        return "https://wa.me/?text=" + Uri.EscapeDataString(txt);
+    }
+
+    private async Task Eliminar(VisitaDto v)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Borrar la visita de {v.ClienteNombre}?")) return;
+        var ok = await Api.DeleteVisitaAsync(v.Id);
+        if (ok) { Toast.Success("Visita borrada"); await CargarVisitas(); }
+        else Toast.Error("No se pudo borrar");
+    }
+}
