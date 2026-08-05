@@ -499,6 +499,17 @@ public class MetaWhatsAppWebhookController : ControllerBase
         await db.SaveChangesAsync();
         _logger.LogInformation("[Meta WA webhook] IN {Numero} ({Name}): {Body}", numero, nombrePerfil, cuerpo);
 
+        // 2026-08-05 (pedido del usuario): la línea FIJO TRANSRADIO NO tiene automatismos.
+        // El mensaje entra a la bandeja igual (arriba ya se guardó), pero acá cortamos ANTES de
+        // los robots: nada de bot de empleados, ni detección de pedidos, ni bot de bienvenida.
+        // Esa línea se responde 100% a mano. (Fase 2: hacerlo configurable por línea desde pantalla.)
+        const string LINEA_SIN_AUTOMATISMOS = "1195191513683780"; // FIJO TRANSRADIO
+        if (lineaId == LINEA_SIN_AUTOMATISMOS)
+        {
+            _logger.LogInformation("[Meta WA webhook] línea FIJO TRANSRADIO: sin automatismos, no corre ningún bot.");
+            return;
+        }
+
         // 2026-08-03: BOT INTERNO DE EMPLEADOS. Si el mensaje es una palabra clave de empleado, una
         // opción de su menú, o la respuesta a una consulta pendiente, lo atiende el bot de empleados
         // y cortamos acá (no dispara pedido ni bienvenida).
