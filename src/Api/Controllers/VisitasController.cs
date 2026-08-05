@@ -136,6 +136,87 @@ public class VisitasController : ControllerBase
         return Ok(new { deleted = true });
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    //  PREPARACION DE PEDIDOS (tablero de Osmar) — sumar visitas para armar
+    // ═══════════════════════════════════════════════════════════════════════
+
+    private static VisitaPreparacionDto MapPrep(Visita v) => new(
+        v.Id, v.Numero, v.ClienteNombre, v.Direccion, v.Localidad, v.Telefono,
+        v.Descripcion, v.PublicToken, !string.IsNullOrEmpty(v.FirmaBase64), v.PreparadoAt, v.CreatedAt);
+
+    /// <summary>Manda la visita al tablero de Preparación de pedidos (para armar).</summary>
+    [HttpPost("{id:int}/mandar-preparacion")]
+    public async Task<IActionResult> MandarPreparacion(int id)
+    {
+        var v = await _db.Visitas.FindAsync(id);
+        if (v is null) return NotFound(new { error = "Visita no encontrada" });
+        v.EnPreparacion = true;
+        v.PreparadoAt = null;
+        v.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>Visitas mandadas a preparación que todavía NO se armaron (para el tablero).</summary>
+    [HttpGet("preparacion")]
+    public async Task<IActionResult> ListarPreparacion()
+    {
+        var list = await _db.Visitas
+            .Where(v => v.EnPreparacion && v.PreparadoAt == null)
+            .OrderByDescending(v => v.CreatedAt)
+            .Take(200).ToListAsync();
+        return Ok(list.Select(MapPrep).ToList());
+    }
+
+    /// <summary>Visitas ya armadas (para la sección "Ya armados", últimos N días).</summary>
+    [HttpGet("preparacion/armados")]
+    public async Task<IActionResult> ListarPreparacionArmados([FromQuery] int dias = 7)
+    {
+        var desde = DateTime.UtcNow.Date.AddDays(-dias);
+        var list = await _db.Visitas
+            .Where(v => v.EnPreparacion && v.PreparadoAt != null && v.PreparadoAt >= desde)
+            .OrderByDescending(v => v.PreparadoAt)
+            .Take(200).ToListAsync();
+        return Ok(list.Select(MapPrep).ToList());
+    }
+
+    /// <summary>Marca la visita como ARMADA (la saca de "para armar" y pasa a "ya armados").</summary>
+    [HttpPost("{id:int}/preparacion/armada")]
+    public async Task<IActionResult> MarcarArmada(int id)
+    {
+        var v = await _db.Visitas.FindAsync(id);
+        if (v is null) return NotFound(new { error = "Visita no encontrada" });
+        v.PreparadoAt = DateTime.UtcNow;
+        v.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>Vuelve a poner la visita "para armar" (deshace el armada).</summary>
+    [HttpPost("{id:int}/preparacion/volver")]
+    public async Task<IActionResult> VolverAArmar(int id)
+    {
+        var v = await _db.Visitas.FindAsync(id);
+        if (v is null) return NotFound(new { error = "Visita no encontrada" });
+        v.PreparadoAt = null;
+        v.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>Saca la visita del tablero de preparación por completo.</summary>
+    [HttpPost("{id:int}/preparacion/quitar")]
+    public async Task<IActionResult> QuitarDePreparacion(int id)
+    {
+        var v = await _db.Visitas.FindAsync(id);
+        if (v is null) return NotFound(new { error = "Visita no encontrada" });
+        v.EnPreparacion = false;
+        v.PreparadoAt = null;
+        v.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
     /// <summary>Suma la visita al mapa de reparto como una parada (Origin='visita'). Etapa 3.</summary>
     [HttpPost("{id:int}/sumar-al-mapa")]
     public async Task<IActionResult> SumarAlMapa(int id)

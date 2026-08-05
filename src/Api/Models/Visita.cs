@@ -72,6 +72,12 @@ public class Visita
     [MaxLength(100)]
     public string? CreadoPor { get; set; }
 
+    /// <summary>Si true, la visita está mandada a "Preparación de pedidos" (tablero de Osmar).</summary>
+    public bool EnPreparacion { get; set; }
+
+    /// <summary>Cuándo se marcó como armada en preparación. null = todavía para armar.</summary>
+    public DateTime? PreparadoAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

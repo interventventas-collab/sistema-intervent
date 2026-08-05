@@ -23,6 +23,21 @@ public class VisitaDto
     public DateTime? UpdatedAt { get; set; }
 }
 
+public class VisitaPreparacionDto
+{
+    public int Id { get; set; }
+    public int Numero { get; set; }
+    public string ClienteNombre { get; set; } = "";
+    public string? Direccion { get; set; }
+    public string? Localidad { get; set; }
+    public string? Telefono { get; set; }
+    public string Descripcion { get; set; } = "";
+    public string? PublicToken { get; set; }
+    public bool TieneFirma { get; set; }
+    public DateTime? PreparadoAt { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
 public class CreateVisitaRequest
 {
     public int? ClienteId { get; set; }
