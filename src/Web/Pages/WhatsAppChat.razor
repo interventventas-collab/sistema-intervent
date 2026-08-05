@@ -440,6 +440,11 @@
                 <div style="flex:1;">
                     <div style="font-weight:600; display:flex; align-items:center; gap:0.45rem; flex-wrap:wrap;">
                         <span>@(MostrarNombre(SelectedConv()))</span>
+                        @* 2026-08-05: ojito para ver la ficha del cliente, al lado del nombre (reemplaza el botón de la barra) *@
+                        @if (SelectedConv()?.ClienteId is int)
+                        {
+                            <button class="wa-ver-cliente-ojo @(mostrarFichaCliente ? "activo" : "")" @onclick="ToggleFichaCliente" title="Ver la ficha del cliente (saldo, últimas facturas, ubicación) — tocá para abrir/cerrar">👁️</button>
+                        }
                         @if (SelectedConv()?.Linea is string _lh)
                         {
                             <span class="wa-header-linea" title="Esta conversación es de tu línea: @LineaNombre(_lh, SelectedConv()?.LineaNumero)">
@@ -477,23 +482,13 @@
                         ✏️ Editar contacto
                     </button>
                 }
-                @if (SelectedConv()?.ClienteId is int)
-                {
-                    <button class="btn btn-sm @(mostrarFichaCliente ? "btn-primary" : "btn-outline-primary")" @onclick="ToggleFichaCliente" title="Ver la ficha del cliente (saldo, últimas facturas, ubicación) sin salir del chat" style="font-weight:600;">
-                        @(mostrarFichaCliente ? "▲ Ocultar cliente" : "👁️ Ver cliente")
-                    </button>
-                }
+                @* 2026-08-05: "Ver cliente" se movió al ojito al lado del nombre del contacto *@
                 <button class="btn btn-outline-success btn-sm" @onclick="AbrirPreviewPedido" title="Abre una ventana con el texto del pedido (el mensaje tildado, o el último si no tildaste nada) para revisarlo antes de crear la venta">
                     📋 Crear pedido
                 </button>
                 @* 2026-08-05: el "Menú rol" se movió abajo, arriba de los íconos del composer, como miniatura de lo que le llega al cliente *@
-                @* 2026-08-03: escribirle con plantilla aprobada (sirve cuando pasaron +24hs y no se puede escribir libre) *@
-                @if (SelectedConv()?.Canal != "INSTAGRAM")
-                {
-                    <button class="btn btn-outline-success btn-sm" @onclick="EscribirConPlantilla" title="Escribirle con una plantilla aprobada (necesario cuando pasaron más de 24hs desde su último mensaje)">
-                        ✍️ Plantilla
-                    </button>
-                }
+                @* 2026-08-05: se quitó el botón "Plantilla" de la barra: era redundante — hace lo mismo que "Nueva conversación"
+                   y cuando se cierra la ventana de 24hs el cajón de escribir ya se transforma solo en el selector de plantilla. *@
                 <button class="btn btn-outline-secondary btn-sm wa-icon-round" @onclick="@(() => showConfig = true)" title="Configurar respuestas rápidas y contactos">
                     ⚙️
                 </button>
@@ -1139,7 +1134,7 @@
     <div class="wa-modal-backdrop" @onclick="@(() => showQuickContact = false)"></div>
     <div class="wa-modal" style="max-width:520px;">
         <div class="wa-modal-header">
-            <h3 style="margin:0; flex:1; font-size:1.05rem;">➕ Asignar contacto</h3>
+            <h3 style="margin:0; flex:1; font-size:1.05rem;">@(quickContactEditId is null ? "➕ Asignar contacto" : "✏️ Editar contacto")</h3>
             <button class="btn btn-sm btn-outline-secondary" @onclick="@(() => showQuickContact = false)">×</button>
         </div>
         <div class="wa-modal-body">
@@ -1195,7 +1190,7 @@
             </div>
             <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:1rem;">
                 <button class="btn btn-secondary btn-sm" @onclick="@(() => showQuickContact = false)">Cancelar</button>
-                <button class="btn btn-success btn-sm" @onclick="GuardarQuickContact">✓ Guardar contacto</button>
+                <button class="btn btn-success btn-sm" @onclick="GuardarQuickContact">@(quickContactEditId is null ? "✓ Guardar contacto" : "✓ Guardar cambios")</button>
             </div>
         </div>
     </div>
@@ -1875,6 +1870,10 @@
     /* Cliente vinculado */
     .wa-cliente-badge { background: #ecfdf5; color: #047857; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.7rem; text-decoration: none; border: 1px solid #a7f3d0; }
     .wa-cliente-badge:hover { background: #d1fae5; }
+    /* 2026-08-05: ojito para ver la ficha del cliente, al lado del nombre del contacto */
+    .wa-ver-cliente-ojo { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 50%; width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.15rem; line-height: 1; padding: 0; transition: all .15s; }
+    .wa-ver-cliente-ojo:hover { background: #dbeafe; border-color: #60a5fa; transform: translateY(-1px); }
+    .wa-ver-cliente-ojo.activo { background: #2563eb; border-color: #2563eb; box-shadow: 0 2px 8px rgba(37,99,235,0.4); }
     .wa-cliente-dropdown { position: absolute; background: #fff; border: 1px solid #d1d5db; border-radius: 6px; max-height: 220px; overflow-y: auto; min-width: 240px; z-index: 100; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
     .wa-cliente-opt { padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; }
     .wa-cliente-opt:hover { background: #f9fafb; }
@@ -2250,6 +2249,7 @@
 
     // Quick contact modal
     bool showQuickContact = false;
+    int? quickContactEditId = null;   // 2026-08-05: si tiene valor, el panel está EDITANDO ese contacto (si es null, es alta)
     string quickContactNumero = "", quickContactNombre = "", quickContactRol = "hermano", quickContactNotas = "";
     int? quickContactClienteId = null;
     string? quickContactClienteNombre = null;
@@ -2266,6 +2266,7 @@
     {
         if (selectedNumero == null) return;
         var conv = SelectedConv();
+        quickContactEditId = null;   // alta
         quickContactNumero = selectedNumero;
         quickContactNombre = conv?.NombrePerfil ?? "";
         quickContactRol = "hermano";
@@ -2277,10 +2278,28 @@
         showQuickContact = true;
     }
 
+    // 2026-08-05: "Editar contacto" ahora abre la ficha de ESTE contacto ya cargada para modificar
+    // (antes abría la lista completa de contactos en la configuración, lo cual no servía para editarlo).
     void AbrirEditarContacto()
     {
-        showConfig = true;
-        configTab = "cont";
+        if (selectedNumero == null) return;
+        var cont = GetContactoByNumero(selectedNumero);
+        if (cont == null)
+        {
+            // No estaba guardado como contacto: caemos a "asignar" (alta) con los datos del chat.
+            AbrirAsignarContacto();
+            return;
+        }
+        quickContactEditId = cont.Id;   // edición
+        quickContactNumero = cont.Numero;
+        quickContactNombre = cont.Nombre;
+        quickContactRol = string.IsNullOrWhiteSpace(cont.Rol) ? "hermano" : cont.Rol;
+        quickContactNotas = cont.Notas ?? "";
+        quickContactClienteId = cont.ClienteId;
+        quickContactClienteNombre = cont.ClienteNombre;
+        quickContactClienteQuery = "";
+        clienteResultadosQuick = new();
+        showQuickContact = true;
     }
 
     // 2026-08-04: corregir el número de un chat que quedó mal cargado.
@@ -2350,11 +2369,22 @@
     async Task GuardarQuickContact()
     {
         if (string.IsNullOrWhiteSpace(quickContactNombre)) { Toast.Error("El nombre es obligatorio"); return; }
-        var (ok, err) = await Api.CreateTwContactoAsync(new ApiClient.TwContactoUpsert(
-            quickContactNumero, quickContactNombre, quickContactRol, quickContactNotas, true, quickContactClienteId));
+        var upsert = new ApiClient.TwContactoUpsert(
+            quickContactNumero, quickContactNombre, quickContactRol, quickContactNotas, true, quickContactClienteId);
+        bool ok; string? err = null;
+        if (quickContactEditId is int editId)
+        {
+            // 2026-08-05: edición del contacto existente.
+            ok = await Api.UpdateTwContactoAsync(editId, upsert);
+            if (!ok) err = "No se pudo guardar el contacto";
+        }
+        else
+        {
+            (ok, err) = await Api.CreateTwContactoAsync(upsert);
+        }
         if (ok)
         {
-            Toast.Success("Contacto asignado");
+            Toast.Success(quickContactEditId is null ? "Contacto asignado" : "Contacto actualizado");
             showQuickContact = false;
             await LoadContactos();
             await LoadConversaciones(silent: true);
