@@ -961,6 +961,26 @@ public class ApiClient
     public async Task<bool> DeleteVisitaAsync(int id)
         => await DeleteAsync($"/api/visitas/{id}");
 
+    /// <summary>Envía el recibo de la visita al cliente por WhatsApp API desde la línea elegida.</summary>
+    public async Task<(bool ok, string? error)> EnviarVisitaWhatsAppAsync(int id, string? numero, string? lineaPhoneId)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync($"/api/visitas/{id}/enviar-whatsapp",
+                new { Numero = numero, LineaPhoneId = lineaPhoneId });
+            if (resp.IsSuccessStatusCode) return (true, null);
+            string err = "Error enviando";
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err;
+            }
+            catch { }
+            return (false, err);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     // --- Chat interno entre usuarios (2026-07-02) ---
     public async Task<ChatConversacionesDto?> GetChatConversacionesAsync()
         => await GetAsync<ChatConversacionesDto>("/api/chat/conversaciones");

@@ -19,15 +19,17 @@ public class VisitasController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly QrRepartidorService _qr;
+    private readonly WhatsAppOutboundService _outbound;
 
-    public VisitasController(AppDbContext db, QrRepartidorService qr)
+    public VisitasController(AppDbContext db, QrRepartidorService qr, WhatsAppOutboundService outbound)
     {
         _db = db;
         _qr = qr;
+        _outbound = outbound;
     }
 
     private static VisitaDto Map(Visita v) => new(
-        v.Id, v.ClienteId, v.ClienteNombre, v.Direccion, v.Localidad, v.Telefono,
+        v.Id, v.Numero, v.ClienteId, v.ClienteNombre, v.Direccion, v.Localidad, v.Telefono,
         v.Descripcion, v.Estado, !string.IsNullOrEmpty(v.FirmaBase64), v.NombreFirmante,
         v.PublicToken, v.ComentarioResolucion, v.RealizadaAt, v.MapeoLat, v.MapeoLng,
         v.CreadoPor, v.CreatedAt, v.UpdatedAt);
@@ -69,8 +71,12 @@ public class VisitasController : ControllerBase
         if (string.IsNullOrWhiteSpace(req.Descripcion))
             return BadRequest(new { error = "La descripcion es obligatoria" });
 
+        // Numero correlativo: el mayor actual + 1 (arranca en 1). Volumen bajo, sin concurrencia real.
+        var ultimoNumero = await _db.Visitas.MaxAsync(x => (int?)x.Numero) ?? 0;
+
         var v = new Visita
         {
+            Numero = ultimoNumero + 1,
             ClienteId = req.ClienteId,
             ClienteNombre = req.ClienteNombre.Trim(),
             Direccion = string.IsNullOrWhiteSpace(req.Direccion) ? null : req.Direccion.Trim(),
@@ -121,6 +127,42 @@ public class VisitasController : ControllerBase
         return Ok(new { deleted = true });
     }
 
+    /// <summary>Envia el link del recibo de la visita al cliente por WhatsApp (API oficial Meta),
+    /// desde la linea elegida. Reemplaza el viejo link wa.me. El numero se normaliza al formato
+    /// canonico para que caiga en el hilo existente del cliente.</summary>
+    [HttpPost("{id:int}/enviar-whatsapp")]
+    public async Task<IActionResult> EnviarWhatsApp(int id, [FromBody] EnviarVisitaWhatsAppRequest req)
+    {
+        var v = await _db.Visitas.FindAsync(id);
+        if (v is null) return NotFound(new { error = "Visita no encontrada" });
+
+        var crudo = !string.IsNullOrWhiteSpace(req?.Numero) ? req!.Numero : v.Telefono;
+        if (string.IsNullOrWhiteSpace(crudo))
+            return BadRequest(new { error = "No hay teléfono para enviar. Cargá el número del cliente." });
+        var destino = MetaWhatsAppService.ToInboxWhatsApp(crudo);
+
+        var baseUrl = (await _db.AppSettings.FindAsync("mapeo.public_base_url"))?.Value;
+        string? url = (!string.IsNullOrWhiteSpace(baseUrl) && !string.IsNullOrWhiteSpace(v.PublicToken))
+            ? $"{baseUrl.TrimEnd('/')}/visita/{v.PublicToken}"
+            : null;
+        var num = v.Numero.ToString("D4");
+        var mensaje = url is not null
+            ? $"Hola! Te paso el recibo de tu visita N° {num}:\n\n{url}\n\nCualquier cosa avisame. Gracias!"
+            : $"Hola! Te paso el recibo de tu visita N° {num}. Cualquier cosa avisame. Gracias!";
+
+        try
+        {
+            var (msgId, canal, _) = await _outbound.SendTextAsync(destino, mensaje, req?.LineaPhoneId);
+            if (msgId is null)
+                return StatusCode(503, new { error = "No se pudo enviar (WhatsApp no configurado o fuera de la ventana de 24hs)." });
+            return Ok(new { ok = true, canal });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(503, new { error = ex.Message });
+        }
+    }
+
     /// <summary>PNG del QR que lleva al recibo publico /visita/{token}. Lo muestra la pantalla al operador.</summary>
     [HttpGet("{id:int}/qr")]
     public async Task<IActionResult> GetQr(int id)
@@ -144,7 +186,7 @@ public class VisitasController : ControllerBase
         var v = await _db.Visitas.FirstOrDefaultAsync(x => x.PublicToken == token);
         if (v is null) return NotFound(new { error = "Visita no encontrada" });
         return Ok(new VisitaPublicaDto(
-            v.Id, v.ClienteNombre, v.Direccion, v.Localidad, v.Telefono, v.Descripcion,
+            v.Id, v.Numero, v.ClienteNombre, v.Direccion, v.Localidad, v.Telefono, v.Descripcion,
             v.Estado, v.FirmaBase64, v.NombreFirmante, v.ComentarioResolucion, v.RealizadaAt, v.CreatedAt));
     }
 
