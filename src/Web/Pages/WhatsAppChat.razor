@@ -981,45 +981,50 @@
 
             @if (Ventana24Abierta() || EsChatInstagram())
             {
-                @* 2026-08-05: MENÚ ROL como miniatura de lo que le llega al cliente. Al tocarla, se envía. *@
-                @if (SelectedConv()?.Canal != "INSTAGRAM")
-                {
-                    <button class="wa-menurol-mini" @onclick="EnviarMenuRol" disabled="@enviandoMenuRol"
-                            title="Tocá para enviarle al cliente este menú y que se identifique (Frikaf / Intervent / Intereventos)">
-                        <div class="wa-menurol-cap">@(enviandoMenuRol ? "⏳ Enviando…" : "👆 Menú rol — así le llega, tocá para enviar")</div>
-                        <div class="wa-menurol-bubble">
-                            <div class="wa-menurol-txt">¡Hola! 👋 Gracias por escribirnos.<br />¿Con quién te querés contactar?</div>
-                            <div class="wa-menurol-opt">☕ Cafés Frikaf</div>
-                            <div class="wa-menurol-opt">🏢 Intervent</div>
-                            <div class="wa-menurol-opt">🪑 Intereventos</div>
-                        </div>
-                    </button>
-                }
                 <div class="wa-composer">
-                    @* Botón adjuntar archivo de la PC *@
-                    <label class="wa-attach-btn @(uploading ? "uploading" : "")" title="Adjuntar archivo de tu PC (máx 16 MB)">
-                        <InputFile OnChange="OnArchivoSeleccionado" disabled="@(uploading || sending)" style="display:none;" />
-                        @(uploading ? "⏳" : "📎")
-                    </label>
-                    @* Botón adjuntar desde el servidor *@
-                    <button class="wa-attach-btn" title="Adjuntar del servidor (cobranzas, uploads previos)" @onclick="AbrirAdjuntarServidor" disabled="@(uploading || sending)">🗂️</button>
-                    @* 2026-07-29: Enviar saldo de un cliente *@
-                    <button class="wa-attach-btn wa-saldo-btn" title="Enviar saldo (deuda) de un cliente" @onclick="ToggleSaldoPanel" disabled="@(uploading || sending)">💰</button>
-                    @* 2026-07-29: Pasar CBU / datos bancarios *@
-                    <button class="wa-attach-btn wa-cbu-btn" title="Pasar un CBU / datos bancarios al cliente" @onclick="ToggleCbuPanel" disabled="@(uploading || sending)">🏦</button>
-                    @* 2026-08-02: compartir una tarjeta de contacto *@
-                    <button class="wa-attach-btn" title="Compartir un contacto (tarjeta con nombre y número)" @onclick="ToggleContactoPanel" disabled="@(uploading || sending)">👤</button>
-                    @* 2026-08-01: nota de voz (micrófono) *@
-                    @if (!grabandoAudio)
-                    {
-                        <button class="wa-attach-btn wa-mic-btn" title="Grabar nota de voz" @onclick="ToggleGrabarAudio" disabled="@(uploading || sending || enviandoAudio)">@(enviandoAudio ? "⏳" : "🎤")</button>
-                    }
-                    else
-                    {
-                        <button class="wa-attach-btn wa-mic-rec" title="Parar y enviar" @onclick="ToggleGrabarAudio">⏹️</button>
-                        <button class="wa-attach-btn" title="Cancelar" @onclick="CancelarAudio">✖️</button>
-                        <span class="wa-mic-rec-label">● grabando…</span>
-                    }
+                    @* 2026-08-05: columna izquierda = miniatura del Menú rol (arriba) + íconos redondos (abajo) *@
+                    <div class="wa-composer-left">
+                        @* MENÚ ROL — miniatura (media) de lo que le llega al cliente. Al tocarla, se envía. *@
+                        @if (SelectedConv()?.Canal != "INSTAGRAM")
+                        {
+                            <button class="wa-menurol-mini" @onclick="EnviarMenuRol" disabled="@enviandoMenuRol"
+                                    title="Tocá para enviarle al cliente este menú y que se identifique (Frikaf / Intervent / Intereventos)">
+                                <div class="wa-menurol-cap">@(enviandoMenuRol ? "⏳ Enviando…" : "👆 Menú rol · enviar")</div>
+                                <div class="wa-menurol-bubble">
+                                    <div class="wa-menurol-txt">¡Hola! 👋 Gracias por escribirnos.<br />¿Con quién te querés contactar?</div>
+                                    <div class="wa-menurol-opt">☕ Cafés Frikaf</div>
+                                    <div class="wa-menurol-opt">🏢 Intervent</div>
+                                    <div class="wa-menurol-opt">🪑 Intereventos</div>
+                                </div>
+                            </button>
+                        }
+                        <div class="wa-composer-tools">
+                            @* Botón adjuntar archivo de la PC *@
+                            <label class="wa-attach-btn @(uploading ? "uploading" : "")" title="Adjuntar archivo de tu PC (máx 16 MB)">
+                                <InputFile OnChange="OnArchivoSeleccionado" disabled="@(uploading || sending)" style="display:none;" />
+                                @(uploading ? "⏳" : "📎")
+                            </label>
+                            @* Botón adjuntar desde el servidor *@
+                            <button class="wa-attach-btn" title="Adjuntar del servidor (cobranzas, uploads previos)" @onclick="AbrirAdjuntarServidor" disabled="@(uploading || sending)">🗂️</button>
+                            @* 2026-07-29: Enviar saldo de un cliente *@
+                            <button class="wa-attach-btn wa-saldo-btn" title="Enviar saldo (deuda) de un cliente" @onclick="ToggleSaldoPanel" disabled="@(uploading || sending)">💰</button>
+                            @* 2026-07-29: Pasar CBU / datos bancarios *@
+                            <button class="wa-attach-btn wa-cbu-btn" title="Pasar un CBU / datos bancarios al cliente" @onclick="ToggleCbuPanel" disabled="@(uploading || sending)">🏦</button>
+                            @* 2026-08-02: compartir una tarjeta de contacto *@
+                            <button class="wa-attach-btn" title="Compartir un contacto (tarjeta con nombre y número)" @onclick="ToggleContactoPanel" disabled="@(uploading || sending)">👤</button>
+                            @* 2026-08-01: nota de voz (micrófono) *@
+                            @if (!grabandoAudio)
+                            {
+                                <button class="wa-attach-btn wa-mic-btn" title="Grabar nota de voz" @onclick="ToggleGrabarAudio" disabled="@(uploading || sending || enviandoAudio)">@(enviandoAudio ? "⏳" : "🎤")</button>
+                            }
+                            else
+                            {
+                                <button class="wa-attach-btn wa-mic-rec" title="Parar y enviar" @onclick="ToggleGrabarAudio">⏹️</button>
+                                <button class="wa-attach-btn" title="Cancelar" @onclick="CancelarAudio">✖️</button>
+                                <span class="wa-mic-rec-label">● grabando…</span>
+                            }
+                        </div>
+                    </div>
                     @* 2026-07-23: @bind:event="oninput" es CLAVE — sin esto el texto solo se guarda al salir del
    campo, y al apretar Enter el sistema veia el mensaje vacio (no enviaba nada). *@
                     <textarea class="form-control wa-composer-input" placeholder="Escribir mensaje… (Enter para enviar, Shift+Enter para renglón nuevo)" @bind="composerText" @bind:event="oninput" rows="3"></textarea>
@@ -1756,14 +1761,17 @@
     .wa-vincular-opt:hover:not(:disabled) { background: #ecfdf5; border-color: #16a34a; }
     .wa-vincular-opt:disabled { opacity: 0.6; cursor: wait; }
     .wa-vincular-nuevo { margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px dashed #e5e7eb; }
-    /* 2026-08-05: MENÚ ROL — miniatura de lo que le llega al cliente, arriba de los íconos del composer */
-    .wa-menurol-mini { display: block; margin: 0.5rem 1rem 0.1rem; padding: 0; background: transparent; border: none; cursor: pointer; text-align: left; width: max-content; }
+    /* 2026-08-05: columna izquierda del composer = miniatura Menú rol (arriba) + redondeles (abajo) */
+    .wa-composer-left { display: flex; flex-direction: column; gap: 0.4rem; align-items: flex-start; flex-shrink: 0; }
+    .wa-composer-tools { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; max-width: 156px; }
+    /* MENÚ ROL — miniatura (MEDIA de grande) de lo que le llega al cliente */
+    .wa-menurol-mini { display: block; margin: 0; padding: 0; background: transparent; border: none; cursor: pointer; text-align: left; width: max-content; }
     .wa-menurol-mini:disabled { opacity: 0.6; cursor: wait; }
-    .wa-menurol-cap { font-size: 0.72rem; color: #6b7280; font-weight: 600; margin-bottom: 0.28rem; }
-    .wa-menurol-bubble { width: 216px; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.09); transition: all .15s; }
-    .wa-menurol-mini:hover:not(:disabled) .wa-menurol-bubble { border-color: #25d366; box-shadow: 0 6px 18px rgba(37,211,102,0.30); transform: translateY(-2px); }
-    .wa-menurol-txt { padding: 0.55rem 0.65rem; font-size: 0.79rem; color: #111b21; line-height: 1.3; }
-    .wa-menurol-opt { border-top: 1px solid #eef1f5; padding: 0.42rem 0.4rem; text-align: center; font-size: 0.82rem; color: #027eb5; font-weight: 600; }
+    .wa-menurol-cap { font-size: 0.6rem; color: #6b7280; font-weight: 600; margin-bottom: 0.18rem; max-width: 140px; }
+    .wa-menurol-bubble { width: 132px; background: #fff; border: 1px solid #e5e7eb; border-radius: 9px; overflow: hidden; box-shadow: 0 2px 7px rgba(0,0,0,0.09); transition: all .15s; }
+    .wa-menurol-mini:hover:not(:disabled) .wa-menurol-bubble { border-color: #25d366; box-shadow: 0 5px 14px rgba(37,211,102,0.30); transform: translateY(-2px); }
+    .wa-menurol-txt { padding: 0.32rem 0.4rem; font-size: 0.58rem; color: #111b21; line-height: 1.22; }
+    .wa-menurol-opt { border-top: 1px solid #eef1f5; padding: 0.28rem 0.3rem; text-align: center; font-size: 0.62rem; color: #027eb5; font-weight: 600; }
     .wa-attach-btn { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 50%; background: #fff; border: 1px solid #e0e0e0; cursor: pointer; font-size: 1.3rem; transition: all .15s; user-select: none; }
     .wa-attach-btn:hover { background: #e9f5ff; border-color: #25d366; transform: translateY(-1px); }
     .wa-attach-btn.uploading { background: #fff8e1; border-color: #ffc107; cursor: wait; animation: wa-attach-pulse 1s ease-in-out infinite; }
