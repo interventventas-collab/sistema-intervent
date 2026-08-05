@@ -19,7 +19,7 @@
     .vp-h1 { font-size: 1.3rem; font-weight: 800; margin: 0 0 0.1rem; color: #111827; }
     .vp-num { font-size: 0.95rem; font-weight: 800; color: #15803d; letter-spacing: 0.5px; margin: 0 0 0.2rem; }
     .vp-sub { font-size: 0.85rem; color: #6b7280; margin: 0; }
-    .vp-btn-print { display: block; width: 100%; padding: 0.85rem; background: #1d4ed8; color: #fff; border: none; border-radius: 10px; font-size: 1rem; font-weight: 700; cursor: pointer; margin-bottom: 0.8rem; }
+    .vp-btn-print { display: block; width: 100%; padding: 0.85rem; background: #1d4ed8; color: #fff; border: none; border-radius: 10px; font-size: 1rem; font-weight: 700; cursor: pointer; margin-bottom: 0.8rem; text-align: center; text-decoration: none; box-sizing: border-box; }
     .vp-btn-print:hover { background: #1e40af; }
     .vp-badge { display: inline-block; padding: 0.25rem 0.7rem; border-radius: 20px; font-size: 0.78rem; font-weight: 700; }
     .vp-badge.pend { background: #fef3c7; color: #92400e; }
@@ -67,7 +67,7 @@
             </div>
         </div>
 
-        <button class="vp-btn-print vp-noprint" @onclick="Imprimir">🖨 Imprimir recibo</button>
+        <a class="vp-btn-print vp-noprint" href="@($"/api/visitas/publica/{Token}/recibo.pdf")" target="_blank">🧾 Abrir recibo PDF (imprimir)</a>
 
         <div class="vp-card">
             <span class="vp-lbl">Cliente</span>
@@ -127,20 +127,7 @@
     private string comentario = "";
     private VisitaPublicaModel? v;
 
-    private bool yaImprimio = false;
-
     protected override async Task OnInitializedAsync() => await Cargar();
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        // Si vino con ?print=1 (desde el botón "Abrir recibo (imprimir)"), salta directo a imprimir.
-        if (!yaImprimio && v is not null && Nav.Uri.Contains("print=1"))
-        {
-            yaImprimio = true;
-            await Task.Delay(300); // deja que renderice la firma antes de imprimir
-            try { await JS.InvokeVoidAsync("window.print"); } catch { }
-        }
-    }
 
     private async Task Cargar()
     {
@@ -169,11 +156,6 @@
         }
         catch (Exception ex) { errorMsg = ex.Message; }
         finally { marcando = false; }
-    }
-
-    private async Task Imprimir()
-    {
-        try { await JS.InvokeVoidAsync("window.print"); } catch { }
     }
 
     public class VisitaPublicaModel

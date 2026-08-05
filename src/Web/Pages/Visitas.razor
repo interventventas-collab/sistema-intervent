@@ -171,7 +171,7 @@
                     <div class="vis-muted vis-qr-cap">Escaneá para abrir y hacer seguimiento</div>
                 </div>
 
-                <a class="vis-btn-primary" href="@(LinkRecibo(recibo) + "?print=1")" target="_blank">🖨 Abrir recibo (imprimir)</a>
+                <a class="vis-btn-primary" href="@($"/api/visitas/publica/{recibo.PublicToken}/recibo.pdf")" target="_blank">🖨 Abrir recibo PDF (imprimir)</a>
 
                 <div class="vis-wa-panel">
                     <div class="vis-wa-title">💬 Enviar recibo por WhatsApp</div>
