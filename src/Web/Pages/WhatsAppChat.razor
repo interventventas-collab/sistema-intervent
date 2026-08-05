@@ -486,9 +486,7 @@
                 <button class="btn btn-outline-success btn-sm" @onclick="AbrirPreviewPedido" title="Abre una ventana con el texto del pedido (el mensaje tildado, o el último si no tildaste nada) para revisarlo antes de crear la venta">
                     📋 Crear pedido
                 </button>
-                <button class="btn btn-outline-info btn-sm" @onclick="EnviarMenuRol" disabled="@enviandoMenuRol" title="Enviar a este contacto el menú '1-Cliente / 2-Proveedor / 3-Otros' para que se identifique">
-                    @(enviandoMenuRol ? "⏳" : "❓") Menú rol
-                </button>
+                @* 2026-08-05: el "Menú rol" se movió abajo, arriba de los íconos del composer, como miniatura de lo que le llega al cliente *@
                 @* 2026-08-03: escribirle con plantilla aprobada (sirve cuando pasaron +24hs y no se puede escribir libre) *@
                 @if (SelectedConv()?.Canal != "INSTAGRAM")
                 {
@@ -983,6 +981,20 @@
 
             @if (Ventana24Abierta() || EsChatInstagram())
             {
+                @* 2026-08-05: MENÚ ROL como miniatura de lo que le llega al cliente. Al tocarla, se envía. *@
+                @if (SelectedConv()?.Canal != "INSTAGRAM")
+                {
+                    <button class="wa-menurol-mini" @onclick="EnviarMenuRol" disabled="@enviandoMenuRol"
+                            title="Tocá para enviarle al cliente este menú y que se identifique (Frikaf / Intervent / Intereventos)">
+                        <div class="wa-menurol-cap">@(enviandoMenuRol ? "⏳ Enviando…" : "👆 Menú rol — así le llega, tocá para enviar")</div>
+                        <div class="wa-menurol-bubble">
+                            <div class="wa-menurol-txt">¡Hola! 👋 Gracias por escribirnos.<br />¿Con quién te querés contactar?</div>
+                            <div class="wa-menurol-opt">☕ Cafés Frikaf</div>
+                            <div class="wa-menurol-opt">🏢 Intervent</div>
+                            <div class="wa-menurol-opt">🪑 Intereventos</div>
+                        </div>
+                    </button>
+                }
                 <div class="wa-composer">
                     @* Botón adjuntar archivo de la PC *@
                     <label class="wa-attach-btn @(uploading ? "uploading" : "")" title="Adjuntar archivo de tu PC (máx 16 MB)">
@@ -1744,6 +1756,14 @@
     .wa-vincular-opt:hover:not(:disabled) { background: #ecfdf5; border-color: #16a34a; }
     .wa-vincular-opt:disabled { opacity: 0.6; cursor: wait; }
     .wa-vincular-nuevo { margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px dashed #e5e7eb; }
+    /* 2026-08-05: MENÚ ROL — miniatura de lo que le llega al cliente, arriba de los íconos del composer */
+    .wa-menurol-mini { display: block; margin: 0.5rem 1rem 0.1rem; padding: 0; background: transparent; border: none; cursor: pointer; text-align: left; width: max-content; }
+    .wa-menurol-mini:disabled { opacity: 0.6; cursor: wait; }
+    .wa-menurol-cap { font-size: 0.72rem; color: #6b7280; font-weight: 600; margin-bottom: 0.28rem; }
+    .wa-menurol-bubble { width: 216px; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.09); transition: all .15s; }
+    .wa-menurol-mini:hover:not(:disabled) .wa-menurol-bubble { border-color: #25d366; box-shadow: 0 6px 18px rgba(37,211,102,0.30); transform: translateY(-2px); }
+    .wa-menurol-txt { padding: 0.55rem 0.65rem; font-size: 0.79rem; color: #111b21; line-height: 1.3; }
+    .wa-menurol-opt { border-top: 1px solid #eef1f5; padding: 0.42rem 0.4rem; text-align: center; font-size: 0.82rem; color: #027eb5; font-weight: 600; }
     .wa-attach-btn { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 50%; background: #fff; border: 1px solid #e0e0e0; cursor: pointer; font-size: 1.3rem; transition: all .15s; user-select: none; }
     .wa-attach-btn:hover { background: #e9f5ff; border-color: #25d366; transform: translateY(-1px); }
     .wa-attach-btn.uploading { background: #fff8e1; border-color: #ffc107; cursor: wait; animation: wa-attach-pulse 1s ease-in-out infinite; }
