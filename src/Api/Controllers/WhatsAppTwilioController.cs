@@ -143,7 +143,7 @@ public class WhatsAppTwilioController : ControllerBase
         }
     }
 
-    public record MenuRolRequest(string Numero);
+    public record MenuRolRequest(string Numero, string? LineaPhoneId = null);
 
     /// <summary>POST /api/whatsapp/twilio/menu-rol — envia manualmente el menu de identificacion a un numero.</summary>
     [HttpPost("menu-rol")]
@@ -163,12 +163,18 @@ public class WhatsAppTwilioController : ControllerBase
         string? sid;
         if (_meta.IsConfigured)
         {
-            // 2026-07-23 (multi-línea): el menú sale por la línea donde venía la conversación
-            var lineaConv = await _db.WhatsAppTwilioMensajes
-                .Where(x => x.Numero == numero && x.Direccion == "INCOMING" && x.LineaPhoneId != null)
-                .OrderByDescending(x => x.CreatedAt)
-                .Select(x => x.LineaPhoneId)
-                .FirstOrDefaultAsync();
+            // 2026-08-05 (fix): el menú sale por la línea del CHAT ABIERTO, que el frontend manda en
+            // req.LineaPhoneId. Antes se elegía por el último mensaje entrante del contacto, y como una
+            // conversación se identifica por número + línea, salía por la línea equivocada (o por la
+            // línea API por defecto cuando no había entrante con línea). Si por algún motivo no viene la
+            // línea del chat, caemos al comportamiento anterior (última línea por la que escribió).
+            var lineaConv = !string.IsNullOrWhiteSpace(req.LineaPhoneId)
+                ? req.LineaPhoneId
+                : await _db.WhatsAppTwilioMensajes
+                    .Where(x => x.Numero == numero && x.Direccion == "INCOMING" && x.LineaPhoneId != null)
+                    .OrderByDescending(x => x.CreatedAt)
+                    .Select(x => x.LineaPhoneId)
+                    .FirstOrDefaultAsync();
             sid = await _meta.SendButtonsAsync(numero, WhatsAppBotFlow.CuerpoNivel1, WhatsAppBotFlow.BotonesNivel1, lineaPhoneId: lineaConv);
             if (sid != null)
             {
