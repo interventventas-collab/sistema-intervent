@@ -520,6 +520,22 @@ public class WhatsAppTwilioController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    // 2026-08-06: guardar/editar la NOTA (comentario) de la conversación sin tocar el responsable
+    // ni el estado. Antes la nota solo se guardaba cuando pasabas la charla a alguien, y si no la
+    // pasabas se perdía. Ahora se puede escribir, guardar y editar sola.
+    public record NotaConvRequest(string Numero, string? LineaPhoneId, string? Nota);
+    [HttpPost("conversaciones/nota")]
+    [Authorize]
+    public async Task<IActionResult> GuardarNotaConversacion([FromBody] NotaConvRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req?.Numero)) return BadRequest(new { error = "Falta el número" });
+        var row = await GetOrCreateConvAsync(req.Numero, req.LineaPhoneId);
+        row.AsignadoNota = string.IsNullOrWhiteSpace(req.Nota) ? null : req.Nota.Trim();
+        row.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
     /// <summary>POST conversaciones/visto — el que la recibió la abrió: apaga el aviso "te la pasó X".</summary>
     [HttpPost("conversaciones/visto")]
     [Authorize]

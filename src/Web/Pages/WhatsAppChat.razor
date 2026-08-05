@@ -501,33 +501,35 @@
 
             @* 2026-08-04: barra para PASAR la charla a otra persona y ponerle ESTADO (en curso / finalizada). *@
             <div class="wa-coord-bar">
+                @* 2026-08-06: Estado y Pasar a pasan a ser dos desplegables chiquitos, uno al lado del otro *@
                 <div class="wa-coord-grupo">
                     <span class="wa-coord-lbl">Estado:</span>
-                    @foreach (var e in EstadosLista)
-                    {
-                        var actual = (SelectedConv()?.Estado ?? "nueva") == e.Key;
-                        <button class="wa-estado-btn @(actual ? "activo" : "")"
-                                style="@(actual ? $"background:{EstadoColor(e.Key)};border-color:{EstadoColor(e.Key)};color:#fff;" : "")"
-                                @onclick="() => CambiarEstado(e.Key)">@e.Label</button>
-                    }
-                </div>
-                <div class="wa-coord-grupo">
+                    <select class="wa-coord-select" value="@(SelectedConv()?.Estado ?? "nueva")" @onchange="OnEstadoChange"
+                            style="border-color:@EstadoColor(SelectedConv()?.Estado); color:@EstadoColor(SelectedConv()?.Estado); font-weight:700;"
+                            title="Estado de esta conversación">
+                        @foreach (var e in EstadosLista)
+                        {
+                            <option value="@e.Key">@e.Label</option>
+                        }
+                    </select>
                     <span class="wa-coord-lbl">Pasar a:</span>
-                    @foreach (var op in OperadoresPasar)
-                    {
-                        var esResp = string.Equals(SelectedConv()?.AsignadoOperador, op, StringComparison.OrdinalIgnoreCase);
-                        <button class="wa-pasar-btn @(esResp ? "activo" : "")"
-                                style="@(esResp ? $"background:{OperadorColor(op)};border-color:{OperadorColor(op)};color:#fff;" : "")"
-                                @onclick="() => PasarA(op)" title="@($"Pasarle esta charla a {op}")">
-                            <span class="wa-asignado-ini" style="background:@OperadorColor(op);">@OperadorIni(op)</span> @op
-                        </button>
-                    }
-                    @if (!string.IsNullOrEmpty(SelectedConv()?.AsignadoOperador))
-                    {
-                        <button class="wa-pasar-quitar" @onclick="QuitarAsignacion" title="Sacar el responsable (queda sin asignar)">✕ quitar</button>
-                    }
-                    <input class="wa-coord-nota" placeholder="Nota (opcional): ej. falta coordinar entrega…"
+                    <select class="wa-coord-select" value="@(SelectedConv()?.AsignadoOperador ?? "")" @onchange="OnPasarChange"
+                            style="@(string.IsNullOrEmpty(SelectedConv()?.AsignadoOperador) ? "" : $"border-color:{OperadorColor(SelectedConv()?.AsignadoOperador)};color:{OperadorColor(SelectedConv()?.AsignadoOperador)};font-weight:700;")"
+                            title="Responsable de esta conversación">
+                        <option value="">— Sin asignar —</option>
+                        @foreach (var op in OperadoresPasar)
+                        {
+                            <option value="@op">@op</option>
+                        }
+                    </select>
+                </div>
+                <div class="wa-coord-grupo wa-coord-nota-grupo">
+                    <span class="wa-coord-lbl">📝 Nota:</span>
+                    <input class="wa-coord-nota" placeholder="ej. falta coordinar entrega…"
                            @bind="asignarNota" @bind:event="oninput" maxlength="300" />
+                    <button class="wa-coord-guardar" @onclick="GuardarNotaConv" disabled="@guardandoNota" title="Guardar la nota de esta conversación">
+                        @(guardandoNota ? "⏳" : "💾 Guardar")
+                    </button>
                 </div>
                 @if (!string.IsNullOrEmpty(SelectedConv()?.AsignadoOperador))
                 {
@@ -1661,7 +1663,14 @@
     .wa-estado-btn, .wa-pasar-btn { display: inline-flex; align-items: center; gap: 0.3rem; background: #fff; border: 1px solid #d7dce3; color: #334155; font-size: 0.74rem; font-weight: 600; padding: 0.24rem 0.6rem; border-radius: 999px; cursor: pointer; transition: transform .1s ease, box-shadow .1s ease; }
     .wa-estado-btn:hover, .wa-pasar-btn:hover { box-shadow: 0 2px 6px rgba(15,23,42,0.1); transform: translateY(-1px); }
     .wa-pasar-quitar { background: #fff; border: 1px solid #e5c1c1; color: #b91c1c; font-size: 0.72rem; font-weight: 600; padding: 0.24rem 0.55rem; border-radius: 999px; cursor: pointer; }
-    .wa-coord-nota { border: 1px solid #d7dce3; border-radius: 999px; font-size: 0.74rem; padding: 0.24rem 0.7rem; min-width: 220px; flex: 1; }
+    /* 2026-08-06: Estado y Pasar a como desplegables chiquitos */
+    .wa-coord-select { border: 1.5px solid #d7dce3; border-radius: 8px; background: #fff; font-size: 0.76rem; font-weight: 600; color: #334155; padding: 0.22rem 0.5rem; cursor: pointer; max-width: 130px; }
+    .wa-coord-select:hover { border-color: #94a3b8; }
+    .wa-coord-nota-grupo { flex: 1; min-width: 240px; }
+    .wa-coord-guardar { background: #0ea5e9; border: 1px solid #0ea5e9; color: #fff; font-size: 0.74rem; font-weight: 700; padding: 0.26rem 0.7rem; border-radius: 8px; cursor: pointer; white-space: nowrap; transition: all .12s; }
+    .wa-coord-guardar:hover:not(:disabled) { background: #0284c7; }
+    .wa-coord-guardar:disabled { opacity: 0.6; cursor: wait; }
+    .wa-coord-nota { border: 1px solid #d7dce3; border-radius: 999px; font-size: 0.74rem; padding: 0.24rem 0.7rem; min-width: 180px; flex: 1; }
     .wa-coord-info { flex-basis: 100%; font-size: 0.72rem; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 0.25rem 0.6rem; }
     /* Tilditos de estado en los mensajes que mandamos */
     .wa-tilde { color: #8a8a8a; font-size: 0.72rem; margin-left: 3px; letter-spacing: -1px; }
@@ -3446,7 +3455,7 @@
         mostrarFichaCliente = false; fichaCliente = null; previewFacturaId = null;   // 2026-08-05: cerrar la ficha del cliente al cambiar de chat
         showQuickReplies = false;   // 2026-08-05: cerrar el desplegable de respuestas rápidas al cambiar de chat
         modoElegirVenta = false; mensajesSeleccionadosIds.Clear();   // 2026-08-05: salir del modo "elegir mensajes para venta"
-        asignarNota = "";           // 2026-08-04: la nota de "pasar a" es por-chat
+        asignarNota = SelectedConv()?.AsignadoNota ?? "";   // 2026-08-06: precargar la nota guardada de este chat (editable)
         await LoadMensajes();
         await BuscarSugerenciaCliente();
         // 2026-08-04: si esta charla me la pasaron a mí y no la había abierto, apago el aviso.
@@ -4173,7 +4182,7 @@
         {
             Toast.Success(string.Equals(operador, OperadorActual, StringComparison.OrdinalIgnoreCase)
                 ? "La tomaste vos" : $"Se la pasaste a {operador}");
-            asignarNota = "";
+            // 2026-08-06: la nota NO se borra al pasar la charla (queda guardada y editable).
             await LoadConversaciones(silent: true);
         }
         else Toast.Error("No se pudo pasar la conversación");
@@ -4181,8 +4190,9 @@
     async Task QuitarAsignacion()
     {
         if (selectedNumero == null) return;
-        var ok = await Api.AsignarConversacionAsync(selectedNumero, selectedLinea, null, null);
-        if (ok) { asignarNota = ""; await LoadConversaciones(silent: true); }
+        // 2026-08-06: al sacar el responsable NO borramos la nota — la mantenemos guardada.
+        var ok = await Api.AsignarConversacionAsync(selectedNumero, selectedLinea, null, asignarNota);
+        if (ok) await LoadConversaciones(silent: true);
     }
     async Task CambiarEstado(string estado)
     {
@@ -4190,6 +4200,32 @@
         var ok = await Api.CambiarEstadoConversacionAsync(selectedNumero, selectedLinea, estado);
         if (ok) await LoadConversaciones(silent: true);
         else Toast.Error("No se pudo cambiar el estado");
+    }
+
+    // 2026-08-06: desplegables de Estado y Pasar a (reemplazan las filas de botones)
+    async Task OnEstadoChange(ChangeEventArgs e)
+    {
+        var estado = e.Value?.ToString();
+        if (!string.IsNullOrEmpty(estado)) await CambiarEstado(estado);
+    }
+    async Task OnPasarChange(ChangeEventArgs e)
+    {
+        var op = e.Value?.ToString();
+        if (string.IsNullOrEmpty(op)) await QuitarAsignacion();
+        else await PasarA(op);
+    }
+
+    // 2026-08-06: guardar/editar la NOTA (comentario) de la conversación de forma independiente
+    // (antes solo se guardaba al pasar la charla a alguien).
+    bool guardandoNota = false;
+    async Task GuardarNotaConv()
+    {
+        if (selectedNumero == null) return;
+        guardandoNota = true;
+        var ok = await Api.GuardarNotaConversacionAsync(selectedNumero, selectedLinea, asignarNota);
+        guardandoNota = false;
+        if (ok) { Toast.Success("Nota guardada"); await LoadConversaciones(silent: true); }
+        else Toast.Error("No se pudo guardar la nota");
     }
 
     // Heuristica simple: si el mensaje contiene palabras tipicas de pedido.
