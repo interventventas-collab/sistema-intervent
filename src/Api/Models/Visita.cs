@@ -16,6 +16,9 @@ public class Visita
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public int Id { get; set; }
 
+    /// <summary>Número de comprobante correlativo (1, 2, 3...). Se muestra como "Visita N° 0001".</summary>
+    public int Numero { get; set; }
+
     /// <summary>Cliente asociado (Cafe_Clientes.Id). Opcional: se puede cargar una visita suelta.</summary>
     public int? ClienteId { get; set; }
 

@@ -2517,6 +2517,24 @@ BEGIN
 END
 GO
 
+-- 2026-08-05: numero de comprobante correlativo para las visitas ("Visita N° 0001")
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id=OBJECT_ID('Visitas') AND name='Numero')
+BEGIN
+    ALTER TABLE Visitas ADD Numero INT NOT NULL DEFAULT 0;
+END
+GO
+-- Backfill de visitas viejas: numera por orden de creacion las que quedaron en 0
+IF EXISTS (SELECT 1 FROM Visitas WHERE Numero = 0)
+BEGIN
+    ;WITH num AS (
+        SELECT Id, ROW_NUMBER() OVER (ORDER BY CreatedAt, Id) AS rn
+        FROM Visitas WHERE Numero = 0
+    )
+    UPDATE Visitas SET Numero = num.rn
+    FROM Visitas v JOIN num ON v.Id = num.Id;
+END
+GO
+
 -- ============================================================
 -- MODULO CAFE (independiente del resto)
 -- Negocio de venta de cafe e insumos. Tablas prefijadas con Cafe_.

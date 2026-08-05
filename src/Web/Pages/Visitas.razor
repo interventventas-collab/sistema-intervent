@@ -122,7 +122,7 @@
                     {
                         <div class="vis-item">
                             <div class="vis-item-top">
-                                <strong>@v.ClienteNombre</strong>
+                                <strong><span class="vis-item-num">N° @v.Numero.ToString("D4")</span> @v.ClienteNombre</strong>
                                 <span class="vis-estado @(v.Estado == "realizada" ? "ok" : "pend")">
                                     @(v.Estado == "realizada" ? "✓ Realizada" : "⏳ Pendiente")
                                 </span>
@@ -151,6 +151,7 @@
     <div class="vis-modal-bg" @onclick="CerrarRecibo">
         <div class="vis-modal" @onclick:stopPropagation="true">
             <h2 class="vis-card-title">🧾 Recibo de visita</h2>
+            <div class="vis-recibo-num">Visita N° @recibo.Numero.ToString("D4")</div>
             <div class="vis-recibo-cliente">
                 <strong>@recibo.ClienteNombre</strong>
                 @if (!string.IsNullOrWhiteSpace(recibo.Direccion)) { <div class="vis-muted">@recibo.Direccion</div> }
@@ -169,8 +170,31 @@
                     <div class="vis-muted vis-qr-cap">Escaneá para abrir y hacer seguimiento</div>
                 </div>
 
-                <a class="vis-btn-primary" href="@LinkRecibo(recibo)" target="_blank">🖨 Abrir recibo (imprimir)</a>
-                <a class="vis-btn-wa" href="@LinkWhatsApp(recibo)" target="_blank">💬 Compartir por WhatsApp</a>
+                <a class="vis-btn-primary" href="@(LinkRecibo(recibo) + "?print=1")" target="_blank">🖨 Abrir recibo (imprimir)</a>
+
+                <div class="vis-wa-panel">
+                    <div class="vis-wa-title">💬 Enviar recibo por WhatsApp</div>
+                    @if (lineasWa.Count == 0)
+                    {
+                        <div class="vis-muted">No hay líneas de WhatsApp conectadas.</div>
+                    }
+                    else
+                    {
+                        <label class="vis-label">Desde la línea</label>
+                        <select class="vis-input" @bind="waLineaPhoneId">
+                            @foreach (var l in lineasWa)
+                            {
+                                <option value="@l.PhoneId">🏪 @NombreLineaWa(l)</option>
+                            }
+                        </select>
+                        <label class="vis-label">Al número del cliente</label>
+                        <input class="vis-input" type="tel" @bind="waNumero" placeholder="Teléfono del cliente" />
+                        <button class="vis-btn-wa" disabled="@enviandoWa" @onclick="EnviarWhatsApp">
+                            @(enviandoWa ? "Enviando..." : "💬 Enviar por WhatsApp")
+                        </button>
+                        <div class="vis-muted vis-wa-nota">Se manda desde tu WhatsApp. Solo entra si el cliente escribió en las últimas 24hs (ventana de WhatsApp).</div>
+                    }
+                </div>
             }
 
             <button class="vis-btn-mini vis-cerrar" @onclick="CerrarRecibo">Cerrar</button>
@@ -206,7 +230,11 @@
     .vis-btn-primary { display: block; width: 100%; text-align: center; margin-top: 1rem; padding: 0.85rem; background: #15803d; color: #fff; border: none; border-radius: 10px; font-size: 1rem; font-weight: 700; cursor: pointer; text-decoration: none; }
     .vis-btn-primary:hover { background: #166534; }
     .vis-btn-primary:disabled { opacity: 0.6; cursor: default; }
-    .vis-btn-wa { display: block; width: 100%; text-align: center; margin-top: 0.5rem; padding: 0.8rem; background: #22c55e; color: #fff; border: none; border-radius: 10px; font-weight: 700; text-decoration: none; }
+    .vis-btn-wa { display: block; width: 100%; text-align: center; margin-top: 0.5rem; padding: 0.8rem; background: #22c55e; color: #fff; border: none; border-radius: 10px; font-weight: 700; text-decoration: none; cursor: pointer; }
+    .vis-btn-wa:disabled { opacity: 0.6; cursor: default; }
+    .vis-wa-panel { margin-top: 0.9rem; padding: 0.8rem; border: 1px solid #86efac; background: #f0fdf4; border-radius: 10px; }
+    .vis-wa-title { font-weight: 700; color: #15803d; margin-bottom: 0.3rem; }
+    .vis-wa-nota { margin-top: 0.4rem; font-size: 0.75rem; }
     .vis-btn-mini { padding: 0.4rem 0.7rem; background: var(--bg-hover, #f3f4f6); border: 1px solid var(--border, #e5e7eb); border-radius: 7px; font-size: 0.82rem; cursor: pointer; color: var(--text-primary, #374151); }
     .vis-btn-mini.danger { color: #b91c1c; }
     .vis-btn-mini:hover { background: #e5e7eb; }
@@ -222,6 +250,8 @@
     .vis-item-acciones { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
     .vis-modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1rem; }
     .vis-modal { background: var(--bg-card, #fff); border-radius: 14px; padding: 1.2rem; max-width: 420px; width: 100%; max-height: 92vh; overflow-y: auto; }
+    .vis-recibo-num { font-size: 0.9rem; font-weight: 800; color: #15803d; letter-spacing: 0.5px; margin-bottom: 0.4rem; }
+    .vis-item-num { color: #15803d; font-size: 0.82rem; margin-right: 0.2rem; }
     .vis-recibo-cliente { margin-bottom: 0.5rem; }
     .vis-recibo-desc { background: var(--bg-hover, #f9fafb); border-radius: 8px; padding: 0.7rem; font-size: 0.92rem; white-space: pre-wrap; margin-bottom: 0.8rem; }
     .vis-qr-box { text-align: center; margin: 0.5rem 0 1rem; }
@@ -241,11 +271,52 @@
     private bool firmaLista = false;
     private VisitaDto? recibo;
 
+    // WhatsApp API (enviar recibo)
+    private List<ApiClient.TwLineaDto> lineasWa = new();
+    private Dictionary<string, string> lineaNombreById = new();
+    private string? waLineaPhoneId;
+    private string waNumero = "";
+    private bool enviandoWa = false;
+
     protected override async Task OnInitializedAsync()
     {
         var cs = await Api.GetCafeClientesAsync();
         if (cs is not null) clientes = cs;
         await CargarVisitas();
+        await CargarLineasWa();
+    }
+
+    private async Task CargarLineasWa()
+    {
+        try
+        {
+            var lineas = await Api.GetTwLineasAsync();
+            var cfg = await Api.GetTwLineasConfigAsync();
+            lineaNombreById = cfg.Where(c => !string.IsNullOrWhiteSpace(c.Nombre))
+                                 .ToDictionary(c => c.LineaId, c => c.Nombre!);
+            var igIds = cfg.Where(c => c.EsInstagram).Select(c => c.LineaId).ToHashSet();
+            lineasWa = lineas.Where(l => !igIds.Contains(l.PhoneId)).ToList();
+            waLineaPhoneId = lineasWa.FirstOrDefault(l => NombreLineaWa(l).Contains("FRIKAF", StringComparison.OrdinalIgnoreCase))?.PhoneId
+                             ?? lineasWa.FirstOrDefault()?.PhoneId;
+        }
+        catch { }
+    }
+
+    private string NombreLineaWa(ApiClient.TwLineaDto l)
+        => lineaNombreById.TryGetValue(l.PhoneId, out var n) && !string.IsNullOrWhiteSpace(n) ? n : l.Numero;
+
+    private async Task EnviarWhatsApp()
+    {
+        if (recibo is null) return;
+        if (string.IsNullOrWhiteSpace(waNumero)) { Toast.Warning("Poné el número del cliente"); return; }
+        enviandoWa = true;
+        try
+        {
+            var (ok, err) = await Api.EnviarVisitaWhatsAppAsync(recibo.Id, waNumero, waLineaPhoneId);
+            if (ok) Toast.Success("Recibo enviado por WhatsApp ✅");
+            else Toast.Error("No se pudo enviar: " + err);
+        }
+        finally { enviandoWa = false; }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -326,6 +397,7 @@
 
             Toast.Success("Visita guardada ✅");
             recibo = creada;
+            waNumero = creada.Telefono ?? "";
             await CargarVisitas();
             ResetForm();
         }
@@ -347,16 +419,10 @@
         _ = LimpiarFirma();
     }
 
-    private void VerRecibo(VisitaDto v) => recibo = v;
+    private void VerRecibo(VisitaDto v) { recibo = v; waNumero = v.Telefono ?? ""; }
     private void CerrarRecibo() => recibo = null;
 
     private string LinkRecibo(VisitaDto v) => Nav.BaseUri.TrimEnd('/') + "/visita/" + v.PublicToken;
-
-    private string LinkWhatsApp(VisitaDto v)
-    {
-        var txt = $"Recibo de visita: {LinkRecibo(v)}";
-        return "https://wa.me/?text=" + Uri.EscapeDataString(txt);
-    }
 
     private async Task Eliminar(VisitaDto v)
     {

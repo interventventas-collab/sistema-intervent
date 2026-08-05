@@ -2,6 +2,7 @@ namespace Api.DTOs;
 
 public record VisitaDto(
     int Id,
+    int Numero,
     int? ClienteId,
     string ClienteNombre,
     string? Direccion,
@@ -23,6 +24,7 @@ public record VisitaDto(
 /// <summary>DTO publico (por token, sin auth): incluye la firma para mostrarla en el recibo.</summary>
 public record VisitaPublicaDto(
     int Id,
+    int Numero,
     string ClienteNombre,
     string? Direccion,
     string? Localidad,
@@ -61,4 +63,11 @@ public class UpdateVisitaRequest
 public class MarcarVisitaRealizadaRequest
 {
     public string? Comentario { get; set; }
+}
+
+/// <summary>Body para enviar el recibo de la visita al cliente por WhatsApp API.</summary>
+public class EnviarVisitaWhatsAppRequest
+{
+    public string? Numero { get; set; }
+    public string? LineaPhoneId { get; set; }
 }

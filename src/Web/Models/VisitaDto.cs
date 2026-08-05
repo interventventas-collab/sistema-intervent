@@ -3,6 +3,7 @@ namespace Web.Models;
 public class VisitaDto
 {
     public int Id { get; set; }
+    public int Numero { get; set; }
     public int? ClienteId { get; set; }
     public string ClienteNombre { get; set; } = "";
     public string? Direccion { get; set; }
