@@ -2093,6 +2093,14 @@ else
             userPermissions = user.Permissions ?? new();
         }
 
+        // 2026-08-05: el usuario SOLO depósito ya no arranca en el dashboard, sino directo en
+        // el tablero de Preparación de pedidos (Osmar). Redirigir apenas sabemos los permisos.
+        if (isDepositoOnly)
+        {
+            Navigation.NavigateTo("/cafe/preparacion");
+            return;
+        }
+
         // Re-renderizar cuando el usuario cambia de empresa desde el topbar
         Company.OnChange += OnCompanyChanged;
 
