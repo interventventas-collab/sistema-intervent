@@ -269,6 +269,53 @@ public class MapeoStopsController : ControllerBase
         return Ok(new { updated = order - 1 });
     }
 
+    public record PonerEnPuestoRequest(int Puesto);
+
+    /// <summary>
+    /// "👉 Poner acá" del globito: mete la parada en el puesto pedido y renumera TODA su zona
+    /// (repartidor si tiene; si no, el vehículo) del 1 al N en UN SOLO guardado atómico.
+    /// Al renumerar todo de una, además auto-corrige cualquier repetido o salto que hubiera quedado
+    /// de antes. Antes esto lo hacía el navegador con muchos guardados sueltos y, si se cortaba a
+    /// mitad, quedaban números repetidos (ej: tres paradas en el puesto 13).
+    /// </summary>
+    [HttpPost("{id:int}/poner-en-puesto")]
+    public async Task<IActionResult> PonerEnPuesto(int id, [FromBody] PonerEnPuestoRequest req)
+    {
+        var s = await _db.MapeoStops.FindAsync(id);
+        if (s is null) return NotFound(new { error = "Parada no encontrada" });
+
+        // Zona a renumerar: preferimos el repartidor; si no tiene, el vehículo (sólo las sin repartidor).
+        List<MapeoStop> zona;
+        if (s.AssignedDriverId.HasValue)
+            zona = await _db.MapeoStops.Where(x => x.AssignedDriverId == s.AssignedDriverId).ToListAsync();
+        else if (s.AssignedVehicleSlot.HasValue)
+            zona = await _db.MapeoStops.Where(x => x.AssignedVehicleSlot == s.AssignedVehicleSlot && x.AssignedDriverId == null).ToListAsync();
+        else
+            return BadRequest(new { error = "Primero asigná este envío a un repartidor (o a un vehículo) para poder darle un puesto." });
+
+        // Las demás numeradas, en su orden actual (desempatando por Id para que sea estable).
+        var numeradas = zona.Where(x => x.Id != s.Id && x.OrderInRoute.HasValue)
+                            .OrderBy(x => x.OrderInRoute!.Value).ThenBy(x => x.Id)
+                            .ToList();
+
+        // Puesto destino acotado a [1 .. cantidad+1] (la parada que movemos siempre queda numerada).
+        int destino = req?.Puesto ?? 1;
+        if (destino < 1) destino = 1;
+        if (destino > numeradas.Count + 1) destino = numeradas.Count + 1;
+
+        // Insertamos la parada en la posición pedida y renumeramos limpio 1..N.
+        numeradas.Insert(destino - 1, s);
+        var now = DateTime.UtcNow;
+        int order = 1;
+        foreach (var st in numeradas)
+        {
+            st.OrderInRoute = order++;
+            st.UpdatedAt = now;
+        }
+        await _db.SaveChangesAsync();
+        return Ok(new { puesto = s.OrderInRoute, total = numeradas.Count });
+    }
+
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {

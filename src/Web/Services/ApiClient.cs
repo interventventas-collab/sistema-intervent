@@ -6155,6 +6155,10 @@ public class ApiClient
     public async Task<object?> ReorderMapeoStopsAsync(List<int> stopIds)
         => await PostAsync<object>("/api/mapeo/stops/reorder", new { stopIds });
 
+    // "Poner acá": mete la parada en el puesto pedido y renumera toda la zona en un solo guardado (server).
+    public async Task<object?> PonerEnPuestoMapeoAsync(int id, int puesto)
+        => await PostAsync<object>($"/api/mapeo/stops/{id}/poner-en-puesto", new { puesto });
+
     // Fija la ubicación de una parada (elegida en el buscador del mapa) y la guarda en el cliente.
     public async Task<MapeoStopDto?> SetMapeoStopUbicacionAsync(int id, double lat, double lng, string? direccion, bool guardarEnCliente = true)
         => await PostAsync<MapeoStopDto>($"/api/mapeo/stops/{id}/ubicacion", new { lat, lng, direccion, guardarEnCliente });
