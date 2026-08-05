@@ -4085,8 +4085,11 @@ public class CafeVentasController : ControllerBase
                     || v.EstadoPreparacion == "ENTREGADO")
                 && v.Estado != "anulado");
 
-        if (desdeUtc.HasValue) query = query.Where(v => v.CreatedAt >= desdeUtc.Value);
-        if (hastaUtc.HasValue) query = query.Where(v => v.CreatedAt < hastaUtc.Value);
+        // 2026-08-05: el rango (hoy/ayer/7d…) filtra por FECHA DE ARMADO (cuando pasó a LISTO),
+        // NO por la fecha del comprobante. Así "armados hoy" muestra lo que se armó hoy, aunque la
+        // venta se haya cargado otro día. Fallback a DriveSubidoAt para armados viejos sin timestamp.
+        if (desdeUtc.HasValue) query = query.Where(v => (v.PreparacionUpdatedAt ?? v.DriveSubidoAt) >= desdeUtc.Value);
+        if (hastaUtc.HasValue) query = query.Where(v => (v.PreparacionUpdatedAt ?? v.DriveSubidoAt) < hastaUtc.Value);
 
         var ventas = await query
             .OrderByDescending(v => v.PreparacionUpdatedAt ?? v.DriveSubidoAt)
