@@ -486,13 +486,16 @@ public class MetaWhatsAppWebhookController : ControllerBase
                 break;
             default:
                 // 2026-08-05: cualquier tipo que no sepamos mostrar (unsupported, unknown, encuestas,
-                // "ver una vez", tipos nuevos de WhatsApp…). Antes quedaba en BLANCO. Ahora dejamos un
-                // cartel con el TIPO + el textito de error de Meta (si vino), para saber qué intentaron
-                // mandar. Además lo registramos en el log con el payload crudo para diagnosticar.
+                // "ver una vez", ubicación en vivo, pagos, tipos nuevos…). Antes quedaba en BLANCO.
+                // Ahora dejamos un cartel CLARO para el que atiende: qué pasó + qué hacer, más el
+                // detalle de Meta si vino, y el tipo técnico chiquito al final (para soporte).
                 var errMsg = TryGetPrimerErrorMensaje(m);
-                cuerpo = string.IsNullOrWhiteSpace(errMsg)
-                    ? $"📎 Mensaje de tipo «{tipo}» — WhatsApp no permite mostrarlo acá."
-                    : $"📎 Mensaje de tipo «{tipo}» — {errMsg}";
+                cuerpo =
+                    "⚠️ El cliente te mandó un mensaje que WhatsApp no permite mostrar acá "
+                    + "(puede ser una encuesta, un mensaje de \"ver una vez\", ubicación en vivo, un pago u otro formato especial).\n"
+                    + "👉 Pedile que te lo reenvíe como texto o foto así lo podés ver."
+                    + (string.IsNullOrWhiteSpace(errMsg) ? "" : $"\n\nℹ️ WhatsApp informó: {errMsg}")
+                    + $"\n\n🔧 (dato técnico: tipo \"{tipo}\")";
                 _logger.LogWarning("[Meta WA webhook] tipo NO soportado '{Tipo}' de {From}. Payload: {Raw}",
                     tipo, fromWaId, m.GetRawText());
                 break;
