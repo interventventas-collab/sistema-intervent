@@ -6342,6 +6342,17 @@ public class ApiClient
         }
         catch { return false; }
     }
+    // 2026-08-06: guardar/editar la nota (comentario) de la conversación, sin tocar responsable ni estado.
+    public async Task<bool> GuardarNotaConversacionAsync(string numero, string? linea, string? nota)
+    {
+        try
+        {
+            var r = await _http.PostAsJsonAsync("/api/whatsapp/twilio/conversaciones/nota",
+                new { Numero = numero, LineaPhoneId = linea, Nota = nota });
+            return r.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
     public async Task<bool> CambiarEstadoConversacionAsync(string numero, string? linea, string estado)
     {
         try
