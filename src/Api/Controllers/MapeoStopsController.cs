@@ -16,12 +16,13 @@ public class MapeoStopsController : ControllerBase
     private readonly GoogleRoutesService _routes;
     private readonly VentaMapeoService _ventaMapeo;
     private readonly AlqMapeoService _alqMapeo;
+    private readonly VisitaMapeoService _visitaMapeo;
     private readonly GoogleMapsLinkResolverService _mapsResolver;
     private readonly MeliShipmentService _shipmentSvc;
     private readonly MapeoRutaPdfService _rutaPdf;
     private readonly ILogger<MapeoStopsController> _logger;
-    public MapeoStopsController(AppDbContext db, GoogleRoutesService routes, VentaMapeoService ventaMapeo, AlqMapeoService alqMapeo, GoogleMapsLinkResolverService mapsResolver, MeliShipmentService shipmentSvc, MapeoRutaPdfService rutaPdf, ILogger<MapeoStopsController> logger)
-    { _db = db; _routes = routes; _ventaMapeo = ventaMapeo; _alqMapeo = alqMapeo; _mapsResolver = mapsResolver; _shipmentSvc = shipmentSvc; _rutaPdf = rutaPdf; _logger = logger; }
+    public MapeoStopsController(AppDbContext db, GoogleRoutesService routes, VentaMapeoService ventaMapeo, AlqMapeoService alqMapeo, VisitaMapeoService visitaMapeo, GoogleMapsLinkResolverService mapsResolver, MeliShipmentService shipmentSvc, MapeoRutaPdfService rutaPdf, ILogger<MapeoStopsController> logger)
+    { _db = db; _routes = routes; _ventaMapeo = ventaMapeo; _alqMapeo = alqMapeo; _visitaMapeo = visitaMapeo; _mapsResolver = mapsResolver; _shipmentSvc = shipmentSvc; _rutaPdf = rutaPdf; _logger = logger; }
 
     public record StopDto(int Id, string Origin, string? OriginRefId, string? Alias, string Direccion,
         decimal Latitude, decimal Longitude, string? ContactName, string? Telefono, string? Notas,
@@ -831,6 +832,17 @@ public class MapeoStopsController : ControllerBase
             return Ok(new { ok = ra.Ok, yaEstaba = ra.YaEstaba, motivo = ra.Motivo, mensaje = ra.Mensaje, nombre = ra.Nombre, localidad = ra.Localidad, stopId = ra.StopId });
         }
 
+        // ¿Es el QR de un recibo de VISITA? (URL .../visita/{token}).
+        var visitaToken = ExtractVisitaToken(req?.Code);
+        if (visitaToken is not null)
+        {
+            var visita = await _db.Visitas.FirstOrDefaultAsync(x => x.PublicToken == visitaToken);
+            if (visita is null)
+                return Ok(new { ok = false, motivo = "no_encontrado", mensaje = "No reconozco ese recibo de visita." });
+            var rvi = await _visitaMapeo.SumarVisitaAsync(visita);
+            return Ok(new { ok = rvi.Ok, yaEstaba = rvi.YaEstaba, mensaje = rvi.Mensaje, nombre = visita.ClienteNombre, stopId = rvi.StopId });
+        }
+
         var id = ExtractShipmentId(req?.Code);
         if (id is null)
             return Ok(new { ok = false, motivo = "sin_id", mensaje = "No pude leer el numero de envio de ese codigo." });
@@ -909,6 +921,17 @@ public class MapeoStopsController : ControllerBase
         {
             var ra = await _alqMapeo.SumarReservaAsync(reserva);
             return Ok(new { ok = ra.Ok, yaEstaba = ra.YaEstaba, motivo = ra.Motivo, mensaje = ra.Mensaje, nombre = ra.Nombre, localidad = ra.Localidad, stopId = ra.StopId, tipo = "alquiler" });
+        }
+
+        // (2.5) Visita propia por número exacto (números chicos: 1, 12, 0007…).
+        if (int.TryParse(raw, out var visNum) && visNum > 0)
+        {
+            var visita = await _db.Visitas.FirstOrDefaultAsync(x => x.Numero == visNum);
+            if (visita is not null)
+            {
+                var rvi = await _visitaMapeo.SumarVisitaAsync(visita);
+                return Ok(new { ok = rvi.Ok, yaEstaba = rvi.YaEstaba, mensaje = rvi.Mensaje, nombre = visita.ClienteNombre, stopId = rvi.StopId, tipo = "visita" });
+            }
         }
 
         // (3) MercadoLibre: nº de envío o nº de venta (order). Nos quedamos solo con los dígitos.
@@ -998,6 +1021,15 @@ public class MapeoStopsController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(code)) return null;
         var m = System.Text.RegularExpressions.Regex.Match(code, @"/alquiler/([A-Za-z0-9_\-]+)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return m.Success ? m.Groups[1].Value : null;
+    }
+
+    /// <summary>Saca el token de una URL de recibo de VISITA (.../visita/{token}). null si no aplica.</summary>
+    private static string? ExtractVisitaToken(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return null;
+        var m = System.Text.RegularExpressions.Regex.Match(code, @"/visita/([A-Za-z0-9_\-]+)",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         return m.Success ? m.Groups[1].Value : null;
     }

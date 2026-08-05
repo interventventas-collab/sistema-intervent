@@ -21,13 +21,16 @@ public class VisitasController : ControllerBase
     private readonly QrRepartidorService _qr;
     private readonly WhatsAppOutboundService _outbound;
     private readonly VisitaMapeoService _mapeo;
+    private readonly VisitaReciboPdfService _reciboPdf;
 
-    public VisitasController(AppDbContext db, QrRepartidorService qr, WhatsAppOutboundService outbound, VisitaMapeoService mapeo)
+    public VisitasController(AppDbContext db, QrRepartidorService qr, WhatsAppOutboundService outbound,
+        VisitaMapeoService mapeo, VisitaReciboPdfService reciboPdf)
     {
         _db = db;
         _qr = qr;
         _outbound = outbound;
         _mapeo = mapeo;
+        _reciboPdf = reciboPdf;
     }
 
     private static VisitaDto Map(Visita v) => new(
@@ -204,6 +207,35 @@ public class VisitasController : ControllerBase
         return Ok(new VisitaPublicaDto(
             v.Id, v.Numero, v.ClienteNombre, v.Direccion, v.Localidad, v.Telefono, v.Descripcion,
             v.Estado, v.FirmaBase64, v.NombreFirmante, v.ComentarioResolucion, v.RealizadaAt, v.CreatedAt));
+    }
+
+    /// <summary>PDF del recibo de visita, PUBLICO (sin login) — mismo formato que el recibo de entrega
+    /// de ventas, con logo/branding, la descripcion, el QR y el cuadro de firma. Es lo que se imprime.</summary>
+    [HttpGet("publica/{token}/recibo.pdf")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetReciboPdf(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token)) return NotFound();
+        var v = await _db.Visitas.FirstOrDefaultAsync(x => x.PublicToken == token);
+        if (v is null) return NotFound(new { error = "Visita no encontrada" });
+        var cfg = await _db.CafeSettings.FindAsync(1);
+        var qr = await _qr.GenerarQrVisitaAsync(v.PublicToken);
+        var bytes = _reciboPdf.GenerarPdfBytes(v, cfg, qr);
+        return File(bytes, "application/pdf", $"Visita-{v.Numero:0000}.pdf");
+    }
+
+    /// <summary>PNG del QR del recibo, PUBLICO (sin login) para que la pagina del recibo /visita/{token}
+    /// lo muestre e imprima. Apunta a la misma pagina publica (para escanear el papel y hacer seguimiento).</summary>
+    [HttpGet("publica/{token}/qr")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetQrPublico(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token)) return NotFound();
+        var v = await _db.Visitas.FirstOrDefaultAsync(x => x.PublicToken == token);
+        if (v is null) return NotFound();
+        var png = await _qr.GenerarQrVisitaAsync(v.PublicToken);
+        if (png is null) return NotFound(new { error = "No hay URL publica configurada (mapeo.public_base_url)" });
+        return File(png, "image/png");
     }
 
     /// <summary>Etapa 2: desde el escaneo del QR se marca la visita como realizada + comentario.</summary>

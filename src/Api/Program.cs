@@ -123,6 +123,7 @@ builder.Services.AddScoped<GoogleRoutesService>();
 builder.Services.AddScoped<VentaMapeoService>();
 builder.Services.AddScoped<AlqMapeoService>();
 builder.Services.AddScoped<VisitaMapeoService>();
+builder.Services.AddScoped<VisitaReciboPdfService>();
 builder.Services.AddScoped<MeliAccountService>();
 builder.Services.AddScoped<ArcaAccountService>();
 builder.Services.AddSingleton<ArcaScrapingService>();
