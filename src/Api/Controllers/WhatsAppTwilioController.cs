@@ -1155,13 +1155,15 @@ public class WhatsAppTwilioController : ControllerBase
         msgs.Reverse();
         // Cargar reacciones de estos mensajes
         var ids = msgs.Select(m => m.Id).ToList();
+        // 2026-08-05: EsCliente = la reacción la puso el CLIENTE (UsuarioId = -1 desde el webhook),
+        // no nosotros. Sirve para mostrarla distinta en el chat.
         var reacciones = await _db.WhatsAppTwilioReacciones.AsNoTracking()
             .Where(r => ids.Contains(r.MensajeId))
             .GroupBy(r => new { r.MensajeId, r.Emoji })
-            .Select(g => new { g.Key.MensajeId, g.Key.Emoji, Count = g.Count() })
+            .Select(g => new { g.Key.MensajeId, g.Key.Emoji, Count = g.Count(), EsCliente = g.Max(x => x.UsuarioId) == -1 })
             .ToListAsync();
         var reacByMsg = reacciones.GroupBy(r => r.MensajeId)
-            .ToDictionary(g => g.Key, g => g.Select(x => new { x.Emoji, x.Count }).ToList());
+            .ToDictionary(g => g.Key, g => g.Select(x => new { x.Emoji, x.Count, x.EsCliente }).ToList());
         var result = msgs.Select(m => new
         {
             m.Id, m.Direccion, m.Numero, m.NombrePerfil, m.Cuerpo,

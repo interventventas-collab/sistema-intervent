@@ -420,6 +420,17 @@ public class MetaWhatsAppWebhookController : ControllerBase
             return;
         }
 
+        // 2026-08-05: REACCIONES del cliente. Cuando el cliente reacciona con un emoji a uno de
+        // NUESTROS mensajes, Meta manda un evento type="reaction" con { message_id, emoji }. No es
+        // un mensaje de texto: lo enganchamos como reacción al mensaje original (igual que las
+        // reacciones nuestras) para que aparezca el chip debajo del mensaje, en vez de una burbuja
+        // vacía. UsuarioId = -1 marca que la reacción es DEL CLIENTE (las nuestras van con null).
+        if (tipo == "reaction")
+        {
+            await ProcesarReaccionEntranteAsync(db, m);
+            return;
+        }
+
         // Extraer el cuerpo segun el tipo. Si es un archivo (foto, PDF, audio…), ademas lo
         // BAJAMOS de Meta y lo guardamos, porque el webhook solo trae un media_id, no el archivo.
         string? cuerpo = null;
@@ -662,6 +673,54 @@ public class MetaWhatsAppWebhookController : ControllerBase
             CreatedAt = DateTime.UtcNow
         });
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>2026-08-05: guarda (o quita) la reacción con emoji que el cliente puso sobre uno de
+    /// NUESTROS mensajes. El evento trae reaction.message_id (el wamid del mensaje reaccionado) y
+    /// reaction.emoji (vacío si el cliente SACÓ la reacción). La reacción del cliente se marca con
+    /// UsuarioId = -1 para poder mostrarla distinta de las nuestras.</summary>
+    private async Task ProcesarReaccionEntranteAsync(AppDbContext db, JsonElement m)
+    {
+        const int UsuarioCliente = -1; // sentinela: la reacción es del cliente, no nuestra
+        if (!m.TryGetProperty("reaction", out var reac))
+            return;
+
+        var wamidOriginal = reac.TryGetProperty("message_id", out var midEl) ? midEl.GetString() : null;
+        var emoji = reac.TryGetProperty("emoji", out var emEl) ? emEl.GetString() : null;
+        if (string.IsNullOrWhiteSpace(wamidOriginal))
+            return;
+
+        // Buscar el mensaje NUESTRO al que reaccionó (por su wamid).
+        var mensaje = await db.WhatsAppTwilioMensajes
+            .FirstOrDefaultAsync(x => x.TwilioMessageSid == wamidOriginal);
+        if (mensaje is null)
+        {
+            _logger.LogInformation("[Meta WA reaccion] no encontré el mensaje {Wamid} para enganchar la reacción", wamidOriginal);
+            return;
+        }
+
+        // Siempre limpiamos la reacción anterior del cliente sobre este mensaje: WhatsApp permite
+        // UNA reacción por persona por mensaje (cambiar de emoji reemplaza la anterior).
+        var previas = await db.WhatsAppTwilioReacciones
+            .Where(r => r.MensajeId == mensaje.Id && r.UsuarioId == UsuarioCliente)
+            .ToListAsync();
+        if (previas.Count > 0)
+            db.WhatsAppTwilioReacciones.RemoveRange(previas);
+
+        // Emoji vacío = el cliente SACÓ la reacción. Solo la quitamos (ya lo hicimos arriba).
+        if (!string.IsNullOrWhiteSpace(emoji))
+        {
+            db.WhatsAppTwilioReacciones.Add(new WhatsAppTwilioReaccion
+            {
+                MensajeId = mensaje.Id,
+                Emoji = emoji!,
+                UsuarioId = UsuarioCliente,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+        await db.SaveChangesAsync();
+        _logger.LogInformation("[Meta WA reaccion] cliente {Emoji} sobre mensaje {Id}",
+            string.IsNullOrWhiteSpace(emoji) ? "(quitó)" : emoji, mensaje.Id);
     }
 
     /// <summary>Saca el ID del botón o de la fila de lista que tocó el cliente.</summary>

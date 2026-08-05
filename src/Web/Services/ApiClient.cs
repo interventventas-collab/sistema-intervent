@@ -6318,7 +6318,7 @@ public class ApiClient
     public record TwConvDto(string Numero, string? NombrePerfil, string? Rol, int? ClienteId, string? ClienteNombre, string? UltimoMensaje, string? UltimoDireccion, DateTime UltimoAt, int Total, string? Linea, string? LineaNumero, string? Canal = null,
         // 2026-08-04: estado + responsable de la conversación (pasar de uno a otro).
         string Estado = "nueva", string? AsignadoOperador = null, string? AsignadoPor = null, string? AsignadoNota = null, bool AsignadoVisto = true);
-    public record TwReaccionDto(string Emoji, int Count);
+    public record TwReaccionDto(string Emoji, int Count, bool EsCliente = false);
     public record TwMsgDto(int Id, string Direccion, string Numero, string? NombrePerfil, string? Cuerpo, string? MediaUrl, string? MediaFilename, int? NumMedia, bool Procesado, string? RespuestaEnviada, DateTime CreatedAt, string? EstadoEntrega, List<TwReaccionDto>? Reacciones);
     public record TwRespRapidaDto(int Id, string Nombre, string Texto, int Orden, bool Activo);
     public record TwContactoDto(int Id, string Numero, string Nombre, string Rol, string? Notas, bool Activo, int? ClienteId, string? ClienteNombre, string? ClienteCodigo);
