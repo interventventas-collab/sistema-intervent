@@ -168,15 +168,26 @@ public class VisitasController : ControllerBase
         return Ok(list.Select(MapPrep).ToList());
     }
 
-    /// <summary>Visitas ya armadas (para la sección "Ya armados", últimos N días).</summary>
+    /// <summary>Visitas ya armadas (sección "Ya armados"). Filtra por FECHA DE ARMADO (PreparadoAt),
+    /// no por fecha del comprobante, con el mismo rango que las ventas (hoy/ayer/7d/30d/todos).</summary>
     [HttpGet("preparacion/armados")]
-    public async Task<IActionResult> ListarPreparacionArmados([FromQuery] int dias = 7)
+    public async Task<IActionResult> ListarPreparacionArmados([FromQuery] string rango = "hoy")
     {
-        var desde = DateTime.UtcNow.Date.AddDays(-dias);
-        var list = await _db.Visitas
-            .Where(v => v.EnPreparacion && v.PreparadoAt != null && v.PreparadoAt >= desde)
-            .OrderByDescending(v => v.PreparadoAt)
-            .Take(200).ToListAsync();
+        var argHoy = DateTime.UtcNow.AddHours(-3).Date;
+        DateTime? desdeUtc = null, hastaUtc = null;
+        switch ((rango ?? "hoy").ToLowerInvariant())
+        {
+            case "hoy": desdeUtc = argHoy.AddHours(3); hastaUtc = argHoy.AddDays(1).AddHours(3); break;
+            case "ayer": desdeUtc = argHoy.AddDays(-1).AddHours(3); hastaUtc = argHoy.AddHours(3); break;
+            case "30d": desdeUtc = argHoy.AddDays(-30).AddHours(3); break;
+            case "todos": desdeUtc = null; break;
+            case "7d":
+            default: desdeUtc = argHoy.AddDays(-7).AddHours(3); break;
+        }
+        var q = _db.Visitas.Where(v => v.EnPreparacion && v.PreparadoAt != null);
+        if (desdeUtc.HasValue) q = q.Where(v => v.PreparadoAt >= desdeUtc.Value);
+        if (hastaUtc.HasValue) q = q.Where(v => v.PreparadoAt < hastaUtc.Value);
+        var list = await q.OrderByDescending(v => v.PreparadoAt).Take(200).ToListAsync();
         return Ok(list.Select(MapPrep).ToList());
     }
 

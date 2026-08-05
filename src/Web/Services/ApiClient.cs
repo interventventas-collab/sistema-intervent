@@ -971,8 +971,8 @@ public class ApiClient
     public async Task<List<VisitaPreparacionDto>?> GetVisitasPreparacionAsync()
         => await GetAsync<List<VisitaPreparacionDto>>("/api/visitas/preparacion");
 
-    public async Task<List<VisitaPreparacionDto>?> GetVisitasPreparacionArmadosAsync(int dias = 7)
-        => await GetAsync<List<VisitaPreparacionDto>>($"/api/visitas/preparacion/armados?dias={dias}");
+    public async Task<List<VisitaPreparacionDto>?> GetVisitasPreparacionArmadosAsync(string rango = "hoy")
+        => await GetAsync<List<VisitaPreparacionDto>>($"/api/visitas/preparacion/armados?rango={Uri.EscapeDataString(rango)}");
 
     public async Task<bool> MarcarVisitaArmadaAsync(int id)
     {

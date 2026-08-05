@@ -987,15 +987,40 @@
                     <option value="todos">Todos</option>
                 </select>
             }
-            <span style="margin-left:auto; font-weight:600;">@(armados?.Count ?? 0)</span>
+            <span style="margin-left:auto; font-weight:600;">@((armados?.Count ?? 0) + visitasArmados.Count)</span>
         </div>
         @if (armadosExpanded)
         {
+            @if (visitasArmados.Count > 0)
+            {
+                <div class="drive-pedidos-grid" style="margin-top:0.5rem;">
+                    @foreach (var va in visitasArmados)
+                    {
+                        <div class="prep-armado-mini">
+                            <a href="@($"/api/visitas/publica/{va.PublicToken}/recibo.pdf")" target="_blank" title="Abrir/imprimir recibo PDF" style="text-decoration:none;">
+                                <svg class="pdf-icon-mini" viewBox="0 0 24 30" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M14 0H4C1.79 0 0 1.79 0 4v22c0 2.21 1.79 4 4 4h16c2.21 0 4-1.79 4-4V10L14 0z" fill="#6366f1"/>
+                                    <text x="12" y="22" text-anchor="middle" fill="white" font-size="6" font-weight="700" font-family="Arial">PDF</text>
+                                </svg>
+                            </a>
+                            <div style="flex:1; min-width:0;">
+                                <div style="font-family:monospace; font-size:0.78rem; color:#6b7280;">📋 Visita N° @va.Numero.ToString("D4")</div>
+                                <div style="font-weight:700;">@va.ClienteNombre</div>
+                                @if (va.PreparadoAt.HasValue)
+                                {
+                                    <div style="font-size:0.72rem; color:#16a34a;">✅ Armada @HaceCuanto(va.PreparadoAt)</div>
+                                }
+                            </div>
+                            <button class="prep-btn-volver-armar" @onclick="() => VolverArmarVisita(va)" title="Volver esta visita a 'Para armar'">↩ Volver</button>
+                        </div>
+                    }
+                </div>
+            }
             @if (armados is null)
             {
                 <p style="padding:0.5rem;">Cargando historial...</p>
             }
-            else if (armados.Count == 0)
+            else if (armados.Count == 0 && visitasArmados.Count == 0)
             {
                 <div class="prep-empty">Todavía no hay pedidos marcados como LISTO en este rango.</div>
             }
@@ -1158,12 +1183,26 @@
 
     // ── Visitas en el tablero de preparación (2026-08-05) ──
     private List<VisitaPreparacionDto> visitasPrep = new();
+    private List<VisitaPreparacionDto> visitasArmados = new();
+
+    private async Task RecargarVisitasArmadas()
+    {
+        if (armadosExpanded)
+            visitasArmados = await Api.GetVisitasPreparacionArmadosAsync(rangoArmados) ?? new();
+    }
 
     private async Task MarcarVisitaArmada(VisitaPreparacionDto vp)
     {
         var ok = await Api.MarcarVisitaArmadaAsync(vp.Id);
-        if (ok) { ToastService.Success($"Visita N° {vp.Numero:0000} armada ✅"); await Cargar(); }
+        if (ok) { ToastService.Success($"Visita N° {vp.Numero:0000} armada ✅"); await Cargar(); await RecargarVisitasArmadas(); }
         else ToastService.Error("No se pudo marcar la visita como armada");
+    }
+
+    private async Task VolverArmarVisita(VisitaPreparacionDto va)
+    {
+        var ok = await Api.VolverAArmarVisitaAsync(va.Id);
+        if (ok) { ToastService.Success($"Visita N° {va.Numero:0000} vuelta a 'Para armar'"); await Cargar(); await RecargarVisitasArmadas(); }
+        else ToastService.Error("No se pudo volver la visita a 'Para armar'");
     }
 
     private async Task QuitarVisita(VisitaPreparacionDto vp)
@@ -1223,6 +1262,7 @@
                 // Recargar ambas listas
                 await Cargar();
                 armados = await Api.GetCafePreparacionArmadosAsync(rangoArmados) ?? new();
+                visitasArmados = await Api.GetVisitasPreparacionArmadosAsync(rangoArmados) ?? new();
                 StateHasChanged();
             }
             else
@@ -1242,6 +1282,7 @@
         if (armadosExpanded && armados is null)
         {
             armados = await Api.GetCafePreparacionArmadosAsync(rangoArmados) ?? new();
+            visitasArmados = await Api.GetVisitasPreparacionArmadosAsync(rangoArmados) ?? new();
         }
         StateHasChanged();
     }
@@ -1252,6 +1293,7 @@
         armados = null;  // fuerza loading mientras llega
         StateHasChanged();
         armados = await Api.GetCafePreparacionArmadosAsync(rangoArmados) ?? new();
+        visitasArmados = await Api.GetVisitasPreparacionArmadosAsync(rangoArmados) ?? new();
         StateHasChanged();
     }
 
