@@ -1,0 +1,210 @@
+@* 2026-08-05: Mini-chat FIJO para el Dashboard. Muestra UNA conversación puntual
+   (número + línea) para leer los últimos mensajes y responder ahí mismo (solo texto).
+   Se usa para la conversación "importante" (Gabriel + FIJO TRANSRADIO) y también la
+   ve el usuario "depósito". El backend (/api/whatsapp/twilio/*) es [Authorize] a secas,
+   así que cualquier usuario logueado puede leer y escribir en esta conversación. *@
+@using Web.Services
+@inject Web.Services.ApiClient Api
+@inject Web.Services.ToastService Toast
+@inject Microsoft.JSInterop.IJSRuntime JS
+@implements IDisposable
+
+<div class="pwa-card">
+    <div class="pwa-head">
+        <div class="pwa-head-l">
+            <span class="pwa-avatar">@InicialContacto()</span>
+            <div class="pwa-head-txt">
+                <div class="pwa-head-name" title="@TituloContacto">@TituloContacto</div>
+                <div class="pwa-head-line">🟢 @NombreLinea</div>
+            </div>
+        </div>
+        <div class="pwa-head-r">
+            <span class="pwa-pin" title="Conversación fijada">📌 Fijada</span>
+            @if (PuedeAbrirEnGrande)
+            {
+                <button class="pwa-open" @onclick="AbrirEnGrande" title="Abrir esta conversación en grande, en una pestaña nueva">Abrir ⤢</button>
+            }
+        </div>
+    </div>
+
+    <div class="pwa-body">
+        @if (mensajes is null)
+        {
+            <div class="pwa-info">Cargando conversación…</div>
+        }
+        else if (mensajes.Count == 0)
+        {
+            <div class="pwa-info">Todavía no hay mensajes en esta conversación.</div>
+        }
+        else
+        {
+            @* column-reverse: renderizamos del más nuevo al más viejo; el CSS lo
+               muestra con el más nuevo abajo y el scroll pegado al fondo, sin JS. *@
+            @foreach (var m in Enumerable.Reverse(mensajes))
+            {
+                var mine = m.Direccion == "OUTGOING";
+                <div class="pwa-row @(mine ? "out" : "in")">
+                    <div class="pwa-bubble @(mine ? "out" : "in")">
+                        @if (!string.IsNullOrWhiteSpace(m.MediaUrl))
+                        {
+                            <div class="pwa-media">📎 @(string.IsNullOrWhiteSpace(m.MediaFilename) ? "Archivo adjunto" : m.MediaFilename)</div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(m.Cuerpo))
+                        {
+                            <div class="pwa-text">@m.Cuerpo</div>
+                        }
+                        <div class="pwa-time">@FormatHora(m.CreatedAt)</div>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+
+    <div class="pwa-composer">
+        <textarea class="pwa-input" placeholder="Escribir mensaje… (Enter para enviar)"
+                  @bind="composer" @bind:event="oninput" @onkeydown="OnKey" rows="1" disabled="@sending"></textarea>
+        <button class="pwa-send" @onclick="Enviar" disabled="@(sending || string.IsNullOrWhiteSpace(composer))">
+            @(sending ? "⏳" : "Enviar")
+        </button>
+    </div>
+</div>
+
+<style>
+    .pwa-card { display: flex; flex-direction: column; height: 100%; min-height: 320px;
+        background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.10); }
+
+    .pwa-head { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        padding: 0.6rem 0.8rem; border-bottom: 1px solid #eef0f2; background: #f8fafb; }
+    .pwa-head-l { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .pwa-avatar { width: 36px; height: 36px; border-radius: 50%; background: #25d366; color: #fff;
+        display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.95rem; flex: none; }
+    .pwa-head-txt { min-width: 0; }
+    .pwa-head-name { font-weight: 800; color: #111827; font-size: 0.95rem;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pwa-head-line { font-size: 0.72rem; color: #16a34a; font-weight: 700; }
+    .pwa-head-r { display: flex; align-items: center; gap: 8px; flex: none; }
+    .pwa-pin { font-size: 0.68rem; color: #6b7280; font-weight: 700; background: #eef2f7;
+        padding: 3px 8px; border-radius: 999px; white-space: nowrap; }
+    .pwa-open { border: 1px solid #d1d5db; background: #fff; color: #374151; font-weight: 700;
+        font-size: 0.74rem; padding: 5px 10px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+    .pwa-open:hover { background: #f3f4f6; }
+
+    .pwa-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0.7rem 0.8rem;
+        display: flex; flex-direction: column-reverse; gap: 0.4rem;
+        background: #e9ece6; }
+    .pwa-info { margin: auto; color: #6b7280; font-size: 0.82rem; text-align: center; padding: 1rem; }
+    .pwa-row { display: flex; }
+    .pwa-row.in { justify-content: flex-start; }
+    .pwa-row.out { justify-content: flex-end; }
+    .pwa-bubble { max-width: 78%; padding: 0.4rem 0.6rem; border-radius: 10px;
+        box-shadow: 0 1px 0.5px rgba(0,0,0,0.13); font-size: 0.86rem; line-height: 1.25; }
+    .pwa-bubble.in { background: #fff; color: #111827; border-top-left-radius: 2px; }
+    .pwa-bubble.out { background: #d9fdd3; color: #111827; border-top-right-radius: 2px; }
+    .pwa-media { font-size: 0.8rem; font-weight: 600; color: #374151; margin-bottom: 2px; }
+    .pwa-text { white-space: pre-wrap; word-break: break-word; }
+    .pwa-time { font-size: 0.62rem; color: #6b7280; text-align: right; margin-top: 2px; }
+
+    .pwa-composer { display: flex; align-items: flex-end; gap: 8px; padding: 0.55rem 0.7rem;
+        border-top: 1px solid #eef0f2; background: #f8fafb; }
+    .pwa-input { flex: 1; resize: none; border: 1px solid #d1d5db; border-radius: 12px;
+        padding: 0.55rem 0.75rem; font-size: 0.88rem; font-family: inherit; max-height: 110px; line-height: 1.3; }
+    .pwa-input:focus { outline: none; border-color: #25d366; box-shadow: 0 0 0 2px rgba(37,211,102,0.18); }
+    .pwa-send { border: none; border-radius: 12px; padding: 0.55rem 1.1rem; font-weight: 700;
+        color: #fff; background: #25d366; cursor: pointer; white-space: nowrap; }
+    .pwa-send:hover:not(:disabled) { filter: brightness(1.05); }
+    .pwa-send:disabled { background: #cbd5d3; cursor: not-allowed; }
+</style>
+
+@code {
+    /// <summary>Número del contacto tal cual está guardado, ej. "whatsapp:+5491158464160".</summary>
+    [Parameter, EditorRequired] public string Numero { get; set; } = "";
+    /// <summary>PhoneId de la línea nuestra (ej. FIJO TRANSRADIO). Null = línea sin registrar.</summary>
+    [Parameter] public string? LineaPhoneId { get; set; }
+    [Parameter] public string TituloContacto { get; set; } = "Conversación";
+    [Parameter] public string NombreLinea { get; set; } = "";
+    /// <summary>Muestra el botón "Abrir ⤢" (para usuarios que sí pueden ver la pantalla completa de WhatsApp).</summary>
+    [Parameter] public bool PuedeAbrirEnGrande { get; set; } = true;
+
+    private List<ApiClient.TwMsgDto>? mensajes;
+    private string composer = "";
+    private bool sending;
+    private System.Threading.Timer? refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Cargar();
+        // Refresco liviano cada 12s para ver mensajes nuevos sin recargar la página.
+        refreshTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                if (!sending) { await Cargar(); StateHasChanged(); }
+            });
+        }, null, 12_000, 12_000);
+    }
+
+    private async Task Cargar()
+    {
+        try
+        {
+            // El endpoint espera el sentinela "null" (string) para la línea sin registrar.
+            var linea = LineaPhoneId ?? "null";
+            var lista = await Api.GetTwMensajesAsync(Numero, linea);
+            // Respaldo: si por esta línea todavía no hay nada (típico en DESARROLLO, donde el
+            // historial real vive en PRODUCCIÓN), mostramos el hilo del contacto sin filtrar por
+            // línea para no dejar la card vacía. En PROD no se usa (la línea tiene historial).
+            if (lista.Count == 0)
+                lista = await Api.GetTwMensajesAsync(Numero, null);
+            mensajes = lista;
+        }
+        catch { mensajes ??= new(); }
+    }
+
+    private async Task OnKey(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        // Enter envía; Shift+Enter hace renglón nuevo (como WhatsApp).
+        if (e.Key == "Enter" && !e.ShiftKey) await Enviar();
+    }
+
+    private async Task Enviar()
+    {
+        var texto = (composer ?? "").Trim();
+        if (sending || string.IsNullOrWhiteSpace(texto)) return;
+        sending = true;
+        var (ok, err) = await Api.SendTwMensajeAsync(Numero, texto, LineaPhoneId);
+        sending = false;
+        if (ok)
+        {
+            composer = "";
+            await Cargar();
+        }
+        else
+        {
+            Toast.Error(err ?? "No se pudo enviar el mensaje");
+        }
+    }
+
+    private async Task AbrirEnGrande()
+    {
+        // solo=1 → abre SOLO esta conversación (sin la lista de todos los chats).
+        var url = $"/whatsapp?numero={Uri.EscapeDataString(Numero)}&solo=1"
+                + (string.IsNullOrEmpty(LineaPhoneId) ? "" : $"&linea={Uri.EscapeDataString(LineaPhoneId)}");
+        try { await JS.InvokeVoidAsync("open", url, "_blank"); }
+        catch { }
+    }
+
+    private string InicialContacto()
+        => string.IsNullOrWhiteSpace(TituloContacto) ? "?" : TituloContacto.Trim()[..1].ToUpperInvariant();
+
+    private static string FormatHora(DateTime utc)
+    {
+        var local = utc.ToArTime();
+        var ahora = DateTime.UtcNow.ToArTime();
+        if (local.Date == ahora.Date) return local.ToString("HH:mm");
+        if (local.Date == ahora.Date.AddDays(-1)) return "Ayer " + local.ToString("HH:mm");
+        return local.ToString("dd/MM HH:mm");
+    }
+
+    public void Dispose() => refreshTimer?.Dispose();
+}

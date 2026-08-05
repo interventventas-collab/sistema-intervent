@@ -602,9 +602,14 @@
                      IsActive="@IsActive("/")" OnClick="@(() => NavigateTo("/"))" />
         }
 
-        @* ═════════════ CHAT INTERNO (visible para todos los usuarios) ═════════════ *@
-        <NavItem Href="/chat" Label="💬 Chat" Icon="@SvgIcons.Users"
-                 IsActive="@IsActive("/chat")" OnClick="@(() => NavigateTo("/chat"))" />
+        @* ═════════════ CHAT INTERNO ═════════════
+           2026-08-05: se OCULTA para el usuario Depósito (pidió sacarlo, "ya no sirve").
+           El "Chat del equipo" embebido más abajo se mantiene. Admin/oficina lo siguen viendo. *@
+        @if (!HasPerm("deposito"))
+        {
+            <NavItem Href="/chat" Label="💬 Chat" Icon="@SvgIcons.Users"
+                     IsActive="@IsActive("/chat")" OnClick="@(() => NavigateTo("/chat"))" />
+        }
 
         @* ═════════════ MIS ALERTAS (motor de alertas configurables, 2026-07-10) ═════════════ *@
         @if (!IsRoleWithCustomSidebar())
@@ -652,6 +657,15 @@
                     <div style="padding: 0.5rem 0.8rem; font-size: 0.78rem; color: #9ca3af; font-style: italic;">
                         El admin todavía no te asignó pantallas.
                     </div>
+                }
+                @* 2026-08-05: acceso directo a la conversación de WhatsApp FIJADA (Gabriel + FIJO
+                   TRANSRADIO). Depósito la abre en modo "una sola conversación" (solo=1): ve SOLO
+                   ese chat, para leer y escribir. Fase 2: hacerlo elegible como el resto del menú. *@
+                @if (role == "deposito")
+                {
+                    var pinnedWaHref = "/whatsapp?numero=whatsapp%3A%2B5491158464160&solo=1&linea=1195191513683780";
+                    <NavItem Href="@pinnedWaHref" Label="💬 WhatsApp Gabriel" Icon="@SvgIcons.MessageCircle"
+                             IsActive="@IsActive("/whatsapp")" OnClick="@(() => NavigateTo(pinnedWaHref))" />
                 }
             </NavGroup>
         }
