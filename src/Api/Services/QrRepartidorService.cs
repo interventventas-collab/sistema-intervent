@@ -21,6 +21,9 @@ public class QrRepartidorService
     /// <summary>QR para el comprobante de una reserva de alquiler: lleva a /alquiler/{token}.</summary>
     public Task<byte[]?> GenerarQrAlquilerAsync(string? publicToken) => GenerarParaRutaAsync("alquiler", publicToken);
 
+    /// <summary>QR para el recibo de una VISITA: lleva a /visita/{token} (2026-08-05).</summary>
+    public Task<byte[]?> GenerarQrVisitaAsync(string? publicToken) => GenerarParaRutaAsync("visita", publicToken);
+
     private async Task<byte[]?> GenerarParaRutaAsync(string ruta, string? publicToken)
     {
         if (string.IsNullOrWhiteSpace(publicToken)) return null;

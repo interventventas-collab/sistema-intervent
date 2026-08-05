@@ -102,6 +102,8 @@ public class AppDbContext : DbContext
     public DbSet<VaultEntry> VaultEntries => Set<VaultEntry>();
     // Postits del dashboard
     public DbSet<Postit> Postits => Set<Postit>();
+    // Recibos de Visita / cambios (2026-08-05)
+    public DbSet<Visita> Visitas => Set<Visita>();
     // Chat interno entre usuarios (2026-07-02)
     public DbSet<ChatMensaje> ChatMensajes => Set<ChatMensaje>();
     public DbSet<ChatLectura> ChatLecturas => Set<ChatLectura>();

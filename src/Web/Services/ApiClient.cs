@@ -944,6 +944,23 @@ public class ApiClient
     public async Task<bool> DeletePostitAsync(int id)
         => await DeleteAsync($"/api/postits/{id}");
 
+    // --- Visitas (recibos de visita / cambio, 2026-08-05) ---
+    public async Task<List<VisitaDto>?> GetVisitasAsync(string? estado = null)
+    {
+        var url = "/api/visitas";
+        if (!string.IsNullOrWhiteSpace(estado)) url += $"?estado={Uri.EscapeDataString(estado)}";
+        return await GetAsync<List<VisitaDto>>(url);
+    }
+
+    public async Task<VisitaDto?> GetVisitaAsync(int id)
+        => await GetAsync<VisitaDto>($"/api/visitas/{id}");
+
+    public async Task<VisitaDto?> CreateVisitaAsync(CreateVisitaRequest request)
+        => await PostAsync<VisitaDto>("/api/visitas", request);
+
+    public async Task<bool> DeleteVisitaAsync(int id)
+        => await DeleteAsync($"/api/visitas/{id}");
+
     // --- Chat interno entre usuarios (2026-07-02) ---
     public async Task<ChatConversacionesDto?> GetChatConversacionesAsync()
         => await GetAsync<ChatConversacionesDto>("/api/chat/conversaciones");
