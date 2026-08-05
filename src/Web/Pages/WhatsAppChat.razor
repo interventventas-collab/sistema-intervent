@@ -483,8 +483,8 @@
                     </button>
                 }
                 @* 2026-08-05: "Ver cliente" se movió al ojito al lado del nombre del contacto *@
-                <button class="btn btn-outline-success btn-sm" @onclick="AbrirPreviewPedido" title="Abre una ventana con el texto del pedido (el mensaje tildado, o el último si no tildaste nada) para revisarlo antes de crear la venta">
-                    📋 Crear pedido
+                <button class="btn @(modoElegirVenta ? "btn-success" : "btn-outline-success") btn-sm" @onclick="IniciarCrearVenta" title="Crear una venta: elegí uno o varios mensajes del pedido y se abre Nueva Venta en una pestaña nueva">
+                    🧾 Crear venta
                 </button>
                 @* 2026-08-05: el "Menú rol" se movió abajo, arriba de los íconos del composer, como miniatura de lo que le llega al cliente *@
                 @* 2026-08-05: se quitó el botón "Plantilla" de la barra: era redundante — hace lo mismo que "Nueva conversación"
@@ -773,13 +773,20 @@
                 }
             </div>
 
-            @if (mensajesSeleccionadosIds.Count > 0)
+            @if (modoElegirVenta || mensajesSeleccionadosIds.Count > 0)
             {
                 <div class="wa-selection-bar">
-                    <span style="font-size:0.85rem; font-weight:600;">✓ @mensajesSeleccionadosIds.Count seleccionado(s)</span>
-                    <button class="btn btn-success btn-sm" @onclick="AbrirPreviewPedido">📋 Crear venta</button>
+                    @if (modoElegirVenta && mensajesSeleccionadosIds.Count == 0)
+                    {
+                        <span style="font-size:0.85rem; font-weight:600;">🧾 Tildá los mensajes del pedido y tocá "Abrir venta"</span>
+                    }
+                    else
+                    {
+                        <span style="font-size:0.85rem; font-weight:600;">✓ @mensajesSeleccionadosIds.Count seleccionado(s)</span>
+                    }
+                    <button class="btn btn-success btn-sm" @onclick="AbrirVentaDesdeChat" title="Abre Nueva Venta en una pestaña nueva con estos mensajes y el cliente (si el chat tiene uno asignado)">🧾 Abrir venta</button>
                     <button class="btn btn-primary btn-sm" @onclick="AbrirReenviar">↪ Reenviar</button>
-                    <button class="btn btn-outline-secondary btn-sm" @onclick="@(() => mensajesSeleccionadosIds.Clear())">× Cancelar</button>
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="CancelarSeleccionVenta">× Cancelar</button>
                 </div>
             }
             @* 2026-08-04: Reenviar los mensajes tildados a uno o varios contactos (como WhatsApp) *@
@@ -2208,6 +2215,8 @@
     static readonly string[] QuickEmojis = new[] { "☕", "🫘", "👍", "❤️", "😂", "😮", "😢", "🙏", "✅", "⏳", "❗" };
     // === Selección de mensajes + Nueva Venta en ventana popup ===
     HashSet<int> mensajesSeleccionadosIds = new();
+    // 2026-08-05: modo "elegir mensajes para la venta" (se activa con el botón "Crear venta" del encabezado)
+    bool modoElegirVenta = false;
 
     // 2026-08-03: ventana flotante de preview del pedido (se ve el texto completo, se puede mover y editar)
     bool showPedidoFloat = false;
@@ -2236,6 +2245,39 @@
         showPedidoFloat = true;
         _pedidoFloatAttachPending = true;
         StateHasChanged();
+    }
+
+    // 2026-08-05: NUEVO flujo de "Crear venta" desde el chat.
+    // Paso 1: el botón del encabezado entra en modo "elegir mensajes" (aparece la barra de abajo).
+    void IniciarCrearVenta()
+    {
+        if (selectedNumero == null) { Toast.Warning("Elegí un chat primero"); return; }
+        // Si ya estaba en modo, lo apagamos (toggle).
+        if (modoElegirVenta) { modoElegirVenta = false; return; }
+        modoElegirVenta = true;
+        mensajesSeleccionadosIds.Clear();   // empezar la selección de cero
+    }
+
+    void CancelarSeleccionVenta()
+    {
+        modoElegirVenta = false;
+        mensajesSeleccionadosIds.Clear();
+    }
+
+    // Paso 2: abre Nueva Venta en una PESTAÑA NUEVA con el cliente (si el chat tiene uno asignado) y
+    // los mensajes tildados en "Comentario para armado". NO crea ningún pedido en la cola —
+    // usa el circuito ?fromTwilio=1&notas=...&clienteIdPre=... que ya existe en /cafe/ventas.
+    async Task AbrirVentaDesdeChat()
+    {
+        var texto = TextoPedidoDesdeChat();   // mensajes tildados, o el último entrante si no tildaste ninguno
+        if (string.IsNullOrWhiteSpace(texto)) { Toast.Warning("Tildá los mensajes del pedido y tocá 'Abrir venta'."); return; }
+        var conv = SelectedConv();
+        var url = $"/cafe/ventas?fromTwilio=1&notas={Uri.EscapeDataString(texto.Trim())}";
+        if (conv?.ClienteId is int cid) url += $"&clienteIdPre={cid}";
+        // pestaña nueva (no ventanita chica): el operador suele tener dos pantallas
+        await JS.InvokeVoidAsync("open", url, "_blank");
+        modoElegirVenta = false;
+        mensajesSeleccionadosIds.Clear();
     }
 
     /// <summary>Confirma desde la ventana flotante: crea el pedido con el texto (ya editado si lo tocaron)
@@ -3403,6 +3445,7 @@
         sugerenciaCliente = null;   // limpiar la del chat anterior mientras carga este
         mostrarFichaCliente = false; fichaCliente = null; previewFacturaId = null;   // 2026-08-05: cerrar la ficha del cliente al cambiar de chat
         showQuickReplies = false;   // 2026-08-05: cerrar el desplegable de respuestas rápidas al cambiar de chat
+        modoElegirVenta = false; mensajesSeleccionadosIds.Clear();   // 2026-08-05: salir del modo "elegir mensajes para venta"
         asignarNota = "";           // 2026-08-04: la nota de "pasar a" es por-chat
         await LoadMensajes();
         await BuscarSugerenciaCliente();
