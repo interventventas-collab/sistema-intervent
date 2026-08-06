@@ -183,3 +183,17 @@ public class MapeoFavoritoDto
     public string? Notas { get; set; }
     public bool IsActive { get; set; } = true;
 }
+
+// "Armar ruta guiada": una parada del medio clavada en un puesto fijo (opcional).
+public class FijaMedioDto
+{
+    public int StopId { get; set; }
+    public int Puesto { get; set; }
+}
+
+// Resultado de armar la ruta guiada: cuántas paradas ordenó y si lo hizo Google o el respaldo.
+public class ArmarRutaGuiadaResult
+{
+    public int Total { get; set; }
+    public bool PorGoogle { get; set; }
+}
