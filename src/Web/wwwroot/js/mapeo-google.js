@@ -144,29 +144,67 @@
     // Bumpea el contador para cancelar cualquier foto de Street View en vuelo.
     function cancelStreetView() { svSeq++; }
 
-    // iw = InfoWindow ya abierto; baseHtml = el contenido actual (sin la foto).
+    // Cartelito de TIPO DE CALLE según lo que dedujo la IA (asfalto/tierra/empedrado).
+    // Solo se muestra cuando hay una respuesta clara; en 'no_seguro'/'sin_foto' no ensucia.
+    function surfaceChipHtml(tipo) {
+        let emoji, label, bg, fg;
+        switch (tipo) {
+            case 'asfalto':   emoji = '🛣️'; label = 'Asfalto';   bg = '#e5e7eb'; fg = '#374151'; break;
+            case 'tierra':    emoji = '🟤'; label = 'Tierra';    bg = '#fdead0'; fg = '#92400e'; break;
+            case 'empedrado': emoji = '🧱'; label = 'Empedrado'; bg = '#e7e0d8'; fg = '#78350f'; break;
+            default: return ''; // no_seguro / sin_foto → no mostramos nada
+        }
+        return '<div style="display:inline-flex;align-items:center;gap:4px;margin:0 0 7px;'
+            + 'padding:2px 9px;border-radius:999px;font-size:0.72rem;font-weight:800;'
+            + 'background:' + bg + ';color:' + fg + ';font-family:Inter,Arial,sans-serif;" '
+            + 'title="Tipo de calle deducido de la foto de Street View">'
+            + emoji + ' ' + label + '</div>';
+    }
+
+    // iw = InfoWindow ya abierto; baseHtml = el contenido actual (sin foto ni cartelito).
     // enabled=false solo cancela pedidos viejos (para clusters o el punto de partida).
+    // Trae DOS cosas en paralelo y las va mostrando arriba del contenido a medida que llegan:
+    //   1) la fotito de Street View de la fachada
+    //   2) el cartelito de tipo de calle (lo deduce el servidor con IA, cacheado por domicilio)
+    // El guard svSeq descarta respuestas viejas si se abrió otro globito mientras tanto.
     function streetView(iw, lat, lng, baseHtml, enabled) {
         const myId = ++svSeq;
-        if (!enabled || !browserKey || lat == null || lng == null) return;
+        if (!enabled || lat == null || lng == null) return;
         const loc = (+lat).toFixed(6) + ',' + (+lng).toFixed(6);
-        const metaUrl = 'https://maps.googleapis.com/maps/api/streetview/metadata?location='
-            + loc + '&source=outdoor&key=' + encodeURIComponent(browserKey);
-        fetch(metaUrl)
-            .then(r => r.json())
-            .then(meta => {
-                if (myId !== svSeq) return;            // se abrió otro globito mientras tanto
-                if (!meta || meta.status !== 'OK') return; // no hay Street View en ese punto
-                const imgUrl = 'https://maps.googleapis.com/maps/api/streetview?size=280x130&location='
-                    + loc + '&fov=80&source=outdoor&key=' + encodeURIComponent(browserKey);
-                const panoUrl = 'https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=' + loc;
-                const thumb = '<a href="' + panoUrl + '" target="_blank" rel="noopener" '
-                    + 'title="Ver la calle en Google Street View" '
-                    + 'style="display:block;margin:0 0 8px;border-radius:8px;overflow:hidden;'
-                    + 'border:1px solid #e5e7eb;line-height:0;">'
-                    + '<img src="' + imgUrl + '" alt="Vista de la calle en el domicilio" '
-                    + 'style="width:100%;height:130px;object-fit:cover;display:block;"/></a>';
-                iw.setContent(thumb + baseHtml);
+        const slot = { chip: '', thumb: '' };
+        const render = function () { if (myId === svSeq) iw.setContent(slot.chip + slot.thumb + baseHtml); };
+
+        // 1) Fotito de Street View (necesita la clave del navegador + metadata).
+        if (browserKey) {
+            const metaUrl = 'https://maps.googleapis.com/maps/api/streetview/metadata?location='
+                + loc + '&source=outdoor&key=' + encodeURIComponent(browserKey);
+            fetch(metaUrl)
+                .then(r => r.json())
+                .then(meta => {
+                    if (myId !== svSeq) return;
+                    if (!meta || meta.status !== 'OK') return;
+                    const imgUrl = 'https://maps.googleapis.com/maps/api/streetview?size=280x130&location='
+                        + loc + '&fov=80&source=outdoor&key=' + encodeURIComponent(browserKey);
+                    const panoUrl = 'https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=' + loc;
+                    slot.thumb = '<a href="' + panoUrl + '" target="_blank" rel="noopener" '
+                        + 'title="Ver la calle en Google Street View" '
+                        + 'style="display:block;margin:0 0 8px;border-radius:8px;overflow:hidden;'
+                        + 'border:1px solid #e5e7eb;line-height:0;">'
+                        + '<img src="' + imgUrl + '" alt="Vista de la calle en el domicilio" '
+                        + 'style="width:100%;height:130px;object-fit:cover;display:block;"/></a>';
+                    render();
+                })
+                .catch(function () { });
+        }
+
+        // 2) Cartelito de tipo de calle (lo calcula el servidor con IA; queda cacheado).
+        fetch('/api/mapeo/stops/surface?lat=' + encodeURIComponent(loc.split(',')[0])
+                + '&lng=' + encodeURIComponent(loc.split(',')[1]), { credentials: 'same-origin' })
+            .then(r => r.ok ? r.json() : null)
+            .then(s => {
+                if (myId !== svSeq || !s) return;
+                const chip = surfaceChipHtml(s.tipo);
+                if (chip) { slot.chip = chip; render(); }
             })
             .catch(function () { });
     }

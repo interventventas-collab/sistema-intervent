@@ -1305,6 +1305,19 @@ public class MapeoStopsController : ControllerBase
     }
 
     /// <summary>
+    /// Tipo de calle (asfalto/tierra/empedrado) del domicilio, deducido por IA sobre la foto de
+    /// Street View. Se calcula una vez por punto y se cachea; el globito lo muestra como cartelito.
+    /// </summary>
+    [HttpGet("surface")]
+    public async Task<IActionResult> Surface([FromQuery] decimal lat, [FromQuery] decimal lng,
+        [FromServices] SurfaceClassifierService surface)
+    {
+        if (lat == 0 && lng == 0) return Ok(new { tipo = "no_seguro", conf = (string?)null });
+        var r = await surface.ClassifyAsync(lat, lng);
+        return Ok(new { tipo = r.Tipo, conf = r.Conf });
+    }
+
+    /// <summary>
     /// Devuelve un PNG con el QR de una URL (para mostrar en la compu y abrir el escáner en el celular).
     /// Se genera en el servidor (QRCoder) para no depender de librerías del navegador ni del caché.
     /// </summary>

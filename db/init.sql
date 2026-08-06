@@ -6622,3 +6622,18 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='UX_CafePickingDispositivo_DeviceId')
     CREATE UNIQUE INDEX UX_CafePickingDispositivo_DeviceId ON Cafe_PickingDispositivo(DeviceId) WHERE DeviceId IS NOT NULL;
 GO
+
+-- Mapeo: caché del tipo de calle (asfalto/tierra/empedrado) deducido por IA sobre Street View.
+-- Se calcula una vez por punto (lat,lng redondeado) y se guarda para no re-pagar la consulta.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='MapeoSurfaceCache')
+BEGIN
+    CREATE TABLE MapeoSurfaceCache (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        PointKey NVARCHAR(40) NOT NULL,
+        Tipo NVARCHAR(20) NOT NULL CONSTRAINT DF_MapeoSurface_Tipo DEFAULT 'no_seguro',
+        Confianza NVARCHAR(10) NULL,
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_MapeoSurface_Created DEFAULT SYSUTCDATETIME()
+    );
+    CREATE UNIQUE INDEX UX_MapeoSurfaceCache_Point ON MapeoSurfaceCache(PointKey);
+END
+GO

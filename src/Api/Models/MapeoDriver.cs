@@ -96,3 +96,29 @@ public class MapeoFavorito
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }
+
+/// <summary>
+/// Caché del "tipo de calle" (asfalto/tierra/empedrado) de un domicilio, deducido por IA
+/// mirando la foto de Street View. Se calcula UNA sola vez por punto y se guarda acá, así
+/// no se vuelve a pagar la consulta a la IA cada vez que se abre el globito.
+/// La clave es "lat,lng" redondeado a 5 decimales (~1 metro).
+/// </summary>
+public class MapeoSurfaceCache
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    [Required, MaxLength(40)]
+    public string PointKey { get; set; } = string.Empty;
+
+    // asfalto | tierra | empedrado | no_seguro | sin_foto
+    [Required, MaxLength(20)]
+    public string Tipo { get; set; } = "no_seguro";
+
+    // alta | media | baja
+    [MaxLength(10)]
+    public string? Confianza { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}

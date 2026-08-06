@@ -253,6 +253,7 @@ builder.Services.AddScoped<EmployeeService>();
 builder.Services.AddScoped<PayrollService>();
 builder.Services.AddScoped<FiscalLookupService>();
 builder.Services.AddScoped<GoogleMapsLinkResolverService>();
+builder.Services.AddScoped<SurfaceClassifierService>();
 builder.Services.AddScoped<QuotesService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<BulkImportService>();
