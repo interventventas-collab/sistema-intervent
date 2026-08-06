@@ -27,10 +27,21 @@
 
 @if (isDepositoOnly)
 {
-    <div class="dash-pinned-solo">
-        <PinnedWaChat Numero="@PinnedWaNumero" LineaPhoneId="@PinnedWaLinea"
-                      TituloContacto="@PinnedWaTitulo" NombreLinea="@PinnedWaNombreLinea"
-                      PuedeAbrirEnGrande="false" />
+    @* 2026-08-06: antes acá iba el chat de WhatsApp embebido a pantalla completa. Se sacó:
+       ahora WhatsApp se usa desde el globito flotante 💬 (abajo a la derecha, en todas las
+       pantallas). El Dashboard queda con un saludo simple. *@
+    <div style="max-width:520px; margin:8vh auto 0; text-align:center; padding:2rem 1.5rem;
+                background:#fff; border:1px solid #e5e7eb; border-radius:16px;
+                box-shadow:0 6px 20px rgba(0,0,0,0.06);">
+        <div style="font-size:2.4rem; line-height:1;">🏭</div>
+        <h2 style="margin:0.7rem 0 0.4rem; color:#111827;">¡Hola!</h2>
+        <p style="margin:0 0 0.6rem; color:#4b5563; font-size:0.95rem;">
+            Usá el menú de la izquierda para tu trabajo del día.
+        </p>
+        <p style="margin:0; color:#166534; font-size:0.95rem;">
+            Para WhatsApp, tocá el <strong>globito verde 💬</strong> de abajo a la derecha —
+            está en todas las pantallas.
+        </p>
     </div>
 }
 else

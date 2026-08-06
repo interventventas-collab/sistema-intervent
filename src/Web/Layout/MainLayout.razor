@@ -658,15 +658,9 @@
                         El admin todavía no te asignó pantallas.
                     </div>
                 }
-                @* 2026-08-06: acceso a la conversación de WhatsApp FIJADA (Gabriel + FIJO TRANSRADIO).
-                   Antes abría la pantalla grande (recargada). Ahora abre el CHAT FLOTANTE simple
-                   (DepositoWaFloating), que se puede mover por toda la pantalla y trae la barrita de
-                   firma. También hay un globito 💬 abajo a la derecha para abrirlo desde donde estés. *@
-                @if (role == "deposito")
-                {
-                    <NavItem Href="#" Label="💬 WhatsApp Gabriel" Icon="@SvgIcons.MessageCircle"
-                             IsActive="false" OnClick="@(() => depWaRef?.Abrir())" />
-                }
+                @* 2026-08-06: se sacó el ítem "WhatsApp Gabriel" del menú. Depósito ahora usa SOLO
+                   el globito flotante 💬 (DepositoWaFloating), siempre visible abajo a la derecha
+                   en todas las pantallas. *@
             </NavGroup>
         }
 
