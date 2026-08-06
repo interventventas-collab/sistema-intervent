@@ -142,24 +142,37 @@
         if (file.Size > max) { errorMsg = "La foto es muy grande (máx 10 MB)."; return; }
 
         errorMsg = null;
-        subiendo = true;
-        StateHasChanged();
+        var contentType = string.IsNullOrEmpty(file.ContentType) ? "image/jpeg" : file.ContentType;
+        var nombre = string.IsNullOrEmpty(file.Name) ? "foto.jpg" : file.Name;
+
+        // IMPORTANTE: leer el archivo AHORA, ANTES de cualquier StateHasChanged que oculte el
+        // <InputFile>. Si el input se saca del DOM primero, Blazor pierde la referencia al archivo
+        // y tira "Cannot read properties of null (reading '_blazorFilesById')".
+        byte[] bytes;
         try
         {
             using var stream = file.OpenReadStream(maxAllowedSize: max);
-            var ms = new MemoryStream();
+            using var ms = new MemoryStream();
             await stream.CopyToAsync(ms);
-            ms.Position = 0;
+            bytes = ms.ToArray();
+        }
+        catch (Exception ex)
+        {
+            errorMsg = "No se pudo leer la foto: " + ex.Message;
+            StateHasChanged();
+            return;
+        }
 
-            // Vista previa local
-            var bytes = ms.ToArray();
-            previewUrl = $"data:{file.ContentType};base64,{Convert.ToBase64String(bytes)}";
-            ms.Position = 0;
-
+        // Ya tenemos los bytes: ahora sí mostramos "subiendo" y la vista previa.
+        subiendo = true;
+        previewUrl = $"data:{contentType};base64,{Convert.ToBase64String(bytes)}";
+        StateHasChanged();
+        try
+        {
             using var content = new MultipartFormDataContent();
-            var sc = new StreamContent(ms);
-            sc.Headers.ContentType = new MediaTypeHeaderValue(string.IsNullOrEmpty(file.ContentType) ? "image/jpeg" : file.ContentType);
-            content.Add(sc, "file", file.Name);
+            var sc = new ByteArrayContent(bytes);
+            sc.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+            content.Add(sc, "file", nombre);
 
             var resp = await Http.PostAsync($"api/public/producto-foto/{Uri.EscapeDataString(Token)}", content);
             if (resp.IsSuccessStatusCode)
