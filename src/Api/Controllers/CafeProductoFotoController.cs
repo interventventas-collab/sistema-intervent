@@ -19,7 +19,11 @@ public class CafeProductoFotoController : ControllerBase
     private readonly AppDbContext _db;
     public CafeProductoFotoController(AppDbContext db) { _db = db; }
 
+    // Mismo destino que la subida por QR (volume files_data, persiste a los rebuilds).
+    private const string FotosDir = "/data/files/producto-fotos";
+
     public record MarcarFotoRequest(string? Estado, string? Comentario);
+    public record DesdeUrlRequest(string? Url);
 
     public record ProductoFotoDto(int CafeProductoId, string? Estado, string? Usuario,
         string? Comentario, string? FotoPropiaArchivo, DateTime UpdatedAt);
@@ -62,6 +66,77 @@ public class CafeProductoFotoController : ControllerBase
         });
         await _db.SaveChangesAsync();
         return Ok(new TokenResp(token));
+    }
+
+    /// <summary>Guarda bytes como foto propia del producto (APROBADA) y borra la anterior si había.</summary>
+    private async Task<string> GuardarFotoPropiaAsync(int productoId, byte[] bytes, string? ext, string? usuario)
+    {
+        Directory.CreateDirectory(FotosDir);
+        if (string.IsNullOrEmpty(ext) || ext.Length > 6) ext = ".jpg";
+        var filename = $"prod-{productoId}-{Guid.NewGuid():N}{ext}";
+        await System.IO.File.WriteAllBytesAsync(Path.Combine(FotosDir, filename), bytes);
+
+        var foto = await _db.CafeProductoFotos.FirstOrDefaultAsync(f => f.CafeProductoId == productoId);
+        var archivoViejo = foto?.FotoPropiaArchivo;
+        if (foto is null) { foto = new CafeProductoFoto { CafeProductoId = productoId }; _db.CafeProductoFotos.Add(foto); }
+        foto.FotoPropiaArchivo = filename;
+        foto.FotoPropiaAt = DateTime.UtcNow;
+        foto.Estado = "APROBADA";
+        foto.Comentario = null;
+        foto.Usuario = usuario;
+        foto.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        if (!string.IsNullOrEmpty(archivoViejo) && archivoViejo != filename)
+        {
+            try { var old = Path.Combine(FotosDir, archivoViejo); if (System.IO.File.Exists(old)) System.IO.File.Delete(old); }
+            catch { /* best-effort */ }
+        }
+        return filename;
+    }
+
+    /// <summary>Sube la foto propia DIRECTO desde la compu (sin QR). Solo imagen, máx 10 MB.</summary>
+    [HttpPost("{productoId:int}/subir")]
+    [RequestSizeLimit(10 * 1024 * 1024)]
+    public async Task<IActionResult> Subir(int productoId, IFormFile file)
+    {
+        if (!await _db.CafeProductos.AnyAsync(p => p.Id == productoId)) return NotFound(new { mensaje = "Producto no encontrado." });
+        if (file is null || file.Length == 0) return BadRequest(new { mensaje = "No se recibió ninguna foto." });
+        if (file.Length > 10 * 1024 * 1024) return BadRequest(new { mensaje = "La foto es muy grande (máx 10 MB)." });
+        if (!file.ContentType.StartsWith("image/")) return BadRequest(new { mensaje = "El archivo tiene que ser una imagen." });
+
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms);
+        var usuario = HttpContext.User?.Identity?.Name;
+        var archivo = await GuardarFotoPropiaAsync(productoId, ms.ToArray(), Path.GetExtension(file.FileName), usuario);
+        return Ok(new ProductoFotoDto(productoId, "APROBADA", usuario, null, archivo, DateTime.UtcNow));
+    }
+
+    /// <summary>Sube la foto propia bajando la imagen de un LINK (URL) pegado en la compu.</summary>
+    [HttpPost("{productoId:int}/desde-url")]
+    public async Task<IActionResult> DesdeUrl(int productoId, [FromBody] DesdeUrlRequest req)
+    {
+        if (!await _db.CafeProductos.AnyAsync(p => p.Id == productoId)) return NotFound(new { mensaje = "Producto no encontrado." });
+        var url = (req?.Url ?? "").Trim();
+        if (string.IsNullOrEmpty(url) || !(url.StartsWith("http://") || url.StartsWith("https://")))
+            return BadRequest(new { mensaje = "Pegá un link válido (que empiece con http)." });
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+            http.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0");
+            using var resp = await http.GetAsync(url);
+            if (!resp.IsSuccessStatusCode) return BadRequest(new { mensaje = "No pude descargar esa imagen (el link no responde)." });
+            var ct = resp.Content.Headers.ContentType?.MediaType ?? "";
+            if (!ct.StartsWith("image/")) return BadRequest(new { mensaje = "Ese link no es una imagen." });
+            var bytes = await resp.Content.ReadAsByteArrayAsync();
+            if (bytes.Length == 0) return BadRequest(new { mensaje = "La imagen vino vacía." });
+            if (bytes.Length > 10 * 1024 * 1024) return BadRequest(new { mensaje = "La imagen es muy grande (máx 10 MB)." });
+            var ext = ct switch { "image/png" => ".png", "image/gif" => ".gif", "image/webp" => ".webp", _ => ".jpg" };
+            var usuario = HttpContext.User?.Identity?.Name;
+            var archivo = await GuardarFotoPropiaAsync(productoId, bytes, ext, usuario);
+            return Ok(new ProductoFotoDto(productoId, "APROBADA", usuario, null, archivo, DateTime.UtcNow));
+        }
+        catch (Exception ex) { return BadRequest(new { mensaje = "No pude traer esa imagen: " + ex.Message }); }
     }
 
     /// <summary>
