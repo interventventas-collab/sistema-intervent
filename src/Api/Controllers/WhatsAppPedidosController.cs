@@ -343,6 +343,68 @@ public class WhatsAppPedidosController : ControllerBase
         return Ok(new { trigger, pollEnabled = req.PollEnabled, autoResponderEnabled = req.AutoResponderEnabled, iaEnabled = req.IaEnabled });
     }
 
+    // ═══════════════ MENSAJES DEL BOT DE BIENVENIDA (editables desde ⚙️ WhatsApp) ═══════════════
+    // Los textos por defecto y sus metadatos viven en Services/WhatsAppBotFlow.cs (BotTextos.Campos).
+    // Lo editado se guarda en AppSettings con clave "whatsapp.bot.txt.{clave}".
+
+    public record BotCampoDto(string Clave, string Grupo, string Etiqueta, string Valor,
+        string Default, bool EsDefault, bool Multilinea, int Max, string? Ayuda);
+
+    /// <summary>Devuelve todos los campos editables del bot con su valor actual (editado o default).</summary>
+    [HttpGet("bot-mensajes")]
+    public async Task<IActionResult> GetBotMensajes()
+    {
+        var textos = await BotTextos.CargarAsync(_db);
+        var lista = BotTextos.Campos.Select(c =>
+        {
+            var valor = textos.V(c.Clave);
+            return new BotCampoDto(c.Clave, c.Grupo, c.Etiqueta, valor, c.Default,
+                EsDefault: string.Equals(valor, c.Default, StringComparison.Ordinal),
+                c.Multilinea, c.Max, c.Ayuda);
+        }).ToList();
+        return Ok(lista);
+    }
+
+    public class BotMensajesRequest
+    {
+        /// <summary>Mapa clave→valor. Valor vacío o igual al default = borra la edición (vuelve al default).</summary>
+        public Dictionary<string, string>? Valores { get; set; }
+    }
+
+    /// <summary>Guarda los textos editados del bot. Ignora claves desconocidas y recorta al máximo.</summary>
+    [HttpPost("bot-mensajes")]
+    public async Task<IActionResult> SetBotMensajes([FromBody] BotMensajesRequest req)
+    {
+        if (req.Valores is null) return Ok(new { guardados = 0 });
+        var porClave = BotTextos.Campos.ToDictionary(c => c.Clave, c => c);
+        int guardados = 0;
+
+        foreach (var (clave, valorRaw) in req.Valores)
+        {
+            if (!porClave.TryGetValue(clave, out var campo)) continue; // clave desconocida: ignorar
+            var key = BotTextos.Prefijo + clave;
+            var s = await _db.AppSettings.FirstOrDefaultAsync(x => x.Key == key);
+
+            var valor = (valorRaw ?? "").Trim();
+            if (valor.Length > campo.Max) valor = valor.Substring(0, campo.Max);
+
+            // Vacío o idéntico al default → borramos la edición para que use el default.
+            if (string.IsNullOrWhiteSpace(valor) || string.Equals(valor, campo.Default, StringComparison.Ordinal))
+            {
+                if (s is not null) _db.AppSettings.Remove(s);
+            }
+            else if (s is null)
+            {
+                _db.AppSettings.Add(new Models.AppSetting { Key = key, Value = valor, UpdatedAt = DateTime.UtcNow });
+            }
+            else { s.Value = valor; s.UpdatedAt = DateTime.UtcNow; }
+            guardados++;
+        }
+
+        await _db.SaveChangesAsync();
+        return Ok(new { guardados });
+    }
+
     // === Teléfonos autorizados ===
 
     public class TelefonoUpsertRequest
