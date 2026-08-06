@@ -1701,14 +1701,24 @@ public class ApiClient
         return await GetAsync<List<ChequeBancoDto>>(url);
     }
 
-    // ── Foto del producto: aprobar / reportar erronea (2026-08-05) ──
+    // ── Foto del producto: aprobar / reportar erronea + foto propia por QR (2026-08-05) ──
     public record ProductoFotoEstadoDto(int CafeProductoId, string? Estado, string? Usuario,
-        string? Comentario, DateTime UpdatedAt);
+        string? Comentario, string? FotoPropiaArchivo, DateTime UpdatedAt);
+
+    public record ProductoFotoTokenDto(string Token);
 
     /// <summary>Marca la foto de un producto a nivel sistema. estado = "APROBADA" | "REPORTADA"
     /// o null/"" para limpiar la marca. Devuelve el estado guardado (null si falló).</summary>
     public async Task<ProductoFotoEstadoDto?> MarcarFotoProductoAsync(int productoId, string? estado, string? comentario = null)
         => await PostAsync<ProductoFotoEstadoDto>($"/api/cafe/producto-foto/{productoId}", new { estado, comentario });
+
+    /// <summary>Estado actual de la foto de un producto (para sondear mientras el celu sube por QR).</summary>
+    public async Task<ProductoFotoEstadoDto?> GetEstadoFotoProductoAsync(int productoId)
+        => await GetAsync<ProductoFotoEstadoDto>($"/api/cafe/producto-foto/{productoId}");
+
+    /// <summary>Genera un token de un solo uso (30 min) para subir la foto de este producto por QR.</summary>
+    public async Task<ProductoFotoTokenDto?> CrearTokenFotoProductoAsync(int productoId)
+        => await PostAsync<ProductoFotoTokenDto>($"/api/cafe/producto-foto/{productoId}/token", new { });
 
     /// <summary>Clientes cuyo CUIT matchea el del librador del e-cheq. Vacio si no hay match.</summary>
     public async Task<List<SugerenciaClienteEcheqDto>?> GetClienteSugeridoECheqAsync(int echeqId)

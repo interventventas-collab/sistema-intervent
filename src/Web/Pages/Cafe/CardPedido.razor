@@ -8,6 +8,8 @@
 
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject NavigationManager Navigation
+@implements IDisposable
 
 <div class="prep-card @(SelectedForPrint ? "prep-card-selected" : "")">
     @{
@@ -192,19 +194,21 @@
                          style="@(it.ComboOrigenId.HasValue ? "margin-left: 0.8rem; border-left: 2px dashed #fdba74;" : "")">
                         <input type="checkbox" class="prep-check" checked="@tildado" @onclick="() => ToggleTildado(it.Id)" />
                         <div class="prep-item-cant"><span class="x">×</span> @it.Cantidad</div>
-                        @* 2026-08-05: la mini foto del producto (de la publicación MeLi) arranca TAPADA.
-                           Como muchas están mal, el armador ve un ojito 👁️ y recién si lo toca aparece.
-                           Una vez visible, tocar la foto la abre en grande, y aparecen los botones para
-                           APROBARLA ✅ o REPORTARLA como errónea ❌ (se guarda por producto, lo ven todos). *@
-                        @if (!string.IsNullOrEmpty(it.Thumbnail))
+                        @* 2026-08-05 (Paso 1-3): foto del producto.
+                           - Si NO fue aprobada, arranca TAPADA (ojito 👁️) porque muchas de MeLi están mal.
+                           - Una vez APROBADA o si hay FOTO PROPIA (subida por el depósito), se muestra directo.
+                           - Botones: ✅ aprobar · ❌ reportar errónea · 📷 sacar/subir foto propia con el celu (QR).
+                           - Si el producto NO tiene ninguna foto, igual aparece 📷 para crearla. *@
+                        @{ var miniUrl = FotoMiniUrl(it); }
+                        @if (!string.IsNullOrEmpty(miniUrl))
                         {
-                            @if (fotosVisibles.Contains(it.Id))
+                            @if (MostrarDirecto(it) || fotosVisibles.Contains(it.Id))
                             {
                                 <div style="display:flex; flex-direction:column; align-items:center; gap:3px; flex-shrink:0;">
-                                    <img src="@FixHttps(it.Thumbnail)" alt="@it.ProductoNombre"
-                                         @onclick="() => AbrirFoto(it.Thumbnail, it.ProductoNombre)"
+                                    <img src="@miniUrl" alt="@it.ProductoNombre"
+                                         @onclick="() => AbrirFotoItem(it)"
                                          title="Tocá para verla más grande"
-                                         style="width:42px; height:42px; object-fit:cover; border-radius:6px; cursor:pointer; background:#fff; border:2px solid @(it.FotoEstado == "APROBADA" ? "#22c55e" : it.FotoEstado == "REPORTADA" ? "#ef4444" : "#e5e7eb");" />
+                                         style="width:42px; height:42px; object-fit:cover; border-radius:6px; cursor:pointer; background:#fff; border:2px solid @(TieneFotoPropia(it) ? "#0ea5e9" : it.FotoEstado == "APROBADA" ? "#22c55e" : it.FotoEstado == "REPORTADA" ? "#ef4444" : "#e5e7eb");" />
                                     @if (it.ProductoId is not null)
                                     {
                                         <div style="display:flex; gap:2px;">
@@ -214,9 +218,16 @@
                                             <button type="button" @onclick='() => MarcarFoto(it, "REPORTADA")' disabled="@marcandoFoto"
                                                     title="La foto está mal (reportar errónea)"
                                                     style="border:none; border-radius:4px; width:20px; height:18px; font-size:0.7rem; cursor:pointer; padding:0; line-height:1; background:@(it.FotoEstado == "REPORTADA" ? "#ef4444" : "#f1f5f9");">❌</button>
+                                            <button type="button" @onclick="() => AbrirQrFoto(it)"
+                                                    title="Sacar o subir una foto propia con el celular (reemplaza a la de MeLi)"
+                                                    style="border:none; border-radius:4px; width:20px; height:18px; font-size:0.7rem; cursor:pointer; padding:0; line-height:1; background:#e0f2fe;">📷</button>
                                         </div>
                                     }
-                                    @if (it.FotoEstado == "APROBADA")
+                                    @if (TieneFotoPropia(it))
+                                    {
+                                        <span style="font-size:0.58rem; color:#0284c7; font-weight:700; line-height:1;">📷 propia</span>
+                                    }
+                                    else if (it.FotoEstado == "APROBADA")
                                     {
                                         <span style="font-size:0.58rem; color:#16a34a; font-weight:700; line-height:1;">✔ OK</span>
                                     }
@@ -228,14 +239,23 @@
                             }
                             else
                             {
-                                @* Tapada: el ojito. Si la foto ya fue reportada/aprobada, se tiñe para
+                                @* Tapada: el ojito. Si la foto ya fue reportada, se tiñe rojo con ❌ para
                                    avisar de un vistazo sin tener que abrirla. *@
                                 <button type="button" @onclick="() => ToggleFoto(it.Id)"
-                                        title="@(it.FotoEstado == "REPORTADA" ? "OJO: foto marcada como errónea. Tocá para verla." : it.FotoEstado == "APROBADA" ? "Foto aprobada. Tocá para verla." : "Ver foto del producto")"
-                                        style="width:42px; height:42px; border-radius:6px; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:1.15rem; padding:0; border:1px dashed @(it.FotoEstado == "APROBADA" ? "#86efac" : it.FotoEstado == "REPORTADA" ? "#fca5a5" : "#cbd5e1"); background:@(it.FotoEstado == "APROBADA" ? "#f0fdf4" : it.FotoEstado == "REPORTADA" ? "#fef2f2" : "#f8fafc"); color:#64748b;">
-                                    @(it.FotoEstado == "REPORTADA" ? "❌" : it.FotoEstado == "APROBADA" ? "👁️" : "👁️")
+                                        title="@(it.FotoEstado == "REPORTADA" ? "OJO: foto marcada como errónea. Tocá para verla." : "Ver foto del producto")"
+                                        style="width:42px; height:42px; border-radius:6px; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:1.15rem; padding:0; border:1px dashed @(it.FotoEstado == "REPORTADA" ? "#fca5a5" : "#cbd5e1"); background:@(it.FotoEstado == "REPORTADA" ? "#fef2f2" : "#f8fafc"); color:#64748b;">
+                                    @(it.FotoEstado == "REPORTADA" ? "❌" : "👁️")
                                 </button>
                             }
+                        }
+                        else if (it.ProductoId is not null)
+                        {
+                            @* No hay NINGUNA foto (ni de MeLi ni propia): botón para crear una con el celu. *@
+                            <button type="button" @onclick="() => AbrirQrFoto(it)"
+                                    title="Este producto no tiene foto. Tocá para sacar una con el celular."
+                                    style="width:42px; height:42px; border-radius:6px; cursor:pointer; flex-shrink:0; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:1rem; padding:0; line-height:1; border:1px dashed #93c5fd; background:#eff6ff; color:#2563eb;">
+                                📷<span style="font-size:0.5rem; font-weight:700;">+ foto</span>
+                            </button>
                         }
                         <div>
                             <div class="prep-item-desc-prod prep-item-desc">
@@ -310,6 +330,48 @@
     </div>
 }
 
+@* 2026-08-05 (Paso 3): cuadrito flotante con QR para sacar/subir una foto propia con el celu. *@
+@if (qrAbierto)
+{
+    <div @onclick="CerrarQrFoto"
+         style="position:fixed; inset:0; background:rgba(0,0,0,0.75); display:flex; align-items:center; justify-content:center; z-index:9999; padding:1rem;">
+        <div @onclick:stopPropagation="true"
+             style="background:#fff; border-radius:14px; padding:1.1rem; max-width:min(92vw,380px); text-align:center; box-shadow:0 10px 40px rgba(0,0,0,0.5);">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:0.6rem; margin-bottom:0.6rem;">
+                <span style="font-weight:700; font-size:1rem; color:#111827;">📷 Foto de: @qrNombre</span>
+                <button @onclick="CerrarQrFoto" title="Cerrar"
+                        style="border:none; background:#f3f4f6; border-radius:8px; width:32px; height:32px; font-size:1rem; cursor:pointer; line-height:1; flex-shrink:0;">✕</button>
+            </div>
+
+            @if (qrFotoLista)
+            {
+                <div style="padding:0.8rem 0;">
+                    <div style="font-size:2.5rem;">✅</div>
+                    <div style="font-weight:700; color:#16a34a; margin:0.4rem 0;">¡Foto subida!</div>
+                    <img src="@qrFotoUrl" alt="foto"
+                         style="width:180px; height:180px; object-fit:cover; border-radius:10px; border:2px solid #22c55e; margin:0.3rem auto; display:block;" />
+                    <button @onclick="CerrarQrFoto"
+                            style="margin-top:0.6rem; border:none; background:#16a34a; color:#fff; border-radius:8px; padding:0.5rem 1.2rem; font-weight:700; cursor:pointer;">Listo</button>
+                </div>
+            }
+            else if (string.IsNullOrEmpty(qrUrl))
+            {
+                <p style="color:#6b7280; padding:1rem 0;">Generando el código…</p>
+            }
+            else
+            {
+                <img src="@QrImgUrl" alt="QR"
+                     style="width:220px; height:220px; margin:0.4rem auto; display:block; border:1px solid #e5e7eb; border-radius:10px;" />
+                <div style="font-size:0.85rem; color:#374151; line-height:1.4; margin-top:0.4rem;">
+                    📱 Escaneá este código con el <b>celular del depósito</b>.<br />
+                    Se abre la cámara para sacar la foto (o elegir una de la galería) y se sube sola.
+                </div>
+                <div style="font-size:0.75rem; color:#9ca3af; margin-top:0.6rem;">Esperando la foto…</div>
+            }
+        </div>
+    </div>
+}
+
 @code {
     [Parameter, EditorRequired] public CafePreparacionVentaDto Venta { get; set; } = null!;
     [Parameter] public EventCallback OnAvanzar { get; set; }
@@ -363,6 +425,112 @@
         }
         ToastService.Success(estadoFinal == null ? "Marca quitada"
             : estadoFinal == "APROBADA" ? "Foto aprobada ✅" : "Foto reportada como errónea ❌");
+    }
+
+    // ── 2026-08-05 (Paso 3): foto propia + qué foto mostrar ──
+    private bool TieneFotoPropia(CafePreparacionItemDto it) => !string.IsNullOrEmpty(it.FotoPropiaArchivo);
+
+    // URL de la mini foto: la PROPIA (subida por el depósito) tiene prioridad; si no, la de MeLi.
+    private string? FotoMiniUrl(CafePreparacionItemDto it)
+    {
+        if (!string.IsNullOrEmpty(it.FotoPropiaArchivo)) return $"/api/public/producto-foto/img/{it.FotoPropiaArchivo}";
+        if (!string.IsNullOrEmpty(it.Thumbnail)) return FixHttps(it.Thumbnail);
+        return null;
+    }
+
+    private string? FotoGrandeUrlItem(CafePreparacionItemDto it)
+    {
+        if (!string.IsNullOrEmpty(it.FotoPropiaArchivo)) return $"/api/public/producto-foto/img/{it.FotoPropiaArchivo}";
+        if (!string.IsNullOrEmpty(it.Thumbnail)) return FotoGrandeUrl(it.Thumbnail);
+        return null;
+    }
+
+    // Se muestra directo (sin ojito) si la foto fue APROBADA o si hay foto propia. Pedido del usuario:
+    // "una vez que se le da el OK a la foto, ya la muestra".
+    private bool MostrarDirecto(CafePreparacionItemDto it) => it.FotoEstado == "APROBADA" || TieneFotoPropia(it);
+
+    private void AbrirFotoItem(CafePreparacionItemDto it)
+    {
+        var g = FotoGrandeUrlItem(it);
+        if (string.IsNullOrEmpty(g)) return;
+        fotoGrande = g;
+        fotoGrandeNombre = it.ProductoNombre;
+    }
+
+    // ── 2026-08-05 (Paso 3): cuadrito flotante con QR para subir foto propia desde el celu ──
+    private bool qrAbierto;
+    private string? qrNombre;
+    private int? qrProductoId;
+    private string? qrToken;
+    private string? qrUrl;                 // link que codifica el QR (lo abre el celu)
+    private bool qrFotoLista;              // ya llegó la foto
+    private string? qrFotoUrl;
+    private System.Threading.CancellationTokenSource? qrPollCts;
+
+    private string QrImgUrl => string.IsNullOrEmpty(qrUrl) ? ""
+        : $"https://api.qrserver.com/v1/create-qr-code/?size=260x260&data={Uri.EscapeDataString(qrUrl)}";
+
+    private async Task AbrirQrFoto(CafePreparacionItemDto it)
+    {
+        if (it.ProductoId is null) return;
+        qrAbierto = true;
+        qrNombre = it.ProductoNombre;
+        qrProductoId = it.ProductoId;
+        qrToken = null; qrUrl = null; qrFotoLista = false; qrFotoUrl = null;
+        StateHasChanged();
+
+        var tok = await Api.CrearTokenFotoProductoAsync(it.ProductoId.Value);
+        if (tok is null || string.IsNullOrEmpty(tok.Token))
+        {
+            ToastService.Error("No se pudo generar el código. Probá de nuevo.");
+            CerrarQrFoto();
+            return;
+        }
+        qrToken = tok.Token;
+        qrUrl = $"{Navigation.BaseUri.TrimEnd('/')}/subir-foto-producto/{qrToken}";
+        StateHasChanged();
+
+        // Sondear hasta que llegue la foto (o se cierre el cuadro / pasen ~5 min).
+        qrPollCts?.Cancel();
+        qrPollCts = new System.Threading.CancellationTokenSource();
+        _ = PollFotoAsync(it.ProductoId.Value, qrPollCts.Token);
+    }
+
+    private async Task PollFotoAsync(int productoId, System.Threading.CancellationToken ct)
+    {
+        for (var i = 0; i < 100 && !ct.IsCancellationRequested; i++)
+        {
+            try { await Task.Delay(3000, ct); } catch { return; }
+            if (ct.IsCancellationRequested) return;
+            var est = await Api.GetEstadoFotoProductoAsync(productoId);
+            if (est is not null && !string.IsNullOrEmpty(est.FotoPropiaArchivo))
+            {
+                var archivo = est.FotoPropiaArchivo;
+                // Actualizar todos los renglones de este producto en la card.
+                foreach (var x in Venta.Items.Where(x => x.ProductoId == productoId))
+                {
+                    x.FotoPropiaArchivo = archivo;
+                    x.FotoEstado = "APROBADA";
+                }
+                qrFotoLista = true;
+                qrFotoUrl = $"/api/public/producto-foto/img/{archivo}";
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+        }
+    }
+
+    private void CerrarQrFoto()
+    {
+        qrAbierto = false;
+        qrPollCts?.Cancel();
+        qrPollCts = null;
+    }
+
+    public void Dispose()
+    {
+        qrPollCts?.Cancel();
+        qrPollCts?.Dispose();
     }
 
     // 2026-08-03: foto del producto abierta en grande (lightbox). Null = cerrada.

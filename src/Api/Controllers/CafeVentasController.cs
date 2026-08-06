@@ -3775,6 +3775,10 @@ public class CafeVentasController : ControllerBase
                         : null,
                     fotoEstadoPor = i.ProductoId != null
                         ? _db.CafeProductoFotos.Where(f => f.CafeProductoId == i.ProductoId).Select(f => f.Usuario).FirstOrDefault()
+                        : null,
+                    // 2026-08-05 (Paso 3): nombre del archivo de la foto propia (subida por QR). Null = usa la de MeLi.
+                    fotoPropiaArchivo = i.ProductoId != null
+                        ? _db.CafeProductoFotos.Where(f => f.CafeProductoId == i.ProductoId).Select(f => f.FotoPropiaArchivo).FirstOrDefault()
                         : null
                 }).ToList()
             })

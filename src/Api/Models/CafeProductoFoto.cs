@@ -31,5 +31,36 @@ public class CafeProductoFoto
     [MaxLength(500)]
     public string? Comentario { get; set; }
 
+    /// <summary>2026-08-05 (Paso 3): nombre del archivo de la FOTO PROPIA subida por el depósito
+    /// (por QR desde el celu). Vive en /data/files/producto-fotos. Null = todavía usa la de MeLi.
+    /// La foto propia NO toca la de MercadoLibre; es del sistema.</summary>
+    [MaxLength(200)]
+    public string? FotoPropiaArchivo { get; set; }
+
+    /// <summary>Cuándo se subió la foto propia.</summary>
+    public DateTime? FotoPropiaAt { get; set; }
+
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// 2026-08-05 (Paso 3): token de un solo uso para subir la foto de un producto desde el celu
+/// escaneando el QR (sin login). El depósito genera el token en la compu, el celu abre
+/// /subir-foto-producto/{token}, saca/sube la foto y el token queda usado.
+/// </summary>
+[Table("Cafe_ProductoFotoToken")]
+public class CafeProductoFotoToken
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    [Required, MaxLength(64)]
+    public string Token { get; set; } = string.Empty;
+
+    public int CafeProductoId { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime ExpiresAt { get; set; } = DateTime.UtcNow.AddMinutes(30);
+    public DateTime? UsedAt { get; set; }
 }

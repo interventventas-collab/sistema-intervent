@@ -2663,6 +2663,29 @@ BEGIN
 END
 GO
 
+-- 2026-08-05 (Paso 3): foto propia subida por el deposito (por QR). Columnas nuevas (guardadas).
+IF COL_LENGTH('Cafe_ProductoFoto', 'FotoPropiaArchivo') IS NULL
+    ALTER TABLE Cafe_ProductoFoto ADD FotoPropiaArchivo NVARCHAR(200) NULL;
+GO
+IF COL_LENGTH('Cafe_ProductoFoto', 'FotoPropiaAt') IS NULL
+    ALTER TABLE Cafe_ProductoFoto ADD FotoPropiaAt DATETIME2 NULL;
+GO
+
+-- 2026-08-05 (Paso 3): token de un solo uso para subir la foto por QR desde el celu (sin login).
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_ProductoFotoToken' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_ProductoFotoToken (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Token NVARCHAR(64) NOT NULL,
+        CafeProductoId INT NOT NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        ExpiresAt DATETIME2 NOT NULL,
+        UsedAt DATETIME2 NULL
+    );
+    CREATE UNIQUE INDEX UX_CafeProductoFotoToken_Token ON Cafe_ProductoFotoToken (Token);
+END
+GO
+
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Settings' AND xtype='U')
 BEGIN
     CREATE TABLE Cafe_Settings (
