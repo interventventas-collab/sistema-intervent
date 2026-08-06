@@ -127,6 +127,10 @@
                                     {
                                         <div style="font-size: 0.78rem; color: #6b7280;">@r.ClienteTelefono</div>
                                     }
+                                    @if (!string.IsNullOrEmpty(r.DireccionEvento))
+                                    {
+                                        <div style="font-size: 0.78rem; color: #4b5563; margin-top: 0.1rem;">📍 @r.DireccionEvento</div>
+                                    }
                                     @{
                                         var enCalleRow = r.EntregadoPorRepartidorId.HasValue && !r.RetiradoPorRepartidorId.HasValue;
                                     }
