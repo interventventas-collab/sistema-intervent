@@ -630,6 +630,9 @@ public class CafePreparacionItemDto
     public string? FotoEstado { get; set; }
     /// <summary>2026-08-05: quién dejó la última marca (para mostrar "por Fulano").</summary>
     public string? FotoEstadoPor { get; set; }
+    /// <summary>2026-08-05 (Paso 3): nombre del archivo de la foto propia subida por el depósito (QR).
+    /// Null = todavía usa la foto de MeLi. La URL para mostrarla es /api/public/producto-foto/img/{archivo}.</summary>
+    public string? FotoPropiaArchivo { get; set; }
 }
 
 // ── Camino al picking (2026-08-02) ──

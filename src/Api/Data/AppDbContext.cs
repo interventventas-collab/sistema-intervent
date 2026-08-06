@@ -116,6 +116,8 @@ public class AppDbContext : DbContext
     public DbSet<CafeProducto> CafeProductos => Set<CafeProducto>();
     // 2026-08-05: estado de la foto por producto (aprobada / reportada errónea) — a nivel sistema
     public DbSet<CafeProductoFoto> CafeProductoFotos => Set<CafeProductoFoto>();
+    // 2026-08-05 (Paso 3): tokens de un solo uso para subir la foto propia por QR desde el celu
+    public DbSet<CafeProductoFotoToken> CafeProductoFotoTokens => Set<CafeProductoFotoToken>();
     public DbSet<CafeSetting> CafeSettings => Set<CafeSetting>();
     public DbSet<CafeVenta> CafeVentas => Set<CafeVenta>();
     public DbSet<CafeVentaItem> CafeVentaItems => Set<CafeVentaItem>();
