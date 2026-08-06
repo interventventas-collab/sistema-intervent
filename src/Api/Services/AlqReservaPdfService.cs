@@ -161,6 +161,16 @@ public class AlqReservaPdfService
                         c.Item().Row(rw => { rw.RelativeItem().Text("Saldo pendiente:").Bold(); rw.ConstantItem(100).AlignRight().Text(Money(saldo)).Bold().FontColor(saldo > 0 ? "#dc2626" : "#059669"); });
                     });
 
+                    // Observaciones (SÍ se imprimen). Las Notas internas (r.NotasInternas) NO salen a propósito.
+                    if (!string.IsNullOrWhiteSpace(r.Notas))
+                    {
+                        col.Item().PaddingTop(12).Border(2).BorderColor("#111827").Padding(8).Column(c =>
+                        {
+                            c.Item().Text("OBSERVACIONES").FontSize(8).Bold().FontColor("#111827");
+                            c.Item().PaddingTop(2).Text(r.Notas!).FontSize(11).Bold().FontColor("#111827").LineHeight(1.3f);
+                        });
+                    }
+
                     // Condiciones
                     if (!string.IsNullOrWhiteSpace(condiciones))
                     {
