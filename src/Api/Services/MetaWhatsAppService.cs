@@ -89,18 +89,22 @@ public class MetaWhatsAppService
             throw new InvalidOperationException("Meta WhatsApp Cloud API no configurado: faltan META_WA_TOKEN / META_WA_PHONE_ID en el entorno.");
     }
 
-    /// <summary>Envía un mensaje de texto simple. Devuelve el wamid (id del mensaje en Meta) o null si falla.</summary>
-    public async Task<string?> SendTextAsync(string to, string body, CancellationToken ct = default, string? lineaPhoneId = null)
+    /// <summary>Envía un mensaje de texto simple. Devuelve el wamid (id del mensaje en Meta) o null si falla.
+    /// 2026-08-05: replyToWamid = si viene, el mensaje sale CITANDO ese wamid (responder citando).</summary>
+    public async Task<string?> SendTextAsync(string to, string body, CancellationToken ct = default, string? lineaPhoneId = null, string? replyToWamid = null)
     {
         EnsureConfigured();
-        var payload = new
+        var payload = new Dictionary<string, object?>
         {
-            messaging_product = "whatsapp",
-            recipient_type = "individual",
-            to = NormalizeTo(to),
-            type = "text",
-            text = new { preview_url = false, body }
+            ["messaging_product"] = "whatsapp",
+            ["recipient_type"] = "individual",
+            ["to"] = NormalizeTo(to),
+            ["type"] = "text",
+            ["text"] = new { preview_url = false, body }
         };
+        // OJO: Meta rechaza el JSON si "context" viene en null, por eso solo lo agregamos si hay wamid.
+        if (!string.IsNullOrWhiteSpace(replyToWamid))
+            payload["context"] = new { message_id = replyToWamid };
         return await PostMessageAsync(payload, to, ct, lineaPhoneId);
     }
 

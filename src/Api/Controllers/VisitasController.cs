@@ -335,6 +335,24 @@ public class VisitasController : ControllerBase
         return File(bytes, "application/pdf", $"Visita-{v.Numero:0000}.pdf");
     }
 
+    /// <summary>Genera los bytes del recibo de visita por Id (mismo formato que el recibo público por token).
+    /// Reutilizable desde otros controllers — ej. adjuntar la visita por WhatsApp. Devuelve (null,"") si no existe.</summary>
+    public async Task<(byte[]? bytes, string filename)> GenerarReciboPdfBytesAsync(int id)
+    {
+        var v = await _db.Visitas.FirstOrDefaultAsync(x => x.Id == id);
+        if (v is null) return (null, "");
+        if (string.IsNullOrWhiteSpace(v.PublicToken))
+        {
+            v.PublicToken = GeneratePublicToken();
+            v.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+        }
+        var cfg = await _db.CafeSettings.FindAsync(1);
+        var qr = await _qr.GenerarQrVisitaAsync(v.PublicToken);
+        var bytes = _reciboPdf.GenerarPdfBytes(v, cfg, qr);
+        return (bytes, $"Visita-{v.Numero:0000}.pdf");
+    }
+
     /// <summary>PNG del QR del recibo, PUBLICO (sin login) para que la pagina del recibo /visita/{token}
     /// lo muestre e imprima. Apunta a la misma pagina publica (para escanear el papel y hacer seguimiento).</summary>
     [HttpGet("publica/{token}/qr")]
