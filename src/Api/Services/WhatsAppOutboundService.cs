@@ -41,13 +41,15 @@ public class WhatsAppOutboundService
 
     // 2026-08-01: devuelve además la Línea usada (para guardarla en el saliente y que el mismo
     // contacto en 2 líneas NO se cruce). lineaOverride = mandar por una línea concreta (la del chat abierto).
-    public async Task<(string? Id, string Canal, string? Linea)> SendTextAsync(string numero, string body, string? lineaOverride = null)
+    // 2026-08-05: replyToWamid = wamid del mensaje CITADO (responder citando). Solo Cloud API (Meta) lo
+    // usa; Instagram y Twilio lo ignoran (no rompe nada — el mensaje sale igual, sin la cita).
+    public async Task<(string? Id, string Canal, string? Linea)> SendTextAsync(string numero, string body, string? lineaOverride = null, string? replyToWamid = null)
     {
         var (canal, linea) = await PickCanalYLineaAsync(numero, lineaOverride);
         if (canal == "INSTAGRAM")
             return (await _ig.SendTextAsync(linea ?? "", IgsidDe(numero), body), "INSTAGRAM", linea);
         if (canal == "CLOUD")
-            return (await _meta.SendTextAsync(numero, body, lineaPhoneId: linea), "CLOUD", linea);
+            return (await _meta.SendTextAsync(numero, body, lineaPhoneId: linea, replyToWamid: replyToWamid), "CLOUD", linea);
         return (await _twilio.SendTextAsync(numero, body), "TWILIO", null);
     }
 

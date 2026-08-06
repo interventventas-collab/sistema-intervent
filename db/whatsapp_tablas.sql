@@ -31,6 +31,7 @@ BEGIN
         [MediaUrl]          NVARCHAR(500)  NULL,
         [NumMedia]          INT            NULL,
         [TwilioMessageSid]  NVARCHAR(200)  NULL,                 -- SID de Twilio o wamid.* de Meta
+        [ReplyToSid]        NVARCHAR(200)  NULL,                 -- 2026-08-05: wamid del mensaje CITADO (responder citando)
         [Canal]             NVARCHAR(10)   NOT NULL CONSTRAINT DF_WATwMsg_Canal DEFAULT 'TWILIO',
         [Procesado]         BIT            NOT NULL CONSTRAINT DF_WATwMsg_Proc  DEFAULT 0,
         [PedidoTrigger]     NVARCHAR(10)   NULL,

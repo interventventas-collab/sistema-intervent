@@ -686,6 +686,14 @@
                             }
                             <div class="wa-bubble-wrap">
                                 <div class="wa-bubble">
+                                    @* 2026-08-05: "responder citando" — burbujita del mensaje al que responde este *@
+                                    @if (!string.IsNullOrEmpty(m.ReplyPreview))
+                                    {
+                                        <div class="wa-reply-quote">
+                                            <span class="wa-reply-quote-who">@(m.ReplyFromMe ? "Vos" : MostrarNombre(SelectedConv()))</span>
+                                            <span class="wa-reply-quote-text">@m.ReplyPreview</span>
+                                        </div>
+                                    }
                                     @if (!string.IsNullOrEmpty(m.MediaUrl))
                                     {
                                         @if (IsImage(m.MediaUrl))
@@ -744,6 +752,8 @@
                                 </div>
                                 @* Botón reaccionar — visible al hover *@
                                 <button class="wa-react-btn" @onclick="() => TogglePicker(m.Id)" title="Reaccionar">😊</button>
+                                @* 2026-08-05: botón responder citando — visible al hover *@
+                                <button class="wa-reply-btn" @onclick="() => IniciarResponder(m)" @onclick:stopPropagation="true" title="Responder citando este mensaje">↩️</button>
                                 @if (pickerOpenMsgId == m.Id)
                                 {
                                     <div class="wa-emoji-picker">
@@ -986,6 +996,18 @@
                         {
                             <span class="wa-firma-hint wa-firma-falta">👈 elegí quién responde</span>
                         }
+                    </div>
+                }
+                @* 2026-08-05: barra "respondiendo a…" (responder citando). Aparece arriba del cajón. *@
+                @if (replyingTo != null)
+                {
+                    <div class="wa-reply-bar">
+                        <div class="wa-reply-bar-icon">↩️</div>
+                        <div class="wa-reply-bar-body">
+                            <div class="wa-reply-bar-who">Respondiendo a @(replyingTo.Direccion == "OUTGOING" ? "vos mismo" : MostrarNombre(SelectedConv()))</div>
+                            <div class="wa-reply-bar-text">@PreviewMensajeParaResponder(replyingTo)</div>
+                        </div>
+                        <button class="wa-reply-bar-x" @onclick="CancelarResponder" title="Cancelar respuesta">×</button>
                     </div>
                 }
                 <div class="wa-composer">
@@ -1975,6 +1997,23 @@
     .wa-emoji-picker { position: absolute; top: -42px; background: #fff; border: 1px solid #e5e7eb; border-radius: 24px; padding: 0.25rem 0.4rem; display: flex; gap: 0.15rem; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 50; }
     .wa-msg-row.in .wa-emoji-picker { left: 0; }
     .wa-msg-row.out .wa-emoji-picker { right: 0; }
+    /* 2026-08-05: botón responder citando (↩️), justo debajo del de reaccionar, aparece al hover */
+    .wa-reply-btn { position: absolute; top: 20px; right: -28px; background: #fff; border: 1px solid #e5e7eb; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 0.15s; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.8rem; padding: 0; }
+    .wa-msg-row.out .wa-reply-btn { right: auto; left: -28px; }
+    .wa-bubble-wrap:hover .wa-reply-btn { opacity: 1; }
+    /* 2026-08-05: burbujita del mensaje CITADO dentro de un mensaje (como WhatsApp) */
+    .wa-reply-quote { display: flex; flex-direction: column; gap: 1px; border-left: 3px solid #25d366; background: rgba(0,0,0,0.05); border-radius: 6px; padding: 0.25rem 0.5rem; margin-bottom: 0.35rem; max-width: 100%; }
+    .wa-msg-row.out .wa-reply-quote { border-left-color: #128c7e; background: rgba(0,0,0,0.06); }
+    .wa-reply-quote-who { font-size: 0.72rem; font-weight: 700; color: #128c7e; }
+    .wa-reply-quote-text { font-size: 0.8rem; color: #4b5563; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+    /* 2026-08-05: barra "respondiendo a…" arriba del cajón de escribir */
+    .wa-reply-bar { display: flex; align-items: center; gap: 0.6rem; margin: 0 1rem; padding: 0.5rem 0.7rem; background: #f0fdf4; border-left: 4px solid #25d366; border-radius: 10px 10px 0 0; }
+    .wa-reply-bar-icon { font-size: 1.1rem; }
+    .wa-reply-bar-body { flex: 1; min-width: 0; }
+    .wa-reply-bar-who { font-size: 0.78rem; font-weight: 700; color: #128c7e; }
+    .wa-reply-bar-text { font-size: 0.85rem; color: #4b5563; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .wa-reply-bar-x { background: none; border: none; font-size: 1.5rem; line-height: 1; color: #9ca3af; cursor: pointer; padding: 0 0.3rem; }
+    .wa-reply-bar-x:hover { color: #ef4444; }
     .wa-emoji-pick { background: transparent; border: none; padding: 0.2rem 0.35rem; font-size: 1.1rem; cursor: pointer; border-radius: 50%; transition: background 0.1s, transform 0.1s; }
     .wa-emoji-pick:hover { background: #f3f4f6; transform: scale(1.2); }
     .wa-reacciones { display: flex; gap: 0.2rem; margin-top: 0.1rem; flex-wrap: wrap; }
@@ -3693,16 +3732,21 @@
         var numero = selectedNumero;
         var linea = selectedLinea;
 
+        // 2026-08-05: si estamos respondiendo citando, agarramos el mensaje citado y limpiamos la barra.
+        var replyTarget = replyingTo;
+        replyingTo = null;
+
         var tempId = _tempMsgId--;
         var temp = new ApiClient.TwMsgDto(
             tempId, "OUTGOING", numero, null, texto, null, null, null,
-            false, null, DateTime.Now, "SENDING", null);
+            false, null, DateTime.Now, "SENDING", null,
+            null, replyTarget != null ? PreviewMensajeParaResponder(replyTarget) : null, replyTarget?.Direccion == "OUTGOING");
         mensajes.Add(temp);
         sending = true;
         StateHasChanged();
         await ScrollAlUltimoMensaje();
 
-        var (ok, err) = await Api.SendTwMensajeAsync(numero, texto, linea);
+        var (ok, err) = await Api.SendTwMensajeAsync(numero, texto, linea, replyTarget?.Id);
         sending = false;
 
         if (ok)
@@ -3714,7 +3758,7 @@
         else
         {
             mensajes.RemoveAll(m => m.Id == tempId);
-            if (selectedNumero == numero) composerText = texto; // no se pierde lo que escribiste
+            if (selectedNumero == numero) { composerText = texto; replyingTo = replyTarget; } // no se pierde lo que escribiste ni la cita
             StateHasChanged();
             Toast.Error($"Error al enviar: {err}");
         }
@@ -4076,6 +4120,27 @@
         visorImagenNombre = string.IsNullOrWhiteSpace(nombre) ? "foto.jpg" : nombre;
     }
     void CerrarVisorImagen() => visorImagenUrl = null;
+
+    // 2026-08-05: "responder citando" — mensaje al que estamos respondiendo (null = no estamos respondiendo).
+    ApiClient.TwMsgDto? replyingTo = null;
+    void IniciarResponder(ApiClient.TwMsgDto m)
+    {
+        replyingTo = m;
+        pickerOpenMsgId = null; // por las dudas cerramos el picker de emojis
+    }
+    void CancelarResponder() => replyingTo = null;
+
+    /// <summary>Texto corto del mensaje citado, para la barra "respondiendo a…" y el mensaje temporal.</summary>
+    string PreviewMensajeParaResponder(ApiClient.TwMsgDto m)
+    {
+        var t = (m.Cuerpo ?? "").Trim();
+        if (string.IsNullOrEmpty(t) && !string.IsNullOrEmpty(m.MediaUrl))
+            t = string.IsNullOrWhiteSpace(m.MediaFilename) ? "📎 Archivo" : $"📎 {m.MediaFilename}";
+        else if (!string.IsNullOrEmpty(m.MediaUrl) && !string.IsNullOrEmpty(m.MediaFilename))
+            t = $"📎 {t}";
+        if (t.Length > 90) t = t.Substring(0, 90) + "…";
+        return t;
+    }
 
     // 2026-07-23: notas de voz. Los audios de WhatsApp llegan como .ogg (opus); los que grabamos
     // nosotros desde el navegador pueden ser .webm o .m4a segun el dispositivo.

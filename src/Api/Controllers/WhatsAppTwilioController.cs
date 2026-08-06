@@ -205,7 +205,8 @@ public class WhatsAppTwilioController : ControllerBase
         return Ok(new { ok = true, sid });
     }
 
-    public record SendRequest(string Numero, string Mensaje, string? LineaPhoneId = null);
+    // 2026-08-05: ReplyToMensajeId = Id (local) del mensaje que estamos CITANDO al responder.
+    public record SendRequest(string Numero, string Mensaje, string? LineaPhoneId = null, int? ReplyToMensajeId = null);
 
     /// <summary>POST /api/whatsapp/twilio/send — envia un mensaje desde el chat del dashboard.</summary>
     [HttpPost("send")]
@@ -220,13 +221,21 @@ public class WhatsAppTwilioController : ControllerBase
 
         try
         {
-            var (sid, canal, lin) = await _outbound.SendTextAsync(req.Numero, req.Mensaje, req.LineaPhoneId);
+            // 2026-08-05: si estamos respondiendo citando, buscamos el wamid del mensaje citado.
+            // Solo Meta (Cloud API) soporta citar; en Twilio el context se ignora sin romper nada.
+            string? replyToSid = null;
+            if (req.ReplyToMensajeId is int rid)
+                replyToSid = await _db.WhatsAppTwilioMensajes.Where(x => x.Id == rid)
+                    .Select(x => x.TwilioMessageSid).FirstOrDefaultAsync();
+
+            var (sid, canal, lin) = await _outbound.SendTextAsync(req.Numero, req.Mensaje, req.LineaPhoneId, replyToSid);
             var msg = new WhatsAppTwilioMensaje
             {
                 Direccion = "OUTGOING",
                 Numero = req.Numero,
                 Cuerpo = req.Mensaje,
                 TwilioMessageSid = sid,
+                ReplyToSid = replyToSid,
                 Canal = canal,
                 LineaPhoneId = lin,
                 Procesado = true,
@@ -1170,10 +1179,21 @@ public class WhatsAppTwilioController : ControllerBase
             {
                 m.Id, m.Direccion, m.Numero, m.NombrePerfil,
                 m.Cuerpo, m.MediaUrl, m.MediaFilename, m.NumMedia,
-                m.Procesado, m.RespuestaEnviada, m.CreatedAt, m.EstadoEntrega
+                m.Procesado, m.RespuestaEnviada, m.CreatedAt, m.EstadoEntrega,
+                m.ReplyToSid
             })
             .ToListAsync();
         msgs.Reverse();
+
+        // 2026-08-05: "responder citando". Para los mensajes que citan a otro (ReplyToSid), buscamos
+        // el mensaje original por su TwilioMessageSid y armamos un preview (quién y qué) para la burbuja.
+        var replySids = msgs.Where(m => m.ReplyToSid != null).Select(m => m.ReplyToSid!).Distinct().ToList();
+        var citados = replySids.Count == 0
+            ? new Dictionary<string, (string Direccion, string? Cuerpo, string? MediaUrl, string? MediaFilename)>()
+            : await _db.WhatsAppTwilioMensajes.AsNoTracking()
+                .Where(x => x.TwilioMessageSid != null && replySids.Contains(x.TwilioMessageSid))
+                .Select(x => new { x.TwilioMessageSid, x.Direccion, x.Cuerpo, x.MediaUrl, x.MediaFilename })
+                .ToDictionaryAsync(x => x.TwilioMessageSid!, x => (x.Direccion, x.Cuerpo, x.MediaUrl, x.MediaFilename));
         // Cargar reacciones de estos mensajes
         var ids = msgs.Select(m => m.Id).ToList();
         // 2026-08-05: EsCliente = la reacción la puso el CLIENTE (UsuarioId = -1 desde el webhook),
@@ -1185,13 +1205,37 @@ public class WhatsAppTwilioController : ControllerBase
             .ToListAsync();
         var reacByMsg = reacciones.GroupBy(r => r.MensajeId)
             .ToDictionary(g => g.Key, g => g.Select(x => new { x.Emoji, x.Count, x.EsCliente }).ToList());
-        var result = msgs.Select(m => new
+        var result = msgs.Select(m =>
         {
-            m.Id, m.Direccion, m.Numero, m.NombrePerfil, m.Cuerpo,
-            m.MediaUrl, m.MediaFilename, m.NumMedia, m.Procesado, m.RespuestaEnviada, m.CreatedAt, m.EstadoEntrega,
-            Reacciones = reacByMsg.TryGetValue(m.Id, out var rs) ? rs.Cast<object>().ToList() : new List<object>()
+            string? replyPreview = null;
+            bool replyFromMe = false;
+            if (m.ReplyToSid != null && citados.TryGetValue(m.ReplyToSid, out var orig))
+            {
+                replyFromMe = orig.Direccion == "OUTGOING";
+                replyPreview = PreviewCitado(orig.Cuerpo, orig.MediaUrl, orig.MediaFilename);
+            }
+            return new
+            {
+                m.Id, m.Direccion, m.Numero, m.NombrePerfil, m.Cuerpo,
+                m.MediaUrl, m.MediaFilename, m.NumMedia, m.Procesado, m.RespuestaEnviada, m.CreatedAt, m.EstadoEntrega,
+                Reacciones = reacByMsg.TryGetValue(m.Id, out var rs) ? rs.Cast<object>().ToList() : new List<object>(),
+                m.ReplyToSid, ReplyPreview = replyPreview, ReplyFromMe = replyFromMe
+            };
         }).ToList();
         return Ok(result);
+    }
+
+    /// <summary>2026-08-05: texto corto para la burbuja citada (responder citando). Si el mensaje
+    /// original era un adjunto, muestra un ícono + nombre; si era texto, lo recorta.</summary>
+    private static string PreviewCitado(string? cuerpo, string? mediaUrl, string? mediaFilename)
+    {
+        var texto = (cuerpo ?? "").Trim();
+        if (string.IsNullOrEmpty(texto) && !string.IsNullOrEmpty(mediaUrl))
+            texto = string.IsNullOrWhiteSpace(mediaFilename) ? "📎 Archivo" : $"📎 {mediaFilename}";
+        else if (!string.IsNullOrEmpty(mediaUrl) && !string.IsNullOrEmpty(mediaFilename))
+            texto = $"📎 {texto}";
+        if (texto.Length > 90) texto = texto.Substring(0, 90) + "…";
+        return texto;
     }
 
     // ===== ADJUNTOS — Fase 1: Subir desde PC =====

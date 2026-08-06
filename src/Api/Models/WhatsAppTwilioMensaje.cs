@@ -25,6 +25,10 @@ public class WhatsAppTwilioMensaje
     public int? NumMedia { get; set; }
     /// <summary>ID del mensaje del proveedor: SID de Twilio o wamid.* de Meta Cloud API (este último es largo).</summary>
     [MaxLength(200)] public string? TwilioMessageSid { get; set; }
+    /// <summary>2026-08-05: wamid del mensaje CITADO cuando este mensaje es una respuesta ("responder citando").
+    /// Entrante: viene del context.id de Meta. Saliente: el wamid del mensaje al que contestamos.
+    /// Se resuelve contra TwilioMessageSid del mensaje original para mostrar la burbuja citada.</summary>
+    [MaxLength(200)] public string? ReplyToSid { get; set; }
     /// <summary>Canal de origen del mensaje: "TWILIO" (default) o "CLOUD" (API oficial de Meta).</summary>
     [MaxLength(10)] public string Canal { get; set; } = "TWILIO";
     public bool Procesado { get; set; }

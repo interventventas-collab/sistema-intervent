@@ -6453,7 +6453,8 @@ public class ApiClient
         // 2026-08-04: estado + responsable de la conversación (pasar de uno a otro).
         string Estado = "nueva", string? AsignadoOperador = null, string? AsignadoPor = null, string? AsignadoNota = null, bool AsignadoVisto = true);
     public record TwReaccionDto(string Emoji, int Count, bool EsCliente = false);
-    public record TwMsgDto(int Id, string Direccion, string Numero, string? NombrePerfil, string? Cuerpo, string? MediaUrl, string? MediaFilename, int? NumMedia, bool Procesado, string? RespuestaEnviada, DateTime CreatedAt, string? EstadoEntrega, List<TwReaccionDto>? Reacciones);
+    // 2026-08-05: ReplyToSid/ReplyPreview/ReplyFromMe = "responder citando" (burbuja del mensaje citado).
+    public record TwMsgDto(int Id, string Direccion, string Numero, string? NombrePerfil, string? Cuerpo, string? MediaUrl, string? MediaFilename, int? NumMedia, bool Procesado, string? RespuestaEnviada, DateTime CreatedAt, string? EstadoEntrega, List<TwReaccionDto>? Reacciones, string? ReplyToSid = null, string? ReplyPreview = null, bool ReplyFromMe = false);
     public record TwRespRapidaDto(int Id, string Nombre, string Texto, int Orden, bool Activo);
     public record TwContactoDto(int Id, string Numero, string Nombre, string Rol, string? Notas, bool Activo, int? ClienteId, string? ClienteNombre, string? ClienteCodigo);
     public record TwRespUpsert(string Nombre, string Texto, int Orden, bool Activo);
@@ -6523,11 +6524,11 @@ public class ApiClient
                $"/api/whatsapp/twilio/mensajes?numero={Uri.EscapeDataString(numero)}"
                + (linea != null ? $"&linea={Uri.EscapeDataString(linea)}" : "")) ?? new();
 
-    public async Task<(bool ok, string? error)> SendTwMensajeAsync(string numero, string mensaje, string? lineaPhoneId = null)
+    public async Task<(bool ok, string? error)> SendTwMensajeAsync(string numero, string mensaje, string? lineaPhoneId = null, int? replyToMensajeId = null)
     {
         try
         {
-            var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/send", new { Numero = numero, Mensaje = mensaje, LineaPhoneId = lineaPhoneId });
+            var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/send", new { Numero = numero, Mensaje = mensaje, LineaPhoneId = lineaPhoneId, ReplyToMensajeId = replyToMensajeId });
             if (resp.IsSuccessStatusCode) return (true, null);
             string err = "Error enviando";
             try

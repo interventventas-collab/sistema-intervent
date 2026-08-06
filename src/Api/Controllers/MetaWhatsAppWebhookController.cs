@@ -412,6 +412,12 @@ public class MetaWhatsAppWebhookController : ControllerBase
         var tipo = m.TryGetProperty("type", out var typeEl) ? typeEl.GetString() : "text";
         if (string.IsNullOrEmpty(fromWaId)) return;
 
+        // 2026-08-05: "responder citando". Si el cliente responde a un mensaje puntual, Meta manda
+        // context.id = wamid del mensaje citado. Lo guardamos para mostrar la burbuja citada en la pantalla.
+        string? replyToSid = null;
+        if (m.TryGetProperty("context", out var ctxEl) && ctxEl.TryGetProperty("id", out var ctxIdEl))
+            replyToSid = ctxIdEl.GetString();
+
         // Deduplicar: Meta entrega "at least once".
         if (!string.IsNullOrEmpty(wamid) &&
             await db.WhatsAppTwilioMensajes.AnyAsync(x => x.TwilioMessageSid == wamid))
@@ -515,6 +521,7 @@ public class MetaWhatsAppWebhookController : ControllerBase
             LineaPhoneId = lineaId,
             NumMedia = mediaUrlPublica != null ? 1 : 0,
             TwilioMessageSid = wamid,
+            ReplyToSid = replyToSid,
             Canal = "CLOUD",
             Procesado = true,
             CreatedAt = DateTime.UtcNow
