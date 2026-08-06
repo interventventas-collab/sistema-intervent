@@ -4457,23 +4457,28 @@
     private async Task LimpiarAsignaciones()
     {
         showConfigMenu = false;
-        var asignadas = (stops ?? new()).Where(s => s.AssignedDriverId.HasValue || s.OrderInRoute.HasValue).ToList();
-        if (asignadas.Count == 0) { ToastService.Info("No hay asignaciones para limpiar."); return; }
-        if (!await ConfirmAsync($"¿Sacar el repartidor de las {asignadas.Count} paradas asignadas?\n\nNo borra las paradas ni los envíos — solo las deja sin repartidor para volver a armar las zonas.")) return;
+        showZonasMenu = false;
+        // Una parada está "en una zona" si tiene chofer, o zona sin chofer (slot), o un orden armado.
+        var asignadas = (stops ?? new()).Where(s => s.AssignedDriverId.HasValue || s.AssignedVehicleSlot.HasValue || s.OrderInRoute.HasValue).ToList();
+        if (asignadas.Count == 0) { ToastService.Info("No hay zonas para limpiar."); return; }
+        if (!await ConfirmAsync($"¿Deshacer las zonas de las {asignadas.Count} paradas?\n\nNo borra las paradas ni los envíos — solo las saca de las zonas (y de los choferes) para volver a armar todo desde cero.")) return;
         limpiandoAsignaciones = true;
         StateHasChanged();
         try
         {
+            // Sacamos chofer y orden de cada parada, y de una limpiamos TODAS las zonas sin chofer (slots).
             foreach (var s in asignadas)
                 await Api.UpdateMapeoStopAsync(s.Id, new { assignedDriverId = 0, orderInRoute = 0 });
+            await Api.ClearVehicleAssignmentsAsync();
             await LoadStops();
             await RenderMap();
             lastZoneUndo = new();
             zonasCreadas = new();
             zonasOcultasMapa = new();
+            zonasSlotOcultas = new();
             sinAsignarOcultos = false;
             rutasResumen = new();
-            ToastService.Success($"🧹 {asignadas.Count} paradas quedaron sin repartidor.");
+            ToastService.Success($"🧹 {asignadas.Count} paradas quedaron sin zona, listas para volver a armar.");
         }
         catch (Exception ex) { ToastService.Error("No se pudo limpiar: " + ex.Message); }
         finally { limpiandoAsignaciones = false; StateHasChanged(); }

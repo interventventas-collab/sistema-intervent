@@ -2668,10 +2668,39 @@
 
         var relativePath = Navigation.ToBaseRelativePath(Navigation.Uri).TrimStart('/').Split('?')[0].Split('#')[0];
 
-        // 2026-05-28: rol "deposito" puede entrar a productos, stock y preparacion aunque no tenga "cafe".
-        if (permissions.Contains("deposito") && (relativePath == "cafe/productos" || relativePath == "cafe/stock-masivo" || relativePath == "cafe/preparacion" || relativePath == "stock"))
+        // 2026-08-06: usuario DEPÓSITO puro (deposito, sin cafe ni oficina) → candado "todo cerrado
+        // salvo lo permitido". Antes, si la ruta no estaba en RouteToMenuKey, lo dejaba pasar
+        // (fail-open) → desde la pantalla de WhatsApp podía saltar a CUALQUIER pantalla escribiendo
+        // la dirección a mano. Ahora solo entra a: su menú (MenuVisibility, lo arma el admin) + el
+        // chat de WhatsApp + preparación/stock + su perfil. Cualquier otra ruta lo devuelve a su inicio.
+        var esDepositoPuro = permissions.Contains("deposito")
+                             && !permissions.Contains("cafe")
+                             && !permissions.Contains("oficina");
+        if (esDepositoPuro)
         {
-            return; // permitido
+            var permitidasDeposito = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "",                    // inicio "/"
+                "whatsapp",            // chat de WhatsApp (pantalla fijada de Gabriel)
+                "whatsapp/chat",
+                "perfil",              // que pueda cambiar su propia clave
+                "cafe/productos",      // productos / stock / preparación (ya los usaba)
+                "cafe/stock-masivo",
+                "cafe/preparacion",
+                "stock",
+            };
+            // sumar las pantallas que el admin le habilitó desde el panel de menú (MenuVisibility)
+            foreach (var k in MenuVisibility.GetEnabledKeys("deposito"))
+            {
+                if (MenuCatalog.TryGetValue(k, out var entry))
+                    permitidasDeposito.Add(entry.Href.TrimStart('/'));
+            }
+
+            if (!permitidasDeposito.Contains(relativePath))
+            {
+                Navigation.NavigateTo(GetHomeRouteForUser());
+            }
+            return; // deposito puro: ya resuelto acá, no seguimos con la lógica genérica
         }
         // 2026-05-28: rol "oficina" — lo mismo que deposito + cobranzas + mapeo.
         // 2026-05-30: oficina amplia: tambien puede acceder a ventas, clientes, listas, pedidos
