@@ -690,9 +690,8 @@
                                     {
                                         @if (IsImage(m.MediaUrl))
                                         {
-                                            <a href="@m.MediaUrl" target="_blank" rel="noopener">
-                                                <img src="@m.MediaUrl" style="max-width:100%; max-height:300px; border-radius:6px; display:block;" alt="adjunto" />
-                                            </a>
+                                            @* 2026-08-05: al tocar la foto se abre un visor emergente (ventanita sobre el chat), ya no en otra pestaña *@
+                                            <img src="@m.MediaUrl" class="wa-chat-img" @onclick="@(() => AbrirVisorImagen(m.MediaUrl, NombreDescarga(m)))" style="max-width:100%; max-height:300px; border-radius:6px; display:block; cursor:zoom-in;" alt="adjunto" />
                                             @* 2026-08-02: botón claro para descargar la imagen al teléfono/PC *@
                                             <a href="@m.MediaUrl" download="@NombreDescarga(m)" class="wa-descargar-btn">⬇ Descargar</a>
                                         }
@@ -1761,9 +1760,11 @@
     .wa-composer textarea:focus { border-color: #25d366; box-shadow: 0 0 0 3px rgba(37,211,102,0.15); }
     .wa-composer button { white-space: nowrap; }
     /* 2026-07-29: botón Enviar más grande y prolijo */
-    .wa-composer .btn-success { border-radius: 14px; padding: 0.65rem 1.2rem; font-weight: 700; box-shadow: 0 3px 10px rgba(37,211,102,0.35); transition: transform .12s ease, box-shadow .12s ease; }
-    .wa-composer .btn-success:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(37,211,102,0.5); }
-    .wa-composer .btn-success:active:not(:disabled) { transform: translateY(0); box-shadow: 0 2px 6px rgba(37,211,102,0.4); }
+    /* 2026-08-05: verde fuerte tipo WhatsApp (antes se veía apagado/muerto). El gris queda SOLO cuando está deshabilitado (cajón vacío). */
+    .wa-composer .btn-success { border-radius: 14px; padding: 0.75rem 1.5rem; font-weight: 800; font-size: 1.05rem; color: #fff !important; background: linear-gradient(135deg, #25d366 0%, #12b859 100%) !important; border: none !important; box-shadow: 0 4px 14px rgba(18,184,89,0.45); transition: transform .12s ease, box-shadow .12s ease, filter .12s ease; }
+    .wa-composer .btn-success:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(18,184,89,0.6); filter: brightness(1.06); }
+    .wa-composer .btn-success:active:not(:disabled) { transform: translateY(0); box-shadow: 0 2px 6px rgba(18,184,89,0.5); }
+    .wa-composer .btn-success:disabled { background: #cfd8dc !important; color: #eceff1 !important; box-shadow: none; }
     /* 2026-08-01: el botón Enviar parpadea (verde) mientras se manda el mensaje */
     .wa-enviar-btn.enviando { opacity: 1 !important; animation: wa-enviar-blink 0.55s ease-in-out infinite; }
     @@keyframes wa-enviar-blink { 0%, 100% { box-shadow: 0 3px 10px rgba(37,211,102,0.4); filter: brightness(1); } 50% { box-shadow: 0 0 20px rgba(37,211,102,0.95); filter: brightness(1.25); } }
@@ -2101,7 +2102,28 @@
         .wa-attach-btn { width: 40px; height: 40px; font-size: 1.2rem; }
         .wa-messages { padding: 0.7rem; }
     }
+
+    /* 2026-08-05: visor de fotos emergente (lightbox) — al tocar una foto del chat se abre acá, sin ir a otra pestaña */
+    .wa-chat-img { transition: filter .12s ease; }
+    .wa-chat-img:hover { filter: brightness(1.04); }
+    .wa-visor-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 3000; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2.5rem 1rem 1rem; animation: waVisorIn .14s ease; }
+    @@keyframes waVisorIn { from { opacity: 0; } to { opacity: 1; } }
+    .wa-visor-img { max-width: 92vw; max-height: 78vh; border-radius: 8px; box-shadow: 0 12px 48px rgba(0,0,0,0.6); object-fit: contain; }
+    .wa-visor-x { position: absolute; top: 1rem; right: 1.2rem; background: rgba(255,255,255,0.15); border: none; color: #fff; font-size: 1.8rem; line-height: 1; width: 44px; height: 44px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .wa-visor-x:hover { background: rgba(255,255,255,0.3); }
+    .wa-visor-dl { margin-top: 1rem; background: linear-gradient(135deg, #25d366 0%, #12b859 100%); color: #fff; text-decoration: none; font-weight: 700; padding: 0.6rem 1.4rem; border-radius: 12px; box-shadow: 0 4px 14px rgba(18,184,89,0.45); }
+    .wa-visor-dl:hover { filter: brightness(1.06); color: #fff; }
 </style>
+
+@* 2026-08-05: visor de fotos emergente (se cierra tocando el fondo, la ✖ o Escape) *@
+@if (visorImagenUrl != null)
+{
+    <div class="wa-visor-backdrop" @onclick="CerrarVisorImagen">
+        <button class="wa-visor-x" @onclick="CerrarVisorImagen" title="Cerrar">×</button>
+        <img class="wa-visor-img" src="@visorImagenUrl" alt="foto" @onclick:stopPropagation="true" />
+        <a class="wa-visor-dl" href="@visorImagenUrl" download="@visorImagenNombre" @onclick:stopPropagation="true">⬇ Descargar</a>
+    </div>
+}
 
 @if (showAdjuntarServidor)
 {
@@ -4040,6 +4062,16 @@
         return lower.Contains(".jpg") || lower.Contains(".jpeg") || lower.Contains(".png")
             || lower.Contains(".gif") || lower.Contains(".webp") || lower.Contains("image");
     }
+
+    // 2026-08-05: visor de fotos emergente (lightbox). Al tocar una foto del chat se abre acá, sin ir a otra pestaña.
+    string? visorImagenUrl = null;
+    string visorImagenNombre = "foto.jpg";
+    void AbrirVisorImagen(string url, string nombre)
+    {
+        visorImagenUrl = url;
+        visorImagenNombre = string.IsNullOrWhiteSpace(nombre) ? "foto.jpg" : nombre;
+    }
+    void CerrarVisorImagen() => visorImagenUrl = null;
 
     // 2026-07-23: notas de voz. Los audios de WhatsApp llegan como .ogg (opus); los que grabamos
     // nosotros desde el navegador pueden ser .webm o .m4a segun el dispositivo.
