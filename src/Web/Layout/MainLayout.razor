@@ -658,14 +658,14 @@
                         El admin todavía no te asignó pantallas.
                     </div>
                 }
-                @* 2026-08-05: acceso directo a la conversación de WhatsApp FIJADA (Gabriel + FIJO
-                   TRANSRADIO). Depósito la abre en modo "una sola conversación" (solo=1): ve SOLO
-                   ese chat, para leer y escribir. Fase 2: hacerlo elegible como el resto del menú. *@
+                @* 2026-08-06: acceso a la conversación de WhatsApp FIJADA (Gabriel + FIJO TRANSRADIO).
+                   Antes abría la pantalla grande (recargada). Ahora abre el CHAT FLOTANTE simple
+                   (DepositoWaFloating), que se puede mover por toda la pantalla y trae la barrita de
+                   firma. También hay un globito 💬 abajo a la derecha para abrirlo desde donde estés. *@
                 @if (role == "deposito")
                 {
-                    var pinnedWaHref = "/whatsapp?numero=whatsapp%3A%2B5491158464160&solo=1&linea=1195191513683780";
-                    <NavItem Href="@pinnedWaHref" Label="💬 WhatsApp Gabriel" Icon="@SvgIcons.MessageCircle"
-                             IsActive="@IsActive("/whatsapp")" OnClick="@(() => NavigateTo(pinnedWaHref))" />
+                    <NavItem Href="#" Label="💬 WhatsApp Gabriel" Icon="@SvgIcons.MessageCircle"
+                             IsActive="false" OnClick="@(() => depWaRef?.Abrir())" />
                 }
             </NavGroup>
         }
@@ -1917,6 +1917,14 @@
    Tiene un boton ↗ para abrirlo en una pestaña aparte. *@
 <WhatsAppFlotante @ref="waFlotanteRef" />
 
+@* 2026-08-06: chat de WhatsApp flotante y arrastrable SOLO para Depósito (Gabriel + FIJO
+   TRANSRADIO), con barrita de firma. Se auto-oculta si el usuario no es de Depósito. El globito
+   se puede abrir desde cualquier pantalla; el ítem "WhatsApp Gabriel" del menú también lo abre. *@
+@if (!IsEmbedded)
+{
+    <DepositoWaFloating @ref="depWaRef" />
+}
+
 @* 2026-06-23: modal global de vinculacion WhatsApp. Se abre desde cualquier pantalla apretando
    el boton verde de WhatsApp en la topbar (cuando no esta linked) o el boton del banner rojo. *@
 @if (showWaQrModal)
@@ -2467,6 +2475,9 @@
     // 2026-07-23: panel flotante de WhatsApp (API oficial de Meta).
     private WhatsAppFlotante? waFlotanteRef;
     private async Task ToggleWaFlotante() { if (waFlotanteRef is not null) await waFlotanteRef.ToggleAsync(); }
+
+    // 2026-08-06: chat flotante/arrastrable de WhatsApp para Depósito (lo abre el ítem del menú).
+    private DepositoWaFloating? depWaRef;
 
     // 2026-07-15: acceso directo a la calculadora en la barra, con cartel "nuevo" titilante
     // hasta que se abre por primera vez.

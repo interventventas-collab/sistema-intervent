@@ -1,0 +1,114 @@
+@* 2026-08-06: Chat de WhatsApp FLOTANTE y ARRASTRABLE para el usuario Depósito.
+   Vive en el layout, así que está disponible en CUALQUIER pantalla de la sesión.
+   - Globito 💬 abajo a la derecha para abrirlo desde donde estés.
+   - Al abrir, aparece una ventanita que se puede mover por toda la pantalla (se agarra del
+     encabezado; funciona con mouse y con el dedo, reusa window.waDraggable).
+   - Adentro va el mini-chat PinnedWaChat, que para Depósito ya trae la barrita de FIRMA.
+   Solo se muestra si el usuario es de Depósito; los demás no lo ven. *@
+@using Web.Services
+@inject Web.Services.AuthService AuthSvc
+@inject Microsoft.JSInterop.IJSRuntime JS
+
+@if (esDeposito)
+{
+    @if (!abierto)
+    {
+        <button class="depwa-bubble" @onclick="Abrir" title="Abrir el chat de WhatsApp de Gabriel">
+            <span class="depwa-bubble-ic">💬</span>
+        </button>
+    }
+    else
+    {
+        <div class="depwa-panel" id="dep-wa-panel">
+            <div class="depwa-bar" id="dep-wa-handle">
+                <span class="depwa-bar-title">💬 WhatsApp — @Titulo</span>
+                <button type="button" class="depwa-bar-btn" @onclick="Cerrar" title="Cerrar (queda el globito abajo)">✕</button>
+            </div>
+            <div class="depwa-body">
+                <PinnedWaChat Numero="@Numero" LineaPhoneId="@Linea"
+                              TituloContacto="@Titulo" NombreLinea="@NombreLinea"
+                              PuedeAbrirEnGrande="false" />
+            </div>
+        </div>
+    }
+}
+
+<style>
+    .depwa-bubble {
+        position: fixed; right: 22px; bottom: 22px; z-index: 8500;
+        width: 58px; height: 58px; border-radius: 50%; border: none;
+        background: #25d366; color: #fff; cursor: pointer;
+        box-shadow: 0 8px 22px rgba(37,211,102,0.45);
+        display: flex; align-items: center; justify-content: center;
+        animation: depwa-pop 0.2s ease;
+    }
+    .depwa-bubble:hover { filter: brightness(1.05); transform: translateY(-1px); }
+    .depwa-bubble-ic { font-size: 26px; line-height: 1; }
+    @@keyframes depwa-pop { from { transform: scale(0.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+    .depwa-panel {
+        position: fixed; right: 22px; bottom: 22px; z-index: 8500;
+        width: 360px; height: 540px; max-height: 88vh;
+        display: flex; flex-direction: column;
+        background: #fff; border-radius: 16px; overflow: hidden;
+        box-shadow: 0 16px 40px rgba(0,0,0,0.30);
+        animation: depwa-pop 0.18s ease;
+    }
+    .depwa-bar {
+        display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        background: #0b7a4b; color: #fff; padding: 8px 12px; cursor: move;
+        user-select: none; touch-action: none;
+    }
+    .depwa-bar-title { font-weight: 800; font-size: 0.9rem;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .depwa-bar-btn { background: rgba(255,255,255,0.18); border: none; color: #fff;
+        border-radius: 7px; width: 28px; height: 26px; cursor: pointer; font-size: 0.85rem;
+        flex: none; display: flex; align-items: center; justify-content: center; }
+    .depwa-bar-btn:hover { background: rgba(255,255,255,0.34); }
+    .depwa-body { flex: 1; min-height: 0; }
+    /* PinnedWaChat trae su propio marco; adentro del panel lo dejamos a ras. */
+    .depwa-body .pwa-card { height: 100%; min-height: 0; border: none; border-radius: 0; box-shadow: none; }
+
+    @@media (max-width: 640px) {
+        .depwa-panel { right: 8px; left: 8px; bottom: 8px; width: auto; height: 78vh; }
+    }
+</style>
+
+@code {
+    // Conversación FIJADA (misma que el Dashboard): Gabriel Palanica por la línea FIJO TRANSRADIO.
+    private const string Numero = "whatsapp:+5491158464160";
+    private const string Linea = "1195191513683780";
+    private const string Titulo = "Gabriel Palanica";
+    private const string NombreLinea = "FIJO TRANSRADIO";
+
+    private bool esDeposito;
+    private bool abierto;
+    private bool _attachPending;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var user = await AuthSvc.GetUserAsync();
+            var perms = user?.Permissions ?? new();
+            esDeposito = perms.Contains("deposito") && !perms.Contains("cafe") && !perms.Contains("oficina");
+        }
+        catch { esDeposito = false; }
+    }
+
+    /// <summary>Abre la ventanita flotante (la puede llamar el layout desde el ítem del menú).</summary>
+    public void Abrir() { abierto = true; _attachPending = true; StateHasChanged(); }
+    public void Cerrar() { abierto = false; StateHasChanged(); }
+    public void Toggle() { if (abierto) Cerrar(); else Abrir(); }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Cuando se abre, enganchamos el arrastre por el encabezado (mouse + dedo).
+        if (_attachPending && abierto)
+        {
+            _attachPending = false;
+            try { await JS.InvokeVoidAsync("waDraggable.attach", "dep-wa-handle", "dep-wa-panel"); }
+            catch { }
+        }
+    }
+}

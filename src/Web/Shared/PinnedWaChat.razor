@@ -6,6 +6,7 @@
 @using Web.Services
 @inject Web.Services.ApiClient Api
 @inject Web.Services.ToastService Toast
+@inject Web.Services.AuthService AuthSvc
 @inject Microsoft.JSInterop.IJSRuntime JS
 @implements IDisposable
 
@@ -60,6 +61,21 @@
         }
     </div>
 
+    @* 2026-08-06: SOLO para el usuario Depósito — barrita para elegir QUIÉN responde. El mensaje
+       sale firmado, ej "OK (alex)". Es obligatorio elegir antes de enviar. Los demás usuarios no
+       ven esta barra. Misma lógica que la pantalla grande de WhatsApp, acá en versión mini. *@
+    @if (esDeposito)
+    {
+        <div class="pwa-firma">
+            <span class="pwa-firma-lbl">✍️ Responde:</span>
+            @foreach (var f in FirmantesDeposito)
+            {
+                <button type="button" class="pwa-firma-btn @(firmante == f ? "on" : "")" @onclick="() => firmante = f">@Capitalizar(f)</button>
+            }
+            <span class="pwa-firma-hint">@(string.IsNullOrWhiteSpace(firmante) ? "👈 elegí quién responde" : $"sale como … ({firmante})")</span>
+        </div>
+    }
+
     <div class="pwa-composer">
         <textarea class="pwa-input" placeholder="Escribir mensaje… (Enter para enviar)"
                   @bind="composer" @bind:event="oninput" @onkeydown="OnKey" rows="1" disabled="@sending"></textarea>
@@ -105,6 +121,15 @@
     .pwa-text { white-space: pre-wrap; word-break: break-word; }
     .pwa-time { font-size: 0.62rem; color: #6b7280; text-align: right; margin-top: 2px; }
 
+    .pwa-firma { display: flex; align-items: center; flex-wrap: wrap; gap: 5px;
+        padding: 0.4rem 0.7rem 0; background: #f8fafb; }
+    .pwa-firma-lbl { font-size: 0.72rem; font-weight: 800; color: #374151; }
+    .pwa-firma-btn { border: 1px solid #d1d5db; background: #fff; color: #374151;
+        border-radius: 999px; padding: 2px 9px; font-size: 0.72rem; font-weight: 700; cursor: pointer; }
+    .pwa-firma-btn:hover { background: #f3f4f6; }
+    .pwa-firma-btn.on { background: #16a34a; color: #fff; border-color: #15803d; }
+    .pwa-firma-hint { font-size: 0.68rem; color: #6b7280; margin-left: auto; }
+
     .pwa-composer { display: flex; align-items: flex-end; gap: 8px; padding: 0.55rem 0.7rem;
         border-top: 1px solid #eef0f2; background: #f8fafb; }
     .pwa-input { flex: 1; resize: none; border: 1px solid #d1d5db; border-radius: 12px;
@@ -131,8 +156,22 @@
     private bool sending;
     private System.Threading.Timer? refreshTimer;
 
+    // 2026-08-06: firma del Depósito (responde firmando quién lo hace). Nombres FIJOS por ahora.
+    private bool esDeposito;
+    private string? firmante;
+    private static readonly string[] FirmantesDeposito = { "alex", "nacho", "benja", "rodri", "gon", "ger" };
+    private static string Capitalizar(string s) => string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s.Substring(1);
+
     protected override async Task OnInitializedAsync()
     {
+        // ¿Es usuario Depósito? (mismo criterio que el resto del sistema: deposito y NO cafe/oficina)
+        try
+        {
+            var user = await AuthSvc.GetUserAsync();
+            var perms = user?.Permissions ?? new();
+            esDeposito = perms.Contains("deposito") && !perms.Contains("cafe") && !perms.Contains("oficina");
+        }
+        catch { esDeposito = false; }
         await Cargar();
         // Refresco liviano cada 12s para ver mensajes nuevos sin recargar la página.
         refreshTimer = new System.Threading.Timer(async _ =>
@@ -171,6 +210,16 @@
     {
         var texto = (composer ?? "").Trim();
         if (sending || string.IsNullOrWhiteSpace(texto)) return;
+        // Depósito: exige elegir firmante y lo agrega al final -> "OK (alex)".
+        if (esDeposito)
+        {
+            if (string.IsNullOrWhiteSpace(firmante))
+            {
+                Toast.Warning("Elegí quién responde (arriba del cuadro de escribir).");
+                return;
+            }
+            texto = $"{texto} ({firmante})";
+        }
         sending = true;
         var (ok, err) = await Api.SendTwMensajeAsync(Numero, texto, LineaPhoneId);
         sending = false;
