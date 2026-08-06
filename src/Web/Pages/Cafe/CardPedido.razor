@@ -189,13 +189,26 @@
                          style="@(it.ComboOrigenId.HasValue ? "margin-left: 0.8rem; border-left: 2px dashed #fdba74;" : "")">
                         <input type="checkbox" class="prep-check" checked="@tildado" @onclick="() => ToggleTildado(it.Id)" />
                         <div class="prep-item-cant"><span class="x">×</span> @it.Cantidad</div>
-                        @* 2026-08-03: mini foto del producto (de la publicación MeLi). Tocarla la abre grande. *@
+                        @* 2026-08-05: la mini foto del producto (de la publicación MeLi) arranca TAPADA.
+                           Como muchas están mal, el armador ve un ojito 👁️ y recién si lo toca aparece.
+                           Una vez visible, tocar la foto la abre en grande (igual que antes). *@
                         @if (!string.IsNullOrEmpty(it.Thumbnail))
                         {
-                            <img src="@FixHttps(it.Thumbnail)" alt="@it.ProductoNombre"
-                                 @onclick="() => AbrirFoto(it.Thumbnail, it.ProductoNombre)"
-                                 title="Tocá para verla más grande"
-                                 style="width:42px; height:42px; object-fit:cover; border-radius:6px; border:1px solid #e5e7eb; cursor:pointer; flex-shrink:0; background:#fff;" />
+                            @if (fotosVisibles.Contains(it.Id))
+                            {
+                                <img src="@FixHttps(it.Thumbnail)" alt="@it.ProductoNombre"
+                                     @onclick="() => AbrirFoto(it.Thumbnail, it.ProductoNombre)"
+                                     title="Tocá para verla más grande"
+                                     style="width:42px; height:42px; object-fit:cover; border-radius:6px; border:1px solid #e5e7eb; cursor:pointer; flex-shrink:0; background:#fff;" />
+                            }
+                            else
+                            {
+                                <button type="button" @onclick="() => ToggleFoto(it.Id)"
+                                        title="Ver foto del producto"
+                                        style="width:42px; height:42px; border-radius:6px; border:1px dashed #cbd5e1; background:#f8fafc; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:1.15rem; color:#64748b; padding:0;">
+                                    👁️
+                                </button>
+                            }
                         }
                         <div>
                             <div class="prep-item-desc-prod prep-item-desc">
@@ -286,6 +299,13 @@
 
     // IDs de items tildados (solo visual, no se persiste).
     private HashSet<int> tildados = new();
+
+    // 2026-08-05: IDs de items cuya mini foto está DESTAPADA (por defecto todas tapadas → ojito).
+    private HashSet<int> fotosVisibles = new();
+    private void ToggleFoto(int itemId)
+    {
+        if (!fotosVisibles.Add(itemId)) fotosVisibles.Remove(itemId);
+    }
 
     // 2026-08-03: foto del producto abierta en grande (lightbox). Null = cerrada.
     private string? fotoGrande;
