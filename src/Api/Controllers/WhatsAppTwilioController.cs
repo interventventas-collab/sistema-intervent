@@ -22,8 +22,11 @@ public class WhatsAppTwilioController : ControllerBase
     private readonly CafeVentasController _ventasController;
     private readonly MetaWhatsAppService _meta;
     private readonly CafeListasCustomController _listasCustomController;
+    // 2026-08-05: para adjuntar reservas de alquiler y recibos de visita por el chat, reusando su PDF.
+    private readonly AlqReservasController _alqReservasController;
+    private readonly VisitasController _visitasController;
 
-    public WhatsAppTwilioController(AppDbContext db, ILogger<WhatsAppTwilioController> logger, WhatsAppOutboundService outbound, CafeReciboCobranzaPdfService cobranzaPdfService, CafeVentasController ventasController, MetaWhatsAppService meta, CafeListasCustomController listasCustomController)
+    public WhatsAppTwilioController(AppDbContext db, ILogger<WhatsAppTwilioController> logger, WhatsAppOutboundService outbound, CafeReciboCobranzaPdfService cobranzaPdfService, CafeVentasController ventasController, MetaWhatsAppService meta, CafeListasCustomController listasCustomController, AlqReservasController alqReservasController, VisitasController visitasController)
     {
         _db = db;
         _logger = logger;
@@ -32,6 +35,8 @@ public class WhatsAppTwilioController : ControllerBase
         _ventasController = ventasController;
         _meta = meta;
         _listasCustomController = listasCustomController;
+        _alqReservasController = alqReservasController;
+        _visitasController = visitasController;
     }
 
     // ===== Menu de identificacion de rol (auto-respuesta a numeros nuevos) =====
@@ -1602,7 +1607,41 @@ public class WhatsAppTwilioController : ControllerBase
                 .ToListAsync();
             return Ok(list);
         }
-        return BadRequest(new { error = "Tipo no soportado. Validos: UPLOAD, COBRANZA, VENTA, LISTA, CATALOGO" });
+        if (tipo == "ALQUILER")
+        {
+            // 2026-08-05: reservas de alquiler, para mandar el comprobante por el chat.
+            var q = _db.AlqReservas.Include(r => r.ClienteNav).Where(r => r.Estado != "cancelado");
+            if (s != null)
+                q = q.Where(r => r.Numero.Contains(s)
+                    || (r.ClienteNav != null && r.ClienteNav.Nombre.Contains(s))
+                    || (r.DireccionEvento != null && r.DireccionEvento.Contains(s)));
+            var list = await q.OrderByDescending(r => r.CreatedAt).Take(take)
+                .Select(r => new ServerFileDto(
+                    "ALQUILER", r.Id, $"Reserva {r.Numero}",
+                    r.ClienteNav != null ? r.ClienteNav.Nombre : "—",
+                    $"${r.MontoTotal:N0}",
+                    r.CreatedAt, null, "🎪"))
+                .ToListAsync();
+            return Ok(list);
+        }
+        if (tipo == "VISITA")
+        {
+            // 2026-08-05: recibos de visita, para mandarlos por el chat.
+            var q = _db.Visitas.AsQueryable();
+            if (s != null)
+                q = q.Where(v => v.ClienteNombre.Contains(s)
+                    || (v.Direccion != null && v.Direccion.Contains(s))
+                    || v.Descripcion.Contains(s));
+            var list = await q.OrderByDescending(v => v.CreatedAt).Take(take)
+                .Select(v => new ServerFileDto(
+                    "VISITA", v.Id, $"Visita N° {v.Numero:0000}",
+                    v.ClienteNombre,
+                    v.Estado == "realizada" ? "Realizada" : "Pendiente",
+                    v.CreatedAt, null, "📋"))
+                .ToListAsync();
+            return Ok(list);
+        }
+        return BadRequest(new { error = "Tipo no soportado. Validos: UPLOAD, COBRANZA, VENTA, LISTA, CATALOGO, ALQUILER, VISITA" });
     }
 
     public record SendServerFileRequest(string Numero, string Tipo, int Id, string? Caption, string? LineaPhoneId = null);
@@ -1781,8 +1820,62 @@ public class WhatsAppTwilioController : ControllerBase
                 mediaUrl = $"{Request.Scheme}://{Request.Host}/api/whatsapp/twilio/files/{token}{Path.GetExtension(stored)}";
                 break;
             }
+            case "ALQUILER":
+            {
+                // 2026-08-05: reserva de alquiler. Reusa el MISMO PDF que descarga la pantalla de Reservas.
+                var (bytes, fname) = await _alqReservasController.GenerarPdfBytesAsync(req.Id);
+                if (bytes is null) return NotFound(new { error = "Reserva no encontrada" });
+                filename = fname;
+
+                Directory.CreateDirectory(UploadsDir);
+                var token = GenerarToken();
+                var stored = token + ".pdf";
+                await System.IO.File.WriteAllBytesAsync(Path.Combine(UploadsDir, stored), bytes);
+                var up = new WhatsAppTwilioUpload
+                {
+                    Token = token,
+                    OriginalFilename = filename,
+                    StoredFilename = stored,
+                    ContentType = "application/pdf",
+                    SizeBytes = bytes.Length,
+                    NumeroDestino = numeroNorm,
+                    CreatedAt = DateTime.UtcNow,
+                    ExpiresAt = DateTime.UtcNow.AddHours(24)
+                };
+                _db.WhatsAppTwilioUploads.Add(up);
+                await _db.SaveChangesAsync();
+                mediaUrl = $"{Request.Scheme}://{Request.Host}/api/whatsapp/twilio/files/{token}{Path.GetExtension(stored)}";
+                break;
+            }
+            case "VISITA":
+            {
+                // 2026-08-05: recibo de visita. Reusa el MISMO PDF del recibo publico por QR.
+                var (bytes, fname) = await _visitasController.GenerarReciboPdfBytesAsync(req.Id);
+                if (bytes is null) return NotFound(new { error = "Visita no encontrada" });
+                filename = fname;
+
+                Directory.CreateDirectory(UploadsDir);
+                var token = GenerarToken();
+                var stored = token + ".pdf";
+                await System.IO.File.WriteAllBytesAsync(Path.Combine(UploadsDir, stored), bytes);
+                var up = new WhatsAppTwilioUpload
+                {
+                    Token = token,
+                    OriginalFilename = filename,
+                    StoredFilename = stored,
+                    ContentType = "application/pdf",
+                    SizeBytes = bytes.Length,
+                    NumeroDestino = numeroNorm,
+                    CreatedAt = DateTime.UtcNow,
+                    ExpiresAt = DateTime.UtcNow.AddHours(24)
+                };
+                _db.WhatsAppTwilioUploads.Add(up);
+                await _db.SaveChangesAsync();
+                mediaUrl = $"{Request.Scheme}://{Request.Host}/api/whatsapp/twilio/files/{token}{Path.GetExtension(stored)}";
+                break;
+            }
             default:
-                return BadRequest(new { error = "Tipo no soportado. Validos: UPLOAD, COBRANZA, VENTA, LISTA, CATALOGO" });
+                return BadRequest(new { error = "Tipo no soportado. Validos: UPLOAD, COBRANZA, VENTA, LISTA, CATALOGO, ALQUILER, VISITA" });
         }
 
         try

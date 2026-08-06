@@ -53,11 +53,20 @@ public class AlqReservasController : ControllerBase
     [HttpGet("{id:int}/pdf")]
     public async Task<IActionResult> Pdf(int id)
     {
+        var (bytes, filename) = await GenerarPdfBytesAsync(id);
+        if (bytes is null) return NotFound(new { error = "Reserva no encontrada" });
+        return File(bytes, "application/pdf", filename);
+    }
+
+    /// <summary>Genera los bytes del PDF del comprobante de la reserva (misma lógica que el botón Descargar).
+    /// Reutilizable desde otros controllers — ej. adjuntar la reserva por WhatsApp. Devuelve (null,"") si no existe.</summary>
+    public async Task<(byte[]? bytes, string filename)> GenerarPdfBytesAsync(int id)
+    {
         var r = await _db.AlqReservas
             .Include(x => x.ClienteNav)
             .Include(x => x.Items).ThenInclude(i => i.EquipoNav)
             .FirstOrDefaultAsync(x => x.Id == id);
-        if (r is null) return NotFound(new { error = "Reserva no encontrada" });
+        if (r is null) return (null, "");
         if (string.IsNullOrEmpty(r.PublicToken))
         {
             r.PublicToken = Guid.NewGuid().ToString("N");
@@ -68,7 +77,7 @@ public class AlqReservasController : ControllerBase
         var qr = await _qr.GenerarQrAlquilerAsync(r.PublicToken);
         var condiciones = (await _db.AppSettings.FindAsync("alq.condiciones"))?.Value;
         var bytes = _pdf.Generar(r, cfg, qr, condiciones);
-        return File(bytes, "application/pdf", $"Reserva-{r.Numero}.pdf");
+        return (bytes, $"Reserva-{r.Numero}.pdf");
     }
 
     public record AlqProximoDto(int Id, string Numero, string ClienteNombre, DateTime Fecha, string Tipo);

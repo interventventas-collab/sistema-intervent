@@ -213,6 +213,10 @@ builder.Services.AddScoped<MapeoRutaPdfService>();
 builder.Services.AddScoped<Api.Controllers.CafeVentasController>();
 // 2026-07-23: CafeListasCustomController en DI para mandar listas de precios por el chat WhatsApp
 builder.Services.AddScoped<Api.Controllers.CafeListasCustomController>();
+// 2026-08-05: AlqReservasController y VisitasController en DI para adjuntar reservas de alquiler
+// y recibos de visita por el chat WhatsApp (reusan su PDF via GenerarPdfBytesAsync/GenerarReciboPdfBytesAsync).
+builder.Services.AddScoped<Api.Controllers.AlqReservasController>();
+builder.Services.AddScoped<Api.Controllers.VisitasController>();
 builder.Services.AddScoped<MeliOrderService>();
 builder.Services.AddScoped<MeliItemService>();
 builder.Services.AddScoped<MeliQuestionService>();

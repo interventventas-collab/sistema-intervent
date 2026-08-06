@@ -2141,6 +2141,8 @@
             <button class="wa-srv-tab @(srvTab == "COBRANZA" ? "active" : "")" @onclick='() => CambiarTabServidor("COBRANZA")'>💰 Recibos cobranza</button>
             <button class="wa-srv-tab @(srvTab == "LISTA" ? "active" : "")" @onclick='() => CambiarTabServidor("LISTA")'>💲 Listas de precios</button>
             <button class="wa-srv-tab @(srvTab == "CATALOGO" ? "active" : "")" @onclick='() => CambiarTabServidor("CATALOGO")'>📚 Catálogos</button>
+            <button class="wa-srv-tab @(srvTab == "ALQUILER" ? "active" : "")" @onclick='() => CambiarTabServidor("ALQUILER")'>🎪 Alquileres</button>
+            <button class="wa-srv-tab @(srvTab == "VISITA" ? "active" : "")" @onclick='() => CambiarTabServidor("VISITA")'>📋 Recibos de visita</button>
             <button class="wa-srv-tab @(srvTab == "UPLOAD" ? "active" : "")" @onclick='() => CambiarTabServidor("UPLOAD")'>📁 Mis subidos</button>
         </div>
         @if (srvTab == "CATALOGO")
@@ -3809,6 +3811,8 @@
         "COBRANZA" => "🔍 Nº recibo, cliente o código...",
         "LISTA" => "🔍 Nombre de la lista o cliente...",
         "CATALOGO" => "🔍 Nombre del catálogo...",
+        "ALQUILER" => "🔍 Nº reserva, cliente o dirección...",
+        "VISITA" => "🔍 Cliente, dirección o descripción...",
         _ => "🔍 Nombre del archivo..."
     };
 
