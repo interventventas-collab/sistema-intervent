@@ -108,6 +108,11 @@ builder.Services.AddFido2(options =>
 });
 
 // Services
+// 2026-08-06: SignalR para PRESENCIA en la bandeja de WhatsApp (quién mira/escribe cada chat, en vivo,
+// para no pisarse entre agentes). Estado en memoria (singleton) + barredora de expirados. NO toca envío.
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<Api.Hubs.PresenceTracker>();
+builder.Services.AddHostedService<Api.Hubs.PresenceSweeper>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<TwilioWhatsAppService>();
 builder.Services.AddScoped<MetaWhatsAppService>();
@@ -485,5 +490,7 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+// 2026-08-06: hub de presencia de WhatsApp. Bajo /api/hubs/ para que caiga en el proxy /api de nginx.
+app.MapHub<Api.Hubs.PresenceHub>("/api/hubs/presence");
 
 app.Run();
