@@ -1052,6 +1052,44 @@
                 </div>
             </div>
         }
+        @* ═════════ Barra flotante: Armar ruta guiada (elegir primera + última, ordena el resto) ═════════ *@
+        @if (modoGuiada)
+        {
+            var gPrimera = stops?.FirstOrDefault(x => x.Id == guiadaPrimeraId);
+            var gUltima = stops?.FirstOrDefault(x => x.Id == guiadaUltimaId);
+            var gPaso = !guiadaPrimeraId.HasValue ? 1 : (!guiadaUltimaId.HasValue ? 2 : 3);
+            var gTxt = gPaso == 1 ? "Tocá la parada que va PRIMERA (la que sale a repartir apenas arranca)."
+                     : gPaso == 2 ? "Ahora tocá la que va ÚLTIMA (ej: la que te queda de paso a tu casa)."
+                     : "¡Listo! Apretá \"Armar ruta\" y ordeno todas las del medio. Opcional: tocá alguna del medio para clavarla en el orden que la tocás.";
+            var gPrimeraNom = gPrimera?.Alias ?? gPrimera?.ContactName ?? (guiadaPrimeraId.HasValue ? "elegida" : "—");
+            var gUltimaNom = gUltima?.Alias ?? gUltima?.ContactName ?? (guiadaUltimaId.HasValue ? "elegida" : "—");
+            <div style="position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:600; background:@(gPaso==3?"#16a34a":"#1d4ed8"); color:#fff; border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,0.4); padding:0.6rem 0.85rem; display:flex; flex-direction:column; gap:0.45rem; max-width:94vw; width:520px;">
+                <div style="display:flex; gap:0.5rem; align-items:center;">
+                    <span style="font-size:1rem;">🧭</span>
+                    <span style="font-size:0.92rem; font-weight:800;">Armar ruta guiada</span>
+                    <span style="font-size:0.72rem; font-weight:700; background:rgba(255,255,255,0.22); border-radius:8px; padding:0.15rem 0.5rem;">@(gPaso==3 ? "Listo" : $"Paso {gPaso} de 3")</span>
+                </div>
+                <div style="font-size:0.85rem; line-height:1.35;">@gTxt</div>
+                <div style="display:flex; gap:0.5rem; font-size:0.74rem; flex-wrap:wrap;">
+                    <span style="background:rgba(255,255,255,0.18); border-radius:8px; padding:0.15rem 0.5rem;">1ª: <strong>@gPrimeraNom</strong></span>
+                    <span style="background:rgba(255,255,255,0.18); border-radius:8px; padding:0.15rem 0.5rem;">Última: <strong>@gUltimaNom</strong></span>
+                    @if (guiadaFijasMedio.Count > 0)
+                    {
+                        <span style="background:rgba(255,255,255,0.18); border-radius:8px; padding:0.15rem 0.5rem;">Clavadas del medio: <strong>@guiadaFijasMedio.Count</strong></span>
+                    }
+                </div>
+                <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                    <button class="btn" style="font-size:0.85rem; font-weight:800; background:#fff; color:#1d4ed8; border:none; padding:0.35rem 0.9rem; border-radius:8px; cursor:pointer;"
+                            @onclick="ArmarGuiada" disabled="@(armandoGuiada || !guiadaPrimeraId.HasValue || !guiadaUltimaId.HasValue)">
+                        @(armandoGuiada ? "Armando…" : "✨ Armar ruta")
+                    </button>
+                    <button class="btn" style="font-size:0.8rem; font-weight:700; background:rgba(255,255,255,0.18); color:#fff; border:1px solid rgba(255,255,255,0.6); padding:0.32rem 0.7rem; border-radius:8px; cursor:pointer;"
+                            @onclick="ReiniciarGuiada" disabled="@armandoGuiada">↩ Empezar de nuevo</button>
+                    <button class="btn" style="font-size:0.8rem; font-weight:800; background:transparent; color:#fff; border:1px solid #fff; padding:0.32rem 0.7rem; border-radius:8px; cursor:pointer;"
+                            @onclick="ToggleModoGuiada">✓ Salir</button>
+                </div>
+            </div>
+        }
         @if (viewingSnapshot)
         {
             @* Cartel: estás mirando la foto de un día anterior (modo solo mirar). *@
@@ -1145,6 +1183,12 @@
                 <button class="mapeo-dock-btn @(modoOrden ? "activo" : "")" @onclick="ToggleModoOrden"
                         title="Ordenar a mano: tocá los envíos de una zona en el orden de entrega y se numeran 1, 2, 3…">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="6" x2="21" y2="6"></line><line x1="10" y1="12" x2="21" y2="12"></line><line x1="10" y1="18" x2="21" y2="18"></line><text x="2.5" y="8.5" font-size="7" font-weight="700" stroke="none" fill="currentColor">1</text><text x="2.5" y="14.5" font-size="7" font-weight="700" stroke="none" fill="currentColor">2</text><text x="2.5" y="20.5" font-size="7" font-weight="700" stroke="none" fill="currentColor">3</text></svg>
+                </button>
+                @* Armar ruta guiada (método NUEVO): elegí la primera y la última parada de una zona y el
+                   sistema ordena el resto. Sirve también ANTES de asignar choferes (por vehículo). *@
+                <button class="mapeo-dock-btn @(modoGuiada ? "activo" : "")" @onclick="ToggleModoGuiada"
+                        title="Armar ruta guiada: elegí la primera y la última parada de una zona y el sistema ordena el resto (podés hacerlo antes de poner choferes)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>
                 </button>
                 @* Prender/apagar el tránsito (embotellamientos). Arranca apagado = mapa limpio. Ícono semáforo. *@
                 <button class="mapeo-dock-btn @(traficoOn ? "activo" : "")" @onclick="ToggleTrafico"
@@ -3466,6 +3510,15 @@
     private bool modoAsignacion;
     // Modo orden visual (numerar paradas con clicks en el mapa)
     private bool modoOrden;
+    // Modo "Armar ruta guiada" (método nuevo): el usuario toca la PRIMERA y la ÚLTIMA parada de una
+    // zona y el sistema ordena el resto por calles reales. Opcional: clavar algunas del medio.
+    // La zona se detecta sola de la primera parada tocada (sirve para repartidor O para vehículo,
+    // así se puede armar el orden ANTES de asignar los choferes).
+    private bool modoGuiada;
+    private int? guiadaPrimeraId;
+    private int? guiadaUltimaId;
+    private List<int> guiadaFijasMedio = new(); // ids clavados en el medio, en el orden en que se tocaron
+    private bool armandoGuiada;
     // Modo orden POR ZONA (repartidor): la zona que se está numerando a mano.
     private int? ordenDriverId;
     // Al entrar al modo orden mostramos SOLO una zona; guardamos qué se veía para restaurarlo al salir.
@@ -3573,7 +3626,7 @@
         if (autoRefreshBusy || !mapInitialized) return;
         // Guarda: no interrumpir si el usuario está haciendo algo sobre el mapa,
         // ni mientras mira la foto de un día anterior (no pisar el histórico con lo de hoy).
-        if (dibujandoZona || modoOrden || modoAsignacion || corrigiendoDomicilioStopId is not null
+        if (dibujandoZona || modoOrden || modoGuiada || modoAsignacion || corrigiendoDomicilioStopId is not null
             || editandoPinStopId is not null
             || routeBusy || actualizandoEntregas || assigningZone || assigningSlot || isLoading
             || viewingSnapshot) return;
@@ -4363,6 +4416,16 @@
     {
         if (ids is null || ids.Length == 0) return;
 
+        if (modoGuiada)
+        {
+            // Del grupo apilado tomamos la primera parada (stop) y la tratamos como un click normal.
+            var firstStop = ids.Where(i => i <= -1000)
+                .Select(i => stops?.FirstOrDefault(x => x.Id == -1000 - i))
+                .FirstOrDefault(x => x is not null);
+            if (firstStop is not null) await OnMarkerGuiada(firstStop);
+            return;
+        }
+
         if (modoAsignacion)
         {
             assigningSlot = true;
@@ -4428,6 +4491,20 @@
         // En modo orden o modo asignación, los clicks NO deben abrir la ventana de detalle,
         // sino ejecutar la acción del modo (numerar / asignar). Bloqueamos el comportamiento
         // de "abrir popup" para que el usuario pueda trabajar sin que se interponga el panel.
+        if (modoGuiada)
+        {
+            if (id <= -1000)
+            {
+                var stopId = -1000 - id;
+                var st = stops?.FirstOrDefault(x => x.Id == stopId);
+                if (st is not null) await OnMarkerGuiada(st);
+            }
+            else
+            {
+                ToastService.Info("Ese envío no es una parada todavía. Metelo en una zona para poder ordenarlo.");
+            }
+            return;
+        }
         if (modoOrden)
         {
             if (id <= -1000)
@@ -5073,6 +5150,132 @@
     private void SeleccionarVehiculo(int slot) { vehiculoSeleccionado = slot; }
 
     // ===== Modo orden visual =====
+    // ═══════════ Armar ruta guiada (método nuevo) ═══════════
+
+    // Prende/apaga el modo guiado. Al entrar, saca la línea vieja; al salir, la vuelve a dibujar.
+    private async Task ToggleModoGuiada()
+    {
+        if (!modoGuiada)
+        {
+            var hayZonas = (stops ?? new()).Any(s => s.AssignedDriverId.HasValue || s.AssignedVehicleSlot.HasValue);
+            if (!hayZonas)
+            {
+                ToastService.Info("Primero armá las zonas (meté los envíos en una zona o vehículo). Después armás el orden de cada una.");
+                return;
+            }
+            modoGuiada = true;
+            modoOrden = false;
+            modoAsignacion = false;
+            guiadaPrimeraId = null; guiadaUltimaId = null; guiadaFijasMedio.Clear();
+            rutasResumen = new();
+            try { await JS.InvokeVoidAsync("mapeoFlex.clearRoutes"); } catch { }
+            await RenderMap();
+        }
+        else
+        {
+            modoGuiada = false;
+            await RenderMap();
+            await CargarYDibujarRutas(single: false);
+        }
+        StateHasChanged();
+    }
+
+    // ¿La parada 'b' es de la misma zona que 'a'? Zona = repartidor si tiene; si no, el vehículo (sin repartidor).
+    private bool MismaZonaGuiada(MapeoStopDto a, MapeoStopDto b)
+    {
+        if (a.AssignedDriverId.HasValue) return b.AssignedDriverId == a.AssignedDriverId;
+        if (a.AssignedVehicleSlot.HasValue) return !b.AssignedDriverId.HasValue && b.AssignedVehicleSlot == a.AssignedVehicleSlot;
+        return false;
+    }
+
+    // Click sobre una parada en modo guiado: 1° elige la primera, 2° la última, después clava/desclava del medio.
+    private async Task OnMarkerGuiada(MapeoStopDto st)
+    {
+        if (armandoGuiada) return;
+        if (!st.AssignedDriverId.HasValue && !st.AssignedVehicleSlot.HasValue)
+        {
+            ToastService.Info("Esa parada no está en ninguna zona todavía. Armá la zona primero (metela en un vehículo o repartidor).");
+            return;
+        }
+
+        // Paso 1: elegir la primera.
+        if (!guiadaPrimeraId.HasValue)
+        {
+            guiadaPrimeraId = st.Id;
+            StateHasChanged();
+            return;
+        }
+        // Volver a tocar la primera la deselecciona (y limpia todo lo demás).
+        if (st.Id == guiadaPrimeraId)
+        {
+            guiadaPrimeraId = null; guiadaUltimaId = null; guiadaFijasMedio.Clear();
+            StateHasChanged();
+            return;
+        }
+
+        var primera = stops?.FirstOrDefault(x => x.Id == guiadaPrimeraId);
+        if (primera is null) { guiadaPrimeraId = null; StateHasChanged(); return; }
+        if (!MismaZonaGuiada(primera, st))
+        {
+            ToastService.Info("Esa parada es de otra zona. La primera y la última tienen que ser de la misma zona.");
+            return;
+        }
+
+        // Paso 2: elegir la última.
+        if (!guiadaUltimaId.HasValue)
+        {
+            guiadaUltimaId = st.Id;
+            StateHasChanged();
+            return;
+        }
+        // Tocar la última la deselecciona.
+        if (st.Id == guiadaUltimaId)
+        {
+            guiadaUltimaId = null;
+            StateHasChanged();
+            return;
+        }
+        // Paso 3: clavar/desclavar una del medio (en el orden en que se tocan).
+        if (guiadaFijasMedio.Contains(st.Id)) guiadaFijasMedio.Remove(st.Id);
+        else guiadaFijasMedio.Add(st.Id);
+        StateHasChanged();
+    }
+
+    // Manda al servidor primera + última (+ clavadas del medio) y ordena el resto. Un solo guardado.
+    private async Task ArmarGuiada()
+    {
+        if (!guiadaPrimeraId.HasValue || !guiadaUltimaId.HasValue)
+        {
+            ToastService.Info("Elegí la primera y la última parada tocándolas en el mapa.");
+            return;
+        }
+        armandoGuiada = true;
+        try
+        {
+            // Las clavadas del medio salen 2°, 3°, 4°… en el orden en que las tocaste.
+            var fijas = guiadaFijasMedio.Select((id, i) => new FijaMedioDto { StopId = id, Puesto = i + 2 }).ToList();
+            var r = await Api.ArmarRutaGuiadaAsync(guiadaPrimeraId.Value, guiadaUltimaId.Value, fijas);
+            await LoadStops();
+            await RenderMap();
+            await CargarYDibujarRutas(single: false);
+            if (r != null && !r.PorGoogle)
+                ToastService.Info($"Ruta armada ({r.Total} paradas). La ordené en línea recta (son más de 25 o Google no respondió) — igual va de la primera a la última.");
+            else
+                ToastService.Success($"✅ Ruta armada: {r?.Total ?? 0} paradas, de la primera a la última.");
+            // Limpiamos la selección para poder armar la próxima zona.
+            guiadaPrimeraId = null; guiadaUltimaId = null; guiadaFijasMedio.Clear();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { armandoGuiada = false; StateHasChanged(); }
+    }
+
+    // Limpia la selección del modo guiado (sin salir del modo).
+    private void ReiniciarGuiada()
+    {
+        guiadaPrimeraId = null; guiadaUltimaId = null; guiadaFijasMedio.Clear();
+        StateHasChanged();
+    }
+
     private async Task ToggleModoOrden()
     {
         if (!modoOrden)
@@ -5088,6 +5291,7 @@
             }
             modoOrden = true;
             modoAsignacion = false;
+            modoGuiada = false;
             // Arrancamos por la primera zona (o mantenemos la anterior si todavía tiene paradas).
             if (!ordenDriverId.HasValue || !zonas.Contains(ordenDriverId.Value))
                 ordenDriverId = zonas.First();
