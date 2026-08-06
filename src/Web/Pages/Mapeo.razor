@@ -1166,7 +1166,10 @@
                     @if (showZonasMenu)
                     {
                         <div class="mapeo-flyout" style="min-width:240px;">
-                            <div style="font-size:0.72rem; color:#6b7280; font-weight:700; padding:0.2rem 0.6rem;">ZONIFICAR</div>
+                            <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; padding:0.2rem 0.4rem 0.2rem 0.6rem;">
+                                <span style="font-size:0.72rem; color:#6b7280; font-weight:700;">ZONIFICAR</span>
+                                <button @onclick="() => showZonasMenu = false" title="Cerrar" style="border:none; background:transparent; color:#6b7280; font-size:1.1rem; line-height:1; cursor:pointer; padding:0 0.2rem;">&times;</button>
+                            </div>
                             <button class="btn" style="display:flex; width:100%; align-items:center; font-size:0.85rem; padding:0.45rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left; font-weight:600;"
                                     @onclick="@(async () => { showZonasMenu = false; await IniciarDibujoZona(); })">
                                 ✏️ Dibujar zona nueva
@@ -1255,7 +1258,10 @@
                             @if (zonaDriverMenuId == z.Numero)
                             {
                                 <div class="mapeo-flyout" style="min-width:210px;">
-                                    <div style="font-size:0.7rem; color:#6b7280; font-weight:700; padding:0.2rem 0.6rem;">Repartidor de la Zona @z.Numero</div>
+                                    <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; padding:0.2rem 0.4rem 0.2rem 0.6rem;">
+                                        <span style="font-size:0.7rem; color:#6b7280; font-weight:700;">Repartidor de la Zona @z.Numero</span>
+                                        <button @onclick="() => zonaDriverMenuId = null" title="Cerrar" style="border:none; background:transparent; color:#6b7280; font-size:1.1rem; line-height:1; cursor:pointer; padding:0 0.2rem;">&times;</button>
+                                    </div>
                                     @foreach (var d in (drivers ?? new()).Where(d => d.IsActive))
                                     {
                                         var dColor = string.IsNullOrEmpty(d.Color) ? "#1d4ed8" : d.Color!;
