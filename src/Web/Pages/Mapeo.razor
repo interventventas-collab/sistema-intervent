@@ -210,7 +210,7 @@
                 <span style="font-weight:700;">🚚 Asignación visual:</span>
                 <select class="form-input" style="font-size:0.85rem; max-width:130px;" @bind="cantidadVehiculos">
                     @for (int n = 1; n <= 10; n++)
-                    { <option value="@n">@n vehículo(s)</option> }
+                    { <option value="@n">@n zona(s)</option> }
                 </select>
                 <div style="display:flex; gap:0.3rem; flex-wrap:wrap;">
                     @for (int i = 1; i <= cantidadVehiculos; i++)
@@ -223,7 +223,7 @@
                                 background:@(sel ? color : color + "33"); color:@(sel ? "white" : color);
                                 border:2px solid @color; border-radius:6px; cursor:pointer;"
                                 @onclick="() => SeleccionarVehiculo(slot)">
-                            🚐 V@(slot)<span style="opacity:0.85; margin-left:0.3rem;">(@count)</span>
+                            Zona @(slot)<span style="opacity:0.85; margin-left:0.3rem;">(@count)</span>
                         </button>
                     }
                 </div>
@@ -235,8 +235,8 @@
                 @if (sinAsignarCount > 0)
                 {
                     <button class="btn" style="font-size:0.78rem; background:@(VehicleColor(vehiculoSeleccionado)); color:white; border:none;" @onclick="AsignarTodosRestantesAlVActivo" disabled="@assigningSlot"
-                            title="Asigna las @sinAsignarCount paradas sin asignar al V@vehiculoSeleccionado de un solo click">
-                        ⚡ Asignar @sinAsignarCount restantes a V@vehiculoSeleccionado
+                            title="Asigna las @sinAsignarCount paradas sin asignar a la Zona @vehiculoSeleccionado de un solo click">
+                        ⚡ Asignar @sinAsignarCount restantes a la Zona @vehiculoSeleccionado
                     </button>
                 }
                 <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="ClearVehicleAssignments" disabled="@assigningSlot">🗑 Limpiar asignación</button>
@@ -244,7 +244,7 @@
             </div>
         </div>
         <div style="padding:0.4rem 0.7rem; font-size:0.78rem; color:#92400e;">
-            Tocá un globito en el mapa para asignarlo a <strong>V@vehiculoSeleccionado</strong>. Click de nuevo para desasignar.
+            Tocá un globito en el mapa para asignarlo a la <strong>Zona @vehiculoSeleccionado</strong>. Click de nuevo para desasignar.
             @if (sinAsignarCount > 0)
             { <span style="color:#6b7280;"> · @sinAsignarCount sin asignar</span> }
         </div>
@@ -264,7 +264,7 @@
                 <span style="font-weight:700; color:@vColor;">🔢 Modo orden:</span>
                 <select class="form-input" style="font-size:0.85rem; max-width:130px;" @bind="ordenVehiculoSeleccionado" @bind:after="OnVehiculoOrdenChanged">
                     @foreach (var v in stops!.Where(s => s.AssignedVehicleSlot.HasValue).Select(s => s.AssignedVehicleSlot!.Value).Distinct().OrderBy(x => x))
-                    { <option value="@v">🚐 V@(v) (@(stops!.Count(s => s.AssignedVehicleSlot == v)) paradas)</option> }
+                    { <option value="@v">Zona @(v) (@(stops!.Count(s => s.AssignedVehicleSlot == v)) paradas)</option> }
                 </select>
                 <span style="font-size:0.85rem; padding:0.2rem 0.5rem; background:white; border:1.5px solid @vColor; border-radius:6px; color:@vColor; font-weight:700;">
                     Próximo: #@proximoOrden
@@ -274,7 +274,7 @@
             <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="ToggleModoOrden">✓ Salir del modo orden</button>
         </div>
         <div style="padding:0.4rem 0.7rem; font-size:0.78rem; color:#1e40af;">
-            Tocá los marcadores del V@(slot) en el orden que querés que el chofer los visite.
+            Tocá los marcadores de la Zona @(slot) en el orden que querés que el chofer los visite.
             Click en uno ya numerado lo desnumera (los siguientes se renumeran).
         </div>
     </div>
@@ -734,7 +734,7 @@
                                     <div style="display:flex; gap:0.3rem; margin-top:0.3rem; flex-wrap:wrap;">
                                         @if (pf.AssignedVehicleSlot.HasValue)
                                         {
-                                            <span style="display:inline-block; padding:0.1rem 0.4rem; background:@pfColor; color:white; border-radius:4px; font-size:0.68rem; font-weight:700;">🚚 V@(pf.AssignedVehicleSlot)</span>
+                                            <span style="display:inline-block; padding:0.1rem 0.4rem; background:@pfColor; color:white; border-radius:4px; font-size:0.68rem; font-weight:700;">Zona @(pf.AssignedVehicleSlot)</span>
                                         }
                                         @if (!string.IsNullOrEmpty(pf.AssignedDriverName))
                                         {
@@ -960,7 +960,7 @@
                                         @if (st.AssignedVehicleSlot.HasValue)
                                         {
                                             <span style="display:inline-block; padding:0.1rem 0.4rem; background:@stopColor; color:white; border-radius:4px; font-size:0.68rem; font-weight:700;">
-                                                🚚 V@(st.AssignedVehicleSlot)
+                                                Zona @(st.AssignedVehicleSlot)
                                             </span>
                                         }
                                         @if (!string.IsNullOrEmpty(st.AssignedDriverName))
@@ -1196,7 +1196,7 @@
                     <span class="mapeo-dock-label">Ordenar a mano</span>
                 </button>
                 @* Armar ruta guiada (método NUEVO): elegí la primera y la última parada de una zona y el
-                   sistema ordena el resto. Sirve también ANTES de asignar choferes (por vehículo). *@
+                   sistema ordena el resto. Sirve también ANTES de asignar choferes (por zona). *@
                 <button class="mapeo-dock-btn @(modoGuiada ? "activo" : "")" @onclick="ToggleModoGuiada"
                         title="Armar ruta guiada: elegí la primera y la última parada de una zona y el sistema ordena el resto (podés hacerlo antes de poner choferes)">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>
@@ -1208,9 +1208,14 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="20" rx="4"></rect><circle cx="12" cy="7" r="1.4"></circle><circle cx="12" cy="12" r="1.4"></circle><circle cx="12" cy="17" r="1.4"></circle></svg>
                     <span class="mapeo-dock-label">Tránsito</span>
                 </button>
-                @* Cuadraditos de las zonas ya creadas (Zona 1, Zona 2, ...) con el color del repartidor.
-                   Arriba el "Z1" (tocar = foco en esa zona); abajo el ojito para mostrar/ocultar la zona en el mapa. *@
-                @if (zonasCreadas.Count > 0)
+                @* Cuadraditos de las zonas. Las zonas CON chofer muestran el nombre del chofer;
+                   las zonas SIN chofer todavía muestran "Zona N". Tocar = foco; ojito = mostrar/ocultar. *@
+                @{
+                    var zonasSlot = (stops ?? new())
+                        .Where(s => s.AssignedVehicleSlot.HasValue && !s.AssignedDriverId.HasValue)
+                        .Select(s => s.AssignedVehicleSlot!.Value).Distinct().OrderBy(x => x).ToList();
+                }
+                @if (zonasCreadas.Count > 0 || zonasSlot.Count > 0)
                 {
                     <div class="mapeo-dock-sep"></div>
                     @* "TODO" = las paradas todavía SIN asignar. Arriba el título; abajo el ojito (mostrar/ocultar) y la cantidad. *@
@@ -1223,7 +1228,7 @@
                             </span>
                             <span style="font-size:1.05rem; font-weight:800; color:#fff; line-height:1; background:rgba(0,0,0,0.22); border-radius:8px; padding:3px 9px; min-width:24px; text-align:center;"
                                   title="Envíos todavía sin repartidor">
-                                @(stops?.Count(s => !s.AssignedDriverId.HasValue) ?? 0)
+                                @(stops?.Count(s => !s.AssignedDriverId.HasValue && !s.AssignedVehicleSlot.HasValue) ?? 0)
                             </span>
                         </div>
                     </div>
@@ -1235,8 +1240,8 @@
                             <div class="mapeo-dock-btn" style="flex-direction:column; gap:6px; width:auto; min-width:104px; height:auto; padding:9px 10px; background:@(zVisible ? z.Color : "#9ca3af"); @(zVisible ? "" : "opacity:0.55;")">
                                 @* Arriba: "Z1 (Juan)" — tocar hace foco en la zona. *@
                                 <span @onclick="() => FocoZona(z)" style="cursor:pointer; font-size:0.9rem; font-weight:800; line-height:1.1; color:#fff; text-align:center; white-space:nowrap; max-width:170px; overflow:hidden; text-overflow:ellipsis;"
-                                      title="@($"Zona {z.Numero} · {z.DriverName} · {z.StopIds.Count} envío(s) — tocá para hacer foco en esta zona")">
-                                    Z@(z.Numero) (@zNombreCorto)
+                                      title="@($"Zona de {z.DriverName} · {z.StopIds.Count} envío(s) — tocá para hacer foco en esta zona")">
+                                    🧑 @zNombreCorto
                                 </span>
                                 @* Abajo: 👁 mostrar/ocultar · 👤 cambiar repartidor de toda la zona · cantidad de envíos. *@
                                 <div style="display:flex; align-items:center; justify-content:center; gap:12px;">
@@ -1270,6 +1275,57 @@
                                             <span style="width:12px; height:12px; border-radius:50%; background:@dColor; flex:0 0 12px;"></span>
                                             <span style="flex:1;">@d.Nombre</span>
                                             @if (d.Id == z.DriverId) { <span style="color:#16a34a;">✓</span> }
+                                        </button>
+                                    }
+                                    @if ((drivers?.Count(d => d.IsActive) ?? 0) == 0)
+                                    {
+                                        <div style="font-size:0.78rem; color:#b45309; padding:0.3rem 0.6rem;">No hay repartidores. Agregalos en ⚙ → 👥 Repartidores.</div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                    @* Zonas SIN chofer todavía (creadas con "Crear la zona"): se muestran como "Zona N". *@
+                    @foreach (var slot in zonasSlot)
+                    {
+                        var svVisible = !zonasSlotOcultas.Contains(slot);
+                        var svColor = VehicleColor(slot);
+                        var svCount = (stops ?? new()).Count(s => s.AssignedVehicleSlot == slot && !s.AssignedDriverId.HasValue);
+                        <div style="position:relative;">
+                            <div class="mapeo-dock-btn" style="flex-direction:column; gap:6px; width:auto; min-width:104px; height:auto; padding:9px 10px; background:@(svVisible ? svColor : "#9ca3af"); @(svVisible ? "" : "opacity:0.55;")">
+                                <span @onclick="() => FocoVehiculo(slot)" style="cursor:pointer; font-size:0.9rem; font-weight:800; line-height:1.1; color:#fff; text-align:center; white-space:nowrap;"
+                                      title="@($"Zona {slot} (sin chofer todavía) · {svCount} envío(s) — tocá para hacer foco")">
+                                    Zona @slot
+                                </span>
+                                <div style="display:flex; align-items:center; justify-content:center; gap:12px;">
+                                    <span @onclick="() => ToggleZonaSlotVisible(slot)" style="cursor:pointer; font-size:1.35rem; line-height:1;"
+                                          title="@(svVisible ? "Ocultar esta zona del mapa" : "Mostrar esta zona en el mapa")">
+                                        @(svVisible ? "👁" : "🚫")
+                                    </span>
+                                    <span @onclick="@(() => slotDriverMenu = (slotDriverMenu == slot ? (int?)null : slot))"
+                                          style="cursor:pointer; font-size:1.35rem; line-height:1;" title="Asignar un chofer a esta zona">
+                                        👤
+                                    </span>
+                                    <span style="font-size:1.05rem; font-weight:800; color:#fff; line-height:1; background:rgba(0,0,0,0.22); border-radius:8px; padding:3px 9px; min-width:24px; text-align:center;"
+                                          title="@svCount envío(s) en esta zona">
+                                        @svCount
+                                    </span>
+                                </div>
+                            </div>
+                            @if (slotDriverMenu == slot)
+                            {
+                                <div class="mapeo-flyout" style="min-width:210px;">
+                                    <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; padding:0.2rem 0.4rem 0.2rem 0.6rem;">
+                                        <span style="font-size:0.7rem; color:#6b7280; font-weight:700;">Chofer de la Zona @slot</span>
+                                        <button @onclick="() => slotDriverMenu = null" title="Cerrar" style="border:none; background:transparent; color:#6b7280; font-size:1.1rem; line-height:1; cursor:pointer; padding:0 0.2rem;">&times;</button>
+                                    </div>
+                                    @foreach (var d in (drivers ?? new()).Where(d => d.IsActive))
+                                    {
+                                        var dColor = string.IsNullOrEmpty(d.Color) ? "#1d4ed8" : d.Color!;
+                                        <button class="btn" style="display:flex; width:100%; align-items:center; gap:0.4rem; font-size:0.85rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                                                @onclick="@(() => AsignarChoferASlot(slot, d.Id))" disabled="@assigningZone">
+                                            <span style="width:12px; height:12px; border-radius:50%; background:@dColor; flex:0 0 12px;"></span>
+                                            <span style="flex:1;">@d.Nombre</span>
                                         </button>
                                     }
                                     @if ((drivers?.Count(d => d.IsActive) ?? 0) == 0)
@@ -1423,7 +1479,7 @@
                     var sel = vehiculoFiltro == slot;
                     <button class="btn" style="font-size:0.78rem; padding:0.2rem 0.55rem; font-weight:700; border-radius:999px; border:2px solid @color; background:@(sel ? color : "white"); color:@(sel ? "white" : color);"
                             @onclick="@(() => SetVehiculoFiltro(slot))">
-                        🚐 V@(slot) (@v.Count)
+                        Zona @(slot) (@v.Count)
                     </button>
                 }
                 @{
@@ -1573,7 +1629,7 @@
                                         <div style="font-size:0.74rem; color:#6b7280; margin-top:0.15rem;">
                                             @s.StopsCount parada@(s.StopsCount == 1 ? "" : "s") ·
                                             <span style="color:@(s.DeliveredCount > 0 ? "#15803d" : "#9ca3af"); font-weight:@(s.DeliveredCount > 0 ? "700" : "400");">✔ @s.DeliveredCount entregada@(s.DeliveredCount == 1 ? "" : "s")</span>
-                                            @if (s.VehiclesCount > 0) { <text> · @s.VehiclesCount vehículo@(s.VehiclesCount == 1 ? "" : "s")</text> }
+                                            @if (s.VehiclesCount > 0) { <text> · @s.VehiclesCount zona@(s.VehiclesCount == 1 ? "" : "s")</text> }
                                         </div>
                                     </div>
                                     <button class="btn" style="font-size:0.74rem; font-weight:700; padding:0.3rem 0.6rem; background:#2563eb; color:#fff; border:none; border-radius:6px; white-space:nowrap;"
@@ -1605,19 +1661,19 @@
             </div>
             <div class="modal-body" style="overflow-y:auto;">
                 <p style="font-size:0.85rem; color:#4b5563;">
-                    @snapshotDetail.StopsCount paradas · @snapshotDetail.VehiclesCount vehículos · @snapshotDetail.DriversCount choferes
+                    @snapshotDetail.StopsCount paradas · @snapshotDetail.VehiclesCount zonas · @snapshotDetail.DriversCount choferes
                     · @snapshotDetail.CreatedAt.ToArTime().ToString("dd/MM/yyyy HH:mm")
                 </p>
                 <table class="data-table" style="font-size:0.78rem;">
                     <thead>
-                        <tr><th>Orden</th><th>Vehículo</th><th>Chofer</th><th>Parada</th><th>Dirección</th><th>Estado</th></tr>
+                        <tr><th>Orden</th><th>Zona</th><th>Chofer</th><th>Parada</th><th>Dirección</th><th>Estado</th></tr>
                     </thead>
                     <tbody>
                     @foreach (var s in snapshotDetail.Stops.OrderBy(x => x.AssignedDriverId ?? int.MaxValue).ThenBy(x => x.OrderInRoute ?? int.MaxValue).ThenBy(x => x.Id))
                     {
                         <tr>
                             <td style="text-align:center; font-weight:700;">@(s.OrderInRoute?.ToString() ?? "—")</td>
-                            <td>@(s.AssignedVehicleSlot.HasValue ? "V" + s.AssignedVehicleSlot : "—")</td>
+                            <td>@(s.AssignedVehicleSlot.HasValue ? "Zona " + s.AssignedVehicleSlot : "—")</td>
                             <td>@(s.AssignedDriverName ?? "—")</td>
                             <td>@(s.Alias ?? s.ContactName ?? "—")</td>
                             <td>@s.Direccion</td>
@@ -1684,7 +1740,7 @@
     <div class="modal-overlay" @onclick="() => showAssignDriversModal = false">
         <div class="modal-card" @onclick:stopPropagation="true" style="max-width:560px;">
             <div class="modal-header" style="background:#dbeafe;">
-                <h3 style="margin:0;">👤 Asignar choferes a vehículos</h3>
+                <h3 style="margin:0;">👤 Asignar choferes a las zonas</h3>
                 <button class="btn-close" @onclick="() => showAssignDriversModal = false">&times;</button>
             </div>
             <div class="modal-body">
@@ -1696,16 +1752,15 @@
                 }
                 else
                 {
-                    @for (int i = 1; i <= cantidadVehiculos; i++)
+                    @foreach (var slot in (stops ?? new()).Where(s => s.AssignedVehicleSlot.HasValue).Select(s => s.AssignedVehicleSlot!.Value).Distinct().OrderBy(x => x))
                     {
-                        var slot = i;
                         var color = VehicleColor(slot);
                         var count = stops?.Count(s => s.AssignedVehicleSlot == slot) ?? 0;
                         var currentDriverId = stops?.FirstOrDefault(s => s.AssignedVehicleSlot == slot)?.AssignedDriverId;
                         var driverObj = currentDriverId.HasValue ? drivers?.FirstOrDefault(d => d.Id == currentDriverId.Value) : null;
                         <div style="margin-bottom:0.5rem; padding:0.5rem; background:@(color)11; border:1px solid @color; border-radius:6px;">
                             <div style="display:flex; align-items:center; gap:0.5rem;">
-                                <strong style="color:@color; min-width:60px;">🚐 V@slot</strong>
+                                <strong style="color:@color; min-width:60px;">Zona @slot</strong>
                                 <span style="font-size:0.78rem; color:#6b7280;">@count parada(s)</span>
                                 <select class="form-input" style="flex:1;" @onchange="@(e => SaveDriverForSlot(slot, e.Value?.ToString()))">
                                     <option value="">— Sin chofer —</option>
@@ -3261,6 +3316,9 @@
     private record ZonaCreada(int Numero, int DriverId, string DriverName, string Color, List<int> StopIds);
     private List<ZonaCreada> zonasCreadas = new();
     private int? zonaDriverMenuId = null; // qué cuadradito de zona tiene abierto el menú de repartidor
+    private int? slotDriverMenu = null;   // qué cuadradito de zona SIN chofer tiene abierto el menú de chofer
+    // Zonas SIN chofer ocultas del mapa (por el ojito). Guarda el número de zona (slot) apagada.
+    private HashSet<int> zonasSlotOcultas = new();
     // Zonas ocultas del mapa (por el ojito del cuadradito). Guarda el DriverId de la zona apagada.
     // Vacío = todas las zonas visibles. Sirve para armar/optimizar una ruta a la vez.
     private HashSet<int> zonasOcultasMapa = new();
@@ -3798,7 +3856,9 @@
                 // Ojito del cuadradito: si la zona (repartidor) está apagada, no se dibujan sus paradas.
                 !(st.AssignedDriverId.HasValue && zonasOcultasMapa.Contains(st.AssignedDriverId.Value)) &&
                 // Chip "TODO" apagado: ocultamos las paradas todavía sin repartidor asignado.
-                !(ocultarSinAsignar && !st.AssignedDriverId.HasValue) &&
+                !(ocultarSinAsignar && !st.AssignedDriverId.HasValue && !st.AssignedVehicleSlot.HasValue) &&
+                // Ojito de una zona sin chofer (por slot): si está apagada, no dibujamos sus paradas.
+                !(st.AssignedVehicleSlot.HasValue && !st.AssignedDriverId.HasValue && zonasSlotOcultas.Contains(st.AssignedVehicleSlot.Value)) &&
                 (vehiculoFiltro == null ||
                 (vehiculoFiltro == 0 && !st.AssignedVehicleSlot.HasValue) ||
                 (vehiculoFiltro > 0 && st.AssignedVehicleSlot == vehiculoFiltro)));
@@ -3870,7 +3930,7 @@
                     // Candado: si la parada está desbloqueada, su pin se puede arrastrar para ajustar la ubicación.
                     draggable = paradasDesbloqueadas.Contains(st.Id),
                     stopId = st.Id,
-                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· V{st.AssignedVehicleSlot}</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}{horaEntregaStopHtml}<div style='margin-top:0.35rem; display:flex; align-items:center; gap:0.25rem;'><span title='Repartidor asignado'>🚚</span><select onchange=\"window.mapeoActions.assignDriver({markerId}, this.value); event.stopPropagation();\" onclick=\"event.stopPropagation();\" style='flex:1; max-width:170px; padding:0.15rem 0.25rem; border:2px solid {driverBorde}; border-radius:4px; font-size:0.72rem; background:white;'>{driverOpts}</select></div>{puestoRowHtml}<div style='margin-top:0.35rem; display:flex; gap:0.3rem; flex-wrap:wrap;'><button onclick=\"window.mapeoActions.toggleRoute({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:{btnBgSt}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxtSt}</button><button onclick=\"window.mapeoActions.correctLocation({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#92400e; border:1px solid #f59e0b; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>📍 Corregir ubicación</button><button onclick=\"window.mapeoActions.removeStop({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#b91c1c; border:1px solid #fca5a5; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>🗑 Quitar del mapa</button></div></div>"
+                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· Zona {st.AssignedVehicleSlot}</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}{horaEntregaStopHtml}<div style='margin-top:0.35rem; display:flex; align-items:center; gap:0.25rem;'><span title='Repartidor asignado'>🚚</span><select onchange=\"window.mapeoActions.assignDriver({markerId}, this.value); event.stopPropagation();\" onclick=\"event.stopPropagation();\" style='flex:1; max-width:170px; padding:0.15rem 0.25rem; border:2px solid {driverBorde}; border-radius:4px; font-size:0.72rem; background:white;'>{driverOpts}</select></div>{puestoRowHtml}<div style='margin-top:0.35rem; display:flex; gap:0.3rem; flex-wrap:wrap;'><button onclick=\"window.mapeoActions.toggleRoute({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:{btnBgSt}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxtSt}</button><button onclick=\"window.mapeoActions.correctLocation({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#92400e; border:1px solid #f59e0b; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>📍 Corregir ubicación</button><button onclick=\"window.mapeoActions.removeStop({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#b91c1c; border:1px solid #fca5a5; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>🗑 Quitar del mapa</button></div></div>"
                 };
             }));
         }
@@ -4248,12 +4308,52 @@
             await LoadStops();
             await RenderMap();
             rutasResumen = new();
-            ToastService.Success($"✅ Zona creada en el Vehículo {slot}: {zoneStopIds.Count} envío(s), sin chofer. Armá el orden y al final apretá 👤 Asignar choferes.");
+            ToastService.Success($"✅ Zona {slot} creada: {zoneStopIds.Count} envío(s), sin chofer. Armá el orden y al final apretá 👤 Asignar choferes.");
             showZoneAssignModal = false;
             zoneStopIds = new();
         }
         catch (Exception ex) { ToastService.Error("No se pudo crear la zona: " + ex.Message); }
         finally { assigningZone = false; StateHasChanged(); }
+    }
+
+    // Encuadra el mapa sobre las paradas de una zona SIN chofer (por número de zona/slot).
+    private async Task FocoVehiculo(int slot)
+    {
+        ordenVehiculoSeleccionado = slot; // queda como zona activa para "ordenar a mano" por zona
+        var pts = (stops ?? new())
+            .Where(s => s.AssignedVehicleSlot == slot && !s.AssignedDriverId.HasValue && s.Latitude != 0 && s.Longitude != 0)
+            .Select(s => new double[] { (double)s.Latitude, (double)s.Longitude })
+            .ToArray();
+        if (pts.Length == 0) { ToastService.Info("Esa zona ya no tiene envíos."); return; }
+        try { await JS.InvokeVoidAsync("mapeoFlex.fitPoints", new object[] { pts }); } catch { }
+        ToastService.Info($"Zona {slot} · {pts.Length} envío(s) · sin chofer todavía");
+    }
+
+    // Muestra/oculta en el mapa una zona SIN chofer.
+    private async Task ToggleZonaSlotVisible(int slot)
+    {
+        if (!zonasSlotOcultas.Add(slot)) zonasSlotOcultas.Remove(slot);
+        await RenderMap();
+    }
+
+    // Le pone un chofer a una zona SIN chofer (desde el 👤 del cuadradito "Zona N").
+    // Al asignarlo, la zona pasa a mostrarse con el nombre del chofer.
+    private async Task AsignarChoferASlot(int slot, int driverId)
+    {
+        if (assigningZone) return;
+        assigningZone = true;
+        try
+        {
+            await Api.AssignDriverToSlotAsync(slot, driverId);
+            await LoadStops();
+            ReconstruirZonasCreadas();
+            await RenderMap();
+            rutasResumen = new();
+            var nombre = drivers?.FirstOrDefault(d => d.Id == driverId)?.Nombre ?? "el repartidor";
+            ToastService.Success($"✅ Zona {slot} ahora la hace {nombre}");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo asignar el chofer: " + ex.Message); }
+        finally { assigningZone = false; slotDriverMenu = null; StateHasChanged(); }
     }
 
     // Cambia el repartidor de TODA una zona ya creada (desde el 👤 del cuadradito Z1/Z2…).
@@ -4458,7 +4558,7 @@
 
         if (!s.AssignedDriverId.HasValue && !s.AssignedVehicleSlot.HasValue)
         {
-            ToastService.Info("Primero asigná este envío a un repartidor (o a un vehículo) para poder darle un puesto en la ruta.");
+            ToastService.Info("Primero meté este envío en una zona para poder darle un puesto en la ruta.");
             return;
         }
 
@@ -5233,7 +5333,7 @@
             var hayZonas = (stops ?? new()).Any(s => s.AssignedDriverId.HasValue || s.AssignedVehicleSlot.HasValue);
             if (!hayZonas)
             {
-                ToastService.Info("Primero armá las zonas (meté los envíos en una zona o vehículo). Después armás el orden de cada una.");
+                ToastService.Info("Primero armá las zonas (dibujá una zona y creala). Después armás el orden de cada una.");
                 return;
             }
             modoGuiada = true;
@@ -5283,7 +5383,7 @@
         if (armandoGuiada) return;
         if (!st.AssignedDriverId.HasValue && !st.AssignedVehicleSlot.HasValue)
         {
-            ToastService.Info("Esa parada no está en ninguna zona todavía. Armá la zona primero (metela en un vehículo o repartidor).");
+            ToastService.Info("Esa parada no está en ninguna zona todavía. Armá la zona primero (dibujá una zona y creala).");
             return;
         }
 
@@ -5648,7 +5748,7 @@
 
     private async Task ClearVehicleAssignments()
     {
-        if (!await ConfirmAsync("Limpiar todas las asignaciones de vehículos?")) return;
+        if (!await ConfirmAsync("Limpiar todas las asignaciones de zonas?")) return;
         try
         {
             await Api.ClearVehicleAssignmentsAsync();
