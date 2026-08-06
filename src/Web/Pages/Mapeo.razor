@@ -2176,8 +2176,18 @@
             </div>
             <div class="modal-body">
                 <p style="font-size:0.9rem; color:#374151; margin:0 0 0.6rem;">
-                    Dibujaste una zona con <strong>@zoneStopIds.Count envío(s)</strong> adentro. Elegí a qué repartidor se los asigno a todos:
+                    Dibujaste una zona con <strong>@zoneStopIds.Count envío(s)</strong> adentro.
                 </p>
+                @* Opción recomendada: crear la zona SIN chofer y elegirlos al final. *@
+                <button class="btn" style="display:flex; align-items:center; gap:0.5rem; width:100%; justify-content:center; padding:0.7rem 0.8rem; font-size:0.95rem; font-weight:800; background:#16a34a; color:#fff; border:none; border-radius:8px; margin-bottom:0.3rem;"
+                        @onclick="CrearZonaSinChofer" disabled="@assigningZone">
+                    ➕ Crear la zona (elijo los choferes al final)
+                </button>
+                <p style="font-size:0.74rem; color:#6b7280; margin:0 0 0.7rem; text-align:center;">
+                    Después armás el orden y recién al final ponés los choferes con <strong>👤 Asignar choferes</strong>.
+                </p>
+                <div style="border-top:1px solid #e5e7eb; margin:0 0 0.6rem;"></div>
+                <p style="font-size:0.82rem; color:#6b7280; margin:0 0 0.5rem;">…o si ya sabés quién la hace, asignale el chofer ahora:</p>
                 @if ((drivers?.Count(d => d.IsActive) ?? 0) == 0)
                 {
                     <p style="font-size:0.85rem; color:#b45309;">No tenés repartidores cargados. Agregalos en ⚙ Configuración → 👥 Repartidores.</p>
@@ -4199,6 +4209,34 @@
             zoneStopIds = new();
         }
         catch (Exception ex) { ToastService.Error("No se pudo asignar la zona: " + ex.Message); }
+        finally { assigningZone = false; StateHasChanged(); }
+    }
+
+    // "Crear zona sin chofer" (método nuevo): mete los envíos dibujados en un VEHÍCULO nuevo (zona sin
+    // repartidor). Los choferes se eligen al final con "👤 Asignar choferes". Así se puede dibujar la zona
+    // y armar el orden ANTES de decidir quién la hace (pedido del usuario: zonas primero, choferes al final).
+    private async Task CrearZonaSinChofer()
+    {
+        if (assigningZone) return;
+        assigningZone = true;
+        try
+        {
+            // Vehículo nuevo = el mayor usado hasta ahora + 1 (o 1 si no hay ninguno).
+            int slot = (stops ?? new()).Select(s => s.AssignedVehicleSlot ?? 0).DefaultIfEmpty(0).Max() + 1;
+            // Nos aseguramos de que la zona quede 100% sin chofer (por si algún envío arrastraba uno).
+            await Api.AssignBulkStopsAsync(new List<int>(zoneStopIds), null);
+            foreach (var id in zoneStopIds)
+                await Api.AssignVehicleSlotAsync(id, slot);
+            // Para que el vehículo nuevo aparezca en la ventana "Asignar choferes".
+            if (cantidadVehiculos < slot) cantidadVehiculos = slot;
+            await LoadStops();
+            await RenderMap();
+            rutasResumen = new();
+            ToastService.Success($"✅ Zona creada en el Vehículo {slot}: {zoneStopIds.Count} envío(s), sin chofer. Armá el orden y al final apretá 👤 Asignar choferes.");
+            showZoneAssignModal = false;
+            zoneStopIds = new();
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo crear la zona: " + ex.Message); }
         finally { assigningZone = false; StateHasChanged(); }
     }
 
