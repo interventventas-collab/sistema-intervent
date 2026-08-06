@@ -16,6 +16,10 @@
         '#ca8a04', '#db2777', '#65a30d', '#7c3aed', '#0d9488', '#b91c1c'
     ];
 
+    // La clave del navegador que trae ensureGoogle. La guardamos acá para poder pedir
+    // también la fotito de Street View del domicilio cuando se abre un globito.
+    let browserKey = null;
+
     // Carga la librería de Google Maps UNA sola vez (trae la clave del navegador desde el server).
     function ensureGoogle() {
         if (window.google && window.google.maps) return Promise.resolve();
@@ -25,6 +29,7 @@
             .then(cfg => new Promise((resolve, reject) => {
                 const key = cfg && cfg.key;
                 if (!key) { reject(new Error('Falta la clave del mapa (GOOGLE_MAPS_BROWSER_KEY).')); return; }
+                browserKey = key; // la reutilizamos para la fotito de Street View
                 window.__mapeoGmapsReady = function () { resolve(); };
                 const s = document.createElement('script');
                 s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) + '&libraries=places,geometry&callback=__mapeoGmapsReady';
@@ -127,8 +132,47 @@
         };
     }
 
+    // ══════════ Fotito de Street View para el globito ══════════
+    // Cuando se abre un globito de un domicilio, le agregamos arriba una miniatura de
+    // "cómo se ve la calle" en esa dirección (Street View estático de Google). Primero
+    // consultamos el metadata (gratis) para saber si hay foto: si no hay, no mostramos
+    // nada (así nunca aparece el cartel gris de "sin imágenes").
+    // Cada apertura de globito incrementa svSeq: si el usuario abre otro antes de que
+    // llegue la foto, la respuesta vieja se descarta y no pisa el globito nuevo.
+    let svSeq = 0;
+
+    // Bumpea el contador para cancelar cualquier foto de Street View en vuelo.
+    function cancelStreetView() { svSeq++; }
+
+    // iw = InfoWindow ya abierto; baseHtml = el contenido actual (sin la foto).
+    // enabled=false solo cancela pedidos viejos (para clusters o el punto de partida).
+    function streetView(iw, lat, lng, baseHtml, enabled) {
+        const myId = ++svSeq;
+        if (!enabled || !browserKey || lat == null || lng == null) return;
+        const loc = (+lat).toFixed(6) + ',' + (+lng).toFixed(6);
+        const metaUrl = 'https://maps.googleapis.com/maps/api/streetview/metadata?location='
+            + loc + '&source=outdoor&key=' + encodeURIComponent(browserKey);
+        fetch(metaUrl)
+            .then(r => r.json())
+            .then(meta => {
+                if (myId !== svSeq) return;            // se abrió otro globito mientras tanto
+                if (!meta || meta.status !== 'OK') return; // no hay Street View en ese punto
+                const imgUrl = 'https://maps.googleapis.com/maps/api/streetview?size=280x130&location='
+                    + loc + '&fov=80&source=outdoor&key=' + encodeURIComponent(browserKey);
+                const panoUrl = 'https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=' + loc;
+                const thumb = '<a href="' + panoUrl + '" target="_blank" rel="noopener" '
+                    + 'title="Ver la calle en Google Street View" '
+                    + 'style="display:block;margin:0 0 8px;border-radius:8px;overflow:hidden;'
+                    + 'border:1px solid #e5e7eb;line-height:0;">'
+                    + '<img src="' + imgUrl + '" alt="Vista de la calle en el domicilio" '
+                    + 'style="width:100%;height:130px;object-fit:cover;display:block;"/></a>';
+                iw.setContent(thumb + baseHtml);
+            })
+            .catch(function () { });
+    }
+
     // Exponer helpers al scope de este archivo (los dos módulos de abajo los usan).
-    window.__mapeoHelpers = { ensureGoogle, ZONE_COLORS, escapeXml, markerSvg, markerIcon };
+    window.__mapeoHelpers = { ensureGoogle, ZONE_COLORS, escapeXml, markerSvg, markerIcon, streetView, cancelStreetView };
 })();
 
 // ══════════ Mapa grande (pantalla Mapeo) ══════════
@@ -322,8 +366,16 @@ window.mapeoFlex = (function () {
 
                 const ids = group.map(g => g.id);
                 const isCluster = group.length > 1;
+                // Mostramos la fotito de Street View solo en un domicilio único (no en clusters
+                // ni en la casita del punto de partida, que se puede arrastrar).
+                const conStreetView = !isCluster && !esArrastrable;
                 marker.addListener('click', () => {
-                    if (infoWindow) { infoWindow.setContent(popupHtml); infoWindow.open(map, marker); infoOpen = true; }
+                    if (infoWindow) {
+                        infoWindow.setContent(popupHtml);
+                        infoWindow.open(map, marker);
+                        infoOpen = true;
+                        H.streetView(infoWindow, first.lat, first.lng, popupHtml, conStreetView);
+                    }
                     if (!dotNetRef) return;
                     if (isCluster) dotNetRef.invokeMethodAsync('OnClusterClicked', ids);
                     else dotNetRef.invokeMethodAsync('OnMarkerClicked', first.id);
@@ -422,6 +474,7 @@ window.mapeoFlex = (function () {
                 if (zonePath) return; // si estás dibujando una zona, no interferimos
                 const ll = e.latLng;
                 const lat = ll.lat(), lng = ll.lng();
+                H.cancelStreetView(); // por si venía una foto en vuelo de otro globito
                 // Globito "Buscando…" inmediato, para que se sienta que registró el toque.
                 infoWindow.setContent('<div style="font-family:Inter,sans-serif;font-size:0.85rem;color:#6b7280;padding:2px 4px;">Buscando dirección…</div>');
                 infoWindow.setPosition(ll);
@@ -545,8 +598,14 @@ window.mapeoFlex = (function () {
                     draggable: false, zIndex: 1
                 });
                 const html = it.popupHtml || '';
+                const svLat = it.lat, svLng = it.lng;
                 marker.addListener('click', () => {
-                    if (infoWindow) { infoWindow.setContent(html); infoWindow.open(map, marker); infoOpen = true; }
+                    if (infoWindow) {
+                        infoWindow.setContent(html);
+                        infoWindow.open(map, marker);
+                        infoOpen = true;
+                        H.streetView(infoWindow, svLat, svLng, html, true);
+                    }
                 });
                 snapMarkers.push(marker);
                 bounds.extend(pos);
