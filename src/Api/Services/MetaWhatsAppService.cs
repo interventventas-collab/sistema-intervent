@@ -55,21 +55,28 @@ public class MetaWhatsAppService
         var digits = NormalizeTo(raw);
         if (string.IsNullOrEmpty(digits)) return raw;
 
+        // 2026-08-06 (fix OSMAR +34 España): si el número YA viene internacional (trae "+", ej
+        // "whatsapp:+34643013190"), tiene su propio código de país → NO le pegamos el 549 argentino.
+        // Antes, a un +34 de España lo convertíamos en +549 34..., abría un chat fantasma y los
+        // adjuntos NO se entregaban. El 549 solo se agrega a números LOCALES argentinos sueltos.
+        bool yaInternacional = raw.Contains('+');
+
         if (digits.StartsWith("549"))
         {
             // ya es canónico argentino (país 54 + 9 de celular)
         }
         else if (digits.StartsWith("54"))
         {
-            // "54" + local, pero sin el 9 de celular → se lo insertamos
+            // "54" + local argentino, pero sin el 9 de celular → se lo insertamos (54 es solo Argentina)
             digits = "549" + digits.Substring(2);
         }
-        else
+        else if (!yaInternacional)
         {
-            // número local sin país (ej "1159945852" o "0111559945852"): sacamos
+            // número LOCAL argentino sin país (ej "1159945852" o "0111559945852"): sacamos
             // ceros de discado nacional al inicio y le anteponemos "549".
             digits = "549" + digits.TrimStart('0');
         }
+        // else: internacional NO argentino (ej +34 España, +55 Brasil) → se deja con su código de país.
         return $"whatsapp:+{digits}";
     }
 
