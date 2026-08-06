@@ -34,8 +34,9 @@
 }
 
 <style>
+    /* 2026-08-06: bottom 86px (no 22) para que NO tape el botón de Ayuda de IA (assistant-fab). */
     .depwa-bubble {
-        position: fixed; right: 22px; bottom: 22px; z-index: 8500;
+        position: fixed; right: 22px; bottom: 86px; z-index: 8500;
         width: 58px; height: 58px; border-radius: 50%; border: none;
         background: #25d366; color: #fff; cursor: pointer;
         box-shadow: 0 8px 22px rgba(37,211,102,0.45);
@@ -47,8 +48,8 @@
     @@keyframes depwa-pop { from { transform: scale(0.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
     .depwa-panel {
-        position: fixed; right: 22px; bottom: 22px; z-index: 8500;
-        width: 360px; height: 540px; max-height: 88vh;
+        position: fixed; right: 22px; bottom: 86px; z-index: 8500;
+        width: 360px; height: 540px; max-height: calc(100vh - 110px);
         display: flex; flex-direction: column;
         background: #fff; border-radius: 16px; overflow: hidden;
         box-shadow: 0 16px 40px rgba(0,0,0,0.30);
@@ -70,7 +71,7 @@
     .depwa-body .pwa-card { height: 100%; min-height: 0; border: none; border-radius: 0; box-shadow: none; }
 
     @@media (max-width: 640px) {
-        .depwa-panel { right: 8px; left: 8px; bottom: 8px; width: auto; height: 78vh; }
+        .depwa-panel { right: 8px; left: 8px; bottom: 74px; width: auto; height: 74vh; }
     }
 </style>
 

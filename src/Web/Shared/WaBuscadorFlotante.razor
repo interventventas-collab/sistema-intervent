@@ -84,8 +84,10 @@
 }
 
 <style>
+    /* 2026-08-06: bottom 86px (no 22) para que NO tape el botón de Ayuda de IA (assistant-fab,
+       bottom:18px 52px de alto). Queda apilado arriba de ese botón. */
     .wabf-bubble {
-        position: fixed; right: 22px; bottom: 22px; z-index: 8400;
+        position: fixed; right: 22px; bottom: 86px; z-index: 8400;
         width: 58px; height: 58px; border-radius: 50%; border: none;
         background: #25d366; color: #fff; cursor: pointer;
         box-shadow: 0 8px 22px rgba(37,211,102,0.45);
@@ -96,8 +98,8 @@
     @@keyframes wabf-pop { from { transform: scale(0.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
     .wabf-panel {
-        position: fixed; right: 22px; bottom: 22px; z-index: 8400;
-        width: 360px; height: 560px; max-height: 88vh;
+        position: fixed; right: 22px; bottom: 86px; z-index: 8400;
+        width: 360px; height: 560px; max-height: calc(100vh - 110px);
         display: flex; flex-direction: column;
         background: #fff; border-radius: 16px; overflow: hidden;
         box-shadow: 0 16px 40px rgba(0,0,0,0.30);
@@ -139,7 +141,7 @@
     .wabf-chat .pwa-card { height: 100%; min-height: 0; border: none; border-radius: 0; box-shadow: none; }
 
     @@media (max-width: 640px) {
-        .wabf-panel { right: 8px; left: 8px; bottom: 8px; width: auto; height: 80vh; }
+        .wabf-panel { right: 8px; left: 8px; bottom: 74px; width: auto; height: 76vh; }
     }
 </style>
 
