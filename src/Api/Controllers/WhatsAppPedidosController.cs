@@ -343,6 +343,33 @@ public class WhatsAppPedidosController : ControllerBase
         return Ok(new { trigger, pollEnabled = req.PollEnabled, autoResponderEnabled = req.AutoResponderEnabled, iaEnabled = req.IaEnabled });
     }
 
+    // ═══════════════ AVISO DE VENTA A INTERNOS: interruptor on/off (2026-08-06) ═══════════════
+    // Prendido (default) = al emitir con copia tildada, al interno le llega el resumen con botones.
+    // Apagado = le llega el PDF entero como antes. La clave vive en AppSettings.
+    private const string VentaAvisoEnabledKey = "whatsapp.venta_aviso.enabled";
+
+    [HttpGet("venta-aviso-config")]
+    public async Task<IActionResult> GetVentaAvisoConfig()
+    {
+        // Default true: solo está apagado si existe la clave con "false".
+        var apagado = await _db.AppSettings.AnyAsync(s => s.Key == VentaAvisoEnabledKey && s.Value == "false");
+        return Ok(new { enabled = !apagado });
+    }
+
+    public class VentaAvisoConfigRequest { public bool Enabled { get; set; } }
+
+    [HttpPost("venta-aviso-config")]
+    public async Task<IActionResult> SetVentaAvisoConfig([FromBody] VentaAvisoConfigRequest req)
+    {
+        var s = await _db.AppSettings.FirstOrDefaultAsync(x => x.Key == VentaAvisoEnabledKey);
+        var valor = req.Enabled ? "true" : "false";
+        if (s is null)
+            _db.AppSettings.Add(new Models.AppSetting { Key = VentaAvisoEnabledKey, Value = valor, UpdatedAt = DateTime.UtcNow });
+        else { s.Value = valor; s.UpdatedAt = DateTime.UtcNow; }
+        await _db.SaveChangesAsync();
+        return Ok(new { enabled = req.Enabled });
+    }
+
     // ═══════════════ MENSAJES DEL BOT DE BIENVENIDA (editables desde ⚙️ WhatsApp) ═══════════════
     // Los textos por defecto y sus metadatos viven en Services/WhatsAppBotFlow.cs (BotTextos.Campos).
     // Lo editado se guarda en AppSettings con clave "whatsapp.bot.txt.{clave}".

@@ -91,6 +91,8 @@ public class MetaWhatsAppWebhookController : ControllerBase
         var listasCtrl = sp.GetRequiredService<Api.Controllers.CafeListasCustomController>();
         // 2026-08-03: bot interno de empleados (palabra clave por persona → menú de consultas)
         var empBot = sp.GetRequiredService<WhatsAppEmpleadoBotService>();
+        // 2026-08-06: aviso de venta a internos (atiende los botones comprobante/cuenta corriente/detalle)
+        var avisoSvc = sp.GetRequiredService<VentaAvisoWhatsAppService>();
 
         using var doc = JsonDocument.Parse(raw);
         var root = doc.RootElement;
@@ -157,7 +159,7 @@ public class MetaWhatsAppWebhookController : ControllerBase
                 }
 
                 foreach (var m in messages.EnumerateArray())
-                    await ProcesarMensajeAsync(db, meta, pedidoSvc, listasCtrl, empBot, m, nombres, baseUrl, lineaId);
+                    await ProcesarMensajeAsync(db, meta, pedidoSvc, listasCtrl, empBot, avisoSvc, m, nombres, baseUrl, lineaId);
             }
         }
     }
@@ -404,7 +406,7 @@ public class MetaWhatsAppWebhookController : ControllerBase
 
     private async Task ProcesarMensajeAsync(AppDbContext db, MetaWhatsAppService meta,
         WhatsAppPedidoService pedidoSvc, Api.Controllers.CafeListasCustomController listasCtrl,
-        WhatsAppEmpleadoBotService empBot,
+        WhatsAppEmpleadoBotService empBot, VentaAvisoWhatsAppService avisoSvc,
         JsonElement m, Dictionary<string, string> nombres, string baseUrl, string? lineaId)
     {
         var wamid = m.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
@@ -538,6 +540,21 @@ public class MetaWhatsAppWebhookController : ControllerBase
         if (lineaId == LINEA_SIN_AUTOMATISMOS)
         {
             _logger.LogInformation("[Meta WA webhook] línea FIJO TRANSRADIO: sin automatismos, no corre ningún bot.");
+            return;
+        }
+
+        // 2026-08-06: AVISO DE VENTA A INTERNOS. Si tocó uno de los botones del aviso
+        // ("bot:venta:{accion}:{ventaId}"), le mandamos lo que pidió (comprobante / cuenta corriente /
+        // detalle) y cortamos acá. Va ANTES de los otros bots para que no lo confundan.
+        var idInteractivo = tipo == "interactive" ? TryGetInteractiveId(m) : null;
+        if (!string.IsNullOrEmpty(idInteractivo) && idInteractivo!.StartsWith("bot:venta:"))
+        {
+            var p = idInteractivo.Split(':'); // bot : venta : accion : ventaId
+            if (p.Length == 4 && int.TryParse(p[3], out var ventaIdBtn))
+            {
+                try { await avisoSvc.HandleBotonAsync(fromWaId!, numero, p[2], ventaIdBtn, lineaId, baseUrl); }
+                catch (Exception ex) { _logger.LogError(ex, "[Meta WA webhook] Error atendiendo botón de aviso de venta {Id}", idInteractivo); }
+            }
             return;
         }
 

@@ -6992,9 +6992,10 @@
             }));
         }
         // 2026-07-24: copia por WhatsApp a las personas internas tildadas (Osmar/Gabriel/Germán).
-        // Usa el circuito de la API OFICIAL de Meta (send-server-file VENTA), el mismo del botón
-        // "Adjuntar del servidor → Enviar". OJO: NO usar SendCafeVentaWhatsappInternoAsync — ese va
-        // por el Playwright/WhatsApp Web viejo que está DESCONECTADO.
+        // 2026-08-06: ahora en vez del PDF entero le mandamos un AVISO con resumen + 3 botones
+        // (comprobante / cuenta corriente / detalle) vía send-venta-aviso. Si el aviso está apagado
+        // en ⚙️ WhatsApp, el backend cae solo al PDF de siempre. Circuito API OFICIAL de Meta.
+        // OJO: NO usar SendCafeVentaWhatsappInternoAsync — ese va por el Playwright viejo DESCONECTADO.
         foreach (var per in copiaWaPersonas.Where(p => copiaWaSeleccion.Contains(p.Id)))
         {
             // El número va en formato whatsapp:+E164 (como lo guarda la libretita de Personas).
@@ -7004,12 +7005,11 @@
             {
                 try
                 {
-                    var (ok, err) = await Api.SendTwServerFileAsync(numero, "VENTA", ventaId,
-                        caption: $"📄 Copia del comprobante {ventaNumero}", lineaPhoneId: copiaLineaPhoneId);
-                    if (ok) ToastService.Success($"📤 Copia enviada a {nombrePer}");
-                    else ToastService.Error($"📤 Copia a {nombrePer} falló: {err}");
+                    var (ok, err) = await Api.SendVentaAvisoAsync(numero, ventaId, lineaPhoneId: copiaLineaPhoneId);
+                    if (ok) ToastService.Success($"📤 Aviso enviado a {nombrePer}");
+                    else ToastService.Error($"📤 Aviso a {nombrePer} falló: {err}");
                 }
-                catch (Exception ex) { ToastService.Error($"📤 Copia a {nombrePer} error: {ex.Message}"); }
+                catch (Exception ex) { ToastService.Error($"📤 Aviso a {nombrePer} error: {ex.Message}"); }
             }));
         }
         // Esperamos a que terminen pero sin bloquear demasiado (los toasts ya avisaron).

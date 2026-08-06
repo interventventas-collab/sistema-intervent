@@ -133,8 +133,29 @@ public sealed class BotTextos
                 i++;
             }
         }
+
+        // ── 2026-08-06: AVISO DE VENTA A INTERNOS (Gabriel/Osmar/Germán) ──
+        // Cuando se emite una venta con la copia por WhatsApp tildada, al interno le llega este
+        // mensajito resumen con 3 botones. Según cuál toque, el bot le responde el comprobante (PDF),
+        // la cuenta corriente del cliente o el detalle de la venta. El interruptor on/off vive aparte
+        // (AppSetting "whatsapp.venta_aviso.enabled", se prende/apaga desde la misma pantalla).
+        const string gv = "🧾 Aviso de venta a los internos";
+        lista.Add(new("venta.aviso.cuerpo", gv, "Mensaje del aviso", VentaAvisoCuerpoDef, true, 1024,
+            "Comodines que se reemplazan solos: {numero} = N° de la venta · {cliente} = nombre del cliente · " +
+            "{importe} = total · {detalle} = productos de la venta. Abajo del mensaje salen los 3 botones."));
+        lista.Add(new("venta.aviso.boton.comprobante", gv, "Botón 1 · comprobante", "📄 Comprobante", false, 20,
+            "Al tocarlo, el interno recibe el PDF de la factura/comprobante."));
+        lista.Add(new("venta.aviso.boton.cc", gv, "Botón 2 · cuenta corriente", "📊 Cuenta corriente", false, 20,
+            "Al tocarlo, recibe el estado de cuenta del cliente (saldo y últimos movimientos)."));
+        lista.Add(new("venta.aviso.boton.detalle", gv, "Botón 3 · detalle", "🧾 Detalle", false, 20,
+            "Al tocarlo, recibe la lista de productos, cantidades y precios de esa venta."));
+
         return lista;
     }
+
+    /// <summary>Default del mensaje de aviso de venta (con comodines). El único lugar donde vive.</summary>
+    public const string VentaAvisoCuerpoDef =
+        "🧾 *Venta N° {numero}* cargada\n👤 {cliente}\n💰 {importe}\n📦 {detalle}\n\n¿Qué querés ver?";
 
     private static readonly Dictionary<string, Campo> PorClave =
         Campos.ToDictionary(c => c.Clave, c => c);
@@ -178,6 +199,12 @@ public sealed class BotTextos
         WhatsAppBotFlow.Acciones
             .Select(a => ($"bot:{empresa}:{a}", V($"opcion.{empresa}.{a}.title"), (string?)V($"opcion.{empresa}.{a}.desc")))
             .ToArray();
+
+    // ── Aviso de venta a internos (2026-08-06) ──
+    public string AvisoVentaCuerpo => V("venta.aviso.cuerpo");
+    public string AvisoVentaBotonComprobante => V("venta.aviso.boton.comprobante");
+    public string AvisoVentaBotonCc => V("venta.aviso.boton.cc");
+    public string AvisoVentaBotonDetalle => V("venta.aviso.boton.detalle");
 
     /// <summary>Respuesta final + rol de contacto para cada acción del nivel 2 (respuesta por empresa).</summary>
     public (string Respuesta, string Rol) AccionNivel2(string accion, string empresa)

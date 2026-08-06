@@ -1657,6 +1657,22 @@
                     💡 WhatsApp limita el largo de los <strong>botones</strong> y <strong>títulos de opciones</strong>. Si un texto es muy largo no te va a dejar escribir más (el máximo está indicado en cada campo).
                 </div>
 
+                @* 2026-08-06: interruptor del aviso de venta a los internos *@
+                <div style="background:@(ventaAvisoOn ? "#ecfdf5" : "#f9fafb"); border:1px solid @(ventaAvisoOn ? "#6ee7b7" : "#e5e7eb"); border-radius:8px; padding:0.7rem 0.9rem; margin-bottom:1rem;">
+                    <label style="display:flex; align-items:flex-start; gap:0.6rem; cursor:pointer; margin:0;">
+                        <input type="checkbox" checked="@ventaAvisoOn" @onchange="e => ToggleVentaAviso((bool)e.Value!)" style="margin-top:0.2rem; width:1.1rem; height:1.1rem;" />
+                        <span>
+                            <span style="font-weight:600; color:#111827;">🧾 Aviso de venta con botones a los internos</span><br />
+                            <span style="font-size:0.8rem; color:#6b7280;">
+                                Prendido: al emitir una venta con la copia por WhatsApp tildada, al interno le llega un
+                                <strong>resumen con botones</strong> (comprobante / cuenta corriente / detalle) en vez del PDF entero.
+                                Apagado: le llega el <strong>PDF entero</strong> como antes. Los textos y botones del aviso los editás abajo, en
+                                <em>«🧾 Aviso de venta a los internos»</em>.
+                            </span>
+                        </span>
+                    </label>
+                </div>
+
                 @if (botCargando)
                 {
                     <p style="color:#9ca3af;">Cargando…</p>
@@ -2469,6 +2485,8 @@
     List<ApiClient.BotCampoDto> botCampos = new();
     Dictionary<string, string> botValores = new();
     bool botCargando = false, botGuardando = false;
+    // 2026-08-06: interruptor del aviso de venta a internos (resumen con botones vs PDF entero)
+    bool ventaAvisoOn = true;
     // Reacciones
     int? pickerOpenMsgId = null;
     // 2026-07-23: ☕ y 🫘 primeros (pedido Osmar — "grano de café" no existe como emoji, esto es lo más parecido)
@@ -3085,9 +3103,19 @@
         {
             botCampos = await Api.GetBotMensajesAsync();
             botValores = botCampos.ToDictionary(c => c.Clave, c => c.Valor);
+            ventaAvisoOn = await Api.GetVentaAvisoEnabledAsync();
         }
         catch { Toast.Error("No se pudieron cargar los mensajes del bot"); }
         finally { botCargando = false; }
+    }
+
+    // 2026-08-06: prende/apaga el aviso de venta a internos (resumen con botones vs PDF entero).
+    async Task ToggleVentaAviso(bool on)
+    {
+        ventaAvisoOn = on;
+        var (ok, err) = await Api.SetVentaAvisoEnabledAsync(on);
+        if (ok) Toast.Success(on ? "✅ Aviso con botones ACTIVADO" : "✅ Ahora se manda el PDF entero");
+        else { Toast.Error(err ?? "No se pudo guardar"); ventaAvisoOn = !on; }
     }
 
     bool EsValorDefault(ApiClient.BotCampoDto campo)

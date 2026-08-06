@@ -66,8 +66,16 @@ public class CafeClientesController : ControllerBase
     [HttpGet("{id:int}/estado-cuenta")]
     public async Task<IActionResult> EstadoCuenta(int id)
     {
+        var dto = await GetEstadoCuentaAsync(id);
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
+    /// <summary>2026-08-06: núcleo reutilizable del estado de cuenta (lo usa también el aviso de venta
+    /// por WhatsApp para mandarle la cuenta corriente al interno). Devuelve null si el cliente no existe.</summary>
+    public async Task<EstadoCuentaDto?> GetEstadoCuentaAsync(int id)
+    {
         var cliente = await _db.CafeClientes.FindAsync(id);
-        if (cliente is null) return NotFound();
+        if (cliente is null) return null;
 
         // Ventas vigentes del cliente. Para facturas A/B/C con IVA, el debe es el TOTAL CON IVA
         // (ArcaImpTotal), no el neto (Total) — sino la cuenta corriente queda corta el IVA.
@@ -108,7 +116,7 @@ public class CafeClientesController : ControllerBase
             acum += m.debe - m.haber;
             result.Add(new MovimientoCuentaDto(m.fecha, m.tipo, m.num, m.debe, m.haber, acum, m.det));
         }
-        return Ok(new EstadoCuentaDto(id, cliente.Nombre, acum, result));
+        return new EstadoCuentaDto(id, cliente.Nombre, acum, result);
     }
 
     // 2026-08-05: ficha rápida del cliente para mostrar DENTRO del chat de WhatsApp (tarjeta

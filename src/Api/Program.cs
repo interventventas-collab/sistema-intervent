@@ -222,6 +222,11 @@ builder.Services.AddScoped<Api.Controllers.CafeListasCustomController>();
 // y recibos de visita por el chat WhatsApp (reusan su PDF via GenerarPdfBytesAsync/GenerarReciboPdfBytesAsync).
 builder.Services.AddScoped<Api.Controllers.AlqReservasController>();
 builder.Services.AddScoped<Api.Controllers.VisitasController>();
+// 2026-08-06: CafeClientesController + VentaAvisoWhatsAppService para el AVISO DE VENTA a internos
+// (mensajito con botones al emitir → comprobante / cuenta corriente / detalle). El aviso lo usan el
+// endpoint de emisión (WhatsAppTwilioController) y el webhook (para atender el botón).
+builder.Services.AddScoped<Api.Controllers.CafeClientesController>();
+builder.Services.AddScoped<VentaAvisoWhatsAppService>();
 builder.Services.AddScoped<MeliOrderService>();
 builder.Services.AddScoped<MeliItemService>();
 builder.Services.AddScoped<MeliQuestionService>();

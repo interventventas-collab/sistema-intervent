@@ -25,8 +25,10 @@ public class WhatsAppTwilioController : ControllerBase
     // 2026-08-05: para adjuntar reservas de alquiler y recibos de visita por el chat, reusando su PDF.
     private readonly AlqReservasController _alqReservasController;
     private readonly VisitasController _visitasController;
+    // 2026-08-06: aviso de venta a internos (resumen con botones al emitir).
+    private readonly VentaAvisoWhatsAppService _avisoSvc;
 
-    public WhatsAppTwilioController(AppDbContext db, ILogger<WhatsAppTwilioController> logger, WhatsAppOutboundService outbound, CafeReciboCobranzaPdfService cobranzaPdfService, CafeVentasController ventasController, MetaWhatsAppService meta, CafeListasCustomController listasCustomController, AlqReservasController alqReservasController, VisitasController visitasController)
+    public WhatsAppTwilioController(AppDbContext db, ILogger<WhatsAppTwilioController> logger, WhatsAppOutboundService outbound, CafeReciboCobranzaPdfService cobranzaPdfService, CafeVentasController ventasController, MetaWhatsAppService meta, CafeListasCustomController listasCustomController, AlqReservasController alqReservasController, VisitasController visitasController, VentaAvisoWhatsAppService avisoSvc)
     {
         _db = db;
         _logger = logger;
@@ -37,6 +39,27 @@ public class WhatsAppTwilioController : ControllerBase
         _listasCustomController = listasCustomController;
         _alqReservasController = alqReservasController;
         _visitasController = visitasController;
+        _avisoSvc = avisoSvc;
+    }
+
+    // ═══════════════ AVISO DE VENTA A INTERNOS (2026-08-06) ═══════════════
+    // Al emitir una venta con la copia por WhatsApp tildada, en vez del PDF entero le mandamos al
+    // interno un resumen con 3 botones (comprobante / cuenta corriente / detalle). La lógica vive en
+    // VentaAvisoWhatsAppService (la comparte el webhook que atiende el botón). Si el aviso está
+    // apagado, el servicio cae solo al PDF de siempre. baseUrl sale del Request de este controller.
+    public record SendVentaAvisoRequest(string Numero, int VentaId, string? LineaPhoneId);
+
+    [HttpPost("send-venta-aviso")]
+    [Authorize]
+    public async Task<IActionResult> SendVentaAviso([FromBody] SendVentaAvisoRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Numero)) return BadRequest(new { error = "Numero obligatorio" });
+        if (!_outbound.AnyConfigured) return StatusCode(503, new { error = "WhatsApp no configurado (ni Meta ni Twilio)" });
+
+        var baseUrl = $"{Request.Scheme}://{Request.Host}";
+        var (ok, err) = await _avisoSvc.EnviarAvisoAsync(req.Numero, req.VentaId, req.LineaPhoneId, baseUrl);
+        if (!ok) return StatusCode(502, new { error = err ?? "No se pudo enviar el aviso" });
+        return Ok(new { ok = true });
     }
 
     // ===== Menu de identificacion de rol (auto-respuesta a numeros nuevos) =====

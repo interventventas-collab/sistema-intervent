@@ -6851,6 +6851,46 @@ public class ApiClient
         catch { return new(); }
     }
 
+    // 2026-08-06: aviso de venta a internos → resumen con 3 botones (comprobante/cuenta corriente/detalle).
+    // Si el aviso está apagado en la config, el backend cae solo al PDF entero de siempre.
+    public async Task<(bool ok, string? error)> SendVentaAvisoAsync(string numero, int ventaId, string? lineaPhoneId = null)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/send-venta-aviso",
+                new { Numero = numero, VentaId = ventaId, LineaPhoneId = lineaPhoneId });
+            if (resp.IsSuccessStatusCode) return (true, null);
+            string err = "Error";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync()); if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; } catch { }
+            return (false, err);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
+    // 2026-08-06: interruptor on/off del aviso de venta a internos (⚙️ WhatsApp → "Mensajes del bot").
+    public async Task<bool> GetVentaAvisoEnabledAsync()
+    {
+        try
+        {
+            var resp = await _http.GetAsync("/api/whatsapp/pedidos/venta-aviso-config");
+            if (!resp.IsSuccessStatusCode) return true; // ante la duda, prendido (default)
+            using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            return !doc.RootElement.TryGetProperty("enabled", out var e) || e.GetBoolean();
+        }
+        catch { return true; }
+    }
+
+    public async Task<(bool ok, string? error)> SetVentaAvisoEnabledAsync(bool enabled)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/whatsapp/pedidos/venta-aviso-config", new { Enabled = enabled });
+            if (resp.IsSuccessStatusCode) return (true, null);
+            return (false, "Error al guardar");
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     public async Task<(bool ok, string? error)> SendTwServerFileAsync(string numero, string tipo, int id, string? caption, string? lineaPhoneId = null)
     {
         try
