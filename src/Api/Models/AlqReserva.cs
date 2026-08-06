@@ -56,8 +56,13 @@ public class AlqReserva
     [MaxLength(30)]
     public string Estado { get; set; } = "reservado";
 
+    /// <summary>Observaciones que SÍ se imprimen en el comprobante de la reserva.</summary>
     [MaxLength(1000)]
     public string? Notas { get; set; }
+
+    /// <summary>Notas internas: solo para uso del equipo, NUNCA se imprimen. 2026-08-05.</summary>
+    [MaxLength(1000)]
+    public string? NotasInternas { get; set; }
 
     /// <summary>Forma de pago de la reserva (Efectivo, Transferencia, etc.). 2026-07-04.</summary>
     [MaxLength(30)]

@@ -129,7 +129,7 @@
                                     }
                                     @if (!string.IsNullOrEmpty(r.DireccionEvento))
                                     {
-                                        <div style="font-size: 0.78rem; color: #4b5563; margin-top: 0.1rem;">📍 @r.DireccionEvento</div>
+                                        <div style="font-size: 0.95rem; font-weight: 700; color: #1f2937; margin-top: 0.2rem;">📍 @r.DireccionEvento</div>
                                     }
                                     @{
                                         var enCalleRow = r.EntregadoPorRepartidorId.HasValue && !r.RetiradoPorRepartidorId.HasValue;
@@ -470,8 +470,14 @@
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label class="form-label">Observaciones</label>
-                                <textarea class="form-input" rows="3" @bind="formNotas" placeholder="Notas internas (opcional)"></textarea>
+                                <label class="form-label">📝 Observaciones <span style="font-weight:400; color:#059669;">· se imprimen en la reserva</span></label>
+                                <textarea class="form-input" rows="6" @bind="formNotas"
+                                          style="font-size:1.05rem; line-height:1.45; min-height:130px;"
+                                          placeholder="Lo que tiene que salir en el comprobante impreso (aclaraciones del pedido, detalles de entrega, etc.)."></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">🔒 Notas internas <span style="font-weight:400; color:#9ca3af;">· NO se imprimen, solo para ustedes</span></label>
+                                <textarea class="form-input" rows="2" @bind="formNotasInternas" placeholder="Apuntes privados del equipo (no aparecen en ningún impreso)."></textarea>
                             </div>
                         </div>
                     </div>
@@ -906,8 +912,9 @@
 
                 @if (!string.IsNullOrWhiteSpace(printReserva.Notas))
                 {
-                    <div style="margin-top: 0.5rem; border: 1px solid #d1d5db; padding: 0.5rem 0.7rem; font-size: 0.85rem;">
-                        <strong>Observaciones:</strong> @printReserva.Notas
+                    <div style="margin-top: 0.6rem; border: 2px solid #111827; border-radius: 6px; padding: 0.6rem 0.8rem;">
+                        <div style="font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.25rem;">Observaciones</div>
+                        <div style="font-size: 1.1rem; font-weight: 700; line-height: 1.4; white-space: pre-wrap;">@printReserva.Notas</div>
                     </div>
                 }
 
@@ -1413,6 +1420,7 @@
     private decimal formTotalManual;
     private string formEstado = "reservado";
     private string formNotas = "";
+    private string formNotasInternas = "";
     private List<CreateAlqReservaItemRequest> formItems = new();
 
     // Add item state
@@ -1637,6 +1645,7 @@
         formSena = r.Sena;
         formEstado = r.Estado;
         formNotas = r.Notas ?? "";
+        formNotasInternas = r.NotasInternas ?? "";
         // ARCA — cargar la config de facturación de la reserva
         formTipoComprobante = string.IsNullOrWhiteSpace(r.TipoComprobante) ? "X" : r.TipoComprobante;
         formCondicionIva = string.IsNullOrWhiteSpace(r.CondicionIva) ? "CF" : r.CondicionIva;
@@ -1687,6 +1696,7 @@
         formUsarPrecios = false; formTotalManual = 0m;
         formEstado = "reservado";
         formNotas = "";
+        formNotasInternas = "";
         formItems = new();
         addCantidad = 1; addEquipoId = 0; addDescripcionLibre = "";
         formError = null;
@@ -1797,6 +1807,7 @@
                     MontoTotalManual = formUsarPrecios ? (decimal?)null : Math.Max(0m, formTotalManual),
                     Estado = formEstado,
                     Notas = formNotas,
+                    NotasInternas = formNotasInternas,
                     MapeoLink = formMapeoLink,
                     GuardarMapeoEnCliente = formGuardarMapeoEnCliente,
                     Items = formItems,
@@ -1828,6 +1839,7 @@
                     MontoTotalManual = formUsarPrecios ? (decimal?)null : Math.Max(0m, formTotalManual),
                     Estado = formEstado,
                     Notas = formNotas,
+                    NotasInternas = formNotasInternas,
                     MapeoLink = formMapeoLink,
                     GuardarMapeoEnCliente = formGuardarMapeoEnCliente,
                     Items = formItems,

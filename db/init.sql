@@ -6369,6 +6369,11 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='ResumenDescripcion' AND Obj
     ALTER TABLE Alq_Reservas ADD ResumenDescripcion NVARCHAR(500) NULL;
 GO
 
+-- 2026-08-05: Alq_Reservas — notas internas (uso interno, NO se imprimen). Separadas de Observaciones (Notas), que sí sale en el comprobante.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='NotasInternas' AND Object_ID=OBJECT_ID('Alq_Reservas'))
+    ALTER TABLE Alq_Reservas ADD NotasInternas NVARCHAR(1000) NULL;
+GO
+
 -- 2026-07-08: avisos/novedades ocultados por cada usuario ("No volver a mostrar"), por cuenta.
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='User_NoticeDismissals' AND xtype='U')
 BEGIN
