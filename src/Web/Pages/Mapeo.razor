@@ -3893,13 +3893,14 @@
                 var enRutaSt = grupoSt is not null && rutaSeleccion.Contains(grupoSt.Key);
                 var btnBgSt = enRutaSt ? "#dc2626" : "#16a34a";
                 var btnTxtSt = enRutaSt ? "✗ Quitar de ruta" : "✓ Sumar a ruta";
-                // 2026-07-29: opciones del selector de repartidor dentro del globito.
-                var driverOpts = new System.Text.StringBuilder();
-                driverOpts.Append($"<option value='0'{(st.AssignedDriverId is null ? " selected" : "")}>— Sin repartidor —</option>");
-                if (drivers != null)
-                    foreach (var dr in drivers.Where(x => x.IsActive).OrderBy(x => x.Nombre))
-                        driverOpts.Append($"<option value='{dr.Id}'{(st.AssignedDriverId == dr.Id ? " selected" : "")}>{System.Net.WebUtility.HtmlEncode(dr.Nombre)}</option>");
                 var driverBorde = string.IsNullOrEmpty(st.AssignedDriverColor) ? "#cbd5e1" : st.AssignedDriverColor!;
+                // 2026-08-06: selector de ZONA dentro del globito (reemplaza al de repartidor). Los choferes
+                // se asignan por zona al final; acá mandás el envío a una zona existente o a una nueva.
+                var zonaOpts = new System.Text.StringBuilder();
+                zonaOpts.Append($"<option value='0'{(!st.AssignedVehicleSlot.HasValue ? " selected" : "")}>— Sin zona —</option>");
+                foreach (var sl in (stops ?? new()).Where(x => x.AssignedVehicleSlot.HasValue).Select(x => x.AssignedVehicleSlot!.Value).Distinct().OrderBy(x => x))
+                    zonaOpts.Append($"<option value='{sl}'{(st.AssignedVehicleSlot == sl ? " selected" : "")}>Zona {sl}</option>");
+                zonaOpts.Append("<option value='-1'>➕ Nueva zona</option>");
                 // Entregado: Flex/ME1 lo confirma MeLi (MeliStatus), venta del café trae la hora real (DateDelivered),
                 // y cualquier parada marcada a mano queda como InternalStatus="entregado".
                 var entregadaStop = string.Equals(st.MeliStatus, "delivered", StringComparison.OrdinalIgnoreCase)
@@ -3930,7 +3931,7 @@
                     // Candado: si la parada está desbloqueada, su pin se puede arrastrar para ajustar la ubicación.
                     draggable = paradasDesbloqueadas.Contains(st.Id),
                     stopId = st.Id,
-                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· Zona {st.AssignedVehicleSlot}</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}{horaEntregaStopHtml}<div style='margin-top:0.35rem; display:flex; align-items:center; gap:0.25rem;'><span title='Repartidor asignado'>🚚</span><select onchange=\"window.mapeoActions.assignDriver({markerId}, this.value); event.stopPropagation();\" onclick=\"event.stopPropagation();\" style='flex:1; max-width:170px; padding:0.15rem 0.25rem; border:2px solid {driverBorde}; border-radius:4px; font-size:0.72rem; background:white;'>{driverOpts}</select></div>{puestoRowHtml}<div style='margin-top:0.35rem; display:flex; gap:0.3rem; flex-wrap:wrap;'><button onclick=\"window.mapeoActions.toggleRoute({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:{btnBgSt}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxtSt}</button><button onclick=\"window.mapeoActions.correctLocation({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#92400e; border:1px solid #f59e0b; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>📍 Corregir ubicación</button><button onclick=\"window.mapeoActions.removeStop({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#b91c1c; border:1px solid #fca5a5; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>🗑 Quitar del mapa</button></div></div>"
+                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· Zona {st.AssignedVehicleSlot}</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}{horaEntregaStopHtml}<div style='margin-top:0.35rem; display:flex; align-items:center; gap:0.25rem;'><span title='Zona'>📍</span><select onchange=\"window.mapeoActions.assignZone({markerId}, this.value); event.stopPropagation();\" onclick=\"event.stopPropagation();\" style='flex:1; max-width:170px; padding:0.15rem 0.25rem; border:2px solid {driverBorde}; border-radius:4px; font-size:0.72rem; background:white;'>{zonaOpts}</select></div>{puestoRowHtml}<div style='margin-top:0.35rem; display:flex; gap:0.3rem; flex-wrap:wrap;'><button onclick=\"window.mapeoActions.toggleRoute({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:{btnBgSt}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxtSt}</button><button onclick=\"window.mapeoActions.correctLocation({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#92400e; border:1px solid #f59e0b; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>📍 Corregir ubicación</button><button onclick=\"window.mapeoActions.removeStop({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#b91c1c; border:1px solid #fca5a5; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>🗑 Quitar del mapa</button></div></div>"
                 };
             }));
         }
@@ -4520,6 +4521,46 @@
         var st = stops?.FirstOrDefault(x => x.Id == stopId);
         if (st is null) return;
         await AsignarRepartidor(st, driverId.ToString());
+    }
+
+    // 2026-08-06: selector de ZONA dentro del globito. slot: 0 = sin zona, -1 = zona nueva, >0 = zona existente.
+    // Al mandarlo a una zona que YA tiene chofer, el envío hereda ese chofer; si no, queda sin chofer.
+    [JSInvokable]
+    public async Task AsignarZonaDesdePopup(int markerId, int slot)
+    {
+        if (markerId > -1000) return; // solo paradas (stops)
+        var stopId = -1000 - markerId;
+        var st = stops?.FirstOrDefault(x => x.Id == stopId);
+        if (st is null) return;
+        assigningSlot = true;
+        try
+        {
+            if (slot == 0)
+            {
+                // Sin zona: la sacamos de todo (zona, chofer y orden).
+                await Api.AssignVehicleSlotAsync(st.Id, null);
+                await Api.UpdateMapeoStopAsync(st.Id, new { assignedDriverId = 0, orderInRoute = 0 });
+                ToastService.Info("Envío sacado de la zona.");
+            }
+            else
+            {
+                int destino = slot == -1
+                    ? ((stops ?? new()).Select(x => x.AssignedVehicleSlot ?? 0).DefaultIfEmpty(0).Max() + 1)
+                    : slot;
+                await Api.AssignVehicleSlotAsync(st.Id, destino);
+                // Si esa zona ya tiene chofer, el envío nuevo lo hereda; si no, queda sin chofer.
+                var chofer = (stops ?? new()).FirstOrDefault(x => x.AssignedVehicleSlot == destino && x.Id != st.Id && x.AssignedDriverId.HasValue)?.AssignedDriverId;
+                await Api.UpdateMapeoStopAsync(st.Id, new { assignedDriverId = chofer ?? 0, orderInRoute = 0 });
+                if (cantidadVehiculos < destino) cantidadVehiculos = destino;
+                ToastService.Success($"✅ Envío agregado a la Zona {destino}.");
+            }
+            await LoadStops();
+            ReconstruirZonasCreadas();
+            await RenderMap();
+            rutasResumen = new();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { assigningSlot = false; StateHasChanged(); }
     }
 
     // 2026-07-30: botón "Corregir ubicación" dentro del globito del mapa.
