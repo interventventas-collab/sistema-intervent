@@ -585,6 +585,9 @@ public class MetaWhatsAppWebhookController : ControllerBase
         Api.Controllers.CafeListasCustomController listasCtrl, JsonElement m,
         string? tipo, string fromWaId, string numero, string? nombrePerfil, string baseUrl, string? lineaId)
     {
+        // Textos del bot: lo que el usuario editó en ⚙️ WhatsApp → "Mensajes del bot" (o los defaults).
+        var textos = await BotTextos.CargarAsync(db);
+
         // ¿Tocó un botón/opción nuestra? El id viene en interactive.button_reply/list_reply.id
         var idTocado = tipo == "interactive" ? TryGetInteractiveId(m) : null;
         var parsed = WhatsAppBotFlow.ParseId(idTocado);
@@ -599,14 +602,14 @@ public class MetaWhatsAppWebhookController : ControllerBase
                 // 2026-08-04: sale por la MISMA línea a la que escribió el cliente (lineaId). Antes no
                 // se pasaba y caía a la línea por defecto → mensaje fuera de la ventana de 24hs de ESA
                 // otra línea → Meta lo rechazaba (failed) y el cliente no recibía nada tras tocar el botón.
-                var sid = await meta.SendListAsync(fromWaId, WhatsAppBotFlow.CuerpoNivel2(empresa),
-                    WhatsAppBotFlow.BotonListaNivel2, WhatsAppBotFlow.FilasNivel2(empresa), lineaPhoneId: lineaId);
-                await RegistrarSalienteAsync(db, numero, WhatsAppBotFlow.CuerpoNivel2(empresa) + " [opciones]", sid, lineaId: lineaId);
+                var sid = await meta.SendListAsync(fromWaId, textos.CuerpoNivel2(empresa),
+                    textos.BotonListaNivel2, textos.FilasNivel2(empresa), lineaPhoneId: lineaId);
+                await RegistrarSalienteAsync(db, numero, textos.CuerpoNivel2(empresa) + " [opciones]", sid, lineaId: lineaId);
                 return;
             }
 
             // Nivel 2: eligió una acción
-            var (respuesta, rol) = WhatsAppBotFlow.AccionNivel2(accion ?? "", empresa);
+            var (respuesta, rol) = textos.AccionNivel2(accion ?? "", empresa);
 
             // Etiquetar como contacto (solo si todavía no existe — no pisamos contactos cargados a mano)
             if (!await db.WhatsAppTwilioContactos.AnyAsync(c => c.Numero == numero))
@@ -641,12 +644,14 @@ public class MetaWhatsAppWebhookController : ControllerBase
         if (await db.AppSettings.AnyAsync(s => s.Key == "whatsapp.bot.bienvenida_enabled" && s.Value == "false"))
             return;
         if (await db.WhatsAppTwilioContactos.AnyAsync(c => c.Numero == numero && c.Activo)) return;
+        // "Ya le mandé el menú" se detecta por la etiqueta "[botones:" que se agrega SIEMPRE al guardar
+        // el saliente (así sigue funcionando aunque el usuario edite el texto del saludo).
         if (await db.WhatsAppTwilioMensajes.AnyAsync(x => x.Numero == numero
-                && x.Direccion == "OUTGOING" && x.Cuerpo != null && x.Cuerpo.Contains(WhatsAppBotFlow.MarcaNivel1)))
+                && x.Direccion == "OUTGOING" && x.Cuerpo != null && x.Cuerpo.Contains("[botones:")))
             return;
 
-        var sid1 = await meta.SendButtonsAsync(fromWaId, WhatsAppBotFlow.CuerpoNivel1, WhatsAppBotFlow.BotonesNivel1, lineaPhoneId: lineaId);
-        await RegistrarSalienteAsync(db, numero, WhatsAppBotFlow.CuerpoNivel1 + " [botones: Frikaf / Intervent / Intereventos]", sid1, lineaId: lineaId);
+        var sid1 = await meta.SendButtonsAsync(fromWaId, textos.CuerpoNivel1, textos.BotonesNivel1, lineaPhoneId: lineaId);
+        await RegistrarSalienteAsync(db, numero, textos.CuerpoNivel1 + " [botones: Frikaf / Intervent / Intereventos]", sid1, lineaId: lineaId);
     }
 
     /// <summary>Manda por el bot el PDF de la lista de precios GENERAL activa más reciente

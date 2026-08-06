@@ -1437,6 +1437,7 @@
             <button class="wa-tab @(configTab=="resp" ? "active" : "")" @onclick="@(() => configTab="resp")">💬 Respuestas rápidas (@respuestas.Count)</button>
             <button class="wa-tab @(configTab=="cbu" ? "active" : "")" @onclick="@(() => configTab="cbu")">🏦 Datos bancarios / CBUs (@datosBancarios.Count)</button>
             <button class="wa-tab @(configTab=="cont" ? "active" : "")" @onclick="@(() => configTab="cont")">👥 Contactos (@contactos.Count)</button>
+            <button class="wa-tab @(configTab=="bot" ? "active" : "")" @onclick="AbrirTabBot">🤖 Mensajes del bot</button>
         </div>
         <div class="wa-modal-body">
             @if (configTab == "resp")
@@ -1612,6 +1613,64 @@
                     </tbody>
                 </table>
                 <p style="color:#9ca3af; font-size:0.75rem;">💡 Tip: anteponé "whatsapp:" si querés, sino se agrega solo.</p>
+            }
+            else if (configTab == "bot")
+            {
+                <p style="color:#6b7280; font-size:0.85rem; margin-bottom:0.5rem;">
+                    Estos son los mensajes automáticos que le manda el bot a un número <strong>nuevo</strong> que escribe por primera vez.
+                    Editá lo que quieras y tocá <strong>Guardar</strong>. Si dejás un campo vacío, vuelve al texto original.
+                </p>
+                <div style="background:#eff6ff; border:1px solid #bfdbfe; padding:0.5rem 0.75rem; border-radius:6px; font-size:0.8rem; color:#1e40af; margin-bottom:0.8rem;">
+                    💡 WhatsApp limita el largo de los <strong>botones</strong> y <strong>títulos de opciones</strong>. Si un texto es muy largo no te va a dejar escribir más (el máximo está indicado en cada campo).
+                </div>
+
+                @if (botCargando)
+                {
+                    <p style="color:#9ca3af;">Cargando…</p>
+                }
+                else
+                {
+                    @foreach (var grupo in botCampos.GroupBy(c => c.Grupo))
+                    {
+                        <div style="margin-bottom:1.1rem;">
+                            <h4 style="margin:0 0 0.5rem; font-size:0.95rem; color:#111827; border-bottom:2px solid #25d366; padding-bottom:0.25rem;">@grupo.Key</h4>
+                            @foreach (var campo in grupo)
+                            {
+                                <div style="margin-bottom:0.7rem;">
+                                    <label style="display:block; font-size:0.82rem; font-weight:600; color:#374151; margin-bottom:0.2rem;">
+                                        @campo.Etiqueta
+                                        <span style="font-weight:400; color:#9ca3af; font-size:0.72rem;"> · máx @campo.Max</span>
+                                        @if (!EsValorDefault(campo))
+                                        {
+                                            <button class="btn btn-link btn-sm" style="padding:0; font-size:0.72rem; margin-left:0.4rem;"
+                                                    @onclick="() => RestaurarCampo(campo)" title="Volver al texto original">↺ restaurar original</button>
+                                        }
+                                    </label>
+                                    @if (campo.Multilinea)
+                                    {
+                                        <textarea class="form-control form-control-sm" rows="2" maxlength="@campo.Max"
+                                                  @bind="botValores[campo.Clave]" @bind:event="oninput"></textarea>
+                                    }
+                                    else
+                                    {
+                                        <input class="form-control form-control-sm" maxlength="@campo.Max"
+                                               @bind="botValores[campo.Clave]" @bind:event="oninput" />
+                                    }
+                                    @if (!string.IsNullOrEmpty(campo.Ayuda))
+                                    {
+                                        <div style="font-size:0.72rem; color:#9ca3af; margin-top:0.15rem;">@campo.Ayuda</div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                    <div style="position:sticky; bottom:0; background:#fff; padding-top:0.6rem; border-top:1px solid #e5e7eb; display:flex; gap:0.5rem; align-items:center;">
+                        <button class="btn btn-success" disabled="@botGuardando" @onclick="GuardarBotMensajes">
+                            @(botGuardando ? "Guardando…" : "💾 Guardar cambios")
+                        </button>
+                        <span style="font-size:0.78rem; color:#9ca3af;">Los cambios se aplican al toque para los próximos mensajes del bot.</span>
+                    </div>
+                }
             }
         </div>
     </div>
@@ -1942,7 +2001,7 @@
     .wa-chip { background: #eaf1fb; border: 1px solid #d5e3f7; color: #1d4ed8; padding: 0.42rem 0.95rem; border-radius: 999px; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.12s; white-space: nowrap; }
     .wa-chip:hover { background: #2563eb; color: #fff; border-color: #2563eb; transform: translateY(-1px); }
     .wa-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2000; }
-    .wa-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 900px; max-height: 85vh; background: #fff; border-radius: 8px; z-index: 2001; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+    .wa-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 94%; max-width: 1120px; max-height: 92vh; background: #fff; border-radius: 8px; z-index: 2001; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
     .wa-modal-header { padding: 1rem; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; gap: 0.5rem; }
     .wa-modal-tabs { display: flex; gap: 0; border-bottom: 1px solid #e5e7eb; background: #f9fafb; }
     .wa-tab { flex: 1; padding: 0.7rem; background: transparent; border: none; cursor: pointer; font-size: 0.9rem; color: #6b7280; border-bottom: 2px solid transparent; }
@@ -2362,6 +2421,10 @@
     Dictionary<int, string> editContClienteQuery = new();
     int? clienteBusquedaActivaId = null;
     List<ApiClient.TwClienteBuscarDto> clienteResultados = new();
+    // Mensajes del bot de bienvenida (pestaña 🤖 de la config)
+    List<ApiClient.BotCampoDto> botCampos = new();
+    Dictionary<string, string> botValores = new();
+    bool botCargando = false, botGuardando = false;
     // Reacciones
     int? pickerOpenMsgId = null;
     // 2026-07-23: ☕ y 🫘 primeros (pedido Osmar — "grano de café" no existe como emoji, esto es lo más parecido)
@@ -2850,6 +2913,42 @@
             try { await JS.InvokeVoidAsync("waDraggable.attach", "wa-ficha-float-head", "wa-ficha-float"); }
             catch { /* si el JS no cargó, la ventana igual se ve, solo que no se mueve */ }
         }
+    }
+
+    // ── Mensajes del bot de bienvenida ──
+    async Task AbrirTabBot()
+    {
+        configTab = "bot";
+        await LoadBotMensajes();
+    }
+
+    async Task LoadBotMensajes()
+    {
+        botCargando = true;
+        try
+        {
+            botCampos = await Api.GetBotMensajesAsync();
+            botValores = botCampos.ToDictionary(c => c.Clave, c => c.Valor);
+        }
+        catch { Toast.Error("No se pudieron cargar los mensajes del bot"); }
+        finally { botCargando = false; }
+    }
+
+    bool EsValorDefault(ApiClient.BotCampoDto campo)
+        => string.Equals(botValores.GetValueOrDefault(campo.Clave, campo.Valor)?.Trim(), campo.Default, StringComparison.Ordinal);
+
+    void RestaurarCampo(ApiClient.BotCampoDto campo) => botValores[campo.Clave] = campo.Default;
+
+    async Task GuardarBotMensajes()
+    {
+        botGuardando = true;
+        try
+        {
+            var (ok, err) = await Api.GuardarBotMensajesAsync(botValores);
+            if (ok) { Toast.Success("✅ Mensajes del bot guardados"); await LoadBotMensajes(); }
+            else Toast.Error(err ?? "Error al guardar");
+        }
+        finally { botGuardando = false; }
     }
 
     async Task LoadRespuestas()

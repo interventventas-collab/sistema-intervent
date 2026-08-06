@@ -180,14 +180,15 @@ public class WhatsAppTwilioController : ControllerBase
                     .OrderByDescending(x => x.CreatedAt)
                     .Select(x => x.LineaPhoneId)
                     .FirstOrDefaultAsync();
-            sid = await _meta.SendButtonsAsync(numero, WhatsAppBotFlow.CuerpoNivel1, WhatsAppBotFlow.BotonesNivel1, lineaPhoneId: lineaConv);
+            var textos = await BotTextos.CargarAsync(_db);
+            sid = await _meta.SendButtonsAsync(numero, textos.CuerpoNivel1, textos.BotonesNivel1, lineaPhoneId: lineaConv);
             if (sid != null)
             {
                 _db.WhatsAppTwilioMensajes.Add(new WhatsAppTwilioMensaje
                 {
                     Direccion = "OUTGOING",
                     Numero = numero,
-                    Cuerpo = WhatsAppBotFlow.CuerpoNivel1 + " [botones: Frikaf / Intervent / Intereventos]",
+                    Cuerpo = textos.CuerpoNivel1 + " [botones: Frikaf / Intervent / Intereventos]",
                     TwilioMessageSid = sid,
                     Canal = "CLOUD",
                     LineaPhoneId = lineaConv,

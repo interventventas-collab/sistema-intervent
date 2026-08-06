@@ -6620,6 +6620,24 @@ public class ApiClient
         catch (Exception ex) { return (false, ex.Message); }
     }
 
+    // 2026-08-06: mensajes editables del bot de bienvenida (⚙️ WhatsApp → "Mensajes del bot")
+    public record BotCampoDto(string Clave, string Grupo, string Etiqueta, string Valor,
+        string Default, bool EsDefault, bool Multilinea, int Max, string? Ayuda);
+
+    public async Task<List<BotCampoDto>> GetBotMensajesAsync()
+        => await _http.GetFromJsonAsync<List<BotCampoDto>>("/api/whatsapp/pedidos/bot-mensajes") ?? new();
+
+    public async Task<(bool ok, string? error)> GuardarBotMensajesAsync(Dictionary<string, string> valores)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/whatsapp/pedidos/bot-mensajes", new { Valores = valores });
+            if (resp.IsSuccessStatusCode) return (true, null);
+            return (false, "Error al guardar");
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     public async Task<(bool ok, string? error, string? numero)> IniciarTwConversacionAsync(string numero, string plantilla, string idioma, string? lineaPhoneId, List<string> variables, string cuerpoPreview)
     {
         try
