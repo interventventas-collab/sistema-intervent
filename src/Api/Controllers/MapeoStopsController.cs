@@ -317,6 +317,105 @@ public class MapeoStopsController : ControllerBase
         return Ok(new { puesto = s.OrderInRoute, total = numeradas.Count });
     }
 
+    public record FijaMedio(int StopId, int Puesto);
+    public record ArmarRutaGuiadaRequest(int PrimeraId, int UltimaId, List<FijaMedio>? FijasMedio);
+
+    /// <summary>
+    /// "Armar ruta guiada" (método nuevo): el usuario fija la PRIMERA y la ÚLTIMA parada de la zona
+    /// (y, opcional, algunas del medio en un puesto fijo). El sistema ordena TODAS las del medio por
+    /// calles reales con Google (si no hay clave / hay más de 25 / falla, usa el respaldo en línea recta
+    /// vecino-más-cercano desde la primera). Escribe OrderInRoute 1..N en UN SOLO guardado atómico.
+    /// La zona se toma de la parada PRIMERA (repartidor si tiene; si no, el vehículo sin repartidor),
+    /// así se puede armar el orden ANTES de asignar choferes.
+    /// </summary>
+    [HttpPost("armar-ruta-guiada")]
+    public async Task<IActionResult> ArmarRutaGuiada([FromBody] ArmarRutaGuiadaRequest req)
+    {
+        if (req is null) return BadRequest(new { error = "Faltan datos." });
+        if (req.PrimeraId == req.UltimaId) return BadRequest(new { error = "La primera y la última no pueden ser la misma parada." });
+
+        var primera = await _db.MapeoStops.FindAsync(req.PrimeraId);
+        var ultima = await _db.MapeoStops.FindAsync(req.UltimaId);
+        if (primera is null || ultima is null) return NotFound(new { error = "No encontré la parada primera o la última." });
+
+        // Zona a ordenar: la de la PRIMERA (repartidor si tiene; si no, el vehículo sin repartidor).
+        List<MapeoStop> zona;
+        if (primera.AssignedDriverId.HasValue)
+            zona = await _db.MapeoStops.Where(x => x.AssignedDriverId == primera.AssignedDriverId).ToListAsync();
+        else if (primera.AssignedVehicleSlot.HasValue)
+            zona = await _db.MapeoStops.Where(x => x.AssignedVehicleSlot == primera.AssignedVehicleSlot && x.AssignedDriverId == null).ToListAsync();
+        else
+            return BadRequest(new { error = "La zona no está armada todavía (la parada no está en ningún vehículo ni repartidor)." });
+
+        if (!zona.Any(x => x.Id == ultima.Id))
+            return BadRequest(new { error = "La última parada es de otra zona." });
+
+        int n = zona.Count;
+        var puestos = new MapeoStop?[n + 1]; // 1-based; puestos[1..n]
+        puestos[1] = primera;
+        puestos[n] = ultima;
+
+        // Fijas del medio (opcional): las clavamos en su puesto pedido, acotado a [2..n-1]; si el puesto
+        // ya está ocupado, buscamos el más cercano libre. Ignoramos las que sean la primera/última.
+        var fijadas = new HashSet<int> { primera.Id, ultima.Id };
+        if (req.FijasMedio != null)
+        {
+            foreach (var f in req.FijasMedio.OrderBy(f => f.Puesto))
+            {
+                if (fijadas.Contains(f.StopId)) continue;
+                var st = zona.FirstOrDefault(x => x.Id == f.StopId);
+                if (st is null) continue;
+                int p = Math.Clamp(f.Puesto, 2, Math.Max(2, n - 1));
+                if (puestos[p] != null) { int q = p; while (q <= n - 1 && puestos[q] != null) q++; if (q > n - 1) continue; p = q; }
+                puestos[p] = st; fijadas.Add(st.Id);
+            }
+        }
+
+        // Libres = las del medio que Google va a ordenar.
+        var libres = zona.Where(x => !fijadas.Contains(x.Id)).ToList();
+
+        List<MapeoStop> libresOrdenadas;
+        bool porGoogle = false;
+        var ordenIdx = await _routes.OptimizeWaypointOrderAsync(
+            ((double)primera.Latitude, (double)primera.Longitude),
+            ((double)ultima.Latitude, (double)ultima.Longitude),
+            libres.Select(x => ((double)x.Latitude, (double)x.Longitude)).ToList());
+        if (ordenIdx != null && ordenIdx.Length == libres.Count && EsPermutacionValida(ordenIdx, libres.Count))
+        {
+            libresOrdenadas = ordenIdx.Select(i => libres[i]).ToList();
+            porGoogle = true;
+        }
+        else
+        {
+            // Respaldo: vecino más cercano en línea recta arrancando desde la primera.
+            libresOrdenadas = new List<MapeoStop>();
+            var rem = new List<MapeoStop>(libres);
+            double curLat = (double)primera.Latitude, curLng = (double)primera.Longitude;
+            while (rem.Count > 0)
+            {
+                var next = rem.OrderBy(s => Hav(curLat, curLng, (double)s.Latitude, (double)s.Longitude)).First();
+                libresOrdenadas.Add(next);
+                curLat = (double)next.Latitude; curLng = (double)next.Longitude;
+                rem.Remove(next);
+            }
+        }
+
+        // Rellenamos los puestos libres (los que no quedaron fijados) con las libres ya ordenadas.
+        int li = 0;
+        for (int p = 1; p <= n && li < libresOrdenadas.Count; p++)
+            if (puestos[p] == null) puestos[p] = libresOrdenadas[li++];
+
+        var now = DateTime.UtcNow;
+        for (int p = 1; p <= n; p++)
+        {
+            if (puestos[p] == null) continue;
+            puestos[p]!.OrderInRoute = p;
+            puestos[p]!.UpdatedAt = now;
+        }
+        await _db.SaveChangesAsync();
+        return Ok(new { total = n, porGoogle });
+    }
+
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
