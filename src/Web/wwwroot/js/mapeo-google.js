@@ -113,12 +113,21 @@
               `<path d="M5.8 8.2 L8.6 11 L14 5.4" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`
             : '';
 
+        // Cartelito "OJO, calle no asfaltada" abajo a la izquierda del pin: para estar atentos
+        // en ese envío sin abrir el globito. Marrón = tierra · gris piedra = empedrado.
+        // Lo prende el pase de fondo que consulta el tipo de calle (first.surface).
+        const surf = first.surface;
+        const surfaceBadge = (surf === 'tierra' || surf === 'empedrado')
+            ? `<circle cx="10" cy="30" r="8.5" fill="${surf === 'tierra' ? '#b45309' : '#57534e'}" stroke="#ffffff" stroke-width="2"/>` +
+              `<text x="10" y="34" text-anchor="middle" font-size="12" font-weight="900" fill="#ffffff" font-family="Inter,Arial,sans-serif">!</text>`
+            : '';
+
         return `<svg xmlns="http://www.w3.org/2000/svg" width="${PIN_VB_W}" height="${PIN_VB_H}" viewBox="0 0 ${PIN_VB_W} ${PIN_VB_H}">` +
             `<defs><filter id="sh" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-opacity="0.4"/></filter></defs>` +
             `${ring}` +
             `<path d="${headPath}" fill="${body}" stroke="#ffffff" stroke-width="2" filter="url(#sh)"/>` +
             `<text x="${PIN_HEAD_CX}" y="${labelY + fs * 0.35}" text-anchor="middle" font-size="${fs}" font-weight="800" fill="${txt}" font-family="Inter,Arial,sans-serif">${label}</text>` +
-            `${badge}${check}</svg>`;
+            `${badge}${check}${surfaceBadge}</svg>`;
     }
 
     // Arma el icono para Google Maps a partir del SVG. dispH = alto deseado en px;
@@ -183,7 +192,9 @@
                 .then(meta => {
                     if (myId !== svSeq) return;
                     if (!meta || meta.status !== 'OK') return;
-                    const imgUrl = 'https://maps.googleapis.com/maps/api/streetview?size=280x130&location='
+                    // Pedimos la foto al DOBLE de tamaño (600x340) y la mostramos a ~150px de alto:
+                    // al bajarla queda mucho más nítida que antes (que se veía borrosa al agrandarla).
+                    const imgUrl = 'https://maps.googleapis.com/maps/api/streetview?size=600x340&location='
                         + loc + '&fov=80&source=outdoor&key=' + encodeURIComponent(browserKey);
                     const panoUrl = 'https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=' + loc;
                     slot.thumb = '<a href="' + panoUrl + '" target="_blank" rel="noopener" '
@@ -191,7 +202,7 @@
                         + 'style="display:block;margin:0 0 8px;border-radius:8px;overflow:hidden;'
                         + 'border:1px solid #e5e7eb;line-height:0;">'
                         + '<img src="' + imgUrl + '" alt="Vista de la calle en el domicilio" '
-                        + 'style="width:100%;height:130px;object-fit:cover;display:block;"/></a>';
+                        + 'style="width:100%;height:150px;object-fit:cover;display:block;"/></a>';
                     render();
                 })
                 .catch(function () { });
@@ -230,6 +241,49 @@ window.mapeoFlex = (function () {
     let routeLines = [];          // líneas de ruta dibujadas (una por repartidor)
     let trafficLayer = null;      // capa de tráfico de Google (rojo/amarillo/verde en las calles)
     let lastFitStops = -1; // cuántas paradas (sin contar el punto de partida) había en el último auto-encuadre
+
+    // ── Cartelito de "calle no asfaltada" en los pines (tierra/empedrado) ──
+    // Al dibujar los pines lanzamos un pase de fondo que le pregunta al servidor el tipo de
+    // calle de cada domicilio; cuando es tierra o empedrado, le agregamos el cartelito ! al pin.
+    // Así el usuario ve DE UN VISTAZO cuáles envíos van por calle no asfaltada, sin abrir el globito.
+    const surfaceMem = {};        // "lat,lng" -> tipo (memoria de la sesión, para no repreguntar)
+    let surfaceQueue = [];        // pines pendientes de consultar { marker, group, loc, ver }
+    let surfaceActive = 0;        // consultas en vuelo (limitamos cuántas a la vez)
+    let markersVersion = 0;       // sube en cada renderMarkers: descarta pines de un dibujo viejo
+    const SURFACE_MAX_PARALELO = 4;
+
+    // Le pone (o saca) el cartelito al pin según el tipo de calle que llegó.
+    function applySurfaceBadge(job, tipo) {
+        if (job.ver !== markersVersion) return; // se redibujó el mapa: este pin ya no existe
+        if (tipo !== 'tierra' && tipo !== 'empedrado') return;
+        job.group.forEach(g => { g.surface = tipo; });
+        try { job.marker.setIcon(H.markerIcon(H.markerSvg(job.group), 50)); } catch (e) {}
+    }
+
+    // Procesa la cola de consultas de tipo de calle respetando el límite de paralelo.
+    function pumpSurface() {
+        while (surfaceActive < SURFACE_MAX_PARALELO && surfaceQueue.length) {
+            const job = surfaceQueue.shift();
+            if (job.ver !== markersVersion) continue; // ya viejo
+            // Si ya lo sabemos de esta sesión, aplicamos sin volver a pedir.
+            if (Object.prototype.hasOwnProperty.call(surfaceMem, job.loc)) {
+                applySurfaceBadge(job, surfaceMem[job.loc]);
+                continue;
+            }
+            surfaceActive++;
+            const parts = job.loc.split(',');
+            fetch('/api/mapeo/stops/surface?lat=' + encodeURIComponent(parts[0]) + '&lng=' + encodeURIComponent(parts[1]),
+                { credentials: 'same-origin' })
+                .then(r => r.ok ? r.json() : null)
+                .then(s => {
+                    const t = (s && s.tipo) ? s.tipo : 'no_seguro';
+                    surfaceMem[job.loc] = t;
+                    applySurfaceBadge(job, t);
+                })
+                .catch(function () { })
+                .finally(function () { surfaceActive--; pumpSurface(); });
+        }
+    }
     // "Ver dirección al tocar" (geocodificación inversa): cuando está encendido, un click en el
     // mapa muestra la calle+número más cercanos. Es un modo que se prende/apaga desde el buscador.
     let reverseGeoMode = false;
@@ -426,6 +480,10 @@ window.mapeoFlex = (function () {
             markers = [];
             this.clearRoutes(); // las líneas viejas se borran; se redibujan al optimizar
 
+            // Nuevo dibujo: descartamos las consultas de tipo de calle del dibujo anterior.
+            markersVersion++;
+            surfaceQueue = [];
+
             const groups = new Map();
             for (const it of items) {
                 if (it.lat == null || it.lng == null) continue;
@@ -495,7 +553,19 @@ window.mapeoFlex = (function () {
                 bounds.extend(pos);
                 any = true;
                 if (!esArrastrable) realStops++;
+
+                // Encolamos este domicilio único para consultar su tipo de calle en el pase de fondo.
+                if (conStreetView && first.lat != null && first.lng != null) {
+                    surfaceQueue.push({
+                        marker: marker, group: group,
+                        loc: (+first.lat).toFixed(6) + ',' + (+first.lng).toFixed(6),
+                        ver: markersVersion
+                    });
+                }
             }
+
+            // Arranca el pase de fondo que le pone el cartelito a los pines de tierra/empedrado.
+            pumpSurface();
 
             // Encuadre inteligente:
             //  - Sin paradas: mostramos TODO el AMBA (aunque haya punto de partida).
