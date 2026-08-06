@@ -72,9 +72,16 @@ public class MetaWhatsAppService
         }
         else if (!yaInternacional)
         {
-            // número LOCAL argentino sin país (ej "1159945852" o "0111559945852"): sacamos
-            // ceros de discado nacional al inicio y le anteponemos "549".
-            digits = "549" + digits.TrimStart('0');
+            // número LOCAL argentino sin país: sacamos ceros de discado nacional al inicio.
+            digits = digits.TrimStart('0');
+            // 2026-08-06 (fix chat duplicado): si ya trae el "9" de celular pero le falta el "54"
+            // (ej "91122652222" = 9 + área + número, 11 díg), solo anteponemos "54" para no duplicar el 9.
+            // India (+91) no cae acá porque siempre llega con "+", así que yaInternacional lo saca antes.
+            if (digits.StartsWith("9") && digits.Length == 11)
+                digits = "54" + digits;
+            else
+                // local sin el 9 (ej "1159945852", 10 díg) → "549".
+                digits = "549" + digits;
         }
         // else: internacional NO argentino (ej +34 España, +55 Brasil) → se deja con su código de país.
         return $"whatsapp:+{digits}";

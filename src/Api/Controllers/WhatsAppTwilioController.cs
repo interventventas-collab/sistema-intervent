@@ -361,10 +361,14 @@ public class WhatsAppTwilioController : ControllerBase
         if (!_meta.IsConfigured)
             return StatusCode(503, new { error = "WhatsApp Cloud (Meta) no está configurado" });
 
-        var digits = MetaWhatsAppService.NormalizeTo(req.Numero);
+        // 2026-08-06: canonicalizamos el número ANTES de guardarlo y de mandarlo. Antes usábamos
+        // NormalizeTo (solo dígitos) y guardábamos crudo, así un "9 11 2265-2222" (sin el 54) quedaba
+        // como "+91122652222", pero la respuesta del cliente llega de Meta como "+5491122652222" → se
+        // abrían DOS chats. ToInboxWhatsApp le pega el 54 correcto para que caigan en el mismo chat.
+        var numeroStd = MetaWhatsAppService.ToInboxWhatsApp(req.Numero);
+        var digits = MetaWhatsAppService.NormalizeTo(numeroStd);
         if (digits.Length < 10)
             return BadRequest(new { error = "El número no parece válido. Poné el número completo con código de país (ej: 5491122525458)." });
-        var numeroStd = "whatsapp:+" + digits;
 
         try
         {
