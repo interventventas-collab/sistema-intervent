@@ -6,6 +6,9 @@
    Si el cliente tiene TieneMiniImpresora=true, aparece tambien un boton "🖨️" para imprimir
    el ticket rapido. Y un checkbox para seleccion multiple (imprimir varios juntos). *@
 
+@inject ApiClient Api
+@inject ToastService ToastService
+
 <div class="prep-card @(SelectedForPrint ? "prep-card-selected" : "")">
     @{
         var todoTildado = tildados.Count >= Venta.Items.Count && Venta.Items.Count > 0;
@@ -191,22 +194,46 @@
                         <div class="prep-item-cant"><span class="x">×</span> @it.Cantidad</div>
                         @* 2026-08-05: la mini foto del producto (de la publicación MeLi) arranca TAPADA.
                            Como muchas están mal, el armador ve un ojito 👁️ y recién si lo toca aparece.
-                           Una vez visible, tocar la foto la abre en grande (igual que antes). *@
+                           Una vez visible, tocar la foto la abre en grande, y aparecen los botones para
+                           APROBARLA ✅ o REPORTARLA como errónea ❌ (se guarda por producto, lo ven todos). *@
                         @if (!string.IsNullOrEmpty(it.Thumbnail))
                         {
                             @if (fotosVisibles.Contains(it.Id))
                             {
-                                <img src="@FixHttps(it.Thumbnail)" alt="@it.ProductoNombre"
-                                     @onclick="() => AbrirFoto(it.Thumbnail, it.ProductoNombre)"
-                                     title="Tocá para verla más grande"
-                                     style="width:42px; height:42px; object-fit:cover; border-radius:6px; border:1px solid #e5e7eb; cursor:pointer; flex-shrink:0; background:#fff;" />
+                                <div style="display:flex; flex-direction:column; align-items:center; gap:3px; flex-shrink:0;">
+                                    <img src="@FixHttps(it.Thumbnail)" alt="@it.ProductoNombre"
+                                         @onclick="() => AbrirFoto(it.Thumbnail, it.ProductoNombre)"
+                                         title="Tocá para verla más grande"
+                                         style="width:42px; height:42px; object-fit:cover; border-radius:6px; cursor:pointer; background:#fff; border:2px solid @(it.FotoEstado == "APROBADA" ? "#22c55e" : it.FotoEstado == "REPORTADA" ? "#ef4444" : "#e5e7eb");" />
+                                    @if (it.ProductoId is not null)
+                                    {
+                                        <div style="display:flex; gap:2px;">
+                                            <button type="button" @onclick='() => MarcarFoto(it, "APROBADA")' disabled="@marcandoFoto"
+                                                    title="La foto está bien (aprobar)"
+                                                    style="border:none; border-radius:4px; width:20px; height:18px; font-size:0.7rem; cursor:pointer; padding:0; line-height:1; background:@(it.FotoEstado == "APROBADA" ? "#22c55e" : "#f1f5f9");">✅</button>
+                                            <button type="button" @onclick='() => MarcarFoto(it, "REPORTADA")' disabled="@marcandoFoto"
+                                                    title="La foto está mal (reportar errónea)"
+                                                    style="border:none; border-radius:4px; width:20px; height:18px; font-size:0.7rem; cursor:pointer; padding:0; line-height:1; background:@(it.FotoEstado == "REPORTADA" ? "#ef4444" : "#f1f5f9");">❌</button>
+                                        </div>
+                                    }
+                                    @if (it.FotoEstado == "APROBADA")
+                                    {
+                                        <span style="font-size:0.58rem; color:#16a34a; font-weight:700; line-height:1;">✔ OK</span>
+                                    }
+                                    else if (it.FotoEstado == "REPORTADA")
+                                    {
+                                        <span style="font-size:0.58rem; color:#dc2626; font-weight:700; line-height:1;">✖ mala</span>
+                                    }
+                                </div>
                             }
                             else
                             {
+                                @* Tapada: el ojito. Si la foto ya fue reportada/aprobada, se tiñe para
+                                   avisar de un vistazo sin tener que abrirla. *@
                                 <button type="button" @onclick="() => ToggleFoto(it.Id)"
-                                        title="Ver foto del producto"
-                                        style="width:42px; height:42px; border-radius:6px; border:1px dashed #cbd5e1; background:#f8fafc; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:1.15rem; color:#64748b; padding:0;">
-                                    👁️
+                                        title="@(it.FotoEstado == "REPORTADA" ? "OJO: foto marcada como errónea. Tocá para verla." : it.FotoEstado == "APROBADA" ? "Foto aprobada. Tocá para verla." : "Ver foto del producto")"
+                                        style="width:42px; height:42px; border-radius:6px; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:1.15rem; padding:0; border:1px dashed @(it.FotoEstado == "APROBADA" ? "#86efac" : it.FotoEstado == "REPORTADA" ? "#fca5a5" : "#cbd5e1"); background:@(it.FotoEstado == "APROBADA" ? "#f0fdf4" : it.FotoEstado == "REPORTADA" ? "#fef2f2" : "#f8fafc"); color:#64748b;">
+                                    @(it.FotoEstado == "REPORTADA" ? "❌" : it.FotoEstado == "APROBADA" ? "👁️" : "👁️")
                                 </button>
                             }
                         }
@@ -305,6 +332,37 @@
     private void ToggleFoto(int itemId)
     {
         if (!fotosVisibles.Add(itemId)) fotosVisibles.Remove(itemId);
+    }
+
+    // 2026-08-05: aprobar ✅ / reportar ❌ la foto de un producto (a nivel sistema, lo ven todos).
+    // Toggle: si ya estaba en ese estado, se limpia. Se aplica a todos los renglones del mismo
+    // producto en esta card. El auto-refresh (cada 10s) sincroniza las demás tarjetas.
+    private bool marcandoFoto;
+    private async Task MarcarFoto(CafePreparacionItemDto it, string estadoDeseado)
+    {
+        if (it.ProductoId is null)
+        {
+            ToastService.Warning("Este renglón no está linkeado a un producto del catálogo, no se puede marcar.");
+            return;
+        }
+        if (marcandoFoto) return;
+        marcandoFoto = true;
+        var nuevo = (it.FotoEstado == estadoDeseado) ? "" : estadoDeseado; // toggle
+        var res = await Api.MarcarFotoProductoAsync(it.ProductoId.Value, nuevo);
+        marcandoFoto = false;
+        if (res is null)
+        {
+            ToastService.Error("No se pudo guardar la marca. Probá de nuevo.");
+            return;
+        }
+        var estadoFinal = string.IsNullOrEmpty(res.Estado) ? null : res.Estado;
+        foreach (var x in Venta.Items.Where(x => x.ProductoId == it.ProductoId))
+        {
+            x.FotoEstado = estadoFinal;
+            x.FotoEstadoPor = res.Usuario;
+        }
+        ToastService.Success(estadoFinal == null ? "Marca quitada"
+            : estadoFinal == "APROBADA" ? "Foto aprobada ✅" : "Foto reportada como errónea ❌");
     }
 
     // 2026-08-03: foto del producto abierta en grande (lightbox). Null = cerrada.
