@@ -19,10 +19,11 @@ public class MapeoStopsController : ControllerBase
     private readonly VisitaMapeoService _visitaMapeo;
     private readonly GoogleMapsLinkResolverService _mapsResolver;
     private readonly MeliShipmentService _shipmentSvc;
+    private readonly MeliOrderService _orderSvc;
     private readonly MapeoRutaPdfService _rutaPdf;
     private readonly ILogger<MapeoStopsController> _logger;
-    public MapeoStopsController(AppDbContext db, GoogleRoutesService routes, VentaMapeoService ventaMapeo, AlqMapeoService alqMapeo, VisitaMapeoService visitaMapeo, GoogleMapsLinkResolverService mapsResolver, MeliShipmentService shipmentSvc, MapeoRutaPdfService rutaPdf, ILogger<MapeoStopsController> logger)
-    { _db = db; _routes = routes; _ventaMapeo = ventaMapeo; _alqMapeo = alqMapeo; _visitaMapeo = visitaMapeo; _mapsResolver = mapsResolver; _shipmentSvc = shipmentSvc; _rutaPdf = rutaPdf; _logger = logger; }
+    public MapeoStopsController(AppDbContext db, GoogleRoutesService routes, VentaMapeoService ventaMapeo, AlqMapeoService alqMapeo, VisitaMapeoService visitaMapeo, GoogleMapsLinkResolverService mapsResolver, MeliShipmentService shipmentSvc, MeliOrderService orderSvc, MapeoRutaPdfService rutaPdf, ILogger<MapeoStopsController> logger)
+    { _db = db; _routes = routes; _ventaMapeo = ventaMapeo; _alqMapeo = alqMapeo; _visitaMapeo = visitaMapeo; _mapsResolver = mapsResolver; _shipmentSvc = shipmentSvc; _orderSvc = orderSvc; _rutaPdf = rutaPdf; _logger = logger; }
 
     public record StopDto(int Id, string Origin, string? OriginRefId, string? Alias, string Direccion,
         decimal Latitude, decimal Longitude, string? ContactName, string? Telefono, string? Notas,
@@ -85,6 +86,80 @@ public class MapeoStopsController : ControllerBase
             }
             return dto;
         }));
+    }
+
+    /// <summary>Para el globito del mapa de una parada Flex/ME1: dado el nº de ENVÍO de MeLi
+    /// (MeliShipmentId, que es lo que la parada guarda en OriginRefId), devuelve QUÉ compró el
+    /// cliente (productos de la venta, desde la base local — instantáneo) y los MENSAJES de la
+    /// venta que escribió el comprador (EN VIVO desde MeLi, best-effort igual que en Preparación).
+    /// Se pide recién al abrir el globito para no frenar el mapa. Si no encuentra nada, devuelve
+    /// listas vacías y el globito queda como estaba.</summary>
+    [HttpGet("venta-info")]
+    public async Task<IActionResult> VentaInfo([FromQuery] long shipmentId)
+    {
+        if (shipmentId <= 0) return Ok(new { ok = false });
+
+        // Productos de la venta = líneas de MeliOrder del mismo envío (base LOCAL, sin llamar a MeLi).
+        var productos = await _db.MeliOrders.Where(o => o.ShippingId == shipmentId).ToListAsync();
+        if (productos.Count == 0)
+        {
+            // Fallback: el número matchea un envío conocido (MeliShipments) → su orden → hermanos del mismo envío.
+            var sh = await _db.MeliShipments.FirstOrDefaultAsync(s => s.MeliShipmentId == shipmentId);
+            if (sh?.MeliOrderId is not null)
+            {
+                var ord = await _db.MeliOrders.FirstOrDefaultAsync(o => o.MeliOrderId == sh.MeliOrderId);
+                if (ord?.ShippingId is not null)
+                    productos = await _db.MeliOrders.Where(o => o.ShippingId == ord.ShippingId).ToListAsync();
+                else if (ord is not null)
+                    productos = new List<MeliOrder> { ord };
+            }
+        }
+        if (productos.Count == 0)
+            return Ok(new { ok = true, productos = Array.Empty<object>(), mensajes = Array.Empty<object>() });
+
+        var primero = productos[0];
+        var buyerId = primero.BuyerId;
+
+        // SKU + fotito de la publicación (join por ItemId contra MeliItems).
+        var itemIds = productos.Select(p => p.ItemId).Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList();
+        var itemInfo = (await _db.MeliItems
+                .Where(m => itemIds.Contains(m.MeliItemId))
+                .Select(m => new { m.MeliItemId, m.Sku, m.Thumbnail })
+                .ToListAsync())
+            .GroupBy(m => m.MeliItemId)
+            .ToDictionary(g => g.Key, g => g.First());
+
+        var productosOut = productos
+            .OrderBy(p => p.ItemTitle)
+            .Select(p =>
+            {
+                itemInfo.TryGetValue(p.ItemId ?? "", out var mi);
+                var thumb = mi?.Thumbnail;
+                if (!string.IsNullOrEmpty(thumb) && thumb.StartsWith("http://"))
+                    thumb = "https://" + thumb.Substring("http://".Length);
+                return new { titulo = p.ItemTitle, cantidad = p.Quantity, sku = mi?.Sku, thumbnail = thumb };
+            }).ToList();
+
+        // MENSAJES de la venta (post-venta), EN VIVO desde MeLi. Best-effort: si MeLi no deja leer, lista vacía.
+        var mensajes = new List<object>();
+        try
+        {
+            var account = await _db.MeliAccounts.FirstOrDefaultAsync(a => a.Id == primero.MeliAccountId);
+            if (account is not null)
+            {
+                var packOrOrder = primero.PackId ?? primero.MeliOrderId;
+                var msgs = await _orderSvc.GetPackMessagesAsync(packOrOrder, account);
+                mensajes = msgs.Select(mm => (object)new
+                {
+                    de = mm.FromUserId == buyerId ? "comprador" : "vendedor",
+                    texto = mm.Text,
+                    fecha = mm.Date
+                }).ToList();
+            }
+        }
+        catch { /* best-effort: si MeLi no responde, el globito muestra solo lo que compró */ }
+
+        return Ok(new { ok = true, productos = productosOut, mensajes });
     }
 
     public record CreateStopRequest(string Origin, string? OriginRefId, string? Alias, string Direccion,

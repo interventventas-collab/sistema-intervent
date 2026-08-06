@@ -213,6 +213,75 @@ window.mapeoFlex = (function () {
     const AMBA_CENTER = { lat: -34.72, lng: -58.52 };
     const AMBA_ZOOM = 10;
 
+    // ── "Qué compró" + "Mensajes de la venta" dentro del globito (solo paradas Flex/ME1) ──
+    // El globito trae un cajón vacío <div class="mapeo-vinfo" data-ship="{nºenvío}">. Al abrirse el
+    // globito (evento domready) pedimos /api/mapeo/stops/venta-info y lo llenamos. Guardamos el
+    // resultado por envío (vinfoStore) para no volver a pedirlo si el globito se re-dibuja (p. ej.
+    // cuando entra la fotito de Street View, que re-setea el contenido y vuelve a disparar domready).
+    const vinfoStore = {};                 // ship -> { status:'loading'|'done', html }
+    const VINFO_LOADING = "<div style='color:#94a3b8;font-size:0.72rem;margin-top:0.4rem;'>Buscando la venta…</div>";
+
+    function buildVentaHtml(data) {
+        if (!data || !data.ok) return '';
+        let html = '';
+        const prods = data.productos || [];
+        if (prods.length) {
+            html += "<div style='margin-top:0.45rem;border-top:1px solid #e5e7eb;padding-top:0.4rem;'>";
+            html += "<div style='font-weight:700;font-size:0.72rem;color:#334155;margin-bottom:0.3rem;'>🛒 Qué compró</div>";
+            for (const p of prods) {
+                const img = p.thumbnail
+                    ? "<img src='" + H.escapeXml(p.thumbnail) + "' style='width:34px;height:34px;object-fit:cover;border-radius:5px;flex:0 0 auto;border:1px solid #e5e7eb;'/>"
+                    : "";
+                const cant = p.cantidad ? "<span style='font-weight:700;'>×" + p.cantidad + "</span> " : "";
+                html += "<div style='display:flex;gap:0.4rem;align-items:center;margin-bottom:0.3rem;'>" + img
+                     + "<span style='font-size:0.72rem;line-height:1.25;'>" + cant + H.escapeXml(p.titulo || '') + "</span></div>";
+            }
+            html += "</div>";
+        }
+        const msgs = data.mensajes || [];
+        if (msgs.length) {
+            html += "<div style='margin-top:0.45rem;border-top:1px solid #e5e7eb;padding-top:0.4rem;'>";
+            html += "<div style='font-weight:700;font-size:0.72rem;color:#334155;margin-bottom:0.3rem;'>📩 Mensajes de la venta</div>";
+            for (const m of msgs) {
+                const esComp = m.de === 'comprador';
+                const quien = esComp ? '🛒 Comprador' : '🏪 Vos';
+                const bg = esComp ? '#eff6ff' : '#f0fdf4';
+                html += "<div style='background:" + bg + ";border-radius:6px;padding:0.3rem 0.45rem;margin-bottom:0.25rem;font-size:0.72rem;line-height:1.3;'>"
+                     + "<span style='font-weight:700;'>" + quien + ":</span> " + H.escapeXml(m.texto || '') + "</div>";
+            }
+            html += "</div>";
+        }
+        return html;
+    }
+
+    // Busca todos los cajones .mapeo-vinfo del globito abierto y los llena (con caché por envío).
+    function fillVentaInfo() {
+        const nodes = document.querySelectorAll('.mapeo-vinfo[data-ship]');
+        nodes.forEach(node => {
+            const ship = node.getAttribute('data-ship');
+            if (!ship || ship === '0') return;
+            const cached = vinfoStore[ship];
+            if (cached && cached.status === 'done') { node.innerHTML = cached.html; return; }
+            if (cached && cached.status === 'loading') { node.innerHTML = VINFO_LOADING; return; }
+            vinfoStore[ship] = { status: 'loading', html: '' };
+            node.innerHTML = VINFO_LOADING;
+            fetch('/api/mapeo/stops/venta-info?shipmentId=' + encodeURIComponent(ship), { credentials: 'same-origin' })
+                .then(r => r.ok ? r.json() : null)
+                .then(data => {
+                    const html = buildVentaHtml(data);
+                    vinfoStore[ship] = { status: 'done', html };
+                    // El globito puede haberse re-dibujado mientras tanto: buscamos el cajón actual.
+                    const n = document.querySelector(".mapeo-vinfo[data-ship='" + ship + "']");
+                    if (n) n.innerHTML = html;
+                })
+                .catch(() => {
+                    vinfoStore[ship] = { status: 'done', html: '' };
+                    const n = document.querySelector(".mapeo-vinfo[data-ship='" + ship + "']");
+                    if (n) n.innerHTML = '';
+                });
+        });
+    }
+
     function loadZones() {
         if (!map) return;
         let zi = 0;
@@ -297,6 +366,9 @@ window.mapeoFlex = (function () {
             });
             infoWindow = new google.maps.InfoWindow();
             infoWindow.addListener('closeclick', () => { infoOpen = false; });
+            // Cada vez que el globito muestra su contenido (incluye el re-dibujo por la fotito de
+            // Street View), llenamos el cajón "qué compró + mensajes" de las paradas Flex/ME1.
+            infoWindow.addListener('domready', () => fillVentaInfo());
             markers = [];
             lastFitStops = -1;
             // Capa de tráfico: arranca APAGADA (como el Google Maps original). Se prende/apaga
