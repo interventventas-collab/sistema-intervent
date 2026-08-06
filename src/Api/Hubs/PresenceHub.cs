@@ -18,6 +18,10 @@ namespace Api.Hubs;
 [Authorize]
 public class PresenceHub : Hub
 {
+    // Grupo global: TODOS los agentes conectados. Sirve para difundir el "panorama" de presencia de
+    // todas las conversaciones (para pintar el avatarcito en cada fila de la lista, no solo en la abierta).
+    private const string GrupoTodos = "presence-all";
+
     private readonly PresenceTracker _tracker;
     public PresenceHub(PresenceTracker tracker) => _tracker = tracker;
 
@@ -27,6 +31,12 @@ public class PresenceHub : Hub
     private string UserName => Context.User?.FindFirst(ClaimTypes.Name)?.Value ?? "?";
 
     private static string Grupo(string convId) => $"conv-{convId}";
+
+    public override async Task OnConnectedAsync()
+    {
+        await Groups.AddToGroupAsync(Context.ConnectionId, GrupoTodos);
+        await base.OnConnectedAsync();
+    }
 
     public async Task JoinConversation(string convId)
     {
@@ -81,6 +91,8 @@ public class PresenceHub : Hub
         var viewers = _tracker.Viewers(convId)
             .Select(v => new { userId = v.UserId, userName = v.UserName, isTyping = v.IsTyping })
             .ToList();
-        await Clients.Group(Grupo(convId)).SendAsync("Presence", convId, viewers);
+        // Se difunde a TODOS (grupo global): así cada cliente actualiza su mapa convId→viewers y puede
+        // pintar tanto la franja del chat abierto como el avatarcito en la fila de la lista.
+        await Clients.Group(GrupoTodos).SendAsync("Presence", convId, viewers);
     }
 }

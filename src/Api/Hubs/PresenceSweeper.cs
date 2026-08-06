@@ -36,7 +36,7 @@ public class PresenceSweeper : BackgroundService
                     var viewers = _tracker.Viewers(convId)
                         .Select(v => new { userId = v.UserId, userName = v.UserName, isTyping = v.IsTyping })
                         .ToList();
-                    await _hub.Clients.Group($"conv-{convId}").SendAsync("Presence", convId, viewers, stoppingToken);
+                    await _hub.Clients.Group("presence-all").SendAsync("Presence", convId, viewers, stoppingToken);
                 }
             }
             catch (OperationCanceledException) { break; }

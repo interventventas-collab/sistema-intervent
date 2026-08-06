@@ -24,6 +24,19 @@ window.waComposer = {
                 if (!texto.trim()) return;   // cuadro vacío = no hacemos nada
                 el.value = '';               // se vacía al toque, como WhatsApp
                 dotNetRef.invokeMethodAsync('EnviarDesdeComposer', texto);
+                return;
+            }
+            // 2026-08-06: PRESENCIA — avisar "estoy escribiendo" (el .NET lo apaga solo a los 4 s).
+            // Throttle a 1 llamada cada 800 ms para no saturar el puente JS↔.NET. Ignoramos teclas
+            // que no son de "tipear" (flechas, Ctrl, Shift, etc. sueltas) para no marcar falsa actividad.
+            var ignorar = e.ctrlKey || e.metaKey || e.altKey
+                || ['Shift','Control','Alt','Meta','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown','Tab','Escape','CapsLock'].indexOf(e.key) !== -1;
+            if (!ignorar) {
+                var ahora = (window.performance && performance.now) ? performance.now() : 0;
+                if (ahora - (window.waComposer._lastTyping || 0) > 800) {
+                    window.waComposer._lastTyping = ahora;
+                    dotNetRef.invokeMethodAsync('NotifyTyping');
+                }
             }
         };
         this._handler = handler;

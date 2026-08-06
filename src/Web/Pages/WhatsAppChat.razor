@@ -7,6 +7,7 @@
 @inject Microsoft.AspNetCore.Components.NavigationManager Nav
 @inject Microsoft.JSInterop.IJSRuntime JS
 @inject Web.Services.AuthService AuthSvc
+@inject Web.Services.PresenceService Presence
 @implements IDisposable
 
 <PageTitle>WhatsApp — Chat</PageTitle>
@@ -172,6 +173,16 @@
                 @foreach (var c in conversacionesFiltradas)
                 {
                     <div class="wa-conv-item @(selectedNumero == c.Numero && selectedLinea == c.Linea ? "active" : "") @(EsPasadaAMi(c) ? "wa-conv-pasada" : "")" @onclick="() => SelectConv(c.Numero, c.Linea)">
+                        @* 2026-08-06: PRESENCIA — avatarcito(s) del otro agente que tiene abierta esta fila. *@
+                        @if (OtrosViewers(ConvIdDe(c.Numero, c.Linea)) is { Count: > 0 } _cvOtros)
+                        {
+                            <div class="wa-conv-presence" title="@(string.Join(", ", _cvOtros.Select(v => v.UserName)) + " está viendo este chat")">
+                                @foreach (var v in _cvOtros.Take(3))
+                                {
+                                    <span class="wa-conv-presence-av @(v.IsTyping ? "typing" : "")">@(v.UserName.Length > 0 ? v.UserName.Substring(0, 1).ToUpper() : "?")</span>
+                                }
+                            </div>
+                        }
                         <div class="wa-avatar-col">
                             <div class="wa-avatar-circle">
                                 <div class="wa-avatar" style="@(AvatarColor(c))">@AvatarLetra(c)</div>
@@ -996,6 +1007,28 @@
                         {
                             <span class="wa-firma-hint wa-firma-falta">👈 elegí quién responde</span>
                         }
+                    </div>
+                }
+                @* 2026-08-06: PRESENCIA — franja discreta: quién más está viendo/escribiendo este chat. *@
+                @if (OtrosViewers(ConvIdActual()) is { Count: > 0 } _otros)
+                {
+                    <div class="wa-presencia">
+                        <span class="wa-presencia-dot"></span>
+                        @if (_otros.Where(v => v.IsTyping).ToList() is { Count: > 0 } _tip)
+                        {
+                            <span><b>@string.Join(", ", _tip.Select(v => v.UserName))</b> está@(_tip.Count > 1 ? "n" : "") escribiendo…</span>
+                        }
+                        else
+                        {
+                            <span><b>@string.Join(", ", _otros.Select(v => v.UserName))</b> está@(_otros.Count > 1 ? "n" : "") viendo esta conversación</span>
+                        }
+                    </div>
+                }
+                @* Aviso ÁMBAR: el otro está escribiendo Y yo también → alerta (solo visual, no bloquea). *@
+                @if (yoTipeando && OtrosViewers(ConvIdActual()).Where(v => v.IsTyping).ToList() is { Count: > 0 } _tipA)
+                {
+                    <div class="wa-presencia-alerta">
+                        ⚠️ <b>@string.Join(", ", _tipA.Select(v => v.UserName))</b> también está@(_tipA.Count > 1 ? "n" : "") escribiendo
                     </div>
                 }
                 @* 2026-08-05: BANDEJA DE PENDIENTES — adjuntos esperando salir. Se envían todos juntos
@@ -2108,6 +2141,17 @@
     .wa-pending-name { font-size: 0.8rem; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
     .wa-pending-x { background: #fee2e2; border: none; color: #b91c1c; font-size: 1.1rem; line-height: 1; width: 22px; height: 22px; border-radius: 50%; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
     .wa-pending-x:hover { background: #ef4444; color: #fff; }
+    /* 2026-08-06: PRESENCIA en vivo — franja "está viendo/escribiendo" arriba del cajón */
+    .wa-presencia { display: flex; align-items: center; gap: 0.45rem; margin: 0.35rem 1rem 0; padding: 0.3rem 0.6rem; font-size: 0.8rem; color: #4b5563; background: #f8fafc; border-radius: 8px; }
+    .wa-presencia-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 2px rgba(34,197,94,0.25); flex-shrink: 0; animation: waPresPulse 1.6s ease-in-out infinite; }
+    @@keyframes waPresPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    /* Aviso ámbar: los dos escribiendo a la vez (solo visual, no bloquea) */
+    .wa-presencia-alerta { display: flex; align-items: center; gap: 0.4rem; margin: 0.35rem 1rem 0; padding: 0.4rem 0.7rem; font-size: 0.82rem; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; }
+    /* Avatarcito de presencia sobre la fila de la lista */
+    .wa-conv-item { position: relative; }
+    .wa-conv-presence { position: absolute; top: 4px; right: 6px; display: flex; gap: 2px; z-index: 2; }
+    .wa-conv-presence-av { width: 18px; height: 18px; border-radius: 50%; background: #2563eb; color: #fff; font-size: 0.62rem; font-weight: 700; display: flex; align-items: center; justify-content: center; border: 1.5px solid #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+    .wa-conv-presence-av.typing { background: #d97706; animation: waPresPulse 1.2s ease-in-out infinite; }
     .wa-emoji-pick { background: transparent; border: none; padding: 0.2rem 0.35rem; font-size: 1.1rem; cursor: pointer; border-radius: 50%; transition: background 0.1s, transform 0.1s; }
     .wa-emoji-pick:hover { background: #f3f4f6; transform: scale(1.2); }
     .wa-reacciones { display: flex; gap: 0.2rem; margin-top: 0.1rem; flex-wrap: wrap; }
@@ -2852,6 +2896,7 @@
         // ¿El que entró es un usuario SOLO de Depósito? (mismo criterio que el Dashboard)
         var user = await AuthSvc.GetUserAsync();
         var perms = user?.Permissions ?? new();
+        miUsuario = user?.Username;   // 2026-08-06: para la presencia (no mostrarme a mí mismo)
         esDeposito = perms.Contains("deposito") && !perms.Contains("cafe") && !perms.Contains("oficina");
         // 2026-08-05: NO recordar el último firmante. Cada vez que se abre la pantalla arranca
         // en blanco y el que responde tiene que pinchar SÍ o SÍ su nombre antes de enviar (así
@@ -2871,6 +2916,8 @@
         // 2026-08-03: dejar listo el panel de "Nueva conversación" (se muestra cuando no hay chat abierto)
         await EnsureNvCargado();
         nvLineaPhoneId ??= LineaDefaultPhoneId();
+        // 2026-08-06: conectar la presencia en vivo ANTES de abrir el chat inicial (así el "join" pega).
+        await IniciarPresencia();
         if (!string.IsNullOrWhiteSpace(NumeroInicial))
         {
             // Elegimos el hilo por número + línea. Si esa combinación exacta no está (típico en
@@ -2914,6 +2961,115 @@
             catch { /* si el JS no cargó, la ventana igual se ve, solo que no se mueve */ }
         }
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════════════════
+    //  2026-08-06: PRESENCIA en vivo (SignalR) — quién mira/escribe cada chat, para no pisarse.
+    //  Alcance ACOTADO: NO toca envío, ni asignación, ni estados. Todo best-effort: si el hub no
+    //  conecta, la pantalla anda igual (simplemente no se ven los indicadores).
+    // ═══════════════════════════════════════════════════════════════════════════════════════
+    string? miUsuario;   // username del logueado (para NO mostrarme a mí mismo)
+    Dictionary<string, List<Web.Services.PresenceService.Viewer>> presenceByConv = new();
+    Dictionary<string, (string userName, DateTime atUtc)> ultimoEnvioOtro = new();  // cierre de carrera
+    System.Threading.Timer? heartbeatTimer;
+    System.Threading.Timer? typingOffTimer;
+    bool yoTipeando = false;
+    string? _convUnida;   // conv que tengo "join"eada ahora (para hacer leave al cambiar)
+
+    string? ConvIdActual() => selectedNumero == null ? null : ConvIdDe(selectedNumero, selectedLinea);
+    static string ConvIdDe(string numero, string? linea) => $"{numero}|{linea}";
+
+    async Task IniciarPresencia()
+    {
+        Presence.OnPresence += PresenciaCambio;
+        Presence.OnMessageSent += OtroEnvioMensaje;
+        await Presence.EnsureStartedAsync();
+        // Latido cada 15 s para no expirar (el server saca a los 30 s sin latido).
+        heartbeatTimer = new System.Threading.Timer(async _ =>
+        {
+            var cid = ConvIdActual();
+            if (cid != null) await Presence.HeartbeatAsync(cid);
+        }, null, 15_000, 15_000);
+    }
+
+    void PresenciaCambio(string convId, List<Web.Services.PresenceService.Viewer> viewers)
+    {
+        presenceByConv[convId] = viewers;
+        InvokeAsync(StateHasChanged);
+    }
+
+    void OtroEnvioMensaje(string convId, int userId, string userName, DateTime atUtc)
+    {
+        if (userName == miUsuario) return;
+        ultimoEnvioOtro[convId] = (userName, atUtc);
+        InvokeAsync(StateHasChanged);
+    }
+
+    // Viewers de una conv que NO soy yo (nunca me muestro a mí mismo).
+    List<Web.Services.PresenceService.Viewer> OtrosViewers(string? convId)
+        => convId != null && presenceByConv.TryGetValue(convId, out var vs)
+            ? vs.Where(v => v.UserName != miUsuario).ToList()
+            : new();
+
+    // Cambiar de conversación: salir de la anterior, entrar a la nueva.
+    async Task CambiarPresenciaConv(string? nuevoConvId)
+    {
+        ApagarTyping();
+        if (_convUnida != null && _convUnida != nuevoConvId)
+            await Presence.LeaveAsync(_convUnida);
+        _convUnida = nuevoConvId;
+        if (nuevoConvId != null) await Presence.JoinAsync(nuevoConvId);
+    }
+
+    // Lo llama wa-composer.js en cada tecla dentro del cuadro. Prende "escribiendo…" y programa el
+    // apagado a los 4 s sin actividad (como pide el spec).
+    [Microsoft.JSInterop.JSInvokable]
+    public async Task NotifyTyping()
+    {
+        var cid = ConvIdActual();
+        if (cid == null) return;
+        if (!yoTipeando)
+        {
+            yoTipeando = true;
+            await Presence.TypingAsync(cid, true);
+            StateHasChanged();   // por si hay que mostrar el aviso ámbar
+        }
+        typingOffTimer?.Dispose();
+        typingOffTimer = new System.Threading.Timer(async _ => await InvokeAsync(async () =>
+        {
+            yoTipeando = false;
+            var c = ConvIdActual();
+            if (c != null) await Presence.TypingAsync(c, false);
+            StateHasChanged();
+        }), null, 4000, System.Threading.Timeout.Infinite);
+    }
+
+    void ApagarTyping()
+    {
+        typingOffTimer?.Dispose();
+        typingOffTimer = null;
+        if (yoTipeando)
+        {
+            yoTipeando = false;
+            if (_convUnida != null) _ = Presence.TypingAsync(_convUnida, false);
+        }
+    }
+
+    // CIERRE DE CARRERA: true = seguir enviando; false = el usuario canceló.
+    async Task<bool> ChequearCarreraAsync()
+    {
+        var cid = ConvIdActual();
+        if (cid != null && ultimoEnvioOtro.TryGetValue(cid, out var ult))
+        {
+            var seg = (DateTime.UtcNow - ult.atUtc).TotalSeconds;
+            if (seg >= 0 && seg <= 10)
+                return await JS.InvokeAsync<bool>("confirm",
+                    $"{ult.userName} respondió hace {Math.Round(seg)} s. ¿Enviás igual?");
+        }
+        return true;
+    }
+
+    // Avisar a los demás que mandé (para SU cierre de carrera). Best-effort, NO toca el envío.
+    async Task AvisarEnvie(string convId) => await Presence.NotifyMessageSentAsync(convId);
 
     // ── Mensajes del bot de bienvenida ──
     async Task AbrirTabBot()
@@ -3747,6 +3903,8 @@
         modoElegirVenta = false; mensajesSeleccionadosIds.Clear();   // 2026-08-05: salir del modo "elegir mensajes para venta"
         asignarNota = SelectedConv()?.AsignadoNota ?? "";   // 2026-08-06: precargar la nota guardada de este chat (editable)
         await LoadMensajes();
+        // 2026-08-06: presencia — salgo del chat anterior y entro al nuevo (para que se vea quién mira qué).
+        await CambiarPresenciaConv(ConvIdActual());
         // 2026-08-06: poner el cursor solo en el cuadro de escribir (como WhatsApp Web). Solo en compu.
         try { await JS.InvokeVoidAsync("waComposer.focus"); } catch { }
         await BuscarSugerenciaCliente();
@@ -3766,6 +3924,8 @@
         selectedLinea = null;
         sugerenciaCliente = null;
         mostrarFichaCliente = false; fichaCliente = null; previewFacturaId = null;
+        // 2026-08-06: presencia — salir del chat que estaba mirando.
+        _ = CambiarPresenciaConv(null);
     }
 
     // 2026-07-23: para saber si entraron mensajes nuevos y bajar el scroll solo en ese caso
@@ -3820,6 +3980,8 @@
     async Task EnviarMensaje()
     {
         if (selectedNumero == null || sending) return;
+        // 2026-08-06: cierre de carrera — si otro agente respondió recién, pedir confirmación (no bloquea).
+        if (!await ChequearCarreraAsync()) return;
         // 2026-08-05: si hay adjuntos en la bandeja, sale TODO junto (el texto va de pie del primero).
         if (pendientes.Count > 0) { await EnviarPendientes(composerText); return; }
         if (string.IsNullOrWhiteSpace(composerText)) return;
@@ -3842,6 +4004,8 @@
             StateHasChanged();
             return;
         }
+        // 2026-08-06: cierre de carrera. Si el usuario cancela, le devolvemos el texto al cuadro (el JS ya lo vació).
+        if (!await ChequearCarreraAsync()) { composerText = texto; StateHasChanged(); return; }
         // 2026-08-05: si hay adjuntos en la bandeja, Enter manda TODO junto (texto = pie del primero).
         if (pendientes.Count > 0) { composerText = ""; await EnviarPendientes(texto); return; }
         composerText = "";
@@ -3893,6 +4057,8 @@
 
         if (ok)
         {
+            // 2026-08-06: avisar a los demás agentes que respondí (para su cierre de carrera).
+            await AvisarEnvie(ConvIdDe(numero, linea));
             // Solo recargo si seguís en el mismo chat (por si cambiaste mientras mandaba).
             if (selectedNumero == numero && selectedLinea == linea) await LoadMensajes();
             await LoadConversaciones(silent: true);
@@ -4055,6 +4221,8 @@
         else
         {
             Toast.Success("Enviado 📎");
+            // 2026-08-06: avisar a los demás agentes (cierre de carrera).
+            await AvisarEnvie(ConvIdDe(numero, linea));
         }
         if (selectedNumero == numero && selectedLinea == linea) await LoadMensajes();
         await LoadConversaciones(silent: true);
@@ -4702,5 +4870,12 @@
         try { _ = JS.InvokeVoidAsync("waPaste.unregister"); } catch { }
         try { _ = JS.InvokeVoidAsync("waComposer.unregister"); } catch { }
         _pasteRef?.Dispose();
+        // 2026-08-06: cerrar la presencia — salir del chat, frenar timers, desuscribir y cerrar el hub.
+        heartbeatTimer?.Dispose();
+        typingOffTimer?.Dispose();
+        Presence.OnPresence -= PresenciaCambio;
+        Presence.OnMessageSent -= OtroEnvioMensaje;
+        if (_convUnida != null) { _ = Presence.LeaveAsync(_convUnida); }
+        _ = Presence.DisposeAsync();
     }
 }
