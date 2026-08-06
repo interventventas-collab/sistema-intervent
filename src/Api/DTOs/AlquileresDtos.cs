@@ -114,7 +114,9 @@ public record AlqReservaDto(
     string? FormaPago = null,
     // 2026-07-06: factura en un solo renglón (resumen de equipos)
     bool FacturaResumida = false,
-    string? ResumenDescripcion = null);
+    string? ResumenDescripcion = null,
+    // 2026-08-05: notas internas (uso interno, NO se imprimen)
+    string? NotasInternas = null);
 
 public class CreateAlqReservaItemRequest
 {
@@ -140,7 +142,10 @@ public class CreateAlqReservaRequest
     /// <summary>Si viene con valor, se usa como total final (modo "importe a mano"). Si es null, se calcula sumando los items.</summary>
     public decimal? MontoTotalManual { get; set; }
     public string? Estado { get; set; }
+    /// <summary>Observaciones que SÍ se imprimen en el comprobante.</summary>
     public string? Notas { get; set; }
+    /// <summary>Notas internas: uso interno, NUNCA se imprimen. 2026-08-05.</summary>
+    public string? NotasInternas { get; set; }
     /// <summary>Link de Google Maps del lugar del evento. Se guarda en la reserva.</summary>
     public string? MapeoLink { get; set; }
     /// <summary>Si es true, ademas guarda el link en la ficha del cliente (para futuras entregas).</summary>
@@ -173,7 +178,10 @@ public class UpdateAlqReservaRequest
     /// <summary>Si viene con valor, se usa como total final (modo "importe a mano"). Si es null, se calcula sumando los items.</summary>
     public decimal? MontoTotalManual { get; set; }
     public string? Estado { get; set; }
+    /// <summary>Observaciones que SÍ se imprimen en el comprobante.</summary>
     public string? Notas { get; set; }
+    /// <summary>Notas internas: uso interno, NUNCA se imprimen. 2026-08-05.</summary>
+    public string? NotasInternas { get; set; }
     /// <summary>Link de Google Maps del lugar del evento. Se guarda en la reserva.</summary>
     public string? MapeoLink { get; set; }
     /// <summary>Si es true, ademas guarda el link en la ficha del cliente (para futuras entregas).</summary>
