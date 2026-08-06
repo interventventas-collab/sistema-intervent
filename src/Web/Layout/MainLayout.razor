@@ -1925,6 +1925,14 @@
     <DepositoWaFloating @ref="depWaRef" />
 }
 
+@* 2026-08-06: logo de WhatsApp flotante SIEMPRE visible para admin/oficina — buscar cualquier
+   conversación y mantenerla abierta/movible desde cualquier pantalla. Se auto-oculta para
+   Depósito (que ya tiene su propio chat fijo). *@
+@if (!IsEmbedded)
+{
+    <WaBuscadorFlotante />
+}
+
 @* 2026-06-23: modal global de vinculacion WhatsApp. Se abre desde cualquier pantalla apretando
    el boton verde de WhatsApp en la topbar (cuando no esta linked) o el boton del banner rojo. *@
 @if (showWaQrModal)

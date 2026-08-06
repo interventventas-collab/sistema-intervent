@@ -1,0 +1,239 @@
+@* 2026-08-06: Logo de WhatsApp FLOTANTE y siempre visible para admin/oficina.
+   - Botón redondo con el logo de WhatsApp abajo a la derecha, en TODAS las pantallas.
+   - Al tocarlo abre una ventanita ARRASTRABLE (se agarra del encabezado; mouse + dedo, reusa
+     window.waDraggable) con un BUSCADOR de conversaciones.
+   - Elegís cualquier chat y queda abierto/vivo adentro (reusa PinnedWaChat). Como vive en el
+     layout, la conversación te sigue aunque cambies de pantalla.
+   Solo se muestra a usuarios cafe/oficina (el Depósito ya tiene el suyo, fijo a Gabriel). *@
+@using Web.Services
+@inject Web.Services.AuthService AuthSvc
+@inject Web.Services.ApiClient Api
+@inject Microsoft.JSInterop.IJSRuntime JS
+@implements IDisposable
+
+@if (mostrar)
+{
+    @if (!abierto)
+    {
+        <button class="wabf-bubble" @onclick="Abrir" title="Abrir WhatsApp (buscar una conversación)">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="28" height="28" aria-hidden="true">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+            </svg>
+        </button>
+    }
+    else
+    {
+        <div class="wabf-panel" id="wabf-panel">
+            <div class="wabf-bar" id="wabf-handle">
+                @if (chatAbierto is not null)
+                {
+                    <button type="button" class="wabf-bar-btn" @onclick="VolverABuscar" title="Volver a la búsqueda">←</button>
+                }
+                <span class="wabf-bar-title">💬 @(chatAbierto is null ? "WhatsApp" : NombreDe(chatAbierto))</span>
+                <a class="wabf-bar-btn" href="/whatsapp" target="_blank" title="Abrir WhatsApp en una pestaña aparte">↗</a>
+                <button type="button" class="wabf-bar-btn" @onclick="Cerrar" title="Cerrar (queda el logo abajo)">✕</button>
+            </div>
+
+            @if (chatAbierto is null)
+            {
+                @* ----- Buscador + lista ----- *@
+                <div class="wabf-search">
+                    <input class="wabf-search-input" placeholder="Buscar por nombre o número…"
+                           @bind="busqueda" @bind:event="oninput" autofocus />
+                </div>
+                <div class="wabf-list">
+                    @if (cargando && convs.Count == 0)
+                    {
+                        <div class="wabf-vacio">Cargando conversaciones…</div>
+                    }
+                    else
+                    {
+                        var filtradas = Filtradas().ToList();
+                        if (filtradas.Count == 0)
+                        {
+                            <div class="wabf-vacio">@(string.IsNullOrWhiteSpace(busqueda) ? "Todavía no hay conversaciones." : "No encontré ninguna conversación con eso.")</div>
+                        }
+                        else
+                        {
+                            foreach (var c in filtradas)
+                            {
+                                <div class="wabf-conv" @onclick="() => AbrirChat(c)">
+                                    <div class="wabf-avatar">@Inicial(c)</div>
+                                    <div class="wabf-conv-txt">
+                                        <div class="wabf-conv-nombre" title="@NombreDe(c)">@NombreDe(c)</div>
+                                        <div class="wabf-conv-ultimo">@Recortar(c.UltimoMensaje, 40)</div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    }
+                </div>
+            }
+            else
+            {
+                @* ----- Chat elegido (mini-chat vivo) ----- *@
+                <div class="wabf-chat">
+                    <PinnedWaChat Numero="@chatAbierto.Numero" LineaPhoneId="@chatAbierto.Linea"
+                                  TituloContacto="@NombreDe(chatAbierto)"
+                                  NombreLinea="@(chatAbierto.LineaNumero ?? chatAbierto.Linea ?? "WhatsApp")"
+                                  PuedeAbrirEnGrande="false" />
+                </div>
+            }
+        </div>
+    }
+}
+
+<style>
+    .wabf-bubble {
+        position: fixed; right: 22px; bottom: 22px; z-index: 8400;
+        width: 58px; height: 58px; border-radius: 50%; border: none;
+        background: #25d366; color: #fff; cursor: pointer;
+        box-shadow: 0 8px 22px rgba(37,211,102,0.45);
+        display: flex; align-items: center; justify-content: center;
+        animation: wabf-pop 0.2s ease;
+    }
+    .wabf-bubble:hover { filter: brightness(1.05); transform: translateY(-1px); }
+    @@keyframes wabf-pop { from { transform: scale(0.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+    .wabf-panel {
+        position: fixed; right: 22px; bottom: 22px; z-index: 8400;
+        width: 360px; height: 560px; max-height: 88vh;
+        display: flex; flex-direction: column;
+        background: #fff; border-radius: 16px; overflow: hidden;
+        box-shadow: 0 16px 40px rgba(0,0,0,0.30);
+        animation: wabf-pop 0.18s ease;
+    }
+    .wabf-bar {
+        display: flex; align-items: center; gap: 8px;
+        background: #0b7a4b; color: #fff; padding: 8px 12px; cursor: move;
+        user-select: none; touch-action: none; flex: 0 0 auto;
+    }
+    .wabf-bar-title { font-weight: 800; font-size: 0.9rem; flex: 1;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .wabf-bar-btn { background: rgba(255,255,255,0.18); border: none; color: #fff;
+        border-radius: 7px; min-width: 28px; height: 26px; padding: 0 6px; cursor: pointer;
+        font-size: 0.85rem; flex: none; display: flex; align-items: center; justify-content: center;
+        text-decoration: none; }
+    .wabf-bar-btn:hover { background: rgba(255,255,255,0.34); }
+
+    .wabf-search { padding: 8px; background: #f8fafb; border-bottom: 1px solid #eef0f2; flex: 0 0 auto; }
+    .wabf-search-input { width: 100%; box-sizing: border-box; border: 1px solid #d1d5db;
+        border-radius: 10px; padding: 8px 12px; font-size: 0.86rem; font-family: inherit; }
+    .wabf-search-input:focus { outline: none; border-color: #25d366; box-shadow: 0 0 0 2px rgba(37,211,102,0.18); }
+
+    .wabf-list { flex: 1; min-height: 0; overflow-y: auto; background: #fff; }
+    .wabf-vacio { color: #6b7280; font-size: 0.82rem; text-align: center; padding: 1.2rem 1rem; }
+    .wabf-conv { display: flex; align-items: center; gap: 10px; padding: 9px 12px; cursor: pointer;
+        border-bottom: 1px solid #f3f4f6; }
+    .wabf-conv:hover { background: #f0fdf4; }
+    .wabf-avatar { width: 38px; height: 38px; border-radius: 50%; background: #25d366; color: #fff;
+        display: flex; align-items: center; justify-content: center; font-weight: 800; flex: none; }
+    .wabf-conv-txt { min-width: 0; }
+    .wabf-conv-nombre { font-weight: 700; color: #111827; font-size: 0.86rem;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .wabf-conv-ultimo { font-size: 0.76rem; color: #6b7280;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .wabf-chat { flex: 1; min-height: 0; }
+    /* PinnedWaChat trae su propio marco; adentro del panel lo dejamos a ras. */
+    .wabf-chat .pwa-card { height: 100%; min-height: 0; border: none; border-radius: 0; box-shadow: none; }
+
+    @@media (max-width: 640px) {
+        .wabf-panel { right: 8px; left: 8px; bottom: 8px; width: auto; height: 80vh; }
+    }
+</style>
+
+@code {
+    private bool mostrar;                 // solo cafe/oficina (el Depósito tiene el suyo)
+    private bool abierto;
+    private bool cargando;
+    private string busqueda = "";
+    private List<ApiClient.TwConvDto> convs = new();
+    private ApiClient.TwConvDto? chatAbierto;
+    private bool _attachPending;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var user = await AuthSvc.GetUserAsync();
+            var perms = user?.Permissions ?? new();
+            // Lo ven admin/oficina (tienen "cafe" u "oficina"). El Depósito puro NO (ya tiene su chat fijo).
+            mostrar = perms.Contains("cafe") || perms.Contains("oficina");
+        }
+        catch { mostrar = false; }
+    }
+
+    public void Abrir()
+    {
+        abierto = true;
+        _attachPending = true;
+        StateHasChanged();
+        _ = CargarConversaciones();
+    }
+
+    public void Cerrar() { abierto = false; StateHasChanged(); }
+
+    private void VolverABuscar() { chatAbierto = null; _attachPending = true; StateHasChanged(); }
+
+    private async Task CargarConversaciones()
+    {
+        if (cargando) return;
+        cargando = true;
+        try { convs = await Api.GetTwConversacionesAsync(); }
+        catch { convs ??= new(); }
+        cargando = false;
+        StateHasChanged();
+    }
+
+    private void AbrirChat(ApiClient.TwConvDto c)
+    {
+        chatAbierto = c;
+        _attachPending = true; // re-enganchar el arrastre tras cambiar el contenido del panel
+        StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_attachPending && abierto)
+        {
+            _attachPending = false;
+            try { await JS.InvokeVoidAsync("waDraggable.attach", "wabf-handle", "wabf-panel"); }
+            catch { }
+        }
+    }
+
+    // ---- Filtro de búsqueda: por nombre/perfil o por número (últimos dígitos) ----
+    private IEnumerable<ApiClient.TwConvDto> Filtradas()
+    {
+        if (string.IsNullOrWhiteSpace(busqueda))
+            return convs.Take(40);
+        var q = busqueda.Trim().ToLowerInvariant();
+        var qDigits = new string(q.Where(char.IsDigit).ToArray());
+        return convs.Where(c =>
+                (NombreDe(c).ToLowerInvariant().Contains(q))
+                || ((c.Numero ?? "").ToLowerInvariant().Contains(q))
+                || (qDigits.Length >= 3 && new string((c.Numero ?? "").Where(char.IsDigit).ToArray()).Contains(qDigits)))
+            .Take(60);
+    }
+
+    private static string NombreDe(ApiClient.TwConvDto c)
+        => !string.IsNullOrWhiteSpace(c.ClienteNombre) ? c.ClienteNombre!
+         : !string.IsNullOrWhiteSpace(c.NombrePerfil) ? c.NombrePerfil!
+         : (c.Numero ?? "Contacto").Replace("whatsapp:", "").Replace("ig:", "IG ");
+
+    private static string Inicial(ApiClient.TwConvDto c)
+    {
+        var n = NombreDe(c).Trim();
+        return string.IsNullOrEmpty(n) ? "?" : n[..1].ToUpperInvariant();
+    }
+
+    private static string Recortar(string? s, int max)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "";
+        s = s.Replace("\n", " ").Trim();
+        return s.Length <= max ? s : s.Substring(0, max) + "…";
+    }
+
+    public void Dispose() { }
+}
