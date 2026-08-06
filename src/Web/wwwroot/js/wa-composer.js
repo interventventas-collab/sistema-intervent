@@ -35,5 +35,21 @@ window.waComposer = {
             document.removeEventListener('keydown', this._handler, true);
             this._handler = null;
         }
+    },
+    // 2026-08-06: al abrir un chat, poner el cursor solo en el cuadro de escribir (como WhatsApp Web),
+    // asi se empieza a tipear sin tener que hacer clic. SOLO en compu (pointer: fine) para no forzar
+    // el teclado en el celular (taparia la conversacion). El cursor queda al final del texto.
+    focus: function () {
+        try {
+            if (!window.matchMedia || !window.matchMedia('(pointer: fine)').matches) return;
+            // esperamos un toque a que Blazor termine de renderizar el cuadro del chat abierto
+            setTimeout(function () {
+                var el = document.querySelector('.wa-composer-input');
+                if (!el) return;
+                el.focus();
+                var n = el.value ? el.value.length : 0;
+                try { el.setSelectionRange(n, n); } catch (e) { }
+            }, 60);
+        } catch (e) { }
     }
 };
