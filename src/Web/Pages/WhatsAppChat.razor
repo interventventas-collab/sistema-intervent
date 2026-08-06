@@ -998,6 +998,31 @@
                         }
                     </div>
                 }
+                @* 2026-08-05: BANDEJA DE PENDIENTES — adjuntos esperando salir. Se envían todos juntos
+                   (con el texto del cajón de pie del primero) al tocar Enviar o Enter. *@
+                @if (pendientes.Count > 0)
+                {
+                    <div class="wa-pending-tray">
+                        <div class="wa-pending-head">📎 Para enviar (@pendientes.Count) — escribí un texto si querés y tocá <b>Enviar</b></div>
+                        <div class="wa-pending-items">
+                            @foreach (var p in pendientes)
+                            {
+                                <div class="wa-pending-item">
+                                    @if (!string.IsNullOrEmpty(p.PreviewUrl))
+                                    {
+                                        <img class="wa-pending-thumb" src="@p.PreviewUrl" alt="" loading="lazy" />
+                                    }
+                                    else
+                                    {
+                                        <span class="wa-pending-ico">@p.Icono</span>
+                                    }
+                                    <span class="wa-pending-name" title="@p.Label">@p.Label</span>
+                                    <button class="wa-pending-x" @onclick="() => QuitarPendiente(p)" title="Sacar de la lista">×</button>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
                 @* 2026-08-05: barra "respondiendo a…" (responder citando). Aparece arriba del cajón. *@
                 @if (replyingTo != null)
                 {
@@ -1082,8 +1107,8 @@
                                 }
                             </div>
                         }
-                        <button class="btn btn-success wa-enviar-btn @(sending ? "enviando" : "")" @onclick="EnviarMensaje" disabled="@(string.IsNullOrWhiteSpace(composerText) || sending)">
-                            @(sending ? "⏳ Enviando…" : "📤 Enviar")
+                        <button class="btn btn-success wa-enviar-btn @(sending ? "enviando" : "")" @onclick="EnviarMensaje" disabled="@((string.IsNullOrWhiteSpace(composerText) && pendientes.Count == 0) || sending)">
+                            @(sending ? "⏳ Enviando…" : (pendientes.Count > 0 ? $"📤 Enviar ({pendientes.Count} 📎)" : "📤 Enviar"))
                         </button>
                     </div>
                 </div>
@@ -2014,6 +2039,16 @@
     .wa-reply-bar-text { font-size: 0.85rem; color: #4b5563; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .wa-reply-bar-x { background: none; border: none; font-size: 1.5rem; line-height: 1; color: #9ca3af; cursor: pointer; padding: 0 0.3rem; }
     .wa-reply-bar-x:hover { color: #ef4444; }
+    /* 2026-08-05: bandeja de pendientes (adjuntos esperando salir) */
+    .wa-pending-tray { margin: 0.4rem 1rem 0; padding: 0.5rem 0.6rem; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 12px; }
+    .wa-pending-head { font-size: 0.8rem; color: #0369a1; margin-bottom: 0.4rem; }
+    .wa-pending-items { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .wa-pending-item { display: flex; align-items: center; gap: 0.4rem; background: #fff; border: 1px solid #e0e7ef; border-radius: 10px; padding: 0.3rem 0.4rem 0.3rem 0.35rem; max-width: 220px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+    .wa-pending-thumb { width: 34px; height: 34px; border-radius: 7px; object-fit: cover; flex-shrink: 0; }
+    .wa-pending-ico { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; background: #f3f4f6; border-radius: 7px; flex-shrink: 0; }
+    .wa-pending-name { font-size: 0.8rem; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+    .wa-pending-x { background: #fee2e2; border: none; color: #b91c1c; font-size: 1.1rem; line-height: 1; width: 22px; height: 22px; border-radius: 50%; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+    .wa-pending-x:hover { background: #ef4444; color: #fff; }
     .wa-emoji-pick { background: transparent; border: none; padding: 0.2rem 0.35rem; font-size: 1.1rem; cursor: pointer; border-radius: 50%; transition: background 0.1s, transform 0.1s; }
     .wa-emoji-pick:hover { background: #f3f4f6; transform: scale(1.2); }
     .wa-reacciones { display: flex; gap: 0.2rem; margin-top: 0.1rem; flex-wrap: wrap; }
@@ -2230,8 +2265,9 @@
                                 <div class="wa-srv-item-info">@f.Info · @f.Fecha.ToArTime().ToString("dd/MM/yyyy")</div>
                             }
                         </div>
-                        <button class="wa-srv-send-btn" @onclick="() => EnviarServerFile(f)" disabled="@(srvEnviandoId == f.Id)">
-                            @(srvEnviandoId == f.Id ? "Enviando…" : "📤 Enviar")
+                        @* 2026-08-05: ahora SUMA a la bandeja de pendientes (no envía directo) *@
+                        <button class="wa-srv-send-btn" @onclick="() => StagearServerFile(f)">
+                            ➕ Agregar
                         </button>
                         @if (f.Tipo == "CATALOGO")
                         {
@@ -3682,7 +3718,10 @@
     // El botón verde "Enviar" usa esta vía.
     async Task EnviarMensaje()
     {
-        if (selectedNumero == null || sending || string.IsNullOrWhiteSpace(composerText)) return;
+        if (selectedNumero == null || sending) return;
+        // 2026-08-05: si hay adjuntos en la bandeja, sale TODO junto (el texto va de pie del primero).
+        if (pendientes.Count > 0) { await EnviarPendientes(composerText); return; }
+        if (string.IsNullOrWhiteSpace(composerText)) return;
         var texto = composerText;
         composerText = "";
         await EnviarTexto(texto);
@@ -3702,6 +3741,8 @@
             StateHasChanged();
             return;
         }
+        // 2026-08-05: si hay adjuntos en la bandeja, Enter manda TODO junto (texto = pie del primero).
+        if (pendientes.Count > 0) { composerText = ""; await EnviarPendientes(texto); return; }
         composerText = "";
         await EnviarTexto(texto);
     }
@@ -3795,32 +3836,35 @@
         if (file.Size > MaxUploadBytes) { Toast.Error($"El archivo {file.Name} supera los 16 MB"); return; }
 
         using var stream = file.OpenReadStream(MaxUploadBytes);
-        await SubirYEnviarAdjunto(stream, file.Name, file.ContentType, $"📎 {file.Name} enviado");
+        await SubirYStagear(stream, file.Name, file.ContentType);
     }
 
-    // 2026-07-29: helper reusado por el clip 📎 y por el pegado de capturas (Ctrl+V / Win+V).
-    async Task SubirYEnviarAdjunto(System.IO.Stream stream, string fileName, string contentType, string okMsg)
+    // 2026-08-05: BANDEJA DE PENDIENTES. Antes cada adjunto salía SOLO al instante. Ahora el clip 📎,
+    // el pegado (Ctrl/Win+V) y "Adjuntar del servidor" DEJAN el archivo esperando arriba del cajón;
+    // el operador escribe un texto tranquilo y con Enter/Enviar sale TODO junto (el texto va de pie
+    // de foto del primer adjunto), como en WhatsApp de verdad. Un archivo se saca con la ✖.
+    async Task SubirYStagear(System.IO.Stream stream, string fileName, string contentType)
     {
         if (selectedNumero == null) { Toast.Warning("Seleccioná primero un chat"); return; }
         uploading = true;
         StateHasChanged();
         try
         {
-            // Tomamos el caption del composer (si hay) para acompañar el archivo
-            var caption = composerText?.Trim();
-
-            // 1) Subir al servidor (que devuelve URL publica con token)
+            // Subir al servidor (devuelve URL pública con token). Todavía NO se envía: queda pendiente.
             var (resp, err) = await Api.UploadTwArchivoAsync(stream, fileName, contentType);
             if (resp == null) { Toast.Error($"Error subiendo: {err}"); return; }
 
-            // 2) Mandar el WhatsApp con la URL publica al numero seleccionado
-            var (ok, sendErr) = await Api.SendTwMediaAsync(selectedNumero, resp.Url, caption, fileName, selectedLinea);
-            if (!ok) { Toast.Error($"Error enviando: {sendErr}"); return; }
-
-            composerText = "";
-            Toast.Success(okMsg);
-            await LoadMensajes();
-            await LoadConversaciones(silent: true);
+            var esImg = (contentType ?? "").StartsWith("image/") || IsImage(fileName) || IsImage(resp.Url);
+            pendientes.Add(new PendingAdjunto
+            {
+                Kind = "UPLOAD",
+                Url = resp.Url,
+                FileName = fileName,
+                Label = fileName,
+                EsImagen = esImg,
+                PreviewUrl = esImg ? resp.Url : null,
+                Icono = esImg ? "🖼️" : "📎"
+            });
         }
         catch (Exception ex) { Toast.Error($"Error: {ex.Message}"); }
         finally { uploading = false; StateHasChanged(); }
@@ -3837,7 +3881,83 @@
         if (bytes.Length == 0) return;
         if (bytes.Length > MaxUploadBytes) { Toast.Error("La captura supera los 16 MB"); return; }
         using var stream = new System.IO.MemoryStream(bytes);
-        await SubirYEnviarAdjunto(stream, fileName, string.IsNullOrWhiteSpace(contentType) ? "image/png" : contentType, "📷 Captura enviada");
+        await SubirYStagear(stream, fileName, string.IsNullOrWhiteSpace(contentType) ? "image/png" : contentType);
+    }
+
+    // ===== 2026-08-05: BANDEJA DE PENDIENTES (adjuntar + texto y sale todo junto) =====
+    class PendingAdjunto
+    {
+        public string Kind = "UPLOAD";      // UPLOAD (archivo subido) | SERVER (archivo del servidor)
+        // UPLOAD
+        public string Url = "";
+        public string FileName = "";
+        public bool EsImagen;
+        // SERVER
+        public string ServerTipo = "";
+        public int ServerId;
+        // común
+        public string Label = "";
+        public string? PreviewUrl;          // miniatura si es imagen
+        public string Icono = "📎";
+    }
+    List<PendingAdjunto> pendientes = new();
+
+    // "Adjuntar del servidor": ahora SUMA a la bandeja (no envía directo).
+    void StagearServerFile(ApiClient.TwServerFileDto f)
+    {
+        pendientes.Add(new PendingAdjunto
+        {
+            Kind = "SERVER",
+            ServerTipo = f.Tipo,
+            ServerId = f.Id,
+            Label = f.Label,
+            PreviewUrl = f.PreviewUrl,
+            Icono = string.IsNullOrWhiteSpace(f.Icon) ? "📄" : f.Icon
+        });
+        CerrarAdjuntarServidor();
+    }
+
+    void QuitarPendiente(PendingAdjunto p) => pendientes.Remove(p);
+
+    // Envía TODOS los pendientes; el texto del cajón va como pie de foto del PRIMERO. Si uno falla,
+    // corta ahí (los ya enviados se sacan de la bandeja; los que faltan quedan para reintentar).
+    async Task EnviarPendientes(string? textoCaption)
+    {
+        if (selectedNumero == null || sending || pendientes.Count == 0) return;
+        var numero = selectedNumero;
+        var linea = selectedLinea;
+        var lista = pendientes.ToList();
+        var caption = textoCaption?.Trim();
+        replyingTo = null;   // adjuntos no citan; limpiamos la barra de responder por las dudas
+        sending = true;
+        composerText = "";
+        StateHasChanged();
+
+        bool huboError = false;
+        for (int i = 0; i < lista.Count; i++)
+        {
+            var p = lista[i];
+            var cap = i == 0 ? caption : null;   // el texto va pegado al primero
+            (bool ok, string? err) r = p.Kind == "SERVER"
+                ? await Api.SendTwServerFileAsync(numero, p.ServerTipo, p.ServerId, cap, linea)
+                : await Api.SendTwMediaAsync(numero, p.Url, cap, p.FileName, linea);
+            if (r.ok) pendientes.Remove(p);
+            else { huboError = true; Toast.Error($"Error enviando {p.Label}: {r.err}"); break; }
+        }
+
+        sending = false;
+        if (huboError)
+        {
+            // devolvemos el texto al cuadro para no perderlo
+            if (!string.IsNullOrEmpty(caption)) composerText = caption;
+        }
+        else
+        {
+            Toast.Success("Enviado 📎");
+        }
+        if (selectedNumero == numero && selectedLinea == linea) await LoadMensajes();
+        await LoadConversaciones(silent: true);
+        StateHasChanged();
     }
 
     // ===== Adjuntar archivos del servidor (Fase 2) =====
@@ -3948,29 +4068,6 @@
         srvResultados = await Api.GetTwServerFilesAsync(srvTab, string.IsNullOrWhiteSpace(srvSearch) ? null : srvSearch);
         srvLoading = false;
         StateHasChanged();
-    }
-
-    async Task EnviarServerFile(ApiClient.TwServerFileDto f)
-    {
-        if (selectedNumero == null) return;
-        srvEnviandoId = f.Id;
-        StateHasChanged();
-        var caption = composerText?.Trim();
-        var (ok, err) = await Api.SendTwServerFileAsync(selectedNumero, f.Tipo, f.Id, caption, selectedLinea);
-        srvEnviandoId = null;
-        if (ok)
-        {
-            composerText = "";
-            Toast.Success($"📎 {f.Label} enviado");
-            CerrarAdjuntarServidor();
-            await LoadMensajes();
-            await LoadConversaciones(silent: true);
-        }
-        else
-        {
-            Toast.Error($"Error: {err}");
-            StateHasChanged();
-        }
     }
 
     ApiClient.TwConvDto? SelectedConv() => conversaciones.FirstOrDefault(c => c.Numero == selectedNumero && c.Linea == selectedLinea);
