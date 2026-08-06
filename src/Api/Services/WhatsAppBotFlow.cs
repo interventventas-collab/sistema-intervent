@@ -74,54 +74,67 @@ public sealed class BotTextos
         string Clave, string Grupo, string Etiqueta, string Default,
         bool Multilinea, int Max, string? Ayuda = null);
 
+    // Default de cada acción (título/detalle/respuesta). Igual para las 3 empresas; después el usuario
+    // lo edita por empresa. El orden es el orden de las opciones del menú.
+    private static readonly (string Accion, string TitleDef, string DescDef, string RespDef)[] AccionesDef =
+    {
+        ("pedido",    "🛒 Hacer un pedido",    "Escribinos tu pedido por acá", "¡Dale! 🛒 Escribinos tu pedido por acá y en breve te atendemos 👍"),
+        ("lista",     "💲 Lista de precios",   "Te mandamos los precios",       "¡Dale! 💲 En breve te mandamos la lista de precios 👍"),
+        ("proveedor", "📦 Soy proveedor",      "Te anotamos como proveedor",    "¡Genial! 📦 Te anotamos como proveedor. En breve te contactamos."),
+        ("persona",   "👤 Hablar con alguien", "Te atiende una persona",        "¡Dale! 👤 En un ratito te atiende una persona. ¡Gracias por escribirnos!"),
+    };
+
+    // Default del encabezado del menú por empresa.
+    private static readonly (string Empresa, string Nombre, string CuerpoDef)[] EmpresasDef =
+    {
+        ("frikaf",       "Cafés Frikaf",  "¡Genial! ☕ ¿Qué necesitás de Cafés Frikaf?"),
+        ("intervent",    "Intervent",     "¡Genial! 🏢 ¿Qué necesitás de Intervent?"),
+        ("intereventos", "Intereventos",  "¡Genial! 🪑 Alquiler de mesas, sillas y livings. ¿Qué necesitás?"),
+    };
+
     /// <summary>
     /// TODOS los textos editables del bot, con su valor por defecto. Este es el ÚNICO lugar donde
-    /// viven los defaults. Los límites (Max) respetan los máximos de WhatsApp: botón = 20,
-    /// título de opción = 24, detalle de opción = 72 caracteres.
+    /// viven los defaults. Las opciones y respuestas son POR EMPRESA (cada una editable aparte).
+    /// Los límites (Max) respetan los máximos de WhatsApp: botón = 20, título de opción = 24,
+    /// detalle de opción = 72 caracteres.
     /// </summary>
-    public static readonly IReadOnlyList<Campo> Campos = new List<Campo>
+    public static readonly IReadOnlyList<Campo> Campos = ConstruirCampos();
+
+    private static List<Campo> ConstruirCampos()
     {
-        // ── Paso 1: saludo + elegir empresa ──
-        new("nivel1.cuerpo", "Paso 1 · Saludo",
-            "Mensaje de bienvenida",
-            "¡Hola! 👋 Gracias por escribirnos.\n\n¿Con quién te querés contactar?",
-            true, 1024,
-            "Es lo primero que recibe un número nuevo, junto con los 3 botones de empresa."),
-        new("boton.frikaf", "Paso 1 · Saludo", "Botón empresa 1", "☕ Cafés Frikaf", false, 20),
-        new("boton.intervent", "Paso 1 · Saludo", "Botón empresa 2", "🏢 Intervent", false, 20),
-        new("boton.intereventos", "Paso 1 · Saludo", "Botón empresa 3", "🪑 Intereventos", false, 20),
+        var lista = new List<Campo>();
+        const string g1 = "Paso 1 · Saludo (común a las 3)";
 
-        // ── Paso 2: encabezado del menú según empresa ──
-        new("nivel2.cuerpo.frikaf", "Paso 2 · Menú",
-            "Encabezado — Cafés Frikaf", "¡Genial! ☕ ¿Qué necesitás de Cafés Frikaf?", true, 1024),
-        new("nivel2.cuerpo.intervent", "Paso 2 · Menú",
-            "Encabezado — Intervent", "¡Genial! 🏢 ¿Qué necesitás de Intervent?", true, 1024),
-        new("nivel2.cuerpo.intereventos", "Paso 2 · Menú",
-            "Encabezado — Intereventos", "¡Genial! 🪑 Alquiler de mesas, sillas y livings. ¿Qué necesitás?", true, 1024),
-        new("nivel2.botonlista", "Paso 2 · Menú",
-            "Botón para abrir las opciones", "📋 Ver opciones", false, 20),
+        // ── Paso 1: saludo + botones de empresa (común a las 3) ──
+        lista.Add(new("nivel1.cuerpo", g1, "Mensaje de bienvenida",
+            "¡Hola! 👋 Gracias por escribirnos.\n\n¿Con quién te querés contactar?", true, 1024,
+            "Es lo primero que recibe un número nuevo, junto con los 3 botones de empresa."));
+        lista.Add(new("boton.frikaf", g1, "Botón empresa 1", "☕ Cafés Frikaf", false, 20));
+        lista.Add(new("boton.intervent", g1, "Botón empresa 2", "🏢 Intervent", false, 20));
+        lista.Add(new("boton.intereventos", g1, "Botón empresa 3", "🪑 Intereventos", false, 20));
+        lista.Add(new("nivel2.botonlista", g1, "Botón para abrir las opciones", "📋 Ver opciones", false, 20,
+            "El texto del botón que abre la lista de opciones (igual para las 3 empresas)."));
 
-        // ── Las 4 opciones del menú (título + detalle) ──
-        new("opcion.pedido.title", "Opciones del menú", "Opción 1 · título", "🛒 Hacer un pedido", false, 24),
-        new("opcion.pedido.desc", "Opciones del menú", "Opción 1 · detalle", "Escribinos tu pedido por acá", false, 72),
-        new("opcion.lista.title", "Opciones del menú", "Opción 2 · título", "💲 Lista de precios", false, 24),
-        new("opcion.lista.desc", "Opciones del menú", "Opción 2 · detalle", "Te mandamos los precios", false, 72),
-        new("opcion.proveedor.title", "Opciones del menú", "Opción 3 · título", "📦 Soy proveedor", false, 24),
-        new("opcion.proveedor.desc", "Opciones del menú", "Opción 3 · detalle", "Te anotamos como proveedor", false, 72),
-        new("opcion.persona.title", "Opciones del menú", "Opción 4 · título", "👤 Hablar con alguien", false, 24),
-        new("opcion.persona.desc", "Opciones del menú", "Opción 4 · detalle", "Te atiende una persona", false, 72),
+        // ── Un bloque por empresa: encabezado + sus 4 opciones (título, detalle, respuesta) ──
+        foreach (var (emp, nombre, cuerpoDef) in EmpresasDef)
+        {
+            var g = $"Menú de {nombre}";
+            lista.Add(new($"nivel2.cuerpo.{emp}", g, "Encabezado del menú", cuerpoDef, true, 1024));
 
-        // ── Respuesta final al tocar cada opción ──
-        new("accion.pedido.resp", "Respuestas al elegir",
-            "Al tocar «Hacer un pedido»", "¡Dale! 🛒 Escribinos tu pedido por acá y en breve te atendemos 👍", true, 1024),
-        new("accion.lista.resp", "Respuestas al elegir",
-            "Al tocar «Lista de precios»", "¡Dale! 💲 En breve te mandamos la lista de precios 👍", true, 1024,
-            "Ojo: para Cafés Frikaf, además de este texto el bot manda solo el PDF de la lista de precios."),
-        new("accion.proveedor.resp", "Respuestas al elegir",
-            "Al tocar «Soy proveedor»", "¡Genial! 📦 Te anotamos como proveedor. En breve te contactamos.", true, 1024),
-        new("accion.persona.resp", "Respuestas al elegir",
-            "Al tocar «Hablar con alguien»", "¡Dale! 👤 En un ratito te atiende una persona. ¡Gracias por escribirnos!", true, 1024),
-    };
+            int i = 1;
+            foreach (var (acc, titleDef, descDef, respDef) in AccionesDef)
+            {
+                lista.Add(new($"opcion.{emp}.{acc}.title", g, $"Opción {i} · título", titleDef, false, 24));
+                lista.Add(new($"opcion.{emp}.{acc}.desc", g, $"Opción {i} · detalle", descDef, false, 72));
+                lista.Add(new($"accion.{emp}.{acc}.resp", g, $"Opción {i} · respuesta al tocarla", respDef, true, 1024,
+                    acc == "lista" && emp == "frikaf"
+                        ? "Ojo: para Cafés Frikaf, además de este texto el bot manda solo el PDF de la lista de precios."
+                        : null));
+                i++;
+            }
+        }
+        return lista;
+    }
 
     private static readonly Dictionary<string, Campo> PorClave =
         Campos.ToDictionary(c => c.Clave, c => c);
@@ -163,14 +176,15 @@ public sealed class BotTextos
 
     public (string Id, string Title, string? Desc)[] FilasNivel2(string empresa) =>
         WhatsAppBotFlow.Acciones
-            .Select(a => ($"bot:{empresa}:{a}", V($"opcion.{a}.title"), (string?)V($"opcion.{a}.desc")))
+            .Select(a => ($"bot:{empresa}:{a}", V($"opcion.{empresa}.{a}.title"), (string?)V($"opcion.{empresa}.{a}.desc")))
             .ToArray();
 
-    /// <summary>Respuesta final + rol de contacto para cada acción del nivel 2.</summary>
+    /// <summary>Respuesta final + rol de contacto para cada acción del nivel 2 (respuesta por empresa).</summary>
     public (string Respuesta, string Rol) AccionNivel2(string accion, string empresa)
     {
-        var resp = PorClave.ContainsKey($"accion.{accion}.resp")
-            ? V($"accion.{accion}.resp")
+        var clave = $"accion.{empresa}.{accion}.resp";
+        var resp = PorClave.ContainsKey(clave)
+            ? V(clave)
             : "¡Gracias por escribirnos! En breve te atendemos.";
         return (resp, WhatsAppBotFlow.RolDeAccion(accion));
     }
