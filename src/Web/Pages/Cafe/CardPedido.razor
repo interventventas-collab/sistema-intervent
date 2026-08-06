@@ -211,16 +211,16 @@
                                          style="width:42px; height:42px; object-fit:cover; border-radius:6px; cursor:pointer; background:#fff; border:2px solid @(TieneFotoPropia(it) ? "#0ea5e9" : it.FotoEstado == "APROBADA" ? "#22c55e" : it.FotoEstado == "REPORTADA" ? "#ef4444" : "#e5e7eb");" />
                                     @if (it.ProductoId is not null)
                                     {
-                                        <div style="display:flex; gap:2px;">
+                                        <div style="display:flex; gap:5px; margin-top:2px;">
                                             <button type="button" @onclick='() => MarcarFoto(it, "APROBADA")' disabled="@marcandoFoto"
                                                     title="La foto está bien (aprobar)"
-                                                    style="border:none; border-radius:4px; width:20px; height:18px; font-size:0.7rem; cursor:pointer; padding:0; line-height:1; background:@(it.FotoEstado == "APROBADA" ? "#22c55e" : "#f1f5f9");">✅</button>
+                                                    style="border:none; border-radius:4px; width:32px; height:30px; font-size:1.1rem; cursor:pointer; padding:0; line-height:1; background:@(it.FotoEstado == "APROBADA" ? "#22c55e" : "#f1f5f9");">✅</button>
                                             <button type="button" @onclick='() => MarcarFoto(it, "REPORTADA")' disabled="@marcandoFoto"
                                                     title="La foto está mal (reportar errónea)"
-                                                    style="border:none; border-radius:4px; width:20px; height:18px; font-size:0.7rem; cursor:pointer; padding:0; line-height:1; background:@(it.FotoEstado == "REPORTADA" ? "#ef4444" : "#f1f5f9");">❌</button>
+                                                    style="border:none; border-radius:4px; width:32px; height:30px; font-size:1.1rem; cursor:pointer; padding:0; line-height:1; background:@(it.FotoEstado == "REPORTADA" ? "#ef4444" : "#f1f5f9");">❌</button>
                                             <button type="button" @onclick="() => AbrirQrFoto(it)"
                                                     title="Sacar o subir una foto propia con el celular (reemplaza a la de MeLi)"
-                                                    style="border:none; border-radius:4px; width:20px; height:18px; font-size:0.7rem; cursor:pointer; padding:0; line-height:1; background:#e0f2fe;">📷</button>
+                                                    style="border:none; border-radius:4px; width:32px; height:30px; font-size:1.1rem; cursor:pointer; padding:0; line-height:1; background:#e0f2fe;">📷</button>
                                         </div>
                                     }
                                     @if (TieneFotoPropia(it))
@@ -366,7 +366,32 @@
                     📱 Escaneá este código con el <b>celular del depósito</b>.<br />
                     Se abre la cámara para sacar la foto (o elegir una de la galería) y se sube sola.
                 </div>
-                <div style="font-size:0.75rem; color:#9ca3af; margin-top:0.6rem;">Esperando la foto…</div>
+                <div style="font-size:0.75rem; color:#9ca3af; margin-top:0.4rem;">Esperando la foto…</div>
+
+                @* 2026-08-05: además del QR, también se puede subir DIRECTO desde esta compu o pegando un link. *@
+                <div style="display:flex; align-items:center; gap:0.5rem; margin:0.8rem 0 0.6rem;">
+                    <div style="flex:1; height:1px; background:#e5e7eb;"></div>
+                    <span style="font-size:0.72rem; color:#9ca3af;">o desde esta compu</span>
+                    <div style="flex:1; height:1px; background:#e5e7eb;"></div>
+                </div>
+
+                @if (qrSubiendo)
+                {
+                    <p style="color:#2563eb; font-weight:600; padding:0.4rem 0;">⏳ Subiendo la foto…</p>
+                }
+                else
+                {
+                    <label style="display:flex; align-items:center; justify-content:center; gap:0.4rem; width:100%; padding:0.6rem; border-radius:10px; background:#3b82f6; color:#fff; font-weight:700; cursor:pointer;">
+                        📁 Subir una foto de la computadora
+                        <InputFile OnChange="SubirDesdePc" accept="image/*" style="display:none" />
+                    </label>
+                    <div style="display:flex; gap:0.4rem; margin-top:0.6rem;">
+                        <input @bind="qrLinkInput" placeholder="🔗 Pegá el link de una foto…"
+                               style="flex:1; padding:0.5rem 0.6rem; border:1px solid #d1d5db; border-radius:8px; font-size:0.85rem;" />
+                        <button @onclick="SubirDesdeLink"
+                                style="border:none; background:#0ea5e9; color:#fff; border-radius:8px; padding:0.5rem 0.9rem; font-weight:700; cursor:pointer;">Subir</button>
+                    </div>
+                }
             }
         </div>
     </div>
@@ -465,6 +490,8 @@
     private string? qrUrl;                 // link que codifica el QR (lo abre el celu)
     private bool qrFotoLista;              // ya llegó la foto
     private string? qrFotoUrl;
+    private string qrLinkInput = "";       // link pegado para subir desde la compu
+    private bool qrSubiendo;               // subiendo desde la compu / link
     private System.Threading.CancellationTokenSource? qrPollCts;
 
     private string QrImgUrl => string.IsNullOrEmpty(qrUrl) ? ""
@@ -520,9 +547,78 @@
         }
     }
 
+    // Subir la foto DIRECTO desde la compu (además del QR).
+    private async Task SubirDesdePc(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null || qrProductoId is null || qrSubiendo) return;
+        const long max = 10L * 1024 * 1024;
+        if (file.Size > max) { ToastService.Error("La foto es muy grande (máx 10 MB)."); return; }
+
+        // Leer los bytes ANTES de re-renderizar (si no, Blazor pierde la referencia al archivo).
+        byte[] bytes;
+        try
+        {
+            using var s = file.OpenReadStream(maxAllowedSize: max);
+            using var ms0 = new MemoryStream();
+            await s.CopyToAsync(ms0);
+            bytes = ms0.ToArray();
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo leer la foto: " + ex.Message); return; }
+
+        qrSubiendo = true;
+        StateHasChanged();
+        try
+        {
+            using var ms = new MemoryStream(bytes);
+            var res = await Api.SubirFotoProductoAsync(qrProductoId.Value, ms, file.Name,
+                string.IsNullOrEmpty(file.ContentType) ? "image/jpeg" : file.ContentType);
+            AplicarFotoSubida(res);
+        }
+        finally { qrSubiendo = false; StateHasChanged(); }
+    }
+
+    // Subir la foto desde un LINK pegado.
+    private async Task SubirDesdeLink()
+    {
+        if (qrProductoId is null || qrSubiendo) return;
+        var url = (qrLinkInput ?? "").Trim();
+        if (string.IsNullOrEmpty(url)) { ToastService.Warning("Pegá el link de una foto."); return; }
+        qrSubiendo = true;
+        StateHasChanged();
+        try
+        {
+            var res = await Api.SubirFotoProductoDesdeUrlAsync(qrProductoId.Value, url);
+            if (res is null) ToastService.Error("No se pudo traer esa imagen. Revisá que el link sea de una foto.");
+            else AplicarFotoSubida(res);
+        }
+        finally { qrSubiendo = false; StateHasChanged(); }
+    }
+
+    // Aplica la foto recién subida (desde compu/link) a los renglones del producto y muestra el OK.
+    private void AplicarFotoSubida(ApiClient.ProductoFotoEstadoDto? res)
+    {
+        if (res is null || string.IsNullOrEmpty(res.FotoPropiaArchivo))
+        {
+            ToastService.Error("No se pudo subir la foto. Probá de nuevo.");
+            return;
+        }
+        foreach (var x in Venta.Items.Where(x => x.ProductoId == qrProductoId))
+        {
+            x.FotoPropiaArchivo = res.FotoPropiaArchivo;
+            x.FotoEstado = "APROBADA";
+        }
+        qrPollCts?.Cancel();
+        qrFotoLista = true;
+        qrFotoUrl = $"/api/public/producto-foto/img/{res.FotoPropiaArchivo}";
+        ToastService.Success("Foto subida ✅");
+    }
+
     private void CerrarQrFoto()
     {
         qrAbierto = false;
+        qrLinkInput = "";
+        qrSubiendo = false;
         qrPollCts?.Cancel();
         qrPollCts = null;
     }

@@ -1720,6 +1720,29 @@ public class ApiClient
     public async Task<ProductoFotoTokenDto?> CrearTokenFotoProductoAsync(int productoId)
         => await PostAsync<ProductoFotoTokenDto>($"/api/cafe/producto-foto/{productoId}/token", new { });
 
+    /// <summary>Sube la foto propia DIRECTO desde la compu (sin QR).</summary>
+    public async Task<ProductoFotoEstadoDto?> SubirFotoProductoAsync(int productoId, Stream fileStream, string fileName, string contentType)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        var sc = new StreamContent(fileStream);
+        if (!string.IsNullOrEmpty(contentType))
+            sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+        content.Add(sc, "file", string.IsNullOrEmpty(fileName) ? "foto.jpg" : fileName);
+        var resp = await _http.PostAsync($"/api/cafe/producto-foto/{productoId}/subir", content);
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadFromJsonAsync<ProductoFotoEstadoDto>();
+    }
+
+    /// <summary>Sube la foto propia bajando la imagen de un LINK (URL).</summary>
+    public async Task<ProductoFotoEstadoDto?> SubirFotoProductoDesdeUrlAsync(int productoId, string url)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/producto-foto/{productoId}/desde-url", new { url });
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadFromJsonAsync<ProductoFotoEstadoDto>();
+    }
+
     /// <summary>Clientes cuyo CUIT matchea el del librador del e-cheq. Vacio si no hay match.</summary>
     public async Task<List<SugerenciaClienteEcheqDto>?> GetClienteSugeridoECheqAsync(int echeqId)
         => await GetAsync<List<SugerenciaClienteEcheqDto>>($"/api/cafe/cheques-banco/{echeqId}/cliente-sugerido");
