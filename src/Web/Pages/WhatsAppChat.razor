@@ -3648,6 +3648,8 @@
         modoElegirVenta = false; mensajesSeleccionadosIds.Clear();   // 2026-08-05: salir del modo "elegir mensajes para venta"
         asignarNota = SelectedConv()?.AsignadoNota ?? "";   // 2026-08-06: precargar la nota guardada de este chat (editable)
         await LoadMensajes();
+        // 2026-08-06: poner el cursor solo en el cuadro de escribir (como WhatsApp Web). Solo en compu.
+        try { await JS.InvokeVoidAsync("waComposer.focus"); } catch { }
         await BuscarSugerenciaCliente();
         // 2026-08-04: si esta charla me la pasaron a mí y no la había abierto, apago el aviso.
         var conv = SelectedConv();
