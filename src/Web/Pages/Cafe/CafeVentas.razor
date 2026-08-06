@@ -28,6 +28,42 @@
     }
     .cell-cliente-hover:hover .venta-tooltip { display: block; }
 
+    /* 2026-08-06: Chat flotante de WhatsApp del cliente dentro de la venta */
+    .nv-wa-float {
+        position: fixed; right: 18px; bottom: 18px; z-index: 9050;
+        width: 340px; height: 470px; display: flex; flex-direction: column;
+        background: #fff; border-radius: 16px; overflow: hidden;
+        box-shadow: 0 12px 34px rgba(0,0,0,0.28);
+    }
+    .nv-wa-float.min { height: auto; }
+    .nv-wa-float-bar {
+        display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        background: #0b7a4b; color: #fff; padding: 6px 10px;
+    }
+    .nv-wa-float-title { font-weight: 800; font-size: 0.82rem;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .nv-wa-float-actions { display: flex; gap: 6px; flex: none; }
+    .nv-wa-float-btn { background: rgba(255,255,255,0.18); border: none; color: #fff;
+        border-radius: 6px; width: 26px; height: 24px; cursor: pointer; font-size: 0.8rem;
+        line-height: 1; display: flex; align-items: center; justify-content: center; }
+    .nv-wa-float-btn:hover { background: rgba(255,255,255,0.34); }
+    .nv-wa-float-body { flex: 1; min-height: 0; }
+    /* PinnedWaChat trae su propio marco; adentro del cajón lo dejamos a ras. */
+    .nv-wa-float-body .pwa-card { height: 100%; min-height: 0; border: none; border-radius: 0; box-shadow: none; }
+
+    .nv-wa-suger {
+        position: fixed; right: 18px; bottom: 18px; z-index: 9050;
+        display: flex; align-items: center; gap: 8px;
+        background: #fff; border: 1px solid #cfe9dc; border-left: 4px solid #25d366;
+        border-radius: 12px; padding: 8px 10px 8px 12px; max-width: 330px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+    }
+    .nv-wa-suger-txt { font-size: 0.8rem; color: #111827; }
+    .nv-wa-suger-btn { background: #25d366; color: #fff; border: none; border-radius: 8px;
+        padding: 5px 10px; font-weight: 700; font-size: 0.78rem; cursor: pointer; white-space: nowrap; }
+    .nv-wa-suger-btn:hover { filter: brightness(1.05); }
+    .nv-wa-suger-x { background: transparent; border: none; color: #9ca3af; cursor: pointer; font-size: 0.9rem; }
+
     /* Pildoritas de días — siempre disponibles (form de carga + viewer) */
     .cafe-day-pill {
         display: inline-flex; align-items: center; justify-content: center;
@@ -1003,6 +1039,47 @@
 }
 
 @* ═══════════════ MODAL NUEVA / EDITAR VENTA ═══════════════ *@
+@* ===== 2026-08-06: Chat flotante de WhatsApp del cliente DENTRO de la venta =====
+   Cuando el cliente elegido tiene un chat de WhatsApp con nosotros, aparece este cajón
+   abajo a la derecha para chatear en vivo mientras se carga la venta. Reusa el mini-chat
+   PinnedWaChat (solo texto, refresco solo cada 12s). z-index 9050 = arriba de la venta
+   (9000) pero abajo de los sub-modales de confirmación (9100+). Solo con el form abierto
+   y no minimizado. *@
+@if (showForm && formModalMode != "MINIMIZADO")
+{
+    @if (waChatAbierto && waChatConv is not null)
+    {
+        <div class="nv-wa-float @(waChatMinimizado ? "min" : "")">
+            <div class="nv-wa-float-bar">
+                <span class="nv-wa-float-title" title="@WaChatTitulo()">💬 @WaChatTitulo()</span>
+                <div class="nv-wa-float-actions">
+                    <button type="button" class="nv-wa-float-btn" @onclick="() => waChatMinimizado = !waChatMinimizado"
+                            title="@(waChatMinimizado ? "Agrandar el chat" : "Achicar el chat")">@(waChatMinimizado ? "▢" : "—")</button>
+                    <button type="button" class="nv-wa-float-btn" @onclick="CerrarChatFlotante" title="Cerrar el chat">✕</button>
+                </div>
+            </div>
+            @if (!waChatMinimizado)
+            {
+                <div class="nv-wa-float-body">
+                    <PinnedWaChat Numero="@waChatConv.Numero"
+                                  LineaPhoneId="@waChatConv.Linea"
+                                  TituloContacto="@WaChatTitulo()"
+                                  NombreLinea="@(waChatConv.LineaNumero ?? waChatConv.Linea ?? "WhatsApp")"
+                                  PuedeAbrirEnGrande="true" />
+                </div>
+            }
+        </div>
+    }
+    else if (waChatSugerida is not null)
+    {
+        <div class="nv-wa-suger">
+            <span class="nv-wa-suger-txt">💬 Este cliente parece tener un WhatsApp con nosotros.</span>
+            <button type="button" class="nv-wa-suger-btn" @onclick="AbrirChatSugerido">Abrir chat</button>
+            <button type="button" class="nv-wa-suger-x" @onclick="() => waChatSugerida = null" title="No mostrar">✕</button>
+        </div>
+    }
+}
+
 @if (showForm)
 {
     @* IMPORTANTE: el modal-overlay NO cierra el form al clickear fuera.
@@ -6232,6 +6309,7 @@
         editingVentaId = null; editingVentaNumero = ""; duplicadoDeNumero = null;
         convirtiendoPreventaId = null;  // reset si veníamos de una conversión cancelada
         unpaidPrevSales = new(); topProductsForClient = new(); includePrevBalanceInNotes = true;
+        CerrarChatWaFlotanteReset(); // 2026-08-06: arrancar sin chat flotante colgado de una venta anterior
         formClienteId = 0; formClienteTipo = "OTRO";
         clienteSearch = ""; clienteSearchOpen = false;
         modoVentaRapida = false;
@@ -7022,7 +7100,15 @@
         copiaWaSeleccion.Clear();
     }
 
-    private void CloseForm() { showForm = false; formError = null; editingVentaId = null; editingVentaNumero = ""; duplicadoDeNumero = null; autoRetryArcaPostEdit = false; editingVentaTipoOriginal = null; editingVentaTieneCae = false; editingVentaArcaEstado = null; }
+    private void CloseForm() { showForm = false; formError = null; editingVentaId = null; editingVentaNumero = ""; duplicadoDeNumero = null; autoRetryArcaPostEdit = false; editingVentaTipoOriginal = null; editingVentaTieneCae = false; editingVentaArcaEstado = null; CerrarChatWaFlotanteReset(); }
+
+    /// <summary>Apaga y olvida el chat flotante de WhatsApp al cerrar/abrir el form de venta,
+    /// así no queda colgado ni arrastra el cliente anterior.</summary>
+    private void CerrarChatWaFlotanteReset()
+    {
+        waChatConv = null; waChatSugerida = null; waChatAbierto = false;
+        waChatMinimizado = false; waChatClienteDetectado = 0; _waConvsCache = null;
+    }
 
     /// <summary>Numero del comprobante origen cuando se está duplicando (para mostrar "Duplicado de X" en el modal).</summary>
     private string? duplicadoDeNumero;
@@ -7291,7 +7377,88 @@
         await RecomputeUnpaidPrevSalesAsync();
         await LoadTopProductsForClient();
         await Cotizar();
+        await DetectarWhatsAppChatAsync();
     }
+
+    // ===== 2026-08-06: Chat flotante de WhatsApp del cliente dentro de la venta =====
+    private List<ApiClient.TwConvDto>? _waConvsCache;   // lista de conversaciones (se pide 1 sola vez por sesión de form)
+    private ApiClient.TwConvDto? waChatConv;            // conversación abierta en el cajón
+    private ApiClient.TwConvDto? waChatSugerida;        // match por teléfono, pendiente de que el usuario lo abra
+    private bool waChatAbierto;                          // cajón visible
+    private bool waChatMinimizado;                       // cajón colapsado a la barrita
+    private int waChatClienteDetectado;                 // último cliente detectado (para no repetir la búsqueda)
+
+    /// <summary>Al elegir cliente: si tiene un chat de WhatsApp VINCULADO lo abre solo; si no está
+    /// vinculado pero el teléfono coincide con una conversación existente, ofrece abrirlo (no lo abre
+    /// solo, para no meter un chat equivocado). Reusa la lista de conversaciones ya existente.</summary>
+    private async Task DetectarWhatsAppChatAsync()
+    {
+        // Sin cliente (o consumidor final): limpiar todo.
+        if (formClienteId <= 0)
+        {
+            waChatConv = null; waChatSugerida = null; waChatAbierto = false; waChatClienteDetectado = 0;
+            return;
+        }
+        // Ya lo detectamos para este cliente: no repetir la búsqueda ni pisar lo que el usuario abrió/cerró.
+        if (formClienteId == waChatClienteDetectado) return;
+        waChatClienteDetectado = formClienteId;
+        waChatConv = null; waChatSugerida = null; waChatAbierto = false; waChatMinimizado = false;
+
+        // Traemos las conversaciones una sola vez (best-effort: si falla, no molestamos).
+        if (_waConvsCache is null)
+        {
+            try { _waConvsCache = await Api.GetTwConversacionesAsync(); }
+            catch { _waConvsCache = new(); }
+        }
+
+        // 1) ¿Hay un chat VINCULADO a este cliente? → lo abrimos directo (el más reciente).
+        var vinc = _waConvsCache
+            .Where(c => c.ClienteId == formClienteId)
+            .OrderByDescending(c => c.UltimoAt)
+            .FirstOrDefault();
+        if (vinc is not null)
+        {
+            waChatConv = vinc;
+            waChatAbierto = true;
+            return;
+        }
+
+        // 2) Sin vínculo: ¿el teléfono del cliente coincide con algún WhatsApp? → sugerencia (no abrir solo).
+        //    Comparamos por los últimos 8 dígitos (tolera 54/9/15/código de área), igual que el backend.
+        var cli = clientes?.FirstOrDefault(x => x.Id == formClienteId);
+        var tel = new string((cli?.Telefono ?? "").Where(char.IsDigit).ToArray());
+        if (tel.Length >= 8)
+        {
+            var tail = tel.Substring(tel.Length - 8);
+            var match = _waConvsCache
+                .Where(c => !string.IsNullOrEmpty(c.Numero) && c.Numero.StartsWith("whatsapp:", StringComparison.OrdinalIgnoreCase))
+                .Where(c => new string(c.Numero.Where(char.IsDigit).ToArray()).EndsWith(tail))
+                .OrderByDescending(c => c.UltimoAt)
+                .FirstOrDefault();
+            if (match is not null) waChatSugerida = match;
+        }
+    }
+
+    /// <summary>Título que se muestra arriba del cajón: nombre del cliente elegido si lo tenemos,
+    /// si no el nombre de perfil de WhatsApp, si no el número lindo.</summary>
+    private string WaChatTitulo()
+    {
+        var cli = clientes?.FirstOrDefault(x => x.Id == formClienteId);
+        if (!string.IsNullOrWhiteSpace(cli?.Nombre)) return cli!.Nombre;
+        if (!string.IsNullOrWhiteSpace(waChatConv?.ClienteNombre)) return waChatConv!.ClienteNombre!;
+        if (!string.IsNullOrWhiteSpace(waChatConv?.NombrePerfil)) return waChatConv!.NombrePerfil!;
+        return (waChatConv?.Numero ?? "Cliente").Replace("whatsapp:", "");
+    }
+
+    private void AbrirChatSugerido()
+    {
+        waChatConv = waChatSugerida;
+        waChatSugerida = null;
+        waChatMinimizado = false;
+        waChatAbierto = true;
+    }
+
+    private void CerrarChatFlotante() => waChatAbierto = false;
 
     // ===== 2026-07-29: Direcciones de entrega múltiples — selector "Entregar en" =====
     private List<CafeDireccionDto> ventaDirecciones = new();
