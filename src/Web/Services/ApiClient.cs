@@ -1701,6 +1701,15 @@ public class ApiClient
         return await GetAsync<List<ChequeBancoDto>>(url);
     }
 
+    // ── Foto del producto: aprobar / reportar erronea (2026-08-05) ──
+    public record ProductoFotoEstadoDto(int CafeProductoId, string? Estado, string? Usuario,
+        string? Comentario, DateTime UpdatedAt);
+
+    /// <summary>Marca la foto de un producto a nivel sistema. estado = "APROBADA" | "REPORTADA"
+    /// o null/"" para limpiar la marca. Devuelve el estado guardado (null si falló).</summary>
+    public async Task<ProductoFotoEstadoDto?> MarcarFotoProductoAsync(int productoId, string? estado, string? comentario = null)
+        => await PostAsync<ProductoFotoEstadoDto>($"/api/cafe/producto-foto/{productoId}", new { estado, comentario });
+
     /// <summary>Clientes cuyo CUIT matchea el del librador del e-cheq. Vacio si no hay match.</summary>
     public async Task<List<SugerenciaClienteEcheqDto>?> GetClienteSugeridoECheqAsync(int echeqId)
         => await GetAsync<List<SugerenciaClienteEcheqDto>>($"/api/cafe/cheques-banco/{echeqId}/cliente-sugerido");

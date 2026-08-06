@@ -3766,6 +3766,15 @@ public class CafeVentasController : ControllerBase
                             .OrderByDescending(mi => mi.UpdatedAt)
                             .Select(mi => mi.Thumbnail)
                             .FirstOrDefault()
+                        : null,
+                    // 2026-08-05: id del producto (para aprobar/reportar la foto) + estado de la foto
+                    // a nivel sistema (APROBADA / REPORTADA / null). Es por producto → lo ven todos.
+                    productoId = i.ProductoId,
+                    fotoEstado = i.ProductoId != null
+                        ? _db.CafeProductoFotos.Where(f => f.CafeProductoId == i.ProductoId).Select(f => f.Estado).FirstOrDefault()
+                        : null,
+                    fotoEstadoPor = i.ProductoId != null
+                        ? _db.CafeProductoFotos.Where(f => f.CafeProductoId == i.ProductoId).Select(f => f.Usuario).FirstOrDefault()
                         : null
                 }).ToList()
             })

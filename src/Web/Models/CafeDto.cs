@@ -623,6 +623,13 @@ public class CafePreparacionItemDto
     /// <summary>2026-08-03: foto (thumbnail de la publicación MeLi vinculada) para mostrar una mini
     /// imagen del producto en el tablero. Null si el producto no tiene publicación MeLi linkeada.</summary>
     public string? Thumbnail { get; set; }
+    /// <summary>2026-08-05: id del producto de café (para aprobar/reportar su foto). Null si el
+    /// renglón no está linkeado al catálogo (concepto libre).</summary>
+    public int? ProductoId { get; set; }
+    /// <summary>2026-08-05: estado de la foto a nivel sistema: "APROBADA" | "REPORTADA" | null.</summary>
+    public string? FotoEstado { get; set; }
+    /// <summary>2026-08-05: quién dejó la última marca (para mostrar "por Fulano").</summary>
+    public string? FotoEstadoPor { get; set; }
 }
 
 // ── Camino al picking (2026-08-02) ──

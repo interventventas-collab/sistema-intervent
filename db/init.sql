@@ -2647,6 +2647,22 @@ BEGIN
 END
 GO
 
+-- 2026-08-05: estado de la foto por producto (aprobada / reportada erronea) a nivel sistema.
+-- No toca la foto de MeLi. Un registro por producto; apenas uno la marca lo ven todos.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_ProductoFoto' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_ProductoFoto (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        CafeProductoId INT NOT NULL,
+        Estado NVARCHAR(20) NULL,
+        Usuario NVARCHAR(100) NULL,
+        Comentario NVARCHAR(500) NULL,
+        UpdatedAt DATETIME2 NOT NULL DEFAULT GETDATE()
+    );
+    CREATE UNIQUE INDEX UX_CafeProductoFoto_Producto ON Cafe_ProductoFoto (CafeProductoId);
+END
+GO
+
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Settings' AND xtype='U')
 BEGIN
     CREATE TABLE Cafe_Settings (
