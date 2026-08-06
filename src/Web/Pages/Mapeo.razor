@@ -4326,11 +4326,22 @@
     // Al tocar el cuadradito de una zona, encuadramos el mapa sobre sus envíos.
     private async Task FocoZona(ZonaCreada z)
     {
+        // La zona tocada pasa a ser la ZONA ACTIVA para "ordenar a mano" y "armar ruta guiada".
+        // Así, si después entrás a esos modos, arrancan en ESTA zona (no siempre en la primera).
+        ordenDriverId = z.DriverId;
         var pts = (stops ?? new())
             .Where(s => z.StopIds.Contains(s.Id) && s.Latitude != 0 && s.Longitude != 0)
             .Select(s => new double[] { (double)s.Latitude, (double)s.Longitude })
             .ToArray();
         if (pts.Length == 0) { ToastService.Info("Esa zona ya no tiene envíos."); return; }
+        // Si ya estás trabajando (ordenar a mano o ruta guiada), cambiamos a ESTA zona al toque:
+        // mostramos solo la suya y limpiamos lo que venías eligiendo, para no quedar enganchado a otra.
+        if (modoOrden || modoGuiada)
+        {
+            MostrarSoloZonaOrden(z.DriverId);
+            guiadaPrimeraId = null; guiadaUltimaId = null; guiadaFijasMedio.Clear();
+            await RenderMap();
+        }
         try { await JS.InvokeVoidAsync("mapeoFlex.fitPoints", new object[] { pts }); } catch { }
         ToastService.Info($"Zona {z.Numero} · {z.DriverName} · {pts.Length} envío(s)");
     }
@@ -5225,11 +5236,27 @@
             guiadaPrimeraId = null; guiadaUltimaId = null; guiadaFijasMedio.Clear();
             rutasResumen = new();
             try { await JS.InvokeVoidAsync("mapeoFlex.clearRoutes"); } catch { }
-            await RenderMap();
+            // Si tocaste el cuadradito de una zona antes de entrar, mostramos SOLO esa zona (para no
+            // mezclar con las otras). Guardamos qué se veía para restaurarlo al salir.
+            ordenBackupZonasOcultas = new HashSet<int>(zonasOcultasMapa);
+            ordenBackupSinAsignar = sinAsignarOcultos;
+            if (ordenDriverId.HasValue && (stops ?? new()).Any(s => s.AssignedDriverId == ordenDriverId))
+            {
+                MostrarSoloZonaOrden(ordenDriverId.Value);
+                await RenderMap();
+                await FocoZonaDriver(ordenDriverId.Value);
+            }
+            else
+            {
+                await RenderMap();
+            }
         }
         else
         {
             modoGuiada = false;
+            // Restauramos lo que se veía antes de entrar al modo guiado.
+            zonasOcultasMapa = new HashSet<int>(ordenBackupZonasOcultas);
+            sinAsignarOcultos = ordenBackupSinAsignar;
             await RenderMap();
             await CargarYDibujarRutas(single: false);
         }
