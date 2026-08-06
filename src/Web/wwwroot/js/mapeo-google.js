@@ -197,6 +197,13 @@ window.mapeoFlex = (function () {
                 assignDriver: function (markerId, driverId) {
                     if (dotNetRef) dotNetRef.invokeMethodAsync('AsignarRepartidorDesdePopup', markerId, parseInt(driverId, 10) || 0);
                 },
+                // 2026-08-06: mandar el envío a una zona desde el globito. 0 = sin zona, -1 = nueva zona.
+                assignZone: function (markerId, slot) {
+                    var n = parseInt(slot, 10);
+                    if (isNaN(n)) return;
+                    if (infoWindow) { infoWindow.close(); infoOpen = false; }
+                    if (dotNetRef) dotNetRef.invokeMethodAsync('AsignarZonaDesdePopup', markerId, n);
+                },
                 // 2026-07-30: corregir/mover la ubicación de este pin desde el globito.
                 // Cerramos el globito primero: el modo edición redibuja SOLO ese pin con
                 // keepView, y renderMarkers ignora el redibujo si hay un globito abierto.
