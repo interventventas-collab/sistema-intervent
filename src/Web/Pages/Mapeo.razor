@@ -25,9 +25,10 @@
     #leafletMap { width: 100%; height: 100%; }
     /* Botones-dock del borde izquierdo en pantalla completa (con cartelito al pasar el cursor). */
     /* Dock flotante moderno: un panel oscuro translúcido con los botones adentro. */
-    .mapeo-dock { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 7px; background: rgba(17,24,39,0.94); border-radius: 18px; box-shadow: 0 8px 26px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.08); }
+    .mapeo-dock { display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 7px; background: rgba(17,24,39,0.94); border-radius: 18px; box-shadow: 0 8px 26px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.08); }
     .mapeo-dock-sep { height: 1px; margin: 3px 9px; background: rgba(255,255,255,0.14); border-radius: 1px; }
-    .mapeo-dock-btn { position: relative; width: 52px; height: 52px; border-radius: 14px; border: none; background: transparent; color: #e5e7eb; font-size: 1.25rem; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; text-decoration: none; transition: background .15s ease, color .15s ease, transform .08s ease; }
+    .mapeo-dock-btn { position: relative; width: auto; min-width: 46px; height: 44px; border-radius: 12px; border: none; background: transparent; color: #e5e7eb; font-size: 1.25rem; cursor: pointer; display: flex; align-items: center; justify-content: flex-start; gap: 10px; padding: 0 12px; text-decoration: none; transition: background .15s ease, color .15s ease, transform .08s ease; }
+    .mapeo-dock-label { font-size: 0.82rem; font-weight: 600; white-space: nowrap; }
     .mapeo-dock-badge { position: absolute; top: 2px; right: 2px; min-width: 16px; height: 16px; padding: 0 3px; border-radius: 999px; background: #16a34a; color: #fff; font-size: 0.62rem; font-weight: 800; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
     .mapeo-dock-spin { animation: mapeo-spin 0.9s linear infinite; }
     @@keyframes mapeo-spin { to { transform: rotate(360deg); } }
@@ -1121,12 +1122,14 @@
                     {
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><line x1="9" y1="4" x2="9" y2="20"></line></svg>
                     }
+                    <span class="mapeo-dock-label">@(sideCollapsed ? "Mostrar listado" : "Ocultar listado")</span>
                 </button>
                 <div class="mapeo-dock-sep"></div>
                 @* Actualizar entregas: le pregunta a MeLi por las entregas confirmadas (los ✔). Ícono de refrescar. *@
                 <button class="mapeo-dock-btn" @onclick="ActualizarEntregas" disabled="@(actualizandoEntregas || isLoading)"
                         title="@(actualizandoEntregas ? "Actualizando entregas…" : "Actualizar entregas (preguntarle a MeLi por las entregas más recientes)")">
                     <svg class="@(actualizandoEntregas ? "mapeo-dock-spin" : "")" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                    <span class="mapeo-dock-label">Entregas</span>
                     @if (entregadosHoy > 0 && !actualizandoEntregas)
                     {
                         <span class="mapeo-dock-badge">@entregadosHoy</span>
@@ -1135,6 +1138,7 @@
                 @* Escanear con el celular (muestra el QR) — ícono de cámara de fotos. *@
                 <button class="mapeo-dock-btn" @onclick="OpenScanModal" title="Escanear con el celular, o traer por número (venta/alquiler/Flex)">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                    <span class="mapeo-dock-label">Escanear</span>
                 </button>
                 @* Modo pistola: leer con el escáner FÍSICO (USB). Se prende/apaga; mientras está
                    verde, pasás las etiquetas por el escáner y las paradas caen solas al mapa. *@
@@ -1142,6 +1146,7 @@
                         style="@(wedgeOn ? "background:#16a34a; color:#fff; border-color:#16a34a;" : "")"
                         title="@(wedgeOn ? "Leyendo con el escáner… (tocá para apagar)" : "Leer con el escáner físico: pasá las etiquetas por adelante")">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"></path><path d="M17 3h2a2 2 0 0 1 2 2v2"></path><path d="M21 17v2a2 2 0 0 1-2 2h-2"></path><path d="M7 21H5a2 2 0 0 1-2-2v-2"></path><line x1="7" y1="7" x2="7" y2="17"></line><line x1="10.5" y1="7" x2="10.5" y2="17"></line><line x1="14" y1="7" x2="14" y2="17"></line><line x1="17.5" y1="7" x2="17.5" y2="17"></line></svg>
+                    <span class="mapeo-dock-label">Pistola</span>
                     @if (wedgeOn)
                     {
                         <span class="mapeo-dock-badge" style="background:#16a34a;">@wedgeCount</span>
@@ -1150,11 +1155,13 @@
                 @* Agregar parada manual — ícono de globito (pin) de Google. *@
                 <button class="mapeo-dock-btn" @onclick="OpenAddStopModal" title="Agregar parada manual">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                    <span class="mapeo-dock-label">Agregar parada</span>
                 </button>
                 @* Zonificar: dibujar zonas sobre el mapa — ícono de lápiz sobre el recuadro. *@
                 <div style="position:relative;">
                     <button class="mapeo-dock-btn @(showZonasMenu ? "activo" : "")" @onclick="() => showZonasMenu = !showZonasMenu" title="Zonificar (dibujar zonas sobre el mapa)">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"></path></svg>
+                        <span class="mapeo-dock-label">Zonas</span>
                     </button>
                     @if (showZonasMenu)
                     {
@@ -1183,17 +1190,20 @@
                 <button class="mapeo-dock-btn @(modoOrden ? "activo" : "")" @onclick="ToggleModoOrden"
                         title="Ordenar a mano: tocá los envíos de una zona en el orden de entrega y se numeran 1, 2, 3…">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="6" x2="21" y2="6"></line><line x1="10" y1="12" x2="21" y2="12"></line><line x1="10" y1="18" x2="21" y2="18"></line><text x="2.5" y="8.5" font-size="7" font-weight="700" stroke="none" fill="currentColor">1</text><text x="2.5" y="14.5" font-size="7" font-weight="700" stroke="none" fill="currentColor">2</text><text x="2.5" y="20.5" font-size="7" font-weight="700" stroke="none" fill="currentColor">3</text></svg>
+                    <span class="mapeo-dock-label">Ordenar a mano</span>
                 </button>
                 @* Armar ruta guiada (método NUEVO): elegí la primera y la última parada de una zona y el
                    sistema ordena el resto. Sirve también ANTES de asignar choferes (por vehículo). *@
                 <button class="mapeo-dock-btn @(modoGuiada ? "activo" : "")" @onclick="ToggleModoGuiada"
                         title="Armar ruta guiada: elegí la primera y la última parada de una zona y el sistema ordena el resto (podés hacerlo antes de poner choferes)">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>
+                    <span class="mapeo-dock-label">Armar ruta guiada</span>
                 </button>
                 @* Prender/apagar el tránsito (embotellamientos). Arranca apagado = mapa limpio. Ícono semáforo. *@
                 <button class="mapeo-dock-btn @(traficoOn ? "activo" : "")" @onclick="ToggleTrafico"
                         title="@(traficoOn ? "Tránsito ENCENDIDO — tocá para apagar" : "Ver tránsito (embotellamientos en rojo/amarillo/verde)")">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="20" rx="4"></rect><circle cx="12" cy="7" r="1.4"></circle><circle cx="12" cy="12" r="1.4"></circle><circle cx="12" cy="17" r="1.4"></circle></svg>
+                    <span class="mapeo-dock-label">Tránsito</span>
                 </button>
                 @* Cuadraditos de las zonas ya creadas (Zona 1, Zona 2, ...) con el color del repartidor.
                    Arriba el "Z1" (tocar = foco en esa zona); abajo el ojito para mostrar/ocultar la zona en el mapa. *@
