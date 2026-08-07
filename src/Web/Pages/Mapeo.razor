@@ -3912,9 +3912,10 @@
                 (vehiculoFiltro == 0 && !st.AssignedVehicleSlot.HasValue) ||
                 (vehiculoFiltro > 0 && st.AssignedVehicleSlot == vehiculoFiltro)));
             list.AddRange(stopsFiltrados.Select(st => {
-                // Prioridad de color: 1) vehiculo asignado, 2) driver asignado, 3) amarillo default
-                string color = st.AssignedVehicleSlot.HasValue ? VehicleColor(st.AssignedVehicleSlot.Value)
-                              : (string.IsNullOrEmpty(st.AssignedDriverColor) ? "#eab308" : st.AssignedDriverColor!);
+                // 2026-08-07: prioridad de color = 1) REPARTIDOR asignado (para que coincida con los
+                // chips de abajo), 2) color de la zona/slot (si todavía no tiene repartidor), 3) amarillo.
+                string color = !string.IsNullOrEmpty(st.AssignedDriverColor) ? st.AssignedDriverColor!
+                              : (st.AssignedVehicleSlot.HasValue ? VehicleColor(st.AssignedVehicleSlot.Value) : "#eab308");
                 // Número SOLO cuando la parada tiene orden de ruta (armada a mano u optimizada).
                 // Sin orden → pin limpio, sin número (el total de la zona se ve en la lista).
                 string label = st.OrderInRoute.HasValue ? st.OrderInRoute.Value.ToString() : "";
@@ -3947,12 +3948,17 @@
                 // se asignan por zona al final; acá mandás el envío a una zona existente o a una nueva.
                 var zonaOpts = new System.Text.StringBuilder();
                 zonaOpts.Append($"<option value='0'{(!st.AssignedVehicleSlot.HasValue ? " selected" : "")}>— Sin zona —</option>");
-                // 2026-08-07: cada zona sale con SU color (fondo del color de la zona) para ubicarla fácil.
+                // 2026-08-07: cada zona sale con SU color. Si la zona ya tiene repartidor, usa el color
+                // del REPARTIDOR (para que coincida con los pines y los chips); si no, el color del slot.
                 foreach (var sl in (stops ?? new()).Where(x => x.AssignedVehicleSlot.HasValue).Select(x => x.AssignedVehicleSlot!.Value).Distinct().OrderBy(x => x))
-                    zonaOpts.Append($"<option value='{sl}'{(st.AssignedVehicleSlot == sl ? " selected" : "")} style='background-color:{VehicleColor(sl)}; color:#fff;'>● Zona {sl}</option>");
+                {
+                    var slColor = (stops ?? new()).Where(x => x.AssignedVehicleSlot == sl && !string.IsNullOrEmpty(x.AssignedDriverColor))
+                                      .Select(x => x.AssignedDriverColor!).FirstOrDefault() ?? VehicleColor(sl);
+                    zonaOpts.Append($"<option value='{sl}'{(st.AssignedVehicleSlot == sl ? " selected" : "")} style='background-color:{slColor}; color:#fff;'>● Zona {sl}</option>");
+                }
                 zonaOpts.Append("<option value='-1' style='color:#111;'>➕ Nueva zona</option>");
-                // Tinte del selector CERRADO según la zona actual (así se ve el color sin abrirlo).
-                var selBg = st.AssignedVehicleSlot.HasValue ? VehicleColor(st.AssignedVehicleSlot.Value) : "white";
+                // Tinte del selector CERRADO = mismo color que el pin (repartidor si tiene, si no zona).
+                var selBg = st.AssignedVehicleSlot.HasValue ? color : "white";
                 var selFg = st.AssignedVehicleSlot.HasValue ? "#fff" : "#111";
                 // Entregado: Flex/ME1 lo confirma MeLi (MeliStatus), venta del café trae la hora real (DateDelivered),
                 // y cualquier parada marcada a mano queda como InternalStatus="entregado".
