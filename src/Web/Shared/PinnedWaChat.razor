@@ -88,6 +88,39 @@
         </div>
     }
 
+    @* 2026-08-07: acciones extra (solo cuando AccionesCompletas=true: móvil / card flotante).
+       Respuestas rápidas (abre lista) + Menú rol (un toque). 📎/📷/🎤 quedan en el composer. *@
+    @if (AccionesCompletas)
+    {
+        <div class="pwa-acciones">
+            <button type="button" class="pwa-acc-btn @(showResp ? "on" : "")" @onclick="ToggleResp" title="Respuestas rápidas">⚡ Respuestas</button>
+            <button type="button" class="pwa-acc-btn" @onclick="EnviarMenuRolMini" disabled="@enviandoMenuRol" title="Enviar el menú de opciones (¿con quién te querés contactar?)">@(enviandoMenuRol ? "⏳ Enviando…" : "👋 Menú rol")</button>
+        </div>
+        @if (showResp)
+        {
+            <div class="pwa-resp-panel">
+                @if (respuestas is null)
+                {
+                    <div class="pwa-resp-vacio">Cargando…</div>
+                }
+                else if (!respuestas.Any(x => x.Activo))
+                {
+                    <div class="pwa-resp-vacio">No hay respuestas rápidas cargadas.</div>
+                }
+                else
+                {
+                    @foreach (var r in respuestas.Where(x => x.Activo).OrderBy(x => x.Orden))
+                    {
+                        <button type="button" class="pwa-resp-item" @onclick="() => UsarRespuesta(r)">
+                            <span class="pwa-resp-nom">@r.Nombre</span>
+                            <span class="pwa-resp-txt">@Recortar2(r.Texto, 70)</span>
+                        </button>
+                    }
+                }
+            </div>
+        }
+    }
+
     <div class="pwa-composer">
         @if (grabandoAudio)
         {
@@ -182,6 +215,23 @@
     .pwa-rec-label { flex: 1; color: #ef4444; font-weight: 700; font-size: 0.85rem; align-self: center;
         display: inline-flex; align-items: center; }
 
+    /* Acciones extra (Respuestas rápidas / Menú rol) */
+    .pwa-acciones { display: flex; gap: 6px; padding: 0.4rem 0.7rem 0; background: #f8fafb; }
+    .pwa-acc-btn { border: 1px solid #d1d5db; background: #fff; color: #374151; border-radius: 999px;
+        padding: 5px 12px; font-size: 0.78rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+    .pwa-acc-btn:hover:not(:disabled) { background: #f3f4f6; }
+    .pwa-acc-btn.on { background: #0b7a4b; color: #fff; border-color: #0b7a4b; }
+    .pwa-acc-btn:disabled { opacity: 0.6; cursor: wait; }
+    .pwa-resp-panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; margin: 6px 0.7rem 0;
+        max-height: 190px; overflow-y: auto; box-shadow: 0 4px 14px rgba(0,0,0,0.10); }
+    .pwa-resp-vacio { color: #6b7280; font-size: 0.82rem; text-align: center; padding: 0.9rem; }
+    .pwa-resp-item { display: block; width: 100%; text-align: left; border: none; background: transparent;
+        border-bottom: 1px solid #f3f4f6; padding: 8px 12px; cursor: pointer; }
+    .pwa-resp-item:hover { background: #f0fdf4; }
+    .pwa-resp-nom { display: block; font-weight: 700; color: #111827; font-size: 0.82rem; }
+    .pwa-resp-txt { display: block; color: #6b7280; font-size: 0.76rem;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
     .pwa-firma { display: flex; align-items: center; flex-wrap: wrap; gap: 5px;
         padding: 0.4rem 0.7rem 0; background: #f8fafb; }
     .pwa-firma-lbl { font-size: 0.72rem; font-weight: 800; color: #374151; }
@@ -222,6 +272,9 @@
     [Parameter] public string NombreLinea { get; set; } = "";
     /// <summary>Muestra el botón "Abrir ⤢" (para usuarios que sí pueden ver la pantalla completa de WhatsApp).</summary>
     [Parameter] public bool PuedeAbrirEnGrande { get; set; } = true;
+    /// <summary>2026-08-07: muestra las acciones extra (Respuestas rápidas + Menú rol). Solo en móvil / card
+    /// flotante; en el chat de venta/depósito/dashboard queda apagado para no recargar.</summary>
+    [Parameter] public bool AccionesCompletas { get; set; } = false;
 
     private List<ApiClient.TwMsgDto>? mensajes;
     private string composer = "";
@@ -348,6 +401,48 @@
     {
         grabandoAudio = false;
         try { await JS.InvokeVoidAsync("waAudio.cancel"); } catch { }
+    }
+
+    // === 2026-08-07: Respuestas rápidas + Menú rol (solo con AccionesCompletas) ===
+    private List<ApiClient.TwRespRapidaDto>? respuestas;
+    private bool showResp;
+    private bool enviandoMenuRol;
+
+    private async Task ToggleResp()
+    {
+        showResp = !showResp;
+        if (showResp && respuestas is null)
+        {
+            try { respuestas = await Api.GetTwRespuestasAsync(); }
+            catch { respuestas = new(); }
+        }
+        StateHasChanged();
+    }
+
+    private void UsarRespuesta(ApiClient.TwRespRapidaDto r)
+    {
+        composer = string.IsNullOrWhiteSpace(composer) ? r.Texto : (composer.TrimEnd() + " " + r.Texto);
+        showResp = false;
+        StateHasChanged();
+    }
+
+    private async Task EnviarMenuRolMini()
+    {
+        if (enviandoMenuRol) return;
+        enviandoMenuRol = true;
+        StateHasChanged();
+        var (ok, err) = await Api.SendTwMenuRolAsync(Numero, LineaPhoneId);
+        enviandoMenuRol = false;
+        if (ok) { Toast.Info("Menú enviado"); await Cargar(); }
+        else Toast.Error(err ?? "No se pudo enviar el menú");
+        StateHasChanged();
+    }
+
+    private static string Recortar2(string? s, int max)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "";
+        s = s.Replace("\n", " ").Trim();
+        return s.Length <= max ? s : s.Substring(0, max) + "…";
     }
 
     // === 2026-08-06: adjuntar foto/archivo (sube y manda, reusa el camino del WhatsApp grande) ===
