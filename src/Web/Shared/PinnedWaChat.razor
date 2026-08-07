@@ -93,6 +93,7 @@
     @if (AccionesCompletas)
     {
         <div class="pwa-acciones">
+            <button type="button" class="pwa-acc-btn pwa-acc-mas" @onclick="AbrirMas" title="Más: adjuntar del servidor, contacto, saldo">➕</button>
             <button type="button" class="pwa-acc-btn @(showResp ? "on" : "")" @onclick="ToggleResp" title="Respuestas rápidas">⚡ Respuestas</button>
             <button type="button" class="pwa-acc-btn" @onclick="EnviarMenuRolMini" disabled="@enviandoMenuRol" title="Enviar el menú de opciones (¿con quién te querés contactar?)">@(enviandoMenuRol ? "⏳ Enviando…" : "👋 Menú rol")</button>
         </div>
@@ -158,10 +159,114 @@
             }
         }
     </div>
+
+    @* 2026-08-07 (Fase 2): panel del ➕ — Adjuntar del servidor / Contacto / Saldo. Overlay sobre la card. *@
+    @if (mostrarMas)
+    {
+        <div class="pwa-mas">
+            <div class="pwa-mas-head">
+                @if (masVista != "menu")
+                {
+                    <button type="button" class="pwa-mas-back" @onclick="VolverMenuMas" title="Volver">←</button>
+                }
+                <span class="pwa-mas-title">@TituloMas()</span>
+                <button type="button" class="pwa-mas-x" @onclick="CerrarMas" title="Cerrar">✕</button>
+            </div>
+            <div class="pwa-mas-body">
+                @if (masVista == "menu")
+                {
+                    <button type="button" class="pwa-mas-op" @onclick="AbrirServidor">📁 Adjuntar del servidor</button>
+                    <button type="button" class="pwa-mas-op" @onclick="AbrirContacto">👤 Compartir un contacto</button>
+                    <button type="button" class="pwa-mas-op" @onclick="AbrirSaldo">💰 Mandar el saldo de un cliente</button>
+                }
+                else if (masVista == "servidor")
+                {
+                    <div class="pwa-mas-tabs">
+                        @foreach (var t in SrvTabs)
+                        {
+                            <button type="button" class="pwa-mas-tab @(srvTab == t.Key ? "on" : "")" @onclick="() => CambiarTab(t.Key)">@t.Label</button>
+                        }
+                    </div>
+                    <input class="pwa-mas-search" placeholder="Buscar…" value="@srvSearch" @oninput="OnSrvSearch" />
+                    @if (srvLoading)
+                    {
+                        <div class="pwa-mas-info">Cargando…</div>
+                    }
+                    else if (srvItems.Count == 0)
+                    {
+                        <div class="pwa-mas-info">Sin resultados.</div>
+                    }
+                    else
+                    {
+                        @foreach (var f in srvItems)
+                        {
+                            <button type="button" class="pwa-mas-item" @onclick="() => EnviarServidor(f)" disabled="@srvEnviando">
+                                <span class="pwa-mas-item-ic">@(string.IsNullOrWhiteSpace(f.Icon) ? "📎" : f.Icon)</span>
+                                <span class="pwa-mas-item-txt">
+                                    <span class="pwa-mas-item-lbl">@f.Label</span>
+                                    @if (!string.IsNullOrWhiteSpace(f.SubLabel))
+                                    {
+                                        <span class="pwa-mas-item-sub">@f.SubLabel</span>
+                                    }
+                                </span>
+                            </button>
+                        }
+                    }
+                }
+                else if (masVista == "contacto")
+                {
+                    <input class="pwa-mas-search" placeholder="Buscar contacto por nombre o número…" value="@contQuery" @oninput="BuscarContacto" />
+                    @if (contBuscando)
+                    {
+                        <div class="pwa-mas-info">Buscando…</div>
+                    }
+                    else if (contQuery.Trim().Length >= 2 && contResult.Count == 0)
+                    {
+                        <div class="pwa-mas-info">Sin contactos con teléfono para esa búsqueda.</div>
+                    }
+                    @foreach (var c in contResult)
+                    {
+                        <button type="button" class="pwa-mas-item" @onclick="() => EnviarContacto(c)" disabled="@contEnviando">
+                            <span class="pwa-mas-item-ic">👤</span>
+                            <span class="pwa-mas-item-txt">
+                                <span class="pwa-mas-item-lbl">@c.Nombre</span>
+                                <span class="pwa-mas-item-sub">@c.Numero · @c.Origen</span>
+                            </span>
+                        </button>
+                    }
+                }
+                else if (masVista == "saldo")
+                {
+                    <input class="pwa-mas-search" placeholder="Buscar cliente por nombre…" value="@salQuery" @oninput="BuscarSaldo" />
+                    @if (salBuscando)
+                    {
+                        <div class="pwa-mas-info">Buscando…</div>
+                    }
+                    else if (salQuery.Trim().Length >= 2 && salResult.Count == 0)
+                    {
+                        <div class="pwa-mas-info">Sin resultados.</div>
+                    }
+                    @foreach (var cli in salResult.Take(15))
+                    {
+                        <button type="button" class="pwa-mas-item" @onclick="() => PonerSaldoTexto(cli.Id)" disabled="@salCargando">
+                            <span class="pwa-mas-item-ic">💰</span>
+                            <span class="pwa-mas-item-txt">
+                                <span class="pwa-mas-item-lbl">@cli.Nombre @(string.IsNullOrWhiteSpace(cli.CodigoInterno) ? "" : $"(#{cli.CodigoInterno})")</span>
+                            </span>
+                        </button>
+                    }
+                    @if (salCargando)
+                    {
+                        <div class="pwa-mas-info">Trayendo saldo…</div>
+                    }
+                }
+            </div>
+        </div>
+    }
 </div>
 
 <style>
-    .pwa-card { display: flex; flex-direction: column; height: 100%; min-height: 320px;
+    .pwa-card { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 320px;
         background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden;
         box-shadow: 0 4px 16px rgba(0,0,0,0.10); }
 
@@ -222,6 +327,37 @@
     .pwa-acc-btn:hover:not(:disabled) { background: #f3f4f6; }
     .pwa-acc-btn.on { background: #0b7a4b; color: #fff; border-color: #0b7a4b; }
     .pwa-acc-btn:disabled { opacity: 0.6; cursor: wait; }
+    .pwa-acc-mas { font-weight: 800; padding: 5px 11px; }
+
+    /* Panel del ➕ (overlay sobre la card): Adjuntar del servidor / Contacto / Saldo */
+    .pwa-mas { position: absolute; inset: 0; z-index: 6; background: #fff; display: flex; flex-direction: column; }
+    .pwa-mas-head { display: flex; align-items: center; gap: 8px; background: #0b7a4b; color: #fff; padding: 8px 12px; flex: 0 0 auto; }
+    .pwa-mas-title { font-weight: 800; font-size: 0.92rem; flex: 1; }
+    .pwa-mas-back, .pwa-mas-x { background: rgba(255,255,255,0.18); border: none; color: #fff; border-radius: 7px;
+        width: 28px; height: 26px; cursor: pointer; flex: none; }
+    .pwa-mas-back:hover, .pwa-mas-x:hover { background: rgba(255,255,255,0.34); }
+    .pwa-mas-body { flex: 1; min-height: 0; overflow-y: auto; padding: 8px; }
+    .pwa-mas-op { display: block; width: 100%; text-align: left; border: 1px solid #e5e7eb; background: #fff;
+        border-radius: 12px; padding: 14px; margin-bottom: 8px; font-size: 0.95rem; font-weight: 700; color: #111827; cursor: pointer; }
+    .pwa-mas-op:hover { background: #f0fdf4; }
+    .pwa-mas-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; }
+    .pwa-mas-tab { border: 1px solid #d1d5db; background: #fff; color: #374151; border-radius: 999px;
+        padding: 5px 11px; font-size: 0.76rem; font-weight: 700; cursor: pointer; white-space: nowrap; flex: none; }
+    .pwa-mas-tab.on { background: #0b7a4b; color: #fff; border-color: #0b7a4b; }
+    .pwa-mas-search { width: 100%; box-sizing: border-box; border: 1px solid #d1d5db; border-radius: 10px;
+        padding: 10px 12px; font-size: 16px; font-family: inherit; margin: 8px 0; }
+    .pwa-mas-search:focus { outline: none; border-color: #25d366; box-shadow: 0 0 0 2px rgba(37,211,102,0.18); }
+    .pwa-mas-info { color: #6b7280; font-size: 0.85rem; text-align: center; padding: 1rem; }
+    .pwa-mas-item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+        border: none; border-bottom: 1px solid #f3f4f6; background: transparent; padding: 10px 6px; cursor: pointer; }
+    .pwa-mas-item:hover { background: #f0fdf4; }
+    .pwa-mas-item:disabled { opacity: 0.6; cursor: wait; }
+    .pwa-mas-item-ic { font-size: 1.2rem; flex: none; }
+    .pwa-mas-item-txt { min-width: 0; }
+    .pwa-mas-item-lbl { display: block; font-weight: 700; color: #111827; font-size: 0.86rem;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pwa-mas-item-sub { display: block; color: #6b7280; font-size: 0.76rem;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .pwa-resp-panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; margin: 6px 0.7rem 0;
         max-height: 190px; overflow-y: auto; box-shadow: 0 4px 14px rgba(0,0,0,0.10); }
     .pwa-resp-vacio { color: #6b7280; font-size: 0.82rem; text-align: center; padding: 0.9rem; }
@@ -443,6 +579,106 @@
         if (string.IsNullOrWhiteSpace(s)) return "";
         s = s.Replace("\n", " ").Trim();
         return s.Length <= max ? s : s.Substring(0, max) + "…";
+    }
+
+    // === 2026-08-07 (Fase 2): ➕ Adjuntar del servidor / Contacto / Saldo ===
+    private bool mostrarMas;
+    private string masVista = "menu";
+    private void AbrirMas() { mostrarMas = true; masVista = "menu"; StateHasChanged(); }
+    private void CerrarMas() { mostrarMas = false; StateHasChanged(); }
+    private void VolverMenuMas() { masVista = "menu"; StateHasChanged(); }
+    private string TituloMas() => masVista switch
+    {
+        "servidor" => "🗂️ Adjuntar del servidor",
+        "contacto" => "👤 Compartir contacto",
+        "saldo" => "💰 Mandar saldo",
+        _ => "➕ Más"
+    };
+
+    // -- Adjuntar del servidor --
+    private static readonly (string Key, string Label)[] SrvTabs = new[]
+    {
+        ("CATALOGO", "📚 Catálogos"), ("LISTA", "💲 Listas"), ("VENTA", "🧾 Facturas"),
+        ("COBRANZA", "💰 Recibos"), ("ALQUILER", "🎪 Alquileres"), ("VISITA", "📋 Visitas"), ("UPLOAD", "📁 Subidos")
+    };
+    private string srvTab = "CATALOGO";
+    private string srvSearch = "";
+    private List<ApiClient.TwServerFileDto> srvItems = new();
+    private bool srvLoading, srvEnviando;
+
+    private async Task AbrirServidor() { masVista = "servidor"; srvTab = "CATALOGO"; srvSearch = ""; await CargarSrv(); }
+    private async Task CambiarTab(string t) { srvTab = t; srvSearch = ""; await CargarSrv(); }
+    private async Task OnSrvSearch(ChangeEventArgs e) { srvSearch = e.Value?.ToString() ?? ""; await CargarSrv(); }
+    private async Task CargarSrv()
+    {
+        srvLoading = true; StateHasChanged();
+        try { srvItems = await Api.GetTwServerFilesAsync(srvTab, string.IsNullOrWhiteSpace(srvSearch) ? null : srvSearch); }
+        catch { srvItems = new(); }
+        srvLoading = false; StateHasChanged();
+    }
+    private async Task EnviarServidor(ApiClient.TwServerFileDto f)
+    {
+        if (srvEnviando) return;
+        srvEnviando = true; StateHasChanged();
+        var (ok, err) = await Api.SendTwServerFileAsync(Numero, f.Tipo, f.Id, null, LineaPhoneId);
+        srvEnviando = false;
+        if (ok) { Toast.Info("Enviado"); mostrarMas = false; await Cargar(); }
+        else Toast.Error(err ?? "No se pudo enviar");
+        StateHasChanged();
+    }
+
+    // -- Compartir contacto --
+    private string contQuery = "";
+    private List<ApiClient.TwDestinatarioDto> contResult = new();
+    private bool contBuscando, contEnviando;
+    private void AbrirContacto() { masVista = "contacto"; contQuery = ""; contResult = new(); StateHasChanged(); }
+    private async Task BuscarContacto(ChangeEventArgs e)
+    {
+        contQuery = e.Value?.ToString() ?? "";
+        if (contQuery.Trim().Length < 2) { contResult = new(); StateHasChanged(); return; }
+        contBuscando = true; StateHasChanged();
+        try { contResult = await Api.BuscarTwDestinatariosAsync(contQuery.Trim()); }
+        catch { contResult = new(); }
+        contBuscando = false; StateHasChanged();
+    }
+    private async Task EnviarContacto(ApiClient.TwDestinatarioDto c)
+    {
+        if (contEnviando) return;
+        contEnviando = true; StateHasChanged();
+        var (ok, err) = await Api.EnviarTwContactoAsync(Numero, c.Nombre, c.Numero, LineaPhoneId);
+        contEnviando = false;
+        if (ok) { Toast.Info("Contacto enviado"); mostrarMas = false; await Cargar(); }
+        else Toast.Error(err ?? "No se pudo enviar el contacto");
+        StateHasChanged();
+    }
+
+    // -- Mandar saldo (inserta el texto en el cuadro; se revisa y se manda) --
+    private string salQuery = "";
+    private List<ApiClient.TwClienteBuscarDto> salResult = new();
+    private bool salBuscando, salCargando;
+    private void AbrirSaldo() { masVista = "saldo"; salQuery = ""; salResult = new(); StateHasChanged(); }
+    private async Task BuscarSaldo(ChangeEventArgs e)
+    {
+        salQuery = e.Value?.ToString() ?? "";
+        if (salQuery.Trim().Length < 2) { salResult = new(); StateHasChanged(); return; }
+        salBuscando = true; StateHasChanged();
+        try { salResult = await Api.BuscarTwClientesAsync(salQuery.Trim()); }
+        catch { salResult = new(); }
+        salBuscando = false; StateHasChanged();
+    }
+    private async Task PonerSaldoTexto(int clienteId)
+    {
+        salCargando = true; StateHasChanged();
+        try
+        {
+            var s = await Api.GetClienteSaldoAsync(clienteId);
+            if (s is null) { Toast.Error("No se pudo traer el saldo"); return; }
+            var ar = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
+            var linea = $"{s.ClienteNombre} - ${s.Saldo.ToString("N0", ar)}";
+            composer = string.IsNullOrWhiteSpace(composer) ? linea : composer.TrimEnd() + "\n" + linea;
+            mostrarMas = false;
+        }
+        finally { salCargando = false; StateHasChanged(); }
     }
 
     // === 2026-08-06: adjuntar foto/archivo (sube y manda, reusa el camino del WhatsApp grande) ===
