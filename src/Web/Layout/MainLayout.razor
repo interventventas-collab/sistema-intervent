@@ -1384,10 +1384,10 @@
             <button class="topbar-square-btn" @onclick="DoHardReload"
                     title="Forzar recarga (limpia el cache del navegador). Usalo si un cambio nuevo no aparece."
                     aria-label="Forzar recarga">@SvgIcons.Refresh</button>
-            @* 2026-08-06: abrir esta pantalla en el celu — muestra un QR para escanear. *@
+            @* 2026-08-06: QR que lleva SIEMPRE al WhatsApp del celu (/whatsapp-movil). *@
             <button class="topbar-square-btn" @onclick="AbrirQrModal"
-                    title="Abrir esta pantalla en el celu: muestra un código QR para escanear con el teléfono"
-                    aria-label="Abrir en el celu (QR)">
+                    title="Abrir el WhatsApp en el celu: muestra un código QR para escanear con el teléfono"
+                    aria-label="Abrir WhatsApp en el celu (QR)">
                 <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v.01M14 21h.01M21 21v.01M17 21h.01M21 17h.01"/></svg>
             </button>
             @* 2026-06-08: ocultar campanas a deposito EXCEPTO Preguntas MeLi — el usuario
@@ -1931,9 +1931,9 @@
     <div class="modal-overlay" style="z-index: 9800;" @onclick="() => showQrModal = false">
         <div class="modal-card" @onclick:stopPropagation="true"
              style="max-width: 360px; width: 92vw; padding: 1.4rem; text-align: center;">
-            <h3 style="margin: 0 0 0.3rem;">📱 Abrir en el celu</h3>
+            <h3 style="margin: 0 0 0.3rem;">📱 Abrir WhatsApp en el celu</h3>
             <p style="margin: 0 0 1rem; color: #6b7280; font-size: 0.9rem;">
-                Escaneá este código con la cámara del teléfono y se abre esta misma pantalla.
+                Escaneá este código con la cámara del teléfono y se abre el WhatsApp a pantalla completa.
             </p>
             @if (qrDataUri is null)
             {
@@ -2525,7 +2525,9 @@
 
     private async Task AbrirQrModal()
     {
-        qrUrl = Navigation.Uri;
+        // 2026-08-06: el QR de la barra lleva SIEMPRE a la pantalla de WhatsApp del celu
+        // (/whatsapp-movil), no a la pantalla actual. Es lo que el usuario usa para llevárselo al celu.
+        qrUrl = Navigation.BaseUri.TrimEnd('/') + "/whatsapp-movil";
         qrDataUri = null;
         showQrModal = true;
         StateHasChanged();
