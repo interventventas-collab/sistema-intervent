@@ -46,6 +46,14 @@
                 var mine = m.Direccion == "OUTGOING";
                 <div class="pwa-row @(mine ? "out" : "in")">
                     <div class="pwa-bubble @(mine ? "out" : "in")">
+                        @* 2026-08-07: cita del mensaje al que responde (responder citando) *@
+                        @if (!string.IsNullOrWhiteSpace(m.ReplyPreview))
+                        {
+                            <div class="pwa-reply-quote">
+                                <span class="pwa-reply-who">@(m.ReplyFromMe ? "Vos" : TituloContacto)</span>
+                                <span class="pwa-reply-text">@m.ReplyPreview</span>
+                            </div>
+                        }
                         @if (!string.IsNullOrWhiteSpace(m.MediaUrl))
                         {
                             @if (EsAudio(m.MediaUrl))
@@ -67,6 +75,16 @@
                             <div class="pwa-text">@m.Cuerpo</div>
                         }
                         <div class="pwa-time">@FormatHora(m.CreatedAt)</div>
+                        @* 2026-08-07: reacciones (solo se muestran; poner reacción desde acá = pendiente) *@
+                        @if (m.Reacciones != null && m.Reacciones.Count > 0)
+                        {
+                            <div class="pwa-reacciones">
+                                @foreach (var r in m.Reacciones)
+                                {
+                                    <span class="pwa-reaccion-chip">@r.Emoji@(r.Count > 1 ? $" {r.Count}" : "")</span>
+                                }
+                            </div>
+                        }
                     </div>
                 </div>
             }
@@ -298,6 +316,16 @@
     .pwa-bubble.in { background: #fff; color: #111827; border-top-left-radius: 2px; }
     .pwa-bubble.out { background: #d9fdd3; color: #111827; border-top-right-radius: 2px; }
     .pwa-media { font-size: 0.8rem; font-weight: 600; color: #374151; margin-bottom: 2px; }
+    /* Cita (responder citando) */
+    .pwa-reply-quote { border-left: 3px solid #25d366; background: rgba(0,0,0,0.05); border-radius: 6px;
+        padding: 3px 6px; margin-bottom: 3px; }
+    .pwa-reply-who { display: block; font-size: 0.68rem; font-weight: 800; color: #0b7a4b; }
+    .pwa-reply-text { display: block; font-size: 0.74rem; color: #4b5563;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+    /* Reacciones (chips) */
+    .pwa-reacciones { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
+    .pwa-reaccion-chip { background: #fff; border: 1px solid #e5e7eb; border-radius: 999px;
+        padding: 0 5px; font-size: 0.8rem; line-height: 1.35; box-shadow: 0 1px 1px rgba(0,0,0,0.08); }
     .pwa-text { white-space: pre-wrap; word-break: break-word; }
     .pwa-time { font-size: 0.62rem; color: #6b7280; text-align: right; margin-top: 2px; }
 
