@@ -3982,6 +3982,9 @@
             var antes = stops?.Count ?? 0;
             await LoadStops();                      // paradas frescas (incluye lo recién escaneado)
             if (mapInitialized) await RenderMap(keepView: true); // redibuja sin mover la vista
+            // RenderMap borra las líneas de ruta al redibujar los pines; si había rutas dibujadas,
+            // las volvemos a pintar para que el refresco automático no las haga desaparecer.
+            if (rutasResumen.Count > 0) await PintarRutas();
             if ((stops?.Count ?? 0) != antes) StateHasChanged();  // refresca la lista de la izquierda si cambió
         }
         catch { /* silencioso: es un refresco de fondo, no molestamos con errores */ }
