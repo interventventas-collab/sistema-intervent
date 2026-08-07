@@ -20,8 +20,9 @@
     else
     {
         <div class="depwa-panel" id="dep-wa-panel">
-            <div class="depwa-bar" id="dep-wa-handle">
-                <span class="depwa-bar-title">💬 WhatsApp — @Titulo</span>
+            <div class="depwa-bar">
+                @* El "agarre" para arrastrar es el título, así el botón ✕ sigue tocable en el celu. *@
+                <span class="depwa-bar-title" id="dep-wa-handle">💬 WhatsApp — @Titulo</span>
                 <button type="button" class="depwa-bar-btn" @onclick="Cerrar" title="Cerrar (queda el globito abajo)">✕</button>
             </div>
             <div class="depwa-body">
@@ -57,10 +58,10 @@
     }
     .depwa-bar {
         display: flex; align-items: center; justify-content: space-between; gap: 8px;
-        background: #0b7a4b; color: #fff; padding: 8px 12px; cursor: move;
-        user-select: none; touch-action: none;
+        background: #0b7a4b; color: #fff; padding: 8px 12px;
+        user-select: none;
     }
-    .depwa-bar-title { font-weight: 800; font-size: 0.9rem;
+    .depwa-bar-title { font-weight: 800; font-size: 0.9rem; flex: 1; cursor: move; touch-action: none;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .depwa-bar-btn { background: rgba(255,255,255,0.18); border: none; color: #fff;
         border-radius: 7px; width: 28px; height: 26px; cursor: pointer; font-size: 0.85rem;
@@ -70,8 +71,10 @@
     /* PinnedWaChat trae su propio marco; adentro del panel lo dejamos a ras. */
     .depwa-body .pwa-card { height: 100%; min-height: 0; border: none; border-radius: 0; box-shadow: none; }
 
+    /* En el celu: pantalla completa. !important para que gane aunque se haya arrastrado. */
     @@media (max-width: 640px) {
-        .depwa-panel { right: 8px; left: 8px; bottom: 74px; width: auto; height: 74vh; }
+        .depwa-panel { inset: 0 !important; width: auto !important; height: auto !important;
+            max-height: none !important; border-radius: 0; }
     }
 </style>
 

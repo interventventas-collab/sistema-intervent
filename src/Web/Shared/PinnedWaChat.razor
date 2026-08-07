@@ -48,7 +48,19 @@
                     <div class="pwa-bubble @(mine ? "out" : "in")">
                         @if (!string.IsNullOrWhiteSpace(m.MediaUrl))
                         {
-                            <div class="pwa-media">📎 @(string.IsNullOrWhiteSpace(m.MediaFilename) ? "Archivo adjunto" : m.MediaFilename)</div>
+                            @if (EsAudio(m.MediaUrl))
+                            {
+                                @* Nota de voz: se escucha acá mismo, como en WhatsApp *@
+                                <audio controls preload="none" src="@m.MediaUrl" class="pwa-audio"></audio>
+                            }
+                            else if (EsImagen(m.MediaUrl))
+                            {
+                                <a href="@m.MediaUrl" target="_blank" rel="noopener"><img src="@m.MediaUrl" class="pwa-img" alt="imagen" /></a>
+                            }
+                            else
+                            {
+                                <a class="pwa-media" href="@m.MediaUrl" target="_blank" rel="noopener">📎 @(string.IsNullOrWhiteSpace(m.MediaFilename) ? "Archivo adjunto" : m.MediaFilename)</a>
+                            }
                         }
                         @if (!string.IsNullOrWhiteSpace(m.Cuerpo))
                         {
@@ -77,11 +89,31 @@
     }
 
     <div class="pwa-composer">
-        <textarea class="pwa-input" placeholder="Escribir mensaje… (Enter para enviar)"
-                  @bind="composer" @bind:event="oninput" @onkeydown="OnKey" rows="1" disabled="@sending"></textarea>
-        <button class="pwa-send" @onclick="Enviar" disabled="@(sending || string.IsNullOrWhiteSpace(composer))">
-            @(sending ? "⏳" : "Enviar")
-        </button>
+        @if (grabandoAudio)
+        {
+            @* Grabando nota de voz: parar+enviar o cancelar *@
+            <span class="pwa-rec-label">● grabando nota de voz…</span>
+            <button class="pwa-mic pwa-mic-cancel" @onclick="CancelarAudio" title="Cancelar">✖️</button>
+            <button class="pwa-mic pwa-mic-stop" @onclick="ToggleGrabarAudio" title="Parar y enviar">⏹️</button>
+        }
+        else
+        {
+            <textarea class="pwa-input" placeholder="Escribir mensaje… (Enter para enviar)"
+                      @bind="composer" @bind:event="oninput" @onkeydown="OnKey" rows="1" disabled="@(sending || enviandoAudio)"></textarea>
+            @if (string.IsNullOrWhiteSpace(composer))
+            {
+                @* Sin texto: botón de micrófono para nota de voz (como WhatsApp) *@
+                <button class="pwa-mic" @onclick="ToggleGrabarAudio" disabled="@(sending || enviandoAudio)" title="Grabar nota de voz">
+                    @(enviandoAudio ? "⏳" : "🎤")
+                </button>
+            }
+            else
+            {
+                <button class="pwa-send" @onclick="Enviar" disabled="@sending">
+                    @(sending ? "⏳" : "Enviar")
+                </button>
+            }
+        }
     </div>
 </div>
 
@@ -121,6 +153,20 @@
     .pwa-text { white-space: pre-wrap; word-break: break-word; }
     .pwa-time { font-size: 0.62rem; color: #6b7280; text-align: right; margin-top: 2px; }
 
+    /* Media recibida: audio reproducible, imagen inline, resto link */
+    .pwa-audio { max-width: 100%; height: 40px; display: block; margin-bottom: 0.2rem; }
+    .pwa-img { max-width: 220px; max-height: 260px; border-radius: 8px; display: block; margin-bottom: 0.2rem; }
+
+    /* Micrófono / grabación de nota de voz */
+    .pwa-mic { border: none; border-radius: 12px; padding: 0.55rem 0.95rem; font-size: 1rem;
+        cursor: pointer; background: #25d366; color: #fff; white-space: nowrap; line-height: 1; }
+    .pwa-mic:hover:not(:disabled) { filter: brightness(1.05); }
+    .pwa-mic:disabled { background: #cbd5d3; cursor: not-allowed; }
+    .pwa-mic-stop { background: #ef4444; }
+    .pwa-mic-cancel { background: #6b7280; }
+    .pwa-rec-label { flex: 1; color: #ef4444; font-weight: 700; font-size: 0.85rem; align-self: center;
+        display: inline-flex; align-items: center; }
+
     .pwa-firma { display: flex; align-items: center; flex-wrap: wrap; gap: 5px;
         padding: 0.4rem 0.7rem 0; background: #f8fafb; }
     .pwa-firma-lbl { font-size: 0.72rem; font-weight: 800; color: #374151; }
@@ -139,6 +185,17 @@
         color: #fff; background: #25d366; cursor: pointer; white-space: nowrap; }
     .pwa-send:hover:not(:disabled) { filter: brightness(1.05); }
     .pwa-send:disabled { background: #cbd5d3; cursor: not-allowed; }
+
+    /* 2026-08-06: en celu, todo más grande y cómodo. font-size 16px en el input evita que
+       iOS haga zoom al tocar para escribir. Burbujas y audio un toque más grandes. */
+    @@media (max-width: 640px) {
+        .pwa-body { padding: 0.8rem 0.7rem; gap: 0.5rem; }
+        .pwa-bubble { max-width: 85%; font-size: 0.95rem; padding: 0.5rem 0.7rem; }
+        .pwa-input { font-size: 16px; padding: 0.7rem 0.9rem; }
+        .pwa-send, .pwa-mic { padding: 0.7rem 1.05rem; font-size: 1.05rem; }
+        .pwa-audio { height: 44px; }
+        .pwa-firma-btn { padding: 4px 11px; font-size: 0.8rem; }
+    }
 </style>
 
 @code {
@@ -232,6 +289,65 @@
         {
             Toast.Error(err ?? "No se pudo enviar el mensaje");
         }
+    }
+
+    // === 2026-08-06: nota de voz (grabar con micrófono y enviar como audio) — reusa el mismo
+    // grabador (window.waAudio) y endpoint (SendTwMediaAsync) que la pantalla grande de WhatsApp. ===
+    private bool grabandoAudio, enviandoAudio;
+    private class WaUploadRes { public string? Url { get; set; } public string? OriginalFilename { get; set; } }
+
+    private async Task ToggleGrabarAudio()
+    {
+        if (!grabandoAudio)
+        {
+            bool ok;
+            try { ok = await JS.InvokeAsync<bool>("waAudio.start"); }
+            catch { ok = false; }
+            if (!ok) { Toast.Error("No pude acceder al micrófono. Revisá los permisos del navegador (y que estés en HTTPS)."); return; }
+            grabandoAudio = true;
+        }
+        else
+        {
+            grabandoAudio = false;
+            enviandoAudio = true;
+            StateHasChanged();
+            WaUploadRes? res = null;
+            try { res = await JS.InvokeAsync<WaUploadRes?>("waAudio.stopAndUpload"); }
+            catch { }
+            if (res == null || string.IsNullOrEmpty(res.Url))
+            {
+                enviandoAudio = false;
+                Toast.Error("No se pudo grabar o subir el audio");
+                StateHasChanged();
+                return;
+            }
+            var (ok, err) = await Api.SendTwMediaAsync(Numero, res.Url, null, res.OriginalFilename, LineaPhoneId);
+            enviandoAudio = false;
+            if (!ok) Toast.Error(err ?? "No se pudo enviar la nota de voz");
+            else await Cargar();
+            StateHasChanged();
+        }
+    }
+
+    private async Task CancelarAudio()
+    {
+        grabandoAudio = false;
+        try { await JS.InvokeVoidAsync("waAudio.cancel"); } catch { }
+    }
+
+    private static bool EsAudio(string? url)
+    {
+        if (string.IsNullOrEmpty(url)) return false;
+        var l = url.ToLowerInvariant();
+        return l.EndsWith(".ogg") || l.EndsWith(".opus") || l.EndsWith(".mp3") || l.EndsWith(".m4a")
+            || l.EndsWith(".amr") || l.EndsWith(".wav") || l.EndsWith(".webm");
+    }
+
+    private static bool EsImagen(string? url)
+    {
+        if (string.IsNullOrEmpty(url)) return false;
+        var l = url.ToLowerInvariant();
+        return l.EndsWith(".jpg") || l.EndsWith(".jpeg") || l.EndsWith(".png") || l.EndsWith(".gif") || l.EndsWith(".webp");
     }
 
     private async Task AbrirEnGrande()

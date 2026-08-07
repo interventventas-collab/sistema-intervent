@@ -24,12 +24,14 @@
     else
     {
         <div class="wabf-panel" id="wabf-panel">
-            <div class="wabf-bar" id="wabf-handle">
+            <div class="wabf-bar">
                 @if (chatAbierto is not null)
                 {
                     <button type="button" class="wabf-bar-btn" @onclick="VolverABuscar" title="Volver a la búsqueda">←</button>
                 }
-                <span class="wabf-bar-title">💬 @(chatAbierto is null ? "WhatsApp" : NombreDe(chatAbierto))</span>
+                @* El "agarre" para arrastrar es el título (no toda la barra), así los botones de la
+                   derecha siguen tocables en el celu. *@
+                <span class="wabf-bar-title" id="wabf-handle">💬 @(chatAbierto is null ? "WhatsApp" : NombreDe(chatAbierto))</span>
                 <a class="wabf-bar-btn" href="/whatsapp" target="_blank" title="Abrir WhatsApp en una pestaña aparte">↗</a>
                 <button type="button" class="wabf-bar-btn" @onclick="Cerrar" title="Cerrar (queda el logo abajo)">✕</button>
             </div>
@@ -107,10 +109,10 @@
     }
     .wabf-bar {
         display: flex; align-items: center; gap: 8px;
-        background: #0b7a4b; color: #fff; padding: 8px 12px; cursor: move;
-        user-select: none; touch-action: none; flex: 0 0 auto;
+        background: #0b7a4b; color: #fff; padding: 8px 12px;
+        user-select: none; flex: 0 0 auto;
     }
-    .wabf-bar-title { font-weight: 800; font-size: 0.9rem; flex: 1;
+    .wabf-bar-title { font-weight: 800; font-size: 0.9rem; flex: 1; cursor: move; touch-action: none;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .wabf-bar-btn { background: rgba(255,255,255,0.18); border: none; color: #fff;
         border-radius: 7px; min-width: 28px; height: 26px; padding: 0 6px; cursor: pointer;
@@ -140,8 +142,14 @@
     /* PinnedWaChat trae su propio marco; adentro del panel lo dejamos a ras. */
     .wabf-chat .pwa-card { height: 100%; min-height: 0; border: none; border-radius: 0; box-shadow: none; }
 
+    /* En el celu: pantalla completa y cómodo. !important para que gane aunque se haya arrastrado. */
     @@media (max-width: 640px) {
-        .wabf-panel { right: 8px; left: 8px; bottom: 74px; width: auto; height: 76vh; }
+        .wabf-panel { inset: 0 !important; width: auto !important; height: auto !important;
+            max-height: none !important; border-radius: 0; }
+        .wabf-search-input { font-size: 16px; }
+        .wabf-conv { padding: 12px; }
+        .wabf-avatar { width: 42px; height: 42px; }
+        .wabf-conv-nombre { font-size: 0.95rem; }
     }
 </style>
 
