@@ -77,6 +77,26 @@
 	reverse_proxy web-prod:80
 }
 
+# 2026-08-06: app.frikaf.online = SEGUNDA PUERTA al mismo sistema (respaldo +
+# app en el celu, para no pisar la PWA que arranca por app.palanica.com.ar).
+# Mismo backend que {$DOMAIN} (app.palanica.com.ar) -> web-prod. El DNS de
+# app.frikaf.online apunta a este VPS (179.43.123.134). Cert Let's Encrypt
+# automatico (NO tls internal): al nombrar el host explicito, Caddy lo pide solo.
+# La cookie de sesion no fija Domain (host-only), asi que el login funciona
+# independiente por cada dominio contra la misma DB.
+app.frikaf.online {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	reverse_proxy web-prod:80
+}
+
 # 2026-06-19: bloques para dominios Frikaf. Sirven la landing estatica de
 # /srv/static/frikaf/. Cuando los DNS propaguen (NS1/NS2 donweb -> VPS),
 # Caddy pide cert Let's Encrypt automaticamente. www -> redirect a apex.
