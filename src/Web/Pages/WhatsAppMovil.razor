@@ -67,6 +67,18 @@ else
 
     @if (chatAbierto is null)
     {
+        @* Selector de LÍNEA (chips) — solo si hay más de una *@
+        var _lineas = LineasDisponibles();
+        if (_lineas.Count > 1)
+        {
+            <div class="wam-lineas">
+                <button type="button" class="wam-linea-chip @(filtroLinea == null ? "on" : "")" @onclick="@(() => filtroLinea = null)">Todas</button>
+                @foreach (var l in _lineas)
+                {
+                    <button type="button" class="wam-linea-chip @(filtroLinea == l.Id ? "on" : "")" @onclick="@(() => filtroLinea = l.Id)">@l.Nombre</button>
+                }
+            </div>
+        }
         <div class="wam-search">
             <input class="wam-search-input" placeholder="Buscar por nombre o número…"
                    @bind="busqueda" @bind:event="oninput" autofocus />
@@ -120,6 +132,11 @@ else
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .wam-hbtn { background: rgba(255,255,255,0.18); border: none; color: #fff; border-radius: 8px;
         width: 34px; height: 32px; font-size: 1.1rem; cursor: pointer; flex: none; }
+
+    .wam-lineas { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 10px 0; background: #f8fafb; }
+    .wam-linea-chip { border: 1px solid #d1d5db; background: #fff; color: #374151; border-radius: 999px;
+        padding: 7px 14px; font-size: 0.85rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+    .wam-linea-chip.on { background: #075e54; color: #fff; border-color: #075e54; }
 
     .wam-search { padding: 10px; background: #f8fafb; border-bottom: 1px solid #eef0f2; flex: 0 0 auto; }
     .wam-search-input { width: 100%; box-sizing: border-box; border: 1px solid #d1d5db;
@@ -175,6 +192,9 @@ else
     private string busqueda = "";
     private List<ApiClient.TwConvDto> convs = new();
     private ApiClient.TwConvDto? chatAbierto;
+    // Selector de línea (FRIKAF by INTERVENT / FIJO TRANSRADIO / …)
+    private List<ApiClient.TwLineaConfigDto> lineasConfig = new();
+    private string? filtroLinea;   // null = todas
 
     // Candado de 4 dígitos (Osmar/Germán/Gabriel)
     private bool desbloqueado;
@@ -254,6 +274,8 @@ else
         cargando = true;
         try { convs = await Api.GetTwConversacionesAsync(); }
         catch { convs ??= new(); }
+        if (lineasConfig.Count == 0)
+            try { lineasConfig = await Api.GetTwLineasConfigAsync(); } catch { }
         cargando = false;
         StateHasChanged();
     }
@@ -261,13 +283,36 @@ else
     private void AbrirChat(ApiClient.TwConvDto c) { chatAbierto = c; StateHasChanged(); }
     private void Volver() { chatAbierto = null; StateHasChanged(); }
 
+    // Líneas que tienen chats, con su nombre lindo (FRIKAF by INTERVENT / FIJO TRANSRADIO)
+    private List<(string? Id, string Nombre)> LineasDisponibles()
+    {
+        var nombres = new Dictionary<string, string>();
+        foreach (var lc in lineasConfig)
+            if (!string.IsNullOrWhiteSpace(lc.LineaId))
+                nombres[lc.LineaId] = !string.IsNullOrWhiteSpace(lc.Nombre) ? lc.Nombre!
+                    : (!string.IsNullOrWhiteSpace(lc.NumeroReal) ? lc.NumeroReal! : lc.LineaId);
+        return convs
+            .Select(c => c.Linea)
+            .Distinct()
+            .Select(id =>
+            {
+                string nom = (id != null && nombres.TryGetValue(id, out var n)) ? n
+                    : (convs.FirstOrDefault(c => c.Linea == id)?.LineaNumero ?? "Sin línea");
+                return (Id: id, Nombre: nom);
+            })
+            .OrderBy(x => x.Nombre)
+            .ToList();
+    }
+
     private IEnumerable<ApiClient.TwConvDto> Filtradas()
     {
+        IEnumerable<ApiClient.TwConvDto> src = convs;
+        if (filtroLinea != null) src = src.Where(c => c.Linea == filtroLinea);
         if (string.IsNullOrWhiteSpace(busqueda))
-            return convs.Take(60);
+            return src.Take(60);
         var q = busqueda.Trim().ToLowerInvariant();
         var qDigits = new string(q.Where(char.IsDigit).ToArray());
-        return convs.Where(c =>
+        return src.Where(c =>
                 (NombreDe(c).ToLowerInvariant().Contains(q))
                 || ((c.Numero ?? "").ToLowerInvariant().Contains(q))
                 || (qDigits.Length >= 3 && new string((c.Numero ?? "").Where(char.IsDigit).ToArray()).Contains(qDigits)))
