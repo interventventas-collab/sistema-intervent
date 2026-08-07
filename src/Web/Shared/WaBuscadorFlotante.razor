@@ -9,6 +9,7 @@
 @inject Web.Services.AuthService AuthSvc
 @inject Web.Services.ApiClient Api
 @inject Microsoft.JSInterop.IJSRuntime JS
+@inject NavigationManager Nav
 @implements IDisposable
 
 @if (mostrar)
@@ -32,9 +33,34 @@
                 @* El "agarre" para arrastrar es el título (no toda la barra), así los botones de la
                    derecha siguen tocables en el celu. *@
                 <span class="wabf-bar-title" id="wabf-handle">💬 @(chatAbierto is null ? "WhatsApp" : NombreDe(chatAbierto))</span>
+                <button type="button" class="wabf-bar-btn" @onclick="MostrarQr" title="Abrir este WhatsApp en el celu (código QR)">📱</button>
                 <a class="wabf-bar-btn" href="/whatsapp" target="_blank" title="Abrir WhatsApp en una pestaña aparte">↗</a>
                 <button type="button" class="wabf-bar-btn" @onclick="Cerrar" title="Cerrar (queda el logo abajo)">✕</button>
             </div>
+
+            @if (mostrandoQr)
+            {
+                @* Cartelito con el QR/enlace que abre DIRECTO este WhatsApp en el celu. *@
+                <div class="wabf-qr" @onclick="() => mostrandoQr = false">
+                    <div class="wabf-qr-card" @onclick:stopPropagation="true">
+                        <div class="wabf-qr-title">📱 Abrir el WhatsApp en el celu</div>
+                        <div class="wabf-qr-sub">Escaneá con la cámara del teléfono y se abre directo acá.</div>
+                        @if (qrWaDataUri is null)
+                        {
+                            <div class="wabf-qr-loading">Generando código…</div>
+                        }
+                        else
+                        {
+                            <img src="@qrWaDataUri" alt="Código QR" class="wabf-qr-img" />
+                        }
+                        <div class="wabf-qr-linkrow">
+                            <input class="wabf-qr-link" readonly value="@waLink" />
+                            <button class="wabf-qr-copy" @onclick="CopiarWaLink">Copiar</button>
+                        </div>
+                        <button class="wabf-qr-close" @onclick="() => mostrandoQr = false">Cerrar</button>
+                    </div>
+                </div>
+            }
 
             @if (chatAbierto is null)
             {
@@ -142,6 +168,20 @@
     /* PinnedWaChat trae su propio marco; adentro del panel lo dejamos a ras. */
     .wabf-chat .pwa-card { height: 100%; min-height: 0; border: none; border-radius: 0; box-shadow: none; }
 
+    /* Cartelito del QR (overlay dentro del panel) */
+    .wabf-qr { position: absolute; inset: 0; z-index: 5; background: rgba(0,0,0,0.45);
+        display: flex; align-items: center; justify-content: center; padding: 12px; }
+    .wabf-qr-card { background: #fff; border-radius: 14px; padding: 1.2rem; text-align: center;
+        max-width: 300px; width: 100%; box-shadow: 0 10px 30px rgba(0,0,0,0.25); }
+    .wabf-qr-title { font-weight: 800; color: #111827; font-size: 1rem; }
+    .wabf-qr-sub { color: #6b7280; font-size: 0.8rem; margin: 0.3rem 0 0.8rem; }
+    .wabf-qr-loading { padding: 2.5rem 1rem; color: #6b7280; }
+    .wabf-qr-img { width: 220px; height: 220px; max-width: 100%; border: 1px solid #e5e7eb; border-radius: 10px; }
+    .wabf-qr-linkrow { display: flex; gap: 6px; margin-top: 0.8rem; }
+    .wabf-qr-link { flex: 1; min-width: 0; border: 1px solid #d1d5db; border-radius: 8px; padding: 0.45rem; font-size: 0.72rem; }
+    .wabf-qr-copy { background: #111827; color: #fff; border: none; border-radius: 8px; padding: 0.45rem 0.7rem; cursor: pointer; white-space: nowrap; }
+    .wabf-qr-close { margin-top: 0.8rem; background: transparent; border: 1px solid #d1d5db; border-radius: 8px; padding: 0.45rem 1.1rem; cursor: pointer; }
+
     /* En el celu: pantalla completa y cómodo. !important para que gane aunque se haya arrastrado. */
     @@media (max-width: 640px) {
         .wabf-panel { inset: 0 !important; width: auto !important; height: auto !important;
@@ -161,6 +201,10 @@
     private List<ApiClient.TwConvDto> convs = new();
     private ApiClient.TwConvDto? chatAbierto;
     private bool _attachPending;
+    // QR "llevar al celu"
+    private bool mostrandoQr;
+    private string? qrWaDataUri;
+    private string waLink = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -172,6 +216,27 @@
             mostrar = perms.Contains("cafe") || perms.Contains("oficina");
         }
         catch { mostrar = false; }
+
+        // 2026-08-06: si el enlace trae ?wa=1, abrir DIRECTO este WhatsApp (para el QR "llevar al celu").
+        if (mostrar && Nav.Uri.Contains("wa=1", StringComparison.OrdinalIgnoreCase))
+            Abrir();
+    }
+
+    /// <summary>Muestra el cartelito con el QR/enlace que abre directo este WhatsApp en el celu.</summary>
+    private async Task MostrarQr()
+    {
+        // BaseUri ej "https://app.palanica.com.ar/" → enlace "https://app.palanica.com.ar/?wa=1".
+        waLink = Nav.BaseUri.TrimEnd('/') + "/?wa=1";
+        qrWaDataUri = null;
+        mostrandoQr = true;
+        StateHasChanged();
+        qrWaDataUri = await Api.GetQrDataUriAsync(waLink);
+        StateHasChanged();
+    }
+
+    private async Task CopiarWaLink()
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", waLink); } catch { }
     }
 
     public void Abrir()
