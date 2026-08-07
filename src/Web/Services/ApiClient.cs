@@ -6451,6 +6451,19 @@ public class ApiClient
         return resp.IsSuccessStatusCode;
     }
 
+    // 2026-08-06: QR de una URL (para "llevarse" la pantalla al celu). Devuelve un data URI PNG
+    // listo para poner en <img src="...">. Null si falla.
+    public async Task<string?> GetQrDataUriAsync(string url)
+    {
+        try
+        {
+            var bytes = await _http.GetByteArrayAsync($"/api/qr?url={Uri.EscapeDataString(url)}");
+            if (bytes == null || bytes.Length == 0) return null;
+            return "data:image/png;base64," + Convert.ToBase64String(bytes);
+        }
+        catch { return null; }
+    }
+
     // ===== WhatsApp Twilio chat =====
     /// <summary>Linea/LineaNumero (2026-07-23): por qué número NUESTRO conversa este contacto —
     /// preparación multi-línea (id técnico + número visible). Null si todavía no se sabe.</summary>

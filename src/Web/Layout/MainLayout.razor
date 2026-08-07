@@ -1384,6 +1384,12 @@
             <button class="topbar-square-btn" @onclick="DoHardReload"
                     title="Forzar recarga (limpia el cache del navegador). Usalo si un cambio nuevo no aparece."
                     aria-label="Forzar recarga">@SvgIcons.Refresh</button>
+            @* 2026-08-06: abrir esta pantalla en el celu — muestra un QR para escanear. *@
+            <button class="topbar-square-btn" @onclick="AbrirQrModal"
+                    title="Abrir esta pantalla en el celu: muestra un código QR para escanear con el teléfono"
+                    aria-label="Abrir en el celu (QR)">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v.01M14 21h.01M21 21v.01M17 21h.01M21 17h.01"/></svg>
+            </button>
             @* 2026-06-08: ocultar campanas a deposito EXCEPTO Preguntas MeLi — el usuario
                quiere que deposito vea las preguntas para responderlas. *@
             @if (!IsRoleWithCustomSidebar())
@@ -1917,6 +1923,37 @@
 @if (!IsEmbedded)
 {
     <DepositoWaFloating @ref="depWaRef" />
+}
+
+@* 2026-08-06: cartel con QR para abrir la pantalla actual en el celu (botón QR de la barra). *@
+@if (showQrModal)
+{
+    <div class="modal-overlay" style="z-index: 9800;" @onclick="() => showQrModal = false">
+        <div class="modal-card" @onclick:stopPropagation="true"
+             style="max-width: 360px; width: 92vw; padding: 1.4rem; text-align: center;">
+            <h3 style="margin: 0 0 0.3rem;">📱 Abrir en el celu</h3>
+            <p style="margin: 0 0 1rem; color: #6b7280; font-size: 0.9rem;">
+                Escaneá este código con la cámara del teléfono y se abre esta misma pantalla.
+            </p>
+            @if (qrDataUri is null)
+            {
+                <div style="padding: 3rem 1rem; color: #6b7280;">Generando código…</div>
+            }
+            else
+            {
+                <img src="@qrDataUri" alt="Código QR"
+                     style="width: 240px; height: 240px; max-width: 100%; border: 1px solid #e5e7eb; border-radius: 12px;" />
+            }
+            <div style="margin-top: 1rem; display: flex; gap: 6px; align-items: center;">
+                <input readonly value="@qrUrl"
+                       style="flex: 1; min-width: 0; border: 1px solid #d1d5db; border-radius: 8px; padding: 0.5rem; font-size: 0.78rem;" />
+                <button @onclick="CopiarQrUrl"
+                        style="background: #111827; color: #fff; border: none; border-radius: 8px; padding: 0.5rem 0.8rem; cursor: pointer; white-space: nowrap;">Copiar</button>
+            </div>
+            <button @onclick="() => showQrModal = false"
+                    style="margin-top: 1rem; background: transparent; border: 1px solid #d1d5db; border-radius: 8px; padding: 0.5rem 1.2rem; cursor: pointer;">Cerrar</button>
+        </div>
+    </div>
 }
 
 @* 2026-08-06: logo de WhatsApp flotante SIEMPRE visible para admin/oficina — buscar cualquier
@@ -2480,6 +2517,27 @@
 
     // 2026-08-06: chat flotante/arrastrable de WhatsApp para Depósito (lo abre el ítem del menú).
     private DepositoWaFloating? depWaRef;
+
+    // 2026-08-06: QR para abrir la pantalla actual en el celu.
+    private bool showQrModal;
+    private string? qrDataUri;
+    private string qrUrl = "";
+
+    private async Task AbrirQrModal()
+    {
+        qrUrl = Navigation.Uri;
+        qrDataUri = null;
+        showQrModal = true;
+        StateHasChanged();
+        qrDataUri = await Api.GetQrDataUriAsync(qrUrl);
+        StateHasChanged();
+    }
+
+    private async Task CopiarQrUrl()
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", qrUrl); ToastService.Info("Enlace copiado"); }
+        catch { }
+    }
 
     // 2026-07-15: acceso directo a la calculadora en la barra, con cartel "nuevo" titilante
     // hasta que se abre por primera vez.
