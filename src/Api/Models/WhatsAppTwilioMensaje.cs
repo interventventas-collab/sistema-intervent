@@ -32,6 +32,10 @@ public class WhatsAppTwilioMensaje
     /// <summary>Canal de origen del mensaje: "TWILIO" (default) o "CLOUD" (API oficial de Meta).</summary>
     [MaxLength(10)] public string Canal { get; set; } = "TWILIO";
     public bool Procesado { get; set; }
+    /// <summary>2026-08-07: si true, este mensaje NO se le muestra a los usuarios de Depósito
+    /// (ven un cartelito "🚫 Mensaje ocultado" en su lugar). Lo marca admin/oficina. Sirve p.ej.
+    /// cuando se pasa un pedido, se modifica y se remanda: el viejo se oculta.</summary>
+    public bool OcultoDeposito { get; set; }
     [MaxLength(10)] public string? PedidoTrigger { get; set; }
     public int? VentaIdGenerada { get; set; }
     public string? RespuestaEnviada { get; set; }

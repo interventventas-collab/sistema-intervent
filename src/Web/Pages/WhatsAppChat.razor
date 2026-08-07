@@ -765,12 +765,23 @@
                                         {
                                             <span class="@TildeCss(m.EstadoEntrega)" title="@TildeTitulo(m.EstadoEntrega)">@TildeTexto(m.EstadoEntrega)</span>
                                         }
+                                        @* 2026-08-07: aviso de que este mensaje está oculto para Depósito *@
+                                        @if (m.OcultoDeposito && !esDeposito)
+                                        {
+                                            <span class="wa-oculto-badge" title="Este mensaje NO lo ve Depósito">🚫 oculto a Depósito</span>
+                                        }
                                     </div>
                                 </div>
                                 @* Botón reaccionar — visible al hover *@
                                 <button class="wa-react-btn" @onclick="() => TogglePicker(m.Id)" title="Reaccionar">😊</button>
                                 @* 2026-08-05: botón responder citando — visible al hover *@
                                 <button class="wa-reply-btn" @onclick="() => IniciarResponder(m)" @onclick:stopPropagation="true" title="Responder citando este mensaje">↩️</button>
+                                @* 2026-08-07: ocultar/mostrar este mensaje a Depósito — solo admin/oficina *@
+                                @if (!esDeposito)
+                                {
+                                    <button class="wa-hide-btn" @onclick="() => ToggleOcultarDeposito(m)" @onclick:stopPropagation="true"
+                                            title="@(m.OcultoDeposito ? "Mostrar este mensaje a Depósito" : "Ocultar este mensaje a Depósito")">@(m.OcultoDeposito ? "👁" : "🚫")</button>
+                                }
                                 @if (pickerOpenMsgId == m.Id)
                                 {
                                     <div class="wa-emoji-picker">
@@ -2140,6 +2151,11 @@
     .wa-reply-btn { position: absolute; top: 20px; right: -28px; background: #fff; border: 1px solid #e5e7eb; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 0.15s; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.8rem; padding: 0; }
     .wa-msg-row.out .wa-reply-btn { right: auto; left: -28px; }
     .wa-bubble-wrap:hover .wa-reply-btn { opacity: 1; }
+    /* 2026-08-07: botón ocultar a Depósito (hover), debajo del de responder */
+    .wa-hide-btn { position: absolute; top: 50px; right: -28px; background: #fff; border: 1px solid #e5e7eb; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 0.15s; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.8rem; padding: 0; }
+    .wa-msg-row.out .wa-hide-btn { right: auto; left: -28px; }
+    .wa-bubble-wrap:hover .wa-hide-btn { opacity: 1; }
+    .wa-oculto-badge { margin-left: 6px; font-size: 0.62rem; color: #b45309; font-weight: 800; }
     /* 2026-08-05: burbujita del mensaje CITADO dentro de un mensaje (como WhatsApp) */
     .wa-reply-quote { display: flex; flex-direction: column; gap: 1px; border-left: 3px solid #25d366; background: rgba(0,0,0,0.05); border-radius: 6px; padding: 0.25rem 0.5rem; margin-bottom: 0.35rem; max-width: 100%; }
     .wa-msg-row.out .wa-reply-quote { border-left-color: #128c7e; background: rgba(0,0,0,0.06); }
@@ -4532,6 +4548,18 @@
         pickerOpenMsgId = null; // por las dudas cerramos el picker de emojis
     }
     void CancelarResponder() => replyingTo = null;
+
+    // 2026-08-07: ocultar/mostrar este mensaje a Depósito (solo admin/oficina).
+    async Task ToggleOcultarDeposito(ApiClient.TwMsgDto m)
+    {
+        var ok = await Api.OcultarMensajeDepositoAsync(m.Id, !m.OcultoDeposito);
+        if (ok)
+        {
+            Toast.Info(m.OcultoDeposito ? "Mensaje visible para Depósito" : "Mensaje ocultado a Depósito");
+            await LoadMensajes();
+        }
+        else Toast.Error("No se pudo cambiar el mensaje");
+    }
 
     /// <summary>Texto corto del mensaje citado, para la barra "respondiendo a…" y el mensaje temporal.</summary>
     string PreviewMensajeParaResponder(ApiClient.TwMsgDto m)

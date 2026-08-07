@@ -46,37 +46,49 @@
                 var mine = m.Direccion == "OUTGOING";
                 <div class="pwa-row @(mine ? "out" : "in")">
                     <div class="pwa-bubble @(mine ? "out" : "in")">
-                        @* 2026-08-07: cita del mensaje al que responde (responder citando) *@
-                        @if (!string.IsNullOrWhiteSpace(m.ReplyPreview))
+                        @if (esDeposito && m.OcultoDeposito)
                         {
-                            <div class="pwa-reply-quote">
-                                <span class="pwa-reply-who">@(m.ReplyFromMe ? "Vos" : TituloContacto)</span>
-                                <span class="pwa-reply-text">@m.ReplyPreview</span>
-                            </div>
+                            @* Depósito: no ve el contenido, solo el cartelito. *@
+                            <div class="pwa-oculto">🚫 Mensaje ocultado</div>
                         }
-                        @if (!string.IsNullOrWhiteSpace(m.MediaUrl))
+                        else
                         {
-                            @if (EsAudio(m.MediaUrl))
+                            @* 2026-08-07: cita del mensaje al que responde (responder citando) *@
+                            @if (!string.IsNullOrWhiteSpace(m.ReplyPreview))
                             {
-                                @* Nota de voz: se escucha acá mismo, como en WhatsApp *@
-                                <audio controls preload="none" src="@m.MediaUrl" class="pwa-audio"></audio>
+                                <div class="pwa-reply-quote">
+                                    <span class="pwa-reply-who">@(m.ReplyFromMe ? "Vos" : TituloContacto)</span>
+                                    <span class="pwa-reply-text">@m.ReplyPreview</span>
+                                </div>
                             }
-                            else if (EsImagen(m.MediaUrl))
+                            @if (!string.IsNullOrWhiteSpace(m.MediaUrl))
                             {
-                                <a href="@m.MediaUrl" target="_blank" rel="noopener"><img src="@m.MediaUrl" class="pwa-img @(EsSticker(m.MediaUrl) ? "pwa-sticker" : "")" alt="imagen" /></a>
+                                @if (EsAudio(m.MediaUrl))
+                                {
+                                    @* Nota de voz: se escucha acá mismo, como en WhatsApp *@
+                                    <audio controls preload="none" src="@m.MediaUrl" class="pwa-audio"></audio>
+                                }
+                                else if (EsImagen(m.MediaUrl))
+                                {
+                                    <a href="@m.MediaUrl" target="_blank" rel="noopener"><img src="@m.MediaUrl" class="pwa-img @(EsSticker(m.MediaUrl) ? "pwa-sticker" : "")" alt="imagen" /></a>
+                                }
+                                else
+                                {
+                                    <a class="pwa-media" href="@m.MediaUrl" target="_blank" rel="noopener">📎 @(string.IsNullOrWhiteSpace(m.MediaFilename) ? "Archivo adjunto" : m.MediaFilename)</a>
+                                }
                             }
-                            else
+                            @if (!string.IsNullOrWhiteSpace(m.Cuerpo))
                             {
-                                <a class="pwa-media" href="@m.MediaUrl" target="_blank" rel="noopener">📎 @(string.IsNullOrWhiteSpace(m.MediaFilename) ? "Archivo adjunto" : m.MediaFilename)</a>
+                                <div class="pwa-text">@m.Cuerpo</div>
                             }
-                        }
-                        @if (!string.IsNullOrWhiteSpace(m.Cuerpo))
-                        {
-                            <div class="pwa-text">@m.Cuerpo</div>
+                            @if (m.OcultoDeposito)
+                            {
+                                <div class="pwa-oculto-badge">🚫 oculto a Depósito</div>
+                            }
                         }
                         <div class="pwa-time">@FormatHora(m.CreatedAt)</div>
-                        @* 2026-08-07: reacciones (solo se muestran; poner reacción desde acá = pendiente) *@
-                        @if (m.Reacciones != null && m.Reacciones.Count > 0)
+                        @* 2026-08-07: reacciones (solo se muestran) *@
+                        @if (!(esDeposito && m.OcultoDeposito) && m.Reacciones != null && m.Reacciones.Count > 0)
                         {
                             <div class="pwa-reacciones">
                                 @foreach (var r in m.Reacciones)
@@ -84,6 +96,14 @@
                                     <span class="pwa-reaccion-chip">@r.Emoji@(r.Count > 1 ? $" {r.Count}" : "")</span>
                                 }
                             </div>
+                        }
+                        @* 2026-08-07: ocultar/mostrar a Depósito — solo admin/oficina *@
+                        @if (!esDeposito)
+                        {
+                            <button type="button" class="pwa-ocultar-btn" @onclick="() => ToggleOcultar(m)"
+                                    title="@(m.OcultoDeposito ? "Mostrar este mensaje a Depósito" : "Ocultar este mensaje a Depósito")">
+                                @(m.OcultoDeposito ? "👁 Mostrar a Depósito" : "🚫 Ocultar a Depósito")
+                            </button>
                         }
                     </div>
                 </div>
@@ -326,6 +346,12 @@
     .pwa-reacciones { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
     .pwa-reaccion-chip { background: #fff; border: 1px solid #e5e7eb; border-radius: 999px;
         padding: 0 5px; font-size: 0.8rem; line-height: 1.35; box-shadow: 0 1px 1px rgba(0,0,0,0.08); }
+    /* Ocultar a Depósito */
+    .pwa-oculto { font-style: italic; color: #6b7280; font-size: 0.82rem; }
+    .pwa-oculto-badge { font-size: 0.62rem; color: #b45309; font-weight: 800; margin-top: 2px; }
+    .pwa-ocultar-btn { margin-top: 3px; background: transparent; border: none; color: #9ca3af;
+        font-size: 0.64rem; cursor: pointer; padding: 0; text-decoration: underline; display: block; }
+    .pwa-ocultar-btn:hover { color: #dc2626; }
     .pwa-text { white-space: pre-wrap; word-break: break-word; }
     .pwa-time { font-size: 0.62rem; color: #6b7280; text-align: right; margin-top: 2px; }
 
@@ -566,6 +592,15 @@
     {
         grabandoAudio = false;
         try { await JS.InvokeVoidAsync("waAudio.cancel"); } catch { }
+    }
+
+    // 2026-08-07: ocultar/mostrar un mensaje a Depósito (solo admin/oficina).
+    private async Task ToggleOcultar(ApiClient.TwMsgDto m)
+    {
+        var ok = await Api.OcultarMensajeDepositoAsync(m.Id, !m.OcultoDeposito);
+        if (ok) await Cargar();
+        else Toast.Error("No se pudo cambiar el mensaje");
+        StateHasChanged();
     }
 
     // === 2026-08-07: Respuestas rápidas + Menú rol (solo con AccionesCompletas) ===

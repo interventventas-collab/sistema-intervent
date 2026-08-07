@@ -6487,7 +6487,18 @@ public class ApiClient
         string Estado = "nueva", string? AsignadoOperador = null, string? AsignadoPor = null, string? AsignadoNota = null, bool AsignadoVisto = true);
     public record TwReaccionDto(string Emoji, int Count, bool EsCliente = false);
     // 2026-08-05: ReplyToSid/ReplyPreview/ReplyFromMe = "responder citando" (burbuja del mensaje citado).
-    public record TwMsgDto(int Id, string Direccion, string Numero, string? NombrePerfil, string? Cuerpo, string? MediaUrl, string? MediaFilename, int? NumMedia, bool Procesado, string? RespuestaEnviada, DateTime CreatedAt, string? EstadoEntrega, List<TwReaccionDto>? Reacciones, string? ReplyToSid = null, string? ReplyPreview = null, bool ReplyFromMe = false);
+    public record TwMsgDto(int Id, string Direccion, string Numero, string? NombrePerfil, string? Cuerpo, string? MediaUrl, string? MediaFilename, int? NumMedia, bool Procesado, string? RespuestaEnviada, DateTime CreatedAt, string? EstadoEntrega, List<TwReaccionDto>? Reacciones, string? ReplyToSid = null, string? ReplyPreview = null, bool ReplyFromMe = false, bool OcultoDeposito = false);
+
+    // 2026-08-07: ocultar/mostrar un mensaje al usuario Depósito. Solo admin/oficina.
+    public async Task<bool> OcultarMensajeDepositoAsync(int mensajeId, bool oculto)
+    {
+        try
+        {
+            var r = await _http.PostAsJsonAsync($"/api/whatsapp/twilio/mensajes/{mensajeId}/ocultar-deposito", new { Oculto = oculto });
+            return r.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
     public record TwRespRapidaDto(int Id, string Nombre, string Texto, int Orden, bool Activo);
     public record TwContactoDto(int Id, string Numero, string Nombre, string Rol, string? Notas, bool Activo, int? ClienteId, string? ClienteNombre, string? ClienteCodigo);
     public record TwRespUpsert(string Nombre, string Texto, int Orden, bool Activo);

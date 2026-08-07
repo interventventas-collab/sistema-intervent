@@ -1208,10 +1208,14 @@ public class WhatsAppTwilioController : ControllerBase
                 m.Id, m.Direccion, m.Numero, m.NombrePerfil,
                 m.Cuerpo, m.MediaUrl, m.MediaFilename, m.NumMedia,
                 m.Procesado, m.RespuestaEnviada, m.CreatedAt, m.EstadoEntrega,
-                m.ReplyToSid
+                m.ReplyToSid, m.OcultoDeposito
             })
             .ToListAsync();
         msgs.Reverse();
+
+        // 2026-08-07: ¿el que mira es Depósito? Si sí, los mensajes marcados como ocultos se le
+        // devuelven SIN contenido (solo la marca), así ve "Mensaje ocultado" y el texto real ni le llega.
+        var esDep = await EsDepositoAsync();
 
         // 2026-08-05: "responder citando". Para los mensajes que citan a otro (ReplyToSid), buscamos
         // el mensaje original por su TwilioMessageSid y armamos un preview (quién y qué) para la burbuja.
@@ -1242,12 +1246,23 @@ public class WhatsAppTwilioController : ControllerBase
                 replyFromMe = orig.Direccion == "OUTGOING";
                 replyPreview = PreviewCitado(orig.Cuerpo, orig.MediaUrl, orig.MediaFilename);
             }
+            var reacs = reacByMsg.TryGetValue(m.Id, out var rs) ? rs.Cast<object>().ToList() : new List<object>();
+            // Para DEPÓSITO: si el mensaje está oculto, no le mandamos NADA del contenido (solo la marca).
+            var blank = esDep && m.OcultoDeposito;
             return new
             {
-                m.Id, m.Direccion, m.Numero, m.NombrePerfil, m.Cuerpo,
-                m.MediaUrl, m.MediaFilename, m.NumMedia, m.Procesado, m.RespuestaEnviada, m.CreatedAt, m.EstadoEntrega,
-                Reacciones = reacByMsg.TryGetValue(m.Id, out var rs) ? rs.Cast<object>().ToList() : new List<object>(),
-                m.ReplyToSid, ReplyPreview = replyPreview, ReplyFromMe = replyFromMe
+                m.Id, m.Direccion, m.Numero, m.NombrePerfil,
+                Cuerpo = blank ? null : m.Cuerpo,
+                MediaUrl = blank ? null : m.MediaUrl,
+                MediaFilename = blank ? null : m.MediaFilename,
+                m.NumMedia, m.Procesado,
+                RespuestaEnviada = blank ? null : m.RespuestaEnviada,
+                m.CreatedAt, m.EstadoEntrega,
+                Reacciones = blank ? new List<object>() : reacs,
+                ReplyToSid = blank ? null : m.ReplyToSid,
+                ReplyPreview = blank ? null : replyPreview,
+                ReplyFromMe = !blank && replyFromMe,
+                OcultoDeposito = m.OcultoDeposito
             };
         }).ToList();
         return Ok(result);
@@ -1264,6 +1279,39 @@ public class WhatsAppTwilioController : ControllerBase
             texto = $"📎 {texto}";
         if (texto.Length > 90) texto = texto.Substring(0, 90) + "…";
         return texto;
+    }
+
+    /// <summary>2026-08-07: ¿el usuario logueado es de DEPÓSITO? (mismo criterio que el frontend:
+    /// permiso "deposito" y NO "cafe"/"oficina"). El admin NO es depósito.</summary>
+    private async Task<bool> EsDepositoAsync()
+    {
+        var idStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                 ?? User.FindFirst("sub")?.Value;
+        if (!int.TryParse(idStr, out var uid)) return false;
+        var user = await _db.Users.AsNoTracking().Include(u => u.RoleNav).FirstOrDefaultAsync(u => u.Id == uid);
+        if (user == null) return false;
+        var roleName = user.RoleNav?.Name ?? user.Role;
+        if (string.Equals(roleName, "admin", StringComparison.OrdinalIgnoreCase)) return false;
+        var perms = await _db.RolePermissions.AsNoTracking()
+            .Where(rp => rp.RoleId == user.RoleId).Select(rp => rp.MenuKey).ToListAsync();
+        return perms.Contains("deposito") && !perms.Contains("cafe") && !perms.Contains("oficina");
+    }
+
+    public record OcultarDepositoReq(bool Oculto);
+
+    /// <summary>2026-08-07: marca/desmarca un mensaje como oculto para Depósito. Solo admin/oficina
+    /// (Depósito no puede). El mensaje sigue visible para admin/oficina; a Depósito le aparece
+    /// "Mensaje ocultado".</summary>
+    [HttpPost("mensajes/{id:int}/ocultar-deposito")]
+    [Authorize]
+    public async Task<IActionResult> OcultarDeposito(int id, [FromBody] OcultarDepositoReq req)
+    {
+        if (await EsDepositoAsync()) return Forbid();
+        var m = await _db.WhatsAppTwilioMensajes.FirstOrDefaultAsync(x => x.Id == id);
+        if (m == null) return NotFound(new { error = "Mensaje no encontrado" });
+        m.OcultoDeposito = req?.Oculto ?? true;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, oculto = m.OcultoDeposito });
     }
 
     // ===== ADJUNTOS — Fase 1: Subir desde PC =====
