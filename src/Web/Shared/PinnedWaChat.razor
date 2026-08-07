@@ -98,8 +98,18 @@
         }
         else
         {
+            @* Adjuntar foto/archivo de la PC o del celu (máx 16 MB) *@
+            <label class="pwa-attach" title="Adjuntar foto o archivo">
+                <InputFile OnChange="OnAdjuntar" disabled="@(sending || enviandoAudio || subiendo)" style="display:none;" />
+                @(subiendo ? "⏳" : "📎")
+            </label>
+            @* Sacar una foto con la cámara (en el celu abre la cámara; en la PC, el explorador) *@
+            <label class="pwa-attach" title="Sacar una foto">
+                <InputFile OnChange="OnAdjuntar" accept="image/*" capture="environment" disabled="@(sending || enviandoAudio || subiendo)" style="display:none;" />
+                📷
+            </label>
             <textarea class="pwa-input" placeholder="Escribir mensaje… (Enter para enviar)"
-                      @bind="composer" @bind:event="oninput" @onkeydown="OnKey" rows="1" disabled="@(sending || enviandoAudio)"></textarea>
+                      @bind="composer" @bind:event="oninput" @onkeydown="OnKey" rows="1" disabled="@(sending || enviandoAudio || subiendo)"></textarea>
             @if (string.IsNullOrWhiteSpace(composer))
             {
                 @* Sin texto: botón de micrófono para nota de voz (como WhatsApp) *@
@@ -158,6 +168,11 @@
     .pwa-img { max-width: 220px; max-height: 260px; border-radius: 8px; display: block; margin-bottom: 0.2rem; }
 
     /* Micrófono / grabación de nota de voz */
+    .pwa-attach { border: none; border-radius: 12px; padding: 0.55rem 0.7rem; font-size: 1.1rem;
+        cursor: pointer; background: #eef2f7; color: #374151; display: inline-flex; align-items: center;
+        line-height: 1; flex: none; }
+    .pwa-attach:hover { background: #e2e8f0; }
+
     .pwa-mic { border: none; border-radius: 12px; padding: 0.55rem 0.95rem; font-size: 1rem;
         cursor: pointer; background: #25d366; color: #fff; white-space: nowrap; line-height: 1; }
     .pwa-mic:hover:not(:disabled) { filter: brightness(1.05); }
@@ -333,6 +348,29 @@
     {
         grabandoAudio = false;
         try { await JS.InvokeVoidAsync("waAudio.cancel"); } catch { }
+    }
+
+    // === 2026-08-06: adjuntar foto/archivo (sube y manda, reusa el camino del WhatsApp grande) ===
+    private bool subiendo;
+    private const long MaxUploadBytes = 16L * 1024 * 1024;
+    private async Task OnAdjuntar(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+        if (file.Size > MaxUploadBytes) { Toast.Error($"El archivo {file.Name} supera los 16 MB"); return; }
+        subiendo = true;
+        StateHasChanged();
+        try
+        {
+            using var stream = file.OpenReadStream(MaxUploadBytes);
+            var (up, err) = await Api.UploadTwArchivoAsync(stream, file.Name, file.ContentType);
+            if (up == null) { Toast.Error(err ?? "No se pudo subir el archivo"); return; }
+            var (ok, serr) = await Api.SendTwMediaAsync(Numero, up.Url, null, up.OriginalFilename, LineaPhoneId);
+            if (!ok) Toast.Error(serr ?? "No se pudo enviar el archivo");
+            else await Cargar();
+        }
+        catch (Exception ex) { Toast.Error("No se pudo enviar el archivo: " + ex.Message); }
+        finally { subiendo = false; StateHasChanged(); }
     }
 
     private static bool EsAudio(string? url)

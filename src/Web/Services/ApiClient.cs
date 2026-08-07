@@ -6464,6 +6464,21 @@ public class ApiClient
         catch { return null; }
     }
 
+    // 2026-08-06: candado de 4 dígitos del WhatsApp del celu. Devuelve el nombre (Osmar/Germán/Gabriel)
+    // si el código es correcto, o null si no coincide.
+    private class WaMovilVerifDto { public bool ok { get; set; } public string? nombre { get; set; } }
+    public async Task<string?> VerificarCodigoWaMovilAsync(string codigo)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/wa-movil/verificar", new { Codigo = codigo });
+            if (!resp.IsSuccessStatusCode) return null;
+            var r = await resp.Content.ReadFromJsonAsync<WaMovilVerifDto>();
+            return (r != null && r.ok && !string.IsNullOrWhiteSpace(r.nombre)) ? r.nombre : null;
+        }
+        catch { return null; }
+    }
+
     // ===== WhatsApp Twilio chat =====
     /// <summary>Linea/LineaNumero (2026-07-23): por qué número NUESTRO conversa este contacto —
     /// preparación multi-línea (id técnico + número visible). Null si todavía no se sabe.</summary>

@@ -5,12 +5,46 @@
 @using Web.Services
 @inject ApiClient Api
 @inject NavigationManager Nav
+@inject Microsoft.JSInterop.IJSRuntime JS
 
 @* 2026-08-06: pantalla DEDICADA de WhatsApp para el celu (como las que usan los repartidores).
    Sin menú ni escritorio atrás: solo el WhatsApp, a pantalla completa. Buscás una conversación,
    la abrís y respondés (texto + nota de voz, vía PinnedWaChat). El enlace/QR para el celu apunta
    acá: https://app.palanica.com.ar/whatsapp-movil (o /wa). Necesita estar logueado. *@
 
+@if (!desbloqueado)
+{
+    @* Candado de 4 dígitos: solo Osmar/Germán/Gabriel. Como cada uno usa su celu, se acuerda. *@
+    <div class="wam-lock">
+        <div class="wam-lock-card">
+            <div class="wam-lock-ic">💬</div>
+            <div class="wam-lock-title">WhatsApp</div>
+            <div class="wam-lock-sub">Ingresá tu código de 4 dígitos</div>
+            <div class="wam-lock-dots">
+                @for (int i = 0; i < 4; i++)
+                {
+                    <span class="wam-dot @(pin.Length > i ? "on" : "")"></span>
+                }
+            </div>
+            @if (!string.IsNullOrEmpty(pinError))
+            {
+                <div class="wam-lock-err">@pinError</div>
+            }
+            <div class="wam-keys">
+                @foreach (var d in new[] { "1", "2", "3", "4", "5", "6", "7", "8", "9" })
+                {
+                    <button type="button" class="wam-key" @onclick="() => Tecla(d)" disabled="@verificando">@d</button>
+                }
+                <span></span>
+                <button type="button" class="wam-key" @onclick='() => Tecla("0")' disabled="@verificando">0</button>
+                <button type="button" class="wam-key wam-key-del" @onclick="Borrar" disabled="@verificando">⌫</button>
+            </div>
+            <div class="wam-lock-foot">@(verificando ? "Verificando…" : "")</div>
+        </div>
+    </div>
+}
+else
+{
 <div class="wam-root">
     <div class="wam-header">
         @if (chatAbierto is not null)
@@ -24,6 +58,10 @@
                 <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
             </svg>
             <span class="wam-title">WhatsApp</span>
+            @if (!string.IsNullOrEmpty(persona))
+            {
+                <button type="button" class="wam-persona" @onclick="CambiarPersona" title="No soy yo / cambiar de persona">@persona ✕</button>
+            }
         }
     </div>
 
@@ -71,6 +109,7 @@
         </div>
     }
 </div>
+}
 
 <style>
     .wam-root { position: fixed; inset: 0; display: flex; flex-direction: column;
@@ -103,6 +142,32 @@
     .wam-chat { flex: 1; min-height: 0; }
     /* PinnedWaChat trae su propio marco; acá lo dejamos a ras, ocupando toda la pantalla. */
     .wam-chat .pwa-card { height: 100%; min-height: 0; border: none; border-radius: 0; box-shadow: none; }
+
+    /* Chip "Conectado como …" */
+    .wam-persona { margin-left: auto; flex: none; background: rgba(255,255,255,0.18); color: #fff;
+        border: none; border-radius: 999px; padding: 5px 12px; font-size: 0.82rem; font-weight: 700; cursor: pointer; }
+    .wam-persona:hover { background: rgba(255,255,255,0.3); }
+
+    /* Candado de 4 dígitos */
+    .wam-lock { position: fixed; inset: 0; background: #075e54; display: flex; align-items: center;
+        justify-content: center; padding: 20px; }
+    .wam-lock-card { background: #fff; border-radius: 18px; padding: 1.6rem 1.4rem; width: 100%;
+        max-width: 340px; text-align: center; box-shadow: 0 16px 40px rgba(0,0,0,0.3); }
+    .wam-lock-ic { font-size: 2.4rem; line-height: 1; }
+    .wam-lock-title { font-weight: 800; font-size: 1.3rem; color: #111827; margin-top: 0.3rem; }
+    .wam-lock-sub { color: #6b7280; font-size: 0.9rem; margin-top: 0.3rem; }
+    .wam-lock-dots { display: flex; gap: 14px; justify-content: center; margin: 1.1rem 0 0.6rem; }
+    .wam-dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #25d366; background: transparent; }
+    .wam-dot.on { background: #25d366; }
+    .wam-lock-err { color: #dc2626; font-weight: 700; font-size: 0.85rem; margin-bottom: 0.4rem; }
+    .wam-keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 0.6rem; }
+    .wam-key { height: 62px; border: none; border-radius: 14px; background: #f3f4f6; color: #111827;
+        font-size: 1.5rem; font-weight: 700; cursor: pointer; }
+    .wam-key:hover:not(:disabled) { background: #e5e7eb; }
+    .wam-key:active { transform: scale(0.96); }
+    .wam-key:disabled { opacity: 0.5; cursor: not-allowed; }
+    .wam-key-del { background: transparent; color: #6b7280; font-size: 1.6rem; }
+    .wam-lock-foot { min-height: 1.2rem; color: #6b7280; font-size: 0.85rem; margin-top: 0.7rem; }
 </style>
 
 @code {
@@ -111,7 +176,77 @@
     private List<ApiClient.TwConvDto> convs = new();
     private ApiClient.TwConvDto? chatAbierto;
 
-    protected override async Task OnInitializedAsync() => await CargarConversaciones();
+    // Candado de 4 dígitos (Osmar/Germán/Gabriel)
+    private bool desbloqueado;
+    private string? persona;
+    private string pin = "";
+    private string? pinError;
+    private bool verificando;
+    private const string PersonaKey = "wamovil.persona";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        // ¿Ya se identificó en este celu antes? (cada uno usa el suyo, así se lo acuerda)
+        string? guardada = null;
+        try { guardada = await JS.InvokeAsync<string?>("localStorage.getItem", PersonaKey); } catch { }
+        if (!string.IsNullOrWhiteSpace(guardada))
+        {
+            persona = guardada;
+            desbloqueado = true;
+            await CargarConversaciones();
+            StateHasChanged();
+        }
+    }
+
+    private async Task Tecla(string d)
+    {
+        if (verificando || pin.Length >= 4) return;
+        pinError = null;
+        pin += d;
+        if (pin.Length == 4) await VerificarPin();
+        else StateHasChanged();
+    }
+
+    private void Borrar()
+    {
+        if (verificando || pin.Length == 0) return;
+        pin = pin.Substring(0, pin.Length - 1);
+        pinError = null;
+    }
+
+    private async Task VerificarPin()
+    {
+        verificando = true;
+        StateHasChanged();
+        var nombre = await Api.VerificarCodigoWaMovilAsync(pin);
+        verificando = false;
+        if (!string.IsNullOrWhiteSpace(nombre))
+        {
+            persona = nombre;
+            desbloqueado = true;
+            pin = "";
+            try { await JS.InvokeVoidAsync("localStorage.setItem", PersonaKey, nombre); } catch { }
+            await CargarConversaciones();
+        }
+        else
+        {
+            pinError = "Código incorrecto";
+            pin = "";
+        }
+        StateHasChanged();
+    }
+
+    private async Task CambiarPersona()
+    {
+        try { await JS.InvokeVoidAsync("localStorage.removeItem", PersonaKey); } catch { }
+        desbloqueado = false;
+        persona = null;
+        pin = "";
+        pinError = null;
+        chatAbierto = null;
+        StateHasChanged();
+    }
 
     private async Task CargarConversaciones()
     {
