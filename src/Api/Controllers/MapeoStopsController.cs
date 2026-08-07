@@ -792,6 +792,87 @@ public class MapeoStopsController : ControllerBase
         return Ok(result);
     }
 
+    public record RutaAhorroDto(string Label, string Color, int? DriverId,
+        int ActualSeconds, int OptimoSeconds, int ActualMeters, int OptimoMeters, int StopCount, bool Calculable);
+
+    /// <summary>
+    /// Estima cuánto se ahorraría en tiempo/km si se optimizara el orden de cada repartidor: compara el
+    /// ORDEN ACTUAL (como está guardado) contra el ORDEN ÓPTIMO que sugiere Google. NO guarda nada; es solo
+    /// para mostrar "antes vs después" antes de aplicar. Si un repartidor tiene más de 25 paradas, no se
+    /// puede calcular el óptimo en una sola consulta y se marca Calculable=false.
+    /// </summary>
+    [HttpGet("routes-savings")]
+    public async Task<IActionResult> RoutesSavings()
+    {
+        double? startLat = null, startLng = null;
+        var latStr = (await _db.AppSettings.FindAsync("mapeo.start.lat"))?.Value;
+        var lngStr = (await _db.AppSettings.FindAsync("mapeo.start.lng"))?.Value;
+        if (double.TryParse(latStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var la)) startLat = la;
+        if (double.TryParse(lngStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var lo)) startLng = lo;
+
+        var conOrden = await _db.MapeoStops.Include(x => x.AssignedDriver)
+            .Where(s => s.OrderInRoute != null && s.AssignedDriverId != null).ToListAsync();
+        var grupos = conOrden.GroupBy(s => s.AssignedDriverId)
+            .Select(g => (drv: g.First().AssignedDriver, ordered: g.OrderBy(s => s.OrderInRoute).ToList()))
+            .ToList();
+
+        var res = new List<RutaAhorroDto>();
+        foreach (var (drv, ordered) in grupos)
+        {
+            var pts = ordered.Select(s => ((double)s.Latitude, (double)s.Longitude)).ToList();
+            string label = drv?.Nombre ?? "Sin repartidor";
+            string color = string.IsNullOrEmpty(drv?.Color) ? "#6b7280" : drv!.Color!;
+
+            // Recorrido en el ORDEN ACTUAL.
+            var seqActual = new List<(double lat, double lng)>();
+            if (startLat.HasValue && startLng.HasValue) seqActual.Add((startLat.Value, startLng.Value));
+            seqActual.AddRange(pts);
+            var rrActual = await _routes.ComputeRouteFullAsync(seqActual);
+
+            // Orden ÓPTIMO sugerido por Google (solo si entra en el límite de 25).
+            List<(double lat, double lng)>? ptsOpt = null;
+            if (pts.Count >= 1 && pts.Count <= GoogleRoutesService.MaxWaypoints)
+            {
+                if (startLat.HasValue && startLng.HasValue)
+                {
+                    var start = (startLat.Value, startLng.Value);
+                    var order = await _routes.OptimizeWaypointOrderAsync(start, start, pts);
+                    if (order != null && order.Length == pts.Count) ptsOpt = order.Select(i => pts[i]).ToList();
+                }
+                else if (pts.Count >= 2)
+                {
+                    var rest = pts.Skip(1).ToList();
+                    var order = await _routes.OptimizeWaypointOrderAsync(pts[0], pts[0], rest);
+                    if (order != null && order.Length == rest.Count)
+                    {
+                        ptsOpt = new List<(double lat, double lng)> { pts[0] };
+                        ptsOpt.AddRange(order.Select(i => rest[i]));
+                    }
+                }
+                else ptsOpt = pts; // una sola parada: el óptimo es ella misma
+            }
+
+            int optSec = rrActual?.DurationSeconds ?? 0, optMet = rrActual?.DistanceMeters ?? 0;
+            bool calculable = false;
+            if (ptsOpt != null)
+            {
+                var seqOpt = new List<(double lat, double lng)>();
+                if (startLat.HasValue && startLng.HasValue) seqOpt.Add((startLat.Value, startLng.Value));
+                seqOpt.AddRange(ptsOpt);
+                var rrOpt = await _routes.ComputeRouteFullAsync(seqOpt);
+                if (rrOpt != null && rrActual != null)
+                {
+                    optSec = rrOpt.DurationSeconds; optMet = rrOpt.DistanceMeters; calculable = true;
+                }
+            }
+
+            res.Add(new RutaAhorroDto(label, color, drv?.Id,
+                rrActual?.DurationSeconds ?? 0, optSec, rrActual?.DistanceMeters ?? 0, optMet,
+                ordered.Count, calculable));
+        }
+        return Ok(res);
+    }
+
     /// <summary>
     /// Aplica el filtro por modo de entrega (today / tomorrow / overdue / all) usando EstimatedDeliveryLimit.
     /// Refleja la misma logica que MeliShipmentsController.ListFlex para mantener coherencia entre vistas.

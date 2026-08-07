@@ -1475,6 +1475,11 @@
             <div style="position:absolute; bottom:18px; left:50%; transform:translateX(-50%); z-index:450; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; justify-content:center;">
                 @if (stops?.Any(s => s.AssignedDriverId.HasValue) ?? false)
                 {
+                    <button class="btn" style="font-size:0.92rem; font-weight:800; background:#111827; color:#fff; border:none; padding:0.6rem 1.3rem; border-radius:999px; box-shadow:0 3px 14px rgba(0,0,0,0.35); cursor:pointer;"
+                            @onclick="() => showOptiPanel = true"
+                            title="Abrir el panel con todas las herramientas para optimizar los recorridos">
+                        ⚡ Optimizar recorridos
+                    </button>
                     <button class="btn" style="font-size:0.92rem; font-weight:800; background:#7c3aed; color:#fff; border:none; padding:0.6rem 1.3rem; border-radius:999px; box-shadow:0 3px 14px rgba(0,0,0,0.35); cursor:pointer;"
                             @onclick="OptimizarRutas" disabled="@routeBusy"
                             title="Le arma a cada repartidor (los que asignaste) su mejor recorrido según el tránsito actual">
@@ -1491,6 +1496,138 @@
                         title="Ordena TODAS las paradas en una sola ruta óptima (según el tránsito)">
                     🚦 @(routeBusy ? "…" : "Ruta única")
                 </button>
+            </div>
+        }
+        @* ── Panel "⚡ Optimizar recorridos": aparece al tocar el botón, con una tarjeta por herramienta ── *@
+        @if (showOptiPanel)
+        {
+            <div style="position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9000; display:flex; align-items:center; justify-content:center; padding:1rem;"
+                 @onclick="() => showOptiPanel = false">
+                <div style="background:#fff; border-radius:16px; max-width:580px; width:100%; max-height:88vh; overflow:auto; box-shadow:0 12px 48px rgba(0,0,0,0.4);"
+                     @onclick:stopPropagation="true">
+                    <div style="display:flex; align-items:center; justify-content:space-between; padding:0.9rem 1.2rem; border-bottom:1px solid #eee; position:sticky; top:0; background:#fff; z-index:1;">
+                        <strong style="font-size:1.05rem;">⚡ Optimizar recorridos</strong>
+                        <button class="btn-close" style="font-size:1.2rem;" @onclick="() => showOptiPanel = false" title="Cerrar">&times;</button>
+                    </div>
+                    <div style="padding:1rem 1.2rem; display:flex; flex-direction:column; gap:0.75rem;">
+                        <p style="font-size:0.82rem; color:#6b7280; margin:0;">
+                            Ya tenés las zonas armadas. Elegí una herramienta y probala. Las que necesitan habilitar algo en Google
+                            <strong>no se activan solas</strong>: te aviso el costo y me pedís el OK.
+                        </p>
+
+                        @* Tarjeta 1: ordenar paradas (lista) *@
+                        <div style="border:1px solid #e5e7eb; border-left:4px solid #16a34a; border-radius:10px; padding:0.7rem 0.85rem;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
+                                <strong style="font-size:0.9rem;">🟢 Ordenar las paradas de cada repartidor</strong>
+                                <span style="font-size:0.65rem; font-weight:800; color:#16a34a; background:#dcfce7; padding:0.12rem 0.5rem; border-radius:999px; white-space:nowrap;">LISTA</span>
+                            </div>
+                            <p style="font-size:0.78rem; color:#4b5563; margin:0.35rem 0 0.55rem;">
+                                Google reordena las entregas de cada zona para el camino más corto por calles (según el tránsito de ahora). No cambia quién lleva qué.
+                            </p>
+                            <button class="btn" style="font-size:0.82rem; font-weight:700; background:#16a34a; color:#fff; border:none; padding:0.4rem 0.9rem; border-radius:8px; cursor:pointer;"
+                                    @onclick="PanelOrdenarParadas" disabled="@routeBusy">
+                                @(routeBusy ? "Aplicando…" : "Aplicar")
+                            </button>
+                        </div>
+
+                        @* Tarjeta 2: ver cuánto ahorra (lista) *@
+                        <div style="border:1px solid #e5e7eb; border-left:4px solid #16a34a; border-radius:10px; padding:0.7rem 0.85rem;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
+                                <strong style="font-size:0.9rem;">🟢 Ver cuánto ahorrarías</strong>
+                                <span style="font-size:0.65rem; font-weight:800; color:#16a34a; background:#dcfce7; padding:0.12rem 0.5rem; border-radius:999px; white-space:nowrap;">LISTA</span>
+                            </div>
+                            <p style="font-size:0.78rem; color:#4b5563; margin:0.35rem 0 0.55rem;">
+                                Compara el orden actual con el óptimo y te dice cuánto tiempo y km te ahorra cada repartidor, <strong>sin cambiar nada</strong>.
+                            </p>
+                            <button class="btn" style="font-size:0.82rem; font-weight:700; background:#0ea5e9; color:#fff; border:none; padding:0.4rem 0.9rem; border-radius:8px; cursor:pointer;"
+                                    @onclick="CalcularAhorro" disabled="@calculandoAhorro">
+                                @(calculandoAhorro ? "Calculando…" : "Calcular ahorro")
+                            </button>
+                            @if (ahorros.Count > 0)
+                            {
+                                var totAct = ahorros.Where(a => a.Calculable).Sum(a => a.ActualSeconds);
+                                var totOpt = ahorros.Where(a => a.Calculable).Sum(a => a.OptimoSeconds);
+                                var totSave = totAct - totOpt;
+                                <div style="margin-top:0.6rem; border-top:1px dashed #e5e7eb; padding-top:0.5rem; display:flex; flex-direction:column; gap:0.3rem;">
+                                    @foreach (var a in ahorros)
+                                    {
+                                        var save = a.ActualSeconds - a.OptimoSeconds;
+                                        <div style="display:flex; align-items:center; gap:0.4rem; font-size:0.76rem;">
+                                            <span style="width:10px; height:10px; border-radius:50%; background:@a.Color; flex:0 0 10px;"></span>
+                                            <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@a.Label</span>
+                                            @if (!a.Calculable)
+                                            {
+                                                <span style="color:#9ca3af;">— (más de 25 paradas)</span>
+                                            }
+                                            else if (save > 30)
+                                            {
+                                                <span style="color:#6b7280;">@FormatoDuracion(a.ActualSeconds) → @FormatoDuracion(a.OptimoSeconds)</span>
+                                                <strong style="color:#16a34a; white-space:nowrap;">−@FormatoDuracion(save)</strong>
+                                            }
+                                            else
+                                            {
+                                                <span style="color:#16a34a; font-weight:700;">ya está óptima ✓</span>
+                                            }
+                                        </div>
+                                    }
+                                    @if (totSave > 30)
+                                    {
+                                        <div style="font-size:0.8rem; font-weight:800; color:#065f46; margin-top:0.2rem;">
+                                            Ahorro total estimado: −@FormatoDuracion(totSave)
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else if (!calculandoAhorro && ahorroCalculado)
+                            {
+                                <div style="margin-top:0.5rem; font-size:0.76rem; color:#9ca3af;">
+                                    No hay rutas para comparar. Primero asigná repartidores y ordená las paradas.
+                                </div>
+                            }
+                        </div>
+
+                        @* Tarjeta 3: repartir la carga (gratis) *@
+                        <div style="border:1px solid #e5e7eb; border-left:4px solid #16a34a; border-radius:10px; padding:0.7rem 0.85rem;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
+                                <strong style="font-size:0.9rem;">🟢 Repartir la carga entre repartidores</strong>
+                                <span style="font-size:0.65rem; font-weight:800; color:#16a34a; background:#dcfce7; padding:0.12rem 0.5rem; border-radius:999px; white-space:nowrap;">LISTA · GRATIS</span>
+                            </div>
+                            <p style="font-size:0.78rem; color:#4b5563; margin:0.35rem 0 0.55rem;">
+                                Reparte solo las entregas entre los repartidores por cercanía y le arma la mejor ruta a cada uno. Versión gratis (sin costo extra de Google).
+                            </p>
+                            <button class="btn" style="font-size:0.82rem; font-weight:700; background:#0f766e; color:#fff; border:none; padding:0.4rem 0.9rem; border-radius:8px; cursor:pointer;"
+                                    @onclick="PanelRepartir" disabled="@routeBusy">
+                                @(routeBusy ? "Repartiendo…" : "Repartir y optimizar")
+                            </button>
+                        </div>
+
+                        @* Tarjeta 4: motor grande de Google (hay que habilitar) *@
+                        <div style="border:1px solid #e5e7eb; border-left:4px solid #f59e0b; border-radius:10px; padding:0.7rem 0.85rem; background:#fffbeb;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
+                                <strong style="font-size:0.9rem;">🟡 Motor "grande" de Google</strong>
+                                <span style="font-size:0.65rem; font-weight:800; color:#b45309; background:#fef3c7; padding:0.12rem 0.5rem; border-radius:999px; white-space:nowrap;">HAY QUE ACTIVAR</span>
+                            </div>
+                            <p style="font-size:0.78rem; color:#4b5563; margin:0.35rem 0 0.55rem;">
+                                El sistema decide solo <strong>quién lleva cada cosa</strong> respetando horarios de entrega ("recibe de 9 a 12"), capacidad del vehículo y turnos de cada repartidor (Route Optimization API). Es la que usan las empresas grandes. Hay que habilitarla en Google y tiene costo aparte.
+                            </p>
+                            <button class="btn" style="font-size:0.82rem; font-weight:700; background:#f59e0b; color:#fff; border:none; padding:0.4rem 0.9rem; border-radius:8px; cursor:pointer;"
+                                    @onclick="InfoMotorGrande">
+                                Quiero activarla
+                            </button>
+                        </div>
+
+                        @* Tarjeta 5: respetar horarios (próximamente) *@
+                        <div style="border:1px solid #e5e7eb; border-left:4px solid #d1d5db; border-radius:10px; padding:0.7rem 0.85rem; opacity:0.85;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
+                                <strong style="font-size:0.9rem;">⚪ Respetar franjas horarias de entrega</strong>
+                                <span style="font-size:0.65rem; font-weight:800; color:#6b7280; background:#f3f4f6; padding:0.12rem 0.5rem; border-radius:999px; white-space:nowrap;">PRÓXIMAMENTE</span>
+                            </div>
+                            <p style="font-size:0.78rem; color:#4b5563; margin:0.35rem 0 0;">
+                                Que la ruta ordene las entregas según la franja horaria que pidió cada cliente. Va junto con el motor grande.
+                            </p>
+                        </div>
+                    </div>
+                </div>
             </div>
         }
         @{
@@ -3524,6 +3661,47 @@
     private void ToggleTramos(string key)
     {
         if (!rutasExpandidas.Add(key)) rutasExpandidas.Remove(key); // toggle
+    }
+
+    // ── Panel "⚡ Optimizar recorridos" ──
+    private bool showOptiPanel;
+    private List<RutaAhorroDto> ahorros = new();
+    private bool calculandoAhorro;
+    private bool ahorroCalculado;
+
+    // Tarjeta 1: ordenar las paradas de cada repartidor (reusa el flujo que ya existía).
+    private async Task PanelOrdenarParadas()
+    {
+        showOptiPanel = false;
+        await OptimizarRutas();
+    }
+
+    // Tarjeta 3: repartir la carga entre repartidores + optimizar (versión gratis).
+    private async Task PanelRepartir()
+    {
+        showOptiPanel = false;
+        await RepartirYOptimizar();
+    }
+
+    // Tarjeta 2: calcular cuánto se ahorraría optimizando (no cambia nada).
+    private async Task CalcularAhorro()
+    {
+        if (calculandoAhorro) return;
+        calculandoAhorro = true;
+        ahorros = new();
+        try
+        {
+            ahorros = await Api.GetRoutesSavingsAsync() ?? new();
+            ahorroCalculado = true;
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo calcular el ahorro: " + ex.Message); }
+        finally { calculandoAhorro = false; StateHasChanged(); }
+    }
+
+    // Tarjeta 4: el motor grande necesita habilitarse en Google (no se activa solo).
+    private void InfoMotorGrande()
+    {
+        ToastService.Warning("El motor grande usa la Route Optimization API de Google: hay que habilitarla en tu cuenta y tiene costo aparte. Decime \"activá el motor grande\" y lo dejo listo con tu OK.");
     }
     private async Task CargarYDibujarRutas(bool single)
     {

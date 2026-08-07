@@ -6317,6 +6317,9 @@ public class ApiClient
     public async Task<List<RutaOverviewDto>?> GetRoutesOverviewAsync(bool single = false)
         => await GetAsync<List<RutaOverviewDto>>($"/api/mapeo/stops/routes-overview?single={(single ? "true" : "false")}");
 
+    public async Task<List<RutaAhorroDto>?> GetRoutesSavingsAsync()
+        => await GetAsync<List<RutaAhorroDto>>("/api/mapeo/stops/routes-savings");
+
     public async Task<object?> AssignVehicleSlotAsync(int stopId, int? slot)
         => await PutAsync<object>($"/api/mapeo/stops/{stopId}/vehicle-slot", new { slot });
 

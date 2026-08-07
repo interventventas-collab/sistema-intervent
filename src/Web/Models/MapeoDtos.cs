@@ -181,6 +181,19 @@ public class RutaOverviewDto
     public List<RutaLegDto> Legs { get; set; } = new();
 }
 
+public class RutaAhorroDto
+{
+    public string Label { get; set; } = "";
+    public string Color { get; set; } = "#6b7280";
+    public int? DriverId { get; set; }
+    public int ActualSeconds { get; set; }
+    public int OptimoSeconds { get; set; }
+    public int ActualMeters { get; set; }
+    public int OptimoMeters { get; set; }
+    public int StopCount { get; set; }
+    public bool Calculable { get; set; }
+}
+
 public class MapeoFavoritoDto
 {
     public int Id { get; set; }
