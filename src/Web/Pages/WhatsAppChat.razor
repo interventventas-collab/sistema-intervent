@@ -709,10 +709,16 @@
                                     {
                                         @if (IsImage(m.MediaUrl))
                                         {
-                                            @* 2026-08-05: al tocar la foto se abre un visor emergente (ventanita sobre el chat), ya no en otra pestaña *@
-                                            <img src="@m.MediaUrl" class="wa-chat-img" @onclick="@(() => AbrirVisorImagen(m.MediaUrl, NombreDescarga(m)))" style="max-width:100%; max-height:300px; border-radius:6px; display:block; cursor:zoom-in;" alt="adjunto" />
-                                            @* 2026-08-02: botón claro para descargar la imagen al teléfono/PC *@
-                                            <a href="@m.MediaUrl" download="@NombreDescarga(m)" class="wa-descargar-btn">⬇ Descargar</a>
+                                            @* 2026-08-07: los STICKERS (.webp) salían enormes (300px). Ahora chicos (~150px)
+                                               como en WhatsApp; las fotos normales, un poco más contenidas (230px). *@
+                                            @* al tocar la foto se abre un visor emergente (ventanita sobre el chat) *@
+                                            <img src="@m.MediaUrl" class="wa-chat-img" @onclick="@(() => AbrirVisorImagen(m.MediaUrl, NombreDescarga(m)))"
+                                                 style="max-width:@(EsSticker(m.MediaUrl) ? "150px" : "100%"); max-height:@(EsSticker(m.MediaUrl) ? "150px" : "230px"); border-radius:6px; display:block; cursor:zoom-in;" alt="adjunto" />
+                                            @if (!EsSticker(m.MediaUrl))
+                                            {
+                                                @* botón para descargar la imagen (los stickers no hace falta) *@
+                                                <a href="@m.MediaUrl" download="@NombreDescarga(m)" class="wa-descargar-btn">⬇ Descargar</a>
+                                            }
                                         }
                                         else if (IsAudio(m.MediaUrl))
                                         {
@@ -4504,6 +4510,9 @@
         return lower.Contains(".jpg") || lower.Contains(".jpeg") || lower.Contains(".png")
             || lower.Contains(".gif") || lower.Contains(".webp") || lower.Contains("image");
     }
+
+    // 2026-08-07: los stickers de WhatsApp son .webp — se muestran chiquitos (no enormes como una foto).
+    bool EsSticker(string? url) => !string.IsNullOrEmpty(url) && url.ToLowerInvariant().Contains(".webp");
 
     // 2026-08-05: visor de fotos emergente (lightbox). Al tocar una foto del chat se abre acá, sin ir a otra pestaña.
     string? visorImagenUrl = null;
