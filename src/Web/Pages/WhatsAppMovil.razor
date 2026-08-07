@@ -40,7 +40,17 @@
                 <button type="button" class="wam-key" @onclick='() => Tecla("0")' disabled="@verificando">0</button>
                 <button type="button" class="wam-key wam-key-del" @onclick="Borrar" disabled="@verificando">⌫</button>
             </div>
-            <div class="wam-lock-foot">@(verificando ? "Verificando…" : "")</div>
+            <div class="wam-lock-foot">@(verificando ? "Verificando…" : huellaMsg)</div>
+
+            @* 2026-08-07: HUELLA. Entrar con huella (si ya la registró) y registrarla (con el código). *@
+            @if (huellaDisponible)
+            {
+                <div class="wam-huella">
+                    <button type="button" class="wam-huella-btn" @onclick="EntrarConHuella" disabled="@(verificando || huellaOcupada)">👆 Entrar con huella</button>
+                    <button type="button" class="wam-huella-reg" @onclick="RegistrarHuella" disabled="@(verificando || huellaOcupada)"
+                            title="Poné tu código de 4 dígitos y tocá acá para dejar tu huella en este celu">Registrar huella en este celu (con tu código)</button>
+                </div>
+            }
         </div>
     </div>
 }
@@ -197,6 +207,11 @@ else
     .wam-key:disabled { opacity: 0.5; cursor: not-allowed; }
     .wam-key-del { background: transparent; color: #6b7280; font-size: 1.6rem; }
     .wam-lock-foot { min-height: 1.2rem; color: #6b7280; font-size: 0.85rem; margin-top: 0.7rem; }
+    .wam-huella { margin-top: 0.6rem; border-top: 1px solid #eef0f2; padding-top: 0.9rem; display: flex; flex-direction: column; gap: 0.55rem; }
+    .wam-huella-btn { background: #075e54; color: #fff; border: none; border-radius: 12px; padding: 12px; font-size: 1rem; font-weight: 800; cursor: pointer; }
+    .wam-huella-btn:disabled { opacity: 0.6; cursor: wait; }
+    .wam-huella-reg { background: transparent; border: none; color: #6b7280; font-size: 0.78rem; cursor: pointer; text-decoration: underline; }
+    .wam-huella-reg:disabled { opacity: 0.6; }
 </style>
 
 @code {
@@ -215,6 +230,10 @@ else
     private string? pinError;
     private bool verificando;
     private const string PersonaKey = "wamovil.persona";
+    // Huella (WebAuthn)
+    private bool huellaDisponible;
+    private bool huellaOcupada;
+    private string? huellaMsg;
 
     // Avisos (campanita): sonido + aviso visual del sistema al llegar un mensaje nuevo (pantalla abierta).
     private bool avisos;
@@ -226,6 +245,8 @@ else
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
+        // ¿El celu soporta huella? (para mostrar el botón)
+        try { huellaDisponible = await JS.InvokeAsync<bool>("webAuthnAvailable"); } catch { huellaDisponible = false; }
         // ¿Ya se identificó en este celu antes? (cada uno usa el suyo, así se lo acuerda)
         string? guardada = null;
         try { guardada = await JS.InvokeAsync<string?>("localStorage.getItem", PersonaKey); } catch { }
@@ -234,8 +255,46 @@ else
             persona = guardada;
             desbloqueado = true;
             await CargarConversaciones();
-            StateHasChanged();
         }
+        StateHasChanged();
+    }
+
+    private async Task EntrarConHuella()
+    {
+        huellaOcupada = true; huellaMsg = "Tocá la huella…"; pinError = null; StateHasChanged();
+        try
+        {
+            var begin = await Api.WaHuellaLoginBeginAsync();
+            if (begin is null || !begin.Ok) { huellaMsg = begin?.Mensaje ?? "Todavía no hay huellas registradas."; return; }
+            var credJs = await JS.InvokeAsync<System.Text.Json.JsonElement>("webAuthnGet", begin.Options!);
+            if (credJs.TryGetProperty("_error", out _)) { huellaMsg = "No se pudo leer la huella."; return; }
+            var comp = await Api.WaHuellaLoginCompleteAsync(new { SessionId = begin.SessionId, AssertionResponse = credJs });
+            if (comp is null || !comp.Ok || string.IsNullOrWhiteSpace(comp.Nombre)) { huellaMsg = comp?.Mensaje ?? "Huella no reconocida."; return; }
+            persona = comp.Nombre;
+            desbloqueado = true;
+            try { await JS.InvokeVoidAsync("localStorage.setItem", PersonaKey, persona); } catch { }
+            await CargarConversaciones();
+        }
+        catch { huellaMsg = "No se pudo usar la huella."; }
+        finally { huellaOcupada = false; StateHasChanged(); }
+    }
+
+    private async Task RegistrarHuella()
+    {
+        if (pin.Length != 4) { huellaMsg = "Primero poné tu código de 4 dígitos y después tocá Registrar huella."; StateHasChanged(); return; }
+        huellaOcupada = true; huellaMsg = "Registrando huella…"; StateHasChanged();
+        try
+        {
+            var begin = await Api.WaHuellaRegBeginAsync(pin, "Celular");
+            if (begin is null || !begin.Ok) { huellaMsg = begin?.Mensaje ?? "No se pudo iniciar el registro."; return; }
+            var credJs = await JS.InvokeAsync<System.Text.Json.JsonElement>("webAuthnCreate", begin.Options!);
+            if (credJs.TryGetProperty("_error", out _)) { huellaMsg = "El celu canceló o no pudo leer la huella."; return; }
+            var comp = await Api.WaHuellaRegCompleteAsync(new { SessionId = begin.SessionId, AttestationResponse = credJs });
+            if (comp is null || !comp.Ok) { huellaMsg = comp?.Mensaje ?? "No se pudo registrar la huella."; return; }
+            huellaMsg = "✅ Huella registrada. Ahora podés entrar con la huella."; pin = "";
+        }
+        catch { huellaMsg = "No se pudo registrar la huella."; }
+        finally { huellaOcupada = false; StateHasChanged(); }
     }
 
     private async Task Tecla(string d)

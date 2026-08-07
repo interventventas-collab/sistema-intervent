@@ -6479,6 +6479,32 @@ public class ApiClient
         catch { return null; }
     }
 
+    // 2026-08-07: huella (WebAuthn) para /whatsapp-movil. Options se pasan tal cual al JS (webAuthnCreate/Get).
+    public record WaHuellaBeginResp(bool Ok, string? Mensaje, object? Options, string? SessionId);
+    public record WaHuellaRegCompleteResp(bool Ok, string? Mensaje);
+    public record WaHuellaLoginCompleteResp(bool Ok, string? Mensaje, string? Nombre);
+
+    public async Task<WaHuellaBeginResp?> WaHuellaRegBeginAsync(string codigo, string? device)
+    {
+        try { var r = await _http.PostAsJsonAsync("/api/wa-movil/huella/registro/begin", new { Codigo = codigo, DeviceName = device }); return await r.Content.ReadFromJsonAsync<WaHuellaBeginResp>(); }
+        catch { return null; }
+    }
+    public async Task<WaHuellaRegCompleteResp?> WaHuellaRegCompleteAsync(object body)
+    {
+        try { var r = await _http.PostAsJsonAsync("/api/wa-movil/huella/registro/complete", body); return await r.Content.ReadFromJsonAsync<WaHuellaRegCompleteResp>(); }
+        catch { return null; }
+    }
+    public async Task<WaHuellaBeginResp?> WaHuellaLoginBeginAsync()
+    {
+        try { var r = await _http.PostAsync("/api/wa-movil/huella/login/begin", null); return await r.Content.ReadFromJsonAsync<WaHuellaBeginResp>(); }
+        catch { return null; }
+    }
+    public async Task<WaHuellaLoginCompleteResp?> WaHuellaLoginCompleteAsync(object body)
+    {
+        try { var r = await _http.PostAsJsonAsync("/api/wa-movil/huella/login/complete", body); return await r.Content.ReadFromJsonAsync<WaHuellaLoginCompleteResp>(); }
+        catch { return null; }
+    }
+
     // ===== WhatsApp Twilio chat =====
     /// <summary>Linea/LineaNumero (2026-07-23): por qué número NUESTRO conversa este contacto —
     /// preparación multi-línea (id técnico + número visible). Null si todavía no se sabe.</summary>

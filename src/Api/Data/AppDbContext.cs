@@ -161,6 +161,7 @@ public class AppDbContext : DbContext
     // 2026-06-03: piloto del modo nuevo de fichada (WiFi + huella + GPS). Dormido por default.
     public DbSet<HorasExtrasConfigFichada> HorasExtrasConfigFichadas => Set<HorasExtrasConfigFichada>();
     public DbSet<HorasExtrasWebAuthnCredential> HorasExtrasWebAuthnCredentials => Set<HorasExtrasWebAuthnCredential>();
+    public DbSet<WaMovilWebAuthnCredential> WaMovilWebAuthnCredentials => Set<WaMovilWebAuthnCredential>();
     public DbSet<HorasExtrasFichadaMeta> HorasExtrasFichadaMetas => Set<HorasExtrasFichadaMeta>();
     public DbSet<HorasExtrasFeriado> HorasExtrasFeriados => Set<HorasExtrasFeriado>();
 
