@@ -1432,15 +1432,39 @@
                 </div>
                 @foreach (var r in rutasResumen)
                 {
+                    var abierta = rutasExpandidas.Contains(r.Key);
+                    var hayTramos = r.Legs != null && r.Legs.Count > 0;
                     <div style="padding:0.2rem 0; border-top:1px solid #f3f4f6;">
-                        <div style="display:flex; align-items:center; gap:0.4rem; font-size:0.8rem;">
+                        <div style="display:flex; align-items:center; gap:0.4rem; font-size:0.8rem; cursor:@(hayTramos ? "pointer" : "default");"
+                             @onclick="@(() => ToggleTramos(r.Key))"
+                             title="@(hayTramos ? "Ver el tiempo entre cada parada" : "")">
                             <span style="width:12px; height:12px; border-radius:50%; background:@r.Color; flex:0 0 12px;"></span>
                             <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@r.Label</span>
                             <strong>@FormatoDuracion(r.DurationSeconds)</strong>
+                            @if (hayTramos)
+                            {
+                                <span style="color:#9ca3af; font-size:0.7rem;">@(abierta ? "▲" : "▼")</span>
+                            }
                         </div>
                         <div style="font-size:0.68rem; color:#9ca3af; margin-left:1.1rem;">
                             @r.StopCount parada@(r.StopCount == 1 ? "" : "s") · @((r.DistanceMeters / 1000.0).ToString("0.0")) km
                         </div>
+                        @if (abierta && hayTramos)
+                        {
+                            var conSalida = r.Legs.Count == r.StopCount && r.StopCount > 0; // hay punto de partida
+                            <div style="margin:0.25rem 0 0.15rem 1.1rem; padding-left:0.5rem; border-left:2px solid @r.Color;">
+                                @for (int i = 0; i < r.Legs.Count; i++)
+                                {
+                                    var desde = conSalida ? (i == 0 ? "Salida" : i.ToString()) : (i + 1).ToString();
+                                    var hasta = conSalida ? (i + 1).ToString() : (i + 2).ToString();
+                                    <div style="display:flex; gap:0.4rem; font-size:0.7rem; color:#4b5563; padding:0.08rem 0;">
+                                        <span style="flex:1; white-space:nowrap;">@desde <span style="color:#9ca3af;">→</span> @hasta</span>
+                                        <strong style="color:#374151;">@FormatoDuracion(r.Legs[i].Seconds)</strong>
+                                        <span style="color:#9ca3af; width:46px; text-align:right;">@((r.Legs[i].Meters / 1000.0).ToString("0.0")) km</span>
+                                    </div>
+                                }
+                            </div>
+                        }
                     </div>
                 }
             </div>
@@ -3495,6 +3519,12 @@
 
     // Trae de Google el tiempo/km/línea de cada ruta y las dibuja en el mapa.
     private List<RutaOverviewDto> rutasResumen = new();
+    // Rutas (por Key) cuyo detalle de tiempos por tramo está desplegado en el cartelito.
+    private HashSet<string> rutasExpandidas = new();
+    private void ToggleTramos(string key)
+    {
+        if (!rutasExpandidas.Add(key)) rutasExpandidas.Remove(key); // toggle
+    }
     private async Task CargarYDibujarRutas(bool single)
     {
         try
