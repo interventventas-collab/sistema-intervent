@@ -3510,9 +3510,14 @@
     private async Task PintarRutas()
     {
         var paraDibujar = rutasResumen
-            .Where(r => !string.IsNullOrEmpty(r.EncodedPolyline))
+            .Where(r => (r.Segments?.Count ?? 0) > 0 || !string.IsNullOrEmpty(r.EncodedPolyline))
             .Where(r => !(r.DriverId.HasValue && zonasOcultasMapa.Contains(r.DriverId.Value)))
-            .Select(r => new { color = r.Color, encoded = r.EncodedPolyline })
+            .Select(r => new
+            {
+                color = r.Color,
+                // Tramos de la ruta (una ruta larga viene partida). Respaldo: la línea única vieja.
+                segments = (r.Segments?.Count ?? 0) > 0 ? r.Segments.ToArray() : new[] { r.EncodedPolyline! }
+            })
             .ToArray();
         await JS.InvokeVoidAsync("mapeoFlex.drawRoutes", new object[] { paraDibujar });
     }

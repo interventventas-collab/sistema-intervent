@@ -738,8 +738,10 @@ public class MapeoStopsController : ControllerBase
         return Ok(new { optimized, optimizedByGoogle });
     }
 
+    public record RutaLegDto(int Seconds, int Meters);
     public record RutaOverviewDto(string Key, string Label, string Color, int? DriverId,
-        int DurationSeconds, int DistanceMeters, string? EncodedPolyline, int StopCount);
+        int DurationSeconds, int DistanceMeters, string? EncodedPolyline, int StopCount,
+        List<string> Segments, List<RutaLegDto> Legs);
 
     /// <summary>
     /// Devuelve, por repartidor (o como ruta única), el tiempo estimado + km + la línea dibujable de la ruta.
@@ -771,27 +773,21 @@ public class MapeoStopsController : ControllerBase
             var ordered = ss.OrderBy(s => s.OrderInRoute).ToList();
             var pts = ordered.Select(s => ((double)s.Latitude, (double)s.Longitude)).ToList();
 
-            (double lat, double lng) origin, dest;
-            List<(double lat, double lng)> inter;
-            if (startLat.HasValue && startLng.HasValue)
-            {
-                origin = (startLat.Value, startLng.Value);
-                dest = pts[^1];
-                inter = pts.Take(pts.Count - 1).ToList();
-            }
-            else
-            {
-                origin = pts[0];
-                dest = pts[^1];
-                inter = pts.Count > 2 ? pts.Skip(1).Take(pts.Count - 2).ToList() : new();
-            }
+            // Secuencia COMPLETA en orden de visita: arranca en el punto de partida (si está configurado)
+            // y termina en la última parada. El nuevo motor la parte sola en tramos de ≤25 si hace falta.
+            var seq = new List<(double lat, double lng)>();
+            if (startLat.HasValue && startLng.HasValue) seq.Add((startLat.Value, startLng.Value));
+            seq.AddRange(pts);
 
-            var rr = await _routes.ComputeRouteAsync(origin, dest, inter);
+            var rr = await _routes.ComputeRouteFullAsync(seq);
             string label = single ? "Ruta única" : (drv?.Nombre ?? "Sin repartidor");
             string color = single ? "#1d4ed8" : (string.IsNullOrEmpty(drv?.Color) ? "#6b7280" : drv!.Color!);
+            var segments = rr?.Segments ?? new List<string>();
+            var legs = rr?.Legs?.Select(l => new RutaLegDto(l.DurationSeconds, l.DistanceMeters)).ToList() ?? new List<RutaLegDto>();
             result.Add(new RutaOverviewDto(
                 did?.ToString() ?? "none", label, color, did,
-                rr?.DurationSeconds ?? 0, rr?.DistanceMeters ?? 0, rr?.EncodedPolyline, ordered.Count));
+                rr?.DurationSeconds ?? 0, rr?.DistanceMeters ?? 0,
+                segments.FirstOrDefault(), ordered.Count, segments, legs));
         }
         return Ok(result);
     }

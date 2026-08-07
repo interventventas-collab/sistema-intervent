@@ -168,4 +168,125 @@ public class GoogleRoutesService
             return null;
         }
     }
+
+    public record RouteLeg(int DurationSeconds, int DistanceMeters);
+    public record RouteFullResult(int DurationSeconds, int DistanceMeters, List<string> Segments, List<RouteLeg> Legs);
+
+    /// <summary>
+    /// Calcula la ruta COMPLETA que pasa por todos los puntos EN EL ORDEN DADO (no reordena), sin el límite
+    /// de 25 paradas: parte el recorrido en tramos de a lo sumo 25 paradas intermedias, los consulta uno por
+    /// uno y los pega. Devuelve el tiempo total (con tránsito), los metros totales, la lista de líneas
+    /// codificadas (una por tramo, se dibujan pegadas) y el tiempo/metros de cada segmento entre parada y parada.
+    /// El primer punto de <paramref name="pointsInOrder"/> es el arranque y el último es la parada final.
+    /// Retorna null si no hay clave o algún tramo falla (para que el llamador use su respaldo).
+    /// </summary>
+    public async Task<RouteFullResult?> ComputeRouteFullAsync(
+        IReadOnlyList<(double lat, double lng)> pointsInOrder,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(ApiKey)) return null;
+        if (pointsInOrder.Count < 2) return null;
+
+        // Cada consulta admite origen + 25 intermedias + destino = 27 puntos. Los tramos comparten el punto
+        // de unión (el último de un tramo es el primero del siguiente) para que la línea quede continua y los
+        // tiempos por tramo no se dupliquen.
+        const int maxPorConsulta = 27;
+        int totalDur = 0, totalDist = 0;
+        var segments = new List<string>();
+        var legs = new List<RouteLeg>();
+
+        int start = 0;
+        while (start < pointsInOrder.Count - 1)
+        {
+            int end = Math.Min(start + maxPorConsulta - 1, pointsInOrder.Count - 1); // índice inclusivo del último punto del tramo
+            var origin = pointsInOrder[start];
+            var dest = pointsInOrder[end];
+            var inter = new List<(double lat, double lng)>();
+            for (int i = start + 1; i < end; i++) inter.Add(pointsInOrder[i]);
+
+            var chunk = await ComputeChunkAsync(origin, dest, inter, ct);
+            if (chunk is null) return null; // si un tramo falla, no dibujamos a medias
+
+            totalDur += chunk.Value.dur;
+            totalDist += chunk.Value.dist;
+            if (!string.IsNullOrEmpty(chunk.Value.poly)) segments.Add(chunk.Value.poly!);
+            legs.AddRange(chunk.Value.legs);
+
+            start = end; // el próximo tramo arranca donde terminó éste
+        }
+
+        if (segments.Count == 0) return null;
+        return new RouteFullResult(totalDur, totalDist, segments, legs);
+    }
+
+    /// <summary>Una consulta a la Routes API para un tramo (≤27 puntos). Devuelve tiempo/metros totales del tramo,
+    /// la línea codificada y el tiempo/metros de cada sub-segmento (leg) entre punto y punto.</summary>
+    private async Task<(int dur, int dist, string? poly, List<RouteLeg> legs)?> ComputeChunkAsync(
+        (double lat, double lng) origin,
+        (double lat, double lng) destination,
+        IReadOnlyList<(double lat, double lng)> waypoints,
+        CancellationToken ct)
+    {
+        var body = new
+        {
+            origin = new { location = new { latLng = new { latitude = origin.lat, longitude = origin.lng } } },
+            destination = new { location = new { latLng = new { latitude = destination.lat, longitude = destination.lng } } },
+            intermediates = waypoints
+                .Select(p => new { location = new { latLng = new { latitude = p.lat, longitude = p.lng } } })
+                .ToArray(),
+            travelMode = "DRIVE",
+            routingPreference = "TRAFFIC_AWARE",
+            departureTime = DateTimeOffset.UtcNow.AddMinutes(3).ToString("yyyy-MM-ddTHH:mm:ssZ")
+        };
+
+        try
+        {
+            var http = _httpFactory.CreateClient();
+            http.Timeout = TimeSpan.FromSeconds(20);
+            using var req = new HttpRequestMessage(HttpMethod.Post, "https://routes.googleapis.com/directions/v2:computeRoutes");
+            req.Headers.Add("X-Goog-Api-Key", ApiKey);
+            req.Headers.Add("X-Goog-FieldMask", "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.legs.duration,routes.legs.distanceMeters");
+            req.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+
+            using var resp = await http.SendAsync(req, ct);
+            var json = await resp.Content.ReadAsStringAsync(ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Routes API compute (tramo) devolvio {Status}: {Body}", (int)resp.StatusCode, json);
+                return null;
+            }
+
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("routes", out var routes) || routes.GetArrayLength() == 0)
+                return null;
+            var r0 = routes[0];
+
+            int SegundosDe(JsonElement el) { int.TryParse((el.GetString() ?? "0s").TrimEnd('s'), out var v); return v; }
+
+            int dur = 0;
+            if (r0.TryGetProperty("duration", out var durEl) && durEl.ValueKind == JsonValueKind.String) dur = SegundosDe(durEl);
+            int dist = r0.TryGetProperty("distanceMeters", out var distEl) && distEl.ValueKind == JsonValueKind.Number
+                ? distEl.GetInt32() : 0;
+            string? poly = r0.TryGetProperty("polyline", out var pl) && pl.TryGetProperty("encodedPolyline", out var enc)
+                ? enc.GetString() : null;
+
+            var legs = new List<RouteLeg>();
+            if (r0.TryGetProperty("legs", out var legsEl) && legsEl.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var leg in legsEl.EnumerateArray())
+                {
+                    int ld = leg.TryGetProperty("duration", out var lde) && lde.ValueKind == JsonValueKind.String ? SegundosDe(lde) : 0;
+                    int lm = leg.TryGetProperty("distanceMeters", out var lme) && lme.ValueKind == JsonValueKind.Number ? lme.GetInt32() : 0;
+                    legs.Add(new RouteLeg(ld, lm));
+                }
+            }
+
+            return (dur, dist, poly, legs);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Routes API compute (tramo) falló");
+            return null;
+        }
+    }
 }

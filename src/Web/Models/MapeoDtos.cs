@@ -159,6 +159,12 @@ public class MapeoSnapshotListItemDto
     public string? Notes { get; set; }
 }
 
+public class RutaLegDto
+{
+    public int Seconds { get; set; }
+    public int Meters { get; set; }
+}
+
 public class RutaOverviewDto
 {
     public string Key { get; set; } = "";
@@ -169,6 +175,10 @@ public class RutaOverviewDto
     public int DistanceMeters { get; set; }
     public string? EncodedPolyline { get; set; }
     public int StopCount { get; set; }
+    // Una línea codificada por tramo (rutas de >25 paradas vienen partidas; se dibujan pegadas).
+    public List<string> Segments { get; set; } = new();
+    // Tiempo/metros entre parada y parada (en orden de visita).
+    public List<RutaLegDto> Legs { get; set; } = new();
 }
 
 public class MapeoFavoritoDto

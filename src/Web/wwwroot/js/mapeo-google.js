@@ -730,24 +730,37 @@ window.mapeoFlex = (function () {
         // Cancelar el dibujo sin asignar nada.
         cancelDrawZone() { cleanupZone(); },
 
-        // Dibuja las líneas de ruta (una por repartidor). routes = [{color, encoded}].
+        // Dibuja las líneas de ruta (una por repartidor). routes = [{color, segments:[encoded...]}].
+        // Compatibilidad: también acepta {color, encoded} (una sola línea).
         drawRoutes(routes) {
             this.clearRoutes();
             if (!map || !routes || !google.maps.geometry) return;
+            // Flechita de sentido que se repite a lo largo de la línea (para qué lado va el recorrido).
+            const flecha = {
+                path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                scale: 2.6, strokeColor: '#ffffff', strokeWeight: 1.2, fillOpacity: 1
+            };
             for (const r of routes) {
-                if (!r || !r.encoded) continue;
-                const path = google.maps.geometry.encoding.decodePath(r.encoded);
+                if (!r) continue;
                 const color = r.color || '#1d4ed8';
-                // Casing (borde blanco) por debajo, como la ruta azul de Google Maps:
-                // hace que la línea de color resalte sobre las calles y el tráfico.
-                routeLines.push(new google.maps.Polyline({
-                    path: path, map: map,
-                    strokeColor: '#ffffff', strokeOpacity: 0.9, strokeWeight: 9, zIndex: 4
-                }));
-                routeLines.push(new google.maps.Polyline({
-                    path: path, map: map,
-                    strokeColor: color, strokeOpacity: 0.95, strokeWeight: 5, zIndex: 5
-                }));
+                // Normalizamos: una ruta puede venir en varios tramos (rutas de >25 paradas).
+                const encodeds = (r.segments && r.segments.length) ? r.segments : (r.encoded ? [r.encoded] : []);
+                for (const enc of encodeds) {
+                    if (!enc) continue;
+                    const path = google.maps.geometry.encoding.decodePath(enc);
+                    // Casing (borde blanco) por debajo, como la ruta azul de Google Maps:
+                    // hace que la línea de color resalte sobre las calles y el tráfico.
+                    routeLines.push(new google.maps.Polyline({
+                        path: path, map: map,
+                        strokeColor: '#ffffff', strokeOpacity: 0.9, strokeWeight: 9, zIndex: 4
+                    }));
+                    routeLines.push(new google.maps.Polyline({
+                        path: path, map: map,
+                        strokeColor: color, strokeOpacity: 0.95, strokeWeight: 5, zIndex: 5,
+                        // Flechas blancas cada ~110px indicando el sentido de circulación.
+                        icons: [{ icon: Object.assign({}, flecha, { fillColor: color }), offset: '0', repeat: '110px' }]
+                    }));
+                }
             }
         },
 
