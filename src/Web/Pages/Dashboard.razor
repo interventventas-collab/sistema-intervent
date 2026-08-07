@@ -69,10 +69,12 @@ else
     .dash-hero-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;
         align-items: stretch; margin-bottom: 1rem; }
     @@media (max-width: 900px) { .dash-hero-row { grid-template-columns: 1fr; } }
-    /* 2026-08-07: grilla 2×2 de las 4 cards de WhatsApp del Dashboard */
-    .dash-wa4-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
-    .dash-wa4-cell { height: 440px; min-height: 0; }
-    @@media (max-width: 900px) { .dash-wa4-grid { grid-template-columns: 1fr; } .dash-wa4-cell { height: 400px; } }
+    /* 2026-08-07: las 4 cards de WhatsApp del Dashboard, EN LÍNEA (una al lado de la otra),
+       del tamaño del panel flotante. En pantallas más chicas pasan a 2 y después a 1. */
+    .dash-wa4-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.8rem; margin-bottom: 1rem; }
+    .dash-wa4-cell { height: 520px; min-width: 0; min-height: 0; }
+    @@media (max-width: 1400px) { .dash-wa4-grid { grid-template-columns: repeat(2, 1fr); } }
+    @@media (max-width: 760px) { .dash-wa4-grid { grid-template-columns: 1fr; } .dash-wa4-cell { height: 460px; } }
     /* la card de WhatsApp dentro de la fila hero ocupa toda la altura del chat fijado */
     .dash-hero-wa { margin-top: 0 !important; height: 100%; }
 
