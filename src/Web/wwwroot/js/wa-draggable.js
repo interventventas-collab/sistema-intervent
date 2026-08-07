@@ -52,5 +52,49 @@ window.waDraggable = {
         handle.addEventListener('mousedown', onDown);
         handle.addEventListener('touchstart', onDown, { passive: false });
         handle.style.cursor = 'move';
+    },
+
+    // 2026-08-07: hace que un BOTÓN (ej. el globito de WhatsApp) sea arrastrable SIN romper el
+    // toque para abrir. Un tap normal (sin mover) dispara el click; si lo arrastrás (>6px), lo
+    // mueve y anula ese click. Se puede llamar varias veces sobre el mismo id sin duplicar.
+    attachSelf: function (id) {
+        const el = document.getElementById(id);
+        if (!el || el.dataset.dragSelf === '1') return;
+        el.dataset.dragSelf = '1';
+        let sx = 0, sy = 0, sl = 0, st = 0, moved = false, active = false;
+        function pointer(e) { return e.touches && e.touches.length ? e.touches[0] : e; }
+        function onDown(e) {
+            const ev = pointer(e); const r = el.getBoundingClientRect();
+            sx = ev.clientX; sy = ev.clientY; sl = r.left; st = r.top; moved = false; active = true;
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+            document.addEventListener('touchmove', onMove, { passive: false });
+            document.addEventListener('touchend', onUp);
+        }
+        function onMove(e) {
+            if (!active) return;
+            const ev = pointer(e); const dx = ev.clientX - sx, dy = ev.clientY - sy;
+            if (!moved && (Math.abs(dx) + Math.abs(dy)) < 6) return;
+            if (!moved) { moved = true; el.style.transform = 'none'; el.style.right = 'auto'; el.style.bottom = 'auto'; el.style.left = sl + 'px'; el.style.top = st + 'px'; }
+            let nl = Math.max(0, Math.min(sl + dx, window.innerWidth - 62));
+            let nt = Math.max(0, Math.min(st + dy, window.innerHeight - 62));
+            el.style.left = nl + 'px'; el.style.top = nt + 'px';
+            if (e.cancelable) e.preventDefault();
+        }
+        function onUp() {
+            active = false;
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            document.removeEventListener('touchmove', onMove);
+            document.removeEventListener('touchend', onUp);
+            if (moved) {
+                // Anular el click que sigue al arrastre (para que NO abra el chat al soltar).
+                const stop = function (ev) { ev.stopPropagation(); ev.preventDefault(); };
+                el.addEventListener('click', stop, true);
+                setTimeout(function () { try { el.removeEventListener('click', stop, true); } catch (_) {} }, 350);
+            }
+        }
+        el.addEventListener('mousedown', onDown);
+        el.addEventListener('touchstart', onDown, { passive: true });
     }
 };
