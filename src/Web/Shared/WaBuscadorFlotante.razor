@@ -222,11 +222,11 @@
             Abrir();
     }
 
-    /// <summary>Muestra el cartelito con el QR/enlace que abre directo este WhatsApp en el celu.</summary>
+    /// <summary>Muestra el cartelito con el QR/enlace de la PANTALLA DEDICADA de WhatsApp para el celu.</summary>
     private async Task MostrarQr()
     {
-        // BaseUri ej "https://app.palanica.com.ar/" → enlace "https://app.palanica.com.ar/?wa=1".
-        waLink = Nav.BaseUri.TrimEnd('/') + "/?wa=1";
+        // BaseUri ej "https://app.palanica.com.ar/" → enlace "https://app.palanica.com.ar/whatsapp-movil".
+        waLink = Nav.BaseUri.TrimEnd('/') + "/whatsapp-movil";
         qrWaDataUri = null;
         mostrandoQr = true;
         StateHasChanged();
