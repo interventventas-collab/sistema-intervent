@@ -6,6 +6,7 @@
 @inject ApiClient Api
 @inject NavigationManager Nav
 @inject Microsoft.JSInterop.IJSRuntime JS
+@implements IDisposable
 
 @* 2026-08-06: pantalla DEDICADA de WhatsApp para el celu (como las que usan los repartidores).
    Sin menú ni escritorio atrás: solo el WhatsApp, a pantalla completa. Buscás una conversación,
@@ -58,10 +59,16 @@ else
                 <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
             </svg>
             <span class="wam-title">WhatsApp</span>
-            @if (!string.IsNullOrEmpty(persona))
-            {
-                <button type="button" class="wam-persona" @onclick="CambiarPersona" title="No soy yo / cambiar de persona">@persona ✕</button>
-            }
+            <div class="wam-head-actions">
+                <button type="button" class="wam-bell" @onclick="ToggleAvisos"
+                        title="@(avisos ? "Avisos activados (tocá para silenciar)" : "Avisos silenciados (tocá para activar)")">
+                    @(avisos ? "🔔" : "🔕")
+                </button>
+                @if (!string.IsNullOrEmpty(persona))
+                {
+                    <button type="button" class="wam-persona" @onclick="CambiarPersona" title="No soy yo / cambiar de persona">@persona ✕</button>
+                }
+            </div>
         }
     </div>
 
@@ -160,8 +167,13 @@ else
     /* PinnedWaChat trae su propio marco; acá lo dejamos a ras, ocupando toda la pantalla. */
     .wam-chat .pwa-card { height: 100%; min-height: 0; border: none; border-radius: 0; box-shadow: none; }
 
+    /* Acciones a la derecha del header (campanita + persona) */
+    .wam-head-actions { margin-left: auto; flex: none; display: flex; align-items: center; gap: 8px; }
+    .wam-bell { flex: none; background: rgba(255,255,255,0.18); color: #fff; border: none; border-radius: 999px;
+        width: 36px; height: 32px; font-size: 1rem; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+    .wam-bell:hover { background: rgba(255,255,255,0.3); }
     /* Chip "Conectado como …" */
-    .wam-persona { margin-left: auto; flex: none; background: rgba(255,255,255,0.18); color: #fff;
+    .wam-persona { flex: none; background: rgba(255,255,255,0.18); color: #fff;
         border: none; border-radius: 999px; padding: 5px 12px; font-size: 0.82rem; font-weight: 700; cursor: pointer; }
     .wam-persona:hover { background: rgba(255,255,255,0.3); }
 
@@ -203,6 +215,13 @@ else
     private string? pinError;
     private bool verificando;
     private const string PersonaKey = "wamovil.persona";
+
+    // Avisos (campanita): sonido + aviso visual del sistema al llegar un mensaje nuevo (pantalla abierta).
+    private bool avisos;
+    private bool _notifInit;
+    private System.Threading.Timer? notifTimer;
+    private DateTime lastIncomingSeen = DateTime.MinValue;
+    private const string AvisosKey = "wamovil.avisos";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -277,8 +296,59 @@ else
         if (lineasConfig.Count == 0)
             try { lineasConfig = await Api.GetTwLineasConfigAsync(); } catch { }
         cargando = false;
+
+        // La primera vez: recordar hasta dónde llegamos (para NO avisar de mensajes viejos),
+        // leer la preferencia de avisos y arrancar el chequeo periódico de mensajes nuevos.
+        if (!_notifInit)
+        {
+            _notifInit = true;
+            lastIncomingSeen = convs.Where(c => c.UltimoDireccion == "INCOMING")
+                                    .Select(c => c.UltimoAt).DefaultIfEmpty(DateTime.UtcNow).Max();
+            try { avisos = (await JS.InvokeAsync<string?>("localStorage.getItem", AvisosKey)) == "1"; } catch { }
+            notifTimer ??= new System.Threading.Timer(async _ => await InvokeAsync(RevisarNuevosAsync), null, 15000, 15000);
+        }
         StateHasChanged();
     }
+
+    /// <summary>Prende/apaga los avisos. Al prender, pide permiso para el aviso visual del sistema.</summary>
+    private async Task ToggleAvisos()
+    {
+        avisos = !avisos;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", AvisosKey, avisos ? "1" : "0"); } catch { }
+        if (avisos)
+        {
+            try { await JS.InvokeAsync<string>("waMovilNotif.pedirPermiso"); } catch { }
+            try { await JS.InvokeVoidAsync("waNotifSound"); } catch { } // pitido de confirmación
+        }
+        StateHasChanged();
+    }
+
+    /// <summary>Cada 15s: refresca la lista y, si hay un mensaje ENTRANTE nuevo, suena + aviso visual.</summary>
+    private async Task RevisarNuevosAsync()
+    {
+        List<ApiClient.TwConvDto> lista;
+        try { lista = await Api.GetTwConversacionesAsync(); }
+        catch { return; }
+        convs = lista;
+
+        var entrantes = convs.Where(c => c.UltimoDireccion == "INCOMING" && c.UltimoAt > lastIncomingSeen).ToList();
+        if (entrantes.Count > 0)
+        {
+            lastIncomingSeen = entrantes.Max(c => c.UltimoAt);
+            var top = entrantes.OrderByDescending(c => c.UltimoAt).First();
+            // No molestar si justo estás mirando ese chat.
+            if (avisos && (chatAbierto == null || chatAbierto.Numero != top.Numero))
+            {
+                try { await JS.InvokeVoidAsync("waNotifSound"); } catch { }
+                var titulo = entrantes.Count == 1 ? NombreDe(top) : $"{entrantes.Count} chats nuevos";
+                var cuerpo = Recortar(top.UltimoMensaje, 80);
+                try { await JS.InvokeVoidAsync("waMovilNotif.mostrar", titulo, cuerpo); } catch { }
+            }
+        }
+        StateHasChanged();
+    }
+
+    public void Dispose() => notifTimer?.Dispose();
 
     private void AbrirChat(ApiClient.TwConvDto c) { chatAbierto = c; StateHasChanged(); }
     private void Volver() { chatAbierto = null; StateHasChanged(); }
