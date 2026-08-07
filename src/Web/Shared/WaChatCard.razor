@@ -1,0 +1,184 @@
+@* 2026-08-07: Card de WhatsApp para el Dashboard. Muestra la lista de conversaciones (buscador)
+   y al elegir una abre el mini-chat vivo (reusa PinnedWaChat con acciones completas).
+   - Si LineaNombre está seteada (ej "FIJO TRANSRADIO" / "FRIKAF by INTERVENT"), muestra SOLO las
+     conversaciones de esa línea.
+   - Si LineaNombre es null, deja elegir cualquier chat (buscador libre). *@
+@using Web.Services
+@inject Web.Services.ApiClient Api
+@implements IDisposable
+
+<div class="wcc-card">
+    <div class="wcc-head">
+        @if (chatAbierto is not null)
+        {
+            <button type="button" class="wcc-back" @onclick="Volver" title="Volver a la lista">←</button>
+            <span class="wcc-title" title="@NombreDe(chatAbierto)">@NombreDe(chatAbierto)</span>
+        }
+        else
+        {
+            <span class="wcc-ic">💬</span>
+            <span class="wcc-title" title="@Titulo">@Titulo</span>
+        }
+    </div>
+
+    @if (chatAbierto is null)
+    {
+        <div class="wcc-search">
+            <input class="wcc-search-input" placeholder="Buscar por nombre o número…"
+                   @bind="busqueda" @bind:event="oninput" />
+        </div>
+        <div class="wcc-list">
+            @if (cargando && convs.Count == 0)
+            {
+                <div class="wcc-vacio">Cargando…</div>
+            }
+            else
+            {
+                var filtradas = Filtradas().ToList();
+                if (filtradas.Count == 0)
+                {
+                    <div class="wcc-vacio">@(string.IsNullOrWhiteSpace(busqueda) ? "Sin conversaciones." : "Sin resultados.")</div>
+                }
+                else
+                {
+                    foreach (var c in filtradas)
+                    {
+                        var sinResp = c.UltimoDireccion == "INCOMING";
+                        <div class="wcc-conv" @onclick="() => AbrirChat(c)">
+                            <div class="wcc-avatar">@Inicial(c)</div>
+                            <div class="wcc-conv-txt">
+                                <div class="wcc-conv-nombre" title="@NombreDe(c)">
+                                    @if (sinResp)
+                                    {
+                                        <span class="wcc-dot" title="Esperando respuesta">●</span>
+                                    }
+                                    @NombreDe(c)
+                                </div>
+                                <div class="wcc-conv-ultimo">@(sinResp ? "" : "Vos: ")@Recortar(c.UltimoMensaje, 38)</div>
+                            </div>
+                        </div>
+                    }
+                }
+            }
+        </div>
+    }
+    else
+    {
+        <div class="wcc-chat">
+            <PinnedWaChat Numero="@chatAbierto.Numero" LineaPhoneId="@chatAbierto.Linea"
+                          TituloContacto="@NombreDe(chatAbierto)"
+                          NombreLinea="@(chatAbierto.LineaNumero ?? chatAbierto.Linea ?? "WhatsApp")"
+                          PuedeAbrirEnGrande="false" AccionesCompletas="true" />
+        </div>
+    }
+</div>
+
+<style>
+    .wcc-card { display: flex; flex-direction: column; height: 100%; min-height: 360px;
+        background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+    .wcc-head { display: flex; align-items: center; gap: 8px; background: #0b7a4b; color: #fff; padding: 8px 12px; flex: 0 0 auto; }
+    .wcc-ic { flex: none; }
+    .wcc-title { font-weight: 800; font-size: 0.9rem; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .wcc-back { background: rgba(255,255,255,0.18); border: none; color: #fff; border-radius: 7px; width: 28px; height: 26px; cursor: pointer; flex: none; }
+    .wcc-back:hover { background: rgba(255,255,255,0.34); }
+    .wcc-search { padding: 8px; background: #f8fafb; border-bottom: 1px solid #eef0f2; flex: 0 0 auto; }
+    .wcc-search-input { width: 100%; box-sizing: border-box; border: 1px solid #d1d5db; border-radius: 10px;
+        padding: 8px 12px; font-size: 0.86rem; font-family: inherit; }
+    .wcc-search-input:focus { outline: none; border-color: #25d366; box-shadow: 0 0 0 2px rgba(37,211,102,0.18); }
+    .wcc-list { flex: 1; min-height: 0; overflow-y: auto; background: #fff; }
+    .wcc-vacio { color: #6b7280; font-size: 0.82rem; text-align: center; padding: 1.2rem 1rem; }
+    .wcc-conv { display: flex; align-items: center; gap: 10px; padding: 9px 12px; cursor: pointer; border-bottom: 1px solid #f3f4f6; }
+    .wcc-conv:hover { background: #f0fdf4; }
+    .wcc-avatar { width: 38px; height: 38px; border-radius: 50%; background: #25d366; color: #fff;
+        display: flex; align-items: center; justify-content: center; font-weight: 800; flex: none; }
+    .wcc-conv-txt { min-width: 0; }
+    .wcc-conv-nombre { font-weight: 700; color: #111827; font-size: 0.86rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .wcc-dot { color: #dc2626; }
+    .wcc-conv-ultimo { font-size: 0.76rem; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .wcc-chat { flex: 1; min-height: 0; }
+    .wcc-chat .pwa-card { height: 100%; min-height: 0; border: none; border-radius: 0; box-shadow: none; }
+</style>
+
+@code {
+    [Parameter] public string Titulo { get; set; } = "WhatsApp";
+    /// <summary>Si está seteada, muestra solo las conversaciones de esa línea (por nombre de línea).
+    /// Null = deja elegir cualquier chat.</summary>
+    [Parameter] public string? LineaNombre { get; set; }
+
+    private List<ApiClient.TwConvDto> convs = new();
+    private List<ApiClient.TwLineaConfigDto> lineasConfig = new();
+    private ApiClient.TwConvDto? chatAbierto;
+    private string busqueda = "";
+    private bool cargando = true;
+    private System.Threading.Timer? refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Cargar();
+        // Refresco liviano de la lista cada 20s (para ver chats nuevos), solo si no hay chat abierto.
+        refreshTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                if (chatAbierto is null) { await Cargar(); StateHasChanged(); }
+            });
+        }, null, 20_000, 20_000);
+    }
+
+    private async Task Cargar()
+    {
+        try { convs = await Api.GetTwConversacionesAsync(); }
+        catch { convs ??= new(); }
+        if (lineasConfig.Count == 0)
+            try { lineasConfig = await Api.GetTwLineasConfigAsync(); } catch { }
+        cargando = false;
+    }
+
+    private void AbrirChat(ApiClient.TwConvDto c) { chatAbierto = c; StateHasChanged(); }
+    private void Volver() { chatAbierto = null; StateHasChanged(); }
+
+    private IEnumerable<ApiClient.TwConvDto> Filtradas()
+    {
+        IEnumerable<ApiClient.TwConvDto> src = convs;
+        // Filtro por línea (por nombre): resolvemos el/los phoneId de esa línea desde la config.
+        if (!string.IsNullOrWhiteSpace(LineaNombre))
+        {
+            var ids = lineasConfig
+                .Where(x => string.Equals(x.Nombre, LineaNombre, StringComparison.OrdinalIgnoreCase))
+                .Select(x => x.LineaId)
+                .ToHashSet();
+            src = src.Where(c => c.Linea != null && ids.Contains(c.Linea));
+        }
+        if (!string.IsNullOrWhiteSpace(busqueda))
+        {
+            var q = busqueda.Trim().ToLowerInvariant();
+            var qDigits = new string(q.Where(char.IsDigit).ToArray());
+            src = src.Where(c =>
+                NombreDe(c).ToLowerInvariant().Contains(q)
+                || (c.Numero ?? "").ToLowerInvariant().Contains(q)
+                || (qDigits.Length >= 3 && new string((c.Numero ?? "").Where(char.IsDigit).ToArray()).Contains(qDigits)));
+        }
+        return src.OrderByDescending(c => c.UltimoAt).Take(80);
+    }
+
+    private static string NombreDe(ApiClient.TwConvDto c)
+        => !string.IsNullOrWhiteSpace(c.ClienteNombre) ? c.ClienteNombre!
+         : !string.IsNullOrWhiteSpace(c.NombrePerfil) ? c.NombrePerfil!
+         : (c.Numero ?? "Contacto").Replace("whatsapp:", "").Replace("ig:", "IG ");
+
+    private static string Inicial(ApiClient.TwConvDto c)
+    {
+        var n = NombreDe(c).Trim();
+        return string.IsNullOrEmpty(n) ? "?" : n[..1].ToUpperInvariant();
+    }
+
+    private static string Recortar(string? s, int max)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "";
+        s = s.Replace("\n", " ").Trim();
+        return s.Length <= max ? s : s.Substring(0, max) + "…";
+    }
+
+    public void Dispose() => refreshTimer?.Dispose();
+}

@@ -46,76 +46,19 @@
 }
 else
 {
-<div class="dash-hero-row">
+<div class="dash-wa4-grid">
 
-    @* Conversación importante FIJADA (reemplaza a la card grande del mapa de reparto).
-       Va dentro de un contenedor de altura fija para que NO se estire con todos los
-       mensajes: el chat scrollea adentro de la card. *@
-    <div class="dash-hero-pinned">
+    @* 2026-08-07: 4 cards de WhatsApp — las 2 líneas API (todas sus conversaciones), la de
+       Depósito (Gaby fijo) y una libre para elegir cualquier chat de cliente. *@
+    <div class="dash-wa4-cell"><WaChatCard Titulo="FIJO TRANSRADIO" LineaNombre="FIJO TRANSRADIO" /></div>
+    <div class="dash-wa4-cell"><WaChatCard Titulo="FRIKAF by INTERVENT" LineaNombre="FRIKAF by INTERVENT" /></div>
+    <div class="dash-wa4-cell">
         <PinnedWaChat Numero="@PinnedWaNumero" LineaPhoneId="@PinnedWaLinea"
                       TituloContacto="@PinnedWaTitulo" NombreLinea="@PinnedWaNombreLinea"
                       PuedeAbrirEnGrande="true" />
     </div>
 
-    @* WhatsApp — conversaciones donde el último mensaje lo mandó el CLIENTE (sin responder).
-       2026-07-22 pedido Osmar. Click en una conversación → abre /whatsapp con ese chat elegido.
-       2026-07-29: movida acá arriba, al lado del mapa. *@
-    <div class="dashboard-detail-card mac-stat-card accent-green dash-hero-wa tres-card @(waOpen ? "" : "tres-collapsed")" style="cursor:pointer; position:relative;" @onclick="AbrirWhatsAppEnPestana" title="Abrir WhatsApp en una pestaña nueva">
-        <div>
-            <div class="mac-card-header">
-                <div class="mac-card-iconbox" style="background:#dcfce7; color:#16a34a;">
-                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
-                </div>
-                <span class="mac-card-eyebrow">WhatsApp</span>
-                <button class="tres-toggle" @onclick:stopPropagation="true" @onclick='() => ToggleCard("wa")'
-                        title="@(waOpen ? "Plegar" : "Desplegar")" aria-label="@(waOpen ? "Plegar" : "Desplegar")">@(waOpen ? "▾" : "▸")</button>
-            </div>
-            @if (waConvs is null)
-            {
-                <div class="mac-card-sub">Cargando…</div>
-            }
-            else
-            {
-                <div class="mac-card-bignum">@waSinResponder.Count <span style="font-size:0.85rem; font-weight:400; color:#6b7280;">sin responder</span></div>
-                <div class="mac-card-sub">@(waSinResponder.Count == 1 ? "cliente esperando respuesta" : "clientes esperando respuesta")</div>
-                @if (waOpen && waConvs.Count > 0)
-                {
-                    <div class="tres-detalle">
-                        <div class="tres-detalle-hd">Últimos chats — tocá para abrir</div>
-                        @foreach (var c in waConvs.Take(5))
-                        {
-                            var sinResponder = c.UltimoDireccion == "INCOMING";
-                            <div class="tres-row" style="cursor:pointer;" @onclick:stopPropagation="true" @onclick='() => AbrirChatWa(c.Numero)' title="Abrir este chat en una pestaña nueva">
-                                <span class="tres-row-main">
-                                    <span class="tres-row-t">
-                                        @if (sinResponder)
-                                        {
-                                            <span style="color:#dc2626;" title="Esperando respuesta">●</span>
-                                        }
-                                        💬 @(c.ClienteNombre ?? c.NombrePerfil ?? WaPrettyNumero(c.Numero))
-                                    </span>
-                                    <span class="tres-row-s" style="@(sinResponder ? "color:#374151; font-weight:600;" : "")">@(sinResponder ? "" : "Vos: ")@WaSnippet(c.UltimoMensaje)</span>
-                                </span>
-                                <span class="tres-row-val" style="color:#6b7280; font-weight:400; font-size:0.68rem;">@WaHace(c.UltimoAt)</span>
-                            </div>
-                        }
-                        @if (waConvs.Count > 5)
-                        {
-                            <div class="tres-more">+@(waConvs.Count - 5) más en la pantalla de WhatsApp</div>
-                        }
-                    </div>
-                }
-                else if (waOpen)
-                {
-                    <div style="margin-top:12px; font-size:0.74rem; color:#9ca3af;">Sin conversaciones todavía</div>
-                }
-            }
-        </div>
-        @if (waOpen)
-        {
-            <div class="tres-card-foot">Abrir WhatsApp ›</div>
-        }
-    </div>
+    <div class="dash-wa4-cell"><WaChatCard Titulo="Elegí un chat" /></div>
 
 </div>
 } @* fin @if (isDepositoOnly)…else — fila hero (chat fijado + WhatsApp) *@
@@ -126,6 +69,10 @@ else
     .dash-hero-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;
         align-items: stretch; margin-bottom: 1rem; }
     @@media (max-width: 900px) { .dash-hero-row { grid-template-columns: 1fr; } }
+    /* 2026-08-07: grilla 2×2 de las 4 cards de WhatsApp del Dashboard */
+    .dash-wa4-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+    .dash-wa4-cell { height: 440px; min-height: 0; }
+    @@media (max-width: 900px) { .dash-wa4-grid { grid-template-columns: 1fr; } .dash-wa4-cell { height: 400px; } }
     /* la card de WhatsApp dentro de la fila hero ocupa toda la altura del chat fijado */
     .dash-hero-wa { margin-top: 0 !important; height: 100%; }
 
