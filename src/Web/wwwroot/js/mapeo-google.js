@@ -239,6 +239,7 @@ window.mapeoFlex = (function () {
     let zoneClickListener = null; // listener de clicks del mapa mientras dibuja
     let zoneVertexMarkers = [];   // puntitos que se ven en cada esquina tocada (feedback visual)
     let routeLines = [];          // líneas de ruta dibujadas (una por repartidor)
+    let routeLabels = [];         // cartelitos flotantes de tiempo/km sobre cada línea (estilo Google Maps)
     let trafficLayer = null;      // capa de tráfico de Google (rojo/amarillo/verde en las calles)
     let lastFitStops = -1; // cuántas paradas (sin contar el punto de partida) había en el último auto-encuadre
 
@@ -740,11 +741,33 @@ window.mapeoFlex = (function () {
                 path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
                 scale: 2.6, strokeColor: '#ffffff', strokeWeight: 1.2, fillOpacity: 1
             };
+            // Cartelito flotante (tiempo + km) posado sobre la línea, estilo Google Maps.
+            const makeLabel = (position, text, color) => {
+                const ov = new google.maps.OverlayView();
+                ov.onAdd = function () {
+                    const div = document.createElement('div');
+                    div.style.cssText = 'position:absolute; transform:translate(-50%,-50%); background:#fff; color:#111827; ' +
+                        'border:2px solid ' + color + '; border-radius:14px; padding:2px 9px; font-size:12px; font-weight:800; ' +
+                        'white-space:nowrap; box-shadow:0 2px 7px rgba(0,0,0,0.35); pointer-events:none;';
+                    div.textContent = text;
+                    this._div = div;
+                    this.getPanes().floatPane.appendChild(div);
+                };
+                ov.draw = function () {
+                    const proj = this.getProjection();
+                    if (!proj || !this._div) return;
+                    const p = proj.fromLatLngToDivPixel(position);
+                    if (p) { this._div.style.left = p.x + 'px'; this._div.style.top = p.y + 'px'; }
+                };
+                ov.onRemove = function () { if (this._div) { this._div.remove(); this._div = null; } };
+                return ov;
+            };
             for (const r of routes) {
                 if (!r) continue;
                 const color = r.color || '#1d4ed8';
                 // Normalizamos: una ruta puede venir en varios tramos (rutas de >25 paradas).
                 const encodeds = (r.segments && r.segments.length) ? r.segments : (r.encoded ? [r.encoded] : []);
+                const allPts = [];
                 for (const enc of encodeds) {
                     if (!enc) continue;
                     const path = google.maps.geometry.encoding.decodePath(enc);
@@ -760,6 +783,14 @@ window.mapeoFlex = (function () {
                         // Flechas blancas cada ~110px indicando el sentido de circulación.
                         icons: [{ icon: Object.assign({}, flecha, { fillColor: color }), offset: '0', repeat: '110px' }]
                     }));
+                    for (const pt of path) allPts.push(pt);
+                }
+                // Cartelito con el tiempo/km, posado en el medio del recorrido.
+                if (r.label && allPts.length) {
+                    const mid = allPts[Math.floor(allPts.length / 2)];
+                    const lbl = makeLabel(mid, r.label, color);
+                    lbl.setMap(map);
+                    routeLabels.push(lbl);
                 }
             }
         },
@@ -767,6 +798,8 @@ window.mapeoFlex = (function () {
         clearRoutes() {
             for (const l of routeLines) l.setMap(null);
             routeLines = [];
+            for (const lb of routeLabels) lb.setMap(null);
+            routeLabels = [];
         },
 
         // ── Ver una FOTO (snapshot) de un día anterior sobre el mapa (modo SOLO MIRAR) ──
@@ -838,6 +871,8 @@ window.mapeoFlex = (function () {
             cleanupZone();
             for (const l of routeLines) l.setMap(null);
             routeLines = [];
+            for (const lb of routeLabels) lb.setMap(null);
+            routeLabels = [];
             if (trafficLayer) { trafficLayer.setMap(null); trafficLayer = null; }
         },
 

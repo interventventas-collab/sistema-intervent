@@ -3724,7 +3724,9 @@
             {
                 color = r.Color,
                 // Tramos de la ruta (una ruta larga viene partida). Respaldo: la línea única vieja.
-                segments = (r.Segments?.Count ?? 0) > 0 ? r.Segments.ToArray() : new[] { r.EncodedPolyline! }
+                segments = (r.Segments?.Count ?? 0) > 0 ? r.Segments.ToArray() : new[] { r.EncodedPolyline! },
+                // Texto del cartelito flotante sobre la línea (tiempo total + km), estilo Google Maps.
+                label = $"{FormatoDuracion(r.DurationSeconds)} · {(r.DistanceMeters / 1000.0):0.#} km"
             })
             .ToArray();
         await JS.InvokeVoidAsync("mapeoFlex.drawRoutes", new object[] { paraDibujar });
