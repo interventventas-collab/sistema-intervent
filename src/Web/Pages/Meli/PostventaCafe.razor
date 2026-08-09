@@ -47,7 +47,7 @@
                 <strong>Cómo funciona:</strong> elegí abajo las publicaciones de café. Cuando alguien compre una de ellas,
                 MercadoLibre le manda automáticamente el mensaje con la lista de moliendas y el cliente te responde por el chat de la venta.
                 Se manda <strong>una sola vez por venta</strong>.
-                <div class="pv-note">ℹ️ El chat de MercadoLibre solo permite texto: al cliente le llega la lista escrita (no un menú para tocar) y responde escribiendo la opción.</div>
+                <div class="pv-note">ℹ️ El chat de MercadoLibre solo permite texto: al cliente le llega la lista escrita (no un menú para tocar) y responde escribiendo la opción. Además, MercadoLibre limita los mensajes que el vendedor manda primero (un cupo por venta y un tope de largo), por eso conviene que el mensaje sea corto.</div>
             </div>
         </div>
 
@@ -113,6 +113,9 @@
                 <div class="pv-preview">
                     <strong>👁️ Así le llega al cliente:</strong>
                     <div class="pv-preview-text">@PreviewText</div>
+                    <div class="pv-charcount @(PreviewLen > 350 ? "over" : "")">
+                        @PreviewLen / 350 caracteres@(PreviewLen > 350 ? " · ⚠️ MercadoLibre puede rechazarlo por largo, acortá el texto o las opciones" : "")
+                    </div>
                 </div>
 
                 <div class="pv-actions">
@@ -227,6 +230,8 @@
         }
     }
 
+    private int PreviewLen => PreviewText.Length;
+
     protected override async Task OnInitializedAsync() => await Load();
 
     private async Task Load()
@@ -339,6 +344,8 @@
     .pv-newop .form-input { flex: 1; }
     .pv-preview { background: rgba(16,185,129,.08); border: 1px solid #10b981; border-radius: 8px; padding: 12px; margin-top: 16px; }
     .pv-preview-text { margin-top: 6px; white-space: pre-wrap; font-style: italic; }
+    .pv-charcount { margin-top: 8px; font-size: .78rem; color: var(--text-muted, #6b7280); }
+    .pv-charcount.over { color: #dc2626; font-weight: 600; }
     .pv-actions { margin-top: 16px; }
 
     .pv-venta { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid rgba(148,163,184,.15); flex-wrap: wrap; }

@@ -95,7 +95,7 @@ public class MeliPostventaController : ControllerBase
                 .Where(o => cfg.Items.Contains(o.ItemId) && o.DateCreated >= desde)
                 .OrderByDescending(o => o.DateCreated)
                 .Take(60)
-                .Select(o => new { o.Id, o.MeliOrderId, o.BuyerNickname, o.ItemTitle, o.DateCreated, o.PostventaCafeMsgSent, o.PackId })
+                .Select(o => new { o.Id, o.MeliOrderId, o.BuyerNickname, o.ItemTitle, o.DateCreated, o.PostventaCafeMsgSentAt })
                 .ToListAsync();
 
             ventasRecientes = recientes
@@ -109,7 +109,7 @@ public class MeliPostventaController : ControllerBase
                     buyer = o.BuyerNickname,
                     item = o.ItemTitle,
                     fecha = o.DateCreated,
-                    yaEnviado = o.PostventaCafeMsgSent
+                    yaEnviado = o.PostventaCafeMsgSentAt != null // solo envíos REALES (no el backfill)
                 })
                 .ToList();
         }
@@ -171,9 +171,10 @@ public class MeliPostventaController : ControllerBase
         var (ok, err) = await _orders.SendPackMessageAsync(packId, order.MeliAccount, order.BuyerId, text);
         if (!ok) return Ok(new { ok = false, detalle = err ?? "No se pudo enviar." });
 
-        // Marcar todas las filas de esa orden como avisadas para no duplicar en el flujo normal.
+        // Marcar todas las filas de esa orden como avisadas (con fecha real) para no duplicar.
         var rows = await _db.MeliOrders.Where(o => o.MeliOrderId == order.MeliOrderId).ToListAsync();
-        foreach (var r in rows) r.PostventaCafeMsgSent = true;
+        var ahora = DateTime.UtcNow;
+        foreach (var r in rows) { r.PostventaCafeMsgSent = true; r.PostventaCafeMsgSentAt = ahora; }
         await _db.SaveChangesAsync();
 
         return Ok(new { ok = true, detalle = $"Mensaje enviado a {order.BuyerNickname}." });

@@ -57,6 +57,11 @@ public class MeliOrder
     /// init.sql) para no mandar mensajes viejos de golpe.</summary>
     public bool PostventaCafeMsgSent { get; set; } = false;
 
+    /// <summary>2026-08-09: cuándo se le mandó REALMENTE el mensaje de molienda (null = nunca se
+    /// mandó de verdad). Se distingue del flag PostventaCafeMsgSent porque ese arranca en true por
+    /// backfill en las ventas viejas (para no spamear), y no significa que se haya enviado.</summary>
+    public DateTime? PostventaCafeMsgSentAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 

@@ -311,6 +311,15 @@ BEGIN
 END
 GO
 
+-- Migración 2026-08-09 (b): fecha de envío REAL del mensaje de molienda. Se distingue del flag
+-- PostventaCafeMsgSent (que arranca en 1 por backfill) para que "ya se le mandó" muestre solo
+-- los envíos de verdad. Queda NULL en las ventas viejas backfilleadas.
+IF COL_LENGTH('MeliOrders','PostventaCafeMsgSentAt') IS NULL
+BEGIN
+    ALTER TABLE MeliOrders ADD PostventaCafeMsgSentAt DATETIME NULL;
+END
+GO
+
 -- Migración 2026-07-10: tilde de avisos de fichadas (entrada/salida + plata a rendir) por Telegram.
 IF COL_LENGTH('TelegramAccounts','NotifFichadas') IS NULL
     ALTER TABLE TelegramAccounts ADD NotifFichadas BIT NOT NULL DEFAULT 1;

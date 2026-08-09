@@ -329,8 +329,7 @@ public class MeliOrderService
     public const string CfgPostventaItems = "cafe.postventa.items";
 
     public const string PostventaMensajeDefault =
-        "Hola, ¿qué tal? Recibimos tu compra 🙌\n" +
-        "Para prepararlo como más te gusta, ¿podrías confirmarnos en qué formato lo querés?";
+        "Hola, ¿qué tal? Recibimos tu compra. ¿Podrías confirmarnos en qué formato lo deseás?";
 
     public static readonly string[] PostventaOpcionesDefault =
     {
@@ -371,48 +370,60 @@ public class MeliOrderService
         {
             sb.Append("\n");
             foreach (var o in ops) sb.Append("\n• ").Append(o.Trim());
-            sb.Append("\n\nRespondé con la opción que prefieras y lo preparamos así 🙂");
+            sb.Append("\n\nRespondé con la opción que prefieras 🙂");
         }
         return sb.ToString().Trim();
     }
 
-    /// <summary>Envía un mensaje post-venta al comprador por la mensajería de MeLi. Devuelve
-    /// (ok, error). packId puede ser el pack_id o, para ventas sin pack, el order_id.</summary>
+    /// <summary>Envía un mensaje post-venta al comprador iniciando la conversación por la vía que
+    /// MeLi permite: "Motivos para comunicarse" (action_guide) con el motivo OTHER (texto libre).
+    /// MeLi bloquea el texto libre directo cuando lo inicia el vendedor. Devuelve (ok, error).
+    /// packId puede ser el pack_id o, para ventas sin pack, el order_id.</summary>
     public async Task<(bool ok, string? error)> SendPackMessageAsync(long packId, MeliAccount account, long buyerId, string text)
     {
-        if (string.IsNullOrWhiteSpace(text)) return (false, "Mensaje vacío");
+        if (string.IsNullOrWhiteSpace(text)) return (false, "El mensaje está vacío.");
         var token = await _accountService.GetValidTokenAsync(account);
-        if (token is null) return (false, "No se pudo obtener token de MeLi");
+        if (token is null) return (false, "No se pudo obtener el token de MercadoLibre.");
 
         var http = _httpFactory.CreateClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-        var url = $"https://api.mercadolibre.com/messages/packs/{packId}/sellers/{account.MeliUserId}?tag=post_sale";
-        var payload = new
-        {
-            from = new { user_id = account.MeliUserId.ToString() },
-            to = new { user_id = buyerId.ToString() },
-            text = text
-        };
-        var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+        // Vía correcta para que el VENDEDOR inicie: motivo OTHER (texto libre) del action_guide.
+        var url = $"https://api.mercadolibre.com/messages/action_guide/packs/{packId}/option?tag=post_sale";
+        var payload = new { option_id = "OTHER", text = text };
 
-        var resp = await http.PostAsync(url, content);
-        if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized || resp.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        StringContent NuevoContent() => new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+        var resp = await http.PostAsync(url, NuevoContent());
+        if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
         {
             var newToken = await _accountService.GetValidTokenAsync(account, forceRefresh: true);
             if (newToken is not null)
             {
                 http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", newToken);
-                content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-                resp = await http.PostAsync(url, content);
+                resp = await http.PostAsync(url, NuevoContent());
             }
         }
         if (!resp.IsSuccessStatusCode)
         {
             var body = await resp.Content.ReadAsStringAsync();
-            return (false, $"MeLi rechazó el mensaje ({(int)resp.StatusCode}): {body}");
+            return (false, TraducirErrorMeli((int)resp.StatusCode, body));
         }
         return (true, null);
+    }
+
+    /// <summary>Convierte los errores técnicos de MeLi en un mensaje claro para el usuario.</summary>
+    private static string TraducirErrorMeli(int status, string body)
+    {
+        var b = (body ?? "").ToLowerInvariant();
+        if (b.Contains("cap") || b.Contains("limit") || b.Contains("blocked_by_conversation"))
+            return "MercadoLibre no permite iniciar (o mandar más) mensajes en esta venta por ahora. " +
+                   "Suele pasar en ventas ya entregadas o cuando ya se usó el cupo del vendedor: hay que esperar a que el comprador responda.";
+        if (b.Contains("moderat"))
+            return "MercadoLibre moderó el mensaje (algo del texto no lo deja pasar). Probá acortarlo o sacar links/números.";
+        if (b.Contains("max") && b.Contains("length") || b.Contains("350"))
+            return "El mensaje es demasiado largo para MercadoLibre. Acortá el texto o las opciones (tope ~350 caracteres).";
+        return $"MercadoLibre rechazó el mensaje ({status}).";
     }
 
     /// <summary>Real-time (desde el webhook): si esta orden es de una publicación elegida y todavía
@@ -437,7 +448,8 @@ public class MeliOrderService
         var (ok, _) = await SendPackMessageAsync(packId, any.MeliAccount, any.BuyerId, text);
         if (!ok) return;
 
-        foreach (var o in rows) o.PostventaCafeMsgSent = true;
+        var ahora = DateTime.UtcNow;
+        foreach (var o in rows) { o.PostventaCafeMsgSent = true; o.PostventaCafeMsgSentAt = ahora; }
         await _db.SaveChangesAsync(ct);
     }
 
@@ -479,7 +491,8 @@ public class MeliOrderService
             long packId = any.PackId ?? any.MeliOrderId;
             var (ok, _) = await SendPackMessageAsync(packId, any.MeliAccount, any.BuyerId, text);
             if (!ok) continue; // no marcamos: reintenta la próxima
-            foreach (var o in lista) o.PostventaCafeMsgSent = true;
+            var ahora = DateTime.UtcNow;
+            foreach (var o in lista) { o.PostventaCafeMsgSent = true; o.PostventaCafeMsgSentAt = ahora; }
             enviados++;
         }
         if (enviados > 0) await _db.SaveChangesAsync(ct);
