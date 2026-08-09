@@ -117,19 +117,21 @@ public class MeliPostventaController : ControllerBase
         return Ok(new
         {
             enabled = cfg.Enabled,
-            mensaje = cfg.Mensaje,
+            mensajes = cfg.Mensajes,
             opciones = cfg.Opciones,
             publicaciones = pubsOrdenadas,
             ventasRecientes
         });
     }
 
-    public record SaveConfigRequest(bool Enabled, string? Mensaje, List<string>? Opciones, List<string>? Items);
+    public record SaveConfigRequest(bool Enabled, List<string>? Mensajes, List<string>? Opciones, List<string>? Items);
 
     [HttpPut("config")]
     public async Task<IActionResult> SaveConfig([FromBody] SaveConfigRequest req)
     {
-        var mensaje = string.IsNullOrWhiteSpace(req.Mensaje) ? MeliOrderService.PostventaMensajeDefault : req.Mensaje.Trim();
+        var mensajes = (req.Mensajes ?? new List<string>())
+            .Select(x => (x ?? "").Trim()).Where(x => x.Length > 0).ToList();
+        if (mensajes.Count == 0) mensajes = MeliOrderService.PostventaMensajesDefault.ToList();
         var opciones = (req.Opciones ?? new List<string>())
             .Select(x => (x ?? "").Trim()).Where(x => x.Length > 0).ToList();
         if (opciones.Count == 0) opciones = MeliOrderService.PostventaOpcionesDefault.ToList();
@@ -137,21 +139,12 @@ public class MeliPostventaController : ControllerBase
             .Select(x => (x ?? "").Trim()).Where(x => x.Length > 0).Distinct().ToList();
 
         await SetAsync(MeliOrderService.CfgPostventaEnabled, req.Enabled ? "true" : "false");
-        await SetAsync(MeliOrderService.CfgPostventaMensaje, mensaje);
+        await SetAsync(MeliOrderService.CfgPostventaMensajes, JsonSerializer.Serialize(mensajes));
         await SetAsync(MeliOrderService.CfgPostventaOpciones, string.Join("\n", opciones));
         await SetAsync(MeliOrderService.CfgPostventaItems, JsonSerializer.Serialize(items));
         await _db.SaveChangesAsync();
 
         return Ok(new { ok = true });
-    }
-
-    /// <summary>Vista previa del texto tal cual le llegaría al comprador (no envía nada).</summary>
-    [HttpPost("preview")]
-    public IActionResult Preview([FromBody] SaveConfigRequest req)
-    {
-        var mensaje = string.IsNullOrWhiteSpace(req.Mensaje) ? MeliOrderService.PostventaMensajeDefault : req.Mensaje;
-        var opciones = (req.Opciones ?? MeliOrderService.PostventaOpcionesDefault.ToList());
-        return Ok(new { text = MeliOrderService.ComponerMensajePostventa(mensaje, opciones) });
     }
 
     /// <summary>Prueba REAL: manda el mensaje al comprador de una venta puntual (elegida por el
@@ -165,7 +158,7 @@ public class MeliPostventaController : ControllerBase
         if (order.MeliAccount is null) return BadRequest(new { ok = false, detalle = "La venta no tiene cuenta de MeLi asociada." });
 
         var cfg = await _orders.LeerConfigPostventaAsync();
-        var text = MeliOrderService.ComponerMensajePostventa(cfg.Mensaje, cfg.Opciones);
+        var text = MeliOrderService.ComponerMensajePostventa(MeliOrderService.ElegirSaludo(cfg.Mensajes), cfg.Opciones);
         long packId = order.PackId ?? order.MeliOrderId;
 
         var (ok, err) = await _orders.SendPackMessageAsync(packId, order.MeliAccount, order.BuyerId, text);

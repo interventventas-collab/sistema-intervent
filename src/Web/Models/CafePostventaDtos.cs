@@ -3,7 +3,7 @@ namespace Web.Models;
 public class CafePostventaConfigDto
 {
     public bool Enabled { get; set; }
-    public string Mensaje { get; set; } = "";
+    public List<string> Mensajes { get; set; } = new();
     public List<string> Opciones { get; set; } = new();
     public List<CafePostventaPublicacionDto> Publicaciones { get; set; } = new();
     public List<CafePostventaVentaDto> VentasRecientes { get; set; } = new();

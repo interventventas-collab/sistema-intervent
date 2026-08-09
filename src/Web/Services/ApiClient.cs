@@ -6376,8 +6376,8 @@ public class ApiClient
     public async Task<CafePostventaConfigDto?> GetCafePostventaConfigAsync()
         => await GetAsync<CafePostventaConfigDto>("/api/meli/postventa/config");
 
-    public async Task SaveCafePostventaConfigAsync(bool enabled, string mensaje, List<string> opciones, List<string> items)
-        => await PutAsync<object>("/api/meli/postventa/config", new { enabled, mensaje, opciones, items });
+    public async Task SaveCafePostventaConfigAsync(bool enabled, List<string> mensajes, List<string> opciones, List<string> items)
+        => await PutAsync<object>("/api/meli/postventa/config", new { enabled, mensajes, opciones, items });
 
     public async Task<CafePostventaProbarResultDto?> ProbarCafePostventaAsync(int orderId)
         => await PostAsync<CafePostventaProbarResultDto>($"/api/meli/postventa/probar/{orderId}", new { });

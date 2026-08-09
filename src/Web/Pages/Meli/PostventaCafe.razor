@@ -90,9 +90,21 @@
         <div class="card">
             <div class="card-header">El mensaje que recibe el comprador</div>
             <div class="card-body">
-                <label class="form-label">Saludo / texto de arriba</label>
-                <textarea class="form-input pv-msg" rows="3" @bind="cfg.Mensaje"></textarea>
-                <small class="pv-help">Debajo de este texto se agregan solas las opciones de molienda de la lista.</small>
+                <label class="form-label">Saludos que rotan (@saludos.Count)</label>
+                <small class="pv-help">El sistema elige <strong>uno al azar</strong> en cada venta, así no suena repetitivo (MeLi no lo lee como spam). Debajo del saludo se agregan solas las opciones de molienda.</small>
+                <div class="pv-ops">
+                    @foreach (var s in saludos)
+                    {
+                        <div class="pv-op">
+                            <textarea class="form-input pv-saludo" rows="2" @bind="s.Texto"></textarea>
+                            <button class="btn btn-danger btn-sm" @onclick="() => saludos.Remove(s)">✕</button>
+                        </div>
+                    }
+                </div>
+                <div class="pv-newop">
+                    <input type="text" class="form-input" placeholder="Agregar otro saludo..." @bind="nuevoSaludo" @onkeydown="OnNuevoSaludoKey" />
+                    <button class="btn btn-secondary btn-sm" @onclick="AgregarSaludo">➕ Agregar saludo</button>
+                </div>
 
                 <label class="form-label pv-mt">Opciones de molienda</label>
                 <small class="pv-help">Estas son las que ve el cliente. Podés cambiarlas, agregar o borrar.</small>
@@ -111,10 +123,10 @@
                 </div>
 
                 <div class="pv-preview">
-                    <strong>👁️ Así le llega al cliente:</strong>
+                    <strong>👁️ Ejemplo de cómo le llega (rota entre @saludos.Count saludos):</strong>
                     <div class="pv-preview-text">@PreviewText</div>
-                    <div class="pv-charcount @(PreviewLen > 350 ? "over" : "")">
-                        @PreviewLen / 350 caracteres@(PreviewLen > 350 ? " · ⚠️ MercadoLibre puede rechazarlo por largo, acortá el texto o las opciones" : "")
+                    <div class="pv-charcount @(PeorLargo > 350 ? "over" : "")">
+                        El más largo ocupa @PeorLargo / 350 caracteres@(PeorLargo > 350 ? " · ⚠️ MercadoLibre puede rechazar el más largo, acortá algún saludo o las opciones" : "")
                     </div>
                 </div>
 
@@ -167,10 +179,12 @@
     private bool loading = true, guardando, probando;
     private string filtro = "";
     private string nuevaOpcion = "";
+    private string nuevoSaludo = "";
     private int? confirmando;
 
-    // Las opciones se editan como objetos con referencia estable (para @bind por fila).
+    // Saludos y opciones se editan como objetos con referencia estable (para @bind por fila).
     private class OpcionEdit { public string Texto { get; set; } = ""; }
+    private List<OpcionEdit> saludos = new();
     private List<OpcionEdit> opciones = new();
 
     private const int MaxMostrar = 150;
@@ -213,24 +227,34 @@
         }
     }
 
-    private string PreviewText
+    // Arma el texto tal cual, con un saludo dado + las opciones (mismo formato que el backend).
+    private string Componer(string saludo)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append((saludo ?? "").Trim());
+        var ops = opciones.Select(o => (o.Texto ?? "").Trim()).Where(o => o.Length > 0).ToList();
+        if (ops.Count > 0)
+        {
+            sb.Append('\n');
+            foreach (var o in ops) sb.Append("\n• ").Append(o);
+            sb.Append("\n\nRespondé con la opción que prefieras 🙂");
+        }
+        return sb.ToString().Trim();
+    }
+
+    // Ejemplo: el primer saludo cargado.
+    private string PreviewText => Componer(saludos.Select(s => (s.Texto ?? "").Trim()).FirstOrDefault(t => t.Length > 0) ?? "");
+
+    // Largo del peor caso (el saludo más largo) para avisar del tope de 350.
+    private int PeorLargo
     {
         get
         {
-            var sb = new System.Text.StringBuilder();
-            sb.Append((cfg?.Mensaje ?? "").Trim());
-            var ops = opciones.Select(o => (o.Texto ?? "").Trim()).Where(o => o.Length > 0).ToList();
-            if (ops.Count > 0)
-            {
-                sb.Append('\n');
-                foreach (var o in ops) sb.Append("\n• ").Append(o);
-                sb.Append("\n\nRespondé con la opción que prefieras y lo preparamos así 🙂");
-            }
-            return sb.ToString().Trim();
+            var vals = saludos.Select(s => (s.Texto ?? "").Trim()).Where(t => t.Length > 0).ToList();
+            if (vals.Count == 0) return Componer("").Length;
+            return vals.Max(s => Componer(s).Length);
         }
     }
-
-    private int PreviewLen => PreviewText.Length;
 
     protected override async Task OnInitializedAsync() => await Load();
 
@@ -240,6 +264,7 @@
         try
         {
             cfg = await Api.GetCafePostventaConfigAsync();
+            saludos = (cfg?.Mensajes ?? new()).Select(m => new OpcionEdit { Texto = m }).ToList();
             opciones = (cfg?.Opciones ?? new()).Select(o => new OpcionEdit { Texto = o }).ToList();
         }
         catch (Exception ex) { Toast.Error("No se pudo cargar: " + ex.Message); }
@@ -264,6 +289,19 @@
         if (e.Key == "Enter") AgregarOpcion();
     }
 
+    private void AgregarSaludo()
+    {
+        var t = (nuevoSaludo ?? "").Trim();
+        if (t.Length == 0) return;
+        saludos.Add(new OpcionEdit { Texto = t });
+        nuevoSaludo = "";
+    }
+
+    private void OnNuevoSaludoKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") AgregarSaludo();
+    }
+
     private async Task ToggleMaster(ChangeEventArgs e)
     {
         cfg!.Enabled = (bool)e.Value!;
@@ -279,8 +317,9 @@
         try
         {
             var items = cfg!.Publicaciones.Where(p => p.Selected).Select(p => p.Id).ToList();
+            var sals = saludos.Select(s => (s.Texto ?? "").Trim()).Where(s => s.Length > 0).ToList();
             var ops = opciones.Select(o => (o.Texto ?? "").Trim()).Where(o => o.Length > 0).ToList();
-            await Api.SaveCafePostventaConfigAsync(cfg.Enabled, cfg.Mensaje ?? "", ops, items);
+            await Api.SaveCafePostventaConfigAsync(cfg.Enabled, sals, ops, items);
             if (!silencioso) Toast.Success("Guardado");
         }
         catch (Exception ex) { Toast.Error("No se pudo guardar: " + ex.Message); }
@@ -336,6 +375,7 @@
     .pv-pub-id { font-size: .72rem; color: var(--text-muted, #6b7280); }
 
     .pv-msg { resize: vertical; font-family: inherit; }
+    .pv-saludo { resize: vertical; font-family: inherit; }
     .pv-mt { margin-top: 16px; }
     .pv-ops { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
     .pv-op { display: flex; gap: 8px; align-items: center; }

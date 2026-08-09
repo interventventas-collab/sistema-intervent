@@ -324,12 +324,20 @@ public class MeliOrderService
     // Disparo real-time desde el webhook de órdenes + barrido de respaldo en el job de órdenes.
 
     public const string CfgPostventaEnabled = "cafe.postventa.enabled";
-    public const string CfgPostventaMensaje = "cafe.postventa.mensaje";
+    public const string CfgPostventaMensaje = "cafe.postventa.mensaje";    // legacy (saludo único)
+    public const string CfgPostventaMensajes = "cafe.postventa.mensajes";  // lista de saludos que rotan (JSON)
     public const string CfgPostventaOpciones = "cafe.postventa.opciones";
     public const string CfgPostventaItems = "cafe.postventa.items";
 
-    public const string PostventaMensajeDefault =
-        "Hola, ¿qué tal? Recibimos tu compra. ¿Podrías confirmarnos en qué formato lo deseás?";
+    /// <summary>Saludos por defecto: se elige uno AL AZAR en cada venta para que no suene repetitivo
+    /// (y MeLi no lo lea como spam). Debajo va siempre la lista de moliendas.</summary>
+    public static readonly string[] PostventaMensajesDefault =
+    {
+        "Hola, ¿qué tal? Recibimos tu compra. ¿Podrías confirmarnos en qué formato lo deseás?",
+        "¡Hola! ¿Cómo estás? Gracias por tu compra ☕ ¿Cómo preferís la molienda?",
+        "Buenas 👋 Recibimos tu pedido. Contanos en qué formato lo preparamos:",
+        "¡Hola! Gracias por elegirnos 🙌 ¿En qué formato querés el café?"
+    };
 
     public static readonly string[] PostventaOpcionesDefault =
     {
@@ -337,7 +345,7 @@ public class MeliOrderService
         "Molido prensa francesa", "Molido cafetera italiana", "Molido a la turca", "Mini express"
     };
 
-    public record ConfigPostventaCafe(bool Enabled, string Mensaje, List<string> Opciones, List<string> Items);
+    public record ConfigPostventaCafe(bool Enabled, List<string> Mensajes, List<string> Opciones, List<string> Items);
 
     /// <summary>Lee la config del respondedor post-venta de café desde AppSettings, con defaults.</summary>
     public async Task<ConfigPostventaCafe> LeerConfigPostventaAsync()
@@ -347,8 +355,17 @@ public class MeliOrderService
             .ToDictionaryAsync(s => s.Key, s => s.Value);
 
         bool enabled = vals.TryGetValue(CfgPostventaEnabled, out var e) && e == "true";
-        string mensaje = vals.TryGetValue(CfgPostventaMensaje, out var m) && !string.IsNullOrWhiteSpace(m)
-            ? m : PostventaMensajeDefault;
+
+        // Saludos: la lista nueva (JSON) que rota al azar. Si nunca se guardó una lista, se muestran
+        // los 4 saludos de ejemplo por defecto (el saludo único viejo, si existía, queda ignorado).
+        var mensajes = new List<string>();
+        if (vals.TryGetValue(CfgPostventaMensajes, out var ms) && !string.IsNullOrWhiteSpace(ms))
+        {
+            try { mensajes = JsonSerializer.Deserialize<List<string>>(ms) ?? new(); } catch { }
+        }
+        mensajes = mensajes.Select(x => (x ?? "").Trim()).Where(x => x.Length > 0).ToList();
+        if (mensajes.Count == 0) mensajes = PostventaMensajesDefault.ToList();
+
         var opciones = vals.TryGetValue(CfgPostventaOpciones, out var op) && !string.IsNullOrWhiteSpace(op)
             ? op.Replace("\r", "").Split('\n').Select(x => x.Trim()).Where(x => x.Length > 0).ToList()
             : PostventaOpcionesDefault.ToList();
@@ -357,7 +374,15 @@ public class MeliOrderService
         {
             try { items = JsonSerializer.Deserialize<List<string>>(it) ?? new(); } catch { }
         }
-        return new ConfigPostventaCafe(enabled, mensaje, opciones, items);
+        return new ConfigPostventaCafe(enabled, mensajes, opciones, items);
+    }
+
+    /// <summary>Elige un saludo al azar de la lista (o vacío si no hay ninguno).</summary>
+    public static string ElegirSaludo(List<string> mensajes)
+    {
+        var lista = (mensajes ?? new List<string>()).Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+        if (lista.Count == 0) return "";
+        return lista[Random.Shared.Next(lista.Count)];
     }
 
     /// <summary>Arma el texto final que ve el comprador: saludo + lista de opciones + cierre.</summary>
@@ -444,7 +469,7 @@ public class MeliOrderService
         if (any.MeliAccount is null) return;
 
         long packId = any.PackId ?? any.MeliOrderId;
-        var text = ComponerMensajePostventa(cfg.Mensaje, cfg.Opciones);
+        var text = ComponerMensajePostventa(ElegirSaludo(cfg.Mensajes), cfg.Opciones);
         var (ok, _) = await SendPackMessageAsync(packId, any.MeliAccount, any.BuyerId, text);
         if (!ok) return;
 
@@ -480,7 +505,6 @@ public class MeliOrderService
             .ToListAsync(ct);
         if (pendientes.Count == 0) return 0;
 
-        var text = ComponerMensajePostventa(cfg.Mensaje, cfg.Opciones);
         int enviados = 0;
         foreach (var grupo in pendientes.GroupBy(o => o.MeliOrderId))
         {
@@ -489,6 +513,7 @@ public class MeliOrderService
             var any = lista[0];
             if (any.MeliAccount is null) continue;
             long packId = any.PackId ?? any.MeliOrderId;
+            var text = ComponerMensajePostventa(ElegirSaludo(cfg.Mensajes), cfg.Opciones); // saludo al azar por venta
             var (ok, _) = await SendPackMessageAsync(packId, any.MeliAccount, any.BuyerId, text);
             if (!ok) continue; // no marcamos: reintenta la próxima
             var ahora = DateTime.UtcNow;
