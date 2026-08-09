@@ -282,16 +282,6 @@
                 <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("alquiler")'>🎪 Alquiler</button>
                 <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("cafe")'>☕ Café</button>
                 <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("otro")'>🏷️ Otro</button>
-                @* 2026-08-09: archivar / desarchivar esta charla *@
-                <div style="height:1px;background:#e5e7eb;margin:0.4rem 0;"></div>
-                @if (rolMenuConv.Archivado)
-                {
-                    <button class="wa-rolmenu-op" @onclick="() => ArchivarConv(rolMenuConv, false)" title="Volver a mostrar esta charla en el listado">📤 Sacar de archivados</button>
-                }
-                else
-                {
-                    <button class="wa-rolmenu-op" @onclick="() => ArchivarConv(rolMenuConv, true)" title="Sacar esta charla del listado (vuelve sola si el cliente escribe)">🗂️ Archivar chat</button>
-                }
                 <button class="wa-rolmenu-cancel" @onclick="() => rolMenuConv = null">Cancelar</button>
             </div>
         }
@@ -534,13 +524,16 @@
                 @* 2026-08-06: Estado y Pasar a pasan a ser dos desplegables chiquitos, uno al lado del otro *@
                 <div class="wa-coord-grupo">
                     <span class="wa-coord-lbl">Estado:</span>
-                    <select class="wa-coord-select" value="@(SelectedConv()?.Estado ?? "nueva")" @onchange="OnEstadoChange"
-                            style="border-color:@EstadoColor(SelectedConv()?.Estado); color:@EstadoColor(SelectedConv()?.Estado); font-weight:700;"
+                    @{ var _estSel = SelectedConv()?.Archivado == true ? "archivado" : (SelectedConv()?.Estado ?? "nueva"); }
+                    <select class="wa-coord-select" value="@_estSel" @onchange="OnEstadoChange"
+                            style="border-color:@EstadoColor(_estSel); color:@EstadoColor(_estSel); font-weight:700;"
                             title="Estado de esta conversación">
                         @foreach (var e in EstadosLista)
                         {
                             <option value="@e.Key">@e.Label</option>
                         }
+                        @* 2026-08-09: archivar la charla desde el mismo desplegable de estado *@
+                        <option value="archivado">🗂️ Archivado</option>
                     </select>
                     <span class="wa-coord-lbl">Pasar a:</span>
                     <select class="wa-coord-select" value="@(SelectedConv()?.AsignadoOperador ?? "")" @onchange="OnPasarChange"
@@ -2747,23 +2740,6 @@
         else Toast.Error(err ?? "No se pudo poner la categoría");
     }
 
-    // 2026-08-09: archivar / desarchivar una charla. Archivar la saca del listado hasta que el cliente
-    // vuelva a escribir (se desarchiva sola) o hasta que la busquen. Es compartido para todo el equipo.
-    async Task ArchivarConv(ApiClient.TwConvDto c, bool archivar)
-    {
-        rolMenuConv = null;
-        if (c == null) return;
-        var ok = await Api.ArchivarConversacionAsync(c.Numero, c.Linea, archivar);
-        if (ok)
-        {
-            Toast.Success(archivar ? "Chat archivado 🗂️" : "Chat de vuelta en el listado 📤");
-            // Si archivaste el chat que estabas mirando, volvé a la lista para que desaparezca de la vista.
-            if (archivar && selectedNumero == c.Numero && selectedLinea == c.Linea) VolverALista();
-            await LoadConversaciones(silent: true);
-        }
-        else Toast.Error("No se pudo archivar");
-    }
-
     async Task GuardarQuickContact()
     {
         if (string.IsNullOrWhiteSpace(quickContactNombre)) { Toast.Error("El nombre es obligatorio"); return; }
@@ -4857,11 +4833,11 @@
 
     string EstadoLabel(string? e) => e switch
     {
-        "en_curso" => "En curso", "esperando" => "Esperando", "finalizada" => "Finalizada", _ => "Nueva"
+        "en_curso" => "En curso", "esperando" => "Esperando", "finalizada" => "Finalizada", "archivado" => "Archivado", _ => "Nueva"
     };
     string EstadoColor(string? e) => e switch
     {
-        "en_curso" => "#f59e0b", "esperando" => "#f97316", "finalizada" => "#16a34a", _ => "#3b82f6"
+        "en_curso" => "#f59e0b", "esperando" => "#f97316", "finalizada" => "#16a34a", "archivado" => "#6b7280", _ => "#3b82f6"
     };
     string OperadorColor(string? op) => Web.Services.OperatorService.ShortBgColor(op);
     string OperadorIni(string? op) => Web.Services.OperatorService.ShortLabel(op);
@@ -4895,10 +4871,29 @@
     }
 
     // 2026-08-06: desplegables de Estado y Pasar a (reemplazan las filas de botones)
+    // 2026-08-09: "Archivado" es una opción más del desplegable de estado. Elegirla saca la charla del
+    // listado (sin cambiar el estado real de fondo). Elegir cualquier otro estado la desarchiva.
     async Task OnEstadoChange(ChangeEventArgs e)
     {
         var estado = e.Value?.ToString();
-        if (!string.IsNullOrEmpty(estado)) await CambiarEstado(estado);
+        if (string.IsNullOrEmpty(estado)) return;
+        if (estado == "archivado") { await ArchivarConvActual(true); return; }
+        // Volver a un estado normal: si estaba archivada, desarchivar primero.
+        if (SelectedConv()?.Archivado == true) await ArchivarConvActual(false);
+        await CambiarEstado(estado);
+    }
+    // 2026-08-09: archivar/desarchivar la conversación abierta. archivar=true la saca del listado general
+    // (vuelve sola si el cliente escribe de nuevo, o al buscarla). Compartido para todo el equipo.
+    async Task ArchivarConvActual(bool archivar)
+    {
+        if (selectedNumero == null) return;
+        var ok = await Api.ArchivarConversacionAsync(selectedNumero, selectedLinea, archivar);
+        if (ok)
+        {
+            Toast.Success(archivar ? "Chat archivado 🗂️" : "Chat de vuelta en el listado 📤");
+            await LoadConversaciones(silent: true);
+        }
+        else Toast.Error("No se pudo archivar");
     }
     async Task OnPasarChange(ChangeEventArgs e)
     {
