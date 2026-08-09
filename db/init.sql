@@ -5933,6 +5933,12 @@ IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_Conversaciones')
    AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_WaConv_NumeroLinea')
     CREATE UNIQUE INDEX UX_WaConv_NumeroLinea ON WhatsApp_Conversaciones (Numero, LineaPhoneId);
 GO
+-- 2026-08-09: archivar chat. Saca la charla del listado hasta que el cliente vuelva a escribir
+-- (si entra un mensaje entrante más nuevo que ArchivadoAt, reaparece sola) o hasta que la busquen.
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_Conversaciones')
+   AND NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='ArchivadoAt' AND Object_ID=Object_ID('WhatsApp_Conversaciones'))
+    ALTER TABLE WhatsApp_Conversaciones ADD ArchivadoAt DATETIME2 NULL;
+GO
 
 -- 2026-06-20: WhatsApp - Sectores + Operarios. Permite derivar conversaciones del chat
 -- entrante a un sector (Cafe, Ventas, Alquileres, etc) y opcionalmente a un operario

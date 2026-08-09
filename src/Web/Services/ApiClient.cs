@@ -6513,7 +6513,9 @@ public class ApiClient
     /// preparación multi-línea (id técnico + número visible). Null si todavía no se sabe.</summary>
     public record TwConvDto(string Numero, string? NombrePerfil, string? Rol, int? ClienteId, string? ClienteNombre, string? UltimoMensaje, string? UltimoDireccion, DateTime UltimoAt, int Total, string? Linea, string? LineaNumero, string? Canal = null,
         // 2026-08-04: estado + responsable de la conversación (pasar de uno a otro).
-        string Estado = "nueva", string? AsignadoOperador = null, string? AsignadoPor = null, string? AsignadoNota = null, bool AsignadoVisto = true);
+        string Estado = "nueva", string? AsignadoOperador = null, string? AsignadoPor = null, string? AsignadoNota = null, bool AsignadoVisto = true,
+        // 2026-08-09: charla archivada (fuera del listado hasta que el cliente vuelva a escribir o la busquen).
+        bool Archivado = false);
     public record TwReaccionDto(string Emoji, int Count, bool EsCliente = false);
     // 2026-08-05: ReplyToSid/ReplyPreview/ReplyFromMe = "responder citando" (burbuja del mensaje citado).
     public record TwMsgDto(int Id, string Direccion, string Numero, string? NombrePerfil, string? Cuerpo, string? MediaUrl, string? MediaFilename, int? NumMedia, bool Procesado, string? RespuestaEnviada, DateTime CreatedAt, string? EstadoEntrega, List<TwReaccionDto>? Reacciones, string? ReplyToSid = null, string? ReplyPreview = null, bool ReplyFromMe = false, bool OcultoDeposito = false);
@@ -6575,6 +6577,17 @@ public class ApiClient
     {
         try { await _http.PostAsJsonAsync("/api/whatsapp/twilio/conversaciones/visto", new { Numero = numero, LineaPhoneId = linea }); }
         catch { }
+    }
+    // 2026-08-09: archivar/desarchivar una charla. archivar=true la saca del listado; false la devuelve.
+    public async Task<bool> ArchivarConversacionAsync(string numero, string? linea, bool archivar)
+    {
+        try
+        {
+            var r = await _http.PostAsJsonAsync("/api/whatsapp/twilio/conversaciones/archivar",
+                new { Numero = numero, LineaPhoneId = linea, Archivar = archivar });
+            return r.IsSuccessStatusCode;
+        }
+        catch { return false; }
     }
 
     // 2026-08-03: número de WhatsApp del chat vinculado a un cliente (para enviar el comprobante

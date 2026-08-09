@@ -27,5 +27,9 @@ public class WhatsAppConversacion
     public DateTime? AsignadoAt { get; set; }
     /// <summary>El que la recibió ya la abrió. False = pendiente (badge/resaltado en "Míos").</summary>
     public bool AsignadoVisto { get; set; }
+    /// <summary>2026-08-09: cuándo se archivó la charla (sacarla del listado). Null = no archivada.
+    /// El listado la considera archivada solo si el cliente NO volvió a escribir después de esta fecha:
+    /// si entra un mensaje entrante más nuevo, "se desarchiva" sola (reaparece en el listado general).</summary>
+    public DateTime? ArchivadoAt { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

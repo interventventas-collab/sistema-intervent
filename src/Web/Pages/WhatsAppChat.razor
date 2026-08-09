@@ -138,6 +138,9 @@
                     <button class="wa-filtro-op @(filtroRol=="cafe" ? "sel" : "")" @onclick='() => PickFiltro("cafe")'>☕ Café</button>
                     <button class="wa-filtro-op @(filtroRol=="sin" ? "sel" : "")" @onclick='() => PickFiltro("sin")' title="Charlas de gente sin tipo asignado">❓ Sin asignar</button>
                     <button class="wa-filtro-op @(filtroRol=="pedido" ? "sel" : "")" @onclick='() => PickFiltro("pedido")' title="Charlas donde el último mensaje parece un pedido">📋 Pedidos</button>
+
+                    <div class="wa-filtro-grup">Guardadas</div>
+                    <button class="wa-filtro-op @(filtroRol=="archivado" ? "sel" : "")" @onclick='() => PickFiltro("archivado")' title="Charlas que archivaste. Vuelven solas al listado si el cliente escribe de nuevo.">🗂️ Archivados</button>
                 </div>
             }
         </div>
@@ -279,6 +282,16 @@
                 <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("alquiler")'>🎪 Alquiler</button>
                 <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("cafe")'>☕ Café</button>
                 <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("otro")'>🏷️ Otro</button>
+                @* 2026-08-09: archivar / desarchivar esta charla *@
+                <div style="height:1px;background:#e5e7eb;margin:0.4rem 0;"></div>
+                @if (rolMenuConv.Archivado)
+                {
+                    <button class="wa-rolmenu-op" @onclick="() => ArchivarConv(rolMenuConv, false)" title="Volver a mostrar esta charla en el listado">📤 Sacar de archivados</button>
+                }
+                else
+                {
+                    <button class="wa-rolmenu-op" @onclick="() => ArchivarConv(rolMenuConv, true)" title="Sacar esta charla del listado (vuelve sola si el cliente escribe)">🗂️ Archivar chat</button>
+                }
                 <button class="wa-rolmenu-cancel" @onclick="() => rolMenuConv = null">Cancelar</button>
             </div>
         }
@@ -2734,6 +2747,23 @@
         else Toast.Error(err ?? "No se pudo poner la categoría");
     }
 
+    // 2026-08-09: archivar / desarchivar una charla. Archivar la saca del listado hasta que el cliente
+    // vuelva a escribir (se desarchiva sola) o hasta que la busquen. Es compartido para todo el equipo.
+    async Task ArchivarConv(ApiClient.TwConvDto c, bool archivar)
+    {
+        rolMenuConv = null;
+        if (c == null) return;
+        var ok = await Api.ArchivarConversacionAsync(c.Numero, c.Linea, archivar);
+        if (ok)
+        {
+            Toast.Success(archivar ? "Chat archivado 🗂️" : "Chat de vuelta en el listado 📤");
+            // Si archivaste el chat que estabas mirando, volvé a la lista para que desaparezca de la vista.
+            if (archivar && selectedNumero == c.Numero && selectedLinea == c.Linea) VolverALista();
+            await LoadConversaciones(silent: true);
+        }
+        else Toast.Error("No se pudo archivar");
+    }
+
     async Task GuardarQuickContact()
     {
         if (string.IsNullOrWhiteSpace(quickContactNombre)) { Toast.Error("El nombre es obligatorio"); return; }
@@ -4599,6 +4629,7 @@
         "mios" => "🙋 Míos",
         "en_curso" => "🟡 En curso",
         "finalizada" => "🟢 Finalizadas",
+        "archivado" => "🗂️ Archivados",
         _ => "📥 Todos"
     };
     List<ApiClient.TwConvDto> conversacionesFiltradas => conversaciones.Where(MatchFiltro).ToList();
@@ -4777,6 +4808,13 @@
     bool MatchFiltro(ApiClient.TwConvDto c)
     {
         if (!string.IsNullOrEmpty(filtroLinea) && c.Linea != filtroLinea) return false;
+        // 2026-08-09: ARCHIVADOS. La vista "🗂️ Archivados" muestra solo los archivados. En cualquier
+        // otra vista los archivados quedan OCULTOS, salvo que estés buscando (escribiendo en el buscador):
+        // así reaparecen al buscar al cliente, y también reaparecen solos cuando el cliente vuelve a escribir
+        // (ahí el servidor deja de marcarlos como archivados).
+        bool buscando = !string.IsNullOrWhiteSpace(filtroTexto);
+        if (filtroRol == "archivado") { if (!c.Archivado) return false; }
+        else if (c.Archivado && !buscando) return false;
         // 2026-07-24: buscador por nombre de perfil, número o cliente vinculado
         if (!string.IsNullOrWhiteSpace(filtroTexto))
         {
@@ -4786,6 +4824,7 @@
                    || (c.ClienteNombre ?? "").Contains(q, StringComparison.OrdinalIgnoreCase);
             if (!hit) return false;
         }
+        if (filtroRol == "archivado") return true;
         if (string.IsNullOrEmpty(filtroRol)) return true;
         if (filtroRol == "pedido") return EsPedido(c.UltimoMensaje);
         if (filtroRol == "sin") return string.IsNullOrEmpty(c.Rol);

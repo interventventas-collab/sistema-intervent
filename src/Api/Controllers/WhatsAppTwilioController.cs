@@ -450,7 +450,10 @@ public class WhatsAppTwilioController : ControllerBase
                 // 2026-08-01: la línea es ahora parte de la clave del grupo (número+línea)
                 Linea = g.Key.LineaPhoneId,
                 // 2026-07-31: canal del último mensaje (TWILIO/CLOUD/INSTAGRAM) para el iconito en el chat
-                Canal = g.OrderByDescending(m => m.CreatedAt).Select(m => m.Canal).FirstOrDefault()
+                Canal = g.OrderByDescending(m => m.CreatedAt).Select(m => m.Canal).FirstOrDefault(),
+                // 2026-08-09: fecha del último mensaje ENTRANTE (del cliente). Sirve para "desarchivar solo":
+                // si el cliente escribió después de que archivamos, la charla vuelve al listado sola.
+                UltimoInboundAt = g.Where(m => m.Direccion == "INCOMING").Max(m => (DateTime?)m.CreatedAt)
             })
             .ToListAsync();
         // Nombre visible de cada línea (lo auto-registra el webhook en AppSettings)
@@ -497,7 +500,11 @@ public class WhatsAppTwilioController : ControllerBase
                 AsignadoNota = est?.AsignadoNota,
                 // Si no hay asignación pendiente, "visto"=true (no dispara el aviso). Solo es false
                 // cuando alguien la pasó a otra persona y esa persona todavía no la abrió.
-                AsignadoVisto = est == null || est.AsignadoOperador == null || est.AsignadoVisto
+                AsignadoVisto = est == null || est.AsignadoOperador == null || est.AsignadoVisto,
+                // 2026-08-09: archivada = la archivaron y el cliente NO volvió a escribir desde entonces.
+                // Si entra un mensaje entrante más nuevo (UltimoInboundAt > ArchivadoAt), se desarchiva sola.
+                Archivado = est != null && est.ArchivadoAt != null
+                            && (x.UltimoInboundAt == null || x.UltimoInboundAt <= est.ArchivadoAt)
             };
         }).OrderByDescending(x => x.UltimoAt).ToList();
         return Ok(result);
@@ -595,6 +602,21 @@ public class WhatsAppTwilioController : ControllerBase
             row.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
         }
+        return Ok(new { ok = true });
+    }
+
+    // 2026-08-09: archivar/desarchivar una charla. Archivar = sacarla del listado general hasta que el
+    // cliente vuelva a escribir (se desarchiva sola) o la busquen. Compartido para todo el equipo.
+    public record ArchivarConvRequest(string Numero, string? LineaPhoneId, bool Archivar);
+    [HttpPost("conversaciones/archivar")]
+    [Authorize]
+    public async Task<IActionResult> ArchivarConversacion([FromBody] ArchivarConvRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req?.Numero)) return BadRequest(new { error = "Falta el número" });
+        var row = await GetOrCreateConvAsync(req.Numero, req.LineaPhoneId);
+        row.ArchivadoAt = req.Archivar ? DateTime.UtcNow : null;
+        row.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
         return Ok(new { ok = true });
     }
 
