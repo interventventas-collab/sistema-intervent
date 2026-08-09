@@ -1,0 +1,555 @@
+@page "/meli/preguntas"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService Toast
+@inject NavigationManager Nav
+
+<div class="bp-page">
+
+    <div class="bp-header">
+        <div>
+            <h1 class="bp-title">📥 Preguntas de MercadoLibre</h1>
+            <p class="bp-sub">Respondé, mirá la publicación y quién te pregunta — todo en una pantalla.</p>
+        </div>
+        <button class="btn btn-secondary" @onclick="Refrescar" disabled="@refreshing">
+            @(refreshing ? "Buscando..." : "🔄 Refrescar")
+        </button>
+    </div>
+
+    <!-- Pestañas de la sección Respuestas automáticas -->
+    <div class="bp-tabs">
+        <span class="bp-tab active">📥 Preguntas</span>
+        <a href="/meli/respuestas-automaticas" class="bp-tab">🤖 Robot de respuestas</a>
+        <a href="/meli/postventa-cafe" class="bp-tab">☕ Post-venta café</a>
+    </div>
+
+    <!-- Filtro sin responder / historial -->
+    <div class="bp-filters">
+        <button class="bp-filter @(tab == "pend" ? "active" : "")" @onclick='() => SwitchTab("pend")'>
+            📥 Sin responder <span class="bp-pill">@(pend?.Count ?? 0)</span>
+        </button>
+        <button class="bp-filter @(tab == "hist" ? "active" : "")" @onclick='() => SwitchTab("hist")'>
+            🗂️ Historial <span class="bp-pill muted">@(hist?.Count ?? 0)</span>
+        </button>
+        <span class="bp-filters-hint">Se actualiza sola cuando entran preguntas</span>
+    </div>
+
+    @if (loading)
+    {
+        <div class="loading-container"><div class="spinner"></div><span>Cargando preguntas...</span></div>
+    }
+    else
+    {
+        <div class="bp-grid">
+
+            <!-- IZQUIERDA: lista -->
+            <div class="bp-col">
+                <div class="card bp-listcard">
+                    <div class="bp-card-h">@(tab == "pend" ? "Preguntas sin responder" : "Preguntas respondidas")</div>
+                    <div class="bp-qlist">
+                        @{ var visible = tab == "pend" ? pend : hist; }
+                        @if (visible is null || visible.Count == 0)
+                        {
+                            <div class="bp-empty">✅<br />No hay preguntas acá.</div>
+                        }
+                        else
+                        {
+                            @foreach (var q in visible)
+                            {
+                                <button class="bp-qitem @(q.Id == selId ? "active" : "")" @onclick="() => Select(q.Id)">
+                                    @if (!string.IsNullOrEmpty(q.ItemThumbnail))
+                                    {
+                                        <img class="bp-qthumb" src="@q.ItemThumbnail" alt="" onerror="this.style.visibility='hidden'" />
+                                    }
+                                    else
+                                    {
+                                        <div class="bp-qthumb bp-qthumb-ph">🛒</div>
+                                    }
+                                    <div class="bp-qmeta">
+                                        <div class="bp-qtop">
+                                            @if (q.IsNew) { <span class="bp-dot"></span> }
+                                            <span class="bp-qbuyer">@(q.FromNickname ?? "Usuario")</span>
+                                            @if (q.IsNew) { <span class="bp-badge-new">NUEVA</span> }
+                                            @if (q.Status == "ANSWERED" && q.AutoAnswered) { <span class="bp-badge-robot">🤖</span> }
+                                            <span class="bp-qtime">@FormatRelative(q.DateCreated)</span>
+                                        </div>
+                                        <div class="bp-qtext">@q.Text</div>
+                                        <div class="bp-qtitle">
+                                            🏷️ @(string.IsNullOrEmpty(q.ItemTitle) ? q.ItemId : q.ItemTitle)
+                                            @{ var sm = ShipInfo(q.LogisticType); }
+                                            @if (!string.IsNullOrEmpty(sm.label))
+                                            {
+                                                <span class="bp-ship @sm.cls bp-ship-mini">@sm.label</span>
+                                            }
+                                        </div>
+                                    </div>
+                                </button>
+                            }
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- CENTRO: conversación + respuesta -->
+            <div class="bp-col">
+                <div class="card bp-threadcard">
+                    @if (selectedQ is null)
+                    {
+                        <div class="bp-empty" style="padding:60px 20px">👈<br />Elegí una pregunta de la lista.</div>
+                    }
+                    else
+                    {
+                        <div class="bp-thread-h">
+                            @if (!string.IsNullOrEmpty(selectedQ.ItemThumbnail))
+                            {
+                                <img class="bp-qthumb bp-qthumb-lg" src="@selectedQ.ItemThumbnail" alt="" />
+                            }
+                            <div style="min-width:0">
+                                <div class="bp-thread-title">@(string.IsNullOrEmpty(selectedQ.ItemTitle) ? selectedQ.ItemId : selectedQ.ItemTitle)</div>
+                                <div class="bp-thread-sub">
+                                    <span><b>Cuenta:</b> @(selectedQ.AccountNickname ?? "—")</span>
+                                    <span><b>Cliente:</b> @(selectedQ.FromNickname ?? "Usuario")</span>
+                                    @{ var sh = ShipInfo(detail?.Item?.LogisticType ?? selectedQ.LogisticType); }
+                                    @if (!string.IsNullOrEmpty(sh.label))
+                                    {
+                                        <span class="bp-ship @sh.cls">@sh.icon @sh.label</span>
+                                    }
+                                    <span>@FormatRelative(selectedQ.DateCreated)</span>
+                                    <a class="bp-link" href="@selectedQ.MeliUrl" target="_blank">Ver en MeLi ↗</a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bp-bubbles">
+                            <div class="bp-bubble q">
+                                <div class="bp-who">@(selectedQ.FromNickname ?? "Usuario") pregunta</div>
+                                @selectedQ.Text
+                                <div class="bp-stamp">@FormatRelative(selectedQ.DateCreated)</div>
+                            </div>
+                            @if (selectedQ.Status == "ANSWERED" && !string.IsNullOrEmpty(selectedQ.AnswerText))
+                            {
+                                <div class="bp-bubble a">
+                                    <div class="bp-who">@(selectedQ.AutoAnswered ? "🤖 Respuesta automática" : "Respuesta enviada")</div>
+                                    @selectedQ.AnswerText
+                                    <div class="bp-stamp">✔ Enviada @(selectedQ.DateAnswered.HasValue ? "· " + FormatRelative(selectedQ.DateAnswered.Value) : "")</div>
+                                </div>
+                            }
+                        </div>
+
+                        @if (selectedQ.Status == "UNANSWERED")
+                        {
+                            <div class="bp-reply">
+                                <div class="bp-canned-lbl">
+                                    ⚡ Respuestas prearmadas
+                                    <span class="bp-canned-hint">— tocá una para insertarla</span>
+                                </div>
+                                <div class="bp-chips">
+                                    @if (canned.Count == 0)
+                                    {
+                                        <span class="bp-canned-hint">Cargá tus respuestas en la solapa 🤖 Robot de respuestas.</span>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var c in canned)
+                                        {
+                                            <button class="bp-chip" title="@c.Body" @onclick="() => InsertCanned(c.Body)">@Corto(c.Body)</button>
+                                        }
+                                    }
+                                    <a class="bp-chip bp-chip-manage" href="/meli/respuestas-automaticas">✏️ Editar respuestas</a>
+                                </div>
+                                <div class="bp-composer">
+                                    <textarea class="form-input bp-ta" rows="3" placeholder="Escribí tu respuesta..."
+                                              @bind="draft" @bind:event="oninput"></textarea>
+                                    <div class="bp-send-col">
+                                        <button class="btn bp-send-btn" @onclick="Send" disabled="@(sending || string.IsNullOrWhiteSpace(draft))">
+                                            @(sending ? "Enviando..." : "📤 Responder")
+                                        </button>
+                                        <span class="bp-counter @(draft.Length > 2000 ? "warn" : "")">@draft.Length / 2000</span>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+
+            <!-- DERECHA: detalle publicación + cliente -->
+            <div class="bp-col">
+                <div class="card">
+                    <div class="bp-card-h">🏷️ Publicación</div>
+                    <div class="bp-detail">
+                        @if (loadingDetail)
+                        {
+                            <div class="bp-empty" style="padding:24px">Cargando...</div>
+                        }
+                        else if (detail?.Item is null)
+                        {
+                            <div class="bp-empty" style="padding:24px 16px; font-size:.85rem">
+                                No tenemos esta publicación cacheada todavía.
+                                @if (selectedQ is not null)
+                                {
+                                    <br /><a class="bp-link" href="@selectedQ.MeliUrl" target="_blank">Ver en MeLi ↗</a>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            var it = detail.Item;
+                            @if (!string.IsNullOrEmpty(it.Thumbnail))
+                            {
+                                <img class="bp-pub-photo" src="@it.Thumbnail" alt="" />
+                            }
+                            <div class="bp-pub-title">@it.Title</div>
+                            <div class="bp-pub-priceline">
+                                <span class="bp-price">$@it.Price.ToString("N0")</span>
+                                @{ var si = ShipInfo(it.LogisticType); }
+                                @if (!string.IsNullOrEmpty(si.label))
+                                {
+                                    <span class="bp-ship @si.cls">@si.icon @si.label</span>
+                                }
+                            </div>
+                            <div class="bp-kv"><span class="k">Envío</span><span class="v">@ShipLabelFull(it.LogisticType)</span></div>
+                            <div class="bp-kv"><span class="k">Stock</span><span class="v @(it.Stock <= 5 ? "low" : "ok")">@it.Stock u.@(it.Stock <= 5 ? " ⚠️" : "")</span></div>
+                            @if (!string.IsNullOrEmpty(it.Sku))
+                            {
+                                <div class="bp-kv"><span class="k">SKU</span><span class="v">@it.Sku</span></div>
+                            }
+                            <div class="bp-kv"><span class="k">Publicación</span><span class="v">@it.ItemId</span></div>
+                            @if (it.CatalogListing)
+                            {
+                                <div class="bp-kv"><span class="k">Catálogo</span><span class="v">Sí</span></div>
+                            }
+                            <div style="margin-top:12px">
+                                <a class="btn btn-secondary btn-sm" style="width:100%; text-align:center" href="@(string.IsNullOrEmpty(it.Permalink) ? selectedQ?.MeliUrl : it.Permalink)" target="_blank">Ver en MeLi ↗</a>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="bp-card-h">👤 Quién pregunta</div>
+                    <div class="bp-detail">
+                        @if (detail?.Buyer is null)
+                        {
+                            <div class="bp-empty" style="padding:24px">—</div>
+                        }
+                        else
+                        {
+                            var b = detail.Buyer;
+                            <div class="bp-buyer-row">
+                                <div class="bp-avatar">@Iniciales(b.Nickname)</div>
+                                <div style="min-width:0">
+                                    <div class="bp-buyer-name">@(b.Nickname ?? "Usuario")</div>
+                                    <div class="bp-buyer-id">
+                                        ID @b.BuyerId
+                                        @if (!string.IsNullOrEmpty(Ubicacion(b))) { <text> · @Ubicacion(b)</text> }
+                                    </div>
+                                </div>
+                            </div>
+                            @if (b.IsKnown)
+                            {
+                                <div class="bp-kv"><span class="k">Ya compró</span><span class="v">@b.OrdersCount @(b.OrdersCount == 1 ? "vez" : "veces")</span></div>
+                                @if (b.TotalSpent > 0)
+                                {
+                                    <div class="bp-kv"><span class="k">Total gastado</span><span class="v">$@b.TotalSpent.ToString("N0")</span></div>
+                                }
+                                @if (b.LastPurchaseAt.HasValue)
+                                {
+                                    <div class="bp-kv"><span class="k">Última compra</span><span class="v">@b.LastPurchaseAt.Value.ToLocalTime().ToString("dd/MM/yyyy")</span></div>
+                                }
+                                @if (!string.IsNullOrEmpty(b.LastItems))
+                                {
+                                    <div class="bp-buyer-last"><b>Lo último que compró:</b> @b.LastItems</div>
+                                }
+                                @if (!string.IsNullOrEmpty(b.Phone))
+                                {
+                                    <div class="bp-kv"><span class="k">Teléfono</span><span class="v">@b.Phone</span></div>
+                                }
+                            }
+                            else
+                            {
+                                <div class="bp-empty" style="padding:12px 4px 0; font-size:.82rem; text-align:left; color:var(--text-muted,#6b7280)">
+                                    Este comprador todavía no figura en tu base de clientes (aún no te compró). Cuando compre, vas a ver acá sus datos y su historial.
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    }
+</div>
+
+@code {
+    private List<MeliQuestionDto>? pend;
+    private List<MeliQuestionDto>? hist;
+    private string tab = "pend";
+    private int? selId;
+    private MeliQuestionDto? selectedQ;
+    private MeliQuestionDetailDto? detail;
+    private List<MeliAutoReplyMessageDto> canned = new();
+    private string draft = "";
+    private bool loading = true, loadingDetail, sending, refreshing;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCanned();
+        await LoadLists(selectFirst: true);
+        loading = false;
+    }
+
+    private async Task LoadCanned()
+    {
+        try
+        {
+            var cfg = await Api.GetMeliAutoReplyConfigAsync();
+            canned = cfg?.Messages?.Where(m => m.IsActive).ToList() ?? new();
+        }
+        catch { canned = new(); }
+    }
+
+    private async Task LoadLists(bool selectFirst)
+    {
+        try
+        {
+            pend = await Api.GetMeliQuestionsAsync("UNANSWERED") ?? new();
+            hist = (await Api.GetMeliQuestionsAsync("ANSWERED") ?? new())
+                .OrderByDescending(q => q.DateAnswered ?? q.DateCreated).ToList();
+        }
+        catch (Exception ex) { Toast.Error("No se pudo cargar: " + ex.Message); pend ??= new(); hist ??= new(); }
+
+        if (selectFirst)
+        {
+            var first = (tab == "pend" ? pend : hist)?.FirstOrDefault();
+            if (first is not null) await Select(first.Id);
+            else { selId = null; selectedQ = null; detail = null; }
+        }
+    }
+
+    private async Task Select(int id)
+    {
+        selId = id;
+        draft = "";
+        selectedQ = (pend?.FirstOrDefault(q => q.Id == id)) ?? (hist?.FirstOrDefault(q => q.Id == id));
+        detail = null;
+        loadingDetail = true;
+        StateHasChanged();
+        try { detail = await Api.GetMeliQuestionDetailAsync(id); }
+        catch (Exception ex) { Toast.Error("No se pudo cargar el detalle: " + ex.Message); }
+        finally { loadingDetail = false; }
+    }
+
+    private void InsertCanned(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return;
+        draft = string.IsNullOrWhiteSpace(draft) ? body : draft.TrimEnd() + " " + body;
+    }
+
+    private async Task Send()
+    {
+        if (selectedQ is null || string.IsNullOrWhiteSpace(draft)) return;
+        sending = true;
+        try
+        {
+            var ok = await Api.AnswerMeliQuestionAsync(selectedQ.Id, draft.Trim());
+            if (ok)
+            {
+                Toast.Success("¡Respuesta enviada a MercadoLibre!");
+                await LoadLists(selectFirst: false);
+                // Nos quedamos en "sin responder" y pasamos a la siguiente
+                var next = pend?.FirstOrDefault();
+                if (next is not null) await Select(next.Id);
+                else { selId = null; selectedQ = null; detail = null; }
+            }
+            else { Toast.Error("MeLi no aceptó la respuesta."); }
+        }
+        catch (Exception ex) { Toast.Error("No se pudo enviar: " + ex.Message); }
+        finally { sending = false; }
+    }
+
+    private async Task Refrescar()
+    {
+        refreshing = true;
+        try
+        {
+            await Api.SyncMeliQuestionsNowAsync();
+            await LoadLists(selectFirst: selectedQ is null);
+            Toast.Success("Lista actualizada");
+        }
+        catch (Exception ex) { Toast.Error("Error: " + ex.Message); }
+        finally { refreshing = false; }
+    }
+
+    private async Task SwitchTab(string t)
+    {
+        tab = t;
+        var first = (tab == "pend" ? pend : hist)?.FirstOrDefault();
+        if (first is not null) await Select(first.Id);
+        else { selId = null; selectedQ = null; detail = null; }
+    }
+
+    // ---- Helpers ----
+    private static string Corto(string? s, int max = 46)
+    {
+        s = (s ?? "").Trim();
+        return s.Length <= max ? s : s.Substring(0, max - 1).TrimEnd() + "…";
+    }
+
+    private static string Iniciales(string? nick)
+    {
+        nick = (nick ?? "").Trim();
+        return nick.Length >= 2 ? nick.Substring(0, 2).ToUpperInvariant() : (nick.Length == 1 ? nick.ToUpperInvariant() : "US");
+    }
+
+    private static string Ubicacion(MeliBuyerBriefDto b)
+    {
+        var parts = new[] { b.City, b.State }.Where(s => !string.IsNullOrWhiteSpace(s));
+        return string.Join(", ", parts);
+    }
+
+    /// <summary>Cartelito corto: (etiqueta, clase css, icono). Vacío si no sabemos el tipo.</summary>
+    private static (string label, string cls, string icon) ShipInfo(string? lt)
+    {
+        switch ((lt ?? "").ToLowerInvariant())
+        {
+            case "self_service": return ("Flex", "flex", "⚡");
+            case "fulfillment": return ("Full", "full", "🏬");
+            case "me1":
+            case "custom": return ("ME1", "me1", "🏷️");
+            case "drop_off":
+            case "cross_docking":
+            case "xd_drop_off": return ("Correo", "correo", "📦");
+            default: return ("", "", "");
+        }
+    }
+
+    private static string ShipLabelFull(string? lt)
+    {
+        var s = ShipInfo(lt);
+        return s.label switch
+        {
+            "Flex" => "⚡ Flex (reparto propio)",
+            "Full" => "🏬 Full (depósito MeLi)",
+            "ME1" => "🏷️ ME1 (despacho propio)",
+            "Correo" => "📦 Correo (Mercado Envíos)",
+            _ => "—"
+        };
+    }
+
+    private static string FormatRelative(DateTime utc)
+    {
+        var d = DateTime.UtcNow - utc;
+        if (d.TotalMinutes < 1) return "recién";
+        if (d.TotalMinutes < 60) return $"hace {(int)d.TotalMinutes} min";
+        if (d.TotalHours < 24) return $"hace {(int)d.TotalHours} h";
+        if (d.TotalDays < 7) return $"hace {(int)d.TotalDays} d";
+        return utc.ToLocalTime().ToString("dd/MM/yyyy");
+    }
+}
+
+<style>
+    .bp-page { max-width: 1280px; margin: 0 auto; padding: 8px; display: flex; flex-direction: column; gap: 12px; }
+    .bp-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+    .bp-title { font-size: 1.5rem; margin: 0; }
+    .bp-sub { color: var(--text-muted, #6b7280); margin: 4px 0 0; }
+
+    .bp-tabs { display: flex; gap: 8px; border-bottom: 2px solid rgba(148,163,184,.25); flex-wrap: wrap; }
+    .bp-tab { padding: 8px 16px; border-radius: 8px 8px 0 0; text-decoration: none; color: var(--text-muted, #6b7280); font-weight: 600; }
+    .bp-tab:hover { background: rgba(148,163,184,.1); }
+    .bp-tab.active { color: #b45309; border-bottom: 3px solid #f59e0b; margin-bottom: -2px; background: rgba(245,158,11,.08); }
+
+    .bp-filters { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .bp-filter { font-size: .9rem; font-weight: 600; border: 1px solid transparent; background: transparent; color: var(--text-muted,#6b7280); padding: 7px 14px; border-radius: 999px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
+    .bp-filter:hover { background: rgba(148,163,184,.1); }
+    .bp-filter.active { background: var(--card-bg, #fff); color: inherit; border-color: rgba(148,163,184,.35); box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+    .bp-pill { font-size: .72rem; font-weight: 700; border-radius: 999px; padding: 1px 8px; background: #dc2626; color: #fff; }
+    .bp-pill.muted { background: rgba(148,163,184,.4); color: var(--text-muted,#4b5563); }
+    .bp-filters-hint { margin-left: auto; font-size: .8rem; color: var(--text-muted,#9ca3af); }
+
+    .bp-grid { display: grid; grid-template-columns: 320px minmax(0,1fr) 300px; gap: 12px; align-items: start; }
+    .bp-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+    .bp-card-h { padding: 10px 14px; border-bottom: 1px solid rgba(148,163,184,.2); font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted,#9ca3af); }
+
+    /* Lista */
+    .bp-qlist { padding: 6px; display: flex; flex-direction: column; gap: 4px; max-height: 72vh; overflow: auto; }
+    .bp-qitem { display: flex; gap: 10px; padding: 10px; border-radius: 10px; cursor: pointer; border: 1px solid transparent; background: transparent; text-align: left; width: 100%; font-family: inherit; color: inherit; }
+    .bp-qitem:hover { background: rgba(148,163,184,.08); }
+    .bp-qitem.active { background: rgba(245,158,11,.08); border-color: rgba(245,158,11,.35); box-shadow: inset 3px 0 0 #f59e0b; }
+    .bp-qthumb { width: 44px; height: 44px; border-radius: 8px; flex: none; object-fit: cover; border: 1px solid rgba(148,163,184,.25); background: rgba(148,163,184,.12); }
+    .bp-qthumb-ph { display: grid; place-items: center; font-size: 20px; }
+    .bp-qthumb-lg { width: 54px; height: 54px; }
+    .bp-qmeta { min-width: 0; flex: 1; }
+    .bp-qtop { display: flex; align-items: center; gap: 6px; }
+    .bp-qbuyer { font-weight: 700; font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bp-qtime { margin-left: auto; font-size: .72rem; color: var(--text-muted,#9ca3af); white-space: nowrap; }
+    .bp-qtext { font-size: .82rem; color: var(--text-muted,#6b7280); margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .bp-qtitle { font-size: .72rem; color: var(--text-muted,#9ca3af); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bp-dot { width: 8px; height: 8px; border-radius: 50%; background: #dc2626; flex: none; }
+    .bp-badge-new { font-size: .58rem; font-weight: 800; letter-spacing: .06em; color: #fff; background: #dc2626; border-radius: 5px; padding: 1px 5px; }
+    .bp-badge-robot { font-size: .62rem; }
+    .bp-empty { padding: 40px 20px; text-align: center; color: var(--text-muted,#9ca3af); line-height: 1.8; }
+
+    /* Conversación */
+    .bp-thread-h { display: flex; gap: 12px; padding: 14px; align-items: flex-start; border-bottom: 1px solid rgba(148,163,184,.2); }
+    .bp-thread-title { font-weight: 700; font-size: .95rem; line-height: 1.3; }
+    .bp-thread-sub { font-size: .8rem; color: var(--text-muted,#9ca3af); margin-top: 4px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .bp-thread-sub b { color: var(--text-muted,#6b7280); font-weight: 600; }
+    .bp-link { color: #2563c9; text-decoration: none; font-weight: 600; }
+    .bp-link:hover { text-decoration: underline; }
+
+    .bp-bubbles { padding: 16px 16px 6px; display: flex; flex-direction: column; gap: 12px; }
+    .bp-bubble { max-width: 85%; padding: 10px 13px; border-radius: 13px; font-size: .9rem; line-height: 1.5; }
+    .bp-bubble .bp-who { font-size: .7rem; font-weight: 700; margin-bottom: 3px; color: var(--text-muted,#9ca3af); }
+    .bp-bubble.q { align-self: flex-start; background: rgba(148,163,184,.12); border: 1px solid rgba(148,163,184,.2); border-top-left-radius: 4px; }
+    .bp-bubble.a { align-self: flex-end; background: rgba(245,230,138,.5); border: 1px solid rgba(217,119,6,.35); border-top-right-radius: 4px; }
+    .bp-stamp { font-size: .68rem; color: var(--text-muted,#9ca3af); margin-top: 4px; }
+
+    /* Respuesta */
+    .bp-reply { padding: 12px 14px 14px; border-top: 1px solid rgba(148,163,184,.2); }
+    .bp-canned-lbl { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted,#9ca3af); margin-bottom: 8px; }
+    .bp-canned-hint { font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--text-muted,#9ca3af); }
+    .bp-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 11px; }
+    .bp-chip { font-size: .78rem; font-family: inherit; text-align: left; border: 1px dashed rgba(148,163,184,.5); background: rgba(148,163,184,.06); color: var(--text-muted,#4b5563); border-radius: 9px; padding: 6px 10px; cursor: pointer; max-width: 100%; text-decoration: none; }
+    .bp-chip:hover { background: rgba(245,158,11,.12); border-color: #f59e0b; border-style: solid; color: inherit; }
+    .bp-chip-manage { border-style: solid; border-color: rgba(148,163,184,.3); background: transparent; color: #2563c9; font-weight: 700; }
+    .bp-composer { display: flex; gap: 10px; align-items: flex-end; }
+    .bp-ta { flex: 1; resize: vertical; font-family: inherit; min-height: 76px; }
+    .bp-send-col { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+    .bp-send-btn { background: #16a34a; border-color: #16a34a; color: #fff; font-weight: 700; }
+    .bp-send-btn:hover { background: #15803d; }
+    .bp-send-btn:disabled { background: #9ca3af; border-color: #9ca3af; }
+    .bp-counter { font-size: .72rem; color: var(--text-muted,#9ca3af); }
+    .bp-counter.warn { color: #dc2626; font-weight: 700; }
+
+    /* Detalle */
+    .bp-detail { padding: 14px; }
+    .bp-pub-photo { width: 100%; aspect-ratio: 1/1; border-radius: 11px; object-fit: cover; border: 1px solid rgba(148,163,184,.25); background: rgba(148,163,184,.12); }
+    .bp-pub-title { font-weight: 700; font-size: .9rem; margin: 11px 0 8px; line-height: 1.35; }
+    .bp-pub-priceline { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+    .bp-price { font-size: 1.25rem; font-weight: 800; letter-spacing: -.02em; }
+    .bp-kv { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-top: 1px solid rgba(148,163,184,.15); font-size: .82rem; }
+    .bp-kv .k { color: var(--text-muted,#9ca3af); }
+    .bp-kv .v { font-weight: 600; text-align: right; }
+    .bp-kv .v.ok { color: #16a34a; }
+    .bp-kv .v.low { color: #d97706; }
+
+    .bp-buyer-row { display: flex; align-items: center; gap: 11px; padding: 2px 0 10px; }
+    .bp-avatar { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #fde68a, #fbbf24); color: #78350f; display: grid; place-items: center; font-weight: 800; font-size: .9rem; flex: none; }
+    .bp-buyer-name { font-weight: 700; font-size: .88rem; }
+    .bp-buyer-id { font-size: .72rem; color: var(--text-muted,#9ca3af); }
+    .bp-buyer-last { margin-top: 8px; font-size: .8rem; color: var(--text-muted,#6b7280); line-height: 1.4; }
+
+    /* Cartelito de envío */
+    .bp-ship { display: inline-flex; align-items: center; gap: 4px; font-size: .68rem; font-weight: 800; letter-spacing: .02em; border-radius: 7px; padding: 2px 8px; border: 1px solid transparent; white-space: nowrap; }
+    .bp-ship-mini { font-size: .6rem; padding: 0 5px; }
+    .bp-ship.flex { color: #7c3aed; background: rgba(124,58,237,.12); border-color: rgba(124,58,237,.35); }
+    .bp-ship.correo { color: #2563c9; background: rgba(37,99,201,.1); border-color: rgba(37,99,201,.3); }
+    .bp-ship.me1 { color: #b45309; background: rgba(217,119,6,.13); border-color: rgba(217,119,6,.35); }
+    .bp-ship.full { color: #15803d; background: rgba(22,163,74,.12); border-color: rgba(22,163,74,.3); }
+
+    @@media (max-width: 1000px) {
+        .bp-grid { grid-template-columns: 1fr; }
+        .bp-qlist { max-height: 320px; }
+    }
+</style>

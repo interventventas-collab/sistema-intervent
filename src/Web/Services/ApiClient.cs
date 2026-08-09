@@ -6336,6 +6336,9 @@ public class ApiClient
     public async Task<List<MeliQuestionDto>?> GetMeliQuestionsAsync(string status = "UNANSWERED")
         => await GetAsync<List<MeliQuestionDto>>($"/api/meli/questions?status={status}");
 
+    public async Task<MeliQuestionDetailDto?> GetMeliQuestionDetailAsync(int id)
+        => await GetAsync<MeliQuestionDetailDto>($"/api/meli/questions/{id}/detail");
+
     public async Task<bool> AnswerMeliQuestionAsync(int id, string text)
     {
         var r = await PostAsync<object>($"/api/meli/questions/{id}/answer", new { text });

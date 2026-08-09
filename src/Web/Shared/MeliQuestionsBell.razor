@@ -1,6 +1,7 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject IJSRuntime JS
+@inject NavigationManager Nav
 @implements IDisposable
 
 @*
@@ -44,6 +45,9 @@
                     </div>
                 </div>
                 <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <button class="btn btn-secondary" style="font-size: 0.85rem; background:#16a34a; border-color:#16a34a; color:#fff; font-weight:700;" @onclick="OpenBandeja" title="Abrir la bandeja completa: publicación, cliente y respuestas prearmadas">
+                        📥 Abrir bandeja
+                    </button>
                     <button class="btn btn-secondary" style="font-size: 0.85rem;" @onclick="RefreshNow" disabled="@refreshing">
                         @(refreshing ? "Buscando..." : "🔄 Refrescar")
                     </button>
@@ -399,6 +403,13 @@
         }
         catch (Exception ex) { ToastService.Error("Error al cargar preguntas: " + ex.Message); }
         finally { loadingList = false; StateHasChanged(); }
+    }
+
+    /// <summary>Abre la bandeja completa de preguntas y cierra el cartel (sin snooze).</summary>
+    private void OpenBandeja()
+    {
+        showModal = false;
+        Nav.NavigateTo("/meli/preguntas");
     }
 
     /// <summary>Cerrar = snooze por 5 minutos.</summary>
