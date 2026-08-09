@@ -147,6 +147,34 @@ public class MeliPostventaController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    /// <summary>Busca entre TODAS las publicaciones (no solo las detectadas como café) para poder
+    /// agregar manualmente alguna que no aparezca en el listado principal.</summary>
+    [HttpGet("buscar")]
+    public async Task<IActionResult> Buscar([FromQuery] string? q)
+    {
+        q = (q ?? "").Trim();
+        if (q.Length < 2) return Ok(new { publicaciones = new List<object>() });
+
+        var raw = await _db.MeliItems
+            .Where(i => i.Title.Contains(q) || i.MeliItemId.Contains(q))
+            .Select(i => new { i.MeliItemId, i.Title, i.Thumbnail, i.Status })
+            .Take(400)
+            .ToListAsync();
+
+        var pubs = raw
+            .GroupBy(x => x.MeliItemId)
+            .Select(g =>
+            {
+                var f = g.First();
+                return new { id = f.MeliItemId, title = f.Title, thumbnail = f.Thumbnail, status = f.Status, selected = false };
+            })
+            .OrderBy(p => p.title)
+            .Take(50)
+            .ToList();
+
+        return Ok(new { publicaciones = pubs });
+    }
+
     /// <summary>Prueba REAL: manda el mensaje al comprador de una venta puntual (elegida por el
     /// usuario). orderId = Id local de la fila MeliOrders.</summary>
     [HttpPost("probar/{orderId:int}")]

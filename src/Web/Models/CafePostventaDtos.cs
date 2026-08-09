@@ -33,3 +33,8 @@ public class CafePostventaProbarResultDto
     public bool Ok { get; set; }
     public string? Detalle { get; set; }
 }
+
+public class CafePostventaBuscarDto
+{
+    public List<CafePostventaPublicacionDto> Publicaciones { get; set; } = new();
+}

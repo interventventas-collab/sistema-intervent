@@ -65,6 +65,7 @@
                 else
                 {
                     <div class="pv-pub-actions">
+                        <button class="btn btn-secondary btn-sm" @onclick="SelTodas">✅ Seleccionar todas</button>
                         <button class="btn btn-secondary btn-sm" @onclick="SelNinguna">Deseleccionar todas</button>
                         <span class="pv-help pv-count">@ContadorTexto</span>
                     </div>
@@ -83,6 +84,51 @@
                         }
                     </div>
                 }
+
+                <!-- Traer publicaciones que no están en la lista -->
+                <div class="pv-traer">
+                    <div class="pv-traer-title">¿Falta alguna? Buscala entre <strong>todas</strong> tus publicaciones y agregala</div>
+                    <div class="pv-traer-search">
+                        <input type="text" class="form-input" placeholder="Nombre o código (MLA...) de la publicación" @bind="filtroTraer" @bind:event="oninput" @onkeydown="OnTraerKey" />
+                        <button class="btn btn-secondary btn-sm" @onclick="BuscarTraer" disabled="@buscandoTraer">🔍 Buscar</button>
+                    </div>
+                    @if (buscandoTraer)
+                    {
+                        <p class="pv-help">Buscando...</p>
+                    }
+                    else if (traerResultados is not null)
+                    {
+                        @if (traerResultados.Count == 0)
+                        {
+                            <p class="pv-help">No se encontró ninguna publicación con eso.</p>
+                        }
+                        else
+                        {
+                            <div class="pv-pub-list">
+                                @foreach (var r in traerResultados)
+                                {
+                                    var yaEsta = cfg.Publicaciones.Any(p => p.Id == r.Id && p.Selected);
+                                    <div class="pv-pub">
+                                        @if (!string.IsNullOrEmpty(r.Thumbnail))
+                                        {
+                                            <img src="@r.Thumbnail" class="pv-pub-img" />
+                                        }
+                                        <span class="pv-pub-title">@r.Title</span>
+                                        <span class="pv-pub-id">@r.Id</span>
+                                        @if (yaEsta)
+                                        {
+                                            <span class="pv-ya">✅ agregada</span>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-primary btn-sm" @onclick="() => AgregarPublicacion(r)">➕ Agregar</button>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
             </div>
         </div>
 
@@ -176,8 +222,10 @@
 
 @code {
     private CafePostventaConfigDto? cfg;
-    private bool loading = true, guardando, probando;
+    private bool loading = true, guardando, probando, buscandoTraer;
     private string filtro = "";
+    private string filtroTraer = "";
+    private List<CafePostventaPublicacionDto>? traerResultados;
     private string nuevaOpcion = "";
     private string nuevoSaludo = "";
     private int? confirmando;
@@ -271,9 +319,44 @@
         finally { loading = false; }
     }
 
+    private void SelTodas()
+    {
+        foreach (var p in cfg!.Publicaciones) p.Selected = true;
+    }
+
     private void SelNinguna()
     {
         foreach (var p in cfg!.Publicaciones) p.Selected = false;
+    }
+
+    private async Task BuscarTraer()
+    {
+        var q = (filtroTraer ?? "").Trim();
+        if (q.Length < 2) { Toast.Warning("Escribí al menos 2 letras"); return; }
+        buscandoTraer = true;
+        try
+        {
+            var r = await Api.BuscarCafePostventaPublicacionesAsync(q);
+            traerResultados = r?.Publicaciones ?? new();
+        }
+        catch (Exception ex) { Toast.Error("No se pudo buscar: " + ex.Message); }
+        finally { buscandoTraer = false; }
+    }
+
+    private void OnTraerKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") _ = BuscarTraer();
+    }
+
+    private void AgregarPublicacion(CafePostventaPublicacionDto r)
+    {
+        var existente = cfg!.Publicaciones.FirstOrDefault(p => p.Id == r.Id);
+        if (existente is not null) existente.Selected = true;
+        else cfg.Publicaciones.Add(new CafePostventaPublicacionDto
+        {
+            Id = r.Id, Title = r.Title, Thumbnail = r.Thumbnail, Status = r.Status, Selected = true
+        });
+        Toast.Success("Agregada. Acordate de tocar Guardar todo.");
     }
 
     private void AgregarOpcion()
@@ -373,6 +456,11 @@
     .pv-pub-img { width: 34px; height: 34px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
     .pv-pub-title { flex: 1; font-size: .9rem; }
     .pv-pub-id { font-size: .72rem; color: var(--text-muted, #6b7280); }
+    .pv-traer { margin-top: 16px; padding-top: 14px; border-top: 1px dashed rgba(148,163,184,.4); }
+    .pv-traer-title { font-size: .9rem; margin-bottom: 8px; }
+    .pv-traer-search { display: flex; gap: 8px; margin-bottom: 8px; }
+    .pv-traer-search .form-input { flex: 1; }
+    .pv-ya { font-size: .78rem; color: #059669; font-weight: 600; }
 
     .pv-msg { resize: vertical; font-family: inherit; }
     .pv-saludo { resize: vertical; font-family: inherit; }

@@ -6382,6 +6382,9 @@ public class ApiClient
     public async Task<CafePostventaProbarResultDto?> ProbarCafePostventaAsync(int orderId)
         => await PostAsync<CafePostventaProbarResultDto>($"/api/meli/postventa/probar/{orderId}", new { });
 
+    public async Task<CafePostventaBuscarDto?> BuscarCafePostventaPublicacionesAsync(string q)
+        => await GetAsync<CafePostventaBuscarDto>($"/api/meli/postventa/buscar?q={Uri.EscapeDataString(q)}");
+
     public async Task SaveMeliAutoReplyScheduleAsync(List<MeliAutoReplyScheduleDto> rows)
         => await PutAsync<object>("/api/meli/autoreply/schedule", rows);
 
