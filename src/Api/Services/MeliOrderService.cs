@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using Api.Data;
 using Api.DTOs;
@@ -314,6 +315,175 @@ public class MeliOrderService
                 result.Add(new MeliPackMessage(fromId, text!, date));
         }
         return result;
+    }
+
+    // ═══════════════════ POST-VENTA CAFÉ: mensaje automático de molienda ═══════════════════
+    // Cuando entra una venta de una publicación de café ELEGIDA por el usuario, el sistema le
+    // manda solo un mensaje al comprador (por la mensajería post-venta de MeLi) preguntándole
+    // en qué formato/molienda quiere el café. Config en AppSettings (claves cafe.postventa.*).
+    // Disparo real-time desde el webhook de órdenes + barrido de respaldo en el job de órdenes.
+
+    public const string CfgPostventaEnabled = "cafe.postventa.enabled";
+    public const string CfgPostventaMensaje = "cafe.postventa.mensaje";
+    public const string CfgPostventaOpciones = "cafe.postventa.opciones";
+    public const string CfgPostventaItems = "cafe.postventa.items";
+
+    public const string PostventaMensajeDefault =
+        "Hola, ¿qué tal? Recibimos tu compra 🙌\n" +
+        "Para prepararlo como más te gusta, ¿podrías confirmarnos en qué formato lo querés?";
+
+    public static readonly string[] PostventaOpcionesDefault =
+    {
+        "En granos", "Molido filtro", "Molido express", "Molido moka", "Molido bodum",
+        "Molido prensa francesa", "Molido cafetera italiana", "Molido a la turca", "Mini express"
+    };
+
+    public record ConfigPostventaCafe(bool Enabled, string Mensaje, List<string> Opciones, List<string> Items);
+
+    /// <summary>Lee la config del respondedor post-venta de café desde AppSettings, con defaults.</summary>
+    public async Task<ConfigPostventaCafe> LeerConfigPostventaAsync()
+    {
+        var vals = await _db.AppSettings
+            .Where(s => s.Key.StartsWith("cafe.postventa."))
+            .ToDictionaryAsync(s => s.Key, s => s.Value);
+
+        bool enabled = vals.TryGetValue(CfgPostventaEnabled, out var e) && e == "true";
+        string mensaje = vals.TryGetValue(CfgPostventaMensaje, out var m) && !string.IsNullOrWhiteSpace(m)
+            ? m : PostventaMensajeDefault;
+        var opciones = vals.TryGetValue(CfgPostventaOpciones, out var op) && !string.IsNullOrWhiteSpace(op)
+            ? op.Replace("\r", "").Split('\n').Select(x => x.Trim()).Where(x => x.Length > 0).ToList()
+            : PostventaOpcionesDefault.ToList();
+        var items = new List<string>();
+        if (vals.TryGetValue(CfgPostventaItems, out var it) && !string.IsNullOrWhiteSpace(it))
+        {
+            try { items = JsonSerializer.Deserialize<List<string>>(it) ?? new(); } catch { }
+        }
+        return new ConfigPostventaCafe(enabled, mensaje, opciones, items);
+    }
+
+    /// <summary>Arma el texto final que ve el comprador: saludo + lista de opciones + cierre.</summary>
+    public static string ComponerMensajePostventa(string mensaje, List<string> opciones)
+    {
+        var sb = new StringBuilder();
+        sb.Append((mensaje ?? "").Trim());
+        var ops = (opciones ?? new List<string>()).Where(o => !string.IsNullOrWhiteSpace(o)).ToList();
+        if (ops.Count > 0)
+        {
+            sb.Append("\n");
+            foreach (var o in ops) sb.Append("\n• ").Append(o.Trim());
+            sb.Append("\n\nRespondé con la opción que prefieras y lo preparamos así 🙂");
+        }
+        return sb.ToString().Trim();
+    }
+
+    /// <summary>Envía un mensaje post-venta al comprador por la mensajería de MeLi. Devuelve
+    /// (ok, error). packId puede ser el pack_id o, para ventas sin pack, el order_id.</summary>
+    public async Task<(bool ok, string? error)> SendPackMessageAsync(long packId, MeliAccount account, long buyerId, string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return (false, "Mensaje vacío");
+        var token = await _accountService.GetValidTokenAsync(account);
+        if (token is null) return (false, "No se pudo obtener token de MeLi");
+
+        var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var url = $"https://api.mercadolibre.com/messages/packs/{packId}/sellers/{account.MeliUserId}?tag=post_sale";
+        var payload = new
+        {
+            from = new { user_id = account.MeliUserId.ToString() },
+            to = new { user_id = buyerId.ToString() },
+            text = text
+        };
+        var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+        var resp = await http.PostAsync(url, content);
+        if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized || resp.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            var newToken = await _accountService.GetValidTokenAsync(account, forceRefresh: true);
+            if (newToken is not null)
+            {
+                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", newToken);
+                content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                resp = await http.PostAsync(url, content);
+            }
+        }
+        if (!resp.IsSuccessStatusCode)
+        {
+            var body = await resp.Content.ReadAsStringAsync();
+            return (false, $"MeLi rechazó el mensaje ({(int)resp.StatusCode}): {body}");
+        }
+        return (true, null);
+    }
+
+    /// <summary>Real-time (desde el webhook): si esta orden es de una publicación elegida y todavía
+    /// no se avisó, manda el mensaje de molienda al comprador y marca la orden. Best-effort: si algo
+    /// falla no marca, y el barrido de respaldo lo reintenta más tarde.</summary>
+    public async Task EnviarPostventaCafeParaOrdenAsync(long meliOrderId, CancellationToken ct = default)
+    {
+        var cfg = await LeerConfigPostventaAsync();
+        if (!cfg.Enabled || cfg.Items.Count == 0) return;
+
+        var rows = await _db.MeliOrders.Include(o => o.MeliAccount)
+            .Where(o => o.MeliOrderId == meliOrderId).ToListAsync(ct);
+        if (rows.Count == 0 || rows.All(o => o.PostventaCafeMsgSent)) return;
+        if (!rows.Any(o => cfg.Items.Contains(o.ItemId))) return;
+
+        var any = rows[0];
+        if (any.Status != "paid" && any.Status != "confirmed") return; // esperamos a que esté paga
+        if (any.MeliAccount is null) return;
+
+        long packId = any.PackId ?? any.MeliOrderId;
+        var text = ComponerMensajePostventa(cfg.Mensaje, cfg.Opciones);
+        var (ok, _) = await SendPackMessageAsync(packId, any.MeliAccount, any.BuyerId, text);
+        if (!ok) return;
+
+        foreach (var o in rows) o.PostventaCafeMsgSent = true;
+        await _db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Barrido de respaldo (corre en el job de órdenes): agarra las ventas de café elegidas
+    /// que quedaron sin avisar (ej. el webhook falló, o la orden se pagó después) y les manda el
+    /// mensaje. Anti-backlog: lo más viejo que 48h se marca como enviado sin mandar nada.</summary>
+    public async Task<int> EnviarPostventaCafePendientesAsync(CancellationToken ct = default)
+    {
+        var cfg = await LeerConfigPostventaAsync();
+        if (!cfg.Enabled || cfg.Items.Count == 0) return 0;
+
+        var corte = DateTime.UtcNow.AddHours(-48);
+
+        var viejas = await _db.MeliOrders
+            .Where(o => !o.PostventaCafeMsgSent && o.DateCreated < corte && cfg.Items.Contains(o.ItemId))
+            .ToListAsync(ct);
+        if (viejas.Count > 0)
+        {
+            foreach (var o in viejas) o.PostventaCafeMsgSent = true;
+            await _db.SaveChangesAsync(ct);
+        }
+
+        var pendientes = await _db.MeliOrders.Include(o => o.MeliAccount)
+            .Where(o => !o.PostventaCafeMsgSent && o.DateCreated >= corte
+                && cfg.Items.Contains(o.ItemId)
+                && (o.Status == "paid" || o.Status == "confirmed"))
+            .OrderBy(o => o.DateCreated)
+            .ToListAsync(ct);
+        if (pendientes.Count == 0) return 0;
+
+        var text = ComponerMensajePostventa(cfg.Mensaje, cfg.Opciones);
+        int enviados = 0;
+        foreach (var grupo in pendientes.GroupBy(o => o.MeliOrderId))
+        {
+            if (enviados >= 20) break; // el resto queda para la próxima vuelta
+            var lista = grupo.ToList();
+            var any = lista[0];
+            if (any.MeliAccount is null) continue;
+            long packId = any.PackId ?? any.MeliOrderId;
+            var (ok, _) = await SendPackMessageAsync(packId, any.MeliAccount, any.BuyerId, text);
+            if (!ok) continue; // no marcamos: reintenta la próxima
+            foreach (var o in lista) o.PostventaCafeMsgSent = true;
+            enviados++;
+        }
+        if (enviados > 0) await _db.SaveChangesAsync(ct);
+        return enviados;
     }
 
     /// <summary>2026-06-15: Re-chequea contra MeLi todas las órdenes paid en estado pre-despacho

@@ -51,6 +51,12 @@ public class MeliOrder
     /// init.sql) para no mandar una catarata de avisos viejos.</summary>
     public bool NotifiedTelegram { get; set; } = false;
 
+    /// <summary>2026-08-09: true cuando ya se le mandó al comprador el mensaje automático de
+    /// post-venta de café (pregunta de molienda/formato). Deduplica por orden para no repetir.
+    /// Las ventas que ya existían cuando se agregó la función arrancan en true (backfill en
+    /// init.sql) para no mandar mensajes viejos de golpe.</summary>
+    public bool PostventaCafeMsgSent { get; set; } = false;
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 

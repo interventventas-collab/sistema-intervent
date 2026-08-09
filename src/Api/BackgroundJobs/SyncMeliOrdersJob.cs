@@ -23,10 +23,17 @@ public class SyncMeliOrdersJob : IScheduledJob
         var to = DateTime.UtcNow;
         var result = await service.SyncOrdersAsync(from, to);
 
+        // Red de seguridad del respondedor post-venta de café: por si el webbook no llegó,
+        // barre las ventas elegidas sin avisar y les manda el mensaje de molienda.
+        int postventaCafe = 0;
+        try { postventaCafe = await service.EnviarPostventaCafePendientesAsync(cancellationToken); }
+        catch { /* no fatal */ }
+
         return JsonSerializer.Serialize(new
         {
             sincronizados = result.TotalSynced,
-            errores = result.TotalErrors
+            errores = result.TotalErrors,
+            postventa_cafe = postventaCafe
         });
     }
 }

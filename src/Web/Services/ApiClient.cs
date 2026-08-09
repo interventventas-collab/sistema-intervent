@@ -6372,6 +6372,16 @@ public class ApiClient
     public async Task<bool> DeleteMeliAutoReplyMessageAsync(int id)
         => await DeleteAsync($"/api/meli/autoreply/messages/{id}");
 
+    // ── Respondedor POST-VENTA de café (pregunta de molienda al comprador) ──
+    public async Task<CafePostventaConfigDto?> GetCafePostventaConfigAsync()
+        => await GetAsync<CafePostventaConfigDto>("/api/meli/postventa/config");
+
+    public async Task SaveCafePostventaConfigAsync(bool enabled, string mensaje, List<string> opciones, List<string> items)
+        => await PutAsync<object>("/api/meli/postventa/config", new { enabled, mensaje, opciones, items });
+
+    public async Task<CafePostventaProbarResultDto?> ProbarCafePostventaAsync(int orderId)
+        => await PostAsync<CafePostventaProbarResultDto>($"/api/meli/postventa/probar/{orderId}", new { });
+
     public async Task SaveMeliAutoReplyScheduleAsync(List<MeliAutoReplyScheduleDto> rows)
         => await PutAsync<object>("/api/meli/autoreply/schedule", rows);
 

@@ -301,6 +301,16 @@ BEGIN
 END
 GO
 
+-- Migración 2026-08-09: marca de "ya se le preguntó la molienda al comprador" (respondedor
+-- post-venta de café). Las ventas que ya existían se marcan como avisadas (=1) para NO mandar
+-- mensajes de molienda de ventas viejas al prender la función. Las nuevas entran con 0.
+IF COL_LENGTH('MeliOrders','PostventaCafeMsgSent') IS NULL
+BEGIN
+    ALTER TABLE MeliOrders ADD PostventaCafeMsgSent BIT NOT NULL DEFAULT 0;
+    EXEC('UPDATE MeliOrders SET PostventaCafeMsgSent = 1');
+END
+GO
+
 -- Migración 2026-07-10: tilde de avisos de fichadas (entrada/salida + plata a rendir) por Telegram.
 IF COL_LENGTH('TelegramAccounts','NotifFichadas') IS NULL
     ALTER TABLE TelegramAccounts ADD NotifFichadas BIT NOT NULL DEFAULT 1;

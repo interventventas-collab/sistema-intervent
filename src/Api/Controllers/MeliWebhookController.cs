@@ -228,6 +228,11 @@ public class MeliWebhookController : ControllerBase
         var n = await orderSvc.SyncSingleOrderAsync(orderId, account);
         logger.LogInformation("[MeLi webhook] orden {OrderId} sincronizada ({N} items)", orderId, n);
 
+        // Post-venta café: si es una publicación elegida, mandarle al comprador el mensaje
+        // automático preguntando la molienda/formato (best-effort, no fatal).
+        try { await orderSvc.EnviarPostventaCafeParaOrdenAsync(orderId); }
+        catch (Exception ex) { logger.LogWarning(ex, "[MeLi webhook] post-venta café falló (no fatal)"); }
+
         // Descontar stock de pendientes (incluyendo la recien sincronizada).
         var stockResult = await stockSync.ProcessPendingAsync(maxBatch: 100);
         if (stockResult.Procesadas > 0)

@@ -1,0 +1,356 @@
+@page "/meli/postventa-cafe"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService Toast
+
+<div class="pv-page">
+
+    <div class="pv-header">
+        <div>
+            <h1 class="pv-title">☕ Post-venta café (molienda)</h1>
+            <p class="pv-sub">Cuando alguien compra una de las publicaciones que elijas, el sistema le manda solo un mensaje preguntándole en qué formato quiere el café.</p>
+        </div>
+        @if (cfg is not null)
+        {
+            <div class="pv-master @(cfg.Enabled ? "on" : "off")">
+                <div class="pv-master-txt">
+                    <span class="pv-master-state">@(cfg.Enabled ? "ACTIVADO" : "APAGADO")</span>
+                    <span class="pv-master-hint">@(cfg.Enabled ? "Manda el mensaje al comprar" : "No manda nada")</span>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" checked="@cfg.Enabled" @onchange="ToggleMaster" />
+                    <span class="slider"></span>
+                </label>
+            </div>
+        }
+    </div>
+
+    <!-- Pestañas entre los dos respondedores -->
+    <div class="pv-tabs">
+        <a href="/meli/respuestas-automaticas" class="pv-tab">Preguntas (antes de comprar)</a>
+        <span class="pv-tab active">Post-venta café (molienda)</span>
+    </div>
+
+    @if (loading)
+    {
+        <div class="loading-container"><div class="spinner"></div><span>Cargando...</span></div>
+    }
+    else if (cfg is null)
+    {
+        <div class="card"><div class="card-body">No se pudo cargar la configuración.</div></div>
+    }
+    else
+    {
+        <!-- Cómo funciona -->
+        <div class="card">
+            <div class="card-body pv-how">
+                <strong>Cómo funciona:</strong> elegí abajo las publicaciones de café. Cuando alguien compre una de ellas,
+                MercadoLibre le manda automáticamente el mensaje con la lista de moliendas y el cliente te responde por el chat de la venta.
+                Se manda <strong>una sola vez por venta</strong>.
+                <div class="pv-note">ℹ️ El chat de MercadoLibre solo permite texto: al cliente le llega la lista escrita (no un menú para tocar) y responde escribiendo la opción.</div>
+            </div>
+        </div>
+
+        <!-- Publicaciones -->
+        <div class="card">
+            <div class="card-header pv-flex-head">
+                <span>Publicaciones que preguntan la molienda (@SelCount seleccionadas)</span>
+                <input type="text" class="form-input pv-search" placeholder="🔍 Buscar publicación..." @bind="filtro" @bind:event="oninput" />
+            </div>
+            <div class="card-body">
+                @if (cfg.Publicaciones.Count == 0)
+                {
+                    <p class="pv-help">No se encontraron publicaciones de café. Revisá que la cuenta de MercadoLibre esté conectada y sincronizada.</p>
+                }
+                else
+                {
+                    <div class="pv-pub-actions">
+                        <button class="btn btn-secondary btn-sm" @onclick="SelNinguna">Deseleccionar todas</button>
+                        <span class="pv-help pv-count">@ContadorTexto</span>
+                    </div>
+                    <div class="pv-pub-list">
+                        @foreach (var p in Filtradas)
+                        {
+                            <label class="pv-pub @(p.Selected ? "sel" : "")">
+                                <input type="checkbox" checked="@p.Selected" @onchange="e => p.Selected = (bool)e.Value!" />
+                                @if (!string.IsNullOrEmpty(p.Thumbnail))
+                                {
+                                    <img src="@p.Thumbnail" class="pv-pub-img" />
+                                }
+                                <span class="pv-pub-title">@p.Title</span>
+                                <span class="pv-pub-id">@p.Id</span>
+                            </label>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Mensaje + opciones -->
+        <div class="card">
+            <div class="card-header">El mensaje que recibe el comprador</div>
+            <div class="card-body">
+                <label class="form-label">Saludo / texto de arriba</label>
+                <textarea class="form-input pv-msg" rows="3" @bind="cfg.Mensaje"></textarea>
+                <small class="pv-help">Debajo de este texto se agregan solas las opciones de molienda de la lista.</small>
+
+                <label class="form-label pv-mt">Opciones de molienda</label>
+                <small class="pv-help">Estas son las que ve el cliente. Podés cambiarlas, agregar o borrar.</small>
+                <div class="pv-ops">
+                    @foreach (var op in opciones)
+                    {
+                        <div class="pv-op">
+                            <input type="text" class="form-input" @bind="op.Texto" />
+                            <button class="btn btn-danger btn-sm" @onclick="() => opciones.Remove(op)">✕</button>
+                        </div>
+                    }
+                </div>
+                <div class="pv-newop">
+                    <input type="text" class="form-input" placeholder="Agregar otra molienda..." @bind="nuevaOpcion" @onkeydown="OnNuevaKey" />
+                    <button class="btn btn-secondary btn-sm" @onclick="AgregarOpcion">➕ Agregar</button>
+                </div>
+
+                <div class="pv-preview">
+                    <strong>👁️ Así le llega al cliente:</strong>
+                    <div class="pv-preview-text">@PreviewText</div>
+                </div>
+
+                <div class="pv-actions">
+                    <button class="btn btn-primary" @onclick="Guardar" disabled="@guardando">💾 Guardar todo</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Probar con una venta real -->
+        <div class="card">
+            <div class="card-header">Probar con una venta real</div>
+            <div class="card-body">
+                <p class="pv-help">Elegí una venta reciente y mandale el mensaje de verdad al comprador, para ver cómo queda. (Guardá primero los cambios.)</p>
+                @if (cfg.VentasRecientes.Count == 0)
+                {
+                    <p class="pv-help">Todavía no hay ventas recientes de las publicaciones elegidas. Cuando entre una compra, va a aparecer acá.</p>
+                }
+                else
+                {
+                    @foreach (var v in cfg.VentasRecientes)
+                    {
+                        <div class="pv-venta">
+                            <div class="pv-venta-info">
+                                <span class="pv-venta-item">@(string.IsNullOrEmpty(v.Item) ? "(publicación)" : v.Item)</span>
+                                <span class="pv-venta-meta">@v.Buyer · @v.Fecha.ToLocalTime().ToString("dd/MM HH:mm") @(v.YaEnviado ? "· ✅ ya se le mandó" : "")</span>
+                            </div>
+                            @if (confirmando == v.OrderId)
+                            {
+                                <div class="pv-venta-confirm">
+                                    <span>¿Enviar de verdad?</span>
+                                    <button class="btn btn-primary btn-sm" @onclick="() => EnviarPrueba(v)" disabled="@probando">Sí, enviar</button>
+                                    <button class="btn btn-secondary btn-sm" @onclick="() => confirmando = null">Cancelar</button>
+                                </div>
+                            }
+                            else
+                            {
+                                <button class="btn btn-secondary btn-sm" @onclick="() => confirmando = v.OrderId">✉️ Probar acá</button>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private CafePostventaConfigDto? cfg;
+    private bool loading = true, guardando, probando;
+    private string filtro = "";
+    private string nuevaOpcion = "";
+    private int? confirmando;
+
+    // Las opciones se editan como objetos con referencia estable (para @bind por fila).
+    private class OpcionEdit { public string Texto { get; set; } = ""; }
+    private List<OpcionEdit> opciones = new();
+
+    private const int MaxMostrar = 150;
+
+    private int SelCount => cfg?.Publicaciones.Count(p => p.Selected) ?? 0;
+
+    // Coincidencias con el filtro (todas, sin tope).
+    private List<CafePostventaPublicacionDto> Coincidencias =>
+        string.IsNullOrWhiteSpace(filtro)
+            ? cfg!.Publicaciones
+            : cfg!.Publicaciones.Where(p =>
+                (p.Title ?? "").Contains(filtro, StringComparison.OrdinalIgnoreCase) ||
+                (p.Id ?? "").Contains(filtro, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    // Lo que se dibuja: primero las elegidas (siempre visibles), luego coincidencias, con tope.
+    private List<CafePostventaPublicacionDto> Filtradas
+    {
+        get
+        {
+            var vis = Coincidencias
+                .OrderByDescending(p => p.Selected).ThenBy(p => p.Title)
+                .Take(MaxMostrar).ToList();
+            foreach (var s in cfg!.Publicaciones.Where(p => p.Selected))
+                if (!vis.Contains(s)) vis.Add(s);
+            return vis;
+        }
+    }
+
+    private string ContadorTexto
+    {
+        get
+        {
+            var total = cfg?.Publicaciones.Count ?? 0;
+            var coincid = Coincidencias.Count;
+            if (string.IsNullOrWhiteSpace(filtro))
+                return $"{total} publicaciones · escribí arriba para buscar";
+            return coincid > MaxMostrar
+                ? $"{coincid} coincidencias (mostrando {MaxMostrar}, refiná la búsqueda)"
+                : $"{coincid} coincidencia(s)";
+        }
+    }
+
+    private string PreviewText
+    {
+        get
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append((cfg?.Mensaje ?? "").Trim());
+            var ops = opciones.Select(o => (o.Texto ?? "").Trim()).Where(o => o.Length > 0).ToList();
+            if (ops.Count > 0)
+            {
+                sb.Append('\n');
+                foreach (var o in ops) sb.Append("\n• ").Append(o);
+                sb.Append("\n\nRespondé con la opción que prefieras y lo preparamos así 🙂");
+            }
+            return sb.ToString().Trim();
+        }
+    }
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true;
+        try
+        {
+            cfg = await Api.GetCafePostventaConfigAsync();
+            opciones = (cfg?.Opciones ?? new()).Select(o => new OpcionEdit { Texto = o }).ToList();
+        }
+        catch (Exception ex) { Toast.Error("No se pudo cargar: " + ex.Message); }
+        finally { loading = false; }
+    }
+
+    private void SelNinguna()
+    {
+        foreach (var p in cfg!.Publicaciones) p.Selected = false;
+    }
+
+    private void AgregarOpcion()
+    {
+        var t = (nuevaOpcion ?? "").Trim();
+        if (t.Length == 0) return;
+        opciones.Add(new OpcionEdit { Texto = t });
+        nuevaOpcion = "";
+    }
+
+    private void OnNuevaKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") AgregarOpcion();
+    }
+
+    private async Task ToggleMaster(ChangeEventArgs e)
+    {
+        cfg!.Enabled = (bool)e.Value!;
+        await Guardar(silencioso: true);
+        Toast.Success(cfg.Enabled ? "Post-venta café ACTIVADO" : "Post-venta café apagado");
+    }
+
+    private async Task Guardar() => await Guardar(false);
+
+    private async Task Guardar(bool silencioso)
+    {
+        guardando = true;
+        try
+        {
+            var items = cfg!.Publicaciones.Where(p => p.Selected).Select(p => p.Id).ToList();
+            var ops = opciones.Select(o => (o.Texto ?? "").Trim()).Where(o => o.Length > 0).ToList();
+            await Api.SaveCafePostventaConfigAsync(cfg.Enabled, cfg.Mensaje ?? "", ops, items);
+            if (!silencioso) Toast.Success("Guardado");
+        }
+        catch (Exception ex) { Toast.Error("No se pudo guardar: " + ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private async Task EnviarPrueba(CafePostventaVentaDto v)
+    {
+        probando = true;
+        try
+        {
+            var r = await Api.ProbarCafePostventaAsync(v.OrderId);
+            if (r?.Ok == true) { Toast.Success(r.Detalle ?? "Mensaje enviado"); v.YaEnviado = true; }
+            else Toast.Error(r?.Detalle ?? "No se pudo enviar");
+        }
+        catch (Exception ex) { Toast.Error("No se pudo enviar: " + ex.Message); }
+        finally { probando = false; confirmando = null; }
+    }
+}
+
+<style>
+    .pv-page { max-width: 900px; margin: 0 auto; padding: 8px; display: flex; flex-direction: column; gap: 16px; }
+    .pv-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+    .pv-title { font-size: 1.5rem; margin: 0; }
+    .pv-sub { color: var(--text-muted, #6b7280); margin: 4px 0 0; }
+    .pv-master { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: 12px; border: 2px solid; min-width: 240px; }
+    .pv-master.on { border-color: #10b981; background: rgba(16,185,129,.08); }
+    .pv-master.off { border-color: #d1d5db; background: rgba(148,163,184,.08); }
+    .pv-master-txt { display: flex; flex-direction: column; }
+    .pv-master-state { font-weight: 700; font-size: 1.05rem; }
+    .pv-master.on .pv-master-state { color: #059669; }
+    .pv-master.off .pv-master-state { color: #6b7280; }
+    .pv-master-hint { font-size: .78rem; color: var(--text-muted, #6b7280); }
+
+    .pv-tabs { display: flex; gap: 8px; border-bottom: 2px solid rgba(148,163,184,.25); }
+    .pv-tab { padding: 8px 16px; border-radius: 8px 8px 0 0; text-decoration: none; color: var(--text-muted, #6b7280); font-weight: 600; }
+    .pv-tab:hover { background: rgba(148,163,184,.1); }
+    .pv-tab.active { color: #059669; border-bottom: 3px solid #10b981; margin-bottom: -2px; background: rgba(16,185,129,.06); }
+
+    .pv-how { line-height: 1.6; }
+    .pv-note { margin-top: 10px; font-size: .85rem; color: var(--text-muted, #6b7280); background: rgba(148,163,184,.08); padding: 8px 10px; border-radius: 8px; }
+    .pv-help { color: var(--text-muted, #6b7280); font-size: .82rem; display: block; margin-top: 4px; }
+    .pv-flex-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .pv-search { max-width: 260px; }
+    .pv-pub-actions { margin-bottom: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .pv-count { margin-top: 0 !important; }
+    .pv-pub-list { display: flex; flex-direction: column; gap: 4px; max-height: 360px; overflow-y: auto; }
+    .pv-pub { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 8px; cursor: pointer; }
+    .pv-pub:hover { background: rgba(148,163,184,.08); }
+    .pv-pub.sel { background: rgba(16,185,129,.08); }
+    .pv-pub-img { width: 34px; height: 34px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
+    .pv-pub-title { flex: 1; font-size: .9rem; }
+    .pv-pub-id { font-size: .72rem; color: var(--text-muted, #6b7280); }
+
+    .pv-msg { resize: vertical; font-family: inherit; }
+    .pv-mt { margin-top: 16px; }
+    .pv-ops { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+    .pv-op { display: flex; gap: 8px; align-items: center; }
+    .pv-op .form-input { flex: 1; }
+    .pv-newop { display: flex; gap: 8px; margin-top: 8px; }
+    .pv-newop .form-input { flex: 1; }
+    .pv-preview { background: rgba(16,185,129,.08); border: 1px solid #10b981; border-radius: 8px; padding: 12px; margin-top: 16px; }
+    .pv-preview-text { margin-top: 6px; white-space: pre-wrap; font-style: italic; }
+    .pv-actions { margin-top: 16px; }
+
+    .pv-venta { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid rgba(148,163,184,.15); flex-wrap: wrap; }
+    .pv-venta-info { display: flex; flex-direction: column; }
+    .pv-venta-item { font-weight: 600; font-size: .9rem; }
+    .pv-venta-meta { font-size: .78rem; color: var(--text-muted, #6b7280); }
+    .pv-venta-confirm { display: flex; align-items: center; gap: 8px; font-size: .85rem; }
+
+    .switch { position: relative; display: inline-block; width: 52px; height: 28px; flex-shrink: 0; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; inset: 0; background: #cbd5e1; transition: .3s; border-radius: 28px; }
+    .slider:before { content: ""; position: absolute; height: 22px; width: 22px; left: 3px; bottom: 3px; background: white; transition: .3s; border-radius: 50%; }
+    .switch input:checked + .slider { background: #10b981; }
+    .switch input:checked + .slider:before { transform: translateX(24px); }
+</style>

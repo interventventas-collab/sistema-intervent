@@ -930,7 +930,7 @@
         @if ((HasPerm("publicaciones") || HasPerm("ordenes") || HasPerm("import-productos") || HasPerm("mapeo") || HasPerm("me1")) && (!Company.HasCompany || string.Equals(Company.Current, "INTERVENT", StringComparison.OrdinalIgnoreCase)))
         {
             <NavGroup Label="MercadoLibre" Icon="@SvgIcons.Store"
-                      HasActiveChild="@(IsActive("/publicaciones") || IsActive("/ordenes") || IsActive("/relink-meli-orphans") || IsActive("/mapeo") || IsActive("/meli/me1/entregas") || IsActive("/cafe/telefonos-clientes-meli") || IsActive("/meli/respuestas-automaticas"))">
+                      HasActiveChild="@(IsActive("/publicaciones") || IsActive("/ordenes") || IsActive("/relink-meli-orphans") || IsActive("/mapeo") || IsActive("/meli/me1/entregas") || IsActive("/cafe/telefonos-clientes-meli") || IsActive("/meli/respuestas-automaticas") || IsActive("/meli/postventa-cafe"))">
                 @if (HasPerm("publicaciones"))
                 {
                     <NavItem Href="/publicaciones" Label="Publicaciones" Icon="@SvgIcons.Tag"
@@ -978,6 +978,8 @@
                 {
                     <NavItem Href="/meli/respuestas-automaticas" Label="🤖 Respuestas automáticas" Icon="@SvgIcons.Store"
                              IsActive="@IsActive("/meli/respuestas-automaticas")" OnClick="@(() => NavigateTo("/meli/respuestas-automaticas"))" />
+                    <NavItem Href="/meli/postventa-cafe" Label="☕ Post-venta café (molienda)" Icon="@SvgIcons.Store"
+                             IsActive="@IsActive("/meli/postventa-cafe")" OnClick="@(() => NavigateTo("/meli/postventa-cafe"))" />
                 }
             </NavGroup>
         }
