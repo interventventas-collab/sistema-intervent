@@ -192,45 +192,79 @@ public class MeliQuestionsController : ControllerBase
 
     private const string CfgQuickReplies = "meli.quickreplies";
 
-    private static readonly string[] DefaultQuickReplies =
+    public class QuickReplyItem
     {
-        "¡Hola! Sí, tenemos stock disponible para entrega inmediata 😊",
-        "¡Gracias por tu consulta! Hacemos envíos a todo el país por Mercado Envíos.",
-        "¡Hola! El precio publicado es el final, con IVA incluido.",
-        "Sí, se puede retirar por nuestro depósito. Coordinamos por acá 😊"
+        public string Category { get; set; } = "Otros";
+        public string Text { get; set; } = "";
+    }
+
+    private static readonly JsonSerializerOptions CamelJson = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
+    private static readonly List<QuickReplyItem> DefaultQuickReplies = new()
+    {
+        new() { Category = "Stock",  Text = "¡Hola! Sí, tenemos stock disponible para entrega inmediata 😊" },
+        new() { Category = "Envío",  Text = "¡Gracias por tu consulta! Hacemos envíos a todo el país por Mercado Envíos." },
+        new() { Category = "Precio", Text = "¡Hola! El precio publicado es el final, con IVA incluido." },
+        new() { Category = "Retiro", Text = "Sí, se puede retirar por nuestro depósito. Coordinamos por acá 😊" }
     };
+
+    /// <summary>Parsea la lista guardada. Tolera el formato viejo (array de strings sin categoría).</summary>
+    private static List<QuickReplyItem> ParseQuickReplies(string raw)
+    {
+        var list = new List<QuickReplyItem>();
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return list;
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                if (el.ValueKind == JsonValueKind.String)
+                {
+                    // formato viejo: solo texto → categoría "Otros"
+                    list.Add(new QuickReplyItem { Category = "Otros", Text = el.GetString() ?? "" });
+                }
+                else if (el.ValueKind == JsonValueKind.Object)
+                {
+                    var cat = el.TryGetProperty("category", out var c) ? c.GetString() : null;
+                    var txt = el.TryGetProperty("text", out var t) ? t.GetString() : null;
+                    list.Add(new QuickReplyItem
+                    {
+                        Category = string.IsNullOrWhiteSpace(cat) ? "Otros" : cat!.Trim(),
+                        Text = txt ?? ""
+                    });
+                }
+            }
+        }
+        catch { /* si el JSON está roto, devolvemos lo que se pudo */ }
+        return list.Where(i => !string.IsNullOrWhiteSpace(i.Text)).ToList();
+    }
 
     /// <summary>Devuelve las respuestas rápidas guardadas. Si nunca se guardó nada, devuelve unas de ejemplo.</summary>
     [HttpGet("quick-replies")]
     public async Task<IActionResult> GetQuickReplies()
     {
         var raw = (await _db.AppSettings.FirstOrDefaultAsync(x => x.Key == CfgQuickReplies))?.Value;
-        List<string> items;
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            items = DefaultQuickReplies.ToList();
-        }
-        else
-        {
-            try { items = JsonSerializer.Deserialize<List<string>>(raw) ?? new(); }
-            catch { items = new(); }
-        }
+        var items = string.IsNullOrWhiteSpace(raw) ? DefaultQuickReplies : ParseQuickReplies(raw);
         return Ok(items);
     }
 
-    public record QuickRepliesRequest(List<string> Items);
+    public record QuickRepliesRequest(List<QuickReplyItem> Items);
 
     /// <summary>Guarda la lista completa de respuestas rápidas (reemplaza la anterior).</summary>
     [HttpPut("quick-replies")]
     public async Task<IActionResult> SaveQuickReplies([FromBody] QuickRepliesRequest req)
     {
-        var items = (req.Items ?? new List<string>())
-            .Select(s => (s ?? "").Trim())
-            .Where(s => s.Length > 0)
+        var items = (req.Items ?? new List<QuickReplyItem>())
+            .Select(i => new QuickReplyItem
+            {
+                Category = string.IsNullOrWhiteSpace(i.Category) ? "Otros" : i.Category.Trim(),
+                Text = (i.Text ?? "").Trim()
+            })
+            .Where(i => i.Text.Length > 0)
             .Take(40)
             .ToList();
 
-        var json = JsonSerializer.Serialize(items);
+        var json = JsonSerializer.Serialize(items, CamelJson);
         var s = await _db.AppSettings.FirstOrDefaultAsync(x => x.Key == CfgQuickReplies);
         if (s is null) { s = new AppSetting { Key = CfgQuickReplies }; _db.AppSettings.Add(s); }
         s.Value = json;

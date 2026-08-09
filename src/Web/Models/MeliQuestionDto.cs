@@ -30,6 +30,13 @@ public class MeliQuestionsUnreadDto
     public int NotSeen { get; set; }
 }
 
+/// <summary>Respuesta rápida propia de la bandeja, con su categoría (Envío / Precio / Stock / ...).</summary>
+public class MeliQuickReplyDto
+{
+    public string Category { get; set; } = "Otros";
+    public string Text { get; set; } = "";
+}
+
 /// <summary>Detalle de una pregunta para la bandeja: publicación + comprador.</summary>
 public class MeliQuestionDetailDto
 {

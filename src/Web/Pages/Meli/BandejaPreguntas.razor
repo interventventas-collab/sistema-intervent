@@ -143,19 +143,28 @@
                                     ⚡ Respuestas rápidas
                                     <span class="bp-canned-hint">— tocá una para insertarla</span>
                                 </div>
-                                <div class="bp-chips">
+                                <div class="bp-chip-groups">
                                     @if (quickReplies.Count == 0)
                                     {
                                         <span class="bp-canned-hint">Todavía no cargaste respuestas rápidas.</span>
                                     }
                                     else
                                     {
-                                        @foreach (var c in quickReplies)
+                                        @foreach (var g in GroupedQuickReplies())
                                         {
-                                            <button class="bp-chip" title="@c" @onclick="() => InsertCanned(c)">@Corto(c)</button>
+                                            var cm = CatMeta(g.Key);
+                                            <div class="bp-chip-group">
+                                                <span class="bp-cat bp-cat-@cm.cls">@cm.icon @g.Key</span>
+                                                @foreach (var c in g)
+                                                {
+                                                    <button class="bp-chip" title="@c.Text" @onclick="() => InsertCanned(c.Text)">@Corto(c.Text)</button>
+                                                }
+                                            </div>
                                         }
                                     }
-                                    <button class="bp-chip bp-chip-manage" @onclick="OpenQuickReplies">✏️ Editar respuestas rápidas</button>
+                                    <div style="margin-top:4px">
+                                        <button class="bp-chip bp-chip-manage" @onclick="OpenQuickReplies">✏️ Editar respuestas rápidas</button>
+                                    </div>
                                 </div>
                                 <div class="bp-composer">
                                     <textarea class="form-input bp-ta" rows="3" placeholder="Escribí tu respuesta..."
@@ -302,12 +311,22 @@
                     @for (int i = 0; i < qrEdit.Count; i++)
                     {
                         var idx = i;
-                        <div class="bp-qr-row">
-                            <textarea class="form-input bp-qr-ta" rows="2" @bind="qrEdit[idx]" placeholder="Escribí una respuesta rápida..."></textarea>
-                            <button class="btn btn-danger btn-sm" title="Borrar" @onclick="() => qrEdit.RemoveAt(idx)">🗑️</button>
+                        <div class="bp-qr-item">
+                            <div class="bp-qr-cats">
+                                <span class="bp-qr-cats-lbl">Categoría:</span>
+                                @foreach (var cat in Cats)
+                                {
+                                    <button class="bp-cat bp-cat-@cat.cls @(qrEdit[idx].Category == cat.name ? "sel" : "off")"
+                                            @onclick="() => qrEdit[idx].Category = cat.name">@cat.icon @cat.name</button>
+                                }
+                            </div>
+                            <div class="bp-qr-row">
+                                <textarea class="form-input bp-qr-ta" rows="2" @bind="qrEdit[idx].Text" placeholder="Escribí una respuesta rápida..."></textarea>
+                                <button class="btn btn-danger btn-sm" title="Borrar" @onclick="() => qrEdit.RemoveAt(idx)">🗑️</button>
+                            </div>
                         </div>
                     }
-                    <button class="btn btn-secondary btn-sm" style="margin-top:6px" @onclick='() => qrEdit.Add("")'>➕ Agregar respuesta</button>
+                    <button class="btn btn-secondary btn-sm" style="margin-top:6px" @onclick="AddQuickReply">➕ Agregar respuesta</button>
                 </div>
                 <div class="bp-modal-f">
                     <button class="btn btn-secondary" @onclick="CloseQuickReplies">Cancelar</button>
@@ -325,13 +344,44 @@
     private int? selId;
     private MeliQuestionDto? selectedQ;
     private MeliQuestionDetailDto? detail;
-    private List<string> quickReplies = new();
+    private List<MeliQuickReplyDto> quickReplies = new();
     private string draft = "";
     private bool loading = true, loadingDetail, sending, refreshing;
 
     // Editor de respuestas rápidas
     private bool showQR, savingQR;
-    private List<string> qrEdit = new();
+    private List<MeliQuickReplyDto> qrEdit = new();
+
+    // Categorías predefinidas (botones, sin desplegables)
+    private static readonly (string name, string icon, string cls)[] Cats =
+    {
+        ("Envío", "🚚", "envio"),
+        ("Precio", "💲", "precio"),
+        ("Stock", "📦", "stock"),
+        ("Pago", "💳", "pago"),
+        ("Retiro", "🏬", "retiro"),
+        ("Otros", "💬", "otros")
+    };
+
+    private static (string icon, string cls) CatMeta(string cat)
+    {
+        foreach (var c in Cats) if (c.name == cat) return (c.icon, c.cls);
+        return ("💬", "otros");
+    }
+
+    /// <summary>Agrupa las respuestas por categoría, en el orden de Cats (las desconocidas al final).</summary>
+    private IEnumerable<IGrouping<string, MeliQuickReplyDto>> GroupedQuickReplies()
+    {
+        int Order(string cat)
+        {
+            for (int i = 0; i < Cats.Length; i++) if (Cats[i].name == cat) return i;
+            return Cats.Length;
+        }
+        return quickReplies.GroupBy(q => string.IsNullOrWhiteSpace(q.Category) ? "Otros" : q.Category)
+                           .OrderBy(g => Order(g.Key)).ThenBy(g => g.Key);
+    }
+
+    private void AddQuickReply() => qrEdit.Add(new MeliQuickReplyDto { Category = "Otros", Text = "" });
 
     protected override async Task OnInitializedAsync()
     {
@@ -348,7 +398,8 @@
 
     private void OpenQuickReplies()
     {
-        qrEdit = quickReplies.ToList();
+        // Copia profunda: si el usuario cancela, no tocamos la lista original.
+        qrEdit = quickReplies.Select(q => new MeliQuickReplyDto { Category = q.Category, Text = q.Text }).ToList();
         showQR = true;
     }
 
@@ -360,7 +411,7 @@
         try
         {
             var saved = await Api.SaveMeliQuickRepliesAsync(qrEdit);
-            quickReplies = saved ?? qrEdit.Select(s => (s ?? "").Trim()).Where(s => s.Length > 0).ToList();
+            quickReplies = saved ?? qrEdit.Where(q => !string.IsNullOrWhiteSpace(q.Text)).ToList();
             showQR = false;
             Toast.Success("Respuestas rápidas guardadas");
         }
@@ -606,6 +657,23 @@
     .bp-ship.correo { color: #2563c9; background: rgba(37,99,201,.1); border-color: rgba(37,99,201,.3); }
     .bp-ship.me1 { color: #b45309; background: rgba(217,119,6,.13); border-color: rgba(217,119,6,.35); }
     .bp-ship.full { color: #15803d; background: rgba(22,163,74,.12); border-color: rgba(22,163,74,.3); }
+
+    /* Chips agrupados por categoría */
+    .bp-chip-groups { display: flex; flex-direction: column; gap: 8px; margin-bottom: 11px; }
+    .bp-chip-group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .bp-cat { display: inline-flex; align-items: center; gap: 3px; font-size: .66rem; font-weight: 800; letter-spacing: .02em; border-radius: 999px; padding: 2px 9px; border: 1px solid transparent; white-space: nowrap; color: var(--c,#6b7280); background: color-mix(in srgb, var(--c,#6b7280) 12%, transparent); border-color: color-mix(in srgb, var(--c,#6b7280) 32%, transparent); }
+    button.bp-cat { cursor: pointer; }
+    .bp-cat-envio { --c: #2563c9; }
+    .bp-cat-precio { --c: #16a34a; }
+    .bp-cat-stock { --c: #d97706; }
+    .bp-cat-pago { --c: #7c3aed; }
+    .bp-cat-retiro { --c: #0d9488; }
+    .bp-cat-otros { --c: #6b7280; }
+    .bp-cat.off { color: var(--text-muted,#9ca3af); background: transparent; border-color: rgba(148,163,184,.35); }
+    .bp-cat.sel { color: #fff; background: var(--c,#6b7280); border-color: var(--c,#6b7280); }
+    .bp-qr-item { border: 1px solid rgba(148,163,184,.2); border-radius: 10px; padding: 9px; display: flex; flex-direction: column; gap: 8px; }
+    .bp-qr-cats { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+    .bp-qr-cats-lbl { font-size: .72rem; color: var(--text-muted,#9ca3af); font-weight: 600; margin-right: 2px; }
 
     /* Modal respuestas rápidas */
     .bp-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 5000; padding: 1rem; }
