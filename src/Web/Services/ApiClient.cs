@@ -6353,6 +6353,13 @@ public class ApiClient
     public async Task<object?> SyncMeliQuestionsNowAsync()
         => await PostAsync<object>("/api/meli/questions/sync-now", new { });
 
+    // Respuestas rápidas propias de la bandeja (separadas de los mensajes del robot)
+    public async Task<List<string>?> GetMeliQuickRepliesAsync()
+        => await GetAsync<List<string>>("/api/meli/questions/quick-replies");
+
+    public async Task<List<string>?> SaveMeliQuickRepliesAsync(List<string> items)
+        => await PutAsync<List<string>>("/api/meli/questions/quick-replies", new { items });
+
     // ===== MeLi Respondedor automático =====
     public async Task<MeliAutoReplyConfigDto?> GetMeliAutoReplyConfigAsync()
         => await GetAsync<MeliAutoReplyConfigDto>("/api/meli/autoreply/config");

@@ -140,22 +140,22 @@
                         {
                             <div class="bp-reply">
                                 <div class="bp-canned-lbl">
-                                    ⚡ Respuestas prearmadas
+                                    ⚡ Respuestas rápidas
                                     <span class="bp-canned-hint">— tocá una para insertarla</span>
                                 </div>
                                 <div class="bp-chips">
-                                    @if (canned.Count == 0)
+                                    @if (quickReplies.Count == 0)
                                     {
-                                        <span class="bp-canned-hint">Cargá tus respuestas en la solapa 🤖 Robot de respuestas.</span>
+                                        <span class="bp-canned-hint">Todavía no cargaste respuestas rápidas.</span>
                                     }
                                     else
                                     {
-                                        @foreach (var c in canned)
+                                        @foreach (var c in quickReplies)
                                         {
-                                            <button class="bp-chip" title="@c.Body" @onclick="() => InsertCanned(c.Body)">@Corto(c.Body)</button>
+                                            <button class="bp-chip" title="@c" @onclick="() => InsertCanned(c)">@Corto(c)</button>
                                         }
                                     }
-                                    <a class="bp-chip bp-chip-manage" href="/meli/respuestas-automaticas">✏️ Editar respuestas</a>
+                                    <button class="bp-chip bp-chip-manage" @onclick="OpenQuickReplies">✏️ Editar respuestas rápidas</button>
                                 </div>
                                 <div class="bp-composer">
                                     <textarea class="form-input bp-ta" rows="3" placeholder="Escribí tu respuesta..."
@@ -279,6 +279,43 @@
 
         </div>
     }
+
+    @* ===== Modal: editar respuestas rápidas ===== *@
+    @if (showQR)
+    {
+        <div class="bp-overlay" @onclick="CloseQuickReplies">
+            <div class="bp-modal" @onclick:stopPropagation="true">
+                <div class="bp-modal-h">
+                    <div>
+                        <h3 style="margin:0">⚡ Respuestas rápidas</h3>
+                        <div style="font-size:.8rem; color:var(--text-muted,#6b7280); margin-top:2px">
+                            Estas son tus respuestas para contestar rápido a mano. No son las del robot.
+                        </div>
+                    </div>
+                    <button class="bp-modal-x" @onclick="CloseQuickReplies" aria-label="Cerrar">×</button>
+                </div>
+                <div class="bp-modal-b">
+                    @if (qrEdit.Count == 0)
+                    {
+                        <p style="color:var(--text-muted,#6b7280); font-size:.85rem">No hay ninguna. Agregá la primera abajo 👇</p>
+                    }
+                    @for (int i = 0; i < qrEdit.Count; i++)
+                    {
+                        var idx = i;
+                        <div class="bp-qr-row">
+                            <textarea class="form-input bp-qr-ta" rows="2" @bind="qrEdit[idx]" placeholder="Escribí una respuesta rápida..."></textarea>
+                            <button class="btn btn-danger btn-sm" title="Borrar" @onclick="() => qrEdit.RemoveAt(idx)">🗑️</button>
+                        </div>
+                    }
+                    <button class="btn btn-secondary btn-sm" style="margin-top:6px" @onclick='() => qrEdit.Add("")'>➕ Agregar respuesta</button>
+                </div>
+                <div class="bp-modal-f">
+                    <button class="btn btn-secondary" @onclick="CloseQuickReplies">Cancelar</button>
+                    <button class="btn bp-send-btn" @onclick="SaveQuickReplies" disabled="@savingQR">@(savingQR ? "Guardando..." : "💾 Guardar")</button>
+                </div>
+            </div>
+        </div>
+    }
 </div>
 
 @code {
@@ -288,25 +325,47 @@
     private int? selId;
     private MeliQuestionDto? selectedQ;
     private MeliQuestionDetailDto? detail;
-    private List<MeliAutoReplyMessageDto> canned = new();
+    private List<string> quickReplies = new();
     private string draft = "";
     private bool loading = true, loadingDetail, sending, refreshing;
 
+    // Editor de respuestas rápidas
+    private bool showQR, savingQR;
+    private List<string> qrEdit = new();
+
     protected override async Task OnInitializedAsync()
     {
-        await LoadCanned();
+        await LoadQuickReplies();
         await LoadLists(selectFirst: true);
         loading = false;
     }
 
-    private async Task LoadCanned()
+    private async Task LoadQuickReplies()
     {
+        try { quickReplies = await Api.GetMeliQuickRepliesAsync() ?? new(); }
+        catch { quickReplies = new(); }
+    }
+
+    private void OpenQuickReplies()
+    {
+        qrEdit = quickReplies.ToList();
+        showQR = true;
+    }
+
+    private void CloseQuickReplies() => showQR = false;
+
+    private async Task SaveQuickReplies()
+    {
+        savingQR = true;
         try
         {
-            var cfg = await Api.GetMeliAutoReplyConfigAsync();
-            canned = cfg?.Messages?.Where(m => m.IsActive).ToList() ?? new();
+            var saved = await Api.SaveMeliQuickRepliesAsync(qrEdit);
+            quickReplies = saved ?? qrEdit.Select(s => (s ?? "").Trim()).Where(s => s.Length > 0).ToList();
+            showQR = false;
+            Toast.Success("Respuestas rápidas guardadas");
         }
-        catch { canned = new(); }
+        catch (Exception ex) { Toast.Error("No se pudo guardar: " + ex.Message); }
+        finally { savingQR = false; }
     }
 
     private async Task LoadLists(bool selectFirst)
@@ -547,6 +606,16 @@
     .bp-ship.correo { color: #2563c9; background: rgba(37,99,201,.1); border-color: rgba(37,99,201,.3); }
     .bp-ship.me1 { color: #b45309; background: rgba(217,119,6,.13); border-color: rgba(217,119,6,.35); }
     .bp-ship.full { color: #15803d; background: rgba(22,163,74,.12); border-color: rgba(22,163,74,.3); }
+
+    /* Modal respuestas rápidas */
+    .bp-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 5000; padding: 1rem; }
+    .bp-modal { background: var(--card-bg, #fff); border-radius: 14px; max-width: 540px; width: 100%; max-height: 86vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.4); overflow: hidden; }
+    .bp-modal-h { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 16px 18px; background: linear-gradient(135deg, #fef3c7, #fde68a); border-bottom: 2px solid #d97706; color: #78350f; }
+    .bp-modal-x { background: transparent; border: none; font-size: 1.6rem; line-height: 1; cursor: pointer; color: #78350f; padding: 0 .3rem; }
+    .bp-modal-b { padding: 16px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+    .bp-modal-f { padding: 14px 18px; border-top: 1px solid rgba(148,163,184,.2); display: flex; justify-content: flex-end; gap: 9px; }
+    .bp-qr-row { display: flex; gap: 8px; align-items: flex-start; }
+    .bp-qr-ta { flex: 1; resize: vertical; font-family: inherit; }
 
     @@media (max-width: 1000px) {
         .bp-grid { grid-template-columns: 1fr; }

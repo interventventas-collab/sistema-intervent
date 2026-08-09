@@ -1,4 +1,6 @@
+using System.Text.Json;
 using Api.Data;
+using Api.Models;
 using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -181,5 +183,59 @@ public class MeliQuestionsController : ControllerBase
     {
         var r = await _service.SyncAsync();
         return Ok(new { sincronizadas = r.TotalSynced, nuevas = r.TotalNew, errores = r.TotalErrors, mensajes = r.Errors });
+    }
+
+    // ===================== RESPUESTAS RÁPIDAS (canned) =====================
+    // Lista propia de respuestas para contestar rápido a mano desde la bandeja.
+    // Es SEPARADA de los "mensajes que rotan" del robot. Se guarda como JSON en AppSettings
+    // (una sola clave) para no tocar la base de datos.
+
+    private const string CfgQuickReplies = "meli.quickreplies";
+
+    private static readonly string[] DefaultQuickReplies =
+    {
+        "¡Hola! Sí, tenemos stock disponible para entrega inmediata 😊",
+        "¡Gracias por tu consulta! Hacemos envíos a todo el país por Mercado Envíos.",
+        "¡Hola! El precio publicado es el final, con IVA incluido.",
+        "Sí, se puede retirar por nuestro depósito. Coordinamos por acá 😊"
+    };
+
+    /// <summary>Devuelve las respuestas rápidas guardadas. Si nunca se guardó nada, devuelve unas de ejemplo.</summary>
+    [HttpGet("quick-replies")]
+    public async Task<IActionResult> GetQuickReplies()
+    {
+        var raw = (await _db.AppSettings.FirstOrDefaultAsync(x => x.Key == CfgQuickReplies))?.Value;
+        List<string> items;
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            items = DefaultQuickReplies.ToList();
+        }
+        else
+        {
+            try { items = JsonSerializer.Deserialize<List<string>>(raw) ?? new(); }
+            catch { items = new(); }
+        }
+        return Ok(items);
+    }
+
+    public record QuickRepliesRequest(List<string> Items);
+
+    /// <summary>Guarda la lista completa de respuestas rápidas (reemplaza la anterior).</summary>
+    [HttpPut("quick-replies")]
+    public async Task<IActionResult> SaveQuickReplies([FromBody] QuickRepliesRequest req)
+    {
+        var items = (req.Items ?? new List<string>())
+            .Select(s => (s ?? "").Trim())
+            .Where(s => s.Length > 0)
+            .Take(40)
+            .ToList();
+
+        var json = JsonSerializer.Serialize(items);
+        var s = await _db.AppSettings.FirstOrDefaultAsync(x => x.Key == CfgQuickReplies);
+        if (s is null) { s = new AppSetting { Key = CfgQuickReplies }; _db.AppSettings.Add(s); }
+        s.Value = json;
+        s.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(items);
     }
 }
