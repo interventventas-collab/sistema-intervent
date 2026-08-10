@@ -3425,6 +3425,7 @@
                 @if (pisoMasivoFase == "config")
                 {
                     <button class="btn btn-secondary" @onclick="CerrarPisoMasivo">Cancelar</button>
+                    <button class="btn" style="background:#6b7280; color:white; border:none;" @onclick="VerUltimoResultadoPisoMasivo" title="Trae el resultado de la última corrida ya calculada, sin recalcular.">Ver último resultado</button>
                     <button class="btn" style="background:#16a34a; color:white; border:none;" @onclick="LanzarPisoMasivoPreview">Ver vista previa</button>
                 }
                 else if (pisoMasivoFase == "resultado" && pisoMasivoResumen is not null)
@@ -7664,6 +7665,33 @@
         StateHasChanged();
     }
 
+    // Trae el resultado de la ÚLTIMA corrida ya calculada (sin recalcular). Útil cuando la pantalla
+    // perdió el hilo por timeout pero el cálculo terminó bien por atrás.
+    private async Task VerUltimoResultadoPisoMasivo()
+    {
+        pisoMasivoError = null;
+        try
+        {
+            var r = await Api.PisoMasivoUltimoAsync("SUBE");
+            if (r is null || string.IsNullOrEmpty(r.RunId) || r.Total == 0)
+            {
+                pisoMasivoError = "Todavía no hay ningún resultado calculado. Corré la vista previa primero.";
+                StateHasChanged();
+                return;
+            }
+            pisoMasivoRunId = r.RunId;
+            pisoMasivoResumen = r;
+            pisoMasivoConfirmando = false;
+            pisoMasivoFase = "resultado";
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            pisoMasivoError = "No se pudo traer el último resultado: " + ex.Message;
+            StateHasChanged();
+        }
+    }
+
     private async Task LanzarPisoMasivoPreview()
     {
         pisoMasivoError = null;
@@ -7724,7 +7752,7 @@
     // Pollea el progreso cada 2s hasta completed/error. Reusa GetSyncProgressAsync.
     private async Task PollPisoMasivoProgreso(string? progressId, bool cargarResultadoAlTerminar)
     {
-        for (int i = 0; i < 900; i++) // tope defensivo ~30min
+        for (int i = 0; i < 2700; i++) // tope defensivo ~90min (la previa con envío en vivo puede tardar)
         {
             SyncProgressResponse? prog = null;
             try { prog = await Api.GetSyncProgressAsync(progressId); }
@@ -7760,8 +7788,23 @@
             }
             await Task.Delay(2000);
         }
-        pisoMasivoError = "Tardó demasiado. Probá de nuevo.";
-        pisoMasivoFase = cargarResultadoAlTerminar ? "config" : "resultado";
+        // Se acabó el tope de espera. El cálculo puede haber terminado igual por atrás:
+        // intentamos recuperar el resultado guardado antes de dar por fallido.
+        if (cargarResultadoAlTerminar)
+        {
+            await CargarResultadoPisoMasivo();
+            if (pisoMasivoResumen is not null && pisoMasivoResumen.Total > 0)
+            {
+                pisoMasivoError = null;
+                return; // CargarResultadoPisoMasivo ya dejó la fase en "resultado"
+            }
+            pisoMasivoFase = "config";
+        }
+        else
+        {
+            pisoMasivoFase = "resultado";
+        }
+        pisoMasivoError = "La pantalla dejó de esperar, pero el cálculo puede seguir corriendo por atrás. Esperá un rato y tocá 'Ver último resultado' — NO hace falta recalcular.";
         StateHasChanged();
     }
 

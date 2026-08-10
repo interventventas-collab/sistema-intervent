@@ -2880,8 +2880,30 @@ public class MeliController : ControllerBase
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(runId)) return BadRequest(new { error = "Falta runId." });
-        take = Math.Clamp(take, 1, 1000);
+        return Ok(await BuildPisoResumenAsync(db, runId, accion, skip, take, ct));
+    }
 
+    /// <summary>Devuelve el resumen de la ÚLTIMA corrida (la más reciente que haya en la tabla).
+    /// Sirve para que la pantalla recupere un resultado ya calculado aunque haya perdido el runId
+    /// (ej: el polling se cortó por timeout pero el cálculo terminó bien). runId=null si no hay ninguna.</summary>
+    [HttpGet("items/piso-masivo/ultimo")]
+    public async Task<IActionResult> PisoMasivoUltimo(
+        [FromServices] Api.Data.AppDbContext db,
+        [FromQuery] string? accion = "SUBE",
+        [FromQuery] int take = 200,
+        CancellationToken ct = default)
+    {
+        var ultimoRunId = await db.MeliPisoMasivoResultados.AsNoTracking()
+            .OrderByDescending(r => r.Id).Select(r => r.RunId).FirstOrDefaultAsync(ct);
+        if (string.IsNullOrWhiteSpace(ultimoRunId))
+            return Ok(new PisoMasivoResumen(null, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0m, 0m, new List<MeliPisoMasivoResultado>()));
+        return Ok(await BuildPisoResumenAsync(db, ultimoRunId, accion, 0, take, ct));
+    }
+
+    private async Task<PisoMasivoResumen> BuildPisoResumenAsync(
+        Api.Data.AppDbContext db, string runId, string? accion, int skip, int take, CancellationToken ct)
+    {
+        take = Math.Clamp(take, 1, 1000);
         var baseQ = db.MeliPisoMasivoResultados.AsNoTracking().Where(r => r.RunId == runId);
 
         var counts = await baseQ.GroupBy(r => r.Accion)
@@ -2896,14 +2918,14 @@ public class MeliController : ControllerBase
 
         var detQ = baseQ;
         if (!string.IsNullOrWhiteSpace(accion))
-            detQ = detQ.Where(r => r.Accion == accion.ToUpperInvariant());
+            detQ = detQ.Where(r => r.Accion == accion!.ToUpperInvariant());
         var detalles = await detQ.OrderByDescending(r => r.Accion == "SUBE")
             .ThenBy(r => r.MargenActual)
             .Skip(skip).Take(take).ToListAsync(ct);
 
-        return Ok(new PisoMasivoResumen(runId,
+        return new PisoMasivoResumen(runId,
             counts.Sum(x => x.N), C("SUBE"), C("YA_OK"), C("NO_CONFIABLE"), C("SIN_COSTO"), C("SIN_BASE"), C("ERROR"),
-            aplicadas, erroresAplicar, sumaHoy, sumaNueva, detalles));
+            aplicadas, erroresAplicar, sumaHoy ?? 0m, sumaNueva ?? 0m, detalles);
     }
 
     /// <summary>Aplica lo previsualizado (solo SUBE + confiables no aplicadas). Devuelve progressId.</summary>

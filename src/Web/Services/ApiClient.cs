@@ -4300,6 +4300,15 @@ public class ApiClient
         return await GetAsync<PisoMasivoResumen>(url);
     }
 
+    // Trae el resumen de la ULTIMA corrida (aunque la pantalla haya perdido el runId por timeout).
+    // RunId viene null si no hay ninguna corrida guardada.
+    public async Task<PisoMasivoResumen?> PisoMasivoUltimoAsync(string? accion = "SUBE", int take = 200)
+    {
+        var url = $"/api/meli/items/piso-masivo/ultimo?take={take}";
+        if (!string.IsNullOrWhiteSpace(accion)) url += $"&accion={Uri.EscapeDataString(accion)}";
+        return await GetAsync<PisoMasivoResumen>(url);
+    }
+
     // Aplica SOLO las filas SUBE+confiables: pushea precios REALES a MeLi. Devuelve progressId.
     public async Task<string?> PisoMasivoAplicarAsync(string runId)
     {
