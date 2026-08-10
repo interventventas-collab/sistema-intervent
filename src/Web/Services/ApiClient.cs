@@ -4278,7 +4278,7 @@ public class ApiClient
         string? Mensaje, bool AplicadoOk, DateTime? AplicadoAt, DateTime CreatedAt);
     public record PisoMasivoResumen(
         string? RunId, int Total, int Suben, int YaOk, int NoConfiable, int SinCosto,
-        int SinBase, int Error, int Aplicadas, int ErroresAplicar,
+        int SinBase, int Error, int Aplicadas, int ErroresAplicar, int SubenAplicables,
         decimal SumaHoy, decimal SumaNueva, List<PisoMasivoDetalle> Detalles);
 
     // Lanza la vista previa en background. NO toca precios. Devuelve runId + progressId.

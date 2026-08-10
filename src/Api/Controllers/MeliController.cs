@@ -2865,7 +2865,7 @@ public class MeliController : ControllerBase
 
     public record PisoMasivoResumen(
         string RunId, int Total, int Suben, int YaOk, int NoConfiable, int SinCosto, int SinBase, int Error,
-        int Aplicadas, int ErroresAplicar,
+        int Aplicadas, int ErroresAplicar, int SubenAplicables,
         decimal? SumaHoy, decimal? SumaNueva,
         List<MeliPisoMasivoResultado> Detalles);
 
@@ -2896,7 +2896,7 @@ public class MeliController : ControllerBase
         var ultimoRunId = await db.MeliPisoMasivoResultados.AsNoTracking()
             .OrderByDescending(r => r.Id).Select(r => r.RunId).FirstOrDefaultAsync(ct);
         if (string.IsNullOrWhiteSpace(ultimoRunId))
-            return Ok(new PisoMasivoResumen(null, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0m, 0m, new List<MeliPisoMasivoResultado>()));
+            return Ok(new PisoMasivoResumen(null, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0m, 0m, new List<MeliPisoMasivoResultado>()));
         return Ok(await BuildPisoResumenAsync(db, ultimoRunId, accion, 0, take, ct));
     }
 
@@ -2915,6 +2915,8 @@ public class MeliController : ControllerBase
         var sumaNueva = await suben.SumAsync(r => (decimal?)r.PrecioNuevo, ct);
         int aplicadas = await suben.CountAsync(r => r.AplicadoOk == true, ct);
         int erroresAplicar = await suben.CountAsync(r => r.AplicadoOk == false, ct);
+        // "Aplicables" = las sanas que SÍ se van a tocar (confiables y precio dentro de rango; las truchas se saltean).
+        int subenAplicables = await suben.CountAsync(r => r.Confiable && r.PrecioNuevo != null && r.PrecioNuevo <= 2000000m, ct);
 
         var detQ = baseQ;
         if (!string.IsNullOrWhiteSpace(accion))
@@ -2925,7 +2927,7 @@ public class MeliController : ControllerBase
 
         return new PisoMasivoResumen(runId,
             counts.Sum(x => x.N), C("SUBE"), C("YA_OK"), C("NO_CONFIABLE"), C("SIN_COSTO"), C("SIN_BASE"), C("ERROR"),
-            aplicadas, erroresAplicar, sumaHoy ?? 0m, sumaNueva ?? 0m, detalles);
+            aplicadas, erroresAplicar, subenAplicables, sumaHoy ?? 0m, sumaNueva ?? 0m, detalles);
     }
 
     /// <summary>Aplica lo previsualizado (solo SUBE + confiables no aplicadas). Devuelve progressId.</summary>

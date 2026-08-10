@@ -3425,7 +3425,11 @@
                     {
                         <div style="background:#fef2f2; border:2px solid #dc2626; border-radius:8px; padding:0.9rem; margin-top:1rem;">
                             <p style="margin:0 0 0.7rem; color:#991b1b; font-weight:700;">
-                                ⚠ Esto cambia precios REALES en MercadoLibre de @r.Suben publicaciones. ¿Seguro?
+                                ⚠ Esto cambia precios REALES en MercadoLibre de @r.SubenAplicables publicaciones. ¿Seguro?
+                                @if (r.Suben > r.SubenAplicables)
+                                {
+                                    <span style="display:block; font-weight:400; font-size:0.8rem; margin-top:0.3rem;">(Las @(r.Suben - r.SubenAplicables) de precio disparatado —costo trucho— se saltean solas.)</span>
+                                }
                             </p>
                             <div style="display:flex; gap:0.6rem; justify-content:flex-end;">
                                 <button class="btn btn-secondary" @onclick="() => pisoMasivoConfirmando = false">Cancelar</button>
@@ -3453,10 +3457,10 @@
                 else if (pisoMasivoFase == "resultado" && pisoMasivoResumen is not null)
                 {
                     <button class="btn btn-secondary" @onclick="CerrarPisoMasivo">Cerrar</button>
-                    @if (pisoMasivoResumen.Suben > 0 && !pisoMasivoConfirmando)
+                    @if (pisoMasivoResumen.SubenAplicables > 0 && !pisoMasivoConfirmando)
                     {
                         <button class="btn" style="background:#16a34a; color:white; border:none;" @onclick="() => pisoMasivoConfirmando = true">
-                            Aplicar a las @pisoMasivoResumen.Suben que suben
+                            Aplicar a las @pisoMasivoResumen.SubenAplicables que suben
                         </button>
                     }
                 }
