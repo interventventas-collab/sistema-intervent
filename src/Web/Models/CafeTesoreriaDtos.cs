@@ -320,6 +320,10 @@ public class ExtractoMovimientoDto
     // VentaClienteId = cliente de la venta, para retomar la cobranza precargada.
     public bool SinCobranza { get; set; }
     public int? VentaClienteId { get; set; }
+    // 2026-08-10: movimiento ignorado por carga manual.
+    public DateTime? IgnoradoAt { get; set; }
+    public string? IgnoradoPor { get; set; }
+    public string? IgnoradoMotivo { get; set; }
 }
 
 public class SaldoBancoDto

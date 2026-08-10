@@ -94,6 +94,17 @@ public class CafeExtractoMovimiento
     /// movimiento NO se sugiere mas como "disponible" en /cafe/tesoreria/cobranzas.</summary>
     public int? CobranzaUsadaId { get; set; }
 
+    /// <summary>2026-08-10: si != null, el usuario marco este movimiento como "ignorado por
+    /// carga manual" (lo va a resolver a mano). Sigue visible en el historial con el cartelito
+    /// de ignorado. Reversible. IgnoradoMotivo guarda la nota que escribio el usuario.</summary>
+    public DateTime? IgnoradoAt { get; set; }
+
+    [MaxLength(120)]
+    public string? IgnoradoPor { get; set; }
+
+    [MaxLength(300)]
+    public string? IgnoradoMotivo { get; set; }
+
     [MaxLength(200)]
     public string? ArchivoOrigen { get; set; }
 

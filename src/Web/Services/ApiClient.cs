@@ -1378,6 +1378,17 @@ public class ApiClient
     public async Task<bool> DesasociarMovimientoExtractoAsync(int id)
         => await DeleteAsync($"/api/cafe/extracto-banco/{id}/asociar");
 
+    // ─── 2026-08-10: Ignorar / deshacer movimiento por carga manual ──────
+    public async Task<bool> IgnorarMovimientoExtractoAsync(int id, string? motivo, string? operador = null)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/extracto-banco/{id}/ignorar",
+            new { Motivo = motivo, Operador = operador });
+        return resp.IsSuccessStatusCode;
+    }
+    public async Task<bool> DesignorarMovimientoExtractoAsync(int id)
+        => await DeleteAsync($"/api/cafe/extracto-banco/{id}/ignorar");
+
     public async Task<List<MovimientoDisponibleDto>?> GetMovimientosAsociadosSinCobrarAsync(int clienteId)
         => await GetAsync<List<MovimientoDisponibleDto>>($"/api/cafe/extracto-banco/asociados-sin-cobrar/{clienteId}");
 

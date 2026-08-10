@@ -48,6 +48,13 @@
     .btn-desasociar { padding: 0.25rem 0.5rem; font-size: 0.7rem; background: white; color: #6b7280; border: 1px solid #d1d5db; border-radius: 4px; cursor: pointer; }
     .btn-desasociar:hover { background: #fee2e2; color: #b91c1c; }
 
+    /* 2026-08-10: ignorar movimiento por carga manual */
+    .btn-ignorar { padding: 0.25rem 0.5rem; font-size: 0.72rem; background: white; color: #9a3412; border: 1px solid #fdba74; border-radius: 4px; cursor: pointer; font-weight: 600; }
+    .btn-ignorar:hover { background: #fff7ed; border-color: #ea580c; }
+    .ex-ignorado-badge { display: inline-block; padding: 0.12rem 0.5rem; border-radius: 999px; background: #ffedd5; color: #9a3412; font-size: 0.7rem; font-weight: 700; border: 1px solid #fdba74; }
+    .btn-deshacer-ignorar { align-self: flex-start; padding: 0.2rem 0.5rem; font-size: 0.7rem; background: white; color: #6b7280; border: 1px solid #d1d5db; border-radius: 4px; cursor: pointer; }
+    .btn-deshacer-ignorar:hover { background: #f3f4f6; color: #374151; }
+
     /* 2026-07-11: fila asociada sin cobranza (proceso a medias) */
     .ex-tabla tr.sincompletar td { background: #fef2f2; }
     .ex-tabla tr.sincompletar:hover td { background: #fee2e2; }
@@ -189,7 +196,23 @@
                         </td>
                         <td style="text-align: right;" class="ex-mov-mono">$@m.Saldo.ToString("N2")</td>
                         <td>
-                            @if (m.VentaIdAsociada.HasValue)
+                            @if (m.IgnoradoAt.HasValue)
+                            {
+                                @* 2026-08-10: movimiento ignorado por carga manual. Queda visible
+                                   en el historial con este cartelito + motivo. Tiene prioridad sobre todo. *@
+                                <div style="display:flex; flex-direction:column; gap:.25rem; max-width:280px;">
+                                    <span class="ex-ignorado-badge">⊘ Ignorada por carga manual</span>
+                                    @if (!string.IsNullOrWhiteSpace(m.IgnoradoMotivo))
+                                    {
+                                        <div style="font-size:0.72rem; color:#7c2d12;">“@m.IgnoradoMotivo”</div>
+                                    }
+                                    <div style="font-size:0.66rem; color:#9a3412;">
+                                        @(string.IsNullOrWhiteSpace(m.IgnoradoPor) ? "" : $"por {m.IgnoradoPor} · ")@m.IgnoradoAt!.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                                    </div>
+                                    <button class="btn-deshacer-ignorar" @onclick="() => DesignorarMov(m.Id)" title="Volver a dejarla como estaba">↺ Deshacer</button>
+                                </div>
+                            }
+                            else if (m.VentaIdAsociada.HasValue)
                             {
                                 @* 2026-07-11: asociada a una venta pero SIN cobranza vigente = proceso a medias.
                                    Mostramos aviso rojo + boton para retomar la cobranza (precargada). Tiene
@@ -230,14 +253,17 @@
                             }
                             else if (esIngreso)
                             {
-                                @if (m.ClienteSugeridoId.HasValue)
-                                {
-                                    <button class="btn-asociar" @onclick="() => AbrirModalAsociar(m)">🔍 Asociar a venta</button>
-                                }
-                                else
-                                {
-                                    <button class="btn-asociar" @onclick="() => AbrirModalAsociar(m)" style="background: #e5e7eb; color: #6b7280;">🔍 Buscar cliente</button>
-                                }
+                                <div style="display:flex; gap:.3rem; align-items:center; flex-wrap:wrap;">
+                                    @if (m.ClienteSugeridoId.HasValue)
+                                    {
+                                        <button class="btn-asociar" @onclick="() => AbrirModalAsociar(m)">🔍 Asociar a venta</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn-asociar" @onclick="() => AbrirModalAsociar(m)" style="background: #e5e7eb; color: #6b7280;">🔍 Buscar cliente</button>
+                                    }
+                                    <button class="btn-ignorar" @onclick="() => AbrirModalIgnorar(m)" title="Ignorar este movimiento (lo resolvés a mano)">⊘ Ignorar</button>
+                                </div>
                             }
                             else
                             {
@@ -257,11 +283,14 @@
                                 }
                                 else if (!string.IsNullOrEmpty(m.LeyendaAdicional2))
                                 {
-                                    <button class="btn-asociar" @onclick="() => AbrirModalCompra(m)" style="background:#7c3aed;">🧾 Asociar a compra</button>
+                                    <div style="display:flex; gap:.3rem; align-items:center; flex-wrap:wrap;">
+                                        <button class="btn-asociar" @onclick="() => AbrirModalCompra(m)" style="background:#7c3aed;">🧾 Asociar a compra</button>
+                                        <button class="btn-ignorar" @onclick="() => AbrirModalIgnorar(m)" title="Ignorar este movimiento (lo resolvés a mano)">⊘ Ignorar</button>
+                                    </div>
                                 }
                                 else
                                 {
-                                    <span style="color: #9ca3af; font-size: 0.78rem;">—</span>
+                                    <button class="btn-ignorar" @onclick="() => AbrirModalIgnorar(m)" title="Ignorar este movimiento (lo resolvés a mano)">⊘ Ignorar</button>
                                 }
                             }
                         </td>
@@ -529,6 +558,42 @@
     </div>
 }
 
+@* Modal: ignorar movimiento por carga manual (2026-08-10) *@
+@if (movIgnorar is not null)
+{
+    <div class="modal-overlay" @onclick="@(() => movIgnorar = null)" style="z-index: 9000; position: fixed; inset: 0; background: rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center;">
+        <div @onclick:stopPropagation="true" style="background:#fff; border-radius:12px; width:min(480px,96vw); box-shadow:0 20px 60px rgba(0,0,0,.3);">
+            <div style="background:#ea580c; color:#fff; padding:.8rem 1rem; display:flex; justify-content:space-between; align-items:center; border-radius:12px 12px 0 0;">
+                <h3 style="margin:0; font-size:1.05rem;">⊘ Ignorar movimiento</h3>
+                <button @onclick="@(() => movIgnorar = null)" style="background:none; border:none; color:#fff; font-size:1.5rem; cursor:pointer;">&times;</button>
+            </div>
+            <div style="padding:1rem;">
+                <p style="font-size:.85rem; color:#374151; margin:0 0 .6rem;">
+                    Este movimiento va a quedar marcado como <strong>ignorado por carga manual</strong>.
+                    No desaparece del historial: se sigue viendo, pero con el cartelito de ignorado.
+                    Lo podés deshacer cuando quieras.
+                </p>
+                <div style="background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:.5rem .7rem; margin-bottom:.7rem; font-size:.8rem;">
+                    <div style="font-weight:600;">@(movIgnorar.Descripcion ?? "—")</div>
+                    <div style="color:#6b7280;">@movIgnorar.Fecha.ToString("dd/MM/yyyy")
+                        @if (movIgnorar.Creditos > 0.01m) { <span style="color:#16a34a; font-weight:700;">· +$@movIgnorar.Creditos.ToString("N2")</span> }
+                        @if (movIgnorar.Debitos > 0.01m) { <span style="color:#dc2626; font-weight:700;">· -$@movIgnorar.Debitos.ToString("N2")</span> }
+                    </div>
+                </div>
+                <label style="font-size:.8rem; font-weight:600; color:#374151;">Motivo (por qué lo ignorás):</label>
+                <textarea @bind="motivoIgnorar" rows="2" placeholder="Ej: pagaron mal, lo cargo a mano"
+                          style="width:100%; margin-top:.3rem; padding:.5rem; border:1px solid #d1d5db; border-radius:6px; font-family:inherit; font-size:.85rem; resize:vertical;"></textarea>
+                <div style="display:flex; gap:.5rem; margin-top:1rem; align-items:center;">
+                    <button class="btn-import" style="background:#ea580c;" @onclick="ConfirmarIgnorar" disabled="@guardandoIgnorar">
+                        @(guardandoIgnorar ? "Guardando…" : "⊘ Ignorar movimiento")
+                    </button>
+                    <button class="btn-close" @onclick="@(() => movIgnorar = null)" style="background:#e5e7eb; color:#374151; padding:.4rem .8rem; border:none; border-radius:6px; cursor:pointer;">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private SaldoBancoDto? saldo;
     private List<ExtractoMovimientoDto> movs = new();
@@ -598,6 +663,11 @@
     private bool mostrarCruce, cargandoCruce, aplicandoCruce;
     private List<CrucePropuestoDto> cruces = new();
     private HashSet<int> crucesElegidos = new();
+
+    // 2026-08-10: Ignorar movimiento por carga manual
+    private ExtractoMovimientoDto? movIgnorar;
+    private string motivoIgnorar = "";
+    private bool guardandoIgnorar;
 
     protected override async Task OnInitializedAsync() => await Recargar();
 
@@ -886,6 +956,43 @@
         if (ok)
         {
             ToastService.Info("Asociación quitada");
+            await CargarMovs();
+            await RefrescarContadorSinCompletar();
+        }
+    }
+
+    // ─── 2026-08-10: Ignorar / deshacer movimiento por carga manual ──────
+    private void AbrirModalIgnorar(ExtractoMovimientoDto m)
+    {
+        movIgnorar = m;
+        motivoIgnorar = "";
+    }
+
+    private async Task ConfirmarIgnorar()
+    {
+        if (movIgnorar is null) return;
+        guardandoIgnorar = true;
+        try
+        {
+            var ok = await Api.IgnorarMovimientoExtractoAsync(movIgnorar.Id, motivoIgnorar, Operator.Current);
+            if (ok)
+            {
+                ToastService.Info("Movimiento ignorado por carga manual");
+                movIgnorar = null;
+                await CargarMovs();
+                await RefrescarContadorSinCompletar();
+            }
+            else ToastService.Error("No se pudo ignorar el movimiento");
+        }
+        finally { guardandoIgnorar = false; }
+    }
+
+    private async Task DesignorarMov(int id)
+    {
+        var ok = await Api.DesignorarMovimientoExtractoAsync(id);
+        if (ok)
+        {
+            ToastService.Info("Se deshizo el ignorado");
             await CargarMovs();
             await RefrescarContadorSinCompletar();
         }

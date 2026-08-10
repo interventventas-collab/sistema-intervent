@@ -44,7 +44,11 @@ public class CafeExtractoBancoController : ControllerBase
         // cobranza). La UI lo pinta en rojo con boton "Retomar cobranza". VentaClienteId es el
         // cliente de la venta asociada, para poder precargar Cobranzas al retomar.
         bool SinCobranza = false,
-        int? VentaClienteId = null);
+        int? VentaClienteId = null,
+        // 2026-08-10: movimiento ignorado por carga manual (lo resuelve el usuario a mano).
+        DateTime? IgnoradoAt = null,
+        string? IgnoradoPor = null,
+        string? IgnoradoMotivo = null);
 
     public record SaldoBancoDto(decimal Saldo, DateTime UltimaFecha, int CantidadMovimientos, DateTime? UltimoImportadoAt);
 
@@ -169,7 +173,8 @@ public class CafeExtractoBancoController : ControllerBase
                 m.VentaIdAsociada, ventaNumero, m.AsociadoPor, m.AsociadoAt,
                 cliId, cliNom,
                 comprobantes, cobranzaNumero,
-                sinCobranza, ventaClienteId);
+                sinCobranza, ventaClienteId,
+                m.IgnoradoAt, m.IgnoradoPor, m.IgnoradoMotivo);
         }).ToList();
         return Ok(result);
     }
@@ -311,6 +316,43 @@ public class CafeExtractoBancoController : ControllerBase
         m.VentaIdAsociada = null;
         m.AsociadoPor = null;
         m.AsociadoAt = null;
+        await _db.SaveChangesAsync();
+        return Ok();
+    }
+
+    // ─── 2026-08-10: Ignorar / des-ignorar movimiento por carga manual ──────────────
+    public record IgnorarRequest(string? Motivo, string? Operador);
+
+    /// <summary>Marca un movimiento como "ignorado por carga manual". Sigue visible en el
+    /// historial con el cartelito de ignorado + el motivo escrito por el usuario. Reversible.
+    /// Quita cualquier asociacion previa a venta (el usuario lo va a resolver a mano).</summary>
+    [HttpPost("{id:int}/ignorar")]
+    public async Task<IActionResult> Ignorar(int id, [FromBody] IgnorarRequest req)
+    {
+        var m = await _db.CafeExtractoMovimientos.FirstOrDefaultAsync(x => x.Id == id);
+        if (m is null) return NotFound();
+        m.IgnoradoAt = DateTime.UtcNow;
+        m.IgnoradoPor = string.IsNullOrWhiteSpace(req.Operador) ? null : req.Operador.Trim();
+        var motivo = string.IsNullOrWhiteSpace(req.Motivo) ? null : req.Motivo.Trim();
+        if (motivo is { Length: > 300 }) motivo = motivo[..300];
+        m.IgnoradoMotivo = motivo;
+        // Al ignorar, sacamos la asociacion a venta (se resuelve manualmente).
+        m.VentaIdAsociada = null;
+        m.AsociadoPor = null;
+        m.AsociadoAt = null;
+        await _db.SaveChangesAsync();
+        return Ok(new { id = m.Id, ignoradoAt = m.IgnoradoAt });
+    }
+
+    /// <summary>Deshace el "ignorado": el movimiento vuelve a estar disponible para asociar.</summary>
+    [HttpDelete("{id:int}/ignorar")]
+    public async Task<IActionResult> Designorar(int id)
+    {
+        var m = await _db.CafeExtractoMovimientos.FirstOrDefaultAsync(x => x.Id == id);
+        if (m is null) return NotFound();
+        m.IgnoradoAt = null;
+        m.IgnoradoPor = null;
+        m.IgnoradoMotivo = null;
         await _db.SaveChangesAsync();
         return Ok();
     }
