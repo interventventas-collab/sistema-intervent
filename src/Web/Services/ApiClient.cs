@@ -4278,7 +4278,7 @@ public class ApiClient
         string? Mensaje, bool AplicadoOk, DateTime? AplicadoAt, DateTime CreatedAt);
     public record PisoMasivoResumen(
         string? RunId, int Total, int Suben, int YaOk, int NoConfiable, int SinCosto,
-        int SinBase, int Error, int Aplicadas, int ErroresAplicar, int SubenAplicables,
+        int SinBase, int Error, int Aplicadas, int ErroresAplicar, int SubenAplicables, int APerdida,
         decimal SumaHoy, decimal SumaNueva, List<PisoMasivoDetalle> Detalles);
 
     // Lanza la vista previa en background. NO toca precios. Devuelve runId + progressId.
@@ -4310,10 +4310,11 @@ public class ApiClient
     }
 
     // Aplica SOLO las filas SUBE+confiables: pushea precios REALES a MeLi. Devuelve progressId.
-    public async Task<string?> PisoMasivoAplicarAsync(string runId)
+    // incluirPerdida=false (default): NO toca las que hoy están a pérdida (margen < 0), quedan para después.
+    public async Task<string?> PisoMasivoAplicarAsync(string runId, bool incluirPerdida = false)
     {
         await SetAuthHeaderAsync();
-        var resp = await _http.PostAsync($"/api/meli/items/piso-masivo/aplicar?runId={Uri.EscapeDataString(runId)}", null);
+        var resp = await _http.PostAsync($"/api/meli/items/piso-masivo/aplicar?runId={Uri.EscapeDataString(runId)}&incluirPerdida={(incluirPerdida ? "true" : "false")}", null);
         if (!resp.IsSuccessStatusCode) { await ThrowIfErrorAsync(resp); return null; }
         var doc = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
         return doc.TryGetProperty("progressId", out var pid) ? pid.GetString()

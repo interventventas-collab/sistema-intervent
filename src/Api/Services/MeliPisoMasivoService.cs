@@ -186,12 +186,15 @@ public class MeliPisoMasivoService
 
     /// <summary>Aplica lo previsualizado: solo las filas SUBE + confiables aún no aplicadas.
     /// Setea objetivo de ganancia + prende precio/stock y pushea con el motor real (con candado y piso).</summary>
-    public async Task RunApplyAsync(string runId, string progressId, CancellationToken ct)
+    public async Task RunApplyAsync(string runId, string progressId, bool incluirPerdida, CancellationToken ct)
     {
-        // Solo las sanas: precio nuevo dentro de rango. Las "truchas" (precio > tope, por costo roto) se saltean.
+        // Solo las sanas: precio nuevo dentro de rango (las "truchas" > tope, por costo roto, se saltean).
+        // Y salvo que incluirPerdida=true, se saltean también las que hoy están A PÉRDIDA (margen < 0):
+        // esas tienen el salto de precio más brusco y conviene revisarlas aparte antes de tocarlas.
         var pendientes = await _db.MeliPisoMasivoResultados
             .Where(r => r.RunId == runId && r.Accion == "SUBE" && r.Confiable && r.AplicadoOk == null
-                     && r.PrecioNuevo != null && r.PrecioNuevo <= TopePrecioSeguro)
+                     && r.PrecioNuevo != null && r.PrecioNuevo <= TopePrecioSeguro
+                     && (incluirPerdida || r.MargenActual == null || r.MargenActual >= 0))
             .OrderBy(r => r.Id)
             .ToListAsync(ct);
 
@@ -199,10 +202,14 @@ public class MeliPisoMasivoService
         int saltadasTruchas = await _db.MeliPisoMasivoResultados
             .CountAsync(r => r.RunId == runId && r.Accion == "SUBE" && r.Confiable && r.AplicadoOk == null
                           && (r.PrecioNuevo == null || r.PrecioNuevo > TopePrecioSeguro), ct);
+        // Cuántas se dejan para después por estar a pérdida (solo cuando NO se piden incluir).
+        int saltadasPerdida = incluirPerdida ? 0 : await _db.MeliPisoMasivoResultados
+            .CountAsync(r => r.RunId == runId && r.Accion == "SUBE" && r.Confiable && r.AplicadoOk == null
+                          && r.PrecioNuevo != null && r.PrecioNuevo <= TopePrecioSeguro && r.MargenActual < 0, ct);
 
         _progress.Update(progressId, p => { p.TotalItemsFound = pendientes.Count; p.CurrentStep = "Aplicando…"; });
-        _logger.LogWarning("[PisoMasivo] Aplicar {Run}: {N} publicaciones ({S} salteadas por precio disparatado)",
-            runId, pendientes.Count, saltadasTruchas);
+        _logger.LogWarning("[PisoMasivo] Aplicar {Run}: {N} publicaciones ({T} truchas, {P} a pérdida salteadas)",
+            runId, pendientes.Count, saltadasTruchas, saltadasPerdida);
 
         int hechos = 0, ok = 0, err = 0;
         foreach (var r in pendientes)
@@ -256,9 +263,10 @@ public class MeliPisoMasivoService
             await Task.Delay(ThrottleMs, ct);
         }
 
-        var resumen = saltadasTruchas > 0
-            ? $"Aplicado: {ok} publicaciones actualizadas, {err} con error. {saltadasTruchas} salteadas por precio disparatado (revisar costo)."
-            : $"Aplicado: {ok} publicaciones actualizadas, {err} con error (de {pendientes.Count}).";
+        var extra = "";
+        if (saltadasPerdida > 0) extra += $" {saltadasPerdida} a pérdida quedaron para después.";
+        if (saltadasTruchas > 0) extra += $" {saltadasTruchas} salteadas por precio disparatado.";
+        var resumen = $"Aplicado: {ok} publicaciones actualizadas, {err} con error.{extra}";
         _progress.Update(progressId, p => { p.ItemsSynced = hechos; p.Percentage = 100; });
         _progress.Complete(progressId, resumen);
         _logger.LogWarning("[PisoMasivo] Aplicar {Run} COMPLETO — {Resumen}", runId, resumen);

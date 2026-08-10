@@ -2865,7 +2865,7 @@ public class MeliController : ControllerBase
 
     public record PisoMasivoResumen(
         string RunId, int Total, int Suben, int YaOk, int NoConfiable, int SinCosto, int SinBase, int Error,
-        int Aplicadas, int ErroresAplicar, int SubenAplicables,
+        int Aplicadas, int ErroresAplicar, int SubenAplicables, int APerdida,
         decimal? SumaHoy, decimal? SumaNueva,
         List<MeliPisoMasivoResultado> Detalles);
 
@@ -2896,7 +2896,7 @@ public class MeliController : ControllerBase
         var ultimoRunId = await db.MeliPisoMasivoResultados.AsNoTracking()
             .OrderByDescending(r => r.Id).Select(r => r.RunId).FirstOrDefaultAsync(ct);
         if (string.IsNullOrWhiteSpace(ultimoRunId))
-            return Ok(new PisoMasivoResumen(null, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0m, 0m, new List<MeliPisoMasivoResultado>()));
+            return Ok(new PisoMasivoResumen(null, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0m, 0m, new List<MeliPisoMasivoResultado>()));
         return Ok(await BuildPisoResumenAsync(db, ultimoRunId, accion, 0, take, ct));
     }
 
@@ -2915,8 +2915,10 @@ public class MeliController : ControllerBase
         var sumaNueva = await suben.SumAsync(r => (decimal?)r.PrecioNuevo, ct);
         int aplicadas = await suben.CountAsync(r => r.AplicadoOk == true, ct);
         int erroresAplicar = await suben.CountAsync(r => r.AplicadoOk == false, ct);
-        // "Aplicables" = las sanas que SÍ se van a tocar (confiables y precio dentro de rango; las truchas se saltean).
-        int subenAplicables = await suben.CountAsync(r => r.Confiable && r.PrecioNuevo != null && r.PrecioNuevo <= 2000000m, ct);
+        // "A pérdida" = SUBE sanas que hoy venden bajo costo (margen < 0). Se dejan para revisar aparte.
+        int aPerdida = await suben.CountAsync(r => r.Confiable && r.PrecioNuevo != null && r.PrecioNuevo <= 2000000m && r.MargenActual < 0, ct);
+        // "Aplicables" (tanda gentil por defecto) = sanas, precio en rango y NO a pérdida (margen >= 0).
+        int subenAplicables = await suben.CountAsync(r => r.Confiable && r.PrecioNuevo != null && r.PrecioNuevo <= 2000000m && (r.MargenActual == null || r.MargenActual >= 0), ct);
 
         var detQ = baseQ;
         if (!string.IsNullOrWhiteSpace(accion))
@@ -2927,12 +2929,12 @@ public class MeliController : ControllerBase
 
         return new PisoMasivoResumen(runId,
             counts.Sum(x => x.N), C("SUBE"), C("YA_OK"), C("NO_CONFIABLE"), C("SIN_COSTO"), C("SIN_BASE"), C("ERROR"),
-            aplicadas, erroresAplicar, subenAplicables, sumaHoy ?? 0m, sumaNueva ?? 0m, detalles);
+            aplicadas, erroresAplicar, subenAplicables, aPerdida, sumaHoy ?? 0m, sumaNueva ?? 0m, detalles);
     }
 
     /// <summary>Aplica lo previsualizado (solo SUBE + confiables no aplicadas). Devuelve progressId.</summary>
     [HttpPost("items/piso-masivo/aplicar")]
-    public IActionResult PisoMasivoAplicar([FromQuery] string runId)
+    public IActionResult PisoMasivoAplicar([FromQuery] string runId, [FromQuery] bool incluirPerdida = false)
     {
         if (string.IsNullOrWhiteSpace(runId)) return BadRequest(new { error = "Falta runId." });
         var progressId = _syncProgress.StartSync("Aplicando piso masivo");
@@ -2943,7 +2945,7 @@ public class MeliController : ControllerBase
             {
                 using var scope = scopeFactory.CreateScope();
                 var svc = scope.ServiceProvider.GetRequiredService<MeliPisoMasivoService>();
-                await svc.RunApplyAsync(runId, progressId, CancellationToken.None);
+                await svc.RunApplyAsync(runId, progressId, incluirPerdida, CancellationToken.None);
             }
             catch (Exception ex)
             {

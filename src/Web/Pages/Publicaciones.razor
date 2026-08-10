@@ -3421,14 +3421,25 @@
                         <p class="text-muted">Ninguna está por debajo del @(pisoMasivoGanancia.ToString("0.#"))% — no hay nada que subir. 🎉</p>
                     }
 
+                    @if (!pisoMasivoConfirmando && r.APerdida > 0)
+                    {
+                        <label style="display:flex; align-items:flex-start; gap:0.5rem; margin-top:0.9rem; padding:0.6rem; background:#fff7ed; border:1px solid #fdba74; border-radius:8px; cursor:pointer;">
+                            <input type="checkbox" @bind="pisoMasivoIncluirPerdida" style="margin-top:0.2rem; width:1.1rem; height:1.1rem; cursor:pointer;" />
+                            <span style="font-size:0.85rem; color:#7c2d12;">
+                                Incluir también las <b>@r.APerdida que hoy están a pérdida</b> (venden bajo costo → saltos de precio grandes).
+                                <span style="display:block; color:#9a3412; font-size:0.78rem;">Por defecto quedan afuera para revisarlas con calma. Tildá solo si querés meterlas ahora.</span>
+                            </span>
+                        </label>
+                    }
+
                     @if (pisoMasivoConfirmando)
                     {
                         <div style="background:#fef2f2; border:2px solid #dc2626; border-radius:8px; padding:0.9rem; margin-top:1rem;">
                             <p style="margin:0 0 0.7rem; color:#991b1b; font-weight:700;">
-                                ⚠ Esto cambia precios REALES en MercadoLibre de @r.SubenAplicables publicaciones. ¿Seguro?
-                                @if (r.Suben > r.SubenAplicables)
+                                ⚠ Esto cambia precios REALES en MercadoLibre de @PisoAAplicar publicaciones. ¿Seguro?
+                                @if (r.Suben > PisoAAplicar)
                                 {
-                                    <span style="display:block; font-weight:400; font-size:0.8rem; margin-top:0.3rem;">(Las @(r.Suben - r.SubenAplicables) de precio disparatado —costo trucho— se saltean solas.)</span>
+                                    <span style="display:block; font-weight:400; font-size:0.8rem; margin-top:0.3rem;">(Quedan afuera @(r.Suben - PisoAAplicar): las de precio disparatado @(pisoMasivoIncluirPerdida ? "" : "y las que están a pérdida ")se saltean.)</span>
                                 }
                             </p>
                             <div style="display:flex; gap:0.6rem; justify-content:flex-end;">
@@ -3457,10 +3468,10 @@
                 else if (pisoMasivoFase == "resultado" && pisoMasivoResumen is not null)
                 {
                     <button class="btn btn-secondary" @onclick="CerrarPisoMasivo">Cerrar</button>
-                    @if (pisoMasivoResumen.SubenAplicables > 0 && !pisoMasivoConfirmando)
+                    @if (PisoAAplicar > 0 && !pisoMasivoConfirmando)
                     {
                         <button class="btn" style="background:#16a34a; color:white; border:none;" @onclick="() => pisoMasivoConfirmando = true">
-                            Aplicar a las @pisoMasivoResumen.SubenAplicables que suben
+                            Aplicar a las @PisoAAplicar que suben
                         </button>
                     }
                 }
@@ -7666,9 +7677,14 @@
     private string? pisoMasivoRunId;
     private ApiClient.PisoMasivoResumen? pisoMasivoResumen;
     private bool pisoMasivoConfirmando;
+    private bool pisoMasivoIncluirPerdida;   // tilde: incluir las que hoy están a pérdida (default NO)
     private string pisoMasivoProgresoTitulo = "Calculando la vista previa...";
     private string? pisoMasivoStep;
     private int pisoMasivoPct;
+
+    // Cuántas se van a aplicar según el tilde: sanas gentiles + (a pérdida si se pidió incluirlas).
+    private int PisoAAplicar => pisoMasivoResumen == null ? 0
+        : pisoMasivoResumen.SubenAplicables + (pisoMasivoIncluirPerdida ? pisoMasivoResumen.APerdida : 0);
 
     private void AbrirPisoMasivo()
     {
@@ -7680,6 +7696,7 @@
         pisoMasivoRunId = null;
         pisoMasivoResumen = null;
         pisoMasivoConfirmando = false;
+        pisoMasivoIncluirPerdida = false;
         pisoMasivoStep = null;
         pisoMasivoPct = 0;
         StateHasChanged();
@@ -7770,7 +7787,7 @@
         pisoMasivoConfirmando = false;
         try
         {
-            var progressId = await Api.PisoMasivoAplicarAsync(pisoMasivoRunId);
+            var progressId = await Api.PisoMasivoAplicarAsync(pisoMasivoRunId, pisoMasivoIncluirPerdida);
             pisoMasivoProgresoTitulo = "Aplicando y pusheando precios a MercadoLibre...";
             pisoMasivoFase = "progreso";
             pisoMasivoPct = 0;
