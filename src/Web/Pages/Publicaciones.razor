@@ -3376,14 +3376,36 @@
                         {
                             <p style="font-size:0.8rem; color:#6b7280; margin:0 0 0.4rem;">Mostrando las primeras @r.Detalles.Count de @r.Suben.</p>
                         }
-                        <div style="max-height:300px; overflow:auto; border:1px solid #e5e7eb; border-radius:8px;">
+                        <p style="font-size:0.75rem; color:#6b7280; margin:0 0 0.4rem;">ℹ El estado (activa/pausada) <b>NO cambia</b> al aplicar — solo se actualiza el precio.</p>
+                        <div style="max-height:320px; overflow:auto; border:1px solid #e5e7eb; border-radius:8px;">
                             <table class="data-table" style="font-size:0.8rem;">
-                                <thead><tr><th>Publicación</th><th style="text-align:right;">Precio hoy</th><th></th><th style="text-align:right;">Precio nuevo</th><th style="text-align:right;">Margen nuevo</th></tr></thead>
+                                <thead><tr><th>Estado</th><th>Publicación</th><th style="text-align:right;">Precio hoy</th><th></th><th style="text-align:right;">Precio nuevo</th><th style="text-align:right;">Margen</th></tr></thead>
                                 <tbody>
                                     @foreach (var d in r.Detalles)
                                     {
                                         <tr>
-                                            <td style="max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@d.Titulo</td>
+                                            <td>
+                                                @if (d.Status == "active")
+                                                {
+                                                    <span style="background:#dcfce7; color:#166534; padding:1px 6px; border-radius:6px; font-size:0.72rem; white-space:nowrap;">Activa</span>
+                                                }
+                                                else if (d.Status == "paused")
+                                                {
+                                                    <span style="background:#fef3c7; color:#92400e; padding:1px 6px; border-radius:6px; font-size:0.72rem; white-space:nowrap;">Pausada</span>
+                                                }
+                                                else
+                                                {
+                                                    <span style="background:#f3f4f6; color:#6b7280; padding:1px 6px; border-radius:6px; font-size:0.72rem; white-space:nowrap;">@d.Status</span>
+                                                }
+                                            </td>
+                                            <td style="max-width:320px;">
+                                                <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@d.Titulo</div>
+                                                <div style="font-size:0.72rem; color:#6b7280; white-space:nowrap;">
+                                                    @if (!string.IsNullOrEmpty(d.Sku)) { <span>@d.Sku · </span> }
+                                                    <span>@d.MeliItemId</span>
+                                                    <button style="padding:0 4px; font-size:0.75rem; background:none; border:none; color:#2563eb; cursor:pointer;" title="Copiar número de publicación" @onclick="() => CopiarMlaPiso(d.MeliItemId)">📋</button>
+                                                </div>
+                                            </td>
                                             <td style="text-align:right; color:#9ca3af; text-decoration:line-through;">$@((d.PrecioActual ?? 0).ToString("N0"))</td>
                                             <td style="text-align:center;">→</td>
                                             <td style="text-align:right; font-weight:700; color:#15803d;">$@((d.PrecioNuevo ?? 0).ToString("N0"))</td>
@@ -7690,6 +7712,18 @@
             pisoMasivoError = "No se pudo traer el último resultado: " + ex.Message;
             StateHasChanged();
         }
+    }
+
+    // Copia el número de publicación (MLA) al portapapeles.
+    private async Task CopiarMlaPiso(string? mla)
+    {
+        if (string.IsNullOrEmpty(mla)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", mla);
+            ToastService.Success($"Copiado: {mla}");
+        }
+        catch { }
     }
 
     private async Task LanzarPisoMasivoPreview()
