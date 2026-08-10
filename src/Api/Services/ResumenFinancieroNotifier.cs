@@ -61,13 +61,14 @@ public class ResumenFinancieroNotifier
             ? "sin datos todavía"
             : $"*{shell.LastSaldo}*{shellFecha}";
 
-        // 🧾 Cheques por cubrir: EMITIDOS Aceptado/Disponible con fecha de pago (misma regla que
-        // la card del dashboard). Los vencidos/de hoy van marcados.
+        // 🧾 Cheques por cubrir: EMITIDOS Aceptado/Disponible con fecha de pago de HOY en adelante.
+        // Los vencidos (fecha de pago ya pasada) NO se listan en el resumen. Los de hoy van marcados.
         var hoy = argNow.Date;
         var cheques = await _db.CafeChequesBanco.AsNoTracking()
             .Where(c => c.Tipo == "EMITIDO"
                 && (c.Estado == "Aceptado" || c.Estado == "Disponible")
-                && c.FechaPago.HasValue)
+                && c.FechaPago.HasValue
+                && c.FechaPago.Value >= hoy)
             .OrderBy(c => c.FechaPago).ThenBy(c => c.Id)
             .Select(c => new { c.FechaPago, c.Importe, c.ContraparteNombre, c.Numero })
             .ToListAsync(ct);
@@ -81,7 +82,7 @@ public class ResumenFinancieroNotifier
         else
         {
             var total = cheques.Sum(c => c.Importe);
-            string Marca(DateTime f) => f.Date < hoy ? " ⚠️ VENCIDO" : f.Date == hoy ? " 🔴 HOY" : "";
+            string Marca(DateTime f) => f.Date == hoy ? " 🔴 HOY" : "";
             var lineasTg = cheques.Select(c => $"• {c.FechaPago:dd/MM} — {Money(c.Importe)} — {Esc(c.ContraparteNombre ?? "—")} (Nº {Esc(c.Numero)}){Marca(c.FechaPago!.Value)}");
             var lineasWa = cheques.Select(c => $"• {c.FechaPago:dd/MM} — {Money(c.Importe)} — {c.ContraparteNombre ?? "—"} (Nº {c.Numero}){Marca(c.FechaPago!.Value)}").ToList();
             chequesTg = $"🧾 Cheques por cubrir: <b>{cheques.Count}</b> — total <b>{Money(total)}</b>\n"
