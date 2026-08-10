@@ -1496,6 +1496,15 @@
                         title="Ordena TODAS las paradas en una sola ruta óptima (según el tránsito)">
                     🚦 @(routeBusy ? "…" : "Ruta única")
                 </button>
+                @* Ver/ocultar las líneas ya calculadas (aparece cuando hay recorridos). Tocando una línea se ve su distancia. *@
+                @if (rutasResumen.Count > 0)
+                {
+                    <button class="btn" style="font-size:0.9rem; font-weight:800; background:@(lineasOn ? "#475569" : "#0d9488"); color:#fff; border:none; padding:0.6rem 1.2rem; border-radius:999px; box-shadow:0 3px 14px rgba(0,0,0,0.35); cursor:pointer;"
+                            @onclick="ToggleLineas"
+                            title="Mostrar u ocultar las líneas de los recorridos. Tocá una línea para ver la distancia del tramo y el total de la ruta.">
+                        @(lineasOn ? "🙈 Ocultar líneas" : "👁 Ver líneas")
+                    </button>
+                }
             </div>
         }
         @* ── Panel "⚡ Optimizar recorridos": aparece al tocar el botón, con una tarjeta por herramienta ── *@
@@ -3726,10 +3735,35 @@
                 // Tramos de la ruta (una ruta larga viene partida). Respaldo: la línea única vieja.
                 segments = (r.Segments?.Count ?? 0) > 0 ? r.Segments.ToArray() : new[] { r.EncodedPolyline! },
                 // Texto del cartelito flotante sobre la línea (tiempo total + km), estilo Google Maps.
-                label = $"{FormatoDuracion(r.DurationSeconds)} · {(r.DistanceMeters / 1000.0):0.#} km"
+                label = $"{FormatoDuracion(r.DurationSeconds)} · {(r.DistanceMeters / 1000.0):0.#} km",
+                // Cada tramo (parada→parada) con su línea propia: deja tocar el mapa y ver la distancia de ese tramo.
+                legs = (r.Legs ?? new()).Select(l => new { meters = l.Meters, seconds = l.Seconds, encoded = l.Encoded, from = l.From, to = l.To }).ToArray()
             })
             .ToArray();
         await JS.InvokeVoidAsync("mapeoFlex.drawRoutes", new object[] { paraDibujar });
+        lineasOn = true;
+    }
+
+    // ── Botón "Ver líneas": prende/apaga en el mapa las líneas de los recorridos ya calculados ──
+    // (sin volver a optimizar). Útil si las líneas se borraron al asignar un chofer o mover algo.
+    private bool lineasOn = false;
+    private async Task ToggleLineas()
+    {
+        if (lineasOn)
+        {
+            await JS.InvokeVoidAsync("mapeoFlex.clearRoutes");
+            lineasOn = false;
+        }
+        else
+        {
+            if (rutasResumen.Count == 0)
+            {
+                ToastService.Info("Todavía no hay recorridos calculados. Apretá \"Optimizar rutas\" y después vas a poder ver y ocultar las líneas.");
+                return;
+            }
+            await PintarRutas();
+        }
+        StateHasChanged();
     }
 
     // Chip "TODO": si está apagado, se ocultan las paradas todavía SIN asignar (y el Flex crudo),

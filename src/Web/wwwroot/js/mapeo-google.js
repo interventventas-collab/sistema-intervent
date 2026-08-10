@@ -240,6 +240,7 @@ window.mapeoFlex = (function () {
     let zoneVertexMarkers = [];   // puntitos que se ven en cada esquina tocada (feedback visual)
     let routeLines = [];          // líneas de ruta dibujadas (una por repartidor)
     let routeLabels = [];         // cartelitos flotantes de tiempo/km sobre cada línea (estilo Google Maps)
+    let routeInfo = null;         // popup que se abre al tocar una línea (muestra distancia del tramo + total)
     let trafficLayer = null;      // capa de tráfico de Google (rojo/amarillo/verde en las calles)
     let lastFitStops = -1; // cuántas paradas (sin contar el punto de partida) había en el último auto-encuadre
 
@@ -762,33 +763,68 @@ window.mapeoFlex = (function () {
                 ov.onRemove = function () { if (this._div) { this._div.remove(); this._div = null; } };
                 return ov;
             };
+            // Popup reutilizable para mostrar la distancia al tocar la línea.
+            if (!routeInfo) routeInfo = new google.maps.InfoWindow();
+            const fmtKm = (m) => (m / 1000).toFixed(1).replace('.', ',');
+            const fmtMin = (s) => {
+                const min = Math.round(s / 60);
+                if (min < 60) return min + ' min';
+                const h = Math.floor(min / 60), mm = min % 60;
+                return mm ? (h + 'h ' + mm + 'min') : (h + 'h');
+            };
+
             for (const r of routes) {
                 if (!r) continue;
                 const color = r.color || '#1d4ed8';
-                // Normalizamos: una ruta puede venir en varios tramos (rutas de >25 paradas).
-                const encodeds = (r.segments && r.segments.length) ? r.segments : (r.encoded ? [r.encoded] : []);
+                const total = r.label || '';
                 const allPts = [];
-                for (const enc of encodeds) {
-                    if (!enc) continue;
-                    const path = google.maps.geometry.encoding.decodePath(enc);
-                    // Casing (borde blanco) por debajo, como la ruta azul de Google Maps:
-                    // hace que la línea de color resalte sobre las calles y el tráfico.
+                // Tramos (parada→parada) con su propia línea codificada: nos deja tocar cada tramo por separado.
+                const legs = (r.legs || []).filter(l => l && l.encoded);
+
+                // Dibuja una línea (casing blanco + color con flechas) y le engancha el click.
+                const dibujarLinea = (path, onClick) => {
                     routeLines.push(new google.maps.Polyline({
                         path: path, map: map,
                         strokeColor: '#ffffff', strokeOpacity: 0.9, strokeWeight: 9, zIndex: 4
                     }));
-                    routeLines.push(new google.maps.Polyline({
-                        path: path, map: map,
+                    const line = new google.maps.Polyline({
+                        path: path, map: map, clickable: true,
                         strokeColor: color, strokeOpacity: 0.95, strokeWeight: 5, zIndex: 5,
                         // Flechas blancas cada ~110px indicando el sentido de circulación.
                         icons: [{ icon: Object.assign({}, flecha, { fillColor: color }), offset: '0', repeat: '110px' }]
-                    }));
+                    });
+                    if (onClick) line.addListener('click', onClick);
+                    routeLines.push(line);
                     for (const pt of path) allPts.push(pt);
+                };
+
+                if (legs.length) {
+                    // Modo detallado: una línea por tramo, cada una clickeable con su distancia.
+                    for (const leg of legs) {
+                        const path = google.maps.geometry.encoding.decodePath(leg.encoded);
+                        const titulo = 'Tramo ' + (leg.from || '') + ' → ' + (leg.to || '');
+                        const html = '<div style="font-size:13px; line-height:1.45; font-family:system-ui,sans-serif;">' +
+                            '<div style="font-weight:800; color:' + color + ';">' + titulo + '</div>' +
+                            '<div style="font-size:15px; font-weight:800;">' + fmtKm(leg.meters) + ' km · ' + fmtMin(leg.seconds) + '</div>' +
+                            (total ? '<div style="margin-top:5px; padding-top:5px; border-top:1px solid #eee; color:#6b7280;">Ruta completa: <strong>' + total + '</strong></div>' : '') +
+                            '</div>';
+                        dibujarLinea(path, (e) => { routeInfo.setContent(html); routeInfo.setPosition(e.latLng); routeInfo.open(map); });
+                    }
+                } else {
+                    // Respaldo: sin tramos, dibujamos la línea entera (una o varias) y al tocarla mostramos el total.
+                    const encodeds = (r.segments && r.segments.length) ? r.segments : (r.encoded ? [r.encoded] : []);
+                    const htmlTotal = total ? '<div style="font-size:13px; font-family:system-ui,sans-serif;"><div style="font-weight:800; color:' + color + ';">Ruta completa</div><div style="font-size:15px; font-weight:800;">' + total + '</div></div>' : null;
+                    for (const enc of encodeds) {
+                        if (!enc) continue;
+                        const path = google.maps.geometry.encoding.decodePath(enc);
+                        dibujarLinea(path, htmlTotal ? ((e) => { routeInfo.setContent(htmlTotal); routeInfo.setPosition(e.latLng); routeInfo.open(map); }) : null);
+                    }
                 }
+
                 // Cartelito con el tiempo/km, posado en el medio del recorrido.
-                if (r.label && allPts.length) {
+                if (total && allPts.length) {
                     const mid = allPts[Math.floor(allPts.length / 2)];
-                    const lbl = makeLabel(mid, r.label, color);
+                    const lbl = makeLabel(mid, total, color);
                     lbl.setMap(map);
                     routeLabels.push(lbl);
                 }
@@ -800,6 +836,7 @@ window.mapeoFlex = (function () {
             routeLines = [];
             for (const lb of routeLabels) lb.setMap(null);
             routeLabels = [];
+            if (routeInfo) routeInfo.close();
         },
 
         // ── Ver una FOTO (snapshot) de un día anterior sobre el mapa (modo SOLO MIRAR) ──

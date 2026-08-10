@@ -169,7 +169,7 @@ public class GoogleRoutesService
         }
     }
 
-    public record RouteLeg(int DurationSeconds, int DistanceMeters);
+    public record RouteLeg(int DurationSeconds, int DistanceMeters, string? EncodedPolyline = null);
     public record RouteFullResult(int DurationSeconds, int DistanceMeters, List<string> Segments, List<RouteLeg> Legs);
 
     /// <summary>
@@ -245,7 +245,7 @@ public class GoogleRoutesService
             http.Timeout = TimeSpan.FromSeconds(20);
             using var req = new HttpRequestMessage(HttpMethod.Post, "https://routes.googleapis.com/directions/v2:computeRoutes");
             req.Headers.Add("X-Goog-Api-Key", ApiKey);
-            req.Headers.Add("X-Goog-FieldMask", "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.legs.duration,routes.legs.distanceMeters");
+            req.Headers.Add("X-Goog-FieldMask", "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.legs.duration,routes.legs.distanceMeters,routes.legs.polyline.encodedPolyline");
             req.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
 
             using var resp = await http.SendAsync(req, ct);
@@ -277,7 +277,9 @@ public class GoogleRoutesService
                 {
                     int ld = leg.TryGetProperty("duration", out var lde) && lde.ValueKind == JsonValueKind.String ? SegundosDe(lde) : 0;
                     int lm = leg.TryGetProperty("distanceMeters", out var lme) && lme.ValueKind == JsonValueKind.Number ? lme.GetInt32() : 0;
-                    legs.Add(new RouteLeg(ld, lm));
+                    string? lpoly = leg.TryGetProperty("polyline", out var lpl) && lpl.TryGetProperty("encodedPolyline", out var lenc)
+                        ? lenc.GetString() : null;
+                    legs.Add(new RouteLeg(ld, lm, lpoly));
                 }
             }
 

@@ -738,7 +738,7 @@ public class MapeoStopsController : ControllerBase
         return Ok(new { optimized, optimizedByGoogle });
     }
 
-    public record RutaLegDto(int Seconds, int Meters);
+    public record RutaLegDto(int Seconds, int Meters, string? Encoded, string From, string To);
     public record RutaOverviewDto(string Key, string Label, string Color, int? DriverId,
         int DurationSeconds, int DistanceMeters, string? EncodedPolyline, int StopCount,
         List<string> Segments, List<RutaLegDto> Legs);
@@ -783,7 +783,19 @@ public class MapeoStopsController : ControllerBase
             string label = single ? "Ruta única" : (drv?.Nombre ?? "Sin repartidor");
             string color = single ? "#1d4ed8" : (string.IsNullOrEmpty(drv?.Color) ? "#6b7280" : drv!.Color!);
             var segments = rr?.Segments ?? new List<string>();
-            var legs = rr?.Legs?.Select(l => new RutaLegDto(l.DurationSeconds, l.DistanceMeters)).ToList() ?? new List<RutaLegDto>();
+            // Nombres de cada punto EN ORDEN de visita: "Salida" (si hay punto de partida) + el número de cada
+            // parada (1, 2, 3…). Sirve para rotular cada tramo ("de la 2 a la 3") cuando se toca la línea.
+            var nombresPuntos = new List<string>();
+            if (startLat.HasValue && startLng.HasValue) nombresPuntos.Add("Salida");
+            for (int i = 0; i < ordered.Count; i++) nombresPuntos.Add((i + 1).ToString());
+            var rawLegs = rr?.Legs ?? new List<GoogleRoutesService.RouteLeg>();
+            var legs = new List<RutaLegDto>();
+            for (int k = 0; k < rawLegs.Count; k++)
+            {
+                string from = k < nombresPuntos.Count ? nombresPuntos[k] : "";
+                string to = (k + 1) < nombresPuntos.Count ? nombresPuntos[k + 1] : "";
+                legs.Add(new RutaLegDto(rawLegs[k].DurationSeconds, rawLegs[k].DistanceMeters, rawLegs[k].EncodedPolyline, from, to));
+            }
             result.Add(new RutaOverviewDto(
                 did?.ToString() ?? "none", label, color, did,
                 rr?.DurationSeconds ?? 0, rr?.DistanceMeters ?? 0,

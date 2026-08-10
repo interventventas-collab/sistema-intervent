@@ -163,6 +163,11 @@ public class RutaLegDto
 {
     public int Seconds { get; set; }
     public int Meters { get; set; }
+    // Línea codificada de ESTE tramo (para dibujarlo clickeable y mostrar su distancia al tocarlo).
+    public string? Encoded { get; set; }
+    // De qué punto a qué punto va el tramo (ej: "Salida"→"1", "2"→"3").
+    public string From { get; set; } = "";
+    public string To { get; set; } = "";
 }
 
 public class RutaOverviewDto
