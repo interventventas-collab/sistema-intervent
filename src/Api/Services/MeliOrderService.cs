@@ -328,6 +328,10 @@ public class MeliOrderService
     public const string CfgPostventaMensajes = "cafe.postventa.mensajes";  // lista de saludos que rotan (JSON)
     public const string CfgPostventaOpciones = "cafe.postventa.opciones";
     public const string CfgPostventaItems = "cafe.postventa.items";
+    // Si está en "true" (default), el mensaje de molienda SOLO se manda cuando el café es MOLIDO.
+    // A quien compra grano entero no se le pregunta la molienda (no tiene sentido). Reversible
+    // desde AppSettings poniendo el valor en "false".
+    public const string CfgPostventaSoloMolido = "cafe.postventa.solo_molido";
 
     /// <summary>Saludos por defecto: se elige uno AL AZAR en cada venta para que no suene repetitivo
     /// (y MeLi no lo lea como spam). Debajo va siempre la lista de moliendas.</summary>
@@ -345,7 +349,7 @@ public class MeliOrderService
         "Molido prensa francesa", "Molido cafetera italiana", "Molido a la turca", "Mini express"
     };
 
-    public record ConfigPostventaCafe(bool Enabled, List<string> Mensajes, List<string> Opciones, List<string> Items);
+    public record ConfigPostventaCafe(bool Enabled, List<string> Mensajes, List<string> Opciones, List<string> Items, bool SoloMolido);
 
     /// <summary>Lee la config del respondedor post-venta de café desde AppSettings, con defaults.</summary>
     public async Task<ConfigPostventaCafe> LeerConfigPostventaAsync()
@@ -374,7 +378,84 @@ public class MeliOrderService
         {
             try { items = JsonSerializer.Deserialize<List<string>>(it) ?? new(); } catch { }
         }
-        return new ConfigPostventaCafe(enabled, mensajes, opciones, items);
+        // "Solo molido" viene activado por defecto: solo se avisa si el café es molido.
+        bool soloMolido = !vals.TryGetValue(CfgPostventaSoloMolido, out var sm) || sm != "false";
+        return new ConfigPostventaCafe(enabled, mensajes, opciones, items, soloMolido);
+    }
+
+    // ─────────────── Detección de molienda (grano entero vs molido) ───────────────
+    // El café se vende como publicaciones separadas por molienda; la molienda queda escrita en el
+    // TÍTULO (o en los atributos de la variación, cuando la venta trae variación). No hay un dato
+    // estructurado confiable, así que la deducimos por palabras clave.
+
+    public enum MoliendaTipo { Molido, Granos, Desconocido }
+
+    // Palabras que delatan que el café va MOLIDO (por el método de preparación).
+    // OJO: "italiano"/"italiana" NO va acá: es un TIPO DE TUESTE (Tostado Italiano), no una molienda,
+    // y aparece también en publicaciones de grano entero.
+    private static readonly string[] _kwMolido =
+    {
+        "molido", "molida", "filtro", "melita", "goteo",
+        "express", "expres", "expresso", "espresso", "expreso", "espreso",
+        "moka", "moca", "napolitana", "prensa", "embolo", "émbolo",
+        "bodum", "capsula", "cápsula", "turca", "aeropress", "chemex", "v60", "cafetera"
+    };
+    // Palabras de grano ENTERO.
+    private static readonly string[] _kwGrano = { "grano", "granos" };
+
+    /// <summary>Clasifica por la VARIANTE que eligió el comprador (el dato más confiable).
+    /// Acá GANA el grano: algunas variantes vienen escritas "Molido: En Grano" — donde "Molido" es
+    /// el nombre del selector y "En Grano" es lo que realmente eligió — así que si aparece "grano"
+    /// es grano entero, aunque el texto también diga "molido".</summary>
+    public static MoliendaTipo ClasificarPorVariante(string? variationAttrs)
+    {
+        var t = (variationAttrs ?? "").ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(t)) return MoliendaTipo.Desconocido;
+        if (t.Contains("grano")) return MoliendaTipo.Granos;
+        foreach (var k in _kwMolido) if (t.Contains(k)) return MoliendaTipo.Molido;
+        return MoliendaTipo.Desconocido;
+    }
+
+    /// <summary>Clasifica por el TÍTULO de la publicación (cuando la venta no trae variante porque
+    /// cada molienda es una publicación aparte, agrupadas por familia en MeLi). Acá GANA el molido:
+    /// muchas publis de molido llevan igual "en grano" en el nombre del producto
+    /// (ej "Café En Grano Premium ... Molido Filtro"), por eso primero buscamos señales de molido.</summary>
+    public static MoliendaTipo ClasificarPorTitulo(string? titulo)
+    {
+        var t = (titulo ?? "").ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(t)) return MoliendaTipo.Desconocido;
+        foreach (var k in _kwMolido) if (t.Contains(k)) return MoliendaTipo.Molido;
+        if (t.Contains("grano")) return MoliendaTipo.Granos;
+        return MoliendaTipo.Desconocido;
+    }
+
+    /// <summary>Decide la molienda de UNA fila de venta: primero la variante elegida por el comprador
+    /// (si vino y es concluyente), y si no, cae al título de la publicación.</summary>
+    private async Task<MoliendaTipo> MoliendaDeOrdenAsync(MeliOrder o, CancellationToken ct)
+    {
+        if (!string.IsNullOrEmpty(o.VariationId))
+        {
+            var attrs = await _db.MeliItems
+                .Where(i => i.MeliItemId == o.ItemId && i.VariationId == o.VariationId)
+                .Select(i => i.VariationAttributes).FirstOrDefaultAsync(ct);
+            var porVar = ClasificarPorVariante(attrs);
+            if (porVar != MoliendaTipo.Desconocido) return porVar;
+        }
+        return ClasificarPorTitulo(o.ItemTitle);
+    }
+
+    /// <summary>Devuelve true si TODAS las filas de café elegidas de esta venta son grano entero
+    /// (y por lo tanto NO hay que preguntar la molienda). Si hay al menos una molida o desconocida,
+    /// devuelve false (mejor preguntar ante la duda). Respeta la config: si "solo molido" está
+    /// apagado, nunca filtra.</summary>
+    private async Task<bool> EsSoloGranoAsync(List<MeliOrder> rows, ConfigPostventaCafe cfg, CancellationToken ct)
+    {
+        if (!cfg.SoloMolido) return false;
+        var relevantes = rows.Where(o => cfg.Items.Contains(o.ItemId)).ToList();
+        if (relevantes.Count == 0) return false;
+        foreach (var o in relevantes)
+            if (await MoliendaDeOrdenAsync(o, ct) != MoliendaTipo.Granos) return false;
+        return true; // todas grano entero
     }
 
     /// <summary>Elige un saludo al azar de la lista (o vacío si no hay ninguno).</summary>
@@ -468,6 +549,15 @@ public class MeliOrderService
         if (any.Status != "paid" && any.Status != "confirmed") return; // esperamos a que esté paga
         if (any.MeliAccount is null) return;
 
+        // Solo molido: si es café en grano entero no preguntamos la molienda. Marcamos como
+        // resuelto (sin fecha de envío) para que el barrido de respaldo no lo reintente.
+        if (await EsSoloGranoAsync(rows, cfg, ct))
+        {
+            foreach (var o in rows) o.PostventaCafeMsgSent = true;
+            await _db.SaveChangesAsync(ct);
+            return;
+        }
+
         long packId = any.PackId ?? any.MeliOrderId;
         var text = ComponerMensajePostventa(ElegirSaludo(cfg.Mensajes), cfg.Opciones);
         var (ok, _) = await SendPackMessageAsync(packId, any.MeliAccount, any.BuyerId, text);
@@ -506,12 +596,22 @@ public class MeliOrderService
         if (pendientes.Count == 0) return 0;
 
         int enviados = 0;
+        bool huboCambios = false;
         foreach (var grupo in pendientes.GroupBy(o => o.MeliOrderId))
         {
             if (enviados >= 20) break; // el resto queda para la próxima vuelta
             var lista = grupo.ToList();
             var any = lista[0];
             if (any.MeliAccount is null) continue;
+
+            // Solo molido: el grano entero se marca como resuelto sin mandar nada.
+            if (await EsSoloGranoAsync(lista, cfg, ct))
+            {
+                foreach (var o in lista) o.PostventaCafeMsgSent = true;
+                huboCambios = true;
+                continue;
+            }
+
             long packId = any.PackId ?? any.MeliOrderId;
             var text = ComponerMensajePostventa(ElegirSaludo(cfg.Mensajes), cfg.Opciones); // saludo al azar por venta
             var (ok, _) = await SendPackMessageAsync(packId, any.MeliAccount, any.BuyerId, text);
@@ -519,8 +619,9 @@ public class MeliOrderService
             var ahora = DateTime.UtcNow;
             foreach (var o in lista) { o.PostventaCafeMsgSent = true; o.PostventaCafeMsgSentAt = ahora; }
             enviados++;
+            huboCambios = true;
         }
-        if (enviados > 0) await _db.SaveChangesAsync(ct);
+        if (huboCambios) await _db.SaveChangesAsync(ct);
         return enviados;
     }
 
