@@ -4265,6 +4265,52 @@ public class ApiClient
         catch (Exception ex) { return (null, ex.Message); }
     }
 
+    // 2026-08-10: Piso de margen 50% MASIVO sobre TODAS las activas+pausadas.
+    // Flujo: 1) preview (background, no toca precios) -> runId+progressId
+    //        2) resultado (lee lo calculado, filtrable por accion)
+    //        3) aplicar (background, pushea precios REALES a MeLi) -> progressId
+    public record PisoMasivoPreviewResult(string? RunId, string? ProgressId);
+    public record PisoMasivoDetalle(
+        long Id, string? RunId, decimal GananciaPct, string? MeliItemId, int ItemDbId,
+        string? Titulo, string? Sku, string? Status,
+        decimal? Costo, decimal? PrecioBase, decimal? PrecioActual, decimal? PrecioNuevo,
+        decimal? MargenActual, decimal? MargenNuevo, bool Confiable, string? Accion,
+        string? Mensaje, bool AplicadoOk, DateTime? AplicadoAt, DateTime CreatedAt);
+    public record PisoMasivoResumen(
+        string? RunId, int Total, int Suben, int YaOk, int NoConfiable, int SinCosto,
+        int SinBase, int Error, int Aplicadas, int ErroresAplicar,
+        decimal SumaHoy, decimal SumaNueva, List<PisoMasivoDetalle> Detalles);
+
+    // Lanza la vista previa en background. NO toca precios. Devuelve runId + progressId.
+    public async Task<PisoMasivoPreviewResult?> PisoMasivoPreviewAsync(decimal ganancia, bool refrescar)
+    {
+        await SetAuthHeaderAsync();
+        var url = $"/api/meli/items/piso-masivo/preview?ganancia={ganancia.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+                + $"&estados=active,paused&refrescar={(refrescar ? "true" : "false")}";
+        var resp = await _http.PostAsync(url, null);
+        if (!resp.IsSuccessStatusCode) { await ThrowIfErrorAsync(resp); return null; }
+        return await resp.Content.ReadFromJsonAsync<PisoMasivoPreviewResult>();
+    }
+
+    // Lee el resultado ya calculado de una corrida. accion opcional filtra (SUBE, YA_OK, etc.).
+    public async Task<PisoMasivoResumen?> PisoMasivoResultadoAsync(string runId, string? accion = null, int skip = 0, int take = 200)
+    {
+        var url = $"/api/meli/items/piso-masivo/resultado?runId={Uri.EscapeDataString(runId)}&skip={skip}&take={take}";
+        if (!string.IsNullOrWhiteSpace(accion)) url += $"&accion={Uri.EscapeDataString(accion)}";
+        return await GetAsync<PisoMasivoResumen>(url);
+    }
+
+    // Aplica SOLO las filas SUBE+confiables: pushea precios REALES a MeLi. Devuelve progressId.
+    public async Task<string?> PisoMasivoAplicarAsync(string runId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsync($"/api/meli/items/piso-masivo/aplicar?runId={Uri.EscapeDataString(runId)}", null);
+        if (!resp.IsSuccessStatusCode) { await ThrowIfErrorAsync(resp); return null; }
+        var doc = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        return doc.TryGetProperty("progressId", out var pid) ? pid.GetString()
+             : (doc.TryGetProperty("ProgressId", out var pid2) ? pid2.GetString() : null);
+    }
+
     public async Task<(BulkAjusteResponse? resp, string? error)> BulkAjustePrecioAsync(BulkAjusteRequest req)
     {
         await SetAuthHeaderAsync();

@@ -194,6 +194,12 @@
                 title="Pushea stock a TODAS las publicaciones MeLi. MeLi pausa las de stock 0 y activa las con stock. Despues hay que revisar el cotejo.">
             @if (pushMasivoEnCurso) { <span>⏳ Pusheando...</span> } else { <span>🚀 PUSHEAR STOCK DE TODO A MELI</span> }
         </button>
+        @* 2026-08-10: piso de 50% de margen MASIVO sobre TODAS las activas+pausadas. Muestra vista previa primero. *@
+        <button class="btn" style="background:#16a34a; color:white; font-weight:700; border:2px solid #15803d;"
+                @onclick="AbrirPisoMasivo"
+                title="Pone piso de 50% de margen sobre TODAS las activas y pausadas. Primero muestra vista previa; no toca precios hasta que confirmes.">
+            🛡️ Piso 50% masivo (todas)
+        </button>
         <div class="sync-dropdown-wrapper">
             <button class="btn btn-primary" @onclick="() => SyncItems(null, null)" disabled="@isSyncing" style="border-radius: 6px 0 0 6px;">
                 @(isSyncing ? syncingLabel : "Sincronizar")
@@ -3277,6 +3283,164 @@
                 <button class="btn" style="background:#16a34a; color:white; border:none;" @onclick="AplicarPiso50" disabled="@(piso50Aplicando || piso50Loading || Piso50Cambian.Count == 0)">
                     @(piso50Aplicando ? "Aplicando y pusheando..." : $"✓ Confirmar y pushear ({Piso50Cambian.Count})")
                 </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* 2026-08-10: Piso de 50% de margen MASIVO sobre TODAS las activas+pausadas — 3 fases en una ventana. *@
+@if (showPisoMasivoModal)
+{
+    <div class="modal-overlay" @onclick='() => { if(pisoMasivoFase == "config" || pisoMasivoFase == "resultado") CerrarPisoMasivo(); }'>
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 820px;">
+            <div class="modal-header" style="background:#16a34a; color:white;">
+                <h3 style="margin:0;">🛡️ Piso de 50% de margen — TODAS las publicaciones</h3>
+                @if (pisoMasivoFase == "config" || pisoMasivoFase == "resultado")
+                {
+                    <button class="btn-close" @onclick="CerrarPisoMasivo" style="color:white;">&times;</button>
+                }
+            </div>
+            <div class="modal-body">
+                @* ===== FASE CONFIG ===== *@
+                @if (pisoMasivoFase == "config")
+                {
+                    <div style="background:#eff6ff; border:1px solid #2563eb; border-radius:8px; padding:0.8rem; margin-bottom:0.9rem; font-size:0.9rem; color:#1e3a5f;">
+                        <b>La vista previa NO cambia ningún precio.</b> Recién aplicás vos después de mirar los números.
+                    </div>
+
+                    <div style="margin-bottom:0.9rem;">
+                        <label style="display:block; font-weight:700; margin-bottom:0.3rem;">Margen mínimo (%)</label>
+                        <input type="number" min="1" max="500" step="1" @bind="pisoMasivoGanancia"
+                               style="width:120px; padding:0.5rem; border:1px solid #d1d5db; border-radius:6px; font-size:1rem;" />
+                        <div style="font-size:0.78rem; color:#6b7280; margin-top:0.25rem;">Por defecto 50%. Es el piso: las que ya están arriba no se tocan.</div>
+                    </div>
+
+                    <div style="margin-bottom:0.5rem;">
+                        <label style="display:flex; align-items:flex-start; gap:0.5rem; cursor:pointer;">
+                            <input type="checkbox" @bind="pisoMasivoRefrescar" style="margin-top:0.2rem; width:1.1rem; height:1.1rem; cursor:pointer;" />
+                            <span style="font-size:0.9rem;">
+                                <b>Refrescar costos en vivo</b> (recomendado — tarda más pero cuenta el envío bien)
+                            </span>
+                        </label>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(pisoMasivoError))
+                    {
+                        <p style="color:#991b1b; font-size:0.85rem; margin-top:0.6rem;">⚠ @pisoMasivoError</p>
+                    }
+                }
+                else if (pisoMasivoFase == "progreso")
+                {
+                    <p style="font-weight:700; margin:0 0 0.6rem;">@pisoMasivoProgresoTitulo</p>
+                    <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:0.3rem;">
+                        <span style="color:#374151;">@(pisoMasivoStep ?? "Trabajando...")</span>
+                        <span style="color:#6b7280;">@pisoMasivoPct%</span>
+                    </div>
+                    <div style="background:#e5e7eb; border-radius:6px; height:14px; overflow:hidden;">
+                        <div style="background:#16a34a; height:100%; width:@(pisoMasivoPct)%; transition:width 0.4s;"></div>
+                    </div>
+                    <p style="font-size:0.78rem; color:#6b7280; margin-top:0.7rem;">Esto puede tardar unos minutos. No cierres la ventana.</p>
+                }
+                else if (pisoMasivoFase == "resultado" && pisoMasivoResumen is not null)
+                {
+                    var r = pisoMasivoResumen;
+                    <div style="display:flex; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.9rem;">
+                        <div style="flex:1 1 120px; background:#d1fae5; border:1px solid #10b981; border-radius:8px; padding:0.6rem; text-align:center;">
+                            <div style="font-size:1.4rem; font-weight:800; color:#065f46;">@r.Suben</div>
+                            <div style="font-size:0.75rem; color:#065f46;">Suben</div>
+                        </div>
+                        <div style="flex:1 1 120px; background:#eff6ff; border:1px solid #3b82f6; border-radius:8px; padding:0.6rem; text-align:center;">
+                            <div style="font-size:1.4rem; font-weight:800; color:#1e40af;">@r.YaOk</div>
+                            <div style="font-size:0.75rem; color:#1e40af;">Ya OK</div>
+                        </div>
+                        <div style="flex:1 1 120px; background:#fef3c7; border:1px solid #f59e0b; border-radius:8px; padding:0.6rem; text-align:center;">
+                            <div style="font-size:1.4rem; font-weight:800; color:#92400e;">@r.NoConfiable</div>
+                            <div style="font-size:0.75rem; color:#92400e;">A revisar</div>
+                        </div>
+                        <div style="flex:1 1 120px; background:#fee2e2; border:1px solid #ef4444; border-radius:8px; padding:0.6rem; text-align:center;">
+                            <div style="font-size:1.4rem; font-weight:800; color:#991b1b;">@r.SinCosto</div>
+                            <div style="font-size:0.75rem; color:#991b1b;">Sin costo</div>
+                        </div>
+                    </div>
+
+                    <div style="background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:0.7rem; margin-bottom:0.9rem; font-size:0.9rem;">
+                        <b>Impacto total (solo las que suben):</b><br />
+                        Hoy: <span style="color:#9ca3af;">$@r.SumaHoy.ToString("N0")</span>
+                        → Nuevo: <span style="color:#15803d; font-weight:700;">$@r.SumaNueva.ToString("N0")</span>
+                        <span style="color:#15803d;">(+$@((r.SumaNueva - r.SumaHoy).ToString("N0")))</span>
+                    </div>
+
+                    @if (r.Detalles is not null && r.Detalles.Count > 0)
+                    {
+                        @if (r.Suben > r.Detalles.Count)
+                        {
+                            <p style="font-size:0.8rem; color:#6b7280; margin:0 0 0.4rem;">Mostrando las primeras @r.Detalles.Count de @r.Suben.</p>
+                        }
+                        <div style="max-height:300px; overflow:auto; border:1px solid #e5e7eb; border-radius:8px;">
+                            <table class="data-table" style="font-size:0.8rem;">
+                                <thead><tr><th>Publicación</th><th style="text-align:right;">Precio hoy</th><th></th><th style="text-align:right;">Precio nuevo</th><th style="text-align:right;">Margen nuevo</th></tr></thead>
+                                <tbody>
+                                    @foreach (var d in r.Detalles)
+                                    {
+                                        <tr>
+                                            <td style="max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@d.Titulo</td>
+                                            <td style="text-align:right; color:#9ca3af; text-decoration:line-through;">$@((d.PrecioActual ?? 0).ToString("N0"))</td>
+                                            <td style="text-align:center;">→</td>
+                                            <td style="text-align:right; font-weight:700; color:#15803d;">$@((d.PrecioNuevo ?? 0).ToString("N0"))</td>
+                                            <td style="text-align:right; color:#15803d;">@((d.MargenNuevo ?? 0).ToString("0.#"))%</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted">Ninguna está por debajo del @(pisoMasivoGanancia.ToString("0.#"))% — no hay nada que subir. 🎉</p>
+                    }
+
+                    @if (pisoMasivoConfirmando)
+                    {
+                        <div style="background:#fef2f2; border:2px solid #dc2626; border-radius:8px; padding:0.9rem; margin-top:1rem;">
+                            <p style="margin:0 0 0.7rem; color:#991b1b; font-weight:700;">
+                                ⚠ Esto cambia precios REALES en MercadoLibre de @r.Suben publicaciones. ¿Seguro?
+                            </p>
+                            <div style="display:flex; gap:0.6rem; justify-content:flex-end;">
+                                <button class="btn btn-secondary" @onclick="() => pisoMasivoConfirmando = false">Cancelar</button>
+                                <button class="btn" style="background:#dc2626; color:white; border:none;" @onclick="AplicarPisoMasivo">Sí, aplicar</button>
+                            </div>
+                        </div>
+                    }
+                }
+                else if (pisoMasivoFase == "final")
+                {
+                    <div style="text-align:center; padding:1rem 0;">
+                        <div style="font-size:2.5rem;">✅</div>
+                        <p style="font-weight:700; margin:0.5rem 0;">Listo</p>
+                        <p style="color:#374151; font-size:0.9rem;">@(pisoMasivoStep ?? "Aplicado.")</p>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                @if (pisoMasivoFase == "config")
+                {
+                    <button class="btn btn-secondary" @onclick="CerrarPisoMasivo">Cancelar</button>
+                    <button class="btn" style="background:#16a34a; color:white; border:none;" @onclick="LanzarPisoMasivoPreview">Ver vista previa</button>
+                }
+                else if (pisoMasivoFase == "resultado" && pisoMasivoResumen is not null)
+                {
+                    <button class="btn btn-secondary" @onclick="CerrarPisoMasivo">Cerrar</button>
+                    @if (pisoMasivoResumen.Suben > 0 && !pisoMasivoConfirmando)
+                    {
+                        <button class="btn" style="background:#16a34a; color:white; border:none;" @onclick="() => pisoMasivoConfirmando = true">
+                            Aplicar a las @pisoMasivoResumen.Suben que suben
+                        </button>
+                    }
+                }
+                else if (pisoMasivoFase == "final")
+                {
+                    <button class="btn btn-primary" @onclick="CerrarPisoMasivo">Cerrar</button>
+                }
             </div>
         </div>
     </div>
@@ -7464,6 +7628,158 @@
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { piso50Aplicando = false; StateHasChanged(); }
+    }
+
+    // ── 2026-08-10: Piso de 50% de margen MASIVO (todas las activas+pausadas) ──
+    private bool showPisoMasivoModal;
+    private string pisoMasivoFase = "config"; // config | progreso | resultado | final
+    private decimal pisoMasivoGanancia = 50m;
+    private bool pisoMasivoRefrescar = true;
+    private string? pisoMasivoError;
+    private string? pisoMasivoRunId;
+    private ApiClient.PisoMasivoResumen? pisoMasivoResumen;
+    private bool pisoMasivoConfirmando;
+    private string pisoMasivoProgresoTitulo = "Calculando la vista previa...";
+    private string? pisoMasivoStep;
+    private int pisoMasivoPct;
+
+    private void AbrirPisoMasivo()
+    {
+        showPisoMasivoModal = true;
+        pisoMasivoFase = "config";
+        pisoMasivoGanancia = 50m;
+        pisoMasivoRefrescar = true;
+        pisoMasivoError = null;
+        pisoMasivoRunId = null;
+        pisoMasivoResumen = null;
+        pisoMasivoConfirmando = false;
+        pisoMasivoStep = null;
+        pisoMasivoPct = 0;
+        StateHasChanged();
+    }
+
+    private void CerrarPisoMasivo()
+    {
+        showPisoMasivoModal = false;
+        StateHasChanged();
+    }
+
+    private async Task LanzarPisoMasivoPreview()
+    {
+        pisoMasivoError = null;
+        if (pisoMasivoGanancia <= 0)
+        {
+            pisoMasivoError = "Poné un margen mayor a 0.";
+            StateHasChanged();
+            return;
+        }
+        try
+        {
+            var prev = await Api.PisoMasivoPreviewAsync(pisoMasivoGanancia, pisoMasivoRefrescar);
+            if (prev is null || string.IsNullOrEmpty(prev.RunId))
+            {
+                pisoMasivoError = "No se pudo iniciar la vista previa.";
+                StateHasChanged();
+                return;
+            }
+            pisoMasivoRunId = prev.RunId;
+            pisoMasivoProgresoTitulo = "Calculando la vista previa (no toca ningún precio)...";
+            pisoMasivoFase = "progreso";
+            pisoMasivoPct = 0;
+            pisoMasivoStep = "Arrancando...";
+            StateHasChanged();
+            await PollPisoMasivoProgreso(prev.ProgressId, cargarResultadoAlTerminar: true);
+        }
+        catch (Exception ex)
+        {
+            pisoMasivoError = "Error: " + ex.Message;
+            pisoMasivoFase = "config";
+            StateHasChanged();
+        }
+    }
+
+    private async Task AplicarPisoMasivo()
+    {
+        if (string.IsNullOrEmpty(pisoMasivoRunId)) return;
+        pisoMasivoConfirmando = false;
+        try
+        {
+            var progressId = await Api.PisoMasivoAplicarAsync(pisoMasivoRunId);
+            pisoMasivoProgresoTitulo = "Aplicando y pusheando precios a MercadoLibre...";
+            pisoMasivoFase = "progreso";
+            pisoMasivoPct = 0;
+            pisoMasivoStep = "Arrancando...";
+            StateHasChanged();
+            await PollPisoMasivoProgreso(progressId, cargarResultadoAlTerminar: false);
+            await LoadItems();
+        }
+        catch (Exception ex)
+        {
+            pisoMasivoError = "Error: " + ex.Message;
+            pisoMasivoFase = "resultado";
+            StateHasChanged();
+        }
+    }
+
+    // Pollea el progreso cada 2s hasta completed/error. Reusa GetSyncProgressAsync.
+    private async Task PollPisoMasivoProgreso(string? progressId, bool cargarResultadoAlTerminar)
+    {
+        for (int i = 0; i < 900; i++) // tope defensivo ~30min
+        {
+            SyncProgressResponse? prog = null;
+            try { prog = await Api.GetSyncProgressAsync(progressId); }
+            catch { }
+
+            if (prog is not null)
+            {
+                pisoMasivoPct = prog.Percentage;
+                pisoMasivoStep = prog.CurrentStep;
+                StateHasChanged();
+
+                if (prog.Status == "completed")
+                {
+                    if (cargarResultadoAlTerminar)
+                    {
+                        await CargarResultadoPisoMasivo();
+                    }
+                    else
+                    {
+                        pisoMasivoFase = "final";
+                        StateHasChanged();
+                    }
+                    return;
+                }
+                if (prog.Status == "error")
+                {
+                    pisoMasivoError = prog.CurrentStep ?? "Hubo un error.";
+                    ToastService.Error(pisoMasivoError);
+                    pisoMasivoFase = cargarResultadoAlTerminar ? "config" : "resultado";
+                    StateHasChanged();
+                    return;
+                }
+            }
+            await Task.Delay(2000);
+        }
+        pisoMasivoError = "Tardó demasiado. Probá de nuevo.";
+        pisoMasivoFase = cargarResultadoAlTerminar ? "config" : "resultado";
+        StateHasChanged();
+    }
+
+    private async Task CargarResultadoPisoMasivo()
+    {
+        if (string.IsNullOrEmpty(pisoMasivoRunId)) return;
+        try
+        {
+            pisoMasivoResumen = await Api.PisoMasivoResultadoAsync(pisoMasivoRunId, "SUBE");
+            pisoMasivoConfirmando = false;
+            pisoMasivoFase = "resultado";
+        }
+        catch (Exception ex)
+        {
+            pisoMasivoError = "No se pudo traer el resultado: " + ex.Message;
+            pisoMasivoFase = "config";
+        }
+        StateHasChanged();
     }
 
     // ── 2026-06-12: sección Stock de la ficha ──
