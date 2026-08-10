@@ -2826,6 +2826,109 @@ public class MeliController : ControllerBase
         return Ok(new BulkPrecioPorGananciaResponse(items.Count, guardados, pusheados, sinCosto, saltadosPI, errores, detalles));
     }
 
+    // ============================================================================
+    // 2026-08-10: PISO DE MARGEN 50% MASIVO — sobre TODAS las activas/pausadas, en background.
+    // Reusa el motor real (margen con envío + push con candado). Vista previa NO toca precios.
+    // ============================================================================
+
+    /// <summary>Lanza la VISTA PREVIA del piso masivo (no toca precios). Devuelve runId+progressId para
+    /// pollear el progreso en items/sync/progress y luego leer el informe en items/piso-masivo/resultado.</summary>
+    [HttpPost("items/piso-masivo/preview")]
+    public IActionResult PisoMasivoPreview(
+        [FromQuery] decimal ganancia = 50m,
+        [FromQuery] string estados = "active,paused",
+        [FromQuery] bool refrescar = true)
+    {
+        var estadosList = estados.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(s => s.ToLowerInvariant()).ToArray();
+        if (estadosList.Length == 0) estadosList = new[] { "active", "paused" };
+        if (ganancia <= 0 || ganancia > 500) return BadRequest(new { error = "Ganancia fuera de rango (1–500%)." });
+
+        var progressId = _syncProgress.StartSync($"Vista previa piso {ganancia:0.#}% masivo");
+        var runId = progressId;   // mismo id: cruza progreso ↔ resultados
+        var scopeFactory = _scopeFactory;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var svc = scope.ServiceProvider.GetRequiredService<MeliPisoMasivoService>();
+                await svc.RunPreviewAsync(runId, progressId, ganancia, estadosList, refrescar, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _syncProgress.Fail(progressId, ex.Message);
+            }
+        });
+        return Ok(new { runId, progressId });
+    }
+
+    public record PisoMasivoResumen(
+        string RunId, int Total, int Suben, int YaOk, int NoConfiable, int SinCosto, int SinBase, int Error,
+        int Aplicadas, int ErroresAplicar,
+        decimal? SumaHoy, decimal? SumaNueva,
+        List<MeliPisoMasivoResultado> Detalles);
+
+    /// <summary>Informe de una corrida. Devuelve conteos + una tanda de detalles filtrable por acción.</summary>
+    [HttpGet("items/piso-masivo/resultado")]
+    public async Task<IActionResult> PisoMasivoResultado(
+        [FromServices] Api.Data.AppDbContext db,
+        [FromQuery] string runId,
+        [FromQuery] string? accion = null,
+        [FromQuery] int skip = 0,
+        [FromQuery] int take = 200,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(runId)) return BadRequest(new { error = "Falta runId." });
+        take = Math.Clamp(take, 1, 1000);
+
+        var baseQ = db.MeliPisoMasivoResultados.AsNoTracking().Where(r => r.RunId == runId);
+
+        var counts = await baseQ.GroupBy(r => r.Accion)
+            .Select(g => new { Accion = g.Key, N = g.Count() }).ToListAsync(ct);
+        int C(string a) => counts.FirstOrDefault(x => x.Accion == a)?.N ?? 0;
+
+        var suben = baseQ.Where(r => r.Accion == "SUBE");
+        var sumaHoy = await suben.SumAsync(r => (decimal?)r.PrecioActual, ct);
+        var sumaNueva = await suben.SumAsync(r => (decimal?)r.PrecioNuevo, ct);
+        int aplicadas = await suben.CountAsync(r => r.AplicadoOk == true, ct);
+        int erroresAplicar = await suben.CountAsync(r => r.AplicadoOk == false, ct);
+
+        var detQ = baseQ;
+        if (!string.IsNullOrWhiteSpace(accion))
+            detQ = detQ.Where(r => r.Accion == accion.ToUpperInvariant());
+        var detalles = await detQ.OrderByDescending(r => r.Accion == "SUBE")
+            .ThenBy(r => r.MargenActual)
+            .Skip(skip).Take(take).ToListAsync(ct);
+
+        return Ok(new PisoMasivoResumen(runId,
+            counts.Sum(x => x.N), C("SUBE"), C("YA_OK"), C("NO_CONFIABLE"), C("SIN_COSTO"), C("SIN_BASE"), C("ERROR"),
+            aplicadas, erroresAplicar, sumaHoy, sumaNueva, detalles));
+    }
+
+    /// <summary>Aplica lo previsualizado (solo SUBE + confiables no aplicadas). Devuelve progressId.</summary>
+    [HttpPost("items/piso-masivo/aplicar")]
+    public IActionResult PisoMasivoAplicar([FromQuery] string runId)
+    {
+        if (string.IsNullOrWhiteSpace(runId)) return BadRequest(new { error = "Falta runId." });
+        var progressId = _syncProgress.StartSync("Aplicando piso masivo");
+        var scopeFactory = _scopeFactory;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var svc = scope.ServiceProvider.GetRequiredService<MeliPisoMasivoService>();
+                await svc.RunApplyAsync(runId, progressId, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _syncProgress.Fail(progressId, ex.Message);
+            }
+        });
+        return Ok(new { progressId });
+    }
+
     // 2026-07-01: Fase C — push masivo de precios a MeLi. Solo pushea las que tienen ajuste cargado.
     public record BulkPushPrecioRequest(List<int> ItemIds);
     public record BulkPushPrecioDetail(int ItemId, string MeliItemId, bool Ok, string Message, decimal? PushedPrice);

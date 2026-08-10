@@ -149,6 +149,7 @@ public class AppDbContext : DbContext
     public DbSet<CafeRemitente> CafeRemitentes => Set<CafeRemitente>();
     public DbSet<CafeSitio> CafeSitios => Set<CafeSitio>();
     public DbSet<MeliItemSyncConfig> MeliItemSyncConfigs => Set<MeliItemSyncConfig>();
+    public DbSet<MeliPisoMasivoResultado> MeliPisoMasivoResultados => Set<MeliPisoMasivoResultado>();
     public DbSet<MeliCommissionRate> MeliCommissionRates => Set<MeliCommissionRate>();
     public DbSet<CafeOem> CafeOems => Set<CafeOem>();
     public DbSet<CafeMarca> CafeMarcas => Set<CafeMarca>();

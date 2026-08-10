@@ -6676,3 +6676,36 @@ BEGIN
     CREATE UNIQUE INDEX UX_MapeoSurfaceCache_Point ON MapeoSurfaceCache(PointKey);
 END
 GO
+
+-- 2026-08-10: Piso de margen 50% masivo — resultados de cada corrida (vista previa y aplicación).
+-- Una fila por publicación evaluada, agrupada por RunId. Permite mostrar el informe paginado,
+-- desacoplar la vista previa de la aplicación (aplicar reusa lo previsualizado) y auditar qué se tocó.
+-- Accion: 'SUBE' (está bajo el piso, hay precio nuevo) | 'YA_OK' (≥ piso, no se toca) |
+--         'NO_CONFIABLE' (no se pudo calcular con confianza) | 'SIN_COSTO' | 'SIN_BASE' | 'ERROR'.
+IF OBJECT_ID('dbo.Cafe_PisoMasivo_Resultado','U') IS NULL
+BEGIN
+    CREATE TABLE Cafe_PisoMasivo_Resultado (
+        Id            BIGINT IDENTITY(1,1) PRIMARY KEY,
+        RunId         NVARCHAR(32) NOT NULL,
+        GananciaPct   DECIMAL(8,4) NOT NULL,
+        MeliItemId    NVARCHAR(50) NOT NULL,
+        ItemDbId      INT NOT NULL,
+        Titulo        NVARCHAR(300) NULL,
+        Sku           NVARCHAR(120) NULL,
+        Status        NVARCHAR(30) NULL,
+        Costo         DECIMAL(18,2) NULL,
+        PrecioBase    DECIMAL(18,2) NULL,
+        PrecioActual  DECIMAL(18,2) NULL,
+        PrecioNuevo   DECIMAL(18,2) NULL,
+        MargenActual  DECIMAL(9,2) NULL,
+        MargenNuevo   DECIMAL(9,2) NULL,
+        Confiable     BIT NOT NULL CONSTRAINT DF_PisoMasivo_Confiable DEFAULT 0,
+        Accion        NVARCHAR(20) NOT NULL,
+        Mensaje       NVARCHAR(400) NULL,
+        AplicadoOk    BIT NULL,          -- NULL = todavía no aplicado; 1 = pusheado ok; 0 = falló al aplicar
+        AplicadoAt    DATETIME2 NULL,
+        CreatedAt     DATETIME2 NOT NULL CONSTRAINT DF_PisoMasivo_Created DEFAULT SYSUTCDATETIME()
+    );
+    CREATE INDEX IX_PisoMasivo_Run ON Cafe_PisoMasivo_Resultado(RunId, Accion);
+END
+GO

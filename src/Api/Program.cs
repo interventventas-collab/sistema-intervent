@@ -175,6 +175,7 @@ builder.Services.AddScoped<MeliCafePricePushService>();
 builder.Services.AddScoped<MeliStockPushService>();
 // 2026-05-30: push event-driven de PRECIO (paralelo al de stock).
 builder.Services.AddScoped<MeliPricePushService>();
+builder.Services.AddScoped<MeliPisoMasivoService>();
 builder.Services.AddScoped<MeliFullStockSyncService>();
 builder.Services.AddHostedService<MeliAutoSyncBackgroundService>();
 // 2026-07-08: trae los envios ME1 (manuales) solos cada 1 hora, ultimos 30 dias.
