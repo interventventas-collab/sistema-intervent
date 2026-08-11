@@ -531,6 +531,12 @@
                                 style="background:@(vistaReducida ? "#0f766e" : "#ccfbf1"); color:@(vistaReducida ? "#fff" : "#0f766e"); border:1px solid #5eead4; padding:0.1rem 0.5rem; border-radius:999px; font-size:0.65rem; font-weight:700; cursor:pointer;">
                             @(vistaReducida ? "🔎 Con detalle" : "📉 Reducido")
                         </button>
+                        @* Muestra/oculta el tiempo verde "a la siguiente" debajo de cada parada (en orden de ruta). *@
+                        <button @onclick="ToggleTiemposLista"
+                                title="@(mostrarTiemposLista ? "Ocultar el tiempo hasta la parada siguiente" : "Mostrar el tiempo hasta la parada siguiente (en el modo en orden de ruta)")"
+                                style="background:@(mostrarTiemposLista ? "#047857" : "#d1fae5"); color:@(mostrarTiemposLista ? "#fff" : "#047857"); border:1px solid #6ee7b7; padding:0.1rem 0.5rem; border-radius:999px; font-size:0.65rem; font-weight:700; cursor:pointer;">
+                            🕐 Tiempos @(mostrarTiemposLista ? "sí" : "no")
+                        </button>
                     </span>
                     @if (rutaSeleccion.Count > 0)
                     {
@@ -1090,8 +1096,9 @@
                             }
                             </div>
                         </div>
-                        @* En el listado en orden de ruta, mostramos cuánto se tarda de esta parada a la SIGUIENTE. *@
-                        @if (zonaUnica && rutaZonaListado is not null)
+                        @* En el listado en orden de ruta, mostramos cuánto se tarda de esta parada a la SIGUIENTE
+                           (solo si el botón "🕐 Tiempos" está prendido). *@
+                        @if (zonaUnica && mostrarTiemposLista && rutaZonaListado is not null)
                         {
                             var _legSig = rutaZonaListado.Legs.FirstOrDefault(l => l.From == GrupoOrden(g).ToString());
                             if (_legSig is not null)
@@ -3058,6 +3065,16 @@
     // Viene PRENDIDA por default (se vuelve a "Con detalle" con el botón).
     private bool vistaReducida = true;
     private void ToggleVistaReducida() => vistaReducida = !vistaReducida;
+
+    // Botón "🕐 Tiempos": muestra/oculta el renglón verde "a la siguiente" en el listado en orden de ruta.
+    private bool mostrarTiemposLista = true;
+    private async Task ToggleTiemposLista()
+    {
+        mostrarTiemposLista = !mostrarTiemposLista;
+        // Al prenderlo, nos aseguramos de tener el recorrido calculado así los tiempos aparecen siempre.
+        if (mostrarTiemposLista) await EnsureRutasCargadas();
+        StateHasChanged();
+    }
 
     // Click en una fila del listado (cualquier tipo): resalta esa parada/envío en el mapa.
     private async Task OnSelectFromGroup(GrupoUnificado g)
