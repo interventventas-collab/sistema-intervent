@@ -738,7 +738,9 @@ public class MapeoStopsController : ControllerBase
         return Ok(new { optimized, optimizedByGoogle });
     }
 
-    public record RutaLegDto(int Seconds, int Meters, string? Encoded, string From, string To);
+    public record TramoTransitoDto(int Start, int End, string Speed);
+    public record RutaLegDto(int Seconds, int Meters, string? Encoded, string From, string To,
+        List<TramoTransitoDto>? Transito = null);
     public record RutaOverviewDto(string Key, string Label, string Color, int? DriverId,
         int DurationSeconds, int DistanceMeters, string? EncodedPolyline, int StopCount,
         List<string> Segments, List<RutaLegDto> Legs);
@@ -781,7 +783,9 @@ public class MapeoStopsController : ControllerBase
 
             var rr = await _routes.ComputeRouteFullAsync(seq);
             string label = single ? "Ruta única" : (drv?.Nombre ?? "Sin repartidor");
-            string color = single ? "#1d4ed8" : (string.IsNullOrEmpty(drv?.Color) ? "#6b7280" : drv!.Color!);
+            // Azul por defecto (como Google Maps). Solo las rutas CON repartidor toman su color propio
+            // para poder distinguir varios repartidores en el mapa; las sin repartidor van azules.
+            string color = single ? "#1d4ed8" : (string.IsNullOrEmpty(drv?.Color) ? "#1d4ed8" : drv!.Color!);
             var segments = rr?.Segments ?? new List<string>();
             // Nombres de cada punto EN ORDEN de visita: "Salida" (si hay punto de partida) + el número de cada
             // parada (1, 2, 3…). Sirve para rotular cada tramo ("de la 2 a la 3") cuando se toca la línea.
@@ -794,7 +798,8 @@ public class MapeoStopsController : ControllerBase
             {
                 string from = k < nombresPuntos.Count ? nombresPuntos[k] : "";
                 string to = (k + 1) < nombresPuntos.Count ? nombresPuntos[k + 1] : "";
-                legs.Add(new RutaLegDto(rawLegs[k].DurationSeconds, rawLegs[k].DistanceMeters, rawLegs[k].EncodedPolyline, from, to));
+                var trans = (rawLegs[k].Intervals ?? new()).Select(i => new TramoTransitoDto(i.Start, i.End, i.Speed)).ToList();
+                legs.Add(new RutaLegDto(rawLegs[k].DurationSeconds, rawLegs[k].DistanceMeters, rawLegs[k].EncodedPolyline, from, to, trans));
             }
             result.Add(new RutaOverviewDto(
                 did?.ToString() ?? "none", label, color, did,
@@ -817,7 +822,8 @@ public class MapeoStopsController : ControllerBase
         var r = await _routes.ComputeRouteAsync((fromLat, fromLng), (toLat, toLng),
             Array.Empty<(double lat, double lng)>(), ct);
         if (r is null) return Ok(new { ok = false });
-        return Ok(new { ok = true, seconds = r.DurationSeconds, meters = r.DistanceMeters, encoded = r.EncodedPolyline });
+        var trans = (r.Intervals ?? new()).Select(i => new { start = i.Start, end = i.End, speed = i.Speed });
+        return Ok(new { ok = true, seconds = r.DurationSeconds, meters = r.DistanceMeters, encoded = r.EncodedPolyline, transito = trans });
     }
 
     public record RutaAhorroDto(string Label, string Color, int? DriverId,

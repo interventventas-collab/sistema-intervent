@@ -98,7 +98,31 @@ public class GoogleRoutesService
         }
     }
 
-    public record RouteResult(int DurationSeconds, int DistanceMeters, string? EncodedPolyline);
+    // Tramo de la línea con su nivel de tránsito: del punto Start al End (índices sobre la polilínea decodificada),
+    // Speed = "NORMAL" | "SLOW" | "TRAFFIC_JAM" | "SPEED_UNSPECIFIED". Sirve para pintar la ruta rojo/amarillo/azul
+    // tal cual Google Maps. Google omite startPolylinePointIndex cuando es 0, por eso el default 0 es correcto.
+    public record SpeedInterval(int Start, int End, string Speed);
+
+    // Lee los "speedReadingIntervals" de un travelAdvisory (nivel ruta o nivel tramo).
+    private static List<SpeedInterval> ParseSpeedIntervals(JsonElement travelAdvisory)
+    {
+        var res = new List<SpeedInterval>();
+        if (travelAdvisory.ValueKind == JsonValueKind.Object
+            && travelAdvisory.TryGetProperty("speedReadingIntervals", out var arr)
+            && arr.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var it in arr.EnumerateArray())
+            {
+                int s = it.TryGetProperty("startPolylinePointIndex", out var se) && se.ValueKind == JsonValueKind.Number ? se.GetInt32() : 0;
+                int e = it.TryGetProperty("endPolylinePointIndex", out var ee) && ee.ValueKind == JsonValueKind.Number ? ee.GetInt32() : 0;
+                string sp = it.TryGetProperty("speed", out var spe) && spe.ValueKind == JsonValueKind.String ? (spe.GetString() ?? "") : "";
+                res.Add(new SpeedInterval(s, e, sp));
+            }
+        }
+        return res;
+    }
+
+    public record RouteResult(int DurationSeconds, int DistanceMeters, string? EncodedPolyline, List<SpeedInterval>? Intervals = null);
 
     /// <summary>
     /// Calcula la ruta que pasa por los waypoints EN EL ORDEN DADO (no reordena) y devuelve el tiempo
@@ -123,7 +147,10 @@ public class GoogleRoutesService
                 .ToArray(),
             travelMode = "DRIVE",
             routingPreference = "TRAFFIC_AWARE",
-            departureTime = DateTimeOffset.UtcNow.AddMinutes(3).ToString("yyyy-MM-ddTHH:mm:ssZ")
+            departureTime = DateTimeOffset.UtcNow.AddMinutes(3).ToString("yyyy-MM-ddTHH:mm:ssZ"),
+            // TRAFFIC_ON_POLYLINE: Google devuelve el nivel de tránsito tramo por tramo de la línea,
+            // para poder pintarla rojo/amarillo donde hay embotellamiento (como Google Maps).
+            extraComputations = new[] { "TRAFFIC_ON_POLYLINE" }
             // sin optimizeWaypointOrder: respetamos el orden que ya calculamos
         };
 
@@ -133,7 +160,7 @@ public class GoogleRoutesService
             http.Timeout = TimeSpan.FromSeconds(20);
             using var req = new HttpRequestMessage(HttpMethod.Post, "https://routes.googleapis.com/directions/v2:computeRoutes");
             req.Headers.Add("X-Goog-Api-Key", ApiKey);
-            req.Headers.Add("X-Goog-FieldMask", "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline");
+            req.Headers.Add("X-Goog-FieldMask", "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.travelAdvisory.speedReadingIntervals");
             req.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
 
             using var resp = await http.SendAsync(req, ct);
@@ -159,8 +186,9 @@ public class GoogleRoutesService
                 ? distEl.GetInt32() : 0;
             string? poly = r0.TryGetProperty("polyline", out var pl) && pl.TryGetProperty("encodedPolyline", out var enc)
                 ? enc.GetString() : null;
+            List<SpeedInterval>? intervals = r0.TryGetProperty("travelAdvisory", out var ta) ? ParseSpeedIntervals(ta) : null;
 
-            return new RouteResult(dur, dist, poly);
+            return new RouteResult(dur, dist, poly, intervals);
         }
         catch (Exception ex)
         {
@@ -169,7 +197,7 @@ public class GoogleRoutesService
         }
     }
 
-    public record RouteLeg(int DurationSeconds, int DistanceMeters, string? EncodedPolyline = null);
+    public record RouteLeg(int DurationSeconds, int DistanceMeters, string? EncodedPolyline = null, List<SpeedInterval>? Intervals = null);
     public record RouteFullResult(int DurationSeconds, int DistanceMeters, List<string> Segments, List<RouteLeg> Legs);
 
     /// <summary>
@@ -236,7 +264,9 @@ public class GoogleRoutesService
                 .ToArray(),
             travelMode = "DRIVE",
             routingPreference = "TRAFFIC_AWARE",
-            departureTime = DateTimeOffset.UtcNow.AddMinutes(3).ToString("yyyy-MM-ddTHH:mm:ssZ")
+            departureTime = DateTimeOffset.UtcNow.AddMinutes(3).ToString("yyyy-MM-ddTHH:mm:ssZ"),
+            // Nivel de tránsito por tramo de la línea, para pintarla rojo/amarillo (como Google Maps).
+            extraComputations = new[] { "TRAFFIC_ON_POLYLINE" }
         };
 
         try
@@ -245,7 +275,7 @@ public class GoogleRoutesService
             http.Timeout = TimeSpan.FromSeconds(20);
             using var req = new HttpRequestMessage(HttpMethod.Post, "https://routes.googleapis.com/directions/v2:computeRoutes");
             req.Headers.Add("X-Goog-Api-Key", ApiKey);
-            req.Headers.Add("X-Goog-FieldMask", "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.legs.duration,routes.legs.distanceMeters,routes.legs.polyline.encodedPolyline");
+            req.Headers.Add("X-Goog-FieldMask", "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.legs.duration,routes.legs.distanceMeters,routes.legs.polyline.encodedPolyline,routes.legs.travelAdvisory.speedReadingIntervals");
             req.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
 
             using var resp = await http.SendAsync(req, ct);
@@ -279,7 +309,8 @@ public class GoogleRoutesService
                     int lm = leg.TryGetProperty("distanceMeters", out var lme) && lme.ValueKind == JsonValueKind.Number ? lme.GetInt32() : 0;
                     string? lpoly = leg.TryGetProperty("polyline", out var lpl) && lpl.TryGetProperty("encodedPolyline", out var lenc)
                         ? lenc.GetString() : null;
-                    legs.Add(new RouteLeg(ld, lm, lpoly));
+                    List<SpeedInterval>? lint = leg.TryGetProperty("travelAdvisory", out var lta) ? ParseSpeedIntervals(lta) : null;
+                    legs.Add(new RouteLeg(ld, lm, lpoly, lint));
                 }
             }
 

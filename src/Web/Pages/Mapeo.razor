@@ -3808,7 +3808,11 @@
                 // Texto del cartelito flotante sobre la línea (tiempo total + km), estilo Google Maps.
                 label = $"{FormatoDuracion(r.DurationSeconds)} · {(r.DistanceMeters / 1000.0):0.#} km",
                 // Cada tramo (parada→parada) con su línea propia: deja tocar el mapa y ver la distancia de ese tramo.
-                legs = (r.Legs ?? new()).Select(l => new { meters = l.Meters, seconds = l.Seconds, encoded = l.Encoded, from = l.From, to = l.To }).ToArray()
+                // 'transito' = pedacitos con su nivel (NORMAL/SLOW/TRAFFIC_JAM) para pintar rojo/amarillo el embotellamiento.
+                legs = (r.Legs ?? new()).Select(l => new {
+                    meters = l.Meters, seconds = l.Seconds, encoded = l.Encoded, from = l.From, to = l.To,
+                    transito = (l.Transito ?? new()).Select(t => new { start = t.Start, end = t.End, speed = t.Speed }).ToArray()
+                }).ToArray()
             })
             .ToArray();
         await JS.InvokeVoidAsync("mapeoFlex.drawRoutes", new object[] { paraDibujar });

@@ -408,6 +408,33 @@ window.mapeoFlex = (function () {
         }));
     }
 
+    // ── Tránsito sobre la línea (rojo/amarillo donde hay embotellamiento, tal cual Google Maps) ──
+    // Google nos manda tramos {start,end,speed}: NORMAL (sin pintar, queda azul), SLOW (amarillo),
+    // TRAFFIC_JAM (rojo). Los índices son sobre la polilínea YA decodificada (path).
+    function trafficColor(speed) {
+        if (speed === 'TRAFFIC_JAM') return '#dc2626'; // rojo = embotellado
+        if (speed === 'SLOW') return '#f59e0b';        // amarillo/naranja = lento
+        return null;                                    // NORMAL / desconocido → se ve el azul de base
+    }
+    // Dibuja los pedacitos de color por encima de la línea base. Empuja las polilíneas creadas a 'store'
+    // (para poder borrarlas después). zBase = zIndex (va por encima de la línea base).
+    function paintTrafficSlices(path, intervals, store, zBase) {
+        if (!path || !intervals || !intervals.length) return;
+        for (const iv of intervals) {
+            const col = trafficColor(iv.speed);
+            if (!col) continue;
+            const a = Math.max(0, iv.start | 0);
+            const b = Math.min(path.length - 1, iv.end | 0);
+            if (b <= a) continue;
+            const slice = path.slice(a, b + 1);
+            if (slice.length < 2) continue;
+            store.push(new google.maps.Polyline({
+                path: slice, map: map, clickable: false,
+                strokeColor: col, strokeOpacity: 0.95, strokeWeight: 6, zIndex: zBase
+            }));
+        }
+    }
+
     // ── Helpers del modo "Armar ruta" interactivo ──
     const armarFmtKm = (m) => (m / 1000).toFixed(1).replace('.', ',');
     const armarFmtMin = (s) => {
@@ -469,10 +496,13 @@ window.mapeoFlex = (function () {
                 path: path, map: map, strokeColor: color, strokeOpacity: 0.95, strokeWeight: 5, zIndex: 5, clickable: false,
                 icons: [{ icon: { path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 2.6, strokeColor: '#ffffff', strokeWeight: 1.2, fillColor: color, fillOpacity: 1 }, offset: '0', repeat: '110px' }]
             });
+            // Pintamos rojo/amarillo los pedacitos con embotellamiento sobre esta línea (queda azul lo normal).
+            const trafficLines = [];
+            paintTrafficSlices(path, data.transito, trafficLines, 6);
             const mid = path.length ? path[Math.floor(path.length / 2)] : new google.maps.LatLng(to.lat, to.lng);
             const label = armarLabelOverlay(mid, armarFmtKm(data.meters) + ' km · ' + armarFmtMin(data.seconds), color);
             label.setMap(map);
-            armarLegs.push({ lines: [casing, line], label: label, sec: data.seconds, m: data.meters });
+            armarLegs.push({ lines: [casing, line].concat(trafficLines), label: label, sec: data.seconds, m: data.meters });
             armarTotSec += data.seconds; armarTotM += data.meters;
             return true;
         } catch (e) { return false; }
@@ -935,6 +965,8 @@ window.mapeoFlex = (function () {
                             (total ? '<div style="margin-top:5px; padding-top:5px; border-top:1px solid #eee; color:#6b7280;">Ruta completa: <strong>' + total + '</strong></div>' : '') +
                             '</div>';
                         dibujarLinea(path, (e) => { routeInfo.setContent(html); routeInfo.setPosition(e.latLng); routeInfo.open(map); });
+                        // Pinta rojo/amarillo los pedacitos con embotellamiento de este tramo (lo normal queda azul).
+                        paintTrafficSlices(path, leg.transito, routeLines, 6);
                     }
                 } else {
                     // Respaldo: sin tramos, dibujamos la línea entera (una o varias) y al tocarla mostramos el total.

@@ -168,6 +168,15 @@ public class RutaLegDto
     // De qué punto a qué punto va el tramo (ej: "Salida"→"1", "2"→"3").
     public string From { get; set; } = "";
     public string To { get; set; } = "";
+    // Nivel de tránsito por pedacito de la línea (para pintarla rojo/amarillo donde hay embotellamiento).
+    public List<TramoTransitoDto> Transito { get; set; } = new();
+}
+
+public class TramoTransitoDto
+{
+    public int Start { get; set; }
+    public int End { get; set; }
+    public string Speed { get; set; } = ""; // NORMAL | SLOW | TRAFFIC_JAM | SPEED_UNSPECIFIED
 }
 
 public class RutaOverviewDto
