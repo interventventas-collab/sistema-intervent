@@ -5776,7 +5776,11 @@
         {
             // Asegurar que el catalogo de clientes esté cargado antes de setear
             if (clientes is null || clientes.Count == 0) try { clientes = await Api.GetCafeClientesAsync(); } catch { }
-            formClienteId = cid;
+            // 2026-08-11 FIX: antes se seteaba formClienteId "en crudo" y NO se cargaba el "Más
+            // comprados" (ni saldo anterior, ni precios/condiciones del cliente). Por eso al abrir la
+            // venta desde el link del chat (?fromTwilio=1) a veces no aparecía el panel de más comprados.
+            // Ahora usamos SelectCliente igual que el resto de los caminos, que dispara LoadTopProductsForClient.
+            await SelectCliente(cid);
         }
         await InvokeAsync(StateHasChanged);
     }
