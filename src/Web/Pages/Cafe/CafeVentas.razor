@@ -1080,6 +1080,33 @@
     }
 }
 
+@* 2026-08-11: Ventanita FLOTANTE del "Comentario para armado". Se saca del formulario con el botón
+   "↗ Ventana". Es movible por toda la pantalla (arrastrando el encabezado) y se agranda/achica
+   tomándola de la esquina inferior derecha (resize: both). Va a nivel top-level (no dentro de la
+   modal-card) para que position:fixed no lo afecte ningún transform de ancestro. *@
+@if (showForm && comentarioArmadoFlotante)
+{
+    <div id="nv-comentario-flotante"
+         style="position: fixed; top: 90px; left: 50%; transform: translateX(-50%); z-index: 10001;
+                width: 400px; height: 280px; min-width: 240px; min-height: 150px;
+                background: #fefce8; border: 2px dashed #facc15; border-radius: 10px;
+                box-shadow: 0 12px 34px rgba(0,0,0,0.28); display: flex; flex-direction: column;
+                resize: both; overflow: hidden;">
+        <div id="nv-comentario-flotante-head"
+             style="display:flex; align-items:center; gap:0.4rem; padding:0.45rem 0.6rem; cursor:move;
+                    background:#fde68a; border-bottom:1px solid #f59e0b; border-radius: 8px 8px 0 0; user-select:none;">
+            <span style="font-size:0.95rem;">📌</span>
+            <strong style="font-size:0.72rem; color:#92400e; text-transform:uppercase; letter-spacing:0.04em; flex:1;">Comentario para armado</strong>
+            <button type="button" @onclick="CerrarComentarioFlotante" title="Volver a su lugar en el formulario"
+                    style="background:none; border:none; cursor:pointer; font-size:1rem; color:#92400e; line-height:1;">✕</button>
+        </div>
+        <textarea class="form-input" @bind="formComentarioArmado" @bind:event="oninput"
+                  placeholder="Ej: SOBRES CORTESIA"
+                  style="flex:1; margin:0; border:none; background:#fefce8; resize:none; width:100%; padding:0.55rem 0.6rem; font-size:0.9rem; box-shadow:none;"></textarea>
+        <div style="font-size:0.62rem; color:#a16207; text-align:right; padding:0 0.5rem 0.3rem; user-select:none;">↘ esquina para agrandar</div>
+    </div>
+}
+
 @if (showForm)
 {
     @* IMPORTANTE: el modal-overlay NO cierra el form al clickear fuera.
@@ -2430,10 +2457,25 @@
                         <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem; flex-wrap: wrap;">
                             <strong style="font-size: 0.78rem; color: #92400e; text-transform: uppercase; letter-spacing: 0.04em;">📌 Comentario para armado</strong>
                             <span style="font-size: 0.7rem; color: #78350f; font-style: italic;">solo lo ve quien arma</span>
+                            @if (!comentarioArmadoFlotante)
+                            {
+                                <button type="button" @onclick="AbrirComentarioFlotante" title="Sacar a una ventanita que podés mover y agrandar"
+                                        style="margin-left:auto; background:#fde68a; border:1px solid #f59e0b; color:#78350f; border-radius:6px; padding:0.1rem 0.4rem; font-size:0.68rem; cursor:pointer; white-space:nowrap;">↗ Ventana</button>
+                            }
                         </div>
-                        <textarea id="nv-comentario-armado" class="form-input" rows="3" @bind="formComentarioArmado"
-                                  placeholder="Ej: SOBRES CORTESIA"
-                                  style="background: #fefce8; border: 2px dashed #facc15; resize: vertical; min-height: 80px;"></textarea>
+                        @if (!comentarioArmadoFlotante)
+                        {
+                            <textarea id="nv-comentario-armado" class="form-input" rows="3" @bind="formComentarioArmado"
+                                      placeholder="Ej: SOBRES CORTESIA"
+                                      style="background: #fefce8; border: 2px dashed #facc15; resize: vertical; min-height: 80px;"></textarea>
+                        }
+                        else
+                        {
+                            <div @onclick="CerrarComentarioFlotante"
+                                 style="background:#fffbeb; border:2px dashed #facc15; border-radius:6px; padding:0.6rem; min-height:80px; display:flex; align-items:center; justify-content:center; text-align:center; color:#92400e; font-size:0.78rem; cursor:pointer;">
+                                📌 Abierto en la ventanita flotante — <br />clic acá para traerlo de vuelta
+                            </div>
+                        }
                     </div>
                 </div>
             </div>
@@ -5036,6 +5078,13 @@
     private string formEntregaPor = "";
     // 2026-06-02: Comentario INTERNO para el armado. Se muestra como post-it en /cafe/preparacion. No sale en PDF.
     private string formComentarioArmado = "";
+    // 2026-08-11: el "Comentario para armado" se puede sacar a una ventanita flotante, movible por
+    // toda la pantalla y agrandable/achicable (arrastrando la esquina). comentarioFlotanteHooked
+    // evita enganchar el arrastre más de una vez por apertura.
+    private bool comentarioArmadoFlotante = false;
+    private bool comentarioFlotanteHooked = false;
+    private void AbrirComentarioFlotante() { comentarioArmadoFlotante = true; comentarioFlotanteHooked = false; }
+    private void CerrarComentarioFlotante() { comentarioArmadoFlotante = false; comentarioFlotanteHooked = false; }
     // 2026-06-02: Toggle del post-it "Notas internas del cliente". Se reinicia al cambiar de cliente.
     private bool mostrarNotasCliente = false;
 
@@ -5670,6 +5719,14 @@
         if (pedidoWASeleccionado is not null)
         {
             try { await JS.InvokeVoidAsync("initCafeWaFloating"); }
+            catch { }
+        }
+        // 2026-08-11: enganchar el arrastre a la ventanita flotante del "Comentario para armado".
+        // Solo una vez por cada vez que se abre (comentarioFlotanteHooked evita re-attach duplicado).
+        if (comentarioArmadoFlotante && !comentarioFlotanteHooked)
+        {
+            comentarioFlotanteHooked = true;
+            try { await JS.InvokeVoidAsync("waDraggable.attach", "nv-comentario-flotante-head", "nv-comentario-flotante"); }
             catch { }
         }
         // Posicionar el dropdown "+" anclado al boton que lo abrio.
@@ -6337,6 +6394,7 @@
         formPorTransporte = false; formTransporteEmpresa = ""; formTransporteDestino = "";
         formTransporteId = 0; formCantidadBultos = null; formEsFragil = false;
         formComentarioArmado = "";
+        comentarioArmadoFlotante = false; comentarioFlotanteHooked = false;
         // Reset del panel "Enviar al cliente" — todos los checkboxes empiezan apagados
         // para que nunca mandes algo sin querer. El operador tilda lo que necesite por venta.
         envioEmail = false; envioWhatsappApi = false;   // la línea elegida (envioLineaPhoneId) se mantiene
