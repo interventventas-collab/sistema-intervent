@@ -434,13 +434,24 @@
                 // ¿Quedó UNA sola zona (un repartidor) a la vista? Entonces mostramos las paradas
                 // en el ORDEN de la ruta (1, 2, 3…) en vez de agrupar por localidad.
                 var driversVisibles = listaRender.Select(GrupoDriverId).Where(d => d.HasValue).Select(d => d!.Value).Distinct().ToList();
-                var haySinAsignar = listaRender.Any(g => !GrupoDriverId(g).HasValue);
-                var zonaUnica = driversVisibles.Count == 1 && !haySinAsignar;
-                listaOrdenableActiva = zonaUnica; // habilita el arrastre (⠿) solo con UNA zona a la vista
+                var slotsVisibles = listaRender.Select(GrupoSlot).Where(s => s.HasValue).Select(s => s!.Value).Distinct().ToList();
+                // "Sin asignar de verdad" = ni repartidor ni Zona/vehículo.
+                var haySinAsignarNiZona = listaRender.Any(g => !GrupoDriverId(g).HasValue && !GrupoSlot(g).HasValue);
+                var hayOrdenArmado = listaRender.Any(g => GrupoOrden(g) != int.MaxValue);
+                // La lista se muestra EN ORDEN DE RUTA (numerada + arrastrable) cuando a la vista hay UN SOLO
+                // grupo de ruta: un repartidor, o una Zona/vehículo, o todo sin asignar pero YA con un orden
+                // armado (ej. recién armaste la ruta a mano con "🖊️ Armar ruta").
+                var unSoloChofer = driversVisibles.Count == 1 && slotsVisibles.Count == 0 && !haySinAsignarNiZona;
+                var unSolaZona   = slotsVisibles.Count == 1 && driversVisibles.Count == 0 && !haySinAsignarNiZona;
+                var soloSinAsignarConOrden = driversVisibles.Count == 0 && slotsVisibles.Count == 0 && haySinAsignarNiZona && hayOrdenArmado;
+                var zonaUnica = unSoloChofer || unSolaZona || soloSinAsignarConOrden;
+                listaOrdenableActiva = zonaUnica; // habilita el arrastre (⠿) solo con UN grupo de ruta a la vista
                 List<IGrouping<string, GrupoUnificado>> zonasUnificadas;
                 if (zonaUnica)
                 {
-                    var drvNom = drivers?.FirstOrDefault(d => d.Id == driversVisibles[0])?.Nombre ?? "Ruta";
+                    string drvNom = unSoloChofer
+                        ? (drivers?.FirstOrDefault(d => d.Id == driversVisibles[0])?.Nombre ?? "Ruta")
+                        : (unSolaZona ? $"Zona {slotsVisibles[0]}" : "Ruta");
                     zonasUnificadas = listaRender
                         .OrderBy(GrupoOrden).ThenBy(g => g.Zona)
                         .GroupBy(_ => $"{drvNom} — en orden de ruta")
@@ -583,9 +594,11 @@
                         <div class="mapeo-row" data-stop-ids="@string.Join(",", g.Manual.Select(m => m.Id))" style="display:flex; align-items:stretch;">
                             @if (zonaUnica)
                             {
-                                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:0 3px; border-right:1px solid #eef2f7;">
+                                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:0 5px 0 3px; border-right:1px solid #eef2f7;">
+                                    @* Número de puesto en la ruta (1, 2, 3…), tipo Google Maps. *@
+                                    <span style="display:flex; align-items:center; justify-content:center; min-width:22px; height:22px; border-radius:50%; background:#1d4ed8; color:#fff; font-size:0.78rem; font-weight:800; line-height:1;" title="Puesto en la ruta">@(reIdx + 1)</span>
                                     <button class="btn-icon" style="font-size:0.7rem; padding:0; line-height:1.1; color:#6b7280;" @onclick:stopPropagation="true" @onclick="@(() => MoverParada(reIdx, -1))" disabled="@(reIdx == 0 || reordenandoRuta)" title="Subir en la ruta">▲</button>
-                                    <span class="mapeo-drag-handle" title="Arrastrá para reordenar la ruta" style="font-size:0.95rem; color:#9ca3af;">⠿</span>
+                                    <span class="mapeo-drag-handle" title="Arrastrá para reordenar la ruta" style="font-size:0.95rem; color:#9ca3af; cursor:grab;">⠿</span>
                                     <button class="btn-icon" style="font-size:0.7rem; padding:0; line-height:1.1; color:#6b7280;" @onclick:stopPropagation="true" @onclick="@(() => MoverParada(reIdx, 1))" disabled="@(reIdx == grupos.Count - 1 || reordenandoRuta)" title="Bajar en la ruta">▼</button>
                                 </div>
                             }
@@ -3075,6 +3088,9 @@
     // DriverId asignado del grupo (o null si está sin asignar).
     private int? GrupoDriverId(GrupoUnificado g)
         => g.Manual.Select(m => m.AssignedDriverId).FirstOrDefault(d => d.HasValue);
+    // Zona/vehículo (slot) del grupo cuando NO tiene repartidor (o null si tampoco tiene vehículo).
+    private int? GrupoSlot(GrupoUnificado g)
+        => g.Manual.Where(m => !m.AssignedDriverId.HasValue).Select(m => m.AssignedVehicleSlot).FirstOrDefault(s => s.HasValue);
     // Orden de ruta del grupo (el menor OrderInRoute de sus paradas); sin orden = al final.
     private int GrupoOrden(GrupoUnificado g)
     {
