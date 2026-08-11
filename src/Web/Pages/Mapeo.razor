@@ -616,7 +616,15 @@
                         var reIdx = gi;
                         var esFlex = g.TieneFlex;
                         <div class="mapeo-row" data-key="@g.Key" data-stop-ids="@string.Join(",", g.Manual.Select(m => m.Id))" style="display:flex; align-items:stretch;">
-                            @if (zonaUnica)
+                            @if (zonaUnica && vistaReducida)
+                            {
+                                @* Reducido: número + ⠿ chico en UNA línea, para que las filas queden bien juntas. *@
+                                <div style="display:flex; align-items:center; gap:5px; padding:0 5px 0 4px; border-right:1px solid #eef2f7;">
+                                    <span style="display:flex; align-items:center; justify-content:center; min-width:18px; height:18px; border-radius:50%; background:#1d4ed8; color:#fff; font-size:0.62rem; font-weight:800; line-height:1;" title="Puesto en la ruta">@(reIdx + 1)</span>
+                                    <span class="mapeo-drag-handle" title="Arrastrá para reordenar la ruta" style="font-size:0.85rem; color:#9ca3af; cursor:grab;">⠿</span>
+                                </div>
+                            }
+                            else if (zonaUnica)
                             {
                                 <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:0 5px 0 3px; border-right:1px solid #eef2f7;">
                                     @* Número de puesto en la ruta (1, 2, 3…), tipo Google Maps. *@
