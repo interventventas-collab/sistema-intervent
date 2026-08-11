@@ -1319,8 +1319,8 @@
                                     <span class="mapeo-zona-act" @onclick="@(() => zonaDriverMenuId = (zonaDriverMenuId == z.Numero ? (int?)null : z.Numero))"
                                           title="Cambiar el repartidor de toda esta zona">👤</span>
                                     <span class="mapeo-zona-act" @onclick="() => ToggleLineaZona(ZonaKeyDriver(z.DriverId))"
-                                          style="@(lineasVisibles.Contains(ZonaKeyDriver(z.DriverId)) ? "" : "opacity:0.45;")"
-                                          title="@(lineasVisibles.Contains(ZonaKeyDriver(z.DriverId)) ? "Ocultar la línea de esta ruta" : "Ver la línea de esta ruta")">〰</span>
+                                          style="@(lineasVisibles.Contains(ZonaKeyDriver(z.DriverId)) ? "background:rgba(255,255,255,0.4); border-radius:7px; padding:1px 5px;" : "opacity:0.35;")"
+                                          title="@(lineasVisibles.Contains(ZonaKeyDriver(z.DriverId)) ? "La línea de esta ruta está VISIBLE — tocá para ocultarla" : "Ver la línea de esta ruta")">〰</span>
                                     <span class="mapeo-zona-act" @onclick="() => VaciarZonaDriver(z)"
                                           title="Vaciar esta zona (los envíos vuelven a Sin asignar)">🧹</span>
                                     <span style="font-size:1.05rem; font-weight:800; color:#fff; line-height:1; background:rgba(0,0,0,0.22); border-radius:8px; padding:3px 9px; min-width:24px; text-align:center;"
@@ -1372,8 +1372,8 @@
                                     <span class="mapeo-zona-act" @onclick="@(() => slotDriverMenu = (slotDriverMenu == slot ? (int?)null : slot))"
                                           title="Asignar un chofer a esta zona">👤</span>
                                     <span class="mapeo-zona-act" @onclick="() => ToggleLineaZona(ZonaKeySlot(slot))"
-                                          style="@(lineasVisibles.Contains(ZonaKeySlot(slot)) ? "" : "opacity:0.45;")"
-                                          title="@(lineasVisibles.Contains(ZonaKeySlot(slot)) ? "Ocultar la línea de esta ruta" : "Ver la línea de esta ruta")">〰</span>
+                                          style="@(lineasVisibles.Contains(ZonaKeySlot(slot)) ? "background:rgba(255,255,255,0.4); border-radius:7px; padding:1px 5px;" : "opacity:0.35;")"
+                                          title="@(lineasVisibles.Contains(ZonaKeySlot(slot)) ? "La línea de esta ruta está VISIBLE — tocá para ocultarla" : "Ver la línea de esta ruta")">〰</span>
                                     <span class="mapeo-zona-act" @onclick="() => VaciarZonaSlot(slot)"
                                           title="Vaciar esta zona (los envíos vuelven a Sin asignar)">🧹</span>
                                     <span style="font-size:1.05rem; font-weight:800; color:#fff; line-height:1; background:rgba(0,0,0,0.22); border-radius:8px; padding:3px 9px; min-width:24px; text-align:center;"
@@ -3765,7 +3765,7 @@
             await Api.OptimizeStopsOrderAsync();   // per-driver, traffic-aware
             await LoadStops();
             await RenderMap();
-            await CargarYDibujarRutas(single: false);
+            await CargarYDibujarRutas(single: false, encenderTodas: true);
             ToastService.Success("⚡ Rutas optimizadas por el tránsito actual");
         }
         catch (Exception ex) { ToastService.Error("No se pudo optimizar: " + ex.Message); }
@@ -3782,7 +3782,7 @@
             await Api.OptimizeStopsOrderAsync(all: true);
             await LoadStops();
             await RenderMap();
-            await CargarYDibujarRutas(single: true);
+            await CargarYDibujarRutas(single: true, encenderTodas: true);
             ToastService.Success("🚦 Ruta armada y optimizada por el tránsito actual");
         }
         catch (Exception ex) { ToastService.Error("No se pudo armar la ruta: " + ex.Message); }
@@ -3838,14 +3838,15 @@
     {
         ToastService.Warning("El motor grande usa la Route Optimization API de Google: hay que habilitarla en tu cuenta y tiene costo aparte. Decime \"activá el motor grande\" y lo dejo listo con tu OK.");
     }
-    private async Task CargarYDibujarRutas(bool single)
+    // encenderTodas=true: prende las líneas de TODAS las rutas (para mostrar el resultado de armar/optimizar).
+    // encenderTodas=false (default): RESPETA lo que el usuario tiene tildado por zona (solo repinta y saca las
+    //   claves de zonas que ya no existen). Así el 〰 de cada zona manda y no se re-prende todo solo (era el bug).
+    private async Task CargarYDibujarRutas(bool single, bool encenderTodas = false)
     {
         try
         {
             rutasResumen = await Api.GetRoutesOverviewAsync(single) ?? new();
-            // Al (re)calcular, dejamos prendidas las líneas de todas las zonas que tienen ruta, y sacamos
-            // de la lista las claves que ya no existen (zonas que se vaciaron/cambiaron).
-            foreach (var r in rutasResumen) lineasVisibles.Add(r.Key);
+            if (encenderTodas) foreach (var r in rutasResumen) lineasVisibles.Add(r.Key);
             lineasVisibles.RemoveWhere(k => !rutasResumen.Any(r => r.Key == k));
             await PintarRutas();
         }
@@ -6044,8 +6045,16 @@
             await Api.ReorderMapeoStopsAsync(stopIds); // OrderInRoute = 1..N en el orden tocado
             await LoadStops();
             await RenderMap();
-            // single:false = cada zona su propia línea independiente (NO mezclar todas en una ruta única,
-            // que era lo que cruzaba las zonas). Dibuja también las otras rutas ya armadas, cada una aparte.
+            // Prendemos la línea SOLO de las zonas que acabás de armar (no tocamos las demás, respetando lo
+            // que tengas tildado). single:false = cada zona su propia línea independiente.
+            foreach (var id in stopIds)
+            {
+                var st = stops?.FirstOrDefault(x => x.Id == id);
+                if (st is null) continue;
+                var k = st.AssignedDriverId.HasValue ? ZonaKeyDriver(st.AssignedDriverId.Value)
+                      : (st.AssignedVehicleSlot.HasValue ? ZonaKeySlot(st.AssignedVehicleSlot.Value) : "none");
+                lineasVisibles.Add(k);
+            }
             await CargarYDibujarRutas(single: false);
             ToastService.Success($"✅ Ruta armada: {stopIds.Count} paradas en orden.");
         }
@@ -6138,7 +6147,7 @@
             var r = await Api.ArmarRutaGuiadaAsync(guiadaPrimeraId.Value, guiadaUltimaId.Value, fijas);
             await LoadStops();
             await RenderMap();
-            await CargarYDibujarRutas(single: false);
+            await CargarYDibujarRutas(single: false, encenderTodas: true);
             if (r != null && !r.PorGoogle)
                 ToastService.Info($"Ruta armada ({r.Total} paradas). La ordené en línea recta (son más de 25 o Google no respondió) — igual va de la primera a la última.");
             else
