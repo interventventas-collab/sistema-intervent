@@ -262,6 +262,7 @@ window.mapeoFlex = (function () {
     let armarDepotMarker = null;    // marcador de la casita de arranque (si arranca del depósito)
     let armarTotSec = 0, armarTotM = 0; // total acumulado (segundos y metros)
     let armarBusy = false;          // true mientras se trae un tramo de Google (evita doble-toque)
+    let armarMostrarTiempos = true; // ¿mostrar los cartelitos de tiempo/km de cada tramo? (botón "Tiempos")
     const ARMAR_COLOR = '#1d4ed8';
 
     // ── Cartelito de "calle no asfaltada" en los pines (tierra/empedrado) ──
@@ -508,16 +509,25 @@ window.mapeoFlex = (function () {
                 path: path, map: map, strokeColor: '#ffffff', strokeOpacity: 0.9, strokeWeight: 9, zIndex: 4, clickable: false
             });
             const line = new google.maps.Polyline({
-                path: path, map: map, strokeColor: color, strokeOpacity: 0.95, strokeWeight: 5, zIndex: 5, clickable: false,
+                path: path, map: map, strokeColor: color, strokeOpacity: 0.95, strokeWeight: 5, zIndex: 5, clickable: true,
                 icons: [{ icon: { path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 2.6, strokeColor: '#ffffff', strokeWeight: 1.2, fillColor: color, fillOpacity: 1 }, offset: '0', repeat: '110px' }]
             });
             // Pintamos rojo/amarillo los pedacitos con embotellamiento sobre esta línea (queda azul lo normal).
             const trafficLines = [];
             paintTrafficSlices(path, data.transito, trafficLines, 6);
             const mid = path.length ? path[Math.floor(path.length / 2)] : new google.maps.LatLng(to.lat, to.lng);
-            const label = armarLabelOverlay(mid, armarFmtKm(data.meters) + ' km · ' + armarFmtMin(data.seconds), color);
-            label.setMap(map);
-            return { lines: [casing, line].concat(trafficLines), label: label, sec: data.seconds, m: data.meters };
+            const txt = armarFmtKm(data.meters) + ' km · ' + armarFmtMin(data.seconds);
+            // Tocar la línea del tramo muestra su tiempo/km (útil cuando los cartelitos están ocultos).
+            line.addListener('click', function (e) {
+                if (!routeInfo) routeInfo = new google.maps.InfoWindow();
+                routeInfo.setContent('<div style="font-size:14px; font-weight:800; font-family:system-ui,sans-serif; color:#111827;">' + txt + '</div>');
+                routeInfo.setPosition(e.latLng);
+                routeInfo.open(map);
+            });
+            // El cartelito flotante con el tiempo/km: solo si están ENCENDIDOS (botón "Tiempos").
+            let label = null;
+            if (armarMostrarTiempos) { label = armarLabelOverlay(mid, txt, color); label.setMap(map); }
+            return { lines: [casing, line].concat(trafficLines), label: label, sec: data.seconds, m: data.meters, mid: mid, txt: txt };
         } catch (e) { return null; }
     }
 
@@ -1095,6 +1105,21 @@ window.mapeoFlex = (function () {
             }
             if (armarSeq.length === 0 && armarDepotMarker) { armarDepotMarker.setMap(null); armarDepotMarker = null; }
             armarNotify();
+        },
+
+        // Botón "Tiempos": muestra u oculta los cartelitos de tiempo/km de cada tramo (la línea igual se
+        // puede tocar para ver el tiempo). Recrea o saca los cartelitos de los tramos ya dibujados.
+        armarToggleTiempos(on) {
+            armarMostrarTiempos = !!on;
+            for (const leg of armarLegs) {
+                if (armarMostrarTiempos && !leg.label && leg.mid) {
+                    leg.label = armarLabelOverlay(leg.mid, leg.txt, ARMAR_COLOR);
+                    leg.label.setMap(map);
+                } else if (!armarMostrarTiempos && leg.label) {
+                    leg.label.setMap(null);
+                    leg.label = null;
+                }
+            }
         },
 
         // Terminar: le pasa a Blazor los IDs de los pines EN ORDEN (para guardar la ruta) y limpia el dibujo.

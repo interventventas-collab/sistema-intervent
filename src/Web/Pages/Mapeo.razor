@@ -1172,6 +1172,10 @@
                         <input type="checkbox" checked="@armarDesdeDeposito" disabled="@(!armarDepotLat.HasValue)" @onchange="OnArmarDepotToggle" />
                         🏁 Arrancar desde el depósito
                     </label>
+                    <button class="btn" style="font-size:0.8rem; font-weight:700; background:@(armarMostrarTiempos ? "#fff" : "rgba(255,255,255,0.18)"); color:@(armarMostrarTiempos ? "#1d4ed8" : "#fff"); border:1px solid rgba(255,255,255,0.6); padding:0.3rem 0.65rem; border-radius:8px; cursor:pointer;"
+                            @onclick="ArmarToggleTiempos" title="Mostrar u ocultar los cartelitos de tiempo/km de cada tramo. Aunque los ocultes, podés tocar la línea para ver el tiempo.">
+                        🕐 Tiempos: @(armarMostrarTiempos ? "sí" : "no")
+                    </button>
                     <button class="btn" style="font-size:0.8rem; font-weight:700; background:rgba(255,255,255,0.18); color:#fff; border:1px solid rgba(255,255,255,0.6); padding:0.3rem 0.65rem; border-radius:8px; cursor:pointer;"
                             @onclick="ArmarDeshacer" disabled="@(armarCount == 0)">↩ Deshacer punto</button>
                     <button class="btn" style="font-size:0.82rem; font-weight:800; background:#16a34a; color:#fff; border:none; padding:0.32rem 0.85rem; border-radius:8px; cursor:pointer;"
@@ -3638,6 +3642,7 @@
     // por las calles con el tiempo y los km en vivo (endpoint /leg + mapeoFlex.armar*).
     private bool modoArmar;
     private bool armarDesdeDeposito;          // arrancar la línea desde el depósito (si no, desde el 1er pin)
+    private bool armarMostrarTiempos = true;  // mostrar/ocultar los cartelitos de tiempo/km de cada tramo
     private double? armarDepotLat, armarDepotLng; // punto de partida (si está configurado)
     private int armarCount;                   // cuántas paradas se tocaron
     private int armarTotalSec, armarTotalMetros; // total acumulado
@@ -6042,6 +6047,14 @@
     {
         armarDesdeDeposito = (bool?)e.Value ?? false;
         try { await JS.InvokeVoidAsync("mapeoFlex.armarToggleDepot", armarDesdeDeposito); } catch { }
+        StateHasChanged();
+    }
+
+    // Botón "🕐 Tiempos": muestra/oculta los cartelitos de tiempo/km de cada tramo mientras armás.
+    private async Task ArmarToggleTiempos()
+    {
+        armarMostrarTiempos = !armarMostrarTiempos;
+        try { await JS.InvokeVoidAsync("mapeoFlex.armarToggleTiempos", armarMostrarTiempos); } catch { }
         StateHasChanged();
     }
 
