@@ -488,14 +488,16 @@ window.mapeoFlex = (function () {
         if (dotNetRef) dotNetRef.invokeMethodAsync('OnArmarUpdate', armarSeq.length, Math.round(armarTotSec), Math.round(armarTotM));
     }
 
-    // Trae el tramo de->to a Google (por las calles) y lo dibuja. Suma al total. Devuelve true si dibujó.
-    async function armarDrawLeg(from, to, color) {
+    // Trae el tramo de->to a Google (por las calles) y lo dibuja. Devuelve el objeto del tramo
+    // {lines, label, sec, m} (o null si falla). NO lo agrega a la lista ni suma al total: de eso se
+    // encarga quien llama (armarAddPoint lo agrega al final; el depósito lo inserta al principio).
+    async function armarBuildLeg(from, to, color) {
         try {
             const url = '/api/mapeo/stops/leg?fromLat=' + from.lat + '&fromLng=' + from.lng +
                 '&toLat=' + to.lat + '&toLng=' + to.lng;
             const r = await fetch(url, { credentials: 'same-origin' });
             const data = r.ok ? await r.json() : null;
-            if (!data || !data.ok || !data.encoded || !google.maps.geometry) return false;
+            if (!data || !data.ok || !data.encoded || !google.maps.geometry) return null;
             const path = google.maps.geometry.encoding.decodePath(data.encoded);
             const casing = new google.maps.Polyline({
                 path: path, map: map, strokeColor: '#ffffff', strokeOpacity: 0.9, strokeWeight: 9, zIndex: 4, clickable: false
@@ -510,10 +512,8 @@ window.mapeoFlex = (function () {
             const mid = path.length ? path[Math.floor(path.length / 2)] : new google.maps.LatLng(to.lat, to.lng);
             const label = armarLabelOverlay(mid, armarFmtKm(data.meters) + ' km · ' + armarFmtMin(data.seconds), color);
             label.setMap(map);
-            armarLegs.push({ lines: [casing, line].concat(trafficLines), label: label, sec: data.seconds, m: data.meters });
-            armarTotSec += data.seconds; armarTotM += data.meters;
-            return true;
-        } catch (e) { return false; }
+            return { lines: [casing, line].concat(trafficLines), label: label, sec: data.seconds, m: data.meters };
+        } catch (e) { return null; }
     }
 
     // Borra TODO lo dibujado del armado (tramos, numeritos, casita) y resetea el estado.
@@ -528,19 +528,22 @@ window.mapeoFlex = (function () {
         armarBusy = false;
     }
 
+    // Dibuja (o saca) la casita del depósito en el mapa.
+    function armarDrawDepotMarker() {
+        if (armarDepotMarker || !armarDepot) return;
+        armarDepotMarker = new google.maps.Marker({
+            position: armarDepot, map: map, clickable: false, zIndex: 6,
+            label: { text: '🏁', fontSize: '15px' },
+            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 13, fillColor: '#111827', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2 }
+        });
+    }
+
     // Agrega el pin tocado a la ruta: dibuja el tramo desde el punto anterior (o el depósito) hasta acá.
     async function armarAddPoint(id, lat, lng) {
         if (!armarOn || armarBusy) return;
         let prev = null;
         if (armarSeq.length === 0) {
-            if (armarDesdeDeposito && armarDepot) {
-                prev = armarDepot;
-                armarDepotMarker = new google.maps.Marker({
-                    position: armarDepot, map: map, clickable: false, zIndex: 6,
-                    label: { text: '🏁', fontSize: '15px' },
-                    icon: { path: google.maps.SymbolPath.CIRCLE, scale: 13, fillColor: '#111827', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2 }
-                });
-            }
+            if (armarDesdeDeposito && armarDepot) { prev = armarDepot; armarDrawDepotMarker(); }
         } else {
             prev = armarSeq[armarSeq.length - 1];
         }
@@ -549,7 +552,8 @@ window.mapeoFlex = (function () {
         if (prev) {
             armarBusy = true;
             armarNotify();               // muestra el nuevo conteo mientras Google calcula el tramo
-            await armarDrawLeg(prev, { lat: lat, lng: lng }, ARMAR_COLOR);
+            const leg = await armarBuildLeg(prev, { lat: lat, lng: lng }, ARMAR_COLOR);
+            if (leg) { armarLegs.push(leg); armarTotSec += leg.sec; armarTotM += leg.m; }
             armarBusy = false;
         }
         armarNotify();
@@ -1017,10 +1021,39 @@ window.mapeoFlex = (function () {
             if (infoWindow) { infoWindow.close(); infoOpen = false; }
         },
 
-        // Cambiar el arranque (depósito sí/no) ANTES de tocar el primer punto.
-        armarSetFromDepot(fromDepot) {
-            if (armarSeq.length > 0) return; // ya empezaste: no se cambia el arranque a mitad
-            armarDesdeDeposito = !!fromDepot && !!armarDepot;
+        // Prender/apagar el arranque desde el depósito EN CUALQUIER MOMENTO (aunque ya hayas empezado):
+        // al prenderlo agrega la casita 🏁 + el tramo depósito→1ª parada; al apagarlo los saca. El resto
+        // de la ruta y la numeración no cambian.
+        async armarToggleDepot(on) {
+            on = !!on && !!armarDepot;
+            if (on === armarDesdeDeposito) return;
+            if (armarBusy) return;
+            if (armarSeq.length === 0) { armarDesdeDeposito = on; return; } // sin puntos aún: solo guardar la elección
+            if (on) {
+                armarBusy = true;
+                armarNotify();
+                armarDrawDepotMarker();
+                const leg = await armarBuildLeg(armarDepot, armarSeq[0], ARMAR_COLOR);
+                if (leg) {
+                    armarLegs.unshift(leg); armarTotSec += leg.sec; armarTotM += leg.m;
+                    armarDesdeDeposito = true;
+                } else {
+                    // No se pudo traer el tramo: deshacemos la casita y dejamos el arranque en el 1er pin.
+                    if (armarDepotMarker) { armarDepotMarker.setMap(null); armarDepotMarker = null; }
+                    armarDesdeDeposito = false;
+                }
+                armarBusy = false;
+            } else {
+                armarDesdeDeposito = false;
+                if (armarDepotMarker) { armarDepotMarker.setMap(null); armarDepotMarker = null; }
+                const first = armarLegs.shift(); // el 1er tramo es depósito→1ª parada
+                if (first) {
+                    first.lines.forEach(l => l.setMap(null));
+                    if (first.label) first.label.setMap(null);
+                    armarTotSec -= first.sec; armarTotM -= first.m;
+                }
+            }
+            armarNotify();
         },
 
         // Deshacer el último punto tocado (saca su tramo, su numerito y descuenta del total).

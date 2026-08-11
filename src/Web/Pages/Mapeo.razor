@@ -1137,9 +1137,9 @@
                     Tocá los envíos en el orden que los vas a repartir. La línea se dibuja sola por las calles y arriba se va sumando el tiempo y los km. Cuando termines, apretá <strong>Terminar ruta</strong> y queda guardada.
                 </div>
                 <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
-                    <label style="font-size:0.76rem; display:flex; align-items:center; gap:0.35rem; cursor:@(armarCount > 0 || !armarDepotLat.HasValue ? "default" : "pointer"); @(armarCount > 0 ? "opacity:0.55;" : "")"
-                           title="@(armarDepotLat.HasValue ? "Arrancar la línea desde la casita del depósito" : "Configurá primero el punto de partida (la casita) para usar esto")">
-                        <input type="checkbox" checked="@armarDesdeDeposito" disabled="@(armarCount > 0 || !armarDepotLat.HasValue)" @onchange="OnArmarDepotToggle" />
+                    <label style="font-size:0.76rem; display:flex; align-items:center; gap:0.35rem; cursor:@(!armarDepotLat.HasValue ? "default" : "pointer"); @(!armarDepotLat.HasValue ? "opacity:0.55;" : "")"
+                           title="@(armarDepotLat.HasValue ? "Prender/apagar el arranque desde el depósito (podés cambiarlo cuando quieras)" : "Configurá primero el punto de partida (la casita) para usar esto")">
+                        <input type="checkbox" checked="@armarDesdeDeposito" disabled="@(!armarDepotLat.HasValue)" @onchange="OnArmarDepotToggle" />
                         🏁 Arrancar desde el depósito
                     </label>
                     <button class="btn" style="font-size:0.8rem; font-weight:700; background:rgba(255,255,255,0.18); color:#fff; border:1px solid rgba(255,255,255,0.6); padding:0.3rem 0.65rem; border-radius:8px; cursor:pointer;"
@@ -5864,12 +5864,12 @@
         StateHasChanged();
     }
 
-    // Cambiar el arranque (depósito sí/no) — solo válido antes de tocar el primer punto.
+    // Prender/apagar el arranque desde el depósito — se puede en cualquier momento (aunque ya empezaste).
+    // El JS agrega o saca el tramo del depósito y avisa el nuevo total por OnArmarUpdate.
     private async Task OnArmarDepotToggle(ChangeEventArgs e)
     {
-        if (armarCount > 0) return;
         armarDesdeDeposito = (bool?)e.Value ?? false;
-        try { await JS.InvokeVoidAsync("mapeoFlex.armarSetFromDepot", armarDesdeDeposito); } catch { }
+        try { await JS.InvokeVoidAsync("mapeoFlex.armarToggleDepot", armarDesdeDeposito); } catch { }
         StateHasChanged();
     }
 
