@@ -804,6 +804,22 @@ public class MapeoStopsController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>
+    /// Un solo TRAMO (de un punto A a un punto B) por las calles reales, con el tiempo (con tránsito),
+    /// los metros y la línea codificada para dibujarlo. Lo usa el modo "Armar ruta" interactivo del mapa:
+    /// cada vez que el usuario pincha un envío, pedimos solo el tramo nuevo (barato, una llamada) y lo
+    /// dibujamos al toque, estilo Google Maps. Devuelve ok=false si no hay clave o Google falla.
+    /// </summary>
+    [HttpGet("leg")]
+    public async Task<IActionResult> Leg([FromQuery] double fromLat, [FromQuery] double fromLng,
+        [FromQuery] double toLat, [FromQuery] double toLng, CancellationToken ct)
+    {
+        var r = await _routes.ComputeRouteAsync((fromLat, fromLng), (toLat, toLng),
+            Array.Empty<(double lat, double lng)>(), ct);
+        if (r is null) return Ok(new { ok = false });
+        return Ok(new { ok = true, seconds = r.DurationSeconds, meters = r.DistanceMeters, encoded = r.EncodedPolyline });
+    }
+
     public record RutaAhorroDto(string Label, string Color, int? DriverId,
         int ActualSeconds, int OptimoSeconds, int ActualMeters, int OptimoMeters, int StopCount, bool Calculable);
 

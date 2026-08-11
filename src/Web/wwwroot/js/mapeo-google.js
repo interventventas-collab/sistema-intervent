@@ -244,6 +244,21 @@ window.mapeoFlex = (function () {
     let trafficLayer = null;      // capa de tráfico de Google (rojo/amarillo/verde en las calles)
     let lastFitStops = -1; // cuántas paradas (sin contar el punto de partida) había en el último auto-encuadre
 
+    // ── Armar ruta INTERACTIVO (estilo Google Maps: pinchás punto por punto y se va dibujando) ──
+    // Mientras armarOn está encendido, tocar un pin lo AGREGA a la ruta (no abre el globito): se dibuja
+    // el tramo nuevo por las calles (una consulta chica al server) con su cartelito de tiempo/km, y arriba
+    // se va sumando el total. Es distinto de drawRoutes (que dibuja la ruta YA guardada de una).
+    let armarOn = false;            // ¿estamos armando una ruta a mano?
+    let armarDesdeDeposito = false; // arrancar la línea desde el depósito (si no, desde el 1er pin tocado)
+    let armarDepot = null;          // {lat,lng} del depósito
+    let armarSeq = [];              // pines tocados EN ORDEN: [{id, lat, lng}]
+    let armarLegs = [];             // tramos dibujados: [{lines:[Polyline...], label, sec, m}]
+    let armarNums = [];             // marcadores con el numerito (1,2,3…) en cada punto tocado
+    let armarDepotMarker = null;    // marcador de la casita de arranque (si arranca del depósito)
+    let armarTotSec = 0, armarTotM = 0; // total acumulado (segundos y metros)
+    let armarBusy = false;          // true mientras se trae un tramo de Google (evita doble-toque)
+    const ARMAR_COLOR = '#1d4ed8';
+
     // ── Cartelito de "calle no asfaltada" en los pines (tierra/empedrado) ──
     // Al dibujar los pines lanzamos un pase de fondo que le pregunta al servidor el tipo de
     // calle de cada domicilio; cuando es tierra o empedrado, le agregamos el cartelito ! al pin.
@@ -393,6 +408,115 @@ window.mapeoFlex = (function () {
         }));
     }
 
+    // ── Helpers del modo "Armar ruta" interactivo ──
+    const armarFmtKm = (m) => (m / 1000).toFixed(1).replace('.', ',');
+    const armarFmtMin = (s) => {
+        const min = Math.round(s / 60);
+        if (min < 60) return min + ' min';
+        const h = Math.floor(min / 60), mm = min % 60;
+        return mm ? (h + 'h ' + mm + 'min') : (h + 'h');
+    };
+
+    // Cartelito flotante (tiempo + km) posado sobre un tramo, igual estilo que drawRoutes.
+    function armarLabelOverlay(position, text, color) {
+        const ov = new google.maps.OverlayView();
+        ov.onAdd = function () {
+            const div = document.createElement('div');
+            div.style.cssText = 'position:absolute; transform:translate(-50%,-50%); background:#fff; color:#111827; ' +
+                'border:2px solid ' + color + '; border-radius:14px; padding:2px 9px; font-size:12px; font-weight:800; ' +
+                'white-space:nowrap; box-shadow:0 2px 7px rgba(0,0,0,0.35); pointer-events:none;';
+            div.textContent = text;
+            this._div = div;
+            this.getPanes().floatPane.appendChild(div);
+        };
+        ov.draw = function () {
+            const proj = this.getProjection();
+            if (!proj || !this._div) return;
+            const p = proj.fromLatLngToDivPixel(position);
+            if (p) { this._div.style.left = p.x + 'px'; this._div.style.top = p.y + 'px'; }
+        };
+        ov.onRemove = function () { if (this._div) { this._div.remove(); this._div = null; } };
+        return ov;
+    }
+
+    // Marcador con el numerito del orden (1, 2, 3…) en cada punto tocado.
+    function armarNumberMarker(lat, lng, n, color) {
+        return new google.maps.Marker({
+            position: { lat: lat, lng: lng }, map: map, clickable: false, zIndex: 6,
+            label: { text: String(n), color: '#ffffff', fontSize: '12px', fontWeight: '800' },
+            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 13, fillColor: color, fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2 }
+        });
+    }
+
+    // Le avisa a Blazor el estado actual (cantidad de paradas + total tiempo/metros) para la barra flotante.
+    function armarNotify() {
+        if (dotNetRef) dotNetRef.invokeMethodAsync('OnArmarUpdate', armarSeq.length, Math.round(armarTotSec), Math.round(armarTotM));
+    }
+
+    // Trae el tramo de->to a Google (por las calles) y lo dibuja. Suma al total. Devuelve true si dibujó.
+    async function armarDrawLeg(from, to, color) {
+        try {
+            const url = '/api/mapeo/stops/leg?fromLat=' + from.lat + '&fromLng=' + from.lng +
+                '&toLat=' + to.lat + '&toLng=' + to.lng;
+            const r = await fetch(url, { credentials: 'same-origin' });
+            const data = r.ok ? await r.json() : null;
+            if (!data || !data.ok || !data.encoded || !google.maps.geometry) return false;
+            const path = google.maps.geometry.encoding.decodePath(data.encoded);
+            const casing = new google.maps.Polyline({
+                path: path, map: map, strokeColor: '#ffffff', strokeOpacity: 0.9, strokeWeight: 9, zIndex: 4, clickable: false
+            });
+            const line = new google.maps.Polyline({
+                path: path, map: map, strokeColor: color, strokeOpacity: 0.95, strokeWeight: 5, zIndex: 5, clickable: false,
+                icons: [{ icon: { path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 2.6, strokeColor: '#ffffff', strokeWeight: 1.2, fillColor: color, fillOpacity: 1 }, offset: '0', repeat: '110px' }]
+            });
+            const mid = path.length ? path[Math.floor(path.length / 2)] : new google.maps.LatLng(to.lat, to.lng);
+            const label = armarLabelOverlay(mid, armarFmtKm(data.meters) + ' km · ' + armarFmtMin(data.seconds), color);
+            label.setMap(map);
+            armarLegs.push({ lines: [casing, line], label: label, sec: data.seconds, m: data.meters });
+            armarTotSec += data.seconds; armarTotM += data.meters;
+            return true;
+        } catch (e) { return false; }
+    }
+
+    // Borra TODO lo dibujado del armado (tramos, numeritos, casita) y resetea el estado.
+    function armarClearInternal() {
+        for (const leg of armarLegs) { leg.lines.forEach(l => l.setMap(null)); if (leg.label) leg.label.setMap(null); }
+        armarLegs = [];
+        for (const m of armarNums) m.setMap(null);
+        armarNums = [];
+        if (armarDepotMarker) { armarDepotMarker.setMap(null); armarDepotMarker = null; }
+        armarSeq = [];
+        armarTotSec = 0; armarTotM = 0;
+        armarBusy = false;
+    }
+
+    // Agrega el pin tocado a la ruta: dibuja el tramo desde el punto anterior (o el depósito) hasta acá.
+    async function armarAddPoint(id, lat, lng) {
+        if (!armarOn || armarBusy) return;
+        let prev = null;
+        if (armarSeq.length === 0) {
+            if (armarDesdeDeposito && armarDepot) {
+                prev = armarDepot;
+                armarDepotMarker = new google.maps.Marker({
+                    position: armarDepot, map: map, clickable: false, zIndex: 6,
+                    label: { text: '🏁', fontSize: '15px' },
+                    icon: { path: google.maps.SymbolPath.CIRCLE, scale: 13, fillColor: '#111827', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2 }
+                });
+            }
+        } else {
+            prev = armarSeq[armarSeq.length - 1];
+        }
+        armarSeq.push({ id: id, lat: lat, lng: lng });
+        armarNums.push(armarNumberMarker(lat, lng, armarSeq.length, ARMAR_COLOR));
+        if (prev) {
+            armarBusy = true;
+            armarNotify();               // muestra el nuevo conteo mientras Google calcula el tramo
+            await armarDrawLeg(prev, { lat: lat, lng: lng }, ARMAR_COLOR);
+            armarBusy = false;
+        }
+        armarNotify();
+    }
+
     return {
         async init(elementId, dotnetHelper) {
             dotNetRef = dotnetHelper;
@@ -540,6 +664,8 @@ window.mapeoFlex = (function () {
                 // ni en la casita del punto de partida, que se puede arrastrar).
                 const conStreetView = !isCluster && !esArrastrable;
                 marker.addListener('click', () => {
+                    // Modo "Armar ruta": el toque agrega el envío a la ruta (no abre el globito).
+                    if (armarOn) { armarAddPoint(first.id, +first.lat, +first.lng); return; }
                     if (infoWindow) {
                         infoWindow.setContent(popupHtml);
                         infoWindow.open(map, marker);
@@ -839,6 +965,58 @@ window.mapeoFlex = (function () {
             if (routeInfo) routeInfo.close();
         },
 
+        // ── Modo "Armar ruta" interactivo (estilo Google Maps) ──
+        // Arranca el modo. fromDepot=true empieza la línea desde el depósito (depotLat/Lng).
+        armarStart(fromDepot, depotLat, depotLng) {
+            this.clearRoutes();
+            armarClearInternal();
+            armarDepot = (depotLat != null && depotLng != null) ? { lat: +depotLat, lng: +depotLng } : null;
+            armarDesdeDeposito = !!fromDepot && !!armarDepot;
+            armarOn = true;
+            if (map) map.setOptions({ draggableCursor: 'pointer' });
+            if (infoWindow) { infoWindow.close(); infoOpen = false; }
+        },
+
+        // Cambiar el arranque (depósito sí/no) ANTES de tocar el primer punto.
+        armarSetFromDepot(fromDepot) {
+            if (armarSeq.length > 0) return; // ya empezaste: no se cambia el arranque a mitad
+            armarDesdeDeposito = !!fromDepot && !!armarDepot;
+        },
+
+        // Deshacer el último punto tocado (saca su tramo, su numerito y descuenta del total).
+        armarUndo() {
+            if (armarSeq.length === 0) return;
+            armarSeq.pop();
+            const nm = armarNums.pop(); if (nm) nm.setMap(null);
+            // Cuántos tramos DEBERÍAN quedar según el arranque elegido.
+            const expected = armarDesdeDeposito ? armarSeq.length : Math.max(0, armarSeq.length - 1);
+            while (armarLegs.length > expected) {
+                const leg = armarLegs.pop();
+                if (!leg) break;
+                leg.lines.forEach(l => l.setMap(null));
+                if (leg.label) leg.label.setMap(null);
+                armarTotSec -= leg.sec; armarTotM -= leg.m;
+            }
+            if (armarSeq.length === 0 && armarDepotMarker) { armarDepotMarker.setMap(null); armarDepotMarker = null; }
+            armarNotify();
+        },
+
+        // Terminar: le pasa a Blazor los IDs de los pines EN ORDEN (para guardar la ruta) y limpia el dibujo.
+        armarFinish() {
+            const ids = armarSeq.map(p => p.id);
+            armarOn = false;
+            if (map) map.setOptions({ draggableCursor: null });
+            armarClearInternal();
+            if (dotNetRef) dotNetRef.invokeMethodAsync('OnArmarFinished', ids);
+        },
+
+        // Cancelar: sale del modo y borra todo lo dibujado sin guardar nada.
+        armarCancel() {
+            armarOn = false;
+            armarClearInternal();
+            if (map) map.setOptions({ draggableCursor: null });
+        },
+
         // ── Ver una FOTO (snapshot) de un día anterior sobre el mapa (modo SOLO MIRAR) ──
         // items = [{lat,lng,label,color,shape,delivered,popupHtml}]. Oculta los pines de HOY,
         // dibuja los del histórico (no arrastrables, sin botones de ruta) y encuadra todo.
@@ -905,6 +1083,8 @@ window.mapeoFlex = (function () {
             infoWindow = null;
             dotNetRef = null;
             lastFitStops = -1;
+            armarOn = false;
+            armarClearInternal();
             cleanupZone();
             for (const l of routeLines) l.setMap(null);
             routeLines = [];

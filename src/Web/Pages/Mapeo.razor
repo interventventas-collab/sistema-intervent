@@ -1103,6 +1103,45 @@
                 </div>
             </div>
         }
+        @* ═════════ Barra flotante: Armar ruta INTERACTIVA (estilo Google Maps) ═════════ *@
+        @if (modoArmar)
+        {
+            var arKm = (armarTotalMetros / 1000.0);
+            var arHayTotal = armarTotalSec > 0;
+            <div style="position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:600; background:#1d4ed8; color:#fff; border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,0.4); padding:0.6rem 0.85rem; display:flex; flex-direction:column; gap:0.45rem; max-width:94vw; width:560px;">
+                <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                    <span style="font-size:1rem;">🖊️</span>
+                    <span style="font-size:0.95rem; font-weight:800;">Armar ruta</span>
+                    <span style="font-size:0.8rem; font-weight:800; background:#fff; color:#1d4ed8; border-radius:8px; padding:0.2rem 0.6rem;">@armarCount @(armarCount == 1 ? "parada" : "paradas")</span>
+                    @if (arHayTotal)
+                    {
+                        <span style="font-size:0.85rem; font-weight:800; background:rgba(255,255,255,0.2); border-radius:8px; padding:0.2rem 0.6rem;">
+                            🕒 @FmtDuracion(armarTotalSec) &nbsp;·&nbsp; 🛣️ @arKm.ToString("0.0").Replace('.', ',') km
+                        </span>
+                    }
+                </div>
+                <div style="font-size:0.78rem; opacity:0.95; line-height:1.35;">
+                    Tocá los envíos en el orden que los vas a repartir. La línea se dibuja sola por las calles y arriba se va sumando el tiempo y los km. Cuando termines, apretá <strong>Terminar ruta</strong> y queda guardada.
+                </div>
+                <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                    <label style="font-size:0.76rem; display:flex; align-items:center; gap:0.35rem; cursor:@(armarCount > 0 || !armarDepotLat.HasValue ? "default" : "pointer"); @(armarCount > 0 ? "opacity:0.55;" : "")"
+                           title="@(armarDepotLat.HasValue ? "Arrancar la línea desde la casita del depósito" : "Configurá primero el punto de partida (la casita) para usar esto")">
+                        <input type="checkbox" checked="@armarDesdeDeposito" disabled="@(armarCount > 0 || !armarDepotLat.HasValue)" @onchange="OnArmarDepotToggle" />
+                        🏁 Arrancar desde el depósito
+                    </label>
+                    <button class="btn" style="font-size:0.8rem; font-weight:700; background:rgba(255,255,255,0.18); color:#fff; border:1px solid rgba(255,255,255,0.6); padding:0.3rem 0.65rem; border-radius:8px; cursor:pointer;"
+                            @onclick="ArmarDeshacer" disabled="@(armarCount == 0)">↩ Deshacer punto</button>
+                    <button class="btn" style="font-size:0.82rem; font-weight:800; background:#16a34a; color:#fff; border:none; padding:0.32rem 0.85rem; border-radius:8px; cursor:pointer;"
+                            @onclick="ArmarTerminar" disabled="@(armarCount < 2 || armarGuardando)">@(armarGuardando ? "Guardando…" : "✓ Terminar ruta")</button>
+                    <button class="btn" style="font-size:0.8rem; font-weight:800; background:transparent; color:#fff; border:1px solid #fff; padding:0.3rem 0.65rem; border-radius:8px; cursor:pointer;"
+                            @onclick="ToggleModoArmar">✕ Cancelar</button>
+                </div>
+                @if (!armarDepotLat.HasValue)
+                {
+                    <div style="font-size:0.72rem; opacity:0.85;">💡 Para poder arrancar desde el depósito, primero fijá el punto de partida (la casita) en el mapa.</div>
+                }
+            </div>
+        }
         @if (viewingSnapshot)
         {
             @* Cartel: estás mirando la foto de un día anterior (modo solo mirar). *@
@@ -1213,6 +1252,13 @@
                         title="Armar ruta guiada: elegí la primera y la última parada de una zona y el sistema ordena el resto (podés hacerlo antes de poner choferes)">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>
                     <span class="mapeo-dock-label">Armar ruta guiada</span>
+                </button>
+                @* Armar ruta INTERACTIVA (estilo Google Maps): pinchás los envíos en orden y se va dibujando
+                   la línea por las calles con el tiempo y los km en vivo. *@
+                <button class="mapeo-dock-btn @(modoArmar ? "activo" : "")" @onclick="ToggleModoArmar"
+                        title="Armar ruta como Google Maps: pinchá los envíos en orden y se va dibujando la línea por las calles con el tiempo y los km">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="2.5"></circle><circle cx="18" cy="5" r="2.5"></circle><path d="M8.2 17.6 15.5 6.8"></path><path d="M6 16.5V13a3 3 0 0 1 3-3h4"></path></svg>
+                    <span class="mapeo-dock-label">Armar ruta</span>
                 </button>
                 @* Prender/apagar el tránsito (embotellamientos). Arranca apagado = mapa limpio. Ícono semáforo. *@
                 <button class="mapeo-dock-btn @(traficoOn ? "activo" : "")" @onclick="ToggleTrafico"
@@ -3493,6 +3539,15 @@
     private List<int> zoneStopIds = new();
     private bool assigningZone;
     private bool dibujandoZona; // true mientras el usuario marca las esquinas de la zona
+
+    // Armar ruta INTERACTIVA (estilo Google Maps): pinchás punto por punto y se va dibujando la línea
+    // por las calles con el tiempo y los km en vivo (endpoint /leg + mapeoFlex.armar*).
+    private bool modoArmar;
+    private bool armarDesdeDeposito;          // arrancar la línea desde el depósito (si no, desde el 1er pin)
+    private double? armarDepotLat, armarDepotLng; // punto de partida (si está configurado)
+    private int armarCount;                   // cuántas paradas se tocaron
+    private int armarTotalSec, armarTotalMetros; // total acumulado
+    private bool armarGuardando;              // true mientras se guarda la ruta al terminar
     private bool showZonasMenu; // desplegable de acciones de zona (anclado al botón 🗺️)
     // Zonas ya creadas en esta sesión (para mostrar los cuadraditos "Zona 1", "Zona 2", ...)
     private record ZonaCreada(int Numero, int DriverId, string DriverName, string Color, List<int> StopIds);
@@ -4008,7 +4063,7 @@
         if (autoRefreshBusy || !mapInitialized) return;
         // Guarda: no interrumpir si el usuario está haciendo algo sobre el mapa,
         // ni mientras mira la foto de un día anterior (no pisar el histórico con lo de hoy).
-        if (dibujandoZona || modoOrden || modoGuiada || modoAsignacion || corrigiendoDomicilioStopId is not null
+        if (dibujandoZona || modoOrden || modoGuiada || modoAsignacion || modoArmar || corrigiendoDomicilioStopId is not null
             || editandoPinStopId is not null
             || routeBusy || actualizandoEntregas || assigningZone || assigningSlot || isLoading
             || viewingSnapshot) return;
@@ -5739,6 +5794,108 @@
             await CargarYDibujarRutas(single: false);
         }
         StateHasChanged();
+    }
+
+    // ═════════ Armar ruta INTERACTIVA (estilo Google Maps): pinchar punto por punto ═════════
+    // Formatea segundos como "45 min" o "1h 20min".
+    private static string FmtDuracion(int segundos)
+    {
+        int min = (int)Math.Round(segundos / 60.0);
+        if (min < 60) return min + " min";
+        int h = min / 60, mm = min % 60;
+        return mm > 0 ? $"{h}h {mm}min" : $"{h}h";
+    }
+
+    private async Task ToggleModoArmar()
+    {
+        if (!modoArmar)
+        {
+            if ((stops?.Count ?? 0) == 0 && (shipments?.Count ?? 0) == 0)
+            { ToastService.Info("Primero sumá envíos al mapa (escaneá o importá Flex)."); return; }
+            // Entrar: apagamos los otros modos para no pisarnos.
+            modoArmar = true;
+            modoOrden = false; modoGuiada = false; modoAsignacion = false;
+            if (dibujandoZona) { try { await JS.InvokeVoidAsync("mapeoFlex.cancelDrawZone"); } catch { } dibujandoZona = false; }
+            armarCount = 0; armarTotalSec = 0; armarTotalMetros = 0; armarDesdeDeposito = false;
+            armarDepotLat = null; armarDepotLng = null;
+            // Traemos el punto de partida (depósito) por si el usuario quiere arrancar desde ahí.
+            try
+            {
+                var sp = await Api.GetMapeoStartPointAsync();
+                if (sp is not null && sp.Lat.HasValue && sp.Lng.HasValue)
+                { armarDepotLat = (double)sp.Lat.Value; armarDepotLng = (double)sp.Lng.Value; }
+            }
+            catch { }
+            rutasResumen = new();
+            try { await JS.InvokeVoidAsync("mapeoFlex.clearRoutes"); } catch { }
+            try { await JS.InvokeVoidAsync("mapeoFlex.armarStart", armarDesdeDeposito, armarDepotLat, armarDepotLng); }
+            catch (Exception ex) { ToastService.Error("No se pudo iniciar el armado: " + ex.Message); modoArmar = false; StateHasChanged(); return; }
+            ToastService.Info("🖊️ Tocá los envíos en el orden de reparto: se va dibujando la ruta con el tiempo y los km.");
+        }
+        else
+        {
+            // Salir / Cancelar: borra el dibujo del armado y vuelve a mostrar las rutas guardadas (si había).
+            modoArmar = false;
+            try { await JS.InvokeVoidAsync("mapeoFlex.armarCancel"); } catch { }
+            await CargarYDibujarRutas(single: false);
+        }
+        StateHasChanged();
+    }
+
+    // Cambiar el arranque (depósito sí/no) — solo válido antes de tocar el primer punto.
+    private async Task OnArmarDepotToggle(ChangeEventArgs e)
+    {
+        if (armarCount > 0) return;
+        armarDesdeDeposito = (bool?)e.Value ?? false;
+        try { await JS.InvokeVoidAsync("mapeoFlex.armarSetFromDepot", armarDesdeDeposito); } catch { }
+        StateHasChanged();
+    }
+
+    private async Task ArmarDeshacer()
+    { try { await JS.InvokeVoidAsync("mapeoFlex.armarUndo"); } catch { } }
+
+    private async Task ArmarTerminar()
+    { try { await JS.InvokeVoidAsync("mapeoFlex.armarFinish"); } catch { } }
+
+    // El mapa nos avisa el estado del armado (cuántas paradas + total tiempo/metros) para la barra.
+    [JSInvokable]
+    public Task OnArmarUpdate(int count, int totalSec, int totalM)
+    {
+        armarCount = count;
+        armarTotalSec = totalSec;
+        armarTotalMetros = totalM;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    // El mapa nos manda los pines tocados EN ORDEN. Guardamos ese orden (las que sean paradas) y dibujamos la ruta.
+    [JSInvokable]
+    public async Task OnArmarFinished(int[] markerIds)
+    {
+        modoArmar = false;
+        // De los pines tocados nos quedamos con los que son PARADAS (id <= -1000 → stopId = -1000 - id).
+        var stopIds = new List<int>();
+        foreach (var mid in markerIds ?? Array.Empty<int>())
+            if (mid <= -1000) stopIds.Add(-1000 - mid);
+        if (stopIds.Count < 2)
+        {
+            ToastService.Info("Para guardar la ruta tocá al menos 2 envíos que ya sean paradas (importados de Flex).");
+            await CargarYDibujarRutas(single: false);
+            StateHasChanged();
+            return;
+        }
+        armarGuardando = true;
+        StateHasChanged();
+        try
+        {
+            await Api.ReorderMapeoStopsAsync(stopIds); // OrderInRoute = 1..N en el orden tocado
+            await LoadStops();
+            await RenderMap();
+            await CargarYDibujarRutas(single: true);   // dibuja la ruta ya guardada
+            ToastService.Success($"✅ Ruta armada: {stopIds.Count} paradas en orden.");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo guardar la ruta: " + ex.Message); }
+        finally { armarGuardando = false; StateHasChanged(); }
     }
 
     // ¿La parada 'b' es de la misma zona que 'a'? Zona = repartidor si tiene; si no, el vehículo (sin repartidor).
