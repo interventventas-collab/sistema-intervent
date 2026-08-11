@@ -425,10 +425,13 @@
                 // Texto de búsqueda normalizado (para comparar sin acentos/mayúsculas).
                 var qBusqueda = NormTxt(busquedaTexto);
                 // Se aplican, sobre lo visible: (1) chips de zona ocultas, (2) filtro por repartidor,
-                // (3) buscador de texto libre. Los tres se combinan.
+                // (3) buscador de texto libre, (4) el chip "Zona N/Sin asignar" de arriba del mapa.
+                // El (4) hace que al elegir una zona, el listado quede SOLO con esa zona → se numera y se
+                // puede arrastrar uno por uno (como Google Maps).
                 var listaRender = listaVisible
                     .Where(g => zonasOcultas.Count == 0 || !zonasOcultas.Contains(g.Zona))
                     .Where(GrupoCoincideRepartidor)
+                    .Where(GrupoCoincideVehiculoFiltro)
                     .Where(g => GrupoCoincideBusqueda(g, qBusqueda))
                     .ToList();
                 // ¿Quedó UNA sola zona (un repartidor) a la vista? Entonces mostramos las paradas
@@ -3116,6 +3119,18 @@
         if (!filtroRepartidorId.HasValue) return true;
         var d = GrupoDriverId(g);
         return filtroRepartidorId.Value == 0 ? !d.HasValue : d == filtroRepartidorId.Value;
+    }
+
+    // ¿El grupo pasa el chip "Zona N / Sin asignar" de arriba del mapa? (vehiculoFiltro)
+    // null = "Todos" (no filtra) · 0 = "Sin asignar" (ni repartidor ni vehículo) · >0 = esa Zona/vehículo.
+    // Filtrando el listado por zona, queda una sola zona a la vista y se puede numerar + arrastrar.
+    private bool GrupoCoincideVehiculoFiltro(GrupoUnificado g)
+    {
+        if (!vehiculoFiltro.HasValue) return true;
+        var slot = GrupoSlot(g);
+        var driver = GrupoDriverId(g);
+        if (vehiculoFiltro.Value == 0) return !slot.HasValue && !driver.HasValue;
+        return slot == vehiculoFiltro.Value;
     }
 
     // ¿El grupo matchea el texto buscado? Busca en TODOS los campos útiles de cada envío/parada:
