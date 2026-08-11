@@ -455,6 +455,15 @@
                 var soloSinAsignarConOrden = driversVisibles.Count == 0 && slotsVisibles.Count == 0 && haySinAsignarNiZona && hayOrdenArmado;
                 var zonaUnica = unSoloChofer || unSolaZona || soloSinAsignarConOrden;
                 listaOrdenableActiva = zonaUnica; // habilita el arrastre (⠿) solo con UN grupo de ruta a la vista
+                // Recorrido (con tiempos por tramo) de la zona que se está mostrando en orden: sirve para poner
+                // en cada domicilio del listado "cuánto tarda hasta el siguiente" (dato de la ruta armada).
+                RutaOverviewDto? rutaZonaListado = null;
+                if (zonaUnica)
+                {
+                    var kZona = unSoloChofer ? ZonaKeyDriver(driversVisibles[0])
+                              : (unSolaZona ? ZonaKeySlot(slotsVisibles[0]) : "none");
+                    rutaZonaListado = rutasResumen.FirstOrDefault(r => r.Key == kZona);
+                }
                 List<IGrouping<string, GrupoUnificado>> zonasUnificadas;
                 if (zonaUnica)
                 {
@@ -1025,6 +1034,18 @@
                             }
                             </div>
                         </div>
+                        @* En el listado en orden de ruta, mostramos cuánto se tarda de esta parada a la SIGUIENTE. *@
+                        @if (zonaUnica && rutaZonaListado is not null)
+                        {
+                            var _legSig = rutaZonaListado.Legs.FirstOrDefault(l => l.From == GrupoOrden(g).ToString());
+                            if (_legSig is not null)
+                            {
+                                <div style="display:flex; align-items:center; gap:6px; padding:0 0 4px 30px; color:#0d9488; font-size:0.7rem; font-weight:700;" title="Tiempo y distancia de manejo hasta la parada siguiente (según el tránsito)">
+                                    <span style="font-size:0.9rem; line-height:1;">↓</span>
+                                    <span>@FormatoDuracion(_legSig.Seconds) · @((_legSig.Meters / 1000.0).ToString("0.#").Replace('.', ',')) km <span style="opacity:0.7; font-weight:600;">a la siguiente</span></span>
+                                </div>
+                            }
+                        }
                     }
                 }
             }
