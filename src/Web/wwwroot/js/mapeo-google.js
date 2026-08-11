@@ -181,7 +181,7 @@
         if (!enabled || lat == null || lng == null) return;
         const loc = (+lat).toFixed(6) + ',' + (+lng).toFixed(6);
         const slot = { chip: '', thumb: '' };
-        const render = function () { if (myId === svSeq) iw.setContent(slot.chip + slot.thumb + baseHtml); };
+        const render = function () { if (myId === svSeq) iw.setContent(wrapIw(slot.chip + slot.thumb + baseHtml)); };
 
         // 1) Fotito de Street View (necesita la clave del navegador + metadata).
         if (browserKey) {
@@ -221,7 +221,12 @@
     }
 
     // Exponer helpers al scope de este archivo (los dos módulos de abajo los usan).
-    window.__mapeoHelpers = { ensureGoogle, ZONE_COLORS, escapeXml, markerSvg, markerIcon, streetView, cancelStreetView };
+    // Envuelve el contenido del globito con un tope de alto (scroll adentro): así, aunque el envío tenga
+    // mucho texto (mensajes + moliendas + foto), la ventanita nunca se pasa de la pantalla y la X para
+    // cerrar siempre queda a la vista.
+    function wrapIw(html) { return '<div class="mapeo-iw">' + (html || '') + '</div>'; }
+
+    window.__mapeoHelpers = { ensureGoogle, ZONE_COLORS, escapeXml, markerSvg, markerIcon, streetView, cancelStreetView, wrapIw };
 })();
 
 // ══════════ Mapa grande (pantalla Mapeo) ══════════
@@ -709,7 +714,7 @@ window.mapeoFlex = (function () {
                     // Modo "Armar ruta": el toque agrega el envío a la ruta (no abre el globito).
                     if (armarOn) { armarAddPoint(first.id, +first.lat, +first.lng); return; }
                     if (infoWindow) {
-                        infoWindow.setContent(popupHtml);
+                        infoWindow.setContent(H.wrapIw(popupHtml));
                         infoWindow.open(map, marker);
                         infoOpen = true;
                         H.streetView(infoWindow, first.lat, first.lng, popupHtml, conStreetView);
@@ -1133,7 +1138,7 @@ window.mapeoFlex = (function () {
                 const svLat = it.lat, svLng = it.lng;
                 marker.addListener('click', () => {
                     if (infoWindow) {
-                        infoWindow.setContent(html);
+                        infoWindow.setContent(H.wrapIw(html));
                         infoWindow.open(map, marker);
                         infoOpen = true;
                         H.streetView(infoWindow, svLat, svLng, html, true);

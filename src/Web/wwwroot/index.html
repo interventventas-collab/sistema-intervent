@@ -1553,6 +1553,9 @@
         .mapeo-drag-ghost { opacity: 0.4; background: #dbeafe !important; }
         .mapeo-drag-chosen { box-shadow: 0 4px 16px rgba(0,0,0,0.18); background: #fff; }
         /* Parpadeo de la fila del listado cuando tocás su globito en el mapa. */
+        /* Globito del mapa: tope de alto/ancho con scroll adentro, para que nunca se pase de la pantalla
+           y la X para cerrar quede siempre a la vista (envíos con muchos mensajes/moliendas + foto). */
+        .mapeo-iw { max-height: 42vh; max-width: 300px; overflow-y: auto; overflow-x: hidden; }
         .mapeo-row-flash { animation: mapeoRowFlash 1.3s ease; }
         @keyframes mapeoRowFlash {
             0%   { background: #fde68a; box-shadow: 0 0 0 2px #f59e0b inset; }
