@@ -2955,6 +2955,31 @@ public class MeliController : ControllerBase
         return Ok(new { progressId });
     }
 
+    /// <summary>2026-08-11: CHEQUEO ESCALÓN $33k (SOLO LECTURA, no toca precios). Revisa las aplicadas de `runId`
+    /// que cruzaron de &lt;$33k a ≥$33k y recalcula el margen real con el envío en vivo. Resultado en checkRunId.</summary>
+    [HttpPost("items/piso-masivo/chequeo-escalon")]
+    public IActionResult PisoMasivoChequeoEscalon([FromQuery] string runId)
+    {
+        if (string.IsNullOrWhiteSpace(runId)) return BadRequest(new { error = "Falta runId." });
+        var progressId = _syncProgress.StartSync("Revisando escalón $33k");
+        var checkRunId = "esc-" + progressId;
+        var scopeFactory = _scopeFactory;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var svc = scope.ServiceProvider.GetRequiredService<MeliPisoMasivoService>();
+                await svc.RunChequeoEscalonAsync(runId, checkRunId, progressId, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _syncProgress.Fail(progressId, ex.Message);
+            }
+        });
+        return Ok(new { checkRunId, progressId });
+    }
+
     // 2026-07-01: Fase C — push masivo de precios a MeLi. Solo pushea las que tienen ajuste cargado.
     public record BulkPushPrecioRequest(List<int> ItemIds);
     public record BulkPushPrecioDetail(int ItemId, string MeliItemId, bool Ok, string Message, decimal? PushedPrice);

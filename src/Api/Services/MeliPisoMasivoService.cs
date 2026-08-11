@@ -271,4 +271,66 @@ public class MeliPisoMasivoService
         _progress.Complete(progressId, resumen);
         _logger.LogWarning("[PisoMasivo] Aplicar {Run} COMPLETO — {Resumen}", runId, resumen);
     }
+
+    /// <summary>2026-08-11: CHEQUEO ESCALÓN $33k — SOLO LECTURA (no toca precios). Para las publis que en la
+    /// corrida `runIdOrigen` se APLICARON y cruzaron de &lt;$33.000 a ≥$33.000, le pregunta a MeLi el envío REAL
+    /// al precio actual y recalcula el margen verdadero. Guarda el resultado como una corrida aparte (checkRunId)
+    /// en la misma tabla: Accion = ESC_PERDIDA (margen&lt;0) / ESC_BAJO (0–50%) / ESC_OK (≥50%) / ESC_SINDATO.</summary>
+    public async Task RunChequeoEscalonAsync(string runIdOrigen, string checkRunId, string progressId, CancellationToken ct)
+    {
+        await _db.MeliPisoMasivoResultados.Where(r => r.RunId == checkRunId).ExecuteDeleteAsync(ct);
+
+        var mlas = await _db.MeliPisoMasivoResultados
+            .Where(r => r.RunId == runIdOrigen && r.AplicadoOk == true
+                     && r.PrecioActual < 33000m && r.PrecioNuevo >= 33000m)
+            .Select(r => r.MeliItemId).Distinct().ToListAsync(ct);
+        var items = await _db.MeliItems.Include(i => i.MeliAccount)
+            .Where(i => mlas.Contains(i.MeliItemId)).ToListAsync(ct);
+
+        _progress.Update(progressId, p => { p.TotalItemsFound = items.Count; p.CurrentStep = "Revisando envío real…"; });
+        _logger.LogWarning("[EscalonCheck] {Run}: {N} publicaciones que cruzaron $33k", checkRunId, items.Count);
+
+        int hechos = 0, perdida = 0, bajo = 0, ok = 0, sinDato = 0;
+        var buffer = new List<MeliPisoMasivoResultado>();
+        foreach (var it in items)
+        {
+            if (ct.IsCancellationRequested) break;
+            var row = new MeliPisoMasivoResultado
+            {
+                RunId = checkRunId, GananciaPct = 50m, MeliItemId = it.MeliItemId, ItemDbId = it.Id,
+                Titulo = it.Title, Sku = it.Sku, Status = it.Status, PrecioActual = it.Price, CreatedAt = DateTime.UtcNow
+            };
+            try
+            {
+                await _itemSvc.GetListingCostsAsync(it.MeliItemId);   // refresca comisión + ENVÍO al precio actual
+                await _db.Entry(it).ReloadAsync(ct);
+                row.PrecioActual = it.Price;
+                row.Costo = await _pushSvc.CalcularCostoTotalAsync(it, ct);
+                var (m, conf) = await _pushSvc.CalcularMargenActualAsync(it, null, ct);
+                row.Confiable = conf;
+                row.MargenActual = m.HasValue ? Math.Round(m.Value, 2) : (decimal?)null;
+                if (!conf || m == null) { row.Accion = "ESC_SINDATO"; sinDato++; }
+                else if (m.Value < 0) { row.Accion = "ESC_PERDIDA"; perdida++; }
+                else if (m.Value < 50) { row.Accion = "ESC_BAJO"; bajo++; }
+                else { row.Accion = "ESC_OK"; ok++; }
+            }
+            catch (Exception ex) { row.Accion = "ESC_SINDATO"; row.Mensaje = ex.Message; sinDato++; }
+
+            buffer.Add(row); hechos++;
+            if (buffer.Count >= 25) { _db.MeliPisoMasivoResultados.AddRange(buffer); await _db.SaveChangesAsync(ct); buffer.Clear(); }
+            _progress.Update(progressId, p =>
+            {
+                p.ItemsSynced = hechos;
+                p.Percentage = items.Count > 0 ? (int)(100.0 * hechos / items.Count) : 100;
+                p.CurrentStep = $"{hechos}/{items.Count} · a pérdida {perdida}, bajo 50% {bajo}, ok {ok}";
+            });
+            await Task.Delay(ThrottleMs, ct);
+        }
+        if (buffer.Count > 0) { _db.MeliPisoMasivoResultados.AddRange(buffer); await _db.SaveChangesAsync(ct); }
+
+        var resumen = $"Escalón $33k: {perdida} a pérdida, {bajo} abajo del 50%, {ok} ok" + (sinDato > 0 ? $", {sinDato} sin dato" : "") + $" (de {items.Count}).";
+        _progress.Update(progressId, p => { p.ItemsSynced = hechos; p.Percentage = 100; });
+        _progress.Complete(progressId, resumen);
+        _logger.LogWarning("[EscalonCheck] {Run} COMPLETO — {Resumen}", checkRunId, resumen);
+    }
 }

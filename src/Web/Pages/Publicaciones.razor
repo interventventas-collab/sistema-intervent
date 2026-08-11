@@ -3468,6 +3468,13 @@
                 else if (pisoMasivoFase == "resultado" && pisoMasivoResumen is not null)
                 {
                     <button class="btn btn-secondary" @onclick="CerrarPisoMasivo">Cerrar</button>
+                    @if (!pisoMasivoConfirmando)
+                    {
+                        <button class="btn" style="background:#6b7280; color:white; border:none;" @onclick="LanzarChequeoEscalon"
+                                title="Revisa las que ya aplicaste y cruzaron los $33.000: le pregunta a MeLi el envío real y te dice cuáles quedaron bajo el 50% o a pérdida. No toca precios.">
+                            🔎 Revisar escalón $33k
+                        </button>
+                    }
                     @if (PisoAAplicar > 0 && !pisoMasivoConfirmando)
                     {
                         <button class="btn" style="background:#16a34a; color:white; border:none;" @onclick="() => pisoMasivoConfirmando = true">
@@ -7745,6 +7752,29 @@
             ToastService.Success($"Copiado: {mla}");
         }
         catch { }
+    }
+
+    // Chequeo escalón $33k (solo lectura): revisa las aplicadas que cruzaron los $33.000 y recalcula el margen real.
+    private async Task LanzarChequeoEscalon()
+    {
+        if (string.IsNullOrEmpty(pisoMasivoRunId)) return;
+        pisoMasivoError = null;
+        try
+        {
+            var progressId = await Api.PisoMasivoChequeoEscalonAsync(pisoMasivoRunId);
+            pisoMasivoProgresoTitulo = "Revisando el escalón de $33.000 (no toca ningún precio)…";
+            pisoMasivoFase = "progreso";
+            pisoMasivoPct = 0;
+            pisoMasivoStep = "Arrancando…";
+            StateHasChanged();
+            await PollPisoMasivoProgreso(progressId, cargarResultadoAlTerminar: false);
+        }
+        catch (Exception ex)
+        {
+            pisoMasivoError = "Error: " + ex.Message;
+            pisoMasivoFase = "resultado";
+            StateHasChanged();
+        }
     }
 
     private async Task LanzarPisoMasivoPreview()

@@ -4309,6 +4309,17 @@ public class ApiClient
         return await GetAsync<PisoMasivoResumen>(url);
     }
 
+    // Chequeo escalón $33k (SOLO LECTURA, no toca precios). Devuelve progressId; el resultado se sigue por progreso.
+    public async Task<string?> PisoMasivoChequeoEscalonAsync(string runId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsync($"/api/meli/items/piso-masivo/chequeo-escalon?runId={Uri.EscapeDataString(runId)}", null);
+        if (!resp.IsSuccessStatusCode) { await ThrowIfErrorAsync(resp); return null; }
+        var doc = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        return doc.TryGetProperty("progressId", out var pid) ? pid.GetString()
+             : (doc.TryGetProperty("ProgressId", out var pid2) ? pid2.GetString() : null);
+    }
+
     // Aplica SOLO las filas SUBE+confiables: pushea precios REALES a MeLi. Devuelve progressId.
     // incluirPerdida=false (default): NO toca las que hoy están a pérdida (margen < 0), quedan para después.
     public async Task<string?> PisoMasivoAplicarAsync(string runId, bool incluirPerdida = false)
