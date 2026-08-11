@@ -418,6 +418,8 @@ window.mapeoFlex = (function () {
     }
     // Dibuja los pedacitos de color por encima de la línea base. Empuja las polilíneas creadas a 'store'
     // (para poder borrarlas después). zBase = zIndex (va por encima de la línea base).
+    // Cada tramo de tránsito lleva un BORDE BLANCO abajo: así el aviso SIEMPRE se ve, aunque la ruta sea
+    // del mismo color (ej. una zona roja con un embotellamiento rojo) — el contorno blanco lo despega.
     function paintTrafficSlices(path, intervals, store, zBase) {
         if (!path || !intervals || !intervals.length) return;
         for (const iv of intervals) {
@@ -428,9 +430,15 @@ window.mapeoFlex = (function () {
             if (b <= a) continue;
             const slice = path.slice(a, b + 1);
             if (slice.length < 2) continue;
+            // 1) borde blanco (más ancho) para separar el aviso de la línea de la ruta
             store.push(new google.maps.Polyline({
                 path: slice, map: map, clickable: false,
-                strokeColor: col, strokeOpacity: 0.95, strokeWeight: 6, zIndex: zBase
+                strokeColor: '#ffffff', strokeOpacity: 1, strokeWeight: 10, zIndex: zBase
+            }));
+            // 2) el color del tránsito (amarillo/rojo) encima del borde blanco
+            store.push(new google.maps.Polyline({
+                path: slice, map: map, clickable: false,
+                strokeColor: col, strokeOpacity: 1, strokeWeight: 6, zIndex: zBase + 1
             }));
         }
     }
