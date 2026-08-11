@@ -3100,12 +3100,18 @@
         var os = g.Manual.Where(m => m.OrderInRoute.HasValue).Select(m => m.OrderInRoute!.Value).ToList();
         return os.Count > 0 ? os.Min() : int.MaxValue;
     }
-    // ¿El grupo está visible según los ojitos del mapa (zonas ocultas + chip "TODO")?
+    // ¿El grupo está visible según los ojitos del mapa? Sigue el ojito de CADA zona:
+    //  - zona con repartidor → zonasOcultasMapa (por DriverId)
+    //  - zona de vehículo (slot, sin repartidor) → zonasSlotOcultas (antes NO se respetaba: la lista
+    //    seguía mostrando la zona apagada; por eso al apagar Zona 2 con el ojito seguían apareciendo a la izquierda)
+    //  - sin asignar de verdad (ni repartidor ni vehículo) → chip "TODO"
     private bool GrupoVisibleEnMapa(GrupoUnificado g)
     {
         var driverId = GrupoDriverId(g);
-        if (!driverId.HasValue) return !(sinAsignarOcultos && zonasCreadas.Count > 0); // sin asignar
-        return !zonasOcultasMapa.Contains(driverId.Value);
+        if (driverId.HasValue) return !zonasOcultasMapa.Contains(driverId.Value);
+        var slot = GrupoSlot(g);
+        if (slot.HasValue) return !zonasSlotOcultas.Contains(slot.Value);
+        return !(sinAsignarOcultos && zonasCreadas.Count > 0); // sin asignar
     }
 
     // ── Buscador + filtro por repartidor del panel izquierdo ──
