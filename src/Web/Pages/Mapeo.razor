@@ -41,6 +41,12 @@
     .mapeo-dock-handle:hover { color: rgba(255,255,255,0.85); }
     .mapeo-dock-handle:active { cursor: grabbing; }
     .mapeo-dock-handle .dot { width: 4px; height: 4px; border-radius: 999px; background: currentColor; }
+    /* Títulos de cada bloque de la barra (Sumar envíos / Armar la ruta / Asignar choferes…) con su pasito. */
+    .mapeo-dock-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 12px 2px; color: #9ca3af; font-size: 0.72rem; font-weight: 700; }
+    .mapeo-dock-step { background: #2563eb; color: #fff; font-size: 0.66rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; }
+    .mapeo-dock-legend { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 0 12px 4px; color: rgba(255,255,255,0.5); font-size: 0.68rem; }
+    .mapeo-zona-act { cursor: pointer; font-size: 1.2rem; line-height: 1; opacity: 0.95; }
+    .mapeo-zona-act:hover { opacity: 1; transform: scale(1.12); }
     /* Desplegables del dock: abren hacia ADENTRO del mapa según de qué lado esté el dock,
        así nunca quedan cortados por el borde. La clase anchor-* la pone el JS al arrastrar. */
     .mapeo-flyout { position: absolute; top: 0; background: white; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.25); padding: 0.3rem; z-index: 545; max-height: 72vh; overflow-y: auto; }
@@ -1178,30 +1184,8 @@
                 <div class="mapeo-dock-handle" title="Arrastrame para mover la barra a donde quieras">
                     <span class="dot"></span><span class="dot"></span><span class="dot"></span>
                 </div>
-                @* Mostrar/ocultar el listado de la izquierda. *@
-                <button class="mapeo-dock-btn" @onclick="ToggleSideCollapsed"
-                        title="@(sideCollapsed ? "Mostrar el listado" : "Ocultar el listado")">
-                    @if (sideCollapsed)
-                    {
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"></polyline></svg>
-                    }
-                    else
-                    {
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><line x1="9" y1="4" x2="9" y2="20"></line></svg>
-                    }
-                    <span class="mapeo-dock-label">@(sideCollapsed ? "Mostrar listado" : "Ocultar listado")</span>
-                </button>
-                <div class="mapeo-dock-sep"></div>
-                @* Actualizar entregas: le pregunta a MeLi por las entregas confirmadas (los ✔). Ícono de refrescar. *@
-                <button class="mapeo-dock-btn" @onclick="ActualizarEntregas" disabled="@(actualizandoEntregas || isLoading)"
-                        title="@(actualizandoEntregas ? "Actualizando entregas…" : "Actualizar entregas (preguntarle a MeLi por las entregas más recientes)")">
-                    <svg class="@(actualizandoEntregas ? "mapeo-dock-spin" : "")" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
-                    <span class="mapeo-dock-label">Entregas</span>
-                    @if (entregadosHoy > 0 && !actualizandoEntregas)
-                    {
-                        <span class="mapeo-dock-badge">@entregadosHoy</span>
-                    }
-                </button>
+                @* ═══════════ 1ro · Sumar envíos ═══════════ *@
+                <div class="mapeo-dock-head"><span>Sumar envíos</span><span class="mapeo-dock-step">1ro</span></div>
                 @* Escanear con el celular (muestra el QR) — ícono de cámara de fotos. *@
                 <button class="mapeo-dock-btn" @onclick="OpenScanModal" title="Escanear con el celular, o traer por número (venta/alquiler/Flex)">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
@@ -1224,6 +1208,9 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
                     <span class="mapeo-dock-label">Agregar parada</span>
                 </button>
+                @* ═══════════ 2do · Armar la ruta ═══════════ *@
+                <div class="mapeo-dock-sep"></div>
+                <div class="mapeo-dock-head"><span>Armar la ruta</span><span class="mapeo-dock-step">2do</span></div>
                 @* Zonificar: dibujar zonas sobre el mapa — ícono de lápiz sobre el recuadro. *@
                 <div style="position:relative;">
                     <button class="mapeo-dock-btn @(showZonasMenu ? "activo" : "")" @onclick="() => showZonasMenu = !showZonasMenu" title="Zonificar (dibujar zonas sobre el mapa)">
@@ -1256,19 +1243,20 @@
                         </div>
                     }
                 </div>
-                @* Ordenar a mano: numerar los envíos de cada zona tocándolos en el mapa (1, 2, 3…). *@
-                <button class="mapeo-dock-btn @(modoOrden ? "activo" : "")" @onclick="ToggleModoOrden"
-                        title="Ordenar a mano: tocá los envíos de una zona en el orden de entrega y se numeran 1, 2, 3…">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="6" x2="21" y2="6"></line><line x1="10" y1="12" x2="21" y2="12"></line><line x1="10" y1="18" x2="21" y2="18"></line><text x="2.5" y="8.5" font-size="7" font-weight="700" stroke="none" fill="currentColor">1</text><text x="2.5" y="14.5" font-size="7" font-weight="700" stroke="none" fill="currentColor">2</text><text x="2.5" y="20.5" font-size="7" font-weight="700" stroke="none" fill="currentColor">3</text></svg>
-                    <span class="mapeo-dock-label">Ordenar a mano</span>
-                </button>
-                @* Armar ruta guiada (método NUEVO): elegí la primera y la última parada de una zona y el
-                   sistema ordena el resto. Sirve también ANTES de asignar choferes (por zona). *@
-                <button class="mapeo-dock-btn @(modoGuiada ? "activo" : "")" @onclick="ToggleModoGuiada"
-                        title="Armar ruta guiada: elegí la primera y la última parada de una zona y el sistema ordena el resto (podés hacerlo antes de poner choferes)">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>
-                    <span class="mapeo-dock-label">Armar ruta guiada</span>
-                </button>
+                @* Ordenar a mano / Armar ruta guiada: OCULTOS por ahora (mostrarModosAvanzados=true los trae de vuelta). *@
+                @if (mostrarModosAvanzados)
+                {
+                    <button class="mapeo-dock-btn @(modoOrden ? "activo" : "")" @onclick="ToggleModoOrden"
+                            title="Ordenar a mano: tocá los envíos de una zona en el orden de entrega y se numeran 1, 2, 3…">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="6" x2="21" y2="6"></line><line x1="10" y1="12" x2="21" y2="12"></line><line x1="10" y1="18" x2="21" y2="18"></line><text x="2.5" y="8.5" font-size="7" font-weight="700" stroke="none" fill="currentColor">1</text><text x="2.5" y="14.5" font-size="7" font-weight="700" stroke="none" fill="currentColor">2</text><text x="2.5" y="20.5" font-size="7" font-weight="700" stroke="none" fill="currentColor">3</text></svg>
+                        <span class="mapeo-dock-label">Ordenar a mano</span>
+                    </button>
+                    <button class="mapeo-dock-btn @(modoGuiada ? "activo" : "")" @onclick="ToggleModoGuiada"
+                            title="Armar ruta guiada: elegí la primera y la última parada de una zona y el sistema ordena el resto (podés hacerlo antes de poner choferes)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>
+                        <span class="mapeo-dock-label">Armar ruta guiada</span>
+                    </button>
+                }
                 @* Armar ruta INTERACTIVA (estilo Google Maps): pinchás los envíos en orden y se va dibujando
                    la línea por las calles con el tiempo y los km en vivo. *@
                 <button class="mapeo-dock-btn @(modoArmar ? "activo" : "")" @onclick="ToggleModoArmar"
@@ -1276,12 +1264,15 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="2.5"></circle><circle cx="18" cy="5" r="2.5"></circle><path d="M8.2 17.6 15.5 6.8"></path><path d="M6 16.5V13a3 3 0 0 1 3-3h4"></path></svg>
                     <span class="mapeo-dock-label">Armar ruta</span>
                 </button>
-                @* Prender/apagar el tránsito (embotellamientos). Arranca apagado = mapa limpio. Ícono semáforo. *@
-                <button class="mapeo-dock-btn @(traficoOn ? "activo" : "")" @onclick="ToggleTrafico"
-                        title="@(traficoOn ? "Tránsito ENCENDIDO — tocá para apagar" : "Ver tránsito (embotellamientos en rojo/amarillo/verde)")">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="20" rx="4"></rect><circle cx="12" cy="7" r="1.4"></circle><circle cx="12" cy="12" r="1.4"></circle><circle cx="12" cy="17" r="1.4"></circle></svg>
-                    <span class="mapeo-dock-label">Tránsito</span>
+                @* Ver líneas: prende/apaga TODAS las líneas de ruta de una. Queda fijo (no se borra al refrescar). *@
+                <button class="mapeo-dock-btn @(lineasOn ? "activo" : "")" @onclick="ToggleLineas"
+                        title="Mostrar u ocultar las líneas de todos los recorridos. Tocá una línea para ver la distancia del tramo y el total.">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 16 9 10 13 14 21 6"></polyline><circle cx="3" cy="16" r="1.6"></circle><circle cx="21" cy="6" r="1.6"></circle></svg>
+                    <span class="mapeo-dock-label">Ver líneas</span>
                 </button>
+                @* ═══════════ 3ro · Asignar choferes ═══════════ *@
+                <div class="mapeo-dock-sep"></div>
+                <div class="mapeo-dock-head"><span>Asignar choferes</span><span class="mapeo-dock-step">3ro</span></div>
                 @* Cuadraditos de las zonas. Las zonas CON chofer muestran el nombre del chofer;
                    las zonas SIN chofer todavía muestran "Zona N". Tocar = foco; ojito = mostrar/ocultar. *@
                 @{
@@ -1289,9 +1280,13 @@
                         .Where(s => s.AssignedVehicleSlot.HasValue && !s.AssignedDriverId.HasValue)
                         .Select(s => s.AssignedVehicleSlot!.Value).Distinct().OrderBy(x => x).ToList();
                 }
-                @if (zonasCreadas.Count > 0 || zonasSlot.Count > 0)
+                @if (zonasCreadas.Count == 0 && zonasSlot.Count == 0)
                 {
-                    <div class="mapeo-dock-sep"></div>
+                    <div style="color:rgba(255,255,255,0.45); font-size:0.72rem; padding:2px 12px 6px; line-height:1.35;">Dibujá zonas en el 2do paso y acá le ponés el chofer a cada una.</div>
+                }
+                else
+                {
+                    <div class="mapeo-dock-legend"><span>👁 ver</span><span>〰 línea</span><span>🧹 vaciar</span></div>
                     @* "TODO" = las paradas todavía SIN asignar. Arriba el título; abajo el ojito (mostrar/ocultar) y la cantidad. *@
                     <div class="mapeo-dock-btn" style="flex-direction:column; gap:6px; width:auto; min-width:104px; height:auto; padding:9px 10px; background:@(sinAsignarOcultos ? "#9ca3af" : "#eab308"); @(sinAsignarOcultos ? "opacity:0.55;" : "")">
                         <span style="font-size:0.82rem; font-weight:800; line-height:1; color:#fff;">TODO (sin asignar)</span>
@@ -1317,17 +1312,17 @@
                                       title="@($"Zona de {z.DriverName} · {z.StopIds.Count} envío(s) — tocá para hacer foco en esta zona")">
                                     🧑 @zNombreCorto
                                 </span>
-                                @* Abajo: 👁 mostrar/ocultar · 👤 cambiar repartidor de toda la zona · cantidad de envíos. *@
-                                <div style="display:flex; align-items:center; justify-content:center; gap:12px;">
-                                    <span @onclick="() => ToggleZonaVisible(z)" style="cursor:pointer; font-size:1.35rem; line-height:1;"
-                                          title="@(zVisible ? "Ocultar esta zona del mapa" : "Mostrar esta zona en el mapa")">
-                                        @(zVisible ? "👁" : "🚫")
-                                    </span>
-                                    <span @onclick="@(() => zonaDriverMenuId = (zonaDriverMenuId == z.Numero ? (int?)null : z.Numero))"
-                                          style="cursor:pointer; font-size:1.35rem; line-height:1;"
-                                          title="Cambiar el repartidor de toda esta zona">
-                                        👤
-                                    </span>
+                                @* Abajo: 👁 ver/ocultar · 👤 chofer · 〰 línea de la ruta · 🧹 vaciar · cantidad de envíos. *@
+                                <div style="display:flex; align-items:center; justify-content:center; gap:9px;">
+                                    <span class="mapeo-zona-act" @onclick="() => ToggleZonaVisible(z)"
+                                          title="@(zVisible ? "Ocultar esta zona del mapa" : "Mostrar esta zona en el mapa")">@(zVisible ? "👁" : "🚫")</span>
+                                    <span class="mapeo-zona-act" @onclick="@(() => zonaDriverMenuId = (zonaDriverMenuId == z.Numero ? (int?)null : z.Numero))"
+                                          title="Cambiar el repartidor de toda esta zona">👤</span>
+                                    <span class="mapeo-zona-act" @onclick="() => ToggleLineaZona(ZonaKeyDriver(z.DriverId))"
+                                          style="@(lineasVisibles.Contains(ZonaKeyDriver(z.DriverId)) ? "" : "opacity:0.45;")"
+                                          title="@(lineasVisibles.Contains(ZonaKeyDriver(z.DriverId)) ? "Ocultar la línea de esta ruta" : "Ver la línea de esta ruta")">〰</span>
+                                    <span class="mapeo-zona-act" @onclick="() => VaciarZonaDriver(z)"
+                                          title="Vaciar esta zona (los envíos vuelven a Sin asignar)">🧹</span>
                                     <span style="font-size:1.05rem; font-weight:800; color:#fff; line-height:1; background:rgba(0,0,0,0.22); border-radius:8px; padding:3px 9px; min-width:24px; text-align:center;"
                                           title="@z.StopIds.Count envío(s) en esta zona">
                                         @z.StopIds.Count
@@ -1371,15 +1366,16 @@
                                       title="@($"Zona {slot} (sin chofer todavía) · {svCount} envío(s) — tocá para hacer foco")">
                                     Zona @slot
                                 </span>
-                                <div style="display:flex; align-items:center; justify-content:center; gap:12px;">
-                                    <span @onclick="() => ToggleZonaSlotVisible(slot)" style="cursor:pointer; font-size:1.35rem; line-height:1;"
-                                          title="@(svVisible ? "Ocultar esta zona del mapa" : "Mostrar esta zona en el mapa")">
-                                        @(svVisible ? "👁" : "🚫")
-                                    </span>
-                                    <span @onclick="@(() => slotDriverMenu = (slotDriverMenu == slot ? (int?)null : slot))"
-                                          style="cursor:pointer; font-size:1.35rem; line-height:1;" title="Asignar un chofer a esta zona">
-                                        👤
-                                    </span>
+                                <div style="display:flex; align-items:center; justify-content:center; gap:9px;">
+                                    <span class="mapeo-zona-act" @onclick="() => ToggleZonaSlotVisible(slot)"
+                                          title="@(svVisible ? "Ocultar esta zona del mapa" : "Mostrar esta zona en el mapa")">@(svVisible ? "👁" : "🚫")</span>
+                                    <span class="mapeo-zona-act" @onclick="@(() => slotDriverMenu = (slotDriverMenu == slot ? (int?)null : slot))"
+                                          title="Asignar un chofer a esta zona">👤</span>
+                                    <span class="mapeo-zona-act" @onclick="() => ToggleLineaZona(ZonaKeySlot(slot))"
+                                          style="@(lineasVisibles.Contains(ZonaKeySlot(slot)) ? "" : "opacity:0.45;")"
+                                          title="@(lineasVisibles.Contains(ZonaKeySlot(slot)) ? "Ocultar la línea de esta ruta" : "Ver la línea de esta ruta")">〰</span>
+                                    <span class="mapeo-zona-act" @onclick="() => VaciarZonaSlot(slot)"
+                                          title="Vaciar esta zona (los envíos vuelven a Sin asignar)">🧹</span>
                                     <span style="font-size:1.05rem; font-weight:800; color:#fff; line-height:1; background:rgba(0,0,0,0.22); border-radius:8px; padding:3px 9px; min-width:24px; text-align:center;"
                                           title="@svCount envío(s) en esta zona">
                                         @svCount
@@ -1411,11 +1407,45 @@
                         </div>
                     }
                 }
-                @* Calendario: ver el mapa de días anteriores (historial de rutas). *@
+                @* ═══════════ Herramientas ═══════════ *@
                 <div class="mapeo-dock-sep"></div>
+                <div class="mapeo-dock-head"><span>Herramientas</span></div>
+                @* Prender/apagar el tránsito (embotellamientos). Arranca apagado = mapa limpio. Ícono semáforo. *@
+                <button class="mapeo-dock-btn @(traficoOn ? "activo" : "")" @onclick="ToggleTrafico"
+                        title="@(traficoOn ? "Tránsito ENCENDIDO — tocá para apagar" : "Ver tránsito (embotellamientos en rojo/amarillo/verde)")">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="20" rx="4"></rect><circle cx="12" cy="7" r="1.4"></circle><circle cx="12" cy="12" r="1.4"></circle><circle cx="12" cy="17" r="1.4"></circle></svg>
+                    <span class="mapeo-dock-label">Tránsito</span>
+                </button>
+                @* Calendario: ver el mapa de días anteriores (historial de rutas). *@
                 <button class="mapeo-dock-btn @(showHistorialModal || viewingSnapshot ? "activo" : "")" @onclick="OpenHistorialModal"
                         title="Ver el mapa de días anteriores (historial de rutas)">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                    <span class="mapeo-dock-label">Historial</span>
+                </button>
+                @* ═══ Abajo: listado · entregas · configuración ═══ *@
+                <div class="mapeo-dock-sep"></div>
+                @* Mostrar/ocultar el listado de la izquierda. *@
+                <button class="mapeo-dock-btn" @onclick="ToggleSideCollapsed"
+                        title="@(sideCollapsed ? "Mostrar el listado" : "Ocultar el listado")">
+                    @if (sideCollapsed)
+                    {
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"></polyline></svg>
+                    }
+                    else
+                    {
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><line x1="9" y1="4" x2="9" y2="20"></line></svg>
+                    }
+                    <span class="mapeo-dock-label">@(sideCollapsed ? "Mostrar listado" : "Ocultar listado")</span>
+                </button>
+                @* Actualizar estado de entregas: le pregunta a MeLi por las entregas confirmadas (los ✔). *@
+                <button class="mapeo-dock-btn" @onclick="ActualizarEntregas" disabled="@(actualizandoEntregas || isLoading)"
+                        title="@(actualizandoEntregas ? "Actualizando entregas…" : "Actualizar el estado de entregas (preguntarle a MeLi por las entregas más recientes)")">
+                    <svg class="@(actualizandoEntregas ? "mapeo-dock-spin" : "")" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                    <span class="mapeo-dock-label">Actualizar estado de entregas</span>
+                    @if (entregadosHoy > 0 && !actualizandoEntregas)
+                    {
+                        <span class="mapeo-dock-badge">@entregadosHoy</span>
+                    }
                 </button>
                 @* Configuración: SIEMPRE al fondo del dock, separada del resto. El menú se abre hacia arriba. *@
                 <div class="mapeo-dock-sep"></div>
@@ -3577,6 +3607,10 @@
     private bool assigningZone;
     private bool dibujandoZona; // true mientras el usuario marca las esquinas de la zona
 
+    // Modos avanzados de armado ("Ordenar a mano" y "Armar ruta guiada"): OCULTOS por ahora a pedido del
+    // usuario (dejar solo "Armar ruta"). Poner en true para volver a mostrarlos en la barra.
+    private bool mostrarModosAvanzados = false;
+
     // Armar ruta INTERACTIVA (estilo Google Maps): pinchás punto por punto y se va dibujando la línea
     // por las calles con el tiempo y los km en vivo (endpoint /leg + mapeoFlex.armar*).
     private bool modoArmar;
@@ -3809,6 +3843,10 @@
         try
         {
             rutasResumen = await Api.GetRoutesOverviewAsync(single) ?? new();
+            // Al (re)calcular, dejamos prendidas las líneas de todas las zonas que tienen ruta, y sacamos
+            // de la lista las claves que ya no existen (zonas que se vaciaron/cambiaron).
+            foreach (var r in rutasResumen) lineasVisibles.Add(r.Key);
+            lineasVisibles.RemoveWhere(k => !rutasResumen.Any(r => r.Key == k));
             await PintarRutas();
         }
         catch (Exception ex) { ToastService.Error("No se pudieron dibujar las rutas: " + ex.Message); }
@@ -3820,9 +3858,9 @@
     {
         var paraDibujar = rutasResumen
             .Where(r => (r.Segments?.Count ?? 0) > 0 || !string.IsNullOrEmpty(r.EncodedPolyline))
-            .Where(r => !(r.DriverId.HasValue && zonasOcultasMapa.Contains(r.DriverId.Value)))
-            // Zona/vehículo sin repartidor apagada por el ojito: no dibujamos su línea.
-            .Where(r => !(r.VehicleSlot.HasValue && zonasSlotOcultas.Contains(r.VehicleSlot.Value)))
+            // La LÍNEA de cada zona se dibuja solo si está prendida (botón 〰 de la zona o "Ver líneas").
+            // Es independiente del ojito de los pines: podés ver la línea aunque ocultes los globitos.
+            .Where(r => lineasVisibles.Contains(r.Key))
             .Select(r => new
             {
                 color = r.Color,
@@ -3839,28 +3877,53 @@
             })
             .ToArray();
         await JS.InvokeVoidAsync("mapeoFlex.drawRoutes", new object[] { paraDibujar });
-        lineasOn = true;
     }
 
-    // ── Botón "Ver líneas": prende/apaga en el mapa las líneas de los recorridos ya calculados ──
-    // (sin volver a optimizar). Útil si las líneas se borraron al asignar un chofer o mover algo.
-    private bool lineasOn = false;
+    // ── "Ver líneas": qué líneas de ruta están dibujadas en el mapa ──
+    // Guardamos las CLAVES de zona ("d{driverId}" / "v{slot}" / "none") cuya línea está prendida.
+    // Cada zona prende/apaga la suya con su botón 〰; "Ver líneas" prende/apaga TODAS de una.
+    // Como es estado nuestro, las líneas quedan FIJAS: al refrescarse el mapa las volvemos a dibujar
+    // (antes se borraban solas). Se dibuja lo que esté acá; independiente del ojito de los pines.
+    private HashSet<string> lineasVisibles = new();
+    private bool lineasOn => lineasVisibles.Count > 0;
+    private static string ZonaKeyDriver(int driverId) => $"d{driverId}";
+    private static string ZonaKeySlot(int slot) => $"v{slot}";
+
+    // Trae los recorridos de Google si todavía no los tenemos en memoria (para poder mostrar la línea).
+    private async Task EnsureRutasCargadas()
+    {
+        if (rutasResumen.Count == 0)
+        {
+            try { rutasResumen = await Api.GetRoutesOverviewAsync(single: false) ?? new(); } catch { }
+        }
+    }
+
+    // "Ver líneas" (todas): si hay alguna prendida, las apaga todas; si no, las prende todas.
     private async Task ToggleLineas()
     {
-        if (lineasOn)
+        await EnsureRutasCargadas();
+        if (rutasResumen.Count == 0)
         {
-            await JS.InvokeVoidAsync("mapeoFlex.clearRoutes");
-            lineasOn = false;
+            ToastService.Info("Todavía no hay recorridos. Armá una ruta (2do paso) y después ves las líneas.");
+            return;
         }
-        else
+        if (lineasVisibles.Count > 0) lineasVisibles.Clear();
+        else foreach (var r in rutasResumen) lineasVisibles.Add(r.Key);
+        await PintarRutas();
+        StateHasChanged();
+    }
+
+    // Botón 〰 de una zona: prende/apaga SOLO la línea de esa zona.
+    private async Task ToggleLineaZona(string key)
+    {
+        await EnsureRutasCargadas();
+        if (!rutasResumen.Any(r => r.Key == key))
         {
-            if (rutasResumen.Count == 0)
-            {
-                ToastService.Info("Todavía no hay recorridos calculados. Apretá \"Optimizar rutas\" y después vas a poder ver y ocultar las líneas.");
-                return;
-            }
-            await PintarRutas();
+            ToastService.Info("Esta zona todavía no tiene ruta armada. Armá su ruta y después ves la línea.");
+            return;
         }
+        if (!lineasVisibles.Add(key)) lineasVisibles.Remove(key); // toggle
+        await PintarRutas();
         StateHasChanged();
     }
 
@@ -4907,6 +4970,53 @@
         }
         catch (Exception ex) { ToastService.Error("No se pudo limpiar: " + ex.Message); }
         finally { limpiandoAsignaciones = false; StateHasChanged(); }
+    }
+
+    // 🧹 Vaciar UNA zona (la del chofer): sus envíos vuelven a "Sin asignar" (se les saca chofer y orden).
+    private async Task VaciarZonaDriver(ZonaCreada z)
+    {
+        var ids = (stops ?? new()).Where(s => s.AssignedDriverId == z.DriverId).Select(s => s.Id).ToList();
+        if (ids.Count == 0) return;
+        if (!await ConfirmAsync($"¿Vaciar la zona de {z.DriverName}?\n\nSus {ids.Count} envío(s) vuelven a \"Sin asignar\" (se les saca el chofer y el orden de la ruta). No se borra ningún envío.")) return;
+        assigningZone = true; StateHasChanged();
+        try
+        {
+            foreach (var id in ids) await Api.UpdateMapeoStopAsync(id, new { assignedDriverId = 0, orderInRoute = 0 });
+            lineasVisibles.Remove(ZonaKeyDriver(z.DriverId));
+            zonasOcultasMapa.Remove(z.DriverId);
+            await LoadStops();
+            ReconstruirZonasCreadas();
+            await RenderMap();
+            await CargarYDibujarRutas(single: false);
+            ToastService.Success($"🧹 Zona vaciada: {ids.Count} envío(s) volvieron a Sin asignar.");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo vaciar la zona: " + ex.Message); }
+        finally { assigningZone = false; StateHasChanged(); }
+    }
+
+    // 🧹 Vaciar UNA zona de vehículo (sin chofer): sus envíos vuelven a "Sin asignar".
+    private async Task VaciarZonaSlot(int slot)
+    {
+        var ids = (stops ?? new()).Where(s => s.AssignedVehicleSlot == slot && !s.AssignedDriverId.HasValue).Select(s => s.Id).ToList();
+        if (ids.Count == 0) return;
+        if (!await ConfirmAsync($"¿Vaciar la Zona {slot}?\n\nSus {ids.Count} envío(s) vuelven a \"Sin asignar\" (se les saca la zona y el orden). No se borra ningún envío.")) return;
+        assigningSlot = true; StateHasChanged();
+        try
+        {
+            foreach (var id in ids)
+            {
+                await Api.AssignVehicleSlotAsync(id, null);
+                await Api.UpdateMapeoStopAsync(id, new { orderInRoute = 0 });
+            }
+            lineasVisibles.Remove(ZonaKeySlot(slot));
+            zonasSlotOcultas.Remove(slot);
+            await LoadStops();
+            await RenderMap();
+            await CargarYDibujarRutas(single: false);
+            ToastService.Success($"🧹 Zona {slot} vaciada: {ids.Count} envío(s) volvieron a Sin asignar.");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo vaciar la zona: " + ex.Message); }
+        finally { assigningSlot = false; StateHasChanged(); }
     }
 
     [JSInvokable]
