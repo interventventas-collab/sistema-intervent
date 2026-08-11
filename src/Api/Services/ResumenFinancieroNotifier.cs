@@ -54,12 +54,17 @@ public class ResumenFinancieroNotifier
             .Select(s => new { s.Alias, s.LastSaldo, s.LastSaldoAt })
             .FirstOrDefaultAsync(ct);
         var shellFecha = shell?.LastSaldoAt is not null ? $" (al {shell.LastSaldoAt.Value.AddHours(-3):dd/MM HH:mm})" : "";
+        // El saldo de Shell viene como texto (ej "182,987.27"). Le anteponemos "$" para que quede
+        // parejo con Galicia, salvo que el propio texto ya lo traiga.
+        var shellSaldo = shell?.LastSaldo?.TrimStart();
+        var shellConPeso = string.IsNullOrEmpty(shellSaldo) ? shellSaldo
+            : (shellSaldo.StartsWith("$") ? shellSaldo : "$" + shellSaldo);
         var shellTg = shell is null || string.IsNullOrWhiteSpace(shell.LastSaldo)
             ? "sin datos todavía"
-            : $"<b>{Esc(shell.LastSaldo)}</b>{shellFecha}";
+            : $"<b>{Esc(shellConPeso)}</b>{shellFecha}";
         var shellWa = shell is null || string.IsNullOrWhiteSpace(shell.LastSaldo)
             ? "sin datos todavía"
-            : $"*{shell.LastSaldo}*{shellFecha}";
+            : $"*{shellConPeso}*{shellFecha}";
 
         // 🧾 Cheques por cubrir: EMITIDOS Aceptado/Disponible con fecha de pago de HOY en adelante.
         // Se separa lo que vence HOY (para que diga claramente "hoy ninguno por cubrir") de los
