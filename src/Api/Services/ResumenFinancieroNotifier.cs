@@ -62,7 +62,8 @@ public class ResumenFinancieroNotifier
             : $"*{shell.LastSaldo}*{shellFecha}";
 
         // 🧾 Cheques por cubrir: EMITIDOS Aceptado/Disponible con fecha de pago de HOY en adelante.
-        // Los vencidos (fecha de pago ya pasada) NO se listan en el resumen. Los de hoy van marcados.
+        // Se separa lo que vence HOY (para que diga claramente "hoy ninguno por cubrir") de los
+        // PRÓXIMOS (se muestran los 5 que siguen). Los vencidos ya no se listan.
         var hoy = argNow.Date;
         var cheques = await _db.CafeChequesBanco.AsNoTracking()
             .Where(c => c.Tipo == "EMITIDO"
@@ -73,25 +74,45 @@ public class ResumenFinancieroNotifier
             .Select(c => new { c.FechaPago, c.Importe, c.ContraparteNombre, c.Numero })
             .ToListAsync(ct);
 
-        string chequesTg, chequesWa;
-        if (cheques.Count == 0)
+        const int MaxProximos = 5;
+        var deHoy = cheques.Where(c => c.FechaPago!.Value.Date == hoy).ToList();
+        var proximosTodos = cheques.Where(c => c.FechaPago!.Value.Date > hoy).ToList();
+        var proximos = proximosTodos.Take(MaxProximos).ToList();
+
+        // --- Lo que vence HOY ---
+        string hoyTg, hoyWa;
+        if (deHoy.Count == 0)
         {
-            chequesTg = "🧾 Cheques por cubrir: <b>ninguno</b> 🎉";
-            chequesWa = "🧾 Cheques por cubrir: *ninguno* 🎉";
+            hoyTg = "🧾 Cheques por cubrir hoy: <b>ninguno</b> 🎉";
+            hoyWa = "🧾 Cheques por cubrir hoy: *ninguno* 🎉";
         }
         else
         {
-            var total = cheques.Sum(c => c.Importe);
-            string Marca(DateTime f) => f.Date == hoy ? " 🔴 HOY" : "";
-            var lineasTg = cheques.Select(c => $"• {c.FechaPago:dd/MM} — {Money(c.Importe)} — {Esc(c.ContraparteNombre ?? "—")} (Nº {Esc(c.Numero)}){Marca(c.FechaPago!.Value)}");
-            var lineasWa = cheques.Select(c => $"• {c.FechaPago:dd/MM} — {Money(c.Importe)} — {c.ContraparteNombre ?? "—"} (Nº {c.Numero}){Marca(c.FechaPago!.Value)}").ToList();
-            chequesTg = $"🧾 Cheques por cubrir: <b>{cheques.Count}</b> — total <b>{Money(total)}</b>\n"
-                      + "<blockquote expandable>" + string.Join("\n", lineasTg) + "</blockquote>";
-            // WhatsApp no tiene desplegable: lista directa, con tope prudente
-            var listaWa = lineasWa.Count <= 15 ? string.Join("\n", lineasWa)
-                        : string.Join("\n", lineasWa.Take(15)) + $"\n… y {lineasWa.Count - 15} más (verlos en el sistema)";
-            chequesWa = $"🧾 Cheques por cubrir: *{cheques.Count}* — total *{Money(total)}*\n" + listaWa;
+            var totalHoy = deHoy.Sum(c => c.Importe);
+            var lhTg = deHoy.Select(c => $"• {c.FechaPago:dd/MM} — {Money(c.Importe)} — {Esc(c.ContraparteNombre ?? "—")} (Nº {Esc(c.Numero)})");
+            var lhWa = deHoy.Select(c => $"• {c.FechaPago:dd/MM} — {Money(c.Importe)} — {c.ContraparteNombre ?? "—"} (Nº {c.Numero})");
+            hoyTg = $"🧾 Cheques por cubrir hoy: <b>{deHoy.Count}</b> — total <b>{Money(totalHoy)}</b> 🔴\n" + string.Join("\n", lhTg);
+            hoyWa = $"🧾 Cheques por cubrir hoy: *{deHoy.Count}* — total *{Money(totalHoy)}* 🔴\n" + string.Join("\n", lhWa);
         }
+
+        // --- Los próximos (hasta 5) ---
+        string proxTg, proxWa;
+        if (proximos.Count == 0)
+        {
+            proxTg = "📅 Próximos: <b>no hay cheques a la vista</b>";
+            proxWa = "📅 Próximos: *no hay cheques a la vista*";
+        }
+        else
+        {
+            var lpTg = proximos.Select(c => $"• {c.FechaPago:dd/MM} — {Money(c.Importe)} — {Esc(c.ContraparteNombre ?? "—")} (Nº {Esc(c.Numero)})");
+            var lpWa = proximos.Select(c => $"• {c.FechaPago:dd/MM} — {Money(c.Importe)} — {c.ContraparteNombre ?? "—"} (Nº {c.Numero})");
+            var masTg = proximosTodos.Count > MaxProximos ? $"\n… y {proximosTodos.Count - MaxProximos} más (verlos en el sistema)" : "";
+            proxTg = "📅 Próximos:\n" + string.Join("\n", lpTg) + masTg;
+            proxWa = "📅 Próximos:\n" + string.Join("\n", lpWa) + masTg;
+        }
+
+        var chequesTg = hoyTg + "\n" + proxTg;
+        var chequesWa = hoyWa + "\n" + proxWa;
 
         var tg = $"🌅 <b>Buen día — Resumen financiero {argNow:dd/MM/yyyy}</b>\n\n"
                + $"🏦 Galicia: {galiciaTg}\n"
