@@ -1417,6 +1417,20 @@
             } catch (e) { return null; }
         };
 
+        // 2026-08-11: al tocar un globito en el mapa, traemos su fila del listado a la vista y la
+        // hacemos parpadear (para no perderla entre muchas paradas). Busca por data-key = clave del grupo.
+        window.mapeoScrollToKey = function(key) {
+            if (key === null || key === undefined || key === '') return;
+            var cont = document.getElementById('mapeoStopsList');
+            if (!cont) return;
+            var el = cont.querySelector('.mapeo-row[data-key="' + String(key).replace(/"/g, '\\"') + '"]');
+            if (!el) return;
+            try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { el.scrollIntoView(); }
+            el.classList.remove('mapeo-row-flash');
+            void el.offsetWidth; // reinicia la animación
+            el.classList.add('mapeo-row-flash');
+        };
+
         // 2026-07-28: Sortable handler para reordenar la ruta en Mapeo (arrastrar el ⠿).
         // Cada fila lleva data-stop-ids (una parada puede agrupar varios envíos). Al soltar,
         // junta los ids en el nuevo orden y se los manda a C# para persistir OrderInRoute.
@@ -1538,6 +1552,13 @@
         .mapeo-drag-handle:active { cursor: grabbing; }
         .mapeo-drag-ghost { opacity: 0.4; background: #dbeafe !important; }
         .mapeo-drag-chosen { box-shadow: 0 4px 16px rgba(0,0,0,0.18); background: #fff; }
+        /* Parpadeo de la fila del listado cuando tocás su globito en el mapa. */
+        .mapeo-row-flash { animation: mapeoRowFlash 1.3s ease; }
+        @keyframes mapeoRowFlash {
+            0%   { background: #fde68a; box-shadow: 0 0 0 2px #f59e0b inset; }
+            60%  { background: #fef3c7; box-shadow: 0 0 0 2px #fcd34d inset; }
+            100% { background: transparent; box-shadow: none; }
+        }
     </style>
     <script>
         // Escaner de QR para la pantalla mobile del repartidor.

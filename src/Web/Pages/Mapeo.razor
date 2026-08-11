@@ -609,7 +609,7 @@
                         var g = grupos[gi];
                         var reIdx = gi;
                         var esFlex = g.TieneFlex;
-                        <div class="mapeo-row" data-stop-ids="@string.Join(",", g.Manual.Select(m => m.Id))" style="display:flex; align-items:stretch;">
+                        <div class="mapeo-row" data-key="@g.Key" data-stop-ids="@string.Join(",", g.Manual.Select(m => m.Id))" style="display:flex; align-items:stretch;">
                             @if (zonaUnica)
                             {
                                 <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:0 5px 0 3px; border-right:1px solid #eef2f7;">
@@ -3600,9 +3600,11 @@
     private async Task FocusStop(MapeoStopDto st)
     {
         activeStopId = st.Id;
+        activeShipmentId = null;
         if (st.Latitude != 0 || st.Longitude != 0)
         {
-            await JS.InvokeVoidAsync("mapeoFlex.focusOn", (double)st.Latitude, (double)st.Longitude, 17);
+            // Hace saltar el globito de esta parada en el mapa (id de parada = -1000 - Id).
+            try { await JS.InvokeVoidAsync("mapeoFlex.highlightMarker", -1000 - st.Id); } catch { }
         }
     }
 
@@ -4493,10 +4495,11 @@
     private async Task OnSelectFromList(MeliShipmentDto s)
     {
         activeShipmentId = s.Id;
+        activeStopId = null;
         selected = s;
         showDetail = true;
-        if (s.Latitude.HasValue && s.Longitude.HasValue)
-            await JS.InvokeVoidAsync("mapeoFlex.focusOn", (double)s.Latitude.Value, (double)s.Longitude.Value, 16);
+        // Hace saltar el globito de este envío en el mapa.
+        try { await JS.InvokeVoidAsync("mapeoFlex.highlightMarker", s.Id); } catch { }
     }
 
     /// <summary>
@@ -5313,10 +5316,26 @@
             }
             return;
         }
-        // Modo normal: click abre el panel de detalle del envío
+        // Modo normal: resaltamos en el LISTADO la parada/envío tocado y traemos su fila a la vista.
+        var listaUni = BuildListaUnificada();
+        string? filaKey;
+        if (id <= -1000)
+        {
+            var sid = -1000 - id;
+            activeStopId = sid; activeShipmentId = null;
+            filaKey = listaUni.FirstOrDefault(g => g.Manual.Any(m => m.Id == sid))?.Key;
+        }
+        else
+        {
+            activeShipmentId = id; activeStopId = null;
+            filaKey = listaUni.FirstOrDefault(g => g.Flex.Any(f => f.Id == id))?.Key;
+        }
+        StateHasChanged();
+        if (filaKey is not null) { try { await JS.InvokeVoidAsync("mapeoScrollToKey", filaKey); } catch { } }
+        // Los envíos Flex crudos (id > -1000) abren además el panel de detalle a la derecha.
         if (id <= -1000) return;
         var s = shipments?.FirstOrDefault(x => x.Id == id);
-        if (s is not null) { activeShipmentId = id; selected = s; showDetail = true; StateHasChanged(); }
+        if (s is not null) { selected = s; showDetail = true; StateHasChanged(); }
     }
 
     private async Task LoadDrivers() { try { drivers = await Api.GetMapeoDriversAsync() ?? new(); } catch { drivers = new(); } }

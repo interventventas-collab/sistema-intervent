@@ -719,6 +719,7 @@ window.mapeoFlex = (function () {
                     else dotNetRef.invokeMethodAsync('OnMarkerClicked', first.id);
                 });
 
+                marker.__ids = ids; // para poder "hacerlo saltar" cuando tocás su fila en el listado
                 markers.push(marker);
                 bounds.extend(pos);
                 any = true;
@@ -778,6 +779,23 @@ window.mapeoFlex = (function () {
             map.setZoom(zoom || 16);
             if (infoWindow) infoWindow.close();
             infoOpen = false;
+        },
+
+        // Resalta el globito de un envío/parada: lo centra y lo hace "saltar" un ratito (para cuando
+        // tocás su fila en el listado). id = mismo id que usa el marcador (shipment o -1000-stopId).
+        highlightMarker(id) {
+            if (!map) return;
+            for (const m of markers) {
+                if (m.__ids && m.__ids.indexOf(id) >= 0) {
+                    try {
+                        map.panTo(m.getPosition());
+                        if (map.getZoom() < 15) map.setZoom(16);
+                        m.setAnimation(google.maps.Animation.BOUNCE);
+                        setTimeout(function () { try { m.setAnimation(null); } catch (e) {} }, 1500);
+                    } catch (e) {}
+                    return;
+                }
+            }
         },
 
         // Buscador estilo Google Maps: engancha un Autocomplete de Places al input dado.
