@@ -638,27 +638,34 @@
                             @{
                             if (vistaReducida)
                             {
-                            // ─── Vista REDUCIDA: una sola línea con la dirección (entran muchos más) ───
+                            // ─── Vista REDUCIDA: una línea = dirección · localidad (gris) · cartelito del tipo ───
                             var stRed = g.Manual.FirstOrDefault();
                             var colRed = stRed is not null && !string.IsNullOrEmpty(stRed.AssignedDriverColor) ? stRed.AssignedDriverColor!
                                         : (stRed is not null && stRed.AssignedVehicleSlot.HasValue ? VehicleColor(stRed.AssignedVehicleSlot.Value) : "#cbd5e1");
-                            var dirRed = esFlex
-                                ? ((g.Flex.First().AddressLine ?? "—") + (string.IsNullOrWhiteSpace(g.Flex.First().City) ? "" : " · " + g.Flex.First().City))
-                                : (stRed?.Direccion ?? "—");
+                            var dirRed = esFlex ? (g.Flex.First().AddressLine ?? "—") : (stRed?.Direccion ?? "—");
+                            var locRed = esFlex ? (g.Flex.First().City ?? "") : (stRed?.Localidad ?? "");
+                            // Tipo (con su color): venta/visita/alquiler/flex/me1 — reusa el badge de origen del sistema.
+                            var tipoOrigin = g.TieneManual ? g.Manual.First().Origin : (g.Flex.First().Mode == "me1" ? "me1" : "flex");
+                            var tb = OrigenBadge(tipoOrigin);
                             var ordRed = g.Manual.FirstOrDefault(m => m.OrderInRoute.HasValue)?.OrderInRoute;
                             var enRutaRed = rutaSeleccion.Contains(g.Key);
-                            <div class="mapeo-card" style="padding:0.22rem 0.45rem; margin-bottom:0.12rem; display:flex; align-items:center; gap:0.4rem; cursor:pointer; border-left:3px solid @colRed; @(enRutaRed ? "background:#f0fdf4;" : "")"
+                            <div class="mapeo-card" style="padding:0.2rem 0.45rem; margin-bottom:0.1rem; display:flex; align-items:center; gap:0.35rem; cursor:pointer; border-left:3px solid @colRed; @(enRutaRed ? "background:#f0fdf4;" : "")"
                                  @onclick="() => OnSelectFromGroup(g)" title="Tocar para resaltar en el mapa">
                                 @if (!zonaUnica && ordRed.HasValue)
                                 {
                                     <span style="flex:0 0 auto; min-width:18px; height:18px; display:flex; align-items:center; justify-content:center; border-radius:50%; background:@colRed; color:#fff; font-size:0.62rem; font-weight:800;">@ordRed</span>
                                 }
-                                <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:0.75rem; font-weight:600; color:#111827;">@dirRed</span>
+                                <span style="flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:0.75rem; font-weight:600; color:#111827;">@dirRed</span>
+                                @if (!string.IsNullOrWhiteSpace(locRed))
+                                {
+                                    <span style="flex:0 1 auto; min-width:0; max-width:40%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:0.68rem; color:#9ca3af;">· @locRed</span>
+                                }
                                 @if (g.Count > 1)
                                 {
-                                    <span style="flex:0 0 auto; font-size:0.62rem; font-weight:700; background:#dc2626; color:#fff; border-radius:8px; padding:0.02rem 0.32rem;">×@g.Count</span>
+                                    <span style="flex:0 0 auto; font-size:0.6rem; font-weight:700; background:#dc2626; color:#fff; border-radius:8px; padding:0.02rem 0.3rem;">×@g.Count</span>
                                 }
-                                <span style="flex:0 0 auto; color:#9ca3af; font-size:0.9rem;">›</span>
+                                <span style="flex:0 0 auto; font-size:0.6rem; font-weight:800; padding:0.03rem 0.4rem; border-radius:999px; background:@tb.Bg; color:@tb.Color;" title="Tipo: @tb.Label">@tb.Label</span>
+                                <span style="flex:0 0 auto; color:#9ca3af; font-size:0.85rem;">›</span>
                             </div>
                             }
                             else if (esFlex)
@@ -3037,8 +3044,9 @@
         filaExpandida.Clear(); // al cambiar el modo general, arranca todo parejo
     }
 
-    // Vista REDUCIDA: cada pedido en una sola línea (solo la dirección) — entran muchos más en el panel.
-    private bool vistaReducida = false;
+    // Vista REDUCIDA: cada pedido en una sola línea (dirección · localidad · tipo) — entran muchos más.
+    // Viene PRENDIDA por default (se vuelve a "Con detalle" con el botón).
+    private bool vistaReducida = true;
     private void ToggleVistaReducida() => vistaReducida = !vistaReducida;
 
     // Click en una fila del listado (cualquier tipo): resalta esa parada/envío en el mapa.
