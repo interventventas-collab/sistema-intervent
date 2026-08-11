@@ -477,9 +477,14 @@
                 }
                 else
                 {
+                    // Sin agrupar por barrio: TODO en ORDEN DE RUTA — primero por zona (chofer, después vehículo,
+                    // después sin asignar) y dentro de cada zona por su orden (1, 2, 3…). Un solo grupo, sin
+                    // encabezados de barrio (el color del bordecito + el número ya indican de qué zona es).
                     zonasUnificadas = listaRender
-                        .GroupBy(u => u.Zona)
-                        .OrderBy(g => g.Key == "(sin localidad)" ? "ZZZ" : g.Key)
+                        .OrderBy(g => GrupoDriverId(g) ?? (GrupoSlot(g).HasValue ? 1000 + GrupoSlot(g)!.Value : 100000))
+                        .ThenBy(GrupoOrden)
+                        .ThenBy(g => g.Zona)
+                        .GroupBy(_ => "")
                         .ToList();
                 }
                 <div style="position:sticky; top:0; z-index:3;">
@@ -605,10 +610,15 @@
                 }
                 @foreach (var zona in zonasUnificadas)
                 {
-                    <div style="padding:0.25rem 0.6rem; background:#f3f4f6; border-bottom:1px solid #e5e7eb; font-size:0.7rem; font-weight:700; color:#374151; display:flex; justify-content:space-between; align-items:center;">
-                        <span>📍 @zona.Key</span>
-                        <span style="font-weight:500; opacity:0.7;">@zona.Sum(g => g.Count) envío@(zona.Sum(g => g.Count) == 1 ? "" : "s")</span>
-                    </div>
+                    @* Encabezado del grupo (solo si tiene título: 'X — en orden de ruta'). En la vista plana por
+                       orden de ruta (key vacío) NO mostramos encabezado. *@
+                    @if (!string.IsNullOrEmpty(zona.Key))
+                    {
+                        <div style="padding:0.25rem 0.6rem; background:#f3f4f6; border-bottom:1px solid #e5e7eb; font-size:0.7rem; font-weight:700; color:#374151; display:flex; justify-content:space-between; align-items:center;">
+                            <span>📍 @zona.Key</span>
+                            <span style="font-weight:500; opacity:0.7;">@zona.Sum(g => g.Count) envío@(zona.Sum(g => g.Count) == 1 ? "" : "s")</span>
+                        </div>
+                    }
                     var grupos = zona.ToList();
                     @for (int gi = 0; gi < grupos.Count; gi++)
                     {
