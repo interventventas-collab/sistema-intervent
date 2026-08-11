@@ -3800,6 +3800,8 @@
         var paraDibujar = rutasResumen
             .Where(r => (r.Segments?.Count ?? 0) > 0 || !string.IsNullOrEmpty(r.EncodedPolyline))
             .Where(r => !(r.DriverId.HasValue && zonasOcultasMapa.Contains(r.DriverId.Value)))
+            // Zona/vehículo sin repartidor apagada por el ojito: no dibujamos su línea.
+            .Where(r => !(r.VehicleSlot.HasValue && zonasSlotOcultas.Contains(r.VehicleSlot.Value)))
             .Select(r => new
             {
                 color = r.Color,
@@ -5911,7 +5913,9 @@
             await Api.ReorderMapeoStopsAsync(stopIds); // OrderInRoute = 1..N en el orden tocado
             await LoadStops();
             await RenderMap();
-            await CargarYDibujarRutas(single: true);   // dibuja la ruta ya guardada
+            // single:false = cada zona su propia línea independiente (NO mezclar todas en una ruta única,
+            // que era lo que cruzaba las zonas). Dibuja también las otras rutas ya armadas, cada una aparte.
+            await CargarYDibujarRutas(single: false);
             ToastService.Success($"✅ Ruta armada: {stopIds.Count} paradas en orden.");
         }
         catch (Exception ex) { ToastService.Error("No se pudo guardar la ruta: " + ex.Message); }

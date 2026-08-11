@@ -185,6 +185,8 @@ public class RutaOverviewDto
     public string Label { get; set; } = "";
     public string Color { get; set; } = "#1d4ed8";
     public int? DriverId { get; set; }
+    // Zona/vehículo (slot) de esta ruta cuando no tiene repartidor (para ocultar su línea con el ojito).
+    public int? VehicleSlot { get; set; }
     public int DurationSeconds { get; set; }
     public int DistanceMeters { get; set; }
     public string? EncodedPolyline { get; set; }

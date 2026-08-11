@@ -743,7 +743,7 @@ public class MapeoStopsController : ControllerBase
         List<TramoTransitoDto>? Transito = null);
     public record RutaOverviewDto(string Key, string Label, string Color, int? DriverId,
         int DurationSeconds, int DistanceMeters, string? EncodedPolyline, int StopCount,
-        List<string> Segments, List<RutaLegDto> Legs);
+        List<string> Segments, List<RutaLegDto> Legs, int? VehicleSlot = null);
 
     /// <summary>
     /// Devuelve, por repartidor (o como ruta única), el tiempo estimado + km + la línea dibujable de la ruta.
@@ -762,15 +762,31 @@ public class MapeoStopsController : ControllerBase
             .Where(s => s.OrderInRoute != null).ToListAsync();
         if (conOrden.Count == 0) return Ok(new List<RutaOverviewDto>());
 
-        // single = todas las paradas como UNA ruta; si no, agrupadas por repartidor.
-        var grupos = single
-            ? new List<(int? did, MapeoDriver? drv, List<MapeoStop> ss)> { (null, null, conOrden) }
-            : conOrden.GroupBy(s => s.AssignedDriverId)
-                      .Select(g => (g.Key, g.First().AssignedDriver, g.ToList()))
-                      .ToList();
+        // single = todas las paradas como UNA ruta. Si no, CADA ZONA es una ruta INDEPENDIENTE: agrupamos por
+        // repartidor si tiene; si no, por vehículo/zona (slot); si no tiene ninguno, van juntas como "sin asignar".
+        // (Antes agrupaba SOLO por repartidor, así que dos zonas de vehículo distintas —ambas sin chofer— se
+        //  mezclaban en una sola línea que cruzaba las dos. Este es el fix.)
+        List<(string key, int? did, int? slot, MapeoDriver? drv, List<MapeoStop> ss)> grupos;
+        if (single)
+        {
+            grupos = new() { ("single", null, null, null, conOrden) };
+        }
+        else
+        {
+            grupos = conOrden
+                .GroupBy(s => s.AssignedDriverId.HasValue ? $"d{s.AssignedDriverId.Value}"
+                             : (s.AssignedVehicleSlot.HasValue ? $"v{s.AssignedVehicleSlot.Value}" : "none"))
+                .Select(g =>
+                {
+                    var f = g.First();
+                    int? slot = f.AssignedDriverId.HasValue ? null : f.AssignedVehicleSlot;
+                    return (g.Key, f.AssignedDriverId, slot, f.AssignedDriver, g.ToList());
+                })
+                .ToList();
+        }
 
         var result = new List<RutaOverviewDto>();
-        foreach (var (did, drv, ss) in grupos)
+        foreach (var (key, did, slot, drv, ss) in grupos)
         {
             var ordered = ss.OrderBy(s => s.OrderInRoute).ToList();
             var pts = ordered.Select(s => ((double)s.Latitude, (double)s.Longitude)).ToList();
@@ -782,10 +798,14 @@ public class MapeoStopsController : ControllerBase
             seq.AddRange(pts);
 
             var rr = await _routes.ComputeRouteFullAsync(seq);
-            string label = single ? "Ruta única" : (drv?.Nombre ?? "Sin repartidor");
-            // Azul por defecto (como Google Maps). Solo las rutas CON repartidor toman su color propio
-            // para poder distinguir varios repartidores en el mapa; las sin repartidor van azules.
-            string color = single ? "#1d4ed8" : (string.IsNullOrEmpty(drv?.Color) ? "#1d4ed8" : drv!.Color!);
+            string label = single ? "Ruta única"
+                : (drv?.Nombre ?? (slot.HasValue ? $"Zona {slot.Value}" : "Sin repartidor"));
+            // Color de la ruta = color de su ZONA (para distinguir varias en el mapa y que coincida con el
+            // cuadradito de la zona): color del repartidor si tiene; si no, el color del vehículo/zona (slot);
+            // si no tiene ninguno, azul. La ruta única siempre azul.
+            string color = single ? "#1d4ed8"
+                : (!string.IsNullOrEmpty(drv?.Color) ? drv!.Color!
+                   : (slot.HasValue ? VehicleColorHex(slot.Value) : "#1d4ed8"));
             var segments = rr?.Segments ?? new List<string>();
             // Nombres de cada punto EN ORDEN de visita: "Salida" (si hay punto de partida) + el número de cada
             // parada (1, 2, 3…). Sirve para rotular cada tramo ("de la 2 a la 3") cuando se toca la línea.
@@ -802,12 +822,22 @@ public class MapeoStopsController : ControllerBase
                 legs.Add(new RutaLegDto(rawLegs[k].DurationSeconds, rawLegs[k].DistanceMeters, rawLegs[k].EncodedPolyline, from, to, trans));
             }
             result.Add(new RutaOverviewDto(
-                did?.ToString() ?? "none", label, color, did,
+                key, label, color, did,
                 rr?.DurationSeconds ?? 0, rr?.DistanceMeters ?? 0,
-                segments.FirstOrDefault(), ordered.Count, segments, legs));
+                segments.FirstOrDefault(), ordered.Count, segments, legs, slot));
         }
         return Ok(result);
     }
+
+    // Paleta de colores de las zonas/vehículos (igual que la del frontend VEHICLE_COLORS, para que la línea
+    // de cada zona coincida con su cuadradito). Zona 1 = azul, Zona 2 = rojo, etc.
+    private static readonly string[] VehicleColors =
+    {
+        "#1d4ed8", "#dc2626", "#16a34a", "#d97706", "#7c3aed",
+        "#0891b2", "#be185d", "#65a30d", "#ea580c", "#4338ca"
+    };
+    private static string VehicleColorHex(int slot)
+        => VehicleColors[((slot - 1) % VehicleColors.Length + VehicleColors.Length) % VehicleColors.Length];
 
     /// <summary>
     /// Un solo TRAMO (de un punto A a un punto B) por las calles reales, con el tiempo (con tránsito),
