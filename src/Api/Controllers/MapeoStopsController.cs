@@ -342,7 +342,45 @@ public class MapeoStopsController : ControllerBase
             s.UpdatedAt = now;
         }
         await _db.SaveChangesAsync();
+
+        // Normalizamos cada ZONA tocada para que quede 1..N contiguo SIN dejar paradas afuera: primero las
+        // que ya tenían orden (respetando el orden recién guardado), y al final las que estaban sin numerar.
+        // Antes, si al armar la ruta quedaba alguna parada sin tocar, quedaba sin número Y afuera de la línea
+        // (la ruta la salteaba). Ahora entra numerada al final.
+        var zonasTocadas = stops
+            .Select(s => s.AssignedDriverId.HasValue ? $"d{s.AssignedDriverId.Value}"
+                        : (s.AssignedVehicleSlot.HasValue ? $"v{s.AssignedVehicleSlot.Value}" : null))
+            .Where(k => k != null).Select(k => k!).Distinct().ToList();
+        if (zonasTocadas.Count > 0) await NormalizarZonasAsync(zonasTocadas, now);
+
         return Ok(new { updated = order - 1 });
+    }
+
+    /// <summary>
+    /// Renumera las zonas dadas (clave "d{driverId}" o "v{slot}") a 1..N contiguo: primero las paradas que
+    /// ya tienen orden (por ese orden), después las que estaban sin numerar (por Id). Así ninguna parada de
+    /// una zona en uso queda sin número ni afuera de la ruta. Idempotente.
+    /// </summary>
+    private async Task NormalizarZonasAsync(List<string> zonaKeys, DateTime now)
+    {
+        foreach (var key in zonaKeys)
+        {
+            List<MapeoStop> zona;
+            if (key.StartsWith("d") && int.TryParse(key[1..], out var did))
+                zona = await _db.MapeoStops.Where(s => s.AssignedDriverId == did).ToListAsync();
+            else if (key.StartsWith("v") && int.TryParse(key[1..], out var slot))
+                zona = await _db.MapeoStops.Where(s => s.AssignedVehicleSlot == slot && s.AssignedDriverId == null).ToListAsync();
+            else continue;
+
+            var ordenadas = zona.OrderBy(s => s.OrderInRoute ?? int.MaxValue).ThenBy(s => s.Id).ToList();
+            int n = 1;
+            foreach (var s in ordenadas)
+            {
+                if (s.OrderInRoute != n) { s.OrderInRoute = n; s.UpdatedAt = now; }
+                n++;
+            }
+        }
+        await _db.SaveChangesAsync();
     }
 
     public record PonerEnPuestoRequest(int Puesto);
