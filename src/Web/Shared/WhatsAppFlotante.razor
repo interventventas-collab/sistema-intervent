@@ -98,14 +98,67 @@
         @* ---------- Barra de envio (solo con un chat abierto) ---------- *@
         @if (chatAbierto is not null)
         {
-            <div class="waf-send">
-                <input class="waf-input" placeholder="Escribir mensaje…" @bind="texto" @bind:event="oninput"
-                       @onkeydown="OnKeyDown" disabled="@enviando" />
-                <button class="waf-send-btn" @onclick="Enviar" disabled="@(enviando || string.IsNullOrWhiteSpace(texto))"
-                        title="Enviar">
-                    @(enviando ? "…" : "➤")
-                </button>
-            </div>
+            @if (VentanaWafAbierta())
+            {
+                <div class="waf-send">
+                    <input class="waf-input" placeholder="Escribir mensaje…" @bind="texto" @bind:event="oninput"
+                           @onkeydown="OnKeyDown" disabled="@enviando" />
+                    <button class="waf-send-btn" @onclick="Enviar" disabled="@(enviando || string.IsNullOrWhiteSpace(texto))"
+                            title="Enviar">
+                        @(enviando ? "…" : "➤")
+                    </button>
+                </div>
+            }
+            else if (EsChatIgWaf())
+            {
+                <div class="waf-cerrada">
+                    <div class="waf-cerrada-title">📷 Pasaron más de 24 hs</div>
+                    <div class="waf-cerrada-sub">En Instagram no se puede escribir fuera de las 24 hs. Hay que esperar a que te vuelva a escribir.</div>
+                </div>
+            }
+            else
+            {
+                <div class="waf-cerrada">
+                    <div class="waf-cerrada-title">✍️ Pasaron más de 24 hs</div>
+                    <div class="waf-cerrada-sub">WhatsApp no deja escribir texto libre. Mandale una plantilla; cuando conteste, volvés a escribirle normal.</div>
+                    @if (plantillasWaf is null)
+                    {
+                        <div class="waf-cerrada-sub">Cargando plantillas…</div>
+                    }
+                    else if (plantillasWaf.Count == 0)
+                    {
+                        <div class="waf-cerrada-sub">No hay plantillas aprobadas disponibles.</div>
+                    }
+                    else
+                    {
+                        <select class="waf-cerrada-sel" value="@plantillaNameWaf" @onchange="OnPlantillaChangeWaf">
+                            <option value="">— Elegí una plantilla —</option>
+                            @foreach (var p in plantillasWaf)
+                            {
+                                <option value="@p.Name">@p.Name.Replace("_", " ") (@p.Category.ToLower())</option>
+                            }
+                        </select>
+                        @if (PlantillaSelWaf() is {} psel)
+                        {
+                            @if (psel.VariableCount > 0)
+                            {
+                                @for (int i = 0; i < psel.VariableCount; i++)
+                                {
+                                    var idx = i;
+                                    <input class="waf-cerrada-sel" style="margin-top:4px;"
+                                           placeholder="@(idx == 0 ? "Nombre del cliente" : $"Dato {idx + 1}")"
+                                           value="@(idx < plantillaVarsWaf.Count ? plantillaVarsWaf[idx] : "")"
+                                           @oninput="e => SetPlantillaVarWaf(idx, e.Value?.ToString() ?? string.Empty)" />
+                                }
+                            }
+                            <div class="waf-cerrada-preview">@PreviewPlantillaWaf()</div>
+                            <button class="waf-cerrada-enviar" disabled="@plantillaEnviandoWaf" @onclick="EnviarPlantillaWaf">
+                                @(plantillaEnviandoWaf ? "Enviando…" : "📨 Enviar plantilla")
+                            </button>
+                        }
+                    }
+                </div>
+            }
         }
     </div>
 }
@@ -167,6 +220,18 @@
     }
     .waf-send-btn:disabled { background: #b9bfc7; cursor: default; }
 
+    /* 2026-08-12: ventana de 24 hs cerrada -> aviso + selector de plantilla en vez del cuadro de escribir */
+    .waf-cerrada { padding: 10px; background: #fffdf5; border-top: 1px solid #eceef1; flex: 0 0 auto; max-height: 46%; overflow-y: auto; }
+    .waf-cerrada-title { font-weight: 800; color: #92400e; font-size: 13px; }
+    .waf-cerrada-sub { color: #6b7280; font-size: 11.5px; line-height: 1.3; margin-top: 2px; }
+    .waf-cerrada-sel { width: 100%; margin-top: 6px; padding: 7px 9px; font-size: 13px; box-sizing: border-box;
+        border: 1px solid #d7dbe0; border-radius: 8px; background: #fff; color: #111827; }
+    .waf-cerrada-preview { margin-top: 6px; padding: 6px 8px; background: #f3f4f6; border-radius: 8px;
+        font-size: 12px; color: #374151; white-space: pre-wrap; word-break: break-word; }
+    .waf-cerrada-enviar { margin-top: 7px; width: 100%; padding: 8px; border: 0; border-radius: 8px;
+        background: #25d366; color: #fff; font-weight: 800; font-size: 13px; cursor: pointer; }
+    .waf-cerrada-enviar:disabled { background: #b9bfc7; cursor: default; }
+
     @@media (max-width: 640px) {
         .waf-panel { right: 8px; left: 8px; width: auto; height: 70vh; }
     }
@@ -181,6 +246,60 @@
     private List<TwConvDto> convs = new();
     private TwConvDto? chatAbierto;
     private List<TwMsgDto> msgs = new();
+
+    // 2026-08-12: ventana de 24 hs. Fuera de esa ventana WhatsApp NO deja escribir texto libre;
+    // hay que mandar una plantilla aprobada. Misma lógica que la pantalla grande, acá en el flotante.
+    private bool EsChatIgWaf() => chatAbierto?.Numero?.StartsWith("ig:") ?? false;
+    private DateTime? UltimoEntranteWaf() => msgs.Where(m => m.Direccion == "INCOMING").Select(m => (DateTime?)m.CreatedAt).Max();
+    private bool VentanaWafAbierta()
+    {
+        if (EsChatIgWaf()) return false;
+        var ult = UltimoEntranteWaf();
+        return ult != null && ult.Value.AddHours(24) > DateTime.UtcNow;
+    }
+    private List<TwPlantillaDto>? plantillasWaf;
+    private string plantillaNameWaf = "";
+    private List<string> plantillaVarsWaf = new();
+    private bool plantillaEnviandoWaf;
+    private TwPlantillaDto? PlantillaSelWaf() => plantillasWaf?.FirstOrDefault(p => p.Name == plantillaNameWaf);
+    private void OnPlantillaChangeWaf(ChangeEventArgs e)
+    {
+        plantillaNameWaf = e.Value?.ToString() ?? "";
+        var count = PlantillaSelWaf()?.VariableCount ?? 0;
+        plantillaVarsWaf = Enumerable.Range(0, count).Select(_ => "").ToList();
+    }
+    private void SetPlantillaVarWaf(int idx, string val)
+    {
+        while (plantillaVarsWaf.Count <= idx) plantillaVarsWaf.Add("");
+        plantillaVarsWaf[idx] = val;
+    }
+    private string PreviewPlantillaWaf()
+    {
+        var p = PlantillaSelWaf();
+        if (p == null) return "";
+        return System.Text.RegularExpressions.Regex.Replace(p.BodyText, @"\{\{\s*(\d+)\s*\}\}", m =>
+        {
+            if (int.TryParse(m.Groups[1].Value, out var i) && i >= 1 && i <= plantillaVarsWaf.Count && !string.IsNullOrEmpty(plantillaVarsWaf[i - 1]))
+                return plantillaVarsWaf[i - 1];
+            return m.Value;
+        });
+    }
+    private async Task EnviarPlantillaWaf()
+    {
+        var p = PlantillaSelWaf();
+        if (p == null || chatAbierto is null) { ToastService.Warning("Elegí una plantilla"); return; }
+        for (int i = 0; i < p.VariableCount; i++)
+            if (i >= plantillaVarsWaf.Count || string.IsNullOrWhiteSpace(plantillaVarsWaf[i]))
+            { ToastService.Warning("Completá todos los datos de la plantilla"); return; }
+        var digits = new string(chatAbierto.Numero.Where(char.IsDigit).ToArray());
+        plantillaEnviandoWaf = true; StateHasChanged();
+        var (ok, err, _) = await Api.IniciarTwConversacionAsync(digits, p.Name, p.Language, chatAbierto.Linea, plantillaVarsWaf, p.BodyText);
+        plantillaEnviandoWaf = false;
+        if (!ok) { ToastService.Error(err ?? "No se pudo enviar la plantilla"); return; }
+        ToastService.Success("Plantilla enviada ✓");
+        plantillaNameWaf = ""; plantillaVarsWaf = new();
+        await CargarMensajes(); await ScrollAlFinal();
+    }
 
     private PeriodicTimer? timer;
     private CancellationTokenSource? cts;
@@ -248,7 +367,13 @@
     private async Task CargarMensajes()
     {
         if (chatAbierto is null) return;
-        try { msgs = await Api.GetTwMensajesAsync(chatAbierto.Numero, chatAbierto.Linea ?? "null"); }
+        try
+        {
+            msgs = await Api.GetTwMensajesAsync(chatAbierto.Numero, chatAbierto.Linea ?? "null");
+            // 2026-08-12: si la ventana de 24 hs está cerrada y aún no traje las plantillas, las cargo.
+            if (plantillasWaf is null && !EsChatIgWaf() && !VentanaWafAbierta())
+                try { plantillasWaf = await Api.GetTwPlantillasAsync(); } catch { plantillasWaf = new(); }
+        }
         catch { /* silencioso: es un refresco de fondo */ }
     }
 

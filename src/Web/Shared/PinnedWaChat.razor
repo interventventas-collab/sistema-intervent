@@ -114,7 +114,7 @@
     @* 2026-08-06: SOLO para el usuario Depósito — barrita para elegir QUIÉN responde. El mensaje
        sale firmado, ej "OK (alex)". Es obligatorio elegir antes de enviar. Los demás usuarios no
        ven esta barra. Misma lógica que la pantalla grande de WhatsApp, acá en versión mini. *@
-    @if (esDeposito)
+    @if (esDeposito && VentanaWaAbierta())
     {
         <div class="pwa-firma">
             <span class="pwa-firma-lbl">✍️ Responde:</span>
@@ -128,7 +128,7 @@
 
     @* 2026-08-07: acciones extra (solo cuando AccionesCompletas=true: móvil / card flotante).
        Respuestas rápidas (abre lista) + Menú rol (un toque). 📎/📷/🎤 quedan en el composer. *@
-    @if (AccionesCompletas)
+    @if (AccionesCompletas && VentanaWaAbierta())
     {
         <div class="pwa-acciones">
             <button type="button" class="pwa-acc-btn pwa-acc-mas" @onclick="AbrirMas" title="Más: adjuntar del servidor, contacto, saldo">➕</button>
@@ -160,6 +160,8 @@
         }
     }
 
+    @if (VentanaWaAbierta())
+    {
     <div class="pwa-composer">
         @if (grabandoAudio)
         {
@@ -197,6 +199,69 @@
             }
         }
     </div>
+    }
+    else if (EsChatIgPwa())
+    {
+        @* Instagram fuera de las 24 hs: no hay plantillas, solo se puede esperar. *@
+        <div class="pwa-cerrada">
+            <div class="pwa-cerrada-head">
+                <span class="pwa-cerrada-ico">📷</span>
+                <div>
+                    <div class="pwa-cerrada-title">Pasaron más de 24 hs</div>
+                    <div class="pwa-cerrada-sub">En Instagram no se puede escribir fuera de las 24 hs. Hay que esperar a que te vuelva a escribir.</div>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        @* Ventana de WhatsApp cerrada: NO se puede escribir libre. Ofrecemos plantilla acá mismo. *@
+        <div class="pwa-cerrada">
+            <div class="pwa-cerrada-head">
+                <span class="pwa-cerrada-ico">✍️</span>
+                <div>
+                    <div class="pwa-cerrada-title">Pasaron más de 24 hs</div>
+                    <div class="pwa-cerrada-sub">WhatsApp no deja escribirle texto libre. Mandale una plantilla aprobada; cuando te conteste, volvés a escribirle normal.</div>
+                </div>
+            </div>
+            @if (plantillasWa is null)
+            {
+                <div class="pwa-cerrada-info">Cargando plantillas…</div>
+            }
+            else if (plantillasWa.Count == 0)
+            {
+                <div class="pwa-cerrada-info">No hay plantillas aprobadas disponibles. Revisá la configuración de WhatsApp.</div>
+            }
+            else
+            {
+                <select class="pwa-cerrada-sel" value="@plantillaName" @onchange="OnPlantillaChange">
+                    <option value="">— Elegí una plantilla —</option>
+                    @foreach (var p in plantillasWa)
+                    {
+                        <option value="@p.Name">@p.Name.Replace("_", " ") (@p.Category.ToLower())</option>
+                    }
+                </select>
+                @if (PlantillaSelWa() is {} psel)
+                {
+                    @if (psel.VariableCount > 0)
+                    {
+                        @for (int i = 0; i < psel.VariableCount; i++)
+                        {
+                            var idx = i;
+                            <input class="pwa-cerrada-sel" style="margin-top:0.4rem;"
+                                   placeholder="@PlaceholderVarWa(psel, idx)"
+                                   value="@(idx < plantillaVars.Count ? plantillaVars[idx] : "")"
+                                   @oninput="e => SetPlantillaVar(idx, e.Value?.ToString() ?? string.Empty)" />
+                        }
+                    }
+                    <div class="pwa-cerrada-preview">@PreviewPlantillaWa()</div>
+                    <button class="pwa-cerrada-enviar" disabled="@plantillaEnviando" @onclick="EnviarPlantillaWa">
+                        @(plantillaEnviando ? "Enviando…" : "📨 Enviar plantilla")
+                    </button>
+                }
+            }
+        </div>
+    }
 
     @* 2026-08-07 (Fase 2): panel del ➕ — Adjuntar del servidor / Contacto / Saldo. Overlay sobre la card. *@
     @if (mostrarMas)
@@ -452,6 +517,21 @@
         .pwa-audio { height: 44px; }
         .pwa-firma-btn { padding: 4px 11px; font-size: 0.8rem; }
     }
+
+    /* 2026-08-12: ventana de 24 hs cerrada -> en vez del cuadro de escribir, aviso + selector de plantilla */
+    .pwa-cerrada { padding: 0.7rem 0.8rem; border-top: 1px solid #eef0f2; background: #fffdf5; }
+    .pwa-cerrada-head { display: flex; gap: 8px; align-items: flex-start; }
+    .pwa-cerrada-ico { font-size: 1.2rem; flex: none; }
+    .pwa-cerrada-title { font-weight: 800; color: #92400e; font-size: 0.9rem; }
+    .pwa-cerrada-sub { color: #6b7280; font-size: 0.78rem; line-height: 1.3; margin-top: 2px; }
+    .pwa-cerrada-info { color: #6b7280; font-size: 0.8rem; margin-top: 0.5rem; }
+    .pwa-cerrada-sel { width: 100%; margin-top: 0.5rem; padding: 0.55rem 0.6rem; font-size: 0.9rem;
+        border: 1px solid #d1d5db; border-radius: 10px; background: #fff; color: #111827; box-sizing: border-box; }
+    .pwa-cerrada-preview { margin-top: 0.5rem; padding: 0.5rem 0.6rem; background: #f3f4f6; border-radius: 10px;
+        font-size: 0.82rem; color: #374151; white-space: pre-wrap; word-break: break-word; }
+    .pwa-cerrada-enviar { margin-top: 0.6rem; width: 100%; padding: 0.6rem 0.8rem; border: none;
+        border-radius: 10px; background: #25d366; color: #fff; font-weight: 800; font-size: 0.9rem; cursor: pointer; }
+    .pwa-cerrada-enviar:disabled { background: #cbd5d3; cursor: not-allowed; }
 </style>
 
 @code {
@@ -477,6 +557,78 @@
     private string? firmante;
     private static readonly string[] FirmantesDeposito = { "alex", "nacho", "benja", "rodri", "gon", "ger" };
     private static string Capitalizar(string s) => string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s.Substring(1);
+
+    // ===== 2026-08-12: ventana de 24 hs de WhatsApp =====
+    // Fuera de las 24 hs desde el último mensaje del cliente, WhatsApp NO deja escribir texto libre:
+    // hay que mandar una plantilla aprobada. Misma lógica que la pantalla grande de WhatsApp, acá en
+    // versión mini (celular y chats flotantes). Mientras los mensajes cargan no bloqueamos (evita el
+    // "flash" de "pasaron 24 hs" antes de tener el historial).
+    private bool EsChatIgPwa() => Numero?.StartsWith("ig:") ?? false;
+    private DateTime? UltimoEntranteWa()
+        => mensajes?.Where(m => m.Direccion == "INCOMING").Select(m => (DateTime?)m.CreatedAt).Max();
+    private bool VentanaWaAbierta()
+    {
+        if (mensajes is null) return true;     // todavía cargando: no bloquear
+        if (EsChatIgPwa()) return false;       // Instagram: sin plantillas, se maneja aparte
+        var ult = UltimoEntranteWa();
+        return ult != null && ult.Value.AddHours(24) > DateTime.UtcNow;
+    }
+
+    // Selector de plantilla dentro del chat (para cuando la ventana de 24 hs está cerrada).
+    private List<ApiClient.TwPlantillaDto>? plantillasWa;
+    private string plantillaName = "";
+    private List<string> plantillaVars = new();
+    private bool plantillaEnviando;
+    private ApiClient.TwPlantillaDto? PlantillaSelWa() => plantillasWa?.FirstOrDefault(p => p.Name == plantillaName);
+    private void OnPlantillaChange(ChangeEventArgs e)
+    {
+        plantillaName = e.Value?.ToString() ?? "";
+        var count = PlantillaSelWa()?.VariableCount ?? 0;
+        plantillaVars = Enumerable.Range(0, count).Select(_ => "").ToList();
+    }
+    private void SetPlantillaVar(int idx, string val)
+    {
+        while (plantillaVars.Count <= idx) plantillaVars.Add("");
+        plantillaVars[idx] = val;
+    }
+    private string PreviewPlantillaWa()
+    {
+        var p = PlantillaSelWa();
+        return p == null ? "" : RenderPreviewWa(p.BodyText, plantillaVars);
+    }
+    private static string RenderPreviewWa(string body, List<string> vars)
+    {
+        if (string.IsNullOrEmpty(body)) return "";
+        return System.Text.RegularExpressions.Regex.Replace(body, @"\{\{\s*(\d+)\s*\}\}", m =>
+        {
+            if (int.TryParse(m.Groups[1].Value, out var idx) && idx >= 1 && idx <= vars.Count && !string.IsNullOrEmpty(vars[idx - 1]))
+                return vars[idx - 1];
+            return m.Value;
+        });
+    }
+    private static string PlaceholderVarWa(ApiClient.TwPlantillaDto? p, int idx)
+    {
+        if (p != null && (p.Name.Contains("deuda") || p.Name.Contains("pago")))
+            return idx == 0 ? "Nombre del cliente" : "Monto (ej: $5.000)";
+        return idx == 0 ? "Nombre del cliente" : $"Dato {idx + 1}";
+    }
+    private async Task EnviarPlantillaWa()
+    {
+        var p = PlantillaSelWa();
+        if (p == null) { Toast.Warning("Elegí una plantilla"); return; }
+        for (int i = 0; i < p.VariableCount; i++)
+            if (i >= plantillaVars.Count || string.IsNullOrWhiteSpace(plantillaVars[i]))
+            { Toast.Warning("Completá todos los datos de la plantilla"); return; }
+        var digits = new string(Numero.Where(char.IsDigit).ToArray());
+        plantillaEnviando = true; StateHasChanged();
+        var (ok, err, _) = await Api.IniciarTwConversacionAsync(digits, p.Name, p.Language, LineaPhoneId, plantillaVars, p.BodyText);
+        plantillaEnviando = false;
+        if (!ok) { Toast.Error(err ?? "No se pudo enviar la plantilla"); return; }
+        Toast.Success("Plantilla enviada ✓");
+        plantillaName = ""; plantillaVars = new();
+        await Cargar();
+        StateHasChanged();
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -512,6 +664,10 @@
             if (lista.Count == 0)
                 lista = await Api.GetTwMensajesAsync(Numero, null);
             mensajes = lista;
+            // 2026-08-12: si la ventana de 24 hs está cerrada y todavía no traje las plantillas
+            // aprobadas, las cargo una vez para poder ofrecer el selector en el chat.
+            if (plantillasWa is null && !EsChatIgPwa() && !VentanaWaAbierta())
+                try { plantillasWa = await Api.GetTwPlantillasAsync(); } catch { plantillasWa = new(); }
         }
         catch { mensajes ??= new(); }
     }
