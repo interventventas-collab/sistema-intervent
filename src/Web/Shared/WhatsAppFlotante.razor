@@ -77,7 +77,18 @@
                     {
                         @foreach (var m in msgs)
                         {
-                            <div class="waf-msg @(m.Direccion == "OUTGOING" ? "waf-out" : "waf-in")">
+                            <div class="waf-msg @(m.Direccion == "OUTGOING" ? "waf-out" : "waf-in") @(menuMsgIdWaf == m.Id ? "sel" : "")"
+                                 @onpointerdown="() => PressStartWaf(m.Id)" @onpointerup="PressEndWaf"
+                                 @onpointerleave="PressEndWaf" @onpointercancel="PressEndWaf"
+                                 @oncontextmenu:preventDefault="true">
+                                @* 2026-08-12: cita del mensaje al que responde (responder citando) *@
+                                @if (!string.IsNullOrWhiteSpace(m.ReplyPreview))
+                                {
+                                    <div class="waf-reply-quote">
+                                        <span class="waf-reply-who">@(m.ReplyFromMe ? "Vos" : NombreDe(chatAbierto))</span>
+                                        <span class="waf-reply-text">@m.ReplyPreview</span>
+                                    </div>
+                                }
                                 @if (!string.IsNullOrWhiteSpace(m.Cuerpo))
                                 {
                                     <div class="waf-msg-txt">@m.Cuerpo</div>
@@ -88,6 +99,16 @@
                                     <div class="waf-msg-adj"><a href="@m.MediaUrl" target="_blank" rel="noopener" style="color:inherit; text-decoration:none;">📎 @(string.IsNullOrWhiteSpace(m.MediaFilename) ? "Adjunto" : m.MediaFilename)</a></div>
                                 }
                                 <div class="waf-msg-hora">@m.CreatedAt.ToLocalTime().ToString("HH:mm")</div>
+                                @* 2026-08-12: reacciones (chips) *@
+                                @if (m.Reacciones != null && m.Reacciones.Count > 0)
+                                {
+                                    <div class="waf-reacciones">
+                                        @foreach (var r in m.Reacciones)
+                                        {
+                                            <span class="waf-reaccion-chip">@r.Emoji@(r.Count > 1 ? $" {r.Count}" : "")</span>
+                                        }
+                                    </div>
+                                }
                             </div>
                         }
                     }
@@ -100,6 +121,17 @@
         {
             @if (VentanaWafAbierta())
             {
+                @* 2026-08-12: barra "Respondiendo a…" (responder citando) *@
+                @if (respondiendoAWaf is not null)
+                {
+                    <div class="waf-replybar">
+                        <div class="waf-replybar-body">
+                            <span class="waf-replybar-who">↩️ Respondiendo a @(respondiendoAWaf.Direccion == "OUTGOING" ? "vos" : NombreDe(chatAbierto))</span>
+                            <span class="waf-replybar-text">@PreviewRespuestaWaf(respondiendoAWaf)</span>
+                        </div>
+                        <button type="button" class="waf-replybar-x" @onclick="CancelarResponderWaf" title="Cancelar respuesta">×</button>
+                    </div>
+                }
                 <div class="waf-send">
                     <input class="waf-input" placeholder="Escribir mensaje…" @bind="texto" @bind:event="oninput"
                            @onkeydown="OnKeyDown" disabled="@enviando" />
@@ -160,6 +192,25 @@
                 </div>
             }
         }
+
+        @* 2026-08-12: menú que abre el TOQUE SOSTENIDO sobre un mensaje: reaccionar (emojis) + responder. *@
+        @if (menuMsgIdWaf is int _mid && msgs.FirstOrDefault(x => x.Id == _mid) is {} _mm)
+        {
+            <div class="waf-msgmenu-backdrop" @onclick="CerrarMenuMsgWaf">
+                <div class="waf-msgmenu" @onclick:stopPropagation="true">
+                    <div class="waf-msgmenu-emojis">
+                        @foreach (var em in QuickEmojisWaf)
+                        {
+                            <button type="button" class="waf-msgmenu-emoji" @onclick="() => ReaccionarWaf(_mm.Id, em)">@em</button>
+                        }
+                    </div>
+                    @if (VentanaWafAbierta())
+                    {
+                        <button type="button" class="waf-msgmenu-op" @onclick="() => IniciarResponderWaf(_mm)">↩️ Responder</button>
+                    }
+                </div>
+            </div>
+        }
     </div>
 }
 
@@ -204,12 +255,46 @@
     .waf-tick { color: #25d366; margin-right: 3px; }
 
     .waf-msgs { padding: 10px; display: flex; flex-direction: column; gap: 7px; }
-    .waf-msg { max-width: 78%; padding: 6px 9px; border-radius: 9px; box-shadow: 0 1px 1px rgba(0,0,0,.06); }
+    .waf-msg { max-width: 78%; padding: 6px 9px; border-radius: 9px; box-shadow: 0 1px 1px rgba(0,0,0,.06);
+        /* el toque sostenido no debe marcar texto ni abrir el menú del navegador */
+        -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+    .waf-msg.sel { outline: 2px solid #25d366; }
     .waf-in  { align-self: flex-start; background: #fff; }
     .waf-out { align-self: flex-end;   background: #dcf8c6; }
     .waf-msg-txt { white-space: pre-wrap; word-break: break-word; color: #111827; }
     .waf-msg-adj { color: #4b5563; font-style: italic; }
     .waf-msg-hora { text-align: right; color: #9aa1ac; font-size: 10px; margin-top: 2px; }
+    /* Cita (responder citando) */
+    .waf-reply-quote { border-left: 3px solid #25d366; background: rgba(0,0,0,.05); border-radius: 5px;
+        padding: 3px 6px; margin-bottom: 3px; }
+    .waf-reply-who { display: block; font-size: 10px; font-weight: 800; color: #0b7a4b; }
+    .waf-reply-text { display: block; font-size: 11px; color: #4b5563;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+    /* Reacciones (chips) */
+    .waf-reacciones { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
+    .waf-reaccion-chip { background: #fff; border: 1px solid #e5e7eb; border-radius: 999px;
+        padding: 0 5px; font-size: 12px; line-height: 1.35; box-shadow: 0 1px 1px rgba(0,0,0,.08); }
+    /* Barra "Respondiendo a…" */
+    .waf-replybar { display: flex; align-items: center; gap: 6px; padding: 5px 9px;
+        background: #eef7f0; border-top: 1px solid #d6e6db; }
+    .waf-replybar-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .waf-replybar-who { font-size: 10.5px; font-weight: 800; color: #0b7a4b; }
+    .waf-replybar-text { font-size: 11.5px; color: #4b5563;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .waf-replybar-x { border: 0; background: transparent; color: #6b7280; font-size: 17px;
+        cursor: pointer; line-height: 1; padding: 0 3px; }
+    /* Menú del toque sostenido */
+    .waf-msgmenu-backdrop { position: absolute; inset: 0; z-index: 60; background: rgba(0,0,0,.15);
+        display: flex; align-items: flex-end; justify-content: center; }
+    .waf-msgmenu { width: 100%; background: #fff; border-top-left-radius: 14px; border-top-right-radius: 14px;
+        box-shadow: 0 -6px 20px rgba(0,0,0,.18); padding: 9px 10px 12px; }
+    .waf-msgmenu-emojis { display: flex; justify-content: space-between; gap: 4px; margin-bottom: 7px; }
+    .waf-msgmenu-emoji { flex: 1; border: 0; background: #f3f4f6; border-radius: 999px;
+        padding: 7px 0; font-size: 20px; cursor: pointer; }
+    .waf-msgmenu-emoji:hover { background: #e5e7eb; }
+    .waf-msgmenu-op { width: 100%; border: 1px solid #d1d5db; background: #fff; border-radius: 9px;
+        padding: 9px; font-size: 13px; font-weight: 700; color: #111827; cursor: pointer; }
+    .waf-msgmenu-op:hover { background: #f3f4f6; }
 
     .waf-send { display: flex; gap: 6px; padding: 8px; background: #fff; border-top: 1px solid #eceef1; flex: 0 0 auto; }
     .waf-input { flex: 1 1 auto; border: 1px solid #d7dbe0; border-radius: 18px; padding: 7px 12px; outline: none; font-size: 13px; }
@@ -251,6 +336,45 @@
     // hay que mandar una plantilla aprobada. Misma lógica que la pantalla grande, acá en el flotante.
     private bool EsChatIgWaf() => chatAbierto?.Numero?.StartsWith("ig:") ?? false;
     private DateTime? UltimoEntranteWaf() => msgs.Where(m => m.Direccion == "INCOMING").Select(m => (DateTime?)m.CreatedAt).Max();
+
+    // ===== 2026-08-12: toque sostenido (long-press) sobre un mensaje -> reaccionar / responder =====
+    private int? menuMsgIdWaf;
+    private System.Threading.CancellationTokenSource? pressCtsWaf;
+    private static readonly string[] QuickEmojisWaf = { "👍", "❤️", "😂", "😮", "😢", "🙏", "☕", "✅" };
+    private TwMsgDto? respondiendoAWaf;
+
+    private async Task PressStartWaf(int msgId)
+    {
+        pressCtsWaf?.Cancel();
+        var cts = new System.Threading.CancellationTokenSource();
+        pressCtsWaf = cts;
+        try { await Task.Delay(500, cts.Token); }
+        catch { return; }
+        if (cts.IsCancellationRequested) return;
+        menuMsgIdWaf = msgId;
+        StateHasChanged();
+    }
+    private void PressEndWaf() => pressCtsWaf?.Cancel();
+    private void CerrarMenuMsgWaf() { menuMsgIdWaf = null; }
+
+    private async Task ReaccionarWaf(int msgId, string emoji)
+    {
+        menuMsgIdWaf = null;
+        var r = await Api.ToggleReaccionAsync(msgId, emoji);
+        if (r is null) { ToastService.Error("No se pudo reaccionar"); return; }
+        if (r.EnviadaAlCliente) ToastService.Success($"{emoji} enviada — el cliente la ve en su WhatsApp");
+        await CargarMensajes();
+        StateHasChanged();
+    }
+
+    private void IniciarResponderWaf(TwMsgDto m) { respondiendoAWaf = m; menuMsgIdWaf = null; }
+    private void CancelarResponderWaf() => respondiendoAWaf = null;
+    private string PreviewRespuestaWaf(TwMsgDto m)
+    {
+        if (!string.IsNullOrWhiteSpace(m.Cuerpo)) return m.Cuerpo.Length > 60 ? m.Cuerpo.Substring(0, 60) + "…" : m.Cuerpo;
+        if (!string.IsNullOrWhiteSpace(m.MediaUrl)) return "📎 Adjunto";
+        return "Mensaje";
+    }
     private bool VentanaWafAbierta()
     {
         if (EsChatIgWaf()) return false;
@@ -384,10 +508,12 @@
         try
         {
             enviando = true;
-            var (ok, error) = await Api.SendTwMensajeAsync(chatAbierto.Numero, cuerpo, chatAbierto.Linea);
+            var replyId = respondiendoAWaf?.Id;   // 2026-08-12: si estás respondiendo citando, va el id del mensaje citado
+            var (ok, error) = await Api.SendTwMensajeAsync(chatAbierto.Numero, cuerpo, chatAbierto.Linea, replyId);
             if (ok)
             {
                 texto = "";
+                respondiendoAWaf = null;   // limpio la cita solo si salió bien
                 await CargarMensajes();
                 await ScrollAlFinal();
             }
