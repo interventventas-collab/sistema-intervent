@@ -176,36 +176,56 @@
     //   1) la fotito de Street View de la fachada
     //   2) el cartelito de tipo de calle (lo deduce el servidor con IA, cacheado por domicilio)
     // El guard svSeq descarta respuestas viejas si se abrió otro globito mientras tanto.
+    // 2026-08-12: la foto de Street View NO se pide sola (Google cobra por cada foto). En su lugar
+    // mostramos un botón "Ver la calle" y recién al tocarlo se trae la foto. svLoader guarda el
+    // cargador del globito abierto; window.__mapeoVerCalle lo dispara desde el botón.
+    let svLoader = null;
     function streetView(iw, lat, lng, baseHtml, enabled) {
         const myId = ++svSeq;
+        svLoader = null;
         if (!enabled || lat == null || lng == null) return;
         const loc = (+lat).toFixed(6) + ',' + (+lng).toFixed(6);
         const slot = { chip: '', thumb: '' };
         const render = function () { if (myId === svSeq) iw.setContent(wrapIw(slot.chip + slot.thumb + baseHtml)); };
 
-        // 1) Fotito de Street View (necesita la clave del navegador + metadata).
+        // 1) Street View: botón "Ver la calle" (no gasta foto hasta que lo aprietan).
         if (browserKey) {
-            const metaUrl = 'https://maps.googleapis.com/maps/api/streetview/metadata?location='
-                + loc + '&source=outdoor&key=' + encodeURIComponent(browserKey);
-            fetch(metaUrl)
-                .then(r => r.json())
-                .then(meta => {
-                    if (myId !== svSeq) return;
-                    if (!meta || meta.status !== 'OK') return;
-                    // Pedimos la foto al DOBLE de tamaño (600x340) y la mostramos a ~150px de alto:
-                    // al bajarla queda mucho más nítida que antes (que se veía borrosa al agrandarla).
-                    const imgUrl = 'https://maps.googleapis.com/maps/api/streetview?size=600x340&location='
-                        + loc + '&fov=80&source=outdoor&key=' + encodeURIComponent(browserKey);
-                    const panoUrl = 'https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=' + loc;
-                    slot.thumb = '<a href="' + panoUrl + '" target="_blank" rel="noopener" '
-                        + 'title="Ver la calle en Google Street View" '
-                        + 'style="display:block;margin:0 0 8px;border-radius:8px;overflow:hidden;'
-                        + 'border:1px solid #e5e7eb;line-height:0;">'
-                        + '<img src="' + imgUrl + '" alt="Vista de la calle en el domicilio" '
-                        + 'style="width:100%;height:150px;object-fit:cover;display:block;"/></a>';
-                    render();
-                })
-                .catch(function () { });
+            slot.thumb = '<button type="button" onclick="window.__mapeoVerCalle()" '
+                + 'style="display:block;width:100%;margin:0 0 8px;padding:8px;border:1px solid #d1d5db;'
+                + 'background:#f9fafb;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:#374151;">'
+                + '👁️ Ver la calle</button>';
+            render();
+            svLoader = function () {
+                if (myId !== svSeq) return;
+                slot.thumb = '<div style="margin:0 0 8px;padding:8px;text-align:center;color:#6b7280;font-size:12px;">Cargando la calle…</div>';
+                render();
+                const metaUrl = 'https://maps.googleapis.com/maps/api/streetview/metadata?location='
+                    + loc + '&source=outdoor&key=' + encodeURIComponent(browserKey);
+                fetch(metaUrl)
+                    .then(r => r.json())
+                    .then(meta => {
+                        if (myId !== svSeq) return;
+                        if (!meta || meta.status !== 'OK') {
+                            slot.thumb = '<div style="margin:0 0 8px;padding:8px;text-align:center;color:#92400e;'
+                                + 'background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:12px;">'
+                                + '📷 No hay Street View en este punto</div>';
+                            render();
+                            return;
+                        }
+                        // Foto al DOBLE de tamaño (600x340) mostrada a ~150px: queda más nítida.
+                        const imgUrl = 'https://maps.googleapis.com/maps/api/streetview?size=600x340&location='
+                            + loc + '&fov=80&source=outdoor&key=' + encodeURIComponent(browserKey);
+                        const panoUrl = 'https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=' + loc;
+                        slot.thumb = '<a href="' + panoUrl + '" target="_blank" rel="noopener" '
+                            + 'title="Ver la calle en Google Street View" '
+                            + 'style="display:block;margin:0 0 8px;border-radius:8px;overflow:hidden;'
+                            + 'border:1px solid #e5e7eb;line-height:0;">'
+                            + '<img src="' + imgUrl + '" alt="Vista de la calle en el domicilio" '
+                            + 'style="width:100%;height:150px;object-fit:cover;display:block;"/></a>';
+                        render();
+                    })
+                    .catch(function () { slot.thumb = ''; render(); });
+            };
         }
 
         // 2) Cartelito de tipo de calle (lo calcula el servidor con IA; queda cacheado).
@@ -219,6 +239,8 @@
             })
             .catch(function () { });
     }
+    // Lo llama el botón "Ver la calle" del globito: trae la foto del punto abierto.
+    window.__mapeoVerCalle = function () { if (svLoader) svLoader(); };
 
     // Exponer helpers al scope de este archivo (los dos módulos de abajo los usan).
     // Envuelve el contenido del globito con un tope de alto (scroll adentro): así, aunque el envío tenga
