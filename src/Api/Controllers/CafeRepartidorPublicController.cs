@@ -20,9 +20,12 @@ public class CafeRepartidorPublicController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly MeliShipmentService _me1Service;
-    public CafeRepartidorPublicController(AppDbContext db, MeliShipmentService me1Service)
+    private readonly TelegramService _telegram;
+    private readonly WhatsAppOutboundService _wa;
+    public CafeRepartidorPublicController(AppDbContext db, MeliShipmentService me1Service,
+        TelegramService telegram, WhatsAppOutboundService wa)
     {
-        _db = db; _me1Service = me1Service;
+        _db = db; _me1Service = me1Service; _telegram = telegram; _wa = wa;
     }
 
     public record RepartidorListItemDto(int Id, string Nombre);
@@ -458,6 +461,17 @@ public class CafeRepartidorPublicController : ControllerBase
         }
         // Dedupe: si el repartidor escaneó la misma venta varias veces, mostrarla una sola vez (el escaneo más reciente)
         rows = rows.GroupBy(x => x.Id).Select(g => g.OrderByDescending(x => x.CargadoAt).First()).ToList();
+
+        // 2026-08-12: sacar de la lista las ventas que el repartidor RECHAZÓ (con motivo). Las entregadas
+        // se dejan (historial); solo se ocultan las pendientes que rechazó.
+        var rechazadasVenta = await _db.CafeRepartidorRechazos
+            .Where(x => x.RepartidorId == r.Id && x.Origen == "venta_cafe")
+            .Select(x => x.ReferenciaId).ToListAsync();
+        if (rechazadasVenta.Count > 0)
+        {
+            var setRech = rechazadasVenta.ToHashSet();
+            rows = rows.Where(x => x.YaEntregada || !setRech.Contains(x.Id)).ToList();
+        }
 
         // Saldos: sumar cobranzas vigentes por venta
         var ventaIds = rows.Select(x => x.Id).Distinct().ToList();
@@ -996,5 +1010,174 @@ public class CafeRepartidorPublicController : ControllerBase
         await _db.SaveChangesAsync();
 
         return Ok(new { ok = true });
+    }
+
+    // ─────────────────────────── RECHAZAR ENVÍO (2026-08-12) ───────────────────────────
+
+    /// <summary>Cuerpo del rechazo: qué envío y por qué. El motivo es OBLIGATORIO.</summary>
+    public record RechazarRequest(string Origen, int ReferenciaId, string? Motivo);
+
+    /// <summary>2026-08-12: el repartidor RECHAZA un envío que le asignaron, desde el celu.
+    /// Sirve para los 3 orígenes que ve en /mis-pedidos:
+    ///   - "venta_cafe": venta de café (Cafe_Ventas.Id) — validada por QrEscaneos "cargado".
+    ///   - "me1": Flex/ME1 de MercadoLibre (MeliShipments.Id) — validada por RepartidorAsignadoId.
+    ///   - "mapeo": parada de la ruta (MapeoStops.Id) — validada por MapeoDrivers.CafeRepartidorId.
+    /// Guarda el motivo (obligatorio), saca el envío de su lista (las 3 listas excluyen lo rechazado)
+    /// y dispara el aviso "ENVIO_RECHAZADO" al dueño (campanita/Telegram/WhatsApp, según Mis Alertas).
+    /// NO se pierde: el admin lo puede reasignar. Auth: PublicToken del repartidor.</summary>
+    [HttpPost("mis-pedidos/{tokenRepartidor}/rechazar")]
+    public async Task<IActionResult> RechazarEnvio(string tokenRepartidor, [FromBody] RechazarRequest req)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound(new { error = "Enlace invalido o repartidor inactivo" });
+
+        var motivo = req?.Motivo?.Trim();
+        if (string.IsNullOrWhiteSpace(motivo))
+            return BadRequest(new { error = "Escribí el motivo del rechazo" });
+        if (motivo.Length > 500) motivo = motivo.Substring(0, 500);
+
+        var origen = (req?.Origen ?? "").Trim().ToLowerInvariant();
+        var refId = req?.ReferenciaId ?? 0;
+        if (refId <= 0) return BadRequest(new { error = "Envío inválido" });
+
+        string descripcion;
+
+        switch (origen)
+        {
+            case "venta_cafe":
+            {
+                var v = await _db.CafeVentas.FirstOrDefaultAsync(x => x.Id == refId);
+                if (v is null) return NotFound(new { error = "Venta no encontrada" });
+                var enSuLista = await _db.CafeQrEscaneos.AnyAsync(e =>
+                    e.VentaId == v.Id && e.RepartidorId == r.Id && e.Accion == "cargado");
+                if (!enSuLista) return BadRequest(new { error = "Esta venta no esta en tu lista" });
+                descripcion = $"Venta {v.Numero}" +
+                    (string.IsNullOrWhiteSpace(v.ClienteNombreSnapshot) ? "" : $" · {v.ClienteNombreSnapshot}") +
+                    (string.IsNullOrWhiteSpace(v.ClienteLocalidadSnapshot) ? "" : $" · {v.ClienteLocalidadSnapshot}");
+                break;
+            }
+            case "me1":
+            {
+                var ship = await _db.MeliShipments.FirstOrDefaultAsync(s => s.Id == refId);
+                if (ship is null) return NotFound(new { error = "Envío no encontrado" });
+                if (ship.RepartidorAsignadoId != r.Id) return BadRequest(new { error = "Este envío no está asignado a vos" });
+                descripcion = $"MeLi {(ship.MeliOrderId?.ToString() ?? "")}".Trim() +
+                    (string.IsNullOrWhiteSpace(ship.ReceiverName) ? "" : $" · {ship.ReceiverName}") +
+                    (string.IsNullOrWhiteSpace(ship.AddressLine) ? "" : $" · {ship.AddressLine}");
+                // Sacarlo de la lista del repartidor: vuelve al pool para reasignar.
+                ship.RepartidorAsignadoId = null;
+                break;
+            }
+            case "mapeo":
+            {
+                var stop = await _db.MapeoStops.FirstOrDefaultAsync(s => s.Id == refId);
+                if (stop is null) return NotFound(new { error = "Parada no encontrada" });
+                var driverIds = await _db.MapeoDrivers.Where(d => d.CafeRepartidorId == r.Id).Select(d => d.Id).ToListAsync();
+                if (stop.AssignedDriverId == null || !driverIds.Contains(stop.AssignedDriverId.Value))
+                    return BadRequest(new { error = "Esta parada no está asignada a vos" });
+                descripcion = (stop.Alias ?? stop.ContactName ?? "Parada") +
+                    (string.IsNullOrWhiteSpace(stop.Direccion) ? "" : $" · {stop.Direccion}") +
+                    (string.IsNullOrWhiteSpace(stop.Localidad) ? "" : $" · {stop.Localidad}");
+                // Sacarla de la ruta del repartidor: vuelve al pool para reasignar.
+                stop.AssignedDriverId = null;
+                break;
+            }
+            default:
+                return BadRequest(new { error = "Origen de envío desconocido" });
+        }
+
+        if (descripcion.Length > 300) descripcion = descripcion.Substring(0, 300);
+
+        _db.CafeRepartidorRechazos.Add(new CafeRepartidorRechazo
+        {
+            RepartidorId = r.Id,
+            Origen = origen,
+            ReferenciaId = refId,
+            Motivo = motivo,
+            Descripcion = descripcion,
+            CreatedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync();
+
+        await NotificarEnvioRechazadoAsync(r.Nombre, descripcion, motivo);
+
+        return Ok(new { ok = true, mensaje = "Envío rechazado. Ya avisamos." });
+    }
+
+    /// <summary>2026-08-12: dispara el aviso "ENVIO_RECHAZADO" de Mis Alertas cuando un repartidor
+    /// rechaza un envío. Respeta los canales/destinatarios configurados en Automatizaciones y Alertas
+    /// (campanita 🔔 / Telegram 📲 / WhatsApp 📱). Mismo mecanismo que FICHADA / ALTA_CLIENTE.
+    /// Nunca rompe el rechazo si un canal falla.</summary>
+    private async Task NotificarEnvioRechazadoAsync(string repartidorNombre, string descripcion, string motivo)
+    {
+        try
+        {
+            var alerta = await _db.MisAlertas.FirstOrDefaultAsync(x => x.Tipo == "ENVIO_RECHAZADO");
+            if (alerta is null || !alerta.Activa) return;
+            if (!alerta.CanalCampanita && !alerta.CanalTelegram && !alerta.CanalWhatsApp) return;
+
+            var detalleCorto = $"{repartidorNombre} rechazó: {descripcion} — motivo: {motivo}";
+            var texto = $"🚫 <b>Un repartidor rechazó un envío</b>\n" +
+                        $"🧑 {repartidorNombre}\n" +
+                        $"📦 {descripcion}\n" +
+                        $"📝 Motivo: {motivo}";
+
+            // Telegram (si está tildado).
+            bool enviadoTg = false;
+            if (alerta.CanalTelegram)
+            {
+                var (ok, _) = await _telegram.SendMessageAsync(texto, categoria: "ALERTAS");
+                enviadoTg = ok;
+            }
+
+            // WhatsApp (si está tildado): a las personas tildadas para esta alerta, por la línea elegida.
+            if (alerta.CanalWhatsApp)
+            {
+                var idsDest = await _db.AutoDestinatarios.Where(d => d.AutoKey == $"alerta:{alerta.Id}")
+                    .Select(d => d.PersonaId).ToListAsync();
+                var personas = await _db.AutoPersonas
+                    .Where(p => p.Activo && idsDest.Contains(p.Id) && p.WhatsAppNumero != null).ToListAsync();
+                var textoWa = $"🚫 Un repartidor rechazó un envío\n🧑 {repartidorNombre}\n📦 {descripcion}\n📝 Motivo: {motivo}";
+                foreach (var per in personas)
+                {
+                    try
+                    {
+                        var num = per.WhatsAppNumero!.StartsWith("whatsapp:") ? per.WhatsAppNumero : "whatsapp:" + per.WhatsAppNumero;
+                        var (sid, canal, lin) = await _wa.SendTextAsync(num, textoWa, lineaOverride: alerta.LineaPhoneId);
+                        if (sid != null)
+                            _db.WhatsAppTwilioMensajes.Add(new WhatsAppTwilioMensaje
+                            {
+                                Direccion = "OUTGOING", Numero = num, Cuerpo = textoWa,
+                                TwilioMessageSid = sid, Canal = canal, LineaPhoneId = lin, Procesado = true, CreatedAt = DateTime.UtcNow
+                            });
+                    }
+                    catch { /* seguir con el resto */ }
+                }
+            }
+
+            // Campanita (si está tildada): queda encendida hasta que la mirás.
+            if (alerta.CanalCampanita)
+            {
+                alerta.EstaDisparada = true;
+                alerta.Vista = false;
+                alerta.DisparadaAt = DateTime.UtcNow;
+                alerta.UltimoDetalle = detalleCorto;
+                alerta.UpdatedAt = DateTime.UtcNow;
+            }
+
+            // Historial: una fila por rechazo.
+            _db.MisAlertasHistorial.Add(new MisAlertaHistorial
+            {
+                AlertaId = alerta.Id,
+                Tipo = "ENVIO_RECHAZADO",
+                Mensaje = string.IsNullOrWhiteSpace(alerta.Mensaje) ? "Repartidor rechazó un envío" : alerta.Mensaje,
+                Detalle = detalleCorto,
+                Alcance = string.IsNullOrWhiteSpace(alerta.Alcance) ? "admin,oficina" : alerta.Alcance,
+                PorTelegram = alerta.CanalTelegram,
+                EnviadoTelegram = enviadoTg
+            });
+            await _db.SaveChangesAsync();
+        }
+        catch { /* nunca romper el rechazo por un aviso */ }
     }
 }

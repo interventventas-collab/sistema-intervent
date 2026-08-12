@@ -601,7 +601,7 @@
     {
         "SHELL_BAJO" => "⛽", "BANCO_BAJO" => "🏦", "CHEQUE_VENCE" => "🧾", "FECHA_MES" => "📅",
         "EMAIL_REMITENTE" => "📧", "VENTA_MELI" => "🛒", "FICHADA" => "🕐", "PUBLI_MELI" => "⚠️",
-        "ALTA_CLIENTE" => "🆕", _ => "🔔"
+        "ALTA_CLIENTE" => "🆕", "ENVIO_RECHAZADO" => "🚫", _ => "🔔"
     };
     static string TipoNombre(string t) => t switch
     {
@@ -609,7 +609,8 @@
         "CHEQUE_VENCE" => "Cheque por vencer", "FECHA_MES" => "Recordatorio mensual",
         "EMAIL_REMITENTE" => "Mail importante", "VENTA_MELI" => "Ventas nuevas de MercadoLibre",
         "FICHADA" => "Fichadas de empleados", "PUBLI_MELI" => "Publicaciones MeLi para revisar",
-        "ALTA_CLIENTE" => "Nuevo cliente para dar de alta", _ => t
+        "ALTA_CLIENTE" => "Nuevo cliente para dar de alta",
+        "ENVIO_RECHAZADO" => "Repartidor rechazó un envío", _ => t
     };
     // OJO CULTURA: el navegador exige punto decimal en los input type=number; si renderizamos
     // "14,00" (formato es-AR) el casillero queda VACÍO aunque el dato esté guardado. Por eso

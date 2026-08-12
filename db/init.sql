@@ -5630,6 +5630,23 @@ SET PublicToken = LOWER(REPLACE(CONVERT(NVARCHAR(36), NEWID()), '-', ''))
 WHERE PublicToken IS NULL;
 GO
 
+-- 2026-08-12: rechazos de envíos hechos por el repartidor desde el celu (con motivo obligatorio).
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_RepartidorRechazos')
+BEGIN
+    CREATE TABLE Cafe_RepartidorRechazos (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        RepartidorId INT NOT NULL,
+        Origen NVARCHAR(20) NOT NULL,
+        ReferenciaId INT NOT NULL,
+        Motivo NVARCHAR(500) NOT NULL,
+        Descripcion NVARCHAR(300) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_RepartidorRechazo_Repartidor FOREIGN KEY (RepartidorId) REFERENCES Cafe_Repartidores(Id)
+    );
+    CREATE INDEX IX_Cafe_RepartidorRechazos_Rep_Origen ON Cafe_RepartidorRechazos(RepartidorId, Origen, ReferenciaId);
+END
+GO
+
 -- ─── 2026-06-05: Catálogo de Servicios + Transporte ───
 -- 1) Tabla Cafe_Servicios (catálogo de servicios cobrables: envío, mano de obra, etc)
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_Servicios')

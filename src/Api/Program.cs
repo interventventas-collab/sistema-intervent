@@ -475,6 +475,8 @@ using (var scope = app.Services.CreateScope())
         await EnsureSistemaAlerta("PUBLI_MELI", "⚠️ Publicación MeLi para revisar (precio)", true, canalCampanita: true);
         // 2026-07-20: un cliente cargó sus datos desde el enlace público → hay que darlo de alta.
         await EnsureSistemaAlerta("ALTA_CLIENTE", "🆕 Nuevo cliente para dar de alta", true, canalCampanita: true);
+        // 2026-08-12: un repartidor rechazó (con motivo) un envío que le asignaron.
+        await EnsureSistemaAlerta("ENVIO_RECHAZADO", "🚫 Repartidor rechazó un envío", true, canalCampanita: true);
         await db.SaveChangesAsync();
     }
     catch (Exception ex) { logger.LogWarning(ex, "No se pudieron sembrar las alertas del sistema (Ventas/Fichadas)."); }

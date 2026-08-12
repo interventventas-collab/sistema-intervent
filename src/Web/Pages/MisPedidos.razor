@@ -107,6 +107,14 @@
     }
     .mp-card-btn-link:active { background: #f0f9ff; }
 
+    /* 2026-08-12: rechazar un envío (con motivo obligatorio) */
+    .mp-card-btn-rechazar {
+        width: 100%; margin-top: 0.45rem; padding: 0.55rem 0.5rem;
+        background: transparent; color: #b91c1c; border: 1px solid #fca5a5;
+        border-radius: 8px; font-size: 0.85rem; font-weight: 700; cursor: pointer;
+    }
+    .mp-card-btn-rechazar:active { background: #fef2f2; }
+
     /* 2026-06-08: comentario que dejó el repartidor al entregar */
     .mp-card-comentario {
         margin-top: 0.5rem; padding: 0.5rem 0.7rem;
@@ -260,6 +268,7 @@
                     @if (!string.IsNullOrWhiteSpace(m.ItemsSummary)) { <div style="margin-top:0.45rem; font-size:0.82rem; color:#374151;"><span style="font-weight:600;">Productos:</span> @m.ItemsSummary</div> }
                     @if (m.OrderTotal.HasValue) { <div style="margin-top:0.35rem; text-align:right; color:#111827; font-weight:700;">$@m.OrderTotal.Value.ToString("N0")</div> }
                     <button type="button" class="mp-card-btn mp-card-btn-entregar" style="margin-top:0.7rem; width:100%; padding:0.7rem; font-size:0.95rem;" @onclick="() => AbrirEntregarMe1(m)">✅ Entregué este pedido</button>
+                    <button type="button" class="mp-card-btn-rechazar" @onclick="@(() => AbrirRechazo("me1", m.Id, $"MeLi {(m.MeliOrderId?.ToString() ?? "")} · {m.ReceiverName ?? m.BuyerNickname} · {m.AddressLine}"))">🚫 Rechazar este envío</button>
                 </div>;
 
             RenderFragment<AlqReservaItem> alqCard = a =>
@@ -291,6 +300,7 @@
                         <button class="mp-card-btn mp-card-btn-cobrar" @onclick="() => AbrirCobrar(p)">✅+💰 Entregar y/o Cobrar</button>
                     </div>
                     @if (p.TienePdf) { <button type="button" class="mp-card-btn-link" @onclick="() => VerComprobante(p)">📄 Ver comprobante</button> }
+                    <button type="button" class="mp-card-btn-rechazar" @onclick="@(() => AbrirRechazo("venta_cafe", p.Id, $"Venta {p.Numero} · {p.ClienteNombre}"))">🚫 Rechazar este pedido</button>
                 </div>;
 
             RenderFragment<MisPedidosMapeoDto> flexCard = fx =>
@@ -307,6 +317,7 @@
                         @if (fx.Entregado) { <span style="color:#15803d; font-weight:700;">✔ Entregado</span> }
                     </div>
                     <a href="@($"https://www.google.com/maps/dir/?api=1&destination={fx.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{fx.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}")" target="_blank" rel="noopener" style="display:block; margin-top:0.5rem; text-align:center; background:#0891b2; color:white; padding:0.55rem; border-radius:8px; font-size:0.9rem; font-weight:700; text-decoration:none;">🧭 Cómo llegar</a>
+                    <button type="button" class="mp-card-btn-rechazar" @onclick="@(() => AbrirRechazo("mapeo", fx.Id, $"{fx.Nombre} · {fx.Direccion}"))">🚫 Rechazar esta parada</button>
                 </div>;
 
             // Entradas EN ORDEN de la ruta del mapa.
@@ -820,6 +831,34 @@
     </div>
 }
 
+@* 2026-08-12: modal para RECHAZAR un envío. El motivo es OBLIGATORIO. Sirve para los 3 orígenes. *@
+@if (rechazoOrigen is not null)
+{
+    <div class="mp-modal-overlay" @onclick="CerrarRechazo">
+        <div class="mp-modal" @onclick:stopPropagation="true">
+            <div class="mp-modal-titulo">🚫 Rechazar envío</div>
+            <div class="mp-modal-sub">@rechazoDesc</div>
+            <div style="font-size:0.85rem; color:#374151; margin:0.2rem 0 0.5rem;">
+                Contá por qué no lo podés hacer. El motivo es obligatorio y le va a llegar al dueño.
+            </div>
+            <textarea class="mp-input" @bind="rechazoMotivo" @bind:event="oninput"
+                      placeholder="Ej: me queda muy lejos de mi zona / no me da el tiempo / dirección equivocada"
+                      rows="3" style="width:100%; resize:vertical;"></textarea>
+            @if (!string.IsNullOrEmpty(rechazoError))
+            {
+                <div class="mp-modal-err">⚠ @rechazoError</div>
+            }
+            <div class="mp-modal-btns">
+                <button class="mp-modal-btn mp-modal-btn-cancel" @onclick="CerrarRechazo" disabled="@rechazando">Cancelar</button>
+                <button class="mp-modal-btn mp-modal-btn-ok" style="background:#dc2626;"
+                        @onclick="ConfirmarRechazo" disabled="@(rechazando || string.IsNullOrWhiteSpace(rechazoMotivo))">
+                    @(rechazando ? "Enviando..." : "🚫 Rechazar y avisar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [Parameter] public string Token { get; set; } = "";
 
@@ -936,6 +975,14 @@
     private string? errorModal;
     private bool procesando;
 
+    // 2026-08-12: estado del modal de RECHAZO (motivo obligatorio). Sirve para los 3 orígenes.
+    private string? rechazoOrigen;   // "venta_cafe" | "me1" | "mapeo" — null = modal cerrado
+    private int rechazoRefId;
+    private string rechazoDesc = "";
+    private string rechazoMotivo = "";
+    private bool rechazando;
+    private string? rechazoError;
+
     private bool toastVisible;
     private bool toastError;
     private string toastMsg = "";
@@ -977,7 +1024,7 @@
         {
             await InvokeAsync(async () =>
             {
-                if (modal is null && !escaneando) await Recargar();
+                if (modal is null && !escaneando && rechazoOrigen is null && me1ConfirmEntrega is null) await Recargar();
             });
         }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
     }
@@ -1924,5 +1971,53 @@
         }
         catch (Exception ex) { me1EntregaError = $"Error: {ex.Message}"; }
         finally { me1Entregando = false; StateHasChanged(); }
+    }
+
+    // 2026-08-12: RECHAZAR un envío con motivo obligatorio.
+    private void AbrirRechazo(string origen, int refId, string desc)
+    {
+        rechazoOrigen = origen;
+        rechazoRefId = refId;
+        rechazoDesc = desc;
+        rechazoMotivo = "";
+        rechazoError = null;
+    }
+
+    private void CerrarRechazo()
+    {
+        if (rechazando) return;
+        rechazoOrigen = null;
+        rechazoError = null;
+    }
+
+    private async Task ConfirmarRechazo()
+    {
+        if (rechazoOrigen is null) return;
+        if (string.IsNullOrWhiteSpace(rechazoMotivo))
+        {
+            rechazoError = "Escribí el motivo del rechazo";
+            StateHasChanged();
+            return;
+        }
+        rechazando = true; rechazoError = null; StateHasChanged();
+        try
+        {
+            var resp = await Http.PostAsJsonAsync(
+                $"api/cafe/repartidor-public/mis-pedidos/{Token}/rechazar",
+                new { Origen = rechazoOrigen, ReferenciaId = rechazoRefId, Motivo = rechazoMotivo });
+            if (resp.IsSuccessStatusCode)
+            {
+                MostrarToast("🚫 Envío rechazado. Ya avisamos.", false);
+                rechazoOrigen = null;
+                await Recargar();
+            }
+            else
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                rechazoError = $"No se pudo rechazar. {body}";
+            }
+        }
+        catch (Exception ex) { rechazoError = $"Error: {ex.Message}"; }
+        finally { rechazando = false; StateHasChanged(); }
     }
 }

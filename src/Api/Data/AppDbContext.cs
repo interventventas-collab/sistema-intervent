@@ -133,6 +133,8 @@ public class AppDbContext : DbContext
     public DbSet<CafeRepartidor> CafeRepartidores => Set<CafeRepartidor>();
     public DbSet<CafeRepartidorSesion> CafeRepartidorSesiones => Set<CafeRepartidorSesion>();
     public DbSet<CafeQrEscaneo> CafeQrEscaneos => Set<CafeQrEscaneo>();
+    // 2026-08-12: rechazos de envíos hechos por el repartidor desde el celu (con motivo).
+    public DbSet<CafeRepartidorRechazo> CafeRepartidorRechazos => Set<CafeRepartidorRechazo>();
     public DbSet<CafeCobranzaPendiente> CafeCobranzasPendientes => Set<CafeCobranzaPendiente>();
     public DbSet<CafeSaldoMigracion> CafeSaldosMigracion => Set<CafeSaldoMigracion>();
     public DbSet<CafeComodato> CafeComodatos => Set<CafeComodato>();
