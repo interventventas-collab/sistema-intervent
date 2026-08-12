@@ -215,10 +215,14 @@ public class GoogleRoutesService
         if (string.IsNullOrWhiteSpace(ApiKey)) return null;
         if (pointsInOrder.Count < 2) return null;
 
-        // Cada consulta admite origen + 25 intermedias + destino = 27 puntos. Los tramos comparten el punto
-        // de unión (el último de un tramo es el primero del siguiente) para que la línea quede continua y los
-        // tiempos por tramo no se dupliquen.
-        const int maxPorConsulta = 27;
+        // Cada consulta admite origen + 10 intermedias + destino = 12 puntos. El tope real lo pone Google: al
+        // pedir el color de tránsito sobre la línea (TRAFFIC_ON_POLYLINE, ver ComputeChunkAsync), la Routes API
+        // queda en su "nivel básico", que sólo acepta hasta 10 paradas intermedias por consulta. Si se pasa de
+        // ahí, Google rechaza el tramo y (por el "return null" de más abajo) se descarta la ruta entera: la línea
+        // deja de dibujarse justo al llegar a la parada ~10. Con 10 por tramo cada consulta entra siempre.
+        // Los tramos comparten el punto de unión (el último de un tramo es el primero del siguiente) para que la
+        // línea quede continua y los tiempos por tramo no se dupliquen.
+        const int maxPorConsulta = 12;
         int totalDur = 0, totalDist = 0;
         var segments = new List<string>();
         var legs = new List<RouteLeg>();
