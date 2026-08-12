@@ -541,6 +541,11 @@ public class CafeVentaDto
     public string? EscaneadoPorRepartidorNombre { get; set; }
     /// <summary>Cuándo fue escaneada. Para mostrar "hace X min" en el tooltip.</summary>
     public DateTime? EscaneadoAt { get; set; }
+    /// <summary>2026-08-12: repartidor que RECHAZÓ esta venta (con motivo) y todavía no se reasignó/entregó.
+    /// Se muestra como chip "🚫 Rechazó X ▼" en el listado. Null si no hay rechazo pendiente.</summary>
+    public string? RechazadoPorRepartidorNombre { get; set; }
+    /// <summary>Motivo que escribió el repartidor al rechazar (para el tooltip del chip).</summary>
+    public string? RechazoMotivo { get; set; }
     /// <summary>2026-06-23: Concepto AFIP. 1=Productos (default), 2=Servicios, 3=Productos y Servicios.</summary>
     public int Concepto { get; set; } = 1;
     /// <summary>Solo aplica si Concepto in (2,3). Inicio del periodo de prestacion.</summary>

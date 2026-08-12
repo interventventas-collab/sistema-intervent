@@ -676,6 +676,16 @@
                                             🚚 Lo tiene @v.EscaneadoPorRepartidorNombre ▼
                                         </span>
                                     }
+                                    else if (!string.IsNullOrEmpty(v.RechazadoPorRepartidorNombre) && !anulada)
+                                    {
+                                        @* 2026-08-12: chip "Rechazó X" — un repartidor la rechazó y todavía no se reasignó.
+                                           Click abre el mismo modal para asignarla a otro. El motivo va en el tooltip. *@
+                                        <span style="display:inline-block; padding:0.15rem 0.5rem; background:#fee2e2; color:#b91c1c; border-radius:999px; font-size:0.7rem; font-weight:700; margin-left:0.2rem; cursor:pointer; border:1px solid #fca5a5;"
+                                              title="@($"Rechazó {v.RechazadoPorRepartidorNombre}. Motivo: {v.RechazoMotivo}. Tocá para asignar a otro repartidor.")"
+                                              @onclick="@(() => AbrirReasignar(v))">
+                                            🚫 Rechazó @v.RechazadoPorRepartidorNombre ▼
+                                        </span>
+                                    }
                                     else if (v.Retira && !anulada)
                                     {
                                         @* 2026-06-25: chip Retira pendiente — el cliente la viene a buscar *@

@@ -1054,6 +1054,12 @@ public class CafeRepartidorPublicController : ControllerBase
                 descripcion = $"Venta {v.Numero}" +
                     (string.IsNullOrWhiteSpace(v.ClienteNombreSnapshot) ? "" : $" · {v.ClienteNombreSnapshot}") +
                     (string.IsNullOrWhiteSpace(v.ClienteLocalidadSnapshot) ? "" : $" · {v.ClienteLocalidadSnapshot}");
+                // Desvincular: borrar los escaneos "cargado" de esta venta, así el listado del admin
+                // deja de mostrar "Lo tiene {repartidor}" y pasa a "Asignar" (mismo criterio que
+                // reasignar/desvincular a mano). El chip "🚫 Rechazó {repartidor}" lo pone la fila de rechazo.
+                var escaneosCargado = await _db.CafeQrEscaneos
+                    .Where(e => e.VentaId == v.Id && e.Accion == "cargado").ToListAsync();
+                _db.CafeQrEscaneos.RemoveRange(escaneosCargado);
                 break;
             }
             case "me1":

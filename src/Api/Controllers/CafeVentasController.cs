@@ -272,12 +272,13 @@ public class CafeVentasController : ControllerBase
         return utc.AddHours(-3).Date;
     }
 
-    private class EscaneoRow { public int VentaId { get; set; } public DateTime CreatedAt { get; set; } public string Nombre { get; set; } = ""; }
+    private class EscaneoRow { public int VentaId { get; set; } public DateTime CreatedAt { get; set; } public string Nombre { get; set; } = ""; public string? Motivo { get; set; } }
 
     private static CafeVentaDto Map(CafeVenta v, bool esSaldoMigracion = false, string? entregadoPorRepartidorNombre = null,
         string? escaneadoPorRepartidorNombre = null, DateTime? escaneadoAt = null,
         int? clienteCodigoInterno = null,
-        decimal? cobradoEnEntrega = null) => new(
+        decimal? cobradoEnEntrega = null,
+        string? rechazadoPorRepartidorNombre = null, string? rechazoMotivo = null) => new(
         v.Id, v.Numero, v.Fecha,
         v.ClienteId, v.ClienteNombreSnapshot, v.ClienteTipoSnapshot, v.ClienteTelefonoSnapshot,
         clienteCodigoInterno,  // 2026-06-08: codigo interno del cliente
@@ -349,7 +350,9 @@ public class CafeVentasController : ControllerBase
         v.MapeoLink,
         v.ArcaWebserviceAccountId,
         cobradoEnEntrega,
-        v.MostrarIvaProforma);
+        v.MostrarIvaProforma,
+        rechazadoPorRepartidorNombre,
+        rechazoMotivo);
 
     [HttpGet]
     public async Task<IActionResult> GetAll(
@@ -436,6 +439,19 @@ public class CafeVentasController : ControllerBase
             .GroupBy(x => x.VentaId)
             .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.CreatedAt).First());
 
+        // 2026-08-12: rechazos de repartidor (con motivo). Se muestra el chip "🚫 Rechazó X" cuando
+        // el rechazo es la última acción sobre la venta (no se reasignó después) y no está entregada.
+        var rechazosRaw = ventaIds.Count == 0
+            ? new List<EscaneoRow>()
+            : await _db.CafeRepartidorRechazos
+                .Where(x => x.Origen == "venta_cafe" && ventaIds.Contains(x.ReferenciaId))
+                .Join(_db.CafeRepartidores, x => x.RepartidorId, r => r.Id,
+                    (x, r) => new EscaneoRow { VentaId = x.ReferenciaId, CreatedAt = x.CreatedAt, Nombre = r.Nombre, Motivo = x.Motivo })
+                .ToListAsync();
+        var rechDic = rechazosRaw
+            .GroupBy(x => x.VentaId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.CreatedAt).First());
+
         // 2026-06-08: precargar el CodigoInterno del cliente (si existe) para mostrarlo
         // como "(#123)" al lado del nombre en el listado de ventas.
         var clienteIdsParaCodigo = list.Where(v => v.ClienteId.HasValue).Select(v => v.ClienteId!.Value).Distinct().ToList();
@@ -457,13 +473,26 @@ public class CafeVentasController : ControllerBase
                 .Select(g => new { VentaId = g.Key, Total = g.Sum(x => x.Importe) })
                 .ToDictionaryAsync(x => x.VentaId, x => x.Total);
 
-        return Ok(list.Select(v => Map(v, migrSet.Contains(v.Id),
-            v.EntregadoPorRepartidorId.HasValue && repsDict.TryGetValue(v.EntregadoPorRepartidorId.Value, out var nm) ? nm : null,
-            escDic.TryGetValue(v.Id, out var esc) ? esc.Nombre : null,
-            escDic.TryGetValue(v.Id, out var esc2) ? esc2.CreatedAt : (DateTime?)null,
-            v.ClienteId.HasValue && codigosDict.TryGetValue(v.ClienteId.Value, out var ci) ? ci : null,
-            cobradoDict.TryGetValue(v.Id, out var cob) ? cob : (decimal?)null
-        )).ToList());
+        return Ok(list.Select(v =>
+        {
+            escDic.TryGetValue(v.Id, out var escChip);
+            // Rechazo "vigente": hay rechazo, la venta no está entregada y no se reasignó después
+            // (no hay un escaneo 'cargado' más nuevo que el rechazo).
+            string? rechNombre = null, rechMotivo = null;
+            if (!v.EntregadoPorRepartidorId.HasValue && rechDic.TryGetValue(v.Id, out var rech)
+                && (escChip == null || rech.CreatedAt >= escChip.CreatedAt))
+            {
+                rechNombre = rech.Nombre;
+                rechMotivo = rech.Motivo;
+            }
+            return Map(v, migrSet.Contains(v.Id),
+                v.EntregadoPorRepartidorId.HasValue && repsDict.TryGetValue(v.EntregadoPorRepartidorId.Value, out var nm) ? nm : null,
+                escChip?.Nombre,
+                escChip?.CreatedAt,
+                v.ClienteId.HasValue && codigosDict.TryGetValue(v.ClienteId.Value, out var ci) ? ci : null,
+                cobradoDict.TryGetValue(v.Id, out var cob) ? cob : (decimal?)null,
+                rechNombre, rechMotivo);
+        }).ToList());
     }
 
     /// <summary>Devuelve TODAS las ventas tipo FA/FB/FC que NO estan autorizadas en ARCA

@@ -463,7 +463,11 @@ public record CafeVentaDto(
     // CafeCobranzasPendientes no rechazadas para esta venta). Null si no cobro.
     decimal? CobradoEnEntrega = null,
     // 2026-07-14: solo presupuestos (PRO). true = PDF con desglose de IVA (default); false = total sin IVA.
-    bool MostrarIvaProforma = true);
+    bool MostrarIvaProforma = true,
+    // 2026-08-12: si un repartidor RECHAZÓ esta venta (y todavía no se reasignó ni entregó), el listado
+    // muestra el chip "🚫 Rechazó {nombre}" con el motivo, en vez de "Asignar".
+    string? RechazadoPorRepartidorNombre = null,
+    string? RechazoMotivo = null);
 
 public class CafeCotizarItemRequest
 {
