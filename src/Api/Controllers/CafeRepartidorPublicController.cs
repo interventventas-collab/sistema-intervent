@@ -462,16 +462,10 @@ public class CafeRepartidorPublicController : ControllerBase
         // Dedupe: si el repartidor escaneó la misma venta varias veces, mostrarla una sola vez (el escaneo más reciente)
         rows = rows.GroupBy(x => x.Id).Select(g => g.OrderByDescending(x => x.CargadoAt).First()).ToList();
 
-        // 2026-08-12: sacar de la lista las ventas que el repartidor RECHAZÓ (con motivo). Las entregadas
-        // se dejan (historial); solo se ocultan las pendientes que rechazó.
-        var rechazadasVenta = await _db.CafeRepartidorRechazos
-            .Where(x => x.RepartidorId == r.Id && x.Origen == "venta_cafe")
-            .Select(x => x.ReferenciaId).ToListAsync();
-        if (rechazadasVenta.Count > 0)
-        {
-            var setRech = rechazadasVenta.ToHashSet();
-            rows = rows.Where(x => x.YaEntregada || !setRech.Contains(x.Id)).ToList();
-        }
+        // 2026-08-12: NO filtramos por la tabla de rechazos acá. Al rechazar ya se borra el escaneo
+        // "cargado" (desvincula), así que la venta sale sola de la lista. Si el admin se la REASIGNA,
+        // se crea un "cargado" nuevo y tiene que volver a aparecer — filtrar por rechazos la escondería
+        // para siempre aunque se la reasignen (bug 2026-08-12).
 
         // Saldos: sumar cobranzas vigentes por venta
         var ventaIds = rows.Select(x => x.Id).Distinct().ToList();
