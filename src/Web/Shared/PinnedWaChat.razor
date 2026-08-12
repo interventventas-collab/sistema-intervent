@@ -7,6 +7,7 @@
 @inject Web.Services.ApiClient Api
 @inject Web.Services.ToastService Toast
 @inject Web.Services.AuthService AuthSvc
+@inject Web.Services.OperatorService Op
 @inject Microsoft.JSInterop.IJSRuntime JS
 @implements IDisposable
 
@@ -100,8 +101,9 @@
                                 }
                             </div>
                         }
-                        @* 2026-08-07: ocultar/mostrar a Depósito — solo admin/oficina *@
-                        @if (!esDeposito)
+                        @* 2026-08-07: ocultar/mostrar a Depósito — solo admin/oficina.
+                           2026-08-12: y SOLO en los chats que ve Depósito. *@
+                        @if (!esDeposito && EsChatVisibleDeposito)
                         {
                             <button type="button" class="pwa-ocultar-btn" @onclick="() => ToggleOcultar(m)"
                                     title="@(m.OcultoDeposito ? "Mostrar este mensaje a Depósito" : "Ocultar este mensaje a Depósito")">
@@ -623,6 +625,9 @@
     // versión mini (celular y chats flotantes). Mientras los mensajes cargan no bloqueamos (evita el
     // "flash" de "pasaron 24 hs" antes de tener el historial).
     private bool EsChatIgPwa() => Numero?.StartsWith("ig:") ?? false;
+
+    // 2026-08-12: ¿este chat es uno de los que ve Depósito? (botón "Ocultar" + firma automática del PIN)
+    private bool EsChatVisibleDeposito => Web.Services.DepositoChats.EsVisible(Numero, LineaPhoneId);
     private DateTime? UltimoEntranteWa()
         => mensajes?.Where(m => m.Direccion == "INCOMING").Select(m => (DateTime?)m.CreatedAt).Max();
     private bool VentanaWaAbierta()
@@ -741,8 +746,15 @@
     {
         var texto = (composer ?? "").Trim();
         if (sending || string.IsNullOrWhiteSpace(texto)) return;
+        // 2026-08-12: en los chats que ve Depósito, firma AUTOMÁTICA con el operador del PIN (os/ger/ga).
+        // Sin operador con abreviatura -> sin firma (opción b). Tiene prioridad sobre la firma manual.
+        var firmaAuto = EsChatVisibleDeposito ? Web.Services.OperatorService.FirmaCorta(Op.Current) : "";
+        if (!string.IsNullOrEmpty(firmaAuto))
+        {
+            texto = $"{texto} ({firmaAuto})";
+        }
         // Depósito: exige elegir firmante y lo agrega al final -> "OK (alex)".
-        if (esDeposito)
+        else if (esDeposito)
         {
             if (string.IsNullOrWhiteSpace(firmante))
             {

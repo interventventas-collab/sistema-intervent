@@ -782,8 +782,9 @@
                                 <button class="wa-react-btn" @onclick="() => TogglePicker(m.Id)" title="Reaccionar">😊</button>
                                 @* 2026-08-05: botón responder citando — visible al hover *@
                                 <button class="wa-reply-btn" @onclick="() => IniciarResponder(m)" @onclick:stopPropagation="true" title="Responder citando este mensaje">↩️</button>
-                                @* 2026-08-07: ocultar/mostrar este mensaje a Depósito — solo admin/oficina *@
-                                @if (!esDeposito)
+                                @* 2026-08-07: ocultar/mostrar este mensaje a Depósito — solo admin/oficina.
+                                   2026-08-12: y SOLO en los chats que ve Depósito (en el resto no tiene sentido). *@
+                                @if (!esDeposito && EsChatVisibleDeposito)
                                 {
                                     <button class="wa-hide-btn" @onclick="() => ToggleOcultarDeposito(m)" @onclick:stopPropagation="true"
                                             title="@(m.OcultoDeposito ? "Mostrar este mensaje a Depósito" : "Ocultar este mensaje a Depósito")">@(m.OcultoDeposito ? "👁" : "🚫")</button>
@@ -4077,9 +4078,18 @@
         texto = texto?.Trim() ?? "";
         if (string.IsNullOrWhiteSpace(texto)) return;
 
+        // 2026-08-12: en los chats que ve Depósito (ver DepositoChats), el mensaje sale firmado
+        // AUTOMÁTICAMENTE con la abreviatura del operador del PIN activo (os/ger/ga). Si no hay
+        // operador con abreviatura, sale sin firma (opción b). Esto tiene prioridad sobre la firma
+        // manual del usuario Depósito.
+        var firmaAuto = EsChatVisibleDeposito ? Web.Services.OperatorService.FirmaCorta(Op.Current) : "";
+        if (!string.IsNullOrEmpty(firmaAuto))
+        {
+            texto = $"{texto} ({firmaAuto})";
+        }
         // 2026-08-05: Depósito SIEMPRE firma quién responde → "OK (alex)". Si no eligieron
         // el empleado, no se envía y se avisa (devolvemos el texto al cuadro para no perderlo).
-        if (esDeposito)
+        else if (esDeposito)
         {
             if (string.IsNullOrWhiteSpace(firmante))
             {
@@ -4823,6 +4833,10 @@
     };
     string asignarNota = "";
     string? OperadorActual => string.IsNullOrWhiteSpace(Op.Current) ? null : Op.Current!.Trim().ToUpperInvariant();
+
+    // 2026-08-12: ¿el chat abierto es uno de los que ve Depósito? (define botón "Ocultar a Depósito"
+    // + firma automática del operador del PIN). Ver Web.Services.DepositoChats.
+    bool EsChatVisibleDeposito => Web.Services.DepositoChats.EsVisible(selectedNumero, selectedLinea);
 
     // Charla que ME pasaron a mí y todavía no abrí (dispara el aviso 🔔).
     bool EsPasadaAMi(ApiClient.TwConvDto c) =>

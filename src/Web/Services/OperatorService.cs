@@ -61,6 +61,21 @@ public class OperatorService
         return n.Length >= 2 ? n.Substring(0, 2) : n;
     }
 
+    /// <summary>2026-08-12: firma corta (minúscula) con la que sale el mensaje en los chats que ve
+    /// Depósito (ver <see cref="DepositoChats"/>). Si el operador no tiene abreviatura cargada
+    /// (o no hay operador con PIN activo), devuelve "" y el mensaje sale SIN firma.</summary>
+    public static string FirmaCorta(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "";
+        return name.Trim().ToUpperInvariant() switch
+        {
+            "OSMAR"   => "os",
+            "GERMAN"  => "ger",
+            "GABRIEL" => "ga",
+            _         => ""   // sin abreviatura -> no firma (opción b)
+        };
+    }
+
     public static string ShortBgColor(string? name)
     {
         var n = (name ?? "").Trim().ToUpperInvariant();
