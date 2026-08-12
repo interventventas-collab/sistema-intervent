@@ -253,6 +253,27 @@ public class WhatsAppTwilioController : ControllerBase
                     .Select(x => x.TwilioMessageSid).FirstOrDefaultAsync();
 
             var (sid, canal, lin) = await _outbound.SendTextAsync(req.Numero, req.Mensaje, req.LineaPhoneId, replyToSid);
+
+            // 2026-08-12: si el proveedor (Meta/Twilio) NO devolvió un id, el mensaje NO se entregó.
+            // ANTES lo guardábamos igual y devolvíamos ok=true, así que la pantalla mostraba el
+            // mensaje como enviado aunque el cliente nunca lo recibía (caso típico: pasaron las 24 hs
+            // y hace falta plantilla). Ahora NO lo guardamos y devolvemos un cartel claro para que
+            // la pantalla (escritorio, celular y flotantes) muestre el error y no una burbuja falsa.
+            if (string.IsNullOrEmpty(sid))
+            {
+                var ultEntrante = await _db.WhatsAppTwilioMensajes
+                    .Where(x => x.Numero == req.Numero && x.Direccion == "INCOMING")
+                    .OrderByDescending(x => x.CreatedAt)
+                    .Select(x => (DateTime?)x.CreatedAt)
+                    .FirstOrDefaultAsync();
+                bool ventanaCerrada = ultEntrante == null || (DateTime.UtcNow - ultEntrante.Value).TotalHours >= 24;
+                var msgErr = ventanaCerrada
+                    ? "No se envió: pasaron más de 24 hs desde el último mensaje del cliente. WhatsApp no permite escribirle texto libre fuera de esa ventana; tenés que mandarle una plantilla aprobada."
+                    : "No se envió: WhatsApp rechazó el mensaje. Revisá el número e intentá de nuevo en unos segundos.";
+                _logger.LogWarning("WhatsApp send NO entregado a {Numero} (canal {Canal}). ventanaCerrada={Cerrada}", req.Numero, canal, ventanaCerrada);
+                return StatusCode(422, new { ok = false, error = msgErr });
+            }
+
             var msg = new WhatsAppTwilioMensaje
             {
                 Direccion = "OUTGOING",
