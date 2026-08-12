@@ -367,6 +367,22 @@
                         <button class="view-mode-btn @(statusFilter == null ? "active" : "")" style="background:@(statusFilter == null ? "#1d4ed8" : "transparent"); color:@(statusFilter == null ? "white" : "#374151");"
                                 @onclick='@(() => CambiarStatus(null))'>📋 Todas</button>
                     </div>
+                    @* 2026-08-12: selector de CUENTA bien visible (antes solo estaba escondido en el embudo de la columna "Cuenta", que quedaba tapada a la derecha). Aparece solo si hay más de una cuenta conectada. Filtra por AccountNickname reusando checkboxFilters["cuenta"]. *@
+                    @if (meliAccounts is not null && meliAccounts.Count > 1)
+                    {
+                        <div style="display:inline-flex; align-items:center; gap:0.15rem; margin-left:0.5rem; padding:0.15rem 0.15rem 0.15rem 0; background:#ede9fe; border-radius:6px;"
+                             title="Mostrá las publicaciones de una cuenta o de todas.">
+                            <span style="font-size:0.72rem; font-weight:800; color:#6d28d9; padding:0 0.5rem; white-space:nowrap;">👤 Cuenta</span>
+                            <button class="view-mode-btn" style="background:@(IsAccountFilterSelected(null) ? "#7c3aed" : "transparent"); color:@(IsAccountFilterSelected(null) ? "white" : "#4c1d95"); font-weight:700;"
+                                    @onclick="() => SelectAccountFilter(null)">Todas</button>
+                            @foreach (var acc in meliAccounts)
+                            {
+                                var a = acc;
+                                <button class="view-mode-btn" style="background:@(IsAccountFilterSelected(a.Nickname) ? "#7c3aed" : "transparent"); color:@(IsAccountFilterSelected(a.Nickname) ? "white" : "#4c1d95"); font-weight:700; white-space:nowrap;"
+                                        @onclick="() => SelectAccountFilter(a.Nickname)">@a.Nickname</button>
+                            }
+                        </div>
+                    }
                     @* 2026-07-10: filtro Tipo/Cuotas ARRIBA (visible, no escondido en el embudo de columna). Opciones dinámicas desde los datos. *@
                     <div style="position:relative; display:inline-block; margin-left:0.5rem;">
                         <button class="view-mode-btn @(TipoCuotasFilterCount > 0 ? "active" : "")"
@@ -5488,6 +5504,24 @@
     private bool IsCheckboxChecked(string column, string value)
     {
         return checkboxFilters.TryGetValue(column, out var set) && set.Contains(value);
+    }
+
+    // 2026-08-12: selector de cuenta visible (botones arriba). null = todas las cuentas.
+    private void SelectAccountFilter(string? nickname)
+    {
+        if (string.IsNullOrEmpty(nickname))
+            checkboxFilters.Remove("cuenta");
+        else
+            checkboxFilters["cuenta"] = new HashSet<string> { nickname };
+        InvalidateFilterCache();
+    }
+
+    private bool IsAccountFilterSelected(string? nickname)
+    {
+        checkboxFilters.TryGetValue("cuenta", out var set);
+        var count = set?.Count ?? 0;
+        if (string.IsNullOrEmpty(nickname)) return count == 0;
+        return count == 1 && set!.Contains(nickname);
     }
 
     private bool IsCheckboxFilterActive(string column)
