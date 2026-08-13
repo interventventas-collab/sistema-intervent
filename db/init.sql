@@ -6765,3 +6765,42 @@ IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_AvisoVentana_Enviados')
     CREATE INDEX IX_AvisoVentanaEnviados_Dedup
         ON WhatsApp_AvisoVentana_Enviados (ReglaId, Numero, LineaPhoneId, VentanaInicio, UmbralMin);
 GO
+
+-- ============================================================================
+-- 2026-08-13: Cargar un pago escribiendo "PAGO" por WhatsApp.
+-- El asistente por chat pregunta empleado/proveedor, a quién, cuánto y cómo,
+-- y deja el pago como PENDIENTE en PagosMovil_Pendientes (se confirma en la PC).
+-- Como es plata, solo lo pueden hacer numeros AUTORIZADOS (esta tabla).
+-- ============================================================================
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='PagosMovil_WaAutorizados')
+CREATE TABLE PagosMovil_WaAutorizados (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    Numero NVARCHAR(60) NOT NULL,              -- 'whatsapp:+549...'
+    Nombre NVARCHAR(80) NOT NULL,              -- referencia visual (ej 'Osmar')
+    UserId INT NOT NULL,                       -- FK Users: a nombre de quien queda el pendiente
+    Activo BIT NOT NULL DEFAULT 1,
+    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT FK_PagosMovilWaAut_User FOREIGN KEY (UserId) REFERENCES Users(Id)
+);
+GO
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='PagosMovil_WaAutorizados')
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_PagosMovilWaAut_Numero')
+    CREATE UNIQUE INDEX UX_PagosMovilWaAut_Numero ON PagosMovil_WaAutorizados(Numero);
+GO
+
+-- Memoria corta del asistente (una fila por numero). Expira sola a los minutos.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='PagosMovil_WaEstado')
+CREATE TABLE PagosMovil_WaEstado (
+    Numero NVARCHAR(60) NOT NULL PRIMARY KEY,  -- 'whatsapp:+549...'
+    Paso NVARCHAR(30) NOT NULL DEFAULT N'',    -- tipo | emp_concepto | emp_concepto_texto | emp_monto | emp_medio | prov_factura | prov_monto | prov_medio
+    Tipo NVARCHAR(15) NULL,                    -- empleado | proveedor
+    EmpleadoId INT NULL,
+    ProveedorId INT NULL,
+    CompraId INT NULL,                         -- factura (Cafe_Compras) a pagar si Tipo=proveedor
+    CompraSaldo DECIMAL(18,2) NULL,
+    Concepto NVARCHAR(60) NULL,
+    Monto DECIMAL(18,2) NULL,
+    ExpiraAt DATETIME2 NOT NULL,
+    UpdatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+GO

@@ -91,6 +91,8 @@ public class MetaWhatsAppWebhookController : ControllerBase
         var listasCtrl = sp.GetRequiredService<Api.Controllers.CafeListasCustomController>();
         // 2026-08-03: bot interno de empleados (palabra clave por persona → menú de consultas)
         var empBot = sp.GetRequiredService<WhatsAppEmpleadoBotService>();
+        // 2026-08-13: asistente para cargar un pago escribiendo "PAGO" (empleado/proveedor → pendiente)
+        var pagoBot = sp.GetRequiredService<WhatsAppPagoBotService>();
         // 2026-08-06: aviso de venta a internos (atiende los botones comprobante/cuenta corriente/detalle)
         var avisoSvc = sp.GetRequiredService<VentaAvisoWhatsAppService>();
 
@@ -159,7 +161,7 @@ public class MetaWhatsAppWebhookController : ControllerBase
                 }
 
                 foreach (var m in messages.EnumerateArray())
-                    await ProcesarMensajeAsync(db, meta, pedidoSvc, listasCtrl, empBot, avisoSvc, m, nombres, baseUrl, lineaId);
+                    await ProcesarMensajeAsync(db, meta, pedidoSvc, listasCtrl, empBot, pagoBot, avisoSvc, m, nombres, baseUrl, lineaId);
             }
         }
     }
@@ -406,7 +408,7 @@ public class MetaWhatsAppWebhookController : ControllerBase
 
     private async Task ProcesarMensajeAsync(AppDbContext db, MetaWhatsAppService meta,
         WhatsAppPedidoService pedidoSvc, Api.Controllers.CafeListasCustomController listasCtrl,
-        WhatsAppEmpleadoBotService empBot, VentaAvisoWhatsAppService avisoSvc,
+        WhatsAppEmpleadoBotService empBot, WhatsAppPagoBotService pagoBot, VentaAvisoWhatsAppService avisoSvc,
         JsonElement m, Dictionary<string, string> nombres, string baseUrl, string? lineaId)
     {
         var wamid = m.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
@@ -557,6 +559,13 @@ public class MetaWhatsAppWebhookController : ControllerBase
             }
             return;
         }
+
+        // 2026-08-13: ASISTENTE DE PAGO. Si un número autorizado escribió "PAGO", tocó una opción del
+        // asistente ("pago:..."), o está a mitad de la carga, lo atiende el bot de pagos y cortamos acá.
+        // Va ANTES del bot de empleados para que la carga de pago tenga prioridad.
+        var idInteractivoPago = tipo == "interactive" ? TryGetInteractiveId(m) : null;
+        if (await pagoBot.TryHandleAsync(fromWaId!, numero, tipo, idInteractivoPago, cuerpo, lineaId))
+            return;
 
         // 2026-08-03: BOT INTERNO DE EMPLEADOS. Si el mensaje es una palabra clave de empleado, una
         // opción de su menú, o la respuesta a una consulta pendiente, lo atiende el bot de empleados

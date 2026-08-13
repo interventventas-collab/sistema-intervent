@@ -472,6 +472,74 @@ public class PagosMovilController : ControllerBase
     }
 
     // ────────────────────────────────────────────────────────────────────────────
+    // Numeros autorizados a cargar pagos escribiendo "PAGO" por WhatsApp
+    // ────────────────────────────────────────────────────────────────────────────
+
+    public record WaAutorizadoDto(int Id, string Numero, string Nombre, bool Activo);
+    public record WaAutorizadoRequest(string Numero, string Nombre);
+
+    /// <summary>Lista los numeros de WhatsApp habilitados para cargar pagos por chat.</summary>
+    [HttpGet("wa-autorizados")]
+    public async Task<IActionResult> ListarWaAutorizados()
+    {
+        var list = await _db.PagosMovilWaAutorizados
+            .OrderBy(a => a.Nombre)
+            .Select(a => new WaAutorizadoDto(a.Id, a.Numero, a.Nombre, a.Activo))
+            .ToListAsync();
+        return Ok(list);
+    }
+
+    /// <summary>Habilita un numero. El numero se normaliza al formato de la bandeja (whatsapp:+549...).
+    /// El pago que cargue ese numero queda a nombre del usuario que lo dio de alta.</summary>
+    [HttpPost("wa-autorizados")]
+    public async Task<IActionResult> CrearWaAutorizado([FromBody] WaAutorizadoRequest req)
+    {
+        var userId = GetUserId();
+        if (userId is null) return Unauthorized();
+        if (string.IsNullOrWhiteSpace(req.Numero)) return BadRequest(new { error = "Falta el número" });
+        if (string.IsNullOrWhiteSpace(req.Nombre)) return BadRequest(new { error = "Falta el nombre" });
+
+        var numero = Api.Services.MetaWhatsAppService.ToInboxWhatsApp(req.Numero);
+        if (string.IsNullOrWhiteSpace(numero) || !numero.StartsWith("whatsapp:+"))
+            return BadRequest(new { error = "Número inválido" });
+
+        var existe = await _db.PagosMovilWaAutorizados.FirstOrDefaultAsync(a => a.Numero == numero);
+        if (existe is not null)
+        {
+            // Ya estaba: lo reactivamos / actualizamos el nombre.
+            existe.Activo = true;
+            existe.Nombre = req.Nombre.Trim();
+            await _db.SaveChangesAsync();
+            return Ok(new { id = existe.Id, numero, reactivado = true });
+        }
+
+        var a = new PagosMovilWaAutorizado
+        {
+            Numero = numero,
+            Nombre = req.Nombre.Trim(),
+            UserId = userId.Value,
+            Activo = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        _db.PagosMovilWaAutorizados.Add(a);
+        await _db.SaveChangesAsync();
+        await _audit.LogAsync("PagosMovilWaAutorizado", a.Id.ToString(), "ALTA", $"{req.Nombre} · {numero}");
+        return Ok(new { id = a.Id, numero });
+    }
+
+    /// <summary>Quita un numero autorizado.</summary>
+    [HttpDelete("wa-autorizados/{id:int}")]
+    public async Task<IActionResult> BorrarWaAutorizado(int id)
+    {
+        var a = await _db.PagosMovilWaAutorizados.FindAsync(id);
+        if (a is null) return NotFound();
+        _db.PagosMovilWaAutorizados.Remove(a);
+        await _db.SaveChangesAsync();
+        await _audit.LogAsync("PagosMovilWaAutorizado", id.ToString(), "BAJA", $"{a.Nombre} · {a.Numero}");
+        return Ok(new { ok = true });
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
     // Mapeo de conceptos (los del movil → los que acepta NomPago.Concepto)
     // ────────────────────────────────────────────────────────────────────────────
 

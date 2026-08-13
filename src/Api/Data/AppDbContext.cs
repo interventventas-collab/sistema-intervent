@@ -98,6 +98,9 @@ public class AppDbContext : DbContext
     // Modulo Pagos Movil (bandeja precarga -> confirmar en PC)
     public DbSet<PagosMovilPendiente> PagosMovilPendientes => Set<PagosMovilPendiente>();
     public DbSet<PagosMovilPendienteComprobante> PagosMovilPendientesComprobantes => Set<PagosMovilPendienteComprobante>();
+    // Cargar un pago escribiendo "PAGO" por WhatsApp (numeros autorizados + memoria del asistente)
+    public DbSet<PagosMovilWaAutorizado> PagosMovilWaAutorizados => Set<PagosMovilWaAutorizado>();
+    public DbSet<PagosMovilWaEstado> PagosMovilWaEstados => Set<PagosMovilWaEstado>();
     // Boveda de contraseñas (independiente)
     public DbSet<VaultSetting> VaultSettings => Set<VaultSetting>();
     public DbSet<VaultEntry> VaultEntries => Set<VaultEntry>();

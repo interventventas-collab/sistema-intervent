@@ -119,6 +119,7 @@ builder.Services.AddScoped<MetaWhatsAppService>();
 builder.Services.AddScoped<InstagramDmService>();
 builder.Services.AddScoped<WhatsAppOutboundService>();
 builder.Services.AddScoped<WhatsAppEmpleadoBotService>();
+builder.Services.AddScoped<WhatsAppPagoBotService>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<RoleService>();
 builder.Services.AddScoped<IntegrationService>();
