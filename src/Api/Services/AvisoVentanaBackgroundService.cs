@@ -290,8 +290,8 @@ public class AvisoVentanaBackgroundService : BackgroundService
     private static string SoloDigitos(string? s) => new string((s ?? "").Where(char.IsDigit).ToArray());
 
     /// <summary>Tiempo REAL restante, redondeado a 5 min para que quede prolijo (ej 358→"6 horas",
-    /// 132→"2h 10min", 12→"10 minutos"). Nunca baja de 1 min.</summary>
-    private static string TiempoLindo(int min)
+    /// 132→"2h 10min", 12→"10 minutos"). Nunca baja de 1 min. Público para reusarlo en el "Probar".</summary>
+    public static string TiempoLindo(int min)
     {
         var m = (int)Math.Round(min / 5.0) * 5;
         if (m < 5) m = Math.Max(1, min);

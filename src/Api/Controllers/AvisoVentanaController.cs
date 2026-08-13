@@ -186,34 +186,59 @@ public class AvisoVentanaController : ControllerBase
         // a TODOS los clientes por accidente). Si no hay números puntuales, no se puede probar.
         if (a.Destino == "CLIENTE")
         {
-            var nums = (a.SoloNumeros ?? "")
+            var digitsList = (a.SoloNumeros ?? "")
                 .Split(new[] { ',', ';', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .ToList();
-            if (nums.Count == 0)
+                .Select(x => new string(x.Where(char.IsDigit).ToArray()))
+                .Where(x => x.Length > 0).Distinct().ToList();
+            if (digitsList.Count == 0)
                 return Ok(new { ok = false, detalle = "Poné un número en '🔢 Vigilar solo' para poder probar (si no, no sé a quién mandarle la prueba)." });
 
-            var textoC = "🧪 PRUEBA · " + a.Mensaje
-                .Replace("{cliente}", "vos").Replace("{tiempo}", "2 horas").Replace("{linea}", "esta línea");
+            // La prueba imita EXACTAMENTE al aviso real: busca las ventanas abiertas de ese número
+            // (por CADA línea) y manda con el tiempo REAL que queda en cada una, por esa misma línea.
+            var ahora = DateTime.UtcNow;
+            var desde = ahora.AddHours(-24);
+            var entrantes = await _db.WhatsAppTwilioMensajes.AsNoTracking()
+                .Where(m => m.Direccion == "INCOMING" && m.CreatedAt >= desde && !m.Numero.StartsWith("ig:"))
+                .Select(m => new { m.Numero, m.LineaPhoneId, m.CreatedAt })
+                .ToListAsync();
+
+            var ventanas = entrantes
+                .Where(e => digitsList.Contains(new string(e.Numero.Where(char.IsDigit).ToArray())))
+                .GroupBy(e => new { e.Numero, e.LineaPhoneId })
+                .Select(g => new { g.Key.Numero, g.Key.LineaPhoneId, Inicio = g.Max(x => x.CreatedAt) })
+                .ToList();
+
+            if (ventanas.Count == 0)
+                return Ok(new { ok = false, detalle = "Ese número no tiene ninguna charla abierta ahora (no te escribió hace menos de 24hs), así que no hay a dónde mandar la prueba." });
+
+            var lineas = await LineasAsync();
+            var lineaLabel = lineas.ToDictionary(l => l.PhoneId, l => string.IsNullOrWhiteSpace(l.Nombre) ? l.Numero : l.Nombre!);
+
             int okc = 0, totc = 0;
-            foreach (var raw in nums)
+            foreach (var v in ventanas)
             {
-                var soloDig = new string(raw.Where(char.IsDigit).ToArray());
-                if (soloDig.Length == 0) continue;
+                var minRestan = (int)Math.Floor(1440.0 - (ahora - v.Inicio).TotalMinutes);
+                if (minRestan <= 0) continue;
                 totc++;
-                var numero = "whatsapp:+" + soloDig;
-                var (sid, canal, lin) = await wa.SendTextAsync(numero, textoC);
+                var lbl = v.LineaPhoneId != null && lineaLabel.TryGetValue(v.LineaPhoneId, out var ll) ? ll : "WhatsApp";
+                var textoC = "🧪 PRUEBA · " + a.Mensaje
+                    .Replace("{cliente}", "vos")
+                    .Replace("{tiempo}", AvisoVentanaBackgroundService.TiempoLindo(minRestan))
+                    .Replace("{linea}", lbl);
+                var (sid, canal, lin) = await wa.SendTextAsync(v.Numero, textoC, lineaOverride: v.LineaPhoneId);
                 if (sid != null)
                 {
                     okc++;
                     _db.WhatsAppTwilioMensajes.Add(new WhatsAppTwilioMensaje
                     {
-                        Direccion = "OUTGOING", Numero = numero, Cuerpo = textoC,
+                        Direccion = "OUTGOING", Numero = v.Numero, Cuerpo = textoC,
                         TwilioMessageSid = sid, Canal = canal, LineaPhoneId = lin, Procesado = true, CreatedAt = DateTime.UtcNow
                     });
                     await _db.SaveChangesAsync();
                 }
             }
-            var detC = $"📱 Prueba enviada {okc}/{totc}" + (okc < totc ? " · a los que no llegó, es porque ese número no te escribió hace <24hs (regla de Meta)." : "");
+            var detC = $"📱 Prueba enviada por {okc}/{totc} línea(s), con el tiempo real de cada una"
+                + (okc < totc ? " · a la que no salió, ese número no te escribió por esa línea hace <24hs." : ".");
             return Ok(new { ok = okc > 0, detalle = detC });
         }
 
