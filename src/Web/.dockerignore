@@ -1,0 +1,7 @@
+# Evitar copiar artefactos de build locales al contexto de Docker.
+# Sin esto, obj/ y bin/ viejos "ensucian" el build y hacen que se sirva
+# codigo cacheado/viejo aunque se haya cambiado el fuente (bug real 2026-08-13).
+bin/
+obj/
+.vs/
+*.user
