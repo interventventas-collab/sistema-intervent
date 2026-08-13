@@ -6962,6 +6962,31 @@
         }
     </text>;
 
+    // 2026-08-13: Versión CHICA del resumen para la columna SKU de la lista.
+    // Debajo del SKU de MeLi muestra un chip con el código del sistema y el color del semáforo.
+    private RenderFragment MatchChip(MeliItemDto it) => @<text>
+        @{
+            var codigo = !string.IsNullOrEmpty(it.CafeProductoSku) ? it.CafeProductoSku
+                : !string.IsNullOrEmpty(it.ComboSku) ? it.ComboSku
+                : it.ComponentMappingsCount > 0 ? "varios"
+                : it.ProductId.HasValue ? "producto" : null;
+            var linked = it.TieneLinkeo;
+            var faltaSku = linked && string.IsNullOrEmpty(it.Sku);
+        }
+        @if (!linked)
+        {
+            <span style="display:inline-block; margin-top:2px; font-size:0.65rem; background:#f3f4f6; color:#6b7280; padding:1px 6px; border-radius:10px;">sin vincular</span>
+        }
+        else if (faltaSku)
+        {
+            <span title="Vinculado a @codigo — falta el SKU en la publicación de MeLi" style="display:inline-block; margin-top:2px; font-size:0.65rem; background:#fef3c7; color:#92400e; padding:1px 6px; border-radius:10px;">🟡 @codigo · falta SKU</span>
+        }
+        else
+        {
+            <span title="Vinculado a @codigo" style="display:inline-block; margin-top:2px; font-size:0.65rem; background:#dcfce7; color:#15803d; padding:1px 6px; border-radius:10px;">🟢 @codigo</span>
+        }
+    </text>;
+
     // 2026-08-13: Resumen visual del "match" MeLi <-> sistema para la ficha.
     // Muestra de un vistazo: SKU MeLi <-> Código del sistema (+ nombre) + cuánto descuenta cada venta,
     // con semáforo de estado (verde = vinculado, amarillo = falta el SKU en MeLi, gris = sin vincular).
@@ -9092,6 +9117,7 @@
             __builder.AddContent(5, $"$ {fmt}");
             __builder.CloseElement();
         }
+        __builder.AddContent(6, MatchChip(item));
     };
 
     /// <summary>Handler para el input % (acepta vacío, coma o punto decimal). Persiste en DB.</summary>
