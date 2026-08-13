@@ -2104,7 +2104,13 @@
                                 }
                                 else
                                 {
-                                    <span style="color:#dc2626;">⚠ Sin linkear — no se puede pushear stock</span>
+                                    <div style="display:flex; flex-direction:column; align-items:flex-start; gap:0.4rem;">
+                                        <span style="color:#dc2626;">⚠ Sin linkear — no se puede pushear stock</span>
+                                        <button @onclick="() => OpenLinkProductDropdown(selectedItem)"
+                                                style="padding:0.5rem 0.9rem; background:#2563eb; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer; font-size:0.85rem;">
+                                            🔗 Vincular producto
+                                        </button>
+                                    </div>
                                 }
                             </div>
                         </div>
@@ -8648,6 +8654,11 @@
                 var idx = items.FindIndex(i => i.Id == linkProductItem.Id);
                 if (idx >= 0) items[idx] = updated;
                 InvalidateFilterCache();
+            }
+            // Si vinculamos desde la ficha abierta, refrescar la ficha para que deje de mostrar "Sin linkear"
+            if (updated is not null && selectedItem is not null && selectedItem.Id == updated.Id)
+            {
+                selectedItem = updated;
             }
             ToastService.Success("Publicacion vinculada al producto");
             showLinkProductModal = false;
