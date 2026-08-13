@@ -132,7 +132,6 @@ public class AvisoVentanaController : ControllerBase
         if (a is null) return NotFound();
         var err = Validar(r);
         if (err is not null) return BadRequest(new { error = err });
-        var estabaActiva = a.Activa;
         a.Nombre = r.Nombre.Trim();
         a.Activa = r.Activa;
         a.WatchLineaPhoneId = string.IsNullOrWhiteSpace(r.WatchLineaPhoneId) ? null : r.WatchLineaPhoneId.Trim();
@@ -144,8 +143,10 @@ public class AvisoVentanaController : ControllerBase
         a.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         await GuardarDestinatariosAsync(a.Id, r.Destinatarios);
-        // Si se PRENDIÓ recién (estaba apagada → activa), línea base para no disparar por el backlog.
-        if (!estabaActiva && a.Activa) await AvisoVentanaBackgroundService.BaselineReglaAsync(_db, a);
+        // 2026-08-13: en CUALQUIER guardado de una regla activa, línea base: marca lo ya cruzado como
+        // "ya avisado" (SIN enviar). Así GUARDAR nunca dispara un mensaje — solo los cruces que pasen
+        // de acá en más. (Antes, guardar una regla ya pasada de un umbral la re-disparaba → spam.)
+        if (a.Activa) await AvisoVentanaBackgroundService.BaselineReglaAsync(_db, a);
         return Ok(Map(a, await DestinatariosDeAsync(a.Id)));
     }
 
@@ -180,8 +181,41 @@ public class AvisoVentanaController : ControllerBase
     {
         var a = await _db.WhatsAppAvisoVentanaReglas.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
         if (a is null) return NotFound();
+
+        // Reglas "al cliente": la prueba se manda a los números de "Vigilar solo" (para no mandarle
+        // a TODOS los clientes por accidente). Si no hay números puntuales, no se puede probar.
         if (a.Destino == "CLIENTE")
-            return Ok(new { ok = false, detalle = "Las reglas 'al cliente' no se prueban acá: se mandan solas a cada cliente cuando su ventana está por cerrarse." });
+        {
+            var nums = (a.SoloNumeros ?? "")
+                .Split(new[] { ',', ';', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+            if (nums.Count == 0)
+                return Ok(new { ok = false, detalle = "Poné un número en '🔢 Vigilar solo' para poder probar (si no, no sé a quién mandarle la prueba)." });
+
+            var textoC = "🧪 PRUEBA · " + a.Mensaje
+                .Replace("{cliente}", "vos").Replace("{tiempo}", "2 horas").Replace("{linea}", "esta línea");
+            int okc = 0, totc = 0;
+            foreach (var raw in nums)
+            {
+                var soloDig = new string(raw.Where(char.IsDigit).ToArray());
+                if (soloDig.Length == 0) continue;
+                totc++;
+                var numero = "whatsapp:+" + soloDig;
+                var (sid, canal, lin) = await wa.SendTextAsync(numero, textoC);
+                if (sid != null)
+                {
+                    okc++;
+                    _db.WhatsAppTwilioMensajes.Add(new WhatsAppTwilioMensaje
+                    {
+                        Direccion = "OUTGOING", Numero = numero, Cuerpo = textoC,
+                        TwilioMessageSid = sid, Canal = canal, LineaPhoneId = lin, Procesado = true, CreatedAt = DateTime.UtcNow
+                    });
+                    await _db.SaveChangesAsync();
+                }
+            }
+            var detC = $"📱 Prueba enviada {okc}/{totc}" + (okc < totc ? " · a los que no llegó, es porque ese número no te escribió hace <24hs (regla de Meta)." : "");
+            return Ok(new { ok = okc > 0, detalle = detC });
+        }
 
         var idsDest = await _db.AutoDestinatarios.Where(d => d.AutoKey == $"waventana:{id}")
             .Select(d => d.PersonaId).ToListAsync();

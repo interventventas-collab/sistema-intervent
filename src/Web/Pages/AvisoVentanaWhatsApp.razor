@@ -167,10 +167,10 @@
 
                     <div class="av-foot">
                         <div>
-                            @if (!vm.EsNueva && vm.Destino == "INTERNO")
+                            @if (!vm.EsNueva)
                             {
                                 <button class="av-btn av-btn-probar" disabled="@(probando == vm.Id)" @onclick="() => Probar(vm)">
-                                    @(probando == vm.Id ? "⏳ Enviando…" : "▶ Probar (me lo manda a mí)")
+                                    @(probando == vm.Id ? "⏳ Enviando…" : (vm.Destino == "CLIENTE" ? "▶ Probar (manda al número)" : "▶ Probar (me lo manda a mí)"))
                                 </button>
                             }
                         </div>
@@ -329,7 +329,7 @@
     {
         vms!.Add(new ReglaVm
         {
-            EsNueva = true, Nombre = "Nueva regla", Activa = true,
+            EsNueva = true, Nombre = "Nueva regla", Activa = false, // nace APAGADA: la prendés cuando esté lista
             Umbrales = Presets.Select(p => p.Min).ToHashSet(),
             Destino = "INTERNO",
             Mensaje = "⏰ La charla de WhatsApp con {cliente} ({linea}) se cierra en {tiempo}. Si hay que responderle, hacelo antes de perder la ventana."
