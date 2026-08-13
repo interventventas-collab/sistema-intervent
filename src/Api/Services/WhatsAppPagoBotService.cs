@@ -23,11 +23,14 @@ public class WhatsAppPagoBotService
 {
     private readonly AppDbContext _db;
     private readonly MetaWhatsAppService _meta;
+    private readonly TelegramService _telegram;
+    private readonly WhatsAppOutboundService _wa;
     private readonly ILogger<WhatsAppPagoBotService> _log;
 
-    public WhatsAppPagoBotService(AppDbContext db, MetaWhatsAppService meta, ILogger<WhatsAppPagoBotService> log)
+    public WhatsAppPagoBotService(AppDbContext db, MetaWhatsAppService meta,
+        TelegramService telegram, WhatsAppOutboundService wa, ILogger<WhatsAppPagoBotService> log)
     {
-        _db = db; _meta = meta; _log = log;
+        _db = db; _meta = meta; _telegram = telegram; _wa = wa; _log = log;
     }
 
     /// <summary>Intenta atender el mensaje como parte del asistente de PAGO. Devuelve true si lo
@@ -394,6 +397,7 @@ public class WhatsAppPagoBotService
             await LimpiarAsync(numero);
             await ResponderAsync(fromWaId, numero,
                 $"✅ Pago cargado como PENDIENTE:\n👷 {emp?.Nombre}\n🏷️ {st.Concepto}\n💲 {Money(st.Monto.Value)}\n💳 {NombreMedio(medio)}\n\n📋 Falta que lo confirmen desde *Tesorería → Pagos pendientes* para que impacte.", lineaId);
+            await NotificarPagoCargadoAsync("empleado", emp?.Nombre, st.Concepto!, st.Monto.Value, medio, aut.Nombre);
             _log.LogInformation("[BotPago] pendiente EMPLEADO #{Id} cargado por {Num}", pend.Id, numero);
             return true;
         }
@@ -425,6 +429,7 @@ public class WhatsAppPagoBotService
             await LimpiarAsync(numero);
             await ResponderAsync(fromWaId, numero,
                 $"✅ Pago cargado como PENDIENTE:\n🚚 {prov?.Nombre}\n💲 {Money(st.Monto.Value)}\n💳 {NombreMedio(medio)}\n\n📋 Falta que lo confirmen desde *Tesorería → Pagos pendientes* para que impacte.", lineaId);
+            await NotificarPagoCargadoAsync("proveedor", prov?.Nombre, "Pago facturas", st.Monto.Value, medio, aut.Nombre);
             _log.LogInformation("[BotPago] pendiente PROVEEDOR #{Id} cargado por {Num}", pend.Id, numero);
             return true;
         }
@@ -561,6 +566,87 @@ public class WhatsAppPagoBotService
             CreatedAt = DateTime.UtcNow
         });
         await _db.SaveChangesAsync();
+    }
+
+    // ─────────────── Aviso (campanita 🔔 / Telegram 📲 / WhatsApp 📱) ───────────────
+
+    /// <summary>2026-08-13: dispara el aviso "PAGO_WHATSAPP" de Mis Alertas cuando alguien carga un
+    /// pago por WhatsApp. En la campanita, tocar el aviso lleva a Tesorería → Pagos pendientes para
+    /// confirmarlo. Mismo mecanismo que UBICACION_ERRONEA / ENVIO_RECHAZADO. Nunca rompe la carga.</summary>
+    private async Task NotificarPagoCargadoAsync(string tipo, string? destinoNombre, string concepto, decimal monto, string medio, string cargadoPor)
+    {
+        try
+        {
+            var alerta = await _db.MisAlertas.FirstOrDefaultAsync(x => x.Tipo == "PAGO_WHATSAPP");
+            if (alerta is null || !alerta.Activa) return;
+            if (!alerta.CanalCampanita && !alerta.CanalTelegram && !alerta.CanalWhatsApp) return;
+
+            var quien = tipo == "empleado" ? "👷 Empleado" : "🚚 Proveedor";
+            var detalleCorto = $"{destinoNombre ?? "—"} · {Money(monto)} · {NombreMedio(medio)} (cargó {cargadoPor})";
+            var texto = $"💵 <b>Pago cargado por WhatsApp — falta confirmar</b>\n" +
+                        $"{quien}: {destinoNombre}\n" +
+                        $"🏷️ {concepto}\n" +
+                        $"💲 {Money(monto)}\n" +
+                        $"💳 {NombreMedio(medio)}\n" +
+                        $"🧑 Cargó: {cargadoPor}";
+
+            // Telegram (si está tildado).
+            bool enviadoTg = false;
+            if (alerta.CanalTelegram)
+            {
+                var (ok, _) = await _telegram.SendMessageAsync(texto, categoria: "ALERTAS");
+                enviadoTg = ok;
+            }
+
+            // WhatsApp (si está tildado): a las personas tildadas para esta alerta, por la línea elegida.
+            if (alerta.CanalWhatsApp)
+            {
+                var idsDest = await _db.AutoDestinatarios.Where(d => d.AutoKey == $"alerta:{alerta.Id}")
+                    .Select(d => d.PersonaId).ToListAsync();
+                var personas = await _db.AutoPersonas
+                    .Where(p => p.Activo && idsDest.Contains(p.Id) && p.WhatsAppNumero != null).ToListAsync();
+                var textoWa = $"💵 Pago cargado por WhatsApp — falta confirmar\n{quien}: {destinoNombre}\n🏷️ {concepto}\n💲 {Money(monto)}\n💳 {NombreMedio(medio)}\n🧑 Cargó: {cargadoPor}";
+                foreach (var per in personas)
+                {
+                    try
+                    {
+                        var num = per.WhatsAppNumero!.StartsWith("whatsapp:") ? per.WhatsAppNumero : "whatsapp:" + per.WhatsAppNumero;
+                        var (sid, canal, lin) = await _wa.SendTextAsync(num, textoWa, lineaOverride: alerta.LineaPhoneId);
+                        if (sid != null)
+                            _db.WhatsAppTwilioMensajes.Add(new WhatsAppTwilioMensaje
+                            {
+                                Direccion = "OUTGOING", Numero = num, Cuerpo = textoWa,
+                                TwilioMessageSid = sid, Canal = canal, LineaPhoneId = lin, Procesado = true, CreatedAt = DateTime.UtcNow
+                            });
+                    }
+                    catch { /* seguir con el resto */ }
+                }
+            }
+
+            // Campanita (si está tildada): queda encendida hasta que la mirás.
+            if (alerta.CanalCampanita)
+            {
+                alerta.EstaDisparada = true;
+                alerta.Vista = false;
+                alerta.DisparadaAt = DateTime.UtcNow;
+                alerta.UltimoDetalle = detalleCorto;
+                alerta.UpdatedAt = DateTime.UtcNow;
+            }
+
+            // Historial: una fila por pago cargado.
+            _db.MisAlertasHistorial.Add(new MisAlertaHistorial
+            {
+                AlertaId = alerta.Id,
+                Tipo = "PAGO_WHATSAPP",
+                Mensaje = string.IsNullOrWhiteSpace(alerta.Mensaje) ? "Pago cargado por WhatsApp para confirmar" : alerta.Mensaje,
+                Detalle = detalleCorto,
+                Alcance = string.IsNullOrWhiteSpace(alerta.Alcance) ? "admin,oficina" : alerta.Alcance,
+                PorTelegram = alerta.CanalTelegram,
+                EnviadoTelegram = enviadoTg
+            });
+            await _db.SaveChangesAsync();
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "[BotPago] no se pudo disparar el aviso PAGO_WHATSAPP"); }
     }
 
     // ─────────────── Utilidades ───────────────

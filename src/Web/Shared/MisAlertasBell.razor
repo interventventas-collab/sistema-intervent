@@ -34,7 +34,9 @@
                 <div class="mab-dd-list">
                     @foreach (var a in disparadas)
                     {
-                        <div class="mab-dd-row">
+                        <div class="mab-dd-row" @onclick:stopPropagation="true"
+                             @onclick="@(() => Navigation.NavigateTo(RutaPorTipo(a.Tipo)))"
+                             title="Ir a resolver este aviso">
                             <span class="mab-dd-emoji">@Emoji(a.Tipo)</span>
                             <div class="mab-dd-mid">
                                 <div class="mab-dd-msg">@a.Mensaje</div>
@@ -171,7 +173,17 @@
         "FICHADA" => "🕐",
         "PUBLI_MELI" => "⚠️",
         "ALTA_CLIENTE" => "🆕",
+        "ENVIO_RECHAZADO" => "🚫",
+        "UBICACION_ERRONEA" => "📍",
+        "PAGO_WHATSAPP" => "💵",
         _ => "🔔"
+    };
+
+    // A dónde te lleva tocar un aviso puntual de la campanita (por defecto, la pantalla de Mis Alertas).
+    private static string RutaPorTipo(string tipo) => tipo switch
+    {
+        "PAGO_WHATSAPP" => "/tesoreria/pagos-pendientes",
+        _ => "/mis-alertas"
     };
 
     public void Dispose() => timer?.Dispose();

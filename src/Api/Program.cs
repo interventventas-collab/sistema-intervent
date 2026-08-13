@@ -482,6 +482,8 @@ using (var scope = app.Services.CreateScope())
         // 2026-08-12: un repartidor rechazó (con motivo) un envío que le asignaron.
         await EnsureSistemaAlerta("ENVIO_RECHAZADO", "🚫 Repartidor rechazó un envío", true, canalCampanita: true);
         await EnsureSistemaAlerta("UBICACION_ERRONEA", "📍 Repartidor reportó ubicación mal cargada", true, canalCampanita: true);
+        // 2026-08-13: alguien cargó un pago escribiendo "PAGO" por WhatsApp → falta confirmarlo en Tesorería.
+        await EnsureSistemaAlerta("PAGO_WHATSAPP", "💵 Pago cargado por WhatsApp para confirmar", true, canalCampanita: true);
         await db.SaveChangesAsync();
     }
     catch (Exception ex) { logger.LogWarning(ex, "No se pudieron sembrar las alertas del sistema (Ventas/Fichadas)."); }
