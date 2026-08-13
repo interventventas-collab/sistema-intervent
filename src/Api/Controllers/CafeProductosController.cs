@@ -428,11 +428,17 @@ public class CafeProductosController : ControllerBase
         if (string.IsNullOrWhiteSpace(cafe.Sku)) return BadRequest(new { error = "El cafe no tiene SKU cargado." });
 
         var newSku = cafe.Sku.Trim().ToUpperInvariant();
-        var q = _db.MeliItems.Include(i => i.MeliAccount).Where(i => i.CafeProductoId == id && i.Status == "active");
+        // Si se pasan IDs puntuales, confiamos en esos (sirve tambien para publicaciones vinculadas
+        // via componente, cuyo CafeProductoId es null). Si no, caemos al filtro por CafeProductoId directo.
+        IQueryable<MeliItem> q;
         if (req.MeliItemIds is not null && req.MeliItemIds.Count > 0)
         {
             var ids = req.MeliItemIds;
-            q = q.Where(i => ids.Contains(i.Id));
+            q = _db.MeliItems.Include(i => i.MeliAccount).Where(i => ids.Contains(i.Id) && i.Status == "active");
+        }
+        else
+        {
+            q = _db.MeliItems.Include(i => i.MeliAccount).Where(i => i.CafeProductoId == id && i.Status == "active");
         }
         var items = await q.ToListAsync();
 

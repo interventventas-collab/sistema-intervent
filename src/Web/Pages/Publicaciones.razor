@@ -3952,6 +3952,80 @@
     </div>
 }
 
+@* 2026-08-13: Modal NUEVO — vincular a producto del sistema (catálogo real de café/OTROS) con cantidad *@
+@if (showLinkCafeModal && linkCafeItem is not null)
+{
+    <div class="modal-overlay" @onclick="CloseLinkCafeModal">
+        <div class="modal-card" style="max-width: 520px;" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3 style="margin:0; font-size:1rem;">🔗 Vincular a producto del sistema</h3>
+                <button class="modal-close" @onclick="CloseLinkCafeModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size:0.8rem; color:#6b7280; margin-bottom:0.6rem;">
+                    Publicación: <strong>@linkCafeItem.MeliItemId</strong>@if (!string.IsNullOrEmpty(linkCafeItem.Title)) { <span> — @Truncate(linkCafeItem.Title, 45)</span> }
+                </p>
+
+                @if (allCafeProductos is null)
+                {
+                    <p class="text-muted">Cargando productos…</p>
+                }
+                else if (linkCafeSelected is null)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Buscá tu producto (por nombre o código)</label>
+                        <input type="text" class="form-input" placeholder="Escribí para filtrar..." @oninput="OnLinkCafeSearchInput" />
+                    </div>
+                    <div class="link-product-list">
+                        @foreach (var p in GetFilteredCafeProductos())
+                        {
+                            <button class="link-product-option" @onclick="() => SelectCafeProducto(p)">
+                                <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                                    <span class="link-product-title">@Truncate(p.Nombre, 40)</span>
+                                    @if (!string.IsNullOrEmpty(p.Sku))
+                                    {
+                                        <span class="link-product-sku">@p.Sku</span>
+                                    }
+                                </div>
+                                <div style="display:flex; justify-content:space-between; width:100%;">
+                                    <span class="link-product-meta">Stock: @p.StockUnidades u</span>
+                                </div>
+                            </button>
+                        }
+                        @if (!GetFilteredCafeProductos().Any())
+                        {
+                            <p class="text-muted" style="padding:0.5rem;">No encontré productos con ese texto.</p>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div style="padding:0.7rem 0.9rem; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px;">
+                        <div style="font-size:0.85rem; font-weight:600;">@linkCafeSelected.Nombre</div>
+                        @if (!string.IsNullOrEmpty(linkCafeSelected.Sku))
+                        {
+                            <div style="font-size:0.75rem; color:#6b7280;">Código: @linkCafeSelected.Sku · Stock: @linkCafeSelected.StockUnidades u</div>
+                        }
+                    </div>
+                    <div class="form-group" style="margin-top:0.8rem;">
+                        <label class="form-label">¿Cuántas unidades descuenta cada venta?</label>
+                        <input type="number" min="1" step="1" class="form-input" style="max-width:140px;" @bind="linkCafeCantidad" />
+                        <div style="font-size:0.72rem; color:#6b7280; margin-top:0.3rem;">
+                            Ej: si tu producto es la bolsa completa, poné <strong>1</strong>. Si tu producto es la unidad suelta y la publicación vende un pack, poné la cantidad del pack.
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:0.5rem; margin-top:0.9rem;">
+                        <button class="btn btn-secondary" @onclick="() => linkCafeSelected = null">← Elegir otro</button>
+                        <button class="btn btn-primary" disabled="@savingLinkCafe" @onclick="ConfirmLinkCafe">
+                            @(savingLinkCafe ? "Vinculando..." : "Vincular")
+                        </button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
 @* Sync Progress Modal *@
 @if (SyncProgress.State.IsActive && SyncProgress.State.ShowModal)
 {
@@ -4887,6 +4961,16 @@
     // Modal de vincular ahora soporta Productos y Combos
     private string linkTab = "product"; // "product" o "combo"
     private List<ComboDto>? allCombos;
+
+    // 2026-08-13: modal NUEVO para vincular a producto del sistema (Cafe_Productos, catálogo real) via
+    // componente, con la cantidad que descuenta cada venta. Reemplaza el buscador viejo que apuntaba a Products (vacío).
+    private bool showLinkCafeModal;
+    private MeliItemDto? linkCafeItem;
+    private List<CafeProductoDto>? allCafeProductos;
+    private string linkCafeSearch = "";
+    private CafeProductoDto? linkCafeSelected;
+    private decimal linkCafeCantidad = 1;
+    private bool savingLinkCafe;
     private string linkComboSearch = "";
     private string linkSearchTerm = "";
 
@@ -7008,7 +7092,7 @@
         {
             <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; padding:0.6rem 0.8rem; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; margin-bottom:0.7rem;">
                 <span style="font-size:0.85rem; color:#6b7280;">🔗 Sin vincular — esta publicación todavía no comparte stock.</span>
-                <button @onclick="() => OpenLinkProductDropdown(it)"
+                <button @onclick="() => OpenLinkCafeModal(it)"
                         style="margin-left:auto; padding:0.45rem 0.9rem; background:#2563eb; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer; font-size:0.85rem;">
                     🔗 Vincular producto
                 </button>
@@ -8571,6 +8655,87 @@
     {
         showLinkProductModal = false;
         linkProductItem = null;
+    }
+
+    // ===== Modal NUEVO: vincular a producto del sistema (café / catálogo real) via componente =====
+    private async Task OpenLinkCafeModal(MeliItemDto item)
+    {
+        linkCafeItem = item;
+        linkCafeSearch = "";
+        linkCafeSelected = null;
+        linkCafeCantidad = 1;
+        allCafeProductos ??= await Api.GetCafeProductosAsync("OTROS");
+        showLinkCafeModal = true;
+    }
+
+    private void CloseLinkCafeModal()
+    {
+        showLinkCafeModal = false;
+        linkCafeItem = null;
+        linkCafeSelected = null;
+    }
+
+    private void OnLinkCafeSearchInput(ChangeEventArgs e) => linkCafeSearch = e.Value?.ToString() ?? "";
+
+    private List<CafeProductoDto> GetFilteredCafeProductos()
+    {
+        if (allCafeProductos is null) return new();
+        var s = linkCafeSearch.Trim().ToLowerInvariant();
+        IEnumerable<CafeProductoDto> list = allCafeProductos;
+        if (!string.IsNullOrEmpty(s))
+            list = list.Where(p => (p.Nombre ?? "").ToLowerInvariant().Contains(s) || (p.Sku ?? "").ToLowerInvariant().Contains(s));
+        return list.Take(60).ToList();
+    }
+
+    private void SelectCafeProducto(CafeProductoDto p)
+    {
+        linkCafeSelected = p;
+        linkCafeCantidad = 1;
+    }
+
+    private async Task ConfirmLinkCafe()
+    {
+        if (linkCafeItem is null || linkCafeSelected is null) return;
+        if (linkCafeCantidad <= 0) { ToastService.Error("La cantidad debe ser mayor a 0."); return; }
+        savingLinkCafe = true;
+        try
+        {
+            await Api.CreateComponenteAsync(linkCafeItem.MeliItemId, linkCafeSelected.Id, linkCafeCantidad);
+            // Reflejar como vinculado (optimista) en lista y ficha, sin recargar todo.
+            var resumen = $"{linkCafeCantidad:0.##} u de {(string.IsNullOrEmpty(linkCafeSelected.Sku) ? linkCafeSelected.Nombre : linkCafeSelected.Sku)}";
+            void Aplicar(MeliItemDto it)
+            {
+                it.ComponentMappingsCount = Math.Max(1, it.ComponentMappingsCount + 1);
+                it.ComponentMappingsSummary = resumen;
+            }
+            Aplicar(linkCafeItem);
+            if (items is not null)
+            {
+                var idx = items.FindIndex(i => i.Id == linkCafeItem.Id);
+                if (idx >= 0) Aplicar(items[idx]);
+            }
+            if (selectedItem is not null && selectedItem.Id == linkCafeItem.Id) Aplicar(selectedItem);
+            InvalidateFilterCache();
+            ToastService.Success("Publicación vinculada al producto del sistema. Stock sincronizado.");
+
+            var itemVinc = linkCafeItem;
+            var prodSku = linkCafeSelected.Sku;
+            var prodId = linkCafeSelected.Id;
+            showLinkCafeModal = false;
+            linkCafeItem = null;
+            linkCafeSelected = null;
+
+            // Etapa 3: si la publicación no tiene código (SKU) y el producto sí, ofrecer escribírselo en MeLi.
+            if (string.IsNullOrWhiteSpace(itemVinc.Sku) && !string.IsNullOrWhiteSpace(prodSku))
+            {
+                await OfrecerEscribirSkuEnMeli(itemVinc, prodId, prodSku!.Trim().ToUpperInvariant());
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("No se pudo vincular: " + ex.Message);
+        }
+        finally { savingLinkCafe = false; }
     }
 
     private void OnLinkSearchInput(ChangeEventArgs e)

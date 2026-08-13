@@ -310,6 +310,14 @@ public class ApiClient
         return await PutAsync<MeliItemDto>($"/api/meli/items/{meliItemId}/link-combo", new { comboId });
     }
 
+    // 2026-08-13: vincular una publicación a un producto del sistema (Cafe_Productos) via componente,
+    // con la cantidad que descuenta cada venta. Lanza excepción con el mensaje del backend si falla.
+    public async Task CreateComponenteAsync(string meliItemId, int cafeProductoId, decimal cantidad, string? meliVariationId = null)
+    {
+        await PostAsync<object>("/api/meli/componente",
+            new { meliItemId, cafeProductoId, cantidad, formato = (string?)null, meliVariationId });
+    }
+
     public async Task<MeliItemDto?> UnlinkItemProductAsync(string meliItemId)
     {
         await SetAuthHeaderAsync();
