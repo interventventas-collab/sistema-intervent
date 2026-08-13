@@ -3560,11 +3560,17 @@ public class MeliController : ControllerBase
         _db.MeliItemComponentes.Add(comp);
         await _db.SaveChangesAsync();
 
-        // Auto-push
-        try { await pushSvc.PushStockForMeliItemsAsync(new List<string> { req.MeliItemId }); }
+        // Auto-push. Devolvemos el stock resultante para que la UI lo refleje sin recargar.
+        int? nuevoStock = null;
+        try
+        {
+            await pushSvc.PushStockForMeliItemsAsync(new List<string> { req.MeliItemId });
+            nuevoStock = await _db.MeliItems.Where(mi => mi.MeliItemId == req.MeliItemId)
+                .MaxAsync(mi => (int?)mi.AvailableQuantity);
+        }
         catch (Exception ex) { return Ok(new { ok = true, id = comp.Id, push = "error", pushError = ex.Message }); }
 
-        return Ok(new { ok = true, id = comp.Id, push = "disparado" });
+        return Ok(new { ok = true, id = comp.Id, push = "disparado", availableQuantity = nuevoStock });
     }
 
     /// <summary>Elimina un componente. Si era el último de la MLA, la publicación queda

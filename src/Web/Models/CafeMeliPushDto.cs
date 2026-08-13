@@ -50,6 +50,14 @@ public class CafeMeliPushResultRow
     public int? PushedStock { get; set; }
 }
 
+public class ComponenteResultDto
+{
+    public bool Ok { get; set; }
+    public int Id { get; set; }
+    public string? Push { get; set; }
+    public int? AvailableQuantity { get; set; }
+}
+
 public class RenameMeliSkuResultDto
 {
     public int Total { get; set; }

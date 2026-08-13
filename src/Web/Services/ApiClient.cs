@@ -311,11 +311,13 @@ public class ApiClient
     }
 
     // 2026-08-13: vincular una publicación a un producto del sistema (Cafe_Productos) via componente,
-    // con la cantidad que descuenta cada venta. Lanza excepción con el mensaje del backend si falla.
-    public async Task CreateComponenteAsync(string meliItemId, int cafeProductoId, decimal cantidad, string? meliVariationId = null)
+    // con la cantidad que descuenta cada venta. Devuelve el stock resultante en MeLi (para refrescar la UI).
+    // Lanza excepción con el mensaje del backend si falla.
+    public async Task<int?> CreateComponenteAsync(string meliItemId, int cafeProductoId, decimal cantidad, string? meliVariationId = null)
     {
-        await PostAsync<object>("/api/meli/componente",
+        var resp = await PostAsync<ComponenteResultDto>("/api/meli/componente",
             new { meliItemId, cafeProductoId, cantidad, formato = (string?)null, meliVariationId });
+        return resp?.AvailableQuantity;
     }
 
     public async Task<MeliItemDto?> UnlinkItemProductAsync(string meliItemId)

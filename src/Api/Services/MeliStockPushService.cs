@@ -383,6 +383,7 @@ public class MeliStockPushService
 
             // Multi-variante: una entry por cada variation en el PUT.
             var varEntries = new List<object>();
+            var varStockByVid = new Dictionary<string, int>(); // 2026-08-13: para refrescar el stock local tras push OK
             int sumStock = 0;
             bool algunoBaja = false; // en conservative: solo pushear si AL MENOS UNA variante baja stock real
             bool todasMayorACero = true; // en safeBulk: si alguna variante queda en 0 → skip pub completa (no pausamos)
@@ -435,6 +436,7 @@ public class MeliStockPushService
                     todasMayorACero = false;
                 }
                 varEntries.Add(new { id = vid, available_quantity = stockFinal });
+                varStockByVid[vidStr] = stockFinal;
                 sumStock += stockFinal;
             }
 
@@ -470,7 +472,12 @@ public class MeliStockPushService
 
             var payload = new Dictionary<string, object> { ["variations"] = varEntries };
             // NUNCA agregar "status" al payload → el push no cambia el status en ningún modo
-            return await DoPut(http, meliItemId, payload, ct);
+            var resVar = await DoPut(http, meliItemId, payload, ct);
+            // 2026-08-13: si el push fue OK, refrescar el stock local para que la pantalla no muestre el viejo.
+            if (resVar.Item1 == PushOutcome.Ok)
+                foreach (var r in rows)
+                    if (r.VariationId != null && varStockByVid.TryGetValue(r.VariationId, out var q)) r.AvailableQuantity = q;
+            return resVar;
         }
         else
         {
@@ -534,7 +541,11 @@ public class MeliStockPushService
             }
 
             var payload = new Dictionary<string, object> { ["available_quantity"] = stockMeliSingle };
-            return await DoPut(http, meliItemId, payload, ct);
+            var resSingle = await DoPut(http, meliItemId, payload, ct);
+            // 2026-08-13: si el push fue OK, refrescar el stock local para que la pantalla no muestre el viejo.
+            if (resSingle.Item1 == PushOutcome.Ok)
+                foreach (var r in rows) r.AvailableQuantity = stockMeliSingle;
+            return resSingle;
         }
     }
 

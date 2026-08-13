@@ -8700,13 +8700,14 @@
         savingLinkCafe = true;
         try
         {
-            await Api.CreateComponenteAsync(linkCafeItem.MeliItemId, linkCafeSelected.Id, linkCafeCantidad);
-            // Reflejar como vinculado (optimista) en lista y ficha, sin recargar todo.
+            var nuevoStock = await Api.CreateComponenteAsync(linkCafeItem.MeliItemId, linkCafeSelected.Id, linkCafeCantidad);
+            // Reflejar como vinculado en lista y ficha, sin recargar todo. Incluye el stock real ya empujado a MeLi.
             var resumen = $"{linkCafeCantidad:0.##} u de {(string.IsNullOrEmpty(linkCafeSelected.Sku) ? linkCafeSelected.Nombre : linkCafeSelected.Sku)}";
             void Aplicar(MeliItemDto it)
             {
                 it.ComponentMappingsCount = Math.Max(1, it.ComponentMappingsCount + 1);
                 it.ComponentMappingsSummary = resumen;
+                if (nuevoStock.HasValue) it.AvailableQuantity = nuevoStock.Value;
             }
             Aplicar(linkCafeItem);
             if (items is not null)
