@@ -6726,3 +6726,42 @@ BEGIN
     CREATE INDEX IX_PisoMasivo_Run ON Cafe_PisoMasivo_Resultado(RunId, Accion);
 END
 GO
+
+-- ============================================================================
+-- 2026-08-13: AVISOS DE CIERRE DE VENTANA DE WHATSAPP (24hs)
+-- Reglas configurables que vigilan las conversaciones abiertas y avisan (al equipo interno
+-- o al mismo cliente) cuando falta poco para que se cierre la ventana de 24hs de la Cloud API.
+-- Los destinatarios internos se guardan en Auto_Destinatarios con clave "waventana:{ReglaId}".
+-- ============================================================================
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_AvisoVentana_Reglas')
+CREATE TABLE WhatsApp_AvisoVentana_Reglas (
+    Id                INT IDENTITY(1,1) PRIMARY KEY,
+    Nombre            NVARCHAR(80) NOT NULL,
+    Activa            BIT NOT NULL DEFAULT 1,
+    WatchLineaPhoneId NVARCHAR(40) NULL,        -- línea que vigila (NULL = todas)
+    SoloNumeros       NVARCHAR(2000) NULL,      -- vigilar solo estos números (CSV); NULL = todas
+    UmbralesMin       NVARCHAR(200) NOT NULL DEFAULT '720,360,120,60,15',  -- 12h,6h,2h,1h,15min
+    Destino           NVARCHAR(10) NOT NULL DEFAULT 'INTERNO',  -- INTERNO | CLIENTE
+    SaleLineaPhoneId  NVARCHAR(40) NULL,        -- desde qué línea sale (solo INTERNO); NULL = default
+    Mensaje           NVARCHAR(500) NOT NULL,   -- admite comodines {cliente} {tiempo} {linea}
+    CreatedAt         DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    UpdatedAt         DATETIME2 NULL
+);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_AvisoVentana_Enviados')
+CREATE TABLE WhatsApp_AvisoVentana_Enviados (
+    Id            INT IDENTITY(1,1) PRIMARY KEY,
+    ReglaId       INT NOT NULL,
+    Numero        NVARCHAR(40) NOT NULL,
+    LineaPhoneId  NVARCHAR(40) NULL,
+    VentanaInicio DATETIME2 NOT NULL,   -- inicio de la ventana (último entrante); re-arma los avisos
+    UmbralMin     INT NOT NULL,
+    EnviadoAt     DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+GO
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_AvisoVentana_Enviados')
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_AvisoVentanaEnviados_Dedup')
+    CREATE INDEX IX_AvisoVentanaEnviados_Dedup
+        ON WhatsApp_AvisoVentana_Enviados (ReglaId, Numero, LineaPhoneId, VentanaInicio, UmbralMin);
+GO

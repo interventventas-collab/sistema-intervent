@@ -7425,6 +7425,44 @@ public class ApiClient
     }
     public async Task<bool> DeleteAutoMenuEmpleadoAsync(int id)
         => (await _http.DeleteAsync($"/api/automatizaciones/menu-empleado/{id}")).IsSuccessStatusCode;
+
+    // ── 2026-08-13: Avisos de cierre de ventana de WhatsApp (24hs) ──
+    public record AvisoVentanaReglaDto(int Id, string Nombre, bool Activa, string? WatchLineaPhoneId, string? SoloNumeros,
+        List<int> UmbralesMin, string Destino, string? SaleLineaPhoneId, string Mensaje, List<int> Destinatarios);
+    public record AvisoVentanaReglaUpsert(string Nombre, bool Activa, string? WatchLineaPhoneId, string? SoloNumeros,
+        List<int> UmbralesMin, string Destino, string? SaleLineaPhoneId, string Mensaje, List<int> Destinatarios);
+    public record AvisoVentanaBundleDto(List<AvisoVentanaReglaDto> Reglas, List<AutoLineaDto> Lineas, List<AutoPersonaDto> Personas);
+
+    public async Task<AvisoVentanaBundleDto?> GetAvisoVentanaAsync()
+        => await GetAsync<AvisoVentanaBundleDto>("/api/aviso-ventana");
+
+    public async Task<(bool Ok, string? Error)> SaveAvisoVentanaAsync(int? id, AvisoVentanaReglaUpsert r)
+    {
+        var resp = await (id.HasValue
+            ? _http.PutAsJsonAsync($"/api/aviso-ventana/{id}", r)
+            : _http.PostAsJsonAsync("/api/aviso-ventana", r));
+        if (resp.IsSuccessStatusCode) return (true, null);
+        try { var e = await resp.Content.ReadFromJsonAsync<ErrorResp>(); return (false, e?.Error); }
+        catch { return (false, null); }
+    }
+    public async Task<bool> ToggleAvisoVentanaAsync(int id)
+        => (await _http.PostAsync($"/api/aviso-ventana/{id}/toggle", null)).IsSuccessStatusCode;
+    public async Task<bool> DeleteAvisoVentanaAsync(int id)
+        => (await _http.DeleteAsync($"/api/aviso-ventana/{id}")).IsSuccessStatusCode;
+    public async Task<AutoProbarResp?> ProbarAvisoVentanaAsync(int id)
+    {
+        var resp = await _http.PostAsync($"/api/aviso-ventana/{id}/probar", null);
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadFromJsonAsync<AutoProbarResp>();
+    }
+    public async Task<(int Creadas, string? Detalle)> SeedAvisoVentanaAsync()
+    {
+        var resp = await _http.PostAsync("/api/aviso-ventana/seed", null);
+        if (!resp.IsSuccessStatusCode) return (0, null);
+        try { var r = await resp.Content.ReadFromJsonAsync<SeedAvisoVentanaResp>(); return (r?.Creadas ?? 0, r?.Detalle); }
+        catch { return (0, null); }
+    }
+    private record SeedAvisoVentanaResp(int Creadas, string? Detalle);
 }
 
 // 2026-08-03: resultado del borrado de cliente.

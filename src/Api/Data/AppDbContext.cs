@@ -226,6 +226,9 @@ public class AppDbContext : DbContext
     public DbSet<MisAlerta> MisAlertas => Set<MisAlerta>();
     public DbSet<MisAlertaCorreo> MisAlertasCorreos => Set<MisAlertaCorreo>();
     public DbSet<MisAlertaHistorial> MisAlertasHistorial => Set<MisAlertaHistorial>();
+    // 2026-08-13: avisos de cierre de ventana de WhatsApp (24hs).
+    public DbSet<WhatsAppAvisoVentanaRegla> WhatsAppAvisoVentanaReglas => Set<WhatsAppAvisoVentanaRegla>();
+    public DbSet<WhatsAppAvisoVentanaEnviado> WhatsAppAvisoVentanaEnviados => Set<WhatsAppAvisoVentanaEnviado>();
     public DbSet<MeliCodigoColecta> MeliCodigosColecta => Set<MeliCodigoColecta>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

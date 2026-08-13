@@ -1,0 +1,421 @@
+@page "/aviso-ventana-whatsapp"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService Toast
+@inject IJSRuntime JS
+
+@* 2026-08-13 (pedido del usuario): Avisos de cierre de ventana de WhatsApp. Reglas que vigilan las
+   conversaciones abiertas y avisan (al equipo o al cliente) cuando falta poco (12h/6h/2h/1h/15min,
+   configurable) para que se cierre la ventana de 24hs de la Cloud API. Mismo look del Centro de
+   Automatizaciones. *@
+
+<PageTitle>Aviso de cierre de WhatsApp</PageTitle>
+
+<div class="av-wrap">
+    <div class="av-header">
+        <div class="av-title">
+            <span class="av-chip-ia">⏰ IA</span>
+            <h1>Aviso de cierre de ventana de WhatsApp</h1>
+        </div>
+        <p class="av-sub">
+            WhatsApp deja responder libre solo <b>24hs</b> después de que el cliente te escribe. Estas reglas
+            vigilan las charlas abiertas y te avisan cuando falta poco para que se cierre esa ventana — así no
+            se te pasa contestar. Elegís <b>qué línea vigilar</b>, <b>a quién avisar</b> y <b>qué mensaje</b> mandar.
+        </p>
+        <a class="av-link" href="/automatizaciones">🤖 Ir a Automatizaciones y Alertas →</a>
+    </div>
+
+    @if (vms is null)
+    {
+        <div class="av-loading">Cargando…</div>
+    }
+    else
+    {
+        @if (vms.Count == 0)
+        {
+            <div class="av-seed">
+                <div class="av-seed-txt">
+                    Todavía no hay ninguna regla.
+                    <b>Arrancá con las 2 recomendadas</b>: una por cada línea (FIJO TRANSRADIO y FRIKAF by INTERVENT),
+                    avisando al equipo (Osmar y Gabriel) en 12h, 6h, 2h, 1h y 15min.
+                </div>
+                <button class="av-btn av-btn-primary" @onclick="Seed" disabled="@seedeando">
+                    @(seedeando ? "Creando…" : "✨ Crear las 2 reglas de arranque")
+                </button>
+            </div>
+        }
+
+        @foreach (var vm in vms)
+        {
+            <div class="av-card @(vm.Activa ? "" : "av-card-off")">
+                <div class="av-card-head">
+                    <input class="av-nombre" @bind="vm.Nombre" placeholder="Nombre de la regla" />
+                    <label class="av-switch" title="@(vm.Activa ? "Apagar" : "Prender")">
+                        <input type="checkbox" checked="@vm.Activa" @onchange="() => ToggleActiva(vm)" />
+                        <span class="av-slider"></span>
+                    </label>
+                </div>
+
+                <div class="av-body">
+                    @* Momentos *@
+                    <div class="av-fila">
+                        <span class="av-lbl">⏱ Avisar cuando falten</span>
+                        @foreach (var p in Presets)
+                        {
+                            <button class="av-chip @(vm.Umbrales.Contains(p.Min) ? "on" : "")"
+                                    @onclick="() => ToggleUmbral(vm, p.Min)">@p.Label</button>
+                        }
+                        @foreach (var extra in vm.Umbrales.Where(u => !Presets.Any(p => p.Min == u)).OrderByDescending(u => u))
+                        {
+                            <span class="av-chip on">@Humanizar(extra)<button class="av-chip-x" @onclick="() => ToggleUmbral(vm, extra)">×</button></span>
+                        }
+                        <span class="av-add">
+                            <input type="number" min="1" class="av-num" @bind="vm.NuevoMin" placeholder="otros min" />
+                            <button class="av-btn av-btn-mini" @onclick="() => AddUmbral(vm)">＋</button>
+                        </span>
+                    </div>
+
+                    @* Qué vigila *@
+                    <div class="av-fila">
+                        <span class="av-lbl">👀 Vigila la línea</span>
+                        <select class="av-select" value="@(vm.WatchLineaPhoneId ?? "")"
+                                @onchange="e => vm.WatchLineaPhoneId = Vacio(e)">
+                            <option value="">📲 Todas las líneas</option>
+                            @foreach (var ln in Lineas)
+                            {
+                                <option value="@ln.PhoneId">@LineaLabel(ln)</option>
+                            }
+                        </select>
+                    </div>
+
+                    @* Destino *@
+                    <div class="av-fila">
+                        <span class="av-lbl">📨 A quién le llega</span>
+                        <button class="av-seg @(vm.Destino == "INTERNO" ? "on" : "")" @onclick='() => vm.Destino = "INTERNO"'>👥 Al equipo</button>
+                        <button class="av-seg @(vm.Destino == "CLIENTE" ? "on" : "")" @onclick='() => vm.Destino = "CLIENTE"'>🧑 Al cliente</button>
+                    </div>
+
+                    @if (vm.Destino == "INTERNO")
+                    {
+                        <div class="av-fila">
+                            <span class="av-lbl">📱 Sale desde</span>
+                            <select class="av-select" value="@(vm.SaleLineaPhoneId ?? "")"
+                                    @onchange="e => vm.SaleLineaPhoneId = Vacio(e)">
+                                <option value="">📲 Línea por defecto</option>
+                                @foreach (var ln in Lineas)
+                                {
+                                    <option value="@ln.PhoneId">@LineaLabel(ln)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="av-fila">
+                            <span class="av-lbl">¿A quién?</span>
+                            @if (Personas.Count == 0)
+                            {
+                                <span class="av-hint">No hay personas cargadas. Cargalas en 🤖 Automatizaciones → Personas.</span>
+                            }
+                            @foreach (var per in Personas)
+                            {
+                                <label class="av-tilde">
+                                    <input type="checkbox" checked="@vm.Destinatarios.Contains(per.Id)"
+                                           @onchange="e => ToggleDest(vm, per.Id, (bool)e.Value!)" /> @per.Nombre
+                                </label>
+                            }
+                        </div>
+                        <div class="av-fila av-warn">
+                            ⚠️ Por la regla de WhatsApp (24hs), a cada persona el aviso le llega solo si te escribió a
+                            <b>esa línea</b> hace menos de 24hs. Si no le llega, probá con <b>"Línea por defecto"</b>.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="av-fila av-warn">
+                            El aviso le llega al <b>cliente de la charla</b>, por la misma línea. Como la ventana todavía
+                            está abierta, se manda como texto normal (sin plantillas).
+                        </div>
+                    }
+
+                    @* Solo estos números (opcional) *@
+                    <div class="av-fila">
+                        <span class="av-lbl">🔢 Vigilar solo</span>
+                        <input class="av-text" @bind="vm.SoloNumeros" placeholder="(opcional) números separados por coma — vacío = todas las charlas" />
+                    </div>
+
+                    @* Mensaje *@
+                    <div class="av-fila av-fila-msg">
+                        <span class="av-lbl">💬 Mensaje</span>
+                        <div class="av-msg-wrap">
+                            <textarea class="av-textarea" rows="2" maxlength="500" @bind="vm.Mensaje"
+                                      placeholder="Escribí el aviso…"></textarea>
+                            <div class="av-tags">
+                                <span class="av-tags-lbl">Insertar:</span>
+                                <button class="av-tag" @onclick='() => AddTag(vm, "{cliente}")'>{cliente}</button>
+                                <button class="av-tag" @onclick='() => AddTag(vm, "{tiempo}")'>{tiempo}</button>
+                                <button class="av-tag" @onclick='() => AddTag(vm, "{linea}")'>{linea}</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="av-foot">
+                        <div>
+                            @if (!vm.EsNueva && vm.Destino == "INTERNO")
+                            {
+                                <button class="av-btn av-btn-probar" disabled="@(probando == vm.Id)" @onclick="() => Probar(vm)">
+                                    @(probando == vm.Id ? "⏳ Enviando…" : "▶ Probar (me lo manda a mí)")
+                                </button>
+                            }
+                        </div>
+                        <div class="av-foot-right">
+                            @if (!vm.EsNueva)
+                            {
+                                <button class="av-btn av-btn-danger" @onclick="() => Borrar(vm)">🗑 Borrar</button>
+                            }
+                            <button class="av-btn av-btn-primary" disabled="@vm.Guardando" @onclick="() => Guardar(vm)">
+                                @(vm.Guardando ? "Guardando…" : "💾 Guardar")
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <button class="av-btn av-btn-nueva" @onclick="NuevaRegla">＋ Nueva regla</button>
+    }
+</div>
+
+<style>
+    .av-wrap { background: linear-gradient(160deg, #0b1220 0%, #101a2e 55%, #131233 100%);
+        border-radius: 16px; padding: 1.4rem 1.6rem 2rem; color: #dbe4f5; box-shadow: 0 10px 40px rgba(10,15,40,0.45); }
+    .av-title { display: flex; align-items: center; gap: 0.7rem; }
+    .av-title h1 { margin: 0; font-size: 1.35rem; color: #f1f5ff; letter-spacing: 0.02em; }
+    .av-chip-ia { font-size: 0.7rem; font-weight: 800; letter-spacing: 0.1em; padding: 0.2rem 0.55rem; border-radius: 6px;
+        color: #0b1220; background: linear-gradient(90deg, #22d3ee, #a78bfa); box-shadow: 0 0 14px rgba(34,211,238,0.55); }
+    .av-sub { color: #8fa3c8; font-size: 0.88rem; margin: 0.5rem 0 0.2rem; max-width: 80ch; line-height: 1.5; }
+    .av-link { color: #22d3ee; font-size: 0.8rem; text-decoration: none; }
+    .av-link:hover { text-decoration: underline; }
+    .av-loading { padding: 2rem; color: #8fa3c8; text-align: center; }
+
+    .av-seed { background: rgba(52,211,153,0.08); border: 1px solid rgba(52,211,153,0.4); border-radius: 14px;
+        padding: 1rem 1.2rem; margin: 1rem 0; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+    .av-seed-txt { font-size: 0.88rem; color: #c9f5e3; max-width: 60ch; line-height: 1.5; }
+
+    .av-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(34,211,238,0.22); border-radius: 14px;
+        padding: 1rem 1.15rem; margin: 1rem 0 0.9rem; transition: border-color 0.15s, opacity 0.15s; }
+    .av-card:hover { border-color: rgba(34,211,238,0.5); }
+    .av-card-off { opacity: 0.55; border-color: rgba(148,163,184,0.2); }
+    .av-card-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+    .av-nombre { flex: 1; background: transparent; border: none; border-bottom: 1px solid #26324b; color: #f1f5ff;
+        font-size: 1.05rem; font-weight: 700; padding: 4px 2px; }
+    .av-nombre:focus { outline: none; border-bottom-color: #22d3ee; }
+
+    .av-body { margin-top: 0.7rem; }
+    .av-fila { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.6rem; }
+    .av-fila-msg { align-items: flex-start; }
+    .av-lbl { font-size: 0.68rem; letter-spacing: 0.08em; color: #67e8f9; min-width: 120px; }
+    .av-hint { font-size: 0.75rem; color: #8fa3c8; }
+
+    .av-chip { background: rgba(255,255,255,0.04); border: 1px solid #26324b; border-radius: 999px; color: #c4d3ef;
+        font-size: 0.8rem; padding: 4px 12px; cursor: pointer; }
+    .av-chip.on { border-color: #22d3ee; color: #a5f3fc; background: rgba(34,211,238,0.12); font-weight: 600; }
+    .av-chip-x { border: none; background: transparent; color: inherit; cursor: pointer; margin-left: 6px; font-size: 0.95rem; }
+    .av-add { display: inline-flex; align-items: center; gap: 4px; }
+    .av-num { width: 90px; background: #0b1220; color: #e2e8f0; border: 1px solid #33415c; border-radius: 8px; padding: 4px 8px; font-size: 0.8rem; }
+
+    .av-select, .av-text, .av-textarea { background: #0b1220; color: #e2e8f0; border: 1px solid #33415c; border-radius: 8px;
+        padding: 5px 9px; font-size: 0.85rem; }
+    .av-select { min-width: 200px; }
+    .av-text { flex: 1; min-width: 280px; }
+    .av-textarea { width: 100%; resize: vertical; font-family: inherit; }
+    .av-select:focus, .av-text:focus, .av-textarea:focus { border-color: #22d3ee; outline: none; }
+    .av-msg-wrap { flex: 1; min-width: 280px; }
+    .av-tags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 5px; }
+    .av-tags-lbl { font-size: 0.7rem; color: #8fa3c8; }
+    .av-tag { background: rgba(167,139,250,0.12); border: 1px solid rgba(167,139,250,0.4); color: #d6bcfa;
+        border-radius: 6px; font-size: 0.72rem; padding: 2px 8px; cursor: pointer; }
+    .av-tag:hover { border-color: #a78bfa; }
+
+    .av-seg { background: rgba(255,255,255,0.04); border: 1px solid #26324b; border-radius: 999px; color: #c4d3ef;
+        font-size: 0.82rem; padding: 5px 14px; cursor: pointer; }
+    .av-seg.on { border-color: #a78bfa; color: #e9d5ff; background: rgba(167,139,250,0.14); font-weight: 600; }
+
+    .av-tilde { display: inline-flex; align-items: center; gap: 5px; font-size: 0.8rem; color: #c4d3ef;
+        background: rgba(255,255,255,0.04); border: 1px solid #26324b; border-radius: 999px; padding: 3px 11px; cursor: pointer; }
+    .av-tilde:has(input:checked) { border-color: #22d3ee; color: #a5f3fc; background: rgba(34,211,238,0.08); }
+    .av-tilde input { accent-color: #22d3ee; }
+
+    .av-warn { font-size: 0.72rem; color: #fbbf24; line-height: 1.4; background: rgba(251,191,36,0.06);
+        border: 1px solid rgba(251,191,36,0.2); border-radius: 8px; padding: 7px 10px; }
+
+    .av-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 0.9rem;
+        border-top: 1px dashed #26324b; padding-top: 0.75rem; flex-wrap: wrap; }
+    .av-foot-right { display: flex; gap: 8px; }
+
+    .av-btn { background: rgba(255,255,255,0.07); color: #dbe4f5; border: 1px solid #33415c; border-radius: 8px;
+        padding: 6px 14px; font-size: 0.82rem; cursor: pointer; }
+    .av-btn:hover { border-color: #22d3ee; }
+    .av-btn:disabled { opacity: 0.5; cursor: wait; }
+    .av-btn-mini { padding: 4px 9px; }
+    .av-btn-primary { background: linear-gradient(90deg, rgba(34,211,238,0.25), rgba(167,139,250,0.25)); border-color: #22d3ee; color: #a5f3fc; font-weight: 700; }
+    .av-btn-probar { border-color: #34d399; color: #a7f3d0; }
+    .av-btn-danger { border-color: #7f1d1d; color: #fca5a5; }
+    .av-btn-nueva { margin-top: 0.5rem; border-color: #a78bfa; color: #d6bcfa; }
+
+    .av-switch { position: relative; display: inline-block; width: 52px; height: 28px; flex-shrink: 0; }
+    .av-switch input { opacity: 0; width: 0; height: 0; }
+    .av-slider { position: absolute; inset: 0; border-radius: 999px; cursor: pointer; background: #1e293b; border: 1px solid #33415c; transition: 0.2s; }
+    .av-slider:before { content: ""; position: absolute; height: 20px; width: 20px; left: 3px; top: 3px; border-radius: 50%; background: #64748b; transition: 0.2s; }
+    .av-switch input:checked + .av-slider { background: linear-gradient(90deg, #0e7490, #6d28d9); border-color: #22d3ee; box-shadow: 0 0 10px rgba(34,211,238,0.45); }
+    .av-switch input:checked + .av-slider:before { transform: translateX(24px); background: #67e8f9; }
+</style>
+
+@code {
+    record Preset(int Min, string Label);
+    static readonly Preset[] Presets =
+        { new(720, "12 h"), new(360, "6 h"), new(120, "2 h"), new(60, "1 h"), new(15, "15 min") };
+
+    class ReglaVm
+    {
+        public int Id;
+        public bool EsNueva;
+        public string Nombre = "";
+        public bool Activa = true;
+        public string? WatchLineaPhoneId;
+        public string? SoloNumeros;
+        public HashSet<int> Umbrales = new();
+        public string Destino = "INTERNO";
+        public string? SaleLineaPhoneId;
+        public string Mensaje = "";
+        public List<int> Destinatarios = new();
+        public int? NuevoMin;
+        public bool Guardando;
+    }
+
+    List<ReglaVm>? vms;
+    List<ApiClient.AutoLineaDto> Lineas = new();
+    List<ApiClient.AutoPersonaDto> Personas = new();
+    int? probando;
+    bool seedeando;
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    async Task Cargar()
+    {
+        var b = await Api.GetAvisoVentanaAsync();
+        Lineas = b?.Lineas ?? new();
+        Personas = b?.Personas ?? new();
+        vms = (b?.Reglas ?? new()).Select(FromDto).ToList();
+    }
+
+    static ReglaVm FromDto(ApiClient.AvisoVentanaReglaDto r) => new()
+    {
+        Id = r.Id, EsNueva = false, Nombre = r.Nombre, Activa = r.Activa,
+        WatchLineaPhoneId = r.WatchLineaPhoneId, SoloNumeros = r.SoloNumeros,
+        Umbrales = r.UmbralesMin.ToHashSet(), Destino = r.Destino,
+        SaleLineaPhoneId = r.SaleLineaPhoneId, Mensaje = r.Mensaje,
+        Destinatarios = (r.Destinatarios ?? new()).ToList()
+    };
+
+    void NuevaRegla()
+    {
+        vms!.Add(new ReglaVm
+        {
+            EsNueva = true, Nombre = "Nueva regla", Activa = true,
+            Umbrales = Presets.Select(p => p.Min).ToHashSet(),
+            Destino = "INTERNO",
+            Mensaje = "⏰ La charla de WhatsApp con {cliente} ({linea}) se cierra en {tiempo}. Si hay que responderle, hacelo antes de perder la ventana."
+        });
+    }
+
+    void ToggleUmbral(ReglaVm vm, int min)
+    {
+        if (!vm.Umbrales.Remove(min)) vm.Umbrales.Add(min);
+    }
+
+    void AddUmbral(ReglaVm vm)
+    {
+        if (vm.NuevoMin is > 0) { vm.Umbrales.Add(vm.NuevoMin.Value); vm.NuevoMin = null; }
+    }
+
+    void ToggleDest(ReglaVm vm, int personaId, bool on)
+    {
+        if (on && !vm.Destinatarios.Contains(personaId)) vm.Destinatarios.Add(personaId);
+        if (!on) vm.Destinatarios.Remove(personaId);
+    }
+
+    void AddTag(ReglaVm vm, string tag) => vm.Mensaje = (vm.Mensaje ?? "") + tag;
+
+    static string? Vacio(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString();
+        return string.IsNullOrEmpty(v) ? null : v;
+    }
+
+    string LineaLabel(ApiClient.AutoLineaDto ln)
+        => string.IsNullOrWhiteSpace(ln.Nombre) ? $"📱 {ln.Numero}" : $"📱 {ln.Nombre} ({ln.Numero})";
+
+    static string Humanizar(int min)
+    {
+        if (min % 60 == 0) { var h = min / 60; return h == 1 ? "1 h" : $"{h} h"; }
+        if (min < 60) return $"{min} min";
+        return $"{min / 60}h {min % 60}min";
+    }
+
+    async Task Guardar(ReglaVm vm)
+    {
+        if (string.IsNullOrWhiteSpace(vm.Nombre)) { Toast.Error("Poné un nombre a la regla"); return; }
+        if (string.IsNullOrWhiteSpace(vm.Mensaje)) { Toast.Error("Escribí el mensaje"); return; }
+        if (vm.Umbrales.Count == 0) { Toast.Error("Elegí al menos un momento"); return; }
+
+        vm.Guardando = true;
+        var req = new ApiClient.AvisoVentanaReglaUpsert(
+            vm.Nombre.Trim(), vm.Activa, vm.WatchLineaPhoneId,
+            string.IsNullOrWhiteSpace(vm.SoloNumeros) ? null : vm.SoloNumeros.Trim(),
+            vm.Umbrales.OrderByDescending(x => x).ToList(), vm.Destino, vm.SaleLineaPhoneId,
+            vm.Mensaje.Trim(), vm.Destinatarios);
+        var (ok, err) = await Api.SaveAvisoVentanaAsync(vm.EsNueva ? null : vm.Id, req);
+        vm.Guardando = false;
+        if (!ok) { Toast.Error(err ?? "No se pudo guardar"); return; }
+        Toast.Success("Regla guardada");
+        await Cargar();
+    }
+
+    async Task ToggleActiva(ReglaVm vm)
+    {
+        if (vm.EsNueva) { vm.Activa = !vm.Activa; return; }
+        if (await Api.ToggleAvisoVentanaAsync(vm.Id)) await Cargar();
+        else Toast.Error("No se pudo cambiar");
+    }
+
+    async Task Borrar(ReglaVm vm)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Borrar la regla \"{vm.Nombre}\"?")) return;
+        if (await Api.DeleteAvisoVentanaAsync(vm.Id)) { Toast.Success("Borrada"); await Cargar(); }
+        else Toast.Error("No se pudo borrar");
+    }
+
+    async Task Probar(ReglaVm vm)
+    {
+        probando = vm.Id;
+        try
+        {
+            var r = await Api.ProbarAvisoVentanaAsync(vm.Id);
+            if (r is null) Toast.Error("No se pudo probar");
+            else if (r.Ok) Toast.Success($"✅ {r.Detalle}");
+            else Toast.Error($"⚠️ {r.Detalle}");
+        }
+        finally { probando = null; }
+    }
+
+    async Task Seed()
+    {
+        seedeando = true;
+        try
+        {
+            var (creadas, detalle) = await Api.SeedAvisoVentanaAsync();
+            if (creadas > 0) Toast.Success(detalle ?? $"Creé {creadas} reglas");
+            else Toast.Error(detalle ?? "No se pudieron crear");
+            await Cargar();
+        }
+        finally { seedeando = false; }
+    }
+}
