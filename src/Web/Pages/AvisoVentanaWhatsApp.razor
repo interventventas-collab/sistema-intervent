@@ -38,6 +38,7 @@
                     Todavía no hay ninguna regla.
                     <b>Arrancá con las 2 recomendadas</b>: una por cada línea (FIJO TRANSRADIO y FRIKAF by INTERVENT),
                     avisando al equipo (Osmar y Gabriel) en 12h, 6h, 2h, 1h y 15min.
+                    <br /><small>Se crean <b>apagadas</b> para que las revises antes de prenderlas.</small>
                 </div>
                 <button class="av-btn av-btn-primary" @onclick="Seed" disabled="@seedeando">
                     @(seedeando ? "Creando…" : "✨ Crear las 2 reglas de arranque")
@@ -126,6 +127,14 @@
                             ⚠️ Por la regla de WhatsApp (24hs), a cada persona el aviso le llega solo si te escribió a
                             <b>esa línea</b> hace menos de 24hs. Si no le llega, probá con <b>"Línea por defecto"</b>.
                         </div>
+                        @if (string.IsNullOrWhiteSpace(vm.SoloNumeros))
+                        {
+                            <div class="av-fila av-warn av-warn-strong">
+                                🚨 Esta regla vigila <b>TODAS</b> las charlas y avisa al equipo. En una cuenta con muchas
+                                conversaciones, eso puede mandar <b>muchísimos</b> mensajes de golpe. Si querés cuidar una
+                                charla puntual, mejor poné el número en <b>"🔢 Vigilar solo"</b> más abajo.
+                            </div>
+                        }
                     }
                     else
                     {
@@ -245,6 +254,7 @@
 
     .av-warn { font-size: 0.72rem; color: #fbbf24; line-height: 1.4; background: rgba(251,191,36,0.06);
         border: 1px solid rgba(251,191,36,0.2); border-radius: 8px; padding: 7px 10px; }
+    .av-warn-strong { color: #fecaca; background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.35); }
 
     .av-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 0.9rem;
         border-top: 1px dashed #26324b; padding-top: 0.75rem; flex-wrap: wrap; }

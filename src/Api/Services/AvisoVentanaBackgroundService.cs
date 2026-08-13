@@ -218,6 +218,59 @@ public class AvisoVentanaBackgroundService : BackgroundService
         catch (Exception ex) { _logger.LogWarning(ex, "[AvisoVentana] no pude limpiar registro viejo"); }
     }
 
+    /// <summary>2026-08-13: "línea base" al crear o PRENDER una regla. Marca como YA avisados (SIN enviar)
+    /// los umbrales que la regla ya tiene cruzados en las conversaciones abiertas AHORA. Así, al activar una
+    /// regla, NO se dispara retroactivamente por todo el backlog de charlas que ya estaban pasadas de un
+    /// umbral (eso causaba una avalancha de avisos). Solo se avisará por los cruces que pasen de acá en más.</summary>
+    public static async Task BaselineReglaAsync(AppDbContext db, WhatsAppAvisoVentanaRegla regla)
+    {
+        var umbrales = regla.UmbralesMin
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(x => int.TryParse(x, out var v) ? v : 0).Where(v => v > 0).Distinct().ToList();
+        if (umbrales.Count == 0) return;
+
+        var ahora = DateTime.UtcNow;
+        var desde = ahora.AddHours(-24);
+        var entrantes = await db.WhatsAppTwilioMensajes.AsNoTracking()
+            .Where(m => m.Direccion == "INCOMING" && m.CreatedAt >= desde && !m.Numero.StartsWith("ig:"))
+            .Select(m => new { m.Numero, m.LineaPhoneId, m.CreatedAt })
+            .ToListAsync();
+        if (entrantes.Count == 0) return;
+
+        var convos = entrantes.GroupBy(m => new { m.Numero, m.LineaPhoneId })
+            .Select(g => new { g.Key.Numero, g.Key.LineaPhoneId, Inicio = g.Max(x => x.CreatedAt) })
+            .ToList();
+
+        var soloNumeros = string.IsNullOrWhiteSpace(regla.SoloNumeros) ? null
+            : regla.SoloNumeros.Split(new[] { ',', ';', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(SoloDigitos).Where(x => x.Length > 0).ToHashSet();
+
+        var yaKeys = (await db.WhatsAppAvisoVentanaEnviados.AsNoTracking()
+                .Where(e => e.ReglaId == regla.Id)
+                .Select(e => new { e.Numero, e.LineaPhoneId, e.VentanaInicio, e.UmbralMin }).ToListAsync())
+            .Select(e => DedupKey(regla.Id, e.Numero, e.LineaPhoneId, e.VentanaInicio, e.UmbralMin)).ToHashSet();
+
+        var nuevos = new List<WhatsAppAvisoVentanaEnviado>();
+        foreach (var c in convos)
+        {
+            if (regla.WatchLineaPhoneId != null && c.LineaPhoneId != regla.WatchLineaPhoneId) continue;
+            if (soloNumeros != null && !soloNumeros.Contains(SoloDigitos(c.Numero))) continue;
+            var minutosRestan = (int)Math.Floor(VENTANA_MIN - (ahora - c.Inicio).TotalMinutes);
+            if (minutosRestan <= 0) continue;
+            foreach (var u in umbrales.Where(u => minutosRestan <= u))
+            {
+                var k = DedupKey(regla.Id, c.Numero, c.LineaPhoneId, c.Inicio, u);
+                if (yaKeys.Add(k))
+                    nuevos.Add(new WhatsAppAvisoVentanaEnviado
+                    {
+                        ReglaId = regla.Id, Numero = c.Numero, LineaPhoneId = c.LineaPhoneId,
+                        VentanaInicio = c.Inicio, UmbralMin = u, EnviadoAt = DateTime.UtcNow
+                    });
+            }
+        }
+        if (nuevos.Count > 0) { db.WhatsAppAvisoVentanaEnviados.AddRange(nuevos); await db.SaveChangesAsync(); }
+    }
+
     private static WhatsAppTwilioMensaje Saliente(string numero, string texto, string sid, string canal, string? linea) => new()
     {
         Direccion = "OUTGOING", Numero = numero, Cuerpo = texto,

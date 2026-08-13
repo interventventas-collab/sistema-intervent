@@ -120,6 +120,8 @@ public class AvisoVentanaController : ControllerBase
         _db.WhatsAppAvisoVentanaReglas.Add(a);
         await _db.SaveChangesAsync();
         await GuardarDestinatariosAsync(a.Id, r.Destinatarios);
+        // Si nace activa, "línea base": no disparar por el backlog de charlas ya pasadas de un umbral.
+        if (a.Activa) await AvisoVentanaBackgroundService.BaselineReglaAsync(_db, a);
         return Ok(Map(a, await DestinatariosDeAsync(a.Id)));
     }
 
@@ -130,6 +132,7 @@ public class AvisoVentanaController : ControllerBase
         if (a is null) return NotFound();
         var err = Validar(r);
         if (err is not null) return BadRequest(new { error = err });
+        var estabaActiva = a.Activa;
         a.Nombre = r.Nombre.Trim();
         a.Activa = r.Activa;
         a.WatchLineaPhoneId = string.IsNullOrWhiteSpace(r.WatchLineaPhoneId) ? null : r.WatchLineaPhoneId.Trim();
@@ -141,6 +144,8 @@ public class AvisoVentanaController : ControllerBase
         a.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         await GuardarDestinatariosAsync(a.Id, r.Destinatarios);
+        // Si se PRENDIÓ recién (estaba apagada → activa), línea base para no disparar por el backlog.
+        if (!estabaActiva && a.Activa) await AvisoVentanaBackgroundService.BaselineReglaAsync(_db, a);
         return Ok(Map(a, await DestinatariosDeAsync(a.Id)));
     }
 
@@ -163,6 +168,8 @@ public class AvisoVentanaController : ControllerBase
         a.Activa = !a.Activa;
         a.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+        // Al PRENDER, línea base: no disparar por el backlog de charlas ya pasadas de un umbral.
+        if (a.Activa) await AvisoVentanaBackgroundService.BaselineReglaAsync(_db, a);
         return Ok(Map(a, await DestinatariosDeAsync(a.Id)));
     }
 
@@ -239,7 +246,7 @@ public class AvisoVentanaController : ControllerBase
             var a = new WhatsAppAvisoVentanaRegla
             {
                 Nombre = nombre,
-                Activa = true,
+                Activa = false,                  // nacen APAGADAS: se revisan y se prenden a mano (seguridad)
                 WatchLineaPhoneId = linea,       // null si no encontró la línea → vigila todas (igual sirve)
                 SaleLineaPhoneId = linea,
                 UmbralesMin = "720,360,120,60,15",
@@ -251,6 +258,6 @@ public class AvisoVentanaController : ControllerBase
             await GuardarDestinatariosAsync(a.Id, dest);
             n++;
         }
-        return Ok(new { creadas = n, detalle = $"Creé {n} reglas de arranque. Revisá que las líneas y destinatarios estén bien." });
+        return Ok(new { creadas = n, detalle = $"Creé {n} reglas de arranque (APAGADAS). Revisá líneas y destinatarios, y prendé la que quieras. OJO: si vigila TODAS las charlas y avisás al equipo, en una cuenta con muchas conversaciones puede mandar muchos mensajes." });
     }
 }
