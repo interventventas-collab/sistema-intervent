@@ -480,6 +480,7 @@ using (var scope = app.Services.CreateScope())
         await EnsureSistemaAlerta("ALTA_CLIENTE", "🆕 Nuevo cliente para dar de alta", true, canalCampanita: true);
         // 2026-08-12: un repartidor rechazó (con motivo) un envío que le asignaron.
         await EnsureSistemaAlerta("ENVIO_RECHAZADO", "🚫 Repartidor rechazó un envío", true, canalCampanita: true);
+        await EnsureSistemaAlerta("UBICACION_ERRONEA", "📍 Repartidor reportó ubicación mal cargada", true, canalCampanita: true);
         await db.SaveChangesAsync();
     }
     catch (Exception ex) { logger.LogWarning(ex, "No se pudieron sembrar las alertas del sistema (Ventas/Fichadas)."); }

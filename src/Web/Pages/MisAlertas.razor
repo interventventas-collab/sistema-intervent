@@ -56,6 +56,7 @@
                     <option value="CHEQUE_VENCE">📄 Cheques</option>
                     <option value="FECHA_MES">📅 Recordatorios de fecha</option>
                     <option value="ENVIO_RECHAZADO">🚫 Envíos rechazados por repartidor</option>
+                    <option value="UBICACION_ERRONEA">📍 Ubicaciones mal cargadas</option>
                 </select>
             </div>
             <button class="btn-secondary" @onclick="CargarHistorial" title="Actualizar">🔄 Actualizar</button>
@@ -666,6 +667,7 @@ else
         "FICHADA" => "Fichadas de empleados",
         "PUBLI_MELI" => "Publicaciones MeLi para revisar (precio)",
         "ENVIO_RECHAZADO" => "Repartidor rechazó un envío",
+        "UBICACION_ERRONEA" => "Repartidor reportó ubicación mal cargada",
         _ => tipo
     };
 
@@ -675,6 +677,7 @@ else
         "FICHADA" => "Te aviso cada entrada/salida de empleados (y la plata a rendir al salir).",
         "PUBLI_MELI" => "Te aviso cuando una publicación pausada recibe stock (el robot NO la activa) o cuando una publicación se reactiva — para que revises el precio antes de vender.",
         "ENVIO_RECHAZADO" => "Te aviso cuando un repartidor rechaza un envío que le asignaste, con el motivo que escribió. El envío vuelve a estar disponible para reasignar.",
+        "UBICACION_ERRONEA" => "Te aviso cuando un repartidor marca que la ubicación de un cliente está mal. NO la cambia él: te llega el aviso para que la corrijas desde el sistema (al armar la ruta, con el botón 📍 Corregir ubicación).",
         _ => ""
     };
 
@@ -724,6 +727,7 @@ else
         "FICHADA" => "🕐",
         "PUBLI_MELI" => "⚠️",
         "ENVIO_RECHAZADO" => "🚫",
+        "UBICACION_ERRONEA" => "📍",
         _ => "🔔"
     };
 

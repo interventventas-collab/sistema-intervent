@@ -844,10 +844,10 @@ public class CafeRepartidorPublicController : ControllerBase
 
     public record ReportarErrorUbicacionRequest(decimal? Lat, decimal? Lng);
 
-    /// <summary>2026-06-11: el repartidor avisa que la ubicacion guardada esta mal.
-    /// Si manda Lat/Lng nuevas, las REEMPLAZA. Si las manda null, simplemente BORRA las
-    /// existentes (queda sin ubicacion para que el admin la corrija manualmente).
-    /// A diferencia de capturar-ubicacion, este endpoint si pisa coords existentes.</summary>
+    /// <summary>2026-08-13: el repartidor SOLO AVISA que la ubicacion esta mal. Ya NO la modifica
+    /// ni la borra (eso no funcionaba en la calle). Dispara el aviso "UBICACION_ERRONEA" de Mis Alertas
+    /// (campanita/Telegram/WhatsApp) para que la corrijan desde el sistema (armado de ruta). Si el celu
+    /// mando Lat/Lng, van SOLO como pista dentro del aviso; nunca pisan la ubicacion guardada.</summary>
     [HttpPost("mis-pedidos/{tokenRepartidor}/cliente/{clienteId:int}/reportar-error-ubicacion")]
     public async Task<IActionResult> ReportarErrorUbicacion(
         string tokenRepartidor, int clienteId, [FromBody] ReportarErrorUbicacionRequest req)
@@ -858,25 +858,18 @@ public class CafeRepartidorPublicController : ControllerBase
         var c = await _db.CafeClientes.FirstOrDefaultAsync(x => x.Id == clienteId);
         if (c is null) return NotFound(new { error = "Cliente no encontrado" });
 
-        if (req.Lat.HasValue && req.Lng.HasValue)
+        // Pista opcional: donde estaba parado el repartidor. NO se guarda como ubicacion del cliente.
+        string? hint = null;
+        if (req.Lat.HasValue && req.Lng.HasValue &&
+            req.Lat.Value >= -90 && req.Lat.Value <= 90 && req.Lng.Value >= -180 && req.Lng.Value <= 180)
         {
-            if (req.Lat.Value < -90 || req.Lat.Value > 90 || req.Lng.Value < -180 || req.Lng.Value > 180)
-                return BadRequest(new { error = "Coordenadas fuera de rango" });
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            hint = $"https://www.google.com/maps/search/?api=1&query={req.Lat.Value.ToString(ci)},{req.Lng.Value.ToString(ci)}";
+        }
 
-            c.MapeoLat = req.Lat.Value;
-            c.MapeoLng = req.Lng.Value;
-            c.MapeoLink = $"https://www.google.com/maps/search/?api=1&query={req.Lat.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{req.Lng.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
-            await _db.SaveChangesAsync();
-            return Ok(new { ok = true, reemplazado = true, mensaje = "✓ Ubicacion reemplazada por tu GPS actual." });
-        }
-        else
-        {
-            c.MapeoLat = null;
-            c.MapeoLng = null;
-            c.MapeoLink = null;
-            await _db.SaveChangesAsync();
-            return Ok(new { ok = true, reemplazado = false, mensaje = "✓ Ubicacion borrada. Avisale al admin para que la corrija." });
-        }
+        var direccion = !string.IsNullOrWhiteSpace(c.Direccion) ? c.Direccion! : "(sin direccion cargada)";
+        await NotificarUbicacionErroneaAsync(r.Nombre, c.Nombre, direccion, hint);
+        return Ok(new { ok = true, reemplazado = false, mensaje = "✓ Listo, avisamos a la oficina. Van a corregir la ubicacion." });
     }
 
     // ============================================================
@@ -1179,5 +1172,83 @@ public class CafeRepartidorPublicController : ControllerBase
             await _db.SaveChangesAsync();
         }
         catch { /* nunca romper el rechazo por un aviso */ }
+    }
+
+    /// <summary>2026-08-13: dispara el aviso "UBICACION_ERRONEA" de Mis Alertas cuando un repartidor
+    /// reporta que la ubicación de un cliente está mal. NO modifica la ubicación: solo avisa para que
+    /// la corrijan desde el sistema (armado de ruta). Mismos canales que ENVIO_RECHAZADO. Nunca rompe.</summary>
+    private async Task NotificarUbicacionErroneaAsync(string repartidorNombre, string clienteNombre, string direccion, string? hintLink)
+    {
+        try
+        {
+            var alerta = await _db.MisAlertas.FirstOrDefaultAsync(x => x.Tipo == "UBICACION_ERRONEA");
+            if (alerta is null || !alerta.Activa) return;
+            if (!alerta.CanalCampanita && !alerta.CanalTelegram && !alerta.CanalWhatsApp) return;
+
+            var detalleCorto = $"{repartidorNombre} reportó mal la ubicación de {clienteNombre} ({direccion})";
+            var hintLine = string.IsNullOrWhiteSpace(hintLink) ? "" : $"\n📌 Estaba parado acá: {hintLink}";
+            var texto = $"📍 <b>Ubicación mal cargada — corregir desde el sistema</b>\n" +
+                        $"🧑 Reportó: {repartidorNombre}\n" +
+                        $"👤 Cliente: {clienteNombre}\n" +
+                        $"🏠 {direccion}{hintLine}";
+
+            // Telegram (si está tildado).
+            bool enviadoTg = false;
+            if (alerta.CanalTelegram)
+            {
+                var (ok, _) = await _telegram.SendMessageAsync(texto, categoria: "ALERTAS");
+                enviadoTg = ok;
+            }
+
+            // WhatsApp (si está tildado): a las personas tildadas para esta alerta, por la línea elegida.
+            if (alerta.CanalWhatsApp)
+            {
+                var idsDest = await _db.AutoDestinatarios.Where(d => d.AutoKey == $"alerta:{alerta.Id}")
+                    .Select(d => d.PersonaId).ToListAsync();
+                var personas = await _db.AutoPersonas
+                    .Where(p => p.Activo && idsDest.Contains(p.Id) && p.WhatsAppNumero != null).ToListAsync();
+                var textoWa = $"📍 Ubicación mal cargada — corregir desde el sistema\n👤 Cliente: {clienteNombre}\n🏠 {direccion}\n🧑 Reportó: {repartidorNombre}"
+                            + (string.IsNullOrWhiteSpace(hintLink) ? "" : $"\n📌 {hintLink}");
+                foreach (var per in personas)
+                {
+                    try
+                    {
+                        var num = per.WhatsAppNumero!.StartsWith("whatsapp:") ? per.WhatsAppNumero : "whatsapp:" + per.WhatsAppNumero;
+                        var (sid, canal, lin) = await _wa.SendTextAsync(num, textoWa, lineaOverride: alerta.LineaPhoneId);
+                        if (sid != null)
+                            _db.WhatsAppTwilioMensajes.Add(new WhatsAppTwilioMensaje
+                            {
+                                Direccion = "OUTGOING", Numero = num, Cuerpo = textoWa,
+                                TwilioMessageSid = sid, Canal = canal, LineaPhoneId = lin, Procesado = true, CreatedAt = DateTime.UtcNow
+                            });
+                    }
+                    catch { /* seguir con el resto */ }
+                }
+            }
+
+            // Campanita (si está tildada): queda encendida hasta que la mirás.
+            if (alerta.CanalCampanita)
+            {
+                alerta.EstaDisparada = true;
+                alerta.Vista = false;
+                alerta.DisparadaAt = DateTime.UtcNow;
+                alerta.UltimoDetalle = detalleCorto;
+                alerta.UpdatedAt = DateTime.UtcNow;
+            }
+
+            // Historial: una fila por reporte.
+            _db.MisAlertasHistorial.Add(new MisAlertaHistorial
+            {
+                AlertaId = alerta.Id,
+                Tipo = "UBICACION_ERRONEA",
+                Mensaje = string.IsNullOrWhiteSpace(alerta.Mensaje) ? "Repartidor reportó una ubicación mal cargada" : alerta.Mensaje,
+                Detalle = detalleCorto,
+                Alcance = string.IsNullOrWhiteSpace(alerta.Alcance) ? "admin,oficina" : alerta.Alcance,
+                PorTelegram = alerta.CanalTelegram,
+                EnviadoTelegram = enviadoTg
+            });
+            await _db.SaveChangesAsync();
+        }
+        catch { /* nunca romper el reporte por un aviso */ }
     }
 }
