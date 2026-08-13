@@ -8730,11 +8730,57 @@
             ToastService.Success("Publicacion vinculada al producto");
             showLinkProductModal = false;
             linkProductItem = null;
+
+            // Etapa 3 (2026-08-13): si la publicación quedó SIN código (SKU) y el producto sí tiene,
+            // ofrecer escribírselo a la publicación de MeLi. Con confirmación previa (toca MeLi de verdad).
+            var prodSku = allProducts?.FirstOrDefault(p => p.Id == productId)?.Sku;
+            if (updated is not null && string.IsNullOrWhiteSpace(updated.Sku) && !string.IsNullOrWhiteSpace(prodSku))
+            {
+                await OfrecerEscribirSkuEnMeli(updated, productId, prodSku!.Trim().ToUpperInvariant());
+            }
         }
         catch (Exception ex)
         {
             ToastService.Error("Error: " + ex.Message);
         }
+    }
+
+    // Etapa 3 (2026-08-13): tras vincular, ofrecer escribir el código del producto del sistema a la
+    // publicación de MeLi (reusa el endpoint rename-meli-sku: seller_custom_field + SELLER_SKU).
+    private async Task OfrecerEscribirSkuEnMeli(MeliItemDto item, int cafeProductoId, string codigo)
+    {
+        var msg = $"La publicación no tiene código (SKU) en Mercado Libre.\n\n¿Querés que le pongamos el código \"{codigo}\" del producto del sistema?\n\n(Esto modifica la publicación en Mercado Libre.)";
+        bool ok;
+        try { ok = await JS.InvokeAsync<bool>("confirm", msg); }
+        catch { ok = false; }
+        if (!ok) return;
+        try
+        {
+            var res = await Api.RenameMeliSkuAsync(cafeProductoId, new List<int> { item.Id });
+            if (res is not null && res.Ok > 0)
+            {
+                var nuevo = res.NewSku ?? codigo;
+                item.Sku = nuevo;
+                if (items is not null)
+                {
+                    var idx = items.FindIndex(i => i.Id == item.Id);
+                    if (idx >= 0) items[idx].Sku = nuevo;
+                }
+                if (selectedItem is not null && selectedItem.Id == item.Id) selectedItem.Sku = nuevo;
+                InvalidateFilterCache();
+                ToastService.Success($"Le pusimos el código {nuevo} a la publicación en Mercado Libre");
+            }
+            else
+            {
+                var detalle = res?.Results?.FirstOrDefault()?.Message;
+                ToastService.Info("No se pudo poner el código" + (string.IsNullOrEmpty(detalle) ? " (puede ser que la publicación esté pausada; funciona en las activas)." : $": {detalle}"));
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error al poner el código: " + ex.Message);
+        }
+        StateHasChanged();
     }
 
     private async Task UnlinkProduct(MeliItemDto item)
