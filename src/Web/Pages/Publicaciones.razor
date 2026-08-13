@@ -2079,6 +2079,7 @@
                 @* 2026-06-12: SECCIÓN STOCK Y SINCRONIZACIÓN — todo lo de stock de esta publicación en un lugar *@
                 <div style="margin-top: 0.75rem; padding: 0.75rem 1rem; background: #f0fdf4; border: 2px solid #bbf7d0; border-radius: 8px;">
                     <div style="font-weight: 700; font-size: 0.9rem; color: #166534; margin-bottom: 0.6rem;">📦 Stock y sincronización</div>
+                    @MatchResumen(selectedItem)
                     <div style="display:flex; gap:1.25rem; align-items:center; flex-wrap:wrap;">
                         <div>
                             <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase;">Stock en MeLi</div>
@@ -2091,29 +2092,6 @@
                                 <div style="font-size:1.2rem; font-weight:800; color:#9a3412;" title="Unidades en la bodega Full de MercadoLibre (informativo, segun el ultimo sync de Full)">🏭 @(fichaStockFull ?? 0) u.</div>
                             </div>
                         }
-                        <div>
-                            <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase;">Linkeado a</div>
-                            <div style="font-size:0.8rem; font-weight:600; color:#374151;">
-                                @if (!string.IsNullOrEmpty(selectedItem.ComponentMappingsSummary))
-                                {
-                                    @selectedItem.ComponentMappingsSummary
-                                }
-                                else if (!string.IsNullOrEmpty(selectedItem.CafeProductoSku))
-                                {
-                                    @selectedItem.CafeProductoSku
-                                }
-                                else
-                                {
-                                    <div style="display:flex; flex-direction:column; align-items:flex-start; gap:0.4rem;">
-                                        <span style="color:#dc2626;">⚠ Sin linkear — no se puede pushear stock</span>
-                                        <button @onclick="() => OpenLinkProductDropdown(selectedItem)"
-                                                style="padding:0.5rem 0.9rem; background:#2563eb; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer; font-size:0.85rem;">
-                                            🔗 Vincular producto
-                                        </button>
-                                    </div>
-                                }
-                            </div>
-                        </div>
                         <div>
                             <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase;">Sincronización automática</div>
                             <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer; margin-top:0.15rem;">
@@ -6981,6 +6959,70 @@
         @if (string.Equals(it.LogisticType, "fulfillment", StringComparison.OrdinalIgnoreCase))
         {
             <span class="plist-chip" style="background:#fee2e2; color:#991b1b;">FULL</span>
+        }
+    </text>;
+
+    // 2026-08-13: Resumen visual del "match" MeLi <-> sistema para la ficha.
+    // Muestra de un vistazo: SKU MeLi <-> Código del sistema (+ nombre) + cuánto descuenta cada venta,
+    // con semáforo de estado (verde = vinculado, amarillo = falta el SKU en MeLi, gris = sin vincular).
+    private RenderFragment MatchResumen(MeliItemDto it) => @<text>
+        @{
+            var codigoSistema = !string.IsNullOrEmpty(it.CafeProductoSku) ? it.CafeProductoSku
+                : !string.IsNullOrEmpty(it.ComboSku) ? it.ComboSku
+                : it.ComponentMappingsCount > 0 ? "varios"
+                : it.ProductId.HasValue ? "producto"
+                : null;
+            var nombreSistema = !string.IsNullOrEmpty(it.CafeProductoNombre) ? it.CafeProductoNombre
+                : !string.IsNullOrEmpty(it.ComboName) ? it.ComboName
+                : it.ProductTitle;
+            var skuMeli = it.Sku;
+            var linked = it.TieneLinkeo;
+            var faltaSku = linked && string.IsNullOrEmpty(skuMeli);
+        }
+        @if (!linked)
+        {
+            <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; padding:0.6rem 0.8rem; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; margin-bottom:0.7rem;">
+                <span style="font-size:0.85rem; color:#6b7280;">🔗 Sin vincular — esta publicación todavía no comparte stock.</span>
+                <button @onclick="() => OpenLinkProductDropdown(it)"
+                        style="margin-left:auto; padding:0.45rem 0.9rem; background:#2563eb; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer; font-size:0.85rem;">
+                    🔗 Vincular producto
+                </button>
+            </div>
+        }
+        else
+        {
+            <div style="padding:0.6rem 0.8rem; background:#ffffff; border:1px solid @(faltaSku ? "#fde68a" : "#bbf7d0"); border-radius:8px; margin-bottom:0.7rem;">
+                <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; font-size:0.85rem;">
+                    <span style="color:#6b7280; text-transform:uppercase; font-size:0.7rem;">SKU MeLi</span>
+                    @if (string.IsNullOrEmpty(skuMeli))
+                    {
+                        <span style="font-family:monospace; background:#fef3c7; color:#92400e; padding:0.15rem 0.5rem; border-radius:5px;">vacío —</span>
+                    }
+                    else
+                    {
+                        <span style="font-family:monospace; background:#f9fafb; border:1px solid #e5e7eb; padding:0.15rem 0.5rem; border-radius:5px;">@skuMeli</span>
+                    }
+                    <span style="color:#9ca3af;">↔</span>
+                    <span style="color:#6b7280; text-transform:uppercase; font-size:0.7rem;">Código sistema</span>
+                    <span style="font-family:monospace; background:#f9fafb; border:1px solid #e5e7eb; padding:0.15rem 0.5rem; border-radius:5px;">@codigoSistema</span>
+                    @if (faltaSku)
+                    {
+                        <span style="margin-left:auto; font-size:0.75rem; color:#92400e; background:#fef3c7; padding:0.15rem 0.55rem; border-radius:12px;">⚠ Falta el SKU en MeLi</span>
+                    }
+                    else
+                    {
+                        <span style="margin-left:auto; font-size:0.75rem; color:#15803d; background:#dcfce7; padding:0.15rem 0.55rem; border-radius:12px;">✅ Vinculado</span>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(nombreSistema))
+                {
+                    <div style="font-size:0.78rem; color:#374151; margin-top:0.35rem;">@nombreSistema</div>
+                }
+                @if (!string.IsNullOrEmpty(it.ComponentMappingsSummary))
+                {
+                    <div style="font-size:0.75rem; color:#6b7280; margin-top:0.2rem;">Cada venta descuenta: @it.ComponentMappingsSummary</div>
+                }
+            </div>
         }
     </text>;
 
