@@ -92,6 +92,7 @@ public class WhatsAppPagoBotService
         {
             ("pago:tipo:empleado", "👷 Empleado"),
             ("pago:tipo:proveedor", "🚚 Proveedor"),
+            ("pago:salir", "❌ Salir"),
         };
         var sid = await _meta.SendButtonsAsync(fromWaId, $"💵 Cargar un PAGO\nHola {nombre} 👋 ¿A quién le pagaste?", botones, lineaPhoneId: lineaId);
         await RegistrarSalienteAsync(numero, "💵 Cargar un PAGO — ¿empleado o proveedor?", sid, lineaId);
@@ -108,7 +109,14 @@ public class WhatsAppPagoBotService
             return true;
         }
 
-        var partes = id.Split(':'); // pago : que : valor
+        var partes = id.Split(':'); // pago : que [: valor]
+        // ❌ Salir: botón/opción presente en todos los pasos.
+        if (partes.Length >= 2 && partes[1] == "salir")
+        {
+            await LimpiarAsync(numero);
+            await ResponderAsync(fromWaId, numero, "👍 Listo, cancelé la carga del pago. Cuando quieras, escribí *PAGO* para empezar de nuevo.", lineaId);
+            return true;
+        }
         if (partes.Length < 3) return true;
         var que = partes[1];
         var valor = partes[2];
@@ -198,7 +206,7 @@ public class WhatsAppPagoBotService
     {
         await GuardarEstadoAsync(numero, s => { s.Tipo = "empleado"; s.Paso = "emp_elegir"; });
         var emps = await _db.NomEmpleados.AsNoTracking()
-            .Where(e => e.IsActive).OrderBy(e => e.Nombre).Take(10).ToListAsync();
+            .Where(e => e.IsActive).OrderBy(e => e.Nombre).Take(9).ToListAsync();
         if (emps.Count == 0)
         {
             await LimpiarAsync(numero);
@@ -206,8 +214,9 @@ public class WhatsAppPagoBotService
             return true;
         }
         var filas = emps.Select(e => ($"pago:emp:{e.Id}", Recortar(e.Nombre, 24), (string?)e.Puesto)).ToList();
+        filas.Add(("pago:salir", "❌ Salir", null));
         var totalActivos = await _db.NomEmpleados.CountAsync(e => e.IsActive);
-        var cuerpo = "👷 ¿A qué empleado le pagaste?" + (totalActivos > 10 ? "\n(si no está en la lista, escribí su nombre)" : "");
+        var cuerpo = "👷 ¿A qué empleado le pagaste?" + (totalActivos > 9 ? "\n(si no está en la lista, escribí su nombre)" : "");
         var sid = await _meta.SendListAsync(fromWaId, cuerpo, "Ver empleados", filas, lineaPhoneId: lineaId);
         await RegistrarSalienteAsync(numero, cuerpo + " [lista empleados]", sid, lineaId);
         return true;
@@ -217,10 +226,11 @@ public class WhatsAppPagoBotService
     {
         if (q.Length < 2) { await ResponderAsync(fromWaId, numero, "Escribí al menos 2 letras del nombre del empleado.", lineaId); return true; }
         var emps = await _db.NomEmpleados.AsNoTracking()
-            .Where(e => e.IsActive && e.Nombre.Contains(q)).OrderBy(e => e.Nombre).Take(10).ToListAsync();
+            .Where(e => e.IsActive && e.Nombre.Contains(q)).OrderBy(e => e.Nombre).Take(9).ToListAsync();
         if (emps.Count == 0) { await ResponderAsync(fromWaId, numero, $"No encontré ningún empleado con «{q}». Probá con otro nombre.", lineaId); return true; }
         if (emps.Count == 1) return await ElegirEmpleadoAsync(fromWaId, numero, st, emps[0].Id, lineaId);
         var filas = emps.Select(e => ($"pago:emp:{e.Id}", Recortar(e.Nombre, 24), (string?)e.Puesto)).ToList();
+        filas.Add(("pago:salir", "❌ Salir", null));
         var sid = await _meta.SendListAsync(fromWaId, $"Encontré varios con «{q}». Elegí:", "Ver empleados", filas, lineaPhoneId: lineaId);
         await RegistrarSalienteAsync(numero, "Varios empleados coinciden [lista]", sid, lineaId);
         return true;
@@ -231,13 +241,14 @@ public class WhatsAppPagoBotService
         var emp = await _db.NomEmpleados.AsNoTracking().FirstOrDefaultAsync(e => e.Id == empId && e.IsActive);
         if (emp is null) { await ResponderAsync(fromWaId, numero, "No encontré ese empleado. Escribí el nombre de nuevo.", lineaId); return true; }
         await GuardarEstadoAsync(numero, s => { s.EmpleadoId = empId; s.Paso = "emp_concepto"; });
-        var botones = new List<(string, string)>
+        var filas = new List<(string, string, string?)>
         {
-            ("pago:conc:sueldo", "Sueldo"),
-            ("pago:conc:adelanto", "Adelanto"),
-            ("pago:conc:otro", "Otro"),
+            ("pago:conc:sueldo",   "Sueldo",         null),
+            ("pago:conc:adelanto", "Adelanto",       null),
+            ("pago:conc:otro",     "Otro concepto",  "Aguinaldo, bono, vacaciones…"),
+            ("pago:salir",         "❌ Salir",       null),
         };
-        var sid = await _meta.SendButtonsAsync(fromWaId, $"👷 {emp.Nombre}\n¿Por qué concepto es el pago?", botones, lineaPhoneId: lineaId);
+        var sid = await _meta.SendListAsync(fromWaId, $"👷 {emp.Nombre}\n¿Por qué concepto es el pago?", "Ver conceptos", filas, lineaPhoneId: lineaId);
         await RegistrarSalienteAsync(numero, $"Empleado {emp.Nombre} — ¿concepto?", sid, lineaId);
         return true;
     }
@@ -247,7 +258,7 @@ public class WhatsAppPagoBotService
         if (valor == "otro")
         {
             await GuardarEstadoAsync(numero, s => s.Paso = "emp_concepto_texto");
-            await ResponderAsync(fromWaId, numero, "✍️ Escribí el concepto del pago (ej: aguinaldo, bono, vacaciones).", lineaId);
+            await ResponderAsync(fromWaId, numero, "✍️ Escribí el concepto del pago (ej: aguinaldo, bono, vacaciones).\n_(o escribí *salir* para cancelar)_", lineaId);
             return true;
         }
         var concepto = valor == "adelanto" ? "adelanto" : "sueldo";
@@ -268,9 +279,10 @@ public class WhatsAppPagoBotService
             await ResponderAsync(fromWaId, numero, "No hay proveedores con facturas pendientes de pago en el sistema.", lineaId);
             return true;
         }
-        var top = conDeuda.OrderByDescending(x => x.Deuda).Take(10).ToList();
+        var top = conDeuda.OrderByDescending(x => x.Deuda).Take(9).ToList();
         var filas = top.Select(p => ($"pago:prov:{p.Id}", Recortar(p.Nombre, 24), (string?)$"Debe {Money(p.Deuda)}")).ToList();
-        var cuerpo = "🚚 ¿A qué proveedor le pagaste?" + (conDeuda.Count > 10 ? "\n(si no está en la lista, escribí su nombre)" : "");
+        filas.Add(("pago:salir", "❌ Salir", null));
+        var cuerpo = "🚚 ¿A qué proveedor le pagaste?" + (conDeuda.Count > 9 ? "\n(si no está en la lista, escribí su nombre)" : "");
         var sid = await _meta.SendListAsync(fromWaId, cuerpo, "Ver proveedores", filas, lineaPhoneId: lineaId);
         await RegistrarSalienteAsync(numero, cuerpo + " [lista proveedores]", sid, lineaId);
         return true;
@@ -281,10 +293,11 @@ public class WhatsAppPagoBotService
         if (q.Length < 2) { await ResponderAsync(fromWaId, numero, "Escribí al menos 2 letras del nombre del proveedor.", lineaId); return true; }
         var conDeuda = await ProveedoresConDeudaAsync();
         var match = conDeuda.Where(p => p.Nombre.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0)
-            .OrderByDescending(p => p.Deuda).Take(10).ToList();
+            .OrderByDescending(p => p.Deuda).Take(9).ToList();
         if (match.Count == 0) { await ResponderAsync(fromWaId, numero, $"No encontré ningún proveedor con deuda que coincida con «{q}».", lineaId); return true; }
         if (match.Count == 1) return await ElegirProveedorAsync(fromWaId, numero, st, match[0].Id, lineaId);
         var filas = match.Select(p => ($"pago:prov:{p.Id}", Recortar(p.Nombre, 24), (string?)$"Debe {Money(p.Deuda)}")).ToList();
+        filas.Add(("pago:salir", "❌ Salir", null));
         var sid = await _meta.SendListAsync(fromWaId, $"Encontré varios con «{q}». Elegí:", "Ver proveedores", filas, lineaPhoneId: lineaId);
         await RegistrarSalienteAsync(numero, "Varios proveedores coinciden [lista]", sid, lineaId);
         return true;
@@ -303,12 +316,13 @@ public class WhatsAppPagoBotService
             return true;
         }
         await GuardarEstadoAsync(numero, s => { s.ProveedorId = provId; s.Paso = "prov_factura"; });
-        var top = facturas.OrderBy(f => f.Fecha).Take(10).ToList();
+        var top = facturas.OrderBy(f => f.Fecha).Take(9).ToList();
         var filas = top.Select(f =>
         {
             var titulo = !string.IsNullOrWhiteSpace(f.NumeroComprobante) ? f.NumeroComprobante! : f.Numero;
             return ($"pago:fact:{f.Id}", Recortar(titulo, 24), (string?)$"{f.Fecha:dd/MM/yy} · saldo {Money(f.Saldo)}");
         }).ToList();
+        filas.Add(("pago:salir", "❌ Salir", null));
         var cuerpo = $"🧾 {prov.Nombre}\n¿Qué factura pagaste?";
         var sid = await _meta.SendListAsync(fromWaId, cuerpo, "Ver facturas", filas, lineaPhoneId: lineaId);
         await RegistrarSalienteAsync(numero, cuerpo + " [lista facturas]", sid, lineaId);
@@ -323,7 +337,7 @@ public class WhatsAppPagoBotService
         if (f is null) { await ResponderAsync(fromWaId, numero, "No encontré esa factura. Elegí de nuevo.", lineaId); return true; }
         await GuardarEstadoAsync(numero, s => { s.CompraId = compraId; s.CompraSaldo = f.Saldo; s.Paso = "prov_monto"; });
         var titulo = !string.IsNullOrWhiteSpace(f.NumeroComprobante) ? f.NumeroComprobante! : f.Numero;
-        await ResponderAsync(fromWaId, numero, $"🧾 Factura {titulo} — saldo {Money(f.Saldo)}\n¿Cuánto pagaste? Escribí el monto, o respondé *TODO* para pagar todo el saldo.", lineaId);
+        await ResponderAsync(fromWaId, numero, $"🧾 Factura {titulo} — saldo {Money(f.Saldo)}\n¿Cuánto pagaste? Escribí el monto, o respondé *TODO* para pagar todo el saldo.\n_(o escribí *salir* para cancelar)_", lineaId);
         return true;
     }
 
@@ -337,6 +351,7 @@ public class WhatsAppPagoBotService
             ("pago:medio:transferencia", "🏦 Transferencia",  null),
             ("pago:medio:mp",            "📲 Mercado Pago",   null),
             ("pago:medio:cheque",        "🧾 Cheque",         null),
+            ("pago:salir",               "❌ Salir",          null),
         };
         var sid = await _meta.SendListAsync(fromWaId, "¿Cómo se pagó?", "Ver formas de pago", filas, lineaPhoneId: lineaId);
         await RegistrarSalienteAsync(numero, "¿Cómo se pagó? [lista medios]", sid, lineaId);
@@ -420,7 +435,7 @@ public class WhatsAppPagoBotService
     }
 
     private async Task PedirMontoAsync(string fromWaId, string numero, string? extra, string? lineaId)
-        => await ResponderAsync(fromWaId, numero, (extra ?? "") + "💲 ¿Cuánto? Escribí solo el número (ej: 15000).", lineaId);
+        => await ResponderAsync(fromWaId, numero, (extra ?? "") + "💲 ¿Cuánto? Escribí solo el número (ej: 15000).\n_(o escribí *salir* para cancelar)_", lineaId);
 
     // ─────────────── Cálculo de deuda de proveedores (mismo criterio que PagosMovilController) ───────────────
 
