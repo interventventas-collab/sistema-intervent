@@ -616,12 +616,10 @@
         {
             <NavItem Href="/mis-alertas" Label="🔔 Mis Alertas" Icon="@SvgIcons.AlertCircle"
                      IsActive="@IsActive("/mis-alertas")" OnClick="@(() => NavigateTo("/mis-alertas"))" />
-            @* 2026-07-23: Centro de Automatizaciones — todos los robots en un lugar (pedido Osmar) *@
+            @* 2026-07-23: Centro de Automatizaciones — todos los robots en un lugar (pedido Osmar).
+               2026-08-13: el "Aviso cierre WhatsApp" se movió ADENTRO de esta pantalla (ya no es item suelto). *@
             <NavItem Href="/automatizaciones" Label="🤖 Automatizaciones y Alertas" Icon="@SvgIcons.AlertCircle"
-                     IsActive="@IsActive("/automatizaciones")" OnClick="@(() => NavigateTo("/automatizaciones"))" />
-            @* 2026-08-13: avisos de cierre de ventana de WhatsApp (24hs) *@
-            <NavItem Href="/aviso-ventana-whatsapp" Label="⏰ Aviso cierre WhatsApp" Icon="@SvgIcons.AlertCircle"
-                     IsActive="@IsActive("/aviso-ventana-whatsapp")" OnClick="@(() => NavigateTo("/aviso-ventana-whatsapp"))" />
+                     IsActive="@(IsActive("/automatizaciones") || IsActive("/aviso-ventana-whatsapp"))" OnClick="@(() => NavigateTo("/automatizaciones"))" />
         }
 
         @* ═════════════ CARPETA COMPARTIDA (2026-07-06) ═════════════
