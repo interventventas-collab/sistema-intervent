@@ -8748,15 +8748,16 @@
 
             var itemVinc = linkCafeItem;
             var prodSku = linkCafeSelected.Sku;
-            var prodId = linkCafeSelected.Id;
+            var cantidadVinc = linkCafeCantidad;
             showLinkCafeModal = false;
             linkCafeItem = null;
             linkCafeSelected = null;
 
-            // Etapa 3: si la publicación no tiene código (SKU) y el producto sí, ofrecer escribírselo en MeLi.
+            // Etapa 3 + pack (2026-08-13): si la publi no tiene SKU y el producto sí, ofrecer escribirle el
+            // código con sufijo de pack ({CODIGO}-{CANTIDAD}) para que x1/x6/x12 no queden con el mismo SKU.
             if (string.IsNullOrWhiteSpace(itemVinc.Sku) && !string.IsNullOrWhiteSpace(prodSku))
             {
-                await OfrecerEscribirSkuEnMeli(itemVinc, prodId, prodSku!.Trim().ToUpperInvariant());
+                await OfrecerEscribirSkuConPack(itemVinc, prodSku!, cantidadVinc);
             }
         }
         catch (Exception ex)
@@ -8764,6 +8765,34 @@
             ToastService.Error("No se pudo vincular: " + ex.Message);
         }
         finally { savingLinkCafe = false; }
+    }
+
+    // 2026-08-13: ofrecer escribir el SKU a MeLi con sufijo de pack ({CODIGO}-{CANTIDAD}) si cantidad>1,
+    // así x1/x6/x12 del mismo producto no quedan con el mismo SKU. Convención acordada con el dueño.
+    private async Task OfrecerEscribirSkuConPack(MeliItemDto item, string baseSku, decimal cantidad)
+    {
+        var bs = baseSku.Trim().ToUpperInvariant();
+        var sku = cantidad > 1 ? $"{bs}-{cantidad:0}" : bs;
+        var extra = cantidad > 1 ? $"\n\n(Es un pack de {cantidad:0}, por eso el código lleva el sufijo -{cantidad:0}.)" : "";
+        var msg = $"La publicación no tiene código (SKU) en Mercado Libre.\n\n¿Querés que le pongamos el código \"{sku}\"?{extra}\n\n(Esto modifica la publicación en Mercado Libre.)";
+        bool ok;
+        try { ok = await JS.InvokeAsync<bool>("confirm", msg); }
+        catch { ok = false; }
+        if (!ok) return;
+        try
+        {
+            var nuevo = await Api.SetItemSkuAsync(item.MeliItemId, sku);
+            if (!string.IsNullOrEmpty(nuevo))
+            {
+                item.Sku = nuevo;
+                if (items is not null) { var idx = items.FindIndex(x => x.Id == item.Id); if (idx >= 0) items[idx].Sku = nuevo; }
+                if (selectedItem is not null && selectedItem.Id == item.Id) { selectedItem.Sku = nuevo; skuEditValue = nuevo; }
+                InvalidateFilterCache();
+                ToastService.Success($"Le pusimos el código {nuevo} a la publicación en Mercado Libre");
+            }
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo poner el código: " + ex.Message); }
+        StateHasChanged();
     }
 
     // 2026-08-13: poner/cambiar el SKU de la publicación en MeLi desde la ficha (siempre disponible).
