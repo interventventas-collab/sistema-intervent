@@ -1882,6 +1882,19 @@
                                placeholder="Ej: Monteagudo 150 3ro D — Parque Patricios"
                                style="width:100%; font-size:0.8rem; padding:0.35rem 0.5rem; border:1px solid #f59e0b; border-radius:6px;" />
                     </div>
+                    @* 2026-08-13: pegar un link de Google Maps (el pin salta ahí). Alternativa a buscar/arrastrar. *@
+                    <div style="margin-bottom:0.45rem;">
+                        <label style="font-size:0.68rem; color:#92400e; font-weight:700; display:block; margin-bottom:0.15rem;">📎 O pegá un link de Google Maps</label>
+                        <div style="display:flex; gap:0.35rem;">
+                            <input type="text" class="form-input" @bind="editPinLink" @bind:event="oninput"
+                                   placeholder="Pegá acá el link (https://maps.app.goo.gl/...)"
+                                   style="flex:1; font-size:0.8rem; padding:0.35rem 0.5rem; border:1px solid #f59e0b; border-radius:6px;" />
+                            <button class="btn" style="font-size:0.74rem; padding:0.3rem 0.6rem; background:#f59e0b; color:#fff; border:none; border-radius:6px; white-space:nowrap;"
+                                    @onclick="PegarLinkEdicionPin" disabled="@(resolviendoLinkPin || string.IsNullOrWhiteSpace(editPinLink))">
+                                @(resolviendoLinkPin ? "…" : "📍 Usar link")
+                            </button>
+                        </div>
+                    </div>
                     <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center;">
                         @if (EditPinEsVenta)
                         {
@@ -4632,8 +4645,36 @@
     private decimal? editPinLat;
     private decimal? editPinLng;
     private string editPinDireccion = "";   // texto del domicilio (lo que sale en el comprobante), editable
+    private string editPinLink = "";        // 2026-08-13: link de Google Maps pegado (alternativa a buscar/arrastrar)
+    private bool resolviendoLinkPin;        // mientras el backend resuelve el link a coordenadas
     private bool EditPinEsVenta;
     private bool EditPinTieneUbicacion => editPinLat.HasValue && editPinLng.HasValue;
+
+    // 2026-08-13: el operador pega un link de Google Maps y el pin salta a esas coordenadas (queda
+    // pendiente; se guarda al elegir "Guardar en el cliente" o "Solo esta vez"). Reusa el resolvedor
+    // del backend que sabe seguir los links cortos maps.app.goo.gl.
+    private async Task PegarLinkEdicionPin()
+    {
+        if (editandoPinStopId is null || string.IsNullOrWhiteSpace(editPinLink) || resolviendoLinkPin) return;
+        resolviendoLinkPin = true;
+        StateHasChanged();
+        try
+        {
+            var r = await Api.ResolverMapeoLinkAsync(editPinLink.Trim());
+            if (r is null || !r.Ok)
+            {
+                ToastService.Error(r?.Mensaje ?? "No pude leer ese link. Copialo desde 'Compartir' en Google Maps.");
+                return;
+            }
+            editPinLat = (decimal)r.Lat;
+            editPinLng = (decimal)r.Lng;
+            await RenderMap(keepView: true);
+            try { await JS.InvokeVoidAsync("mapeoFlex.focusOn", r.Lat, r.Lng, 17); } catch { }
+            ToastService.Success("📍 Pin ubicado con el link. Ahora elegí cómo guardarlo.");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo resolver el link: " + ex.Message); }
+        finally { resolviendoLinkPin = false; StateHasChanged(); }
+    }
 
     private async Task IniciarEdicionPin(int stopId, string nombre)
     {
@@ -4644,6 +4685,7 @@
         editPinLat = tieneUbic ? st!.Latitude : (decimal?)null;
         editPinLng = tieneUbic ? st!.Longitude : (decimal?)null;
         editPinDireccion = st?.Direccion ?? "";   // precargamos el domicilio actual (como sale en el comprobante)
+        editPinLink = "";
         EditPinEsVenta = st?.Origin == "venta_cafe";
         // Salir de otros modos y dejar SOLO este pin arrastrable.
         corrigiendoDomicilioStopId = null; corrigiendoDomicilioNombre = null;
@@ -4659,7 +4701,7 @@
     {
         if (editandoPinStopId is int sid) paradasDesbloqueadas.Remove(sid);
         editandoPinStopId = null; editandoPinNombre = null;
-        editPinLat = null; editPinLng = null; editPinDireccion = "";
+        editPinLat = null; editPinLng = null; editPinDireccion = ""; editPinLink = "";
         EditPinEsVenta = false;
     }
 

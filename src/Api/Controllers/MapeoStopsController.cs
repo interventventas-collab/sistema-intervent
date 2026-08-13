@@ -320,6 +320,22 @@ public class MapeoStopsController : ControllerBase
         return Ok(Map(s));
     }
 
+    public record ResolverLinkRequest(string? Link);
+
+    /// <summary>2026-08-13: resuelve un link de Google Maps (incluido el corto maps.app.goo.gl) a
+    /// coordenadas, para el modo "Corregir ubicación" del mapa: el operador pega el link y el pin salta ahí.
+    /// No guarda nada; solo devuelve lat/lng para que después elija cómo guardarlo.</summary>
+    [HttpPost("resolver-link")]
+    public async Task<IActionResult> ResolverLink([FromBody] ResolverLinkRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req?.Link))
+            return Ok(new { ok = false, mensaje = "Pegá un link de Google Maps." });
+        var r = await _mapsResolver.TryResolverCoordenadasAsync(req.Link);
+        if (r is null)
+            return Ok(new { ok = false, mensaje = "No pude sacar la ubicación de ese link. Copiá el link desde 'Compartir' en Google Maps." });
+        return Ok(new { ok = true, lat = (double)r.Value.lat, lng = (double)r.Value.lng });
+    }
+
     public record ReorderRequest(int[] StopIds);
 
     /// <summary>

@@ -5211,6 +5211,12 @@ public class ApiClient
     public async Task<SumarAlMapaResult?> AgregarShipmentAlMapaAsync(int shipmentId, string? direccion = null, string? link = null)
         => await PostAsync<SumarAlMapaResult>("/api/mapeo/stops/from-shipment", new { shipmentId, direccion, link });
 
+    // 2026-08-13: resuelve un link de Google Maps (incluido el corto) a coordenadas, para el modo
+    // "Corregir ubicación" del mapa (pegás el link y el pin salta ahí).
+    public record ResolverLinkResult(bool Ok, double Lat, double Lng, string? Mensaje);
+    public async Task<ResolverLinkResult?> ResolverMapeoLinkAsync(string link)
+        => await PostAsync<ResolverLinkResult>("/api/mapeo/stops/resolver-link", new { link });
+
     // Limpia las paradas de días anteriores al abrir el mapa (lo de hoy se mantiene).
     public async Task ClearStaleMapeoStopsAsync()
     {
