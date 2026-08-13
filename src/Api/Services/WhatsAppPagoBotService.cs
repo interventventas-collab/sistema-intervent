@@ -47,8 +47,7 @@ public class WhatsAppPagoBotService
             // 2) ¿Escribió "PAGO"? → arrancar (solo números autorizados).
             if (texto.Equals("PAGO", StringComparison.OrdinalIgnoreCase))
             {
-                var aut = await _db.PagosMovilWaAutorizados.AsNoTracking()
-                    .FirstOrDefaultAsync(a => a.Activo && a.Numero == numero);
+                var aut = await BuscarAutorizadoAsync(numero);
                 if (aut is null)
                 {
                     _log.LogInformation("[BotPago] '{Num}' escribió PAGO pero no está autorizado", numero);
@@ -354,7 +353,7 @@ public class WhatsAppPagoBotService
             _ => valor
         };
 
-        var aut = await _db.PagosMovilWaAutorizados.AsNoTracking().FirstOrDefaultAsync(a => a.Activo && a.Numero == numero);
+        var aut = await BuscarAutorizadoAsync(numero);
         if (aut is null) { await LimpiarAsync(numero); await ResponderAsync(fromWaId, numero, "Tu número ya no está autorizado para cargar pagos.", lineaId); return true; }
 
         if (st.Tipo == "empleado")
@@ -498,6 +497,28 @@ public class WhatsAppPagoBotService
         var st = await _db.PagosMovilWaEstados.FirstOrDefaultAsync(x => x.Numero == numero);
         if (st is not null) { _db.PagosMovilWaEstados.Remove(st); await _db.SaveChangesAsync(); }
     }
+
+    /// <summary>Busca el número autorizado. Primero exacto; si no, tolerante por los ÚLTIMOS 10 dígitos
+    /// (así un número extranjero cargado sin el "+" — al que el sistema le pegó el "549" argentino de más —
+    /// igual coincide con el número real que llega del webhook). Ej: guardado "54934643013190" (mal) matchea
+    /// con el entrante "34643013190" porque comparten "4643013190".</summary>
+    private async Task<PagosMovilWaAutorizado?> BuscarAutorizadoAsync(string numero)
+    {
+        var activos = await _db.PagosMovilWaAutorizados.AsNoTracking().Where(a => a.Activo).ToListAsync();
+        var exacto = activos.FirstOrDefault(a => a.Numero == numero);
+        if (exacto is not null) return exacto;
+
+        var inDig = SoloDigitos(numero);
+        if (inDig.Length < 10) return null;
+        var cola = inDig[^10..];
+        return activos.FirstOrDefault(a =>
+        {
+            var d = SoloDigitos(a.Numero);
+            return d.Length >= 10 && d[^10..] == cola;
+        });
+    }
+
+    private static string SoloDigitos(string s) => new((s ?? "").Where(char.IsDigit).ToArray());
 
     private static readonly HashSet<string> Cancelar = new(StringComparer.OrdinalIgnoreCase)
     { "cancelar", "cancela", "salir", "chau", "chao", "no", "basta", "fin", "terminar" };
