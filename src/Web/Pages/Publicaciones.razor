@@ -4971,6 +4971,10 @@
     private CafeProductoDto? linkCafeSelected;
     private decimal linkCafeCantidad = 1;
     private bool savingLinkCafe;
+
+    // 2026-08-13: edición del SKU de la publicación en MeLi desde la ficha (siempre disponible).
+    private string skuEditValue = "";
+    private bool savingSku;
     private string linkComboSearch = "";
     private string linkSearchTerm = "";
 
@@ -6617,6 +6621,7 @@
         editListPriceFormatted = editListPrice > 0 ? FormatPrice(editListPrice) : "";
         editStock = item.AvailableQuantity;
         editStatus = item.Status;
+        skuEditValue = item.Sku ?? "";
         itemPromotions = null;
         isLoadingPromotions = false;
         showOtherCampaigns = false;
@@ -7046,14 +7051,21 @@
         }
     </text>;
 
+    // 2026-08-13: código del sistema mostrable (SKU cafe / combo / resumen de componentes / producto legacy).
+    private static string? CodigoSistema(MeliItemDto it)
+    {
+        if (!string.IsNullOrEmpty(it.CafeProductoSku)) return it.CafeProductoSku;
+        if (!string.IsNullOrEmpty(it.ComboSku)) return it.ComboSku;
+        if (it.ComponentMappingsCount > 0) return !string.IsNullOrEmpty(it.ComponentMappingsSummary) ? it.ComponentMappingsSummary : "vinculado";
+        if (it.ProductId.HasValue) return !string.IsNullOrEmpty(it.ProductTitle) ? it.ProductTitle : "producto";
+        return null;
+    }
+
     // 2026-08-13: Versión CHICA del resumen para la columna SKU de la lista.
     // Debajo del SKU de MeLi muestra un chip con el código del sistema y el color del semáforo.
     private RenderFragment MatchChip(MeliItemDto it) => @<text>
         @{
-            var codigo = !string.IsNullOrEmpty(it.CafeProductoSku) ? it.CafeProductoSku
-                : !string.IsNullOrEmpty(it.ComboSku) ? it.ComboSku
-                : it.ComponentMappingsCount > 0 ? "varios"
-                : it.ProductId.HasValue ? "producto" : null;
+            var codigo = CodigoSistema(it);
             var linked = it.TieneLinkeo;
             var faltaSku = linked && string.IsNullOrEmpty(it.Sku);
         }
@@ -7076,21 +7088,17 @@
     // con semáforo de estado (verde = vinculado, amarillo = falta el SKU en MeLi, gris = sin vincular).
     private RenderFragment MatchResumen(MeliItemDto it) => @<text>
         @{
-            var codigoSistema = !string.IsNullOrEmpty(it.CafeProductoSku) ? it.CafeProductoSku
-                : !string.IsNullOrEmpty(it.ComboSku) ? it.ComboSku
-                : it.ComponentMappingsCount > 0 ? "varios"
-                : it.ProductId.HasValue ? "producto"
-                : null;
+            var codigoSistema = CodigoSistema(it);
             var nombreSistema = !string.IsNullOrEmpty(it.CafeProductoNombre) ? it.CafeProductoNombre
                 : !string.IsNullOrEmpty(it.ComboName) ? it.ComboName
-                : it.ProductTitle;
+                : null;
             var skuMeli = it.Sku;
             var linked = it.TieneLinkeo;
             var faltaSku = linked && string.IsNullOrEmpty(skuMeli);
         }
         @if (!linked)
         {
-            <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; padding:0.6rem 0.8rem; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; margin-bottom:0.7rem;">
+            <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; padding:0.6rem 0.8rem; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; margin-bottom:0.5rem;">
                 <span style="font-size:0.85rem; color:#6b7280;">🔗 Sin vincular — esta publicación todavía no comparte stock.</span>
                 <button @onclick="() => OpenLinkCafeModal(it)"
                         style="margin-left:auto; padding:0.45rem 0.9rem; background:#2563eb; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer; font-size:0.85rem;">
@@ -7100,7 +7108,7 @@
         }
         else
         {
-            <div style="padding:0.6rem 0.8rem; background:#ffffff; border:1px solid @(faltaSku ? "#fde68a" : "#bbf7d0"); border-radius:8px; margin-bottom:0.7rem;">
+            <div style="padding:0.6rem 0.8rem; background:#ffffff; border:1px solid @(faltaSku ? "#fde68a" : "#bbf7d0"); border-radius:8px; margin-bottom:0.5rem;">
                 <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; font-size:0.85rem;">
                     <span style="color:#6b7280; text-transform:uppercase; font-size:0.7rem;">SKU MeLi</span>
                     @if (string.IsNullOrEmpty(skuMeli))
@@ -7127,12 +7135,31 @@
                 {
                     <div style="font-size:0.78rem; color:#374151; margin-top:0.35rem;">@nombreSistema</div>
                 }
-                @if (!string.IsNullOrEmpty(it.ComponentMappingsSummary))
-                {
-                    <div style="font-size:0.75rem; color:#6b7280; margin-top:0.2rem;">Cada venta descuenta: @it.ComponentMappingsSummary</div>
-                }
             </div>
         }
+
+        @* Acciones: cambiar el SKU en MeLi (siempre) + cambiar/desvincular producto (si está vinculada) *@
+        <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; padding:0.5rem 0.8rem; background:#f9fafb; border:1px solid #eef0f2; border-radius:8px; margin-bottom:0.7rem;">
+            <span style="font-size:0.72rem; color:#6b7280; text-transform:uppercase;">Código (SKU) en MeLi</span>
+            <input type="text" @bind="skuEditValue" @bind:event="oninput" placeholder="escribí un código"
+                   style="font-family:monospace; font-size:0.82rem; padding:0.3rem 0.5rem; border:1px solid #d1d5db; border-radius:6px; max-width:160px;" />
+            <button disabled="@savingSku" @onclick="() => GuardarSkuMeli(it)"
+                    style="padding:0.35rem 0.75rem; background:#0d9488; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer; font-size:0.8rem;">
+                @(savingSku ? "Guardando..." : "Guardar SKU")
+            </button>
+            @if (it.TieneLinkeo)
+            {
+                <span style="width:1px; height:20px; background:#e5e7eb; margin:0 0.2rem;"></span>
+                <button @onclick="() => CambiarProducto(it)"
+                        style="padding:0.35rem 0.75rem; background:white; color:#2563eb; border:1px solid #2563eb; border-radius:6px; font-weight:700; cursor:pointer; font-size:0.8rem;">
+                    Cambiar producto
+                </button>
+                <button @onclick="() => DesvincularTodo(it)"
+                        style="padding:0.35rem 0.75rem; background:white; color:#dc2626; border:1px solid #dc2626; border-radius:6px; font-weight:700; cursor:pointer; font-size:0.8rem;">
+                    Desvincular
+                </button>
+            }
+        </div>
     </text>;
 
     // 2026-07-18: chip con el TIPO de publicación (Clásica/Premium) + las cuotas. Visible en su propia
@@ -8739,6 +8766,70 @@
         finally { savingLinkCafe = false; }
     }
 
+    // 2026-08-13: poner/cambiar el SKU de la publicación en MeLi desde la ficha (siempre disponible).
+    private async Task GuardarSkuMeli(MeliItemDto it)
+    {
+        var sku = (skuEditValue ?? "").Trim();
+        if (string.IsNullOrEmpty(sku)) { ToastService.Error("Escribí un código (SKU) primero."); return; }
+        savingSku = true;
+        try
+        {
+            var nuevo = await Api.SetItemSkuAsync(it.MeliItemId, sku);
+            if (!string.IsNullOrEmpty(nuevo))
+            {
+                it.Sku = nuevo;
+                if (items is not null) { var idx = items.FindIndex(x => x.Id == it.Id); if (idx >= 0) items[idx].Sku = nuevo; }
+                if (selectedItem is not null && selectedItem.Id == it.Id) selectedItem.Sku = nuevo;
+                skuEditValue = nuevo;
+                InvalidateFilterCache();
+                ToastService.Success($"Le pusimos el código {nuevo} a la publicación en Mercado Libre");
+            }
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo cambiar el SKU: " + ex.Message); }
+        finally { savingSku = false; }
+    }
+
+    // 2026-08-13: limpia el estado de vínculo en un DTO local (para reflejar desvinculado sin recargar).
+    private static void LimpiarVinculoLocal(MeliItemDto x)
+    {
+        x.CafeProductoId = null; x.CafeProductoSku = null; x.CafeProductoNombre = null;
+        x.ComboId = null; x.ComboSku = null; x.ComboName = null;
+        x.ProductId = null; x.ProductTitle = null;
+        x.ComponentMappingsCount = 0; x.ComponentMappingsSummary = null;
+    }
+
+    private async Task DesvincularTodo(MeliItemDto it)
+    {
+        bool ok;
+        try { ok = await JS.InvokeAsync<bool>("confirm", "¿Seguro que querés desvincular esta publicación de tu producto? Va a dejar de compartir stock (no toca el stock que ya tiene en MeLi)."); }
+        catch { ok = false; }
+        if (!ok) return;
+        try
+        {
+            var done = await Api.UnlinkAllAsync(it.MeliItemId);
+            if (done)
+            {
+                LimpiarVinculoLocal(it);
+                if (items is not null) { var idx = items.FindIndex(x => x.Id == it.Id); if (idx >= 0) LimpiarVinculoLocal(items[idx]); }
+                if (selectedItem is not null && selectedItem.Id == it.Id) LimpiarVinculoLocal(selectedItem);
+                InvalidateFilterCache();
+                ToastService.Info("Publicación desvinculada.");
+            }
+            else ToastService.Error("No se pudo desvincular.");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo desvincular: " + ex.Message); }
+    }
+
+    private async Task CambiarProducto(MeliItemDto it)
+    {
+        // Desvincular lo actual y abrir el buscador para elegir uno nuevo.
+        try { await Api.UnlinkAllAsync(it.MeliItemId); } catch { }
+        LimpiarVinculoLocal(it);
+        if (items is not null) { var idx = items.FindIndex(x => x.Id == it.Id); if (idx >= 0) LimpiarVinculoLocal(items[idx]); }
+        if (selectedItem is not null && selectedItem.Id == it.Id) LimpiarVinculoLocal(selectedItem);
+        await OpenLinkCafeModal(it);
+    }
+
     private void OnLinkSearchInput(ChangeEventArgs e)
     {
         linkSearchTerm = e.Value?.ToString() ?? "";
@@ -8933,6 +9024,7 @@
                     if (idx >= 0) items[idx].Sku = nuevo;
                 }
                 if (selectedItem is not null && selectedItem.Id == item.Id) selectedItem.Sku = nuevo;
+                if (selectedItem is not null && selectedItem.Id == item.Id) skuEditValue = nuevo;
                 InvalidateFilterCache();
                 ToastService.Success($"Le pusimos el código {nuevo} a la publicación en Mercado Libre");
             }

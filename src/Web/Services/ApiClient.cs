@@ -320,6 +320,21 @@ public class ApiClient
         return resp?.AvailableQuantity;
     }
 
+    // 2026-08-13: poner/cambiar el SKU de una publicación en MeLi (esté o no vinculada). Devuelve el SKU aplicado.
+    public async Task<string?> SetItemSkuAsync(string meliItemId, string sku)
+    {
+        var resp = await PostAsync<SetSkuResultDto>($"/api/meli/items/{meliItemId}/set-sku", new { sku });
+        return resp?.Sku;
+    }
+
+    // 2026-08-13: desvincular COMPLETO una publicación (componentes + producto/combo/cafe directo).
+    public async Task<bool> UnlinkAllAsync(string meliItemId)
+    {
+        await SetAuthHeaderAsync();
+        var response = await _http.DeleteAsync($"/api/meli/items/{meliItemId}/link-all");
+        return response.IsSuccessStatusCode;
+    }
+
     public async Task<MeliItemDto?> UnlinkItemProductAsync(string meliItemId)
     {
         await SetAuthHeaderAsync();

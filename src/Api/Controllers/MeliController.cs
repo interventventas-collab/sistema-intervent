@@ -1262,6 +1262,66 @@ public class MeliController : ControllerBase
         }
     }
 
+    public record SetItemSkuRequest(string Sku);
+
+    // 2026-08-13: poner/cambiar el SKU de una publicación en MeLi cuando se quiera (esté o no vinculada).
+    // Escribe seller_custom_field + attributes[SELLER_SKU] y actualiza el SKU local.
+    [HttpPost("items/{meliItemId}/set-sku")]
+    public async Task<IActionResult> SetItemSku(string meliItemId, [FromBody] SetItemSkuRequest req,
+        [FromServices] Api.Data.AppDbContext _db,
+        [FromServices] Api.Services.MeliAccountService accountService,
+        [FromServices] IHttpClientFactory httpFactory)
+    {
+        if (string.IsNullOrWhiteSpace(req.Sku)) return BadRequest(new { error = "El SKU no puede estar vacío." });
+        var newSku = req.Sku.Trim().ToUpperInvariant();
+        var rows = await _db.MeliItems.Include(i => i.MeliAccount).Where(i => i.MeliItemId == meliItemId).ToListAsync();
+        if (rows.Count == 0) return NotFound(new { error = "Publicación no encontrada" });
+        var item = rows.First();
+        if (item.MeliAccount is null) return BadRequest(new { error = "La publicación no tiene cuenta MeLi asociada" });
+        var token = await accountService.GetValidTokenAsync(item.MeliAccount);
+        if (token is null) return BadRequest(new { error = "No se pudo obtener token de MeLi" });
+
+        var http = httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        var payload = new { seller_custom_field = newSku, attributes = new[] { new { id = "SELLER_SKU", value_name = newSku } } };
+        var json = System.Text.Json.JsonSerializer.Serialize(payload);
+        var content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json");
+        var resp = await http.PutAsync($"https://api.mercadolibre.com/items/{meliItemId}", content);
+        if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized || resp.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            var newTok = await accountService.GetValidTokenAsync(item.MeliAccount, forceRefresh: true);
+            if (newTok is not null)
+            {
+                http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", newTok);
+                content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                resp = await http.PutAsync($"https://api.mercadolibre.com/items/{meliItemId}", content);
+            }
+        }
+        if (!resp.IsSuccessStatusCode)
+        {
+            var body = await resp.Content.ReadAsStringAsync();
+            return BadRequest(new { error = $"MeLi rechazó el cambio (http {(int)resp.StatusCode}): {body.Substring(0, Math.Min(body.Length, 200))}" });
+        }
+        foreach (var r in rows) { r.Sku = newSku; r.UpdatedAt = DateTime.UtcNow; }
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, sku = newSku });
+    }
+
+    // 2026-08-13: desvincular COMPLETO una publicación (borra componentes + limpia Producto/Combo/CafeProducto directo).
+    // NO re-pushea stock: desvincular no debe tocar el stock que ya tiene la publicación en MeLi.
+    [HttpDelete("items/{meliItemId}/link-all")]
+    public async Task<IActionResult> UnlinkAll(string meliItemId,
+        [FromServices] Api.Data.AppDbContext _db)
+    {
+        var rows = await _db.MeliItems.Where(i => i.MeliItemId == meliItemId).ToListAsync();
+        if (rows.Count == 0) return NotFound(new { error = "Publicación no encontrada" });
+        var comps = await _db.MeliItemComponentes.Where(c => c.MeliItemId == meliItemId).ToListAsync();
+        if (comps.Count > 0) _db.MeliItemComponentes.RemoveRange(comps);
+        foreach (var r in rows) { r.ProductId = null; r.ComboId = null; r.CafeProductoId = null; r.UpdatedAt = DateTime.UtcNow; }
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
     [HttpPost("items/bulk-delete")]
     public async Task<IActionResult> BulkDeleteItems([FromBody] BulkDeleteRequest request)
     {
