@@ -164,9 +164,11 @@ public class AvisoVentanaBackgroundService : BackgroundService
                 var aEnviar = pendientes.Min(); // el más urgente
 
                 var lineaMostrar = c.Linea != null && lineaLabel.TryGetValue(c.Linea, out var ll) ? ll : "WhatsApp";
+                // {tiempo} = el tiempo REAL que queda en la ventana (no el umbral). Así nunca dice
+                // "12 horas" cuando en verdad quedan 2h. Redondeado a 5 min para que quede prolijo.
                 var texto = regla.Mensaje
                     .Replace("{cliente}", NombreCliente(c))
-                    .Replace("{tiempo}", Humanizar(aEnviar))
+                    .Replace("{tiempo}", TiempoLindo(minutosRestan))
                     .Replace("{linea}", lineaMostrar);
 
                 try
@@ -286,6 +288,15 @@ public class AvisoVentanaBackgroundService : BackgroundService
 
     /// <summary>Deja solo dígitos (para comparar números escritos con o sin +, espacios, etc.).</summary>
     private static string SoloDigitos(string? s) => new string((s ?? "").Where(char.IsDigit).ToArray());
+
+    /// <summary>Tiempo REAL restante, redondeado a 5 min para que quede prolijo (ej 358→"6 horas",
+    /// 132→"2h 10min", 12→"10 minutos"). Nunca baja de 1 min.</summary>
+    private static string TiempoLindo(int min)
+    {
+        var m = (int)Math.Round(min / 5.0) * 5;
+        if (m < 5) m = Math.Max(1, min);
+        return Humanizar(m);
+    }
 
     /// <summary>Convierte minutos a un texto lindo: 720→"12 horas", 60→"1 hora", 15→"15 minutos".</summary>
     private static string Humanizar(int min)
