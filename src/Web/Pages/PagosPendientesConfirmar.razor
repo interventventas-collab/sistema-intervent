@@ -44,6 +44,14 @@
     .pp-mbtn-rech { background: #dc2626; color: white; }
     .pp-detail-row { background: #f9fafb; }
     .pp-detail-row td { padding: 0.5rem 1rem; font-size: 0.85rem; color: #374151; }
+    .pp-hint { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; border-radius: 10px; padding: 0.7rem 0.9rem; font-size: 0.85rem; margin-bottom: 1rem; line-height: 1.45; }
+    .pp-wa-list { list-style: none; padding: 0; margin: 0.5rem 0 0; }
+    .pp-wa-item { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.55rem 0.2rem; border-top: 1px solid #f3f4f6; }
+    .pp-wa-item:first-child { border-top: none; }
+    .pp-wa-num { font-size: 0.78rem; color: #6b7280; }
+    .pp-wa-del { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; border-radius: 6px; padding: 0.25rem 0.55rem; font-size: 0.8rem; cursor: pointer; }
+    .pp-wa-add { display: flex; gap: 0.4rem; margin-top: 0.8rem; flex-wrap: wrap; }
+    .pp-wa-add input { flex: 1; min-width: 120px; padding: 0.55rem; border: 1.5px solid #d1d5db; border-radius: 8px; font-size: 0.9rem; box-sizing: border-box; }
 </style>
 
 <div class="pp-wrap">
@@ -58,7 +66,16 @@
                 }
             </div>
         </div>
-        <button class="pp-action pp-act-conf" @onclick="CargarTodo">🔄 Refrescar</button>
+        <div style="display:flex; gap:0.4rem;">
+            <button class="pp-action pp-act-edit" @onclick="AbrirWaAutorizados">📱 Cargar por WhatsApp</button>
+            <button class="pp-action pp-act-conf" @onclick="CargarTodo">🔄 Refrescar</button>
+        </div>
+    </div>
+
+    <div class="pp-hint">
+        💡 Los números habilitados pueden cargar un pago escribiéndole <strong>PAGO</strong> al WhatsApp de la empresa.
+        El bot les pregunta empleado/proveedor, a quién, cuánto y cómo, y el pago cae acá como <strong>pendiente</strong> para confirmar.
+        Tocá <strong>“📱 Cargar por WhatsApp”</strong> para ver o cambiar quiénes pueden.
     </div>
 
     @if (cargando) { <div class="pp-empty">Cargando…</div> }
@@ -229,6 +246,49 @@
     </div>
 }
 
+@* ===== Modal: números autorizados a cargar por WhatsApp ===== *@
+@if (modalWa)
+{
+    <div class="pp-modal-bg" @onclick="@(() => modalWa = false)">
+        <div class="pp-modal" @onclick:stopPropagation="true">
+            <h3>📱 Cargar un pago por WhatsApp</h3>
+            <p style="font-size:0.88rem; color:#374151; margin:0 0 0.3rem;">
+                Estos números pueden escribir <strong>PAGO</strong> al WhatsApp de la empresa y cargar un pago (queda pendiente para confirmar acá). Cualquier otro número que escriba PAGO se ignora.
+            </p>
+
+            @if (waCargando) { <p style="color:#6b7280;">Cargando…</p> }
+            else if (waList.Count == 0) { <p style="color:#6b7280; font-size:0.9rem;">Todavía no hay ningún número habilitado.</p> }
+            else
+            {
+                <ul class="pp-wa-list">
+                    @foreach (var a in waList)
+                    {
+                        <li class="pp-wa-item">
+                            <div>
+                                <div style="font-weight:600;">@a.Nombre</div>
+                                <div class="pp-wa-num">@a.Numero.Replace("whatsapp:", "")</div>
+                            </div>
+                            <button class="pp-wa-del" disabled="@waProcesando" @onclick="@(() => BorrarWa(a))">Quitar</button>
+                        </li>
+                    }
+                </ul>
+            }
+
+            <div class="pp-wa-add">
+                <input placeholder="Nombre (ej: Osmar)" value="@waNuevoNombre" @oninput="@(e => waNuevoNombre = e.Value?.ToString() ?? "")" />
+                <input placeholder="Número (ej: 11 5048 1068)" value="@waNuevoNumero" @oninput="@(e => waNuevoNumero = e.Value?.ToString() ?? "")" />
+                <button class="pp-mbtn pp-mbtn-ok" disabled="@waProcesando" @onclick="AgregarWa">
+                    @(waProcesando ? "…" : "+ Agregar")
+                </button>
+            </div>
+
+            <div class="pp-mbtns">
+                <button class="pp-mbtn pp-mbtn-cancel" @onclick="@(() => modalWa = false)">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     List<PendienteListDto> pendientes = new();
     List<CafeCajaDto> cajas = new();
@@ -251,6 +311,54 @@
     string editNotas = "";
 
     bool CanConfirmar => modalConfirmar is not null && (modalConfirmar.Tipo == "empleado" || modalCajaId > 0);
+
+    // Números autorizados a cargar por WhatsApp
+    bool modalWa = false;
+    bool waCargando = false;
+    bool waProcesando = false;
+    List<WaAutorizadoDto> waList = new();
+    string waNuevoNombre = "";
+    string waNuevoNumero = "";
+
+    async Task AbrirWaAutorizados()
+    {
+        modalWa = true;
+        waCargando = true;
+        waList = await Api.GetPagosWaAutorizadosAsync() ?? new();
+        waCargando = false;
+    }
+
+    async Task AgregarWa()
+    {
+        if (string.IsNullOrWhiteSpace(waNuevoNombre) || string.IsNullOrWhiteSpace(waNuevoNumero))
+        {
+            Toast.Error("Completá nombre y número.");
+            return;
+        }
+        waProcesando = true;
+        var ok = await Api.AgregarPagoWaAutorizadoAsync(waNuevoNumero.Trim(), waNuevoNombre.Trim());
+        waProcesando = false;
+        if (ok)
+        {
+            Toast.Success("Número habilitado.");
+            waNuevoNombre = ""; waNuevoNumero = "";
+            waList = await Api.GetPagosWaAutorizadosAsync() ?? new();
+        }
+        else Toast.Error("No se pudo agregar (revisá el número).");
+    }
+
+    async Task BorrarWa(WaAutorizadoDto a)
+    {
+        waProcesando = true;
+        var ok = await Api.BorrarPagoWaAutorizadoAsync(a.Id);
+        waProcesando = false;
+        if (ok)
+        {
+            Toast.Success($"Quité a {a.Nombre}.");
+            waList = await Api.GetPagosWaAutorizadosAsync() ?? new();
+        }
+        else Toast.Error("No se pudo quitar.");
+    }
 
     protected override async Task OnInitializedAsync()
     {

@@ -28,6 +28,9 @@ public record PendienteDetalleDto(
     List<PendienteComprobanteDetalleDto> Comprobantes);
 public record PendienteComprobanteDetalleDto(int CompraId, string? CompraNumero, decimal Importe);
 
+// 2026-08-13: numeros de WhatsApp habilitados para cargar pagos escribiendo "PAGO"
+public record WaAutorizadoDto(int Id, string Numero, string Nombre, bool Activo);
+
 public record ConfirmarPagoMovilRequest(int? CajaId, DateTime? FechaPago);
 public record RechazarPagoMovilRequest(string? Motivo);
 public record EditarPagoMovilRequest(string? Concepto, decimal? Monto, string? MedioPago, string? Notas, List<PrecargarFacturaItem>? Comprobantes);

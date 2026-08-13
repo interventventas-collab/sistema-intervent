@@ -6112,6 +6112,13 @@ public class ApiClient
             new { motivo }) is not null;
     public async Task<bool> EditarPagoMovilAsync(int id, EditarPagoMovilRequest req)
         => await PutAsync<object>($"/api/pagos-movil/pendientes/{id}", req) is not null;
+    // 2026-08-13: numeros autorizados a cargar pagos escribiendo "PAGO" por WhatsApp
+    public async Task<List<WaAutorizadoDto>?> GetPagosWaAutorizadosAsync()
+        => await GetAsync<List<WaAutorizadoDto>>("/api/pagos-movil/wa-autorizados");
+    public async Task<bool> AgregarPagoWaAutorizadoAsync(string numero, string nombre)
+        => await PostAsync<object>("/api/pagos-movil/wa-autorizados", new { numero, nombre }) is not null;
+    public async Task<bool> BorrarPagoWaAutorizadoAsync(int id)
+        => await DeleteAsync($"/api/pagos-movil/wa-autorizados/{id}");
     private record CountResult(int Count);
 
     // ===== Cafe: Depositos =====
