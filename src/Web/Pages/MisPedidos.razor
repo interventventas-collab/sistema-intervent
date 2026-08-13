@@ -1638,10 +1638,11 @@
     }
 
     // ============================================================================
-    // 2026-06-11: Chips de contacto + ubicacion (estilo Mapeo Flex) + captura GPS
+    // 2026-06-11: Chips de contacto + ubicacion (estilo Mapeo Flex)
+    // 2026-08-13: el repartidor ya NO carga ni modifica la ubicacion; solo AVISA que esta mal.
     // ============================================================================
-    private HashSet<int> ubicGuardadaIds = new(); // ClienteIds que acaban de guardar ubicacion en esta sesion
-    private HashSet<int> ubicEnProcesoIds = new(); // mientras pide GPS al browser
+    private HashSet<int> ubicReportadaIds = new(); // ClienteIds que el repartidor reporto como mal en esta sesion
+    private HashSet<int> ubicEnProcesoIds = new(); // mientras manda el aviso
 
     private string? PhoneDigits(string? tel)
     {
@@ -1729,7 +1730,6 @@
         var phone = PhoneDigits(p.ClienteTelefono);
         var tieneCoords = p.ClienteLat.HasValue && p.ClienteLng.HasValue;
         var tieneUbic = TieneUbicacionCargada(p);
-        var puedeCapturar = p.ClienteId.HasValue && !tieneUbic && !ubicGuardadaIds.Contains(p.ClienteId.Value);
 
         <div style="display:flex; flex-wrap:wrap; gap:0.4rem; margin:0.4rem 0 0.2rem;">
             @if (phone is not null)
@@ -1771,97 +1771,38 @@
                         🧭 Waze
                     </a>
                 }
-                @if (tieneUbic && p.ClienteId.HasValue && !ubicGuardadaIds.Contains(p.ClienteId.Value))
+                @if (tieneUbic && p.ClienteId.HasValue && !ubicReportadaIds.Contains(p.ClienteId.Value))
                 {
-                    @* Botón discreto para reportar error *@
+                    @* Botón discreto para AVISAR que la ubicación está mal (la corrige la oficina) *@
                     <button type="button"
                             disabled="@ubicEnProcesoIds.Contains(p.ClienteId!.Value)"
                             @onclick="() => ReportarErrorUbicacion(p)"
                             style="background:transparent; border:1px solid #fecaca; color:#b91c1c; padding:0.25rem 0.5rem; border-radius:6px; font-size:0.72rem; font-weight:600; cursor:pointer;"
-                            title="Si Maps te llevó al lugar equivocado, tocá acá para corregirlo">
+                            title="Si Maps te llevó al lugar equivocado, tocá acá para avisarle a la oficina">
                         ⚠ Reportar ubicación errónea
                     </button>
                 }
             }
         </div>
-        @if (puedeCapturar)
-        {
-            <div style="margin:0.3rem 0 0.2rem; padding:0.5rem 0.6rem; background:#fffbeb; border:1px dashed #f59e0b; border-radius:8px;">
-                <div style="font-size:0.75rem; color:#92400e; margin-bottom:0.3rem; line-height:1.3;">
-                    📍 Este cliente todavía no tiene ubicación guardada.
-                </div>
-                <button type="button"
-                        disabled="@ubicEnProcesoIds.Contains(p.ClienteId!.Value)"
-                        @onclick="() => CapturarUbicacion(p)"
-                        style="width:100%; padding:0.55rem; background:#f59e0b; color:white; border:none; border-radius:6px; font-weight:700; font-size:0.85rem; cursor:pointer;">
-                    @(ubicEnProcesoIds.Contains(p.ClienteId.Value)
-                        ? "📍 Pidiendo GPS..."
-                        : "📍 Guardar mi ubicación, así la próxima entrega ya aparece el enlace de Maps")
-                </button>
-            </div>
-        }
-        else if (p.ClienteId.HasValue && ubicGuardadaIds.Contains(p.ClienteId.Value))
+        @if (p.ClienteId.HasValue && ubicReportadaIds.Contains(p.ClienteId.Value))
         {
             <div style="margin:0.3rem 0 0.2rem; padding:0.4rem 0.6rem; background:#ecfdf5; border-left:3px solid #10b981; border-radius:4px; font-size:0.78rem; color:#065f46;">
-                ✅ Ubicación guardada. La próxima entrega ya va a tener el enlace de Maps.
+                ✅ Le avisamos a la oficina. Van a corregir la ubicación desde el sistema.
+            </div>
+        }
+        else if (p.ClienteId.HasValue && !tieneUbic)
+        {
+            <div style="margin:0.3rem 0 0.2rem; padding:0.4rem 0.6rem; background:#f9fafb; border-left:3px solid #9ca3af; border-radius:4px; font-size:0.78rem; color:#4b5563;">
+                📍 Este cliente todavía no tiene ubicación. La oficina la va a cargar desde el sistema.
             </div>
         }
     };
 
-    public record CapturarUbicacionRequest(decimal Lat, decimal Lng);
-    public record CapturarUbicacionResp(bool Ok, bool YaExistia, string? Mensaje, string? Error);
     public record ReportarErrorUbicacionRequest(decimal? Lat, decimal? Lng);
-    public record ReportarErrorUbicacionResp(bool Ok, bool Reemplazado, string? Mensaje, string? Error);
 
-    private async Task CapturarUbicacion(PedidoDto p)
-    {
-        if (!p.ClienteId.HasValue) return;
-        var cid = p.ClienteId.Value;
-        if (ubicEnProcesoIds.Contains(cid)) return;
-        ubicEnProcesoIds.Add(cid);
-        StateHasChanged();
-
-        try
-        {
-            // Pedir GPS al browser via JS interop
-            var coords = await JS.InvokeAsync<double[]?>("mpGetGeolocation");
-            if (coords is null || coords.Length < 2)
-            {
-                MostrarToast("No pude obtener tu ubicación. Asegurate de dar permiso al navegador.", error: true);
-                return;
-            }
-            var lat = (decimal)coords[0];
-            var lng = (decimal)coords[1];
-
-            var resp = await Http.PostAsJsonAsync(
-                $"api/cafe/repartidor-public/mis-pedidos/{Token}/cliente/{cid}/capturar-ubicacion",
-                new CapturarUbicacionRequest(lat, lng));
-
-            if (resp.IsSuccessStatusCode)
-            {
-                var body = await resp.Content.ReadFromJsonAsync<CapturarUbicacionResp>();
-                ubicGuardadaIds.Add(cid);
-                MostrarToast(body?.Mensaje ?? "✓ Ubicación guardada", error: false);
-            }
-            else
-            {
-                MostrarToast("No se pudo guardar la ubicación. Probá de nuevo.", error: true);
-            }
-        }
-        catch (Exception ex)
-        {
-            MostrarToast("Error: " + ex.Message, error: true);
-        }
-        finally
-        {
-            ubicEnProcesoIds.Remove(cid);
-            StateHasChanged();
-        }
-    }
-
-    /// <summary>2026-06-11: el repartidor avisa que la ubicación guardada está mal.
-    /// Intenta capturar el GPS actual y reemplaza. Si no hay GPS, ofrece borrar la
-    /// vieja para que Osmar la corrija manualmente desde la ficha del cliente.</summary>
+    /// <summary>2026-08-13: el repartidor SOLO AVISA que la ubicación está mal. Ya NO toma el GPS
+    /// ni cambia/borra la ubicación (eso no funcionaba en la calle). El aviso le llega a la oficina
+    /// (campanita/Telegram/WhatsApp) y ellos la corrigen desde el sistema al armar la ruta.</summary>
     private async Task ReportarErrorUbicacion(PedidoDto p)
     {
         if (!p.ClienteId.HasValue) return;
@@ -1869,9 +1810,8 @@
         if (ubicEnProcesoIds.Contains(cid)) return;
 
         var confirm = await JS.InvokeAsync<bool>("confirm",
-            "La ubicación guardada de este cliente está mal.\n\n" +
-            "Voy a intentar tomar tu GPS actual para reemplazarla.\n\n" +
-            "¿Estás parado en la dirección correcta?");
+            "¿Avisar a la oficina que la ubicación de este cliente está mal?\n\n" +
+            "Ellos la van a corregir desde el sistema. Vos no tenés que cargar nada.");
         if (!confirm) return;
 
         ubicEnProcesoIds.Add(cid);
@@ -1879,48 +1819,18 @@
 
         try
         {
-            var coords = await JS.InvokeAsync<double[]?>("mpGetGeolocation");
-
-            if (coords is not null && coords.Length >= 2)
+            // Solo aviso: no mandamos GPS (Lat/Lng en null). El backend NO toca la ubicación guardada.
+            var req = new ReportarErrorUbicacionRequest(null, null);
+            var resp = await Http.PostAsJsonAsync(
+                $"api/cafe/repartidor-public/mis-pedidos/{Token}/cliente/{cid}/reportar-error-ubicacion", req);
+            if (resp.IsSuccessStatusCode)
             {
-                // Reemplazo con coords nuevas
-                var req = new ReportarErrorUbicacionRequest((decimal)coords[0], (decimal)coords[1]);
-                var resp = await Http.PostAsJsonAsync(
-                    $"api/cafe/repartidor-public/mis-pedidos/{Token}/cliente/{cid}/reportar-error-ubicacion", req);
-                if (resp.IsSuccessStatusCode)
-                {
-                    var body = await resp.Content.ReadFromJsonAsync<ReportarErrorUbicacionResp>();
-                    ubicGuardadaIds.Add(cid);
-                    MostrarToast(body?.Mensaje ?? "✓ Ubicación corregida", error: false);
-                }
-                else
-                {
-                    MostrarToast("No se pudo corregir la ubicación. Probá de nuevo.", error: true);
-                }
+                ubicReportadaIds.Add(cid);
+                MostrarToast("✓ Listo, avisamos a la oficina. Van a corregir la ubicación.", error: false);
             }
             else
             {
-                // No conseguimos GPS — preguntar si quiere sólo borrarla
-                var soloBorrar = await JS.InvokeAsync<bool>("confirm",
-                    "No pude obtener tu GPS (¿permiso del navegador?).\n\n" +
-                    "¿Querés borrar la ubicación guardada igual, para que Osmar la corrija desde la ficha?");
-                if (soloBorrar)
-                {
-                    var req = new ReportarErrorUbicacionRequest(null, null);
-                    var resp = await Http.PostAsJsonAsync(
-                        $"api/cafe/repartidor-public/mis-pedidos/{Token}/cliente/{cid}/reportar-error-ubicacion", req);
-                    if (resp.IsSuccessStatusCode)
-                    {
-                        // Marcamos como "guardada" para ocultar el botón en esta sesión (la próxima recarga
-                        // va a ver que no tiene ubicación y mostrará "Guardar mi ubicación")
-                        ubicGuardadaIds.Add(cid);
-                        MostrarToast("✓ Ubicación borrada — el admin la va a corregir", error: false);
-                    }
-                    else
-                    {
-                        MostrarToast("No se pudo borrar. Probá de nuevo.", error: true);
-                    }
-                }
+                MostrarToast("No se pudo enviar el aviso. Probá de nuevo.", error: true);
             }
         }
         catch (Exception ex)
