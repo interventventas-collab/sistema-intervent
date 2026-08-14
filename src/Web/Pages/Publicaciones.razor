@@ -3973,18 +3973,21 @@
                 else if (linkCafeSelected is null)
                 {
                     <div class="form-group">
-                        <label class="form-label">Buscá tu producto (por nombre o código)</label>
-                        <input type="text" class="form-input" placeholder="Escribí para filtrar..." @oninput="OnLinkCafeSearchInput" />
+                        <label class="form-label">Buscá tu producto (por nombre o código) — usá ↑ ↓ y Enter</label>
+                        <input type="text" class="form-input" placeholder="Escribí para filtrar..." autofocus
+                               value="@linkCafeSearch" @oninput="OnLinkCafeSearchInput" @onkeydown="OnLinkCafeKeyDown" />
                     </div>
                     <div class="link-product-list">
-                        @foreach (var p in GetFilteredCafeProductos())
+                        @{ var _cafeList = GetFilteredCafeProductos(); var _ci = 0; }
+                        @foreach (var p in _cafeList)
                         {
-                            <button class="link-product-option" @onclick="() => SelectCafeProducto(p)">
-                                <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
-                                    <span class="link-product-title">@Truncate(p.Nombre, 40)</span>
+                            var _idx = _ci++;
+                            <button class="link-product-option @(_idx == linkCafeHighlight ? "link-product-highlighted" : "")" @onclick="() => SelectCafeProducto(p)">
+                                <div style="display:flex; justify-content:space-between; align-items:flex-start; width:100%; gap:8px;">
+                                    <span class="link-product-title" style="white-space:normal; word-break:break-word; line-height:1.25;">@p.Nombre</span>
                                     @if (!string.IsNullOrEmpty(p.Sku))
                                     {
-                                        <span class="link-product-sku">@p.Sku</span>
+                                        <span class="link-product-sku" style="flex-shrink:0;">@p.Sku</span>
                                     }
                                 </div>
                                 <div style="display:flex; justify-content:space-between; width:100%;">
@@ -3992,7 +3995,7 @@
                                 </div>
                             </button>
                         }
-                        @if (!GetFilteredCafeProductos().Any())
+                        @if (!_cafeList.Any())
                         {
                             <p class="text-muted" style="padding:0.5rem;">No encontré productos con ese texto.</p>
                         }
@@ -4971,6 +4974,7 @@
     private CafeProductoDto? linkCafeSelected;
     private decimal linkCafeCantidad = 1;
     private bool savingLinkCafe;
+    private int linkCafeHighlight = 0; // 2026-08-13: fila resaltada para navegar con flechas + Enter
 
     // 2026-08-13: edición del SKU de la publicación en MeLi desde la ficha (siempre disponible).
     private string skuEditValue = "";
@@ -8691,6 +8695,7 @@
         linkCafeSearch = "";
         linkCafeSelected = null;
         linkCafeCantidad = 1;
+        linkCafeHighlight = 0;
         allCafeProductos ??= await Api.GetCafeProductosAsync("OTROS");
         showLinkCafeModal = true;
     }
@@ -8702,16 +8707,48 @@
         linkCafeSelected = null;
     }
 
-    private void OnLinkCafeSearchInput(ChangeEventArgs e) => linkCafeSearch = e.Value?.ToString() ?? "";
+    private void OnLinkCafeSearchInput(ChangeEventArgs e)
+    {
+        linkCafeSearch = e.Value?.ToString() ?? "";
+        linkCafeHighlight = 0; // al cambiar la búsqueda, volver arriba
+    }
 
+    // 2026-08-13: flechas ↑↓ para moverse y Enter para elegir el producto resaltado.
+    private void OnLinkCafeKeyDown(KeyboardEventArgs e)
+    {
+        var list = GetFilteredCafeProductos();
+        if (list.Count == 0) return;
+        if (e.Key == "ArrowDown") linkCafeHighlight = Math.Min(linkCafeHighlight + 1, list.Count - 1);
+        else if (e.Key == "ArrowUp") linkCafeHighlight = Math.Max(linkCafeHighlight - 1, 0);
+        else if (e.Key == "Enter" && linkCafeHighlight >= 0 && linkCafeHighlight < list.Count) SelectCafeProducto(list[linkCafeHighlight]);
+    }
+
+    // 2026-08-13: búsqueda mejorada. Acepta varias palabras (todas deben aparecer en nombre o SKU)
+    // y ordena por relevancia: SKU exacto → SKU empieza con → SKU contiene → nombre. Así el código
+    // exacto queda primero y abajo aparecen los similares.
     private List<CafeProductoDto> GetFilteredCafeProductos()
     {
         if (allCafeProductos is null) return new();
         var s = linkCafeSearch.Trim().ToLowerInvariant();
-        IEnumerable<CafeProductoDto> list = allCafeProductos;
-        if (!string.IsNullOrEmpty(s))
-            list = list.Where(p => (p.Nombre ?? "").ToLowerInvariant().Contains(s) || (p.Sku ?? "").ToLowerInvariant().Contains(s));
-        return list.Take(60).ToList();
+        if (string.IsNullOrEmpty(s)) return allCafeProductos.Take(60).ToList();
+        var terms = s.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var matches = allCafeProductos.Where(p =>
+        {
+            var nombre = (p.Nombre ?? "").ToLowerInvariant();
+            var sku = (p.Sku ?? "").ToLowerInvariant();
+            return terms.All(t => nombre.Contains(t) || sku.Contains(t));
+        });
+        int Score(CafeProductoDto p)
+        {
+            var sku = (p.Sku ?? "").ToLowerInvariant();
+            var nombre = (p.Nombre ?? "").ToLowerInvariant();
+            if (sku == s) return 0;
+            if (sku.StartsWith(s)) return 1;
+            if (sku.Contains(s)) return 2;
+            if (nombre.StartsWith(s)) return 3;
+            return 4;
+        }
+        return matches.OrderBy(Score).ThenBy(p => p.Nombre).Take(60).ToList();
     }
 
     private void SelectCafeProducto(CafeProductoDto p)
