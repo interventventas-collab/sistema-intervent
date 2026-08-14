@@ -1324,15 +1324,25 @@
                 }
                 else
                 {
-                    <input class="form-control form-control-sm" placeholder="Buscar cliente..." @bind="quickContactClienteQuery" @bind:event="oninput" @onfocus="BuscarClientesQuick" />
+                    <input class="form-control form-control-sm" placeholder="Escribí nombre, teléfono, CUIT, dirección…" @bind="quickContactClienteQuery" @bind:event="oninput" @onkeyup="BuscarClientesQuick" @onfocus="BuscarClientesQuick" autocomplete="off" />
+                    @if (clienteBuscandoQuick)
+                    {
+                        <div style="padding:0.35rem 0.2rem; color:#9ca3af; font-size:0.8rem;">Buscando…</div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(quickContactClienteQuery) && clienteResultadosQuick.Count == 0)
+                    {
+                        <div style="padding:0.35rem 0.2rem; color:#9ca3af; font-size:0.8rem;">Sin resultados. Probá con otro dato.</div>
+                    }
                     @if (clienteResultadosQuick.Count > 0)
                     {
-                        <div class="wa-cliente-dropdown" style="position:absolute; top:100%; left:0; right:0;">
-                            @foreach (var cli in clienteResultadosQuick.Take(8))
+                        <div class="wa-cliente-dropdown" style="position:absolute; top:100%; left:0; right:0; max-height:240px; overflow-y:auto; z-index:20;">
+                            @foreach (var cli in clienteResultadosQuick.Take(12))
                             {
                                 <div class="wa-cliente-opt" @onclick="() => SeleccionarClienteQuick(cli)">
                                     <strong>@cli.Nombre</strong>
                                     @if (!string.IsNullOrEmpty(cli.CodigoInterno)) { <span style="color:#6b7280; font-size:0.7rem;"> · #@cli.CodigoInterno</span> }
+                                    @if (!string.IsNullOrEmpty(cli.Telefono)) { <span style="color:#9ca3af; font-size:0.7rem;"> · 📞 @cli.Telefono</span> }
+                                    @if (!string.IsNullOrEmpty(cli.Localidad)) { <div style="color:#9ca3af; font-size:0.7rem;">📍 @cli.Localidad</div> }
                                 </div>
                             }
                         </div>
@@ -2629,6 +2639,8 @@
     int? quickContactClienteId = null;
     string? quickContactClienteNombre = null;
     string quickContactClienteQuery = "";
+    bool clienteBuscandoQuick = false;
+    CancellationTokenSource? _quickClienteCts;
     List<ApiClient.TwClienteBuscarDto> clienteResultadosQuick = new();
 
     bool EstaEnContactos(string? numero)
@@ -2650,6 +2662,8 @@
         quickContactClienteNombre = null;
         quickContactClienteQuery = "";
         clienteResultadosQuick = new();
+        clienteBuscandoQuick = false;
+        _quickClienteCts?.Cancel();
         showQuickContact = true;
     }
 
@@ -2674,6 +2688,8 @@
         quickContactClienteNombre = cont.ClienteNombre;
         quickContactClienteQuery = "";
         clienteResultadosQuick = new();
+        clienteBuscandoQuick = false;
+        _quickClienteCts?.Cancel();
         showQuickContact = true;
     }
 
@@ -2711,8 +2727,21 @@
 
     async Task BuscarClientesQuick()
     {
-        try { clienteResultadosQuick = await Api.BuscarTwClientesAsync(quickContactClienteQuery ?? ""); }
+        var q = (quickContactClienteQuery ?? "").Trim();
+        _quickClienteCts?.Cancel();
+        if (q.Length < 1) { clienteResultadosQuick = new(); clienteBuscandoQuick = false; return; }
+        var cts = _quickClienteCts = new CancellationTokenSource();
+        clienteBuscandoQuick = true;
+        try
+        {
+            await Task.Delay(200, cts.Token); // debounce: esperar a que deje de tipear
+            var res = await Api.BuscarTwClientesAsync(q);
+            if (cts.Token.IsCancellationRequested) return;
+            clienteResultadosQuick = res;
+        }
+        catch (TaskCanceledException) { return; }
         catch { clienteResultadosQuick = new(); }
+        finally { if (!cts.Token.IsCancellationRequested) { clienteBuscandoQuick = false; StateHasChanged(); } }
     }
 
     void SeleccionarClienteQuick(ApiClient.TwClienteBuscarDto cli)
@@ -3444,6 +3473,8 @@
         quickContactClienteNombre = null;
         quickContactClienteQuery = "";
         clienteResultadosQuick = new();
+        clienteBuscandoQuick = false;
+        _quickClienteCts?.Cancel();
         showQuickContact = true;
         StateHasChanged();
     }
