@@ -450,7 +450,7 @@
                     </button>
                     @if (showColumnsMenu)
                     {
-                        <div class="more-filters-dropdown" @onclick:stopPropagation="true" style="min-width:230px;">
+                        <div class="more-filters-dropdown" @onclick:stopPropagation="true" style="min-width:230px; z-index:1002;">
                             <div style="padding:0.4rem 0.7rem; font-size:0.72rem; color:#6b7280; text-transform:uppercase;">Mostrar columnas</div>
                             @foreach (var c in ColumnasConfig)
                             {
