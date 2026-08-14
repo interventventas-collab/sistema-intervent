@@ -357,6 +357,7 @@
                     <button class="view-mode-btn @(viewMode == "flat" ? "active" : "")" @onclick='() => viewMode = "flat"'>Lista</button>
                     <button class="view-mode-btn @(viewMode == "family" ? "active" : "")" @onclick='() => viewMode = "family"'>Por Familia</button>
                     <button class="view-mode-btn @(viewMode == "product" ? "active" : "")" @onclick='() => viewMode = "product"'>Por Producto</button>
+                    <button class="view-mode-btn @(viewMode == "excel" ? "active" : "")" @onclick='() => viewMode = "excel"' title="Tabla ancha con columnas configurables">📊 Excel</button>
                     <button class="view-mode-btn @(viewMode == "sincro" ? "active" : "")" @onclick='() => viewMode = "sincro"'>💰 Sincro precio + stock</button>
                     @* 2026-06-16: toggle de status (Activas / Pausadas / Todas) — antes solo cargaba active y no se podian ver paused *@
                     <div style="display:inline-flex; gap:0.15rem; margin-left:0.5rem; padding:0.15rem; background:#f3f4f6; border-radius:6px;">
@@ -420,7 +421,7 @@
                             </div>
                         }
                     </div>
-                    @if (viewMode == "flat")
+                    @if (viewMode == "flat" || viewMode == "excel")
                     {
                         <label title="ON: agrupa familias (FamilyId con varios MLAs) en 1 sola fila — vista catálogo de MeLi. OFF: cada MLA es 1 fila — coincide con el conteo de publicaciones de MeLi web."
                                style="display:inline-flex; align-items:center; gap:0.35rem; padding:0.35rem 0.7rem; margin-left:0.5rem; background:@(agruparFamilias ? "#dbeafe" : "#f3f4f6"); border:1px solid @(agruparFamilias ? "#3b82f6" : "#e5e7eb"); border-radius:6px; cursor:pointer; font-size:0.82rem; color:#374151; user-select:none;">
@@ -444,7 +445,7 @@
                         </button>
                     }
                 </div>
-                <div class="more-filters-wrapper" style="position:relative;">
+                <div class="more-filters-wrapper" style="position:relative; @(viewMode == "excel" ? "" : "display:none;")">
                     <button class="more-filters-btn" @onclick="ToggleColumnsMenu" @onclick:stopPropagation="true">
                         <i class="fa-solid fa-table-columns"></i> Columnas <i class="fa-solid fa-caret-down"></i>
                     </button>
@@ -608,8 +609,8 @@
             }
             else
             {
-                @* 2026-06-02: Controles de paginación arriba (solo vista "flat") *@
-                @if (viewMode == "flat")
+                @* 2026-06-02: Controles de paginación arriba (vista "flat" y "excel") *@
+                @if (viewMode == "flat" || viewMode == "excel")
                 {
                     var totalRows = GetGroupedRows().Count;
                     var totalPages = GetTotalPages();
@@ -649,7 +650,7 @@
                         {
                             @RenderProductView()
                         }
-                        else
+                        else if (viewMode == "excel")
                         {
                         <div class="table-responsive">
                 @PcolsStyle
@@ -821,7 +822,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @if (viewMode == "flat")
+                        @if (viewMode == "flat" || viewMode == "excel")
                         {
                             @* Agrupamos por MeliItemId: 1 fila por publicacion. Si tiene variantes,
                                la fila representante muestra stock+sold totales y un boton ▼ para
@@ -1465,8 +1466,8 @@
                 </table>
             </div>
                         }
-            @* 2026-06-02: Controles de paginación abajo (espejo del de arriba, solo vista "flat") *@
-            @if (viewMode == "flat")
+            @* 2026-06-02: Controles de paginación abajo (espejo del de arriba, vista "flat" y "excel") *@
+            @if (viewMode == "flat" || viewMode == "excel")
             {
                 var totalRowsBot = GetGroupedRows().Count;
                 var totalPagesBot = GetTotalPages();
