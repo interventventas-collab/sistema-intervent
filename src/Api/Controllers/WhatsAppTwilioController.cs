@@ -799,22 +799,48 @@ public class WhatsAppTwilioController : ControllerBase
         var query = _db.CafeClientes.AsNoTracking();
         if (!string.IsNullOrWhiteSpace(q))
         {
-            int.TryParse(q, out var qNum);
-            var qDigits = new string(q.Where(char.IsDigit).ToArray());
-            bool hasDigits = qDigits.Length >= 3;
-            query = query.Where(c =>
-                   c.Nombre.Contains(q)
-                || (c.RazonSocial != null && c.RazonSocial.Contains(q))
-                || (qNum > 0 && c.CodigoInterno == qNum)
-                || (c.Cuit != null && (c.Cuit.Contains(q) || (hasDigits && c.Cuit.Replace("-", "").Replace(".", "").Replace(" ", "").Contains(qDigits))))
-                || (c.Telefono != null && (c.Telefono.Contains(q) || (hasDigits && c.Telefono.Replace("-", "").Replace(" ", "").Replace("+", "").Contains(qDigits))))
-                || (c.Telefono2 != null && (c.Telefono2.Contains(q) || (hasDigits && c.Telefono2.Replace("-", "").Replace(" ", "").Replace("+", "").Contains(qDigits))))
-                || (c.Email != null && c.Email.Contains(q))
-                || (c.Direccion != null && c.Direccion.Contains(q))
-                || (c.EntreCalles != null && c.EntreCalles.Contains(q))
-                || (c.Localidad != null && c.Localidad.Contains(q))
-                || (c.Ciudad != null && c.Ciudad.Contains(q))
-                || (c.Notas != null && c.Notas.Contains(q)));   // por si el DNI u otro dato quedó acá
+            // Si escribió 2+ palabras (ej. "carlos quintana"), buscamos por palabra suelta:
+            // cada palabra tiene que aparecer en algún campo de texto, sin importar el orden.
+            // "carlos quintana" y "quintana carlos" encuentran a "QUINTANA CARLOS ADRIAN".
+            var palabras = q.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            if (palabras.Length >= 2)
+            {
+                foreach (var palabra in palabras)
+                {
+                    var t = palabra;                      // captura segura por iteración
+                    int.TryParse(t, out var tNum);
+                    query = query.Where(c =>              // cada .Where suma un AND: todas las palabras deben estar
+                           c.Nombre.Contains(t)
+                        || (c.RazonSocial != null && c.RazonSocial.Contains(t))
+                        || (c.Direccion != null && c.Direccion.Contains(t))
+                        || (c.EntreCalles != null && c.EntreCalles.Contains(t))
+                        || (c.Localidad != null && c.Localidad.Contains(t))
+                        || (c.Ciudad != null && c.Ciudad.Contains(t))
+                        || (c.Email != null && c.Email.Contains(t))
+                        || (c.Notas != null && c.Notas.Contains(t))
+                        || (tNum > 0 && c.CodigoInterno == tNum));
+                }
+            }
+            else
+            {
+                // Una sola palabra o un número: comportamiento de siempre (teléfono / CUIT / código, etc.)
+                int.TryParse(q, out var qNum);
+                var qDigits = new string(q.Where(char.IsDigit).ToArray());
+                bool hasDigits = qDigits.Length >= 3;
+                query = query.Where(c =>
+                       c.Nombre.Contains(q)
+                    || (c.RazonSocial != null && c.RazonSocial.Contains(q))
+                    || (qNum > 0 && c.CodigoInterno == qNum)
+                    || (c.Cuit != null && (c.Cuit.Contains(q) || (hasDigits && c.Cuit.Replace("-", "").Replace(".", "").Replace(" ", "").Contains(qDigits))))
+                    || (c.Telefono != null && (c.Telefono.Contains(q) || (hasDigits && c.Telefono.Replace("-", "").Replace(" ", "").Replace("+", "").Contains(qDigits))))
+                    || (c.Telefono2 != null && (c.Telefono2.Contains(q) || (hasDigits && c.Telefono2.Replace("-", "").Replace(" ", "").Replace("+", "").Contains(qDigits))))
+                    || (c.Email != null && c.Email.Contains(q))
+                    || (c.Direccion != null && c.Direccion.Contains(q))
+                    || (c.EntreCalles != null && c.EntreCalles.Contains(q))
+                    || (c.Localidad != null && c.Localidad.Contains(q))
+                    || (c.Ciudad != null && c.Ciudad.Contains(q))
+                    || (c.Notas != null && c.Notas.Contains(q)));   // por si el DNI u otro dato quedó acá
+            }
         }
         var list = await query
             .OrderBy(c => c.Nombre)
