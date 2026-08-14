@@ -4058,6 +4058,19 @@ textarea.form-input {
   min-width: 200px;
 }
 
+/* 2026-08-13: Columnas configurables de Publicaciones. Se ocultan por POSICIÓN (nth-child)
+   agregando la clase .pcols-hide-{columna} al <table>. Índices 1-based del thead:
+   1 checkbox, 2 img, 3 título, 4 sku, 5 precio, 6 stock, 7 estado, 8 tipo, 9 cuenta, 10 ajuste, 11 producto. */
+.pcols-hide-img > thead > tr > th:nth-child(2), .pcols-hide-img > tbody > tr > td:nth-child(2) { display: none !important; }
+.pcols-hide-sku > thead > tr > th:nth-child(4), .pcols-hide-sku > tbody > tr > td:nth-child(4) { display: none !important; }
+.pcols-hide-precio > thead > tr > th:nth-child(5), .pcols-hide-precio > tbody > tr > td:nth-child(5) { display: none !important; }
+.pcols-hide-stock > thead > tr > th:nth-child(6), .pcols-hide-stock > tbody > tr > td:nth-child(6) { display: none !important; }
+.pcols-hide-estado > thead > tr > th:nth-child(7), .pcols-hide-estado > tbody > tr > td:nth-child(7) { display: none !important; }
+.pcols-hide-tipo > thead > tr > th:nth-child(8), .pcols-hide-tipo > tbody > tr > td:nth-child(8) { display: none !important; }
+.pcols-hide-cuenta > thead > tr > th:nth-child(9), .pcols-hide-cuenta > tbody > tr > td:nth-child(9) { display: none !important; }
+.pcols-hide-ajuste > thead > tr > th:nth-child(10), .pcols-hide-ajuste > tbody > tr > td:nth-child(10) { display: none !important; }
+.pcols-hide-producto > thead > tr > th:nth-child(11), .pcols-hide-producto > tbody > tr > td:nth-child(11) { display: none !important; }
+
 .more-filters-item {
   display: flex;
   align-items: center;

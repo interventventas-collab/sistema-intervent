@@ -652,8 +652,7 @@
                         else
                         {
                         <div class="table-responsive">
-                <style>@((MarkupString)HiddenColsCss())</style>
-                <table class="data-table publicaciones-cols-table">
+                <table class="data-table publicaciones-cols-table @HiddenColsClasses()">
                     <thead>
                         <tr>
                             <th class="th-checkbox"><input type="checkbox" @onchange="ToggleSelectAll" checked="@IsAllSelected()" title="Seleccionar todos" /></th>
@@ -5192,15 +5191,10 @@
         try { await Api.SetUserPrefAsync(ColsPrefKey, string.Join(",", hiddenCols)); } catch { }
     }
 
-    private string HiddenColsCss()
-    {
-        if (hiddenCols.Count == 0) return "";
-        var sb = new System.Text.StringBuilder();
-        foreach (var c in ColumnasConfig)
-            if (hiddenCols.Contains(c.Key))
-                sb.Append($".publicaciones-cols-table>thead>tr>th:nth-child({c.Idx}),.publicaciones-cols-table>tbody>tr>td:nth-child({c.Idx}){{display:none!important;}}");
-        return sb.ToString();
-    }
+    // Clases que activan el ocultamiento por columna (reglas fijas en app.css: .pcols-hide-{key}).
+    // Se aplican en el <table>; Blazor refresca la clase de forma confiable (a diferencia de un <style> dinámico).
+    private string HiddenColsClasses()
+        => hiddenCols.Count == 0 ? "" : string.Join(" ", hiddenCols.Select(k => $"pcols-hide-{k}"));
 
     protected override async Task OnInitializedAsync()
     {
