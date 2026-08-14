@@ -652,6 +652,7 @@
                         else
                         {
                         <div class="table-responsive">
+                @PcolsStyle
                 <table class="data-table publicaciones-cols-table @HiddenColsClasses()">
                     <thead>
                         <tr>
@@ -5178,6 +5179,19 @@
     private HashSet<string> hiddenCols = new();
     private bool showColumnsMenu;
     private const string ColsPrefKey = "publicaciones.hiddenCols";
+
+    // 2026-08-13: reglas de ocultamiento embebidas EN EL PROGRAMA (no en app.css) para que no dependan
+    // de la caché del navegador. Son estáticas (siempre las mismas); se activan con la clase .pcols-hide-{col}
+    // que el toggle agrega al <table>. Se construyen desde ColumnasConfig (única fuente de verdad).
+    private static readonly MarkupString PcolsStyle = BuildPcolsStyle();
+    private static MarkupString BuildPcolsStyle()
+    {
+        var sb = new System.Text.StringBuilder("<style>");
+        foreach (var c in ColumnasConfig)
+            sb.Append($".pcols-hide-{c.Key}>thead>tr>th:nth-child({c.Idx}),.pcols-hide-{c.Key}>tbody>tr>td:nth-child({c.Idx}){{display:none!important;}}");
+        sb.Append("</style>");
+        return (MarkupString)sb.ToString();
+    }
 
     private void ToggleColumnsMenu()
     {
