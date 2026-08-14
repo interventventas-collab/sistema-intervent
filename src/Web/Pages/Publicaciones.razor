@@ -444,6 +444,25 @@
                         </button>
                     }
                 </div>
+                <div class="more-filters-wrapper" style="position:relative;">
+                    <button class="more-filters-btn" @onclick="ToggleColumnsMenu" @onclick:stopPropagation="true">
+                        <i class="fa-solid fa-table-columns"></i> Columnas <i class="fa-solid fa-caret-down"></i>
+                    </button>
+                    @if (showColumnsMenu)
+                    {
+                        <div class="more-filters-dropdown" @onclick:stopPropagation="true" style="min-width:230px;">
+                            <div style="padding:0.4rem 0.7rem; font-size:0.72rem; color:#6b7280; text-transform:uppercase;">Mostrar columnas</div>
+                            @foreach (var c in ColumnasConfig)
+                            {
+                                var key = c.Key;
+                                <label class="more-filters-item" style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;" @onclick:stopPropagation="true">
+                                    <input type="checkbox" checked="@(!hiddenCols.Contains(key))" @onchange="() => ToggleColumn(key)" />
+                                    @c.Label
+                                </label>
+                            }
+                        </div>
+                    }
+                </div>
                 <div class="more-filters-wrapper">
                     <button class="more-filters-btn @(GetActiveFilterCount() > 0 ? "has-active" : "")" @onclick="ToggleMoreFilters" @onclick:stopPropagation="true">
                         <i class="fa-solid fa-gear"></i> Más Filtros @(GetActiveFilterCount() > 0 ? $"({GetActiveFilterCount()})" : "") <i class="fa-solid fa-caret-down"></i>
@@ -633,7 +652,8 @@
                         else
                         {
                         <div class="table-responsive">
-                <table class="data-table">
+                <style>@((MarkupString)HiddenColsCss())</style>
+                <table class="data-table publicaciones-cols-table">
                     <thead>
                         <tr>
                             <th class="th-checkbox"><input type="checkbox" @onchange="ToggleSelectAll" checked="@IsAllSelected()" title="Seleccionar todos" /></th>
@@ -1581,7 +1601,7 @@
     <div class="filter-overlay" @onclick="() => showSyncMenu = false"></div>
 }
 
-@if (activeFilterColumn is not null)
+@if (activeFilterColumn is not null || showColumnsMenu)
 {
     <div class="filter-overlay" @onclick="CloseAllDropdowns"></div>
 }
@@ -5141,11 +5161,60 @@
     [SupplyParameterFromQuery(Name = "buscar")]
     public string? BuscarQuery { get; set; }
 
+    // 2026-08-13: columnas configurables (mostrar/ocultar) de la vista Lista/Familia.
+    // Se ocultan por POSICIÓN con una regla nth-child (sin tocar celdas). Idx = nº de columna (1-based).
+    private record ColDef(string Key, string Label, int Idx);
+    private static readonly ColDef[] ColumnasConfig = new ColDef[]
+    {
+        new("img", "Imagen", 2),
+        new("sku", "SKU", 4),
+        new("precio", "Precio", 5),
+        new("stock", "Stock", 6),
+        new("estado", "Estado", 7),
+        new("tipo", "Tipo", 8),
+        new("cuenta", "Cuenta", 9),
+        new("ajuste", "Ajuste 💵", 10),
+        new("producto", "Producto del sistema", 11),
+    };
+    private HashSet<string> hiddenCols = new();
+    private bool showColumnsMenu;
+    private const string ColsPrefKey = "publicaciones.hiddenCols";
+
+    private void ToggleColumnsMenu()
+    {
+        showColumnsMenu = !showColumnsMenu;
+        if (showColumnsMenu) showMoreFilters = false;
+    }
+
+    private async Task ToggleColumn(string key)
+    {
+        if (!hiddenCols.Remove(key)) hiddenCols.Add(key);
+        try { await Api.SetUserPrefAsync(ColsPrefKey, string.Join(",", hiddenCols)); } catch { }
+    }
+
+    private string HiddenColsCss()
+    {
+        if (hiddenCols.Count == 0) return "";
+        var sb = new System.Text.StringBuilder();
+        foreach (var c in ColumnasConfig)
+            if (hiddenCols.Contains(c.Key))
+                sb.Append($".publicaciones-cols-table>thead>tr>th:nth-child({c.Idx}),.publicaciones-cols-table>tbody>tr>td:nth-child({c.Idx}){{display:none!important;}}");
+        return sb.ToString();
+    }
+
     protected override async Task OnInitializedAsync()
     {
         SyncProgress.OnChange += OnSyncProgressChanged;
         if (!string.IsNullOrWhiteSpace(BuscarQuery))
             textFilters["titulo"] = BuscarQuery.Trim();
+        // 2026-08-13: cargar columnas ocultas guardadas por el usuario (se ven igual en cualquier compu).
+        try
+        {
+            var pref = await Api.GetUserPrefAsync(ColsPrefKey);
+            if (!string.IsNullOrWhiteSpace(pref))
+                hiddenCols = pref.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).ToHashSet();
+        }
+        catch { }
         await LoadItems();
         try { meliAccounts = await Api.GetMeliAccountsAsync(); } catch { }
         // Cargar productos OTROS del sistema para matchear variantes huerfanas por SKU
@@ -5628,6 +5697,7 @@
     private void CloseAllDropdowns()
     {
         activeFilterColumn = null;
+        showColumnsMenu = false;
     }
 
     // --- Filtered + Sorted ---

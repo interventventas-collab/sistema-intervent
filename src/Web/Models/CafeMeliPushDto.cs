@@ -56,6 +56,11 @@ public class SetSkuResultDto
     public string? Sku { get; set; }
 }
 
+public class UserPrefValueDto
+{
+    public string? Value { get; set; }
+}
+
 public class ComponenteResultDto
 {
     public bool Ok { get; set; }

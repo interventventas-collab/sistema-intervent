@@ -335,6 +335,18 @@ public class ApiClient
         return response.IsSuccessStatusCode;
     }
 
+    // 2026-08-13: preferencias por usuario (clave-valor). Ej: columnas visibles de Publicaciones.
+    public async Task<string?> GetUserPrefAsync(string key)
+    {
+        var resp = await GetAsync<UserPrefValueDto>($"/api/user-prefs/{key}");
+        return resp?.Value;
+    }
+
+    public async Task SetUserPrefAsync(string key, string value)
+    {
+        await PutAsync<object>($"/api/user-prefs/{key}", new { value });
+    }
+
     public async Task<MeliItemDto?> UnlinkItemProductAsync(string meliItemId)
     {
         await SetAuthHeaderAsync();
