@@ -15,7 +15,9 @@ public record CafeClienteDto(
     // 2026-06-22: si true, todas las ventas para este cliente piden firma al entregar.
     bool SolicitarFirmaEntrega = false,
     // 2026-07-01: teléfono 2 + entre calles (sirven para ventas y alquileres/eventos)
-    string? Telefono2 = null, string? EntreCalles = null);
+    string? Telefono2 = null, string? EntreCalles = null,
+    // 2026-08-14: vínculo con un comprador de MercadoLibre (usuario de ML)
+    long? MeliBuyerId = null, string? MeliNickname = null);
 
 // 2026-07-29: Direcciones de entrega múltiples por cliente.
 public record CafeDireccionDto(
@@ -62,6 +64,10 @@ public class CreateCafeClienteRequest
     /// <summary>Código interno (correlativo) pre-asignado en el frontend antes de guardar.
     /// Si viene, el backend lo valida: si está libre lo usa, si está tomado asigna el siguiente disponible.</summary>
     public int? CodigoInterno { get; set; }
+    /// <summary>2026-08-14: si el cliente se dio de alta vinculándolo a un comprador de MercadoLibre,
+    /// acá vienen el BuyerId y el nickname de ese usuario de ML.</summary>
+    public long? MeliBuyerId { get; set; }
+    public string? MeliNickname { get; set; }
 }
 
 public class UpdateCafeClienteRequest
@@ -89,6 +95,11 @@ public class UpdateCafeClienteRequest
     public bool? TieneMiniImpresora { get; set; }
     /// <summary>2026-06-22: si true, todas las ventas nuevas de este cliente piden firma al entregar.</summary>
     public bool? SolicitarFirmaEntrega { get; set; }
+    /// <summary>2026-08-14: vincular (o revincular) este cliente con un comprador de MercadoLibre.
+    /// Si viene MeliBuyerId, se guarda el vínculo. Si viene ClearMeliVinculo=true, se borra.</summary>
+    public long? MeliBuyerId { get; set; }
+    public string? MeliNickname { get; set; }
+    public bool ClearMeliVinculo { get; set; }
 }
 
 // ===== Productos =====

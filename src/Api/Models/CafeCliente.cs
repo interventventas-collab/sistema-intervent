@@ -101,6 +101,17 @@ public class CafeCliente
     /// El operador puede destildarlo manualmente en cada venta si en ese caso particular no se necesita.</summary>
     public bool SolicitarFirmaEntrega { get; set; } = false;
 
+    /// <summary>2026-08-14: vínculo con un comprador de MercadoLibre (base de clientes MeLi).
+    /// Se setea cuando, al dar de alta o editar el cliente, se elige su usuario de ML desde el
+    /// buscador de la ficha. Sirve para no cargar dos veces al mismo comprador y para saber que
+    /// este cliente vino de MeLi. Es el BuyerId (id estable del comprador en MeLi).</summary>
+    public long? MeliBuyerId { get; set; }
+
+    /// <summary>Nombre de usuario (nickname) del comprador en MercadoLibre, guardado para mostrarlo
+    /// en la ficha sin tener que ir a la base de clientes MeLi.</summary>
+    [MaxLength(255)]
+    public string? MeliNickname { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

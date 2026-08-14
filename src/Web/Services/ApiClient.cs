@@ -1202,6 +1202,11 @@ public class ApiClient
     public async Task<CafeClienteDto?> UpdateCafeClienteAsync(int id, UpdateCafeClienteRequest request)
         => await PutAsync<CafeClienteDto>($"/api/cafe/clientes/{id}", request);
 
+    // 2026-08-14: devuelve el cliente del sistema que ya está vinculado a este comprador de ML
+    // (por su BuyerId), o null si ninguno lo tiene. Sirve para avisar antes de duplicar.
+    public async Task<CafeClienteDto?> GetCafeClientePorMeliBuyerAsync(long buyerId)
+        => await GetAsync<CafeClienteDto>($"/api/cafe/clientes/by-meli-buyer/{buyerId}");
+
     // 2026-08-03: el borrado de cliente puede terminar en "borrado suave" (marcar Inactivo)
     // cuando el cliente tiene movimientos historicos. Devolvemos el resultado detallado
     // para que la pantalla muestre el mensaje correcto en vez de fallar en silencio.

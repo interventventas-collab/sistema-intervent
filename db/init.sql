@@ -6342,6 +6342,15 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='EntreCalles' AND Object_ID=
     ALTER TABLE Cafe_Clientes ADD EntreCalles NVARCHAR(200) NULL;
 GO
 
+-- 2026-08-14: vínculo del cliente del sistema con un comprador de MercadoLibre (usuario de ML).
+-- Se carga desde el buscador de la ficha del cliente para no darlo de alta dos veces.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='MeliBuyerId' AND Object_ID=OBJECT_ID('Cafe_Clientes'))
+    ALTER TABLE Cafe_Clientes ADD MeliBuyerId BIGINT NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='MeliNickname' AND Object_ID=OBJECT_ID('Cafe_Clientes'))
+    ALTER TABLE Cafe_Clientes ADD MeliNickname NVARCHAR(255) NULL;
+GO
+
 -- 2026-07-02: Chat interno entre usuarios del sistema.
 -- Un canal "Grupo general" (ParaUserId NULL) + mensajes privados uno-a-uno (ParaUserId = destinatario).
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Chat_Mensajes' AND xtype='U')

@@ -38,7 +38,8 @@ public class CafeClientesController : ControllerBase
         c.MapeoLat, c.MapeoLng,
         c.TieneMiniImpresora,
         c.SolicitarFirmaEntrega,
-        c.Telefono2, c.EntreCalles);
+        c.Telefono2, c.EntreCalles,
+        c.MeliBuyerId, c.MeliNickname);
 
     [HttpGet]
     public async Task<IActionResult> GetAll()
@@ -53,6 +54,16 @@ public class CafeClientesController : ControllerBase
         var c = await _db.CafeClientes.FindAsync(id);
         if (c is null) return NotFound(new { error = "Cliente no encontrado" });
         return Ok(Map(c));
+    }
+
+    /// <summary>2026-08-14: devuelve el cliente del sistema que ya está vinculado a un comprador de
+    /// MercadoLibre (por su BuyerId), o null si ninguno lo tiene. Lo usa el buscador de la ficha para
+    /// avisar "este usuario de ML ya está cargado como el cliente X" y no darlo de alta dos veces.</summary>
+    [HttpGet("by-meli-buyer/{buyerId:long}")]
+    public async Task<IActionResult> GetByMeliBuyer(long buyerId)
+    {
+        var c = await _db.CafeClientes.FirstOrDefaultAsync(x => x.MeliBuyerId == buyerId);
+        return Ok(c is null ? null : Map(c));
     }
 
     public record MovimientoCuentaDto(
@@ -215,6 +226,8 @@ public class CafeClientesController : ControllerBase
             Notas = Norm(req.Notas),
             ComentariosComprobante = Norm(req.ComentariosComprobante),
             MapeoLink = Norm(req.MapeoLink),
+            MeliBuyerId = req.MeliBuyerId,
+            MeliNickname = Norm(req.MeliNickname),
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
@@ -304,6 +317,10 @@ public class CafeClientesController : ControllerBase
         if (req.IsActive.HasValue) c.IsActive = req.IsActive.Value;
         if (req.TieneMiniImpresora.HasValue) c.TieneMiniImpresora = req.TieneMiniImpresora.Value;
         if (req.SolicitarFirmaEntrega.HasValue) c.SolicitarFirmaEntrega = req.SolicitarFirmaEntrega.Value;
+        // 2026-08-14: vínculo con comprador de MercadoLibre. ClearMeliVinculo lo borra; si no,
+        // un MeliBuyerId con valor lo setea/actualiza (junto con el nickname que venga).
+        if (req.ClearMeliVinculo) { c.MeliBuyerId = null; c.MeliNickname = null; }
+        else if (req.MeliBuyerId.HasValue) { c.MeliBuyerId = req.MeliBuyerId; c.MeliNickname = Norm(req.MeliNickname); }
         // MapeoLink: si vino, actualizo. Si vino ClearMapeoLink, lo vacío.
         // Si el link cambió (o se agregó por primera vez), intentamos extraer coords del link de Google Maps.
         var linkPrevio = c.MapeoLink;

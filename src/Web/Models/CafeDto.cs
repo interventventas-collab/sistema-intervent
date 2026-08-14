@@ -33,6 +33,10 @@ public class CafeClienteDto
     public bool TieneMiniImpresora { get; set; }
     /// <summary>2026-06-22: si true, todas las ventas nuevas piden firma al entregar.</summary>
     public bool SolicitarFirmaEntrega { get; set; }
+    /// <summary>2026-08-14: BuyerId del comprador de MercadoLibre vinculado (null si no tiene vínculo).</summary>
+    public long? MeliBuyerId { get; set; }
+    /// <summary>Nickname del usuario de MercadoLibre vinculado.</summary>
+    public string? MeliNickname { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }
@@ -59,6 +63,9 @@ public class CreateCafeClienteRequest
     /// <summary>Código interno pre-asignado en el frontend (con el botón "Asignar código"
     /// antes de guardar). El backend lo respeta si está libre; si está tomado asigna el siguiente.</summary>
     public int? CodigoInterno { get; set; }
+    /// <summary>2026-08-14: vínculo con un comprador de MercadoLibre (usuario de ML) elegido en la ficha.</summary>
+    public long? MeliBuyerId { get; set; }
+    public string? MeliNickname { get; set; }
 }
 
 public class UpdateCafeClienteRequest
@@ -86,6 +93,11 @@ public class UpdateCafeClienteRequest
     public bool? TieneMiniImpresora { get; set; }
     /// <summary>2026-06-22: si true, todas las ventas nuevas piden firma al entregar.</summary>
     public bool? SolicitarFirmaEntrega { get; set; }
+    /// <summary>2026-08-14: vincular (MeliBuyerId con valor) o desvincular (ClearMeliVinculo=true)
+    /// el cliente de un comprador de MercadoLibre.</summary>
+    public long? MeliBuyerId { get; set; }
+    public string? MeliNickname { get; set; }
+    public bool ClearMeliVinculo { get; set; }
 }
 
 // 2026-07-29: Direcciones de entrega múltiples por cliente.
