@@ -3,11 +3,31 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <h3 style="margin: 0;">Ordenes de MercadoLibre (@totalOrders)</h3>
-        <div style="display: flex; gap: 0.4rem; align-items: center;">
+        <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+            @* Selector de formato de etiqueta (sin desplegables): 3 chips, se elige uno. *@
+            <span style="font-size: 0.8rem; color: #6b7280;">Etiqueta:</span>
+            <button class="btn btn-sm @(etiquetaFormato == "termica" ? "btn-primary" : "btn-secondary")"
+                    @onclick='() => etiquetaFormato = "termica"'
+                    title="Una etiqueta por pagina, tamano 10x15 cm (impresora termica / Zebra)">🏷️ Termica</button>
+            <button class="btn btn-sm @(etiquetaFormato == "a4-1" ? "btn-primary" : "btn-secondary")"
+                    @onclick='() => etiquetaFormato = "a4-1"'
+                    title="Una etiqueta por hoja A4 (impresora comun)">🖨️ A4 x1</button>
+            <button class="btn btn-sm @(etiquetaFormato == "a4-3" ? "btn-primary" : "btn-secondary")"
+                    @onclick='() => etiquetaFormato = "a4-3"'
+                    title="Tres etiquetas por hoja A4 (como en MercadoLibre)">🖨️ A4 x3</button>
+            @if (etiquetaSeleccionadas.Count > 0)
+            {
+                <button class="btn btn-sm btn-primary" @onclick="ImprimirEtiquetasSeleccionadas"
+                        title="Imprimir en un solo PDF todas las etiquetas seleccionadas">
+                    🖨️ Imprimir @etiquetaSeleccionadas.Count seleccionada@(etiquetaSeleccionadas.Count == 1 ? "" : "s")
+                </button>
+            }
+            <span style="width: 1px; height: 22px; background: #e5e7eb; margin: 0 0.2rem;"></span>
             @{ var me1Count = orders?.Count(o => o.ShippingMode == "me1") ?? 0; }
             <button class="btn @(onlyMe1 ? "btn-warning" : "btn-secondary")"
                     @onclick="() => { onlyMe1 = !onlyMe1; }"
@@ -307,6 +327,19 @@
                                                 @GetShippingDisplayLabel(gFirst.ShippingStatus, gFirst.ShippingSubstatus)
                                             </span>
                                         }
+                                        @{ var gShip = gFirst.ShippingId; }
+                                        @if (gShip.HasValue)
+                                        {
+                                            <div class="etiqueta-acciones" @onclick:stopPropagation="true">
+                                                <label class="etiqueta-check" title="Seleccionar para imprimir en lote">
+                                                    <input type="checkbox"
+                                                           checked="@etiquetaSeleccionadas.Contains(gShip.Value)"
+                                                           @onchange="() => ToggleEtiquetaSel(gShip.Value)" />
+                                                </label>
+                                                <button class="btn-etiqueta" title="Imprimir etiqueta de este envio"
+                                                        @onclick="() => ImprimirEtiqueta(gShip.Value)">🖨️</button>
+                                            </div>
+                                        }
                                     </td>
                                 </tr>
                                 @foreach (var order in group.Orders)
@@ -381,6 +414,19 @@
                                             <span class="status-badge @GetShippingStatusClass(order.ShippingStatus, order.ShippingSubstatus)">
                                                 @GetShippingDisplayLabel(order.ShippingStatus, order.ShippingSubstatus)
                                             </span>
+                                        }
+                                        @if (order.ShippingId.HasValue)
+                                        {
+                                            var oShip = order.ShippingId.Value;
+                                            <div class="etiqueta-acciones" @onclick:stopPropagation="true">
+                                                <label class="etiqueta-check" title="Seleccionar para imprimir en lote">
+                                                    <input type="checkbox"
+                                                           checked="@etiquetaSeleccionadas.Contains(oShip)"
+                                                           @onchange="() => ToggleEtiquetaSel(oShip)" />
+                                                </label>
+                                                <button class="btn-etiqueta" title="Imprimir etiqueta de este envio"
+                                                        @onclick="() => ImprimirEtiqueta(oShip)">🖨️</button>
+                                            </div>
                                         }
                                     </td>
                                 </tr>
@@ -1232,11 +1278,70 @@
         color: #9ca3af;
         margin-top: 0.25rem;
     }
+    /* Acciones de etiqueta (imprimir / seleccionar) en la columna de estado de envio */
+    .etiqueta-acciones {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        margin-top: 0.35rem;
+    }
+    .etiqueta-check {
+        display: inline-flex;
+        align-items: center;
+        cursor: pointer;
+        margin: 0;
+    }
+    .etiqueta-check input {
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+    }
+    .btn-etiqueta {
+        border: 1px solid #d1d5db;
+        background: #fff;
+        border-radius: 6px;
+        padding: 0.1rem 0.4rem;
+        font-size: 1rem;
+        line-height: 1.2;
+        cursor: pointer;
+    }
+    .btn-etiqueta:hover {
+        background: #eff6ff;
+        border-color: #3b82f6;
+    }
 </style>
 
 @code {
     private List<MeliOrderDto>? orders;
     private List<MeliAccountDto>? accounts;
+
+    // ===== 2026-08-13: Impresion de etiquetas de envio de MercadoLibre =====
+    // Formato elegido para imprimir: "termica" | "a4-1" | "a4-3". Default A4 x3 (lo comun al despachar).
+    private string etiquetaFormato = "a4-3";
+    // Envios (ShippingId) tildados para imprimir en lote.
+    private readonly HashSet<long> etiquetaSeleccionadas = new();
+
+    /// <summary>Tilda/destilda un envio para la impresion en lote.</summary>
+    private void ToggleEtiquetaSel(long shipId)
+    {
+        if (!etiquetaSeleccionadas.Add(shipId)) etiquetaSeleccionadas.Remove(shipId);
+    }
+
+    /// <summary>Abre la etiqueta de UN envio en pestana nueva, en el formato elegido.</summary>
+    private async Task ImprimirEtiqueta(long shipId)
+    {
+        var url = Api.BuildEtiquetaMeliUrl(new[] { shipId }, etiquetaFormato);
+        await JS.InvokeVoidAsync("window.open", url, "_blank");
+    }
+
+    /// <summary>Genera un unico PDF con todas las etiquetas seleccionadas y lo abre en pestana nueva.</summary>
+    private async Task ImprimirEtiquetasSeleccionadas()
+    {
+        if (etiquetaSeleccionadas.Count == 0) return;
+        var url = Api.BuildEtiquetaMeliUrl(etiquetaSeleccionadas.OrderBy(x => x), etiquetaFormato);
+        ToastService.Success($"Generando {etiquetaSeleccionadas.Count} etiqueta(s)...");
+        await JS.InvokeVoidAsync("window.open", url, "_blank");
+    }
     private bool isLoading = true;
     private bool isSyncing;
     /// <summary>Toggle del boton "Solo ME1": cuando esta activo, la grilla muestra solo ordenes con ShippingMode=me1.</summary>

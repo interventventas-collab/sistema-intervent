@@ -233,6 +233,7 @@ builder.Services.AddScoped<Api.Controllers.VisitasController>();
 builder.Services.AddScoped<Api.Controllers.CafeClientesController>();
 builder.Services.AddScoped<VentaAvisoWhatsAppService>();
 builder.Services.AddScoped<MeliOrderService>();
+builder.Services.AddScoped<MeliLabelService>();
 builder.Services.AddScoped<MeliItemService>();
 builder.Services.AddScoped<MeliQuestionService>();
 builder.Services.AddScoped<MeliShipmentService>();

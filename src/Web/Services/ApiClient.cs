@@ -5814,6 +5814,11 @@ public class ApiClient
     public string BuildRotuloUrl(int ventaId, string formato) =>
         $"/api/cafe/rotulo/{ventaId}?formato={Uri.EscapeDataString(formato)}";
 
+    // ===== 2026-08-13: Etiquetas de envio de MercadoLibre (PDF oficial de MeLi, listo para imprimir) =====
+    // formato: "termica" | "a4-1" | "a4-3". ids = numeros de envio (ShippingId).
+    public string BuildEtiquetaMeliUrl(IEnumerable<long> shipmentIds, string formato) =>
+        $"/api/meli/shipments/label?ids={string.Join(",", shipmentIds)}&formato={Uri.EscapeDataString(formato)}";
+
     // ===== 2026-06-15: PIN por operador =====
     /// <summary>Valida el PIN del operador. Devuelve (ok, mensajeError).</summary>
     public async Task<(bool ok, string? error)> ValidarOperadorPinAsync(string nombre, string pin)

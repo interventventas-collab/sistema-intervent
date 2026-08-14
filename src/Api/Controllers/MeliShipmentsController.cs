@@ -13,8 +13,53 @@ public class MeliShipmentsController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly MeliShipmentService _service;
+    private readonly MeliLabelService _labelService;
 
-    public MeliShipmentsController(AppDbContext db, MeliShipmentService service) { _db = db; _service = service; }
+    public MeliShipmentsController(AppDbContext db, MeliShipmentService service, MeliLabelService labelService)
+    {
+        _db = db; _service = service; _labelService = labelService;
+    }
+
+    /// <summary>
+    /// 2026-08-13: Devuelve la etiqueta de envio oficial de MeLi lista para imprimir, INLINE (se abre
+    /// en el navegador). Parametros:
+    ///   - ids: numeros de envio (ShippingId) separados por coma.
+    ///   - formato: "termica" (una por pagina 10x15), "a4-1" (una por hoja A4) o "a4-3" (tres por hoja A4).
+    /// Se abre via window.open, asi que la cookie httpOnly del JWT viaja sola (mismo origen).
+    /// </summary>
+    [HttpGet("label")]
+    public async Task<IActionResult> Label([FromQuery] string ids, [FromQuery] string formato = "a4-3")
+    {
+        var idArr = (ids ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(s => long.TryParse(s, out var n) ? n : 0)
+            .Where(n => n > 0)
+            .Distinct()
+            .Take(100)
+            .ToArray();
+
+        var r = await _labelService.GetLabelsPdfAsync(idArr, formato);
+
+        if (!r.Ok || r.Pdf is null)
+        {
+            // Pagina de error legible en la pestana nueva (en vez de un JSON crudo).
+            var msg = System.Net.WebUtility.HtmlEncode(r.Error ?? "Error desconocido al generar la etiqueta.");
+            var html = "<!doctype html><html lang='es'><head><meta charset='utf-8'>" +
+                       "<meta name='viewport' content='width=device-width, initial-scale=1'>" +
+                       "<title>Etiqueta</title></head>" +
+                       "<body style='font-family:system-ui,sans-serif;max-width:640px;margin:3rem auto;padding:0 1.25rem;'>" +
+                       "<h2 style='color:#b91c1c;margin:0 0 .5rem;'>No se pudo generar la etiqueta</h2>" +
+                       $"<p style='color:#374151;line-height:1.5;'>{msg}</p>" +
+                       "<p style='color:#6b7280;font-size:.9rem;'>Tip: la etiqueta recien aparece cuando el envio esta " +
+                       "en estado <b>listo para imprimir</b>. Si acabas de pagar/despachar, proba de nuevo en unos minutos.</p>" +
+                       "</body></html>";
+            return Content(html, "text/html");
+        }
+
+        var nombre = idArr.Length == 1 ? $"etiqueta-{idArr[0]}.pdf" : $"etiquetas-{idArr.Length}.pdf";
+        Response.Headers["Content-Disposition"] = $"inline; filename=\"{nombre}\"";
+        return File(r.Pdf, "application/pdf");
+    }
 
     /// <summary>Lista los envios Flex (self_service) cargados localmente, ordenados por fecha.</summary>
     [HttpGet("flex")]
