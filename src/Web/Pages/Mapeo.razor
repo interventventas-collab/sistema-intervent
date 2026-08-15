@@ -1402,23 +1402,32 @@
                 {
                     <div class="mapeo-dock-legend"><span>👁 ver</span><span>〰 línea</span><span>🧹 vaciar</span></div>
                     @* "TODO" = las paradas todavía SIN asignar. Arriba el título; abajo el ojito (mostrar/ocultar) y la cantidad. *@
-                    <div class="mapeo-dock-btn" style="flex-direction:column; gap:6px; width:auto; min-width:104px; height:auto; padding:9px 10px; background:@(sinAsignarOcultos ? "#9ca3af" : "#eab308"); @(sinAsignarOcultos ? "opacity:0.55;" : "")">
-                        <span style="font-size:0.82rem; font-weight:800; line-height:1; color:#fff;">TODO (sin asignar)</span>
-                        <div style="display:flex; align-items:center; justify-content:center; gap:12px;">
-                            <span @onclick="ToggleSinAsignarVisible" style="cursor:pointer; font-size:1.35rem; line-height:1;"
-                                  title="@(sinAsignarOcultos ? "Mostrar las paradas sin asignar" : "Ocultar las paradas sin asignar (ver solo las zonas)")">
-                                @(sinAsignarOcultos ? "🚫" : "👁")
-                            </span>
-                            <span style="font-size:1.05rem; font-weight:800; color:#fff; line-height:1; background:rgba(0,0,0,0.22); border-radius:8px; padding:3px 9px; min-width:24px; text-align:center;"
-                                  title="Envíos todavía sin repartidor">
-                                @(stops?.Count(s => !s.AssignedDriverId.HasValue && !s.AssignedVehicleSlot.HasValue) ?? 0)
-                            </span>
+                    var rutaSinAsignar = RutaDe("none");
+                    <div style="position:relative;">
+                        <div class="mapeo-dock-btn" style="flex-direction:column; gap:6px; width:auto; min-width:104px; height:auto; padding:9px 10px; background:@(sinAsignarOcultos ? "#9ca3af" : "#eab308"); @(sinAsignarOcultos ? "opacity:0.55;" : "")">
+                            <span style="font-size:0.82rem; font-weight:800; line-height:1; color:#fff;">TODO (sin asignar)</span>
+                            <div style="display:flex; align-items:center; justify-content:center; gap:12px;">
+                                <span @onclick="ToggleSinAsignarVisible" style="cursor:pointer; font-size:1.35rem; line-height:1;"
+                                      title="@(sinAsignarOcultos ? "Mostrar las paradas sin asignar" : "Ocultar las paradas sin asignar (ver solo las zonas)")">
+                                    @(sinAsignarOcultos ? "🚫" : "👁")
+                                </span>
+                                <span style="font-size:1.05rem; font-weight:800; color:#fff; line-height:1; background:rgba(0,0,0,0.22); border-radius:8px; padding:3px 9px; min-width:24px; text-align:center;"
+                                      title="Envíos todavía sin repartidor">
+                                    @(stops?.Count(s => !s.AssignedDriverId.HasValue && !s.AssignedVehicleSlot.HasValue) ?? 0)
+                                </span>
+                            </div>
+                            @if (rutaSinAsignar is not null) { @RenglonTiempoRuta(rutaSinAsignar) }
                         </div>
+                        @if (rutaSinAsignar is not null && rutasExpandidas.Contains(rutaSinAsignar.Key) && (rutaSinAsignar.Legs?.Count ?? 0) > 0)
+                        {
+                            @TramosDeRuta(rutaSinAsignar)
+                        }
                     </div>
                     @foreach (var z in zonasCreadas)
                     {
                         var zVisible = !zonasOcultasMapa.Contains(z.DriverId);
                         var zNombreCorto = string.IsNullOrWhiteSpace(z.DriverName) ? "?" : z.DriverName.Split(' ')[0];
+                        var rutaZ = RutaDe(ZonaKeyDriver(z.DriverId));   // tiempo y km de ESTE repartidor
                         <div style="position:relative;">
                             <div class="mapeo-dock-btn" style="flex-direction:column; gap:6px; width:auto; min-width:104px; height:auto; padding:9px 10px; background:@(zVisible ? z.Color : "#9ca3af"); @(zVisible ? "" : "opacity:0.55;")">
                                 @* Arriba: "Z1 (Juan)" — tocar hace foco en la zona. *@
@@ -1442,7 +1451,13 @@
                                         @z.StopIds.Count
                                     </span>
                                 </div>
+                                @* 2026-08-15: el tiempo y los km de la ruta, que antes estaban en el panel flotante. *@
+                                @if (rutaZ is not null) { @RenglonTiempoRuta(rutaZ) }
                             </div>
+                            @if (rutaZ is not null && rutasExpandidas.Contains(rutaZ.Key) && (rutaZ.Legs?.Count ?? 0) > 0)
+                            {
+                                @TramosDeRuta(rutaZ)
+                            }
                             @if (zonaDriverMenuId == z.Numero)
                             {
                                 <div class="mapeo-flyout" style="min-width:210px;">
@@ -1474,6 +1489,7 @@
                         var svVisible = !zonasSlotOcultas.Contains(slot);
                         var svColor = VehicleColor(slot);
                         var svCount = (stops ?? new()).Count(s => s.AssignedVehicleSlot == slot && !s.AssignedDriverId.HasValue);
+                        var rutaSv = RutaDe(ZonaKeySlot(slot));          // tiempo y km de ESTA zona
                         <div style="position:relative;">
                             <div class="mapeo-dock-btn" style="flex-direction:column; gap:6px; width:auto; min-width:104px; height:auto; padding:9px 10px; background:@(svVisible ? svColor : "#9ca3af"); @(svVisible ? "" : "opacity:0.55;")">
                                 <span @onclick="() => FocoVehiculo(slot)" style="cursor:pointer; font-size:0.9rem; font-weight:800; line-height:1.1; color:#fff; text-align:center; white-space:nowrap;"
@@ -1495,7 +1511,12 @@
                                         @svCount
                                     </span>
                                 </div>
+                                @if (rutaSv is not null) { @RenglonTiempoRuta(rutaSv) }
                             </div>
+                            @if (rutaSv is not null && rutasExpandidas.Contains(rutaSv.Key) && (rutaSv.Legs?.Count ?? 0) > 0)
+                            {
+                                @TramosDeRuta(rutaSv)
+                            }
                             @if (slotDriverMenu == slot)
                             {
                                 <div class="mapeo-flyout" style="min-width:210px;">
@@ -1520,6 +1541,41 @@
                             }
                         </div>
                     }
+                }
+                @* 2026-08-15: recorridos que NO son de ninguna tarjeta de color — el caso típico es la
+                   "🚦 Ruta única" (una sola ruta para todo, sin dividir por zona). Antes se veía en el
+                   panel flotante; ahora tiene su propio renglón acá para que no se pierda. *@
+                @{
+                    var clavesConTarjeta = new HashSet<string>(
+                        zonasCreadas.Select(z => ZonaKeyDriver(z.DriverId))
+                            .Concat(zonasSlot.Select(ZonaKeySlot))
+                            .Append("none"));
+                    var rutasSueltas = rutasResumen.Where(r => !clavesConTarjeta.Contains(r.Key)).ToList();
+                }
+                @foreach (var rs in rutasSueltas)
+                {
+                    <div style="position:relative;">
+                        <div class="mapeo-dock-btn" style="flex-direction:column; gap:6px; width:auto; min-width:104px; height:auto; padding:9px 10px; background:@(string.IsNullOrEmpty(rs.Color) ? "#0d9488" : rs.Color);">
+                            <span style="font-size:0.82rem; font-weight:800; line-height:1; color:#fff; white-space:nowrap; max-width:170px; overflow:hidden; text-overflow:ellipsis;"
+                                  title="@($"{rs.Label} · {rs.StopCount} parada(s)")">
+                                🚦 @rs.Label
+                            </span>
+                            <div style="display:flex; align-items:center; justify-content:center; gap:9px;">
+                                <span class="mapeo-zona-act" @onclick="() => ToggleLineaZona(rs.Key)"
+                                      style="@(lineasVisibles.Contains(rs.Key) ? "background:rgba(255,255,255,0.4); border-radius:7px; padding:1px 5px;" : "opacity:0.35;")"
+                                      title="@(lineasVisibles.Contains(rs.Key) ? "La línea de esta ruta está VISIBLE — tocá para ocultarla" : "Ver la línea de esta ruta")">〰</span>
+                                <span style="font-size:1.05rem; font-weight:800; color:#fff; line-height:1; background:rgba(0,0,0,0.22); border-radius:8px; padding:3px 9px; min-width:24px; text-align:center;"
+                                      title="@rs.StopCount parada(s) en este recorrido">
+                                    @rs.StopCount
+                                </span>
+                            </div>
+                            @RenglonTiempoRuta(rs)
+                        </div>
+                        @if (rutasExpandidas.Contains(rs.Key) && (rs.Legs?.Count ?? 0) > 0)
+                        {
+                            @TramosDeRuta(rs)
+                        }
+                    </div>
                 }
                 @* ═══════════ Herramientas ═══════════ *@
                 <div class="mapeo-dock-sep"></div>
@@ -1617,53 +1673,10 @@
                 </div>
             </div>
         }
-        @* Resumen de rutas: tiempo estimado + km por repartidor (aparece al optimizar). *@
-        @if (rutasResumen.Count > 0)
-        {
-            <div style="position:absolute; top:52px; right:10px; z-index:470; background:white; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 3px 14px rgba(0,0,0,0.2); padding:0.5rem 0.6rem; max-width:250px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
-                    <strong style="font-size:0.82rem;">🛣️ Rutas (tránsito)</strong>
-                    <button class="btn-close" style="font-size:0.9rem;" @onclick="CerrarResumenRutas" title="Ocultar">&times;</button>
-                </div>
-                @foreach (var r in rutasResumen)
-                {
-                    var abierta = rutasExpandidas.Contains(r.Key);
-                    var hayTramos = r.Legs != null && r.Legs.Count > 0;
-                    <div style="padding:0.2rem 0; border-top:1px solid #f3f4f6;">
-                        <div style="display:flex; align-items:center; gap:0.4rem; font-size:0.8rem; cursor:@(hayTramos ? "pointer" : "default");"
-                             @onclick="@(() => ToggleTramos(r.Key))"
-                             title="@(hayTramos ? "Ver el tiempo entre cada parada" : "")">
-                            <span style="width:12px; height:12px; border-radius:50%; background:@r.Color; flex:0 0 12px;"></span>
-                            <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@r.Label</span>
-                            <strong>@FormatoDuracion(r.DurationSeconds)</strong>
-                            @if (hayTramos)
-                            {
-                                <span style="color:#9ca3af; font-size:0.7rem;">@(abierta ? "▲" : "▼")</span>
-                            }
-                        </div>
-                        <div style="font-size:0.68rem; color:#9ca3af; margin-left:1.1rem;">
-                            @r.StopCount parada@(r.StopCount == 1 ? "" : "s") · @((r.DistanceMeters / 1000.0).ToString("0.0")) km
-                        </div>
-                        @if (abierta && hayTramos)
-                        {
-                            var conSalida = r.Legs.Count == r.StopCount && r.StopCount > 0; // hay punto de partida
-                            <div style="margin:0.25rem 0 0.15rem 1.1rem; padding-left:0.5rem; border-left:2px solid @r.Color;">
-                                @for (int i = 0; i < r.Legs.Count; i++)
-                                {
-                                    var desde = conSalida ? (i == 0 ? "Salida" : i.ToString()) : (i + 1).ToString();
-                                    var hasta = conSalida ? (i + 1).ToString() : (i + 2).ToString();
-                                    <div style="display:flex; gap:0.4rem; font-size:0.7rem; color:#4b5563; padding:0.08rem 0;">
-                                        <span style="flex:1; white-space:nowrap;">@desde <span style="color:#9ca3af;">→</span> @hasta</span>
-                                        <strong style="color:#374151;">@FormatoDuracion(r.Legs[i].Seconds)</strong>
-                                        <span style="color:#9ca3af; width:46px; text-align:right;">@((r.Legs[i].Meters / 1000.0).ToString("0.0")) km</span>
-                                    </div>
-                                }
-                            </div>
-                        }
-                    </div>
-                }
-            </div>
-        }
+        @* 2026-08-15: el panel flotante "🛣️ Rutas (tránsito)" se sacó de acá. Tapaba la esquina de
+           arriba a la derecha (justo encima del botón "Ver dirección") y repetía info que ya está en
+           las tarjetas de colores del dock. Ahora el tiempo y los km de cada recorrido salen DENTRO
+           de la tarjeta de su repartidor/zona, y el detalle tramo por tramo se despliega al costado. *@
         @* Acciones de ruta: repartir la flota entre choferes (si hay 2+) y/o armar una ruta única. Por tránsito. *@
         @if ((stops?.Count ?? 0) > 0)
         {
@@ -2188,12 +2201,12 @@
                         }
                     </div>
 
-                    @if (fichaPuedeSerFavorito)
-                    {
-                        <label style="display:flex; align-items:center; gap:0.35rem; font-size:0.76rem; color:#374151; margin-top:0.5rem;">
-                            <input type="checkbox" @bind="fichaGuardarFav" /> ⭐ Guardar también como favorito
-                        </label>
-                    }
+                    @* 2026-08-15: el tilde de favorito aparece en CUALQUIER parada (antes solo en las
+                       sueltas). Así se puede hacer favorito a un cliente o a una parada ya creada,
+                       que era la única forma que faltaba de guardar un lugar frecuente. *@
+                    <label style="display:flex; align-items:center; gap:0.35rem; font-size:0.76rem; color:#374151; margin-top:0.5rem;">
+                        <input type="checkbox" @bind="fichaGuardarFav" /> ⭐ Guardar también como favorito
+                    </label>
 
                     <div style="display:flex; gap:0.4rem; margin-top:0.6rem;">
                         <button type="button" class="btn btn-primary" style="flex:1; font-size:0.85rem; font-weight:700;"
@@ -4026,7 +4039,6 @@
     private string fichaDireccion = "";
     private string fichaAlias = "", fichaContacto = "", fichaTelefono = "", fichaNotas = "";
     private bool fichaGuardarFav, fichaGuardando, fichaBuscandoCliente;
-    private bool fichaPuedeSerFavorito;        // solo paradas sueltas (manual): no tiene sentido en Flex/venta
     private string fichaClienteSearch = "";
     private int? fichaClienteId;
     private string? fichaClienteNombre;
@@ -4179,12 +4191,55 @@
 
     // Trae de Google el tiempo/km/línea de cada ruta y las dibuja en el mapa.
     private List<RutaOverviewDto> rutasResumen = new();
-    // Rutas (por Key) cuyo detalle de tiempos por tramo está desplegado en el cartelito.
+    // Rutas (por Key) cuyo detalle de tiempos por tramo está desplegado.
     private HashSet<string> rutasExpandidas = new();
     private void ToggleTramos(string key)
     {
         if (!rutasExpandidas.Add(key)) rutasExpandidas.Remove(key); // toggle
     }
+
+    /// <summary>La ruta calculada que le corresponde a una tarjeta del dock (o null si esa zona
+    /// todavía no tiene recorrido armado). Las claves son las mismas que usan las líneas del mapa:
+    /// "d5" = zona del chofer 5, "v2" = Zona 2 sin chofer, "none" = las que están sin asignar.</summary>
+    private RutaOverviewDto? RutaDe(string key) => rutasResumen.FirstOrDefault(r => r.Key == key);
+
+    /// <summary>Renglón "⏱ 4h 26min · 80,0 km" que va DENTRO de la tarjeta de color. Si la ruta tiene
+    /// tramos, se puede tocar para desplegar el detalle parada por parada.</summary>
+    private RenderFragment RenglonTiempoRuta(RutaOverviewDto r) => @<div
+        @onclick="@(() => ToggleTramos(r.Key))"
+        style="display:flex; align-items:center; justify-content:center; gap:5px; font-size:0.72rem; font-weight:700; color:#fff; background:rgba(0,0,0,0.22); border-radius:7px; padding:2px 7px; white-space:nowrap; cursor:@((r.Legs?.Count ?? 0) > 0 ? "pointer" : "default");"
+        title="@((r.Legs?.Count ?? 0) > 0 ? "Tiempo estimado con el tránsito de ahora — tocá para ver cuánto hay entre cada parada" : "Tiempo estimado con el tránsito de ahora")">
+        <span>⏱ @FormatoDuracion(r.DurationSeconds)</span>
+        <span style="opacity:0.75;">· @((r.DistanceMeters / 1000.0).ToString("0.0")) km</span>
+        @if ((r.Legs?.Count ?? 0) > 0)
+        {
+            <span style="opacity:0.75;">@(rutasExpandidas.Contains(r.Key) ? "▲" : "▼")</span>
+        }
+    </div>;
+
+    /// <summary>Desplegable con el tiempo/km entre cada parada. Sale al costado de la tarjeta, igual
+    /// que el listado de repartidores del 👤. Antes vivía dentro del panel flotante "Rutas (tránsito)".</summary>
+    private RenderFragment TramosDeRuta(RutaOverviewDto r) => @<div class="mapeo-flyout" style="min-width:236px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; padding:0.2rem 0.4rem 0.25rem 0.6rem;">
+            <span style="font-size:0.7rem; color:#6b7280; font-weight:700;">⏱ @r.Label · entre paradas</span>
+            <button @onclick="@(() => ToggleTramos(r.Key))" title="Cerrar"
+                    style="border:none; background:transparent; color:#6b7280; font-size:1.1rem; line-height:1; cursor:pointer; padding:0 0.2rem;">&times;</button>
+        </div>
+        <div style="max-height:min(48vh, 340px); overflow-y:auto; padding:0 0.5rem 0.4rem;">
+            @for (int i = 0; i < r.Legs!.Count; i++)
+            {
+                // Si hay tantos tramos como paradas, el primero sale del punto de partida (el depósito).
+                var conSalida = r.Legs.Count == r.StopCount && r.StopCount > 0;
+                var desde = conSalida ? (i == 0 ? "Salida" : i.ToString()) : (i + 1).ToString();
+                var hasta = conSalida ? (i + 1).ToString() : (i + 2).ToString();
+                <div style="display:flex; gap:0.4rem; font-size:0.72rem; color:#4b5563; padding:0.1rem 0; border-bottom:1px solid #f3f4f6;">
+                    <span style="flex:1; white-space:nowrap;">@desde <span style="color:#9ca3af;">→</span> @hasta</span>
+                    <strong style="color:#374151;">@FormatoDuracion(r.Legs[i].Seconds)</strong>
+                    <span style="color:#9ca3af; width:48px; text-align:right;">@((r.Legs[i].Meters / 1000.0).ToString("0.0")) km</span>
+                </div>
+            }
+        </div>
+    </div>;
 
     // ── Panel "⚡ Optimizar recorridos" ──
     private bool showOptiPanel;
@@ -4431,12 +4486,6 @@
         return $"{min / 60}h {min % 60:00}min";
     }
 
-    private async Task CerrarResumenRutas()
-    {
-        rutasResumen = new();
-        lineasPintadas = 0;
-        try { await JS.InvokeVoidAsync("mapeoFlex.clearRoutes"); } catch { }
-    }
     private string EscanearUrl => Navigation.BaseUri + "mapeo/escanear";
     private string ScanQrUrl => $"/api/mapeo/stops/escanear-qr?url={Uri.EscapeDataString(EscanearUrl)}";
     private bool showConfigMenu = false; // dropdown ⚙ Configuración
@@ -5980,7 +6029,6 @@
         fichaTelefono = s.Telefono ?? "";
         fichaNotas = s.Notas ?? "";
         fichaGuardarFav = false;
-        fichaPuedeSerFavorito = s.Origin is "manual" or "favorito";
         fichaBuscandoCliente = false;
         fichaClienteSearch = "";
         fichaGuardarUbicEnCliente = true;
