@@ -3991,15 +3991,49 @@
         catch (Exception ex) { ToastService.Error("No se pudieron dibujar las rutas: " + ex.Message); }
     }
 
+    // ¿Se puede ver la línea de esta ruta? Sigue la MISMA regla que los pines de esa zona:
+    // el ojito 👁/🚫 del cuadradito (con o sin chofer), el chip "TODO (sin asignar)" y el chip
+    // "Todos / Zona N" de arriba del mapa. Antes la línea solo miraba el 〰 y quedaba dibujada
+    // aunque la zona estuviera oculta con el 🚫 (era el bug: "oculté la Zona 2 y la línea sigue").
+    private bool RutaVisibleEnMapa(RutaOverviewDto r)
+    {
+        if (r.Key == "single") return true; // ruta única: no pertenece a ninguna zona
+        // Zona/vehículo de esta ruta. Si la zona ya tiene chofer, el back no manda el slot:
+        // lo sacamos de sus paradas para que el chip "Zona N" de arriba también le aplique.
+        int? slot = r.VehicleSlot;
+        if (!slot.HasValue && r.DriverId.HasValue)
+            slot = (stops ?? new()).Where(s => s.AssignedDriverId == r.DriverId)
+                       .Select(s => s.AssignedVehicleSlot).FirstOrDefault(x => x.HasValue);
+
+        // 1) Ojito del cuadradito de la zona.
+        if (r.DriverId.HasValue) { if (zonasOcultasMapa.Contains(r.DriverId.Value)) return false; }
+        else if (r.VehicleSlot.HasValue) { if (zonasSlotOcultas.Contains(r.VehicleSlot.Value)) return false; }
+        else if (sinAsignarOcultos && zonasCreadas.Count > 0) return false; // paradas sin zona
+
+        // 2) Chips "Todos / Zona N / Sin asignar" de arriba del mapa.
+        if (vehiculoFiltro.HasValue)
+        {
+            if (vehiculoFiltro.Value == 0) return !slot.HasValue && !r.DriverId.HasValue;
+            return slot == vehiculoFiltro.Value;
+        }
+        return true;
+    }
+
+    // Cuántas líneas quedaron REALMENTE dibujadas en el mapa la última vez que pintamos.
+    // El botón "Ver líneas" se prende con esto (y no con lo que el usuario pidió), así no queda
+    // azul mintiendo cuando el mapa está sin líneas y hay que apretarlo dos veces.
+    private int lineasPintadas;
+
     // Dibuja en el mapa las rutas que ya tenemos en memoria (rutasResumen), salteando las zonas
     // que estén ocultas por el ojito. Se usa al optimizar y al prender/apagar un ojito.
     private async Task PintarRutas()
     {
         var paraDibujar = rutasResumen
             .Where(r => (r.Segments?.Count ?? 0) > 0 || !string.IsNullOrEmpty(r.EncodedPolyline))
-            // La LÍNEA de cada zona se dibuja solo si está prendida (botón 〰 de la zona o "Ver líneas").
-            // Es independiente del ojito de los pines: podés ver la línea aunque ocultes los globitos.
+            // La LÍNEA de cada zona se dibuja si está prendida (botón 〰 de la zona o "Ver líneas")
+            // Y ADEMÁS la zona está a la vista: si la escondés con el 🚫, se va la línea también.
             .Where(r => lineasVisibles.Contains(r.Key))
+            .Where(RutaVisibleEnMapa)
             .Select(r => new
             {
                 color = r.Color,
@@ -4015,6 +4049,7 @@
                 }).ToArray()
             })
             .ToArray();
+        lineasPintadas = paraDibujar.Length;
         await JS.InvokeVoidAsync("mapeoFlex.drawRoutes", new object[] { paraDibujar });
     }
 
@@ -4024,9 +4059,36 @@
     // Como es estado nuestro, las líneas quedan FIJAS: al refrescarse el mapa las volvemos a dibujar
     // (antes se borraban solas). Se dibuja lo que esté acá; independiente del ojito de los pines.
     private HashSet<string> lineasVisibles = new();
-    private bool lineasOn => lineasVisibles.Count > 0;
+    // El botón se ve encendido solo si hay líneas DE VERDAD dibujadas en el mapa.
+    private bool lineasOn => lineasPintadas > 0;
     private static string ZonaKeyDriver(int driverId) => $"d{driverId}";
     private static string ZonaKeySlot(int slot) => $"v{slot}";
+
+    // La línea de una zona se guarda con la clave de la zona: "v2" = Zona 2 sin chofer, "d5" = zona
+    // del chofer 5. Al ponerle chofer a una zona la clave CAMBIA, y antes la línea se apagaba sola
+    // sin avisar (la clave vieja ya no existía y se descartaba). Con esto la línea sigue prendida.
+    private void RenombrarLinea(string claveVieja, string claveNueva)
+    {
+        if (lineasVisibles.Remove(claveVieja)) lineasVisibles.Add(claveNueva);
+    }
+
+    // Cambió el reparto de las zonas (se creó una, cambió de chofer, se vació, se agregó un envío…):
+    // los recorridos que teníamos en memoria ya no sirven. Antes se tiraban a la basura y las líneas
+    // desaparecían para siempre. Ahora: si había líneas a la vista las recalculamos para que sigan
+    // viéndose; si no había ninguna prendida, solo limpiamos (no gastamos consultas a Google al pedo).
+    private async Task RecalcularRutas()
+    {
+        if (lineasVisibles.Count > 0)
+        {
+            await CargarYDibujarRutas(single: false);
+        }
+        else
+        {
+            rutasResumen = new();
+            lineasPintadas = 0;
+            try { await JS.InvokeVoidAsync("mapeoFlex.clearRoutes"); } catch { }
+        }
+    }
 
     // Trae los recorridos de Google si todavía no los tenemos en memoria (para poder mostrar la línea).
     private async Task EnsureRutasCargadas()
@@ -4046,9 +4108,14 @@
             ToastService.Info("Todavía no hay recorridos. Armá una ruta (2do paso) y después ves las líneas.");
             return;
         }
-        if (lineasVisibles.Count > 0) lineasVisibles.Clear();
+        // Nos guiamos por lo que se VE en el mapa, no por lo que se pidió alguna vez: si el mapa está
+        // sin líneas, este toque las prende (antes había que apretar dos veces).
+        if (lineasPintadas > 0) lineasVisibles.Clear();
         else foreach (var r in rutasResumen) lineasVisibles.Add(r.Key);
         await PintarRutas();
+        // Prendidas pero no se ve ninguna: es porque esas zonas están escondidas con el 🚫.
+        if (lineasVisibles.Count > 0 && lineasPintadas == 0)
+            ToastService.Info("Las líneas están prendidas, pero esas zonas están ocultas (🚫). Mostralas con el 👁 y aparecen.");
         StateHasChanged();
     }
 
@@ -4056,12 +4123,17 @@
     private async Task ToggleLineaZona(string key)
     {
         await EnsureRutasCargadas();
-        if (!rutasResumen.Any(r => r.Key == key))
+        var ruta = rutasResumen.FirstOrDefault(r => r.Key == key);
+        if (ruta is null)
         {
             ToastService.Info("Esta zona todavía no tiene ruta armada. Armá su ruta y después ves la línea.");
             return;
         }
-        if (!lineasVisibles.Add(key)) lineasVisibles.Remove(key); // toggle
+        var prendiendo = lineasVisibles.Add(key);
+        if (!prendiendo) lineasVisibles.Remove(key); // toggle
+        // Prender la línea de una zona escondida no muestra nada: avisamos en vez de dejarlo mudo.
+        if (prendiendo && !RutaVisibleEnMapa(ruta))
+            ToastService.Info("Esta zona está oculta (🚫). Mostrala con el 👁 y vas a ver su línea.");
         await PintarRutas();
         StateHasChanged();
     }
@@ -4072,8 +4144,7 @@
     private async Task ToggleSinAsignarVisible()
     {
         sinAsignarOcultos = !sinAsignarOcultos;
-        await RenderMap();
-        if (rutasResumen.Count > 0) await PintarRutas();
+        await RenderMap(); // RenderMap redibuja pines Y líneas (las líneas siguen al ojito)
         StateHasChanged();
     }
 
@@ -4081,8 +4152,7 @@
     private async Task ToggleZonaVisible(ZonaCreada z)
     {
         if (!zonasOcultasMapa.Add(z.DriverId)) zonasOcultasMapa.Remove(z.DriverId); // toggle
-        await RenderMap();               // redibuja los pines (RenderMap ya filtra las zonas ocultas)
-        if (rutasResumen.Count > 0) await PintarRutas(); // y las líneas de ruta, si estaban dibujadas
+        await RenderMap();               // redibuja pines y líneas (ya filtra las zonas ocultas)
         StateHasChanged();
     }
 
@@ -4097,6 +4167,7 @@
     private async Task CerrarResumenRutas()
     {
         rutasResumen = new();
+        lineasPintadas = 0;
         try { await JS.InvokeVoidAsync("mapeoFlex.clearRoutes"); } catch { }
     }
     private string EscanearUrl => Navigation.BaseUri + "mapeo/escanear";
@@ -4317,10 +4388,9 @@
         {
             var antes = stops?.Count ?? 0;
             await LoadStops();                      // paradas frescas (incluye lo recién escaneado)
-            if (mapInitialized) await RenderMap(keepView: true); // redibuja sin mover la vista
-            // RenderMap borra las líneas de ruta al redibujar los pines; si había rutas dibujadas,
-            // las volvemos a pintar para que el refresco automático no las haga desaparecer.
-            if (rutasResumen.Count > 0) await PintarRutas();
+            // Redibuja sin mover la vista. RenderMap se encarga solo de volver a poner las líneas
+            // de ruta (las borra al redibujar los pines), así el refresco no las hace desaparecer.
+            if (mapInitialized) await RenderMap(keepView: true);
             if ((stops?.Count ?? 0) != antes) StateHasChanged();  // refresca la lista de la izquierda si cambió
         }
         catch { /* silencioso: es un refresco de fondo, no molestamos con errores */ }
@@ -4379,6 +4449,9 @@
                     popupHtml = $"<div style='font-size:0.8rem;'><strong>{System.Net.WebUtility.HtmlEncode(editandoPinNombre ?? "Corrigiendo domicilio")}</strong><br/><em style='color:#6b7280;'>Arrastrame o buscá la dirección arriba.</em></div>"
                 });
             }
+            // Corrigiendo un pin se ve SOLO ese pin: las líneas quedan apagadas a propósito
+            // (vuelven solas al salir del modo, porque RenderMap las repinta al final).
+            lineasPintadas = 0;
             await JS.InvokeVoidAsync("mapeoFlex.renderMarkers", elist.ToArray(), keepView);
             return;
         }
@@ -4552,6 +4625,11 @@
             }));
         }
         await JS.InvokeVoidAsync("mapeoFlex.renderMarkers", list.ToArray(), keepView);
+        // Redibujar los globitos BORRA todas las líneas de ruta (renderMarkers → clearRoutes en el JS).
+        // Antes había que acordarse de repintarlas botón por botón: de 74 lugares que redibujan el mapa
+        // solo 12 lo hacían, y por eso las líneas "desaparecían solas". Ahora se repintan SIEMPRE acá.
+        if (rutasResumen.Count > 0) await PintarRutas();
+        else lineasPintadas = 0;
     }
 
     private static string ColorFor(string s) => s switch
@@ -4919,7 +4997,6 @@
                 await Api.UpdateMapeoStopAsync(id, new { assignedDriverId = driverId });
             await LoadStops();
             await RenderMap();
-            rutasResumen = new();
             var driver = drivers?.FirstOrDefault(d => d.Id == driverId);
             var nombre = driver?.Nombre ?? "el repartidor";
             // Registramos la zona creada (cuadradito "Zona N")
@@ -4927,6 +5004,7 @@
                 zonasCreadas.Count + 1, driverId, nombre,
                 string.IsNullOrEmpty(driver?.Color) ? "#1d4ed8" : driver!.Color!,
                 new List<int>(zoneStopIds)));
+            await RecalcularRutas(); // el reparto cambió: recalculamos las líneas en vez de perderlas
             ToastService.Success($"✅ Zona {zonasCreadas.Count}: {zoneStopIds.Count} envío(s) para {nombre}");
             showZoneAssignModal = false;
             zoneStopIds = new();
@@ -4954,7 +5032,7 @@
             if (cantidadVehiculos < slot) cantidadVehiculos = slot;
             await LoadStops();
             await RenderMap();
-            rutasResumen = new();
+            await RecalcularRutas(); // el reparto cambió: recalculamos las líneas en vez de perderlas
             ToastService.Success($"✅ Zona {slot} creada: {zoneStopIds.Count} envío(s), sin chofer. Armá el orden y al final apretá 👤 Asignar choferes.");
             showZoneAssignModal = false;
             zoneStopIds = new();
@@ -5003,8 +5081,11 @@
             await Api.AssignDriverToSlotAsync(slot, driverId);
             await LoadStops();
             ReconstruirZonasCreadas();
+            // La zona deja de ser "Zona N" y pasa a ser la del chofer: su línea cambia de nombre.
+            // Sin esto, la línea que tenías prendida se apagaba sola al asignar el chofer.
+            RenombrarLinea(ZonaKeySlot(slot), ZonaKeyDriver(driverId));
             await RenderMap();
-            rutasResumen = new();
+            await RecalcularRutas();
             var nombre = drivers?.FirstOrDefault(d => d.Id == driverId)?.Nombre ?? "el repartidor";
             ToastService.Success($"✅ Zona {slot} ahora la hace {nombre}");
         }
@@ -5028,8 +5109,10 @@
             // repartidor (y se fusiona con otra zona si ya era de ese mismo repartidor).
             zonasCreadas = new();
             ReconstruirZonasCreadas();
+            // La zona pasa a otro chofer: su línea cambia de nombre (antes se apagaba sola).
+            RenombrarLinea(ZonaKeyDriver(z.DriverId), ZonaKeyDriver(nuevoDriverId));
             await RenderMap();
-            rutasResumen = new();
+            await RecalcularRutas();
             var nombre = drivers?.FirstOrDefault(d => d.Id == nuevoDriverId)?.Nombre ?? "el repartidor";
             ToastService.Success($"✅ La zona ahora es de {nombre} ({z.StopIds.Count} envío(s))");
         }
@@ -5049,7 +5132,7 @@
             await LoadStops();
             await RenderMap();
             if (zonasCreadas.Count > 0) zonasCreadas.RemoveAt(zonasCreadas.Count - 1);
-            rutasResumen = new();
+            await RecalcularRutas();
             ToastService.Info($"↩ Se deshizo la última zona ({lastZoneUndo.Count} envío/s).");
             lastZoneUndo = new();
         }
@@ -5134,7 +5217,8 @@
             zonasOcultasMapa = new();
             zonasSlotOcultas = new();
             sinAsignarOcultos = false;
-            rutasResumen = new();
+            lineasVisibles.Clear();   // no quedan zonas: tampoco quedan líneas que mostrar
+            await RecalcularRutas();
             ToastService.Success($"🧹 {asignadas.Count} paradas quedaron sin zona, listas para volver a armar.");
         }
         catch (Exception ex) { ToastService.Error("No se pudo limpiar: " + ex.Message); }
@@ -5260,7 +5344,7 @@
             await LoadStops();
             ReconstruirZonasCreadas();
             await RenderMap();
-            rutasResumen = new();
+            await RecalcularRutas(); // cambió la zona de un envío: recalculamos su línea
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { assigningSlot = false; StateHasChanged(); }
@@ -6106,6 +6190,7 @@
             modoAsignacion = false;
             guiadaPrimeraId = null; guiadaUltimaId = null; guiadaFijasMedio.Clear();
             rutasResumen = new();
+            lineasPintadas = 0;
             try { await JS.InvokeVoidAsync("mapeoFlex.clearRoutes"); } catch { }
             // Si tocaste el cuadradito de una zona antes de entrar, mostramos SOLO esa zona (para no
             // mezclar con las otras). Guardamos qué se veía para restaurarlo al salir.
@@ -6165,6 +6250,7 @@
             }
             catch { }
             rutasResumen = new();
+            lineasPintadas = 0;
             try { await JS.InvokeVoidAsync("mapeoFlex.clearRoutes"); } catch { }
             try { await JS.InvokeVoidAsync("mapeoFlex.armarStart", armarDesdeDeposito, armarDepotLat, armarDepotLng); }
             catch (Exception ex) { ToastService.Error("No se pudo iniciar el armado: " + ex.Message); modoArmar = false; StateHasChanged(); return; }
@@ -6388,6 +6474,7 @@
             MostrarSoloZonaOrdenActiva();
             // Sacamos cualquier línea de ruta vieja: la dibujamos recién al terminar (apretar "Listo").
             rutasResumen = new();
+            lineasPintadas = 0;
             try { await JS.InvokeVoidAsync("mapeoFlex.clearRoutes"); } catch { }
             await RenderMap();
             await FocoZonaOrdenActiva();
