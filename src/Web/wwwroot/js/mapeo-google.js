@@ -781,6 +781,32 @@ window.mapeoFlex = (function () {
 
                 marker.__ids = ids; // para poder "hacerlo saltar" cuando tocás su fila en el listado
                 markers.push(marker);
+
+                // 2026-08-15: AUTITO. Al lado de la ULTIMA parada que cada repartidor marco como
+                // entregada le ponemos un 🚗 con su color: de un vistazo se ve por donde va cada uno,
+                // sin GPS ni que el repartidor tenga que hacer nada extra (sale de lo que ya marca al
+                // entregar). El anchor en negativo corre el circulito a la DERECHA del globito para
+                // que no lo tape.
+                const conAuto = group.find(g => g.ultimaEntrega);
+                if (conAuto) {
+                    const autoMarker = new google.maps.Marker({
+                        position: pos,
+                        map: map,
+                        clickable: false,
+                        zIndex: 1200,               // siempre por encima de los globitos
+                        label: { text: '🚗', fontSize: '15px' },
+                        icon: {
+                            path: google.maps.SymbolPath.CIRCLE,
+                            scale: 13,
+                            fillColor: conAuto.color || '#111827',
+                            fillOpacity: 1,
+                            strokeColor: '#ffffff',
+                            strokeWeight: 2,
+                            anchor: new google.maps.Point(-2.0, 0.4)
+                        }
+                    });
+                    markers.push(autoMarker);
+                }
                 bounds.extend(pos);
                 any = true;
                 if (!esArrastrable) realStops++;

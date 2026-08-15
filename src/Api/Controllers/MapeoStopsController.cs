@@ -63,6 +63,24 @@ public class MapeoStopsController : ControllerBase
             ? new Dictionary<int, DateTime?>()
             : await _db.CafeVentas.Where(v => ventaRefs.Contains(v.Id))
                                   .ToDictionaryAsync(v => v.Id, v => v.EntregadoAt);
+        // 2026-08-15: idem para ALQUILERES y VISITAS. El dato de cuándo se entregó/realizó ya se
+        // guardaba (AlqReserva.EntregadoAt / Visita.RealizadaAt) pero nadie se lo pedía para el mapa,
+        // asi que esas paradas nunca se tildaban: en el mapa parecia que el repartidor no habia
+        // pasado por ahi. Ahora se tildan solas igual que las Flex y las ventas del cafe.
+        var alqRefs = list.Where(s => s.Origin == "alquiler" && s.OriginRefId != null)
+                          .Select(s => int.TryParse(s.OriginRefId, out var v) ? v : 0)
+                          .Where(v => v != 0).Distinct().ToList();
+        var alqEntrega = alqRefs.Count == 0
+            ? new Dictionary<int, DateTime?>()
+            : await _db.AlqReservas.Where(r => alqRefs.Contains(r.Id))
+                                   .ToDictionaryAsync(r => r.Id, r => r.EntregadoAt);
+        var visitaRefs = list.Where(s => s.Origin == "visita" && s.OriginRefId != null)
+                             .Select(s => int.TryParse(s.OriginRefId, out var v) ? v : 0)
+                             .Where(v => v != 0).Distinct().ToList();
+        var visitaEntrega = visitaRefs.Count == 0
+            ? new Dictionary<int, DateTime?>()
+            : await _db.Visitas.Where(v => visitaRefs.Contains(v.Id))
+                               .ToDictionaryAsync(v => v.Id, v => v.RealizadaAt);
         return Ok(list.Select(s =>
         {
             var dto = Map(s);
@@ -83,6 +101,18 @@ public class MapeoStopsController : ControllerBase
                 && ventasEntrega.TryGetValue(vid, out var entregadoAt) && entregadoAt.HasValue)
             {
                 dto = dto with { DateDelivered = entregadoAt };
+            }
+            else if (s.Origin == "alquiler" && s.OriginRefId != null
+                && int.TryParse(s.OriginRefId, out var aid)
+                && alqEntrega.TryGetValue(aid, out var alqAt) && alqAt.HasValue)
+            {
+                dto = dto with { DateDelivered = alqAt };
+            }
+            else if (s.Origin == "visita" && s.OriginRefId != null
+                && int.TryParse(s.OriginRefId, out var visid)
+                && visitaEntrega.TryGetValue(visid, out var visAt) && visAt.HasValue)
+            {
+                dto = dto with { DateDelivered = visAt };
             }
             return dto;
         }));

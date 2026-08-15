@@ -4796,6 +4796,18 @@
             return;
         }
 
+        // 2026-08-15: ¿cuál fue la ÚLTIMA parada que marcó como entregada cada repartidor? Esa es la
+        // que lleva el autito 🚗. Es la forma barata de saber por dónde anda cada uno: no hace falta
+        // GPS ni que el repartidor haga nada — sale de lo que ya viene marcando al entregar.
+        // Solo cuentan las que tienen HORA de entrega; si una se marcó sin hora, no se puede saber
+        // cuál fue la última y se ignora para esto (igual queda tildada).
+        var ultimaEntregaPorChofer = (stops ?? new())
+            .Where(s => s.AssignedDriverId.HasValue && s.DateDelivered.HasValue
+                        && (s.Latitude != 0 || s.Longitude != 0))
+            .GroupBy(s => s.AssignedDriverId!.Value)
+            .Select(g => g.OrderByDescending(s => s.DateDelivered!.Value).First().Id)
+            .ToHashSet();
+
         var list = new List<object>();
         if (startPoint?.Lat is not null && startPoint?.Lng is not null)
         {
@@ -4965,6 +4977,8 @@
                     // Candado: si la parada está desbloqueada, su pin se puede arrastrar para ajustar la ubicación.
                     draggable = paradasDesbloqueadas.Contains(st.Id),
                     stopId = st.Id,
+                    // 🚗 al lado: esta fue la última que entregó su repartidor.
+                    ultimaEntrega = ultimaEntregaPorChofer.Contains(st.Id),
                     popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· Zona {st.AssignedVehicleSlot}</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}{horaEntregaStopHtml}<div style='margin-top:0.35rem; display:flex; align-items:center; gap:0.25rem;'><span title='Zona'>📍</span><select onchange=\"window.mapeoActions.assignZone({markerId}, this.value); event.stopPropagation();\" onclick=\"event.stopPropagation();\" style='flex:1; max-width:170px; padding:0.15rem 0.25rem; border:2px solid {driverBorde}; border-radius:4px; font-size:0.72rem; background:{selBg}; color:{selFg}; font-weight:700;'>{zonaOpts}</select></div>{puestoRowHtml}{vinfoStopHtml}<div style='margin-top:0.35rem; display:flex; gap:0.3rem; flex-wrap:wrap;'><button onclick=\"window.mapeoActions.toggleRoute({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:{btnBgSt}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxtSt}</button>{favBtnHtml}<button onclick=\"window.mapeoActions.correctLocation({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#92400e; border:1px solid #f59e0b; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>📍 Corregir ubicación</button><button onclick=\"window.mapeoActions.editStop({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#1d4ed8; border:1px solid #93c5fd; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>✏️ Editar datos</button><button onclick=\"window.mapeoActions.removeStop({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#b91c1c; border:1px solid #fca5a5; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>🗑 Quitar del mapa</button></div></div>"
                 };
             }));
