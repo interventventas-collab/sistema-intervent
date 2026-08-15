@@ -242,80 +242,81 @@
                 {
                     <div class="form-error">@formError</div>
                 }
-                @* ─── Código interno (destacado arriba; se puede asignar antes de guardar) ─── *@
-                <div style="background: #eff6ff; border: 2px solid #3b82f6; border-radius: 8px; padding: 1rem 1.1rem; margin-bottom: 1rem;">
-                    <label class="form-label" style="font-size: 1rem; color: #1e3a8a; font-weight: 700; margin-bottom: 0.5rem;">
-                        🆔 Código interno
-                    </label>
-                    @if (formCodigoInterno.HasValue)
-                    {
-                        <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
-                            <span style="font-family: monospace; font-weight: 800; font-size: 1.8rem; color: #1e40af; line-height: 1;">@formCodigoInterno</span>
-                            <button type="button" class="btn btn-secondary" @onclick="QuitarCodigoInterno"
-                                    style="font-size: 0.9rem; padding: 0.5rem 0.9rem;">🗑 Quitar</button>
-                        </div>
-                        <p style="font-size: 0.8rem; color: #1e3a8a; margin: 0.4rem 0 0;">
-                            @if (isEditing) {
-                                <text>Código único de este cliente para uso interno (búsquedas rápidas, etiquetas, etc).</text>
-                            } else {
-                                <text>Este código se va a guardar cuando aprietes <strong>Crear</strong>. Si entre medio otro usuario tomó el mismo número, el sistema asigna el siguiente disponible y te avisa.</text>
-                            }
-                        </p>
-                    }
-                    else
-                    {
-                        <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
-                            <span style="font-size: 1rem; color: #6b7280; font-style: italic;">— sin asignar —</span>
-                            <button type="button" class="btn btn-primary" @onclick="AsignarCodigoInterno"
-                                    disabled="@asignandoCodigo"
-                                    style="font-size: 1rem; padding: 0.65rem 1.2rem; font-weight: 600;">
-                                @(asignandoCodigo ? "⏳ Asignando..." : "🎯 Asignar código interno")
-                            </button>
-                        </div>
-                        <p style="font-size: 0.8rem; color: #1e3a8a; margin: 0.5rem 0 0;">
-                            Asigna automáticamente el próximo código disponible.
-                        </p>
-                    }
-                </div>
+                @* ─── Franja superior: Código interno + comprador de MercadoLibre, mitad y mitad.
+                     auto-fit hace que en el celular se apilen solas (no entran al lado). ─── *@
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 0.7rem; margin-bottom: 1rem;">
 
-                @* ═══════════════ Sección 1: Datos comerciales (lo que cargás vos) ═══════════════ *@
-                <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.1rem; margin-bottom: 1rem;">
-                    <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.9rem; padding-bottom: 0.6rem; border-bottom: 1px solid #e2e8f0;">
-                        <span style="background: #ede9fe; color: #6d28d9; font-size: 0.78rem; padding: 0.28rem 0.7rem; border-radius: 6px; font-weight: 700;">
-                            🧑‍💼 1 · Datos comerciales
-                        </span>
-                        <span style="font-size: 0.78rem; color: #6b7280;">los cargás vos</span>
-                    </div>
-
-                    @* ─── 2026-08-14: Vincular con un comprador de MercadoLibre (trae sus datos) ─── *@
-                    <div style="background: #fffbeb; border: 1px solid #f59e0b; border-radius: 8px; padding: 0.7rem 0.9rem; margin-bottom: 1rem;">
-                        @if (formMeliBuyerId.HasValue)
+                    @* ─── Código interno (se puede asignar antes de guardar) ─── *@
+                    <div style="background: #eff6ff; border: 2px solid #3b82f6; border-radius: 8px; padding: 0.7rem 0.9rem;">
+                        <label class="form-label" style="font-size: 0.9rem; color: #1e3a8a; font-weight: 700; margin-bottom: 0.35rem;"
+                               title="Código único de este cliente para uso interno (búsquedas rápidas, etiquetas, etc).">
+                            🆔 Código interno
+                        </label>
+                        @if (formCodigoInterno.HasValue)
                         {
-                            <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
-                                <span style="font-size: 0.9rem; font-weight: 700; color: #92400e;">🛒 Vinculado a MercadoLibre:</span>
-                                <span style="display:inline-flex; align-items:center; gap:0.35rem; background:#fef3c7; color:#92400e; border:1px solid #f59e0b; border-radius:999px; padding:0.2rem 0.7rem; font-weight:700; font-size:0.85rem;">
-                                    @(string.IsNullOrWhiteSpace(formMeliNickname) ? $"ID {formMeliBuyerId}" : formMeliNickname)
-                                </span>
-                                <button type="button" class="btn btn-secondary" style="font-size:0.78rem; padding:0.3rem 0.6rem;" @onclick="QuitarVinculoMeli">🗑 Quitar vínculo</button>
+                            <div style="display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap;">
+                                <span style="font-family: monospace; font-weight: 800; font-size: 1.5rem; color: #1e40af; line-height: 1;">@formCodigoInterno</span>
+                                <button type="button" class="btn btn-secondary" @onclick="QuitarCodigoInterno"
+                                        style="font-size: 0.78rem; padding: 0.3rem 0.6rem;">🗑 Quitar</button>
                             </div>
-                            <p style="font-size:0.72rem; color:#92400e; margin:0.4rem 0 0;">Este cliente quedó enganchado con su usuario de MercadoLibre. Así el sistema sabe que ya está cargado y no lo duplicás.</p>
+                            @if (!isEditing)
+                            {
+                                <p style="font-size: 0.7rem; color: #1e3a8a; margin: 0.35rem 0 0;">
+                                    Se guarda al apretar <strong>Crear</strong>. Si otro usuario tomó ese número, se asigna el siguiente y te avisamos.
+                                </p>
+                            }
                         }
                         else
                         {
-                            <label class="form-label" style="color:#92400e; margin-bottom:0.3rem;">🛒 ¿Es un cliente de MercadoLibre? Buscalo y traé sus datos</label>
+                            <div style="display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap;">
+                                <span style="font-size: 0.85rem; color: #6b7280; font-style: italic;">— sin asignar —</span>
+                                <button type="button" class="btn btn-primary" @onclick="AsignarCodigoInterno"
+                                        disabled="@asignandoCodigo"
+                                        style="font-size: 0.85rem; padding: 0.4rem 0.85rem; font-weight: 600;">
+                                    @(asignandoCodigo ? "⏳ Asignando..." : "🎯 Asignar código")
+                                </button>
+                            </div>
+                            <p style="font-size: 0.7rem; color: #1e3a8a; margin: 0.35rem 0 0;">
+                                Toma el próximo código disponible.
+                            </p>
+                        }
+                    </div>
+
+                    @* ─── 2026-08-14: Vincular con un comprador de MercadoLibre (trae sus datos) ─── *@
+                    <div style="background: #fffbeb; border: 2px solid #f59e0b; border-radius: 8px; padding: 0.7rem 0.9rem;">
+                        @if (formMeliBuyerId.HasValue)
+                        {
+                            <label class="form-label" style="font-size: 0.9rem; color: #92400e; font-weight: 700; margin-bottom: 0.35rem;">
+                                🛒 Cliente de MercadoLibre
+                            </label>
+                            <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                                <span style="display:inline-flex; align-items:center; gap:0.35rem; background:#fef3c7; color:#92400e; border:1px solid #f59e0b; border-radius:999px; padding:0.2rem 0.7rem; font-weight:700; font-size:0.85rem;">
+                                    @(string.IsNullOrWhiteSpace(formMeliNickname) ? $"ID {formMeliBuyerId}" : formMeliNickname)
+                                </span>
+                                <button type="button" class="btn btn-secondary" style="font-size:0.78rem; padding:0.3rem 0.6rem;" @onclick="QuitarVinculoMeli">🗑 Quitar</button>
+                            </div>
+                            <p style="font-size:0.7rem; color:#92400e; margin:0.35rem 0 0;">Queda enganchado con su usuario de ML, así no lo cargás dos veces.</p>
+                        }
+                        else
+                        {
+                            <label class="form-label" style="font-size: 0.9rem; color:#92400e; font-weight: 700; margin-bottom:0.35rem;"
+                                   title="Si el cliente te compra por MercadoLibre, escribí su usuario acá y el sistema completa lo que sepa de él. Si no, dejalo vacío y cargá los datos a mano.">
+                                🛒 Cliente de MercadoLibre
+                            </label>
                             <input class="form-input" value="@meliSearch" @oninput="OnMeliSearchInput"
-                                   placeholder="Usuario de ML, nombre, teléfono o localidad..." />
+                                   style="font-size: 0.85rem; padding: 0.4rem 0.6rem;"
+                                   placeholder="Usuario de ML, nombre, teléfono..." />
                             @if (meliBuscando)
                             {
-                                <p style="font-size:0.78rem; color:#6b7280; margin:0.35rem 0 0;">Buscando…</p>
+                                <p style="font-size:0.7rem; color:#6b7280; margin:0.35rem 0 0;">Buscando…</p>
                             }
                             else if (meliResults is not null && meliResults.Count == 0 && !string.IsNullOrWhiteSpace(meliSearch))
                             {
-                                <p style="font-size:0.78rem; color:#6b7280; margin:0.35rem 0 0;">Sin resultados para "<strong>@meliSearch</strong>". Probá con el usuario de ML, el nombre o el teléfono.</p>
+                                <p style="font-size:0.7rem; color:#6b7280; margin:0.35rem 0 0;">Sin resultados para "<strong>@meliSearch</strong>". Probá con el usuario, el nombre o el teléfono.</p>
                             }
                             else if (meliResults is not null && meliResults.Count > 0)
                             {
-                                <div style="margin-top:0.4rem; max-height:230px; overflow-y:auto; display:flex; flex-direction:column; gap:0.3rem;">
+                                <div style="margin-top:0.4rem; max-height:200px; overflow-y:auto; display:flex; flex-direction:column; gap:0.3rem;">
                                     @foreach (var m in meliResults)
                                     {
                                         <button type="button" @onclick="() => VincularMeli(m)"
@@ -332,13 +333,24 @@
                                         </button>
                                     }
                                 </div>
-                                <p style="font-size:0.7rem; color:#6b7280; margin:0.35rem 0 0;">Tocá uno para traer su nombre, teléfono y dirección. Después completás lo que falte (el CUIT lo cargás vos: MercadoLibre no lo da).</p>
+                                <p style="font-size:0.68rem; color:#6b7280; margin:0.35rem 0 0;">Tocá uno para traer nombre, teléfono y dirección. El CUIT lo cargás vos: MercadoLibre no lo da.</p>
                             }
                             else
                             {
-                                <p style="font-size:0.7rem; color:#6b7280; margin:0.35rem 0 0;">Si el cliente te compra por MercadoLibre, escribí su usuario acá y el sistema completa lo que sepa de él. Si no, dejalo vacío y cargá los datos a mano.</p>
+                                <p style="font-size:0.7rem; color:#6b7280; margin:0.35rem 0 0;">Buscalo y traé sus datos. Si no compra por ML, dejalo vacío.</p>
                             }
                         }
+                    </div>
+
+                </div>
+
+                @* ═══════════════ Sección 1: Datos comerciales (lo que cargás vos) ═══════════════ *@
+                <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.1rem; margin-bottom: 1rem;">
+                    <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.9rem; padding-bottom: 0.6rem; border-bottom: 1px solid #e2e8f0;">
+                        <span style="background: #ede9fe; color: #6d28d9; font-size: 0.78rem; padding: 0.28rem 0.7rem; border-radius: 6px; font-weight: 700;">
+                            🧑‍💼 1 · Datos comerciales
+                        </span>
+                        <span style="font-size: 0.78rem; color: #6b7280;">los cargás vos</span>
                     </div>
 
                     <div class="form-row">
