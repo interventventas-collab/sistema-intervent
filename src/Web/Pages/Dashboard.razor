@@ -214,6 +214,17 @@ else
                                     }
                                 </div>
                             </div>
+                            @* 2026-08-15: si viene marcando cada tanto y de golpe pasa un rato largo
+                               sin nada, algo pasó (se trabó, se le rompió algo, se olvidó de marcar).
+                               El cartelito lo avisa sin que haya que estar mirando. Solo aparece si
+                               todavía le falta entregar: si terminó, es normal que no marque más. *@
+                            @if (emp.MinutosSinMarcar >= 45 && emp.RutaFaltan > 0)
+                            {
+                                <div style="margin-top:0.35rem; font-size:0.76rem; font-weight:700; color:#9a3412; background:#fff7ed; border:1px solid #fed7aa; border-radius:6px; padding:0.3rem 0.5rem;"
+                                     title="Hace rato que no marca una entrega y todavía le quedan paradas. Puede estar trabado, con un problema, o simplemente se olvidó de marcar.">
+                                    ⚠ Hace @(emp.MinutosSinMarcar >= 120 ? $"{emp.MinutosSinMarcar / 60}h {emp.MinutosSinMarcar % 60}m" : $"{emp.MinutosSinMarcar} min") que no marca nada
+                                </div>
+                            }
                             @if (!string.IsNullOrWhiteSpace(emp.UltimoDomicilio))
                             {
                                 <div class="dash-emp-carga-row">

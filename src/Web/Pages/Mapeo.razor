@@ -490,6 +490,8 @@
                               : (unSolaZona ? ZonaKeySlot(slotsVisibles[0]) : "none");
                     rutaZonaListado = rutasResumen.FirstOrDefault(r => r.Key == kZona);
                 }
+                // Hora estimada de llegada a cada parada que falta (se calcula una vez por dibujo).
+                var etasListado = rutaZonaListado is not null ? CalcularEtas(rutaZonaListado) : new Dictionary<int, DateTime>();
                 List<IGrouping<string, GrupoUnificado>> zonasUnificadas;
                 if (zonaUnica)
                 {
@@ -1129,9 +1131,20 @@
                             var _legSig = rutaZonaListado.Legs.FirstOrDefault(l => l.From == GrupoOrden(g).ToString());
                             if (_legSig is not null)
                             {
+                                @* 2026-08-15: además del tiempo de manejo, LA HORA a la que se calcula
+                                   que llega a la siguiente. Es lo que se necesita cuando el cliente
+                                   llama y pregunta "¿a qué hora me llega?". *@
+                                var _etaSig = etasListado.TryGetValue(GrupoOrden(g) + 1, out var _e) ? _e : (DateTime?)null;
                                 <div style="display:flex; align-items:center; gap:6px; padding:0 0 4px 30px; color:#0d9488; font-size:0.7rem; font-weight:700;" title="Tiempo y distancia de manejo hasta la parada siguiente (según el tránsito)">
                                     <span style="font-size:0.9rem; line-height:1;">↓</span>
                                     <span>@FormatoDuracion(_legSig.Seconds) · @((_legSig.Meters / 1000.0).ToString("0.#").Replace('.', ',')) km <span style="opacity:0.7; font-weight:600;">a la siguiente</span></span>
+                                    @if (_etaSig.HasValue)
+                                    {
+                                        <span style="background:#ecfeff; border:1px solid #a5f3fc; color:#0e7490; border-radius:999px; padding:0 6px; font-weight:800;"
+                                              title="Hora estimada de llegada a la parada siguiente. Se cuenta desde la última entrega real, sumando el tránsito y @MinutosPorParada minutos en cada puerta.">
+                                            🕒 llega ~@_etaSig.Value.ToArTime().ToString("HH:mm")
+                                        </span>
+                                    }
                                 </div>
                             }
                         }
@@ -4346,6 +4359,49 @@
     // El botón "Ver líneas" se prende con esto (y no con lo que el usuario pidió), así no queda
     // azul mintiendo cuando el mapa está sin líneas y hay que apretarlo dos veces.
     private int lineasPintadas;
+
+    /// <summary>2026-08-15: minutos que se pierden EN CADA PUERTA (bajar, entregar, cobrar, volver al
+    /// auto). Sin esto la hora estimada de llegada sale siempre optimista y deja de servir. Es un
+    /// promedio: si en la práctica tardan más o menos, se cambia este número y listo.</summary>
+    private const int MinutosPorParada = 5;
+
+    /// <summary>2026-08-15: a qué hora se calcula que llega a cada parada que todavía no entregó.
+    /// Se ancla en la ÚLTIMA entrega REAL (esa hora es un hecho, no una estimación) y desde ahí suma
+    /// lo que tarda cada tramo según el tránsito + los minutos de cada puerta. Si todavía no entregó
+    /// nada, arranca de ahora. Sirve para contestarle al cliente que llama preguntando a qué hora
+    /// llega el pedido.</summary>
+    private Dictionary<int, DateTime> CalcularEtas(RutaOverviewDto r)
+    {
+        var res = new Dictionary<int, DateTime>();
+        if ((r.Legs?.Count ?? 0) == 0) return res;
+        var ordenadas = (stops ?? new())
+            .Where(s => r.Key == "single" || ClaveRutaDe(s) == r.Key)
+            .Where(s => s.Latitude != 0 || s.Longitude != 0)
+            .OrderBy(s => s.OrderInRoute ?? int.MaxValue).ThenBy(s => s.Id)
+            .ToList();
+        if (ordenadas.Count == 0) return res;
+
+        var puestoAncla = 0;                       // 0 = todavía no entregó nada
+        var acum = DateTime.UtcNow;
+        for (int i = 0; i < ordenadas.Count; i++)
+            if (ordenadas[i].DateDelivered.HasValue) { puestoAncla = i + 1; acum = ordenadas[i].DateDelivered!.Value; }
+
+        for (int p = puestoAncla; p < ordenadas.Count; p++)
+        {
+            var desde = p == 0 ? "Salida" : p.ToString();
+            var leg = r.Legs!.FirstOrDefault(l => l.From == desde);
+            if (leg is null)
+            {
+                // Ruta sin punto de partida: la primera parada es "está yendo para allá ahora".
+                if (p == 0) { res[1] = acum; continue; }
+                break;
+            }
+            acum = acum.AddSeconds(leg.Seconds);
+            if (p > 0) acum = acum.AddMinutes(MinutosPorParada);   // lo que tarda en la puerta anterior
+            res[p + 1] = acum;
+        }
+        return res;
+    }
 
     /// <summary>La clave de ruta a la que pertenece una parada (la misma que usan las líneas y las
     /// tarjetas del dock): el chofer si tiene, si no la zona, y si no "sin asignar".</summary>

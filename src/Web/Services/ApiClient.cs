@@ -3110,7 +3110,9 @@ public class ApiClient
         // 2026-08-15: la ruta de HOY contada sobre las mismas paradas del mapa (envíos de MeLi,
         // ventas, alquileres y visitas juntos) + por dónde anda: último domicilio entregado y hora.
         int RutaEntregadas = 0, int RutaFaltan = 0,
-        string? UltimoDomicilio = null, string? UltimaEntregaHora = null);
+        string? UltimoDomicilio = null, string? UltimaEntregaHora = null,
+        // Minutos desde la última entrega (-1 = todavía no entregó nada hoy).
+        int MinutosSinMarcar = -1);
     public record DashboardEquipoResumen(int Trabajando, int Salio, int SinFichar, int NoFicha);
     public record DashboardEquipoResponse(List<DashboardEquipoItem> Items, DashboardEquipoResumen Resumen, DateTime Fecha);
 

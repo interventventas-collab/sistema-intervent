@@ -317,7 +317,10 @@ public class DashboardController : ControllerBase
         // en el mapa (no sobre cada modulo por separado), asi los numeros de las dos pantallas
         // coinciden siempre. Y por donde va: el ultimo domicilio que marco entregado y a que hora.
         int RutaEntregadas = 0, int RutaFaltan = 0,
-        string? UltimoDomicilio = null, string? UltimaEntregaHora = null);
+        string? UltimoDomicilio = null, string? UltimaEntregaHora = null,
+        // Minutos desde la última entrega. Si pasa mucho tiempo, algo le pasó (se trabó, se le
+        // rompió algo, se olvidó de marcar) y conviene llamarlo. -1 = todavía no entregó nada.
+        int MinutosSinMarcar = -1);
 
     // 2026-06-25: orden fijo pedido por Osmar — repartidores primero (alexis, walter,
     // benjamin, gonzalo, rodrigo), después oficina (osmar, german, gabriel, miguel).
@@ -395,6 +398,7 @@ public class DashboardController : ControllerBase
         var rutaFaltanByRep = new Dictionary<int, int>();
         var ultimoDomByRep = new Dictionary<int, string>();
         var ultimaHoraByRep = new Dictionary<int, string>();
+        var minsSinMarcarByRep = new Dictionary<int, int>();
         if (repIds.Count > 0)
         {
             var driversMapa = await _db.MapeoDrivers
@@ -425,6 +429,9 @@ public class DashboardController : ControllerBase
                             : $"{ultima.Stop.Alias} — {ultima.Stop.Direccion}";
                         // Las horas se guardan en UTC; el usuario las lee en hora de Argentina.
                         ultimaHoraByRep[grupo.Key] = ultima.Hora.AddHours(-3).ToString("HH:mm");
+                        // Hace cuánto que no marca nada (solo tiene sentido si todavía le falta algo).
+                        if (grupo.Count() - entregadas.Count > 0)
+                            minsSinMarcarByRep[grupo.Key] = (int)Math.Max(0, (DateTime.UtcNow - ultima.Hora).TotalMinutes);
                     }
                 }
             }
@@ -531,6 +538,7 @@ public class DashboardController : ControllerBase
             int ventasPend = 0, ventasEntHoy = 0, alqEntHoy = 0, alqRetHoy = 0;
             int rutaEnt = 0, rutaFaltan = 0;
             string? ultimoDom = null, ultimaHora = null;
+            int minsSinMarcar = -1;
             bool tieneRepartidor = repByEmp.TryGetValue(e.Id, out var rep);
             if (tieneRepartidor && rep != null)
             {
@@ -546,6 +554,7 @@ public class DashboardController : ControllerBase
                 rutaFaltanByRep.TryGetValue(rep.Id, out rutaFaltan);
                 ultimoDomByRep.TryGetValue(rep.Id, out ultimoDom);
                 ultimaHoraByRep.TryGetValue(rep.Id, out ultimaHora);
+                if (!minsSinMarcarByRep.TryGetValue(rep.Id, out minsSinMarcar)) minsSinMarcar = -1;
             }
 
             decimal neto = 0m, pagado = 0m;
@@ -563,7 +572,7 @@ public class DashboardController : ControllerBase
                 porRendir, pagado, leDebo, tieneRepartidor,
                 porRendirVentas, porRendirAlq,
                 ventasPend, ventasEntHoy, alqEntHoy, alqRetHoy,
-                rutaEnt, rutaFaltan, ultimoDom, ultimaHora);
+                rutaEnt, rutaFaltan, ultimoDom, ultimaHora, minsSinMarcar);
         })
         .OrderBy(x => OrdenPersonalizado(x.Nombre))
         .ThenBy(x => x.Nombre)
