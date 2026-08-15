@@ -109,6 +109,17 @@ services:
     depends_on:
       sqlserver-prod:
         condition: service_healthy
+    # 2026-08-15: "esta lista la API?". Le pega a si misma por HTTP; Kestrel recien escucha el
+    # puerto cuando la app termino de arrancar, asi que si contesta HTTP es que ya esta sirviendo.
+    # Lo usa web-prod para NO arrancar antes de tiempo (era la causa de los 502 al publicar).
+    # OJO: la imagen de la API no trae curl ni wget, por eso se usa bash (/dev/tcp). NO cambiar a
+    # "sh": el sh de Debian (dash) no soporta /dev/tcp y el chequeo fallaria siempre.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/80 && printf 'HEAD / HTTP/1.0\\r\\n\\r\\n' >&3 && head -n 1 <&3 | grep -q HTTP"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     restart: unless-stopped
 
   # --- Playwright PRODUCCION ---
@@ -140,8 +151,11 @@ services:
       - ./presupuestos-electricista/armador-presupuestos-cse.html:/usr/share/nginx/html/electricista/armador.html:ro
     networks:
       - aiml-prod-net
+    # 2026-08-15: espera a que la API este RESPONDIENDO (no solo "arrancada"). Antes con un
+    # depends_on pelado el web levantaba primero y los usuarios veian 502 durante la publicacion.
     depends_on:
-      - api-prod
+      api-prod:
+        condition: service_healthy
     restart: unless-stopped
 
   # --- App del amigo electricista (C.S.E): backend propio + SQLite, separado de INTER VENT ---
