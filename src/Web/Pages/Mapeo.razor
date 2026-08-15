@@ -1931,14 +1931,119 @@
                     <button class="btn" style="margin-left:auto; font-size:0.72rem; padding:0.15rem 0.5rem; background:transparent; border:1px solid #92400e; color:#92400e; border-radius:6px;" @onclick="CancelarCorregirDomicilio">✕ Cancelar</button>
                 </div>
             }
-            <div style="display:flex; gap:0.5rem; align-items:stretch;">
+            @* 2026-08-15: el buscador (que era una sola barra larguísima) se parte al medio.
+               IZQUIERDA = direcciones nuevas (Google), como siempre.
+               DERECHA  = clientes del sistema + la ⭐ que despliega los favoritos.
+               Así no hay que acordarse de en qué cajón está guardado cada lugar. *@
+            <div style="display:flex; gap:0.5rem; align-items:stretch; flex-wrap:wrap;">
                 @* 2026-08-15: type=search + name propio + los data-* de los gestores de claves para que
                    Chrome NO ofrezca la clave guardada del sistema al tocar el buscador (lo tomaba como
                    si fuera el casillero de usuario y aparecía el cartelito "ADMIN / 20301359366"). *@
                 <input id="mapeoSearchInput" type="search" name="mapeo-buscar-direccion" class="form-input"
                        autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other"
                        placeholder="@(editandoPinStopId is not null ? "🔍 Buscá la dirección correcta y elegila (mueve el pin)…" : (corrigiendoDomicilioStopId is not null ? "🔍 Escribí el domicilio correcto y elegilo…" : "🔍 Buscar una dirección y sumarla al mapa…"))"
-                       style="flex:1; font-size:1.05rem; padding:0.7rem 0.95rem; border:1.5px solid @((editandoPinStopId is not null || corrigiendoDomicilioStopId is not null) ? "#f59e0b" : (verDireccionAlTocar ? "#2563eb" : "#d1d5db")); border-radius:8px;" />
+                       style="flex:1 1 240px; min-width:0; font-size:1.05rem; padding:0.7rem 0.95rem; border:1.5px solid @((editandoPinStopId is not null || corrigiendoDomicilioStopId is not null) ? "#f59e0b" : (verDireccionAlTocar ? "#2563eb" : "#d1d5db")); border-radius:8px;" />
+                @* La mitad derecha se esconde mientras estás corrigiendo una ubicación: ahí el buscador
+                   de la izquierda tiene otro trabajo (mover el pin) y no corresponde sumar nada nuevo. *@
+                @if (editandoPinStopId is null && corrigiendoDomicilioStopId is null)
+                {
+                    <div style="flex:1 1 240px; min-width:0; position:relative; display:flex; gap:0.4rem;">
+                        <input type="search" name="mapeo-buscar-cliente" class="form-input"
+                               autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other"
+                               value="@buscarClienteTxt" @oninput="OnBuscarClienteInput"
+                               placeholder="🍵 Buscar un cliente por nombre…"
+                               style="flex:1; min-width:0; font-size:1.05rem; padding:0.7rem 0.95rem; border:1.5px solid @(string.IsNullOrWhiteSpace(buscarClienteTxt) ? "#d1d5db" : "#15803d"); border-radius:8px;" />
+                        <button type="button" @onclick="ToggleFavoritosPanel"
+                                title="Ver mis favoritos (los lugares que guardaste con la estrella)"
+                                style="white-space:nowrap; font-size:1.2rem; padding:0 0.9rem; border-radius:8px; cursor:pointer; border:1.5px solid @(mostrarFavoritosPanel ? "#d97706" : "#d1d5db"); background:@(mostrarFavoritosPanel ? "#f59e0b" : "#ffffff");">
+                            ⭐
+                        </button>
+
+                        @* ── Desplegable: LOS FAVORITOS (se abre con la estrellita) ── *@
+                        @if (mostrarFavoritosPanel)
+                        {
+                            <div style="position:absolute; top:calc(100% + 5px); left:0; right:0; z-index:620; background:#fff; border:2px solid #f59e0b; border-radius:10px; box-shadow:0 10px 28px rgba(0,0,0,0.25); overflow:hidden;">
+                                <div style="background:#fef3c7; padding:0.4rem 0.6rem; display:flex; align-items:center; gap:0.4rem; font-size:0.8rem; font-weight:800; color:#92400e;">
+                                    <span>⭐ Mis favoritos@(favoritos is null || favoritos.Count == 0 ? "" : $" ({favoritos.Count})")</span>
+                                    <button type="button" @onclick="() => mostrarFavoritosPanel = false" title="Cerrar"
+                                            style="margin-left:auto; background:transparent; border:none; color:#92400e; font-size:1.15rem; line-height:1; cursor:pointer;">&times;</button>
+                                </div>
+                                <div style="max-height:min(46vh, 330px); overflow-y:auto; padding:0.35rem;">
+                                    @if (favoritos is null || favoritos.Count == 0)
+                                    {
+                                        <div style="padding:0.8rem; text-align:center; color:#6b7280; font-size:0.8rem;">
+                                            Todavía no tenés favoritos.<br />
+                                            <span style="font-size:0.75rem;">Se guardan tildando "⭐ Guardar también como favorito" cuando sumás una parada.</span>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var f in favoritos)
+                                        {
+                                            <div class="mapeo-card" style="margin-bottom:0.25rem; border-color:#e5e7eb;"
+                                                 @onclick="() => AgregarFavoritoDesdeBuscador(f)" title="Tocá para sumarlo al mapa">
+                                                <strong>⭐ @f.Alias</strong>
+                                                <div style="font-size:0.75rem; color:#4b5563;">@f.Direccion</div>
+                                                @if (!string.IsNullOrEmpty(f.Telefono))
+                                                {
+                                                    <div style="font-size:0.7rem; color:#6b7280;">📞 @f.Telefono</div>
+                                                }
+                                            </div>
+                                        }
+                                    }
+                                </div>
+                            </div>
+                        }
+                        @* ── Desplegable: LOS CLIENTES que coinciden con lo que escribís ── *@
+                        else if (!string.IsNullOrWhiteSpace(buscarClienteTxt))
+                        {
+                            var qc = buscarClienteTxt.Trim();
+                            var matchCli = (clientesMapeados ?? new()).Where(c => FichaClienteMatch(c, qc)).Take(12).ToList();
+                            <div style="position:absolute; top:calc(100% + 5px); left:0; right:0; z-index:620; background:#fff; border:2px solid #15803d; border-radius:10px; box-shadow:0 10px 28px rgba(0,0,0,0.25); overflow:hidden;">
+                                <div style="background:#ecfdf5; padding:0.4rem 0.6rem; display:flex; align-items:center; gap:0.4rem; font-size:0.8rem; font-weight:800; color:#166534;">
+                                    <span>🍵 Clientes con ubicación guardada</span>
+                                    <button type="button" @onclick="() => buscarClienteTxt = string.Empty" title="Cerrar"
+                                            style="margin-left:auto; background:transparent; border:none; color:#166534; font-size:1.15rem; line-height:1; cursor:pointer;">&times;</button>
+                                </div>
+                                <div style="max-height:min(46vh, 330px); overflow-y:auto; padding:0.35rem;">
+                                    @if (matchCli.Count == 0)
+                                    {
+                                        <div style="padding:0.7rem; color:#6b7280; font-size:0.8rem;">
+                                            Ningún cliente <strong>con ubicación guardada</strong> coincide con "@qc".
+                                            <div style="margin-top:0.35rem; font-size:0.75rem; color:#b45309; background:#fffbeb; border:1px solid #fde68a; border-radius:6px; padding:0.35rem 0.45rem;">
+                                                💡 Si el cliente existe pero nunca le guardaste la dirección: buscala en el
+                                                casillero de la <strong>izquierda</strong> y, en la tarjetita que aparece,
+                                                usá <strong>"🍵 Asignar a un cliente del sistema"</strong>. Desde la próxima vez
+                                                ya te aparece acá.
+                                            </div>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var c in matchCli)
+                                        {
+                                            <div class="mapeo-card" style="margin-bottom:0.25rem; border-color:#e5e7eb; display:flex; gap:0.45rem; align-items:center;"
+                                                 @onclick="() => AgregarClienteDesdeBuscador(c)" title="Tocá para sumarlo al mapa">
+                                                @if (c.CodigoInterno.HasValue)
+                                                {
+                                                    <span style="background:#1e40af; color:#fff; font-family:monospace; font-weight:700; padding:0.1rem 0.4rem; border-radius:4px; font-size:0.74rem;">@c.CodigoInterno</span>
+                                                }
+                                                <div style="flex:1; min-width:0;">
+                                                    <strong>@c.Nombre</strong>
+                                                    @if (c.Tipo == "BAR")
+                                                    {
+                                                        <span style="display:inline-block; padding:0.05rem 0.35rem; background:#dbeafe; color:#1e40af; border-radius:999px; font-size:0.65rem; font-weight:700; margin-left:0.3rem;">🍺 BAR</span>
+                                                    }
+                                                    <div style="font-size:0.75rem; color:#4b5563;">@(c.DomicilioEntrega ?? c.Direccion ?? "—")</div>
+                                                </div>
+                                            </div>
+                                        }
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
                 @* Botón "Ver dirección al tocar": prende/apaga el modo geolocalización inversa (tocá el mapa → te dice la calle y número). *@
                 <button type="button" @onclick="ToggleVerDireccion"
                         style="white-space:nowrap; font-size:0.88rem; font-weight:600; padding:0 0.95rem; border-radius:8px; cursor:pointer; border:1.5px solid @(verDireccionAlTocar ? "#2563eb" : "#d1d5db"); background:@(verDireccionAlTocar ? "#2563eb" : "#ffffff"); color:@(verDireccionAlTocar ? "#ffffff" : "#374151");"
@@ -3909,6 +4014,10 @@
     // Clientes Café con MapeoLink cargado — se traen al inicio y aparecen en el tab "Clientes mapeados".
     private List<CafeClienteDto>? clientesMapeados;
 
+    // ===== Mitad derecha del buscador: clientes + ⭐ favoritos =====
+    private string buscarClienteTxt = "";
+    private bool mostrarFavoritosPanel;
+
     // ===== Ficha de la parada (tarjetita arriba del mapa) =====
     // 2026-08-15: reemplaza a la vieja solapa "Tipear nueva" (que duplicaba el buscador grande del
     // mapa) y agrega lo que antes no existía: editar una parada YA creada, y vincularla a un cliente.
@@ -5815,6 +5924,42 @@
             if (s is not null) { stops!.Insert(0, s); ToastService.Success($"'{f.Alias}' agregado al mapa"); await RenderMap(); }
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    // ══════════════ Mitad derecha del buscador: clientes del sistema + ⭐ favoritos ══════════════
+    // 2026-08-15: la barra de búsqueda era una sola, larguísima, y solo servía para direcciones de
+    // Google. Los favoritos y los clientes estaban escondidos adentro del cartel "Agregar parada",
+    // así que había que acordarse de en qué cajón quedó guardado cada lugar. Ahora conviven: izquierda
+    // dirección nueva, derecha cliente, y la estrellita despliega los favoritos.
+
+    private void OnBuscarClienteInput(ChangeEventArgs e)
+    {
+        buscarClienteTxt = e.Value?.ToString() ?? "";
+        // Si te ponés a escribir, la lista de favoritos estorba: se cierra sola.
+        if (!string.IsNullOrEmpty(buscarClienteTxt)) mostrarFavoritosPanel = false;
+    }
+
+    private async Task ToggleFavoritosPanel()
+    {
+        mostrarFavoritosPanel = !mostrarFavoritosPanel;
+        if (mostrarFavoritosPanel)
+        {
+            buscarClienteTxt = "";                              // los dos desplegables nunca juntos
+            if (favoritos is null) await LoadFavoritos();
+        }
+    }
+
+    private async Task AgregarFavoritoDesdeBuscador(MapeoFavoritoDto f)
+    {
+        mostrarFavoritosPanel = false;
+        await AddStopFromFavorito(f);
+    }
+
+    private async Task AgregarClienteDesdeBuscador(CafeClienteDto c)
+    {
+        buscarClienteTxt = "";
+        mostrarFavoritosPanel = false;
+        await AddStopFromCliente(c);
     }
 
     // ═══════════════════════ Ficha de la parada (tarjetita arriba del mapa) ═══════════════════════
