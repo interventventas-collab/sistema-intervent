@@ -621,6 +621,22 @@ window.mapeoFlex = (function () {
                     if (infoWindow) { infoWindow.close(); infoOpen = false; }
                     if (dotNetRef) dotNetRef.invokeMethodAsync('CorregirUbicacionDesdePopup', markerId);
                 },
+                // 2026-08-15: la estrellita del globito. Un toque = guardar este lugar en favoritos
+                // (o sacarlo, si ya lo era). NO cerramos el globito: el botón se repinta solo con la
+                // estrella llena/vacía, así se ve al toque que quedó guardado.
+                favStop: function (markerId, btn) {
+                    // El globito abierto bloquea el redibujo del mapa (para no pisarte lo que estás
+                    // mirando), así que la estrella la damos vuelta acá mismo: se ve al instante.
+                    if (btn) {
+                        var ahora = btn.getAttribute('data-fav') !== '1';
+                        btn.setAttribute('data-fav', ahora ? '1' : '0');
+                        btn.textContent = ahora ? '⭐ Favorito' : '☆ Hacer favorito';
+                        btn.style.background = ahora ? '#f59e0b' : 'white';
+                        btn.style.color = ahora ? '#ffffff' : '#92400e';
+                        btn.title = ahora ? 'Ya está en tus favoritos — tocá para sacarlo' : 'Guardar este lugar en tus favoritos';
+                    }
+                    if (dotNetRef) dotNetRef.invokeMethodAsync('ToggleFavoritoDesdePopup', markerId);
+                },
                 // 2026-08-15: editar nombre/contacto/teléfono/notas de esta parada desde el globito
                 // (y vincularla a un cliente del sistema). Cerramos el globito: la ficha se abre
                 // arriba del mapa, igual que cuando recién agregás una dirección con el buscador.
