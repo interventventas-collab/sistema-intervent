@@ -8,6 +8,7 @@
 @inject Microsoft.JSInterop.IJSRuntime JS
 @inject Web.Services.AuthService AuthSvc
 @inject Web.Services.PresenceService Presence
+@inject Web.Services.WaAparienciaService Apariencia
 @implements IDisposable
 
 <PageTitle>WhatsApp — Chat</PageTitle>
@@ -66,12 +67,20 @@
                 {
                     <div class="wa-linea-hint">💡 Cuando conectes el 2° número de WhatsApp va a aparecer acá para elegir con cuál trabajar. Ya está todo listo para ese momento.</div>
                 }
+                @* 2026-08-15: colores (claro/oscuro por línea) y letra de la pantalla *@
+                <button class="wa-linea-opt" style="border-top:1px solid #eef1f5; border-radius:0 0 10px 10px; margin-top:0.25rem;"
+                        @onclick="AbrirApariencia" title="Elegir si cada línea se ve clara u oscura, y con qué letra">
+                    <span>🎨 Colores y letra</span>
+                </button>
             </div>
         }
     </div>
 </div>
 
-<div class="wa-outer">
+@* 2026-08-15: la caja del WhatsApp se pinta según la LÍNEA con la que estás trabajando
+   (FIJO TRANSRADIO oscuro, FRIKAF claro, etc.) + la letra elegida. Solo esta caja:
+   el menú de la izquierda y la barra de arriba del sistema no se tocan. *@
+<div class="wa-outer @Apariencia.ClasesPara(LineaParaTema())">
 <div class="wa-root @(selectedNumero is null ? "" : "wa-chat-abierto") @(soloMode ? "wa-solo" : "")">
     @if (!soloMode)
     {
@@ -1487,6 +1496,66 @@
             <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:1.1rem;">
                 <button class="btn btn-secondary btn-sm" @onclick="@(() => showEditLinea = false)">Cancelar</button>
                 <button class="btn btn-success btn-sm" disabled="@editLineaGuardando" @onclick="GuardarEditLinea">@(editLineaGuardando ? "Guardando…" : "✓ Guardar")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* 2026-08-15: cómo se ve el WhatsApp — color por línea (claro/oscuro) + letra de la pantalla *@
+@if (showApariencia)
+{
+    <div class="wa-modal-backdrop" @onclick="@(() => showApariencia = false)"></div>
+    <div class="wa-modal" style="max-width:560px;">
+        <div class="wa-modal-header">
+            <h3 style="margin:0; flex:1; font-size:1.05rem;">🎨 Colores y letra del WhatsApp</h3>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="@(() => showApariencia = false)">×</button>
+        </div>
+        <div class="wa-modal-body">
+            <div style="font-size:0.82rem; color:#6b7280; margin-bottom:0.9rem; line-height:1.45;">
+                Los cambios se ven al toque y quedan guardados para todos: en la computadora, en el celular y en el chat flotante.
+                Solo se pinta el WhatsApp — el menú y la barra de arriba quedan como están.
+            </div>
+
+            <div style="font-weight:700; font-size:0.9rem; margin-bottom:0.15rem;">🌗 Color de cada línea</div>
+            <div style="font-size:0.76rem; color:#6b7280; margin-bottom:0.6rem;">
+                Poné una línea en oscuro y así, de un vistazo, sabés desde qué número estás escribiendo.
+            </div>
+            @foreach (var l in LineasDetectadas())
+            {
+                var esOscura = Apariencia.EsOscura(l.Id);
+                <div style="display:flex; align-items:center; gap:0.6rem; padding:0.5rem 0; border-bottom:1px solid #f3f4f6;">
+                    @if (LineaImg(l.Id) is string _limg) { <img src="@_limg" class="wa-linea-av" alt="" /> } else { <span>📱</span> }
+                    <span style="flex:1; min-width:0; font-size:0.88rem; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@LineaNombre(l.Id, l.Numero)</span>
+                    <button class="btn btn-sm @(esOscura ? "btn-outline-secondary" : "btn-success")" disabled="@aparienciaGuardando"
+                            @onclick="@(() => CambiarTemaLinea(l.Id, "claro"))">☀️ Claro</button>
+                    <button class="btn btn-sm @(esOscura ? "btn-dark" : "btn-outline-secondary")" disabled="@aparienciaGuardando"
+                            @onclick="@(() => CambiarTemaLinea(l.Id, "oscuro"))">🌙 Oscuro</button>
+                </div>
+            }
+            @if (LineasDetectadas().Count == 0)
+            {
+                <div style="font-size:0.85rem; color:#9ca3af;">Todavía no hay líneas conectadas.</div>
+            }
+
+            <div style="font-weight:700; font-size:0.9rem; margin:1.2rem 0 0.15rem;">🔤 Letra</div>
+            <div style="font-size:0.76rem; color:#6b7280; margin-bottom:0.6rem;">
+                Es una sola para todo el WhatsApp. Probá las que quieras: se cambia al instante y podés volver cuando quieras.
+            </div>
+            <div style="display:flex; flex-direction:column; gap:0.4rem;">
+                @foreach (var f in Web.Services.WaAparienciaService.FuentesDisponibles)
+                {
+                    <button class="wa-vincular-opt" disabled="@aparienciaGuardando"
+                            style="@(aparienciaFuente == f.Key ? "border-color:#16a34a; background:#ecfdf5;" : "")"
+                            @onclick="@(() => CambiarFuente(f.Key))">
+                        <span class="wa-font-@f.Key" style="font-weight:700;">@f.Label</span>
+                        @if (aparienciaFuente == f.Key) { <span style="color:#16a34a; font-weight:800; float:right;">✓</span> }
+                        <span class="wa-font-@f.Key" style="display:block; font-size:0.85rem; color:#6b7280; margin-top:0.15rem;">@f.Ejemplo</span>
+                    </button>
+                }
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; margin-top:1.1rem;">
+                <button class="btn btn-secondary btn-sm" @onclick="@(() => showApariencia = false)">Cerrar</button>
             </div>
         </div>
     </div>
@@ -2988,6 +3057,9 @@
         await LoadConversaciones();
         await LoadLineasConfig();
         AplicarLineaPorDefecto();
+        // 2026-08-15: tema (claro/oscuro) de cada línea + letra elegida
+        await Apariencia.EnsureLoadedAsync();
+        Apariencia.OnChange += AparienciaCambio;
         await CargarSonidoMaster();
         // 2026-08-03: dejar listo el panel de "Nueva conversación" (se muestra cuando no hay chat abierto)
         await EnsureNvCargado();
@@ -4797,6 +4869,53 @@
         StateHasChanged();
     }
 
+    // ══ 2026-08-15: APARIENCIA — tema oscuro por línea + letra ═════════════════
+    // Pedido de Osmar: con dos números (FRIKAF y FIJO TRANSRADIO) se confundía desde
+    // cuál estaba escribiendo. Ahora cada línea puede verse clara u oscura.
+
+    /// <summary>Qué línea manda el color de la pantalla: la del chat abierto (es con la que
+    /// estás escribiendo ahora); si no hay chat abierto, la que estés filtrando; y si hay
+    /// una sola línea conectada, esa. Con "Todas las líneas" y sin chat abierto queda claro.</summary>
+    string? LineaParaTema()
+    {
+        if (!string.IsNullOrEmpty(selectedLinea)) return selectedLinea;
+        if (!string.IsNullOrEmpty(filtroLinea)) return filtroLinea;
+        var ls = LineasDetectadas();
+        return ls.Count == 1 ? ls[0].Id : null;
+    }
+    void AparienciaCambio() => InvokeAsync(StateHasChanged);
+
+    bool showApariencia = false, aparienciaGuardando = false;
+    string aparienciaFuente = "sistema";
+    async Task AbrirApariencia()
+    {
+        showLineaMenu = false;
+        await Apariencia.EnsureLoadedAsync();
+        aparienciaFuente = Apariencia.Fuente;
+        showApariencia = true;
+    }
+    async Task CambiarTemaLinea(string lineaId, string tema)
+    {
+        lineaCfg.TryGetValue(lineaId, out var c);
+        aparienciaGuardando = true;
+        StateHasChanged();
+        var ok = await Apariencia.GuardarTemaAsync(lineaId, tema, c?.Nombre, c?.Sonido);
+        aparienciaGuardando = false;
+        if (!ok) { Toast.Error("No se pudo guardar el color de esa línea"); return; }
+        await LoadLineasConfig();
+        StateHasChanged();
+    }
+    async Task CambiarFuente(string clave)
+    {
+        aparienciaFuente = clave;
+        aparienciaGuardando = true;
+        StateHasChanged();
+        var ok = await Apariencia.GuardarFuenteAsync(clave);
+        aparienciaGuardando = false;
+        if (!ok) Toast.Error("No se pudo guardar la letra");
+        StateHasChanged();
+    }
+
     // 2026-07-31: etiqueta corta para el chip de cada cuenta. Instagram viene como "IG @usuario"
     // (lo registra el webhook) → 📸 @usuario; WhatsApp es un número → 📱 número.
     string EtiquetaLineaChip(string? lineaNumero, string id)
@@ -5009,6 +5128,7 @@
 
     public void Dispose()
     {
+        Apariencia.OnChange -= AparienciaCambio;
         refreshTimer?.Dispose();
         // Sacar el listener de pegado al salir de la pantalla (evita que Ctrl+V dispare avisos en otras páginas).
         try { _ = JS.InvokeVoidAsync("waPaste.unregister"); } catch { }

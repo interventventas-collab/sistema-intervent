@@ -9,9 +9,11 @@
 @inject Web.Services.AuthService AuthSvc
 @inject Web.Services.OperatorService Op
 @inject Microsoft.JSInterop.IJSRuntime JS
+@inject Web.Services.WaAparienciaService Apariencia
 @implements IDisposable
 
-<div class="pwa-card">
+@* 2026-08-15: se pinta según el tema de SU línea (oscuro/claro) + la letra elegida. *@
+<div class="pwa-card @Apariencia.ClasesPara(LineaPhoneId)">
     <div class="pwa-head">
         <div class="pwa-head-l">
             <span class="pwa-avatar">@InicialContacto()</span>
@@ -704,6 +706,9 @@
             esDeposito = perms.Contains("deposito") && !perms.Contains("cafe") && !perms.Contains("oficina");
         }
         catch { esDeposito = false; }
+        // 2026-08-15: tema (claro/oscuro) de esta línea + letra elegida
+        await Apariencia.EnsureLoadedAsync();
+        Apariencia.OnChange += AparienciaCambio;
         await Cargar();
         // Refresco liviano cada 12s para ver mensajes nuevos sin recargar la página.
         refreshTimer = new System.Threading.Timer(async _ =>
@@ -1083,5 +1088,11 @@
         return local.ToString("dd/MM HH:mm");
     }
 
-    public void Dispose() => refreshTimer?.Dispose();
+    void AparienciaCambio() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Apariencia.OnChange -= AparienciaCambio;
+        refreshTimer?.Dispose();
+    }
 }

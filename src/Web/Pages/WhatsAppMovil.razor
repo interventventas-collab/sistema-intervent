@@ -6,6 +6,7 @@
 @inject ApiClient Api
 @inject NavigationManager Nav
 @inject Microsoft.JSInterop.IJSRuntime JS
+@inject Web.Services.WaAparienciaService Apariencia
 @implements IDisposable
 
 @* 2026-08-06: pantalla DEDICADA de WhatsApp para el celu (como las que usan los repartidores).
@@ -56,7 +57,8 @@
 }
 else
 {
-<div class="wam-root">
+@* 2026-08-15: se ve claro u oscuro según la línea con la que estás trabajando. *@
+<div class="wam-root @Apariencia.ClasesPara(chatAbierto?.Linea ?? filtroLinea)">
     <div class="wam-header">
         @if (chatAbierto is not null)
         {
@@ -354,6 +356,8 @@ else
         catch { convs ??= new(); }
         if (lineasConfig.Count == 0)
             try { lineasConfig = await Api.GetTwLineasConfigAsync(); } catch { }
+        // 2026-08-15: tema (claro/oscuro) de cada línea + letra elegida
+        await Apariencia.EnsureLoadedAsync();
         cargando = false;
 
         // La primera vez: recordar hasta dónde llegamos (para NO avisar de mensajes viejos),

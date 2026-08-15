@@ -348,13 +348,14 @@ public class WhatsAppTwilioController : ControllerBase
                 EsInstagram = (l.Numero ?? "").StartsWith("IG ", StringComparison.Ordinal),
                 Nombre = c?.Nombre,
                 ImagenDataUrl = c?.ImagenDataUrl,
-                Sonido = c?.Sonido
+                Sonido = c?.Sonido,
+                Tema = c?.Tema
             };
         }).OrderBy(x => x.EsInstagram).ThenBy(x => x.NumeroReal).ToList();
         return Ok(res);
     }
 
-    public record LineaConfigUpsert(string LineaId, string? Nombre, string? ImagenDataUrl, string? Sonido = null);
+    public record LineaConfigUpsert(string LineaId, string? Nombre, string? ImagenDataUrl, string? Sonido = null, string? Tema = null);
 
     /// <summary>2026-08-01: SOLO los sonidos por línea (liviano, sin imágenes) — para que el panel flotante
     /// lo refresque cada 10s y los cambios de sonido tomen efecto sin recargar la página.</summary>
@@ -389,6 +390,10 @@ public class WhatsAppTwilioController : ControllerBase
         if (req.ImagenDataUrl != null)
             cfg.ImagenDataUrl = req.ImagenDataUrl.Length == 0 ? null : req.ImagenDataUrl;
         cfg.Sonido = string.IsNullOrWhiteSpace(req.Sonido) ? null : req.Sonido.Trim();
+        // 2026-08-15: tema (claro/oscuro) de la pantalla cuando trabajás con esta línea.
+        // null = no tocar (el modal de nombre/imagen no lo manda), "oscuro" = oscuro, cualquier otra cosa = claro.
+        if (req.Tema != null)
+            cfg.Tema = string.Equals(req.Tema.Trim(), "oscuro", StringComparison.OrdinalIgnoreCase) ? "oscuro" : null;
         cfg.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return Ok(new { ok = true });

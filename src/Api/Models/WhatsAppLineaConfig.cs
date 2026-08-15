@@ -15,5 +15,9 @@ public class WhatsAppLineaConfig
     public string? ImagenDataUrl { get; set; }
     /// <summary>2026-08-01: sonido de aviso de esta línea (clave: chime/msn/coin/powerup/laser/levelup). Null = default.</summary>
     [MaxLength(30)] public string? Sonido { get; set; }
+    /// <summary>2026-08-15: cómo se ve la pantalla de WhatsApp cuando trabajás con esta línea:
+    /// "oscuro" = fondo negro, cualquier otra cosa (o null) = claro de siempre. Sirve para saber
+    /// de un vistazo con qué número estás escribiendo.</summary>
+    [MaxLength(10)] public string? Tema { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

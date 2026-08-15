@@ -6838,7 +6838,8 @@ public class ApiClient
         => await _http.GetFromJsonAsync<List<TwLineaDto>>("/api/whatsapp/twilio/lineas") ?? new();
 
     // 2026-08-01: nombre + imagen personalizados por línea (WhatsApp e Instagram)
-    public record TwLineaConfigDto(string LineaId, string? NumeroReal, bool EsInstagram, string? Nombre, string? ImagenDataUrl, string? Sonido = null);
+    // 2026-08-15: Tema = "oscuro" para que la pantalla de WhatsApp se vea de noche con esta línea; null/"claro" = de siempre.
+    public record TwLineaConfigDto(string LineaId, string? NumeroReal, bool EsInstagram, string? Nombre, string? ImagenDataUrl, string? Sonido = null, string? Tema = null);
 
     public async Task<List<TwLineaConfigDto>> GetTwLineasConfigAsync()
         => await _http.GetFromJsonAsync<List<TwLineaConfigDto>>("/api/whatsapp/twilio/lineas-config") ?? new();
@@ -6848,12 +6849,13 @@ public class ApiClient
     public async Task<List<TwLineaSonidoDto>> GetTwLineaSonidosAsync()
         => await _http.GetFromJsonAsync<List<TwLineaSonidoDto>>("/api/whatsapp/twilio/lineas-sonidos") ?? new();
 
-    public async Task<(bool ok, string? error)> GuardarTwLineaConfigAsync(string lineaId, string? nombre, string? imagenDataUrl, string? sonido = null)
+    /// <summary>tema: null = no tocar el tema (lo usa el modal de nombre/imagen), "oscuro" o "claro" = cambiarlo.</summary>
+    public async Task<(bool ok, string? error)> GuardarTwLineaConfigAsync(string lineaId, string? nombre, string? imagenDataUrl, string? sonido = null, string? tema = null)
     {
         try
         {
             var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/lineas-config",
-                new { LineaId = lineaId, Nombre = nombre, ImagenDataUrl = imagenDataUrl, Sonido = sonido });
+                new { LineaId = lineaId, Nombre = nombre, ImagenDataUrl = imagenDataUrl, Sonido = sonido, Tema = tema });
             if (resp.IsSuccessStatusCode) return (true, null);
             string err = "Error al guardar";
             try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync()); if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; } catch { }
