@@ -112,6 +112,33 @@
                             }
                             else
                             {
+                                @* 2026-08-15: respuestas rápidas acá adentro, para contestar sin ir a la bandeja.
+                                   Es la MISMA lista de la bandeja (/api/meli/questions/quick-replies), no una copia. *@
+                                @if (quickReplies.Count > 0)
+                                {
+                                    <button type="button" class="mqr-toggle" @onclick="() => ToggleQr(q.Id)"
+                                            title="Insertar una respuesta prearmada">
+                                        ⚡ Respuestas rápidas
+                                        <span class="mqr-caret">@(qrOpen.Contains(q.Id) ? "▲" : "▼")</span>
+                                    </button>
+                                    @if (qrOpen.Contains(q.Id))
+                                    {
+                                        <div class="mqr-groups">
+                                            @foreach (var g in GroupedQuickReplies())
+                                            {
+                                                var cm = CatMeta(g.Key);
+                                                <div class="mqr-group">
+                                                    <span class="mqr-cat mqr-cat-@cm.cls">@cm.icon @g.Key</span>
+                                                    @foreach (var c in g)
+                                                    {
+                                                        <button type="button" class="mqr-chip" title="@c.Text"
+                                                                @onclick="() => InsertCanned(q.Id, c.Text)">@Corto(c.Text)</button>
+                                                    }
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                }
                                 <textarea class="form-input meli-q-answer-input" rows="3" placeholder="Escribí tu respuesta acá..."
                                           @bind="answerDrafts[q.Id]" @bind:event="oninput"></textarea>
                                 <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.4rem;">
@@ -279,6 +306,39 @@
         gap: 0.8rem;
     }
     .meli-q-close-btn { font-weight: 700; }
+
+    /* === 2026-08-15: respuestas rápidas dentro del cartel === */
+    .mqr-toggle {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 0.78rem; font-weight: 700; font-family: inherit;
+        color: #b45309; background: rgba(245,158,11,.10);
+        border: 1px solid rgba(245,158,11,.35); border-radius: 999px;
+        padding: 4px 11px; cursor: pointer; margin-bottom: 7px;
+    }
+    .mqr-toggle:hover { background: rgba(245,158,11,.18); }
+    .mqr-caret { font-size: 0.6rem; opacity: .8; }
+    .mqr-groups { display: flex; flex-direction: column; gap: 7px; margin-bottom: 9px; }
+    .mqr-group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .mqr-chip {
+        font-size: .78rem; font-family: inherit; text-align: left;
+        border: 1px dashed rgba(148,163,184,.55); background: rgba(148,163,184,.06);
+        color: #4b5563; border-radius: 9px; padding: 6px 10px; cursor: pointer; max-width: 100%;
+    }
+    .mqr-chip:hover { background: rgba(245,158,11,.12); border-color: #f59e0b; border-style: solid; color: #1f2937; }
+    .mqr-cat {
+        display: inline-flex; align-items: center; gap: 3px;
+        font-size: .66rem; font-weight: 800; letter-spacing: .02em;
+        border-radius: 999px; padding: 2px 9px; white-space: nowrap;
+        color: var(--c,#6b7280);
+        background: color-mix(in srgb, var(--c,#6b7280) 12%, transparent);
+        border: 1px solid color-mix(in srgb, var(--c,#6b7280) 32%, transparent);
+    }
+    .mqr-cat-envio { --c: #2563c9; }
+    .mqr-cat-precio { --c: #16a34a; }
+    .mqr-cat-stock { --c: #d97706; }
+    .mqr-cat-pago { --c: #7c3aed; }
+    .mqr-cat-retiro { --c: #0d9488; }
+    .mqr-cat-otros { --c: #6b7280; }
 </style>
 
 @code {
@@ -294,6 +354,13 @@
     private HashSet<int> answeredIds = new();
     private int? sendingId;
     private System.Threading.Timer? timer;
+    // 2026-08-15: respuestas rápidas (mismas que la bandeja). Se recargan cada vez que se abre el
+    // cartel, porque si el usuario las edita en la bandeja este componente vive en el MainLayout y
+    // nunca se re-inicializa: sin recargar se quedaría con la lista vieja toda la sesión.
+    private List<MeliQuickReplyDto> quickReplies = new();
+    // Qué preguntas tienen la tira desplegada. Con varias preguntas juntas el cartel se hace larguísimo
+    // si se muestran todas, asi que arranca abierta solo la primera.
+    private HashSet<int> qrOpen = new();
     // 2026-06-04: control de auto-show. Si ya intentamos abrir y el usuario lo cerro (snooze),
     // no volvemos a abrir hasta que pase la ventana O hasta que cambie el count (nueva pregunta).
     private int lastTotalSeenForAutoShow = 0;
@@ -357,6 +424,7 @@
                     questions = await Api.GetMeliQuestionsAsync("UNANSWERED") ?? new();
                     foreach (var q in questions)
                         if (!answerDrafts.ContainsKey(q.Id)) answerDrafts[q.Id] = "";
+                    AbrirPrimeraTira();
                 }
                 catch { /* tolerar */ }
             }
@@ -371,6 +439,69 @@
     }
 
     private string GetDraft(int id) => answerDrafts.TryGetValue(id, out var v) ? v : "";
+
+    // ---- Respuestas rápidas ----
+
+    // Mismas categorías y colores que la bandeja, para que se vean igual en los dos lados.
+    private static readonly (string name, string icon, string cls)[] Cats =
+    {
+        ("Envío", "🚚", "envio"),
+        ("Precio", "💲", "precio"),
+        ("Stock", "📦", "stock"),
+        ("Pago", "💳", "pago"),
+        ("Retiro", "🏬", "retiro"),
+        ("Otros", "💬", "otros")
+    };
+
+    private static (string icon, string cls) CatMeta(string cat)
+    {
+        foreach (var c in Cats) if (c.name == cat) return (c.icon, c.cls);
+        return ("💬", "otros");
+    }
+
+    private IEnumerable<IGrouping<string, MeliQuickReplyDto>> GroupedQuickReplies()
+    {
+        int Order(string cat)
+        {
+            for (int i = 0; i < Cats.Length; i++) if (Cats[i].name == cat) return i;
+            return Cats.Length;
+        }
+        return quickReplies.GroupBy(q => string.IsNullOrWhiteSpace(q.Category) ? "Otros" : q.Category)
+                           .OrderBy(g => Order(g.Key)).ThenBy(g => g.Key);
+    }
+
+    private async Task LoadQuickRepliesAsync()
+    {
+        // Si falla, dejamos la lista que ya teniamos: mejor mostrar las de antes que ninguna.
+        try { quickReplies = await Api.GetMeliQuickRepliesAsync() ?? quickReplies; } catch { }
+    }
+
+    private void ToggleQr(int id)
+    {
+        if (!qrOpen.Remove(id)) qrOpen.Add(id);
+    }
+
+    /// <summary>Deja abierta la tira de la primera pregunta (el caso normal es que haya una sola).
+    /// Si el usuario ya abrió/cerró alguna a mano, no le tocamos nada.</summary>
+    private void AbrirPrimeraTira()
+    {
+        if (qrOpen.Count > 0 || questions is null || questions.Count == 0) return;
+        qrOpen.Add(questions[0].Id);
+    }
+
+    /// <summary>Inserta el texto prearmado en el borrador de ESA pregunta (no pisa lo ya escrito).</summary>
+    private void InsertCanned(int id, string body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return;
+        var cur = GetDraft(id);
+        answerDrafts[id] = string.IsNullOrWhiteSpace(cur) ? body : cur.TrimEnd() + " " + body;
+    }
+
+    private static string Corto(string? s, int max = 46)
+    {
+        s = (s ?? "").Trim();
+        return s.Length <= max ? s : s.Substring(0, max - 1).TrimEnd() + "…";
+    }
 
     /// <summary>Abre el modal manualmente desde el click en la campanita.</summary>
     private async Task OpenModalManual()
@@ -394,9 +525,11 @@
         if (playSound) await PlayDing();
         try
         {
+            await LoadQuickRepliesAsync();
             questions = await Api.GetMeliQuestionsAsync("UNANSWERED") ?? new();
             foreach (var q in questions)
                 if (!answerDrafts.ContainsKey(q.Id)) answerDrafts[q.Id] = "";
+            AbrirPrimeraTira();
             await Api.MarkMeliQuestionsSeenAsync();
             unread.NotSeen = 0;
             lastCount = 0;
@@ -426,9 +559,11 @@
         try
         {
             await Api.SyncMeliQuestionsNowAsync();
+            await LoadQuickRepliesAsync();
             questions = await Api.GetMeliQuestionsAsync("UNANSWERED") ?? new();
             foreach (var q in questions)
                 if (!answerDrafts.ContainsKey(q.Id)) answerDrafts[q.Id] = "";
+            AbrirPrimeraTira();
             var r = await Api.GetMeliQuestionsUnreadCountAsync();
             if (r is not null) { unread = r; lastCount = r.NotSeen; }
             ToastService.Success("Lista actualizada");
