@@ -4347,6 +4347,34 @@
     // azul mintiendo cuando el mapa está sin líneas y hay que apretarlo dos veces.
     private int lineasPintadas;
 
+    /// <summary>La clave de ruta a la que pertenece una parada (la misma que usan las líneas y las
+    /// tarjetas del dock): el chofer si tiene, si no la zona, y si no "sin asignar".</summary>
+    private static string ClaveRutaDe(MapeoStopDto s) =>
+        s.AssignedDriverId.HasValue ? $"d{s.AssignedDriverId.Value}"
+        : (s.AssignedVehicleSlot.HasValue ? $"v{s.AssignedVehicleSlot.Value}" : "none");
+
+    /// <summary>2026-08-15: cuántos tramos del PRINCIPIO de la ruta ya se recorrieron, contando hasta
+    /// la última parada entregada. Se usa para dibujar esa parte apagada. Se mide hasta la ÚLTIMA
+    /// entregada (no hasta la primera sin entregar) porque en la calle se saltean paradas: si el
+    /// repartidor entregó la 5 y la 3 quedó sin nadie, igual ya pasó por ahí.</summary>
+    private int LegsYaRecorridos(RutaOverviewDto r)
+    {
+        var ordenadas = (stops ?? new())
+            .Where(s => r.Key == "single" || ClaveRutaDe(s) == r.Key)
+            .Where(s => s.Latitude != 0 || s.Longitude != 0)
+            .OrderBy(s => s.OrderInRoute ?? int.MaxValue).ThenBy(s => s.Id)
+            .ToList();
+        if (ordenadas.Count == 0) return 0;
+        var ultimaEntregada = 0;                       // posición (1, 2, 3…) de la última entregada
+        for (int i = 0; i < ordenadas.Count; i++)
+            if (ordenadas[i].DateDelivered.HasValue) ultimaEntregada = i + 1;
+        if (ultimaEntregada == 0) return 0;
+        // Si hay tantos tramos como paradas, el primero sale del punto de partida (el depósito) y
+        // entonces hacen falta N tramos para llegar a la parada N. Si no, hacen falta N-1.
+        var conSalida = (r.Legs?.Count ?? 0) == ordenadas.Count;
+        return conSalida ? ultimaEntregada : Math.Max(0, ultimaEntregada - 1);
+    }
+
     // Dibuja en el mapa las rutas que ya tenemos en memoria (rutasResumen), salteando las zonas
     // que estén ocultas por el ojito. Se usa al optimizar y al prender/apagar un ojito.
     private async Task PintarRutas()
@@ -4369,7 +4397,10 @@
                 legs = (r.Legs ?? new()).Select(l => new {
                     meters = l.Meters, seconds = l.Seconds, encoded = l.Encoded, from = l.From, to = l.To,
                     transito = (l.Transito ?? new()).Select(t => new { start = t.Start, end = t.End, speed = t.Speed }).ToArray()
-                }).ToArray()
+                }).ToArray(),
+                // 2026-08-15: cuántos tramos del principio YA se recorrieron (hasta la última parada
+                // entregada). Esos se dibujan finitos y apagados: el ojo va solo a lo que falta.
+                legsHechos = LegsYaRecorridos(r)
             })
             .ToArray();
         lineasPintadas = paraDibujar.Length;
