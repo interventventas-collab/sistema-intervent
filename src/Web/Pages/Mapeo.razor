@@ -1964,6 +1964,140 @@
                 </div>
             </div>
         }
+        @* ─────────────────────────────────────────────────────────────────────────────
+           FICHA DE LA PARADA (2026-08-15). Tarjetita que se apoya arriba del mapa, sin tapar
+           nada ni bloquear el mapa. Aparece sola apenas sumás una dirección con el buscador
+           grande ("¿le ponés nombre?") y también con el botón "✏️ Editar datos" del globito
+           de cualquier parada. Antes, ponerle nombre/teléfono/notas a una parada solo se podía
+           en el momento de crearla desde la solapa "Tipear nueva" — que hacía lo mismo que el
+           buscador de arriba y se sacó. Editar después, directamente no se podía.
+           ───────────────────────────────────────────────────────────────────────────── *@
+        @if (fichaStopId is not null)
+        {
+            <div style="position:absolute; top:8px; left:50%; transform:translateX(-50%); z-index:470; width:min(390px, calc(100% - 24px)); background:#ffffff; border:2px solid #2563eb; border-radius:12px; box-shadow:0 8px 26px rgba(0,0,0,0.28); overflow:hidden;">
+                <div style="background:#2563eb; color:#fff; padding:0.45rem 0.7rem; display:flex; align-items:center; gap:0.4rem; font-size:0.85rem; font-weight:800;">
+                    <span>@(fichaEsNueva ? "📍 Parada agregada — ¿le ponés nombre?" : "✏️ Editar parada")</span>
+                    <button type="button" @onclick="CerrarFichaStop" title="Cerrar"
+                            style="margin-left:auto; background:transparent; border:none; color:#fff; font-size:1.25rem; line-height:1; cursor:pointer; padding:0 0.15rem;">&times;</button>
+                </div>
+                <div style="padding:0.6rem 0.7rem; max-height:min(64vh, 520px); overflow-y:auto;">
+                    <div style="font-size:0.78rem; color:#4b5563; background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; padding:0.35rem 0.5rem; margin-bottom:0.55rem;">
+                        📌 @fichaDireccion
+                    </div>
+
+                    <label class="form-label" style="font-size:0.75rem;">Nombre / Cliente</label>
+                    <input class="form-input" @bind="fichaAlias" placeholder="Bar Don Pepe" style="margin-bottom:0.45rem;" />
+                    <div style="display:flex; gap:0.4rem; margin-bottom:0.45rem;">
+                        <div style="flex:1; min-width:0;">
+                            <label class="form-label" style="font-size:0.75rem;">Contacto</label>
+                            <input class="form-input" @bind="fichaContacto" placeholder="Pepe" />
+                        </div>
+                        <div style="flex:1; min-width:0;">
+                            <label class="form-label" style="font-size:0.75rem;">Teléfono</label>
+                            <input class="form-input" @bind="fichaTelefono" />
+                        </div>
+                    </div>
+                    <label class="form-label" style="font-size:0.75rem;">Notas (cómo llegar, con quién dejarlo…)</label>
+                    <input class="form-input" @bind="fichaNotas" style="margin-bottom:0.5rem;" />
+
+                    @* ── Vincular la parada con un cliente del sistema ── *@
+                    <div style="border-top:1px dashed #d1d5db; padding-top:0.5rem;">
+                        @if (fichaClienteId is null)
+                        {
+                            @if (!fichaBuscandoCliente)
+                            {
+                                <button type="button" class="btn btn-secondary" style="width:100%; font-size:0.8rem;" @onclick="AbrirBuscadorClienteFicha">
+                                    🍵 Asignar a un cliente del sistema
+                                </button>
+                            }
+                            else
+                            {
+                                <input class="form-input" @bind="fichaClienteSearch" @bind:event="oninput"
+                                       placeholder="Buscar cliente por nombre, código, CUIT…" style="margin-bottom:0.35rem;" />
+                                @if (clientesTodos is null)
+                                {
+                                    <div style="font-size:0.78rem; color:#6b7280; text-align:center; padding:0.4rem;">Cargando clientes…</div>
+                                }
+                                else
+                                {
+                                    var q = fichaClienteSearch?.Trim() ?? "";
+                                    var matches = string.IsNullOrEmpty(q)
+                                        ? new List<CafeClienteDto>()
+                                        : clientesTodos.Where(c => FichaClienteMatch(c, q)).Take(8).ToList();
+                                    @if (string.IsNullOrEmpty(q))
+                                    {
+                                        <div style="font-size:0.75rem; color:#6b7280; padding:0.25rem;">Escribí para buscar…</div>
+                                    }
+                                    else if (matches.Count == 0)
+                                    {
+                                        <div style="font-size:0.75rem; color:#b45309; padding:0.25rem;">Ningún cliente coincide con "@q".</div>
+                                    }
+                                    else
+                                    {
+                                        <div style="max-height:170px; overflow-y:auto;">
+                                            @foreach (var c in matches)
+                                            {
+                                                <div style="border:1px solid #e5e7eb; border-radius:6px; padding:0.35rem 0.5rem; margin-bottom:0.25rem; cursor:pointer; display:flex; gap:0.4rem; align-items:center;"
+                                                     @onclick="() => ElegirClienteFicha(c)">
+                                                    @if (c.CodigoInterno.HasValue)
+                                                    {
+                                                        <span style="background:#1e40af; color:#fff; font-family:monospace; font-weight:700; padding:0.1rem 0.4rem; border-radius:4px; font-size:0.72rem;">@c.CodigoInterno</span>
+                                                    }
+                                                    <div style="flex:1; min-width:0;">
+                                                        <strong style="font-size:0.82rem;">@c.Nombre</strong>
+                                                        <div style="font-size:0.72rem; color:#6b7280;">@(c.DomicilioEntrega ?? c.Direccion ?? "—")</div>
+                                                    </div>
+                                                    @if (c.MapeoLat.HasValue)
+                                                    {
+                                                        <span title="Este cliente ya tiene una ubicación guardada" style="font-size:0.8rem;">📍</span>
+                                                    }
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                }
+                                <button type="button" class="btn btn-secondary" style="width:100%; font-size:0.75rem; margin-top:0.25rem;" @onclick="() => fichaBuscandoCliente = false">Cancelar búsqueda</button>
+                            }
+                        }
+                        else
+                        {
+                            <div style="display:flex; align-items:center; gap:0.4rem; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:6px; padding:0.35rem 0.5rem; font-size:0.8rem;">
+                                <span>🍵 Cliente: <strong>@fichaClienteNombre</strong></span>
+                                <button type="button" @onclick="QuitarClienteFicha" title="Desvincular"
+                                        style="margin-left:auto; background:transparent; border:none; color:#b91c1c; cursor:pointer; font-size:0.95rem;">&times;</button>
+                            </div>
+                            <label style="display:flex; align-items:flex-start; gap:0.35rem; font-size:0.76rem; color:#374151; margin-top:0.4rem;">
+                                <input type="checkbox" @bind="fichaGuardarUbicEnCliente" style="margin-top:0.15rem;" />
+                                <span>Guardar esta ubicación en la ficha del cliente (así la próxima vez ya aparece en 🍵 Clientes mapeados)</span>
+                            </label>
+                            @if (fichaClienteYaTeniaUbic && fichaGuardarUbicEnCliente)
+                            {
+                                <div style="font-size:0.72rem; color:#b45309; background:#fffbeb; border:1px solid #fde68a; border-radius:6px; padding:0.3rem 0.45rem; margin-top:0.3rem;">
+                                    ⚠ Este cliente <strong>ya tenía</strong> una ubicación guardada. Si dejás tildado, se reemplaza por esta.
+                                </div>
+                            }
+                        }
+                    </div>
+
+                    @if (fichaPuedeSerFavorito)
+                    {
+                        <label style="display:flex; align-items:center; gap:0.35rem; font-size:0.76rem; color:#374151; margin-top:0.5rem;">
+                            <input type="checkbox" @bind="fichaGuardarFav" /> ⭐ Guardar también como favorito
+                        </label>
+                    }
+
+                    <div style="display:flex; gap:0.4rem; margin-top:0.6rem;">
+                        <button type="button" class="btn btn-primary" style="flex:1; font-size:0.85rem; font-weight:700;"
+                                @onclick="GuardarFichaStop" disabled="@fichaGuardando">
+                            @(fichaGuardando ? "Guardando…" : "💾 Guardar")
+                        </button>
+                        <button type="button" class="btn btn-secondary" style="font-size:0.85rem;" @onclick="CerrarFichaStop" disabled="@fichaGuardando">
+                            @(fichaEsNueva ? "Así está bien" : "Cancelar")
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
         <div id="leafletMap"></div>
     </div>
 </div>
@@ -2384,14 +2518,20 @@
     <div class="modal-overlay" @onclick="() => showAddStopModal = false">
         <div class="modal-card" @onclick:stopPropagation="true" style="max-width:620px;">
             <div class="modal-header" style="background:#fef3c7;">
-                <h3 style="margin:0;">➕ Agregar parada al mapa</h3>
+                <h3 style="margin:0;">📋 Traer de mis listas</h3>
                 <button class="btn-close" @onclick="() => showAddStopModal = false">&times;</button>
             </div>
             <div class="modal-body">
+                @* 2026-08-15: acá SOLO se traen lugares ya guardados (favoritos y clientes). Para una
+                   dirección nueva está el buscador grande arriba del mapa — antes había una tercera
+                   solapa "Tipear nueva" que hacía exactamente lo mismo y confundía. *@
+                <div style="font-size:0.78rem; color:#374151; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:0.45rem 0.6rem; margin-bottom:0.7rem;">
+                    💡 ¿La dirección es nueva? Escribila en el <strong>buscador grande de arriba del mapa</strong>
+                    ("🔍 Buscar una dirección y sumarla al mapa"). Acá traés lugares que <strong>ya tenés guardados</strong>.
+                </div>
                 <div style="display:flex; gap:0.4rem; margin-bottom:0.7rem; flex-wrap: wrap;">
                     <button class="btn @(addStopTab == "favorito" ? "btn-primary" : "btn-secondary")" style="flex:1; min-width:0;" @onclick="@(() => addStopTab = "favorito")">⭐ Favoritos</button>
                     <button class="btn @(addStopTab == "cliente" ? "btn-primary" : "btn-secondary")" style="flex:1; min-width:0;" @onclick="@(() => addStopTab = "cliente")">🍵 Clientes mapeados</button>
-                    <button class="btn @(addStopTab == "manual" ? "btn-primary" : "btn-secondary")" style="flex:1; min-width:0;" @onclick="@(() => addStopTab = "manual")">✏️ Tipear nueva</button>
                 </div>
                 @if (addStopTab == "cliente")
                 {
@@ -2460,41 +2600,6 @@
                             }
                         </div>
                     }
-                }
-                @if (addStopTab == "manual")
-                {
-                    <div class="form-group">
-                        <label class="form-label">Buscar dirección</label>
-                        <div style="display:flex; gap:0.4rem;">
-                            <input class="form-input" @bind="addStopQuery" placeholder="Calle 123, Ciudad" @onkeydown="OnAddStopGeocodeKey" style="flex:1;" />
-                            <button class="btn btn-secondary" @onclick="DoAddStopGeocode" disabled="@addStopGeocoding">@(addStopGeocoding ? "..." : "🔍")</button>
-                        </div>
-                    </div>
-                    @if (addStopGeocodeResults is not null && addStopGeocodeResults.Count > 0)
-                    {
-                        <div style="border:1px solid #e5e7eb; border-radius:6px; max-height:140px; overflow-y:auto; margin-bottom:0.5rem;">
-                            @foreach (var r in addStopGeocodeResults)
-                            {
-                                <div style="padding:0.3rem 0.5rem; border-bottom:1px solid #f3f4f6; cursor:pointer; font-size:0.78rem;"
-                                     @onclick="() => PickAddStopGeocode(r)">@r.DisplayName</div>
-                            }
-                        </div>
-                    }
-                    @if (addStopLat != 0 || addStopLng != 0)
-                    {
-                        <div style="font-size:0.75rem; color:#15803d; margin-bottom:0.4rem;">✓ @addStopDireccion (@addStopLat.ToString("0.####") , @addStopLng.ToString("0.####"))</div>
-                    }
-                    <div class="form-group"><label class="form-label">Alias / Cliente</label><input class="form-input" @bind="addStopAlias" placeholder="Bar Don Pepe" /></div>
-                    <div class="form-row">
-                        <div class="form-group" style="flex:1;"><label class="form-label">Contacto</label><input class="form-input" @bind="addStopContact" placeholder="Pepe" /></div>
-                        <div class="form-group" style="flex:1;"><label class="form-label">Tel</label><input class="form-input" @bind="addStopPhone" /></div>
-                    </div>
-                    <div class="form-group"><label class="form-label">Notas (instrucciones, comentarios)</label><input class="form-input" @bind="addStopNotas" /></div>
-                    <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.78rem; color:#6b7280;">
-                        <input type="checkbox" @bind="addStopAlsoSaveFav" /> También guardar como favorito
-                    </label>
-                    <button class="btn btn-primary" style="width:100%; margin-top:0.5rem;" @onclick="AddStopManual"
-                            disabled="@(addStopLat == 0 && addStopLng == 0)">+ Agregar parada</button>
                 }
             </div>
             <div class="modal-footer">
@@ -3799,10 +3904,24 @@
 
     // Clientes Café con MapeoLink cargado — se traen al inicio y aparecen en el tab "Clientes mapeados".
     private List<CafeClienteDto>? clientesMapeados;
-    private string addStopQuery = "", addStopDireccion = "", addStopAlias = "", addStopContact = "", addStopPhone = "", addStopNotas = "";
-    private decimal addStopLat = 0, addStopLng = 0;
-    private bool addStopGeocoding, addStopAlsoSaveFav;
-    private List<GeocodeResultDto>? addStopGeocodeResults;
+
+    // ===== Ficha de la parada (tarjetita arriba del mapa) =====
+    // 2026-08-15: reemplaza a la vieja solapa "Tipear nueva" (que duplicaba el buscador grande del
+    // mapa) y agrega lo que antes no existía: editar una parada YA creada, y vincularla a un cliente.
+    private int? fichaStopId;                  // null = tarjeta cerrada
+    private bool fichaEsNueva;                 // true = recién agregada con el buscador
+    private string fichaDireccion = "";
+    private string fichaAlias = "", fichaContacto = "", fichaTelefono = "", fichaNotas = "";
+    private bool fichaGuardarFav, fichaGuardando, fichaBuscandoCliente;
+    private bool fichaPuedeSerFavorito;        // solo paradas sueltas (manual): no tiene sentido en Flex/venta
+    private string fichaClienteSearch = "";
+    private int? fichaClienteId;
+    private string? fichaClienteNombre;
+    private bool fichaClienteYaTeniaUbic;      // el cliente elegido ya tenía coordenadas guardadas
+    private bool fichaGuardarUbicEnCliente = true;
+    private decimal fichaLat, fichaLng;
+    // Todos los clientes del sistema (no solo los mapeados) — se cargan cuando se abre el buscador.
+    private List<CafeClienteDto>? clientesTodos;
 
     // Armar ruta
     private bool showArmarRutaModal, importingFlex, routeBusy;
@@ -4663,7 +4782,7 @@
                     // Candado: si la parada está desbloqueada, su pin se puede arrastrar para ajustar la ubicación.
                     draggable = paradasDesbloqueadas.Contains(st.Id),
                     stopId = st.Id,
-                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· Zona {st.AssignedVehicleSlot}</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}{horaEntregaStopHtml}<div style='margin-top:0.35rem; display:flex; align-items:center; gap:0.25rem;'><span title='Zona'>📍</span><select onchange=\"window.mapeoActions.assignZone({markerId}, this.value); event.stopPropagation();\" onclick=\"event.stopPropagation();\" style='flex:1; max-width:170px; padding:0.15rem 0.25rem; border:2px solid {driverBorde}; border-radius:4px; font-size:0.72rem; background:{selBg}; color:{selFg}; font-weight:700;'>{zonaOpts}</select></div>{puestoRowHtml}{vinfoStopHtml}<div style='margin-top:0.35rem; display:flex; gap:0.3rem; flex-wrap:wrap;'><button onclick=\"window.mapeoActions.toggleRoute({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:{btnBgSt}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxtSt}</button><button onclick=\"window.mapeoActions.correctLocation({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#92400e; border:1px solid #f59e0b; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>📍 Corregir ubicación</button><button onclick=\"window.mapeoActions.removeStop({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#b91c1c; border:1px solid #fca5a5; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>🗑 Quitar del mapa</button></div></div>"
+                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· Zona {st.AssignedVehicleSlot}</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}{horaEntregaStopHtml}<div style='margin-top:0.35rem; display:flex; align-items:center; gap:0.25rem;'><span title='Zona'>📍</span><select onchange=\"window.mapeoActions.assignZone({markerId}, this.value); event.stopPropagation();\" onclick=\"event.stopPropagation();\" style='flex:1; max-width:170px; padding:0.15rem 0.25rem; border:2px solid {driverBorde}; border-radius:4px; font-size:0.72rem; background:{selBg}; color:{selFg}; font-weight:700;'>{zonaOpts}</select></div>{puestoRowHtml}{vinfoStopHtml}<div style='margin-top:0.35rem; display:flex; gap:0.3rem; flex-wrap:wrap;'><button onclick=\"window.mapeoActions.toggleRoute({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:{btnBgSt}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxtSt}</button><button onclick=\"window.mapeoActions.correctLocation({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#92400e; border:1px solid #f59e0b; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>📍 Corregir ubicación</button><button onclick=\"window.mapeoActions.editStop({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#1d4ed8; border:1px solid #93c5fd; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>✏️ Editar datos</button><button onclick=\"window.mapeoActions.removeStop({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#b91c1c; border:1px solid #fca5a5; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>🗑 Quitar del mapa</button></div></div>"
                 };
             }));
         }
@@ -4920,12 +5039,15 @@
                 StateHasChanged();
                 return;
             }
-            await Api.CreateMapeoStopAsync("manual", null, null,
+            var nueva = await Api.CreateMapeoStopAsync("manual", null, null,
                 string.IsNullOrWhiteSpace(direccion) ? "Punto en el mapa" : direccion,
                 (decimal)lat, (decimal)lng, null, null, null);
             await LoadStops();
             await RenderMap();
             ToastService.Success("📍 Dirección agregada al mapa");
+            // 2026-08-15: y le ofrecemos ponerle nombre/teléfono/notas (o vincularla a un cliente)
+            // sin frenar nada: la tarjetita se apoya arriba del mapa y se cierra con "Así está bien".
+            if (nueva is not null) AbrirFichaStop(nueva, esNueva: true);
             StateHasChanged();
         }
         catch (Exception ex) { ToastService.Error("No se pudo agregar: " + ex.Message); }
@@ -5672,31 +5794,12 @@
     // ===== Agregar parada (manual o desde favorito) =====
     private void OpenAddStopModal()
     {
-        addStopTab = (favoritos?.Count ?? 0) > 0 ? "favorito" : "manual";
-        addStopFavSearch = ""; addStopQuery = ""; addStopDireccion = ""; addStopAlias = "";
-        addStopContact = ""; addStopPhone = ""; addStopNotas = "";
-        addStopLat = 0; addStopLng = 0; addStopAlsoSaveFav = false;
-        addStopGeocodeResults = null;
+        // Solo quedan las dos listas guardadas (favoritos / clientes mapeados): tipear una dirección
+        // nueva es trabajo del buscador grande de arriba del mapa.
+        addStopTab = (favoritos?.Count ?? 0) > 0 ? "favorito" : "cliente";
+        addStopFavSearch = "";
+        addStopClienteSearch = "";
         showAddStopModal = true;
-    }
-
-    private async Task OnAddStopGeocodeKey(KeyboardEventArgs e) { if (e.Key == "Enter") await DoAddStopGeocode(); }
-
-    private async Task DoAddStopGeocode()
-    {
-        if (string.IsNullOrWhiteSpace(addStopQuery)) return;
-        addStopGeocoding = true;
-        try { addStopGeocodeResults = await Api.GeocodeAsync(addStopQuery) ?? new(); }
-        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
-        finally { addStopGeocoding = false; }
-    }
-
-    private void PickAddStopGeocode(GeocodeResultDto r)
-    {
-        addStopDireccion = r.DisplayName;
-        addStopLat = r.Lat;
-        addStopLng = r.Lng;
-        addStopGeocodeResults = null;
     }
 
     private async Task AddStopFromFavorito(MapeoFavoritoDto f)
@@ -5710,32 +5813,151 @@
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
 
-    private async Task AddStopManual()
+    // ═══════════════════════ Ficha de la parada (tarjetita arriba del mapa) ═══════════════════════
+    // Un solo lugar para: ponerle nombre/contacto/teléfono/notas a una parada, guardarla como favorito
+    // y vincularla con un cliente del sistema. Se abre sola al sumar una dirección con el buscador
+    // grande, y a mano desde "✏️ Editar datos" en el globito de cualquier parada.
+
+    private void AbrirFichaStop(MapeoStopDto s, bool esNueva)
     {
-        if (addStopLat == 0 && addStopLng == 0) return;
+        fichaStopId = s.Id;
+        fichaEsNueva = esNueva;
+        fichaDireccion = s.Direccion;
+        fichaLat = s.Latitude; fichaLng = s.Longitude;
+        // Cuando la parada recién se crea desde el buscador, el alias es el texto de la dirección:
+        // arrancamos el campo vacío para que se vea el "Bar Don Pepe" de ejemplo y no repetir la calle.
+        fichaAlias = esNueva ? "" : (s.Alias ?? "");
+        fichaContacto = s.ContactName ?? "";
+        fichaTelefono = s.Telefono ?? "";
+        fichaNotas = s.Notas ?? "";
+        fichaGuardarFav = false;
+        fichaPuedeSerFavorito = s.Origin is "manual" or "favorito";
+        fichaBuscandoCliente = false;
+        fichaClienteSearch = "";
+        fichaGuardarUbicEnCliente = true;
+        fichaClienteYaTeniaUbic = false;
+        // Si la parada ya venía de un cliente del café, la mostramos vinculada.
+        fichaClienteId = null; fichaClienteNombre = null;
+        if (s.Origin == "cliente-cafe" && int.TryParse(s.OriginRefId, out var cliId))
+        {
+            fichaClienteId = cliId;
+            fichaClienteNombre = clientesMapeados?.FirstOrDefault(c => c.Id == cliId)?.Nombre ?? s.Alias;
+            fichaGuardarUbicEnCliente = false; // ya está mapeado: no re-guardar sin que lo pidan
+        }
+        StateHasChanged();
+    }
+
+    private void CerrarFichaStop()
+    {
+        fichaStopId = null;
+        fichaBuscandoCliente = false;
+        StateHasChanged();
+    }
+
+    private async Task AbrirBuscadorClienteFicha()
+    {
+        fichaBuscandoCliente = true;
+        fichaClienteSearch = "";
+        if (clientesTodos is null)
+        {
+            try { clientesTodos = (await Api.GetCafeClientesAsync() ?? new()).Where(c => c.IsActive).ToList(); }
+            catch { clientesTodos = new(); }
+        }
+        StateHasChanged();
+    }
+
+    private static bool FichaClienteMatch(CafeClienteDto c, string q)
+    {
+        bool Has(string? s) => !string.IsNullOrEmpty(s) && s.Contains(q, StringComparison.OrdinalIgnoreCase);
+        return Has(c.Nombre) || Has(c.RazonSocial) || Has(c.Direccion) || Has(c.DomicilioEntrega)
+               || Has(c.Localidad) || Has(c.Cuit) || Has(c.Telefono)
+               || (c.CodigoInterno.HasValue && c.CodigoInterno.Value.ToString().Contains(q));
+    }
+
+    private void ElegirClienteFicha(CafeClienteDto c)
+    {
+        fichaClienteId = c.Id;
+        fichaClienteNombre = c.Nombre;
+        fichaClienteYaTeniaUbic = c.MapeoLat.HasValue && c.MapeoLng.HasValue;
+        // Si el cliente todavía no está mapeado, lo lógico es guardarle esta ubicación (así la próxima
+        // vez sale solo). Si ya tenía una, arrancamos destildado para no pisársela sin querer.
+        fichaGuardarUbicEnCliente = !fichaClienteYaTeniaUbic;
+        fichaBuscandoCliente = false;
+        // El nombre de la parada pasa a ser el del cliente (el usuario lo puede seguir editando).
+        fichaAlias = c.CodigoInterno.HasValue ? $"#{c.CodigoInterno} · {c.Nombre}" : c.Nombre;
+        if (string.IsNullOrWhiteSpace(fichaTelefono) && !string.IsNullOrWhiteSpace(c.Telefono))
+            fichaTelefono = c.Telefono!;
+        StateHasChanged();
+    }
+
+    private void QuitarClienteFicha()
+    {
+        fichaClienteId = null;
+        fichaClienteNombre = null;
+        fichaClienteYaTeniaUbic = false;
+        StateHasChanged();
+    }
+
+    private async Task GuardarFichaStop()
+    {
+        if (fichaStopId is not int stopId) return;
+        fichaGuardando = true;
         try
         {
-            var s = await Api.CreateMapeoStopAsync("manual", null, addStopAlias, addStopDireccion, addStopLat, addStopLng,
-                addStopContact, addStopPhone, addStopNotas);
-            if (s is not null)
+            var avisos = new List<string>();
+            // 1) Vincular con el cliente (esto también renombra la parada del lado del servidor).
+            if (fichaClienteId is int cliId)
             {
-                stops!.Insert(0, s);
-                if (addStopAlsoSaveFav && !string.IsNullOrWhiteSpace(addStopAlias))
+                var r = await Api.AsignarClienteAMapeoStopAsync(stopId, cliId, fichaGuardarUbicEnCliente);
+                if (r is not null)
                 {
-                    var f = await Api.CreateMapeoFavoritoAsync(new MapeoFavoritoDto
+                    avisos.Add($"vinculada a {r.ClienteNombre}");
+                    if (r.UbicacionGuardada)
                     {
-                        Alias = addStopAlias, Direccion = addStopDireccion,
-                        Latitude = addStopLat, Longitude = addStopLng,
-                        ContactName = addStopContact, Telefono = addStopPhone, Notas = addStopNotas
-                    });
-                    if (f is not null) { favoritos!.Insert(0, f); }
+                        avisos.Add("ubicación guardada en su ficha");
+                        await LoadClientesMapeados(); // que aparezca ya en "🍵 Clientes mapeados"
+                        clientesTodos = null;         // se vuelve a pedir fresco la próxima búsqueda
+                    }
                 }
-                ToastService.Success("Parada agregada al mapa");
-                showAddStopModal = false;
-                await RenderMap();
             }
+            // 2) Los datos que escribió el usuario mandan por sobre lo que puso el paso anterior.
+            await Api.UpdateMapeoStopAsync(stopId, new
+            {
+                alias = fichaAlias ?? "",
+                contactName = fichaContacto ?? "",
+                telefono = fichaTelefono ?? "",
+                notas = fichaNotas ?? ""
+            });
+            // 3) Favorito, si lo pidió.
+            if (fichaGuardarFav && !string.IsNullOrWhiteSpace(fichaAlias))
+            {
+                var f = await Api.CreateMapeoFavoritoAsync(new MapeoFavoritoDto
+                {
+                    Alias = fichaAlias!, Direccion = fichaDireccion,
+                    Latitude = fichaLat, Longitude = fichaLng,
+                    ContactName = fichaContacto, Telefono = fichaTelefono, Notas = fichaNotas
+                });
+                if (f is not null) { favoritos ??= new(); favoritos.Insert(0, f); avisos.Add("guardada en favoritos"); }
+            }
+            fichaStopId = null;
+            await LoadStops();
+            await RenderMap(keepView: true);
+            ToastService.Success(avisos.Count == 0 ? "✅ Parada guardada" : "✅ Parada guardada — " + string.Join(", ", avisos));
         }
-        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        catch (Exception ex) { ToastService.Error("No se pudo guardar: " + ex.Message); }
+        finally { fichaGuardando = false; StateHasChanged(); }
+    }
+
+    /// <summary>Botón "✏️ Editar datos" del globito de una parada.</summary>
+    [JSInvokable]
+    public Task EditarParadaDesdePopup(int markerId)
+    {
+        if (markerId > -1000) return Task.CompletedTask; // solo paradas (stops)
+        var stopId = -1000 - markerId;
+        var st = stops?.FirstOrDefault(x => x.Id == stopId);
+        if (st is null) return Task.CompletedTask;
+        AbrirFichaStop(st, esNueva: false);
+        return Task.CompletedTask;
     }
 
     /// <summary>Color, fondo y etiqueta del badge según el SLA del envío.</summary>

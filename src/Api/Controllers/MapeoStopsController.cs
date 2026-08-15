@@ -320,6 +320,45 @@ public class MapeoStopsController : ControllerBase
         return Ok(Map(s));
     }
 
+    public record AsignarClienteRequest(int ClienteId, bool GuardarUbicacion = false);
+
+    /// <summary>2026-08-15: vincula una parada suelta (la que sale de buscar una dirección en el mapa)
+    /// con un CLIENTE del sistema. La parada pasa a llamarse como el cliente y hereda su teléfono si no
+    /// tenía. Con GuardarUbicacion=true además le guarda estas coordenadas al cliente en su ficha, así
+    /// la próxima vez aparece solo en "Clientes mapeados" y no hay que volver a buscar la dirección.
+    /// No pisa la ubicación de un cliente que ya la tenía salvo que se pida expresamente.</summary>
+    [HttpPost("{id:int}/asignar-cliente")]
+    public async Task<IActionResult> AsignarCliente(int id, [FromBody] AsignarClienteRequest req)
+    {
+        var s = await _db.MapeoStops.Include(x => x.AssignedDriver).FirstOrDefaultAsync(x => x.Id == id);
+        if (s is null) return NotFound(new { error = "Parada no encontrada" });
+        var cli = await _db.CafeClientes.FirstOrDefaultAsync(c => c.Id == req.ClienteId);
+        if (cli is null) return NotFound(new { error = "Cliente no encontrado" });
+
+        s.Origin = "cliente-cafe";
+        s.OriginRefId = cli.Id.ToString();
+        s.Alias = cli.CodigoInterno.HasValue ? $"#{cli.CodigoInterno} · {cli.Nombre}" : cli.Nombre;
+        if (string.IsNullOrWhiteSpace(s.Telefono) && !string.IsNullOrWhiteSpace(cli.Telefono))
+            s.Telefono = cli.Telefono;
+        s.UpdatedAt = DateTime.UtcNow;
+
+        var guardado = false;
+        if (req.GuardarUbicacion)
+        {
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            cli.MapeoLat = s.Latitude;
+            cli.MapeoLng = s.Longitude;
+            cli.MapeoLink = $"https://www.google.com/maps/search/?api=1&query={((double)s.Latitude).ToString(ci)},{((double)s.Longitude).ToString(ci)}";
+            // El domicilio de entrega solo se completa si estaba vacío: no le pisamos al operador
+            // un domicilio que ya venía cargado en la ficha.
+            if (string.IsNullOrWhiteSpace(cli.DomicilioEntrega)) cli.DomicilioEntrega = s.Direccion;
+            cli.UpdatedAt = DateTime.UtcNow;
+            guardado = true;
+        }
+        await _db.SaveChangesAsync();
+        return Ok(new { stop = Map(s), clienteNombre = cli.Nombre, ubicacionGuardada = guardado });
+    }
+
     public record ResolverLinkRequest(string? Link);
 
     /// <summary>2026-08-13: resuelve un link de Google Maps (incluido el corto maps.app.goo.gl) a

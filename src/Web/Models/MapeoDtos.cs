@@ -131,6 +131,15 @@ public class MapeoStopDto
     public string? ReceiverName { get; set; }
 }
 
+/// <summary>Respuesta de "asignar esta parada a un cliente del sistema": la parada ya renombrada
+/// con el cliente, y si además se le guardó la ubicación en la ficha del cliente.</summary>
+public class AsignarClienteStopResult
+{
+    public MapeoStopDto? Stop { get; set; }
+    public string? ClienteNombre { get; set; }
+    public bool UbicacionGuardada { get; set; }
+}
+
 public class ImportFlexPreviewDto
 {
     public int Total { get; set; }

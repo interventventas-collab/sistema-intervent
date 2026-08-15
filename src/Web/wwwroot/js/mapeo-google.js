@@ -621,6 +621,13 @@ window.mapeoFlex = (function () {
                     if (infoWindow) { infoWindow.close(); infoOpen = false; }
                     if (dotNetRef) dotNetRef.invokeMethodAsync('CorregirUbicacionDesdePopup', markerId);
                 },
+                // 2026-08-15: editar nombre/contacto/teléfono/notas de esta parada desde el globito
+                // (y vincularla a un cliente del sistema). Cerramos el globito: la ficha se abre
+                // arriba del mapa, igual que cuando recién agregás una dirección con el buscador.
+                editStop: function (markerId) {
+                    if (infoWindow) { infoWindow.close(); infoOpen = false; }
+                    if (dotNetRef) dotNetRef.invokeMethodAsync('EditarParadaDesdePopup', markerId);
+                },
                 // 2026-07-30: quitar esta parada del mapa desde el globito.
                 removeStop: function (markerId) {
                     if (infoWindow) { infoWindow.close(); infoOpen = false; }

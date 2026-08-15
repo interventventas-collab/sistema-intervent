@@ -6432,6 +6432,11 @@ public class ApiClient
         => await PostAsync<ArmarRutaGuiadaResult>("/api/mapeo/stops/armar-ruta-guiada",
             new { primeraId, ultimaId, fijasMedio });
 
+    // Vincula una parada suelta con un cliente del sistema (opcionalmente le guarda la ubicación en su ficha).
+    public async Task<AsignarClienteStopResult?> AsignarClienteAMapeoStopAsync(int id, int clienteId, bool guardarUbicacion)
+        => await PostAsync<AsignarClienteStopResult>($"/api/mapeo/stops/{id}/asignar-cliente",
+            new { clienteId, guardarUbicacion });
+
     // Fija la ubicación de una parada (elegida en el buscador del mapa) y la guarda en el cliente.
     public async Task<MapeoStopDto?> SetMapeoStopUbicacionAsync(int id, double lat, double lng, string? direccion, bool guardarEnCliente = true)
         => await PostAsync<MapeoStopDto>($"/api/mapeo/stops/{id}/ubicacion", new { lat, lng, direccion, guardarEnCliente });
