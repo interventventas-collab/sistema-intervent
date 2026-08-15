@@ -1599,6 +1599,13 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="20" rx="4"></rect><circle cx="12" cy="7" r="1.4"></circle><circle cx="12" cy="12" r="1.4"></circle><circle cx="12" cy="17" r="1.4"></circle></svg>
                     <span class="mapeo-dock-label">Tránsito</span>
                 </button>
+                @* 2026-08-15: "Reparto en vivo" — la vista para el celular. Se abre en otra pestaña;
+                   desde ahí, con el botón de QR de la barra, la pasás al teléfono en dos segundos. *@
+                <a class="mapeo-dock-btn" href="/mapeo/movil" target="_blank"
+                   title="Ver el reparto en vivo desde el celular: una tarjeta por repartidor y el mapa de cada uno">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"></rect><line x1="10.5" y1="18.5" x2="13.5" y2="18.5"></line></svg>
+                    <span class="mapeo-dock-label">Reparto en vivo</span>
+                </a>
                 @* Calendario: ver el mapa de días anteriores (historial de rutas). *@
                 <button class="mapeo-dock-btn @(showHistorialModal || viewingSnapshot ? "activo" : "")" @onclick="OpenHistorialModal"
                         title="Ver el mapa de días anteriores (historial de rutas)">

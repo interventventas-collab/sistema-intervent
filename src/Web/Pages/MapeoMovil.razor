@@ -1,0 +1,551 @@
+@page "/mapeo/movil"
+@attribute [Authorize]
+@layout Web.Layout.LoginLayout
+@inject ApiClient Api
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@*
+    ═══════════════════════════════════════════════════════════════════════════════════
+    REPARTO EN VIVO — versión para el celular (2026-08-15)
+
+    Para MIRAR desde el celu cómo viene el reparto, no para operar. Dos pantallas:
+
+      1) La lista: una tarjeta por repartidor con su color, cuántas lleva de cuántas,
+         dónde estuvo por última vez y a qué hora, y cuál es la próxima.
+      2) El mapa de UNO: tocás una tarjeta y ves el recorrido de ese repartidor solo,
+         con su autito latiendo en la última entrega. Abajo, las paradas que le faltan
+         con la hora estimada de llegada, para llamar al cliente o abrir el GPS.
+
+    Sin listado lateral, sin barra de herramientas, sin armar rutas: eso es de la
+    pantalla grande. Acá se mira y se decide, con el dedo y una sola mano.
+
+    Layout LoginLayout = sin sidebar ni topbar, toma toda la pantalla del celu.
+    ═══════════════════════════════════════════════════════════════════════════════════
+*@
+
+<style>
+    html, body { margin:0; padding:0; height:100%; overscroll-behavior:none; }
+    .mv-wrap { position:fixed; inset:0; display:flex; flex-direction:column;
+        background:#f1f5f9; font-family:Inter,system-ui,sans-serif; }
+
+    /* ── Cabecera fija ── */
+    .mv-head { flex:0 0 auto; background:#0f172a; color:#fff; padding:10px 12px;
+        display:flex; align-items:center; gap:10px; box-shadow:0 2px 10px rgba(0,0,0,0.25); z-index:10; }
+    .mv-head-t { font-size:1rem; font-weight:800; line-height:1.1; }
+    .mv-head-s { font-size:0.68rem; opacity:0.7; }
+    .mv-btn-ico { margin-left:auto; background:rgba(255,255,255,0.12); border:none; color:#fff;
+        width:38px; height:38px; border-radius:10px; font-size:1.1rem; cursor:pointer; flex:0 0 auto; }
+    .mv-btn-ico:active { background:rgba(255,255,255,0.3); }
+
+    /* ── Resumen general ── */
+    .mv-total { flex:0 0 auto; background:#fff; padding:10px 12px; border-bottom:1px solid #e2e8f0; }
+    .mv-total-r { display:flex; align-items:baseline; gap:8px; }
+    .mv-total-n { font-size:1.6rem; font-weight:900; color:#0f172a; line-height:1; }
+    .mv-total-l { font-size:0.78rem; color:#64748b; font-weight:600; }
+    .mv-bar { height:9px; border-radius:99px; background:#e2e8f0; overflow:hidden; margin-top:7px; }
+    .mv-bar-f { height:100%; border-radius:99px; background:linear-gradient(90deg,#22c55e,#16a34a); transition:width .4s ease; }
+
+    /* ── Lista de repartidores ── */
+    .mv-list { flex:1 1 auto; overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:10px;
+        -webkit-overflow-scrolling:touch; }
+    .mv-card { background:#fff; border-radius:16px; box-shadow:0 2px 10px rgba(15,23,42,0.09);
+        overflow:hidden; display:flex; cursor:pointer; }
+    .mv-card:active { transform:scale(0.985); }
+    .mv-card-color { flex:0 0 7px; }
+    .mv-card-body { flex:1; min-width:0; padding:11px 13px 12px; }
+    .mv-card-top { display:flex; align-items:center; gap:9px; }
+    .mv-ava { flex:0 0 auto; width:36px; height:36px; border-radius:50%; color:#fff; font-weight:900;
+        font-size:0.95rem; display:flex; align-items:center; justify-content:center; }
+    .mv-nom { font-size:1.02rem; font-weight:800; color:#0f172a; line-height:1.15;
+        white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .mv-cnt { margin-left:auto; text-align:right; flex:0 0 auto; }
+    .mv-cnt-n { font-size:1.05rem; font-weight:900; color:#0f172a; line-height:1; }
+    .mv-cnt-l { font-size:0.62rem; color:#94a3b8; font-weight:700; letter-spacing:.03em; }
+    .mv-line { display:flex; align-items:flex-start; gap:6px; font-size:0.78rem; color:#475569;
+        margin-top:7px; line-height:1.3; }
+    .mv-line b { color:#1e293b; font-weight:700; }
+    .mv-warn { margin-top:8px; background:#fff7ed; border:1px solid #fed7aa; color:#9a3412;
+        border-radius:9px; padding:6px 9px; font-size:0.75rem; font-weight:800; }
+    .mv-done { margin-top:8px; background:#f0fdf4; border:1px solid #bbf7d0; color:#15803d;
+        border-radius:9px; padding:6px 9px; font-size:0.78rem; font-weight:800; text-align:center; }
+    .mv-chip { display:inline-block; padding:1px 8px; border-radius:99px; font-size:0.66rem;
+        font-weight:800; color:#fff; }
+
+    /* ── Pantalla del mapa de un repartidor ── */
+    .mv-map-wrap { position:absolute; inset:0; display:flex; flex-direction:column; background:#fff; z-index:20; }
+    #mapeoMovilMapa { flex:1 1 auto; min-height:0; }
+    .mv-sheet { flex:0 0 auto; background:#fff; border-top:1px solid #e2e8f0; max-height:44vh;
+        overflow-y:auto; box-shadow:0 -3px 14px rgba(15,23,42,0.12); -webkit-overflow-scrolling:touch; }
+    .mv-sheet-h { position:sticky; top:0; background:#fff; padding:9px 13px 7px; border-bottom:1px solid #f1f5f9;
+        font-size:0.74rem; font-weight:800; color:#64748b; letter-spacing:.03em; }
+    .mv-stop { display:flex; gap:10px; align-items:flex-start; padding:9px 13px; border-bottom:1px solid #f8fafc; }
+    .mv-stop-n { flex:0 0 auto; width:25px; height:25px; border-radius:8px; color:#fff; font-weight:900;
+        font-size:0.76rem; display:flex; align-items:center; justify-content:center; margin-top:1px; }
+    .mv-stop-b { flex:1; min-width:0; }
+    .mv-stop-t { font-size:0.85rem; font-weight:700; color:#0f172a; line-height:1.25; }
+    .mv-stop-d { font-size:0.73rem; color:#64748b; line-height:1.3; }
+    .mv-stop-acc { display:flex; gap:6px; margin-top:5px; }
+    .mv-acc { text-decoration:none; font-size:0.7rem; font-weight:800; padding:4px 9px; border-radius:8px;
+        border:1px solid #cbd5e1; color:#334155; background:#fff; }
+    .mv-eta { flex:0 0 auto; font-size:0.7rem; font-weight:800; color:#0e7490; background:#ecfeff;
+        border:1px solid #a5f3fc; border-radius:99px; padding:2px 7px; white-space:nowrap; margin-top:2px; }
+    .mv-empty { padding:26px 18px; text-align:center; color:#94a3b8; font-size:0.85rem; }
+</style>
+
+<div class="mv-wrap">
+    @if (verDriverId is null)
+    {
+        @* ═════════ PANTALLA 1: todos los repartidores ═════════ *@
+        <div class="mv-head">
+            <div>
+                <div class="mv-head-t">🚚 Reparto en vivo</div>
+                <div class="mv-head-s">@(ultimaAct is null ? "cargando…" : $"actualizado {ultimaAct.Value.ToArTime():HH:mm:ss}")</div>
+            </div>
+            <button class="mv-btn-ico" @onclick="RefrescarAhora" title="Actualizar ahora">@(cargando ? "…" : "↻")</button>
+        </div>
+
+        <div class="mv-total">
+            <div class="mv-total-r">
+                <span class="mv-total-n">@TotalEntregadas</span>
+                <span class="mv-total-l">de @TotalParadas entregadas</span>
+                @if (TotalParadas > 0)
+                {
+                    <span style="margin-left:auto; font-size:0.9rem; font-weight:900; color:#16a34a;">@PorcentajeTotal%</span>
+                }
+            </div>
+            <div class="mv-bar"><div class="mv-bar-f" style="width:@(PorcentajeTotal)%;"></div></div>
+        </div>
+
+        <div class="mv-list">
+            @if (fichas.Count == 0)
+            {
+                <div class="mv-empty">
+                    @(cargando ? "Cargando…" : "No hay nada repartiéndose todavía. Armá la ruta desde la computadora y acá lo vas siguiendo.")
+                </div>
+            }
+            @foreach (var f in fichas)
+            {
+                <div class="mv-card" @onclick="() => AbrirMapa(f.DriverId)">
+                    <div class="mv-card-color" style="background:@f.Color;"></div>
+                    <div class="mv-card-body">
+                        <div class="mv-card-top">
+                            <div class="mv-ava" style="background:@f.Color;">@f.Inicial</div>
+                            <div style="min-width:0;">
+                                <div class="mv-nom">@f.Nombre</div>
+                                @if (!string.IsNullOrEmpty(f.ZonaTxt))
+                                {
+                                    <span class="mv-chip" style="background:@f.Color;">@f.ZonaTxt</span>
+                                }
+                            </div>
+                            <div class="mv-cnt">
+                                <div class="mv-cnt-n">@f.Entregadas/@f.Total</div>
+                                <div class="mv-cnt-l">ENTREGADAS</div>
+                            </div>
+                        </div>
+
+                        <div class="mv-bar"><div class="mv-bar-f" style="width:@(f.Porcentaje)%; background:@f.Color;"></div></div>
+
+                        @if (f.Faltan == 0)
+                        {
+                            <div class="mv-done">🎉 Terminó la ruta</div>
+                        }
+                        else
+                        {
+                            @if (f.SinMarcarMin >= 45)
+                            {
+                                <div class="mv-warn">⚠ Hace @FormatoMin(f.SinMarcarMin) que no marca nada</div>
+                            }
+                            @if (!string.IsNullOrEmpty(f.UltimaDir))
+                            {
+                                <div class="mv-line">
+                                    <span>📍</span>
+                                    <span>Estuvo en <b>@f.UltimaDir</b>@(f.UltimaHora is null ? "" : $" · {f.UltimaHora}")</span>
+                                </div>
+                            }
+                            @if (!string.IsNullOrEmpty(f.ProximaDir))
+                            {
+                                <div class="mv-line">
+                                    <span>➡️</span>
+                                    <span>Va a <b>@f.ProximaDir</b>@(f.ProximaEta is null ? "" : $" · llega ~{f.ProximaEta}")</span>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        @* ═════════ PANTALLA 2: el mapa de un repartidor ═════════ *@
+        <div class="mv-map-wrap">
+            <div class="mv-head">
+                <button class="mv-btn-ico" style="margin-left:0;" @onclick="VolverALista" title="Volver">←</button>
+                <div style="min-width:0;">
+                    <div class="mv-head-t">@(FichaVista?.Nombre ?? "Repartidor")</div>
+                    <div class="mv-head-s">
+                        @(FichaVista is null ? "" : $"{FichaVista.Entregadas} de {FichaVista.Total} entregadas")
+                        @(FichaVista is not null && !string.IsNullOrEmpty(FichaVista.ZonaTxt) ? $" · {FichaVista.ZonaTxt}" : "")
+                    </div>
+                </div>
+                <button class="mv-btn-ico" @onclick="RefrescarAhora" title="Actualizar ahora">@(cargando ? "…" : "↻")</button>
+            </div>
+
+            <div id="mapeoMovilMapa"></div>
+
+            <div class="mv-sheet">
+                <div class="mv-sheet-h">
+                    @if (ParadasQueFaltan.Count == 0) { <text>NO LE QUEDA NADA POR ENTREGAR</text> }
+                    else { <text>LE FALTAN @ParadasQueFaltan.Count — EN ORDEN DE RUTA</text> }
+                </div>
+                @if (ParadasQueFaltan.Count == 0)
+                {
+                    <div class="mv-empty">🎉 Terminó toda su ruta.</div>
+                }
+                @foreach (var p in ParadasQueFaltan)
+                {
+                    <div class="mv-stop">
+                        <div class="mv-stop-n" style="background:@(FichaVista?.Color ?? "#64748b");">@p.Puesto</div>
+                        <div class="mv-stop-b">
+                            <div class="mv-stop-t">@p.Titulo</div>
+                            <div class="mv-stop-d">@p.Direccion</div>
+                            <div class="mv-stop-acc">
+                                @* En el celu esto es oro: un toque y estás llamando o navegando. *@
+                                @if (!string.IsNullOrEmpty(p.Telefono))
+                                {
+                                    <a class="mv-acc" href="tel:@p.Telefono" @onclick:stopPropagation="true">📞 Llamar</a>
+                                }
+                                <a class="mv-acc" target="_blank" @onclick:stopPropagation="true"
+                                   href="https://www.google.com/maps/search/?api=1&query=@p.Lat.ToString(System.Globalization.CultureInfo.InvariantCulture),@p.Lng.ToString(System.Globalization.CultureInfo.InvariantCulture)">🧭 Cómo llegar</a>
+                            </div>
+                        </div>
+                        @if (!string.IsNullOrEmpty(p.Eta))
+                        {
+                            <span class="mv-eta">🕒 @p.Eta</span>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    // Cada cuánto se refresca solo. En el celu vamos más espaciados que en la compu: gasta datos
+    // y batería, y el reparto no cambia tan rápido como para mirarlo cada 5 segundos.
+    private const int RefrescoSegundos = 20;
+    // Minutos que se pierden en cada puerta (mismo criterio que la pantalla grande).
+    private const int MinutosPorParada = 5;
+    // A partir de acá avisamos que hace rato que no marca nada.
+    private const int MinutosAvisoSinMarcar = 45;
+
+    private List<MapeoStopDto> stops = new();
+    private List<MapeoDriverDto> drivers = new();
+    private List<RutaOverviewDto> rutas = new();
+    private List<FichaChofer> fichas = new();
+    private int? verDriverId;                 // null = lista; con valor = mapa de ese repartidor
+    private bool cargando, mapaInit;
+    private DateTime? ultimaAct;
+    private string firmaRutas = "";
+    private System.Threading.Timer? timer;
+
+    private FichaChofer? FichaVista => verDriverId is int id ? fichas.FirstOrDefault(f => f.DriverId == id) : null;
+
+    private int TotalParadas => fichas.Sum(f => f.Total);
+    private int TotalEntregadas => fichas.Sum(f => f.Entregadas);
+    private int PorcentajeTotal => TotalParadas == 0 ? 0 : (int)Math.Round(TotalEntregadas * 100.0 / TotalParadas);
+
+    /// <summary>Lo que se muestra de cada repartidor. Se arma una vez por refresco.</summary>
+    private class FichaChofer
+    {
+        public int DriverId { get; set; }
+        public string Nombre { get; set; } = "";
+        public string Inicial { get; set; } = "";
+        public string Color { get; set; } = "#64748b";
+        public string ZonaTxt { get; set; } = "";
+        public int Total { get; set; }
+        public int Entregadas { get; set; }
+        public int Faltan => Total - Entregadas;
+        public int Porcentaje => Total == 0 ? 0 : (int)Math.Round(Entregadas * 100.0 / Total);
+        public string? UltimaDir { get; set; }
+        public string? UltimaHora { get; set; }
+        public int SinMarcarMin { get; set; } = -1;
+        public string? ProximaDir { get; set; }
+        public string? ProximaEta { get; set; }
+        public List<ParadaVm> Paradas { get; set; } = new();
+    }
+
+    private class ParadaVm
+    {
+        public int Puesto { get; set; }
+        public string Titulo { get; set; } = "";
+        public string Direccion { get; set; } = "";
+        public string? Telefono { get; set; }
+        public decimal Lat { get; set; }
+        public decimal Lng { get; set; }
+        public string? Eta { get; set; }
+        public bool Entregada { get; set; }
+    }
+
+    private List<ParadaVm> ParadasQueFaltan =>
+        FichaVista?.Paradas.Where(p => !p.Entregada).ToList() ?? new();
+
+    protected override async Task OnInitializedAsync() => await CargarTodo();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            timer = new System.Threading.Timer(async _ =>
+            {
+                await InvokeAsync(async () =>
+                {
+                    await CargarTodo();
+                    if (verDriverId is not null) await DibujarMapa();
+                    StateHasChanged();
+                });
+            }, null, RefrescoSegundos * 1000, RefrescoSegundos * 1000);
+        }
+        // El mapa se inicializa recién cuando entrás a ver un repartidor (antes el div no existe).
+        if (verDriverId is not null && !mapaInit)
+        {
+            mapaInit = true;
+            try
+            {
+                await JS.InvokeVoidAsync("mapeoFlex.init", "mapeoMovilMapa", null);
+                await DibujarMapa();
+            }
+            catch { mapaInit = false; }
+        }
+    }
+
+    private async Task CargarTodo()
+    {
+        cargando = true;
+        try
+        {
+            stops = await Api.GetMapeoStopsAsync() ?? new();
+            if (drivers.Count == 0) drivers = await Api.GetMapeoDriversAsync() ?? new();
+
+            // Los recorridos solo se vuelven a pedir si cambió algo que los afecta (qué parada está
+            // en qué zona y en qué puesto). Cada consulta a Google se cobra: no se pide de gusto.
+            var firma = string.Join("|", stops.OrderBy(s => s.Id)
+                .Select(s => $"{s.Id}:{s.AssignedDriverId}:{s.AssignedVehicleSlot}:{s.OrderInRoute}"));
+            if (rutas.Count == 0 || firma != firmaRutas)
+            {
+                try { rutas = await Api.GetRoutesOverviewAsync(single: false) ?? new(); } catch { }
+                firmaRutas = firma;
+            }
+            ArmarFichas();
+            ultimaAct = DateTime.UtcNow;
+        }
+        catch { }
+        finally { cargando = false; }
+    }
+
+    /// <summary>Arma la tarjeta de cada repartidor: cuántas lleva, dónde estuvo, a dónde va.</summary>
+    private void ArmarFichas()
+    {
+        var nuevas = new List<FichaChofer>();
+        foreach (var grupo in stops.Where(s => s.AssignedDriverId.HasValue)
+                                   .GroupBy(s => s.AssignedDriverId!.Value))
+        {
+            var drv = drivers.FirstOrDefault(d => d.Id == grupo.Key);
+            var color = !string.IsNullOrEmpty(drv?.Color) ? drv!.Color!
+                      : (!string.IsNullOrEmpty(grupo.First().AssignedDriverColor) ? grupo.First().AssignedDriverColor! : "#64748b");
+            var nombre = drv?.Nombre ?? grupo.First().AssignedDriverName ?? $"Repartidor {grupo.Key}";
+            var ordenadas = grupo.Where(s => s.Latitude != 0 || s.Longitude != 0)
+                                 .OrderBy(s => s.OrderInRoute ?? int.MaxValue).ThenBy(s => s.Id)
+                                 .ToList();
+            if (ordenadas.Count == 0) continue;
+
+            var ruta = rutas.FirstOrDefault(r => r.Key == $"d{grupo.Key}");
+            var etas = CalcularEtas(ruta, ordenadas);
+
+            var f = new FichaChofer
+            {
+                DriverId = grupo.Key,
+                Nombre = nombre,
+                Inicial = string.IsNullOrWhiteSpace(nombre) ? "?" : nombre.Trim()[..1].ToUpperInvariant(),
+                Color = color,
+                Total = ordenadas.Count,
+                Entregadas = ordenadas.Count(s => s.DateDelivered.HasValue)
+            };
+
+            // Zona(s) donde anda. Si tiene todo en una sola, se muestra esa.
+            var zonas = ordenadas.Where(s => s.AssignedVehicleSlot.HasValue)
+                                 .Select(s => s.AssignedVehicleSlot!.Value).Distinct().OrderBy(x => x).ToList();
+            f.ZonaTxt = zonas.Count == 1 ? $"Zona {zonas[0]}"
+                      : (zonas.Count > 1 ? $"Zonas {string.Join("/", zonas)}" : "");
+
+            // Última entrega real: dónde estuvo y hace cuánto.
+            var ultima = ordenadas.Where(s => s.DateDelivered.HasValue)
+                                  .OrderByDescending(s => s.DateDelivered!.Value).FirstOrDefault();
+            if (ultima is not null)
+            {
+                f.UltimaDir = TituloDe(ultima);
+                f.UltimaHora = ultima.DateDelivered!.Value.ToArTime().ToString("HH:mm");
+                if (f.Entregadas < f.Total)
+                    f.SinMarcarMin = (int)Math.Max(0, (DateTime.UtcNow - ultima.DateDelivered!.Value).TotalMinutes);
+            }
+
+            for (int i = 0; i < ordenadas.Count; i++)
+            {
+                var s = ordenadas[i];
+                f.Paradas.Add(new ParadaVm
+                {
+                    Puesto = s.OrderInRoute ?? (i + 1),
+                    Titulo = TituloDe(s),
+                    Direccion = s.Direccion,
+                    Telefono = s.Telefono,
+                    Lat = s.Latitude,
+                    Lng = s.Longitude,
+                    Entregada = s.DateDelivered.HasValue,
+                    Eta = etas.TryGetValue(i + 1, out var e) ? e.ToArTime().ToString("HH:mm") : null
+                });
+            }
+
+            var proxima = f.Paradas.FirstOrDefault(p => !p.Entregada);
+            if (proxima is not null) { f.ProximaDir = proxima.Titulo; f.ProximaEta = proxima.Eta; }
+
+            nuevas.Add(f);
+        }
+        // Primero los que más les falta: es a quien hay que mirar.
+        fichas = nuevas.OrderByDescending(f => f.Faltan).ThenBy(f => f.Nombre).ToList();
+    }
+
+    private static string TituloDe(MapeoStopDto s) =>
+        !string.IsNullOrWhiteSpace(s.Alias) ? s.Alias!
+        : (!string.IsNullOrWhiteSpace(s.ContactName) ? s.ContactName! : s.Direccion);
+
+    /// <summary>Hora estimada de llegada a cada parada (misma cuenta que la pantalla grande):
+    /// se ancla en la última entrega REAL y suma el tránsito de cada tramo + los minutos de puerta.</summary>
+    private Dictionary<int, DateTime> CalcularEtas(RutaOverviewDto? r, List<MapeoStopDto> ordenadas)
+    {
+        var res = new Dictionary<int, DateTime>();
+        if (r is null || (r.Legs?.Count ?? 0) == 0 || ordenadas.Count == 0) return res;
+        var puestoAncla = 0;
+        var acum = DateTime.UtcNow;
+        for (int i = 0; i < ordenadas.Count; i++)
+            if (ordenadas[i].DateDelivered.HasValue) { puestoAncla = i + 1; acum = ordenadas[i].DateDelivered!.Value; }
+
+        for (int p = puestoAncla; p < ordenadas.Count; p++)
+        {
+            var desde = p == 0 ? "Salida" : p.ToString();
+            var leg = r.Legs!.FirstOrDefault(l => l.From == desde);
+            if (leg is null) { if (p == 0) { res[1] = acum; continue; } break; }
+            acum = acum.AddSeconds(leg.Seconds);
+            if (p > 0) acum = acum.AddMinutes(MinutosPorParada);
+            res[p + 1] = acum;
+        }
+        return res;
+    }
+
+    private static string FormatoMin(int min) =>
+        min >= 120 ? $"{min / 60}h {min % 60}m" : $"{min} min";
+
+    private void AbrirMapa(int driverId)
+    {
+        verDriverId = driverId;
+        mapaInit = false;   // el div del mapa recién se crea ahora: OnAfterRender lo inicializa
+    }
+
+    private async Task VolverALista()
+    {
+        verDriverId = null;
+        mapaInit = false;
+        try { await JS.InvokeVoidAsync("mapeoFlex.destroy"); } catch { }
+    }
+
+    private async Task RefrescarAhora()
+    {
+        await CargarTodo();
+        if (verDriverId is not null) await DibujarMapa();
+        StateHasChanged();
+    }
+
+    /// <summary>Dibuja en el mapa SOLO las paradas de este repartidor, con su recorrido y su autito.</summary>
+    private async Task DibujarMapa()
+    {
+        if (!mapaInit || verDriverId is not int did) return;
+        var mias = stops.Where(s => s.AssignedDriverId == did && (s.Latitude != 0 || s.Longitude != 0))
+                        .OrderBy(s => s.OrderInRoute ?? int.MaxValue).ThenBy(s => s.Id)
+                        .ToList();
+        if (mias.Count == 0) return;
+        var color = FichaVista?.Color ?? "#1d4ed8";
+
+        // El autito va en la última que marcó entregada.
+        var ultimaId = mias.Where(s => s.DateDelivered.HasValue)
+                           .OrderByDescending(s => s.DateDelivered!.Value)
+                           .Select(s => (int?)s.Id).FirstOrDefault();
+
+        var items = mias.Select((s, i) => (object)new
+        {
+            id = -1000 - s.Id,
+            lat = s.Latitude,
+            lng = s.Longitude,
+            label = (s.OrderInRoute ?? (i + 1)).ToString(),
+            color,
+            shape = "circle",
+            delivered = s.DateDelivered.HasValue,
+            ultimaEntrega = ultimaId == s.Id,
+            popupHtml = $"<div style='font-size:0.85rem; line-height:1.35;'><strong>{System.Net.WebUtility.HtmlEncode(TituloDe(s))}</strong><br/>{System.Net.WebUtility.HtmlEncode(s.Direccion)}"
+                        + (string.IsNullOrEmpty(s.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(s.Telefono)}")
+                        + (s.DateDelivered.HasValue ? $"<br/><span style='color:#15803d; font-weight:700;'>✔ Entregado {s.DateDelivered.Value.ToArTime():HH:mm} hs</span>" : "")
+                        + "</div>"
+        }).ToArray();
+
+        try
+        {
+            await JS.InvokeVoidAsync("mapeoFlex.renderMarkers", new object[] { items });
+            // Redibujar los globitos borra las líneas: la del recorrido se vuelve a pintar acá.
+            var ruta = rutas.FirstOrDefault(r => r.Key == $"d{did}");
+            if (ruta is not null && ((ruta.Segments?.Count ?? 0) > 0 || !string.IsNullOrEmpty(ruta.EncodedPolyline)))
+            {
+                var hechos = LegsYaRecorridos(ruta, mias);
+                var paraDibujar = new[]
+                {
+                    new
+                    {
+                        color = ruta.Color,
+                        segments = (ruta.Segments?.Count ?? 0) > 0 ? ruta.Segments.ToArray() : new[] { ruta.EncodedPolyline! },
+                        label = $"{FormatoDuracion(ruta.DurationSeconds)} · {(ruta.DistanceMeters / 1000.0):0.#} km",
+                        legs = (ruta.Legs ?? new()).Select(l => new {
+                            meters = l.Meters, seconds = l.Seconds, encoded = l.Encoded, from = l.From, to = l.To,
+                            transito = (l.Transito ?? new()).Select(t => new { start = t.Start, end = t.End, speed = t.Speed }).ToArray()
+                        }).ToArray(),
+                        legsHechos = hechos
+                    }
+                };
+                await JS.InvokeVoidAsync("mapeoFlex.drawRoutes", new object[] { paraDibujar });
+            }
+        }
+        catch { }
+    }
+
+    /// <summary>Tramos del principio ya recorridos (hasta la última entregada), para dibujarlos apagados.</summary>
+    private static int LegsYaRecorridos(RutaOverviewDto r, List<MapeoStopDto> ordenadas)
+    {
+        var ultimaEntregada = 0;
+        for (int i = 0; i < ordenadas.Count; i++)
+            if (ordenadas[i].DateDelivered.HasValue) ultimaEntregada = i + 1;
+        if (ultimaEntregada == 0) return 0;
+        var conSalida = (r.Legs?.Count ?? 0) == ordenadas.Count;
+        return conSalida ? ultimaEntregada : Math.Max(0, ultimaEntregada - 1);
+    }
+
+    private static string FormatoDuracion(int seg)
+    {
+        if (seg <= 0) return "—";
+        int min = (int)Math.Round(seg / 60.0);
+        if (min < 60) return $"{min} min";
+        return $"{min / 60}h {min % 60:00}min";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        timer?.Dispose();
+        try { await JS.InvokeVoidAsync("mapeoFlex.destroy"); } catch { }
+    }
+}
