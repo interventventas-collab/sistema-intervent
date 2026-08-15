@@ -114,12 +114,17 @@ services:
     # Lo usa web-prod para NO arrancar antes de tiempo (era la causa de los 502 al publicar).
     # OJO: la imagen de la API no trae curl ni wget, por eso se usa bash (/dev/tcp). NO cambiar a
     # "sh": el sh de Debian (dash) no soporta /dev/tcp y el chequeo fallaria siempre.
+    # 2026-08-15 (2da pasada): el margen de arranque era corto. La API hace bastante trabajo ANTES
+    # de abrir el puerto 80, y en una publicacion con el servidor cargado tardo mas de lo permitido:
+    # Docker la dio por fallada, la reinicio, y web-prod (que espera a que este sana) nunca arranco
+    # -> produccion caida varios minutos. Con start_period 120s el arranque lento ya no cuenta como
+    # falla, y aunque despues tarde, hay 20 reintentos x 10s de colchon.
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/80 && printf 'HEAD / HTTP/1.0\\r\\n\\r\\n' >&3 && head -n 1 <&3 | grep -q HTTP"]
       interval: 10s
       timeout: 5s
-      retries: 12
-      start_period: 20s
+      retries: 20
+      start_period: 120s
     restart: unless-stopped
 
   # --- Playwright PRODUCCION ---

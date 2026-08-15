@@ -34,6 +34,64 @@
 	default_sni {$PUBLIC_IP}
 }
 
+# ============================================================
+# (app_backend) — como Caddy le pasa el trafico al frontend (web-prod).
+#
+# 2026-08-15: PUBLICAR SIN CORTES.
+#
+# El problema: al publicar, el container web-prod se destruye y se vuelve a
+# crear. Durante esos segundos Caddy no tenia a quien mandarle el request y
+# devolvia 502 Bad Gateway — el usuario veia el sistema "roto". Peor: si la
+# API tardaba en arrancar, web-prod ni levantaba y el 502 duraba minutos.
+#
+# La solucion: en vez de contestar 502 al toque, Caddy AGUANTA el request y
+# lo sigue reintentando hasta 60 segundos. Como recrear el web tarda unos
+# pocos segundos, para el usuario no hay error: la pagina tarda un poquito
+# mas de lo normal y carga bien. Un request que espera 3 segundos no se nota;
+# un 502 te patea a una pantalla de error.
+#
+#   lb_try_duration  cuanto aguanta reintentando antes de rendirse
+#   lb_try_interval  cada cuanto reintenta mientras aguanta
+#   health_uri       chequeo activo: Caddy pregunta sola si el web esta vivo
+#   fail_duration    cuanto recuerda que fallo antes de volver a probarlo
+#
+# POR QUE "dynamic a" Y NO "reverse_proxy web-prod:80" A SECAS:
+# medido el 15/08 recreando web-prod en produccion -> 124 de 212 pedidos dieron
+# 502. En los logs el error real era:
+#     dial tcp: lookup web-prod on 127.0.0.11:53: server misbehaving
+# O sea: mientras el container no existe, el NOMBRE "web-prod" desaparece del DNS
+# de Docker. Con un upstream fijo eso es un error de conexion y Caddy contesta 502
+# al instante (2 milisegundos) — no llega ni a reintentar.
+# Con "dynamic a" el upstream se resuelve por DNS en cada pedido: si no resuelve,
+# para Caddy no hay ningun servidor disponible, y ESE es justo el caso que
+# lb_try_duration si reintenta. Por eso ahora aguanta en vez de cortar.
+#
+#   dynamic a        resolver "web-prod" por DNS en cada pedido (no cachear la IP)
+#   refresh          cada cuanto refresca ese DNS
+#   lb_try_duration  cuanto aguanta reintentando antes de rendirse
+#   lb_try_interval  cada cuanto reintenta mientras aguanta
+#
+# OJO: solo reintenta cuando NO hay a quien mandarle el pedido. Si el web contesta
+# un error, ese error pasa tal cual — no se reintenta nada ya procesado.
+#
+# OJO 2: el Caddyfile esta montado como archivo suelto. Al editarlo cambia de inodo
+# y el container SIGUE LEYENDO EL VIEJO: un "caddy reload" recarga lo de antes y
+# parece que el cambio no hizo nada. Despues de tocar este archivo hay que hacer
+# "docker compose -f docker-compose.prod.yml restart caddy" si o si.
+# ============================================================
+(app_backend) {
+	reverse_proxy {
+		dynamic a {
+			name web-prod
+			port 80
+			refresh 1s
+			resolvers 127.0.0.11
+		}
+		lb_try_duration 60s
+		lb_try_interval 250ms
+	}
+}
+
 # Bloque para dominio (solo activo si DOMAIN esta seteado en .env).
 # Si DOMAIN esta vacio, docker-compose lo defaultea a "localhost". Caddy
 # emite cert interno para localhost SIN contactar Let's Encrypt (es un caso
@@ -74,7 +132,7 @@
 		file_server
 	}
 
-	reverse_proxy web-prod:80
+	import app_backend
 }
 
 # 2026-08-06: app.frikaf.online = SEGUNDA PUERTA al mismo sistema (respaldo +
@@ -94,7 +152,7 @@ app.frikaf.online {
 		Referrer-Policy "strict-origin-when-cross-origin"
 	}
 
-	reverse_proxy web-prod:80
+	import app_backend
 }
 
 # 2026-06-19: bloques para dominios Frikaf. Sirven la landing estatica de
@@ -157,7 +215,7 @@ https://{$PUBLIC_IP} {
 		Referrer-Policy "strict-origin-when-cross-origin"
 	}
 
-	reverse_proxy web-prod:80
+	import app_backend
 }
 
 # Catch-all HTTPS: cubre cualquier hostname que no matchee los anteriores.
@@ -175,7 +233,7 @@ https://{$PUBLIC_IP} {
 		Referrer-Policy "strict-origin-when-cross-origin"
 	}
 
-	reverse_proxy web-prod:80
+	import app_backend
 }
 
 # Cualquier request HTTP -> redirigir a HTTPS.
