@@ -52,6 +52,13 @@
             }
         </div>
         <div style="display:flex; align-items:center; gap:0.5rem;">
+            @* Ver líneas: dibuja el recorrido de cada zona por las calles, igual que en la pantalla
+               principal. Queda prendido y se repinta solo en cada refresco. *@
+            <button class="flotante-refresh" style="@(lineasOn ? "background:#2563eb;" : "background:#4b5563;")"
+                    @onclick="ToggleLineas" disabled="@cargandoLineas"
+                    title="Mostrar u ocultar las líneas de los recorridos">
+                @(cargandoLineas ? "..." : (lineasOn ? "🙈 Ocultar líneas" : "👁 Ver líneas"))
+            </button>
             <span style="font-size:0.7rem; opacity:0.7;">Auto-refresh @autoRefreshSeg s</span>
             <button class="flotante-refresh" @onclick="ManualRefresh" disabled="@isLoading">
                 @(isLoading ? "..." : "🔄 Actualizar")
@@ -72,6 +79,16 @@
     private bool mapInited = false;
     private const int autoRefreshSeg = 5;
     private System.Threading.Timer? timer;
+
+    // ── Líneas de ruta (botón "Ver líneas") ──
+    // Los recorridos los calcula Google en el servidor, así que NO los pedimos en cada refresco de 5s
+    // (saldría plata al pepe): los guardamos acá y los volvemos a pintar solos. Solo los pedimos de
+    // nuevo cuando cambió algo que los afecta (una parada cambió de zona, de chofer o de orden), y
+    // para darnos cuenta guardamos una "firma" de las paradas y la comparamos en cada refresco.
+    private List<RutaOverviewDto> rutas = new();
+    private bool lineasOn = false;
+    private bool cargandoLineas = false;
+    private string firmaRutas = "";
 
     private record VehiculoActivo(int Slot, int Count);
 
@@ -94,7 +111,11 @@
             {
                 await InvokeAsync(async () =>
                 {
+                    var firmaAntes = firmaRutas;
                     await LoadStops();
+                    // Si en la pantalla principal cambiaron zonas/choferes/orden, los recorridos que
+                    // tenemos quedaron viejos: los pedimos de nuevo (solo si las líneas están prendidas).
+                    if (lineasOn && firmaRutas != firmaAntes) await CargarRutas();
                     await RenderMap();
                     StateHasChanged();
                 });
@@ -124,8 +145,86 @@
                 .OrderBy(g => g.Key)
                 .Select(g => new VehiculoActivo(g.Key, g.Count()))
                 .ToList();
+            // "Firma" de lo que afecta a los recorridos: qué parada está en qué zona/chofer y en qué
+            // puesto. Si esto cambia, las líneas que tenemos dibujadas ya no sirven.
+            firmaRutas = string.Join("|", stops.OrderBy(s => s.Id)
+                .Select(s => $"{s.Id}:{s.AssignedDriverId}:{s.AssignedVehicleSlot}:{s.OrderInRoute}"));
         }
         catch { stops ??= new(); }
+    }
+
+    // Trae los recorridos (los calcula Google del lado del servidor).
+    private async Task CargarRutas()
+    {
+        try { rutas = await Api.GetRoutesOverviewAsync(single: false) ?? new(); } catch { }
+    }
+
+    // Botón "Ver líneas": prende o apaga TODAS las líneas de recorrido.
+    private async Task ToggleLineas()
+    {
+        if (cargandoLineas) return;
+        cargandoLineas = true;
+        StateHasChanged();
+        try
+        {
+            lineasOn = !lineasOn;
+            if (lineasOn)
+            {
+                await CargarRutas();
+                if (rutas.Count == 0) lineasOn = false; // no hay ruta armada todavía
+            }
+            await PintarRutas();
+        }
+        finally { cargandoLineas = false; StateHasChanged(); }
+    }
+
+    // Dibuja las líneas que tenemos guardadas, respetando el filtro de zona (los chips V1/V2 de arriba).
+    private async Task PintarRutas()
+    {
+        if (!mapInited) return;
+        if (!lineasOn)
+        {
+            try { await JS.InvokeVoidAsync("mapeoFlex.clearRoutes"); } catch { }
+            return;
+        }
+        var paraDibujar = rutas
+            .Where(r => r.Segments.Count > 0 || !string.IsNullOrEmpty(r.EncodedPolyline))
+            .Where(RutaPasaFiltro)
+            .Select(r => new
+            {
+                color = r.Color,
+                segments = r.Segments.Count > 0 ? r.Segments.ToArray() : new[] { r.EncodedPolyline! },
+                label = $"{FormatoDuracion(r.DurationSeconds)} · {(r.DistanceMeters / 1000.0):0.#} km",
+                legs = r.Legs.Select(l => new
+                {
+                    meters = l.Meters, seconds = l.Seconds, encoded = l.Encoded, from = l.From, to = l.To,
+                    transito = (l.Transito ?? new()).Select(t => new { start = t.Start, end = t.End, speed = t.Speed }).ToArray()
+                }).ToArray()
+            })
+            .ToArray();
+        await JS.InvokeVoidAsync("mapeoFlex.drawRoutes", new object[] { paraDibujar });
+    }
+
+    // ¿La línea de esta ruta pasa el filtro de zona de arriba (Todos / V1 / V2…)?
+    // Si la zona ya tiene chofer el servidor no manda el número de zona: lo sacamos de sus paradas,
+    // así el filtro le aplica igual (misma regla que usan los pines).
+    private bool RutaPasaFiltro(RutaOverviewDto r)
+    {
+        if (filtroSlot is null) return true;
+        int? slot = r.VehicleSlot;
+        if (!slot.HasValue && r.DriverId.HasValue)
+            slot = (stops ?? new()).Where(s => s.AssignedDriverId == r.DriverId)
+                       .Select(s => s.AssignedVehicleSlot).FirstOrDefault(x => x.HasValue);
+        if (filtroSlot == 0) return !slot.HasValue && !r.DriverId.HasValue;
+        return slot == filtroSlot;
+    }
+
+    private static string FormatoDuracion(int seg)
+    {
+        if (seg <= 0) return "—";
+        int min = (int)Math.Round(seg / 60.0);
+        if (min < 60) return $"{min} min";
+        return $"{min / 60}h {min % 60:00}min";
     }
 
     private async Task ManualRefresh()
@@ -133,6 +232,7 @@
         isLoading = true;
         StateHasChanged();
         await LoadAll();
+        if (lineasOn) await CargarRutas(); // el usuario pidió refrescar: traemos los recorridos frescos
         await RenderMap();
         isLoading = false;
     }
@@ -172,6 +272,9 @@
             };
         }));
         await JS.InvokeVoidAsync("mapeoFlex.renderMarkers", new object[] { list.ToArray() });
+        // Redibujar los globitos borra las líneas (renderMarkers → clearRoutes en el JS):
+        // las volvemos a poner acá, así el refresco automático no las hace desaparecer.
+        if (lineasOn) await PintarRutas();
     }
 
     private static readonly string[] VEHICLE_COLORS = {
