@@ -799,12 +799,27 @@ public class MapeoStopsController : ControllerBase
         int DurationSeconds, int DistanceMeters, string? EncodedPolyline, int StopCount,
         List<string> Segments, List<RutaLegDto> Legs, int? VehicleSlot = null);
 
+    // ── Recorridos ya calculados, guardados en memoria (para no pagarle a Google de más) ──
+    // Cada recorrido se lo pedimos a Google, y esas consultas SE COBRAN (más todavía con el color de
+    // tránsito). Desde que las líneas arrancan prendidas solas, cada vez que alguien abre el Mapeo se
+    // pediría todo de nuevo: abrir el mapa 10 veces = 10 veces la misma cuenta. Por eso guardamos el
+    // resultado y lo reusamos mientras NADA haya cambiado.
+    // La "firma" incluye todo lo que altera un recorrido (qué parada, en qué zona, con qué chofer, en
+    // qué puesto, y el punto de partida): si cambia cualquier cosa, la firma cambia y se recalcula solo.
+    // El tope de 10 minutos es por el tránsito: los tiempos envejecen, así que igual se refresca solo.
+    // Guardamos VARIOS resultados (no uno solo) porque conviven la vista por zonas y la "Ruta única":
+    // con un solo lugar, ir y volver entre las dos borraba el guardado y le pagábamos a Google de nuevo.
+    private static readonly object _rutasCacheLock = new();
+    private static readonly Dictionary<string, (DateTime hora, List<RutaOverviewDto> datos)> _rutasCache = new();
+    private static readonly TimeSpan _rutasCacheVida = TimeSpan.FromMinutes(10);
+
     /// <summary>
     /// Devuelve, por repartidor (o como ruta única), el tiempo estimado + km + la línea dibujable de la ruta.
     /// Usa el orden ya calculado (OrderInRoute) y el punto de partida configurado.
+    /// refresh=true saltea lo guardado y se lo vuelve a preguntar a Google (botón "Actualizar").
     /// </summary>
     [HttpGet("routes-overview")]
-    public async Task<IActionResult> RoutesOverview([FromQuery] bool single = false)
+    public async Task<IActionResult> RoutesOverview([FromQuery] bool single = false, [FromQuery] bool refresh = false)
     {
         double? startLat = null, startLng = null;
         var latStr = (await _db.AppSettings.FindAsync("mapeo.start.lat"))?.Value;
@@ -814,7 +829,25 @@ public class MapeoStopsController : ControllerBase
 
         var conOrden = await _db.MapeoStops.Include(x => x.AssignedDriver)
             .Where(s => s.OrderInRoute != null).ToListAsync();
+        // Sin paradas ordenadas no hay recorrido que dibujar: cortamos acá y NO le preguntamos nada a
+        // Google (abrir el Mapeo antes de armar las rutas no cuesta un peso).
         if (conOrden.Count == 0) return Ok(new List<RutaOverviewDto>());
+
+        // ¿Ya lo tenemos calculado y sigue valiendo? (ver comentario del cache más arriba)
+        var firma = string.Join("|", new[] { single ? "U" : "Z", $"{startLat},{startLng}" }
+            .Concat(conOrden.OrderBy(s => s.Id)
+                .Select(s => $"{s.Id}:{s.AssignedDriverId}:{s.AssignedVehicleSlot}:{s.OrderInRoute}:{s.Latitude}:{s.Longitude}")));
+        if (!refresh)
+        {
+            lock (_rutasCacheLock)
+            {
+                if (_rutasCache.TryGetValue(firma, out var guardado)
+                    && DateTime.UtcNow - guardado.hora < _rutasCacheVida)
+                {
+                    return Ok(guardado.datos);
+                }
+            }
+        }
 
         // single = todas las paradas como UNA ruta. Si no, CADA ZONA es una ruta INDEPENDIENTE: agrupamos por
         // repartidor si tiene; si no, por vehículo/zona (slot); si no tiene ninguno, van juntas como "sin asignar".
@@ -879,6 +912,18 @@ public class MapeoStopsController : ControllerBase
                 key, label, color, did,
                 rr?.DurationSeconds ?? 0, rr?.DistanceMeters ?? 0,
                 segments.FirstOrDefault(), ordered.Count, segments, legs, slot));
+        }
+        // Guardamos lo calculado para reusarlo mientras nada cambie (así no le pagamos a Google
+        // la misma cuenta cada vez que alguien abre el mapa).
+        lock (_rutasCacheLock)
+        {
+            // Limpieza: sacamos los vencidos y, si igual quedaron muchos (cambió el reparto varias
+            // veces), vaciamos todo. Son 2 o 3 entradas en el uso normal; esto es solo por las dudas.
+            foreach (var vieja in _rutasCache.Where(kv => DateTime.UtcNow - kv.Value.hora >= _rutasCacheVida)
+                                             .Select(kv => kv.Key).ToList())
+                _rutasCache.Remove(vieja);
+            if (_rutasCache.Count > 8) _rutasCache.Clear();
+            _rutasCache[firma] = (DateTime.UtcNow, result);
         }
         return Ok(result);
     }

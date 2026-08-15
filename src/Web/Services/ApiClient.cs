@@ -6452,8 +6452,10 @@ public class ApiClient
         return await PostAsync<object>(url, new { });
     }
 
-    public async Task<List<RutaOverviewDto>?> GetRoutesOverviewAsync(bool single = false)
-        => await GetAsync<List<RutaOverviewDto>>($"/api/mapeo/stops/routes-overview?single={(single ? "true" : "false")}");
+    // refresh=true: ignora el recorrido guardado en el servidor y se lo vuelve a preguntar a Google
+    // (cuesta plata). Solo cuando el usuario pide expresamente refrescar.
+    public async Task<List<RutaOverviewDto>?> GetRoutesOverviewAsync(bool single = false, bool refresh = false)
+        => await GetAsync<List<RutaOverviewDto>>($"/api/mapeo/stops/routes-overview?single={(single ? "true" : "false")}&refresh={(refresh ? "true" : "false")}");
 
     public async Task<List<RutaAhorroDto>?> GetRoutesSavingsAsync()
         => await GetAsync<List<RutaAhorroDto>>("/api/mapeo/stops/routes-savings");

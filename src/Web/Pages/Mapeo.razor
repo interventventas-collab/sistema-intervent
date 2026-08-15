@@ -4001,7 +4001,9 @@
     {
         try
         {
-            rutasResumen = await Api.GetRoutesOverviewAsync(single) ?? new();
+            // encenderTodas=true = el usuario acaba de armar/optimizar la ruta y quiere ver ESE resultado:
+            // pedimos el recorrido fresco. El resto de las veces alcanza con el que ya está calculado.
+            rutasResumen = await Api.GetRoutesOverviewAsync(single, refresh: encenderTodas) ?? new();
             if (encenderTodas) foreach (var r in rutasResumen) lineasVisibles.Add(r.Key);
             lineasVisibles.RemoveWhere(k => !rutasResumen.Any(r => r.Key == k));
             await PintarRutas();
@@ -4115,6 +4117,21 @@
         {
             try { rutasResumen = await Api.GetRoutesOverviewAsync(single: false) ?? new(); } catch { }
         }
+    }
+
+    // Al ENTRAR al mapa las líneas arrancan PRENDIDAS solas (antes había que apretar "Ver líneas"
+    // cada vez que volvías a entrar, y era fácil creer que las líneas se habían perdido).
+    // Si no hay ninguna ruta armada todavía, no se prende nada y NO se le consulta nada a Google.
+    private async Task PrenderLineasAlEntrar()
+    {
+        try
+        {
+            rutasResumen = await Api.GetRoutesOverviewAsync(single: false) ?? new();
+            if (rutasResumen.Count == 0) return;   // todavía no hay rutas armadas
+            foreach (var r in rutasResumen) lineasVisibles.Add(r.Key);
+            await PintarRutas();
+        }
+        catch { /* si falla, el usuario siempre puede prenderlas a mano con "Ver líneas" */ }
     }
 
     // "Ver líneas" (todas): si hay alguna prendida, las apaga todas; si no, las prende todas.
@@ -4349,6 +4366,7 @@
             ReconstruirZonasCreadas(); // rearma los cuadraditos "Zona N" desde las paradas guardadas (sobrevive al refresco)
             await CargarNotas();
             await LoadAndRender();
+            await PrenderLineasAlEntrar(); // las líneas de los recorridos arrancan visibles
             StateHasChanged();
             IniciarAutoRefresh(); // refresco automático del mapa (envíos escaneados aparecen solos)
         }
