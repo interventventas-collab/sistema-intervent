@@ -1,4 +1,5 @@
 using Api.Data;
+using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -11,10 +12,12 @@ namespace Api.Controllers;
 public class DashboardController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly MapeoEntregasService _entregas;
 
-    public DashboardController(AppDbContext db)
+    public DashboardController(AppDbContext db, MapeoEntregasService entregas)
     {
         _db = db;
+        _entregas = entregas;
     }
 
     /// <summary>
@@ -309,7 +312,12 @@ public class DashboardController : ControllerBase
         decimal PorRendirVentas = 0, decimal PorRendirAlquiler = 0,
         // 2026-07-04: carga operativa del repartidor (entregas + alquileres del dia).
         int VentasPendientes = 0, int VentasEntregadasHoy = 0,
-        int AlqEntregadosHoy = 0, int AlqRetiradosHoy = 0);
+        int AlqEntregadosHoy = 0, int AlqRetiradosHoy = 0,
+        // 2026-08-15: la ruta de HOY del repartidor, contada sobre las mismas paradas que se ven
+        // en el mapa (no sobre cada modulo por separado), asi los numeros de las dos pantallas
+        // coinciden siempre. Y por donde va: el ultimo domicilio que marco entregado y a que hora.
+        int RutaEntregadas = 0, int RutaFaltan = 0,
+        string? UltimoDomicilio = null, string? UltimaEntregaHora = null);
 
     // 2026-06-25: orden fijo pedido por Osmar — repartidores primero (alexis, walter,
     // benjamin, gonzalo, rodrigo), después oficina (osmar, german, gabriel, miguel).
@@ -377,6 +385,50 @@ public class DashboardController : ControllerBase
         var ventasEntHoyByRep = new Dictionary<int, int>();
         var alqEntByRep = new Dictionary<int, int>();
         var alqRetByRep = new Dictionary<int, int>();
+
+        // 2026-08-15: ruta del dia por repartidor, contada sobre las MISMAS paradas del mapa.
+        // Antes cada modulo contaba lo suyo (ventas por un lado, alquileres por otro) y los envios
+        // de MercadoLibre no se contaban en ningun lado, asi que la tarjeta nunca decia cuanto le
+        // faltaba de verdad. Ahora sale del mapa: entregadas, cuantas faltan, y donde estuvo por
+        // ultima vez. Un MapeoDriver es el chofer del mapa; CafeRepartidorId lo ata al repartidor real.
+        var rutaEntByRep = new Dictionary<int, int>();
+        var rutaFaltanByRep = new Dictionary<int, int>();
+        var ultimoDomByRep = new Dictionary<int, string>();
+        var ultimaHoraByRep = new Dictionary<int, string>();
+        if (repIds.Count > 0)
+        {
+            var driversMapa = await _db.MapeoDrivers
+                .Where(d => d.CafeRepartidorId != null && repIds.Contains(d.CafeRepartidorId!.Value))
+                .Select(d => new { d.Id, RepId = d.CafeRepartidorId!.Value })
+                .ToListAsync();
+            if (driversMapa.Count > 0)
+            {
+                var repPorDriver = driversMapa.ToDictionary(d => d.Id, d => d.RepId);
+                var driverIds = repPorDriver.Keys.ToList();
+                var paradas = await _db.MapeoStops
+                    .Where(s => s.AssignedDriverId != null && driverIds.Contains(s.AssignedDriverId!.Value))
+                    .ToListAsync();
+                var entregasPorStop = await _entregas.EntregasAsync(paradas);
+                foreach (var grupo in paradas.GroupBy(s => repPorDriver[s.AssignedDriverId!.Value]))
+                {
+                    var entregadas = grupo.Where(s => entregasPorStop.TryGetValue(s.Id, out var e) && e.HasValue).ToList();
+                    rutaEntByRep[grupo.Key] = entregadas.Count;
+                    rutaFaltanByRep[grupo.Key] = grupo.Count() - entregadas.Count;
+                    // La ultima entrega = la de hora mas reciente. Es "por donde anda" el repartidor.
+                    var ultima = entregadas
+                        .Select(s => new { Stop = s, Hora = entregasPorStop[s.Id]!.Value })
+                        .OrderByDescending(x => x.Hora).FirstOrDefault();
+                    if (ultima != null)
+                    {
+                        ultimoDomByRep[grupo.Key] = string.IsNullOrWhiteSpace(ultima.Stop.Alias)
+                            ? ultima.Stop.Direccion
+                            : $"{ultima.Stop.Alias} — {ultima.Stop.Direccion}";
+                        // Las horas se guardan en UTC; el usuario las lee en hora de Argentina.
+                        ultimaHoraByRep[grupo.Key] = ultima.Hora.AddHours(-3).ToString("HH:mm");
+                    }
+                }
+            }
+        }
 
         if (repIds.Count > 0)
         {
@@ -477,6 +529,8 @@ public class DashboardController : ControllerBase
 
             decimal porRendir = 0m, porRendirVentas = 0m, porRendirAlq = 0m;
             int ventasPend = 0, ventasEntHoy = 0, alqEntHoy = 0, alqRetHoy = 0;
+            int rutaEnt = 0, rutaFaltan = 0;
+            string? ultimoDom = null, ultimaHora = null;
             bool tieneRepartidor = repByEmp.TryGetValue(e.Id, out var rep);
             if (tieneRepartidor && rep != null)
             {
@@ -488,6 +542,10 @@ public class DashboardController : ControllerBase
                 ventasEntHoyByRep.TryGetValue(rep.Id, out ventasEntHoy);
                 alqEntByRep.TryGetValue(rep.Id, out alqEntHoy);
                 alqRetByRep.TryGetValue(rep.Id, out alqRetHoy);
+                rutaEntByRep.TryGetValue(rep.Id, out rutaEnt);
+                rutaFaltanByRep.TryGetValue(rep.Id, out rutaFaltan);
+                ultimoDomByRep.TryGetValue(rep.Id, out ultimoDom);
+                ultimaHoraByRep.TryGetValue(rep.Id, out ultimaHora);
             }
 
             decimal neto = 0m, pagado = 0m;
@@ -504,7 +562,8 @@ public class DashboardController : ControllerBase
                 estado, horaEntrada, horaSalida, trabajado,
                 porRendir, pagado, leDebo, tieneRepartidor,
                 porRendirVentas, porRendirAlq,
-                ventasPend, ventasEntHoy, alqEntHoy, alqRetHoy);
+                ventasPend, ventasEntHoy, alqEntHoy, alqRetHoy,
+                rutaEnt, rutaFaltan, ultimoDom, ultimaHora);
         })
         .OrderBy(x => OrdenPersonalizado(x.Nombre))
         .ThenBy(x => x.Nombre)

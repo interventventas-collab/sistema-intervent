@@ -3106,7 +3106,11 @@ public class ApiClient
         // Ventas asignadas via QR y aun sin entregar / ya entregadas hoy por este repartidor.
         int VentasPendientes = 0, int VentasEntregadasHoy = 0,
         // Alquileres entregados/retirados HOY por este repartidor.
-        int AlqEntregadosHoy = 0, int AlqRetiradosHoy = 0);
+        int AlqEntregadosHoy = 0, int AlqRetiradosHoy = 0,
+        // 2026-08-15: la ruta de HOY contada sobre las mismas paradas del mapa (envíos de MeLi,
+        // ventas, alquileres y visitas juntos) + por dónde anda: último domicilio entregado y hora.
+        int RutaEntregadas = 0, int RutaFaltan = 0,
+        string? UltimoDomicilio = null, string? UltimaEntregaHora = null);
     public record DashboardEquipoResumen(int Trabajando, int Salio, int SinFichar, int NoFicha);
     public record DashboardEquipoResponse(List<DashboardEquipoItem> Items, DashboardEquipoResumen Resumen, DateTime Fecha);
 

@@ -21,9 +21,10 @@ public class MapeoStopsController : ControllerBase
     private readonly MeliShipmentService _shipmentSvc;
     private readonly MeliOrderService _orderSvc;
     private readonly MapeoRutaPdfService _rutaPdf;
+    private readonly MapeoEntregasService _entregas;
     private readonly ILogger<MapeoStopsController> _logger;
-    public MapeoStopsController(AppDbContext db, GoogleRoutesService routes, VentaMapeoService ventaMapeo, AlqMapeoService alqMapeo, VisitaMapeoService visitaMapeo, GoogleMapsLinkResolverService mapsResolver, MeliShipmentService shipmentSvc, MeliOrderService orderSvc, MapeoRutaPdfService rutaPdf, ILogger<MapeoStopsController> logger)
-    { _db = db; _routes = routes; _ventaMapeo = ventaMapeo; _alqMapeo = alqMapeo; _visitaMapeo = visitaMapeo; _mapsResolver = mapsResolver; _shipmentSvc = shipmentSvc; _orderSvc = orderSvc; _rutaPdf = rutaPdf; _logger = logger; }
+    public MapeoStopsController(AppDbContext db, GoogleRoutesService routes, VentaMapeoService ventaMapeo, AlqMapeoService alqMapeo, VisitaMapeoService visitaMapeo, GoogleMapsLinkResolverService mapsResolver, MeliShipmentService shipmentSvc, MeliOrderService orderSvc, MapeoRutaPdfService rutaPdf, MapeoEntregasService entregas, ILogger<MapeoStopsController> logger)
+    { _db = db; _routes = routes; _ventaMapeo = ventaMapeo; _alqMapeo = alqMapeo; _visitaMapeo = visitaMapeo; _mapsResolver = mapsResolver; _shipmentSvc = shipmentSvc; _orderSvc = orderSvc; _rutaPdf = rutaPdf; _entregas = entregas; _logger = logger; }
 
     public record StopDto(int Id, string Origin, string? OriginRefId, string? Alias, string Direccion,
         decimal Latitude, decimal Longitude, string? ContactName, string? Telefono, string? Notas,
@@ -54,33 +55,11 @@ public class MapeoStopsController : ControllerBase
         var ships = refs.Count == 0
             ? new Dictionary<long, MeliShipment>()
             : await _db.MeliShipments.Where(m => refs.Contains(m.MeliShipmentId)).ToDictionaryAsync(m => m.MeliShipmentId);
-        // Enriquecemos las paradas de venta del café con su fecha/hora REAL de entrega:
-        // la que registra el repartidor del café cuando marca la venta como entregada (Cafe_Ventas.EntregadoAt).
-        var ventaRefs = list.Where(s => s.Origin == "venta_cafe" && s.OriginRefId != null)
-                            .Select(s => int.TryParse(s.OriginRefId, out var v) ? v : 0)
-                            .Where(v => v != 0).Distinct().ToList();
-        var ventasEntrega = ventaRefs.Count == 0
-            ? new Dictionary<int, DateTime?>()
-            : await _db.CafeVentas.Where(v => ventaRefs.Contains(v.Id))
-                                  .ToDictionaryAsync(v => v.Id, v => v.EntregadoAt);
-        // 2026-08-15: idem para ALQUILERES y VISITAS. El dato de cuándo se entregó/realizó ya se
-        // guardaba (AlqReserva.EntregadoAt / Visita.RealizadaAt) pero nadie se lo pedía para el mapa,
-        // asi que esas paradas nunca se tildaban: en el mapa parecia que el repartidor no habia
-        // pasado por ahi. Ahora se tildan solas igual que las Flex y las ventas del cafe.
-        var alqRefs = list.Where(s => s.Origin == "alquiler" && s.OriginRefId != null)
-                          .Select(s => int.TryParse(s.OriginRefId, out var v) ? v : 0)
-                          .Where(v => v != 0).Distinct().ToList();
-        var alqEntrega = alqRefs.Count == 0
-            ? new Dictionary<int, DateTime?>()
-            : await _db.AlqReservas.Where(r => alqRefs.Contains(r.Id))
-                                   .ToDictionaryAsync(r => r.Id, r => r.EntregadoAt);
-        var visitaRefs = list.Where(s => s.Origin == "visita" && s.OriginRefId != null)
-                             .Select(s => int.TryParse(s.OriginRefId, out var v) ? v : 0)
-                             .Where(v => v != 0).Distinct().ToList();
-        var visitaEntrega = visitaRefs.Count == 0
-            ? new Dictionary<int, DateTime?>()
-            : await _db.Visitas.Where(v => visitaRefs.Contains(v.Id))
-                               .ToDictionaryAsync(v => v.Id, v => v.RealizadaAt);
+        // 2026-08-15: la hora real de entrega de CUALQUIER tipo de parada (envío de MeLi, venta del
+        // café, alquiler o visita) la resuelve un solo servicio, que es el mismo que usa el dashboard.
+        // Antes esto estaba suelto acá y solo cubría MeLi y ventas: alquileres y visitas nunca se
+        // tildaban en el mapa, y parecía que el repartidor no había pasado.
+        var entregas = await _entregas.EntregasAsync(list);
         return Ok(list.Select(s =>
         {
             var dto = Map(s);
@@ -92,28 +71,12 @@ public class MapeoStopsController : ControllerBase
                     MeliOrderId = m.MeliOrderId,
                     BuyerNickname = m.BuyerNickname,
                     MeliStatus = m.Status,
-                    DateDelivered = m.DateDelivered,
                     ReceiverName = m.ReceiverName
                 };
             }
-            else if (s.Origin == "venta_cafe" && s.OriginRefId != null
-                && int.TryParse(s.OriginRefId, out var vid)
-                && ventasEntrega.TryGetValue(vid, out var entregadoAt) && entregadoAt.HasValue)
-            {
+            // La hora de entrega sale del servicio (vale para todos los tipos de parada).
+            if (entregas.TryGetValue(s.Id, out var entregadoAt) && entregadoAt.HasValue)
                 dto = dto with { DateDelivered = entregadoAt };
-            }
-            else if (s.Origin == "alquiler" && s.OriginRefId != null
-                && int.TryParse(s.OriginRefId, out var aid)
-                && alqEntrega.TryGetValue(aid, out var alqAt) && alqAt.HasValue)
-            {
-                dto = dto with { DateDelivered = alqAt };
-            }
-            else if (s.Origin == "visita" && s.OriginRefId != null
-                && int.TryParse(s.OriginRefId, out var visid)
-                && visitaEntrega.TryGetValue(visid, out var visAt) && visAt.HasValue)
-            {
-                dto = dto with { DateDelivered = visAt };
-            }
             return dto;
         }));
     }

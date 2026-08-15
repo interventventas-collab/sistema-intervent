@@ -129,6 +129,9 @@ builder.Services.AddScoped<GoogleRoutesService>();
 builder.Services.AddScoped<VentaMapeoService>();
 builder.Services.AddScoped<AlqMapeoService>();
 builder.Services.AddScoped<VisitaMapeoService>();
+// Un solo lugar que sabe si una parada ya se entregó (lo usan el mapa y el dashboard, así los
+// números de las dos pantallas siempre coinciden).
+builder.Services.AddScoped<MapeoEntregasService>();
 builder.Services.AddScoped<VisitaReciboPdfService>();
 builder.Services.AddScoped<MeliAccountService>();
 builder.Services.AddScoped<ArcaAccountService>();
