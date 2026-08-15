@@ -1932,7 +1932,11 @@
                 </div>
             }
             <div style="display:flex; gap:0.5rem; align-items:stretch;">
-                <input id="mapeoSearchInput" type="text" class="form-input" autocomplete="off"
+                @* 2026-08-15: type=search + name propio + los data-* de los gestores de claves para que
+                   Chrome NO ofrezca la clave guardada del sistema al tocar el buscador (lo tomaba como
+                   si fuera el casillero de usuario y aparecía el cartelito "ADMIN / 20301359366"). *@
+                <input id="mapeoSearchInput" type="search" name="mapeo-buscar-direccion" class="form-input"
+                       autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other"
                        placeholder="@(editandoPinStopId is not null ? "🔍 Buscá la dirección correcta y elegila (mueve el pin)…" : (corrigiendoDomicilioStopId is not null ? "🔍 Escribí el domicilio correcto y elegilo…" : "🔍 Buscar una dirección y sumarla al mapa…"))"
                        style="flex:1; font-size:1.05rem; padding:0.7rem 0.95rem; border:1.5px solid @((editandoPinStopId is not null || corrigiendoDomicilioStopId is not null) ? "#f59e0b" : (verDireccionAlTocar ? "#2563eb" : "#d1d5db")); border-radius:8px;" />
                 @* Botón "Ver dirección al tocar": prende/apaga el modo geolocalización inversa (tocá el mapa → te dice la calle y número). *@
