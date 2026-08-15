@@ -19,7 +19,13 @@ var builder = WebApplication.CreateBuilder(args);
 // Database
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"),
-        sql => sql.CommandTimeout(180))); // 2026-06-11: 180s para queries pesadas de /api/meli/items con sync configs
+        sql => sql
+            .CommandTimeout(180)   // 2026-06-11: 180s para queries pesadas de /api/meli/items con sync configs
+            // 2026-08-15: reintentos automáticos ante errores PASAJEROS de conexión. Al publicar, la
+            // base queda ocupada (arranca el script de init, hay varias apps pegándole a la vez) y una
+            // consulta puede irse de tiempo. Antes eso reventaba la API entera al arrancar: se moría,
+            // Docker la reiniciaba, y el frontend nunca levantaba -> el sistema quedaba caído.
+            .EnableRetryOnFailure(maxRetryCount: 6, maxRetryDelay: TimeSpan.FromSeconds(10), errorNumbersToAdd: null)));
 
 // Authentication
 var jwtSecret = builder.Configuration["Jwt:Secret"];
@@ -392,6 +398,27 @@ var app = builder.Build();
 // - Si el admin ya tiene un hash BCrypt valido (o sea, la clave se cambio o ya se
 //   seteo antes), NO se toca aunque DEFAULT_ADMIN_PASSWORD siga definida en .env.
 // - Si se necesita forzar un reseteo (ej. olvido de clave), setear FORCE_RESET_ADMIN_PASSWORD=true.
+// 2026-08-15: ESPERAR A QUE LA BASE ESTE LISTA antes de tocarla.
+// Al publicar, la base queda ocupada (corre el script de init, hay varias apps pegandole) y la
+// primera consulta se iba de tiempo. Como el bloque de abajo no tenia red de contencion, esa
+// excepcion mataba la API entera: Docker la reiniciaba, y el frontend -que espera a que la API
+// este sana- nunca arrancaba, asi que el sistema quedaba CAIDO. Medido dos veces el 15/08.
+// Ahora esperamos hasta 2 minutos a que conteste, y si igual no contesta seguimos arrancando:
+// la API prende, sirve, y estas tareas de arranque (que son idempotentes) se rehacen al proximo
+// reinicio. Mejor arriba sin sembrar que muerta.
+{
+    using var scopeWait = app.Services.CreateScope();
+    var dbWait = scopeWait.ServiceProvider.GetRequiredService<AppDbContext>();
+    var logWait = scopeWait.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    var reloj = System.Diagnostics.Stopwatch.StartNew();
+    while (reloj.Elapsed < TimeSpan.FromMinutes(2))
+    {
+        try { if (await dbWait.Database.CanConnectAsync()) break; }
+        catch (Exception ex) { logWait.LogWarning("Esperando a la base... ({Msg})", ex.Message); }
+        await Task.Delay(TimeSpan.FromSeconds(3));
+    }
+}
+
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -441,7 +468,11 @@ using (var scope = app.Services.CreateScope())
 {
     using var scope = app.Services.CreateScope();
     var roleService = scope.ServiceProvider.GetRequiredService<RoleService>();
-    await roleService.SyncAdminPermissionsAsync();
+    var logRoles = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    // Si la base tropieza justo acá, se avisa y se sigue: se rehace al proximo arranque.
+    // Antes esta linea sin proteger podia tumbar la API entera durante una publicacion.
+    try { await roleService.SyncAdminPermissionsAsync(); }
+    catch (Exception ex) { logRoles.LogWarning(ex, "No se pudieron sincronizar los permisos del admin al arrancar; se reintenta en el proximo arranque."); }
 }
 
 // 2026-07-11: Alertas del sistema unificadas en "Mis Alertas" (Ventas MeLi + Fichadas).
