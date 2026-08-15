@@ -2087,18 +2087,20 @@
             </div>
         }
         @* ─────────────────────────────────────────────────────────────────────────────
-           FICHA DE LA PARADA (2026-08-15). Tarjetita que se apoya arriba del mapa, sin tapar
-           nada ni bloquear el mapa. Aparece sola apenas sumás una dirección con el buscador
-           grande ("¿le ponés nombre?") y también con el botón "✏️ Editar datos" del globito
-           de cualquier parada. Antes, ponerle nombre/teléfono/notas a una parada solo se podía
-           en el momento de crearla desde la solapa "Tipear nueva" — que hacía lo mismo que el
-           buscador de arriba y se sacó. Editar después, directamente no se podía.
+           FICHA DE LA PARADA (2026-08-15). Tarjetita para ponerle nombre/contacto/teléfono/notas
+           a una parada y para vincularla con un cliente del sistema. Antes esto solo se podía en
+           el momento de crearla desde la solapa "Tipear nueva" (que duplicaba el buscador de
+           arriba y se sacó); editar después, directamente no se podía.
+
+           SE ABRE SOLO CON "✏️ Editar datos" DEL GLOBITO. Se probó abrirla sola al buscar una
+           dirección ("¿le ponés nombre?") y molestaba: tapaba el mapa justo cuando querías verlo.
+           Buscar una dirección tiene que ser buscar y nada más — no meterle un formulario encima.
            ───────────────────────────────────────────────────────────────────────────── *@
         @if (fichaStopId is not null)
         {
             <div style="position:absolute; top:8px; left:50%; transform:translateX(-50%); z-index:470; width:min(390px, calc(100% - 24px)); background:#ffffff; border:2px solid #2563eb; border-radius:12px; box-shadow:0 8px 26px rgba(0,0,0,0.28); overflow:hidden;">
                 <div style="background:#2563eb; color:#fff; padding:0.45rem 0.7rem; display:flex; align-items:center; gap:0.4rem; font-size:0.85rem; font-weight:800;">
-                    <span>@(fichaEsNueva ? "📍 Parada agregada — ¿le ponés nombre?" : "✏️ Editar parada")</span>
+                    <span>✏️ Editar parada</span>
                     <button type="button" @onclick="CerrarFichaStop" title="Cerrar"
                             style="margin-left:auto; background:transparent; border:none; color:#fff; font-size:1.25rem; line-height:1; cursor:pointer; padding:0 0.15rem;">&times;</button>
                 </div>
@@ -2214,7 +2216,7 @@
                             @(fichaGuardando ? "Guardando…" : "💾 Guardar")
                         </button>
                         <button type="button" class="btn btn-secondary" style="font-size:0.85rem;" @onclick="CerrarFichaStop" disabled="@fichaGuardando">
-                            @(fichaEsNueva ? "Así está bien" : "Cancelar")
+                            Cancelar
                         </button>
                     </div>
                 </div>
@@ -4035,7 +4037,6 @@
     // 2026-08-15: reemplaza a la vieja solapa "Tipear nueva" (que duplicaba el buscador grande del
     // mapa) y agrega lo que antes no existía: editar una parada YA creada, y vincularla a un cliente.
     private int? fichaStopId;                  // null = tarjeta cerrada
-    private bool fichaEsNueva;                 // true = recién agregada con el buscador
     private string fichaDireccion = "";
     private string fichaAlias = "", fichaContacto = "", fichaTelefono = "", fichaNotas = "";
     private bool fichaGuardarFav, fichaGuardando, fichaBuscandoCliente;
@@ -5206,15 +5207,17 @@
                 StateHasChanged();
                 return;
             }
-            var nueva = await Api.CreateMapeoStopAsync("manual", null, null,
+            await Api.CreateMapeoStopAsync("manual", null, null,
                 string.IsNullOrWhiteSpace(direccion) ? "Punto en el mapa" : direccion,
                 (decimal)lat, (decimal)lng, null, null, null);
             await LoadStops();
             await RenderMap();
             ToastService.Success("📍 Dirección agregada al mapa");
-            // 2026-08-15: y le ofrecemos ponerle nombre/teléfono/notas (o vincularla a un cliente)
-            // sin frenar nada: la tarjetita se apoya arriba del mapa y se cierra con "Así está bien".
-            if (nueva is not null) AbrirFichaStop(nueva, esNueva: true);
+            // 2026-08-15 (2da pasada): NO abrimos nada acá. Buscar una dirección tiene que ser eso y
+            // nada más: escribís, elegís, y el mapa te lleva. Probamos abrir sola la ficha para
+            // ponerle nombre y molestaba — tapaba el mapa justo cuando querías mirarlo. Si después le
+            // querés poner nombre, teléfono o vincularla a un cliente, está el botón "✏️ Editar datos"
+            // del globito de esa parada.
             StateHasChanged();
         }
         catch (Exception ex) { ToastService.Error("No se pudo agregar: " + ex.Message); }
@@ -6021,15 +6024,14 @@
     // y vincularla con un cliente del sistema. Se abre sola al sumar una dirección con el buscador
     // grande, y a mano desde "✏️ Editar datos" en el globito de cualquier parada.
 
-    private void AbrirFichaStop(MapeoStopDto s, bool esNueva)
+    private void AbrirFichaStop(MapeoStopDto s)
     {
         fichaStopId = s.Id;
-        fichaEsNueva = esNueva;
         fichaDireccion = s.Direccion;
         fichaLat = s.Latitude; fichaLng = s.Longitude;
         // Cuando la parada recién se crea desde el buscador, el alias es el texto de la dirección:
         // arrancamos el campo vacío para que se vea el "Bar Don Pepe" de ejemplo y no repetir la calle.
-        fichaAlias = esNueva ? "" : (s.Alias ?? "");
+        fichaAlias = s.Alias ?? "";
         fichaContacto = s.ContactName ?? "";
         fichaTelefono = s.Telefono ?? "";
         fichaNotas = s.Notas ?? "";
@@ -6218,7 +6220,7 @@
         var stopId = -1000 - markerId;
         var st = stops?.FirstOrDefault(x => x.Id == stopId);
         if (st is null) return Task.CompletedTask;
-        AbrirFichaStop(st, esNueva: false);
+        AbrirFichaStop(st);
         return Task.CompletedTask;
     }
 
