@@ -248,13 +248,29 @@
                             <div class="bp-buyer-row">
                                 <div class="bp-avatar">@Iniciales(b.Nickname)</div>
                                 <div style="min-width:0">
-                                    <div class="bp-buyer-name">@(b.Nickname ?? "Usuario")</div>
+                                    <div class="bp-buyer-name">
+                                        @if (!string.IsNullOrEmpty(b.ProfileUrl))
+                                        {
+                                            <a class="bp-buyer-link" href="@b.ProfileUrl" target="_blank"
+                                               title="Abrir el perfil de @b.Nickname en MercadoLibre">@(b.Nickname ?? "Usuario") ↗</a>
+                                        }
+                                        else
+                                        {
+                                            @(b.Nickname ?? "Usuario")
+                                        }
+                                    </div>
                                     <div class="bp-buyer-id">
                                         ID @b.BuyerId
                                         @if (!string.IsNullOrEmpty(Ubicacion(b))) { <text> · @Ubicacion(b)</text> }
                                     </div>
                                 </div>
                             </div>
+                            @if (string.IsNullOrEmpty(b.ProfileUrl))
+                            {
+                                <div class="bp-buyer-nolink">
+                                    MercadoLibre no nos dice el apodo de este comprador, así que no se puede abrir su perfil.
+                                </div>
+                            }
                             @if (b.IsKnown)
                             {
                                 <div class="bp-kv"><span class="k">Ya compró</span><span class="v">@b.OrdersCount @(b.OrdersCount == 1 ? "vez" : "veces")</span></div>
@@ -266,13 +282,39 @@
                                 {
                                     <div class="bp-kv"><span class="k">Última compra</span><span class="v">@b.LastPurchaseAt.Value.ToLocalTime().ToString("dd/MM/yyyy")</span></div>
                                 }
-                                @if (!string.IsNullOrEmpty(b.LastItems))
-                                {
-                                    <div class="bp-buyer-last"><b>Lo último que compró:</b> @b.LastItems</div>
-                                }
                                 @if (!string.IsNullOrEmpty(b.Phone))
                                 {
                                     <div class="bp-kv"><span class="k">Teléfono</span><span class="v">@b.Phone</span></div>
+                                }
+                                @* 2026-08-16: qué compró en cada visita anterior (últimas 10). Reemplaza al
+                                   renglón "lo último que compró", que era lo mismo pero de una sola venta. *@
+                                @if (b.Compras.Count > 0)
+                                {
+                                    <div class="bp-compras-h">🛒 Sus compras anteriores</div>
+                                    <div class="bp-compras">
+                                        @foreach (var c in b.Compras)
+                                        {
+                                            <div class="bp-compra">
+                                                <div class="bp-compra-top">
+                                                    <span class="bp-compra-fecha">@(c.Fecha.HasValue ? c.Fecha.Value.ToLocalTime().ToString("dd/MM/yy") : "—")</span>
+                                                    <span class="bp-compra-total">$@c.Total.ToString("N0")</span>
+                                                </div>
+                                                <div class="bp-compra-items">@(string.IsNullOrWhiteSpace(c.Items) ? "(sin detalle)" : c.Items)</div>
+                                                @if (!string.IsNullOrEmpty(c.Canal))
+                                                {
+                                                    <span class="bp-compra-canal">@c.Canal</span>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                    @if (b.OrdersCount > b.Compras.Count)
+                                    {
+                                        <div class="bp-compras-mas">Se muestran las últimas @b.Compras.Count de @b.OrdersCount compras.</div>
+                                    }
+                                }
+                                else if (!string.IsNullOrEmpty(b.LastItems))
+                                {
+                                    <div class="bp-buyer-last"><b>Lo último que compró:</b> @b.LastItems</div>
                                 }
                             }
                             else
@@ -649,6 +691,18 @@
     .bp-buyer-name { font-weight: 700; font-size: .88rem; }
     .bp-buyer-id { font-size: .72rem; color: var(--text-muted,#9ca3af); }
     .bp-buyer-last { margin-top: 8px; font-size: .8rem; color: var(--text-muted,#6b7280); line-height: 1.4; }
+    .bp-buyer-link { color: #2563c9; text-decoration: none; }
+    .bp-buyer-link:hover { text-decoration: underline; }
+    .bp-buyer-nolink { margin-top: 6px; font-size: .72rem; color: var(--text-muted,#9ca3af); line-height: 1.35; }
+    .bp-compras-h { margin-top: 11px; margin-bottom: 5px; font-size: .74rem; font-weight: 800; color: var(--text-muted,#6b7280); }
+    .bp-compras { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
+    .bp-compra { border: 1px solid rgba(148,163,184,.28); border-radius: 8px; padding: 6px 8px; }
+    .bp-compra-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .bp-compra-fecha { font-size: .74rem; color: var(--text-muted,#9ca3af); }
+    .bp-compra-total { font-size: .8rem; font-weight: 800; color: #16a34a; }
+    .bp-compra-items { font-size: .78rem; line-height: 1.35; margin-top: 2px; }
+    .bp-compra-canal { display: inline-block; margin-top: 4px; font-size: .64rem; font-weight: 700; color: var(--text-muted,#6b7280); background: rgba(148,163,184,.14); border-radius: 999px; padding: 1px 7px; }
+    .bp-compras-mas { margin-top: 5px; font-size: .7rem; color: var(--text-muted,#9ca3af); }
 
     /* Cartelito de envío */
     .bp-ship { display: inline-flex; align-items: center; gap: 4px; font-size: .68rem; font-weight: 800; letter-spacing: .02em; border-radius: 7px; padding: 2px 8px; border: 1px solid transparent; white-space: nowrap; }

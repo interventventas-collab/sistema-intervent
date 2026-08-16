@@ -21,6 +21,17 @@ public class MeliQuestionsController : ControllerBase
         _db = db; _service = service;
     }
 
+    /// <summary>
+    /// 2026-08-16: link al perfil publico del comprador en MeLi. Se arma con el apodo, no con el id
+    /// (MeLi no tiene una URL de perfil por id). Si no tenemos apodo devolvemos null y la UI no
+    /// muestra el link — pasa cuando MeLi enmascara al que pregunta.
+    /// Sitio fijo .com.ar, igual que el resto del controller (meliUrl de las publicaciones).
+    /// </summary>
+    private static string? PerfilUrl(string? nickname)
+        => string.IsNullOrWhiteSpace(nickname)
+            ? null
+            : $"https://www.mercadolibre.com.ar/perfil/{Uri.EscapeDataString(nickname.Trim())}";
+
     /// <summary>Lista preguntas. Por default solo UNANSWERED. ?status=ALL para todas.</summary>
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] string status = "UNANSWERED", [FromQuery] int limit = 100)
@@ -43,6 +54,16 @@ public class MeliQuestionsController : ControllerBase
             .GroupBy(x => x.MeliItemId)
             .ToDictionary(g => g.Key, g => g.Select(x => x.LogisticType).FirstOrDefault(v => !string.IsNullOrEmpty(v)));
 
+        // 2026-08-16: resumen del que pregunta (si ya nos compro antes), en UNA sola consulta para
+        // no hacer N+1. Con esto el cartel de la campanita puede avisar "cliente conocido" sin pedir
+        // el detalle de cada pregunta.
+        var buyerIds = list.Select(x => x.FromUserId).Where(v => v > 0).Distinct().ToList();
+        var clientes = await _db.MeliClientes
+            .Where(c => buyerIds.Contains(c.BuyerId))
+            .Select(c => new { c.BuyerId, c.OrdersCount, c.LastPurchaseAt, c.Nickname })
+            .ToListAsync();
+        var cliMap = clientes.GroupBy(c => c.BuyerId).ToDictionary(g => g.Key, g => g.First());
+
         return Ok(list.Select(x => new
         {
             id = x.Id,
@@ -62,7 +83,13 @@ public class MeliQuestionsController : ControllerBase
             seenAt = x.SeenAt,
             isNew = x.SeenAt == null && x.Status == "UNANSWERED",
             logisticType = logiMap.TryGetValue(x.ItemId, out var lt) ? lt : null,
-            meliUrl = $"https://articulo.mercadolibre.com.ar/{x.ItemId}"
+            meliUrl = $"https://articulo.mercadolibre.com.ar/{x.ItemId}",
+            buyerIsKnown = cliMap.ContainsKey(x.FromUserId),
+            buyerOrdersCount = cliMap.TryGetValue(x.FromUserId, out var c1) ? c1.OrdersCount : 0,
+            buyerLastPurchaseAt = cliMap.TryGetValue(x.FromUserId, out var c2) ? c2.LastPurchaseAt : null,
+            buyerProfileUrl = PerfilUrl(string.IsNullOrEmpty(x.FromNickname)
+                ? (cliMap.TryGetValue(x.FromUserId, out var c3) ? c3.Nickname : null)
+                : x.FromNickname)
         }));
     }
 
@@ -99,10 +126,36 @@ public class MeliQuestionsController : ControllerBase
 
         // Comprador: lo que tengamos guardado en la base de clientes MeLi (se llena con cada venta).
         var cli = await _db.MeliClientes.FirstOrDefaultAsync(c => c.BuyerId == x.FromUserId);
+
+        // 2026-08-16: historial de compras anteriores de este mismo comprador. Sale de nuestra base
+        // (MeliClienteCompras, una fila por venta), asi que no gasta consultas a MeLi. Cortamos en 10:
+        // es para responder la pregunta, no para auditar la cuenta.
+        var compras = cli is null
+            ? new List<object>()
+            : (await _db.MeliClienteCompras
+                    .Where(c => c.BuyerId == x.FromUserId)
+                    .OrderByDescending(c => c.Fecha)
+                    .Take(10)
+                    .Select(c => new { c.Fecha, c.Items, c.Cantidad, c.Total, c.Canal, c.MeliOrderId })
+                    .ToListAsync())
+                .Select(c => (object)new
+                {
+                    fecha = c.Fecha,
+                    items = c.Items,
+                    cantidad = c.Cantidad,
+                    total = c.Total,
+                    canal = c.Canal,
+                    meliOrderId = c.MeliOrderId
+                })
+                .ToList();
+
+        var nick = string.IsNullOrEmpty(x.FromNickname) ? cli?.Nickname : x.FromNickname;
         object buyer = new
         {
             buyerId = x.FromUserId,
-            nickname = string.IsNullOrEmpty(x.FromNickname) ? cli?.Nickname : x.FromNickname,
+            nickname = nick,
+            profileUrl = PerfilUrl(nick),
+            compras,
             isKnown = cli != null,
             receiverName = cli?.ReceiverName,
             phone = cli?.Phone,

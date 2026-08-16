@@ -22,6 +22,14 @@ public class MeliQuestionDto
     /// <summary>Tipo de logística de la publicación (self_service, fulfillment, drop_off, ...). Para el cartelito Flex/Correo/ME1/Full.</summary>
     public string? LogisticType { get; set; }
     public string MeliUrl { get; set; } = "";
+
+    // 2026-08-16: resumen del que pregunta, para avisar "ya te compró" sin pedir el detalle.
+    /// <summary>True si el que pregunta ya figura en la base de clientes MeLi (ya compró antes).</summary>
+    public bool BuyerIsKnown { get; set; }
+    public int BuyerOrdersCount { get; set; }
+    public DateTime? BuyerLastPurchaseAt { get; set; }
+    /// <summary>Link al perfil público en MeLi. Null cuando no sabemos el apodo (MeLi lo enmascara).</summary>
+    public string? BuyerProfileUrl { get; set; }
 }
 
 public class MeliQuestionsUnreadDto
@@ -75,4 +83,20 @@ public class MeliBuyerBriefDto
     public string? LastItems { get; set; }
     public DateTime? FirstPurchaseAt { get; set; }
     public DateTime? LastPurchaseAt { get; set; }
+    /// <summary>Link al perfil público en MeLi. Null cuando no sabemos el apodo.</summary>
+    public string? ProfileUrl { get; set; }
+    /// <summary>Compras anteriores de este comprador (las últimas 10, de la más nueva a la más vieja).</summary>
+    public List<MeliBuyerCompraDto> Compras { get; set; } = new();
+}
+
+/// <summary>Una compra anterior del que pregunta. Sale de nuestra base, no de MeLi.</summary>
+public class MeliBuyerCompraDto
+{
+    public DateTime? Fecha { get; set; }
+    public string? Items { get; set; }
+    public int Cantidad { get; set; }
+    public decimal Total { get; set; }
+    /// <summary>Flex | ME1 | Correo.</summary>
+    public string? Canal { get; set; }
+    public long MeliOrderId { get; set; }
 }

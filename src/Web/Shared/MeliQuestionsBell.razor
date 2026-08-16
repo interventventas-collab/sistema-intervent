@@ -90,13 +90,38 @@
                                     </a>
                                     <div style="font-size: 0.85rem; color: #6b7280;">
                                         Cuenta: <strong>@(q.AccountNickname ?? "—")</strong>
-                                        · Cliente: <strong style="color:#1f2937;">@(q.FromNickname ?? "Usuario")</strong>
+                                        · Cliente:
+                                        @if (!string.IsNullOrEmpty(q.BuyerProfileUrl))
+                                        {
+                                            <a href="@q.BuyerProfileUrl" target="_blank" class="mqb-perfil"
+                                               title="Abrir el perfil de @q.FromNickname en MercadoLibre">@(q.FromNickname ?? "Usuario") ↗</a>
+                                        }
+                                        else
+                                        {
+                                            <strong style="color:#1f2937;">@(q.FromNickname ?? "Usuario")</strong>
+                                        }
                                         · @FormatRelative(q.DateCreated)
                                         @if (q.IsNew)
                                         {
                                             <span style="background: #dc2626; color: white; padding: 0.1rem 0.5rem; border-radius: 4px; margin-left: 0.5rem; font-size: 0.7rem; font-weight: 700;">NUEVA</span>
                                         }
                                     </div>
+                                    @* 2026-08-16: si ya nos compro antes, avisarlo acá mismo: cambia el tono
+                                       de la respuesta y evita ir a buscarlo a otra pantalla. *@
+                                    @if (q.BuyerIsKnown)
+                                    {
+                                        <div class="mqb-cliente mqb-cliente-si">
+                                            🔁 Ya te compró @q.BuyerOrdersCount @(q.BuyerOrdersCount == 1 ? "vez" : "veces")
+                                            @if (q.BuyerLastPurchaseAt.HasValue)
+                                            {
+                                                <text> · última @FormatRelative(q.BuyerLastPurchaseAt.Value)</text>
+                                            }
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="mqb-cliente mqb-cliente-no">🆕 Nunca te compró</div>
+                                    }
                                 </div>
                             </div>
 
@@ -306,6 +331,16 @@
         gap: 0.8rem;
     }
     .meli-q-close-btn { font-weight: 700; }
+
+    /* === 2026-08-16: quién pregunta (perfil + si ya compró) === */
+    .mqb-perfil { color: #2563c9; font-weight: 700; text-decoration: none; }
+    .mqb-perfil:hover { text-decoration: underline; }
+    .mqb-cliente {
+        display: inline-block; margin-top: 5px;
+        font-size: .74rem; font-weight: 700; border-radius: 999px; padding: 2px 9px;
+    }
+    .mqb-cliente-si { color: #15803d; background: rgba(22,163,74,.12); border: 1px solid rgba(22,163,74,.3); }
+    .mqb-cliente-no { color: #6b7280; background: rgba(148,163,184,.12); border: 1px solid rgba(148,163,184,.3); }
 
     /* === 2026-08-15: respuestas rápidas dentro del cartel === */
     .mqr-toggle {
