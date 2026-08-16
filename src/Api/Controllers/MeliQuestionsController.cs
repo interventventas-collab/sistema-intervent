@@ -25,12 +25,15 @@ public class MeliQuestionsController : ControllerBase
     /// 2026-08-16: link al perfil publico del comprador en MeLi. Se arma con el apodo, no con el id
     /// (MeLi no tiene una URL de perfil por id). Si no tenemos apodo devolvemos null y la UI no
     /// muestra el link — pasa cuando MeLi enmascara al que pregunta.
-    /// Sitio fijo .com.ar, igual que el resto del controller (meliUrl de las publicaciones).
+    /// El formato es el MISMO que MeLi publica en el campo "permalink" de GET /users/{id}
+    /// (verificado 2026-08-16 contra la cuenta de prod: "http://perfil.mercadolibre.com.ar/APODO").
+    /// No inventar otra forma: probamos www.mercadolibre.com.ar/perfil/APODO y no se pudo confirmar
+    /// que exista — MeLi responde 403 a curl, asi que la unica fuente confiable es su propio permalink.
     /// </summary>
     private static string? PerfilUrl(string? nickname)
         => string.IsNullOrWhiteSpace(nickname)
             ? null
-            : $"https://www.mercadolibre.com.ar/perfil/{Uri.EscapeDataString(nickname.Trim())}";
+            : $"https://perfil.mercadolibre.com.ar/{Uri.EscapeDataString(nickname.Trim())}";
 
     /// <summary>Lista preguntas. Por default solo UNANSWERED. ?status=ALL para todas.</summary>
     [HttpGet]
