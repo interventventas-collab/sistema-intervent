@@ -64,6 +64,10 @@ public class MeliQuestionService
         // significa que fue respondida (o eliminada) en MeLi por fuera de la app.
         var seenInMeli = new HashSet<long>();
 
+        // 2026-08-16: cache de apodos resueltos en esta vuelta. Si el mismo comprador hizo 3 preguntas,
+        // le pedimos el apodo a MeLi una sola vez.
+        var nickCache = new Dictionary<long, string?>();
+
         while (hasMore)
         {
             var url = $"https://api.mercadolibre.com/my/received_questions/search?status=UNANSWERED&limit={limit}&offset={offset}";
@@ -94,7 +98,7 @@ public class MeliQuestionService
                 foreach (var q in qs.EnumerateArray())
                 {
                     if (q.TryGetProperty("id", out var idEl)) seenInMeli.Add(idEl.GetInt64());
-                    var (s, n) = await UpsertAsync(account.Id, q);
+                    var (s, n) = await UpsertAsync(account.Id, q, http, nickCache);
                     synced += s; neu += n;
                 }
             }
@@ -127,7 +131,7 @@ public class MeliQuestionService
                 if (!resp.IsSuccessStatusCode) continue;
                 var body = await resp.Content.ReadAsStringAsync();
                 var qDoc = JsonDocument.Parse(body).RootElement;
-                await UpsertAsync(account.Id, qDoc);
+                await UpsertAsync(account.Id, qDoc, http, nickCache);
                 synced++;
             }
             catch { /* tolerar errores aislados, seguimos con el siguiente */ }
@@ -137,7 +141,32 @@ public class MeliQuestionService
         return (synced, neu);
     }
 
-    private async Task<(int synced, int neu)> UpsertAsync(int accountId, JsonElement q)
+    /// <summary>
+    /// 2026-08-16: MeLi NO manda el apodo del que pregunta (el bloque "from" trae solo el id), asi que
+    /// sin esto no hay forma de armar el link a su perfil. Lo resolvemos con GET /users/{id} y queda
+    /// guardado en la fila: se pide una sola vez por comprador, nunca para los que ya tienen apodo.
+    /// Si falla, devolvemos null y seguimos: no vale trabar el sync de preguntas por un apodo.
+    /// </summary>
+    private async Task<string?> ResolveNicknameAsync(HttpClient http, long userId, Dictionary<long, string?> cache)
+    {
+        if (userId <= 0) return null;
+        if (cache.TryGetValue(userId, out var hit)) return hit;
+        string? nick = null;
+        try
+        {
+            var resp = await http.GetAsync($"https://api.mercadolibre.com/users/{userId}");
+            if (resp.IsSuccessStatusCode)
+            {
+                var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync()).RootElement;
+                if (doc.TryGetProperty("nickname", out var n)) nick = n.GetString();
+            }
+        }
+        catch { /* tolerar */ }
+        cache[userId] = nick;
+        return nick;
+    }
+
+    private async Task<(int synced, int neu)> UpsertAsync(int accountId, JsonElement q, HttpClient http, Dictionary<long, string?> nickCache)
     {
         long qid = q.GetProperty("id").GetInt64();
         var existing = await _db.MeliQuestions.FirstOrDefaultAsync(x => x.MeliQuestionId == qid);
@@ -152,8 +181,13 @@ public class MeliQuestionService
         if (q.TryGetProperty("from", out var fr))
         {
             existing.FromUserId = fr.TryGetProperty("id", out var fid) ? fid.GetInt64() : 0;
-            existing.FromNickname = fr.TryGetProperty("nickname", out var fn) ? fn.GetString() : null;
+            // Solo pisamos el apodo si MeLi manda uno: si no, nos quedamos con el que ya resolvimos.
+            var nick = fr.TryGetProperty("nickname", out var fn) ? fn.GetString() : null;
+            if (!string.IsNullOrWhiteSpace(nick)) existing.FromNickname = nick;
         }
+        // En la practica MeLi nunca manda el apodo acá, asi que lo vamos a buscar aparte.
+        if (string.IsNullOrWhiteSpace(existing.FromNickname) && existing.FromUserId > 0)
+            existing.FromNickname = await ResolveNicknameAsync(http, existing.FromUserId, nickCache);
         if (q.TryGetProperty("answer", out var ans) && ans.ValueKind == JsonValueKind.Object)
         {
             existing.AnswerText = ans.TryGetProperty("text", out var at) ? at.GetString() : null;
