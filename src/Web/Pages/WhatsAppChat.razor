@@ -2035,7 +2035,12 @@
     .wa-tilde-fail { color: #dc2626; letter-spacing: 0; }
     /* 2026-08-17: el chat y el panel derecho, uno al lado del otro. min-width:0 es CLAVE:
        sin eso el chat no se deja achicar y el panel empuja todo fuera de la pantalla. */
-    .wa-thread-wrap { display: flex; gap: 0.6rem; min-width: 0; }
+    /* min-height:0 + overflow:hidden NO son decorativos: sin eso esta caja se estira hasta
+       el alto de TODOS los mensajes (medido: 1897 px en una ventana de 860) y empuja las
+       tres columnas fuera de la pantalla — se pierde el encabezado del chat, la lista de
+       conversaciones y las secciones de arriba del panel. El .wa-thread de adentro ya se
+       achicaba solo porque tiene overflow:hidden; esta caja no lo tenía. */
+    .wa-thread-wrap { display: flex; gap: 0.6rem; min-width: 0; min-height: 0; overflow: hidden; }
     .wa-thread { flex: 1; min-width: 0; display: flex; flex-direction: column; background: #efeae2; border: 1px solid #e6eaf0; border-radius: 16px; overflow: hidden; box-shadow: 0 6px 20px rgba(15,23,42,0.06); }
 
     /* ══════════ PANEL DERECHO ══════════
