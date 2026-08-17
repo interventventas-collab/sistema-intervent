@@ -108,6 +108,31 @@
 .wa-dark .wa-coord-lbl { color: var(--wad-txt2); }
 .wa-dark .wa-coord-select, .wa-dark .wa-coord-nota { background: var(--wad-panel3); border-color: var(--wad-borde2); color: var(--wad-txt); }
 .wa-dark .wa-coord-nota::placeholder { color: var(--wad-txt3); }
+
+/* --- 2026-08-17: PANEL DERECHO (contacto + conversación) y su tira de iconos ---
+   Sin esto, en las líneas que se ven OSCURAS (FIJO TRANSRADIO) el panel quedaba
+   blanco al lado del chat negro. */
+.wa-dark .wa-ctx { background: var(--wad-panel2); border-color: var(--wad-borde); box-shadow: none; color: var(--wad-txt); }
+.wa-dark .wa-ctx-sec { background: var(--wad-panel3); border-color: var(--wad-borde2); }
+.wa-dark .wa-ctx-sec-t, .wa-dark .wa-ctx-lbl { color: var(--wad-txt2); }
+.wa-dark .wa-ctx-btn { background: var(--wad-panel2); border-color: var(--wad-borde2); color: var(--wad-txt); }
+.wa-dark .wa-ctx-btn:hover:not(:disabled) { background: #14543f; border-color: #1c6b50; color: #6ee7b7; }
+.wa-dark .wa-ctx-btn-ok { background: #0b3d2e; border-color: #14543f; color: #6ee7b7; }
+.wa-dark .wa-ctx-btn-on { background: #14543f; border-color: #1c6b50; color: #6ee7b7; }
+.wa-dark .wa-ctx-btn-guardar { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
+.wa-dark .wa-ctx-btn-borrar { background: var(--wad-panel2); border-color: #7f1d1d; color: #fca5a5; }
+.wa-dark .wa-ctx-btn-borrar:hover:not(:disabled) { background: #450a0a; border-color: #b91c1c; color: #fca5a5; }
+.wa-dark .wa-ctx-sec-peligro { background: var(--wad-panel2); border-color: #7f1d1d; }
+.wa-dark .wa-ctx-select, .wa-dark .wa-ctx-input { background: var(--wad-panel3); border-color: var(--wad-borde2); color: var(--wad-txt); }
+.wa-dark .wa-ctx-input::placeholder { color: var(--wad-txt3); }
+.wa-dark .wa-ctx-info { background: var(--wad-panel3); color: var(--wad-txt2); }
+.wa-dark .wa-ctx-rail { background: var(--wad-panel2); border-color: var(--wad-borde); box-shadow: none; }
+.wa-dark .wa-ctx-rail-btn { color: var(--wad-txt2); }
+.wa-dark .wa-ctx-rail-btn:hover, .wa-dark .wa-ctx-rail-btn.on { background: #14543f; border-color: #1c6b50; }
+.wa-dark .wa-ctx-rail-toggle { background: var(--wad-panel3); border-color: var(--wad-borde2); color: #93c5fd; }
+/* Menú rol: ahora es un botón de la tira con la miniatura al pasar el mouse. */
+.wa-dark .wa-menurol-mini { background: var(--wad-panel3); border-color: var(--wad-borde2); }
+.wa-dark .wa-menurol-cap { color: var(--wad-txt); }
 .wa-dark .wa-estado-btn, .wa-dark .wa-pasar-btn { background: var(--wad-panel3); border-color: var(--wad-borde2); color: var(--wad-txt); }
 .wa-dark .wa-messages { background: var(--wad-fondo); }
 .wa-dark .wa-empty { color: var(--wad-txt2); }

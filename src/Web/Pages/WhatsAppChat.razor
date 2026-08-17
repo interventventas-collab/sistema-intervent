@@ -305,6 +305,11 @@
     </div>
     } @* fin @if (!soloMode) — lista lateral de conversaciones *@
 
+@* 2026-08-17: el chat + el PANEL DERECHO viven juntos en esta caja. El panel es el patrón de
+   todas las bandejas que trabajan con la API de WhatsApp (Chatwoot, respond.io, Zendesk):
+   los datos y las acciones del contacto van a la derecha, no en filas arriba que le roban
+   alto a la conversación. La tira de iconos del borde lo pliega y lo vuelve a abrir. *@
+<div class="wa-thread-wrap">
     <div class="wa-thread">
         @if (selectedNumero is null)
         {
@@ -501,82 +506,9 @@
                         }
                     </div>
                 </div>
-                @if (SelectedConv()?.ClienteId is null)
-                {
-                    <button class="btn btn-sm btn-outline-success" @onclick="AbrirVincularCliente" title="Asociar este chat a un cliente del sistema en un paso" style="font-weight:600;">
-                        🔗 Vincular cliente
-                    </button>
-                }
-                @if (!EstaEnContactos(selectedNumero))
-                {
-                    <button class="btn btn-outline-primary btn-sm" @onclick="AbrirAsignarContacto" title="Agregar este número como contacto">
-                        ➕ Asignar contacto
-                    </button>
-                }
-                else
-                {
-                    <button class="btn btn-outline-secondary btn-sm" @onclick="AbrirEditarContacto" title="Editar este contacto" style="font-size:0.78rem;">
-                        ✏️ Editar contacto
-                    </button>
-                }
-                @* 2026-08-05: "Ver cliente" se movió al ojito al lado del nombre del contacto *@
-                <button class="btn @(modoElegirVenta ? "btn-success" : "btn-outline-success") btn-sm" @onclick="IniciarCrearVenta" title="Crear una venta: elegí uno o varios mensajes del pedido y se abre Nueva Venta en una pestaña nueva">
-                    🧾 Crear venta
-                </button>
-                @* 2026-08-05: el "Menú rol" se movió abajo, arriba de los íconos del composer, como miniatura de lo que le llega al cliente *@
-                @* 2026-08-05: se quitó el botón "Plantilla" de la barra: era redundante — hace lo mismo que "Nueva conversación"
-                   y cuando se cierra la ventana de 24hs el cajón de escribir ya se transforma solo en el selector de plantilla. *@
-                <button class="btn btn-outline-secondary btn-sm wa-icon-round" @onclick="@(() => showConfig = true)" title="Configurar respuestas rápidas y contactos">
-                    ⚙️
-                </button>
-                @* 2026-07-23 pedido Osmar: borrar la conversación DEL SISTEMA (el chat en el celular
-                   del cliente no se toca). Pide confirmación. *@
-                <button class="btn btn-outline-danger btn-sm wa-icon-round" @onclick="BorrarConversacion" disabled="@borrandoConv" title="Borrar esta conversación del sistema (el celular del cliente no se toca)">
-                    @(borrandoConv ? "⏳" : "🗑")
-                </button>
-            </div>
-
-            @* 2026-08-04: barra para PASAR la charla a otra persona y ponerle ESTADO (en curso / finalizada). *@
-            <div class="wa-coord-bar">
-                @* 2026-08-06: Estado y Pasar a pasan a ser dos desplegables chiquitos, uno al lado del otro *@
-                <div class="wa-coord-grupo">
-                    <span class="wa-coord-lbl">Estado:</span>
-                    @{ var _estSel = SelectedConv()?.Archivado == true ? "archivado" : (SelectedConv()?.Estado ?? "nueva"); }
-                    <select class="wa-coord-select" value="@_estSel" @onchange="OnEstadoChange"
-                            style="border-color:@EstadoColor(_estSel); color:@EstadoColor(_estSel); font-weight:700;"
-                            title="Estado de esta conversación">
-                        @foreach (var e in EstadosLista)
-                        {
-                            <option value="@e.Key">@e.Label</option>
-                        }
-                        @* 2026-08-09: archivar la charla desde el mismo desplegable de estado *@
-                        <option value="archivado">🗂️ Archivado</option>
-                    </select>
-                    <span class="wa-coord-lbl">Pasar a:</span>
-                    <select class="wa-coord-select" value="@(SelectedConv()?.AsignadoOperador ?? "")" @onchange="OnPasarChange"
-                            style="@(string.IsNullOrEmpty(SelectedConv()?.AsignadoOperador) ? "" : $"border-color:{OperadorColor(SelectedConv()?.AsignadoOperador)};color:{OperadorColor(SelectedConv()?.AsignadoOperador)};font-weight:700;")"
-                            title="Responsable de esta conversación">
-                        <option value="">— Sin asignar —</option>
-                        @foreach (var op in OperadoresPasar)
-                        {
-                            <option value="@op">@op</option>
-                        }
-                    </select>
-                </div>
-                <div class="wa-coord-grupo wa-coord-nota-grupo">
-                    <span class="wa-coord-lbl">📝 Nota:</span>
-                    <input class="wa-coord-nota" placeholder="ej. falta coordinar entrega…"
-                           @bind="asignarNota" @bind:event="oninput" maxlength="300" />
-                    <button class="wa-coord-guardar" @onclick="GuardarNotaConv" disabled="@guardandoNota" title="Guardar la nota de esta conversación">
-                        @(guardandoNota ? "⏳" : "💾 Guardar")
-                    </button>
-                </div>
-                @if (!string.IsNullOrEmpty(SelectedConv()?.AsignadoOperador))
-                {
-                    <div class="wa-coord-info">
-                        Ahora la tiene <b>@SelectedConv()?.AsignadoOperador</b>@if (!string.IsNullOrEmpty(SelectedConv()?.AsignadoPor) && !string.Equals(SelectedConv()?.AsignadoPor, SelectedConv()?.AsignadoOperador, StringComparison.OrdinalIgnoreCase)) { <text> · se la pasó @SelectedConv()?.AsignadoPor</text> }@if (!string.IsNullOrEmpty(SelectedConv()?.AsignadoNota)) { <text> — “@SelectedConv()?.AsignadoNota”</text> }
-                    </div>
-                }
+                @* 2026-08-17: los botones (Vincular cliente, Editar contacto, Crear venta, ⚙, 🗑) y la
+                   barra de Estado / Pasar a / Nota se fueron al PANEL DERECHO. Acá arriba queda una
+                   sola fila fina: quién es. Eso solo le devolvió 125 px de alto a la conversación. *@
             </div>
 
             @* 2026-08-05: FICHA DEL CLIENTE — ventana flotante ARRASTRABLE con datos, saldo, ubicación y últimas facturas *@
@@ -1109,21 +1041,23 @@
                         <button class="wa-reply-bar-x" @onclick="CancelarResponder" title="Cancelar respuesta">×</button>
                     </div>
                 }
+                @* 2026-08-17: el cajón pasó a DOS renglones: arriba la tira de herramientas (antes
+                   era una columna al costado que medía 230 px de alto) y abajo el cuadro con Enviar. *@
                 <div class="wa-composer">
-                    @* 2026-08-05: columna izquierda = miniatura del Menú rol (arriba) + íconos redondos (abajo) *@
-                    <div class="wa-composer-left">
-                        @* MENÚ ROL — miniatura (media) de lo que le llega al cliente. Al tocarla, se envía. *@
+                    <div class="wa-composer-tools-row">
+                        @* MENÚ ROL — antes era una miniatura de 110 px del cartel que le llega al cliente.
+                           Ahora es un botón de la tira; la miniatura aparece al pasarle el mouse por encima. *@
                         @if (SelectedConv()?.Canal != "INSTAGRAM")
                         {
                             <button class="wa-menurol-mini" @onclick="EnviarMenuRol" disabled="@enviandoMenuRol"
                                     title="Tocá para enviarle al cliente este menú y que se identifique (Frikaf / Intervent / Intereventos)">
-                                <div class="wa-menurol-cap">@(enviandoMenuRol ? "⏳ Enviando…" : "👆 Menú rol · enviar")</div>
-                                <div class="wa-menurol-bubble">
-                                    <div class="wa-menurol-txt">¡Hola! 👋 Gracias por escribirnos.<br />¿Con quién te querés contactar?</div>
-                                    <div class="wa-menurol-opt">☕ Cafés Frikaf</div>
-                                    <div class="wa-menurol-opt">🏢 Intervent</div>
-                                    <div class="wa-menurol-opt">🪑 Intereventos</div>
-                                </div>
+                                <span class="wa-menurol-cap">@(enviandoMenuRol ? "⏳ Enviando…" : "👆 Menú rol")</span>
+                                <span class="wa-menurol-bubble">
+                                    <span class="wa-menurol-txt">¡Hola! 👋 Gracias por escribirnos.<br />¿Con quién te querés contactar?</span>
+                                    <span class="wa-menurol-opt">☕ Cafés Frikaf</span>
+                                    <span class="wa-menurol-opt">🏢 Intervent</span>
+                                    <span class="wa-menurol-opt">🪑 Intereventos</span>
+                                </span>
                             </button>
                         }
                         <div class="wa-composer-tools">
@@ -1152,13 +1086,9 @@
                                 <span class="wa-mic-rec-label">● grabando…</span>
                             }
                         </div>
-                    </div>
-                    @* 2026-07-23: @bind:event="oninput" es CLAVE — sin esto el texto solo se guarda al salir del
-   campo, y al apretar Enter el sistema veia el mensaje vacio (no enviaba nada). *@
-                    <textarea class="form-control wa-composer-input" placeholder="Escribir mensaje… (Enter para enviar, Shift+Enter para renglón nuevo)" @bind="composerText" @bind:event="oninput" rows="3"></textarea>
-                    @* 2026-08-05: columna derecha = respuestas rápidas (desplegable) arriba + botón Enviar abajo *@
-                    <div class="wa-composer-right">
-                        @* 2026-08-05: botón rápido para pasar el link de alta de clientes *@
+                        @* 2026-08-17: "Alta de clientes" y "Respuestas" subieron acá desde la columna
+                           de la derecha. Así no quedan dos columnas pegadas contra el borde derecho
+                           (la del cajón y la del panel) y el cuadro de escribir gana ese lugar. *@
                         <button class="wa-alta-cliente-btn" @onclick="InsertarLinkAltaCliente" title="Insertar el link de alta de clientes en el mensaje">
                             🔗 Alta de clientes
                         </button>
@@ -1181,13 +1111,17 @@
                                 }
                             </div>
                         }
+                    </div>
+                    @* 2026-07-23: @bind:event="oninput" es CLAVE — sin esto el texto solo se guarda al salir del
+   campo, y al apretar Enter el sistema veia el mensaje vacio (no enviaba nada). *@
+                    @* 2026-08-17: rows="1" + el crecimiento automático de wa-composer.js. Antes tenía
+                       145 px de alto fijo aunque escribieras una palabra. La LETRA sigue grande. *@
+                    <div class="wa-composer-main">
+                        <textarea class="form-control wa-composer-input" placeholder="Escribir mensaje… (Enter para enviar, Shift+Enter para renglón nuevo)" @bind="composerText" @bind:event="oninput" rows="1"></textarea>
                         <button class="btn btn-success wa-enviar-btn @(sending ? "enviando" : "")" @onclick="EnviarMensaje" disabled="@((string.IsNullOrWhiteSpace(composerText) && pendientes.Count == 0) || sending)">
                             @(sending ? "⏳ Enviando…" : (pendientes.Count > 0 ? $"📤 Enviar ({pendientes.Count} 📎)" : "📤 Enviar"))
                         </button>
                     </div>
-                </div>
-                <div style="font-size:0.7rem; color:#9ca3af; padding:0 1rem 0.6rem;">
-                    💡 <strong>Regla de WhatsApp:</strong> podés responder gratis a quien te haya escrito en las últimas 24 hs. Para escribir primero hacen falta plantillas aprobadas por Meta.
                 </div>
             }
             else if (EsChatInstagram())
@@ -1249,8 +1183,11 @@
                     }
                 </div>
             }
-            @* 2026-08-05: los DOS carteles verdes, uno al lado del otro, debajo del cuadro de escribir *@
+            @* 2026-08-17: los avisos van TODOS en un solo renglón fino (antes eran tres renglones:
+               dos carteles verdes + la explicación larga de la regla de las 24 hs, que ahora es el
+               globito del 💡 — el texto completo sigue estando, al pasar el mouse). *@
             <div class="wa-avisos-row">
+                <span class="wa-avisos-regla" title="Regla de WhatsApp: podés responder gratis a quien te haya escrito en las últimas 24 hs. Para escribir primero hacen falta plantillas aprobadas por Meta.">💡</span>
                 @if (LineasDetectadas().Count > 1 && SelectedConv()?.LineaNumero is string _lnResp)
                 {
                     <div class="wa-composer-linea" title="La respuesta le llega desde este número tuyo, el mismo por el que el cliente te escribió.">
@@ -1274,6 +1211,120 @@
             </div>
         }
     </div>
+
+    @* ══════════ PANEL DERECHO (contacto + conversación) ══════════
+       Vive al lado del chat, no arriba, así no le come alto a los mensajes.
+       Se pliega con la tira de iconos del borde y queda guardado para la próxima vez. *@
+    @if (selectedNumero is not null)
+    {
+        @if (ctxAbierto)
+        {
+            <aside class="wa-ctx">
+                <div class="wa-ctx-sec">
+                    <div class="wa-ctx-sec-t">👤 Contacto</div>
+                    @if (SelectedConv()?.ClienteId is null)
+                    {
+                        <button class="wa-ctx-btn wa-ctx-btn-ok" @onclick="AbrirVincularCliente" title="Asociar este chat a un cliente del sistema en un paso">
+                            🔗 Vincular cliente
+                        </button>
+                    }
+                    @if (!EstaEnContactos(selectedNumero))
+                    {
+                        <button class="wa-ctx-btn" @onclick="AbrirAsignarContacto" title="Agregar este número como contacto">
+                            ➕ Asignar contacto
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="wa-ctx-btn" @onclick="AbrirEditarContacto" title="Editar este contacto">
+                            ✏️ Editar contacto
+                        </button>
+                    }
+                    <button class="wa-ctx-btn @(modoElegirVenta ? "wa-ctx-btn-on" : "")" @onclick="IniciarCrearVenta" title="Crear una venta: elegí uno o varios mensajes del pedido y se abre Nueva Venta en una pestaña nueva">
+                        🧾 Crear venta
+                    </button>
+                    @* La ficha (saldo, últimas facturas, ubicación) es la MISMA ventana del ojito
+                       que está al lado del nombre: un solo lugar donde se arma, dos formas de abrirla. *@
+                    @if (SelectedConv()?.ClienteId is int)
+                    {
+                        <button class="wa-ctx-btn @(mostrarFichaCliente ? "wa-ctx-btn-on" : "")" @onclick="ToggleFichaCliente" title="Ver la ficha del cliente: saldo, últimas facturas y ubicación">
+                            🛍️ Ficha del cliente
+                        </button>
+                    }
+                </div>
+
+                <div class="wa-ctx-sec">
+                    <div class="wa-ctx-sec-t">💬 Conversación</div>
+                    <label class="wa-ctx-lbl">Estado</label>
+                    @{ var _estSel = SelectedConv()?.Archivado == true ? "archivado" : (SelectedConv()?.Estado ?? "nueva"); }
+                    <select class="wa-ctx-select" value="@_estSel" @onchange="OnEstadoChange"
+                            style="border-color:@EstadoColor(_estSel); color:@EstadoColor(_estSel); font-weight:700;"
+                            title="Estado de esta conversación">
+                        @foreach (var e in EstadosLista)
+                        {
+                            <option value="@e.Key">@e.Label</option>
+                        }
+                        @* 2026-08-09: archivar la charla desde el mismo desplegable de estado *@
+                        <option value="archivado">🗂️ Archivado</option>
+                    </select>
+
+                    <label class="wa-ctx-lbl">Pasar a</label>
+                    <select class="wa-ctx-select" value="@(SelectedConv()?.AsignadoOperador ?? "")" @onchange="OnPasarChange"
+                            style="@(string.IsNullOrEmpty(SelectedConv()?.AsignadoOperador) ? "" : $"border-color:{OperadorColor(SelectedConv()?.AsignadoOperador)};color:{OperadorColor(SelectedConv()?.AsignadoOperador)};font-weight:700;")"
+                            title="Responsable de esta conversación">
+                        <option value="">— Sin asignar —</option>
+                        @foreach (var op in OperadoresPasar)
+                        {
+                            <option value="@op">@op</option>
+                        }
+                    </select>
+
+                    <label class="wa-ctx-lbl">📝 Nota</label>
+                    <input class="wa-ctx-input" placeholder="ej. falta coordinar entrega…"
+                           @bind="asignarNota" @bind:event="oninput" maxlength="300" />
+                    <button class="wa-ctx-btn wa-ctx-btn-guardar" @onclick="GuardarNotaConv" disabled="@guardandoNota" title="Guardar la nota de esta conversación">
+                        @(guardandoNota ? "⏳ Guardando…" : "💾 Guardar")
+                    </button>
+
+                    @if (!string.IsNullOrEmpty(SelectedConv()?.AsignadoOperador))
+                    {
+                        <div class="wa-ctx-info">
+                            Ahora la tiene <b>@SelectedConv()?.AsignadoOperador</b>@if (!string.IsNullOrEmpty(SelectedConv()?.AsignadoPor) && !string.Equals(SelectedConv()?.AsignadoPor, SelectedConv()?.AsignadoOperador, StringComparison.OrdinalIgnoreCase)) { <text> · se la pasó @SelectedConv()?.AsignadoPor</text> }@if (!string.IsNullOrEmpty(SelectedConv()?.AsignadoNota)) { <text> — “@SelectedConv()?.AsignadoNota”</text> }
+                        </div>
+                    }
+                </div>
+
+                <div class="wa-ctx-sec">
+                    <button class="wa-ctx-btn" @onclick="@(() => showConfig = true)" title="Configurar respuestas rápidas y contactos">
+                        ⚙️ Respuestas rápidas y contactos
+                    </button>
+                </div>
+
+                @* Borrar va ABAJO DE TODO y separado del Guardar, para no tocarlo sin querer. *@
+                <div class="wa-ctx-sec wa-ctx-sec-peligro">
+                    <button class="wa-ctx-btn wa-ctx-btn-borrar" @onclick="BorrarConversacion" disabled="@borrandoConv"
+                            title="Borrar esta conversación del sistema (el celular del cliente no se toca)">
+                        @(borrandoConv ? "⏳ Borrando…" : "🗑 Borrar conversación")
+                    </button>
+                </div>
+            </aside>
+        }
+
+        @* Tira de iconos del borde: siempre visible, así el panel nunca "desaparece". *@
+        <div class="wa-ctx-rail">
+            <button class="wa-ctx-rail-btn wa-ctx-rail-toggle" @onclick="ToggleCtx"
+                    title="@(ctxAbierto ? "Cerrar el panel (el chat se lleva todo el ancho)" : "Abrir el panel de contacto y conversación")">
+                @(ctxAbierto ? "›" : "‹")
+            </button>
+            <button class="wa-ctx-rail-btn" @onclick="AbrirCtx" title="Contacto: vincular cliente, editar contacto, crear venta">👤</button>
+            <button class="wa-ctx-rail-btn" @onclick="AbrirCtx" title="Conversación: estado, pasar a, nota">💬</button>
+            @if (SelectedConv()?.ClienteId is int)
+            {
+                <button class="wa-ctx-rail-btn @(mostrarFichaCliente ? "on" : "")" @onclick="ToggleFichaCliente" title="Ficha del cliente: saldo, últimas facturas y ubicación">🛍️</button>
+            }
+        </div>
+    }
+</div> @* fin .wa-thread-wrap *@
 </div>
 </div>
 </div> @* fin .wa-fs — pantalla completa *@
@@ -1982,7 +2033,43 @@
     .wa-tilde { color: #8a8a8a; font-size: 0.72rem; margin-left: 3px; letter-spacing: -1px; }
     .wa-tilde-read { color: #34b7f1; }
     .wa-tilde-fail { color: #dc2626; letter-spacing: 0; }
-    .wa-thread { display: flex; flex-direction: column; background: #efeae2; border: 1px solid #e6eaf0; border-radius: 16px; overflow: hidden; box-shadow: 0 6px 20px rgba(15,23,42,0.06); }
+    /* 2026-08-17: el chat y el panel derecho, uno al lado del otro. min-width:0 es CLAVE:
+       sin eso el chat no se deja achicar y el panel empuja todo fuera de la pantalla. */
+    .wa-thread-wrap { display: flex; gap: 0.6rem; min-width: 0; }
+    .wa-thread { flex: 1; min-width: 0; display: flex; flex-direction: column; background: #efeae2; border: 1px solid #e6eaf0; border-radius: 16px; overflow: hidden; box-shadow: 0 6px 20px rgba(15,23,42,0.06); }
+
+    /* ══════════ PANEL DERECHO ══════════
+       260 px: Zendesk usa 200 como mínimo y 320 fijo; con 180 "— Sin asignar —" quedaba apretado. */
+    .wa-ctx { width: 260px; flex: 0 0 260px; display: flex; flex-direction: column; gap: 0.5rem; overflow-y: auto;
+        background: #fff; border: 1px solid #e6eaf0; border-radius: 16px; padding: 0.6rem; box-shadow: 0 6px 20px rgba(15,23,42,0.06); }
+    .wa-ctx-sec { background: #fbfcfe; border: 1px solid #eef1f5; border-radius: 12px; padding: 0.55rem 0.6rem; display: flex; flex-direction: column; gap: 0.35rem; }
+    .wa-ctx-sec-t { font-size: 0.72rem; font-weight: 700; color: #64748b; letter-spacing: 0.03em; text-transform: uppercase; }
+    /* La sección de Borrar se va al fondo del panel, lejos del Guardar. */
+    .wa-ctx-sec-peligro { margin-top: auto; background: #fff; border-color: #fee2e2; }
+    .wa-ctx-lbl { font-size: 0.72rem; color: #64748b; font-weight: 600; margin-top: 0.15rem; }
+    .wa-ctx-btn { display: flex; align-items: center; gap: 0.4rem; width: 100%; text-align: left; background: #fff; border: 1px solid #e2e8f0;
+        border-radius: 9px; padding: 0.5rem 0.6rem; font-size: 0.84rem; font-weight: 600; color: #334155; cursor: pointer; transition: all .12s; }
+    .wa-ctx-btn:hover:not(:disabled) { border-color: #25d366; background: #f0fff6; color: #128c4a; }
+    .wa-ctx-btn:disabled { opacity: 0.6; cursor: wait; }
+    .wa-ctx-btn-ok { border-color: #a7f3d0; background: #ecfdf5; color: #15803d; }
+    .wa-ctx-btn-on { border-color: #25d366; background: #dcfce7; color: #14532d; }
+    .wa-ctx-btn-guardar { justify-content: center; background: #2563eb; border-color: #2563eb; color: #fff; }
+    .wa-ctx-btn-guardar:hover:not(:disabled) { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
+    .wa-ctx-btn-borrar { justify-content: center; border-color: #fecaca; color: #b91c1c; }
+    .wa-ctx-btn-borrar:hover:not(:disabled) { background: #fef2f2; border-color: #ef4444; color: #b91c1c; }
+    .wa-ctx-select, .wa-ctx-input { width: 100%; border: 1px solid #dfe4ea; border-radius: 9px; padding: 0.45rem 0.55rem; font-size: 0.84rem; background: #fff; color: #111827; }
+    .wa-ctx-select:focus, .wa-ctx-input:focus { outline: none; border-color: #25d366; box-shadow: 0 0 0 3px rgba(37,211,102,0.15); }
+    .wa-ctx-info { font-size: 0.74rem; color: #475569; background: #f1f5f9; border-radius: 8px; padding: 0.4rem 0.5rem; }
+
+    /* Tira de iconos del borde (estilo Zendesk): el panel se pliega pero nunca desaparece. */
+    .wa-ctx-rail { flex: 0 0 44px; width: 44px; display: flex; flex-direction: column; align-items: center; gap: 0.4rem;
+        background: #fff; border: 1px solid #e6eaf0; border-radius: 16px; padding: 0.5rem 0; box-shadow: 0 6px 20px rgba(15,23,42,0.06); }
+    .wa-ctx-rail-btn { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 1px solid transparent;
+        background: transparent; border-radius: 9px; font-size: 1rem; color: #475569; cursor: pointer; transition: all .12s; }
+    .wa-ctx-rail-btn:hover { background: #f0fff6; border-color: #25d366; }
+    .wa-ctx-rail-btn.on { background: #dcfce7; border-color: #25d366; }
+    .wa-ctx-rail-toggle { font-size: 1.15rem; font-weight: 800; color: #1d4ed8; background: #eff6ff; border-color: #dbeafe; }
+    .wa-ctx-rail-toggle:hover { background: #dbeafe; border-color: #93c5fd; }
     /* 2026-07-24: flex-wrap para que en el celular los botones del header (incluido 🗑 Borrar,
        que es el ultimo) bajen a otro renglon en vez de quedar cortados por el overflow:hidden
        del .wa-thread. En pantalla ancha entran todos en una linea = no cambia nada. */
@@ -2027,9 +2114,15 @@
     .wa-firma-hint { font-size: 0.74rem; color: #6b7280; margin-left: 4px; }
     .wa-firma-hint.wa-firma-falta { color: #dc2626; font-weight: 700; }
 
-    .wa-composer { padding: 0.7rem 1rem 0.5rem; background: #fbfcfe; display: flex; gap: 0.55rem; align-items: flex-end; }
-    /* 2026-08-03: pedido Osmar — cuadro a ~3 renglones (antes 5x muy alto) para ver más de la conversación; letra al doble y en negrita. resize:vertical = lo podés estirar con la esquina si escribís algo largo. */
-    .wa-composer textarea { resize: vertical; border-radius: 14px; flex: 1; min-height: 145px; border: 1px solid #dfe4ea; padding: 0.7rem 0.9rem; font-size: 1.9rem; font-weight: 700; line-height: 1.3; }
+    /* 2026-08-17: el cajón pasó a dos renglones — herramientas arriba, cuadro + Enviar abajo. */
+    .wa-composer { padding: 0.5rem 1rem 0.4rem; background: #fbfcfe; display: flex; flex-direction: column; gap: 0.4rem; }
+    .wa-composer-tools-row { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; }
+    .wa-composer-main { display: flex; align-items: flex-end; gap: 0.55rem; }
+    /* 2026-08-03: letra al doble y en negrita (pedido Osmar) — ESO NO SE TOCA.
+       2026-08-17: lo que se sacó es el alto FIJO de 145 px: ahora arranca en un renglón y
+       crece solo al escribir (wa-composer.js), hasta 240 px y de ahí scrollea adentro. */
+    .wa-composer textarea { resize: vertical; border-radius: 14px; flex: 1; min-height: 56px; max-height: 240px; overflow-y: hidden;
+        border: 1px solid #dfe4ea; padding: 0.6rem 0.9rem; font-size: 1.9rem; font-weight: 700; line-height: 1.3; }
     /* La ayudita gris (placeholder) NO va grande ni en negrita: chiquita y clarita para que se note que el cuadro está vacío. */
     .wa-composer textarea::placeholder { font-size: 1rem; font-weight: 400; color: #9ca3af; }
     .wa-composer textarea:focus { border-color: #25d366; box-shadow: 0 0 0 3px rgba(37,211,102,0.15); }
@@ -2114,17 +2207,20 @@
     .wa-vincular-opt:hover:not(:disabled) { background: #ecfdf5; border-color: #16a34a; }
     .wa-vincular-opt:disabled { opacity: 0.6; cursor: wait; }
     .wa-vincular-nuevo { margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px dashed #e5e7eb; }
-    /* 2026-08-05: columna izquierda del composer = miniatura Menú rol (arriba) + redondeles (abajo) */
-    .wa-composer-left { display: flex; flex-direction: column; gap: 0.4rem; align-items: flex-start; flex-shrink: 0; }
-    .wa-composer-tools { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; max-width: 156px; }
-    /* MENÚ ROL — miniatura (MEDIA de grande) de lo que le llega al cliente */
-    .wa-menurol-mini { display: block; margin: 0; padding: 0; background: transparent; border: none; cursor: pointer; text-align: left; width: max-content; }
+    /* 2026-08-17: los redondeles ya no son una columna al costado: van en la tira de arriba. */
+    .wa-composer-tools { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+    /* MENÚ ROL — botón de la tira. La miniatura de lo que le llega al cliente se muestra
+       SOLO al pasar el mouse por encima (antes ocupaba 110 px fijos ahí abajo). */
+    .wa-menurol-mini { position: relative; display: inline-flex; align-items: center; margin: 0; cursor: pointer;
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 999px; padding: 0.42rem 0.75rem; }
+    .wa-menurol-mini:hover:not(:disabled) { border-color: #25d366; background: #f0fff6; }
     .wa-menurol-mini:disabled { opacity: 0.6; cursor: wait; }
-    .wa-menurol-cap { font-size: 0.6rem; color: #6b7280; font-weight: 600; margin-bottom: 0.18rem; max-width: 140px; }
-    .wa-menurol-bubble { width: 132px; background: #fff; border: 1px solid #e5e7eb; border-radius: 9px; overflow: hidden; box-shadow: 0 2px 7px rgba(0,0,0,0.09); transition: all .15s; }
-    .wa-menurol-mini:hover:not(:disabled) .wa-menurol-bubble { border-color: #25d366; box-shadow: 0 5px 14px rgba(37,211,102,0.30); transform: translateY(-2px); }
-    .wa-menurol-txt { padding: 0.32rem 0.4rem; font-size: 0.58rem; color: #111b21; line-height: 1.22; }
-    .wa-menurol-opt { border-top: 1px solid #eef1f5; padding: 0.28rem 0.3rem; text-align: center; font-size: 0.62rem; color: #027eb5; font-weight: 600; }
+    .wa-menurol-cap { font-size: 0.8rem; color: #334155; font-weight: 700; white-space: nowrap; }
+    .wa-menurol-bubble { display: none; position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 60; width: 168px;
+        background: #fff; border: 1px solid #e5e7eb; border-radius: 9px; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,0.16); }
+    .wa-menurol-mini:hover:not(:disabled) .wa-menurol-bubble { display: block; }
+    .wa-menurol-txt { display: block; padding: 0.4rem 0.5rem; font-size: 0.68rem; color: #111b21; line-height: 1.25; }
+    .wa-menurol-opt { display: block; border-top: 1px solid #eef1f5; padding: 0.3rem; text-align: center; font-size: 0.7rem; color: #027eb5; font-weight: 600; }
     .wa-attach-btn { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 50%; background: #fff; border: 1px solid #e0e0e0; cursor: pointer; font-size: 1.3rem; transition: all .15s; user-select: none; }
     .wa-attach-btn:hover { background: #e9f5ff; border-color: #25d366; transform: translateY(-1px); }
     .wa-attach-btn.uploading { background: #fff8e1; border-color: #ffc107; cursor: wait; animation: wa-attach-pulse 1s ease-in-out infinite; }
@@ -2134,20 +2230,21 @@
     .wa-mic-rec-label { display: inline-flex; align-items: center; font-size: 0.8rem; color: #dc2626; font-weight: 600; white-space: nowrap; }
     .wa-quick-replies { padding: 0.6rem 1rem 0.2rem; background: #fbfcfe; display: flex; gap: 0.45rem; flex-wrap: wrap; border-top: 1px solid #eef1f5; }
     /* 2026-08-05: contador de la ventana de 24hs (reloj de arena + estado) */
-    /* 2026-08-05: columna derecha del composer = desplegable de respuestas rápidas (arriba) + Enviar (abajo) */
-    .wa-composer-right { display: flex; flex-direction: column; gap: 0.4rem; align-items: stretch; justify-content: flex-end; flex-shrink: 0; }
-    .wa-alta-cliente-btn { width: 100%; background: #ecfdf5; border: 1px solid #a7f3d0; color: #047857; border-radius: 12px; padding: 0.5rem 0.8rem; font-size: 0.82rem; font-weight: 700; cursor: pointer; white-space: nowrap; transition: all .12s; }
+    /* 2026-08-17: "Alta de clientes" y "Respuestas" viven en la tira de arriba, no en una
+       columna a la derecha (quedaban dos columnas pegadas al borde junto con el panel). */
+    .wa-alta-cliente-btn { background: #ecfdf5; border: 1px solid #a7f3d0; color: #047857; border-radius: 999px; padding: 0.42rem 0.8rem; font-size: 0.8rem; font-weight: 700; cursor: pointer; white-space: nowrap; transition: all .12s; }
     .wa-alta-cliente-btn:hover { background: #d1fae5; border-color: #6ee7b7; }
     .wa-qr { position: relative; }
-    .wa-qr-toggle { width: 100%; background: #f0f9ff; border: 1px solid #bae6fd; color: #0369a1; border-radius: 12px; padding: 0.5rem 0.8rem; font-size: 0.82rem; font-weight: 700; cursor: pointer; white-space: nowrap; transition: all .12s; }
+    .wa-qr-toggle { background: #f0f9ff; border: 1px solid #bae6fd; color: #0369a1; border-radius: 999px; padding: 0.42rem 0.8rem; font-size: 0.8rem; font-weight: 700; cursor: pointer; white-space: nowrap; transition: all .12s; }
     .wa-qr-toggle:hover { background: #e0f2fe; border-color: #7dd3fc; }
     .wa-qr-toggle.abierto { background: #0284c7; border-color: #0284c7; color: #fff; }
-    .wa-qr-dropdown { position: absolute; bottom: calc(100% + 6px); right: 0; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 10px 28px rgba(0,0,0,0.18); padding: 0.5rem; display: flex; flex-direction: column; gap: 0.32rem; min-width: 190px; max-height: 340px; overflow-y: auto; z-index: 60; }
+    .wa-qr-dropdown { position: absolute; bottom: calc(100% + 6px); left: 0; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 10px 28px rgba(0,0,0,0.18); padding: 0.5rem; display: flex; flex-direction: column; gap: 0.32rem; min-width: 190px; max-height: 340px; overflow-y: auto; z-index: 60; }
     .wa-qr-dropdown .wa-chip { width: 100%; text-align: center; }
-    /* 2026-08-05: los dos carteles verdes, uno al lado del otro, debajo del composer */
-    .wa-avisos-row { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.35rem 1rem 0.5rem; }
-    .wa-avisos-row .wa-composer-linea { margin: 0; border-radius: 999px; padding: 0.42rem 0.85rem; flex: 0 1 auto; }
-    .wa-avisos-row .wa-vent24 { margin: 0; }
+    /* 2026-08-17: los avisos en UN renglón fino (antes: dos carteles + la explicación larga). */
+    .wa-avisos-row { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; padding: 0.15rem 1rem 0.4rem; font-size: 0.78rem; }
+    .wa-avisos-regla { cursor: help; font-size: 0.9rem; }
+    .wa-avisos-row .wa-composer-linea { margin: 0; border-radius: 999px; padding: 0.2rem 0.65rem; font-size: 0.76rem; flex: 0 1 auto; }
+    .wa-avisos-row .wa-vent24 { margin: 0; padding: 0.2rem 0.65rem; font-size: 0.76rem; }
     .wa-vent24 { display: inline-flex; align-items: center; gap: 0.5rem; margin: 0.55rem 1rem 0; padding: 0.42rem 0.85rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
     .wa-vent24.ok { background: #ecfdf5; color: #15803d; border: 1px solid #a7f3d0; }
     .wa-vent24.urgente { background: #fffbeb; color: #b45309; border: 1px solid #fcd34d; }
@@ -2400,11 +2497,19 @@
         .wa-sidebar, .wa-thread { border-radius: 0; border-left: 0; border-right: 0; box-shadow: none; }
 
         /* Sin chat abierto: se ve la lista, se esconde el chat */
-        .wa-root .wa-thread { display: none; }
+        .wa-root .wa-thread-wrap { display: none; }
         .wa-root .wa-sidebar { display: flex; }
         /* Con un chat abierto: se ve el chat completo, se esconde la lista */
         .wa-root.wa-chat-abierto .wa-sidebar { display: none; }
-        .wa-root.wa-chat-abierto .wa-thread { display: flex; }
+        .wa-root.wa-chat-abierto .wa-thread-wrap { display: flex; }
+
+        /* 2026-08-17: en el celular una columna fija de 260 px se comería media pantalla.
+           Queda SOLO la tira de iconos, y el panel se abre POR ENCIMA del chat (como una
+           gaveta) al tocar 👤 o 💬. Arranca cerrado — lo decide el código al entrar. */
+        .wa-thread-wrap { position: relative; gap: 0; }
+        .wa-ctx { position: absolute; top: 0; right: 44px; bottom: 0; z-index: 30; width: min(280px, calc(100% - 52px));
+            flex: none; border-radius: 0; box-shadow: -8px 0 24px rgba(15,23,42,0.18); }
+        .wa-ctx-rail { border-radius: 0; flex: 0 0 40px; width: 40px; }
 
         .wa-volver-btn { display: inline-flex; align-items: center; }
 
@@ -3053,6 +3158,48 @@
     // (igual que el Mapeo), este botón es la salida: lleva al Dashboard.
     private void VolverAlSistema() => Nav.NavigateTo("/");
 
+    // 2026-08-17: PANEL DERECHO (contacto + conversación). Arranca abierto en la compu y
+    // cerrado en el celular (ahí tapa el chat). La elección queda guardada en el navegador,
+    // así cada uno lo deja como le gusta y no tiene que volver a cerrarlo cada vez.
+    private bool ctxAbierto = true;
+    private bool ctxPrefLeida = false;
+
+    private async Task ToggleCtx()
+    {
+        ctxAbierto = !ctxAbierto;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "wa.panel", ctxAbierto ? "1" : "0"); } catch { }
+    }
+
+    private async Task AbrirCtx()
+    {
+        if (ctxAbierto) return;
+        ctxAbierto = true;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "wa.panel", "1"); } catch { }
+    }
+
+    // Se llama una sola vez, en el primer dibujado. Si nunca eligió nada, decide por el ancho
+    // de la pantalla: en el celular arranca cerrado para no tapar la conversación.
+    private async Task CargarPrefPanelAsync()
+    {
+        if (ctxPrefLeida) return;
+        ctxPrefLeida = true;
+        try
+        {
+            var v = await JS.InvokeAsync<string>("localStorage.getItem", "wa.panel");
+            if (v == "1" || v == "0")
+            {
+                ctxAbierto = v == "1";
+            }
+            else
+            {
+                var ancho = await JS.InvokeAsync<int>("waComposer.anchoPantalla");
+                ctxAbierto = ancho > 820;
+            }
+            StateHasChanged();
+        }
+        catch { }
+    }
+
     // 2026-08-05: FIRMA de Depósito. Cuando responde un usuario de Depósito, el mensaje sale
     // firmado con quién contesta → "OK (alex)". Lista fija de empleados (pedido del usuario).
     private static readonly string[] FirmantesDeposito = { "alex", "nacho", "benja", "rodri", "gon", "ger" };
@@ -3116,6 +3263,8 @@
             // 2026-08-03: Enter para enviar como WhatsApp (frena el salto de línea y manda limpio).
             try { await JS.InvokeVoidAsync("waComposer.register", _pasteRef); }
             catch { /* si el JS no cargó, igual podés enviar con el botón verde */ }
+            // 2026-08-17: ¿el panel derecho arranca abierto o cerrado? (lo que eligió la última vez)
+            await CargarPrefPanelAsync();
         }
         // 2026-08-03: cuando abrimos la ventana flotante del pedido, la hacemos arrastrable
         if (_pedidoFloatAttachPending && showPedidoFloat)
@@ -4170,6 +4319,9 @@
         if (string.IsNullOrWhiteSpace(composerText)) return;
         var texto = composerText;
         composerText = "";
+        // 2026-08-17: el cuadro crece solo al escribir; al enviar hay que devolverlo a un renglón
+        // (el navegador no avisa que se vació desde .NET, así que quedaría grande y vacío).
+        try { await JS.InvokeVoidAsync("waComposer.resetSize"); } catch { }
         await EnviarTexto(texto);
     }
 
@@ -4390,6 +4542,7 @@
         replyingTo = null;   // adjuntos no citan; limpiamos la barra de responder por las dudas
         sending = true;
         composerText = "";
+        try { await JS.InvokeVoidAsync("waComposer.resetSize"); } catch { }
         StateHasChanged();
 
         bool huboError = false;
