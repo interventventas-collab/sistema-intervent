@@ -17,8 +17,16 @@
 @* 2026-07-29: barra superior rediseñada + cartelito "Línea activa" (para saber SIEMPRE con qué WhatsApp trabajás, ya que va a haber un 2° número) *@
 @* 2026-08-05: en modo "una sola conversación" (solo=1) escondemos la barra superior entera:
    no hace falta el selector de líneas ni las solapas, porque se ve un único chat fijado. *@
+@* 2026-08-17: PANTALLA COMPLETA (igual que el Mapeo). Esta caja tapa el menú de la izquierda y la
+   barra de arriba del sistema, así el chat usa TODO el alto del navegador en vez de una franja.
+   Para volver al sistema está el botón "← Volver" de acá abajo.
+   z-index BAJO a propósito (200): alcanza para tapar el menú (100) pero deja que los carteles que
+   saltan encima (visor de fotos 3000, adjuntar del servidor 1100, reenviar 1100, ficha 2100) sigan
+   quedando por arriba, porque se dibujan FUERA de esta caja. *@
+<div class="wa-fs">
 <div class="wa-topbar" style="@(soloMode ? "display:none;" : "")">
     <div class="wa-tabs-top">
+        <button class="wa-volver-sistema" @onclick="VolverAlSistema" title="Volver al sistema (cierra esta pantalla de WhatsApp)">← Volver</button>
         <span class="wa-tab-top active">💬 Chats</span>
         <a href="/whatsapp/pedidos" class="wa-tab-top">📥 Pedidos y configuración</a>
     </div>
@@ -1268,6 +1276,7 @@
     </div>
 </div>
 </div>
+</div> @* fin .wa-fs — pantalla completa *@
 
 @* 2026-08-03: ventana FLOTANTE (se puede mover) con el texto completo del pedido antes de crear la venta.
    No lleva fondo oscuro a propósito: querés seguir viendo el chat mientras la movés y comparás. *@
@@ -1831,7 +1840,15 @@
 <style>
     /* 2026-07-29: rediseño — más ancho y moderno. Sidebar + thread como dos tarjetas redondeadas
        separadas por un gap, con sombra suave (estilo del resto del sistema). */
-    .wa-outer { display: flex; justify-content: center; height: calc(100vh - 104px); background: #eef1f5; padding: 0.7rem 1rem 1rem; }
+    /* 2026-08-17: PANTALLA COMPLETA al estilo Mapeo. La pantalla de WhatsApp se dibuja encima de todo
+       (menú de la izquierda y barra de arriba del sistema) y usa el alto entero del navegador.
+       La barrita de WhatsApp queda fija arriba y el chat se estira con lo que sobra. */
+    .wa-fs { position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column; background: #eef1f5; overflow: hidden; }
+    .wa-outer { display: flex; justify-content: center; flex: 1; min-height: 0; background: #eef1f5; padding: 0.7rem 1rem 1rem; }
+    /* "← Volver": salida al sistema, igual que la del Mapeo (acá el menú queda tapado). */
+    .wa-volver-sistema { align-self: center; margin-right: 0.5rem; background: #fff; border: 1px solid #e6eaf0; border-radius: 999px;
+        padding: 0.45rem 0.9rem; font-size: 0.88rem; font-weight: 700; color: #334155; cursor: pointer; }
+    .wa-volver-sistema:hover { border-color: #25d366; background: #f0fff6; color: #128c4a; }
     .wa-root { display: grid; grid-template-columns: 340px 1fr; width: 100%; max-width: 1500px; background: transparent; box-shadow: none; gap: 0.8rem; overflow: hidden; }
     /* 2026-08-05: modo "una sola conversación" — sin lista lateral, el chat ocupa todo el ancho. */
     .wa-root.wa-solo { grid-template-columns: 1fr; max-width: 1100px; }
@@ -2376,7 +2393,9 @@
 
         .wa-topbar { padding: 0.4rem 0.6rem 0; gap: 0.5rem; }
         .wa-tab-top { font-size: 0.85rem; }
-        .wa-outer { height: calc(100dvh - 112px); padding: 0; background: #fff; }
+        /* En el celular también va a pantalla completa: la caja .wa-fs ya ocupa todo,
+           así que acá el chat solo tiene que estirarse con lo que sobra (sin restar barras). */
+        .wa-outer { padding: 0; background: #fff; }
         .wa-root { grid-template-columns: 1fr; gap: 0; max-width: 100%; }
         .wa-sidebar, .wa-thread { border-radius: 0; border-left: 0; border-right: 0; box-shadow: none; }
 
@@ -3029,6 +3048,10 @@
     [SupplyParameterFromQuery(Name = "solo")]
     public string? SoloParam { get; set; }
     private bool soloMode => SoloParam == "1";
+
+    // 2026-08-17: "← Volver" de la pantalla completa. Como esta pantalla tapa el menú del sistema
+    // (igual que el Mapeo), este botón es la salida: lleva al Dashboard.
+    private void VolverAlSistema() => Nav.NavigateTo("/");
 
     // 2026-08-05: FIRMA de Depósito. Cuando responde un usuario de Depósito, el mensaje sale
     // firmado con quién contesta → "OK (alex)". Lista fija de empleados (pedido del usuario).
