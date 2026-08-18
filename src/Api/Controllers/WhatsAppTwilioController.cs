@@ -470,6 +470,9 @@ public class WhatsAppTwilioController : ControllerBase
                 // mensaje entra sin nombre y se completa en el siguiente; así no perdemos el remitente).
                 NombrePerfil = g.Where(m => m.Direccion == "INCOMING" && m.NombrePerfil != null).OrderByDescending(m => m.CreatedAt).Select(m => m.NombrePerfil).FirstOrDefault(),
                 UltimoMensaje = g.OrderByDescending(m => m.CreatedAt).Select(m => m.Cuerpo).FirstOrDefault(),
+                // 2026-08-18: si el ultimo mensaje era una foto/audio/archivo, el Cuerpo viene vacio y
+                // el renglon de la lista salia EN BLANCO. Con esto el celu puede poner "📷 Foto".
+                UltimoMediaUrl = g.OrderByDescending(m => m.CreatedAt).Select(m => m.MediaUrl).FirstOrDefault(),
                 UltimoDireccion = g.OrderByDescending(m => m.CreatedAt).Select(m => m.Direccion).FirstOrDefault(),
                 UltimoAt = g.Max(m => m.CreatedAt),
                 Total = g.Count(),
@@ -514,6 +517,7 @@ public class WhatsAppTwilioController : ControllerBase
                 ClienteId = c?.ClienteId,
                 ClienteNombre = clienteNombre,
                 x.UltimoMensaje,
+                x.UltimoMediaUrl,
                 x.UltimoDireccion,
                 x.UltimoAt,
                 x.Total,

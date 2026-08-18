@@ -99,8 +99,10 @@ else
             </div>
         }
         <div class="wam-search">
+            @* 2026-08-18: sin autofocus. Antes el teclado del celu saltaba solo al abrir la
+               pantalla y tapaba media lista, que no es lo que hace WhatsApp. *@
             <input class="wam-search-input" placeholder="Buscar por nombre o número…"
-                   @bind="busqueda" @bind:event="oninput" autofocus />
+                   @bind="busqueda" @bind:event="oninput" />
         </div>
         <div class="wam-list">
             @if (cargando && convs.Count == 0)
@@ -118,11 +120,19 @@ else
                 {
                     foreach (var c in filtradas)
                     {
-                        <div class="wam-conv" @onclick="() => AbrirChat(c)">
+                        var sinLeer = NoLeido(c);
+                        <div class="wam-conv @(sinLeer ? "nuevo" : "")" @onclick="() => AbrirChat(c)">
                             <div class="wam-avatar">@Inicial(c)</div>
                             <div class="wam-conv-txt">
                                 <div class="wam-conv-nombre" title="@NombreDe(c)">@NombreDe(c)</div>
-                                <div class="wam-conv-ultimo">@Recortar(c.UltimoMensaje, 44)</div>
+                                <div class="wam-conv-ultimo">@Recortar(UltimoTexto(c), 44)</div>
+                            </div>
+                            <div class="wam-conv-meta">
+                                <div class="wam-conv-hora">@FormatHoraLista(c.UltimoAt)</div>
+                                @if (sinLeer)
+                                {
+                                    <span class="wam-conv-punto" title="Mensaje sin leer"></span>
+                                }
                             </div>
                         </div>
                     }
@@ -136,7 +146,7 @@ else
             <PinnedWaChat Numero="@chatAbierto.Numero" LineaPhoneId="@chatAbierto.Linea"
                           TituloContacto="@NombreDe(chatAbierto)"
                           NombreLinea="@(chatAbierto.LineaNumero ?? chatAbierto.Linea ?? "WhatsApp")"
-                          PuedeAbrirEnGrande="false" AccionesCompletas="true" />
+                          PuedeAbrirEnGrande="false" AccionesCompletas="true" Movil="true" />
         </div>
     }
 </div>
@@ -174,6 +184,14 @@ else
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .wam-conv-ultimo { font-size: 0.85rem; color: #6b7280;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* 2026-08-18: hora + punto de "sin leer", como WhatsApp */
+    .wam-conv-txt { flex: 1; }
+    .wam-conv-meta { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+    .wam-conv-hora { font-size: 0.72rem; color: #6b7280; white-space: nowrap; }
+    .wam-conv-punto { width: 11px; height: 11px; border-radius: 50%; background: #25d366; display: block; }
+    .wam-conv.nuevo .wam-conv-nombre { font-weight: 800; }
+    .wam-conv.nuevo .wam-conv-ultimo { color: #111827; font-weight: 600; }
+    .wam-conv.nuevo .wam-conv-hora { color: #25d366; font-weight: 700; }
 
     .wam-chat { flex: 1; min-height: 0; }
     /* PinnedWaChat trae su propio marco; acá lo dejamos a ras, ocupando toda la pantalla. */
@@ -356,6 +374,7 @@ else
         catch { convs ??= new(); }
         if (lineasConfig.Count == 0)
             try { lineasConfig = await Api.GetTwLineasConfigAsync(); } catch { }
+        if (vistos.Count == 0) await CargarVistos();
         // 2026-08-15: tema (claro/oscuro) de cada línea + letra elegida
         await Apariencia.EnsureLoadedAsync();
         cargando = false;
@@ -413,8 +432,24 @@ else
 
     public void Dispose() => notifTimer?.Dispose();
 
-    private void AbrirChat(ApiClient.TwConvDto c) { chatAbierto = c; StateHasChanged(); }
-    private void Volver() { chatAbierto = null; StateHasChanged(); }
+    private async Task AbrirChat(ApiClient.TwConvDto c)
+    {
+        chatAbierto = c;
+        await MarcarLeido(c);   // 2026-08-18: al abrirla deja de estar "sin leer"
+        StateHasChanged();
+    }
+    private async Task Volver()
+    {
+        // 2026-08-18: al salir del chat lo damos por leido hasta el ultimo mensaje que haya
+        // entrado mientras lo mirabas (si no, volvia a aparecer con el punto verde).
+        if (chatAbierto is not null)
+        {
+            var actual = convs.FirstOrDefault(x => x.Numero == chatAbierto.Numero && x.Linea == chatAbierto.Linea) ?? chatAbierto;
+            await MarcarLeido(actual);
+        }
+        chatAbierto = null;
+        StateHasChanged();
+    }
 
     // Líneas que tienen chats, con su nombre lindo (FRIKAF by INTERVENT / FIJO TRANSRADIO)
     private List<(string? Id, string Nombre)> LineasDisponibles()
@@ -440,6 +475,9 @@ else
     private IEnumerable<ApiClient.TwConvDto> Filtradas()
     {
         IEnumerable<ApiClient.TwConvDto> src = convs;
+        // 2026-08-18: las charlas archivadas NO van en el listado (igual que en la pantalla grande).
+        // Si el cliente vuelve a escribir, el backend las desarchiva solo y reaparecen.
+        src = src.Where(c => !c.Archivado);
         if (filtroLinea != null) src = src.Where(c => c.Linea == filtroLinea);
         if (string.IsNullOrWhiteSpace(busqueda))
             return src.Take(60);
@@ -450,6 +488,69 @@ else
                 || ((c.Numero ?? "").ToLowerInvariant().Contains(q))
                 || (qDigits.Length >= 3 && new string((c.Numero ?? "").Where(char.IsDigit).ToArray()).Contains(qDigits)))
             .Take(100);
+    }
+
+    // ═══ 2026-08-18: hora, "sin leer" y texto del ultimo mensaje (como WhatsApp) ═══
+
+    /// <summary>Hora corta para la lista: hoy la hora, ayer "Ayer", antes la fecha.</summary>
+    private static string FormatHoraLista(DateTime utc)
+    {
+        var local = utc.ToArTime();
+        var hoy = DateTime.Now.Date;
+        if (local.Date == hoy) return local.ToString("HH:mm");
+        if (local.Date == hoy.AddDays(-1)) return "Ayer";
+        if (local.Date > hoy.AddDays(-7)) return local.ToString("dddd", new System.Globalization.CultureInfo("es-AR"));
+        return local.ToString("dd/MM/yy");
+    }
+
+    /// <summary>Lo que se muestra en el renglon. Si el ultimo mensaje era una foto/audio/archivo
+    /// no hay texto, y antes el renglon quedaba VACIO; ahora dice que fue.</summary>
+    private static string UltimoTexto(ApiClient.TwConvDto c)
+    {
+        if (!string.IsNullOrWhiteSpace(c.UltimoMensaje)) return c.UltimoMensaje!;
+        var u = (c.UltimoMediaUrl ?? "").ToLowerInvariant();
+        if (string.IsNullOrEmpty(u)) return "";
+        if (u.Contains(".ogg") || u.Contains(".mp3") || u.Contains(".m4a") || u.Contains(".opus") || u.Contains(".wav")) return "🎤 Mensaje de voz";
+        if (u.Contains(".jpg") || u.Contains(".jpeg") || u.Contains(".png") || u.Contains(".webp") || u.Contains(".gif")) return "📷 Foto";
+        if (u.Contains(".mp4") || u.Contains(".3gp") || u.Contains(".mov")) return "🎥 Video";
+        if (u.Contains(".pdf")) return "📄 Documento";
+        return "📎 Archivo";
+    }
+
+    // "Sin leer" por celular: guardamos hasta que fecha vimos cada chat en ESTE telefono.
+    // El sistema no lleva leido/no-leido por usuario, y como cada uno usa su propio celu
+    // (igual que el codigo de 4 digitos), guardarlo en el telefono alcanza.
+    private const string VistosKey = "wamovil.vistos";
+    private Dictionary<string, DateTime> vistos = new();
+
+    private static string ClaveConv(ApiClient.TwConvDto c) => (c.Numero ?? "") + "|" + (c.Linea ?? "");
+
+    private bool NoLeido(ApiClient.TwConvDto c)
+    {
+        if (c.UltimoDireccion != "INCOMING") return false;   // lo ultimo lo mandamos nosotros
+        return !vistos.TryGetValue(ClaveConv(c), out var visto) || c.UltimoAt > visto;
+    }
+
+    private async Task CargarVistos()
+    {
+        try
+        {
+            var json = await JS.InvokeAsync<string?>("localStorage.getItem", VistosKey);
+            if (!string.IsNullOrWhiteSpace(json))
+                vistos = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, DateTime>>(json!) ?? new();
+        }
+        catch { vistos = new(); }
+    }
+
+    private async Task MarcarLeido(ApiClient.TwConvDto c)
+    {
+        vistos[ClaveConv(c)] = c.UltimoAt;
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", VistosKey,
+                System.Text.Json.JsonSerializer.Serialize(vistos));
+        }
+        catch { }
     }
 
     private static string NombreDe(ApiClient.TwConvDto c)

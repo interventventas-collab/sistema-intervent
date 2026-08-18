@@ -14,6 +14,8 @@
 
 @* 2026-08-15: se pinta según el tema de SU línea (oscuro/claro) + la letra elegida. *@
 <div class="pwa-card @Apariencia.ClasesPara(LineaPhoneId)">
+    @if (!Movil)
+    {
     <div class="pwa-head">
         <div class="pwa-head-l">
             <span class="pwa-avatar">@InicialContacto()</span>
@@ -30,6 +32,7 @@
             }
         </div>
     </div>
+    }
 
     <div class="pwa-body">
         @if (mensajes is null)
@@ -92,7 +95,14 @@
                                 <div class="pwa-oculto-badge">🚫 oculto a Depósito</div>
                             }
                         }
-                        <div class="pwa-time">@FormatHora(m.CreatedAt)</div>
+                        <div class="pwa-time">
+                            @FormatHora(m.CreatedAt)
+                            @* 2026-08-18: tildes de enviado/entregado/leído, como en la pantalla grande *@
+                            @if (mine)
+                            {
+                                <span class="@TildeCss(m.EstadoEntrega)" title="@TildeTitulo(m.EstadoEntrega)">@TildeTexto(m.EstadoEntrega)</span>
+                            }
+                        </div>
                         @* 2026-08-07: reacciones (solo se muestran) *@
                         @if (!(esDeposito && m.OcultoDeposito) && m.Reacciones != null && m.Reacciones.Count > 0)
                         {
@@ -459,6 +469,10 @@
     .pwa-ocultar-btn:hover { color: #dc2626; }
     .pwa-text { white-space: pre-wrap; word-break: break-word; }
     .pwa-time { font-size: 0.62rem; color: #6b7280; text-align: right; margin-top: 2px; }
+    /* 2026-08-18: tildes de entrega (mismos colores que la pantalla grande) */
+    .pwa-tilde { color: #8a8a8a; font-size: 0.68rem; margin-left: 3px; letter-spacing: -1px; }
+    .pwa-tilde-read { color: #34b7f1; }
+    .pwa-tilde-fail { color: #dc2626; letter-spacing: 0; }
 
     /* Media recibida: audio reproducible, imagen inline, resto link */
     .pwa-audio { max-width: 100%; height: 40px; display: block; margin-bottom: 0.2rem; }
@@ -609,6 +623,11 @@
     /// <summary>2026-08-07: muestra las acciones extra (Respuestas rápidas + Menú rol). Solo en móvil / card
     /// flotante; en el chat de venta/depósito/dashboard queda apagado para no recargar.</summary>
     [Parameter] public bool AccionesCompletas { get; set; } = false;
+    /// <summary>2026-08-18: pantalla del celular. Cambia dos cosas para parecerse a WhatsApp:
+    /// (1) NO repite el encabezado (la pantalla del celu ya muestra el nombre arriba), y
+    /// (2) Enter hace renglón nuevo en vez de enviar — en el celu no existe Shift+Enter,
+    /// así que con Enter=enviar era imposible escribir un mensaje de dos renglones.</summary>
+    [Parameter] public bool Movil { get; set; } = false;
 
     private List<ApiClient.TwMsgDto>? mensajes;
     private string composer = "";
@@ -743,7 +762,10 @@
 
     private async Task OnKey(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
     {
-        // Enter envía; Shift+Enter hace renglón nuevo (como WhatsApp).
+        // En la compu: Enter envía, Shift+Enter hace renglón nuevo (como WhatsApp Web).
+        // 2026-08-18: en el CELU Enter baja de línea y se manda con el botón, como la app:
+        // ahí no hay Shift, así que antes no se podía escribir un mensaje de dos renglones.
+        if (Movil) return;
         if (e.Key == "Enter" && !e.ShiftKey) await Enviar();
     }
 
@@ -1078,6 +1100,11 @@
 
     private string InicialContacto()
         => string.IsNullOrWhiteSpace(TituloContacto) ? "?" : TituloContacto.Trim()[..1].ToUpperInvariant();
+
+    // 2026-08-18: mismos tildes que la pantalla grande de WhatsApp.
+    private static string TildeTexto(string? e) => e switch { "read" => "✓✓", "delivered" => "✓✓", "sent" => "✓", "failed" => "⚠", _ => "✓" };
+    private static string TildeCss(string? e) => e == "read" ? "pwa-tilde pwa-tilde-read" : e == "failed" ? "pwa-tilde pwa-tilde-fail" : "pwa-tilde";
+    private static string TildeTitulo(string? e) => e switch { "read" => "Leído", "delivered" => "Entregado", "sent" => "Enviado", "failed" => "No se pudo entregar", _ => "Enviando…" };
 
     private static string FormatHora(DateTime utc)
     {
