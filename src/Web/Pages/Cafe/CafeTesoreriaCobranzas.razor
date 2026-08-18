@@ -433,8 +433,11 @@
                                             <td>@p.Fecha.ToArTime().ToString("dd/MM/yyyy")</td>
                                             <td style="text-align:right;">$@p.Saldo.ToString("N2")</td>
                                             <td style="text-align:right;">
-                                                <input class="form-input" type="number" step="0.01" style="text-align:right; width:120px; display:inline-block;"
-                                                       value="@imputaciones[p.VentaId].Importe"
+                                                @* 2026-08-18: era type=number con el importe escrito a la argentina ("392040,00"):
+                                                   el navegador descarta ese valor y el casillero se veia VACIO. Ahora es texto
+                                                   formateado con punto de miles, igual que el saldo de la columna de al lado. *@
+                                                <input class="form-input" type="text" inputmode="decimal" style="text-align:right; width:120px; display:inline-block;"
+                                                       value="@MontoInput.Formato(imputaciones[p.VentaId].Importe)"
                                                        @onchange="@(e => OnImputeChange(p.VentaId, e.Value?.ToString()))" />
                                             </td>
                                         </tr>
@@ -1624,7 +1627,7 @@
     {
         if (imputaciones.TryGetValue(ventaId, out var imp))
         {
-            decimal.TryParse(value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v);
+            MontoInput.TryParse(value, out var v);
             imp.Importe = v;
             // Si tipea importe, asume que quiere imputar
             if (v > 0) imp.Seleccionado = true;

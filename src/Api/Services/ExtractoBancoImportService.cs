@@ -89,8 +89,9 @@ public class ExtractoBancoImportService
                             return d;
                     return DateTime.TryParse(s, out var d2) ? d2 : null;
                 }
-                decimal ParseDec(string s) =>
-                    decimal.TryParse(s.Replace(".", "").Replace(",", "."), NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : 0m;
+                // 2026-08-18: antes borraba TODOS los puntos, asi que un archivo con punto
+                // decimal ("1234.56") entraba como 123456. MontoParser detecta el formato.
+                decimal ParseDec(string s) => MontoParser.ParseOrZero(s);
 
                 var fecha = ParseFecha(GetCol("Fecha"));
                 if (fecha is null) continue;

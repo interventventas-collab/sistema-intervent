@@ -130,8 +130,10 @@ public class ChequesBancoImportService
                     if (!idxByName.TryGetValue(name, out var col)) return 0m;
                     var c = ws.Cell(r, col);
                     if (c.DataType == XLDataType.Number) return (decimal)c.GetDouble();
-                    var s = (c.GetString() ?? "").Trim().Replace(",", ".");
-                    return decimal.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0m;
+                    // 2026-08-18: antes hacia Replace(",", ".") y parseaba invariant, asi que un
+                    // importe argentino en texto ("386.370,00") no parseaba y entraba como 0,
+                    // y "386.370" entraba como 386,37. MontoParser mira los separadores y decide.
+                    return MontoParser.ParseOrZero(c.GetString());
                 }
                 int GetInt(string name)
                 {

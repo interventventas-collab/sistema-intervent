@@ -212,7 +212,7 @@
             <hr style="margin: 1rem 0;" />
             <h4 style="margin: 0 0 0.6rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">🧮 Vista previa del cálculo</h4>
             <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.7rem; font-size: 0.85rem; font-family: monospace;">
-                <div>Si un café tiene <strong>PVP1 = $25.000/kg</strong>, costoFracc <strong>$@costoFracc</strong>, redondeo <strong>$@redondeo</strong>:</div>
+                <div>Si un café tiene <strong>PVP1 = $25.000/kg</strong>, costoFracc <strong>$@costoFracc.ToString("N2")</strong>, redondeo <strong>$@redondeo.ToString("N2")</strong>:</div>
                 <div>· 1 kg → @FormatMoney(Calc(25000, 1))</div>
                 <div>· 1/2 kg → ($25.000/2 + $@costoFracc = $@FormatMoney(25000m/2m + costoFracc) → redondeado: <strong>@FormatMoney(Calc(25000, 0.5m))</strong>)</div>
                 <div>· 1/4 kg → ($25.000/4 + $@costoFracc = $@FormatMoney(25000m/4m + costoFracc) → redondeado: <strong>@FormatMoney(Calc(25000, 0.25m))</strong>)</div>

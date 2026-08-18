@@ -653,12 +653,11 @@ public class WhatsAppPagoBotService
 
     private static bool TryParseMonto(string t, out decimal monto)
     {
-        monto = 0m;
-        if (string.IsNullOrWhiteSpace(t)) return false;
-        // Quitar $, espacios y separadores de miles; aceptar coma o punto decimal.
-        var limpio = t.Replace("$", "").Replace(" ", "").Trim();
-        limpio = limpio.Replace(".", "").Replace(",", ".");
-        return decimal.TryParse(limpio, NumberStyles.Number, CultureInfo.InvariantCulture, out monto);
+        // 2026-08-18: pasa a MontoParser (mira los separadores en vez de suponerlos), asi
+        // "12.500" sigue siendo doce mil quinientos pero "12.50" ya no se lee 1250.
+        var v = MontoParser.Parse(t);
+        monto = v ?? 0m;
+        return v.HasValue;
     }
 
     private static string NombreMedio(string m) => m switch

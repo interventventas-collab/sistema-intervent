@@ -222,7 +222,8 @@
             @if (modalEditar.Tipo == "empleado")
             {
                 <label class="pp-mlabel">Importe</label>
-                <input class="pp-minput" type="number" step="0.01" value="@editMonto" @oninput="@(e => decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out editMonto))" />
+                @* 2026-08-18: texto con punto de miles — como type=number el importe con coma quedaba vacio *@
+                <input class="pp-minput" type="text" inputmode="decimal" value="@MontoInput.Formato(editMonto)" @onchange="@(e => { MontoInput.TryParse(e.Value?.ToString(), out editMonto); })" />
             }
 
             <label class="pp-mlabel">Medio de pago</label>

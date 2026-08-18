@@ -142,8 +142,9 @@
                                             <td>@p.Fecha.ToArTime().ToString("dd/MM/yyyy")</td>
                                             <td style="text-align:right;">$@p.Saldo.ToString("N2")</td>
                                             <td style="text-align:right;">
-                                                <input class="form-input" type="number" step="0.01" style="text-align:right; width:120px; display:inline-block;"
-                                                       value="@imputaciones[p.CompraId].Importe"
+                                                @* 2026-08-18: idem Cobranzas — texto con punto de miles (antes quedaba vacio) *@
+                                                <input class="form-input" type="text" inputmode="decimal" style="text-align:right; width:120px; display:inline-block;"
+                                                       value="@MontoInput.Formato(imputaciones[p.CompraId].Importe)"
                                                        @onchange="@(e => OnImputeChange(p.CompraId, e.Value?.ToString()))" />
                                             </td>
                                         </tr>
@@ -338,7 +339,7 @@
     {
         if (imputaciones.TryGetValue(compraId, out var imp))
         {
-            decimal.TryParse(value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v);
+            MontoInput.TryParse(value, out var v);
             imp.Importe = v;
             if (v > 0) imp.Seleccionado = true;
             RecalcularTotal();

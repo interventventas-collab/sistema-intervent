@@ -7,12 +7,14 @@ namespace Web.Services;
 ///
 /// Historia: los importes editables eran &lt;input type="number"&gt;, que NO puede mostrar
 /// separador de miles — el usuario veia "386370,00" al lado de un saldo que decia
-/// "$392.040,00" y tenia que contar los ceros. Ademas el input numerico del browser
-/// se peleaba con el locale es-AR (bug 2026-06-17: truncaba el monto al perder foco,
-/// por eso se forzaba InvariantCulture en el value).
+/// "$392.040,00" y tenia que contar los ceros. Peor: cuando el value se renderizaba con
+/// la cultura del navegador ("392040,00"), el browser DESCARTA ese valor y el casillero
+/// queda VACIO (medido con Playwright el 18/08/2026), que es el bug 2026-06-17.
 ///
 /// Solucion: input de texto, mostrado SIEMPRE formateado con la cultura del navegador
-/// (es-AR = "392.040,00"), y parseo tolerante al volver.
+/// (es-AR = "392.040,00"), y parseo que MIRA los separadores en vez de suponerlos.
+/// Mismas reglas que Api/Services/MontoParser.cs (que lee los importes de los archivos
+/// del banco); si se cambia una, cambiar la otra.
 /// </summary>
 public static class MontoInput
 {
@@ -20,26 +22,57 @@ public static class MontoInput
     public static string Formato(decimal v) => v.ToString("N2");
 
     /// <summary>
-    /// Interpreta lo que tipeo el usuario. Acepta lo que se ve en pantalla
-    /// ("392.040,00"), lo que sale de copiar y pegar ("$ 392.040,00"), un numero pelado
-    /// ("392040") y tambien el formato con punto decimal ("392040.00").
+    /// Interpreta lo que tipeo el usuario. Acepta lo que se ve en pantalla ("392.040,00"),
+    /// lo que sale de copiar y pegar ("$ 392.040,00"), un numero pelado ("392040"),
+    /// y tambien el formato con punto decimal ("1234.56").
     /// </summary>
     public static bool TryParse(string? raw, out decimal valor)
     {
         valor = 0m;
         if (string.IsNullOrWhiteSpace(raw)) return false;
 
-        var s = raw.Trim().Replace("$", "").Replace(" ", "").Replace(" ", "");
+        var s = raw.Trim().Replace("$", "").Replace(" ", "").Replace(" ", "").Replace("'", "");
         if (s.Length == 0) return false;
 
-        // Primero, tal como se muestra en pantalla (cultura del navegador).
-        if (decimal.TryParse(s, NumberStyles.Any, CultureInfo.CurrentCulture, out valor)) return true;
+        var negativo = s.StartsWith('-') || (s.StartsWith('(') && s.EndsWith(')'));
+        s = s.Trim('-', '(', ')');
+        if (s.Length == 0) return false;
 
-        // Fallback: formato con punto decimal ("392040.00"), por si el navegador
-        // esta en ingles o el texto vino pegado de otro lado.
-        if (decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out valor)) return true;
+        var ultimoPunto = s.LastIndexOf('.');
+        var ultimaComa = s.LastIndexOf(',');
+        string limpio;
 
-        valor = 0m;
-        return false;
+        if (ultimoPunto >= 0 && ultimaComa >= 0)
+        {
+            // Vienen los dos: el que esta mas a la derecha es el decimal.
+            var decSep = ultimoPunto > ultimaComa ? '.' : ',';
+            var milSep = decSep == '.' ? ',' : '.';
+            limpio = s.Replace(milSep.ToString(), "").Replace(decSep, '.');
+        }
+        else if (ultimoPunto >= 0 || ultimaComa >= 0)
+        {
+            var sep = ultimoPunto >= 0 ? '.' : ',';
+            var pos = ultimoPunto >= 0 ? ultimoPunto : ultimaComa;
+            var veces = s.Count(c => c == sep);
+            var digitosDespues = s.Length - pos - 1;
+
+            // La COMA en Argentina es el decimal ("12,50"), salvo que se repita ("1,234,567").
+            // El PUNTO con exactamente 3 digitos atras es miles ("386.370" = trescientos ochenta
+            // y seis mil); con otra cantidad de digitos es decimal ("1234.56").
+            var esMiles = veces > 1 || (sep == '.' && digitosDespues == 3);
+            limpio = esMiles ? s.Replace(sep.ToString(), "") : s.Replace(sep, '.');
+        }
+        else
+        {
+            limpio = s;
+        }
+
+        if (!decimal.TryParse(limpio, NumberStyles.Any, CultureInfo.InvariantCulture, out valor))
+        {
+            valor = 0m;
+            return false;
+        }
+        if (negativo) valor = -valor;
+        return true;
     }
 }

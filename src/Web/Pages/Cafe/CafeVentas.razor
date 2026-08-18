@@ -2263,7 +2263,7 @@
                                                 <td style="text-align: right;">
                                                     <input class="form-input" type="number" step="0.5" min="0" max="100"
                                                            style="width: 80px; text-align: right; padding: 0.25rem 0.4rem; font-size: 0.85rem;"
-                                                           value="@descPctCombo" @onchange="@(e => OnComboDescuentoChanged(cid, e.Value?.ToString()))" />
+                                                           value="@descPctCombo.ToString(System.Globalization.CultureInfo.InvariantCulture)" @onchange="@(e => OnComboDescuentoChanged(cid, e.Value?.ToString()))" />
                                                 </td>
                                                 <td style="text-align: right; font-weight: 700;">
                                                     <div>$@FormatMoney(subtotalGrupo)</div>
@@ -2418,7 +2418,7 @@
                                             <td style="text-align: right;">
                                                 <input class="form-input" type="number" step="0.5" min="0" max="100"
                                                        style="width: 80px; text-align: right; padding: 0.25rem 0.4rem; font-size: 0.85rem;"
-                                                       value="@formItem.DescuentoPct" @onchange="@(e => OnItemDescuentoChanged(i, e.Value?.ToString()))" />
+                                                       value="@formItem.DescuentoPct.ToString(System.Globalization.CultureInfo.InvariantCulture)" @onchange="@(e => OnItemDescuentoChanged(i, e.Value?.ToString()))" />
                                             </td>
                                             <td style="text-align: right; font-weight: 700;">
                                                 <div>$@FormatMoney(ci.Subtotal)</div>
