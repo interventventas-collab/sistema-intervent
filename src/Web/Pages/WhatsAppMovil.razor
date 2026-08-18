@@ -53,7 +53,9 @@
             else
             {
                 @* ── Respaldo: el código de siempre ── *@
-                <div class="wam-lock-sub">Ingresá tu código de 4 dígitos</div>
+                <div class="wam-lock-sub">
+                    @(modoRegistroHuella ? "Poné tu código para registrar la huella" : "Ingresá tu código de 4 dígitos")
+                </div>
                 <div class="wam-lock-dots">
                     @for (int i = 0; i < 4; i++)
                     {
@@ -75,14 +77,21 @@
                 </div>
                 <div class="wam-lock-foot">@(verificando ? "Verificando…" : huellaMsg)</div>
                 <div class="wam-huella">
-                    @* Registrar la huella necesita el código, por eso el botón vive acá. *@
-                    <button type="button" class="wam-huella-reg" @onclick="RegistrarHuella" disabled="@(verificando || huellaOcupada)"
-                            title="Poné tu código de 4 dígitos y tocá acá para dejar tu huella en este celu">👆 Registrar mi huella en este celu (con el código)</button>
-                    @if (huellaDisponible)
+                    @if (modoRegistroHuella)
                     {
-                        <button type="button" class="wam-lock-link" @onclick="@(() => { modoClave = false; pinError = null; huellaMsg = null; })">
-                            Volver a la huella
-                        </button>
+                        <button type="button" class="wam-lock-link" @onclick="CancelarRegistroHuella">Cancelar el registro</button>
+                    }
+                    else
+                    {
+                        @* Registrar la huella necesita el código: se toca acá y el teclado lo pide. *@
+                        <button type="button" class="wam-huella-reg" @onclick="RegistrarHuella" disabled="@(verificando || huellaOcupada)"
+                                title="Tocá acá y poné tu código: el celu te va a pedir la huella">👆 Registrar mi huella en este celu</button>
+                        @if (huellaDisponible)
+                        {
+                            <button type="button" class="wam-lock-link" @onclick="@(() => { modoClave = false; pinError = null; huellaMsg = null; })">
+                                Volver a la huella
+                            </button>
+                        }
                     }
                 </div>
             }
@@ -315,6 +324,8 @@ else
     // 2026-08-19: la huella pasa a ser la forma PRINCIPAL de entrar. modoClave=true muestra el
     // teclado de 4 dígitos (respaldo), y se activa solo si el teléfono no ofrece huella.
     private bool modoClave;
+    // 2026-08-19: el teclado está pidiendo el código PARA REGISTRAR la huella (no para entrar).
+    private bool modoRegistroHuella;
     private const string HuellaRegistradaKey = "wamovil.huellaRegistrada";
 
     // Avisos (campanita): sonido + aviso visual del sistema al llegar un mensaje nuevo (pantalla abierta).
@@ -421,25 +432,44 @@ else
         finally { huellaOcupada = false; StateHasChanged(); }
     }
 
-    private async Task RegistrarHuella()
+    /// <summary>Arranca el registro: pide el código en el teclado y, al completarlo, registra la huella.</summary>
+    private void RegistrarHuella()
     {
         if (AvisarSiNoHayHuella()) return;
-        if (pin.Length != 4) { huellaMsg = "Primero poné tu código de 4 dígitos y después tocá Registrar huella."; StateHasChanged(); return; }
-        huellaOcupada = true; huellaMsg = "Registrando huella…"; StateHasChanged();
+        modoRegistroHuella = true;
+        modoClave = true;
+        pin = "";
+        pinError = null;
+        huellaMsg = "Poné tu código de 4 dígitos y el celu te va a pedir la huella.";
+        StateHasChanged();
+    }
+
+    private void CancelarRegistroHuella()
+    {
+        modoRegistroHuella = false;
+        pin = "";
+        huellaMsg = null;
+        StateHasChanged();
+    }
+
+    private async Task RegistrarHuellaCon(string codigo)
+    {
+        huellaOcupada = true; huellaMsg = "Ahora tocá el lector de huella del celu…"; StateHasChanged();
         try
         {
-            var begin = await Api.WaHuellaRegBeginAsync(pin, "Celular");
+            var begin = await Api.WaHuellaRegBeginAsync(codigo, "Celular");
             if (begin is null || !begin.Ok) { huellaMsg = begin?.Mensaje ?? "No se pudo iniciar el registro."; return; }
             var credJs = await JS.InvokeAsync<System.Text.Json.JsonElement>("webAuthnCreate", begin.Options!);
             if (credJs.TryGetProperty("_error", out _)) { huellaMsg = "El celu canceló o no pudo leer la huella."; return; }
             var comp = await Api.WaHuellaRegCompleteAsync(new { SessionId = begin.SessionId, AttestationResponse = credJs });
             if (comp is null || !comp.Ok) { huellaMsg = comp?.Mensaje ?? "No se pudo registrar la huella."; return; }
-            huellaMsg = "✅ Huella registrada. Ahora podés entrar con la huella."; pin = "";
+            huellaMsg = "✅ Huella registrada. Ahora entrá con la huella."; pin = "";
             try { await JS.InvokeVoidAsync("localStorage.setItem", HuellaRegistradaKey, "1"); } catch { }
+            modoRegistroHuella = false;
             modoClave = false;   // volver a la pantalla de huella, que ahora ya sirve
         }
         catch { huellaMsg = "No se pudo registrar la huella."; }
-        finally { huellaOcupada = false; StateHasChanged(); }
+        finally { huellaOcupada = false; pin = ""; StateHasChanged(); }
     }
 
     private async Task Tecla(string d)
@@ -447,7 +477,16 @@ else
         if (verificando || pin.Length >= 4) return;
         pinError = null;
         pin += d;
-        if (pin.Length == 4) await VerificarPin();
+        if (pin.Length == 4)
+        {
+            // 2026-08-19 BUG: antes, al llegar al 4to dígito SIEMPRE entraba. Por eso era
+            // IMPOSIBLE registrar la huella: la instrucción decía "poné el código y después tocá
+            // Registrar", pero el código te metía adentro antes de poder tocar nada. Resultado:
+            // nunca hubo ninguna huella registrada y la pantalla nunca la pedía.
+            // Ahora, si estás en modo registro, el código sirve para registrar la huella.
+            if (modoRegistroHuella) await RegistrarHuellaCon(pin);
+            else await VerificarPin();
+        }
         else StateHasChanged();
     }
 
