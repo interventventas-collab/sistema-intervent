@@ -56,6 +56,11 @@
                 <div class="wam-lock-sub">
                     @(modoRegistroHuella ? "Poné tu código para registrar la huella" : "Ingresá tu código de 4 dígitos")
                 </div>
+                @if (modoRegistroHuella)
+                {
+                    @* 2026-08-19: cartel bien visible, para que no haya dudas de en qué modo está. *@
+                    <div class="wam-lock-modo">👆 Registrando huella — al completar el código, el celu te va a pedir el dedo</div>
+                }
                 <div class="wam-lock-dots">
                     @for (int i = 0; i < 4; i++)
                     {
@@ -292,6 +297,8 @@ else
     .wam-huella-grande:active { transform: scale(0.98); }
     .wam-huella-grande:disabled { opacity: 0.7; cursor: wait; }
     .wam-huella-ic { font-size: 2.6rem; line-height: 1; }
+    .wam-lock-modo { background: #d1fae5; color: #065f46; border-radius: 10px; padding: 8px 10px;
+        font-size: 0.8rem; font-weight: 700; margin-top: 0.5rem; }
     .wam-lock-link { background: transparent; border: none; color: #075e54; font-size: 0.85rem;
         font-weight: 700; text-decoration: underline; cursor: pointer; margin-top: 0.9rem; }
     .wam-huella-reg { background: transparent; border: none; color: #6b7280; font-size: 0.78rem; cursor: pointer; text-decoration: underline; }
@@ -388,21 +395,21 @@ else
         StateHasChanged();
     }
 
-    /// <summary>2026-08-18: si el navegador dice que este teléfono no tiene huella disponible,
-    /// explicamos por qué en vez de esconder el botón (que era lo que hacía parecer que no existía).</summary>
-    private bool AvisarSiNoHayHuella()
+    /// <summary>2026-08-19: el navegador a veces contesta "este teléfono no tiene huella" aunque
+    /// sí la tenga (Chrome es conservador y depende de cómo esté configurado el celu). Antes eso
+    /// FRENABA el registro y el usuario terminaba entrando con el código sin poder registrar nada.
+    /// Ahora es solo un aviso: se intenta igual y, si de verdad no se puede, el propio teléfono
+    /// devuelve el error y lo mostramos.</summary>
+    private void AvisarSiNoHayHuella()
     {
-        if (huellaDisponible) return false;
-        huellaMsg = "Este teléfono no ofrece huella al navegador. Suele pasar cuando el celu no tiene "
-                  + "bloqueo de pantalla configurado (PIN/patrón/huella), o si estás en una ventana de "
-                  + "incógnito. Configurá el bloqueo del teléfono y volvé a entrar.";
-        StateHasChanged();
-        return true;
+        if (huellaDisponible) return;
+        huellaMsg = "Este celu le dijo al navegador que no tiene huella disponible. Probamos igual: "
+                  + "si no aparece el lector, fijate que el teléfono tenga bloqueo de pantalla configurado.";
     }
 
     private async Task EntrarConHuella()
     {
-        if (AvisarSiNoHayHuella()) return;
+        AvisarSiNoHayHuella();
         huellaOcupada = true; huellaMsg = "Tocá la huella…"; pinError = null; StateHasChanged();
         try
         {
@@ -416,7 +423,11 @@ else
                 return;
             }
             var credJs = await JS.InvokeAsync<System.Text.Json.JsonElement>("webAuthnGet", begin.Options!);
-            if (credJs.TryGetProperty("_error", out _)) { huellaMsg = "No se pudo leer la huella."; return; }
+            if (credJs.TryGetProperty("_error", out var errEl2))
+            {
+                huellaMsg = "No se pudo leer la huella: " + (errEl2.GetString() ?? "sin detalle") + ". Podés entrar con el código.";
+                return;
+            }
             var comp = await Api.WaHuellaLoginCompleteAsync(new { SessionId = begin.SessionId, AssertionResponse = credJs });
             if (comp is null || !comp.Ok || string.IsNullOrWhiteSpace(comp.Nombre))
             {
@@ -435,12 +446,12 @@ else
     /// <summary>Arranca el registro: pide el código en el teclado y, al completarlo, registra la huella.</summary>
     private void RegistrarHuella()
     {
-        if (AvisarSiNoHayHuella()) return;
         modoRegistroHuella = true;
         modoClave = true;
         pin = "";
         pinError = null;
         huellaMsg = "Poné tu código de 4 dígitos y el celu te va a pedir la huella.";
+        AvisarSiNoHayHuella();   // si el navegador dijo que no, lo aclara pero seguimos igual
         StateHasChanged();
     }
 
@@ -460,7 +471,13 @@ else
             var begin = await Api.WaHuellaRegBeginAsync(codigo, "Celular");
             if (begin is null || !begin.Ok) { huellaMsg = begin?.Mensaje ?? "No se pudo iniciar el registro."; return; }
             var credJs = await JS.InvokeAsync<System.Text.Json.JsonElement>("webAuthnCreate", begin.Options!);
-            if (credJs.TryGetProperty("_error", out _)) { huellaMsg = "El celu canceló o no pudo leer la huella."; return; }
+            if (credJs.TryGetProperty("_error", out var errEl))
+            {
+                // 2026-08-19: mostramos lo que contestó el teléfono, así se puede diagnosticar de lejos.
+                huellaMsg = "El celu no pudo registrar la huella: " + (errEl.GetString() ?? "sin detalle")
+                          + ". Si dice algo de \"no soportado\", revisá que el teléfono tenga bloqueo de pantalla.";
+                return;
+            }
             var comp = await Api.WaHuellaRegCompleteAsync(new { SessionId = begin.SessionId, AttestationResponse = credJs });
             if (comp is null || !comp.Ok) { huellaMsg = comp?.Mensaje ?? "No se pudo registrar la huella."; return; }
             huellaMsg = "✅ Huella registrada. Ahora entrá con la huella."; pin = "";
