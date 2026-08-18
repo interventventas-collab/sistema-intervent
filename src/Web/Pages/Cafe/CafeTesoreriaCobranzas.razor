@@ -4,6 +4,7 @@
 @inject ToastService ToastService
 @inject IJSRuntime JS
 @inject OperatorService Operator
+@inject NavigationManager Navigation
 
 <div class="card">
     <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
@@ -12,7 +13,13 @@
             var anuladas = cobranzas?.Count(c => c.Estado == "ANULADA") ?? 0;
         }
         <h3 style="margin:0;">📥 Cobranzas (@vigentes@(anuladas > 0 ? $" + {anuladas} anuladas" : ""))</h3>
-        <div style="display:flex; gap:0.5rem; align-items:center;">
+        <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+            @* 2026-08-18: accesos a cheques acá, que es donde se imputan los pagos (antes solo estaban
+               escondidos dos niveles adentro del menú Tesorería). *@
+            <button class="btn btn-secondary" title="Cheques que llegaron al banco — asociarlos a un cliente y a sus facturas"
+                    @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/cheques-banco")'>💳 Cheques del banco</button>
+            <button class="btn btn-secondary" title="Cheques que tenés en cartera — depositar, cobrar por ventanilla o marcar rechazado"
+                    @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/cheques")'>📄 Cheques en cartera</button>
             <button class="btn btn-primary" @onclick="ShowNueva">+ Nueva cobranza</button>
         </div>
     </div>
@@ -583,6 +590,13 @@
                             }
                         }
                         <button class="btn btn-secondary" style="font-size:0.8rem;" @onclick="AgregarMedio">+ Agregar forma de cobro</button>
+                        @* 2026-08-18: se puede guardar sin forma de cobro si todo lo imputado son retenciones. *@
+                        @if (formMedios.Count == 0 && formRetenciones > 0.01m)
+                        {
+                            <p style="font-size:0.75rem; color:#92400e; margin:0.5rem 0 0;">
+                                📋 Cobranza de <strong>solo retención</strong>: no entra plata a ninguna caja, se cancela saldo del cliente. No hace falta forma de cobro.
+                            </p>
+                        }
                     </div>
 
                     @* --- Retenciones --- *@
@@ -691,16 +705,14 @@
             </div>
             <div class="modal-body">
                 <div style="padding:0.6rem 0.8rem; background:#eff6ff; border-left:3px solid #2563eb; font-size:0.85rem; margin-bottom:0.8rem; border-radius:4px;">
-                    Reasignás cómo se reparte el total entre las facturas y el "a cuenta".
-                    <strong>NO se toca</strong> la forma de cobro, el cheque (si hay) ni el cliente. La suma tiene que dar igual al total.
+                    Reasignás cómo se reparte el total entre las facturas y el "a cuenta", y podés corregir las
+                    <strong>retenciones</strong> (por ejemplo si el pago entró por cheque y el faltante de la factura era una retención).
+                    <strong>NO se toca</strong> la forma de cobro, el cheque (si hay) ni el cliente: las retenciones no mueven plata de caja.
                 </div>
                 <div style="display:flex; gap:1rem; margin-bottom:0.8rem; font-size:0.88rem;">
                     <div><span style="color:#6b7280;">Cliente:</span> <strong>@c.ClienteNombre</strong></div>
                     <div><span style="color:#6b7280;">Total cobrado:</span> <strong style="color:#16a34a;">$@c.Total.ToString("N2")</strong></div>
-                    @if (c.Retenciones > 0)
-                    {
-                        <div><span style="color:#6b7280;">Retenciones:</span> <strong>$@c.Retenciones.ToString("N2")</strong></div>
-                    }
+                    <div><span style="color:#6b7280;">Retenciones:</span> <strong>$@editRetenciones.ToString("N2")</strong></div>
                     <div><span style="color:#6b7280;">A imputar:</span> <strong>$@EditTotalObjetivo.ToString("N2")</strong></div>
                 </div>
 
@@ -771,6 +783,31 @@
                            value="@editACuentaImporte.ToString(System.Globalization.CultureInfo.InvariantCulture)"
                            disabled="@(!editACuentaActivo)"
                            @onchange="@(e => OnEditACuenta(e.Value?.ToString()))" />
+                </div>
+
+                @* 2026-08-18: retenciones editables. Caso tipico: la cobranza nacio de un e-cheq y el
+                   faltante de la factura eran retenciones, que antes no se podian agregar despues. *@
+                <div style="margin-top:0.5rem; padding:0.6rem 0.8rem; background:#fdf4ff; border:1px solid #f0abfc; border-radius:6px;">
+                    <div style="display:flex; gap:1rem; align-items:center; flex-wrap:wrap;">
+                        <label style="font-size:0.88rem; margin:0;">📋 <strong>Retenciones sufridas</strong>:</label>
+                        <input class="form-input" type="number" step="0.01" min="0"
+                               style="text-align:right; width:140px; padding:0.2rem 0.4rem; font-size:0.85rem;"
+                               value="@editRetenciones.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                               @onchange="@(e => OnEditRetenciones(e.Value?.ToString()))" />
+                        @{
+                            var faltanteRet = Math.Round(EditSumaActual - editandoCobranza!.Total, 2);
+                        }
+                        @if (faltanteRet >= 0.01m && Math.Abs(faltanteRet - editRetenciones) > 0.01m)
+                        {
+                            <button type="button" class="btn btn-secondary" style="font-size:0.78rem; padding:0.25rem 0.6rem;"
+                                    @onclick="@(() => { editRetenciones = faltanteRet; })">
+                                Poner $@faltanteRet.ToString("N2") como retención
+                            </button>
+                        }
+                    </div>
+                    <p style="font-size:0.72rem; color:#6b7280; margin:0.3rem 0 0;">
+                        Lo que el cliente descontó del pago (IIBB, IVA, ganancias). Cancela saldo de la factura pero NO entra a caja.
+                    </p>
                 </div>
 
                 <div style="margin-top:0.8rem; padding:0.6rem 0.8rem; background:@(EditCuadra ? "#dcfce7" : "#fee2e2"); border-radius:6px; font-size:0.88rem;">
@@ -1076,10 +1113,12 @@
     private List<EditImputForm> editImputaciones = new();
     private bool editACuentaActivo;
     private decimal editACuentaImporte;
+    // 2026-08-18: retenciones editables desde este modal (arranca con las que tiene la cobranza)
+    private decimal editRetenciones;
     private bool editCargando, editGuardando;
     private string? editError;
 
-    private decimal EditTotalObjetivo => editandoCobranza is null ? 0m : editandoCobranza.Total + editandoCobranza.Retenciones;
+    private decimal EditTotalObjetivo => editandoCobranza is null ? 0m : editandoCobranza.Total + editRetenciones;
     private decimal EditSumaActual
     {
         get
@@ -1100,6 +1139,7 @@
         editImputaciones = new();
         editACuentaActivo = false;
         editACuentaImporte = 0m;
+        editRetenciones = c.Retenciones;
         editError = null;
         editCargando = true;
 
@@ -1120,6 +1160,7 @@
             var det = await Api.GetCafeCobranzaAsync(c.Id);
             if (det is null) { ToastService.Error("No se pudo cargar la cobranza"); CerrarEditarImputaciones(); return; }
             editandoCobranza = det;
+            editRetenciones = det.Retenciones;
 
             // Imputaciones actuales: dividimos en (con venta) y (a cuenta)
             var impConVenta = det.Comprobantes.Where(cc => cc.VentaId.HasValue).ToList();
@@ -1189,6 +1230,7 @@
         editandoCobranza = null;
         editComprobantes = null;
         editImputaciones = new();
+        editRetenciones = 0m;
         editACuentaActivo = false;
         editACuentaImporte = 0m;
         editError = null;
@@ -1211,6 +1253,14 @@
         if (idx < 0 || idx >= editImputaciones.Count) return;
         if (decimal.TryParse(raw, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v) && v >= 0)
             editImputaciones[idx].Importe = Math.Round(v, 2);
+    }
+
+    /// <summary>2026-08-18: cambia el monto de retenciones de la cobranza que se esta editando.</summary>
+    private void OnEditRetenciones(string? raw)
+    {
+        if (decimal.TryParse(raw, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v) && v >= 0)
+            editRetenciones = Math.Round(v, 2);
+        else editRetenciones = 0m;
     }
 
     private void OnEditACuenta(string? raw)
@@ -1244,7 +1294,7 @@
         editGuardando = true;
         try
         {
-            var (ok, error) = await Api.EditarImputacionesCafeCobranzaAsync(editandoCobranza.Id, nuevas);
+            var (ok, error) = await Api.EditarImputacionesCafeCobranzaAsync(editandoCobranza.Id, nuevas, editRetenciones);
             if (ok)
             {
                 ToastService.Success("Imputaciones actualizadas");

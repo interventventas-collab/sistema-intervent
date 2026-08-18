@@ -471,8 +471,13 @@ public class CafeCobranzasController : ControllerBase
 
         // 2026-06-16: si la suma de comprobantes da 0 (caso tipico: FA + NC que se compensan),
         // permitimos guardar sin forma de cobro porque no entra plata a caja, solo se imputan los comprobantes entre si.
-        if (Math.Abs(sumComprobantes) > 0.01m && (req.Medios == null || req.Medios.Count == 0))
-            return BadRequest(new { error = "Hay que especificar al menos una forma de cobro" });
+        // 2026-08-18: mismo criterio cuando lo imputado se cubre ENTERO con retenciones (cobranza de solo retencion).
+        // Caso real: el pago entro por un cheque y el faltante de la factura eran retenciones; se carga aparte,
+        // no entra plata a ninguna caja pero cancela saldo del cliente. Antes esto se rechazaba pidiendo medio de pago.
+        if (Math.Abs(sumComprobantes) > 0.01m
+            && Math.Abs(sumComprobantes - retenciones) > 0.01m
+            && (req.Medios == null || req.Medios.Count == 0))
+            return BadRequest(new { error = "Hay que especificar al menos una forma de cobro (o cubrir todo con retenciones)" });
 
         // Regla: la suma de los medios + retenciones tiene que igualar el total imputado en comprobantes
         if (Math.Abs(sumComprobantes - (sumMedios + retenciones)) > 0.01m)
@@ -515,7 +520,8 @@ public class CafeCobranzasController : ControllerBase
             });
         }
 
-        foreach (var med in req.Medios)
+        // 2026-08-18: puede venir null/vacio (cobranza de solo retencion o compensacion FA+NC).
+        foreach (var med in req.Medios ?? new())
         {
             var caja = await _db.CafeCajas.FindAsync(med.CajaId);
             if (caja is null)
@@ -671,12 +677,18 @@ public class CafeCobranzasController : ControllerBase
         return Ok(new { ok = true });
     }
 
-    public record EditarImputacionesRequest(List<CrearComprobanteItem> Comprobantes);
+    // 2026-08-18: Retenciones opcional. Si viene, se corrige el monto de retenciones de la cobranza
+    // (null = dejar el que tenia). Sirve para el caso "el pago entro por cheque y el faltante era retencion".
+    public record EditarImputacionesRequest(List<CrearComprobanteItem> Comprobantes, decimal? Retenciones = null);
 
     /// <summary>
     /// Re-imputa una cobranza VIGENTE: borra todas las filas de Cafe_CobranzasComprobantes
     /// y las re-crea con los nuevos importes. NO toca medios de cobro, cheques, cliente ni total.
-    /// La suma de los nuevos importes debe igualar c.Total + c.Retenciones (lo mismo que valida el Crear).
+    /// La suma de los nuevos importes debe igualar c.Total + retenciones (lo mismo que valida el Crear).
+    /// 2026-08-18: ademas permite corregir el monto de RETENCIONES de la cobranza (req.Retenciones).
+    /// No mueve plata: el total cobrado en cajas (c.Total) queda intacto, solo cambia cuanto saldo del
+    /// cliente cancela la cobranza. Caso de uso: la cobranza nacio de un e-cheq y despues se supo que
+    /// el faltante de la factura eran retenciones.
     /// Sincroniza IsPaid de las ventas afectadas (las viejas y las nuevas).
     /// Caso de uso: corregir una imputacion mal hecha (ej. monto que quedo "a cuenta" cuando debio
     /// ir a una factura, o viceversa) sin tener que anular y rehacer todo.
@@ -693,8 +705,14 @@ public class CafeCobranzasController : ControllerBase
         if (req.Comprobantes == null || req.Comprobantes.Count == 0)
             return BadRequest(new { error = "Tiene que haber al menos una imputacion" });
 
+        // 2026-08-18: si vino Retenciones, ese es el nuevo valor; si no, se mantiene el actual.
+        var retencionesViejas = c.Retenciones;
+        var retencionesNuevas = req.Retenciones.HasValue ? Math.Round(req.Retenciones.Value, 2) : retencionesViejas;
+        if (retencionesNuevas < 0)
+            return BadRequest(new { error = "Las retenciones no pueden ser negativas" });
+
         var sumNuevo = req.Comprobantes.Sum(x => x.Importe);
-        var esperado = c.Total + c.Retenciones;
+        var esperado = c.Total + retencionesNuevas;
         if (Math.Abs(sumNuevo - esperado) > 0.01m)
             return BadRequest(new { error = $"No cuadra: imputado ${sumNuevo:N2} vs total+retenciones ${esperado:N2}" });
 
@@ -734,13 +752,17 @@ public class CafeCobranzasController : ControllerBase
                 Importe = comp.Importe
             });
         }
+        c.Retenciones = retencionesNuevas;
         c.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
         await SincronizarIsPaidAsync(todasLasVentas);
 
+        var detalleRet = retencionesNuevas != retencionesViejas
+            ? $", retenciones ${retencionesViejas:N2} -> ${retencionesNuevas:N2}"
+            : "";
         await _audit.LogAsync("CafeCobranza", id.ToString(), "EDIT_IMPUTACIONES",
-            $"Cobranza {c.Numero}: re-imputada en {req.Comprobantes.Count} items, suma ${sumNuevo:N2}");
+            $"Cobranza {c.Numero}: re-imputada en {req.Comprobantes.Count} items, suma ${sumNuevo:N2}{detalleRet}");
         return Ok(new { ok = true });
     }
 

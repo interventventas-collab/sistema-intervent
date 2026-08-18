@@ -5493,10 +5493,12 @@ public class ApiClient
 
     /// <summary>Re-imputa una cobranza VIGENTE: reemplaza la lista de comprobantes (VentaId + Importe)
     /// manteniendo el mismo total. NO toca medios de cobro ni cheques. Devuelve (ok, error).</summary>
-    public async Task<(bool ok, string? error)> EditarImputacionesCafeCobranzaAsync(int id, List<CrearComprobanteItemRequest> comprobantes)
+    /// <summary>Re-imputa una cobranza vigente. 2026-08-18: retenciones opcional — si viene, corrige
+    /// el monto de retenciones de la cobranza (no mueve plata de cajas).</summary>
+    public async Task<(bool ok, string? error)> EditarImputacionesCafeCobranzaAsync(int id, List<CrearComprobanteItemRequest> comprobantes, decimal? retenciones = null)
     {
         await SetAuthHeaderAsync();
-        var resp = await _http.PutAsJsonAsync($"/api/cafe/cobranzas/{id}/imputaciones", new { comprobantes });
+        var resp = await _http.PutAsJsonAsync($"/api/cafe/cobranzas/{id}/imputaciones", new { comprobantes, retenciones });
         if (resp.IsSuccessStatusCode) return (true, null);
         var body = await resp.Content.ReadAsStringAsync();
         try
