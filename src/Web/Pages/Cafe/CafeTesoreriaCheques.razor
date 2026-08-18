@@ -182,9 +182,9 @@
                                             <td><strong>@comp.Numero</strong> <span style="color:#6b7280; font-size:0.78rem;">@comp.Fecha.ToString("dd/MM/yyyy")</span></td>
                                             <td style="text-align:right;">$@comp.Saldo.ToString("N2")</td>
                                             <td style="text-align:right;">
-                                                @* InvariantCulture en el value: en es-AR el type=number trunca el monto al perder foco *@
-                                                <input class="form-input" type="number" step="0.01" min="0" style="text-align:right; padding:0.2rem 0.4rem; font-size:0.85rem;"
-                                                       value="@sel.Importe.ToString(System.Globalization.CultureInfo.InvariantCulture)" disabled="@(!sel.Tildado)"
+                                                @* 2026-08-18: texto formateado ("386.370,00") para que se lea igual que el saldo de al lado *@
+                                                <input class="form-input" type="text" inputmode="decimal" style="text-align:right; padding:0.2rem 0.4rem; font-size:0.85rem;"
+                                                       value="@MontoInput.Formato(sel.Importe)" disabled="@(!sel.Tildado)"
                                                        @onchange="@(e => OnImporteComprobanteCobranza(idx, e.Value?.ToString()))" />
                                             </td>
                                         </tr>
@@ -196,6 +196,21 @@
                     else
                     {
                         <p style="font-size:0.82rem; color:#6b7280;">Este cliente no tiene comprobantes con saldo. Se va a registrar como "a cuenta".</p>
+                    }
+                    @* 2026-08-18: cuanto le falta a las facturas tildadas para quedar saldadas con este cheque *@
+                    @if (CobFaltaCubrir > 0.01m)
+                    {
+                        <div style="padding:0.6rem 0.8rem; background:#fdf4ff; border:1px solid #f0abfc; border-radius:6px; margin-bottom:0.6rem;">
+                            <div style="font-size:0.85rem;">
+                                Las facturas tildadas suman <strong>$@CobSaldoTildado.ToString("N2")</strong> y el cheque es de
+                                <strong>$@cobChe.Importe.ToString("N2")</strong>: quedan
+                                <strong style="color:#a21caf;">$@CobFaltaCubrir.ToString("N2")</strong> sin cubrir.
+                            </div>
+                            <button type="button" class="btn btn-secondary" style="font-size:0.78rem; padding:0.25rem 0.6rem; margin-top:0.4rem;"
+                                    @onclick="PonerFaltanteComoRetencionCobranza">
+                                Poner $@CobFaltaCubrir.ToString("N2") como retención y saldar las facturas
+                            </button>
+                        </div>
                     }
                     <div class="form-row">
                         <div class="form-group" style="flex:1;">
@@ -448,8 +463,26 @@
     private void OnImporteComprobanteCobranza(int idx, string? raw)
     {
         if (idx < 0 || idx >= cobSeleccion.Count) return;
-        if (decimal.TryParse(raw, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v) && v >= 0)
+        if (MontoInput.TryParse(raw, out var v) && v >= 0)
             cobSeleccion[idx].Importe = Math.Round(v, 2);
+    }
+
+    /// <summary>Suma de los saldos de las facturas tildadas.</summary>
+    private decimal CobSaldoTildado => cobComprobantes is null ? 0m
+        : cobSeleccion.Select((s, i) => s.Tildado ? cobComprobantes[i].Saldo : 0m).Sum();
+
+    /// <summary>Lo que le falta al cheque (+ retenciones ya cargadas) para saldar las facturas tildadas.</summary>
+    private decimal CobFaltaCubrir => Math.Round(CobSaldoTildado - ((cobChe?.Importe ?? 0m) + cobRetenciones), 2);
+
+    /// <summary>Sube cada factura tildada a su saldo total y pone la diferencia como retención.</summary>
+    private void PonerFaltanteComoRetencionCobranza()
+    {
+        if (cobComprobantes is null) return;
+        var falta = CobFaltaCubrir;
+        if (falta <= 0.01m) return;
+        cobRetenciones = Math.Round(cobRetenciones + falta, 2);
+        for (int i = 0; i < cobSeleccion.Count; i++)
+            if (cobSeleccion[i].Tildado) cobSeleccion[i].Importe = cobComprobantes[i].Saldo;
     }
 
     private async Task ConfirmarCobranza()
