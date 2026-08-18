@@ -2413,6 +2413,16 @@
     .wa-msg-row.in .wa-msg-check { order: -1; }
     .wa-msg-row.out .wa-msg-check { order: 99; margin-right: 0; margin-left: 0.4rem; }
     .wa-selection-bar { background: #d1fae5; border-top: 2px solid #25d366; padding: 0.5rem 1rem; display: flex; gap: 0.5rem; align-items: center; }
+    /* 2026-08-17: los nombres btn-success / btn-primary vienen de Bootstrap, pero el sistema
+       NO los tiene definidos: el navegador les pone su gris con LETRA NEGRA. En la barra clara
+       casi no se notaba; sobre el fondo oscuro el botón "Abrir venta" quedaba negro sobre negro.
+       Acá les damos color propio, solo dentro de la pantalla de WhatsApp. */
+    .wa-outer .btn-success { background: #25d366; color: #fff; }
+    .wa-outer .btn-success:hover:not(:disabled) { background: #12b859; color: #fff; }
+    .wa-outer .btn-primary { background: #2563eb; color: #fff; }
+    .wa-outer .btn-primary:hover:not(:disabled) { background: #1d4ed8; color: #fff; }
+    .wa-outer .btn-outline-secondary { background: #fff; border: 1px solid #d7dce3; color: #475569; }
+    .wa-outer .btn-outline-secondary:hover:not(:disabled) { background: #f1f5f9; color: #1f2937; }
     /* 2026-08-03: ventana flotante y arrastrable del preview del pedido */
     .wa-float { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 460px; max-width: 94vw; background: #fff; border-radius: 10px; z-index: 2100; display: flex; flex-direction: column; box-shadow: 0 12px 40px rgba(0,0,0,0.35); border: 1px solid #d1d5db; }
     .wa-float-head { background: #075e54; color: #fff; padding: 0.6rem 0.9rem; border-radius: 10px 10px 0 0; display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; font-weight: 600; user-select: none; touch-action: none; }

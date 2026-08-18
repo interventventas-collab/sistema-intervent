@@ -337,3 +337,68 @@
 .wa-dark .form-control::placeholder { color: var(--wad-txt3); }
 .wa-dark .form-control:focus, .wa-dark .form-select:focus { background: var(--wad-panel3); color: var(--wad-txt); border-color: var(--wad-verde); box-shadow: 0 0 0 3px rgba(0,168,132,0.2); }
 .wa-dark .text-muted { color: var(--wad-txt3) !important; }
+
+/* ==========================================================================
+   2026-08-17 — REPASO DE MODO OSCURO (pedido de Osmar: "el botón Abrir venta
+   está en negro y no se ve").
+   Dos problemas distintos, encontrados midiendo el contraste de CADA elemento
+   de la pantalla con el navegador automático:
+
+   1) Los BOTONES no heredan el color del texto: el navegador les pone letra
+      NEGRA aunque el fondo sea oscuro. Por eso "Abrir venta" desaparecía.
+   2) Algunas cajas quedaron con fondo CLARO adentro de la parte oscura. Ahí
+      el texto sí hereda el color claro → letra clara sobre fondo claro, o sea
+      invisible (el menú de categorías, el panel de saldos, reenviar, etc.).
+   ========================================================================== */
+
+/* --- 1) Botones con nombre de Bootstrap --- */
+.wa-dark .btn-success { background: #0b3d2e; border: 1px solid #14543f; color: #6ee7b7; }
+.wa-dark .btn-success:hover:not(:disabled) { background: #14543f; color: #6ee7b7; }
+.wa-dark .btn-primary { background: #1d4ed8; border: 1px solid #1d4ed8; color: #fff; }
+.wa-dark .btn-primary:hover:not(:disabled) { background: #1e40af; color: #fff; }
+.wa-dark .btn-outline-secondary { background: var(--wad-panel3); }
+.wa-dark .btn-danger, .wa-dark .btn-outline-danger { background: var(--wad-panel3); border: 1px solid #7f1d1d; color: #fca5a5; }
+/* El botón verde de ENVIAR ya trae su propio degradé con letra blanca: no se toca. */
+
+/* --- 2) Cajas que quedaban claras adentro de lo oscuro --- */
+/* Menú de categoría del contacto (🏷️) */
+.wa-dark .wa-rolmenu { background: var(--wad-panel2); border-color: var(--wad-borde); color: var(--wad-txt); }
+.wa-dark .wa-rolmenu-title { color: var(--wad-txt2); border-bottom-color: var(--wad-borde); }
+.wa-dark .wa-rolmenu-op { background: var(--wad-panel3); color: var(--wad-txt); }
+.wa-dark .wa-rolmenu-op:hover { background: #3b4a54; }
+.wa-dark .wa-rolmenu-cancel { background: var(--wad-panel3); border-color: var(--wad-borde2); color: var(--wad-txt2); }
+/* Reenviar mensajes */
+.wa-dark .wa-fwd-modal { background: var(--wad-panel2); color: var(--wad-txt); }
+.wa-dark .wa-fwd-chip, .wa-dark .wa-fwd-badge { background: #0b3d2e; border-color: #14543f; color: #6ee7b7; }
+/* Enviar saldo de un cliente (💰) y pasar CBU (🏦) */
+.wa-dark .wa-saldo-panel { background: var(--wad-panel2); border-color: var(--wad-borde); color: var(--wad-txt); }
+.wa-dark .wa-saldo-cli { background: var(--wad-panel3); border-color: var(--wad-borde2); color: var(--wad-txt); }
+.wa-dark .wa-saldo-cli:hover { background: #3b4a54; }
+.wa-dark .wa-cbu-solo-alias { background: var(--wad-panel3); border-color: var(--wad-borde2); }
+/* Ficha del cliente: vista previa de la factura */
+.wa-dark .wa-ficha-preview { background: var(--wad-panel2); color: var(--wad-txt); }
+.wa-dark .wa-ficha-preview-head { background: var(--wad-panel3); color: var(--wad-txt); }
+.wa-dark .wa-ficha-preview-frame { background: var(--wad-panel); }
+.wa-dark .wa-ficha-cod { background: #0b3d2e; color: #6ee7b7; }
+.wa-dark .wa-ficha-chip { background: var(--wad-panel3); color: var(--wad-txt2); }
+.wa-dark .wa-ficha-fac-estado { background: #0b3d2e; color: #6ee7b7; }
+/* Adjuntos esperando ser enviados */
+.wa-dark .wa-pending-ico { background: var(--wad-panel3); color: var(--wad-txt); }
+.wa-dark .wa-pending-x { background: #450a0a; color: #fca5a5; }
+/* Micrófono (nota de voz) */
+.wa-dark .wa-mic-btn:hover { background: #450a0a; border-color: #b91c1c; }
+.wa-dark .wa-mic-rec { background: #450a0a; border-color: #b91c1c; }
+/* Instagram: cartel de "pasaron más de 24 hs" */
+.wa-dark .wa-plantilla-chat-ig { background: #2d1b2e; border-color: #4a2b4a; }
+/* Chips de la lista de conversaciones y avisos */
+.wa-dark .wa-pedido-chip { background: #3b2f0b; color: #fcd34d; }
+.wa-dark .wa-asignado-chip { background: var(--wad-panel3); color: var(--wad-txt2); }
+.wa-dark .wa-presencia-alerta { background: #3b2f0b; border-color: #78500a; color: #fcd34d; }
+/* Nueva conversación */
+.wa-dark .wa-nv-btn-ghost { background: var(--wad-panel3); border-color: var(--wad-borde2); color: var(--wad-txt); }
+.wa-dark .wa-nv-origen { background: var(--wad-panel3); border-color: var(--wad-borde2); color: var(--wad-txt2); }
+/* Textos grises/rojos que quedaban muy apagados sobre esos paneles ya oscurecidos */
+.wa-dark .wa-fwd-sub, .wa-dark .wa-saldo-info { color: var(--wad-txt2); }
+.wa-dark .wa-fwd-x, .wa-dark .wa-saldo-x { color: var(--wad-txt2); }
+.wa-dark .wa-mic-rec-label { color: #fca5a5; }
+.wa-dark .wa-plantilla-chat-empty { color: #fca5a5; }
