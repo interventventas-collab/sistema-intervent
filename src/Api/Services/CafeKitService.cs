@@ -91,6 +91,11 @@ public class CafeKitService
                 $"Stock insuficiente para el kit {kit.Sku}: disponible {stockDisponible}, se intentan vender {unidadesVendidas}.");
 
         // Descontar componente a componente, en una transaccion.
+        // 2026-08-18: envuelta en la execution strategy de EF. Con EnableRetryOnFailure activo
+        // (15/08), abrir una transaccion a mano sin esto tira InvalidOperationException.
+        var strategy = _db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
+        {
         using var tx = await _db.Database.BeginTransactionAsync();
         var movimientos = new List<(int, string?, decimal, int, int)>();
         try
@@ -120,5 +125,6 @@ public class CafeKitService
             await tx.RollbackAsync();
             throw;
         }
+        });
     }
 }

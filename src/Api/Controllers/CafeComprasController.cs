@@ -166,6 +166,11 @@ public class CafeComprasController : ControllerBase
         if (c.Items.Count == 0)
             return BadRequest(new { error = "La compra no tiene items" });
 
+        // 2026-08-18: con EnableRetryOnFailure activo (15/08), EF prohibe transacciones a mano
+        // fuera de su execution strategy. Sin esto, confirmar una compra tiraba InvalidOperationException.
+        var strategy = _db.Database.CreateExecutionStrategy();
+        var errorTx = await strategy.ExecuteAsync<IActionResult?>(async () =>
+        {
         using var tx = await _db.Database.BeginTransactionAsync();
         try
         {
@@ -197,12 +202,15 @@ public class CafeComprasController : ControllerBase
             c.UpdatedAt = ahora;
             await _db.SaveChangesAsync();
             await tx.CommitAsync();
+            return null;
         }
         catch (Exception ex)
         {
             await tx.RollbackAsync();
             return StatusCode(500, new { error = "Error al confirmar: " + ex.Message });
         }
+        });
+        if (errorTx is not null) return errorTx;
         return Ok(Map(await ReloadAsync(c.Id)));
     }
 
@@ -233,6 +241,11 @@ public class CafeComprasController : ControllerBase
         if (c.Estado != EST_CONFIRMADA && c.Estado != EST_PAGADA)
             return BadRequest(new { error = $"Solo se puede anular una compra CONFIRMADA o PAGADA (esta es {c.Estado})." });
 
+        // 2026-08-18: con EnableRetryOnFailure activo (15/08), EF prohibe transacciones a mano
+        // fuera de su execution strategy. Sin esto, anular una compra tiraba InvalidOperationException.
+        var strategy = _db.Database.CreateExecutionStrategy();
+        var errorTx = await strategy.ExecuteAsync<IActionResult?>(async () =>
+        {
         using var tx = await _db.Database.BeginTransactionAsync();
         try
         {
@@ -257,12 +270,15 @@ public class CafeComprasController : ControllerBase
             c.UpdatedAt = ahora;
             await _db.SaveChangesAsync();
             await tx.CommitAsync();
+            return null;
         }
         catch (Exception ex)
         {
             await tx.RollbackAsync();
             return StatusCode(500, new { error = "Error al anular: " + ex.Message });
         }
+        });
+        if (errorTx is not null) return errorTx;
         return Ok(Map(await ReloadAsync(c.Id)));
     }
 

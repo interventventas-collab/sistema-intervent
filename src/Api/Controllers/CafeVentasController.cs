@@ -2776,6 +2776,13 @@ public class CafeVentasController : ControllerBase
             if (req.Items.Count == 0)
                 return BadRequest(new { error = "La venta debe tener al menos un item" });
 
+            // 2026-08-18: la conexion a SQL tiene reintentos automaticos (EnableRetryOnFailure, puesto
+            // el 15/08 para que la API no se cayera si la base tardaba en arrancar). Con esa opcion, EF
+            // PROHIBE abrir transacciones a mano si no se envuelven en su "execution strategy": tiraba
+            // InvalidOperationException y editar un comprobante quedaba colgado en "Guardando".
+            var strategy = _db.Database.CreateExecutionStrategy();
+            var errorEdicion = await strategy.ExecuteAsync<IActionResult?>(async () =>
+            {
             using var tx = await _db.Database.BeginTransactionAsync();
             try
             {
@@ -2921,12 +2928,15 @@ public class CafeVentasController : ControllerBase
                 await _db.SaveChangesAsync();
                 await tx.CommitAsync();
                 FireAndForgetPushMeli(productosUpdate.ToList());
+                return null;   // sin error
             }
             catch
             {
                 await tx.RollbackAsync();
                 throw;
             }
+            });
+            if (errorEdicion is not null) return errorEdicion;
         }
         else if (req.Descuento.HasValue)
         {

@@ -285,13 +285,16 @@ public class CafeExtractoBancoController : ControllerBase
     [HttpGet("descartados/{clienteId:int}")]
     public async Task<IActionResult> ListarDescartados(int clienteId)
     {
+        // 2026-08-18: ordenar DESPUES de proyectar al record hacia que SQL Server no pudiera
+        // traducir la consulta y el endpoint tirara 500 ("Ver descartados" del modal de cobranzas).
+        // Se proyecta a un tipo anonimo, se ordena en la base, y recien ahi se arma el DTO.
         var rows = await _db.CafeExtractoMovDescartadosPorCliente
             .Where(d => d.ClienteId == clienteId)
             .Join(_db.CafeExtractoMovimientos, d => d.MovimientoId, m => m.Id,
-                (d, m) => new DescartadoDto(m.Id, m.Fecha, m.Descripcion, m.Creditos, d.DescartadoAt, d.DescartadoPor))
-            .OrderByDescending(d => d.DescartadoAt)
+                (d, m) => new { m.Id, m.Fecha, m.Descripcion, m.Creditos, d.DescartadoAt, d.DescartadoPor })
+            .OrderByDescending(x => x.DescartadoAt)
             .ToListAsync();
-        return Ok(rows);
+        return Ok(rows.Select(x => new DescartadoDto(x.Id, x.Fecha, x.Descripcion, x.Creditos, x.DescartadoAt, x.DescartadoPor)).ToList());
     }
 
     [HttpPost("{id:int}/asociar")]
