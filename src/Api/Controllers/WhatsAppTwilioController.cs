@@ -28,8 +28,12 @@ public class WhatsAppTwilioController : ControllerBase
     // 2026-08-06: aviso de venta a internos (resumen con botones al emitir).
     private readonly VentaAvisoWhatsAppService _avisoSvc;
 
-    public WhatsAppTwilioController(AppDbContext db, ILogger<WhatsAppTwilioController> logger, WhatsAppOutboundService outbound, CafeReciboCobranzaPdfService cobranzaPdfService, CafeVentasController ventasController, MetaWhatsAppService meta, CafeListasCustomController listasCustomController, AlqReservasController alqReservasController, VisitasController visitasController, VentaAvisoWhatsAppService avisoSvc)
+    // 2026-08-18: avisa en vivo a las pantallas abiertas (para que el celu no sondee cada 12 s).
+    private readonly WaLiveNotifier _waLive;
+
+    public WhatsAppTwilioController(AppDbContext db, ILogger<WhatsAppTwilioController> logger, WhatsAppOutboundService outbound, CafeReciboCobranzaPdfService cobranzaPdfService, CafeVentasController ventasController, MetaWhatsAppService meta, CafeListasCustomController listasCustomController, AlqReservasController alqReservasController, VisitasController visitasController, VentaAvisoWhatsAppService avisoSvc, WaLiveNotifier waLive)
     {
+        _waLive = waLive;
         _db = db;
         _logger = logger;
         _outbound = outbound;
@@ -288,6 +292,8 @@ public class WhatsAppTwilioController : ControllerBase
             };
             _db.WhatsAppTwilioMensajes.Add(msg);
             await _db.SaveChangesAsync();
+            // 2026-08-18: aviso en vivo para que aparezca al instante en las otras pantallas.
+            await _waLive.AvisarAsync(req.Numero, lin, "OUTGOING");
             return Ok(new { ok = true, sid, id = msg.Id });
         }
         catch (Exception ex)
@@ -1595,6 +1601,8 @@ public class WhatsAppTwilioController : ControllerBase
             };
             _db.WhatsAppTwilioMensajes.Add(msg);
             await _db.SaveChangesAsync();
+            // 2026-08-18: aviso en vivo para que aparezca al instante en las otras pantallas.
+            await _waLive.AvisarAsync(req.Numero, lin, "OUTGOING");
             return Ok(new { ok = true, sid, id = msg.Id });
         }
         catch (Exception ex)

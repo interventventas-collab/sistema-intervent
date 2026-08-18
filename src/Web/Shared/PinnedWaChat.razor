@@ -10,6 +10,7 @@
 @inject Web.Services.OperatorService Op
 @inject Microsoft.JSInterop.IJSRuntime JS
 @inject Web.Services.WaAparienciaService Apariencia
+@inject Web.Services.PresenceService Vivo
 @implements IDisposable
 
 @* 2026-08-15: se pinta según el tema de SU línea (oscuro/claro) + la letra elegida. *@
@@ -210,8 +211,10 @@
                 <InputFile OnChange="OnAdjuntar" accept="image/*" capture="environment" disabled="@(sending || enviandoAudio || subiendo)" style="display:none;" />
                 📷
             </label>
-            <textarea class="pwa-input" placeholder="Escribir mensaje… (Enter para enviar)"
-                      @bind="composer" @bind:event="oninput" @onkeydown="OnKey" rows="1" disabled="@(sending || enviandoAudio || subiendo)"></textarea>
+            @* 2026-08-18: value + @oninput propio (en vez de @bind con oninput) para NO redibujar los
+               200 mensajes en cada tecla — en el celu eso se sentia como teclado trabado. Ver ShouldRender. *@
+            <textarea class="pwa-input" placeholder="@(Movil ? "Escribir mensaje…" : "Escribir mensaje… (Enter para enviar)")"
+                      value="@composer" @oninput="OnComposerInput" @onkeydown="OnKey" rows="1" disabled="@(sending || enviandoAudio || subiendo)"></textarea>
             @if (string.IsNullOrWhiteSpace(composer))
             {
                 @* Sin texto: botón de micrófono para nota de voz (como WhatsApp) *@
@@ -729,14 +732,29 @@
         await Apariencia.EnsureLoadedAsync();
         Apariencia.OnChange += AparienciaCambio;
         await Cargar();
-        // Refresco liviano cada 12s para ver mensajes nuevos sin recargar la página.
+        // 2026-08-18: EN VIVO. El servidor avisa apenas entra o sale un mensaje de ESTA conversación
+        // y recargamos al toque. Antes se preguntaba cada 12 s trayendo hasta 200 mensajes: en el celu
+        // se sentía lento y comía datos. El timer queda como red (45 s) por si se corta la conexión.
+        try
+        {
+            await Vivo.EnsureStartedAsync();
+            Vivo.OnNuevoMensaje += AvisoEnVivo;
+        }
+        catch { }
         refreshTimer = new System.Threading.Timer(async _ =>
         {
             await InvokeAsync(async () =>
             {
                 if (!sending) { await Cargar(); StateHasChanged(); }
             });
-        }, null, 12_000, 12_000);
+        }, null, 45_000, 45_000);
+    }
+
+    /// <summary>2026-08-18: el servidor avisó de un mensaje. Si es de esta conversación, recargar ya.</summary>
+    private void AvisoEnVivo(string convId, string direccion, DateTime at)
+    {
+        if (convId != $"{Numero}|{LineaPhoneId}") return;
+        _ = InvokeAsync(async () => { if (!sending) { await Cargar(); StateHasChanged(); } });
     }
 
     private async Task Cargar()
@@ -758,6 +776,27 @@
                 try { plantillasWa = await Api.GetTwPlantillasAsync(); } catch { plantillasWa = new(); }
         }
         catch { mensajes ??= new(); }
+    }
+
+    // ═══ 2026-08-18: escribir no tiene que redibujar la conversacion entera ═══
+    // Cada tecla disparaba un render de los hasta 200 mensajes (con sus imagenes y audios).
+    // Ahora solo se redibuja cuando hace falta: cuando el cuadro pasa de vacio a con texto
+    // (o al reves), que es cuando el boton cambia entre 🎤 y "Enviar".
+    private bool saltarRender;
+
+    protected override bool ShouldRender()
+    {
+        if (saltarRender) { saltarRender = false; return false; }
+        return true;
+    }
+
+    private void OnComposerInput(Microsoft.AspNetCore.Components.ChangeEventArgs e)
+    {
+        var nuevo = e.Value?.ToString() ?? "";
+        var estabaVacio = string.IsNullOrWhiteSpace(composer);
+        var quedaVacio = string.IsNullOrWhiteSpace(nuevo);
+        composer = nuevo;
+        saltarRender = estabaVacio == quedaVacio;
     }
 
     private async Task OnKey(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
@@ -792,16 +831,32 @@
         }
         sending = true;
         var replyId = respondiendoA?.Id;   // 2026-08-12: si estás respondiendo citando, va el id del mensaje citado
+
+        // 2026-08-18: la burbuja aparece AL INSTANTE con el relojito, como WhatsApp, en vez de
+        // esperar la respuesta del servidor mirando la pantalla quieta. Si sale bien, la recarga
+        // la reemplaza por la de verdad; si falla, se saca y queda el texto para reintentar.
+        var provisorio = new ApiClient.TwMsgDto(
+            Id: -1, Direccion: "OUTGOING", Numero: Numero, NombrePerfil: null,
+            Cuerpo: texto, MediaUrl: null, MediaFilename: null, NumMedia: 0,
+            Procesado: false, RespuestaEnviada: null, CreatedAt: DateTime.UtcNow,
+            EstadoEntrega: "pendiente", Reacciones: null);
+        var textoOriginal = composer ?? "";
+        mensajes ??= new();
+        mensajes.Add(provisorio);   // la lista viene de más viejo a más nuevo
+        composer = "";
+        StateHasChanged();
+
         var (ok, err) = await Api.SendTwMensajeAsync(Numero, texto, LineaPhoneId, replyId);
         sending = false;
         if (ok)
         {
-            composer = "";
             respondiendoA = null;   // se limpió la cita solo si salió bien (si falló, no perdés a quién le respondías)
             await Cargar();
         }
         else
         {
+            mensajes.Remove(provisorio);
+            composer = textoOriginal;   // no perder lo escrito
             Toast.Error(err ?? "No se pudo enviar el mensaje");
         }
     }
@@ -1102,9 +1157,9 @@
         => string.IsNullOrWhiteSpace(TituloContacto) ? "?" : TituloContacto.Trim()[..1].ToUpperInvariant();
 
     // 2026-08-18: mismos tildes que la pantalla grande de WhatsApp.
-    private static string TildeTexto(string? e) => e switch { "read" => "✓✓", "delivered" => "✓✓", "sent" => "✓", "failed" => "⚠", _ => "✓" };
+    private static string TildeTexto(string? e) => e switch { "read" => "✓✓", "delivered" => "✓✓", "sent" => "✓", "failed" => "⚠", "pendiente" => "🕐", _ => "✓" };
     private static string TildeCss(string? e) => e == "read" ? "pwa-tilde pwa-tilde-read" : e == "failed" ? "pwa-tilde pwa-tilde-fail" : "pwa-tilde";
-    private static string TildeTitulo(string? e) => e switch { "read" => "Leído", "delivered" => "Entregado", "sent" => "Enviado", "failed" => "No se pudo entregar", _ => "Enviando…" };
+    private static string TildeTitulo(string? e) => e switch { "read" => "Leído", "delivered" => "Entregado", "sent" => "Enviado", "failed" => "No se pudo entregar", "pendiente" => "Enviando…", _ => "Enviando…" };
 
     private static string FormatHora(DateTime utc)
     {
@@ -1121,5 +1176,6 @@
     {
         Apariencia.OnChange -= AparienciaCambio;
         refreshTimer?.Dispose();
+        try { Vivo.OnNuevoMensaje -= AvisoEnVivo; } catch { }
     }
 }

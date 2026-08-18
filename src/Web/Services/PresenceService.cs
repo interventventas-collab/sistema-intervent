@@ -31,6 +31,10 @@ public class PresenceService : IAsyncDisposable
     public event Action<string, List<Viewer>>? OnPresence;
     /// <summary>(convId, userId, userName, cuándo UTC). Otro agente acaba de enviar un mensaje.</summary>
     public event Action<string, int, string, DateTime>? OnMessageSent;
+    /// <summary>2026-08-18: (convId, direccion, cuándo UTC). Entró o salió un mensaje DE VERDAD — lo
+    /// avisa el servidor (webhook de Meta / endpoint de envío). Sirve para refrescar al instante en
+    /// vez de preguntar cada 12–15 s, que es lo que hacía sentir lento al celular.</summary>
+    public event Action<string, string, DateTime>? OnNuevoMensaje;
 
     public async Task EnsureStartedAsync()
     {
@@ -43,6 +47,8 @@ public class PresenceService : IAsyncDisposable
         _hub.On<string, List<Viewer>>("Presence", (convId, viewers) => OnPresence?.Invoke(convId, viewers));
         _hub.On<string, int, string, DateTime>("MessageSent",
             (convId, uid, uname, at) => OnMessageSent?.Invoke(convId, uid, uname, at));
+        _hub.On<string, string, DateTime>("WaNuevoMensaje",
+            (convId, direccion, at) => OnNuevoMensaje?.Invoke(convId, direccion, at));
 
         try { await _hub.StartAsync(); }
         catch { /* best-effort: sin presencia, la pantalla anda igual */ }

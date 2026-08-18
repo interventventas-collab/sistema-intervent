@@ -12,6 +12,10 @@ namespace Api.Hubs;
 /// Eventos que emite al cliente:
 ///  - "Presence"    (convId, viewers[])   → lista {userId, userName, isTyping} de esa conv.
 ///  - "MessageSent" (convId, userId, userName, atUtc) → otro agente acaba de enviar (cierre de carrera).
+///  - "WaNuevoMensaje" (convId, direccion, atUtc) → 2026-08-18: entro o salio un mensaje de verdad.
+///    Lo emite el SERVIDOR (webhook de Meta al recibir, y el endpoint de envio al mandar) al grupo
+///    global, para que las pantallas se actualicen EN EL MOMENTO en vez de preguntar cada 12-15 s.
+///    El celular usaba ese sondeo y por eso se sentia lento y comia datos.
 ///
 /// Alcance ACOTADO: NO toca envío de mensajes, ni asignación, ni estados.
 /// </summary>

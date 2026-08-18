@@ -30,12 +30,16 @@ public class MetaWhatsAppWebhookController : ControllerBase
     private readonly IConfiguration _config;
     private readonly ILogger<MetaWhatsAppWebhookController> _logger;
 
+    // 2026-08-18: aviso en vivo a las pantallas abiertas cuando entra un mensaje.
+    private readonly Api.Services.WaLiveNotifier _waLive;
+
     public MetaWhatsAppWebhookController(IServiceScopeFactory scopeFactory, IConfiguration config,
-        ILogger<MetaWhatsAppWebhookController> logger)
+        ILogger<MetaWhatsAppWebhookController> logger, Api.Services.WaLiveNotifier waLive)
     {
         _scopeFactory = scopeFactory;
         _config = config;
         _logger = logger;
+        _waLive = waLive;
     }
 
     private string VerifyToken => _config["META_WA_VERIFY_TOKEN"]
@@ -263,6 +267,8 @@ public class MetaWhatsAppWebhookController : ControllerBase
                     CreatedAt = DateTime.UtcNow
                 });
                 await db.SaveChangesAsync();
+                // 2026-08-18: mismo aviso en vivo que WhatsApp (los DM de IG caen en la misma bandeja).
+                await _waLive.AvisarAsync(numero, cuentaId, direccion);
                 _logger.LogInformation("[Instagram DM] {Dir} {Numero} (@{Label}): {Body}", direccion, numero, cuenta?.Label, texto);
             }
         }
@@ -532,6 +538,9 @@ public class MetaWhatsAppWebhookController : ControllerBase
         };
         db.WhatsAppTwilioMensajes.Add(msg);
         await db.SaveChangesAsync();
+        // 2026-08-18: avisar EN EL MOMENTO a las pantallas abiertas (celu incluido). Va antes de
+        // los bots para que el mensaje se vea enseguida aunque despues haya procesamiento.
+        await _waLive.AvisarAsync(numero, lineaId, "INCOMING");
         _logger.LogInformation("[Meta WA webhook] IN {Numero} ({Name}): {Body}", numero, nombrePerfil, cuerpo);
 
         // 2026-08-05 (pedido del usuario): la línea FIJO TRANSRADIO NO tiene automatismos.

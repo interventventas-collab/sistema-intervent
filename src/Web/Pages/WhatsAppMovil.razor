@@ -7,6 +7,7 @@
 @inject NavigationManager Nav
 @inject Microsoft.JSInterop.IJSRuntime JS
 @inject Web.Services.WaAparienciaService Apariencia
+@inject Web.Services.PresenceService Vivo
 @implements IDisposable
 
 @* 2026-08-06: pantalla DEDICADA de WhatsApp para el celu (como las que usan los repartidores).
@@ -387,7 +388,16 @@ else
             lastIncomingSeen = convs.Where(c => c.UltimoDireccion == "INCOMING")
                                     .Select(c => c.UltimoAt).DefaultIfEmpty(DateTime.UtcNow).Max();
             try { avisos = (await JS.InvokeAsync<string?>("localStorage.getItem", AvisosKey)) == "1"; } catch { }
-            notifTimer ??= new System.Threading.Timer(async _ => await InvokeAsync(RevisarNuevosAsync), null, 15000, 15000);
+            // 2026-08-18: EN VIVO. El servidor avisa apenas entra o sale un mensaje, así la lista se
+            // actualiza en el momento (como WhatsApp) en vez de esperar al sondeo. El timer queda
+            // igual pero MUCHO más lento (60 s), solo como red por si se corta la conexión en vivo.
+            try
+            {
+                await Vivo.EnsureStartedAsync();
+                Vivo.OnNuevoMensaje += AvisoEnVivo;
+            }
+            catch { }
+            notifTimer ??= new System.Threading.Timer(async _ => await InvokeAsync(RevisarNuevosAsync), null, 60000, 60000);
         }
         StateHasChanged();
     }
@@ -430,7 +440,15 @@ else
         StateHasChanged();
     }
 
-    public void Dispose() => notifTimer?.Dispose();
+    /// <summary>2026-08-18: llegó/salió un mensaje. Refresca la lista al toque (sin esperar el sondeo).</summary>
+    private void AvisoEnVivo(string convId, string direccion, DateTime at)
+        => _ = InvokeAsync(RevisarNuevosAsync);
+
+    public void Dispose()
+    {
+        notifTimer?.Dispose();
+        try { Vivo.OnNuevoMensaje -= AvisoEnVivo; } catch { }
+    }
 
     private async Task AbrirChat(ApiClient.TwConvDto c)
     {

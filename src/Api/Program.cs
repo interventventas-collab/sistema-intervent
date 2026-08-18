@@ -118,6 +118,8 @@ builder.Services.AddFido2(options =>
 // para no pisarse entre agentes). Estado en memoria (singleton) + barredora de expirados. NO toca envío.
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<Api.Hubs.PresenceTracker>();
+// 2026-08-18: aviso en vivo de mensajes de WhatsApp (para que el celu no tenga que preguntar cada 12 s).
+builder.Services.AddSingleton<Api.Services.WaLiveNotifier>();
 builder.Services.AddHostedService<Api.Hubs.PresenceSweeper>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<TwilioWhatsAppService>();
