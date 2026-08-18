@@ -146,6 +146,44 @@ public class CafeChequesController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    // ─── 2026-08-18: circuito en dos pasos para el que quiere seguir el cheque mientras
+    // el banco lo procesa. El boton 🏦 de siempre (arriba) sigue haciendo todo de una.
+    // El estado DEPOSITADO ya existia en el modelo pero NADA lo seteaba: ningun cheque
+    // podia llegar a el, asi que la etiqueta "🏦 Depositado" era letra muerta.
+
+    /// <summary>Paso 1: lo mandé al banco pero todavia no se acredito. Queda en DEPOSITADO.</summary>
+    [HttpPost("{id:int}/mandar-al-banco")]
+    public async Task<IActionResult> MandarAlBanco(int id, [FromBody] CambiarEstadoRequest? req)
+    {
+        var ch = await _db.CafeCheques.FindAsync(id);
+        if (ch is null) return NotFound();
+        if (ch.Estado != "EN_CARTERA") return BadRequest(new { error = $"El cheque ya esta {ch.Estado}, no se puede depositar" });
+        ch.Estado = "DEPOSITADO";
+        ch.FechaCambioEstado = DateTime.UtcNow;
+        if (!string.IsNullOrWhiteSpace(req?.Observaciones))
+            ch.Observaciones = (ch.Observaciones ?? "") + " · " + req!.Observaciones;
+        await _db.SaveChangesAsync();
+        await _audit.LogAsync("CafeCheque", id.ToString(), "MANDAR_AL_BANCO", $"Cheque {ch.Numero} depositado, esperando acreditacion");
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>Paso 2: el banco lo acredito. De DEPOSITADO (o directo de cartera) pasa a ACREDITADO.</summary>
+    [HttpPost("{id:int}/acreditar")]
+    public async Task<IActionResult> Acreditar(int id, [FromBody] CambiarEstadoRequest? req)
+    {
+        var ch = await _db.CafeCheques.FindAsync(id);
+        if (ch is null) return NotFound();
+        if (ch.Estado != "DEPOSITADO" && ch.Estado != "EN_CARTERA")
+            return BadRequest(new { error = $"El cheque esta {ch.Estado}, no se puede acreditar" });
+        ch.Estado = "ACREDITADO";
+        ch.FechaCambioEstado = DateTime.UtcNow;
+        if (!string.IsNullOrWhiteSpace(req?.Observaciones))
+            ch.Observaciones = (ch.Observaciones ?? "") + " · " + req!.Observaciones;
+        await _db.SaveChangesAsync();
+        await _audit.LogAsync("CafeCheque", id.ToString(), "ACREDITAR", $"Cheque {ch.Numero} acreditado en el banco");
+        return Ok(new { ok = true });
+    }
+
     /// <summary>Marca el cheque como Cobrado por ventanilla. Suma a Efectivo.</summary>
     [HttpPost("{id:int}/cobrar-ventanilla")]
     public async Task<IActionResult> CobrarVentanilla(int id, [FromBody] CambiarEstadoRequest? req)
@@ -160,6 +198,134 @@ public class CafeChequesController : ControllerBase
         await _db.SaveChangesAsync();
         await _audit.LogAsync("CafeCheque", id.ToString(), "COBRAR_VENTANILLA", $"Cheque {ch.Numero} cobrado por ventanilla");
         return Ok(new { ok = true });
+    }
+
+    // ============================================================
+    // 2026-08-18: Hacer la cobranza directamente desde un cheque en cartera.
+    // Antes, un cheque cargado a mano quedaba "sin asignar" y para descontarle la deuda al cliente
+    // habia que ir a Cobranzas y volver a tipear los datos del cheque — camino que CREA UN CHEQUE NUEVO,
+    // dejando dos cheques en cartera por el mismo papel. Este endpoint usa el cheque que ya existe.
+    // Es el equivalente del "asociar-cobranza" de los e-cheques del banco (CafeChequesBancoController).
+    // ============================================================
+
+    public record ImputarItem(int? VentaId, decimal Importe);
+    public record CobranzaDesdeChequeRequest(int ClienteId, decimal Retenciones, string? Observaciones, List<ImputarItem> Comprobantes);
+
+    /// <summary>Crea una cobranza usando ESTE cheque como forma de cobro y la imputa a los comprobantes elegidos.
+    /// Solo para cheques EN_CARTERA que todavia no nacieron de una cobranza.</summary>
+    [HttpPost("{id:int}/cobranza")]
+    public async Task<IActionResult> CrearCobranzaDesdeCheque(int id, [FromBody] CobranzaDesdeChequeRequest req)
+    {
+        var ch = await _db.CafeCheques.FindAsync(id);
+        if (ch is null) return NotFound(new { error = "Cheque no encontrado" });
+        if (ch.Estado != "EN_CARTERA")
+            return BadRequest(new { error = $"El cheque esta {ch.Estado} — solo se puede cobrar uno en cartera" });
+        if (ch.CobranzaOrigenId.HasValue)
+            return BadRequest(new { error = "Este cheque ya vino de una cobranza, no se puede imputar de nuevo" });
+
+        var cliente = await _db.CafeClientes.FindAsync(req.ClienteId);
+        if (cliente is null) return BadRequest(new { error = "Cliente no encontrado" });
+        if (req.Comprobantes == null || req.Comprobantes.Count == 0)
+            return BadRequest(new { error = "Imputá el cheque al menos a un comprobante (o como 'a cuenta')" });
+
+        var retenciones = Math.Max(0m, req.Retenciones);
+        var sumComprobantes = req.Comprobantes.Sum(c => c.Importe);
+        if (Math.Abs(sumComprobantes - (ch.Importe + retenciones)) > 0.01m)
+            return BadRequest(new { error = $"No cuadra: imputado ${sumComprobantes:N2} ≠ cheque ${ch.Importe:N2} + retenciones ${retenciones:N2}" });
+
+        // Las ventas imputadas tienen que ser del mismo cliente (o de una sucursal con el mismo CUIT)
+        var ventaIdsReq = req.Comprobantes.Where(c => c.VentaId.HasValue).Select(c => c.VentaId!.Value).Distinct().ToList();
+        if (ventaIdsReq.Count > 0)
+        {
+            List<int> clientesValidos = new() { req.ClienteId };
+            if (!string.IsNullOrWhiteSpace(cliente.Cuit))
+                clientesValidos = await _db.CafeClientes.Where(c => c.Cuit == cliente.Cuit).Select(c => c.Id).ToListAsync();
+            var ventasReq = await _db.CafeVentas.Where(v => ventaIdsReq.Contains(v.Id))
+                .Select(v => new { v.Id, v.ClienteId }).ToListAsync();
+            if (ventasReq.Count != ventaIdsReq.Count)
+                return BadRequest(new { error = "Alguna venta referenciada no existe" });
+            var ajena = ventasReq.FirstOrDefault(v => !v.ClienteId.HasValue || !clientesValidos.Contains(v.ClienteId.Value));
+            if (ajena is not null)
+                return BadRequest(new { error = $"La venta #{ajena.Id} no pertenece a este cliente" });
+        }
+
+        var caja = await _db.CafeCajas.FirstOrDefaultAsync(c => c.Tipo == "CHEQUES_CARTERA" && c.IsActive);
+        if (caja is null) return BadRequest(new { error = "No hay una caja de tipo CHEQUES_CARTERA configurada" });
+
+        // Numero correlativo de cobranza (mismo criterio que CafeCobranzasController)
+        var numeros = await _db.CafeCobranzas.Select(c => c.Numero).ToListAsync();
+        var maxSec = 0;
+        foreach (var num in numeros)
+        {
+            var parts = (num ?? "").Split('-');
+            if (parts.Length >= 2 && int.TryParse(parts[^1], out var n) && n > maxSec) maxSec = n;
+        }
+        var numeroCobranza = $"0100-{(maxSec + 1):D8}";
+
+        var cobranza = new CafeCobranza
+        {
+            Numero = numeroCobranza,
+            Fecha = DateTime.UtcNow,
+            ClienteId = req.ClienteId,
+            Total = ch.Importe,
+            Retenciones = retenciones,
+            Operador = User?.Identity?.Name,
+            Observaciones = string.IsNullOrWhiteSpace(req.Observaciones)
+                ? $"Cobranza por cheque {ch.Banco} N° {ch.Numero}"
+                : req.Observaciones.Trim(),
+            Estado = "VIGENTE"
+        };
+        _db.CafeCobranzas.Add(cobranza);
+        await _db.SaveChangesAsync();
+
+        foreach (var comp in req.Comprobantes)
+        {
+            _db.CafeCobranzasComprobantes.Add(new CafeCobranzaComprobante
+            {
+                CobranzaId = cobranza.Id,
+                VentaId = comp.VentaId,   // null = a cuenta
+                Importe = comp.Importe
+            });
+        }
+
+        // El medio de cobro es el cheque que YA estaba en cartera (no se crea uno nuevo)
+        _db.CafeCobranzasMedios.Add(new CafeCobranzaMedio
+        {
+            CobranzaId = cobranza.Id,
+            CajaId = caja.Id,
+            Importe = ch.Importe,
+            Referencia = $"Cheque N° {ch.Numero} ({ch.Banco})",
+            ChequeId = ch.Id
+        });
+
+        ch.ClienteOrigenId = req.ClienteId;
+        ch.CobranzaOrigenId = cobranza.Id;
+        await _db.SaveChangesAsync();
+
+        // Resincronizar el flag "pagada" de las ventas imputadas
+        if (ventaIdsReq.Count > 0)
+        {
+            var ventas = await _db.CafeVentas.Where(v => ventaIdsReq.Contains(v.Id)).ToListAsync();
+            var pagado = await _db.CafeCobranzasComprobantes
+                .Where(c => c.VentaId != null && ventaIdsReq.Contains(c.VentaId!.Value)
+                    && c.Cobranza!.Estado == "VIGENTE")
+                .GroupBy(c => c.VentaId!.Value)
+                .Select(g => new { Id = g.Key, Total = g.Sum(x => x.Importe) })
+                .ToDictionaryAsync(x => x.Id, x => x.Total);
+            foreach (var v in ventas)
+            {
+                var pag = pagado.GetValueOrDefault(v.Id, 0m);
+                var totalCobrar = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
+                v.IsPaid = pag >= totalCobrar - 0.01m;
+            }
+            await _db.SaveChangesAsync();
+        }
+
+        await _audit.LogAsync("CafeCheque", id.ToString(), "COBRANZA_DESDE_CHEQUE",
+            $"Cheque {ch.Numero} imputado a {cliente.Nombre} en cobranza {numeroCobranza} por ${ch.Importe:N2}" +
+            (retenciones > 0 ? $" + ${retenciones:N2} de retenciones" : ""));
+
+        return Ok(new { cobranzaId = cobranza.Id, numero = numeroCobranza });
     }
 
     /// <summary>Marca el cheque como Rechazado (rebote). La deuda vuelve al cliente origen.</summary>

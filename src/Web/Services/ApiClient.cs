@@ -6050,6 +6050,30 @@ public class ApiClient
     }
 
     // ===== Tesoreria Cafe: Cheques =====
+    /// <summary>2026-08-18: crea la cobranza usando un cheque que YA esta en cartera (no crea uno nuevo)
+    /// y la imputa a los comprobantes elegidos. Devuelve (numero de cobranza, error).</summary>
+    public async Task<(string? numero, string? error)> CrearCobranzaDesdeChequeAsync(int chequeId, AsociarECheqRequest req)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync($"/api/cafe/cheques/{chequeId}/cobranza", req);
+            if (resp.IsSuccessStatusCode)
+            {
+                using var ok = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                return (ok.RootElement.TryGetProperty("numero", out var n) ? n.GetString() : null, null);
+            }
+            string err = "No se pudo crear la cobranza";
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err;
+            }
+            catch { }
+            return (null, err);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
     public async Task<List<CafeChequeDto>?> GetCafeChequesAsync(string? estado = null)
         => await GetAsync<List<CafeChequeDto>>("/api/cafe/cheques" + (string.IsNullOrWhiteSpace(estado) ? "" : $"?estado={Uri.EscapeDataString(estado)}"));
     /// <summary>Alta manual de cheque (papel) que entra a cartera. Devuelve (cheque, error).
@@ -6078,6 +6102,18 @@ public class ApiClient
     public async Task<bool> DepositarChequeAsync(int id, string? observaciones = null, int? cajaDestinoId = null)
     {
         var r = await PostAsync<object>($"/api/cafe/cheques/{id}/depositar", new { observaciones, cajaDestinoId });
+        return r is not null;
+    }
+    /// <summary>2026-08-18: paso 1 del circuito en dos pasos — lo mandé al banco, falta que se acredite.</summary>
+    public async Task<bool> MandarChequeAlBancoAsync(int id, string? observaciones = null)
+    {
+        var r = await PostAsync<object>($"/api/cafe/cheques/{id}/mandar-al-banco", new { observaciones });
+        return r is not null;
+    }
+    /// <summary>2026-08-18: paso 2 — el banco lo acreditó.</summary>
+    public async Task<bool> AcreditarChequeAsync(int id, string? observaciones = null)
+    {
+        var r = await PostAsync<object>($"/api/cafe/cheques/{id}/acreditar", new { observaciones });
         return r is not null;
     }
     public async Task<bool> CobrarChequeVentanillaAsync(int id, string? observaciones = null)
