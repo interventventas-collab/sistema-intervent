@@ -651,11 +651,13 @@
                                 <div class="wa-msg-check">✓</div>
                             }
                             <div class="wa-bubble-wrap">
-                                <div class="wa-bubble">
+                                <div class="wa-bubble" id="@($"wamsg-{m.Id}")">
                                     @* 2026-08-05: "responder citando" — burbujita del mensaje al que responde este *@
                                     @if (!string.IsNullOrEmpty(m.ReplyPreview))
                                     {
-                                        <div class="wa-reply-quote">
+                                        @* 2026-08-18: al hacer clic lleva al mensaje original y lo resalta (antes no hacía nada) *@
+                                        <div class="wa-reply-quote wa-reply-clic" title="Ir al mensaje original"
+                                             @onclick="() => IrAlCitado(m)" @onclick:stopPropagation="true">
                                             <span class="wa-reply-quote-who">@(m.ReplyFromMe ? "Vos" : MostrarNombre(SelectedConv()))</span>
                                             <span class="wa-reply-quote-text">@m.ReplyPreview</span>
                                         </div>
@@ -1044,12 +1046,27 @@
                 @* 2026-08-17: el cajón pasó a DOS renglones: arriba la tira de herramientas (antes
                    era una columna al costado que medía 230 px de alto) y abajo el cuadro con Enviar. *@
                 <div class="wa-composer">
+                    @* 2026-08-18: confirmación antes de mandarle el menú de opciones al cliente. *@
+                    @if (confirmarMenuRol)
+                    {
+                        <div class="wa-confirmar-menurol">
+                            <span class="wa-confirmar-txt">
+                                ¿Le mando el menú de opciones ("¿con quién te querés contactar?") a
+                                <strong>@(SelectedConv()?.ClienteNombre ?? SelectedConv()?.NombrePerfil ?? selectedNumero)</strong>?
+                            </span>
+                            <button class="wa-confirmar-no" @onclick="@(() => confirmarMenuRol = false)">No</button>
+                            <button class="wa-confirmar-si" @onclick="ConfirmarYEnviarMenuRol" disabled="@enviandoMenuRol">
+                                @(enviandoMenuRol ? "Enviando…" : "Sí, mandalo")
+                            </button>
+                        </div>
+                    }
                     <div class="wa-composer-tools-row">
                         @* MENÚ ROL — antes era una miniatura de 110 px del cartel que le llega al cliente.
                            Ahora es un botón de la tira; la miniatura aparece al pasarle el mouse por encima. *@
                         @if (SelectedConv()?.Canal != "INSTAGRAM")
                         {
-                            <button class="wa-menurol-mini" @onclick="EnviarMenuRol" disabled="@enviandoMenuRol"
+                            @* 2026-08-18: antes salía de un toque. Ahora pregunta primero (mismo criterio que el celu). *@
+                            <button class="wa-menurol-mini" @onclick="@(() => confirmarMenuRol = true)" disabled="@enviandoMenuRol"
                                     title="Tocá para enviarle al cliente este menú y que se identifique (Frikaf / Intervent / Intereventos)">
                                 <span class="wa-menurol-cap">@(enviandoMenuRol ? "⏳ Enviando…" : "👆 Menú rol")</span>
                                 <span class="wa-menurol-bubble">
@@ -2030,6 +2047,19 @@
     .wa-coord-nota { border: 1px solid #d7dce3; border-radius: 999px; font-size: 0.74rem; padding: 0.24rem 0.7rem; min-width: 180px; flex: 1; }
     .wa-coord-info { flex-basis: 100%; font-size: 0.72rem; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 0.25rem 0.6rem; }
     /* Tilditos de estado en los mensajes que mandamos */
+    .wa-reply-clic { cursor: pointer; }
+    .wa-reply-clic:hover { filter: brightness(0.96); }
+
+    /* 2026-08-18: confirmación del menú de opciones */
+    .wa-confirmar-menurol { background: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px;
+        padding: 0.5rem 0.7rem; margin-bottom: 0.4rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+    .wa-confirmar-txt { flex: 1; min-width: 200px; font-size: 0.85rem; color: #92400e; }
+    .wa-confirmar-no { background: #fff; border: 1px solid #d1d5db; color: #374151; border-radius: 6px;
+        padding: 0.35rem 0.8rem; font-weight: 700; cursor: pointer; }
+    .wa-confirmar-si { background: #25d366; border: none; color: #fff; border-radius: 6px;
+        padding: 0.35rem 0.8rem; font-weight: 700; cursor: pointer; }
+    .wa-confirmar-si:disabled { opacity: 0.6; cursor: wait; }
+
     .wa-tilde { color: #8a8a8a; font-size: 0.72rem; margin-left: 3px; letter-spacing: -1px; }
     .wa-tilde-read { color: #34b7f1; }
     .wa-tilde-fail { color: #dc2626; letter-spacing: 0; }
@@ -2698,6 +2728,8 @@
         try { await JS.InvokeVoidAsync("waAudio.cancel"); } catch { }
     }
     bool loadingConv = true, loadingMsg = false, sending = false, uploading = false, enviandoMenuRol = false;
+    // 2026-08-18: el menú de opciones ahora se confirma antes de salir (se mandaba de un toque).
+    bool confirmarMenuRol = false;
     System.Threading.Timer? refreshTimer;
     Microsoft.AspNetCore.Components.ElementReference messagesScroll;
 
@@ -4429,6 +4461,25 @@
             StateHasChanged();
             Toast.Error($"Error al enviar: {err}");
         }
+    }
+
+    /// <summary>2026-08-18: salta al mensaje citado y lo resalta. Si no está entre los cargados, avisa.</summary>
+    async Task IrAlCitado(ApiClient.TwMsgDto m)
+    {
+        if (string.IsNullOrWhiteSpace(m.ReplyToSid) || mensajes is null) return;
+        var orig = mensajes.FirstOrDefault(x => x.Sid == m.ReplyToSid);
+        if (orig is null)
+        {
+            Toast.Info("Ese mensaje es más viejo que los que están cargados en pantalla.");
+            return;
+        }
+        try { await JS.InvokeVoidAsync("waIrAlMensaje", $"wamsg-{orig.Id}"); } catch { }
+    }
+
+    async Task ConfirmarYEnviarMenuRol()
+    {
+        confirmarMenuRol = false;
+        await EnviarMenuRol();
     }
 
     async Task EnviarMenuRol()

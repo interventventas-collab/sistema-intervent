@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-    <link rel="stylesheet" href="css/app.css?v=20260818a" />
+    <link rel="stylesheet" href="css/app.css?v=20260818b" />
     <link rel="stylesheet" href="css/modern-overlay.css?v=20260609b" />
     <link rel="stylesheet" href="css/mobile.css?v=20260706a" />
     <!-- 2026-08-15: modo oscuro por línea de WhatsApp + letra elegible (solo la caja del WhatsApp) -->
@@ -46,6 +46,8 @@
     <script src="js/wa-composer.js?v=20260817a"></script>
     <!-- 2026-08-18: avisos de WhatsApp con la pantalla cerrada (Web Push) -->
     <script src="js/wa-push.js?v=20260818a"></script>
+    <!-- 2026-08-18: candado por inactividad de la pantalla de WhatsApp del celu -->
+    <script src="js/wa-candado.js?v=20260818a"></script>
     <script src="js/wa-draggable.js?v=20260807"></script>
     <script src="js/whatsapp-llamadas.js?v=20260802"></script>
     <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
@@ -1972,6 +1974,18 @@
             try { var c = _waCtx(); if (!c) return; (window.waSounds[name] || window.waSounds.chime)(c); } catch (e) {}
         };
         window.waNotifSound = function () { window.waPlaySound('chime'); };
+        // 2026-08-18: saltar al mensaje citado (tocar la cajita gris de "respondiendo a…")
+        // y dejarlo resaltado un segundo y medio, como hace WhatsApp.
+        window.waIrAlMensaje = function (elId) {
+            try {
+                var el = document.getElementById(elId);
+                if (!el) return false;
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                el.classList.add('wa-resaltado');
+                setTimeout(function () { try { el.classList.remove('wa-resaltado'); } catch (e) {} }, 1600);
+                return true;
+            } catch (e) { return false; }
+        };
         // 2026-08-07: aviso visual del sistema (Notification API) para el WhatsApp del celu.
         // Funciona con la pantalla abierta (aunque esté en segundo plano). No usa push/service worker.
         window.waMovilNotif = {

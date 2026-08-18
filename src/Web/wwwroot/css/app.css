@@ -5157,3 +5157,14 @@ textarea.form-input {
   color: #f9fafb;
   border-color: #1f2937;
 }
+
+/* 2026-08-18: resaltado del mensaje al que se saltó desde la cajita "respondiendo a…".
+   Se pinta un instante y se apaga solo (la clase la saca el JS a los 1,6 s). */
+.wa-resaltado {
+  animation: wa-resaltar 1.6s ease-out;
+}
+@keyframes wa-resaltar {
+  0%   { box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.85); }
+  60%  { box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.55); }
+  100% { box-shadow: 0 0 0 3px rgba(37, 211, 102, 0); }
+}

@@ -52,7 +52,7 @@
             {
                 var mine = m.Direccion == "OUTGOING";
                 <div class="pwa-row @(mine ? "out" : "in")">
-                    <div class="pwa-bubble @(mine ? "out" : "in") @(menuMsgId == m.Id ? "sel" : "")"
+                    <div id="@($"pwamsg-{m.Id}")" class="pwa-bubble @(mine ? "out" : "in") @(menuMsgId == m.Id ? "sel" : "")"
                          @onpointerdown="() => PressStart(m.Id)" @onpointerup="PressEnd"
                          @onpointerleave="PressEnd" @onpointercancel="PressEnd"
                          @oncontextmenu:preventDefault="true">
@@ -66,7 +66,10 @@
                             @* 2026-08-07: cita del mensaje al que responde (responder citando) *@
                             @if (!string.IsNullOrWhiteSpace(m.ReplyPreview))
                             {
-                                <div class="pwa-reply-quote">
+                                @* 2026-08-18: tocar la cajita lleva al mensaje original y lo resalta,
+                                   como WhatsApp. Antes era solo decorativa. *@
+                                <div class="pwa-reply-quote pwa-reply-clic" title="Tocá para ir al mensaje original"
+                                     @onclick="() => IrAlCitado(m)" @onclick:stopPropagation="true">
                                     <span class="pwa-reply-who">@(m.ReplyFromMe ? "Vos" : TituloContacto)</span>
                                     <span class="pwa-reply-text">@m.ReplyPreview</span>
                                 </div>
@@ -145,14 +148,11 @@
     }
 
     @* 2026-08-07: acciones extra (solo cuando AccionesCompletas=true: móvil / card flotante).
-       Respuestas rápidas (abre lista) + Menú rol (un toque). 📎/📷/🎤 quedan en el composer. *@
+       2026-08-18: la barra fija con ➕ / ⚡ Respuestas / 👋 Menú rol se comía un renglón de pantalla
+       SIEMPRE. Ahora Respuestas y Menú rol viven adentro del ➕ (que quedó en el composer, al lado
+       del clip), y acá abajo solo queda el panel de respuestas cuando se abre. *@
     @if (AccionesCompletas && VentanaWaAbierta())
     {
-        <div class="pwa-acciones">
-            <button type="button" class="pwa-acc-btn pwa-acc-mas" @onclick="AbrirMas" title="Más: adjuntar del servidor, contacto, saldo">➕</button>
-            <button type="button" class="pwa-acc-btn @(showResp ? "on" : "")" @onclick="ToggleResp" title="Respuestas rápidas">⚡ Respuestas</button>
-            <button type="button" class="pwa-acc-btn" @onclick="EnviarMenuRolMini" disabled="@enviandoMenuRol" title="Enviar el menú de opciones (¿con quién te querés contactar?)">@(enviandoMenuRol ? "⏳ Enviando…" : "👋 Menú rol")</button>
-        </div>
         @if (showResp)
         {
             <div class="pwa-resp-panel">
@@ -178,6 +178,23 @@
         }
     }
 
+    @* 2026-08-18: confirmación antes de mandar el menú de opciones al cliente. *@
+    @if (confirmarMenuRol)
+    {
+        <div class="pwa-confirmar">
+            <div class="pwa-confirmar-txt">
+                ¿Le mando a <strong>@TituloContacto</strong> el menú de opciones
+                ("¿con quién te querés contactar?")?
+            </div>
+            <div class="pwa-confirmar-btns">
+                <button type="button" class="pwa-confirmar-no" @onclick="CancelarMenuRol">No</button>
+                <button type="button" class="pwa-confirmar-si" @onclick="ConfirmarMenuRol" disabled="@enviandoMenuRol">
+                    @(enviandoMenuRol ? "Enviando…" : "Sí, mandalo")
+                </button>
+            </div>
+        </div>
+    }
+
     @* 2026-08-12: barra "Respondiendo a…" (responder citando). Aparece arriba del cuadro de escribir. *@
     @if (respondiendoA is not null && VentanaWaAbierta())
     {
@@ -201,6 +218,12 @@
         }
         else
         {
+            @* 2026-08-18: el ➕ pasó acá (antes estaba en la barra de arriba que ocupaba un renglón fijo).
+               Adentro están Respuestas rápidas, Menú rol, adjuntar del servidor, contacto y saldo. *@
+            @if (AccionesCompletas)
+            {
+                <button type="button" class="pwa-attach" @onclick="AbrirMas" title="Más: respuestas rápidas, menú de opciones, adjuntar del servidor, contacto, saldo">➕</button>
+            }
             @* Adjuntar foto/archivo de la PC o del celu (máx 16 MB) *@
             <label class="pwa-attach" title="Adjuntar foto o archivo">
                 <InputFile OnChange="OnAdjuntar" disabled="@(sending || enviandoAudio || subiendo)" style="display:none;" />
@@ -328,6 +351,12 @@
             <div class="pwa-mas-body">
                 @if (masVista == "menu")
                 {
+                    @* 2026-08-18: acá adentro entran ahora Respuestas rápidas y Menú rol *@
+                    @if (AccionesCompletas)
+                    {
+                        <button type="button" class="pwa-mas-op" @onclick="AbrirRespuestasDesdeMas">⚡ Respuestas rápidas</button>
+                        <button type="button" class="pwa-mas-op" @onclick="PedirConfirmarMenuRol">👋 Mandar el menú de opciones</button>
+                    }
                     <button type="button" class="pwa-mas-op" @onclick="AbrirServidor">📁 Adjuntar del servidor</button>
                     <button type="button" class="pwa-mas-op" @onclick="AbrirContacto">👤 Compartir un contacto</button>
                     <button type="button" class="pwa-mas-op" @onclick="AbrirSaldo">💰 Mandar el saldo de un cliente</button>
@@ -471,6 +500,20 @@
         font-size: 0.64rem; cursor: pointer; padding: 0; text-decoration: underline; display: block; }
     .pwa-ocultar-btn:hover { color: #dc2626; }
     .pwa-text { white-space: pre-wrap; word-break: break-word; }
+    .pwa-reply-clic { cursor: pointer; }
+    .pwa-reply-clic:active { filter: brightness(0.94); }
+
+    /* 2026-08-18: confirmación del menú de opciones */
+    .pwa-confirmar { background: #fef3c7; border-top: 1px solid #fcd34d; padding: 0.6rem 0.8rem;
+        display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+    .pwa-confirmar-txt { flex: 1; min-width: 180px; font-size: 0.85rem; color: #92400e; }
+    .pwa-confirmar-btns { display: flex; gap: 0.4rem; }
+    .pwa-confirmar-no { background: #fff; border: 1px solid #d1d5db; color: #374151; border-radius: 8px;
+        padding: 0.45rem 0.9rem; font-weight: 700; cursor: pointer; }
+    .pwa-confirmar-si { background: #25d366; border: none; color: #fff; border-radius: 8px;
+        padding: 0.45rem 0.9rem; font-weight: 700; cursor: pointer; }
+    .pwa-confirmar-si:disabled { opacity: 0.6; cursor: wait; }
+
     .pwa-time { font-size: 0.62rem; color: #6b7280; text-align: right; margin-top: 2px; }
     /* 2026-08-18: tildes de entrega (mismos colores que la pantalla grande) */
     .pwa-tilde { color: #8a8a8a; font-size: 0.68rem; margin-left: 3px; letter-spacing: -1px; }
@@ -569,8 +612,12 @@
     @@media (max-width: 640px) {
         .pwa-body { padding: 0.8rem 0.7rem; gap: 0.5rem; }
         .pwa-bubble { max-width: 85%; font-size: 0.95rem; padding: 0.5rem 0.7rem; }
-        .pwa-input { font-size: 16px; padding: 0.7rem 0.9rem; }
-        .pwa-send, .pwa-mic { padding: 0.7rem 1.05rem; font-size: 1.05rem; }
+        .pwa-input { font-size: 16px; padding: 0.7rem 0.7rem; }
+        .pwa-send, .pwa-mic { padding: 0.7rem 0.9rem; font-size: 1.05rem; }
+        /* 2026-08-18: en el celu los botones del composer van más juntos, para que el cuadro de
+           escribir quede lo más ancho posible ahora que también está el ➕. */
+        .pwa-composer { gap: 5px; padding: 0.5rem 0.5rem; }
+        .pwa-attach { padding: 0.55rem 0.5rem; }
         .pwa-audio { height: 44px; }
         .pwa-firma-btn { padding: 4px 11px; font-size: 0.8rem; }
     }
@@ -748,6 +795,20 @@
                 if (!sending) { await Cargar(); StateHasChanged(); }
             });
         }, null, 45_000, 45_000);
+    }
+
+    /// <summary>2026-08-18: salta al mensaje que está citado en la cajita gris y lo resalta.
+    /// Si ese mensaje es más viejo que los cargados, lo dice en vez de no hacer nada.</summary>
+    private async Task IrAlCitado(ApiClient.TwMsgDto m)
+    {
+        if (string.IsNullOrWhiteSpace(m.ReplyToSid) || mensajes is null) return;
+        var orig = mensajes.FirstOrDefault(x => x.Sid == m.ReplyToSid);
+        if (orig is null)
+        {
+            Toast.Info("Ese mensaje es más viejo que los que están cargados en pantalla.");
+            return;
+        }
+        try { await JS.InvokeVoidAsync("waIrAlMensaje", $"pwamsg-{orig.Id}"); } catch { }
     }
 
     /// <summary>2026-08-18: el servidor avisó de un mensaje. Si es de esta conversación, recargar ya.</summary>
@@ -981,6 +1042,33 @@
     {
         composer = string.IsNullOrWhiteSpace(composer) ? r.Texto : (composer.TrimEnd() + " " + r.Texto);
         showResp = false;
+        StateHasChanged();
+    }
+
+    // 2026-08-18: el Menú rol se mandaba de UN TOQUE. Si lo rozabas sin querer, el cliente ya lo
+    // recibía. Ahora pregunta antes (y lo mismo se hizo en la pantalla grande).
+    private bool confirmarMenuRol;
+
+    private void PedirConfirmarMenuRol()
+    {
+        mostrarMas = false;
+        confirmarMenuRol = true;
+        StateHasChanged();
+    }
+
+    private void CancelarMenuRol() { confirmarMenuRol = false; StateHasChanged(); }
+
+    private async Task ConfirmarMenuRol()
+    {
+        confirmarMenuRol = false;
+        await EnviarMenuRolMini();
+    }
+
+    /// <summary>Abre la lista de respuestas rápidas desde el panel del ➕.</summary>
+    private async Task AbrirRespuestasDesdeMas()
+    {
+        mostrarMas = false;
+        if (!showResp) await ToggleResp();
         StateHasChanged();
     }
 

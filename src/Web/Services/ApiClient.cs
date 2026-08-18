@@ -6741,7 +6741,9 @@ public class ApiClient
         string? UltimoMediaUrl = null);
     public record TwReaccionDto(string Emoji, int Count, bool EsCliente = false);
     // 2026-08-05: ReplyToSid/ReplyPreview/ReplyFromMe = "responder citando" (burbuja del mensaje citado).
-    public record TwMsgDto(int Id, string Direccion, string Numero, string? NombrePerfil, string? Cuerpo, string? MediaUrl, string? MediaFilename, int? NumMedia, bool Procesado, string? RespuestaEnviada, DateTime CreatedAt, string? EstadoEntrega, List<TwReaccionDto>? Reacciones, string? ReplyToSid = null, string? ReplyPreview = null, bool ReplyFromMe = false, bool OcultoDeposito = false);
+    public record TwMsgDto(int Id, string Direccion, string Numero, string? NombrePerfil, string? Cuerpo, string? MediaUrl, string? MediaFilename, int? NumMedia, bool Procesado, string? RespuestaEnviada, DateTime CreatedAt, string? EstadoEntrega, List<TwReaccionDto>? Reacciones, string? ReplyToSid = null, string? ReplyPreview = null, bool ReplyFromMe = false, bool OcultoDeposito = false,
+        // 2026-08-18: identificador propio del mensaje. Sirve para ubicar el mensaje citado al tocar la cajita gris.
+        string? Sid = null);
 
     // 2026-08-07: ocultar/mostrar un mensaje al usuario Depósito. Solo admin/oficina.
     public async Task<bool> OcultarMensajeDepositoAsync(int mensajeId, bool oculto)

@@ -1292,6 +1292,9 @@ public class WhatsAppTwilioController : ControllerBase
                 m.Id, m.Direccion, m.Numero, m.NombrePerfil,
                 m.Cuerpo, m.MediaUrl, m.MediaFilename, m.NumMedia,
                 m.Procesado, m.RespuestaEnviada, m.CreatedAt, m.EstadoEntrega,
+                // 2026-08-18: el SID propio va al front para poder saltar al mensaje citado
+                // cuando tocás la cajita gris de "respondiendo a…".
+                m.TwilioMessageSid,
                 m.ReplyToSid, m.OcultoDeposito
             })
             .ToListAsync();
@@ -1343,6 +1346,8 @@ public class WhatsAppTwilioController : ControllerBase
                 RespuestaEnviada = blank ? null : m.RespuestaEnviada,
                 m.CreatedAt, m.EstadoEntrega,
                 Reacciones = blank ? new List<object>() : reacs,
+                // 2026-08-18: Sid propio, para que la pantalla pueda saltar del mensaje citado al original.
+                Sid = m.TwilioMessageSid,
                 ReplyToSid = blank ? null : m.ReplyToSid,
                 ReplyPreview = blank ? null : replyPreview,
                 ReplyFromMe = !blank && replyFromMe,

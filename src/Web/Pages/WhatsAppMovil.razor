@@ -56,15 +56,15 @@
             </div>
             <div class="wam-lock-foot">@(verificando ? "Verificando…" : huellaMsg)</div>
 
-            @* 2026-08-07: HUELLA. Entrar con huella (si ya la registró) y registrarla (con el código). *@
-            @if (huellaDisponible)
-            {
-                <div class="wam-huella">
-                    <button type="button" class="wam-huella-btn" @onclick="EntrarConHuella" disabled="@(verificando || huellaOcupada)">👆 Entrar con huella</button>
-                    <button type="button" class="wam-huella-reg" @onclick="RegistrarHuella" disabled="@(verificando || huellaOcupada)"
-                            title="Poné tu código de 4 dígitos y tocá acá para dejar tu huella en este celu">Registrar huella en este celu (con tu código)</button>
-                </div>
-            }
+            @* 2026-08-07: HUELLA. Entrar con huella (si ya la registró) y registrarla (con el código).
+               2026-08-18: los botones se muestran SIEMPRE. Antes se escondían solos cuando el navegador
+               contestaba que el teléfono no tenía lector disponible, y quedaba la sensación de que la
+               huella no existía. Ahora, si no se puede, se explica al tocar. *@
+            <div class="wam-huella">
+                <button type="button" class="wam-huella-btn" @onclick="EntrarConHuella" disabled="@(verificando || huellaOcupada)">👆 Entrar con huella</button>
+                <button type="button" class="wam-huella-reg" @onclick="RegistrarHuella" disabled="@(verificando || huellaOcupada)"
+                        title="Poné tu código de 4 dígitos y tocá acá para dejar tu huella en este celu">Registrar huella en este celu (con tu código)</button>
+            </div>
         </div>
     </div>
 }
@@ -275,6 +275,9 @@ else
     private string? pinError;
     private bool verificando;
     private const string PersonaKey = "wamovil.persona";
+    // 2026-08-18: a los 15 minutos sin tocarla vuelve a pedir código/huella (lo pidió el dueño).
+    private const int MinutosCandado = 15;
+    private DotNetObjectReference<WhatsAppMovil>? refCandado;
     // Huella (WebAuthn)
     private bool huellaDisponible;
     private bool huellaOcupada;
@@ -310,14 +313,46 @@ else
         if (!string.IsNullOrWhiteSpace(guardada))
         {
             persona = guardada;
-            desbloqueado = true;
-            await CargarConversaciones();
+            // 2026-08-18: antes entraba de una PARA SIEMPRE: el código se pedía solo la primera vez.
+            // Ahora, si pasaron más de 15 minutos sin usarla, vuelve a pedirlo (o la huella, que es
+            // un toque). Nos guardamos quién es, así no hay que volver a elegir persona.
+            var vencido = true;
+            try { vencido = await JS.InvokeAsync<bool>("waCandado.vencido", MinutosCandado); } catch { vencido = false; }
+            if (!vencido)
+            {
+                desbloqueado = true;
+                await CargarConversaciones();
+            }
+            else
+            {
+                huellaMsg = $"Pasaron más de {MinutosCandado} minutos: poné tu código o entrá con la huella.";
+            }
         }
+        // Vigilar la inactividad de acá en adelante (marca cada toque; al volver, si venció, bloquea).
+        try
+        {
+            refCandado ??= DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("waCandado.iniciar", refCandado, MinutosCandado);
+        }
+        catch { }
         StateHasChanged();
+    }
+
+    /// <summary>2026-08-18: si el navegador dice que este teléfono no tiene huella disponible,
+    /// explicamos por qué en vez de esconder el botón (que era lo que hacía parecer que no existía).</summary>
+    private bool AvisarSiNoHayHuella()
+    {
+        if (huellaDisponible) return false;
+        huellaMsg = "Este teléfono no ofrece huella al navegador. Suele pasar cuando el celu no tiene "
+                  + "bloqueo de pantalla configurado (PIN/patrón/huella), o si estás en una ventana de "
+                  + "incógnito. Configurá el bloqueo del teléfono y volvé a entrar.";
+        StateHasChanged();
+        return true;
     }
 
     private async Task EntrarConHuella()
     {
+        if (AvisarSiNoHayHuella()) return;
         huellaOcupada = true; huellaMsg = "Tocá la huella…"; pinError = null; StateHasChanged();
         try
         {
@@ -338,6 +373,7 @@ else
 
     private async Task RegistrarHuella()
     {
+        if (AvisarSiNoHayHuella()) return;
         if (pin.Length != 4) { huellaMsg = "Primero poné tu código de 4 dígitos y después tocá Registrar huella."; StateHasChanged(); return; }
         huellaOcupada = true; huellaMsg = "Registrando huella…"; StateHasChanged();
         try
@@ -392,6 +428,21 @@ else
         StateHasChanged();
     }
 
+    /// <summary>2026-08-18: lo llama el JS cuando volvés a la pantalla después de 15 minutos.
+    /// No borra quién sos: solo vuelve a pedir el código (o la huella).</summary>
+    [JSInvokable]
+    public Task Bloquear()
+    {
+        if (!desbloqueado) return Task.CompletedTask;
+        desbloqueado = false;
+        chatAbierto = null;
+        pin = "";
+        pinError = null;
+        huellaMsg = $"Pasaron más de {MinutosCandado} minutos: poné tu código o entrá con la huella.";
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
     private async Task CambiarPersona()
     {
         try { await JS.InvokeVoidAsync("localStorage.removeItem", PersonaKey); } catch { }
@@ -405,6 +456,7 @@ else
 
     private async Task CargarConversaciones()
     {
+        try { await JS.InvokeVoidAsync("waCandado.marcar"); } catch { }
         if (cargando) return;
         cargando = true;
         try { convs = await Api.GetTwConversacionesAsync(); }
@@ -540,6 +592,7 @@ else
     {
         notifTimer?.Dispose();
         try { Vivo.OnNuevoMensaje -= AvisoEnVivo; } catch { }
+        refCandado?.Dispose();
     }
 
     private async Task AbrirChat(ApiClient.TwConvDto c)
