@@ -29,42 +29,63 @@
 
 @if (!desbloqueado)
 {
-    @* Candado de 4 dígitos: solo Osmar/Germán/Gabriel. Como cada uno usa su celu, se acuerda. *@
+    @* Candado de la pantalla. 2026-08-19: la HUELLA es la forma principal de entrar (lo pidió el
+       dueño por seguridad); el código de 4 dígitos queda de respaldo, escondido detrás de un enlace.
+       Si el teléfono no ofrece huella, se muestra directamente el teclado. *@
     <div class="wam-lock">
         <div class="wam-lock-card">
             <div class="wam-lock-ic">💬</div>
             <div class="wam-lock-title">WhatsApp</div>
-            <div class="wam-lock-sub">Ingresá tu código de 4 dígitos</div>
-            <div class="wam-lock-dots">
-                @for (int i = 0; i < 4; i++)
-                {
-                    <span class="wam-dot @(pin.Length > i ? "on" : "")"></span>
-                }
-            </div>
-            @if (!string.IsNullOrEmpty(pinError))
-            {
-                <div class="wam-lock-err">@pinError</div>
-            }
-            <div class="wam-keys">
-                @foreach (var d in new[] { "1", "2", "3", "4", "5", "6", "7", "8", "9" })
-                {
-                    <button type="button" class="wam-key" @onclick="() => Tecla(d)" disabled="@verificando">@d</button>
-                }
-                <span></span>
-                <button type="button" class="wam-key" @onclick='() => Tecla("0")' disabled="@verificando">0</button>
-                <button type="button" class="wam-key wam-key-del" @onclick="Borrar" disabled="@verificando">⌫</button>
-            </div>
-            <div class="wam-lock-foot">@(verificando ? "Verificando…" : huellaMsg)</div>
 
-            @* 2026-08-07: HUELLA. Entrar con huella (si ya la registró) y registrarla (con el código).
-               2026-08-18: los botones se muestran SIEMPRE. Antes se escondían solos cuando el navegador
-               contestaba que el teléfono no tenía lector disponible, y quedaba la sensación de que la
-               huella no existía. Ahora, si no se puede, se explica al tocar. *@
-            <div class="wam-huella">
-                <button type="button" class="wam-huella-btn" @onclick="EntrarConHuella" disabled="@(verificando || huellaOcupada)">👆 Entrar con huella</button>
-                <button type="button" class="wam-huella-reg" @onclick="RegistrarHuella" disabled="@(verificando || huellaOcupada)"
-                        title="Poné tu código de 4 dígitos y tocá acá para dejar tu huella en este celu">Registrar huella en este celu (con tu código)</button>
-            </div>
+            @if (!modoClave)
+            {
+                @* ── Entrada principal: la huella ── *@
+                <div class="wam-lock-sub">Entrá con tu huella</div>
+                <button type="button" class="wam-huella-grande" @onclick="EntrarConHuella" disabled="@(verificando || huellaOcupada)">
+                    <span class="wam-huella-ic">👆</span>
+                    <span>@(huellaOcupada ? "Tocá el lector…" : "Entrar con huella")</span>
+                </button>
+                <div class="wam-lock-foot">@(verificando ? "Verificando…" : huellaMsg)</div>
+                <button type="button" class="wam-lock-link" @onclick="@(() => { modoClave = true; huellaMsg = null; })">
+                    Usar el código de 4 dígitos
+                </button>
+            }
+            else
+            {
+                @* ── Respaldo: el código de siempre ── *@
+                <div class="wam-lock-sub">Ingresá tu código de 4 dígitos</div>
+                <div class="wam-lock-dots">
+                    @for (int i = 0; i < 4; i++)
+                    {
+                        <span class="wam-dot @(pin.Length > i ? "on" : "")"></span>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(pinError))
+                {
+                    <div class="wam-lock-err">@pinError</div>
+                }
+                <div class="wam-keys">
+                    @foreach (var d in new[] { "1", "2", "3", "4", "5", "6", "7", "8", "9" })
+                    {
+                        <button type="button" class="wam-key" @onclick="() => Tecla(d)" disabled="@verificando">@d</button>
+                    }
+                    <span></span>
+                    <button type="button" class="wam-key" @onclick='() => Tecla("0")' disabled="@verificando">0</button>
+                    <button type="button" class="wam-key wam-key-del" @onclick="Borrar" disabled="@verificando">⌫</button>
+                </div>
+                <div class="wam-lock-foot">@(verificando ? "Verificando…" : huellaMsg)</div>
+                <div class="wam-huella">
+                    @* Registrar la huella necesita el código, por eso el botón vive acá. *@
+                    <button type="button" class="wam-huella-reg" @onclick="RegistrarHuella" disabled="@(verificando || huellaOcupada)"
+                            title="Poné tu código de 4 dígitos y tocá acá para dejar tu huella en este celu">👆 Registrar mi huella en este celu (con el código)</button>
+                    @if (huellaDisponible)
+                    {
+                        <button type="button" class="wam-lock-link" @onclick="@(() => { modoClave = false; pinError = null; huellaMsg = null; })">
+                            Volver a la huella
+                        </button>
+                    }
+                </div>
+            }
         </div>
     </div>
 }
@@ -255,6 +276,15 @@ else
     .wam-huella { margin-top: 0.6rem; border-top: 1px solid #eef0f2; padding-top: 0.9rem; display: flex; flex-direction: column; gap: 0.55rem; }
     .wam-huella-btn { background: #075e54; color: #fff; border: none; border-radius: 12px; padding: 12px; font-size: 1rem; font-weight: 800; cursor: pointer; }
     .wam-huella-btn:disabled { opacity: 0.6; cursor: wait; }
+    /* 2026-08-19: la huella es la entrada principal — botón grande y a la vista. */
+    .wam-huella-grande { width: 100%; margin-top: 1rem; background: #075e54; color: #fff; border: none;
+        border-radius: 16px; padding: 18px 12px; font-size: 1.05rem; font-weight: 800; cursor: pointer;
+        display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .wam-huella-grande:active { transform: scale(0.98); }
+    .wam-huella-grande:disabled { opacity: 0.7; cursor: wait; }
+    .wam-huella-ic { font-size: 2.6rem; line-height: 1; }
+    .wam-lock-link { background: transparent; border: none; color: #075e54; font-size: 0.85rem;
+        font-weight: 700; text-decoration: underline; cursor: pointer; margin-top: 0.9rem; }
     .wam-huella-reg { background: transparent; border: none; color: #6b7280; font-size: 0.78rem; cursor: pointer; text-decoration: underline; }
     .wam-huella-reg:disabled { opacity: 0.6; }
 </style>
@@ -282,6 +312,10 @@ else
     private bool huellaDisponible;
     private bool huellaOcupada;
     private string? huellaMsg;
+    // 2026-08-19: la huella pasa a ser la forma PRINCIPAL de entrar. modoClave=true muestra el
+    // teclado de 4 dígitos (respaldo), y se activa solo si el teléfono no ofrece huella.
+    private bool modoClave;
+    private const string HuellaRegistradaKey = "wamovil.huellaRegistrada";
 
     // Avisos (campanita): sonido + aviso visual del sistema al llegar un mensaje nuevo (pantalla abierta).
     private bool avisos;
@@ -307,6 +341,11 @@ else
         catch { /* navegador viejo o sin permisos, no pasa nada */ }
         // ¿El celu soporta huella? (para mostrar el botón)
         try { huellaDisponible = await JS.InvokeAsync<bool>("webAuthnAvailable"); } catch { huellaDisponible = false; }
+        // 2026-08-19: si el teléfono no ofrece huella, arrancamos directo en el teclado para no
+        // dejar a nadie afuera; si la ofrece, la huella es lo primero que se ve.
+        modoClave = !huellaDisponible;
+        if (!huellaDisponible)
+            huellaMsg = "Este teléfono no ofrece huella al navegador (suele ser porque no tiene bloqueo de pantalla configurado). Entrá con el código.";
         // ¿Ya se identificó en este celu antes? (cada uno usa el suyo, así se lo acuerda)
         string? guardada = null;
         try { guardada = await JS.InvokeAsync<string?>("localStorage.getItem", PersonaKey); } catch { }
@@ -357,11 +396,22 @@ else
         try
         {
             var begin = await Api.WaHuellaLoginBeginAsync();
-            if (begin is null || !begin.Ok) { huellaMsg = begin?.Mensaje ?? "Todavía no hay huellas registradas."; return; }
+            if (begin is null || !begin.Ok)
+            {
+                // Todavía nadie registró su huella: se registra desde el teclado, con el código.
+                huellaMsg = (begin?.Mensaje ?? "Todavía no hay huellas registradas.")
+                          + " Entrá con el código y tocá \"Registrar mi huella en este celu\".";
+                modoClave = true;
+                return;
+            }
             var credJs = await JS.InvokeAsync<System.Text.Json.JsonElement>("webAuthnGet", begin.Options!);
             if (credJs.TryGetProperty("_error", out _)) { huellaMsg = "No se pudo leer la huella."; return; }
             var comp = await Api.WaHuellaLoginCompleteAsync(new { SessionId = begin.SessionId, AssertionResponse = credJs });
-            if (comp is null || !comp.Ok || string.IsNullOrWhiteSpace(comp.Nombre)) { huellaMsg = comp?.Mensaje ?? "Huella no reconocida."; return; }
+            if (comp is null || !comp.Ok || string.IsNullOrWhiteSpace(comp.Nombre))
+            {
+                huellaMsg = (comp?.Mensaje ?? "Huella no reconocida.") + " Podés entrar con el código.";
+                return;
+            }
             persona = comp.Nombre;
             desbloqueado = true;
             try { await JS.InvokeVoidAsync("localStorage.setItem", PersonaKey, persona); } catch { }
@@ -385,6 +435,8 @@ else
             var comp = await Api.WaHuellaRegCompleteAsync(new { SessionId = begin.SessionId, AttestationResponse = credJs });
             if (comp is null || !comp.Ok) { huellaMsg = comp?.Mensaje ?? "No se pudo registrar la huella."; return; }
             huellaMsg = "✅ Huella registrada. Ahora podés entrar con la huella."; pin = "";
+            try { await JS.InvokeVoidAsync("localStorage.setItem", HuellaRegistradaKey, "1"); } catch { }
+            modoClave = false;   // volver a la pantalla de huella, que ahora ya sirve
         }
         catch { huellaMsg = "No se pudo registrar la huella."; }
         finally { huellaOcupada = false; StateHasChanged(); }
@@ -438,7 +490,8 @@ else
         chatAbierto = null;
         pin = "";
         pinError = null;
-        huellaMsg = $"Pasaron más de {MinutosCandado} minutos: poné tu código o entrá con la huella.";
+        modoClave = !huellaDisponible;   // 2026-08-19: si el celu tiene huella, se pide la huella
+        huellaMsg = $"Pasaron más de {MinutosCandado} minutos. Entrá de nuevo.";
         StateHasChanged();
         return Task.CompletedTask;
     }
