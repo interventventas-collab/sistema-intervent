@@ -18,11 +18,13 @@ public class WaLiveNotifier
 {
     private readonly IHubContext<PresenceHub> _hub;
     private readonly ILogger<WaLiveNotifier> _logger;
+    private readonly IServiceScopeFactory _scopes;
 
-    public WaLiveNotifier(IHubContext<PresenceHub> hub, ILogger<WaLiveNotifier> logger)
+    public WaLiveNotifier(IHubContext<PresenceHub> hub, ILogger<WaLiveNotifier> logger, IServiceScopeFactory scopes)
     {
         _hub = hub;
         _logger = logger;
+        _scopes = scopes;
     }
 
     /// <summary>convId con el MISMO formato que usa la presencia: "{numero}|{linea}".</summary>
@@ -36,6 +38,16 @@ public class WaLiveNotifier
         {
             await _hub.Clients.Group("presence-all")
                 .SendAsync("WaNuevoMensaje", ConvId(numero, lineaPhoneId), direccion, DateTime.UtcNow);
+
+            // 2026-08-18: ademas, despertar a los telefonos que tengan la pantalla CERRADA.
+            // Solo con mensajes del cliente: no tiene sentido avisarle a alguien de lo que
+            // acabamos de mandar nosotros. Es best-effort y no bloquea el flujo del mensaje.
+            if (string.Equals(direccion, "INCOMING", StringComparison.OrdinalIgnoreCase))
+            {
+                using var scope = _scopes.CreateScope();
+                var push = scope.ServiceProvider.GetRequiredService<WaPushService>();
+                await push.AvisarAsync();
+            }
         }
         catch (Exception ex)
         {

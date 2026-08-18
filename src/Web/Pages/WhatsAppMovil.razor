@@ -15,6 +15,18 @@
    la abrís y respondés (texto + nota de voz, vía PinnedWaChat). El enlace/QR para el celu apunta
    acá: https://app.palanica.com.ar/whatsapp-movil (o /wa). Necesita estar logueado. *@
 
+@* 2026-08-18: PWA — se puede agregar a la pantalla de inicio del celu (hace falta en iPhone
+   para que lleguen los avisos con la pantalla cerrada, y en Android queda como una app mas). *@
+<HeadContent>
+    <link rel="manifest" href="/manifest-wa.json" />
+    <meta name="theme-color" content="#075e54" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="WhatsApp" />
+    <link rel="apple-touch-icon" href="/img/wa-icon.png" />
+    <title>WhatsApp · FRIKAF</title>
+</HeadContent>
+
 @if (!desbloqueado)
 {
     @* Candado de 4 dígitos: solo Osmar/Germán/Gabriel. Como cada uno usa su celu, se acuerda. *@
@@ -77,6 +89,11 @@ else
                         title="@(avisos ? "Avisos activados (tocá para silenciar)" : "Avisos silenciados (tocá para activar)")">
                     @(avisos ? "🔔" : "🔕")
                 </button>
+                @* 2026-08-18: avisos con la pantalla CERRADA (se instala el aviso en el celu) *@
+                <button type="button" class="wam-bell @(pushActivo ? "on" : "")" @onclick="TogglePush" disabled="@pushOcupado"
+                        title="@(pushActivo ? "Este celular recibe avisos aunque cierres la pantalla (tocá para apagarlo)" : "Recibir avisos aunque cierres la pantalla")">
+                    @(pushOcupado ? "⏳" : (pushActivo ? "📳" : "📴"))
+                </button>
                 @if (!string.IsNullOrEmpty(persona))
                 {
                     <button type="button" class="wam-persona" @onclick="CambiarPersona" title="No soy yo / cambiar de persona">@persona ✕</button>
@@ -98,6 +115,10 @@ else
                     <button type="button" class="wam-linea-chip @(filtroLinea == l.Id ? "on" : "")" @onclick="@(() => filtroLinea = l.Id)">@l.Nombre</button>
                 }
             </div>
+        }
+        @if (!string.IsNullOrEmpty(pushMsg))
+        {
+            <div class="wam-pushmsg" @onclick="@(() => pushMsg = null)">@pushMsg <span style="opacity:.6">(tocá para cerrar)</span></div>
         }
         <div class="wam-search">
             @* 2026-08-18: sin autofocus. Antes el teclado del celu saltaba solo al abrir la
@@ -203,6 +224,9 @@ else
     .wam-bell { flex: none; background: rgba(255,255,255,0.18); color: #fff; border: none; border-radius: 999px;
         width: 36px; height: 32px; font-size: 1rem; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
     .wam-bell:hover { background: rgba(255,255,255,0.3); }
+    .wam-bell.on { background: #25d366; }
+    .wam-pushmsg { background: #fef3c7; color: #92400e; font-size: 0.82rem; padding: 10px 12px;
+        border-bottom: 1px solid #fde68a; cursor: pointer; }
     /* Chip "Conectado como …" */
     .wam-persona { flex: none; background: rgba(255,255,255,0.18); color: #fff;
         border: none; border-radius: 999px; padding: 5px 12px; font-size: 0.82rem; font-weight: 700; cursor: pointer; }
@@ -266,6 +290,18 @@ else
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
+        // 2026-08-18: registrar el service worker para que el celu la pueda instalar y para
+        // poder recibir los avisos con la pantalla cerrada.
+        try
+        {
+            await JS.InvokeVoidAsync("eval", @"
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.register('/sw.js', { scope: '/wa' })
+                        .catch(err => console.log('SW register failed:', err));
+                }
+            ");
+        }
+        catch { /* navegador viejo o sin permisos, no pasa nada */ }
         // ¿El celu soporta huella? (para mostrar el botón)
         try { huellaDisponible = await JS.InvokeAsync<bool>("webAuthnAvailable"); } catch { huellaDisponible = false; }
         // ¿Ya se identificó en este celu antes? (cada uno usa el suyo, así se lo acuerda)
@@ -376,6 +412,7 @@ else
         if (lineasConfig.Count == 0)
             try { lineasConfig = await Api.GetTwLineasConfigAsync(); } catch { }
         if (vistos.Count == 0) await CargarVistos();
+        await RevisarPushAsync();
         // 2026-08-15: tema (claro/oscuro) de cada línea + letra elegida
         await Apariencia.EnsureLoadedAsync();
         cargando = false;
@@ -400,6 +437,61 @@ else
             notifTimer ??= new System.Threading.Timer(async _ => await InvokeAsync(RevisarNuevosAsync), null, 60000, 60000);
         }
         StateHasChanged();
+    }
+
+    // ═══ 2026-08-18: avisos con la PANTALLA CERRADA (Web Push) ═══
+    // La campanita 🔔 de al lado sigue siendo el aviso de siempre: suena mientras la pantalla
+    // esta abierta. Este otro boton (📳) anota al telefono para que lo despierten aunque el
+    // navegador este cerrado. Son cosas distintas y se prenden por separado a proposito.
+    private bool pushActivo, pushOcupado;
+    private string? pushMsg;
+
+    private async Task RevisarPushAsync()
+    {
+        try
+        {
+            var ep = await JS.InvokeAsync<string?>("waPush.estado");
+            pushActivo = !string.IsNullOrWhiteSpace(ep);
+        }
+        catch { pushActivo = false; }
+    }
+
+    private async Task TogglePush()
+    {
+        pushOcupado = true; pushMsg = null; StateHasChanged();
+        try
+        {
+            if (pushActivo)
+            {
+                var ep = await JS.InvokeAsync<string?>("waPush.desactivar");
+                if (!string.IsNullOrWhiteSpace(ep)) await Api.WaPushBajaAsync(ep!);
+                pushActivo = false;
+                pushMsg = "Listo: este celular ya no recibe avisos con la pantalla cerrada.";
+            }
+            else
+            {
+                var clave = await Api.GetWaPushClaveAsync();
+                if (clave is null || string.IsNullOrWhiteSpace(clave.Clave))
+                {
+                    pushMsg = "No se pudo pedir la clave al sistema. Probá de nuevo en un rato.";
+                    return;
+                }
+                var r = await JS.InvokeAsync<System.Text.Json.JsonElement>("waPush.activar", clave.Clave);
+                var ok = r.TryGetProperty("ok", out var okEl) && okEl.GetBoolean();
+                if (!ok)
+                {
+                    pushMsg = r.TryGetProperty("motivo", out var mEl) ? mEl.GetString() : "No se pudo activar en este teléfono.";
+                    return;
+                }
+                var endpoint = r.TryGetProperty("endpoint", out var epEl) ? epEl.GetString() : null;
+                if (string.IsNullOrWhiteSpace(endpoint)) { pushMsg = "No se pudo activar en este teléfono."; return; }
+                await Api.WaPushSuscribirAsync(endpoint!, persona);
+                pushActivo = true;
+                pushMsg = "✅ Listo. Este celular va a avisarte aunque cierres la pantalla.";
+            }
+        }
+        catch (Exception ex) { pushMsg = "No se pudo cambiar el aviso: " + ex.Message; }
+        finally { pushOcupado = false; StateHasChanged(); }
     }
 
     /// <summary>Prende/apaga los avisos. Al prender, pide permiso para el aviso visual del sistema.</summary>

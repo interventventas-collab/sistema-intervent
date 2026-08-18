@@ -6049,6 +6049,15 @@ public class ApiClient
         catch (Exception ex) { return (false, ex.Message); }
     }
 
+    // ===== 2026-08-18: avisos de WhatsApp con la pantalla cerrada (Web Push) =====
+    public record WaPushClaveDto(string Clave, int Telefonos);
+    public async Task<WaPushClaveDto?> GetWaPushClaveAsync()
+        => await GetAsync<WaPushClaveDto>("/api/wa-push/clave-publica");
+    public async Task<bool> WaPushSuscribirAsync(string endpoint, string? nombre)
+        => await PostAsync<object>("/api/wa-push/suscribir", new { endpoint, nombre }) is not null;
+    public async Task<bool> WaPushBajaAsync(string endpoint)
+        => await PostAsync<object>("/api/wa-push/baja", new { endpoint, nombre = (string?)null }) is not null;
+
     // ===== Tesoreria Cafe: Cheques =====
     /// <summary>2026-08-18: crea la cobranza usando un cheque que YA esta en cartera (no crea uno nuevo)
     /// y la imputa a los comprobantes elegidos. Devuelve (numero de cobranza, error).</summary>
