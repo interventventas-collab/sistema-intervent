@@ -285,8 +285,7 @@
                                                    igual que el saldo de al lado. El type=number no puede mostrar separador de miles y
                                                    ademas se peleaba con el locale es-AR (truncaba el monto al perder foco, bug 2026-06-17). *@
                                                 <input class="form-input" type="text" inputmode="decimal" style="text-align:right; padding:0.2rem 0.4rem; font-size:0.85rem;"
-                                                       value="@MontoInput.Formato(sel.Importe)" disabled="@(!sel.Tildado)"
-                                                       @onchange="@(e => OnImporteComprobante(idx, e.Value?.ToString()))" />
+                                                       @bind="sel.ImporteTexto" @bind:event="onchange" disabled="@(!sel.Tildado)" />
                                             </td>
                                         </tr>
                                     }
@@ -317,7 +316,7 @@
                     <div class="form-row">
                         <div class="form-group" style="flex:1;">
                             <label class="form-label">Retenciones</label>
-                            <input class="form-input" type="number" step="0.01" min="0" @bind="retenciones" />
+                            <input class="form-input" type="text" inputmode="decimal" @bind="RetencionesTexto" @bind:event="onchange" />
                         </div>
                         <div class="form-group" style="flex:2;">
                             <label class="form-label">Observaciones (opcional)</label>
@@ -461,9 +460,26 @@
     private List<ComprobantePendienteDto>? comprobantes;
     private bool loadingComprobantes;
     private decimal retenciones;
+    /// <summary>2026-08-18: texto con punto de miles (ver MontoInput).</summary>
+    private string RetencionesTexto
+    {
+        get => MontoInput.Formato(retenciones);
+        set { MontoInput.TryParse(value, out retenciones); }
+    }
     private string observaciones = "";
 
-    private class CompSelState { public bool Tildado; public decimal Importe; }
+    private class CompSelState
+    {
+        public bool Tildado;
+        public decimal Importe;
+        /// <summary>2026-08-18: texto formateado del importe. Con @bind, al salir del campo
+        /// Blazor reescribe lo tipeado ya con los puntos ("386.370,00").</summary>
+        public string ImporteTexto
+        {
+            get => MontoInput.Formato(Importe);
+            set { MontoInput.TryParse(value, out var v); Importe = v; }
+        }
+    }
     private List<CompSelState> compSeleccionado = new();
 
     private decimal TotalImputar => compSeleccionado.Where(s => s.Tildado).Sum(s => s.Importe);
@@ -539,12 +555,6 @@
         compSeleccionado[idx].Tildado = tildado;
         if (tildado && compSeleccionado[idx].Importe <= 0m)
             compSeleccionado[idx].Importe = comprobantes![idx].Saldo;
-    }
-
-    private void OnImporteComprobante(int idx, string? raw)
-    {
-        if (MontoInput.TryParse(raw, out var v) && v >= 0)
-            compSeleccionado[idx].Importe = Math.Round(v, 2);
     }
 
     // ─── 2026-08-18: la cuenta del faltante, hecha por el sistema ───

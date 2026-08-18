@@ -437,8 +437,7 @@
                                                    el navegador descarta ese valor y el casillero se veia VACIO. Ahora es texto
                                                    formateado con punto de miles, igual que el saldo de la columna de al lado. *@
                                                 <input class="form-input" type="text" inputmode="decimal" style="text-align:right; width:120px; display:inline-block;"
-                                                       value="@MontoInput.Formato(imputaciones[p.VentaId].Importe)"
-                                                       @onchange="@(e => OnImputeChange(p.VentaId, e.Value?.ToString()))" />
+                                                       @bind="imputaciones[p.VentaId].ImporteTexto" @bind:event="onchange" @bind:after="@(() => OnImputeAfter(p.VentaId))" />
                                             </td>
                                         </tr>
                                     }
@@ -448,7 +447,7 @@
                         <div style="display:flex; align-items:center; gap:0.5rem;">
                             <label class="form-check"><input type="checkbox" @bind="aCuentaActivo" @bind:after="RecalcularTotal" /> A cuenta:</label>
                             <input class="form-input" type="number" step="0.01" style="width:140px;"
-                                   @bind="aCuentaImporte" @bind:after="RecalcularTotal" disabled="@(!aCuentaActivo)" />
+                                   @bind="ACuentaImporteTexto" @bind:event="onchange" @bind:after="RecalcularTotal" disabled="@(!aCuentaActivo)" />
                         </div>
                         @* 2026-06-08: total imputado + saldo DISPONIBLE en vivo (pedido del usuario)
                            Muestra cuánto le queda por imputar comparando con (medios de cobro + retenciones).
@@ -575,7 +574,7 @@
                                     }
                                 </select>
                                 <input class="form-input" type="number" step="0.01" placeholder="Importe"
-                                       @bind="m.Importe" @bind:after="RecalcularTotal" />
+                                       @bind="m.ImporteTexto" @bind:event="onchange" @bind:after="RecalcularTotal" />
                                 <input class="form-input" placeholder="Referencia (opcional)" @bind="m.Referencia" />
                                 <button class="btn-icon" @onclick="() => formMedios.RemoveAt(idx)" title="Quitar">🗑</button>
                             </div>
@@ -606,7 +605,7 @@
                     <div class="form-row">
                         <div class="form-group" style="flex:1;">
                             <label class="form-label">Retenciones sufridas</label>
-                            <input class="form-input" type="number" step="0.01" @bind="formRetenciones" @bind:after="RecalcularTotal" />
+                            <input class="form-input" type="text" inputmode="decimal" @bind="FormRetencionesTexto" @bind:event="onchange" @bind:after="RecalcularTotal" />
                             <p style="font-size:0.7rem; color:#6b7280; margin:0.2rem 0 0;">Si te aplicaron retenciones (IIBB, IVA, ganancias) ponelas acá. Cancela saldo del cliente pero NO entra a caja.</p>
                         </div>
                     </div>
@@ -764,11 +763,10 @@
                                     <td style="text-align:right;">$@ec.SaldoDisponible.ToString("N2")</td>
                                     <td style="text-align:right;">
                                         @* Bug 2026-06-17: forzar InvariantCulture en value (mismo motivo que CafeChequesBanco). *@
-                                        <input class="form-input" type="number" step="0.01" min="0"
+                                        <input class="form-input" type="text" inputmode="decimal"
                                                style="text-align:right; padding:0.2rem 0.4rem; font-size:0.85rem;"
-                                               value="@actual.Importe.ToString(System.Globalization.CultureInfo.InvariantCulture)"
-                                               disabled="@(!actual.Tildado)"
-                                               @onchange="@(e => OnEditImporte(idx, e.Value?.ToString()))" />
+                                               @bind="actual.ImporteTexto" @bind:event="onchange"
+                                               disabled="@(!actual.Tildado)" />
                                     </td>
                                 </tr>
                             }
@@ -781,11 +779,10 @@
                         <input type="checkbox" checked="@editACuentaActivo" @onchange="@(e => editACuentaActivo = (bool)e.Value!)" />
                         Dejar como <strong>A cuenta</strong>:
                     </label>
-                    <input class="form-input" type="number" step="0.01" min="0"
+                    <input class="form-input" type="text" inputmode="decimal"
                            style="text-align:right; width:140px; padding:0.2rem 0.4rem; font-size:0.85rem;"
-                           value="@editACuentaImporte.ToString(System.Globalization.CultureInfo.InvariantCulture)"
-                           disabled="@(!editACuentaActivo)"
-                           @onchange="@(e => OnEditACuenta(e.Value?.ToString()))" />
+                           @bind="EditACuentaTexto" @bind:event="onchange"
+                           disabled="@(!editACuentaActivo)" />
                 </div>
 
                 @* 2026-08-18: retenciones editables. Caso tipico: la cobranza nacio de un e-cheq y el
@@ -793,10 +790,9 @@
                 <div style="margin-top:0.5rem; padding:0.6rem 0.8rem; background:#fdf4ff; border:1px solid #f0abfc; border-radius:6px;">
                     <div style="display:flex; gap:1rem; align-items:center; flex-wrap:wrap;">
                         <label style="font-size:0.88rem; margin:0;">📋 <strong>Retenciones sufridas</strong>:</label>
-                        <input class="form-input" type="number" step="0.01" min="0"
+                        <input class="form-input" type="text" inputmode="decimal"
                                style="text-align:right; width:140px; padding:0.2rem 0.4rem; font-size:0.85rem;"
-                               value="@editRetenciones.ToString(System.Globalization.CultureInfo.InvariantCulture)"
-                               @onchange="@(e => OnEditRetenciones(e.Value?.ToString()))" />
+                               @bind="EditRetencionesTexto" @bind:event="onchange" />
                         @{
                             var faltanteRet = Math.Round(EditSumaActual - editandoCobranza!.Total, 2);
                         }
@@ -1111,7 +1107,28 @@
     // "a cuenta" cuando debio ir a una factura, o viceversa).
     private CobranzaDetalleDto? editandoCobranza;
     private class EditCompItem { public int VentaId; public string Numero = ""; public DateTime Fecha; public decimal Total; public decimal SaldoDisponible; public bool YaImputado; }
-    private class EditImputForm { public bool Tildado; public decimal Importe; }
+    private class EditImputForm
+    {
+        public bool Tildado;
+        public decimal Importe;
+        /// <summary>2026-08-18: importe como texto con punto de miles (ver MontoInput).</summary>
+        public string ImporteTexto
+        {
+            get => MontoInput.Formato(Importe);
+            set { MontoInput.TryParse(value, out var v); Importe = v; }
+        }
+    }
+
+    private string EditACuentaTexto
+    {
+        get => MontoInput.Formato(editACuentaImporte);
+        set { MontoInput.TryParse(value, out editACuentaImporte); }
+    }
+    private string EditRetencionesTexto
+    {
+        get => MontoInput.Formato(editRetenciones);
+        set { MontoInput.TryParse(value, out editRetenciones); }
+    }
     private List<EditCompItem>? editComprobantes;
     private List<EditImputForm> editImputaciones = new();
     private bool editACuentaActivo;
@@ -1251,27 +1268,6 @@
         if (!tildado) editImputaciones[idx].Importe = 0m;
     }
 
-    private void OnEditImporte(int idx, string? raw)
-    {
-        if (idx < 0 || idx >= editImputaciones.Count) return;
-        if (decimal.TryParse(raw, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v) && v >= 0)
-            editImputaciones[idx].Importe = Math.Round(v, 2);
-    }
-
-    /// <summary>2026-08-18: cambia el monto de retenciones de la cobranza que se esta editando.</summary>
-    private void OnEditRetenciones(string? raw)
-    {
-        if (decimal.TryParse(raw, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v) && v >= 0)
-            editRetenciones = Math.Round(v, 2);
-        else editRetenciones = 0m;
-    }
-
-    private void OnEditACuenta(string? raw)
-    {
-        if (decimal.TryParse(raw, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v) && v >= 0)
-            editACuentaImporte = Math.Round(v, 2);
-    }
-
     private async Task GuardarEditarImputaciones()
     {
         if (editandoCobranza is null || editComprobantes is null) return;
@@ -1357,15 +1353,44 @@
     private bool aCuentaActivo;
     private decimal aCuentaImporte;
     private decimal formRetenciones;
+    /// <summary>2026-08-18: version texto de los importes que se tipean (con punto de miles).</summary>
+    private string FormRetencionesTexto
+    {
+        get => MontoInput.Formato(formRetenciones);
+        set { MontoInput.TryParse(value, out formRetenciones); }
+    }
+    private string ACuentaImporteTexto
+    {
+        get => MontoInput.Formato(aCuentaImporte);
+        set { MontoInput.TryParse(value, out aCuentaImporte); }
+    }
     private string? formObservaciones;
     private List<MedioForm> formMedios = new();
 
-    private class ImputData { public bool Seleccionado { get; set; } public decimal Importe { get; set; } }
+    private class ImputData
+    {
+        public bool Seleccionado { get; set; }
+        public decimal Importe { get; set; }
+        /// <summary>2026-08-18: lo que se ve y se tipea en el casillero. Con @bind sobre esta
+        /// propiedad, al salir del campo Blazor reescribe el texto ya formateado ("61.710,00").
+        /// Con value+onchange NO lo hace: queda lo que tipeo el usuario (medido con Playwright).</summary>
+        public string ImporteTexto
+        {
+            get => MontoInput.Formato(Importe);
+            set { MontoInput.TryParse(value, out var v); Importe = v; }
+        }
+    }
     private class MedioForm
     {
         public int CajaId { get; set; }
         public string TipoCaja { get; set; } = "";
         public decimal Importe { get; set; }
+        /// <summary>2026-08-18: importe como texto con puntos de miles (ver MontoInput).</summary>
+        public string ImporteTexto
+        {
+            get => MontoInput.Formato(Importe);
+            set { MontoInput.TryParse(value, out var v); Importe = v; }
+        }
         public string? Referencia { get; set; }
         public bool EsCheque => TipoCaja == "CHEQUES_CARTERA";
         public string ChequeBanco { get; set; } = "";
@@ -1623,14 +1648,13 @@
         catch (Exception ex) { ToastService.Error(ex.Message); }
     }
 
-    private void OnImputeChange(int ventaId, string? value)
+    /// <summary>2026-08-18: corre despues de que @bind ya guardo el importe tipeado (ImporteTexto).</summary>
+    private void OnImputeAfter(int ventaId)
     {
         if (imputaciones.TryGetValue(ventaId, out var imp))
         {
-            MontoInput.TryParse(value, out var v);
-            imp.Importe = v;
             // Si tipea importe, asume que quiere imputar
-            if (v > 0) imp.Seleccionado = true;
+            if (imp.Importe > 0) imp.Seleccionado = true;
             RecalcularTotal();
         }
     }

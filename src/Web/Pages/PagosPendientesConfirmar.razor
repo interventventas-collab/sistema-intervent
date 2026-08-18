@@ -223,7 +223,7 @@
             {
                 <label class="pp-mlabel">Importe</label>
                 @* 2026-08-18: texto con punto de miles — como type=number el importe con coma quedaba vacio *@
-                <input class="pp-minput" type="text" inputmode="decimal" value="@MontoInput.Formato(editMonto)" @onchange="@(e => { MontoInput.TryParse(e.Value?.ToString(), out editMonto); })" />
+                <input class="pp-minput" type="text" inputmode="decimal" @bind="EditMontoTexto" @bind:event="onchange" />
             }
 
             <label class="pp-mlabel">Medio de pago</label>
@@ -308,6 +308,12 @@
     // Edit
     string editConcepto = "";
     decimal editMonto = 0;
+    /// <summary>2026-08-18: texto del monto. Con @bind, al salir del campo se reescribe formateado.</summary>
+    string EditMontoTexto
+    {
+        get => MontoInput.Formato(editMonto);
+        set { MontoInput.TryParse(value, out editMonto); }
+    }
     string editMedio = "";
     string editNotas = "";
 

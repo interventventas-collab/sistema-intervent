@@ -184,8 +184,7 @@
                                             <td style="text-align:right;">
                                                 @* 2026-08-18: texto formateado ("386.370,00") para que se lea igual que el saldo de al lado *@
                                                 <input class="form-input" type="text" inputmode="decimal" style="text-align:right; padding:0.2rem 0.4rem; font-size:0.85rem;"
-                                                       value="@MontoInput.Formato(sel.Importe)" disabled="@(!sel.Tildado)"
-                                                       @onchange="@(e => OnImporteComprobanteCobranza(idx, e.Value?.ToString()))" />
+                                                       @bind="sel.ImporteTexto" @bind:event="onchange" disabled="@(!sel.Tildado)" />
                                             </td>
                                         </tr>
                                     }
@@ -215,7 +214,7 @@
                     <div class="form-row">
                         <div class="form-group" style="flex:1;">
                             <label class="form-label">Retenciones</label>
-                            <input class="form-input" type="number" step="0.01" min="0" @bind="cobRetenciones" />
+                            <input class="form-input" type="text" inputmode="decimal" @bind="CobRetencionesTexto" @bind:event="onchange" />
                             <p style="font-size:0.7rem; color:#6b7280; margin:0.2rem 0 0;">Si el cliente descontó retenciones del pago, ponelas acá.</p>
                         </div>
                         <div class="form-group" style="flex:2;">
@@ -381,9 +380,26 @@
     private CafeClienteDto? cobCliente;
     private string cobClienteSearch = "";
     private List<ComprobantePendienteDto>? cobComprobantes;
-    private class CobSelState { public bool Tildado; public decimal Importe; }
+    private class CobSelState
+    {
+        public bool Tildado;
+        public decimal Importe;
+        /// <summary>2026-08-18: texto formateado del importe. Con @bind, al salir del campo
+        /// Blazor reescribe lo tipeado ya con los puntos ("386.370,00").</summary>
+        public string ImporteTexto
+        {
+            get => MontoInput.Formato(Importe);
+            set { MontoInput.TryParse(value, out var v); Importe = v; }
+        }
+    }
     private List<CobSelState> cobSeleccion = new();
     private decimal cobRetenciones;
+    /// <summary>2026-08-18: texto con punto de miles (ver MontoInput).</summary>
+    private string CobRetencionesTexto
+    {
+        get => MontoInput.Formato(cobRetenciones);
+        set { MontoInput.TryParse(value, out cobRetenciones); }
+    }
     private string cobObservaciones = "";
     private bool cobCargandoComp, cobGuardando;
     private string? cobError;
@@ -458,13 +474,6 @@
         if (tildado && cobSeleccion[idx].Importe <= 0m && cobComprobantes is not null)
             cobSeleccion[idx].Importe = cobComprobantes[idx].Saldo;
         if (!tildado) cobSeleccion[idx].Importe = 0m;
-    }
-
-    private void OnImporteComprobanteCobranza(int idx, string? raw)
-    {
-        if (idx < 0 || idx >= cobSeleccion.Count) return;
-        if (MontoInput.TryParse(raw, out var v) && v >= 0)
-            cobSeleccion[idx].Importe = Math.Round(v, 2);
     }
 
     /// <summary>Suma de los saldos de las facturas tildadas.</summary>
