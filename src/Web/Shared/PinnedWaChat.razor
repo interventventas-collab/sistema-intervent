@@ -83,7 +83,7 @@
                                 }
                                 else if (EsImagen(m.MediaUrl))
                                 {
-                                    <a href="@m.MediaUrl" target="_blank" rel="noopener"><img src="@m.MediaUrl" class="pwa-img @(EsSticker(m.MediaUrl) ? "pwa-sticker" : "")" alt="imagen" /></a>
+                                    <a href="@m.MediaUrl" target="_blank" rel="noopener" draggable="false" @ondragstart:preventDefault="true"><img src="@m.MediaUrl" class="pwa-img @(EsSticker(m.MediaUrl) ? "pwa-sticker" : "")" alt="imagen" draggable="false" /></a>
                                 }
                                 else
                                 {
@@ -97,6 +97,14 @@
                             @if (m.OcultoDeposito)
                             {
                                 <div class="pwa-oculto-badge">🚫 oculto a Depósito</div>
+                            }
+                            @* 2026-08-19: en los globitos con foto, audio o archivo el toque sostenido no
+                               siempre llega (el reproductor y los enlaces se quedan con el toque), asi que
+                               les damos un boton propio que abre el MISMO menu de reaccionar/responder. *@
+                            @if (!string.IsNullOrWhiteSpace(m.MediaUrl))
+                            {
+                                <button type="button" class="pwa-opts-btn" @onclick="() => AbrirMenuMsg(m.Id)"
+                                        title="Opciones: reaccionar o responder este mensaje">⋮ Opciones</button>
                             }
                         }
                         <div class="pwa-time">
@@ -510,6 +518,11 @@
         font-size: 0.64rem; cursor: pointer; padding: 0; text-decoration: underline; display: block; }
     .pwa-ocultar-btn:hover { color: #dc2626; }
     .pwa-text { white-space: pre-wrap; word-break: break-word; }
+    /* 2026-08-19: boton de opciones de los globitos con adjunto */
+    .pwa-opts-btn { display: block; margin: 3px 0 0 auto; background: rgba(255,255,255,0.92);
+        border: 1px solid #d1d5db; border-radius: 999px; padding: 1px 9px; font-size: 0.66rem;
+        font-weight: 800; color: #4b5563; cursor: pointer; line-height: 1.5; }
+    .pwa-opts-btn:active { background: #e5e7eb; }
     .pwa-reply-clic { cursor: pointer; }
     .pwa-reply-clic:active { filter: brightness(0.94); }
 
@@ -532,7 +545,8 @@
 
     /* Media recibida: audio reproducible, imagen inline, resto link */
     .pwa-audio { max-width: 100%; height: 40px; display: block; margin-bottom: 0.2rem; }
-    .pwa-img { max-width: 220px; max-height: 260px; border-radius: 8px; display: block; margin-bottom: 0.2rem; }
+    .pwa-img { max-width: 220px; max-height: 260px; border-radius: 8px; display: block; margin-bottom: 0.2rem;
+        -webkit-user-drag: none; -webkit-touch-callout: none; }
     .pwa-img.pwa-sticker { max-width: 130px; max-height: 130px; }
 
     /* Micrófono / grabación de nota de voz */
@@ -956,7 +970,7 @@
     // Un toque normal (corto) o un scroll cancelan el temporizador y no abren nada.
     private int? menuMsgId;
     private System.Threading.CancellationTokenSource? pressCts;
-    private static readonly string[] QuickEmojisPwa = { "👍", "❤️", "😂", "😮", "😢", "🙏", "☕", "✅" };
+    private static readonly string[] QuickEmojisPwa = { "👍", "❤️", "😂", "😮", "😢", "🙏", "☕", "✅", "❌" };
 
     private async Task PressStart(int msgId)
     {
@@ -970,6 +984,8 @@
         StateHasChanged();
     }
     private void PressEnd() => pressCts?.Cancel();
+    // 2026-08-19: abre el menu del mensaje sin toque sostenido (boton "⋮ Opciones" de fotos/audios/archivos).
+    private void AbrirMenuMsg(int msgId) { pressCts?.Cancel(); menuMsgId = msgId; }
     private void CerrarMenuMsg() { menuMsgId = null; }
 
     private async Task ReaccionarPwa(int msgId, string emoji)
