@@ -745,34 +745,38 @@
                                             </button>
                                         }
                                     </div>
+                                    @* 2026-08-19: los botoncitos y el selector de emojis pasaron ADENTRO del globito.
+                                       Antes colgaban del contenedor de afuera, que se estira al 75% del ancho, asi que
+                                       en los mensajes largos quedaban flotando hasta 144 px a un costado y nadie los
+                                       encontraba. Colgando del globito quedan siempre pegados a el, mida lo que mida. *@
+                                    @* Botón reaccionar — visible al hover *@
+                                    <button class="wa-react-btn" @onclick="() => TogglePicker(m.Id)" title="Reaccionar">😊</button>
+                                    @* 2026-08-05: botón responder citando — visible al hover *@
+                                    <button class="wa-reply-btn" @onclick="() => IniciarResponder(m)" @onclick:stopPropagation="true" title="Responder citando este mensaje">↩️</button>
+                                    @* 2026-08-19: CORREGIR — solo en los mensajes que mandamos nosotros. Un enviado no se
+                                       puede borrar, así que deja el equivocado citado + el texto de aviso ya escrito. *@
+                                    @if (m.Direccion == "OUTGOING" && !m.Anulado)
+                                    {
+                                        <button class="wa-corregir-btn" @onclick="() => IniciarCorregir(m)" @onclick:stopPropagation="true"
+                                                title="Corregir: manda un aviso citando este mensaje y lo deja tachado para el equipo">⚠️</button>
+                                    }
+                                    @* 2026-08-07: ocultar/mostrar este mensaje a Depósito — solo admin/oficina.
+                                       2026-08-12: y SOLO en los chats que ve Depósito (en el resto no tiene sentido). *@
+                                    @if (!esDeposito && EsChatVisibleDeposito)
+                                    {
+                                        <button class="wa-hide-btn" @onclick="() => ToggleOcultarDeposito(m)" @onclick:stopPropagation="true"
+                                                title="@(m.OcultoDeposito ? "Mostrar este mensaje a Depósito" : "Ocultar este mensaje a Depósito")">@(m.OcultoDeposito ? "👁" : "🚫")</button>
+                                    }
+                                    @if (pickerOpenMsgId == m.Id)
+                                    {
+                                        <div class="wa-emoji-picker">
+                                            @foreach (var em in QuickEmojis)
+                                            {
+                                                <button class="wa-emoji-pick" @onclick="() => ReaccionarA(m.Id, em)">@em</button>
+                                            }
+                                        </div>
+                                    }
                                 </div>
-                                @* Botón reaccionar — visible al hover *@
-                                <button class="wa-react-btn" @onclick="() => TogglePicker(m.Id)" title="Reaccionar">😊</button>
-                                @* 2026-08-05: botón responder citando — visible al hover *@
-                                <button class="wa-reply-btn" @onclick="() => IniciarResponder(m)" @onclick:stopPropagation="true" title="Responder citando este mensaje">↩️</button>
-                                @* 2026-08-19: CORREGIR — solo en los mensajes que mandamos nosotros. Un enviado no se
-                                   puede borrar, así que deja el equivocado citado + el texto de aviso ya escrito. *@
-                                @if (m.Direccion == "OUTGOING" && !m.Anulado)
-                                {
-                                    <button class="wa-corregir-btn" @onclick="() => IniciarCorregir(m)" @onclick:stopPropagation="true"
-                                            title="Corregir: manda un aviso citando este mensaje y lo deja tachado para el equipo">⚠️</button>
-                                }
-                                @* 2026-08-07: ocultar/mostrar este mensaje a Depósito — solo admin/oficina.
-                                   2026-08-12: y SOLO en los chats que ve Depósito (en el resto no tiene sentido). *@
-                                @if (!esDeposito && EsChatVisibleDeposito)
-                                {
-                                    <button class="wa-hide-btn" @onclick="() => ToggleOcultarDeposito(m)" @onclick:stopPropagation="true"
-                                            title="@(m.OcultoDeposito ? "Mostrar este mensaje a Depósito" : "Ocultar este mensaje a Depósito")">@(m.OcultoDeposito ? "👁" : "🚫")</button>
-                                }
-                                @if (pickerOpenMsgId == m.Id)
-                                {
-                                    <div class="wa-emoji-picker">
-                                        @foreach (var em in QuickEmojis)
-                                        {
-                                            <button class="wa-emoji-pick" @onclick="() => ReaccionarA(m.Id, em)">@em</button>
-                                        }
-                                    </div>
-                                }
                                 @if (m.Reacciones != null && m.Reacciones.Count > 0)
                                 {
                                     <div class="wa-reacciones">
