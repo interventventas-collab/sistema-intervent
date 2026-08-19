@@ -6747,7 +6747,9 @@ public class ApiClient
     // 2026-08-05: ReplyToSid/ReplyPreview/ReplyFromMe = "responder citando" (burbuja del mensaje citado).
     public record TwMsgDto(int Id, string Direccion, string Numero, string? NombrePerfil, string? Cuerpo, string? MediaUrl, string? MediaFilename, int? NumMedia, bool Procesado, string? RespuestaEnviada, DateTime CreatedAt, string? EstadoEntrega, List<TwReaccionDto>? Reacciones, string? ReplyToSid = null, string? ReplyPreview = null, bool ReplyFromMe = false, bool OcultoDeposito = false,
         // 2026-08-18: identificador propio del mensaje. Sirve para ubicar el mensaje citado al tocar la cajita gris.
-        string? Sid = null);
+        string? Sid = null,
+        // 2026-08-19: mensaje ANULADO (se mandó una corrección). Se ve tachado SOLO de nuestro lado.
+        bool Anulado = false, string? AnuladoPor = null);
 
     // 2026-08-07: ocultar/mostrar un mensaje al usuario Depósito. Solo admin/oficina.
     public async Task<bool> OcultarMensajeDepositoAsync(int mensajeId, bool oculto)
@@ -6769,6 +6771,17 @@ public class ApiClient
         => await _http.GetFromJsonAsync<List<TwDestinatarioDto>>($"/api/whatsapp/twilio/destinatarios-buscar?q={Uri.EscapeDataString(q ?? "")}") ?? new();
     public async Task<List<TwConvDto>> GetTwConversacionesAsync()
         => await _http.GetFromJsonAsync<List<TwConvDto>>("/api/whatsapp/twilio/conversaciones") ?? new();
+
+    // 2026-08-19: anular / desanular un mensaje NUESTRO (queda tachado solo en nuestras pantallas).
+    public async Task<bool> AnularMensajeAsync(int id, bool anular)
+    {
+        try
+        {
+            var r = await _http.PostAsJsonAsync($"/api/whatsapp/twilio/mensajes/{id}/anular", new { Anular = anular });
+            return r.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
 
     // 2026-08-19: sonido de aviso PROPIO de una charla (le gana al de la línea). "" = volver al de la línea.
     public async Task<(bool Ok, string? Error)> GuardarConvSonidoAsync(string numero, string? linea, string? sonido)

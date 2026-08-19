@@ -1452,7 +1452,9 @@ public class WhatsAppTwilioController : ControllerBase
                 // 2026-08-18: el SID propio va al front para poder saltar al mensaje citado
                 // cuando tocás la cajita gris de "respondiendo a…".
                 m.TwilioMessageSid,
-                m.ReplyToSid, m.OcultoDeposito
+                m.ReplyToSid, m.OcultoDeposito,
+                // 2026-08-19: mensaje anulado (se mandó una corrección). Se ve tachado de nuestro lado.
+                m.AnuladoAt, m.AnuladoPor
             })
             .ToListAsync();
         msgs.Reverse();
@@ -1508,7 +1510,9 @@ public class WhatsAppTwilioController : ControllerBase
                 ReplyToSid = blank ? null : m.ReplyToSid,
                 ReplyPreview = blank ? null : replyPreview,
                 ReplyFromMe = !blank && replyFromMe,
-                OcultoDeposito = m.OcultoDeposito
+                OcultoDeposito = m.OcultoDeposito,
+                Anulado = m.AnuladoAt != null,
+                AnuladoPor = m.AnuladoPor
             };
         }).ToList();
         return Ok(result);
@@ -1558,6 +1562,30 @@ public class WhatsAppTwilioController : ControllerBase
         m.OcultoDeposito = req?.Oculto ?? true;
         await _db.SaveChangesAsync();
         return Ok(new { ok = true, oculto = m.OcultoDeposito });
+    }
+
+    public record AnularMensajeReq(bool Anular);
+
+    /// <summary>2026-08-19: marca (o desmarca) un mensaje NUESTRO como ANULADO. No lo borra ni lo
+    /// toca del lado del cliente —eso no se puede—: solo lo muestra tachado en nuestras pantallas,
+    /// para que nadie del equipo siga trabajando sobre el precio o el dato equivocado.</summary>
+    [HttpPost("mensajes/{id:int}/anular")]
+    [Authorize]
+    public async Task<IActionResult> AnularMensaje(int id, [FromBody] AnularMensajeReq req)
+    {
+        var m = await _db.WhatsAppTwilioMensajes.FirstOrDefaultAsync(x => x.Id == id);
+        if (m == null) return NotFound(new { error = "Mensaje no encontrado" });
+        if (m.Direccion != "OUTGOING")
+            return BadRequest(new { error = "Solo se pueden anular los mensajes que mandamos nosotros" });
+        if (req?.Anular ?? true)
+        {
+            m.AnuladoAt ??= DateTime.UtcNow;
+            var quien = User?.Identity?.Name ?? "";
+            m.AnuladoPor = quien.Length > 60 ? quien.Substring(0, 60) : (string.IsNullOrEmpty(quien) ? null : quien);
+        }
+        else { m.AnuladoAt = null; m.AnuladoPor = null; }
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, anulado = m.AnuladoAt != null, anuladoPor = m.AnuladoPor });
     }
 
     // ===== ADJUNTOS — Fase 1: Subir desde PC =====

@@ -52,7 +52,7 @@
             {
                 var mine = m.Direccion == "OUTGOING";
                 <div class="pwa-row @(mine ? "out" : "in")">
-                    <div id="@($"pwamsg-{m.Id}")" class="pwa-bubble @(mine ? "out" : "in") @(menuMsgId == m.Id ? "sel" : "")"
+                    <div id="@($"pwamsg-{m.Id}")" class="pwa-bubble @(mine ? "out" : "in") @(menuMsgId == m.Id ? "sel" : "") @(m.Anulado ? "pwa-anulado" : "")"
                          @onpointerdown="() => PressStart(m.Id)" @onpointerup="PressEnd"
                          @onpointerleave="PressEnd" @onpointercancel="PressEnd"
                          @oncontextmenu:preventDefault="true">
@@ -97,6 +97,12 @@
                             @if (m.OcultoDeposito)
                             {
                                 <div class="pwa-oculto-badge">🚫 oculto a Depósito</div>
+                            }
+                            @* 2026-08-19: se mandó una corrección de este mensaje. El cliente lo sigue
+                               viendo normal en su celular; el tachado es solo de nuestro lado. *@
+                            @if (m.Anulado)
+                            {
+                                <div class="pwa-anulado-badge">⚠️ anulado@(string.IsNullOrEmpty(m.AnuladoPor) ? "" : $" por {m.AnuladoPor}")</div>
                             }
                             @* 2026-08-19: en los globitos con foto, audio o archivo el toque sostenido no
                                siempre llega (el reproductor y los enlaces se quedan con el toque), asi que
@@ -371,6 +377,11 @@
                 @if (VentanaWaAbierta())
                 {
                     <button type="button" class="pwa-msgmenu-op" @onclick="() => IniciarResponderPwa(_mm)">↩️ Responder</button>
+                    @* 2026-08-19: corregir — solo sobre los mensajes que mandamos nosotros *@
+                    @if (_mm.Direccion == "OUTGOING" && !_mm.Anulado)
+                    {
+                        <button type="button" class="pwa-msgmenu-op" style="margin-top:6px;" @onclick="() => IniciarCorregirPwa(_mm)">⚠️ Corregir</button>
+                    }
                 }
             </div>
         </div>
@@ -536,6 +547,11 @@
     /* Ocultar a Depósito */
     .pwa-oculto { font-style: italic; color: #6b7280; font-size: 0.82rem; }
     .pwa-oculto-badge { font-size: 0.62rem; color: #b45309; font-weight: 800; margin-top: 2px; }
+    /* 2026-08-19: mensaje anulado (se mandó una corrección). Tachado SOLO de nuestro lado. */
+    .pwa-bubble.pwa-anulado .pwa-text { text-decoration: line-through; color: #9ca3af; }
+    .pwa-bubble.pwa-anulado { opacity: 0.75; }
+    .pwa-anulado-badge { font-size: 0.6rem; color: #92400e; background: #fef3c7; border: 1px solid #fcd34d;
+        border-radius: 999px; padding: 0 5px; font-weight: 800; margin-top: 3px; display: inline-block; }
     .pwa-ocultar-btn { margin-top: 3px; background: transparent; border: none; color: #9ca3af;
         font-size: 0.64rem; cursor: pointer; padding: 0; text-decoration: underline; display: block; }
     .pwa-ocultar-btn:hover { color: #dc2626; }
@@ -983,6 +999,9 @@
         }
         sending = true;
         var replyId = respondiendoA?.Id;   // 2026-08-12: si estás respondiendo citando, va el id del mensaje citado
+        // 2026-08-19: si esto es una corrección, a cuál mensaje corrige. Se marca solo si sale bien.
+        var corrigeA = corrigiendoIdPwa;
+        corrigiendoIdPwa = null;
 
         // 2026-08-18: la burbuja aparece AL INSTANTE con el relojito, como WhatsApp, en vez de
         // esperar la respuesta del servidor mirando la pantalla quieta. Si sale bien, la recarga
@@ -1004,12 +1023,14 @@
         if (ok)
         {
             respondiendoA = null;   // se limpió la cita solo si salió bien (si falló, no perdés a quién le respondías)
+            if (corrigeA is int _anu) await Api.AnularMensajeAsync(_anu, true);
             await Cargar();
         }
         else
         {
             mensajes.Remove(provisorio);
             composer = textoOriginal;   // no perder lo escrito
+            corrigiendoIdPwa = corrigeA;   // tampoco se pierde que estabas corrigiendo
             await SincronizarComposer();
             Toast.Error(err ?? "No se pudo enviar el mensaje");
         }
@@ -1051,7 +1072,21 @@
     // Responder citando (reply). respondiendoA = mensaje al que le estás contestando (null = ninguno).
     private ApiClient.TwMsgDto? respondiendoA;
     private void IniciarResponderPwa(ApiClient.TwMsgDto m) { respondiendoA = m; menuMsgId = null; }
-    private void CancelarResponderPwa() => respondiendoA = null;
+
+    // 2026-08-19: CORREGIR. Deja el mensaje equivocado citado y el aviso ya escrito (editable); el
+    // viejo queda tachado —de nuestro lado— recién cuando la corrección sale de verdad.
+    private const string TextoCorregirPwa = "⚠️ Por favor ignorá el mensaje anterior. ";
+    private int? corrigiendoIdPwa;
+    private async Task IniciarCorregirPwa(ApiClient.TwMsgDto m)
+    {
+        respondiendoA = m;
+        corrigiendoIdPwa = m.Id;
+        menuMsgId = null;
+        composer = string.IsNullOrWhiteSpace(composer) ? TextoCorregirPwa : composer.TrimEnd() + " " + TextoCorregirPwa;
+        await SincronizarComposer();
+        StateHasChanged();
+    }
+    private void CancelarResponderPwa() { respondiendoA = null; corrigiendoIdPwa = null; }
     private string PreviewRespuestaPwa(ApiClient.TwMsgDto m)
     {
         if (!string.IsNullOrWhiteSpace(m.Cuerpo)) return Recortar2(m.Cuerpo, 60);

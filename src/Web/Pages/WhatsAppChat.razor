@@ -660,7 +660,7 @@
                                 <div class="wa-msg-check">✓</div>
                             }
                             <div class="wa-bubble-wrap">
-                                <div class="wa-bubble" id="@($"wamsg-{m.Id}")">
+                                <div class="wa-bubble @(m.Anulado ? "wa-anulado" : "")" id="@($"wamsg-{m.Id}")">
                                     @* 2026-08-05: "responder citando" — burbujita del mensaje al que responde este *@
                                     @if (!string.IsNullOrEmpty(m.ReplyPreview))
                                     {
@@ -736,12 +736,27 @@
                                         {
                                             <span class="wa-oculto-badge" title="Este mensaje NO lo ve Depósito">🚫 oculto a Depósito</span>
                                         }
+                                        @* 2026-08-19: cartelito de anulado. Tocándolo se deshace (por si te equivocaste). *@
+                                        @if (m.Anulado)
+                                        {
+                                            <button class="wa-anulado-badge" @onclick="() => DesanularMensaje(m)" @onclick:stopPropagation="true"
+                                                    title="Se mandó una corrección de este mensaje. El cliente lo sigue viendo normal en su celular. Tocá para deshacer.">
+                                                ⚠️ anulado@(string.IsNullOrEmpty(m.AnuladoPor) ? "" : $" por {m.AnuladoPor}") · deshacer
+                                            </button>
+                                        }
                                     </div>
                                 </div>
                                 @* Botón reaccionar — visible al hover *@
                                 <button class="wa-react-btn" @onclick="() => TogglePicker(m.Id)" title="Reaccionar">😊</button>
                                 @* 2026-08-05: botón responder citando — visible al hover *@
                                 <button class="wa-reply-btn" @onclick="() => IniciarResponder(m)" @onclick:stopPropagation="true" title="Responder citando este mensaje">↩️</button>
+                                @* 2026-08-19: CORREGIR — solo en los mensajes que mandamos nosotros. Un enviado no se
+                                   puede borrar, así que deja el equivocado citado + el texto de aviso ya escrito. *@
+                                @if (m.Direccion == "OUTGOING" && !m.Anulado)
+                                {
+                                    <button class="wa-corregir-btn" @onclick="() => IniciarCorregir(m)" @onclick:stopPropagation="true"
+                                            title="Corregir: manda un aviso citando este mensaje y lo deja tachado para el equipo">⚠️</button>
+                                }
                                 @* 2026-08-07: ocultar/mostrar este mensaje a Depósito — solo admin/oficina.
                                    2026-08-12: y SOLO en los chats que ve Depósito (en el resto no tiene sentido). *@
                                 @if (!esDeposito && EsChatVisibleDeposito)
@@ -2457,7 +2472,15 @@
     .wa-msg-row.out .wa-reply-btn { right: auto; left: -28px; }
     .wa-bubble-wrap:hover .wa-reply-btn { opacity: 1; }
     /* 2026-08-07: botón ocultar a Depósito (hover), debajo del de responder */
-    .wa-hide-btn { position: absolute; top: 50px; right: -28px; background: #fff; border: 1px solid #e5e7eb; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 0.15s; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.8rem; padding: 0; }
+    /* 2026-08-19: corregir un mensaje nuestro + cómo se ve uno anulado */
+    .wa-corregir-btn { position: absolute; top: 50px; right: -28px; background: #fff; border: 1px solid #fcd34d; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 0.15s; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.8rem; padding: 0; }
+    .wa-msg-row.out .wa-corregir-btn { right: auto; left: -28px; }
+    .wa-bubble-wrap:hover .wa-corregir-btn { opacity: 1; }
+    .wa-bubble.wa-anulado .wa-bubble-body { text-decoration: line-through; color: #9ca3af; }
+    .wa-bubble.wa-anulado { opacity: 0.75; }
+    .wa-anulado-badge { background: #fef3c7; border: 1px solid #fcd34d; color: #92400e; font-size: 0.62rem; font-weight: 800; border-radius: 999px; padding: 0 6px; margin-left: 4px; cursor: pointer; }
+    .wa-anulado-badge:hover { background: #fde68a; }
+    .wa-hide-btn { position: absolute; top: 80px; right: -28px; background: #fff; border: 1px solid #e5e7eb; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 0.15s; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.8rem; padding: 0; }
     .wa-msg-row.out .wa-hide-btn { right: auto; left: -28px; }
     .wa-bubble-wrap:hover .wa-hide-btn { opacity: 1; }
     .wa-oculto-badge { margin-left: 6px; font-size: 0.62rem; color: #b45309; font-weight: 800; }
@@ -4504,6 +4527,10 @@
         // 2026-08-05: si estamos respondiendo citando, agarramos el mensaje citado y limpiamos la barra.
         var replyTarget = replyingTo;
         replyingTo = null;
+        // 2026-08-19: si esto es una corrección, nos guardamos a cuál mensaje corrige. Se marca como
+        // anulado SOLO si la corrección sale de verdad (si falla, no queda tachado al pedo).
+        var corrigeA = corrigiendoMsgId;
+        corrigiendoMsgId = null;
 
         var tempId = _tempMsgId--;
         var temp = new ApiClient.TwMsgDto(
@@ -4520,6 +4547,8 @@
 
         if (ok)
         {
+            // 2026-08-19: la corrección salió → el mensaje equivocado queda tachado para el equipo.
+            if (corrigeA is int _anu) await Api.AnularMensajeAsync(_anu, true);
             // 2026-08-06: avisar a los demás agentes que respondí (para su cierre de carrera).
             await AvisarEnvie(ConvIdDe(numero, linea));
             // Solo recargo si seguís en el mismo chat (por si cambiaste mientras mandaba).
@@ -4529,7 +4558,7 @@
         else
         {
             mensajes.RemoveAll(m => m.Id == tempId);
-            if (selectedNumero == numero) { composerText = texto; replyingTo = replyTarget; } // no se pierde lo que escribiste ni la cita
+            if (selectedNumero == numero) { composerText = texto; replyingTo = replyTarget; corrigiendoMsgId = corrigeA; } // no se pierde lo que escribiste, ni la cita, ni la corrección
             StateHasChanged();
             Toast.Error($"Error al enviar: {err}");
         }
@@ -4980,7 +5009,29 @@
         replyingTo = m;
         pickerOpenMsgId = null; // por las dudas cerramos el picker de emojis
     }
-    void CancelarResponder() => replyingTo = null;
+    void CancelarResponder() { replyingTo = null; corrigiendoMsgId = null; }
+
+    // 2026-08-19: CORREGIR un mensaje nuestro. Un enviado NO se puede borrar del celular del cliente
+    // (limitación de Meta), así que lo que se hace es mandar el aviso CITANDO el mensaje equivocado
+    // —así el cliente sabe cuál ignorar aunque hayan pasado veinte mensajes— y, cuando la corrección
+    // sale de verdad, el viejo queda tachado en NUESTRAS pantallas.
+    const string TextoCorregir = "⚠️ Por favor ignorá el mensaje anterior. ";
+    int? corrigiendoMsgId;
+    void IniciarCorregir(ApiClient.TwMsgDto m)
+    {
+        replyingTo = m;
+        corrigiendoMsgId = m.Id;
+        pickerOpenMsgId = null;
+        // Texto sugerido, EDITABLE: no se manda solo, sale cuando el usuario toca Enviar.
+        composerText = string.IsNullOrWhiteSpace(composerText) ? TextoCorregir : composerText.TrimEnd() + " " + TextoCorregir;
+        StateHasChanged();
+    }
+
+    async Task DesanularMensaje(ApiClient.TwMsgDto m)
+    {
+        if (await Api.AnularMensajeAsync(m.Id, false)) { Toast.Info("Ya no está marcado como anulado"); await LoadMensajes(); }
+        else Toast.Error("No se pudo deshacer");
+    }
 
     // 2026-08-07: ocultar/mostrar este mensaje a Depósito (solo admin/oficina).
     async Task ToggleOcultarDeposito(ApiClient.TwMsgDto m)

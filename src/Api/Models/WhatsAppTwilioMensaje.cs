@@ -36,6 +36,13 @@ public class WhatsAppTwilioMensaje
     /// (ven un cartelito "🚫 Mensaje ocultado" en su lugar). Lo marca admin/oficina. Sirve p.ej.
     /// cuando se pasa un pedido, se modifica y se remanda: el viejo se oculta.</summary>
     public bool OcultoDeposito { get; set; }
+    /// <summary>2026-08-19: mensaje ANULADO. Un enviado NO se puede borrar del celular del cliente
+    /// (limitación de Meta), así que cuando mandamos una corrección marcamos el equivocado y de
+    /// NUESTRO lado se ve tachado y en gris, para que nadie del equipo siga trabajando sobre el dato
+    /// viejo. El cliente lo sigue viendo normal. Null = no anulado.</summary>
+    public DateTime? AnuladoAt { get; set; }
+    /// <summary>Quién lo anuló (usuario u operador), para saber a quién preguntarle.</summary>
+    [MaxLength(60)] public string? AnuladoPor { get; set; }
     [MaxLength(10)] public string? PedidoTrigger { get; set; }
     public int? VentaIdGenerada { get; set; }
     public string? RespuestaEnviada { get; set; }

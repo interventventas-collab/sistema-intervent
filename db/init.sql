@@ -5997,6 +5997,13 @@ IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_Conversaciones')
     ALTER TABLE WhatsApp_Conversaciones ADD FijadoAt DATETIME2 NULL;
 GO
 
+-- 2026-08-19: mensaje ANULADO. Un mensaje enviado no se puede borrar del celular del cliente,
+-- asi que al mandar la correccion marcamos el equivocado: de NUESTRO lado se ve tachado y en gris.
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_TwilioMensajes')
+   AND NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='AnuladoAt' AND Object_ID=Object_ID('WhatsApp_TwilioMensajes'))
+    ALTER TABLE WhatsApp_TwilioMensajes ADD AnuladoAt DATETIME2 NULL, AnuladoPor NVARCHAR(60) NULL;
+GO
+
 -- 2026-08-19: sonido de aviso PROPIO de esta charla. Le gana al de la linea, para que un cliente
 -- importante suene distinto al resto. Null = usa el de la linea (y si la linea no tiene, la campanita).
 -- Guarda la misma clave que la linea: chime/msn/coin/powerup/laser/levelup o 'subido:{id}'.
