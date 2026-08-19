@@ -57,8 +57,8 @@ self.addEventListener('push', (event) => {
 
         await self.registration.showNotification(titulo, {
             body: cuerpo,
-            icon: '/img/wa-icon.png',
-            badge: '/img/wa-icon.png',
+            icon: '/img/frisaap-icon.png',
+            badge: '/img/frisaap-icon.png',
             tag: 'wa-nuevo',       // los avisos seguidos se pisan, no se apilan de a 20
             renotify: true,
             data: { url: '/wa' }
