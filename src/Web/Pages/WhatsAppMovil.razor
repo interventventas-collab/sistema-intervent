@@ -354,6 +354,9 @@ else
     private System.Threading.Timer? notifTimer;
     private DateTime lastIncomingSeen = DateTime.MinValue;
     private const string AvisosKey = "wamovil.avisos";
+    // 2026-08-19: sonido de aviso elegido para CADA linea (el mismo que se configura desde la PC con
+    // el lapicito de la linea). Antes el celu tocaba siempre la campanita y se comia esa eleccion.
+    private Dictionary<string, string?> lineaSonidos = new();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -599,6 +602,7 @@ else
             lastIncomingSeen = convs.Where(c => c.UltimoDireccion == "INCOMING")
                                     .Select(c => c.UltimoAt).DefaultIfEmpty(DateTime.UtcNow).Max();
             try { avisos = (await JS.InvokeAsync<string?>("localStorage.getItem", AvisosKey)) == "1"; } catch { }
+            try { lineaSonidos = (await Api.GetTwLineaSonidosAsync()).ToDictionary(x => x.LineaId, x => x.Sonido); } catch { }
             // 2026-08-18: EN VIVO. El servidor avisa apenas entra o sale un mensaje, así la lista se
             // actualiza en el momento (como WhatsApp) en vez de esperar al sondeo. El timer queda
             // igual pero MUCHO más lento (60 s), solo como red por si se corta la conexión en vivo.
@@ -697,7 +701,7 @@ else
             // No molestar si justo estás mirando ese chat.
             if (avisos && (chatAbierto == null || chatAbierto.Numero != top.Numero))
             {
-                try { await JS.InvokeVoidAsync("waNotifSound"); } catch { }
+                try { await JS.InvokeVoidAsync("waPlaySound", SonidoDeLinea(top.Linea)); } catch { }
                 var titulo = entrantes.Count == 1 ? NombreDe(top) : $"{entrantes.Count} chats nuevos";
                 var cuerpo = Recortar(top.UltimoMensaje, 80);
                 try { await JS.InvokeVoidAsync("waMovilNotif.mostrar", titulo, cuerpo); } catch { }
@@ -705,6 +709,10 @@ else
         }
         StateHasChanged();
     }
+
+    /// <summary>2026-08-19: qué sonido le toca a esta línea. Si no eligieron ninguno, la campanita de siempre.</summary>
+    private string SonidoDeLinea(string? linea)
+        => (!string.IsNullOrEmpty(linea) && lineaSonidos.TryGetValue(linea, out var s) && !string.IsNullOrEmpty(s)) ? s! : "chime";
 
     /// <summary>2026-08-18: llegó/salió un mensaje. Refresca la lista al toque (sin esperar el sondeo).</summary>
     private void AvisoEnVivo(string convId, string direccion, DateTime at)

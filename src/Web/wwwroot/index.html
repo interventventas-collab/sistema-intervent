@@ -2000,7 +2000,12 @@
             mostrar: function (titulo, cuerpo) {
                 try {
                     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-                    var n = new Notification(titulo || 'WhatsApp', { body: cuerpo || '', tag: 'wa-movil', renotify: true });
+                    // 2026-08-19: si la pantalla del sistema esta A LA VISTA, el aviso va MUDO: el sonido
+                    // lo pone la app (el elegido para la linea) y antes sonaban los dos juntos. Si la
+                    // pantalla quedo atras o el celu esta bloqueado, el navegador no nos deja tocar
+                    // audio, asi que dejamos que suene el tono del telefono para no quedarnos sin aviso.
+                    var aLaVista = (document.visibilityState === 'visible');
+                    var n = new Notification(titulo || 'WhatsApp', { body: cuerpo || '', tag: 'wa-movil', renotify: true, silent: aLaVista });
                     n.onclick = function () { try { window.focus(); } catch (e) {} try { n.close(); } catch (e) {} };
                 } catch (e) { console.warn('waMovilNotif', e); }
             }
