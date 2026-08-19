@@ -633,7 +633,9 @@ public class WhatsAppTwilioController : ControllerBase
                             && (x.UltimoInboundAt == null || x.UltimoInboundAt <= est.ArchivadoAt),
                 // 2026-08-19: chat FIJADO (chinche 📌). Va arriba de todo en la lista. Compartido.
                 Fijado = est?.FijadoAt != null,
-                FijadoAt = est?.FijadoAt
+                FijadoAt = est?.FijadoAt,
+                // 2026-08-19: sonido propio de esta charla (le gana al de la línea). Null = el de la línea.
+                Sonido = est?.Sonido
             };
         })
         // 2026-08-19: primero los FIJADOS (el último que fijaste, más arriba) y después el resto
@@ -785,6 +787,30 @@ public class WhatsAppTwilioController : ControllerBase
         row.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return Ok(new { ok = true, fijado = row.FijadoAt != null });
+    }
+
+    // 2026-08-19: SONIDO PROPIO de una charla. Le gana al de la línea, para que un cliente
+    // importante suene distinto al resto. Sonido vacío/null = vuelve a usar el de la línea.
+    public record SonidoConvRequest(string Numero, string? LineaPhoneId, string? Sonido);
+    [HttpPost("conversaciones/sonido")]
+    [Authorize]
+    public async Task<IActionResult> SonidoConversacion([FromBody] SonidoConvRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req?.Numero)) return BadRequest(new { error = "Falta el número" });
+        var son = (req.Sonido ?? "").Trim();
+        if (son.Length > 30) return BadRequest(new { error = "Ese sonido no existe" });
+        // Si apunta a un sonido subido, chequeamos que siga existiendo (lo pudo borrar otro).
+        if (son.StartsWith("subido:", StringComparison.Ordinal))
+        {
+            var id = int.TryParse(son.Substring(7), out var n) ? n : 0;
+            if (id <= 0 || !await _db.WhatsAppSonidos.AnyAsync(x => x.Id == id))
+                return BadRequest(new { error = "Ese sonido ya no está. Actualizá la pantalla y elegí otro." });
+        }
+        var row = await GetOrCreateConvAsync(req.Numero, req.LineaPhoneId);
+        row.Sonido = string.IsNullOrEmpty(son) ? null : son;
+        row.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, sonido = row.Sonido });
     }
 
     // ===== Respuestas rapidas CRUD =====

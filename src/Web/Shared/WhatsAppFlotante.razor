@@ -581,7 +581,9 @@
     private bool sonidoActivo = true;
     private bool sonidoPrefCargada;
     private Dictionary<string, string?> lineaSonidos = new();      // LineaId -> clave de sonido
-    private Dictionary<string, DateTime> ultimoInPorLinea = new();  // LineaId -> último entrante visto
+    // 2026-08-19: pasamos de seguir "última entrada POR LÍNEA" a seguirla POR CHARLA, porque ahora
+    // cada charla puede tener su propio sonido. Clave: "numero|linea".
+    private Dictionary<string, DateTime> ultimoInPorConv = new();
     private bool sonidoSeedeado;
 
     private async Task CargarLineaSonidos()
@@ -594,24 +596,44 @@
         catch { }
     }
 
-    // Detecta mensajes ENTRANTES nuevos por línea y suena el sonido elegido de ESA línea.
+    // Detecta mensajes ENTRANTES nuevos y suena el sonido que corresponde: el propio de la charla
+    // si le pusieron uno, si no el de la línea, y si no la campanita.
     // El silencio maestro (localStorage wa.sonido) lo respeta waPlaySound en el JS.
     private async Task DetectarYSonarNuevos()
     {
-        var porLinea = convs.Where(c => c.UltimoDireccion == "INCOMING")
-            .GroupBy(c => c.Linea ?? "∅")
-            .ToDictionary(g => g.Key, g => g.Max(x => x.UltimoAt));
-        if (!sonidoSeedeado) { ultimoInPorLinea = porLinea; sonidoSeedeado = true; return; } // 1ra vuelta: no suena
-        foreach (var kv in porLinea)
+        var entrantes = convs.Where(c => c.UltimoDireccion == "INCOMING").ToList();
+        if (!sonidoSeedeado)
         {
-            var esNuevo = !ultimoInPorLinea.TryGetValue(kv.Key, out var prev) || kv.Value > prev;
-            ultimoInPorLinea[kv.Key] = kv.Value;
-            if (esNuevo)
-            {
-                var sonido = (kv.Key != "∅" && lineaSonidos.TryGetValue(kv.Key, out var s) && !string.IsNullOrEmpty(s)) ? s! : "chime";
-                try { await JS.InvokeVoidAsync("waPlaySound", sonido); } catch { }
-            }
+            // 1ra vuelta: solo anotamos hasta dónde vimos, no suena nada de lo viejo.
+            foreach (var c in entrantes) ultimoInPorConv[ClaveConv(c)] = c.UltimoAt;
+            sonidoSeedeado = true;
+            return;
         }
+
+        ApiClient.TwConvDto? masNueva = null;
+        foreach (var c in entrantes)
+        {
+            var clave = ClaveConv(c);
+            var esNuevo = !ultimoInPorConv.TryGetValue(clave, out var prev) || c.UltimoAt > prev;
+            ultimoInPorConv[clave] = c.UltimoAt;
+            if (esNuevo && (masNueva == null || c.UltimoAt > masNueva.UltimoAt)) masNueva = c;
+        }
+        // Si entraron varios de golpe suena UNO solo (el más nuevo): antes se pisaban entre sí.
+        if (masNueva != null)
+        {
+            try { await JS.InvokeVoidAsync("waPlaySound", SonidoDeConv(masNueva)); } catch { }
+        }
+    }
+
+    private static string ClaveConv(ApiClient.TwConvDto c) => c.Numero + "|" + (c.Linea ?? "");
+
+    /// <summary>Qué sonido le toca: el de la charla, si no el de la línea, si no la campanita.</summary>
+    private string SonidoDeConv(ApiClient.TwConvDto c)
+    {
+        if (!string.IsNullOrEmpty(c.Sonido)) return c.Sonido!;
+        var linea = c.Linea;
+        if (!string.IsNullOrEmpty(linea) && lineaSonidos.TryGetValue(linea!, out var s) && !string.IsNullOrEmpty(s)) return s!;
+        return "chime";
     }
 
     private async Task ToggleSonido()

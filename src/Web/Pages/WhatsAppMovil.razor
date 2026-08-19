@@ -701,7 +701,7 @@ else
             // No molestar si justo estás mirando ese chat.
             if (avisos && (chatAbierto == null || chatAbierto.Numero != top.Numero))
             {
-                try { await JS.InvokeVoidAsync("waPlaySound", SonidoDeLinea(top.Linea)); } catch { }
+                try { await JS.InvokeVoidAsync("waPlaySound", SonidoDeConv(top)); } catch { }
                 var titulo = entrantes.Count == 1 ? NombreDe(top) : $"{entrantes.Count} chats nuevos";
                 var cuerpo = Recortar(top.UltimoMensaje, 80);
                 try { await JS.InvokeVoidAsync("waMovilNotif.mostrar", titulo, cuerpo); } catch { }
@@ -710,9 +710,14 @@ else
         StateHasChanged();
     }
 
-    /// <summary>2026-08-19: qué sonido le toca a esta línea. Si no eligieron ninguno, la campanita de siempre.</summary>
-    private string SonidoDeLinea(string? linea)
-        => (!string.IsNullOrEmpty(linea) && lineaSonidos.TryGetValue(linea, out var s) && !string.IsNullOrEmpty(s)) ? s! : "chime";
+    /// <summary>2026-08-19: qué sonido le toca a este mensaje: el propio de la charla si le pusieron
+    /// uno, si no el de la línea, y si no la campanita de siempre.</summary>
+    private string SonidoDeConv(ApiClient.TwConvDto c)
+    {
+        if (!string.IsNullOrEmpty(c.Sonido)) return c.Sonido!;
+        if (!string.IsNullOrEmpty(c.Linea) && lineaSonidos.TryGetValue(c.Linea!, out var s) && !string.IsNullOrEmpty(s)) return s!;
+        return "chime";
+    }
 
     /// <summary>2026-08-18: llegó/salió un mensaje. Refresca la lista al toque (sin esperar el sondeo).</summary>
     private void AvisoEnVivo(string convId, string direccion, DateTime at)

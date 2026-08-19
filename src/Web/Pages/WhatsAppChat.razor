@@ -1312,6 +1312,28 @@
                         @(guardandoNota ? "⏳ Guardando…" : "💾 Guardar")
                     </button>
 
+                    @* 2026-08-19: sonido de aviso PROPIO de esta charla. Le gana al de la línea, para que
+                       un cliente importante suene distinto al resto. *@
+                    <label class="wa-ctx-lbl">🔔 Sonido de aviso</label>
+                    <div style="display:flex; gap:0.3rem; align-items:center;">
+                        <select class="wa-ctx-select" style="flex:1;" value="@(SelectedConv()?.Sonido ?? "")" @onchange="OnSonidoConvChange"
+                                title="Cuando te escriba este contacto va a sonar así, aunque la línea tenga otro">
+                            <option value="">🔔 El de la línea (@NombreSonido(SonidoDeLineaActual()))</option>
+                            @foreach (var so in SonidosDisponibles) { <option value="@so.Key">@so.Label</option> }
+                            @if (sonidosSubidos.Count > 0)
+                            {
+                                <optgroup label="Sonidos que subiste">
+                                    @foreach (var so in sonidosSubidos) { <option value="@so.Clave">🎵 @so.Nombre</option> }
+                                </optgroup>
+                            }
+                        </select>
+                        <button class="wa-ctx-btn" style="width:auto; padding:0.25rem 0.5rem;" title="Escuchar cómo suena"
+                                @onclick="@(() => ProbarSonido(string.IsNullOrEmpty(SelectedConv()?.Sonido) ? SonidoDeLineaActual() : SelectedConv()!.Sonido!))">▶</button>
+                    </div>
+                    <div class="wa-ctx-info" style="margin-top:0.2rem;">
+                        Solo para este contacto. Dejalo en "el de la línea" para que suene como el resto.
+                    </div>
+
                     @if (!string.IsNullOrEmpty(SelectedConv()?.AsignadoOperador))
                     {
                         <div class="wa-ctx-info">
@@ -3321,6 +3343,7 @@
         await Apariencia.EnsureLoadedAsync();
         Apariencia.OnChange += AparienciaCambio;
         await CargarSonidoMaster();
+        await CargarSonidosSubidos();   // 2026-08-19: para el desplegable de sonido del contacto
         // 2026-08-03: dejar listo el panel de "Nueva conversación" (se muestra cuando no hay chat abierto)
         await EnsureNvCargado();
         nvLineaPhoneId ??= LineaDefaultPhoneId();
@@ -5096,6 +5119,46 @@
         ("levelup", "🎺 Level up")
     };
     async Task ProbarSonido(string key) { try { await JS.InvokeVoidAsync("waTestSound", key); } catch { } }
+
+    /// <summary>2026-08-19: qué sonido tiene puesto la LÍNEA de la charla abierta (para el cartelito
+    /// "El de la línea (…)" y para el ▶ cuando el contacto no tiene uno propio).</summary>
+    string SonidoDeLineaActual()
+    {
+        var linea = SelectedConv()?.Linea;
+        if (linea != null && lineaCfg.TryGetValue(linea, out var c) && !string.IsNullOrEmpty(c.Sonido)) return c.Sonido!;
+        return "chime";
+    }
+
+    /// <summary>Nombre lindo de un sonido, sea de los del sistema o uno subido.</summary>
+    string NombreSonido(string? clave)
+    {
+        if (string.IsNullOrEmpty(clave)) return "campanita";
+        var sub = sonidosSubidos.FirstOrDefault(x => x.Clave == clave);
+        if (sub != null) return sub.Nombre;
+        foreach (var s in SonidosDisponibles)
+            if (s.Key == clave)
+            {
+                // El Label del desplegable trae emoji y el "(default)"; acá va adentro de un
+                // paréntesis, así que lo dejamos en el nombre pelado: "El de la línea (Moneda)".
+                var t = s.Label;
+                var esp = t.IndexOf(' ');
+                if (esp > 0 && esp <= 3) t = t.Substring(esp + 1);
+                return t.Replace(" (default)", "").Trim();
+            }
+        return clave!;
+    }
+
+    async Task OnSonidoConvChange(ChangeEventArgs e)
+    {
+        if (string.IsNullOrEmpty(selectedNumero)) return;
+        var val = e.Value?.ToString() ?? "";
+        var (ok, err) = await Api.GuardarConvSonidoAsync(selectedNumero, selectedLinea, val);
+        if (!ok) { Toast.Error(err ?? "No se pudo guardar el sonido"); return; }
+        await LoadConversaciones(silent: true);
+        // Lo hacemos sonar para que se escuche cómo va a quedar.
+        await ProbarSonido(string.IsNullOrEmpty(val) ? SonidoDeLineaActual() : val);
+        Toast.Success(string.IsNullOrEmpty(val) ? "Vuelve a sonar como la línea" : "Sonido de este contacto guardado ✓");
+    }
 
     // 2026-08-19: sonidos SUBIDOS por el usuario, que se suman a los seis de arriba.
     List<ApiClient.TwSonidoDto> sonidosSubidos = new();

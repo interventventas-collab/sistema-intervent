@@ -6740,7 +6740,9 @@ public class ApiClient
         // 2026-08-18: media del ultimo mensaje, para mostrar "📷 Foto" cuando no hay texto.
         string? UltimoMediaUrl = null,
         // 2026-08-19: charla FIJADA con el chinche 📌 (va arriba de todo en la lista). Hasta 5.
-        bool Fijado = false, DateTime? FijadoAt = null);
+        bool Fijado = false, DateTime? FijadoAt = null,
+        // 2026-08-19: sonido de aviso propio de esta charla. Null = usa el de la línea.
+        string? Sonido = null);
     public record TwReaccionDto(string Emoji, int Count, bool EsCliente = false);
     // 2026-08-05: ReplyToSid/ReplyPreview/ReplyFromMe = "responder citando" (burbuja del mensaje citado).
     public record TwMsgDto(int Id, string Direccion, string Numero, string? NombrePerfil, string? Cuerpo, string? MediaUrl, string? MediaFilename, int? NumMedia, bool Procesado, string? RespuestaEnviada, DateTime CreatedAt, string? EstadoEntrega, List<TwReaccionDto>? Reacciones, string? ReplyToSid = null, string? ReplyPreview = null, bool ReplyFromMe = false, bool OcultoDeposito = false,
@@ -6767,6 +6769,19 @@ public class ApiClient
         => await _http.GetFromJsonAsync<List<TwDestinatarioDto>>($"/api/whatsapp/twilio/destinatarios-buscar?q={Uri.EscapeDataString(q ?? "")}") ?? new();
     public async Task<List<TwConvDto>> GetTwConversacionesAsync()
         => await _http.GetFromJsonAsync<List<TwConvDto>>("/api/whatsapp/twilio/conversaciones") ?? new();
+
+    // 2026-08-19: sonido de aviso PROPIO de una charla (le gana al de la línea). "" = volver al de la línea.
+    public async Task<(bool Ok, string? Error)> GuardarConvSonidoAsync(string numero, string? linea, string? sonido)
+    {
+        try
+        {
+            var r = await _http.PostAsJsonAsync("/api/whatsapp/twilio/conversaciones/sonido",
+                new { Numero = numero, LineaPhoneId = linea, Sonido = sonido });
+            if (r.IsSuccessStatusCode) return (true, null);
+            return (false, await ErrorDeRespuestaAsync(r, "No se pudo guardar el sonido"));
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
 
     // 2026-08-19: fijar / sacar de fijados una charla (chinche 📌). Devuelve el mensaje de error
     // del servidor cuando ya hay 5 fijadas, para poder avisarlo tal cual en pantalla.

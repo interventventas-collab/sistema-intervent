@@ -34,5 +34,9 @@ public class WhatsAppConversacion
     /// <summary>2026-08-19: cuándo se fijó la charla (chinche 📌). Los fijados van arriba de todo
     /// en la lista, hasta 5 a la vez, y es compartido para todo el equipo. Null = no fijada.</summary>
     public DateTime? FijadoAt { get; set; }
+    /// <summary>2026-08-19: sonido de aviso PROPIO de esta charla, que le gana al de la línea.
+    /// Sirve para que un cliente importante suene distinto al resto. Null = usa el de la línea.
+    /// Misma clave que la línea: chime/msn/coin/powerup/laser/levelup o "subido:{id}".</summary>
+    [MaxLength(30)] public string? Sonido { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

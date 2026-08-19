@@ -5997,6 +5997,14 @@ IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_Conversaciones')
     ALTER TABLE WhatsApp_Conversaciones ADD FijadoAt DATETIME2 NULL;
 GO
 
+-- 2026-08-19: sonido de aviso PROPIO de esta charla. Le gana al de la linea, para que un cliente
+-- importante suene distinto al resto. Null = usa el de la linea (y si la linea no tiene, la campanita).
+-- Guarda la misma clave que la linea: chime/msn/coin/powerup/laser/levelup o 'subido:{id}'.
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_Conversaciones')
+   AND NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='Sonido' AND Object_ID=Object_ID('WhatsApp_Conversaciones'))
+    ALTER TABLE WhatsApp_Conversaciones ADD Sonido NVARCHAR(30) NULL;
+GO
+
 -- 2026-06-20: WhatsApp - Sectores + Operarios. Permite derivar conversaciones del chat
 -- entrante a un sector (Cafe, Ventas, Alquileres, etc) y opcionalmente a un operario
 -- especifico. Cada usuario del sistema puede pertenecer a varios sectores.
