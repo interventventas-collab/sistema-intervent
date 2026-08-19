@@ -30,6 +30,27 @@ window.waComposer = {
     anchoPantalla: function () {
         try { return window.innerWidth || 0; } catch (e) { return 0; }
     },
+    // 2026-08-19: el cuadro de escribir del CELU se maneja desde JS para no pisar lo que el
+    // teclado del teléfono está proponiendo (el predictivo). Blazor ya no le escribe el value en
+    // cada dibujo: cuando .NET necesita cambiarlo (mandar, respuesta rápida, error) llama acá.
+    setValor: function (el, txt) {
+        try {
+            if (!el) return;
+            el.value = txt || '';
+            window.waComposer.ajustarAlto(el);
+        } catch (e) { }
+    },
+
+    /** El cuadro crece solo mientras escribís, como WhatsApp (hasta el máximo y después scrollea). */
+    autoCrecer: function (el) {
+        try {
+            if (!el || el._waCrece) return;
+            el._waCrece = true;
+            el.addEventListener('input', function () { window.waComposer.ajustarAlto(el); });
+            window.waComposer.ajustarAlto(el);
+        } catch (e) { }
+    },
+
     resetSize: function () {
         try {
             var el = document.querySelector('.wa-composer-input');

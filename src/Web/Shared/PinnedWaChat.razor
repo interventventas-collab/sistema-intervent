@@ -168,7 +168,7 @@
                 {
                     @foreach (var r in respuestas.Where(x => x.Activo).OrderBy(x => x.Orden))
                     {
-                        <button type="button" class="pwa-resp-item" @onclick="() => UsarRespuesta(r)">
+                        <button type="button" class="pwa-resp-item" @onclick="() => UsarRespuestaAsync(r)">
                             <span class="pwa-resp-nom">@r.Nombre</span>
                             <span class="pwa-resp-txt">@Recortar2(r.Texto, 70)</span>
                         </button>
@@ -234,10 +234,20 @@
                 <InputFile OnChange="OnAdjuntar" accept="image/*" capture="environment" disabled="@(sending || enviandoAudio || subiendo)" style="display:none;" />
                 📷
             </label>
-            @* 2026-08-18: value + @oninput propio (en vez de @bind con oninput) para NO redibujar los
-               200 mensajes en cada tecla — en el celu eso se sentia como teclado trabado. Ver ShouldRender. *@
-            <textarea class="pwa-input" placeholder="@(Movil ? "Escribir mensaje…" : "Escribir mensaje… (Enter para enviar)")"
-                      value="@composer" @oninput="OnComposerInput" @onkeydown="OnKey" rows="1" disabled="@(sending || enviandoAudio || subiendo)"></textarea>
+            @* 2026-08-18: @oninput propio (en vez de @bind con oninput) para NO redibujar los 200
+               mensajes en cada tecla — en el celu eso se sentia como teclado trabado. Ver ShouldRender.
+               2026-08-19: ADEMAS ya no lleva value="@composer". Ese atributo hacia que, cada vez que
+               la pantalla se redibujaba (y ahora los mensajes entran al instante), Blazor le
+               reescribiera el texto al cuadro y le cortara al teclado del celu la palabra que estaba
+               proponiendo: el predictivo quedaba inutil. Ahora el texto del cuadro lo maneja el
+               navegador y .NET solo lo toca cuando hace falta (waComposer.setValor).
+               Los atributos de abajo le piden al teclado el comportamiento de WhatsApp: sugerencias,
+               corrección y mayúscula al empezar la oración. *@
+            <textarea @ref="composerRef" class="pwa-input"
+                      placeholder="@(Movil ? "Escribir mensaje…" : "Escribir mensaje… (Enter para enviar)")"
+                      autocapitalize="sentences" autocorrect="on" spellcheck="true"
+                      enterkeyhint="@(Movil ? "enter" : "send")" autocomplete="off"
+                      @oninput="OnComposerInput" @onkeydown="OnKey" rows="1" disabled="@(sending || enviandoAudio || subiendo)"></textarea>
             @if (string.IsNullOrWhiteSpace(composer))
             {
                 @* Sin texto: botón de micrófono para nota de voz (como WhatsApp) *@
@@ -681,6 +691,15 @@
 
     private List<ApiClient.TwMsgDto>? mensajes;
     private string composer = "";
+    // 2026-08-19: referencia al cuadro de escribir. Como Blazor ya no le pone el value en cada
+    // dibujo (para no pisar el predictivo del teléfono), cuando .NET cambia el texto hay que
+    // escribírselo al navegador a mano.
+    private ElementReference composerRef;
+
+    private async Task SincronizarComposer()
+    {
+        try { await JS.InvokeVoidAsync("waComposer.setValor", composerRef, composer); } catch { }
+    }
     private bool sending;
     private System.Threading.Timer? refreshTimer;
 
@@ -763,6 +782,14 @@
         plantillaName = ""; plantillaVars = new();
         await Cargar();
         StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // 2026-08-19: el cuadro crece solo mientras escribís (ahora que en el celu Enter baja de
+        // línea, los mensajes de varios renglones son comunes).
+        if (firstRender)
+            try { await JS.InvokeVoidAsync("waComposer.autoCrecer", composerRef); } catch { }
     }
 
     protected override async Task OnInitializedAsync()
@@ -905,6 +932,7 @@
         mensajes ??= new();
         mensajes.Add(provisorio);   // la lista viene de más viejo a más nuevo
         composer = "";
+        await SincronizarComposer();   // vaciar el cuadro en el navegador
         StateHasChanged();
 
         var (ok, err) = await Api.SendTwMensajeAsync(Numero, texto, LineaPhoneId, replyId);
@@ -918,6 +946,7 @@
         {
             mensajes.Remove(provisorio);
             composer = textoOriginal;   // no perder lo escrito
+            await SincronizarComposer();
             Toast.Error(err ?? "No se pudo enviar el mensaje");
         }
     }
@@ -1036,6 +1065,12 @@
             catch { respuestas = new(); }
         }
         StateHasChanged();
+    }
+
+    private async Task UsarRespuestaAsync(ApiClient.TwRespRapidaDto r)
+    {
+        UsarRespuesta(r);
+        await SincronizarComposer();   // 2026-08-19: el cuadro lo maneja el navegador
     }
 
     private void UsarRespuesta(ApiClient.TwRespRapidaDto r)
@@ -1186,6 +1221,7 @@
             var ar = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
             var linea = $"{s.ClienteNombre} - ${s.Saldo.ToString("N0", ar)}";
             composer = string.IsNullOrWhiteSpace(composer) ? linea : composer.TrimEnd() + "\n" + linea;
+            await SincronizarComposer();
             mostrarMas = false;
         }
         finally { salCargando = false; StateHasChanged(); }
