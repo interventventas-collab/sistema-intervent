@@ -34,10 +34,42 @@
         </div>
         <button class="btn btn-primary" style="white-space: nowrap;" @onclick="ShowCreate">+ Nueva Reserva</button>
     </div>
+    @* 🔎 Buscador libre: cliente, dirección, teléfono, N° de reserva, equipos y notas. 2026-08-19 *@
+    <div style="display: flex; align-items: center; gap: 0.6rem; padding: 10px 1.25rem; flex-wrap: wrap; border-top: 0.5px solid #f0f0f0;">
+        <div style="position: relative; flex: 1; min-width: 260px; max-width: 560px;">
+            <input class="form-input" style="width: 100%; padding-right: 2rem;"
+                   placeholder="🔎 Buscar por cliente, dirección, teléfono, N° de reserva, equipo…"
+                   @bind="busqueda" @bind:event="oninput" />
+            @if (BuscandoAlgo)
+            {
+                <span style="position: absolute; right: 0.6rem; top: 50%; transform: translateY(-50%); cursor: pointer; color: #9ca3af; font-weight: 700; font-size: 1.1rem; line-height: 1;"
+                      title="Borrar la búsqueda" @onclick='() => busqueda = ""'>&times;</span>
+            }
+        </div>
+        @if (BuscandoAlgo)
+        {
+            <span style="font-size: 0.78rem; color: #6b7280;">
+                <strong>@ReservasMostradas().Count</strong> @(ReservasMostradas().Count == 1 ? "reserva encontrada" : "reservas encontradas") · busca en <strong>todas</strong>, también en las finalizadas y canceladas
+            </span>
+        }
+        else
+        {
+            <span style="font-size: 0.78rem; color: #9ca3af;">Escribí parte del nombre, de la dirección o del teléfono. Podés poner varias palabras.</span>
+        }
+    </div>
     @* Chips de filtros aplicados *@
     <div style="display: flex; align-items: center; gap: 8px; padding: 10px 1.25rem; flex-wrap: wrap; border-top: 0.5px solid #f0f0f0;">
         <span style="font-size: 0.78rem; color: #6b7280;">Filtros aplicados:</span>
-        @if (filtroEstado == "activas")
+        @if (BuscandoAlgo)
+        {
+            @* Mientras se busca, los filtros de arriba NO se aplican: si buscás un cliente lo tenés que
+               encontrar aunque su reserva esté finalizada. Se avisa acá para que no parezca un error. *@
+            <span style="display:inline-flex; align-items:center; gap:6px; background:#fef3c7; color:#92400e; border:0.5px solid #fde68a; border-radius:20px; padding:3px 10px; font-size:0.76rem;">
+                🔎 Buscando “@busqueda” en todas las reservas — mientras buscás, los demás filtros no se aplican
+                <span style="cursor:pointer; font-weight:700; line-height:1;" title="Borrar la búsqueda" @onclick='() => busqueda = ""'>&times;</span>
+            </span>
+        }
+        else if (filtroEstado == "activas")
         {
             <span style="display:inline-flex; align-items:center; gap:6px; background:#eff6ff; color:#1d4ed8; border:0.5px solid #bfdbfe; border-radius:20px; padding:3px 10px; font-size:0.76rem;">
                 Ocultando finalizadas y canceladas
@@ -51,21 +83,21 @@
                 <span style="cursor:pointer; font-weight:700; line-height:1;" title="Quitar filtro de estado" @onclick='() => filtroEstado = "activas"'>&times;</span>
             </span>
         }
-        @if (soloEnCalle)
+        @if (soloEnCalle && !BuscandoAlgo)
         {
             <span style="display:inline-flex; align-items:center; gap:6px; background:#eff6ff; color:#1d4ed8; border:0.5px solid #bfdbfe; border-radius:20px; padding:3px 10px; font-size:0.76rem;">
                 Solo en calle
                 <span style="cursor:pointer; font-weight:700; line-height:1;" title="Quitar" @onclick="() => soloEnCalle = false">&times;</span>
             </span>
         }
-        @if (!ordenProximas)
+        @if (!ordenProximas && !BuscandoAlgo)
         {
             <span style="display:inline-flex; align-items:center; gap:6px; background:#eff6ff; color:#1d4ed8; border:0.5px solid #bfdbfe; border-radius:20px; padding:3px 10px; font-size:0.76rem;">
                 Entregas más lejanas primero
                 <span style="cursor:pointer; font-weight:700; line-height:1;" title="Volver a próximas entregas primero" @onclick="() => ordenProximas = true">&times;</span>
             </span>
         }
-        @if (filtroEstado == "" && !soloEnCalle && ordenProximas)
+        @if (filtroEstado == "" && !soloEnCalle && ordenProximas && !BuscandoAlgo)
         {
             <span style="font-size: 0.76rem; color: #9ca3af;">mostrando todas las reservas</span>
         }
@@ -79,6 +111,14 @@
         {
             <p class="text-muted" style="padding: 1.5rem;">
                 No hay reservas para mostrar. Tocá <strong>"+ Nueva Reserva"</strong> para crear la primera.
+            </p>
+        }
+        else if (ReservasMostradas().Count == 0 && BuscandoAlgo)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">
+                No hay ninguna reserva que coincida con <strong>“@busqueda”</strong>.
+                Probá con menos palabras, con una sola parte del nombre, o con los últimos números del teléfono.
+                <button class="btn btn-secondary" style="margin-left: 0.5rem;" @onclick='() => busqueda = ""'>Borrar la búsqueda</button>
             </p>
         }
         else if (ReservasMostradas().Count == 0)
@@ -1209,9 +1249,91 @@
         _ => e
     };
 
+    // ═══════ Buscador libre (2026-08-19) ═══════
+    // Busca en cliente, teléfono, dirección, N° de reserva, equipos, notas y repartidores.
+    private string busqueda = "";
+    private bool BuscandoAlgo => !string.IsNullOrWhiteSpace(busqueda);
+
+    // Minúsculas y sin acentos, así "Martín" se encuentra escribiendo "martin".
+    private static string NormBusq(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        var sb = new System.Text.StringBuilder(s.Length);
+        foreach (var ch in s)
+        {
+            var c = char.ToLowerInvariant(ch);
+            sb.Append(c switch
+            {
+                'á' or 'à' or 'ä' or 'â' or 'ã' => 'a',
+                'é' or 'è' or 'ë' or 'ê' => 'e',
+                'í' or 'ì' or 'ï' or 'î' => 'i',
+                'ó' or 'ò' or 'ö' or 'ô' or 'õ' => 'o',
+                'ú' or 'ù' or 'ü' or 'û' => 'u',
+                'ñ' => 'n',
+                'ç' => 'c',
+                _ => c
+            });
+        }
+        return sb.ToString();
+    }
+
+    private static string SoloDigitos(string s)
+    {
+        var sb = new System.Text.StringBuilder(s.Length);
+        foreach (var c in s) if (char.IsDigit(c)) sb.Append(c);
+        return sb.ToString();
+    }
+
+    // Todo el texto de una reserva donde tiene sentido buscar, ya normalizado.
+    private static string TextoBuscable(AlqReservaDto r)
+    {
+        var sb = new System.Text.StringBuilder();
+        void Add(string? t) { if (!string.IsNullOrWhiteSpace(t)) { sb.Append(t); sb.Append(' '); } }
+        Add(r.Numero);
+        Add(r.ClienteNombre);
+        Add(r.ClienteTelefono);
+        Add(r.DireccionEvento);
+        Add(r.Notas);
+        Add(r.NotasInternas);
+        Add(r.Estado);
+        Add(r.AsignadoARepartidorNombre);
+        Add(r.EntregadoPorRepartidorNombre);
+        Add(r.AsignadoRetiroARepartidorNombre);
+        Add(r.RetiradoPorRepartidorNombre);
+        Add(r.FechaEntrega.ToString("dd/MM/yyyy"));
+        Add(r.FechaRetiro.ToString("dd/MM/yyyy"));
+        foreach (var it in r.Items) { Add(it.EquipoNombre); Add(it.EquipoSku); }
+        return NormBusq(sb.ToString());
+    }
+
+    // Cada palabra escrita tiene que aparecer en algún lado (así "juan austria" filtra por las dos).
+    private static bool CoincideBusqueda(AlqReservaDto r, string[] palabras)
+    {
+        var texto = TextoBuscable(r);
+        var digitos = SoloDigitos(texto);
+        foreach (var p in palabras)
+        {
+            if (texto.Contains(p)) continue;
+            // Si escribió números (teléfono o N° de reserva) comparamos sin espacios ni guiones:
+            // "11 3600 5874" tiene que encontrarse escribiendo "1136005874" y al revés.
+            var pd = SoloDigitos(p);
+            if (pd.Length > 0 && digitos.Contains(pd)) continue;
+            return false;
+        }
+        return true;
+    }
+
     private List<AlqReservaDto> ReservasMostradas()
     {
         if (reservas is null) return new();
+        // 🔎 La búsqueda le gana a los filtros: si buscás un cliente lo tenés que encontrar aunque su
+        // reserva esté finalizada o aunque esté puesto "En calle". El chip de arriba lo avisa.
+        if (BuscandoAlgo)
+        {
+            var palabras = NormBusq(busqueda).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return reservas.Where(r => CoincideBusqueda(r, palabras))
+                           .OrderByDescending(r => r.FechaEntrega).ThenByDescending(r => r.Id).ToList();
+        }
         // En calle: ordenar por fecha de retiro (lo más urgente primero)
         if (soloEnCalle) return reservas.Where(EsEnCalle).OrderBy(r => r.FechaRetiro).ToList();
         var q = reservas.AsEnumerable();
