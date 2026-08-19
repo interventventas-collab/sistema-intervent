@@ -1,5 +1,6 @@
 @page "/alquileres/reservas"
 @attribute [Authorize]
+@implements IDisposable
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject NavigationManager Nav
@@ -272,7 +273,9 @@
                                         <span><strong>@(sel?.Nombre ?? "Cliente")</strong> @(string.IsNullOrEmpty(sel?.RazonSocial) ? "" : $"· {sel!.RazonSocial}")</span>
                                         <button type="button" class="btn-icon" style="color:#dc2626;" title="Cambiar cliente" @onclick="LimpiarCliente">✕</button>
                                     </div>
-                                    <button class="btn btn-secondary" type="button" @onclick="() => showQuickClient = true" title="Crear cliente nuevo">+ Nuevo</button>
+                                    <button class="btn btn-secondary" type="button" @onclick="() => AbrirFichaClienteVentana(sel?.Id ?? 0)"
+                                            title="Abrir la ficha completa de este cliente (se abre en otra ventana; la reserva queda como está)">📇 Ver ficha</button>
+                                    <button class="btn btn-secondary" type="button" @onclick='() => AbrirNuevoClienteVentana("")' title="Cargar un cliente nuevo con la ficha completa">+ Nuevo</button>
                                 </div>
                             }
                             else
@@ -280,7 +283,8 @@
                                 <div style="display:flex; gap:0.4rem;">
                                     <input class="form-input" style="flex:1;" placeholder="Buscá por nombre, código o CUIT..."
                                            @bind="clienteSearch" @bind:event="oninput" />
-                                    <button class="btn btn-secondary" type="button" @onclick="() => showQuickClient = true" title="Crear cliente nuevo en el momento">+ Nuevo</button>
+                                    <button class="btn btn-secondary" type="button" @onclick="() => AbrirNuevoClienteVentana(clienteSearch)"
+                                            title="Abre la ficha completa de Clientes en otra ventana. Al guardarlo queda elegido en la reserva.">+ Nuevo</button>
                                 </div>
                                 @if (!string.IsNullOrWhiteSpace(clienteSearch) && clienteSearch.Trim().Length >= 2)
                                 {
@@ -685,45 +689,6 @@
                 <button class="btn btn-primary" @onclick="Save" disabled="@(isSaving || formItems.Count == 0)">
                     @(isSaving ? "Guardando..." : (isEditing ? "Guardar cambios" : "Crear reserva"))
                 </button>
-            </div>
-        </div>
-    </div>
-}
-
-@if (showQuickClient)
-{
-    <div class="modal-overlay" @onclick="() => showQuickClient = false">
-        <div class="modal-card modal-small" @onclick:stopPropagation="true">
-            <div class="modal-header" style="background: whitesmoke;">
-                <h4 style="margin: 0;">Nuevo cliente rápido</h4>
-                <button class="btn-close" @onclick="() => showQuickClient = false">&times;</button>
-            </div>
-            <div class="modal-body">
-                <p style="font-size: 0.85rem; color: #6b7280; margin: 0 0 0.5rem;">
-                    Cargá lo mínimo. Después podés completar el resto en <strong>Clientes</strong>.
-                </p>
-                <div class="form-group">
-                    <label class="form-label">Nombre y apellido *</label>
-                    <input class="form-input" @bind="quickNombre" autofocus />
-                </div>
-                <div class="form-row">
-                    <div class="form-group" style="flex: 1;">
-                        <label class="form-label">DNI/CUIT</label>
-                        <input class="form-input" @bind="quickDniCuit" />
-                    </div>
-                    <div class="form-group" style="flex: 1;">
-                        <label class="form-label">Teléfono</label>
-                        <input class="form-input" @bind="quickTelefono" />
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Dirección</label>
-                    <input class="form-input" @bind="quickDireccion" />
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" @onclick="() => showQuickClient = false">Cancelar</button>
-                <button class="btn btn-primary" @onclick="CreateQuickClient">Crear y elegir</button>
             </div>
         </div>
     </div>
@@ -1593,11 +1558,17 @@
     private string addDescripcionLibre = "";
 
     // Quick client
-    private bool showQuickClient;
-    private string quickNombre = "";
-    private string quickDniCuit = "";
-    private string quickTelefono = "";
-    private string quickDireccion = "";
+    // ═══════ Cliente: se carga/edita con la FICHA COMPLETA de Clientes (2026-08-19) ═══════
+    // Antes había acá un "alta rápida" de 4 campos. Ahora abrimos la pantalla /cafe/clientes en una
+    // ventana aparte (misma ficha que usa Ventas): entiende ?new={nombre} y ?edit={id}, y al guardar
+    // avisa por postMessage y se cierra sola. Así el cliente se carga completo (CUIT con 🔍 ARCA,
+    // condición de IVA, teléfono 2, entre calles, Maps, código interno) y no hay dos formularios que
+    // se van despegando con el tiempo.
+    private DotNetObjectReference<AlqReservas>? clienteVentanaRef;
+    // Si la ventana se abrió con "+ Nuevo", al guardar dejamos elegido ese cliente en la reserva
+    // (aunque ya hubiera otro). Si se abrió con "Ver ficha", solo refrescamos: el usuario fue a
+    // corregir datos, no a cambiar de cliente.
+    private bool clienteVentanaEsAlta;
 
     // Delete
     private bool showDeleteConfirm;
@@ -1923,25 +1894,97 @@
         if (idx >= 0 && idx < formItems.Count) formItems.RemoveAt(idx);
     }
 
-    private async Task CreateQuickClient()
+    /// <summary>Abre la ficha completa de Clientes en otra ventana para CARGAR uno nuevo.
+    /// Le pasamos lo que el usuario venía escribiendo en el buscador como nombre inicial.</summary>
+    private async Task AbrirNuevoClienteVentana(string nombreInicial)
     {
-        if (string.IsNullOrWhiteSpace(quickNombre)) { ToastService.Error("Falta el nombre"); return; }
+        await AsegurarListenerClienteVentanaAsync();
+        clienteVentanaEsAlta = true;
+        var nombreEnc = Uri.EscapeDataString((nombreInicial ?? "").Trim());
+        await AbrirVentanaClienteAsync($"/cafe/clientes?new={nombreEnc}", "crearCliente");
+    }
+
+    /// <summary>Abre la ficha completa del cliente ya elegido, para completarle o corregirle datos
+    /// sin perder la reserva que se está cargando.</summary>
+    private async Task AbrirFichaClienteVentana(int clienteId)
+    {
+        if (clienteId <= 0) return;
+        await AsegurarListenerClienteVentanaAsync();
+        clienteVentanaEsAlta = false;
+        await AbrirVentanaClienteAsync($"/cafe/clientes?edit={clienteId}", "editarCliente_" + clienteId);
+    }
+
+    /// <summary>Abre la ventana y avisa si el navegador la bloqueó (si no, el usuario toca el botón
+    /// y no pasa nada visible, y parece que está roto).</summary>
+    private async Task AbrirVentanaClienteAsync(string url, string nombreVentana)
+    {
         try
         {
-            var nuevo = await Api.CreateCafeClienteAsync(new CreateCafeClienteRequest
-            {
-                Nombre = quickNombre, Cuit = quickDniCuit, Telefono = quickTelefono,
-                Direccion = quickDireccion
-            });
-            if (nuevo is null) { ToastService.Error("No se pudo crear"); return; }
-            clientes = (await Api.GetCafeClientesAsync() ?? new()).Where(c => c.IsActive).ToList();
-            formClienteId = nuevo.Id;
-            OnClienteChanged();
-            quickNombre = ""; quickDniCuit = ""; quickTelefono = ""; quickDireccion = "";
-            showQuickClient = false;
-            ToastService.Success("Cliente creado y seleccionado");
+            var abrio = await JS.InvokeAsync<bool>("eval",
+                $"!!window.open('{url}', '{nombreVentana}', 'width=1100,height=800,resizable=yes,scrollbars=yes')");
+            if (!abrio)
+                ToastService.Error("El navegador bloqueó la ventana de Clientes. Permitile las ventanas emergentes a este sitio y probá de nuevo.");
         }
-        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        catch { ToastService.Error("No se pudo abrir la ficha de Clientes"); }
+    }
+
+    /// <summary>Registra (una sola vez) el listener del aviso que manda la ficha al guardar.</summary>
+    private async Task AsegurarListenerClienteVentanaAsync()
+    {
+        if (clienteVentanaRef is not null) return;
+        clienteVentanaRef = DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("eval", @"
+            if (!window.__alqReservaClienteListener) {
+                window.__alqReservaClienteListener = true;
+                window.addEventListener('message', function(ev) {
+                    if (!ev.data || ev.data.type !== 'cafe-cliente-guardado') return;
+                    // try/catch: si esta pantalla ya se cerró, el aviso llega igual y no tiene que romper nada.
+                    try {
+                        if (window.__alqReservaDotNet) {
+                            window.__alqReservaDotNet.invokeMethodAsync('OnClienteGuardadoEnVentana', ev.data.id || 0);
+                        }
+                    } catch (e) { }
+                });
+            }
+        ");
+        await JS.InvokeVoidAsync("eval", "window.__alqReservaDotNet = arguments[0]", clienteVentanaRef);
+    }
+
+    /// <summary>Lo llama la ficha de Clientes cuando guardó. Refresca la lista de clientes y, si la
+    /// ventana se había abierto con "+ Nuevo", deja ese cliente elegido en la reserva.</summary>
+    [JSInvokable]
+    public async Task OnClienteGuardadoEnVentana(int clienteId)
+    {
+        if (clienteId <= 0) return;
+        try
+        {
+            clientes = (await Api.GetCafeClientesAsync() ?? new()).Where(c => c.IsActive).ToList();
+            var guardado = clientes.FirstOrDefault(c => c.Id == clienteId);
+            if (guardado is null) { StateHasChanged(); return; }
+            if (clienteVentanaEsAlta || formClienteId == 0 || formClienteId == guardado.Id)
+            {
+                var cambioDeCliente = formClienteId != guardado.Id;
+                formClienteId = guardado.Id;
+                clienteSearch = "";
+                OnClienteChanged();
+                ToastService.Success(cambioDeCliente
+                    ? $"✓ {guardado.Nombre} guardado y elegido en la reserva"
+                    : $"✓ {guardado.Nombre} actualizado");
+            }
+            else
+            {
+                ToastService.Success("✓ Cliente guardado");
+            }
+            clienteVentanaEsAlta = false;
+            StateHasChanged();
+        }
+        catch { ToastService.Error("Se guardó el cliente pero no se pudo refrescar la lista"); }
+    }
+
+    public void Dispose()
+    {
+        clienteVentanaRef?.Dispose();
+        clienteVentanaRef = null;
     }
 
     private async Task Save()
