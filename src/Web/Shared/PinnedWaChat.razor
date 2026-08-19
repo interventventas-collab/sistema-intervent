@@ -214,6 +214,26 @@
             <button type="button" class="pwa-replybar-x" @onclick="CancelarResponderPwa" title="Cancelar respuesta">×</button>
         </div>
     }
+    @* 2026-08-19: el archivo que está ESPERANDO para salir. Se ve grande, se puede descartar con la
+       ✖ y sale recién al tocar Enviar (con el texto del cuadro de pie de foto). *@
+    @if (adjuntoPend is not null && VentanaWaAbierta())
+    {
+        <div class="pwa-adj-prev">
+            <div class="pwa-adj-head">📎 Para enviar — escribí un texto si querés y tocá <b>Enviar</b></div>
+            <div class="pwa-adj-body">
+                @if (adjuntoPend.EsImagen)
+                {
+                    <img class="pwa-adj-img" src="@adjuntoPend.Url" alt="vista previa" />
+                }
+                else
+                {
+                    <div class="pwa-adj-ico">📄</div>
+                }
+                <span class="pwa-adj-nom" title="@adjuntoPend.FileName">@adjuntoPend.FileName</span>
+                <button type="button" class="pwa-adj-x" @onclick="QuitarAdjuntoPend" title="No mandarlo">×</button>
+            </div>
+        </div>
+    }
     @if (VentanaWaAbierta())
     {
     <div class="pwa-composer">
@@ -256,7 +276,9 @@
                       autocapitalize="sentences" autocorrect="on" spellcheck="true"
                       enterkeyhint="@(Movil ? "enter" : "send")" autocomplete="off"
                       @oninput="OnComposerInput" @onkeydown="OnKey" rows="1" disabled="@(sending || enviandoAudio || subiendo)"></textarea>
-            @if (string.IsNullOrWhiteSpace(composer))
+            @* 2026-08-19: con un archivo esperando, el botón es SIEMPRE Enviar aunque no haya texto
+               (si no, no habría con qué mandarlo: sin texto salía el micrófono). *@
+            @if (string.IsNullOrWhiteSpace(composer) && adjuntoPend is null)
             {
                 @* Sin texto: botón de micrófono para nota de voz (como WhatsApp) *@
                 <button class="pwa-mic" @onclick="ToggleGrabarAudio" disabled="@(sending || enviandoAudio)" title="Grabar nota de voz">
@@ -518,6 +540,19 @@
         font-size: 0.64rem; cursor: pointer; padding: 0; text-decoration: underline; display: block; }
     .pwa-ocultar-btn:hover { color: #dc2626; }
     .pwa-text { white-space: pre-wrap; word-break: break-word; }
+    /* 2026-08-19: archivo esperando para salir (vista previa antes de enviar) */
+    .pwa-adj-prev { margin: 0 8px 6px; padding: 6px 8px; background: #f0f9ff; border: 1px solid #bae6fd;
+        border-radius: 12px; }
+    .pwa-adj-head { font-size: 0.68rem; font-weight: 700; color: #0369a1; margin-bottom: 5px; }
+    .pwa-adj-body { display: flex; align-items: center; gap: 8px; }
+    .pwa-adj-img { width: 84px; height: 84px; object-fit: cover; border-radius: 8px; flex-shrink: 0;
+        border: 1px solid #d7e6f2; }
+    .pwa-adj-ico { width: 84px; height: 84px; display: flex; align-items: center; justify-content: center;
+        font-size: 2.2rem; background: #fff; border: 1px solid #d7e6f2; border-radius: 8px; flex-shrink: 0; }
+    .pwa-adj-nom { flex: 1; min-width: 0; font-size: 0.78rem; color: #334155; font-weight: 600;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pwa-adj-x { flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; border: 1px solid #cbd5e1;
+        background: #fff; color: #b91c1c; font-size: 1.1rem; line-height: 1; cursor: pointer; }
     /* 2026-08-19: boton de opciones de los globitos con adjunto */
     .pwa-opts-btn { display: block; margin: 3px 0 0 auto; background: rgba(255,255,255,0.92);
         border: 1px solid #d1d5db; border-radius: 999px; padding: 1px 9px; font-size: 0.66rem;
@@ -913,7 +948,22 @@
     private async Task Enviar()
     {
         var texto = (composer ?? "").Trim();
-        if (sending || string.IsNullOrWhiteSpace(texto)) return;
+        if (sending) return;
+        // 2026-08-19: si hay un archivo esperando, lo que sale es el archivo (con el texto de pie).
+        if (adjuntoPend is not null)
+        {
+            var pie = texto;
+            // En los chats de Depósito el pie también lleva la firma, igual que un mensaje normal.
+            if (!string.IsNullOrEmpty(pie))
+            {
+                var f = EsChatVisibleDeposito ? Web.Services.OperatorService.FirmaCorta(Op.Current) : "";
+                if (!string.IsNullOrEmpty(f)) pie = $"{pie} ({f})";
+                else if (esDeposito && !string.IsNullOrWhiteSpace(firmante)) pie = $"{pie} ({firmante})";
+            }
+            await EnviarAdjuntoPendiente(pie);
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(texto)) return;
         // 2026-08-12: en los chats que ve Depósito, firma AUTOMÁTICA con el operador del PIN (os/ger/ga).
         // Sin operador con abreviatura -> sin firma (opción b). Tiene prioridad sobre la firma manual.
         var firmaAuto = EsChatVisibleDeposito ? Web.Services.OperatorService.FirmaCorta(Op.Current) : "";
@@ -1246,11 +1296,26 @@
     // === 2026-08-06: adjuntar foto/archivo (sube y manda, reusa el camino del WhatsApp grande) ===
     private bool subiendo;
     private const long MaxUploadBytes = 16L * 1024 * 1024;
+    // 2026-08-19: VISTA PREVIA ANTES DE ENVIAR. Antes la foto salía disparada apenas la elegías y,
+    // como un mensaje enviado NO se puede borrar, una foto equivocada no tenía vuelta atrás. Ahora
+    // el archivo queda ESPERANDO arriba del cuadro de escribir, se ve grande, se le puede poner un
+    // texto y recién sale al tocar Enviar. Con la ✖ se descarta. Una por vez.
+    private class AdjuntoPendientePwa
+    {
+        public string Url = "";
+        public string FileName = "";
+        public bool EsImagen;
+    }
+    private AdjuntoPendientePwa? adjuntoPend;
+
+    private void QuitarAdjuntoPend() => adjuntoPend = null;
+
     private async Task OnAdjuntar(InputFileChangeEventArgs e)
     {
         var file = e.File;
         if (file == null) return;
         if (file.Size > MaxUploadBytes) { Toast.Error($"El archivo {file.Name} supera los 16 MB"); return; }
+        var habiaOtro = adjuntoPend != null;
         subiendo = true;
         StateHasChanged();
         try
@@ -1258,12 +1323,39 @@
             using var stream = file.OpenReadStream(MaxUploadBytes);
             var (up, err) = await Api.UploadTwArchivoAsync(stream, file.Name, file.ContentType);
             if (up == null) { Toast.Error(err ?? "No se pudo subir el archivo"); return; }
-            var (ok, serr) = await Api.SendTwMediaAsync(Numero, up.Url, null, up.OriginalFilename, LineaPhoneId);
-            if (!ok) Toast.Error(serr ?? "No se pudo enviar el archivo");
-            else await Cargar();
+            adjuntoPend = new AdjuntoPendientePwa
+            {
+                Url = up.Url,
+                FileName = string.IsNullOrWhiteSpace(up.OriginalFilename) ? file.Name : up.OriginalFilename!,
+                EsImagen = (file.ContentType ?? "").StartsWith("image/", StringComparison.OrdinalIgnoreCase) || EsImagen(up.Url)
+            };
+            // Va de a una: si ya había otra esperando, esta la reemplaza (y se avisa, para que no
+            // parezca que se perdió).
+            if (habiaOtro) Toast.Info("Se cambió por la nueva: va de a un archivo por vez.");
         }
-        catch (Exception ex) { Toast.Error("No se pudo enviar el archivo: " + ex.Message); }
+        catch (Exception ex) { Toast.Error("No se pudo preparar el archivo: " + ex.Message); }
         finally { subiendo = false; StateHasChanged(); }
+    }
+
+    /// <summary>Manda el adjunto que está esperando, con el texto del cuadro de pie de foto.</summary>
+    private async Task EnviarAdjuntoPendiente(string pie)
+    {
+        var adj = adjuntoPend;
+        if (adj == null) return;
+        sending = true;
+        StateHasChanged();
+        var (ok, err) = await Api.SendTwMediaAsync(Numero, adj.Url,
+            string.IsNullOrWhiteSpace(pie) ? null : pie, adj.FileName, LineaPhoneId);
+        sending = false;
+        if (ok)
+        {
+            adjuntoPend = null;
+            composer = "";
+            await SincronizarComposer();
+            await Cargar();
+        }
+        else Toast.Error(err ?? "No se pudo enviar el archivo");
+        StateHasChanged();
     }
 
     private static bool EsAudio(string? url)
