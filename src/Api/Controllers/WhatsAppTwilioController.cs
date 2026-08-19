@@ -405,6 +405,96 @@ public class WhatsAppTwilioController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // 2026-08-19: SONIDOS DE AVISO SUBIDOS POR EL USUARIO
+    // Los seis de siempre están hechos por código en index.html (no son archivos). Acá se
+    // guardan los que sube el usuario, para que la lista de la línea tenga los suyos también.
+    // Se referencian como "subido:{Id}" en WhatsApp_LineasConfig.Sonido.
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    private const int SonidoMaxBytes = 300 * 1024;   // 300 KB: para un aviso de 1-2 segundos sobra
+
+    /// <summary>Lista de sonidos subidos (sin el audio, que puede pesar). Para armar el desplegable.</summary>
+    [HttpGet("sonidos")]
+    [Authorize]
+    public async Task<IActionResult> Sonidos()
+    {
+        var list = await _db.WhatsAppSonidos.AsNoTracking()
+            .OrderBy(x => x.Nombre)
+            .Select(x => new { x.Id, x.Nombre, Clave = "subido:" + x.Id })
+            .ToListAsync();
+        return Ok(list);
+    }
+
+    /// <summary>Devuelve el audio para que el navegador lo reproduzca. La cookie de sesión viaja sola.</summary>
+    [HttpGet("sonidos/{id:int}/audio")]
+    [Authorize]
+    public async Task<IActionResult> SonidoAudio(int id)
+    {
+        var s = await _db.WhatsAppSonidos.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
+        if (s == null) return NotFound();
+        // Cacheable un rato: el audio de un sonido no cambia nunca (para cambiarlo se sube otro).
+        Response.Headers["Cache-Control"] = "private, max-age=86400";
+        return File(s.Datos, string.IsNullOrEmpty(s.Mime) ? "audio/mpeg" : s.Mime);
+    }
+
+    /// <summary>Sube un sonido nuevo. Solo audio, y cortito (tope 300 KB).</summary>
+    [HttpPost("sonidos")]
+    [Authorize]
+    public async Task<IActionResult> SubirSonido([FromForm] IFormFile? file, [FromForm] string? nombre)
+    {
+        if (file == null || file.Length == 0)
+            return BadRequest(new { error = "No llegó ningún archivo" });
+        if (file.Length > SonidoMaxBytes)
+            return BadRequest(new { error = "El sonido es muy pesado. Tiene que ser de menos de 300 KB — un aviso de uno o dos segundos entra de sobra." });
+
+        var mime = (file.ContentType ?? "").ToLowerInvariant();
+        if (!mime.StartsWith("audio/", StringComparison.Ordinal))
+            return BadRequest(new { error = "Eso no es un archivo de audio. Tiene que ser un mp3, wav, ogg o m4a." });
+
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms);
+        var datos = ms.ToArray();
+        if (datos.Length == 0) return BadRequest(new { error = "El archivo llegó vacío" });
+
+        var titulo = (nombre ?? "").Trim();
+        if (string.IsNullOrEmpty(titulo))
+            titulo = Path.GetFileNameWithoutExtension(file.FileName ?? "Sonido");
+        if (titulo.Length > 80) titulo = titulo.Substring(0, 80);
+        if (string.IsNullOrWhiteSpace(titulo)) titulo = "Sonido";
+
+        var son = new WhatsAppSonido
+        {
+            Nombre = titulo,
+            Mime = mime,
+            Datos = datos,
+            CreadoPor = User?.Identity?.Name,
+            CreatedAt = DateTime.UtcNow
+        };
+        _db.WhatsAppSonidos.Add(son);
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, id = son.Id, nombre = son.Nombre, clave = "subido:" + son.Id });
+    }
+
+    /// <summary>Borra un sonido subido. Las líneas que lo estaban usando vuelven a la campanita.</summary>
+    [HttpDelete("sonidos/{id:int}")]
+    [Authorize]
+    public async Task<IActionResult> BorrarSonido(int id)
+    {
+        var s = await _db.WhatsAppSonidos.FirstOrDefaultAsync(x => x.Id == id);
+        if (s == null) return NotFound(new { error = "Ese sonido ya no está" });
+
+        // Si alguna línea lo tenía elegido, la dejamos sin sonido (usa la campanita) en vez de
+        // que se quede apuntando a algo que ya no existe y no suene nada.
+        var clave = "subido:" + id;
+        var usandolo = await _db.WhatsAppLineasConfig.Where(c => c.Sonido == clave).ToListAsync();
+        foreach (var c in usandolo) { c.Sonido = null; c.UpdatedAt = DateTime.UtcNow; }
+
+        _db.WhatsAppSonidos.Remove(s);
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, lineasAfectadas = usandolo.Count });
+    }
+
     /// <summary>INICIA una conversación mandando una plantilla aprobada a un número. WhatsApp lo exige para
     /// escribir primero. Guarda el saliente en la bandeja (Canal=CLOUD) para que aparezca en el chat.</summary>
     [HttpPost("iniciar")]

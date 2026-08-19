@@ -6749,6 +6749,20 @@ GO
 -- o al mismo cliente) cuando falta poco para que se cierre la ventana de 24hs de la Cloud API.
 -- Los destinatarios internos se guardan en Auto_Destinatarios con clave "waventana:{ReglaId}".
 -- ============================================================================
+-- 2026-08-19: sonidos de aviso SUBIDOS por el usuario (mp3/wav cortos), para sumarlos a los seis
+-- que trae el sistema hechos por codigo. Se guardan acá adentro para que los vea todo el equipo.
+-- En WhatsApp_LineasConfig.Sonido se referencian como 'subido:{Id}'.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_Sonidos')
+CREATE TABLE WhatsApp_Sonidos (
+    Id        INT IDENTITY(1,1) PRIMARY KEY,
+    Nombre    NVARCHAR(80) NOT NULL,
+    Mime      NVARCHAR(60) NOT NULL DEFAULT 'audio/mpeg',
+    Datos     VARBINARY(MAX) NOT NULL,
+    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CreadoPor NVARCHAR(120) NULL
+);
+GO
+
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_AvisoVentana_Reglas')
 CREATE TABLE WhatsApp_AvisoVentana_Reglas (
     Id                INT IDENTITY(1,1) PRIMARY KEY,

@@ -6935,6 +6935,57 @@ public class ApiClient
     public async Task<List<TwLineaSonidoDto>> GetTwLineaSonidosAsync()
         => await _http.GetFromJsonAsync<List<TwLineaSonidoDto>>("/api/whatsapp/twilio/lineas-sonidos") ?? new();
 
+    // 2026-08-19: sonidos de aviso SUBIDOS por el usuario (se suman a los seis del sistema).
+    public record TwSonidoDto(int Id, string Nombre, string Clave);
+
+    /// <summary>Saca el mensaje lindo que manda la API cuando algo sale mal (el campo "error").</summary>
+    private static async Task<string> ErrorDeRespuestaAsync(HttpResponseMessage resp, string porDefecto)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            if (doc.RootElement.TryGetProperty("error", out var e)) return e.GetString() ?? porDefecto;
+        }
+        catch { }
+        return porDefecto;
+    }
+
+    public async Task<List<TwSonidoDto>> GetTwSonidosAsync()
+    {
+        try { return await _http.GetFromJsonAsync<List<TwSonidoDto>>("/api/whatsapp/twilio/sonidos") ?? new(); }
+        catch { return new(); }
+    }
+
+    public async Task<(bool ok, string? error, TwSonidoDto? sonido)> SubirTwSonidoAsync(
+        Stream fileStream, string fileName, string contentType, string nombre)
+    {
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            var sc = new StreamContent(fileStream);
+            if (!string.IsNullOrEmpty(contentType))
+                sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+            content.Add(sc, "file", string.IsNullOrEmpty(fileName) ? "sonido" : fileName);
+            content.Add(new StringContent(nombre ?? ""), "nombre");
+            var resp = await _http.PostAsync("/api/whatsapp/twilio/sonidos", content);
+            if (!resp.IsSuccessStatusCode)
+                return (false, await ErrorDeRespuestaAsync(resp, "No se pudo subir el sonido"), null);
+            var dto = await resp.Content.ReadFromJsonAsync<TwSonidoDto>();
+            return (true, null, dto);
+        }
+        catch (Exception ex) { return (false, ex.Message, null); }
+    }
+
+    public async Task<(bool ok, string? error)> BorrarTwSonidoAsync(int id)
+    {
+        try
+        {
+            var resp = await _http.DeleteAsync($"/api/whatsapp/twilio/sonidos/{id}");
+            return resp.IsSuccessStatusCode ? (true, null) : (false, await ErrorDeRespuestaAsync(resp, "No se pudo borrar el sonido"));
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     /// <summary>tema: null = no tocar el tema (lo usa el modal de nombre/imagen), "oscuro" o "claro" = cambiarlo.</summary>
     public async Task<(bool ok, string? error)> GuardarTwLineaConfigAsync(string lineaId, string? nombre, string? imagenDataUrl, string? sonido = null, string? tema = null)
     {

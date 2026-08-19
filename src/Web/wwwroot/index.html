@@ -1963,16 +1963,36 @@
             if (window._waAudioCtx.state === 'suspended') { try { window._waAudioCtx.resume(); } catch (e) {} }
             return window._waAudioCtx;
         }
-        window.waPlaySound = function (name) {
+        // 2026-08-19: ademas de los seis de fabrica (hechos por codigo, arriba) ahora se pueden SUBIR
+        // sonidos propios. Esos vienen del servidor y se identifican con la clave "subido:{id}".
+        // Los guardamos en memoria la primera vez para que no se bajen de nuevo en cada aviso.
+        window._waAudiosSubidos = {};
+        window.waPlaySoundCrudo = function (name) {
             try {
-                if (localStorage.getItem('wa.sonido') === '0') return; // silenciado (maestro)
+                if (name && name.indexOf('subido:') === 0) {
+                    var id = name.slice(7);
+                    var a = window._waAudiosSubidos[id];
+                    if (!a) {
+                        a = new Audio('/api/whatsapp/twilio/sonidos/' + encodeURIComponent(id) + '/audio');
+                        a.preload = 'auto';
+                        window._waAudiosSubidos[id] = a;
+                    }
+                    try { a.currentTime = 0; } catch (e) {}
+                    var pr = a.play();
+                    if (pr && pr.catch) pr.catch(function () {}); // el navegador puede bloquearlo sin un toque previo
+                    return;
+                }
                 var c = _waCtx(); if (!c) return;
                 (window.waSounds[name] || window.waSounds.chime)(c);
             } catch (e) { console.warn('waPlaySound', e); }
         };
-        window.waTestSound = function (name) {
-            try { var c = _waCtx(); if (!c) return; (window.waSounds[name] || window.waSounds.chime)(c); } catch (e) {}
+        window.waPlaySound = function (name) {
+            if (localStorage.getItem('wa.sonido') === '0') return; // silenciado (maestro)
+            window.waPlaySoundCrudo(name);
         };
+        // El ▶ de "probar" suena SIEMPRE, aunque este el silencio maestro: si no, el usuario toca
+        // probar, no escucha nada y cree que el sonido esta roto.
+        window.waTestSound = function (name) { window.waPlaySoundCrudo(name); };
         window.waNotifSound = function () { window.waPlaySound('chime'); };
         // 2026-08-18: saltar al mensaje citado (tocar la cajita gris de "respondiendo a…")
         // y dejarlo resaltado un segundo y medio, como hace WhatsApp.

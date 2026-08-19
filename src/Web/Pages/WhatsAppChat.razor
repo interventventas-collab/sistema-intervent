@@ -1574,10 +1574,34 @@
             <div style="display:flex; gap:0.4rem; align-items:center;">
                 <select class="form-control form-control-sm" @bind="editLineaSonido">
                     @foreach (var s in SonidosDisponibles) { <option value="@s.Key">@s.Label</option> }
+                    @* 2026-08-19: abajo de los seis del sistema, los que subió el usuario *@
+                    @if (sonidosSubidos.Count > 0)
+                    {
+                        <optgroup label="Sonidos que subiste">
+                            @foreach (var s in sonidosSubidos) { <option value="@s.Clave">🎵 @s.Nombre</option> }
+                        </optgroup>
+                    }
                 </select>
                 <button class="btn btn-outline-secondary btn-sm" title="Escuchar este sonido" @onclick="@(() => ProbarSonido(editLineaSonido))">▶</button>
+                @if (SonidoSubidoElegido() is ApiClient.TwSonidoDto _sel)
+                {
+                    <button class="btn btn-outline-danger btn-sm" title="Borrar este sonido del sistema"
+                            disabled="@subiendoSonido" @onclick="@(() => BorrarSonidoSubido(_sel))">🗑</button>
+                }
             </div>
             <div style="font-size:0.7rem; color:#9ca3af; margin-top:0.2rem;">Cuando te escriban a esta línea, va a sonar así. Probalo con ▶.</div>
+
+            @* 2026-08-19: subir un sonido propio (mp3/wav corto). Queda en el servidor: lo sube uno y lo usan todos. *@
+            <div style="margin-top:0.6rem; padding:0.5rem 0.6rem; background:#f8fafc; border:1px solid #e6eaf0; border-radius:8px;">
+                <div style="font-size:0.78rem; font-weight:700; color:#334155; margin-bottom:0.35rem;">➕ Subir un sonido mío</div>
+                <input class="form-control form-control-sm" @bind="nuevoSonidoNombre" maxlength="80"
+                       placeholder="Nombre, ej: Campana iglesia (si lo dejás vacío usa el del archivo)" style="margin-bottom:0.35rem;" />
+                <InputFile OnChange="OnSubirSonido" accept="audio/*" disabled="@subiendoSonido" />
+                <div style="font-size:0.7rem; color:#9ca3af; margin-top:0.3rem;">
+                    @if (subiendoSonido) { <span>Subiendo…</span> }
+                    else { <span>Un mp3 o wav cortito, de menos de 300 KB. Queda disponible para todo el equipo.</span> }
+                </div>
+            </div>
 
             <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:1.1rem;">
                 <button class="btn btn-secondary btn-sm" @onclick="@(() => showEditLinea = false)">Cancelar</button>
@@ -5073,6 +5097,67 @@
     };
     async Task ProbarSonido(string key) { try { await JS.InvokeVoidAsync("waTestSound", key); } catch { } }
 
+    // 2026-08-19: sonidos SUBIDOS por el usuario, que se suman a los seis de arriba.
+    List<ApiClient.TwSonidoDto> sonidosSubidos = new();
+    string nuevoSonidoNombre = "";
+    bool subiendoSonido;
+
+    /// <summary>El sonido subido que está elegido ahora (null si está elegido uno de los del sistema).</summary>
+    ApiClient.TwSonidoDto? SonidoSubidoElegido()
+        => sonidosSubidos.FirstOrDefault(x => x.Clave == editLineaSonido);
+
+    async Task CargarSonidosSubidos()
+    {
+        sonidosSubidos = await Api.GetTwSonidosAsync();
+    }
+
+    async Task OnSubirSonido(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+        if (file.Size > 300_000)
+        {
+            Toast.Warning("El sonido es muy pesado. Tiene que pesar menos de 300 KB — un aviso de uno o dos segundos entra de sobra.");
+            return;
+        }
+        subiendoSonido = true;
+        StateHasChanged();
+        try
+        {
+            using var stream = file.OpenReadStream(maxAllowedSize: 400_000);
+            var mime = string.IsNullOrEmpty(file.ContentType) ? "audio/mpeg" : file.ContentType;
+            var (ok, err, dto) = await Api.SubirTwSonidoAsync(stream, file.Name, mime, nuevoSonidoNombre ?? "");
+            if (!ok) { Toast.Error(err ?? "No se pudo subir el sonido"); return; }
+            nuevoSonidoNombre = "";
+            await CargarSonidosSubidos();
+            // Lo dejamos elegido y lo hacemos sonar, para que se escuche cómo quedó.
+            if (dto != null)
+            {
+                editLineaSonido = dto.Clave;
+                await ProbarSonido(dto.Clave);
+                Toast.Success($"Sonido \"{dto.Nombre}\" agregado ✓");
+            }
+        }
+        catch (Exception ex) { Toast.Error("No se pudo leer el archivo: " + ex.Message); }
+        finally { subiendoSonido = false; StateHasChanged(); }
+    }
+
+    async Task BorrarSonidoSubido(ApiClient.TwSonidoDto s)
+    {
+        subiendoSonido = true;
+        StateHasChanged();
+        try
+        {
+            var (ok, err) = await Api.BorrarTwSonidoAsync(s.Id);
+            if (!ok) { Toast.Error(err ?? "No se pudo borrar"); return; }
+            await CargarSonidosSubidos();
+            // Si era el que estaba elegido acá, volvemos a la campanita.
+            if (editLineaSonido == s.Clave) editLineaSonido = "chime";
+            Toast.Info($"Sonido \"{s.Nombre}\" borrado");
+        }
+        finally { subiendoSonido = false; StateHasChanged(); }
+    }
+
     // Interruptor MAESTRO de sonido (mismo localStorage "wa.sonido" que lee el panel flotante al sonar)
     bool sonidoMasterOn = true;
     async Task CargarSonidoMaster()
@@ -5091,7 +5176,7 @@
     bool showEditLinea = false, editLineaGuardando = false;
     string editLineaId = "", editLineaNombre = "", editLineaSonido = "chime";
     string? editLineaImg = null, editLineaNumero = null;
-    void AbrirEditLinea(string id, string? numero)
+    async Task AbrirEditLinea(string id, string? numero)
     {
         editLineaId = id;
         editLineaNumero = numero;
@@ -5099,8 +5184,10 @@
         editLineaNombre = c?.Nombre ?? "";
         editLineaImg = c?.ImagenDataUrl;
         editLineaSonido = string.IsNullOrEmpty(c?.Sonido) ? "chime" : c!.Sonido!;
+        nuevoSonidoNombre = "";
         showLineaMenu = false;
         showEditLinea = true;
+        await CargarSonidosSubidos();   // 2026-08-19: los sonidos propios, para sumarlos a la lista
     }
     async Task OnEditLineaImg(InputFileChangeEventArgs e)
     {
