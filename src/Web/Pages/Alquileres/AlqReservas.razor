@@ -270,17 +270,18 @@
                     <div class="alq-fechas-grid">
                         <div style="display:flex; flex-direction:column;">
                             <label class="form-label" style="font-size:0.8rem; color:#6b7280;">Fecha de entrega <span style="font-weight:400; color:#9ca3af;">· opcional</span></label>
-                            <input class="form-input" type="date" @bind="formFechaEntrega" @bind:after="RefreshDisponibilidad" style="margin-top:auto;" />
+                            <input class="form-input" type="date" @bind="formFechaEntrega" @bind:after="OnEntregaRetiroChanged" min="2000-01-01" max="2100-12-31" style="margin-top:auto;" />
                         </div>
                         <div style="display:flex; flex-direction:column; background:#f5f3ff; border:2px solid #c4b5fd; border-radius:10px; padding:0.4rem 0.6rem;">
                             <label class="form-label" style="color:#6d28d9; font-weight:700; margin-bottom:0.3rem;">📅 Fecha del evento *</label>
                             <input class="form-input" type="date" @bind="formFechaEvento" @bind:after="OnEventoChanged"
+                                   min="2000-01-01" max="2100-12-31"
                                    style="font-size:1.05rem; font-weight:700; color:#5b21b6;" />
                             <div style="font-size:0.68rem; color:#7c3aed; margin-top:0.3rem;">La importante · única obligatoria. Entrega y retiro se completan solas.</div>
                         </div>
                         <div style="display:flex; flex-direction:column;">
                             <label class="form-label" style="font-size:0.8rem; color:#6b7280;">Fecha de retiro <span style="font-weight:400; color:#9ca3af;">· opcional</span></label>
-                            <input class="form-input" type="date" @bind="formFechaRetiro" @bind:after="RefreshDisponibilidad" style="margin-top:auto;" />
+                            <input class="form-input" type="date" @bind="formFechaRetiro" @bind:after="OnEntregaRetiroChanged" min="2000-01-01" max="2100-12-31" style="margin-top:auto;" />
                         </div>
                     </div>
 
@@ -1251,17 +1252,57 @@
     private DateTime? formFechaEvento;
 
     // Fechas efectivas: si no cargaste entrega/retiro, se derivan del evento (día antes / día después).
-    private DateTime EntregaEff() => formFechaEntrega ?? formFechaEvento?.AddDays(-1) ?? DateTime.Today;
-    private DateTime RetiroEff() => formFechaRetiro ?? formFechaEvento?.AddDays(1) ?? EntregaEff().AddDays(1);
+    private DateTime EntregaEff() => EsFechaPlausible(formFechaEntrega) ? formFechaEntrega!.Value.Date
+        : (EsFechaPlausible(formFechaEvento) ? formFechaEvento!.Value.Date.AddDays(-1) : DateTime.Today);
+    private DateTime RetiroEff() => EsFechaPlausible(formFechaRetiro) ? formFechaRetiro!.Value.Date
+        : (EsFechaPlausible(formFechaEvento) ? formFechaEvento!.Value.Date.AddDays(1) : EntregaEff().AddDays(1));
+
+    // 2026-08-19 — FECHAS A MEDIO ESCRIBIR.
+    // Un <input type="date"> dispara un evento change POR CADA DÍGITO del año: al tipear "2026"
+    // el campo pasa por los años 0002, 0020, 0202 y recién ahí 2026. Antes tomábamos el primero
+    // como bueno y con eso completábamos entrega/retiro, que quedaban clavadas en el año 0001/0002.
+    // Regla: una fecha sólo se considera de verdad si el año es razonable.
+    private const int AnioMin = 2000;
+    private const int AnioMax = 2100;
+    private static bool EsFechaPlausible(DateTime? d) => d.HasValue && d.Value.Year >= AnioMin && d.Value.Year <= AnioMax;
+
+    /// <summary>Último evento válido ya aplicado. Sirve para mover entrega/retiro conservando los días de diferencia.</summary>
+    private DateTime? eventoBase;
 
     private async Task OnEventoChanged()
     {
-        // Al elegir el evento, autocompletar entrega/retiro si están vacías (editables).
-        if (formFechaEvento.HasValue)
+        // Año a medio escribir: no derivamos nada ni consultamos disponibilidad, esperamos a que termine.
+        if (!EsFechaPlausible(formFechaEvento)) return;
+        var ev = formFechaEvento!.Value.Date;
+
+        // Si ya había fechas cargadas y todavía no hay un evento de referencia (ej: reserva vieja sin
+        // fecha de evento, o cargaste entrega/retiro primero), no las pisamos.
+        if (eventoBase is null && EsFechaPlausible(formFechaEntrega) && EsFechaPlausible(formFechaRetiro))
         {
-            formFechaEntrega ??= formFechaEvento.Value.AddDays(-1);
-            formFechaRetiro ??= formFechaEvento.Value.AddDays(1);
+            eventoBase = ev;
+            await RefreshDisponibilidad();
+            return;
         }
+
+        // Entrega/retiro acompañan al evento manteniendo la distancia en días que tenían (por defecto 1 y 1).
+        var offEntrega = eventoBase.HasValue && EsFechaPlausible(formFechaEntrega)
+            ? (formFechaEntrega!.Value.Date - eventoBase.Value).Days : -1;
+        var offRetiro = eventoBase.HasValue && EsFechaPlausible(formFechaRetiro)
+            ? (formFechaRetiro!.Value.Date - eventoBase.Value).Days : 1;
+        if (offEntrega > 0) offEntrega = -1;   // la entrega nunca puede ser después del evento
+        if (offRetiro < 0) offRetiro = 1;      // ni el retiro antes
+
+        formFechaEntrega = ev.AddDays(offEntrega);
+        formFechaRetiro = ev.AddDays(offRetiro);
+        eventoBase = ev;
+        await RefreshDisponibilidad();
+    }
+
+    /// <summary>Entrega/retiro escritas a mano: mientras el año esté a medio escribir no consultamos nada.</summary>
+    private async Task OnEntregaRetiroChanged()
+    {
+        if (formFechaEntrega.HasValue && !EsFechaPlausible(formFechaEntrega)) return;
+        if (formFechaRetiro.HasValue && !EsFechaPlausible(formFechaRetiro)) return;
         await RefreshDisponibilidad();
     }
     private string formHoraInicio = "";
@@ -1633,6 +1674,8 @@
         formFechaEntrega = r.FechaEntrega.Date;
         formFechaRetiro = r.FechaRetiro.Date;
         formFechaEvento = r.FechaEvento?.Date;
+        // Referencia para que entrega/retiro acompañen si después cambiás la fecha del evento.
+        eventoBase = EsFechaPlausible(formFechaEvento) ? formFechaEvento!.Value.Date : null;
         formHoraInicio = r.HoraInicio ?? "";
         formHoraFin = r.HoraFin ?? "";
         formDireccionEvento = r.DireccionEvento ?? "";
@@ -1689,6 +1732,7 @@
         formFechaEvento = null;
         formFechaEntrega = null;
         formFechaRetiro = null;
+        eventoBase = null;
         formHoraInicio = ""; formHoraFin = "";
         formDireccionEvento = "";
         formMapeoLink = ""; formGuardarMapeoEnCliente = false; formSumarAlMapaReserva = false;
@@ -1783,6 +1827,10 @@
         formError = null;
         if (formClienteId <= 0) { formError = "Tenés que elegir un cliente"; return; }
         if (!formFechaEvento.HasValue) { formError = "Poné la fecha del evento"; return; }
+        // Año a medio escribir (0002, 0202...): no dejamos guardar y decimos cuál campo revisar.
+        if (!EsFechaPlausible(formFechaEvento)) { formError = $"La fecha del evento quedó con el año {formFechaEvento!.Value.Year:0000}. Escribí el año completo, por ejemplo {DateTime.Today.Year}."; return; }
+        if (formFechaEntrega.HasValue && !EsFechaPlausible(formFechaEntrega)) { formError = $"La fecha de entrega quedó con el año {formFechaEntrega!.Value.Year:0000}. Escribí el año completo, por ejemplo {DateTime.Today.Year}."; return; }
+        if (formFechaRetiro.HasValue && !EsFechaPlausible(formFechaRetiro)) { formError = $"La fecha de retiro quedó con el año {formFechaRetiro!.Value.Year:0000}. Escribí el año completo, por ejemplo {DateTime.Today.Year}."; return; }
         if (RetiroEff() < EntregaEff()) { formError = "La fecha de retiro no puede ser anterior a la de entrega"; return; }
         if (formItems.Count == 0) { formError = "Agregá al menos un equipo"; return; }
         if (formItems.Any(i => i.Cantidad <= 0)) { formError = "Las cantidades deben ser mayores a 0"; return; }

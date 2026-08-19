@@ -268,12 +268,28 @@ public class AlqReservasController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    // 2026-08-19 — Candado contra fechas con el año a medio escribir (año 0001, 0002, 0202...).
+    // El <input type="date"> del navegador avisa el cambio en cada dígito del año, así que una
+    // pantalla puede llegar a mandar una fecha con año basura. Acá no entra.
+    private const int AnioMin = 2000;
+    private const int AnioMax = 2100;
+    private static string? ErrorAnio(DateTime? d, string campo)
+    {
+        if (!d.HasValue || d.Value == default) return null;
+        var a = d.Value.Year;
+        return a < AnioMin || a > AnioMax
+            ? $"La fecha de {campo} tiene el año {a:0000}, que no es válido. Revisá que el año esté completo (ej: {DateTime.Today.Year})."
+            : null;
+    }
+
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateAlqReservaRequest req)
     {
         if (req.ClienteId <= 0) return BadRequest(new { error = "Tenés que elegir un cliente" });
         if (req.FechaEntrega == default || req.FechaRetiro == default)
             return BadRequest(new { error = "Las fechas de entrega y retiro son obligatorias" });
+        var errAnio = ErrorAnio(req.FechaEntrega, "entrega") ?? ErrorAnio(req.FechaRetiro, "retiro") ?? ErrorAnio(req.FechaEvento, "evento");
+        if (errAnio is not null) return BadRequest(new { error = errAnio });
         if (req.FechaRetiro < req.FechaEntrega)
             return BadRequest(new { error = "La fecha de retiro no puede ser anterior a la de entrega" });
         if (req.Items is null || req.Items.Count == 0)
@@ -391,6 +407,9 @@ public class AlqReservasController : ControllerBase
             .Include(r => r.Items)
             .FirstOrDefaultAsync(r => r.Id == id);
         if (reserva is null) return NotFound(new { error = "Reserva no encontrada" });
+
+        var errAnio = ErrorAnio(req.FechaEntrega, "entrega") ?? ErrorAnio(req.FechaRetiro, "retiro") ?? ErrorAnio(req.FechaEvento, "evento");
+        if (errAnio is not null) return BadRequest(new { error = errAnio });
 
         if (req.ClienteId.HasValue) reserva.ClienteId = req.ClienteId.Value;
         if (req.FechaEntrega.HasValue) reserva.FechaEntrega = req.FechaEntrega.Value.Date;
