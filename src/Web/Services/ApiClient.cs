@@ -6738,7 +6738,9 @@ public class ApiClient
         // 2026-08-09: charla archivada (fuera del listado hasta que el cliente vuelva a escribir o la busquen).
         bool Archivado = false,
         // 2026-08-18: media del ultimo mensaje, para mostrar "📷 Foto" cuando no hay texto.
-        string? UltimoMediaUrl = null);
+        string? UltimoMediaUrl = null,
+        // 2026-08-19: charla FIJADA con el chinche 📌 (va arriba de todo en la lista). Hasta 5.
+        bool Fijado = false, DateTime? FijadoAt = null);
     public record TwReaccionDto(string Emoji, int Count, bool EsCliente = false);
     // 2026-08-05: ReplyToSid/ReplyPreview/ReplyFromMe = "responder citando" (burbuja del mensaje citado).
     public record TwMsgDto(int Id, string Direccion, string Numero, string? NombrePerfil, string? Cuerpo, string? MediaUrl, string? MediaFilename, int? NumMedia, bool Procesado, string? RespuestaEnviada, DateTime CreatedAt, string? EstadoEntrega, List<TwReaccionDto>? Reacciones, string? ReplyToSid = null, string? ReplyPreview = null, bool ReplyFromMe = false, bool OcultoDeposito = false,
@@ -6765,6 +6767,26 @@ public class ApiClient
         => await _http.GetFromJsonAsync<List<TwDestinatarioDto>>($"/api/whatsapp/twilio/destinatarios-buscar?q={Uri.EscapeDataString(q ?? "")}") ?? new();
     public async Task<List<TwConvDto>> GetTwConversacionesAsync()
         => await _http.GetFromJsonAsync<List<TwConvDto>>("/api/whatsapp/twilio/conversaciones") ?? new();
+
+    // 2026-08-19: fijar / sacar de fijados una charla (chinche 📌). Devuelve el mensaje de error
+    // del servidor cuando ya hay 5 fijadas, para poder avisarlo tal cual en pantalla.
+    public async Task<(bool Ok, string? Error)> FijarConversacionAsync(string numero, string? linea, bool fijar)
+    {
+        try
+        {
+            var r = await _http.PostAsJsonAsync("/api/whatsapp/twilio/conversaciones/fijar",
+                new { Numero = numero, LineaPhoneId = linea, Fijar = fijar });
+            if (r.IsSuccessStatusCode) return (true, null);
+            try
+            {
+                var err = await r.Content.ReadFromJsonAsync<Dictionary<string, System.Text.Json.JsonElement>>();
+                if (err != null && err.TryGetValue("error", out var e)) return (false, e.GetString());
+            }
+            catch { }
+            return (false, null);
+        }
+        catch { return (false, null); }
+    }
 
     // 2026-08-04: pasar/asignar una conversación a un operador + ponerle estado. linea puede ser null.
     public async Task<bool> AsignarConversacionAsync(string numero, string? linea, string? operador, string? nota)

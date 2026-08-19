@@ -192,7 +192,7 @@
             {
                 @foreach (var c in conversacionesFiltradas)
                 {
-                    <div class="wa-conv-item @(selectedNumero == c.Numero && selectedLinea == c.Linea ? "active" : "") @(EsPasadaAMi(c) ? "wa-conv-pasada" : "")" @onclick="() => SelectConv(c.Numero, c.Linea)">
+                    <div class="wa-conv-item @(selectedNumero == c.Numero && selectedLinea == c.Linea ? "active" : "") @(EsPasadaAMi(c) ? "wa-conv-pasada" : "") @(c.Fijado ? "wa-conv-fijado" : "")" @onclick="() => SelectConv(c.Numero, c.Linea)">
                         @* 2026-08-06: PRESENCIA — avatarcito(s) del otro agente que tiene abierta esta fila. *@
                         @if (OtrosViewers(ConvIdDe(c.Numero, c.Linea)) is { Count: > 0 } _cvOtros)
                         {
@@ -219,6 +219,11 @@
                         <div class="wa-conv-body">
                             <div class="wa-conv-row1">
                                 <span class="wa-conv-name">
+                                    @* 2026-08-19: chinche de los chats fijados (arriba de todo) *@
+                                    @if (c.Fijado)
+                                    {
+                                        <span class="wa-fijado-pin" title="Chat fijado arriba de todo">📌</span>
+                                    }
                                     @if (c.Canal == "INSTAGRAM")
                                     {
                                         @* 2026-07-31: Instagram → chip "IG" chico + el @usuario grande como nombre *@
@@ -282,6 +287,10 @@
                         </div>
                         @* 2026-08-05: poner la categoría directo desde la lista, sin abrir el chat *@
                         <button class="wa-conv-rolbtn" title="Poner categoría (Cliente / Empleado / …)" @onclick:stopPropagation="true" @onclick="() => rolMenuConv = c">🏷️</button>
+                        @* 2026-08-19: fijar / sacar de fijados (hasta 5), como el chinche de WhatsApp *@
+                        <button class="wa-conv-pinbtn @(c.Fijado ? "on" : "")"
+                                title="@(c.Fijado ? "Sacar de los fijados" : $"Fijar arriba de todo (hasta {MaxFijados})")"
+                                @onclick:stopPropagation="true" @onclick="() => FijarConv(c)">📌</button>
                     </div>
                 }
             }
@@ -2002,6 +2011,16 @@
     .wa-conv-rolbtn { flex: 0 0 auto; align-self: center; background: transparent; border: none; cursor: pointer; font-size: 1rem; opacity: 0.5; padding: 0.15rem 0.3rem; border-radius: 6px; }
     .wa-conv-item:hover .wa-conv-rolbtn { opacity: 1; }
     .wa-conv-rolbtn:hover { background: #e2e8f0; }
+    /* 2026-08-19: CHATS FIJADOS (chinche 📌). Van arriba de todo, con fondo apenas distinto
+       para que se note de un vistazo dónde termina la tanda de fijados. */
+    .wa-conv-item.wa-conv-fijado { background: #fffbeb; border-left-color: #f59e0b; }
+    .wa-conv-item.wa-conv-fijado:hover { background: #fef3c7; }
+    .wa-conv-item.wa-conv-fijado.active { background: #eafcf1; border-left-color: #25d366; }
+    .wa-fijado-pin { font-size: 0.85rem; margin-right: 2px; }
+    .wa-conv-pinbtn { flex: 0 0 auto; align-self: center; background: transparent; border: none; cursor: pointer; font-size: 1rem; opacity: 0.25; padding: 0.15rem 0.3rem; border-radius: 6px; filter: grayscale(1); }
+    .wa-conv-item:hover .wa-conv-pinbtn { opacity: 0.75; }
+    .wa-conv-pinbtn:hover { background: #fef3c7; opacity: 1 !important; filter: none; }
+    .wa-conv-pinbtn.on { opacity: 1; filter: none; }
     .wa-rolmenu-backdrop { position: fixed; inset: 0; z-index: 1090; background: rgba(0,0,0,0.15); }
     .wa-rolmenu { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 1100; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 18px 50px rgba(0,0,0,0.22); padding: 0.6rem; min-width: 235px; }
     .wa-rolmenu-title { font-size: 0.85rem; color: #334155; padding: 0.3rem 0.5rem 0.5rem; border-bottom: 1px solid #f1f5f9; margin-bottom: 0.35rem; }
@@ -5288,6 +5307,31 @@
         if (SelectedConv()?.Archivado == true) await ArchivarConvActual(false);
         await CambiarEstado(estado);
     }
+    // ===== 2026-08-19: FIJAR CHATS (chinche 📌, como WhatsApp) =====
+    // Hasta 5 fijados a la vez, compartidos para todo el equipo (igual que el estado y el archivado).
+    // El tope real lo controla el servidor; acá solo mostramos el aviso que él devuelve.
+    const int MaxFijados = 5;
+    int CantFijados() => conversaciones.Count(x => x.Fijado);
+
+    async Task FijarConv(ApiClient.TwConvDto c)
+    {
+        var fijar = !c.Fijado;
+        if (fijar && CantFijados() >= MaxFijados)
+        {
+            Toast.Error($"Ya tenés {MaxFijados} chats fijados. Sacá uno para poder fijar este 📌");
+            return;
+        }
+        var (ok, error) = await Api.FijarConversacionAsync(c.Numero, c.Linea, fijar);
+        if (!ok)
+        {
+            Toast.Error(error ?? "No se pudo fijar el chat");
+            return;
+        }
+        Toast.Success(fijar ? "Chat fijado arriba 📌" : "Chat sacado de los fijados");
+        await LoadConversaciones(silent: true);
+        StateHasChanged();
+    }
+
     // 2026-08-09: archivar/desarchivar la conversación abierta. archivar=true la saca del listado general
     // (vuelve sola si el cliente escribe de nuevo, o al buscarla). Compartido para todo el equipo.
     async Task ArchivarConvActual(bool archivar)

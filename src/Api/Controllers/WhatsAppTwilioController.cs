@@ -540,9 +540,18 @@ public class WhatsAppTwilioController : ControllerBase
                 // 2026-08-09: archivada = la archivaron y el cliente NO volvió a escribir desde entonces.
                 // Si entra un mensaje entrante más nuevo (UltimoInboundAt > ArchivadoAt), se desarchiva sola.
                 Archivado = est != null && est.ArchivadoAt != null
-                            && (x.UltimoInboundAt == null || x.UltimoInboundAt <= est.ArchivadoAt)
+                            && (x.UltimoInboundAt == null || x.UltimoInboundAt <= est.ArchivadoAt),
+                // 2026-08-19: chat FIJADO (chinche 📌). Va arriba de todo en la lista. Compartido.
+                Fijado = est?.FijadoAt != null,
+                FijadoAt = est?.FijadoAt
             };
-        }).OrderByDescending(x => x.UltimoAt).ToList();
+        })
+        // 2026-08-19: primero los FIJADOS (el último que fijaste, más arriba) y después el resto
+        // por hora del último mensaje, como siempre. El orden lo manda el servidor así vale igual
+        // para la pantalla grande y para el celular.
+        .OrderByDescending(x => x.Fijado)
+        .ThenByDescending(x => x.FijadoAt ?? DateTime.MinValue)
+        .ThenByDescending(x => x.UltimoAt).ToList();
         return Ok(result);
     }
 
@@ -651,9 +660,41 @@ public class WhatsAppTwilioController : ControllerBase
         if (string.IsNullOrWhiteSpace(req?.Numero)) return BadRequest(new { error = "Falta el número" });
         var row = await GetOrCreateConvAsync(req.Numero, req.LineaPhoneId);
         row.ArchivadoAt = req.Archivar ? DateTime.UtcNow : null;
+        // 2026-08-19: si la archivan, se le saca el chinche 📌 (no tiene sentido que una charla
+        // archivada siga arriba de todo; además liberamos uno de los 5 lugares).
+        if (req.Archivar) row.FijadoAt = null;
         row.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return Ok(new { ok = true });
+    }
+
+    // 2026-08-19: FIJAR / SACAR DE FIJADOS una charla (chinche 📌, como WhatsApp). Los fijados
+    // aparecen arriba de todo en la lista. Máximo 5 a la vez — el tope lo controla el servidor
+    // para que no se pase aunque lo fijen desde dos pantallas al mismo tiempo.
+    public const int MaxFijados = 5;
+    public record FijarConvRequest(string Numero, string? LineaPhoneId, bool Fijar);
+    [HttpPost("conversaciones/fijar")]
+    [Authorize]
+    public async Task<IActionResult> FijarConversacion([FromBody] FijarConvRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req?.Numero)) return BadRequest(new { error = "Falta el número" });
+        var row = await GetOrCreateConvAsync(req.Numero, req.LineaPhoneId);
+        if (req.Fijar)
+        {
+            if (row.FijadoAt == null)
+            {
+                var yaFijados = await _db.WhatsAppConversaciones.CountAsync(c => c.FijadoAt != null);
+                if (yaFijados >= MaxFijados)
+                    return BadRequest(new { error = $"Ya tenés {MaxFijados} chats fijados. Sacá uno para poder fijar este.", limite = true });
+            }
+            row.FijadoAt ??= DateTime.UtcNow;
+            // Al fijar, la charla vuelve al listado (no puede estar archivada y fijada a la vez).
+            row.ArchivadoAt = null;
+        }
+        else row.FijadoAt = null;
+        row.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, fijado = row.FijadoAt != null });
     }
 
     // ===== Respuestas rapidas CRUD =====

@@ -5990,6 +5990,13 @@ IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_Conversaciones')
     ALTER TABLE WhatsApp_Conversaciones ADD ArchivadoAt DATETIME2 NULL;
 GO
 
+-- 2026-08-19: FIJAR chat (chinche 📌). Los fijados van arriba de todo en la lista, hasta 5 a la vez.
+-- Es compartido para todo el equipo (igual que el estado y el archivado). Null = no fijado.
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_Conversaciones')
+   AND NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='FijadoAt' AND Object_ID=Object_ID('WhatsApp_Conversaciones'))
+    ALTER TABLE WhatsApp_Conversaciones ADD FijadoAt DATETIME2 NULL;
+GO
+
 -- 2026-06-20: WhatsApp - Sectores + Operarios. Permite derivar conversaciones del chat
 -- entrante a un sector (Cafe, Ventas, Alquileres, etc) y opcionalmente a un operario
 -- especifico. Cada usuario del sistema puede pertenecer a varios sectores.

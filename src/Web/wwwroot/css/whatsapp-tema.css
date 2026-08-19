@@ -97,6 +97,11 @@
 .wa-dark .wa-avatar-rol { background: var(--wad-panel2); }
 .wa-dark .wa-avatar-rol-label { color: var(--wad-txt3); }
 .wa-dark .wa-conv-rolbtn:hover { background: var(--wad-panel3); }
+/* 2026-08-19: chats FIJADOS (chinche 📌) en las líneas que se ven oscuras */
+.wa-dark .wa-conv-item.wa-conv-fijado { background: #2b2a1c; border-left-color: #d9a441; }
+.wa-dark .wa-conv-item.wa-conv-fijado:hover { background: #363423; }
+.wa-dark .wa-conv-item.wa-conv-fijado.active { background: #2a3942; border-left-color: var(--wad-verde); }
+.wa-dark .wa-conv-pinbtn:hover { background: var(--wad-panel3); }
 .wa-dark .wa-linea-activa-chip { background: #0b3d2e; border-color: #14543f; color: #6ee7b7; }
 .wa-dark .wa-linea-activa-x { color: #6ee7b7; }
 

@@ -31,5 +31,8 @@ public class WhatsAppConversacion
     /// El listado la considera archivada solo si el cliente NO volvió a escribir después de esta fecha:
     /// si entra un mensaje entrante más nuevo, "se desarchiva" sola (reaparece en el listado general).</summary>
     public DateTime? ArchivadoAt { get; set; }
+    /// <summary>2026-08-19: cuándo se fijó la charla (chinche 📌). Los fijados van arriba de todo
+    /// en la lista, hasta 5 a la vez, y es compartido para todo el equipo. Null = no fijada.</summary>
+    public DateTime? FijadoAt { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

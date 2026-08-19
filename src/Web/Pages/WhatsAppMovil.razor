@@ -180,10 +180,10 @@ else
                     foreach (var c in filtradas)
                     {
                         var sinLeer = NoLeido(c);
-                        <div class="wam-conv @(sinLeer ? "nuevo" : "")" @onclick="() => AbrirChat(c)">
+                        <div class="wam-conv @(sinLeer ? "nuevo" : "") @(c.Fijado ? "fijado" : "")" @onclick="() => AbrirChat(c)">
                             <div class="wam-avatar">@Inicial(c)</div>
                             <div class="wam-conv-txt">
-                                <div class="wam-conv-nombre" title="@NombreDe(c)">@NombreDe(c)</div>
+                                <div class="wam-conv-nombre" title="@NombreDe(c)">@(c.Fijado ? "📌 " : "")@NombreDe(c)</div>
                                 <div class="wam-conv-ultimo">@Recortar(UltimoTexto(c), 44)</div>
                             </div>
                             <div class="wam-conv-meta">
@@ -193,6 +193,11 @@ else
                                     <span class="wam-conv-punto" title="Mensaje sin leer"></span>
                                 }
                             </div>
+                            @* 2026-08-19: chinche para fijar el chat arriba de todo (hasta 5, igual
+                               que en la pantalla grande; lo que fijás acá se ve tambien alla). *@
+                            <button class="wam-conv-pin @(c.Fijado ? "on" : "")" type="button"
+                                    title="@(c.Fijado ? "Sacar de los fijados" : "Fijar arriba de todo")"
+                                    @onclick:stopPropagation="true" @onclick="() => FijarChat(c)">📌</button>
                         </div>
                     }
                 }
@@ -251,6 +256,12 @@ else
     .wam-conv.nuevo .wam-conv-nombre { font-weight: 800; }
     .wam-conv.nuevo .wam-conv-ultimo { color: #111827; font-weight: 600; }
     .wam-conv.nuevo .wam-conv-hora { color: #25d366; font-weight: 700; }
+    /* 2026-08-19: chats FIJADOS (chinche 📌) — van arriba de todo, con fondo apenas distinto */
+    .wam-conv.fijado { background: #fffbeb; }
+    .wam-conv.fijado:active { background: #fef3c7; }
+    .wam-conv-pin { flex: none; background: transparent; border: none; font-size: 1.05rem; padding: 6px;
+        line-height: 1; cursor: pointer; opacity: 0.25; filter: grayscale(1); }
+    .wam-conv-pin.on { opacity: 1; filter: none; }
 
     .wam-chat { flex: 1; min-height: 0; }
     /* PinnedWaChat trae su propio marco; acá lo dejamos a ras, ocupando toda la pantalla. */
@@ -798,6 +809,27 @@ else
     private Dictionary<string, DateTime> vistos = new();
 
     private static string ClaveConv(ApiClient.TwConvDto c) => (c.Numero ?? "") + "|" + (c.Linea ?? "");
+
+    // 2026-08-19: fijar / sacar de fijados desde el celu. Hasta 5, compartido con la pantalla
+    // grande (el tope lo controla el servidor). Sin toasts en esta pantalla: se avisa con alert.
+    private const int MaxFijados = 5;
+    private async Task FijarChat(ApiClient.TwConvDto c)
+    {
+        var fijar = !c.Fijado;
+        if (fijar && convs.Count(x => x.Fijado) >= MaxFijados)
+        {
+            await JS.InvokeVoidAsync("alert", $"Ya hay {MaxFijados} chats fijados. Sacá uno para poder fijar este 📌");
+            return;
+        }
+        var (ok, error) = await Api.FijarConversacionAsync(c.Numero, c.Linea, fijar);
+        if (!ok)
+        {
+            await JS.InvokeVoidAsync("alert", error ?? "No se pudo fijar el chat");
+            return;
+        }
+        try { convs = await Api.GetTwConversacionesAsync(); } catch { }
+        StateHasChanged();
+    }
 
     private bool NoLeido(ApiClient.TwConvDto c)
     {
