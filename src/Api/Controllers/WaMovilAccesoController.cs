@@ -21,9 +21,33 @@ namespace Api.Controllers;
 public class WaMovilAccesoController : ControllerBase
 {
     private readonly AppDbContext _db;
-    private readonly IFido2 _fido2;
     private readonly IMemoryCache _cache;
-    public WaMovilAccesoController(AppDbContext db, IFido2 fido2, IMemoryCache cache) { _db = db; _fido2 = fido2; _cache = cache; }
+    public WaMovilAccesoController(AppDbContext db, IMemoryCache cache) { _db = db; _cache = cache; }
+
+    /// <summary>
+    /// 2026-08-19: el motor de huella se arma con el dominio DESDE EL QUE SE ESTA ENTRANDO, no con
+    /// uno fijo. Antes usaba el Fido2 global (app.palanica.com.ar): si el celu abria la pantalla por
+    /// otro dominio (app.frikaf.online, o la app instalada), el navegador rechazaba el registro con
+    /// "The relying party ID is not a registrable domain suffix of, nor equal to the current domain"
+    /// y era imposible registrar la huella. Asi anda en cualquiera de los dominios del sistema.
+    /// OJO: la huella queda atada al dominio donde se registro — es como funciona WebAuthn, no se
+    /// puede mudar. Si entran por otro dominio, hay que registrarla de nuevo ahi.
+    /// </summary>
+    private IFido2 Motor()
+    {
+        var host = Request.Host.Host;                                  // app.palanica.com.ar / app.frikaf.online / localhost
+        var origen = $"{Request.Scheme}://{Request.Host.Value}";        // con puerto si lo hubiera
+        return new Fido2(new Fido2Configuration
+        {
+            ServerDomain = host,
+            ServerName = "WhatsApp FRIKAF",
+            Origins = new HashSet<string> { origen }
+        });
+    }
+
+    /// <summary>Dominio actual, que guardamos junto al nombre del dispositivo para saber en cuál
+    /// sirve cada huella (no hay columna propia y no queremos tocar la tabla).</summary>
+    private string HostActual => Request.Host.Host;
 
     private const string SettingKey = "wamovil.codigos";
 
@@ -124,11 +148,12 @@ public class WaMovilAccesoController : ControllerBase
             UserVerification = UserVerificationRequirement.Required,
             AuthenticatorAttachment = AuthenticatorAttachment.Platform
         };
-        var options = _fido2.RequestNewCredential(user, excludeList, authSelection, AttestationConveyancePreference.None);
+        var options = Motor().RequestNewCredential(user, excludeList, authSelection, AttestationConveyancePreference.None);
         var sessionId = Guid.NewGuid().ToString("N").Substring(0, 16);
         _cache.Set($"wamovil:reg:{sessionId}", options.ToJson(), TimeSpan.FromMinutes(5));
         _cache.Set($"wamovil:reg:{sessionId}:persona", persona, TimeSpan.FromMinutes(5));
-        _cache.Set($"wamovil:reg:{sessionId}:device", req?.DeviceName ?? "Celular", TimeSpan.FromMinutes(5));
+        // Guardamos "Celular · dominio" para poder ofrecer despues solo las huellas de ESTE dominio.
+        _cache.Set($"wamovil:reg:{sessionId}:device", $"{req?.DeviceName ?? "Celular"} · {HostActual}", TimeSpan.FromMinutes(5));
         return Ok(new HuellaRegBeginResult(true, null, options, sessionId));
     }
 
@@ -155,7 +180,7 @@ public class WaMovilAccesoController : ControllerBase
         };
         try
         {
-            var success = await _fido2.MakeNewCredentialAsync(req.AttestationResponse, options, cb);
+            var success = await Motor().MakeNewCredentialAsync(req.AttestationResponse, options, cb);
             if (success.Result is null) return Ok(new HuellaRegCompleteResult(false, "No se pudo registrar la huella."));
             _db.WaMovilWebAuthnCredentials.Add(new WaMovilWebAuthnCredential
             {
@@ -185,10 +210,19 @@ public class WaMovilAccesoController : ControllerBase
     [HttpPost("huella/login/begin")]
     public async Task<IActionResult> HuellaLoginBegin()
     {
-        var creds = await _db.WaMovilWebAuthnCredentials.ToListAsync();
+        var todas = await _db.WaMovilWebAuthnCredentials.ToListAsync();
+        // 2026-08-19: solo las huellas de ESTE dominio (las de otro dominio el celu no las reconoce).
+        // Las viejas, sin dominio guardado, se ofrecen igual por compatibilidad.
+        var creds = todas.Where(c => string.IsNullOrEmpty(c.DeviceName)
+                                     || !c.DeviceName.Contains(" · ")
+                                     || c.DeviceName.EndsWith(HostActual, StringComparison.OrdinalIgnoreCase)).ToList();
         var allowed = creds.Select(c => new PublicKeyCredentialDescriptor(Convert.FromBase64String(c.CredentialId))).ToList();
-        if (allowed.Count == 0) return Ok(new HuellaLoginBeginResult(false, "Todavía no hay huellas registradas.", null, null));
-        var options = _fido2.GetAssertionOptions(allowed, UserVerificationRequirement.Required);
+        if (allowed.Count == 0)
+            return Ok(new HuellaLoginBeginResult(false,
+                todas.Count > 0
+                    ? "No hay huellas registradas para esta dirección. Entrá con el código y registrá tu huella acá."
+                    : "Todavía no hay huellas registradas.", null, null));
+        var options = Motor().GetAssertionOptions(allowed, UserVerificationRequirement.Required);
         var sessionId = Guid.NewGuid().ToString("N").Substring(0, 16);
         _cache.Set($"wamovil:auth:{sessionId}", options.ToJson(), TimeSpan.FromMinutes(5));
         return Ok(new HuellaLoginBeginResult(true, null, options, sessionId));
@@ -220,7 +254,7 @@ public class WaMovilAccesoController : ControllerBase
         AssertionVerificationResult vr;
         try
         {
-            vr = await _fido2.MakeAssertionAsync(req.AssertionResponse, options,
+            vr = await Motor().MakeAssertionAsync(req.AssertionResponse, options,
                 Convert.FromBase64String(cred.PublicKey), cred.SignatureCounter, cb);
         }
         catch (Fido2VerificationException ex)
