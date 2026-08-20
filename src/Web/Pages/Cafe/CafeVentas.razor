@@ -765,25 +765,32 @@
                                        ensanchar la fila. *@
                                     @if (!anulada)
                                     {
-                                        <span style="display:inline-flex; flex-direction:column; gap:0.15rem; vertical-align:middle; margin:0 0.15rem;">
+                                        @* 2026-08-20 (2ª vuelta, pedido del dueño: "bajales el alto a
+                                           los dos así quedan como los de Drive"): cada cartelito mide
+                                           16 px — la mitad de un botón normal — así los DOS apilados
+                                           ocupan casi lo mismo que UNO solo (38 px contra 32) y la fila
+                                           vuelve a 55 px en vez de 77. La clave es `white-space: nowrap`
+                                           y el alto FIJO: el tilde queda AL LADO del iconito y no abajo,
+                                           que es lo que hacía crecer el cartelito. *@
+                                        <span style="display:inline-flex; flex-direction:column; gap:2px; vertical-align:middle; margin:0 0.15rem;">
                                             @foreach (var canal in CanalesEnvio)
                                             {
                                                 var env = v.EnvioDe(canal);
                                                 var chip = ChipEnvio(env, canal);
-                                                <span style="display:inline-flex; align-items:center; gap:0.1rem;">
+                                                <span style="display:inline-flex; align-items:center; gap:1px;">
                                                     <button type="button" title="@chip.Tip"
                                                             @onclick="@(() => OpenReenvioCanal(v, canal))"
-                                                            style="display:inline-flex; align-items:center; justify-content:center; min-width:34px; padding:0.2rem 0.4rem; background:@chip.Bg; color:@chip.Fg; border:1.5px solid @chip.Borde; border-radius:8px; font-size:0.95rem; font-weight:700; cursor:pointer; line-height:1.2;">
+                                                            style="display:inline-flex; align-items:center; justify-content:center; gap:1px; height:16px; min-width:30px; padding:0 4px; background:@chip.Bg; color:@chip.Fg; border:1px solid @chip.Borde; border-radius:6px; font-size:10px; font-weight:700; line-height:1; white-space:nowrap; cursor:pointer;">
                                                         @chip.Texto
                                                     </button>
                                                     @if (env is not null && env.EsPendiente)
                                                     {
                                                         <button type="button" title="Mandarlo YA, sin esperar"
                                                                 @onclick="@(() => EnviarYaAsync(v, canal))"
-                                                                style="background:none; border:none; cursor:pointer; font-size:0.8rem; color:#15803d; padding:0 0.1rem;">▶</button>
+                                                                style="background:none; border:none; cursor:pointer; font-size:10px; line-height:1; color:#15803d; padding:0 1px;">▶</button>
                                                         <button type="button" title="Frenar este envío"
                                                                 @onclick="@(() => CancelarEnvioAsync(v, canal))"
-                                                                style="background:none; border:none; cursor:pointer; font-size:0.8rem; color:#b91c1c; padding:0 0.1rem;">✕</button>
+                                                                style="background:none; border:none; cursor:pointer; font-size:10px; line-height:1; color:#b91c1c; padding:0 1px;">✕</button>
                                                     }
                                                 </span>
                                             }
