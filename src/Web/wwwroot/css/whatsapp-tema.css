@@ -439,3 +439,13 @@
 
 /* 2026-08-20: titulito "Últimas charlas" del cuadro de reenviar. */
 .wa-dark .wa-fwd-recientes-t { color: var(--wad-txt3); }
+
+/* 2026-08-20: panel de "Reenviar a…" del celular y boton ↪ de la pantalla grande. */
+.wa-dark .pwa-fwd { background: var(--wad-panel); color: var(--wad-txt); }
+.wa-dark .pwa-fwd-head, .wa-dark .pwa-fwd-pie { border-color: var(--wad-borde); }
+.wa-dark .pwa-fwd-prev { background: var(--wad-panel2); color: var(--wad-txt3); }
+.wa-dark .pwa-fwd-sec, .wa-dark .pwa-fwd-num { color: var(--wad-txt3); }
+.wa-dark .pwa-fwd-nom { color: var(--wad-txt); }
+.wa-dark .pwa-fwd-item.on { background: var(--wad-panel3); }
+.wa-dark .pwa-fwd-cancel { background: var(--wad-panel3); border-color: var(--wad-borde2); color: var(--wad-txt); }
+.wa-dark .wa-fwd-btn { background: var(--wad-panel3); border-color: var(--wad-borde2); color: #93c5fd; }

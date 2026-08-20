@@ -424,15 +424,81 @@
                         <button type="button" class="pwa-msgmenu-emoji" @onclick="() => ReaccionarPwa(_mm.Id, em)">@em</button>
                     }
                 </div>
+                @* 2026-08-20: REENVIAR. En el celular esto directamente no existía: había que ir a la
+                   computadora para pasarle a otro cliente una foto o un precio. Va afuera del
+                   VentanaWaAbierta() de abajo a propósito: reenviar es mandarle algo a OTRO contacto,
+                   así que no depende de si ESTA charla tiene la ventana de 24 hs abierta. *@
+                <button type="button" class="pwa-msgmenu-op" @onclick="() => AbrirReenviarPwa(_mm)">↪️ Reenviar</button>
                 @if (VentanaWaAbierta())
                 {
-                    <button type="button" class="pwa-msgmenu-op" @onclick="() => IniciarResponderPwa(_mm)">↩️ Responder</button>
+                    <button type="button" class="pwa-msgmenu-op" style="margin-top:6px;" @onclick="() => IniciarResponderPwa(_mm)">↩️ Responder</button>
                     @* 2026-08-19: corregir — solo sobre los mensajes que mandamos nosotros *@
                     @if (_mm.Direccion == "OUTGOING" && !_mm.Anulado)
                     {
                         <button type="button" class="pwa-msgmenu-op" style="margin-top:6px;" @onclick="() => IniciarCorregirPwa(_mm)">⚠️ Corregir</button>
                     }
                 }
+            </div>
+        </div>
+    }
+
+    @* 2026-08-20: a quién le reenviamos. Mismo criterio que en la computadora: las últimas charlas
+       listas para tocar (sin escribir nada) y el buscador arriba para los que no tienen charla. *@
+    @if (reenviarMsg is not null)
+    {
+        <div class="pwa-fwd-backdrop" @onclick="CerrarReenviarPwa">
+            <div class="pwa-fwd" @onclick:stopPropagation="true">
+                <div class="pwa-fwd-head">
+                    <span class="pwa-fwd-title">↪️ Reenviar a…</span>
+                    <button type="button" class="pwa-mas-x" @onclick="CerrarReenviarPwa" title="Cerrar">✕</button>
+                </div>
+                <div class="pwa-fwd-prev">@ReenviarPreview()</div>
+                <input class="pwa-busc-input" placeholder="Buscar un nombre o un número…"
+                       value="@reenviarQ" @oninput="OnBuscarReenviar" autocomplete="off" />
+                <div class="pwa-fwd-body">
+                    @if (reenviarBuscando)
+                    {
+                        <div class="pwa-resp-vacio">Buscando…</div>
+                    }
+                    else
+                    {
+                        @if (string.IsNullOrWhiteSpace(reenviarQ))
+                        {
+                            <div class="pwa-fwd-sec">Últimas charlas</div>
+                        }
+                        @foreach (var d in ReenviarOpciones())
+                        {
+                            var elegido = reenviarDest.Any(x => x.Numero == d.Numero);
+                            <button type="button" class="pwa-fwd-item @(elegido ? "on" : "")" @onclick="() => ToggleReenviarDest(d)">
+                                <span class="pwa-fwd-ava">@InicialPwa(d.Nombre)</span>
+                                <span class="pwa-fwd-txt">
+                                    <span class="pwa-fwd-nom">@d.Nombre</span>
+                                    <span class="pwa-fwd-num">@d.Numero</span>
+                                    @if (!d.Disponible)
+                                    {
+                                        <span class="pwa-fwd-cerrado">🔒 fuera de 24 hs</span>
+                                    }
+                                </span>
+                                <span class="pwa-fwd-tick">@(elegido ? "✓" : "")</span>
+                            </button>
+                        }
+                        @if (ReenviarOpciones().Count == 0)
+                        {
+                            <div class="pwa-resp-vacio">
+                                @(string.IsNullOrWhiteSpace(reenviarQ)
+                                    ? "Todavía no hay otras charlas. Buscá el contacto arriba."
+                                    : "No encontré a nadie con eso. Si es un número nuevo, escribilo completo con el 54.")
+                            </div>
+                        }
+                    }
+                </div>
+                <div class="pwa-fwd-pie">
+                    <button type="button" class="pwa-fwd-cancel" @onclick="CerrarReenviarPwa">Cancelar</button>
+                    <button type="button" class="pwa-fwd-ok" disabled="@(reenviarDest.Count == 0 || reenviando)"
+                            @onclick="ConfirmarReenviarPwa">
+                        @(reenviando ? "Enviando…" : reenviarDest.Count == 0 ? "Elegí a quién" : $"↪️ Reenviar a {reenviarDest.Count}")
+                    </button>
+                </div>
             </div>
         </div>
     }
@@ -628,6 +694,38 @@
     .pwa-head-btn { border: none; background: transparent; font-size: 1.05rem; cursor: pointer;
         padding: 2px 5px; border-radius: 8px; line-height: 1; }
     .pwa-head-btn.on { background: #d1fae5; }
+    /* 2026-08-20: panel de "Reenviar a…" del celular. Ocupa casi toda la pantalla, como WhatsApp. */
+    .pwa-fwd-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.45); z-index: 60;
+        display: flex; align-items: flex-end; }
+    .pwa-fwd { background: #fff; width: 100%; max-height: 88%; border-radius: 16px 16px 0 0;
+        display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    .pwa-fwd-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+        border-bottom: 1px solid #eef0f2; flex: none; }
+    .pwa-fwd-title { font-weight: 800; font-size: 0.95rem; flex: 1; }
+    .pwa-fwd-prev { padding: 6px 12px; color: #6b7280; font-size: 0.8rem; background: #f8fafb;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; }
+    .pwa-fwd .pwa-busc-input { margin: 8px 12px; flex: none; }
+    /* min-height 0 = que la lista scrollee adentro en vez de estirar el panel fuera de la pantalla */
+    .pwa-fwd-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 6px 6px; }
+    .pwa-fwd-sec { font-size: 0.72rem; font-weight: 800; color: #6b7280; text-transform: uppercase;
+        letter-spacing: .03em; padding: 6px 8px 2px; }
+    .pwa-fwd-item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+        background: none; border: none; padding: 9px 8px; border-radius: 10px; cursor: pointer; font-family: inherit; }
+    .pwa-fwd-item.on { background: #e7f7ee; }
+    .pwa-fwd-ava { width: 36px; height: 36px; border-radius: 50%; background: #075e54; color: #fff;
+        display: inline-flex; align-items: center; justify-content: center; font-weight: 800; flex: none; }
+    .pwa-fwd-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .pwa-fwd-nom { font-weight: 700; color: #111827; font-size: 0.92rem;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pwa-fwd-num { color: #6b7280; font-size: 0.78rem; }
+    .pwa-fwd-cerrado { color: #b45309; font-size: 0.72rem; font-weight: 700; }
+    .pwa-fwd-tick { color: #16a34a; font-weight: 800; flex: none; }
+    .pwa-fwd-pie { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid #eef0f2; flex: none; }
+    .pwa-fwd-cancel { flex: none; border: 1px solid #d1d5db; background: #fff; color: #374151;
+        border-radius: 10px; padding: 10px 14px; font-weight: 700; cursor: pointer; font-family: inherit; }
+    .pwa-fwd-ok { flex: 1; border: none; background: #25d366; color: #fff; border-radius: 10px;
+        padding: 10px 14px; font-weight: 800; cursor: pointer; font-family: inherit; }
+    .pwa-fwd-ok:disabled { background: #cbd5d3; cursor: default; }
     .pwa-text { white-space: pre-wrap; word-break: break-word; }
     /* 2026-08-20: "Leer más" de los mensajes largos. Verde WhatsApp y en negrita, como el de ellos. */
     .pwa-leermas { display: block; margin-top: 2px; background: none; border: none; padding: 0;
@@ -1270,6 +1368,112 @@
     private void PressEnd() => pressCts?.Cancel();
     // 2026-08-19: abre el menu del mensaje sin toque sostenido (boton "⋮ Opciones" de fotos/audios/archivos).
     private void AbrirMenuMsg(int msgId) { pressCts?.Cancel(); menuMsgId = msgId; }
+
+    // ═══════ 2026-08-20: REENVIAR desde el celular ═══════
+    // Antes esto no existía acá: para pasarle a otro cliente una foto o un precio había que ir a la
+    // computadora. El envío en sí lo hace Services/ReenvioWa.cs, el MISMO que usa la pantalla grande.
+    private ApiClient.TwMsgDto? reenviarMsg;              // el mensaje que se está reenviando
+    private string reenviarQ = "";
+    private bool reenviarBuscando, reenviando;
+    private List<ApiClient.TwConvDto> reenviarCharlas = new();
+    private List<ApiClient.TwDestinatarioDto> reenviarResultados = new();
+    private readonly List<ApiClient.TwDestinatarioDto> reenviarDest = new();
+
+    private async Task AbrirReenviarPwa(ApiClient.TwMsgDto m)
+    {
+        menuMsgId = null;
+        reenviarMsg = m;
+        reenviarQ = "";
+        reenviarResultados = new();
+        reenviarDest.Clear();
+        StateHasChanged();
+        // Las últimas charlas, para poder elegir sin escribir nada.
+        try { reenviarCharlas = await Api.GetTwConversacionesAsync(); }
+        catch { reenviarCharlas = new(); }
+        StateHasChanged();
+    }
+
+    private void CerrarReenviarPwa()
+    {
+        reenviarMsg = null;
+        reenviarQ = "";
+        reenviarResultados = new();
+        reenviarDest.Clear();
+    }
+
+    /// <summary>Un renglón de qué se está por reenviar, para no mandar cualquier cosa sin mirar.</summary>
+    private string ReenviarPreview()
+    {
+        var m = reenviarMsg;
+        if (m is null) return "";
+        if (ReenvioWa.EsMensajeContacto(m.Cuerpo)) return "👤 Tarjeta de contacto";
+        if (!string.IsNullOrWhiteSpace(m.Cuerpo)) return Recortar2(m.Cuerpo, 90);
+        if (!string.IsNullOrEmpty(m.MediaUrl)) return "📎 " + (m.MediaFilename ?? "Archivo");
+        return "(sin texto)";
+    }
+
+    /// <summary>
+    /// A quién se le puede reenviar. Sin nada escrito, las últimas charlas (todas las líneas, sacando
+    /// esta misma); con algo escrito, lo que devuelve el buscador del servidor, que además encuentra
+    /// clientes del café y compradores de MercadoLibre que no tienen charla abierta.
+    /// </summary>
+    private List<ApiClient.TwDestinatarioDto> ReenviarOpciones()
+    {
+        if (!string.IsNullOrWhiteSpace(reenviarQ)) return reenviarResultados;
+        return reenviarCharlas
+            .Where(c => !c.Archivado && !(c.Numero == Numero && c.Linea == LineaPhoneId))
+            .Take(30)
+            .Select(c => new ApiClient.TwDestinatarioDto(
+                string.IsNullOrWhiteSpace(c.ClienteNombre)
+                    ? (string.IsNullOrWhiteSpace(c.NombrePerfil) ? c.Numero : c.NombrePerfil!)
+                    : c.ClienteNombre!,
+                c.Numero, "WhatsApp",
+                c.UltimoEntranteAt is DateTime u && u.AddHours(24) > DateTime.UtcNow))
+            .ToList();
+    }
+
+    private async Task OnBuscarReenviar(ChangeEventArgs e)
+    {
+        reenviarQ = e.Value?.ToString() ?? "";
+        var q = reenviarQ.Trim();
+        if (q.Length < 2) { reenviarResultados = new(); return; }
+        reenviarBuscando = true; StateHasChanged();
+        try { reenviarResultados = await Api.BuscarTwDestinatariosAsync(q); }
+        catch { reenviarResultados = new(); }
+        reenviarBuscando = false;
+    }
+
+    private void ToggleReenviarDest(ApiClient.TwDestinatarioDto d)
+    {
+        var ya = reenviarDest.FirstOrDefault(x => x.Numero == d.Numero);
+        if (ya is not null) reenviarDest.Remove(ya);
+        else reenviarDest.Add(d);
+    }
+
+    private async Task ConfirmarReenviarPwa()
+    {
+        if (reenviarMsg is null || reenviarDest.Count == 0 || reenviando) return;
+        reenviando = true; StateHasChanged();
+        int ok = 0, fail = 0;
+        foreach (var d in reenviarDest)
+        {
+            var r = await ReenvioWa.ReenviarUnoAsync(Api, reenviarMsg, d.Numero);
+            if (r == ReenvioWa.Resultado.Enviado) ok++;
+            else if (r == ReenvioWa.Resultado.Fallo) fail++;
+        }
+        reenviando = false;
+
+        var (txt, esError, esAdv) = ReenvioWa.Resumen(ok, fail);
+        if (esError) Toast.Error(txt); else if (esAdv) Toast.Warning(txt); else Toast.Success(txt);
+
+        CerrarReenviarPwa();
+        // Por si le reenviaste a la charla que tenés abierta, para verlo al toque.
+        await Cargar();
+        StateHasChanged();
+    }
+
+    private static string InicialPwa(string? nombre)
+        => string.IsNullOrWhiteSpace(nombre) ? "?" : nombre.Trim()[0].ToString().ToUpperInvariant();
     private void CerrarMenuMsg() { menuMsgId = null; }
 
     private async Task ReaccionarPwa(int msgId, string emoji)

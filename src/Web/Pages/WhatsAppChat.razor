@@ -685,7 +685,12 @@
                         {
                             <div class="wa-fecha-sep"><span>@DateTimeExt.EtiquetaDiaAr(m.CreatedAt)</span></div>
                         }
-                        <div class="wa-msg-row @(m.Direccion == "OUTGOING" ? "out" : "in") @(mensajesSeleccionadosIds.Contains(m.Id) ? "selected" : "")" @onclick="() => ToggleSeleccionMensaje(m.Id)">
+                        @* 2026-08-20: el clic suelto YA NO selecciona. Antes cualquier clic sobre un
+                           mensaje lo tildaba y aparecía la barra de arriba sin que hubieras pedido
+                           nada; y al revés, si no sabías ese truco no encontrabas nunca el reenviar.
+                           Ahora se entra por el botón ↪ del mensaje (como WhatsApp) y recién ahí el
+                           clic sirve para ir sumando más mensajes a la tanda. *@
+                        <div class="wa-msg-row @(m.Direccion == "OUTGOING" ? "out" : "in") @(mensajesSeleccionadosIds.Contains(m.Id) ? "selected" : "")" @onclick="() => ClicEnMensaje(m.Id)">
                             @if (mensajesSeleccionadosIds.Contains(m.Id))
                             {
                                 <div class="wa-msg-check">✓</div>
@@ -802,6 +807,12 @@
                                         <button class="wa-corregir-btn" @onclick="() => IniciarCorregir(m)" @onclick:stopPropagation="true"
                                                 title="Corregir: manda un aviso citando este mensaje y lo deja tachado para el equipo">⚠️</button>
                                     }
+                                    @* 2026-08-20: REENVIAR este mensaje a otro contacto. Es la puerta de
+                                       entrada, como el "Reenviar" del menú de WhatsApp: tilda este
+                                       mensaje, prende el modo selección (para poder sumar más con un
+                                       clic) y abre directo la lista de contactos. *@
+                                    <button class="wa-fwd-btn" @onclick="() => ReenviarEsteMensaje(m)" @onclick:stopPropagation="true"
+                                            title="Reenviar este mensaje a otro contacto">↪</button>
                                     @* 2026-08-07: ocultar/mostrar este mensaje a Depósito — solo admin/oficina.
                                        2026-08-12: y SOLO en los chats que ve Depósito (en el resto no tiene sentido). *@
                                     @if (!esDeposito && EsChatVisibleDeposito)
@@ -2593,7 +2604,11 @@
     .wa-bubble.wa-anulado { opacity: 0.75; }
     .wa-anulado-badge { background: #fef3c7; border: 1px solid #fcd34d; color: #92400e; font-size: 0.62rem; font-weight: 800; border-radius: 999px; padding: 0 6px; margin-left: 4px; cursor: pointer; }
     .wa-anulado-badge:hover { background: #fde68a; }
-    .wa-hide-btn { position: absolute; top: 80px; right: -28px; background: #fff; border: 1px solid #e5e7eb; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 0.15s; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.8rem; padding: 0; }
+    /* 2026-08-20: reenviar (↪). Va en el 4to escalón; el de ocultar bajó al 5to. */
+    .wa-fwd-btn { position: absolute; top: 80px; right: -28px; background: #fff; border: 1px solid #bfdbfe; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 0.15s; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.8rem; padding: 0; color: #1d4ed8; font-weight: 800; }
+    .wa-msg-row.out .wa-fwd-btn { right: auto; left: -28px; }
+    .wa-bubble-wrap:hover .wa-fwd-btn { opacity: 1; }
+    .wa-hide-btn { position: absolute; top: 110px; right: -28px; background: #fff; border: 1px solid #e5e7eb; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 0.15s; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.8rem; padding: 0; }
     .wa-msg-row.out .wa-hide-btn { right: auto; left: -28px; }
     .wa-bubble-wrap:hover .wa-hide-btn { opacity: 1; }
     .wa-oculto-badge { margin-left: 6px; font-size: 0.62rem; color: #b45309; font-weight: 800; }
@@ -3128,6 +3143,7 @@
     void CancelarSeleccionVenta()
     {
         modoElegirVenta = false;
+        modoSeleccion = false;
         mensajesSeleccionadosIds.Clear();
     }
 
@@ -3180,6 +3196,28 @@
     {
         if (mensajesSeleccionadosIds.Contains(id)) mensajesSeleccionadosIds.Remove(id);
         else mensajesSeleccionadosIds.Add(id);
+    }
+
+    /// <summary>
+    /// 2026-08-20: modo "estoy eligiendo mensajes". Mientras está prendido, un clic en un mensaje lo
+    /// tilda o lo destilda; apagado, el clic no hace nada. Se prende desde el ↪ del mensaje o desde
+    /// "🧾 Abrir venta" — nunca solo.
+    /// </summary>
+    private bool modoSeleccion;
+
+    void ClicEnMensaje(int id)
+    {
+        if (!modoSeleccion && !modoElegirVenta) return;   // clic suelto: no pasa nada
+        ToggleSeleccionMensaje(id);
+    }
+
+    /// <summary>El ↪ de un mensaje: lo tilda y abre directo la lista de contactos.</summary>
+    void ReenviarEsteMensaje(ApiClient.TwMsgDto m)
+    {
+        modoSeleccion = true;
+        mensajesSeleccionadosIds.Clear();
+        mensajesSeleccionadosIds.Add(m.Id);
+        AbrirReenviar();
     }
 
     // Quick contact modal
@@ -3996,38 +4034,16 @@
 
         reenviando = true; StateHasChanged();
         int ok = 0, fail = 0;
-        // Línea = null: el sistema resuelve solo la línea del destinatario (donde tiene la ventana de 24hs abierta).
+        // 2026-08-20: el envío en sí vive en Services/ReenvioWa.cs, compartido con la pantalla del
+        // celular, para que las dos manden exactamente igual y no se despeguen con el tiempo.
         foreach (var d in reenviarDestinos)
         {
             foreach (var m in msgs)
             {
-                try
-                {
-                    bool enviado;
-                    if (EsMensajeContacto(m.Cuerpo))
-                    {
-                        enviado = true;
-                        foreach (var ct in ParseContactos(m.Cuerpo))
-                        {
-                            var (cok, _) = await Api.EnviarTwContactoAsync(d.Numero, ct.Nombre, ct.Numero, null);
-                            if (!cok) enviado = false;
-                        }
-                    }
-                    else if (!string.IsNullOrEmpty(m.MediaUrl))
-                    {
-                        var (mok, _) = await Api.SendTwMediaAsync(d.Numero, m.MediaUrl!, m.Cuerpo, m.MediaFilename, null);
-                        enviado = mok;
-                    }
-                    else if (!string.IsNullOrWhiteSpace(m.Cuerpo))
-                    {
-                        var (tok, _) = await Api.SendTwMensajeAsync(d.Numero, m.Cuerpo!, null);
-                        enviado = tok;
-                    }
-                    else { continue; } // nada reenviable en este mensaje (ej. solo una reacción)
-
-                    if (enviado) ok++; else fail++;
-                }
-                catch { fail++; }
+                var r = await ReenvioWa.ReenviarUnoAsync(Api, m, d.Numero);
+                if (r == ReenvioWa.Resultado.Enviado) ok++;
+                else if (r == ReenvioWa.Resultado.Fallo) fail++;
+                // NadaQueMandar: no cuenta ni como éxito ni como error (ej. solo una reacción)
             }
         }
         reenviando = false;
@@ -4035,38 +4051,21 @@
         // Por si le reenviaste al chat que está abierto, refrescamos para verlo.
         await LoadMensajes(silent: true);
 
-        if (fail == 0) Toast.Success($"Reenviado ✓ ({ok} envío(s))");
-        else if (ok == 0) Toast.Error("No se pudo reenviar. Puede ser que esos contactos no te escribieron en las últimas 24 hs (WhatsApp no deja mandarles algo libre hasta que respondan).");
-        else Toast.Warning($"Reenviado a algunos: {ok} sí, {fail} no (los que fallaron seguro están fuera de las 24 hs).");
+        var (txt, esError, esAdv) = ReenvioWa.Resumen(ok, fail);
+        if (esError) Toast.Error(txt); else if (esAdv) Toast.Warning(txt); else Toast.Success(txt);
 
         CerrarReenviar();
         mensajesSeleccionadosIds.Clear();
+        modoSeleccion = false;
     }
 
     // ¿El cuerpo es una tarjeta de contacto? (marcador puesto por el webhook / el envío)
-    static bool EsMensajeContacto(string? cuerpo)
-        => !string.IsNullOrEmpty(cuerpo) && cuerpo.StartsWith("CONTACTO_WA:", StringComparison.Ordinal);
+    // 2026-08-20: la definición de verdad vive en Services/ReenvioWa.cs (la comparten las dos
+    // pantallas). Acá quedan como atajo para el markup, que las usa para dibujar la tarjetita.
+    static bool EsMensajeContacto(string? cuerpo) => ReenvioWa.EsMensajeContacto(cuerpo);
 
     // Devuelve los contactos guardados en el cuerpo "CONTACTO_WA:[{n,t}]"
-    List<(string Nombre, string Numero)> ParseContactos(string? cuerpo)
-    {
-        var res = new List<(string, string)>();
-        if (!EsMensajeContacto(cuerpo)) return res;
-        try
-        {
-            var json = cuerpo!.Substring("CONTACTO_WA:".Length);
-            using var doc = System.Text.Json.JsonDocument.Parse(json);
-            foreach (var el in doc.RootElement.EnumerateArray())
-            {
-                var n = el.TryGetProperty("n", out var nn) ? nn.GetString() ?? "" : "";
-                var t = el.TryGetProperty("t", out var tt) ? tt.GetString() ?? "" : "";
-                if (string.IsNullOrWhiteSpace(n)) n = t;
-                res.Add((n, t));
-            }
-        }
-        catch { }
-        return res;
-    }
+    static List<(string Nombre, string Numero)> ParseContactos(string? cuerpo) => ReenvioWa.ParseContactos(cuerpo);
 
     // 2026-08-03: "Escribir" a un contacto compartido. Si ya existe un chat con ese número, lo abre.
     // Si es nuevo, abre el panel de "Nueva conversación" ya cargado (porque a un número nuevo hay que
@@ -4621,7 +4620,7 @@
         // 2026-08-20: cerrar el buscador y olvidar los "Leer más" abiertos: son de la charla anterior.
         // Acá la pantalla NO se recrea al cambiar de chat (a diferencia del celular), así que si no
         // se limpia a mano queda el buscador con los resultados del chat de antes.
-        CerrarBuscador(); textoAbierto.Clear();
+        CerrarBuscador(); textoAbierto.Clear(); modoSeleccion = false;
         asignarNota = SelectedConv()?.AsignadoNota ?? "";   // 2026-08-06: precargar la nota guardada de este chat (editable)
         await LoadMensajes();
         // 2026-08-06: presencia — salgo del chat anterior y entro al nuevo (para que se vea quién mira qué).
