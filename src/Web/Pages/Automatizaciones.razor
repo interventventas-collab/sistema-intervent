@@ -125,7 +125,9 @@
                             <span class="auto-lbl">📱 Sale desde</span>
                             <select class="auto-hora" style="min-width:190px;" value="@(a2(a).LineaPhoneId ?? "")"
                                     @onchange="e => { a2(a).LineaPhoneId = string.IsNullOrEmpty(e.Value?.ToString()) ? null : e.Value!.ToString(); _ = GuardarAviso(a.Key); }">
-                                <option value="">📲 Línea por defecto</option>
+                                @* 2026-08-20: "por defecto" ya NO significa "la que le toque": es una línea fija
+                                           (hoy FRIKAF by INTERVENT), elegida porque es la que más se usa con clientes. *@
+                                        <option value="">📲 La de siempre (la que más se usa con clientes)</option>
                                 @foreach (var ln in data.Lineas!)
                                 {
                                     <option value="@ln.PhoneId">@LineaLabel(ln)</option>
@@ -238,7 +240,9 @@
                                     <span class="auto-lbl">📱 Sale desde</span>
                                     <select class="auto-hora" style="min-width:190px;" value="@(al.LineaPhoneId ?? "")"
                                             @onchange="e => CambiarLineaAlerta(al, string.IsNullOrEmpty(e.Value?.ToString()) ? null : e.Value!.ToString())">
-                                        <option value="">📲 Línea por defecto</option>
+                                        @* 2026-08-20: "por defecto" ya NO significa "la que le toque": es una línea fija
+                                           (hoy FRIKAF by INTERVENT), elegida porque es la que más se usa con clientes. *@
+                                        <option value="">📲 La de siempre (la que más se usa con clientes)</option>
                                         @foreach (var ln in data!.Lineas!)
                                         {
                                             <option value="@ln.PhoneId">@LineaLabel(ln)</option>
@@ -249,7 +253,7 @@
                                 {
                                     <div class="auto-fila" style="margin-top:-0.4rem;">
                                         <span class="auto-lbl"></span>
-                                        <span style="font-size:0.66rem; color:#fbbf24; line-height:1.3;">⚠️ Por la regla de WhatsApp (24 hs), sale por esta línea solo si la persona te escribió a <b>esta misma línea</b> hace poco. Si no te llega, dejá <b>"Línea por defecto"</b>.</span>
+                                        <span style="font-size:0.66rem; color:#fbbf24; line-height:1.3;">⚠️ Por la regla de WhatsApp (24 hs), sale por esta línea solo si la persona te escribió a <b>esta misma línea</b> hace poco. Si no te llega, probá con otra.</span>
                                     </div>
                                 }
                             }

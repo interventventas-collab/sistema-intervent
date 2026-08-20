@@ -28,6 +28,14 @@ public class MetaWhatsAppService
 
     private string Token => _config["META_WA_TOKEN"] ?? Environment.GetEnvironmentVariable("META_WA_TOKEN") ?? "";
     private string PhoneId => _config["META_WA_PHONE_ID"] ?? Environment.GetEnvironmentVariable("META_WA_PHONE_ID") ?? "";
+
+    /// <summary>
+    /// 2026-08-20: la línea POR DEFECTO (META_WA_PHONE_ID), la que se usa cuando un envío no dice
+    /// por cuál sale. Se expone para que el repartidor de salientes pueda PREFERIRLA en vez de
+    /// mandar por donde el destinatario haya escrito último — que hacía saltar los avisos de una
+    /// empresa a la otra. Hoy es FRIKAF by INTERVENT (11-2252-5458), la que más se usa con clientes.
+    /// </summary>
+    public string LineaPorDefecto => PhoneId;
     private string ApiVersion => _config["META_WA_API_VERSION"] ?? Environment.GetEnvironmentVariable("META_WA_API_VERSION") ?? "v21.0";
     // 2026-08-01: WhatsApp Business Account (WABA) ID — necesario para listar las plantillas de mensajes.
     private string WabaId => _config["META_WA_WABA_ID"] ?? Environment.GetEnvironmentVariable("META_WA_WABA_ID") ?? "";

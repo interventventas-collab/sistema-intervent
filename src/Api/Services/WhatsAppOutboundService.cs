@@ -115,6 +115,43 @@ public class WhatsAppOutboundService
         // ESA línea de Cloud API — así el mismo contacto escribiendo a 2 líneas nuestras no se cruza.
         if (!string.IsNullOrEmpty(lineaOverride) && _meta.IsConfigured) return ("CLOUD", lineaOverride);
 
+        // 2026-08-20: SIN LÍNEA ELEGIDA, MANDA LA LÍNEA POR DEFECTO.
+        //
+        // Antes acá se devolvía la línea del ÚLTIMO ENTRANTE de ese contacto. Suena razonable, pero
+        // FRIKAF by INTERVENT y FIJO TRANSRADIO son DOS EMPRESAS: para la gente que le escribe a las
+        // dos (hay varios, incluidos los que reciben los avisos internos), el número desde el que
+        // salía el mensaje dependía de quién había escrito último — o sea, cambiaba solo de un día
+        // para el otro. El dueño lo sufrió reenviando y pidió que por defecto salga siempre por
+        // FRIKAF, que es la que más se usa con clientes.
+        //
+        // Se cuida un caso: si con ese contacto la ventana de 24 hs NO está abierta en la línea por
+        // defecto pero SÍ en otra, se usa esa otra — si no, Meta rechazaría el mensaje y el aviso se
+        // perdería en silencio, que es peor. Queda anotado en el log porque es un cruce de empresa.
+        if (_meta.IsConfigured)
+        {
+            var porDefecto = _meta.LineaPorDefecto;
+            if (!string.IsNullOrEmpty(porDefecto))
+            {
+                var limite = DateTime.UtcNow.AddHours(-24);
+                var abiertaEnLaPorDefecto = await _db.WhatsAppTwilioMensajes.AsNoTracking()
+                    .AnyAsync(m => m.Numero == numero && m.Direccion == "INCOMING"
+                                   && m.LineaPhoneId == porDefecto && m.CreatedAt >= limite);
+                if (abiertaEnLaPorDefecto) return ("CLOUD", porDefecto);
+
+                if (ultimo?.Canal == "CLOUD" && !string.IsNullOrEmpty(ultimo.LineaPhoneId)
+                    && ultimo.LineaPhoneId != porDefecto)
+                {
+                    _logger.LogWarning(
+                        "WhatsApp: a {Numero} se le manda por la línea {Usada} y NO por la de por defecto ({PorDefecto}) "
+                        + "porque en la de por defecto no tiene la ventana de 24 hs abierta. Si no querés que salga por "
+                        + "esa empresa, elegí la línea en la configuración de ese aviso.",
+                        numero, ultimo.LineaPhoneId, porDefecto);
+                    return ("CLOUD", ultimo.LineaPhoneId);
+                }
+                return ("CLOUD", porDefecto);
+            }
+        }
+
         if (ultimo?.Canal == "CLOUD" && _meta.IsConfigured) return ("CLOUD", ultimo.LineaPhoneId);
         if (ultimo?.Canal == "TWILIO" && _twilio.IsConfigured) return ("TWILIO", null);
         return (_meta.IsConfigured ? "CLOUD" : "TWILIO", null);
