@@ -588,7 +588,20 @@ public class WhatsAppTwilioController : ControllerBase
         // Join in-memory con contactos (poco volumen, mas simple que LINQ join)
         var contactos = await _db.WhatsAppTwilioContactos.AsNoTracking()
             .Where(c => c.Activo).ToDictionaryAsync(c => c.Numero, c => c);
-        var clienteIds = contactos.Values.Where(c => c.ClienteId.HasValue).Select(c => c.ClienteId!.Value).Distinct().ToList();
+        // 2026-08-20: un mismo telefono puede tener VARIAS razones sociales colgadas. Traemos la
+        // lista completa por numero (la columna ClienteId del contacto sigue siendo "el principal").
+        var vinculos = await _db.WhatsAppContactoClientes.AsNoTracking()
+            .OrderBy(v => v.Orden).ThenBy(v => v.Id).ToListAsync();
+        var vincMap = vinculos.GroupBy(v => v.Numero)
+            .ToDictionary(g => g.Key, g => g.Select(v => v.ClienteId).ToList());
+        // Que tildo ESTE operador en cada chat (el tilde es de cada uno, no compartido).
+        var quienElige = await QuienEligeAsync();
+        var elegidos = await _db.WhatsAppClientesElegidos.AsNoTracking()
+            .Where(e => e.Quien == quienElige)
+            .ToDictionaryAsync(e => e.Numero, e => e.ClienteId);
+        var clienteIds = contactos.Values.Where(c => c.ClienteId.HasValue).Select(c => c.ClienteId!.Value)
+            .Concat(vinculos.Select(v => v.ClienteId))
+            .Distinct().ToList();
         var clientes = await _db.CafeClientes.AsNoTracking()
             .Where(x => clienteIds.Contains(x.Id))
             .Select(x => new { x.Id, x.Nombre, x.CodigoInterno })
@@ -602,16 +615,30 @@ public class WhatsAppTwilioController : ControllerBase
         var result = conv.Select(x =>
         {
             contactos.TryGetValue(x.Numero, out var c);
+            // 2026-08-20: lista de razones sociales de este numero + cual esta tildada ahora.
+            var listaCli = ClientesDelNumero(x.Numero, c?.ClienteId, vincMap);
+            var clienteEfectivo = ClienteEfectivo(x.Numero, c?.ClienteId, listaCli, elegidos);
             string? clienteNombre = null;
-            if (c?.ClienteId != null && clientes.TryGetValue(c.ClienteId.Value, out var cli)) clienteNombre = cli.Nombre;
+            if (clienteEfectivo != null && clientes.TryGetValue(clienteEfectivo.Value, out var cli)) clienteNombre = cli.Nombre;
             estadoMap.TryGetValue((x.Numero, x.Linea ?? ""), out var est);
             return new
             {
                 x.Numero,
                 NombrePerfil = c?.Nombre ?? x.NombrePerfil,
                 Rol = c?.Rol,
-                ClienteId = c?.ClienteId,
+                // 2026-08-20: ClienteId ahora es el EFECTIVO (el que tildo este operador). Si no
+                // tildo nada, es el principal de siempre — asi las pantallas viejas no cambian.
+                ClienteId = clienteEfectivo,
                 ClienteNombre = clienteNombre,
+                // Todas las razones sociales de este telefono. Con una sola, la pantalla se ve igual
+                // que antes; con dos o mas, muestra los botoncitos para tildar.
+                Clientes = listaCli.Select(id => new
+                {
+                    Id = id,
+                    Nombre = clientes.TryGetValue(id, out var cx) ? cx.Nombre : $"Cliente #{id}",
+                    Codigo = clientes.TryGetValue(id, out var cy) && cy.CodigoInterno.HasValue
+                        ? cy.CodigoInterno.Value.ToString() : null
+                }).ToList(),
                 x.UltimoMensaje,
                 x.UltimoMediaUrl,
                 x.UltimoDireccion,
@@ -1241,27 +1268,168 @@ public class WhatsAppTwilioController : ControllerBase
         }
 
         var c = await _db.WhatsAppTwilioContactos.FirstOrDefaultAsync(x => x.Numero == numero);
+
+        // 2026-08-20: vincular ya NO reemplaza — SUMA. Un mismo telefono puede tener varias
+        // razones sociales (ver WhatsAppContactoCliente). Para sacar una, va desvincular-cliente.
+        if (req.ClienteId == null)
+        {
+            // Sin cliente = desvincular TODO este numero (comportamiento de siempre del boton).
+            if (c != null) c.ClienteId = null;
+            var todos = await _db.WhatsAppContactoClientes.Where(v => v.Numero == numero).ToListAsync();
+            if (todos.Count > 0) _db.WhatsAppContactoClientes.RemoveRange(todos);
+            var elegs = await _db.WhatsAppClientesElegidos.Where(e => e.Numero == numero).ToListAsync();
+            if (elegs.Count > 0) _db.WhatsAppClientesElegidos.RemoveRange(elegs);
+            await _db.SaveChangesAsync();
+            return Ok(new { ok = true, clienteId = (int?)null });
+        }
+
         if (c == null)
         {
-            if (req.ClienteId == null) return Ok(new { ok = true, clienteId = (int?)null });
-            _db.WhatsAppTwilioContactos.Add(new WhatsAppTwilioContacto
+            c = new WhatsAppTwilioContacto
             {
                 Numero = numero,
                 Nombre = string.IsNullOrWhiteSpace(cliNombre) ? numero.Replace("whatsapp:", "") : cliNombre!,
                 Rol = "cliente",
                 Activo = true,
                 ClienteId = req.ClienteId
-            });
+            };
+            _db.WhatsAppTwilioContactos.Add(c);
         }
         else
         {
-            c.ClienteId = req.ClienteId;
-            // Si el contacto estaba sin nombre y ahora lo vinculamos, le ponemos el del cliente.
-            if (req.ClienteId.HasValue && string.IsNullOrWhiteSpace(c.Nombre) && !string.IsNullOrWhiteSpace(cliNombre))
+            // El "principal" (columna vieja) queda en el PRIMERO que se vinculo. Solo se completa
+            // si estaba vacio, para no cambiarle el cliente a las pantallas que leen esa columna.
+            c.ClienteId ??= req.ClienteId;
+            if (string.IsNullOrWhiteSpace(c.Nombre) && !string.IsNullOrWhiteSpace(cliNombre))
                 c.Nombre = cliNombre!;
         }
+
+        // Lo sumamos a la lista del numero (si ya estaba, no se duplica).
+        var yaEsta = await _db.WhatsAppContactoClientes
+            .AnyAsync(v => v.Numero == numero && v.ClienteId == req.ClienteId.Value);
+        if (!yaEsta)
+        {
+            var maxOrden = await _db.WhatsAppContactoClientes
+                .Where(v => v.Numero == numero).Select(v => (int?)v.Orden).MaxAsync() ?? -1;
+            _db.WhatsAppContactoClientes.Add(new WhatsAppContactoCliente
+            {
+                Numero = numero, ClienteId = req.ClienteId.Value, Orden = maxOrden + 1
+            });
+        }
+        // El que acabas de vincular queda TILDADO para vos (es con el que vas a trabajar ahora).
+        await SetElegidoAsync(numero, req.ClienteId.Value);
         await _db.SaveChangesAsync();
         return Ok(new { ok = true, clienteId = req.ClienteId, clienteNombre = cliNombre, clienteCodigo = cliCodigo });
+    }
+
+    // ===== 2026-08-20: varias razones sociales por telefono =====
+
+    /// <summary>Quien esta eligiendo: la firma del operador del PIN (OSMAR/GERMAN/GABRIEL) si la hay,
+    /// si no el usuario logueado ("user:{id}"). El tilde es de cada uno, no compartido.</summary>
+    private Task<string> QuienEligeAsync()
+    {
+        var op = NormOp(Request.Headers["X-Operator-Name"].FirstOrDefault());
+        if (!string.IsNullOrWhiteSpace(op)) return Task.FromResult(op!);
+        var idStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                 ?? User.FindFirst("sub")?.Value;
+        return Task.FromResult(int.TryParse(idStr, out var uid) ? $"user:{uid}" : "user:0");
+    }
+
+    /// <summary>Todas las razones sociales de un numero, en orden. El "principal" del contacto va
+    /// primero aunque todavia no este en la tabla nueva (por si la migracion no corrio).</summary>
+    private static List<int> ClientesDelNumero(string numero, int? principal, Dictionary<string, List<int>> vincMap)
+    {
+        var lista = vincMap.TryGetValue(numero, out var l) ? new List<int>(l) : new List<int>();
+        if (principal.HasValue && !lista.Contains(principal.Value)) lista.Insert(0, principal.Value);
+        return lista;
+    }
+
+    /// <summary>Con cual esta trabajando este operador AHORA: el que tildo (si sigue vinculado),
+    /// si no el principal del contacto, si no el primero de la lista.</summary>
+    private static int? ClienteEfectivo(string numero, int? principal, List<int> lista, Dictionary<string, int> elegidos)
+    {
+        if (elegidos.TryGetValue(numero, out var eleg) && lista.Contains(eleg)) return eleg;
+        if (principal.HasValue) return principal;
+        return lista.Count > 0 ? lista[0] : (int?)null;
+    }
+
+    /// <summary>Deja tildado un cliente para el operador actual (no hace SaveChanges).</summary>
+    private async Task SetElegidoAsync(string numero, int clienteId)
+    {
+        var quien = await QuienEligeAsync();
+        var fila = await _db.WhatsAppClientesElegidos
+            .FirstOrDefaultAsync(e => e.Numero == numero && e.Quien == quien);
+        if (fila == null)
+            _db.WhatsAppClientesElegidos.Add(new WhatsAppClienteElegido
+            { Numero = numero, Quien = quien, ClienteId = clienteId, UpdatedAt = DateTime.UtcNow });
+        else
+        {
+            fila.ClienteId = clienteId;
+            fila.UpdatedAt = DateTime.UtcNow;
+        }
+    }
+
+    public record ElegirClienteRequest(string Numero, int ClienteId);
+
+    /// <summary>2026-08-20: POST contactos/elegir-cliente — tildar con cual de las razones sociales
+    /// del telefono estas trabajando en este momento. Es TUYO: otro operador puede tener tildada
+    /// otra en la misma charla y no se pisan.</summary>
+    [HttpPost("contactos/elegir-cliente")]
+    [Authorize]
+    public async Task<IActionResult> ElegirCliente([FromBody] ElegirClienteRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req?.Numero)) return BadRequest(new { error = "Falta el número" });
+        var numero = req!.Numero.Trim();
+        if (!numero.StartsWith("whatsapp:")) numero = "whatsapp:" + numero;
+
+        var vinculado = await _db.WhatsAppContactoClientes
+            .AnyAsync(v => v.Numero == numero && v.ClienteId == req.ClienteId);
+        if (!vinculado)
+        {
+            // Puede ser el "principal" viejo, que todavia no paso a la tabla nueva.
+            var esPrincipal = await _db.WhatsAppTwilioContactos
+                .AnyAsync(c => c.Numero == numero && c.ClienteId == req.ClienteId);
+            if (!esPrincipal) return BadRequest(new { error = "Ese cliente no está vinculado a este chat" });
+        }
+        await SetElegidoAsync(numero, req.ClienteId);
+        await _db.SaveChangesAsync();
+        var nombre = await _db.CafeClientes.AsNoTracking()
+            .Where(x => x.Id == req.ClienteId).Select(x => x.Nombre).FirstOrDefaultAsync();
+        return Ok(new { ok = true, clienteId = req.ClienteId, clienteNombre = nombre });
+    }
+
+    /// <summary>2026-08-20: POST contactos/desvincular-cliente — sacar UNA razon social de la lista
+    /// del telefono (las otras quedan). Si era la que estaba tildada, el tilde pasa a la primera
+    /// que quede.</summary>
+    [HttpPost("contactos/desvincular-cliente")]
+    [Authorize]
+    public async Task<IActionResult> DesvincularCliente([FromBody] ElegirClienteRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req?.Numero)) return BadRequest(new { error = "Falta el número" });
+        var numero = req!.Numero.Trim();
+        if (!numero.StartsWith("whatsapp:")) numero = "whatsapp:" + numero;
+
+        var filas = await _db.WhatsAppContactoClientes
+            .Where(v => v.Numero == numero && v.ClienteId == req.ClienteId).ToListAsync();
+        if (filas.Count > 0) _db.WhatsAppContactoClientes.RemoveRange(filas);
+
+        var c = await _db.WhatsAppTwilioContactos.FirstOrDefaultAsync(x => x.Numero == numero);
+        if (c != null && c.ClienteId == req.ClienteId)
+        {
+            // Si sacamos el principal, asciende la primera que quede (o queda sin cliente).
+            var queda = await _db.WhatsAppContactoClientes
+                .Where(v => v.Numero == numero && v.ClienteId != req.ClienteId)
+                .OrderBy(v => v.Orden).ThenBy(v => v.Id)
+                .Select(v => (int?)v.ClienteId).FirstOrDefaultAsync();
+            c.ClienteId = queda;
+        }
+        // El que tenia tildada ESA razon social pasa a no tener tilde (agarra el principal solo).
+        var elegs = await _db.WhatsAppClientesElegidos
+            .Where(e => e.Numero == numero && e.ClienteId == req.ClienteId).ToListAsync();
+        if (elegs.Count > 0) _db.WhatsAppClientesElegidos.RemoveRange(elegs);
+
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
     }
 
     /// <summary>2026-08-03: GET contactos/sugerencia-cliente?numero=whatsapp:+549... — busca un

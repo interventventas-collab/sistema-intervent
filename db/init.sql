@@ -6904,3 +6904,59 @@ IF EXISTS (SELECT 1 FROM sys.tables WHERE name='Cafe_VentasEnvios')
    AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_CafeVentasEnvios_Pendientes')
     CREATE INDEX IX_CafeVentasEnvios_Pendientes ON Cafe_VentasEnvios(Estado, ProgramadoPara);
 GO
+
+-- ============================================================================
+-- 2026-08-20: UN MISMO TELEFONO CON VARIAS RAZONES SOCIALES
+-- ----------------------------------------------------------------------------
+-- Pedido del dueño: hay clientas (ej. el +5491121620104) que manejan 3 empresas
+-- distintas y le factura a las tres desde el MISMO WhatsApp. Antes el contacto
+-- tenia UN solo ClienteId (WhatsApp_TwilioContactos.ClienteId) asi que el chat
+-- mostraba una sola razon social y la venta salia siempre a esa.
+--
+-- Ahora: el numero puede tener VARIOS clientes colgados (tabla de abajo) y en el
+-- chat aparecen los tres a la vista; cada operador TILDA con cual esta trabajando
+-- en ese momento, y el tilde es de cada uno (Osmar puede estar en ACOYTE y German
+-- en AVENIDA LA PLATA a la vez, sin pisarse).
+--
+-- WhatsApp_TwilioContactos.ClienteId se mantiene como el "principal" (el que se usa
+-- si nadie tildo nada, y el que siguen leyendo las pantallas viejas).
+-- ============================================================================
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_ContactoClientes')
+CREATE TABLE WhatsApp_ContactoClientes (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    Numero NVARCHAR(30) NOT NULL,              -- "whatsapp:+549..." (igual que WhatsApp_TwilioContactos)
+    ClienteId INT NOT NULL,                    -- Cafe_Clientes.Id
+    Orden INT NOT NULL DEFAULT 0,              -- para que salgan siempre en el mismo orden
+    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+GO
+-- El mismo cliente no se puede colgar dos veces del mismo numero.
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_ContactoClientes')
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_WaContactoClientes_NumCli')
+    CREATE UNIQUE INDEX UX_WaContactoClientes_NumCli ON WhatsApp_ContactoClientes(Numero, ClienteId);
+GO
+-- Migracion: los vinculos que YA existian (uno por numero) pasan a la tabla nueva.
+-- Se corre sola y una sola vez (el NOT EXISTS la hace idempotente).
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_ContactoClientes')
+   AND EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_TwilioContactos')
+    INSERT INTO WhatsApp_ContactoClientes (Numero, ClienteId, Orden)
+    SELECT c.Numero, c.ClienteId, 0
+    FROM WhatsApp_TwilioContactos c
+    WHERE c.ClienteId IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM WhatsApp_ContactoClientes v
+                      WHERE v.Numero = c.Numero AND v.ClienteId = c.ClienteId);
+GO
+-- Que tildo CADA operador en cada chat. Sin fila = usa el principal del contacto.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_ClienteElegido')
+CREATE TABLE WhatsApp_ClienteElegido (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    Numero NVARCHAR(30) NOT NULL,
+    Quien NVARCHAR(40) NOT NULL,               -- firma del operador (OSMAR/GERMAN/...) o 'user:{id}'
+    ClienteId INT NOT NULL,
+    UpdatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+GO
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_ClienteElegido')
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_WaClienteElegido_NumQuien')
+    CREATE UNIQUE INDEX UX_WaClienteElegido_NumQuien ON WhatsApp_ClienteElegido(Numero, Quien);
+GO

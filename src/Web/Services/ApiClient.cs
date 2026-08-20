@@ -6848,7 +6848,13 @@ public class ApiClient
         string? Sonido = null,
         // 2026-08-20: cuándo escribió el cliente por última vez (UTC). Sirve para saber si la
         // ventana de 24 hs de Meta sigue abierta sin tener que abrir la charla.
-        DateTime? UltimoEntranteAt = null);
+        DateTime? UltimoEntranteAt = null,
+        // 2026-08-20: TODAS las razones sociales colgadas de este teléfono. Hay clientas que manejan
+        // 3 empresas y facturan a las tres desde el mismo WhatsApp: en el chat se ven las tres y
+        // cada operador tilda con cuál está trabajando (ClienteId = la tildada por vos).
+        List<TwClienteVinculadoDto>? Clientes = null);
+    /// <summary>2026-08-20: una razón social colgada de un teléfono de WhatsApp.</summary>
+    public record TwClienteVinculadoDto(int Id, string Nombre, string? Codigo);
     public record TwReaccionDto(string Emoji, int Count, bool EsCliente = false);
     // 2026-08-05: ReplyToSid/ReplyPreview/ReplyFromMe = "responder citando" (burbuja del mensaje citado).
     public record TwMsgDto(int Id, string Direccion, string Numero, string? NombrePerfil, string? Cuerpo, string? MediaUrl, string? MediaFilename, int? NumMedia, bool Procesado, string? RespuestaEnviada, DateTime CreatedAt, string? EstadoEntrega, List<TwReaccionDto>? Reacciones, string? ReplyToSid = null, string? ReplyPreview = null, bool ReplyFromMe = false, bool OcultoDeposito = false,
@@ -6884,7 +6890,39 @@ public class ApiClient
                $"/api/whatsapp/twilio/destinatarios-buscar?q={Uri.EscapeDataString(q ?? "")}"
                + (string.IsNullOrEmpty(linea) ? "" : $"&linea={Uri.EscapeDataString(linea)}")) ?? new();
     public async Task<List<TwConvDto>> GetTwConversacionesAsync()
-        => await _http.GetFromJsonAsync<List<TwConvDto>>("/api/whatsapp/twilio/conversaciones") ?? new();
+    {
+        // 2026-08-20: el header dice QUIÉN pregunta, para que el servidor devuelva la razón social
+        // que tildó ESE operador (cada uno tiene la suya en el mismo chat).
+        EnsureOperatorHeader();
+        return await _http.GetFromJsonAsync<List<TwConvDto>>("/api/whatsapp/twilio/conversaciones") ?? new();
+    }
+
+    /// <summary>2026-08-20: tildar con cuál de las razones sociales del teléfono estás trabajando
+    /// ahora. Es tuyo: otro operador puede tener tildada otra en la misma charla.</summary>
+    public async Task<bool> ElegirClienteChatAsync(string numero, int clienteId)
+    {
+        try
+        {
+            EnsureOperatorHeader();
+            var r = await _http.PostAsJsonAsync("/api/whatsapp/twilio/contactos/elegir-cliente",
+                new { Numero = numero, ClienteId = clienteId });
+            return r.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
+
+    /// <summary>2026-08-20: sacar UNA razón social de la lista del teléfono (las otras quedan).</summary>
+    public async Task<bool> DesvincularClienteChatAsync(string numero, int clienteId)
+    {
+        try
+        {
+            EnsureOperatorHeader();
+            var r = await _http.PostAsJsonAsync("/api/whatsapp/twilio/contactos/desvincular-cliente",
+                new { Numero = numero, ClienteId = clienteId });
+            return r.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
 
     // 2026-08-19: anular / desanular un mensaje NUESTRO (queda tachado solo en nuestras pantallas).
     public async Task<bool> AnularMensajeAsync(int id, bool anular)

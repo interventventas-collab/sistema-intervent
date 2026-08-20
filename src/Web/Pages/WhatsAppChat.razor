@@ -510,7 +510,32 @@
                     <div style="font-size:0.75rem; color:#6b7280; display:flex; gap:0.5rem; align-items:center;">
                         <span>@PrettyNumero(selectedNumero)</span>
                         <button class="wa-num-edit" @onclick="AbrirCorregirNumero" title="Corregir el número de este chat (si quedó mal cargado)">✏️</button>
-                        @if (SelectedConv()?.ClienteId is int cid)
+                        @* 2026-08-20: un mismo teléfono puede tener VARIAS razones sociales (hay clientas
+                           que manejan 3 empresas y facturan a las tres desde el mismo WhatsApp). Se ven
+                           todas y tildás con cuál estás trabajando ahora. El tilde es TUYO: otro operador
+                           puede tener tildada otra en la misma charla sin pisarte. Con una sola razón
+                           social, esto se ve exactamente igual que antes. *@
+                        @if (VariasRazones)
+                        {
+                            <span class="wa-razones" title="Este teléfono factura a varias razones sociales. Tocá la que estés usando ahora: la ficha 👁️, la venta y el comprobante salen a nombre de ésa.">
+                                <span class="wa-razones-t">🛍️ Facturo a:</span>
+                                @foreach (var rs in RazonesSociales)
+                                {
+                                    <button class="wa-razon @(EsRazonActiva(rs.Id) ? "on" : "")"
+                                            @onclick="() => ElegirRazon(rs.Id)"
+                                            disabled="@cambiandoRazon"
+                                            title="@(EsRazonActiva(rs.Id) ? $"Estás trabajando con {rs.Nombre}" : $"Pasar a {rs.Nombre}")">
+                                        <span class="wa-razon-tilde">@(EsRazonActiva(rs.Id) ? "✓" : "")</span>
+                                        <span class="wa-razon-nom">@rs.Nombre</span>
+                                    </button>
+                                }
+                                @if (SelectedConv()?.ClienteId is int cidv)
+                                {
+                                    <a href="/cafe/clientes?edit=@cidv" target="_blank" class="wa-razon-ficha" title="Abrir la ficha de la razón social tildada">↗</a>
+                                }
+                            </span>
+                        }
+                        else if (SelectedConv()?.ClienteId is int cid)
                         {
                             <a href="/cafe/clientes?edit=@cid" target="_blank" class="wa-cliente-badge" title="Ver ficha del cliente">
                                 🛍️ Cliente: @SelectedConv()?.ClienteNombre
@@ -1375,11 +1400,31 @@
             <aside class="wa-ctx">
                 <div class="wa-ctx-sec">
                     <div class="wa-ctx-sec-t">👤 Contacto</div>
+                    @* 2026-08-20: antes este botón desaparecía apenas vinculabas UN cliente. Ahora
+                       queda siempre, porque el mismo teléfono puede facturar a varias razones
+                       sociales y hay que poder sumar la segunda y la tercera. *@
                     @if (SelectedConv()?.ClienteId is null)
                     {
                         <button class="wa-ctx-btn wa-ctx-btn-ok" @onclick="AbrirVincularCliente" title="Asociar este chat a un cliente del sistema en un paso">
                             🔗 Vincular cliente
                         </button>
+                    }
+                    else
+                    {
+                        <button class="wa-ctx-btn" @onclick="AbrirVincularCliente" title="Este teléfono factura a más de una razón social: sumá la otra empresa acá y después elegís con cuál trabajás desde arriba del chat">
+                            ➕ Sumar otra razón social
+                        </button>
+                        @if (VariasRazones)
+                        {
+                            <div class="wa-ctx-quitar-t">Sacar de este chat:</div>
+                        }
+                        @foreach (var rs in RazonesSociales)
+                        {
+                            <button class="wa-ctx-quitar-razon" @onclick="() => QuitarRazon(rs.Id, rs.Nombre)"
+                                    title="Sacar @rs.Nombre de este chat (no borra el cliente, solo lo despega del teléfono)">
+                                🗑 @rs.Nombre
+                            </button>
+                        }
                     }
                     @if (!EstaEnContactos(selectedNumero))
                     {
@@ -2583,6 +2628,26 @@
     /* Cliente vinculado */
     .wa-cliente-badge { background: #ecfdf5; color: #047857; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.7rem; text-decoration: none; border: 1px solid #a7f3d0; }
     .wa-cliente-badge:hover { background: #d1fae5; }
+    /* 2026-08-20: VARIAS RAZONES SOCIALES en el mismo teléfono. Se ven todas y la que estás usando
+       queda pintada con el tilde. Son botones chatos para que la fila del header no crezca. */
+    .wa-razones { display: inline-flex; align-items: center; gap: 0.28rem; flex-wrap: wrap; }
+    .wa-razones-t { font-size: 0.68rem; color: #6b7280; font-weight: 600; }
+    .wa-razon { display: inline-flex; align-items: center; gap: 0.22rem; background: #f9fafb; color: #6b7280;
+        border: 1px solid #e5e7eb; border-radius: 999px; padding: 0.1rem 0.5rem; font-size: 0.7rem;
+        line-height: 1.35; cursor: pointer; max-width: 260px; transition: all .12s; }
+    .wa-razon:hover:not(:disabled) { background: #ecfdf5; border-color: #6ee7b7; color: #047857; }
+    .wa-razon:disabled { opacity: 0.6; cursor: wait; }
+    .wa-razon.on { background: #ecfdf5; color: #047857; border-color: #16a34a; font-weight: 700; box-shadow: 0 0 0 1px #16a34a inset; }
+    .wa-razon-tilde { width: 0.7rem; text-align: center; color: #16a34a; font-weight: 900; }
+    .wa-razon-nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wa-razon-ficha { text-decoration: none; color: #047857; font-size: 0.75rem; padding: 0 0.2rem; }
+    .wa-razon-ficha:hover { color: #065f46; }
+    /* Sacar una razón social del teléfono (panel derecho) */
+    .wa-ctx-quitar-razon { display: block; width: 100%; text-align: left; background: #fff; color: #9ca3af;
+        border: 1px dashed #e5e7eb; border-radius: 7px; padding: 0.25rem 0.45rem; margin-top: 0.2rem;
+        font-size: 0.7rem; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wa-ctx-quitar-razon:hover { background: #fef2f2; border-color: #fca5a5; color: #b91c1c; }
+    .wa-ctx-quitar-t { font-size: 0.65rem; color: #9ca3af; margin-top: 0.4rem; }
     /* 2026-08-05: ojito para ver la ficha del cliente, al lado del nombre del contacto */
     .wa-ver-cliente-ojo { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 50%; width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.15rem; line-height: 1; padding: 0; transition: all .15s; }
     .wa-ver-cliente-ojo:hover { background: #dbeafe; border-color: #60a5fa; transform: translateY(-1px); }
@@ -3399,6 +3464,63 @@
         else Toast.Error(err ?? "Error al guardar");
     }
 
+    // ===== 2026-08-20: VARIAS RAZONES SOCIALES en un mismo teléfono =====
+    // Hay clientas que manejan 3 empresas (ej. ACOYTE 500 S.R.L., AVENIDA LA PLATA 502 SRL y MOLLYS)
+    // y facturan a las tres desde el MISMO WhatsApp. Antes el chat mostraba una sola y la venta
+    // salía siempre a esa. Ahora se ven todas arriba del chat y tildás con cuál estás trabajando.
+    // El tilde es de CADA OPERADOR (lo guarda el servidor por firma del PIN): Osmar puede estar en
+    // ACOYTE y Germán en AVENIDA LA PLATA en la misma charla, al mismo tiempo, sin pisarse.
+    bool cambiandoRazon = false;
+
+    List<ApiClient.TwClienteVinculadoDto> RazonesSociales => SelectedConv()?.Clientes ?? new();
+
+    /// <summary>Solo mostramos los botoncitos si de verdad hay MÁS DE UNA. Con una sola, el chat
+    /// se ve igual que siempre (cartelito 🛍️ Cliente: ...).</summary>
+    bool VariasRazones => RazonesSociales.Count > 1;
+
+    bool EsRazonActiva(int clienteId) => SelectedConv()?.ClienteId == clienteId;
+
+    /// <summary>Tildar con cuál de las razones sociales estoy trabajando ahora. Lo que cambia:
+    /// la ficha 👁️ (saldo y facturas), la venta que se cree desde el chat y el comprobante.</summary>
+    async Task ElegirRazon(int clienteId)
+    {
+        if (selectedNumero == null || cambiandoRazon) return;
+        if (EsRazonActiva(clienteId)) return;   // ya está tildada, no hago nada
+        cambiandoRazon = true;
+        try
+        {
+            var nombre = RazonesSociales.FirstOrDefault(r => r.Id == clienteId)?.Nombre ?? "ese cliente";
+            if (await Api.ElegirClienteChatAsync(selectedNumero, clienteId))
+            {
+                await LoadConversaciones(silent: true);
+                // Si la ficha del cliente estaba abierta, que muestre la de la razón social nueva.
+                if (mostrarFichaCliente) await CargarFichaCliente();
+                Toast.Success($"🛍️ Ahora estás trabajando con {nombre}");
+            }
+            else Toast.Error("No pude cambiar de razón social. Probá de nuevo.");
+        }
+        catch { Toast.Error("No pude cambiar de razón social. Probá de nuevo."); }
+        finally { cambiandoRazon = false; }
+    }
+
+    /// <summary>Sacar UNA razón social de este teléfono. NO borra el cliente del sistema: solo lo
+    /// despega del chat.</summary>
+    async Task QuitarRazon(int clienteId, string nombre)
+    {
+        if (selectedNumero == null) return;
+        if (!await JS.InvokeAsync<bool>("confirm",
+                $"¿Sacar \"{nombre}\" de este chat?\n\nEl cliente NO se borra: solo deja de estar colgado de este teléfono."))
+            return;
+        if (await Api.DesvincularClienteChatAsync(selectedNumero, clienteId))
+        {
+            await LoadContactos();
+            await LoadConversaciones(silent: true);
+            if (mostrarFichaCliente) await CargarFichaCliente();
+            Toast.Success($"🔗 {nombre} ya no está en este chat");
+        }
+        else Toast.Error("No pude sacarlo. Probá de nuevo.");
+    }
+
     // ===== Vincular cliente en un paso (idea 1) + sugerencia automática por teléfono (idea 2) =====
     bool showVincular = false;
     string vincularQuery = "";
@@ -3427,6 +3549,20 @@
         mostrarFichaCliente = true;
         _fichaAttachPending = true;   // al renderizar, la hacemos arrastrable
         // Si ya tenemos la ficha de ESTE mismo cliente cargada, no la volvemos a pedir.
+        if (fichaCliente is not null && fichaCliente.ClienteId == cid) return;
+        cargandoFicha = true;
+        fichaCliente = null;
+        StateHasChanged();
+        try { fichaCliente = await Api.GetFichaChatAsync(cid); }
+        finally { cargandoFicha = false; StateHasChanged(); }
+    }
+
+    /// <summary>2026-08-20: recargar la ficha para la razón social que está tildada AHORA. La usa
+    /// el cambio de razón social (que no pasa por el ojito 👁️) para que el saldo y las últimas
+    /// facturas que ves sean las de la empresa correcta.</summary>
+    async Task CargarFichaCliente()
+    {
+        if (SelectedConv()?.ClienteId is not int cid) { fichaCliente = null; mostrarFichaCliente = false; return; }
         if (fichaCliente is not null && fichaCliente.ClienteId == cid) return;
         cargandoFicha = true;
         fichaCliente = null;
@@ -3634,6 +3770,11 @@
             catch { }
         }
 
+        // 2026-08-20: leer QUIÉN es el operador ANTES de pedir las conversaciones. El servidor usa
+        // esa firma para devolver la razón social que ESTE operador tildó en cada chat (ver
+        // WhatsAppClienteElegido). Si pedíamos primero, el primer listado salía sin firma y el
+        // tilde se veía "olvidado" hasta el siguiente refresco.
+        await Op.LoadAsync();
         await LoadConversaciones();
         await LoadLineasConfig();
         AplicarLineaPorDefecto();

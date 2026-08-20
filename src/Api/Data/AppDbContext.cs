@@ -219,6 +219,9 @@ public class AppDbContext : DbContext
     public DbSet<WhatsAppTwilioMensaje> WhatsAppTwilioMensajes => Set<WhatsAppTwilioMensaje>();
     public DbSet<WhatsAppTwilioRespuestaRapida> WhatsAppTwilioRespuestasRapidas => Set<WhatsAppTwilioRespuestaRapida>();
     public DbSet<WhatsAppTwilioContacto> WhatsAppTwilioContactos => Set<WhatsAppTwilioContacto>();
+    // 2026-08-20: un mismo telefono con VARIAS razones sociales + que tildo cada operador.
+    public DbSet<WhatsAppContactoCliente> WhatsAppContactoClientes => Set<WhatsAppContactoCliente>();
+    public DbSet<WhatsAppClienteElegido> WhatsAppClientesElegidos => Set<WhatsAppClienteElegido>();
     public DbSet<WhatsAppTwilioReaccion> WhatsAppTwilioReacciones => Set<WhatsAppTwilioReaccion>();
     public DbSet<WhatsAppTwilioDatoBancario> WhatsAppTwilioDatosBancarios => Set<WhatsAppTwilioDatoBancario>();
     public DbSet<WhatsAppTwilioUpload> WhatsAppTwilioUploads => Set<WhatsAppTwilioUpload>();
