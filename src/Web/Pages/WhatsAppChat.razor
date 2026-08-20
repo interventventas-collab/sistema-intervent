@@ -889,7 +889,7 @@
                         <div class="wa-fwd-chips">
                             @foreach (var d in reenviarDestinos)
                             {
-                                <span class="wa-fwd-chip">@d.Nombre <button @onclick="() => QuitarDestino(d)" title="Quitar">×</button></span>
+                                <span class="wa-fwd-chip @(d.EsOtraEmpresa ? "otra" : "")" title="Sale por @d.NombreLinea">@d.Nombre <small>· @d.NombreLinea</small> <button @onclick="() => QuitarDestino(d)" title="Quitar">×</button></span>
                             }
                         </div>
                     }
@@ -907,7 +907,7 @@
                         <div class="wa-fwd-list">
                             @if (fwdDirecto != null)
                             {
-                                <button type="button" class="wa-nv-item" @onclick="() => AgregarDestinoDirecto(fwdDirecto)">
+                                <button type="button" class="wa-nv-item" @onclick="() => AgregarDestinoDirecto(fwdDirecto!)">
                                     <div class="wa-nv-avatar" style="background:#2563eb;">📱</div>
                                     <div style="flex:1; min-width:0;">
                                         <div style="font-weight:700; color:#111;">Reenviar a este número</div>
@@ -917,17 +917,19 @@
                             }
                             @foreach (var cli in reenviarResultados)
                             {
-                                var ya = reenviarDestinos.Any(x => x.Numero == cli.Numero);
-                                <button type="button" class="wa-nv-item @(ya ? "wa-fwd-sel" : "")" @onclick="() => ToggleDestino(cli)">
+                                @* 2026-08-20: un contacto del buscador NO tiene charla, así que no hay
+                                   línea propia: sale por la que estás usando vos. Antes se mandaba sin
+                                   línea y terminaba saliendo por la línea por defecto del servidor. *@
+                                var dstB = new ReenvioWa.Destino(cli.Nombre, cli.Numero, selectedLinea,
+                                                                 NombreDeLinea(selectedLinea), cli.Disponible, false);
+                                var ya = reenviarDestinos.Any(x => x.Numero == dstB.Numero && x.Linea == dstB.Linea);
+                                <button type="button" class="wa-nv-item @(ya ? "wa-fwd-sel" : "")" @onclick="() => ToggleDestino(dstB)">
                                     <div class="wa-nv-avatar">@InicialDe(cli.Nombre)</div>
                                     <div style="flex:1; min-width:0;">
                                         <div style="font-weight:600; color:#111; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@cli.Nombre</div>
                                         <div style="font-size:0.85rem; color:#6b7280;">@BonitoNumero(cli.Numero)</div>
-                                        @if (cli.Disponible)
-                                        {
-                                            <span class="wa-fwd-badge ok">🟢 le podés escribir</span>
-                                        }
-                                        else
+                                        <span class="wa-fwd-linea">📤 sale por <b>@NombreDeLinea(selectedLinea)</b></span>
+                                        @if (!cli.Disponible)
                                         {
                                             <span class="wa-fwd-badge no">🔒 fuera de 24 hs · necesita plantilla</span>
                                         }
@@ -950,21 +952,22 @@
                            café, compradores de MercadoLibre, agenda). *@
                         <div class="wa-fwd-recientes-t">Últimas charlas</div>
                         <div class="wa-fwd-list">
-                            @foreach (var cv in ReenviarRecientes())
+                            @foreach (var dst in ReenviarRecientes())
                             {
-                                var yaR = reenviarDestinos.Any(x => x.Numero == cv.Numero);
-                                var dispR = ReenviarPuedeEscribir(cv);
+                                var yaR = reenviarDestinos.Any(x => x.Numero == dst.Numero && x.Linea == dst.Linea);
                                 <button type="button" class="wa-nv-item @(yaR ? "wa-fwd-sel" : "")"
-                                        @onclick="() => ToggleDestinoConv(cv)">
-                                    <div class="wa-nv-avatar">@InicialDe(MostrarNombre(cv))</div>
+                                        @onclick="() => ToggleDestino(dst)">
+                                    <div class="wa-nv-avatar">@InicialDe(dst.Nombre)</div>
                                     <div style="flex:1; min-width:0;">
-                                        <div style="font-weight:600; color:#111; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@MostrarNombre(cv)</div>
-                                        <div style="font-size:0.85rem; color:#6b7280;">@BonitoNumero(cv.Numero)</div>
-                                        @if (dispR)
-                                        {
-                                            <span class="wa-fwd-badge ok">🟢 le podés escribir</span>
-                                        }
-                                        else
+                                        <div style="font-weight:600; color:#111; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@dst.Nombre</div>
+                                        <div style="font-size:0.85rem; color:#6b7280;">@BonitoNumero(dst.Numero)</div>
+                                        @* 2026-08-20: POR DÓNDE SALE. Antes esto no se veía y el sistema
+                                           elegía solo: si el cliente le hablaba a las dos empresas, la
+                                           línea de salida dependía de quién había escrito último. *@
+                                        <span class="wa-fwd-linea @(dst.EsOtraEmpresa ? "otra" : "")">
+                                            @(dst.EsOtraEmpresa ? "⚠️ sale por " : "📤 sale por ")<b>@dst.NombreLinea</b>
+                                        </span>
+                                        @if (!dst.Abierto)
                                         {
                                             <span class="wa-fwd-badge no">🔒 fuera de 24 hs · necesita plantilla</span>
                                         }
@@ -2721,6 +2724,12 @@
     .wa-srv-upload-hint { font-size: 0.72rem; color: #6b7280; margin-top: 0.4rem; }
 
     /* 2026-08-20: titulito "Últimas charlas" arriba del listado del cuadro de reenviar */
+    /* 2026-08-20: por qué línea sale cada destino. En naranja cuando NO es la empresa en la que
+       estás trabajando, que es el caso que se cruzaba sin que nadie se enterara. */
+    .wa-fwd-linea { display: block; font-size: 0.74rem; color: #15803d; margin-top: 2px; }
+    .wa-fwd-linea.otra { color: #b45309; }
+    .wa-fwd-chip.otra { background: #fef3c7; border-color: #fcd34d; }
+    .wa-fwd-chip small { color: #6b7280; font-weight: 600; }
     .wa-fwd-recientes-t { font-size: 0.76rem; font-weight: 800; color: #6b7280; text-transform: uppercase;
         letter-spacing: .03em; margin: 0.5rem 0 0.25rem; }
     /* 2026-08-04: reenviar mensajes a uno o varios contactos */
@@ -3947,7 +3956,7 @@
     bool showReenviar = false, reenviarBuscando = false, reenviando = false;
     string reenviarQuery = "";
     List<ApiClient.TwDestinatarioDto> reenviarResultados = new();
-    List<ApiClient.TwDestinatarioDto> reenviarDestinos = new();
+    List<ReenvioWa.Destino> reenviarDestinos = new();
 
     /// <summary>
     /// 2026-08-20: las charlas que se ofrecen de una en el cuadro de reenviar. Van TODAS las líneas
@@ -3956,25 +3965,33 @@
     /// estás parado, que reenviarse a uno mismo no tiene sentido. Vienen ya ordenadas por el
     /// servidor (fijadas primero y después por hora), así que se respeta ese orden.
     /// </summary>
-    List<ApiClient.TwConvDto> ReenviarRecientes()
+    List<ReenvioWa.Destino> ReenviarRecientes()
         => conversaciones
             .Where(c => !c.Archivado && !(c.Numero == selectedNumero && c.Linea == selectedLinea))
+            // primero las de la MISMA empresa en la que estás trabajando: es lo que casi siempre querés
+            .OrderByDescending(c => c.Linea == selectedLinea)
             .Take(30)
+            .Select(c => DestinoDeConv(c))
             .ToList();
 
     /// <summary>
-    /// ¿Se le puede escribir libre? Meta solo deja mandar un mensaje comun si el cliente escribio
-    /// en las ultimas 24 hs; si no, hay que usar una plantilla. Lo sabemos con UltimoEntranteAt,
-    /// que ahora viene del servidor: adivinarlo por el ultimo mensaje daria falsas alarmas cuando
-    /// el ultimo movimiento fue una respuesta NUESTRA.
+    /// 2026-08-20: una conversación convertida en destino de reenvío. La LÍNEA sale de la propia
+    /// conversación (acá una conversación es número + línea), así que el mensaje va a salir por el
+    /// mismo número por el que ese cliente ya viene hablando — nunca más por el que decida el
+    /// servidor. Si esa línea no es la que estás usando, se marca para que lo veas ANTES de mandar.
     /// </summary>
-    static bool ReenviarPuedeEscribir(ApiClient.TwConvDto c)
-        => c.UltimoEntranteAt is DateTime u && u.AddHours(24) > DateTime.UtcNow;
+    ReenvioWa.Destino DestinoDeConv(ApiClient.TwConvDto c)
+        => new(MostrarNombre(c), c.Numero, c.Linea,
+               NombreDeLinea(c.Linea),
+               c.UltimoEntranteAt is DateTime u && u.AddHours(24) > DateTime.UtcNow,
+               c.Linea != selectedLinea);
 
-    /// <summary>Elegir / sacar una charla de la lista de destinos.</summary>
-    void ToggleDestinoConv(ApiClient.TwConvDto c)
-        => ToggleDestino(new ApiClient.TwDestinatarioDto(
-            MostrarNombre(c), c.Numero, "WhatsApp", ReenviarPuedeEscribir(c)));
+    /// <summary>Nombre lindo de una línea nuestra ("FRIKAF by INTERVENT"), reusando el de siempre.</summary>
+    string NombreDeLinea(string? linea)
+        => string.IsNullOrEmpty(linea)
+            ? "sin línea"
+            : LineaNombre(linea, conversaciones.FirstOrDefault(c => c.Linea == linea)?.LineaNumero);
+
 
     void AbrirReenviar()
     {
@@ -3994,7 +4011,8 @@
         var q = (reenviarQuery ?? "").Trim();
         if (q.Length < 2) { reenviarResultados = new(); return; }
         reenviarBuscando = true; StateHasChanged();
-        try { reenviarResultados = await Api.BuscarTwDestinatariosAsync(q); }
+        // la línea va para que el "🟢 le podés escribir" mire la ventana de ESTA empresa
+        try { reenviarResultados = await Api.BuscarTwDestinatariosAsync(q, selectedLinea); }
         catch { reenviarResultados = new(); }
         reenviarBuscando = false; StateHasChanged();
     }
@@ -4008,20 +4026,24 @@
         return digs.Length >= 8 ? digs : null;
     }
 
-    void ToggleDestino(ApiClient.TwDestinatarioDto cli)
+    // 2026-08-20: se compara por número Y LÍNEA. El mismo cliente por FRIKAF y por TRANSRADIO son
+    // dos destinos distintos, porque el mensaje le llega de un remitente diferente en cada caso.
+    void ToggleDestino(ReenvioWa.Destino d)
     {
-        var ya = reenviarDestinos.FirstOrDefault(x => x.Numero == cli.Numero);
+        var ya = reenviarDestinos.FirstOrDefault(x => x.Numero == d.Numero && x.Linea == d.Linea);
         if (ya != null) reenviarDestinos.Remove(ya);
-        else reenviarDestinos.Add(cli);
+        else reenviarDestinos.Add(d);
     }
 
-    void QuitarDestino(ApiClient.TwDestinatarioDto cli)
-        => reenviarDestinos.RemoveAll(x => x.Numero == cli.Numero);
+    void QuitarDestino(ReenvioWa.Destino d)
+        => reenviarDestinos.RemoveAll(x => x.Numero == d.Numero && x.Linea == d.Linea);
 
     void AgregarDestinoDirecto(string digitos)
     {
-        if (!reenviarDestinos.Any(x => x.Numero == digitos))
-            reenviarDestinos.Add(new ApiClient.TwDestinatarioDto("Número nuevo", digitos, "Directo"));
+        // Un número escrito a mano tampoco tiene charla: sale por la línea en la que estás.
+        if (!reenviarDestinos.Any(x => x.Numero == digitos && x.Linea == selectedLinea))
+            reenviarDestinos.Add(new ReenvioWa.Destino("Número nuevo", digitos, selectedLinea,
+                                                       NombreDeLinea(selectedLinea), false, false));
         reenviarQuery = ""; reenviarResultados = new();
     }
 
@@ -4040,7 +4062,7 @@
         {
             foreach (var m in msgs)
             {
-                var r = await ReenvioWa.ReenviarUnoAsync(Api, m, d.Numero);
+                var r = await ReenvioWa.ReenviarUnoAsync(Api, m, d.Numero, d.Linea);
                 if (r == ReenvioWa.Resultado.Enviado) ok++;
                 else if (r == ReenvioWa.Resultado.Fallo) fail++;
                 // NadaQueMandar: no cuenta ni como éxito ni como error (ej. solo una reacción)

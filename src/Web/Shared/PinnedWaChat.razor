@@ -468,13 +468,17 @@
                         }
                         @foreach (var d in ReenviarOpciones())
                         {
-                            var elegido = reenviarDest.Any(x => x.Numero == d.Numero);
+                            var elegido = reenviarDest.Any(x => x.Numero == d.Numero && x.Linea == d.Linea);
                             <button type="button" class="pwa-fwd-item @(elegido ? "on" : "")" @onclick="() => ToggleReenviarDest(d)">
                                 <span class="pwa-fwd-ava">@InicialPwa(d.Nombre)</span>
                                 <span class="pwa-fwd-txt">
                                     <span class="pwa-fwd-nom">@d.Nombre</span>
                                     <span class="pwa-fwd-num">@d.Numero</span>
-                                    @if (!d.Disponible)
+                                    @* 2026-08-20: POR DÓNDE SALE, antes de mandarlo. *@
+                                    <span class="pwa-fwd-linea @(d.EsOtraEmpresa ? "otra" : "")">
+                                        @(d.EsOtraEmpresa ? "⚠️ sale por " : "📤 sale por ")@d.NombreLinea
+                                    </span>
+                                    @if (!d.Abierto)
                                     {
                                         <span class="pwa-fwd-cerrado">🔒 fuera de 24 hs</span>
                                     }
@@ -719,6 +723,9 @@
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .pwa-fwd-num { color: #6b7280; font-size: 0.78rem; }
     .pwa-fwd-cerrado { color: #b45309; font-size: 0.72rem; font-weight: 700; }
+    /* 2026-08-20: por qué línea sale. Naranja = NO es la empresa en la que estás trabajando. */
+    .pwa-fwd-linea { color: #15803d; font-size: 0.72rem; font-weight: 700; }
+    .pwa-fwd-linea.otra { color: #b45309; }
     .pwa-fwd-tick { color: #16a34a; font-weight: 800; flex: none; }
     .pwa-fwd-pie { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid #eef0f2; flex: none; }
     .pwa-fwd-cancel { flex: none; border: 1px solid #d1d5db; background: #fff; color: #374151;
@@ -1377,7 +1384,7 @@
     private bool reenviarBuscando, reenviando;
     private List<ApiClient.TwConvDto> reenviarCharlas = new();
     private List<ApiClient.TwDestinatarioDto> reenviarResultados = new();
-    private readonly List<ApiClient.TwDestinatarioDto> reenviarDest = new();
+    private readonly List<ReenvioWa.Destino> reenviarDest = new();
 
     private async Task AbrirReenviarPwa(ApiClient.TwMsgDto m)
     {
@@ -1417,18 +1424,32 @@
     /// esta misma); con algo escrito, lo que devuelve el buscador del servidor, que además encuentra
     /// clientes del café y compradores de MercadoLibre que no tienen charla abierta.
     /// </summary>
-    private List<ApiClient.TwDestinatarioDto> ReenviarOpciones()
+    private List<ReenvioWa.Destino> ReenviarOpciones()
     {
-        if (!string.IsNullOrWhiteSpace(reenviarQ)) return reenviarResultados;
+        // 2026-08-20: lo que se elige es una CHARLA (número + línea), no un contacto suelto: así el
+        // mensaje sale por el mismo número por el que ese cliente ya viene hablando. Antes se mandaba
+        // sin línea y el servidor elegía solo — y para los clientes que le hablan a las dos empresas
+        // salía por la que hubiera escrito último, o por la línea por defecto si nunca había escrito.
+        if (!string.IsNullOrWhiteSpace(reenviarQ))
+        {
+            // Un contacto del buscador no tiene charla: sale por la línea en la que estás vos.
+            return reenviarResultados
+                .Select(r => new ReenvioWa.Destino(r.Nombre, r.Numero, LineaPhoneId,
+                                                   NombreLinea, r.Disponible, false))
+                .ToList();
+        }
         return reenviarCharlas
             .Where(c => !c.Archivado && !(c.Numero == Numero && c.Linea == LineaPhoneId))
+            .OrderByDescending(c => c.Linea == LineaPhoneId)   // primero las de la misma empresa
             .Take(30)
-            .Select(c => new ApiClient.TwDestinatarioDto(
+            .Select(c => new ReenvioWa.Destino(
                 string.IsNullOrWhiteSpace(c.ClienteNombre)
                     ? (string.IsNullOrWhiteSpace(c.NombrePerfil) ? c.Numero : c.NombrePerfil!)
                     : c.ClienteNombre!,
-                c.Numero, "WhatsApp",
-                c.UltimoEntranteAt is DateTime u && u.AddHours(24) > DateTime.UtcNow))
+                c.Numero, c.Linea,
+                string.IsNullOrWhiteSpace(c.LineaNumero) ? (c.Linea ?? "sin línea") : c.LineaNumero!,
+                c.UltimoEntranteAt is DateTime u && u.AddHours(24) > DateTime.UtcNow,
+                c.Linea != LineaPhoneId))
             .ToList();
     }
 
@@ -1438,14 +1459,16 @@
         var q = reenviarQ.Trim();
         if (q.Length < 2) { reenviarResultados = new(); return; }
         reenviarBuscando = true; StateHasChanged();
-        try { reenviarResultados = await Api.BuscarTwDestinatariosAsync(q); }
+        // la línea va para que el "🟢 le podés escribir" mire la ventana de ESTA empresa
+        try { reenviarResultados = await Api.BuscarTwDestinatariosAsync(q, LineaPhoneId); }
         catch { reenviarResultados = new(); }
         reenviarBuscando = false;
     }
 
-    private void ToggleReenviarDest(ApiClient.TwDestinatarioDto d)
+    private void ToggleReenviarDest(ReenvioWa.Destino d)
     {
-        var ya = reenviarDest.FirstOrDefault(x => x.Numero == d.Numero);
+        // por número Y línea: el mismo cliente por las dos empresas son dos destinos distintos
+        var ya = reenviarDest.FirstOrDefault(x => x.Numero == d.Numero && x.Linea == d.Linea);
         if (ya is not null) reenviarDest.Remove(ya);
         else reenviarDest.Add(d);
     }
@@ -1457,7 +1480,7 @@
         int ok = 0, fail = 0;
         foreach (var d in reenviarDest)
         {
-            var r = await ReenvioWa.ReenviarUnoAsync(Api, reenviarMsg, d.Numero);
+            var r = await ReenvioWa.ReenviarUnoAsync(Api, reenviarMsg, d.Numero, d.Linea);
             if (r == ReenvioWa.Resultado.Enviado) ok++;
             else if (r == ReenvioWa.Resultado.Fallo) fail++;
         }

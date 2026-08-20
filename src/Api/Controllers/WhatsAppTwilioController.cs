@@ -1035,7 +1035,7 @@ public class WhatsAppTwilioController : ControllerBase
     /// </summary>
     [HttpGet("destinatarios-buscar")]
     [Authorize]
-    public async Task<IActionResult> BuscarDestinatarios([FromQuery] string q = "", [FromQuery] int top = 20)
+    public async Task<IActionResult> BuscarDestinatarios([FromQuery] string q = "", [FromQuery] int top = 20, [FromQuery] string? linea = null)
     {
         q = (q ?? "").Trim();
         if (q.Length < 2) return Ok(new List<object>());
@@ -1091,10 +1091,16 @@ public class WhatsAppTwilioController : ControllerBase
 
         // 2026-08-04: ¿le puedo escribir LIBRE? WhatsApp solo deja si el contacto nos escribió
         // en las ultimas 24hs. Marcamos "Disponible" a los que tienen un ENTRANTE reciente.
+        // 2026-08-20: la ventana de 24 hs es POR LÍNEA, no por contacto. Si el que llama dice por
+        // qué línea va a escribir (el reenvío lo sabe), se mira SOLO esa: antes un contacto que te
+        // escribió por FRIKAF salía "🟢 le podés escribir" aunque le fueras a mandar por TRANSRADIO,
+        // donde Meta lo iba a rechazar. Sin línea se mantiene el comportamiento de siempre.
         var nums = items.Select(i => i.Numero).ToList();
         var limite = DateTime.UtcNow.AddHours(-24);
+        var lin = string.IsNullOrWhiteSpace(linea) ? null : linea.Trim();
         var disponibles = (await _db.WhatsAppTwilioMensajes.AsNoTracking()
-            .Where(m => m.Direccion == "INCOMING" && m.CreatedAt >= limite && nums.Contains(m.Numero))
+            .Where(m => m.Direccion == "INCOMING" && m.CreatedAt >= limite && nums.Contains(m.Numero)
+                        && (lin == null || m.LineaPhoneId == lin))
             .Select(m => m.Numero).Distinct().ToListAsync())
             .ToHashSet();
 

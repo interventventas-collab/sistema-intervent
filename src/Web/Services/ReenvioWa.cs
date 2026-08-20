@@ -40,6 +40,19 @@ public static class ReenvioWa
         return res;
     }
 
+    /// <summary>
+    /// A quién y POR DÓNDE. Ojo: una conversación en este sistema es un número MÁS una línea, así
+    /// que el mismo cliente puede ser dos destinos distintos (uno por cada empresa) — y eso es lo
+    /// correcto, porque el mensaje le llega de un remitente diferente en cada caso.
+    /// </summary>
+    /// <param name="Nombre">Cómo se le muestra al usuario.</param>
+    /// <param name="Numero">Número del destinatario.</param>
+    /// <param name="Linea">Línea NUESTRA por la que sale (phone id). Nunca null si se puede evitar.</param>
+    /// <param name="NombreLinea">"FRIKAF by INTERVENT" / "FIJO TRANSRADIO", para mostrarlo.</param>
+    /// <param name="Abierto">Si el contacto escribió por ESA línea en las últimas 24 hs.</param>
+    /// <param name="EsOtraEmpresa">True si sale por una línea distinta de la que estás trabajando.</param>
+    public record Destino(string Nombre, string Numero, string? Linea, string NombreLinea, bool Abierto, bool EsOtraEmpresa);
+
     /// <summary>Qué pasó al intentar reenviar un mensaje.</summary>
     public enum Resultado
     {
@@ -52,14 +65,21 @@ public static class ReenvioWa
     }
 
     /// <summary>
-    /// Reenvía UN mensaje a UN número.
+    /// Reenvía UN mensaje a UN número, POR UNA LÍNEA CONCRETA.
     ///
-    /// La línea va en null A PROPÓSITO: así el servidor elige solo la línea del DESTINATARIO
-    /// (aquella por la que él escribió último, que es donde tiene abierta la ventana de 24 hs).
-    /// Si se forzara la línea del chat de origen, el mensaje saldría por un número con el que ese
-    /// contacto quizá nunca habló y Meta lo rechazaría.
+    /// 2026-08-20 — POR QUÉ LA LÍNEA ES OBLIGATORIA ACÁ:
+    /// hasta hoy el reenvío mandaba la línea en null y el servidor la elegía solo, usando aquella
+    /// por la que ese contacto había escrito ÚLTIMO. La idea era no chocar con la regla de las 24 hs
+    /// de Meta, pero esa regla no sabe que FRIKAF by INTERVENT y FIJO TRANSRADIO son DOS EMPRESAS
+    /// distintas: para los contactos que le escriben a las dos, la línea de salida terminaba siendo
+    /// una moneda al aire según quién escribió último. El dueño reenvió algo parado en FRIKAF y le
+    /// salió por TRANSRADIO. Y peor: si el destinatario NUNCA había escrito, no había línea que
+    /// elegir y caía en la línea por defecto del .env (que es TRANSRADIO), sin avisar.
+    ///
+    /// Ahora la línea siempre viene decidida DESDE LA PANTALLA, que es la única que sabe con qué
+    /// empresa está trabajando el usuario y se la muestra antes de mandar. Nunca más se adivina.
     /// </summary>
-    public static async Task<Resultado> ReenviarUnoAsync(ApiClient api, ApiClient.TwMsgDto m, string numeroDestino)
+    public static async Task<Resultado> ReenviarUnoAsync(ApiClient api, ApiClient.TwMsgDto m, string numeroDestino, string? lineaPhoneId)
     {
         try
         {
@@ -70,7 +90,7 @@ public static class ReenvioWa
                 bool todos = true;
                 foreach (var ct in contactos)
                 {
-                    var (cok, _) = await api.EnviarTwContactoAsync(numeroDestino, ct.Nombre, ct.Numero, null);
+                    var (cok, _) = await api.EnviarTwContactoAsync(numeroDestino, ct.Nombre, ct.Numero, lineaPhoneId);
                     if (!cok) todos = false;
                 }
                 return todos ? Resultado.Enviado : Resultado.Fallo;
@@ -78,13 +98,13 @@ public static class ReenvioWa
 
             if (!string.IsNullOrEmpty(m.MediaUrl))
             {
-                var (mok, _) = await api.SendTwMediaAsync(numeroDestino, m.MediaUrl!, m.Cuerpo, m.MediaFilename, null);
+                var (mok, _) = await api.SendTwMediaAsync(numeroDestino, m.MediaUrl!, m.Cuerpo, m.MediaFilename, lineaPhoneId);
                 return mok ? Resultado.Enviado : Resultado.Fallo;
             }
 
             if (!string.IsNullOrWhiteSpace(m.Cuerpo))
             {
-                var (tok, _) = await api.SendTwMensajeAsync(numeroDestino, m.Cuerpo!, null);
+                var (tok, _) = await api.SendTwMensajeAsync(numeroDestino, m.Cuerpo!, lineaPhoneId);
                 return tok ? Resultado.Enviado : Resultado.Fallo;
             }
 

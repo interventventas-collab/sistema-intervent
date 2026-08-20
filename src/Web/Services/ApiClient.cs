@@ -6770,8 +6770,16 @@ public class ApiClient
     public record TwContactoUpsert(string Numero, string Nombre, string Rol, string? Notas, bool Activo, int? ClienteId);
     public record TwClienteBuscarDto(int Id, string Nombre, string? CodigoInterno, string? Telefono, string? Direccion = null, string? Localidad = null);
     public record TwDestinatarioDto(string Nombre, string Numero, string Origen, bool Disponible = false);
-    public async Task<List<TwDestinatarioDto>> BuscarTwDestinatariosAsync(string q)
-        => await _http.GetFromJsonAsync<List<TwDestinatarioDto>>($"/api/whatsapp/twilio/destinatarios-buscar?q={Uri.EscapeDataString(q ?? "")}") ?? new();
+    /// <summary>
+    /// 2026-08-20: <paramref name="linea"/> = por qué línea NUESTRA se le va a escribir. Sirve para
+    /// que el "🟢 le podés escribir" mire la ventana de 24 hs DE ESA LÍNEA y no de cualquiera: si
+    /// el contacto te escribió por FRIKAF y le vas a mandar por TRANSRADIO, Meta lo rechaza igual.
+    /// Null = como siempre (cualquier línea).
+    /// </summary>
+    public async Task<List<TwDestinatarioDto>> BuscarTwDestinatariosAsync(string q, string? linea = null)
+        => await _http.GetFromJsonAsync<List<TwDestinatarioDto>>(
+               $"/api/whatsapp/twilio/destinatarios-buscar?q={Uri.EscapeDataString(q ?? "")}"
+               + (string.IsNullOrEmpty(linea) ? "" : $"&linea={Uri.EscapeDataString(linea)}")) ?? new();
     public async Task<List<TwConvDto>> GetTwConversacionesAsync()
         => await _http.GetFromJsonAsync<List<TwConvDto>>("/api/whatsapp/twilio/conversaciones") ?? new();
 

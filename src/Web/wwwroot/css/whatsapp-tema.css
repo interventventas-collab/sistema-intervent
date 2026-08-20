@@ -449,3 +449,8 @@
 .wa-dark .pwa-fwd-item.on { background: var(--wad-panel3); }
 .wa-dark .pwa-fwd-cancel { background: var(--wad-panel3); border-color: var(--wad-borde2); color: var(--wad-txt); }
 .wa-dark .wa-fwd-btn { background: var(--wad-panel3); border-color: var(--wad-borde2); color: #93c5fd; }
+
+/* 2026-08-20: cartelito de "por que linea sale" en el reenvio. */
+.wa-dark .wa-fwd-linea, .wa-dark .pwa-fwd-linea { color: #6ee7b7; }
+.wa-dark .wa-fwd-linea.otra, .wa-dark .pwa-fwd-linea.otra { color: #fcd34d; }
+.wa-dark .wa-fwd-chip.otra { background: #3a2f12; border-color: #5c4a1c; }
