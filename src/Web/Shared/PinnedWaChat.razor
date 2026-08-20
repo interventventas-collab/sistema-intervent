@@ -318,8 +318,10 @@
             }
             else
             {
-                <button class="pwa-send" @onclick="Enviar" disabled="@sending">
-                    @(sending ? "⏳" : "Enviar")
+                @* 2026-08-20: flechita en vez de la palabra "Enviar", como WhatsApp. El title y el
+                   aria-label quedan para que se entienda igual (y para el lector de pantalla). *@
+                <button class="pwa-send" @onclick="Enviar" disabled="@sending" title="Enviar" aria-label="Enviar">
+                    @(sending ? "⏳" : "➤")
                 </button>
             }
         }
@@ -644,8 +646,9 @@
         line-height: 1; flex: none; }
     .pwa-attach:hover { background: #e2e8f0; }
 
-    .pwa-mic { border: none; border-radius: 12px; padding: 0.55rem 0.95rem; font-size: 1rem;
-        cursor: pointer; background: #25d366; color: #fff; white-space: nowrap; line-height: 1; }
+    .pwa-mic { border: none; border-radius: 50%; width: 44px; height: 44px; padding: 0; flex: none;
+        display: inline-flex; align-items: center; justify-content: center; font-size: 1.2rem; line-height: 1;
+        cursor: pointer; background: #25d366; color: #fff; }
     .pwa-mic:hover:not(:disabled) { filter: brightness(1.05); }
     .pwa-mic:disabled { background: #cbd5d3; cursor: not-allowed; }
     .pwa-mic-stop { background: #ef4444; }
@@ -722,8 +725,13 @@
         padding: 0.55rem 0.75rem; font-size: 0.88rem; font-family: inherit; max-height: 110px; line-height: 1.3;
         min-height: calc(2.6em + 1.1rem + 2px); }
     .pwa-input:focus { outline: none; border-color: #25d366; box-shadow: 0 0 0 2px rgba(37,211,102,0.18); }
-    .pwa-send { border: none; border-radius: 12px; padding: 0.55rem 1.1rem; font-weight: 700;
-        color: #fff; background: #25d366; cursor: pointer; white-space: nowrap; }
+    /* 2026-08-20: boton redondo con la flechita, como WhatsApp, en vez del rectangulo que decia
+       "Enviar" con letras. Le devuelve como 50 px de ancho al cuadro de escribir, que en un celular
+       de 390 px con el ➕, el clip y la camara al lado es la diferencia entre escribir comodo o no.
+       Mide 44 px, que es el minimo recomendado para tocar con el dedo sin errarle. */
+    .pwa-send { border: none; border-radius: 50%; width: 44px; height: 44px; padding: 0; flex: none;
+        display: inline-flex; align-items: center; justify-content: center; font-size: 1.3rem; line-height: 1;
+        font-weight: 700; color: #fff; background: #25d366; cursor: pointer; }
     .pwa-send:hover:not(:disabled) { filter: brightness(1.05); }
     .pwa-send:disabled { background: #cbd5d3; cursor: not-allowed; }
 
@@ -731,10 +739,14 @@
        iOS haga zoom al tocar para escribir. Burbujas y audio un toque más grandes. */
     @@media (max-width: 640px) {
         .pwa-body { padding: 0.8rem 0.7rem; gap: 0.5rem; }
-        .pwa-bubble { max-width: 85%; font-size: 0.95rem; padding: 0.5rem 0.7rem; }
+        /* 2026-08-20: esta regla pisaba el tamaño de arriba y dejaba la letra del CELULAR en
+           0.95rem (15,2 px). Ahora acompaña el cambio: 1rem = 16 px, igual que WhatsApp. */
+        .pwa-bubble { max-width: 85%; font-size: 1rem; padding: 0.5rem 0.7rem; }
         /* en el celu el relleno es mas grande, asi que el piso de 2 renglones tambien */
         .pwa-input { font-size: 16px; padding: 0.7rem 0.7rem; min-height: calc(2.6em + 1.4rem + 2px); }
-        .pwa-send, .pwa-mic { padding: 0.7rem 0.9rem; font-size: 1.05rem; }
+        /* ya miden 44x44 fijo arriba; en el celu solo se agranda un toque el icono */
+        .pwa-send { font-size: 1.4rem; }
+        .pwa-mic { font-size: 1.3rem; }
         /* 2026-08-18: en el celu los botones del composer van más juntos, para que el cuadro de
            escribir quede lo más ancho posible ahora que también está el ➕. */
         .pwa-composer { gap: 5px; padding: 0.5rem 0.5rem; }
