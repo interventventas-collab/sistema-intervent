@@ -141,15 +141,33 @@ else
 
     @if (chatAbierto is null)
     {
-        @* Selector de LÍNEA (chips) — solo si hay más de una *@
+        @* 2026-08-20: selector de LÍNEA. Arriba SOLO las líneas propias de WhatsApp (FRIKAF by
+           INTERVENT y FIJO TRANSRADIO) y SIEMPRE hay una elegida: sacamos el chip "Todas" porque
+           mezclaba en una sola lista los chats de las dos empresas. Los de Instagram (y los que
+           quedaron sin línea) se corrieron atrás del "+": no estorban, pero se abren igual. *@
         var _lineas = LineasDisponibles();
+        var _principales = _lineas.Where(l => !l.EsOtra).ToList();
+        var _otras = _lineas.Where(l => l.EsOtra).ToList();
+        @* si estás parado en una de las "otras", el cajón queda abierto para que se vea cuál *@
+        var _verOtras = mostrarOtras || _otras.Any(l => l.Id == filtroLinea);
         if (_lineas.Count > 1)
         {
             <div class="wam-lineas">
-                <button type="button" class="wam-linea-chip @(filtroLinea == null ? "on" : "")" @onclick="@(() => filtroLinea = null)">Todas</button>
-                @foreach (var l in _lineas)
+                @foreach (var l in _principales)
                 {
                     <button type="button" class="wam-linea-chip @(filtroLinea == l.Id ? "on" : "")" @onclick="@(() => filtroLinea = l.Id)">@l.Nombre</button>
+                }
+                @if (_otras.Count > 0)
+                {
+                    <button type="button" class="wam-linea-chip wam-linea-mas @(_verOtras ? "abierto" : "")" @onclick="ToggleOtrasLineas"
+                            title="@(_verOtras ? "Esconder los otros chats" : "Ver también los chats de Instagram")">@(_verOtras ? "−" : "+")</button>
+                }
+                @if (_verOtras)
+                {
+                    @foreach (var l in _otras)
+                    {
+                        <button type="button" class="wam-linea-chip otra @(filtroLinea == l.Id ? "on" : "")" @onclick="@(() => filtroLinea = l.Id)">@l.Nombre</button>
+                    }
                 }
             </div>
         }
@@ -226,10 +244,18 @@ else
     .wam-hbtn { background: rgba(255,255,255,0.18); border: none; color: #fff; border-radius: 8px;
         width: 34px; height: 32px; font-size: 1.1rem; cursor: pointer; flex: none; }
 
-    .wam-lineas { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 10px 0; background: #f8fafb; }
+    /* 2026-08-20: gap 8->6 y padding 14->11 para que las dos lineas propias + el "+" entren en
+       UN solo renglon en un celu de 390 px (antes el "+" se caia solo abajo). El alto del boton
+       no cambia (31-33 px), asi que se toca igual de facil. */
+    .wam-lineas { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 10px 0; background: #f8fafb; }
     .wam-linea-chip { border: 1px solid #d1d5db; background: #fff; color: #374151; border-radius: 999px;
-        padding: 7px 14px; font-size: 0.85rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+        padding: 7px 11px; font-size: 0.85rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
     .wam-linea-chip.on { background: #075e54; color: #fff; border-color: #075e54; }
+    /* 2026-08-20: el "+" abre los chats de Instagram / sin línea, que van con borde punteado
+       para que se note de una que no son las líneas de siempre. */
+    .wam-linea-mas { font-size: 1.05rem; line-height: 1; padding: 7px 10px; min-width: 34px; }
+    .wam-linea-mas.abierto { background: #e5e7eb; }
+    .wam-linea-chip.otra { border-style: dashed; }
 
     .wam-search { padding: 10px; background: #f8fafb; border-bottom: 1px solid #eef0f2; flex: 0 0 auto; }
     .wam-search-input { width: 100%; box-sizing: border-box; border: 1px solid #d1d5db;
@@ -325,7 +351,12 @@ else
     private ApiClient.TwConvDto? chatAbierto;
     // Selector de línea (FRIKAF by INTERVENT / FIJO TRANSRADIO / …)
     private List<ApiClient.TwLineaConfigDto> lineasConfig = new();
-    private string? filtroLinea;   // null = todas
+    // 2026-08-20: ya NO existe "todas": al abrir la pantalla queda parada en una línea sola
+    // (por default FRIKAF by INTERVENT). Queda string? nada más porque una conversación
+    // puede no tener línea cargada.
+    private string? filtroLinea;
+    private bool mostrarOtras;          // el cajón del "+" (Instagram / sin línea) está abierto
+    private bool lineaInicialAplicada;  // para elegir la línea de arranque una sola vez
 
     // Candado de 4 dígitos (Osmar/Germán/Gabriel)
     private bool desbloqueado;
@@ -588,6 +619,13 @@ else
         catch { convs ??= new(); }
         if (lineasConfig.Count == 0)
             try { lineasConfig = await Api.GetTwLineasConfigAsync(); } catch { }
+        // 2026-08-20: la pantalla del celu SIEMPRE queda parada en una línea (ya no hay "Todas").
+        // Se elige una sola vez, al abrir; después manda lo que toque el usuario.
+        if (!lineaInicialAplicada && convs.Count > 0 && lineasConfig.Count > 0)
+        {
+            lineaInicialAplicada = true;
+            filtroLinea = LineaPorDefecto();
+        }
         if (vistos.Count == 0) await CargarVistos();
         await RevisarPushAsync();
         // 2026-08-15: tema (claro/oscuro) de cada línea + letra elegida
@@ -749,25 +787,61 @@ else
         StateHasChanged();
     }
 
-    // Líneas que tienen chats, con su nombre lindo (FRIKAF by INTERVENT / FIJO TRANSRADIO)
-    private List<(string? Id, string Nombre)> LineasDisponibles()
+    // Líneas que tienen chats, con su nombre lindo (FRIKAF by INTERVENT / FIJO TRANSRADIO).
+    // EsOtra = no es una línea nuestra de WhatsApp: Instagram, o una línea que no está cargada
+    // en la configuración (los chats que quedaron "Sin línea"). Esas van atrás del "+".
+    private List<(string? Id, string Nombre, bool EsOtra)> LineasDisponibles()
     {
         var nombres = new Dictionary<string, string>();
+        var instagram = new HashSet<string>();
         foreach (var lc in lineasConfig)
             if (!string.IsNullOrWhiteSpace(lc.LineaId))
+            {
                 nombres[lc.LineaId] = !string.IsNullOrWhiteSpace(lc.Nombre) ? lc.Nombre!
                     : (!string.IsNullOrWhiteSpace(lc.NumeroReal) ? lc.NumeroReal! : lc.LineaId);
+                if (lc.EsInstagram) instagram.Add(lc.LineaId);
+            }
         return convs
             .Select(c => c.Linea)
             .Distinct()
             .Select(id =>
             {
-                string nom = (id != null && nombres.TryGetValue(id, out var n)) ? n
+                bool conocida = id != null && nombres.ContainsKey(id);
+                string nom = conocida ? nombres[id!]
                     : (convs.FirstOrDefault(c => c.Linea == id)?.LineaNumero ?? "Sin línea");
-                return (Id: id, Nombre: nom);
+                bool otra = !conocida || instagram.Contains(id!);
+                return (Id: id, Nombre: nom, EsOtra: otra);
             })
             .OrderBy(x => x.Nombre)
             .ToList();
+    }
+
+    /// <summary>
+    /// Línea con la que arranca la pantalla del celular: FRIKAF by INTERVENT si está, y si no
+    /// la primera línea propia de WhatsApp. Nunca arranca en Instagram ni en "Sin línea".
+    /// </summary>
+    private string? LineaPorDefecto()
+    {
+        var lineas = LineasDisponibles();
+        var propias = lineas.Where(l => !l.EsOtra).ToList();
+        if (propias.Count == 0) return filtroLinea;
+        var frikaf = propias.FirstOrDefault(l => l.Nombre.Contains("FRIKAF", StringComparison.OrdinalIgnoreCase));
+        return frikaf.Nombre != null ? frikaf.Id : propias[0].Id;
+    }
+
+    /// <summary>Abre / cierra el cajón del "+" (Instagram y chats sin línea).</summary>
+    private void ToggleOtrasLineas()
+    {
+        var otras = LineasDisponibles().Where(l => l.EsOtra).Select(l => l.Id).ToList();
+        bool abierto = mostrarOtras || otras.Contains(filtroLinea);
+        if (abierto)
+        {
+            // Si lo cerrás estando parado en uno de esos, volvés a la línea de siempre
+            // (si no, quedaba una lista filtrada por una línea que ya no se ve en pantalla).
+            if (otras.Contains(filtroLinea)) filtroLinea = LineaPorDefecto();
+            mostrarOtras = false;
+        }
+        else mostrarOtras = true;
     }
 
     private IEnumerable<ApiClient.TwConvDto> Filtradas()
