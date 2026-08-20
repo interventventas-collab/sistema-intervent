@@ -112,6 +112,15 @@ public class CafeCliente
     [MaxLength(255)]
     public string? MeliNickname { get; set; }
 
+    /// <summary>2026-08-20: "mandarle SIEMPRE el comprobante por mail". Cuando está en true, al
+    /// elegir este cliente en una venta el tilde 📧 ya viene prendido (se puede apagar para esa
+    /// venta puntual sin perder la marca).</summary>
+    public bool EnviarSiempreEmail { get; set; } = false;
+
+    /// <summary>2026-08-20: lo mismo pero por WhatsApp. OJO: WhatsApp depende de la ventana de
+    /// 24 hs de Meta — si el cliente no escribió, el tilde aparece apagado y avisa por qué.</summary>
+    public bool EnviarSiempreWhatsapp { get; set; } = false;
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

@@ -234,6 +234,11 @@ builder.Services.AddScoped<MapeoRutaPdfService>();
 // desde WhatsAppTwilioController (Fase 2.5 adjuntos: mandar factura/cotizacion por WhatsApp).
 // Solo los metodos publicos GenerarPdfBytesAsync/BuildArcaPdf/HydrateCfgFromEmisorAsync se llaman como service.
 builder.Services.AddScoped<Api.Controllers.CafeVentasController>();
+
+// 2026-08-20: envío del comprobante al cliente (mail / WhatsApp) + robot de la cola que lo
+// manda N minutos después de emitir, para dar tiempo a corregir la venta antes de que salga.
+builder.Services.AddScoped<EnvioComprobanteService>();
+builder.Services.AddHostedService<EnvioComprobanteBackgroundService>();
 // 2026-07-23: CafeListasCustomController en DI para mandar listas de precios por el chat WhatsApp
 builder.Services.AddScoped<Api.Controllers.CafeListasCustomController>();
 // 2026-08-05: AlqReservasController y VisitasController en DI para adjuntar reservas de alquiler

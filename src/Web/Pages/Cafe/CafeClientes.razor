@@ -516,6 +516,26 @@
                             Las ventas para este cliente van a heredar este flag. Al entregar, el repartidor verá un modal con canvas para firma + nombre del receptor. Permite generar un recibo de entrega para administración del cliente.
                         </div>
                     </div>
+
+                    @* 2026-08-20: "mandarle SIEMPRE el comprobante". Uno por canal, porque hay clientes
+                       de solo-mail y de solo-WhatsApp. Cuando está prendido, al elegir este cliente en
+                       una venta el canal ya viene tildado (se puede destildar para esa venta puntual). *@
+                    <div class="form-group" style="grid-column: 1 / -1; padding: 0.6rem; background: #f0fdf4; border-left: 3px solid #16a34a; border-radius: 4px; margin-top: 0.8rem; margin-bottom: 0;">
+                        <div style="font-weight: 600; margin-bottom: 0.4rem;">⭐ Mandarle siempre el comprobante</div>
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            <input type="checkbox" @bind="formEnviarSiempreEmail" style="width: 18px; height: 18px;" />
+                            <span>📧 Por mail@(string.IsNullOrWhiteSpace(formEmail) ? "" : $" (a {formEmail})")</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin-top: 0.3rem;">
+                            <input type="checkbox" @bind="formEnviarSiempreWhatsapp" style="width: 18px; height: 18px;" />
+                            <span>📱 Por WhatsApp@(string.IsNullOrWhiteSpace(formTelefono) ? "" : $" (al {formTelefono})")</span>
+                        </label>
+                        <div style="font-size: 0.78rem; color: #4b5563; margin-top: 0.4rem;">
+                            Al emitirle una venta, el envío ya va a venir tildado. Igual sale unos minutos después,
+                            así hay tiempo de corregir. El WhatsApp depende de que el cliente te haya escrito en las
+                            últimas 24 hs (regla de Meta); si no, la pantalla de la venta te lo avisa y podés mandarlo por mail.
+                        </div>
+                    </div>
                 </div>
 
                 @* ═══════════════ Sección 2: Datos fiscales (auto desde ARCA) ═══════════════ *@
@@ -1030,6 +1050,9 @@
     private bool formIsActive = true;
     private bool formTieneMiniImpresora = false;
     private bool formSolicitarFirmaEntrega = false;
+    // 2026-08-20: mandarle SIEMPRE el comprobante, uno por canal.
+    private bool formEnviarSiempreEmail = false;
+    private bool formEnviarSiempreWhatsapp = false;
     private bool showDeleteConfirm;
     private CafeClienteDto? toDelete;
 
@@ -1142,7 +1165,9 @@
         formMapeoLat = null; formMapeoLng = null;
         formMeliBuyerId = null; formMeliNickname = null; meliSearch = ""; meliResults = null; meliBuscando = false;
         localidadesSugeridas = new();
-        formIsActive = true; formTieneMiniImpresora = false; formSolicitarFirmaEntrega = false; formError = null; showForm = true;
+        formIsActive = true; formTieneMiniImpresora = false; formSolicitarFirmaEntrega = false;
+        formEnviarSiempreEmail = false; formEnviarSiempreWhatsapp = false;
+        formError = null; showForm = true;
         direccionesCliente = new(); ResetSubformDireccion();
         await Task.CompletedTask;
     }
@@ -1166,7 +1191,9 @@
         formMeliBuyerId = c.MeliBuyerId; formMeliNickname = c.MeliNickname; meliSearch = ""; meliResults = null; meliBuscando = false;
         // Pre-cargar localidades sugeridas segun la provincia del cliente
         localidadesSugeridas = await CpService.GetLocalidadesAsync(formCiudad);
-        formIsActive = c.IsActive; formTieneMiniImpresora = c.TieneMiniImpresora; formSolicitarFirmaEntrega = c.SolicitarFirmaEntrega; formError = null; showForm = true;
+        formIsActive = c.IsActive; formTieneMiniImpresora = c.TieneMiniImpresora; formSolicitarFirmaEntrega = c.SolicitarFirmaEntrega;
+        formEnviarSiempreEmail = c.EnviarSiempreEmail; formEnviarSiempreWhatsapp = c.EnviarSiempreWhatsapp;
+        formError = null; showForm = true;
         ResetSubformDireccion();
         await LoadDirecciones(c.Id);
     }
@@ -1379,6 +1406,8 @@
                     IsActive = formIsActive,
                     TieneMiniImpresora = formTieneMiniImpresora,
                     SolicitarFirmaEntrega = formSolicitarFirmaEntrega,
+                    EnviarSiempreEmail = formEnviarSiempreEmail,
+                    EnviarSiempreWhatsapp = formEnviarSiempreWhatsapp,
                     MapeoLink = string.IsNullOrEmpty(mapeoLinkClean) ? null : mapeoLinkClean,
                     ClearMapeoLink = string.IsNullOrEmpty(mapeoLinkClean),
                     MeliBuyerId = formMeliBuyerId,
@@ -1404,7 +1433,9 @@
                     MapeoLink = string.IsNullOrEmpty(mapeoLinkClean) ? null : mapeoLinkClean,
                     CodigoInterno = formCodigoInterno,
                     MeliBuyerId = formMeliBuyerId,
-                    MeliNickname = formMeliNickname
+                    MeliNickname = formMeliNickname,
+                    EnviarSiempreEmail = formEnviarSiempreEmail,
+                    EnviarSiempreWhatsapp = formEnviarSiempreWhatsapp
                 });
                 if (c is null) { formError = "No se pudo crear"; return; }
                 idGuardado = c.Id;

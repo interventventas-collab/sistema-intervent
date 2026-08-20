@@ -39,7 +39,8 @@ public class CafeClientesController : ControllerBase
         c.TieneMiniImpresora,
         c.SolicitarFirmaEntrega,
         c.Telefono2, c.EntreCalles,
-        c.MeliBuyerId, c.MeliNickname);
+        c.MeliBuyerId, c.MeliNickname,
+        c.EnviarSiempreEmail, c.EnviarSiempreWhatsapp);
 
     [HttpGet]
     public async Task<IActionResult> GetAll()
@@ -228,6 +229,8 @@ public class CafeClientesController : ControllerBase
             MapeoLink = Norm(req.MapeoLink),
             MeliBuyerId = req.MeliBuyerId,
             MeliNickname = Norm(req.MeliNickname),
+            EnviarSiempreEmail = req.EnviarSiempreEmail,
+            EnviarSiempreWhatsapp = req.EnviarSiempreWhatsapp,
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
@@ -317,6 +320,9 @@ public class CafeClientesController : ControllerBase
         if (req.IsActive.HasValue) c.IsActive = req.IsActive.Value;
         if (req.TieneMiniImpresora.HasValue) c.TieneMiniImpresora = req.TieneMiniImpresora.Value;
         if (req.SolicitarFirmaEntrega.HasValue) c.SolicitarFirmaEntrega = req.SolicitarFirmaEntrega.Value;
+        // 2026-08-20: tildes "mandarle siempre el comprobante" (mail / WhatsApp).
+        if (req.EnviarSiempreEmail.HasValue) c.EnviarSiempreEmail = req.EnviarSiempreEmail.Value;
+        if (req.EnviarSiempreWhatsapp.HasValue) c.EnviarSiempreWhatsapp = req.EnviarSiempreWhatsapp.Value;
         // 2026-08-14: vínculo con comprador de MercadoLibre. ClearMeliVinculo lo borra; si no,
         // un MeliBuyerId con valor lo setea/actualiza (junto con el nickname que venga).
         if (req.ClearMeliVinculo) { c.MeliBuyerId = null; c.MeliNickname = null; }

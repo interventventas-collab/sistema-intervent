@@ -2193,6 +2193,107 @@ public class ApiClient
         return (false, content);
     }
 
+    // ═══ 2026-08-20: envío del comprobante al cliente (cola + cartelitos del listado) ═══
+
+    /// <summary>Anota el envío del comprobante por un canal ("EMAIL" / "WHATSAPP"). Por defecto
+    /// queda en la cola y sale a los minutos configurados (así se puede corregir la venta antes);
+    /// con inmediato=true sale ahora mismo. Devuelve el estado del envío para pintarlo en pantalla.</summary>
+    public async Task<(bool ok, string? error, CafeVentaEnvioDto? envio)> ProgramarEnvioVentaAsync(
+        int ventaId, string canal, string destino, string? lineaPhoneId = null,
+        bool automatico = false, bool inmediato = false)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/ventas/{ventaId}/envios",
+            new { Canal = canal, Destino = destino, LineaPhoneId = lineaPhoneId, Automatico = automatico, Inmediato = inmediato });
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return (false, "Sesión expirada", null); }
+        return await LeerRespuestaEnvioAsync(resp);
+    }
+
+    /// <summary>Frena un envío que todavía no salió.</summary>
+    public async Task<(bool ok, string? error)> CancelarEnvioVentaAsync(int ventaId, string canal)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsync($"/api/cafe/ventas/{ventaId}/envios/{canal}/cancelar", null);
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return (false, "Sesión expirada"); }
+        var (ok, error, _) = await LeerRespuestaEnvioAsync(resp);
+        return (ok, error);
+    }
+
+    /// <summary>Manda ya un envío que estaba esperando, sin aguantar los minutos que faltan.</summary>
+    public async Task<(bool ok, string? error, CafeVentaEnvioDto? envio)> EnviarAhoraVentaAsync(int ventaId, string canal)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsync($"/api/cafe/ventas/{ventaId}/envios/{canal}/ahora", null);
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return (false, "Sesión expirada", null); }
+        return await LeerRespuestaEnvioAsync(resp);
+    }
+
+    private static async Task<(bool ok, string? error, CafeVentaEnvioDto? envio)> LeerRespuestaEnvioAsync(HttpResponseMessage resp)
+    {
+        var content = await resp.Content.ReadAsStringAsync();
+        CafeVentaEnvioDto? envio = null;
+        string? error = null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(content);
+            if (doc.RootElement.TryGetProperty("envio", out var e))
+                envio = System.Text.Json.JsonSerializer.Deserialize<CafeVentaEnvioDto>(e.GetRawText(),
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (doc.RootElement.TryGetProperty("error", out var err)) error = err.GetString();
+        }
+        catch { }
+        if (resp.IsSuccessStatusCode) return (true, null, envio);
+        return (false, error ?? content, envio);
+    }
+
+    /// <summary>Cuántos minutos espera un envío antes de salir (0 = al toque).</summary>
+    public async Task<int> GetDemoraEnvioAsync()
+    {
+        await SetAuthHeaderAsync();
+        try
+        {
+            var resp = await _http.GetAsync("/api/cafe/ventas/envios/demora");
+            if (!resp.IsSuccessStatusCode) return 5;
+            using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            return doc.RootElement.TryGetProperty("minutos", out var m) ? m.GetInt32() : 5;
+        }
+        catch { return 5; }
+    }
+
+    public async Task<bool> SetDemoraEnvioAsync(int minutos)
+    {
+        await SetAuthHeaderAsync();
+        try
+        {
+            var resp = await _http.PostAsync($"/api/cafe/ventas/envios/demora?minutos={minutos}", null);
+            return resp.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
+
+    /// <summary>Semáforo de la ventana de 24 hs de Meta: dice si a ese número se le puede mandar
+    /// por WhatsApp HOY por esa línea. Es el mismo cálculo del "🟢 le podés escribir".</summary>
+    public async Task<(bool abierta, DateTime? ultimoEntranteAt, int minutosRestantes)> GetVentanaWhatsAppAsync(
+        string numero, string? lineaPhoneId = null)
+    {
+        await SetAuthHeaderAsync();
+        try
+        {
+            var url = $"/api/cafe/ventas/envios/ventana-whatsapp?numero={Uri.EscapeDataString(numero)}";
+            if (!string.IsNullOrWhiteSpace(lineaPhoneId)) url += $"&linea={Uri.EscapeDataString(lineaPhoneId)}";
+            var resp = await _http.GetAsync(url);
+            if (!resp.IsSuccessStatusCode) return (false, null, 0);
+            using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            var root = doc.RootElement;
+            var abierta = root.TryGetProperty("abierta", out var a) && a.GetBoolean();
+            DateTime? ult = root.TryGetProperty("ultimoEntranteAt", out var u) && u.ValueKind != System.Text.Json.JsonValueKind.Null
+                ? u.GetDateTime() : null;
+            var min = root.TryGetProperty("minutosRestantes", out var mr) ? mr.GetInt32() : 0;
+            return (abierta, ult, min);
+        }
+        catch { return (false, null, 0); }
+    }
+
     public async Task<CafeVentaDto?> AnularCafeVentaAsync(int id)
         => await PostAsync<CafeVentaDto>($"/api/cafe/ventas/{id}/anular", new { });
 

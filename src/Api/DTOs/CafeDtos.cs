@@ -17,7 +17,10 @@ public record CafeClienteDto(
     // 2026-07-01: teléfono 2 + entre calles (sirven para ventas y alquileres/eventos)
     string? Telefono2 = null, string? EntreCalles = null,
     // 2026-08-14: vínculo con un comprador de MercadoLibre (usuario de ML)
-    long? MeliBuyerId = null, string? MeliNickname = null);
+    long? MeliBuyerId = null, string? MeliNickname = null,
+    // 2026-08-20: "mandarle SIEMPRE el comprobante" por cada canal. Prende el tilde solo
+    // cuando elegís este cliente en una venta.
+    bool EnviarSiempreEmail = false, bool EnviarSiempreWhatsapp = false);
 
 // 2026-07-29: Direcciones de entrega múltiples por cliente.
 public record CafeDireccionDto(
@@ -64,6 +67,9 @@ public class CreateCafeClienteRequest
     /// <summary>Código interno (correlativo) pre-asignado en el frontend antes de guardar.
     /// Si viene, el backend lo valida: si está libre lo usa, si está tomado asigna el siguiente disponible.</summary>
     public int? CodigoInterno { get; set; }
+    /// <summary>2026-08-20: tildes "mandarle siempre el comprobante" (uno por canal).</summary>
+    public bool EnviarSiempreEmail { get; set; }
+    public bool EnviarSiempreWhatsapp { get; set; }
     /// <summary>2026-08-14: si el cliente se dio de alta vinculándolo a un comprador de MercadoLibre,
     /// acá vienen el BuyerId y el nickname de ese usuario de ML.</summary>
     public long? MeliBuyerId { get; set; }
@@ -95,6 +101,10 @@ public class UpdateCafeClienteRequest
     public bool? TieneMiniImpresora { get; set; }
     /// <summary>2026-06-22: si true, todas las ventas nuevas de este cliente piden firma al entregar.</summary>
     public bool? SolicitarFirmaEntrega { get; set; }
+    /// <summary>2026-08-20: tildes "mandarle siempre el comprobante" (uno por canal). Se pueden
+    /// prender desde la ficha o desde la estrellita del panel de envío de la venta.</summary>
+    public bool? EnviarSiempreEmail { get; set; }
+    public bool? EnviarSiempreWhatsapp { get; set; }
     /// <summary>2026-08-14: vincular (o revincular) este cliente con un comprador de MercadoLibre.
     /// Si viene MeliBuyerId, se guarda el vínculo. Si viene ClearMeliVinculo=true, se borra.</summary>
     public long? MeliBuyerId { get; set; }
@@ -478,7 +488,16 @@ public record CafeVentaDto(
     // 2026-08-12: si un repartidor RECHAZÓ esta venta (y todavía no se reasignó ni entregó), el listado
     // muestra el chip "🚫 Rechazó {nombre}" con el motivo, en vez de "Asignar".
     string? RechazadoPorRepartidorNombre = null,
-    string? RechazoMotivo = null);
+    string? RechazoMotivo = null,
+    // 2026-08-20: estado del envío del comprobante al cliente, por canal. Lo pintan los
+    // cartelitos 📧/📱 del listado. Vacío = nunca se mandó (o es una venta anterior a esto).
+    List<CafeVentaEnvioDto>? Envios = null);
+
+/// <summary>2026-08-20: cómo le fue al envío del comprobante por un canal.
+/// Estado: PENDIENTE (está en la cola, sale a la hora de ProgramadoPara) | ENVIADO | ERROR | CANCELADO.</summary>
+public record CafeVentaEnvioDto(
+    string Canal, string Estado, string? Destino,
+    DateTime? ProgramadoPara, DateTime? EnviadoAt, string? Error, bool Automatico);
 
 public class CafeCotizarItemRequest
 {

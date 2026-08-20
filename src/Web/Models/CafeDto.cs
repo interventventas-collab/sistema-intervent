@@ -33,6 +33,11 @@ public class CafeClienteDto
     public bool TieneMiniImpresora { get; set; }
     /// <summary>2026-06-22: si true, todas las ventas nuevas piden firma al entregar.</summary>
     public bool SolicitarFirmaEntrega { get; set; }
+    /// <summary>2026-08-20: "mandarle SIEMPRE el comprobante por mail" — prende solo el tilde 📧
+    /// del panel de envío cuando elegís este cliente en una venta.</summary>
+    public bool EnviarSiempreEmail { get; set; }
+    /// <summary>2026-08-20: lo mismo por WhatsApp (sujeto a la ventana de 24 hs de Meta).</summary>
+    public bool EnviarSiempreWhatsapp { get; set; }
     /// <summary>2026-08-14: BuyerId del comprador de MercadoLibre vinculado (null si no tiene vínculo).</summary>
     public long? MeliBuyerId { get; set; }
     /// <summary>Nickname del usuario de MercadoLibre vinculado.</summary>
@@ -66,6 +71,9 @@ public class CreateCafeClienteRequest
     /// <summary>2026-08-14: vínculo con un comprador de MercadoLibre (usuario de ML) elegido en la ficha.</summary>
     public long? MeliBuyerId { get; set; }
     public string? MeliNickname { get; set; }
+    /// <summary>2026-08-20: tildes "mandarle siempre el comprobante" (uno por canal).</summary>
+    public bool EnviarSiempreEmail { get; set; }
+    public bool EnviarSiempreWhatsapp { get; set; }
 }
 
 public class UpdateCafeClienteRequest
@@ -93,6 +101,9 @@ public class UpdateCafeClienteRequest
     public bool? TieneMiniImpresora { get; set; }
     /// <summary>2026-06-22: si true, todas las ventas nuevas piden firma al entregar.</summary>
     public bool? SolicitarFirmaEntrega { get; set; }
+    /// <summary>2026-08-20: tildes "mandarle siempre el comprobante" (uno por canal).</summary>
+    public bool? EnviarSiempreEmail { get; set; }
+    public bool? EnviarSiempreWhatsapp { get; set; }
     /// <summary>2026-08-14: vincular (MeliBuyerId con valor) o desvincular (ClearMeliVinculo=true)
     /// el cliente de un comprador de MercadoLibre.</summary>
     public long? MeliBuyerId { get; set; }
@@ -449,6 +460,23 @@ public class CafeVentaItemDto
     public int? ServicioId { get; set; }
 }
 
+/// <summary>2026-08-20: estado del envío del comprobante por un canal (EMAIL / WHATSAPP).
+/// Estado: PENDIENTE (en la cola, sale a la hora de ProgramadoPara) | ENVIADO | ERROR | CANCELADO.</summary>
+public class CafeVentaEnvioDto
+{
+    public string Canal { get; set; } = "";
+    public string Estado { get; set; } = "";
+    public string? Destino { get; set; }
+    public DateTime? ProgramadoPara { get; set; }
+    public DateTime? EnviadoAt { get; set; }
+    public string? Error { get; set; }
+    public bool Automatico { get; set; }
+
+    public bool EsPendiente => Estado == "PENDIENTE";
+    public bool EsEnviado => Estado == "ENVIADO";
+    public bool EsError => Estado == "ERROR";
+}
+
 public class CafeVentaDto
 {
     public int Id { get; set; }
@@ -558,6 +586,13 @@ public class CafeVentaDto
     public string? RechazadoPorRepartidorNombre { get; set; }
     /// <summary>Motivo que escribió el repartidor al rechazar (para el tooltip del chip).</summary>
     public string? RechazoMotivo { get; set; }
+    /// <summary>2026-08-20: cómo le fue al envío del comprobante al cliente, por canal.
+    /// Lo pintan los cartelitos 📧/📱 del listado. Vacío = nunca se mandó.</summary>
+    public List<CafeVentaEnvioDto>? Envios { get; set; }
+
+    /// <summary>Estado del envío por un canal, o null si por ese canal nunca se mandó nada.</summary>
+    public CafeVentaEnvioDto? EnvioDe(string canal)
+        => Envios?.FirstOrDefault(e => string.Equals(e.Canal, canal, StringComparison.OrdinalIgnoreCase));
     /// <summary>2026-06-23: Concepto AFIP. 1=Productos (default), 2=Servicios, 3=Productos y Servicios.</summary>
     public int Concepto { get; set; } = 1;
     /// <summary>Solo aplica si Concepto in (2,3). Inicio del periodo de prestacion.</summary>

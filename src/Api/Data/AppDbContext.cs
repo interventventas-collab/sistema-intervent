@@ -124,6 +124,8 @@ public class AppDbContext : DbContext
     public DbSet<CafeProductoFotoToken> CafeProductoFotoTokens => Set<CafeProductoFotoToken>();
     public DbSet<CafeSetting> CafeSettings => Set<CafeSetting>();
     public DbSet<CafeVenta> CafeVentas => Set<CafeVenta>();
+    /// <summary>2026-08-20: estado del envío del comprobante al cliente (cola + historial).</summary>
+    public DbSet<CafeVentaEnvio> CafeVentasEnvios => Set<CafeVentaEnvio>();
     public DbSet<CafeVentaItem> CafeVentaItems => Set<CafeVentaItem>();
     // 2026-07-14: borradores de venta compartidos (servidor, hasta 10)
     public DbSet<CafeVentaBorradorServer> CafeVentaBorradores => Set<CafeVentaBorradorServer>();

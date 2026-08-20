@@ -60,7 +60,8 @@ public class CafeVentasController : ControllerBase
         CafeReciboEntregaPdfService reciboEntregaPdfService,
         IServiceScopeFactory scopeFactory,
         CafeStockLogger stockLogger,
-        VentaMapeoService ventaMapeo)
+        VentaMapeoService ventaMapeo,
+        EnvioComprobanteService envioService)
     {
         _db = db;
         _pdfService = pdfService;
@@ -75,7 +76,10 @@ public class CafeVentasController : ControllerBase
         _scopeFactory = scopeFactory;
         _stockLogger = stockLogger;
         _ventaMapeo = ventaMapeo;
+        _envioService = envioService;
     }
+
+    private readonly EnvioComprobanteService _envioService;
 
     private readonly VentaMapeoService _ventaMapeo;
 
@@ -278,7 +282,8 @@ public class CafeVentasController : ControllerBase
         string? escaneadoPorRepartidorNombre = null, DateTime? escaneadoAt = null,
         int? clienteCodigoInterno = null,
         decimal? cobradoEnEntrega = null,
-        string? rechazadoPorRepartidorNombre = null, string? rechazoMotivo = null) => new(
+        string? rechazadoPorRepartidorNombre = null, string? rechazoMotivo = null,
+        List<CafeVentaEnvioDto>? envios = null) => new(
         v.Id, v.Numero, v.Fecha,
         v.ClienteId, v.ClienteNombreSnapshot, v.ClienteTipoSnapshot, v.ClienteTelefonoSnapshot,
         clienteCodigoInterno,  // 2026-06-08: codigo interno del cliente
@@ -352,7 +357,8 @@ public class CafeVentasController : ControllerBase
         cobradoEnEntrega,
         v.MostrarIvaProforma,
         rechazadoPorRepartidorNombre,
-        rechazoMotivo);
+        rechazoMotivo,
+        envios);
 
     [HttpGet]
     public async Task<IActionResult> GetAll(
@@ -473,6 +479,16 @@ public class CafeVentasController : ControllerBase
                 .Select(g => new { VentaId = g.Key, Total = g.Sum(x => x.Importe) })
                 .ToDictionaryAsync(x => x.VentaId, x => x.Total);
 
+        // 2026-08-20: estado del envio del comprobante al cliente (mail / WhatsApp) para los
+        // cartelitos del listado. Una fila por venta+canal; vacio = nunca se mando.
+        var enviosDict = ventaIds.Count == 0
+            ? new Dictionary<int, List<CafeVentaEnvioDto>>()
+            : (await _db.CafeVentasEnvios.AsNoTracking()
+                    .Where(e => ventaIds.Contains(e.VentaId)).ToListAsync())
+                .GroupBy(e => e.VentaId)
+                .ToDictionary(g => g.Key, g => g.Select(e => new CafeVentaEnvioDto(
+                    e.Canal, e.Estado, e.Destino, e.ProgramadoPara, e.EnviadoAt, e.Error, e.Automatico)).ToList());
+
         return Ok(list.Select(v =>
         {
             escDic.TryGetValue(v.Id, out var escChip);
@@ -491,7 +507,8 @@ public class CafeVentasController : ControllerBase
                 escChip?.CreatedAt,
                 v.ClienteId.HasValue && codigosDict.TryGetValue(v.ClienteId.Value, out var ci) ? ci : null,
                 cobradoDict.TryGetValue(v.Id, out var cob) ? cob : (decimal?)null,
-                rechNombre, rechMotivo);
+                rechNombre, rechMotivo,
+                enviosDict.TryGetValue(v.Id, out var envs) ? envs : null);
         }).ToList());
     }
 
@@ -995,6 +1012,121 @@ public class CafeVentasController : ControllerBase
         if (result.Success)
             return Ok(new { sent = true, message = result.Message });
         return BadRequest(new { sent = false, error = result.Message });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  2026-08-20: COLA DE ENVIO DEL COMPROBANTE AL CLIENTE
+    //  El envio no sale al instante: queda anotado y sale N minutos despues (5 por
+    //  defecto), asi hay tiempo de corregir la venta antes de que le llegue al cliente.
+    //  El PDF se arma recien al mandarlo, asi que la correccion viaja sola.
+    // ═══════════════════════════════════════════════════════════════════════
+
+    public record ProgramarEnvioRequest(string Canal, string Destino, string? LineaPhoneId,
+        bool Automatico = false, bool Inmediato = false);
+
+    private static string? NormCanal(string? c) => (c ?? "").Trim().ToUpperInvariant() switch
+    {
+        "EMAIL" or "MAIL" => CafeVentaEnvio.CanalEmail,
+        "WHATSAPP" or "WA" => CafeVentaEnvio.CanalWhatsapp,
+        _ => null
+    };
+
+    private static object EnvioOut(CafeVentaEnvio e) => new
+    {
+        canal = e.Canal, estado = e.Estado, destino = e.Destino,
+        programadoPara = e.ProgramadoPara, enviadoAt = e.EnviadoAt,
+        error = e.Error, automatico = e.Automatico
+    };
+
+    /// <summary>Anota el envio del comprobante por un canal. Por defecto queda en la cola y sale
+    /// a los minutos configurados; con Inmediato=true sale ahora mismo (boton "Mandar ya" y
+    /// reenvios manuales, donde ya miraste el comprobante y no hay nada que corregir).</summary>
+    [HttpPost("{id:int}/envios")]
+    public async Task<IActionResult> ProgramarEnvio(int id, [FromBody] ProgramarEnvioRequest req)
+    {
+        var canal = NormCanal(req?.Canal);
+        if (canal is null) return BadRequest(new { error = "Canal invalido (EMAIL o WHATSAPP)" });
+        if (string.IsNullOrWhiteSpace(req!.Destino))
+            return BadRequest(new { error = canal == CafeVentaEnvio.CanalEmail
+                ? "Falta el correo del cliente." : "Falta el telefono del cliente." });
+
+        var v = await _db.CafeVentas.FindAsync(id);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+        if (string.Equals(v.Estado, "anulado", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { error = "La venta esta anulada, no se le puede mandar al cliente." });
+
+        var fila = await _envioService.ProgramarAsync(id, canal, req.Destino.Trim(), req.LineaPhoneId,
+            req.Automatico, req.Inmediato ? 0 : null);
+
+        if (req.Inmediato)
+        {
+            var (ok, error) = await _envioService.ProcesarAsync(fila);
+            return ok ? Ok(new { ok = true, envio = EnvioOut(fila) })
+                      : BadRequest(new { ok = false, error, envio = EnvioOut(fila) });
+        }
+        return Ok(new { ok = true, envio = EnvioOut(fila) });
+    }
+
+    /// <summary>Frena un envio que todavia no salio.</summary>
+    [HttpPost("{id:int}/envios/{canal}/cancelar")]
+    public async Task<IActionResult> CancelarEnvio(int id, string canal)
+    {
+        var c = NormCanal(canal);
+        if (c is null) return BadRequest(new { error = "Canal invalido" });
+        var ok = await _envioService.CancelarAsync(id, c);
+        if (!ok) return BadRequest(new { error = "Ese envio ya no estaba esperando (o ya salio)." });
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>Manda ahora un envio que estaba esperando, sin aguantar los minutos que faltan.</summary>
+    [HttpPost("{id:int}/envios/{canal}/ahora")]
+    public async Task<IActionResult> EnviarAhora(int id, string canal)
+    {
+        var c = NormCanal(canal);
+        if (c is null) return BadRequest(new { error = "Canal invalido" });
+        var fila = await _db.CafeVentasEnvios.FirstOrDefaultAsync(x => x.VentaId == id && x.Canal == c);
+        if (fila is null) return NotFound(new { error = "Ese envio no existe" });
+        var (ok, error) = await _envioService.ProcesarAsync(fila);
+        return ok ? Ok(new { ok = true, envio = EnvioOut(fila) })
+                  : BadRequest(new { ok = false, error, envio = EnvioOut(fila) });
+    }
+
+    /// <summary>Cuantos minutos espera un envio antes de salir (0 = al toque).</summary>
+    [HttpGet("envios/demora")]
+    public async Task<IActionResult> GetDemoraEnvio()
+        => Ok(new { minutos = await _envioService.GetDemoraMinutosAsync() });
+
+    [HttpPost("envios/demora")]
+    public async Task<IActionResult> SetDemoraEnvio([FromQuery] int minutos)
+    {
+        await _envioService.SetDemoraMinutosAsync(minutos);
+        return Ok(new { minutos = await _envioService.GetDemoraMinutosAsync() });
+    }
+
+    /// <summary>Semaforo de la ventana de 24 hs de Meta para un numero por una linea puntual:
+    /// dice si HOY se le puede mandar por WhatsApp. Misma cuenta que el "🟢 le podes escribir"
+    /// del buscador de contactos (ultimo mensaje ENTRANTE de ese numero por esa linea).</summary>
+    [HttpGet("envios/ventana-whatsapp")]
+    public async Task<IActionResult> VentanaWhatsApp([FromQuery] string numero, [FromQuery] string? linea = null)
+    {
+        if (string.IsNullOrWhiteSpace(numero)) return Ok(new { abierta = false, motivo = "sin_numero" });
+        var norm = MetaWhatsAppService.ToInboxWhatsApp(numero);
+        var limite = DateTime.UtcNow.AddHours(-24);
+        var lin = string.IsNullOrWhiteSpace(linea) ? null : linea.Trim();
+        var ultimo = await _db.WhatsAppTwilioMensajes.AsNoTracking()
+            .Where(m => m.Direccion == "INCOMING" && m.Numero == norm
+                        && (lin == null || m.LineaPhoneId == lin))
+            .OrderByDescending(m => m.CreatedAt)
+            .Select(m => (DateTime?)m.CreatedAt)
+            .FirstOrDefaultAsync();
+        var abierta = ultimo.HasValue && ultimo.Value >= limite;
+        return Ok(new
+        {
+            abierta,
+            ultimoEntranteAt = ultimo,
+            // minutos que le quedan a la ventana (para poder avisar "te quedan 40 min")
+            minutosRestantes = abierta ? (int)(ultimo!.Value.AddHours(24) - DateTime.UtcNow).TotalMinutes : 0
+        });
     }
 
     /// <summary>
@@ -2518,6 +2650,9 @@ public class CafeVentasController : ControllerBase
         v.Estado = "anulado";
         v.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+        // 2026-08-20: si el comprobante estaba esperando salir (cola de envio), se cancela. Sin
+        // esto anulabas una factura y a los tres minutos le llegaba igual al cliente.
+        await _envioService.CancelarPendientesDeVentaAsync(v.Id, "La venta se anuló antes de que saliera.");
         FireAndForgetPushMeli(productosAnular);
         return Ok(Map(v));
     }

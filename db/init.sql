@@ -6849,3 +6849,46 @@ CREATE TABLE PagosMovil_WaEstado (
     UpdatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
 );
 GO
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- 2026-08-20: ENVIO DEL COMPROBANTE AL CLIENTE (mail / WhatsApp)
+--   1) Cafe_Clientes: dos tildes "mandarle SIEMPRE" (uno por canal). Cuando estan
+--      prendidos, al elegir el cliente en la venta el canal ya viene tildado.
+--   2) Cafe_VentasEnvios: una fila por venta+canal con el estado del envio. Es a la
+--      vez la COLA (sale N minutos despues de emitir, por si hay que corregir algo)
+--      y el HISTORIAL que pintan los cartelitos del listado de ventas.
+-- ═══════════════════════════════════════════════════════════════════════════════
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='EnviarSiempreEmail' AND Object_ID=OBJECT_ID('Cafe_Clientes'))
+    ALTER TABLE Cafe_Clientes ADD EnviarSiempreEmail BIT NOT NULL DEFAULT 0;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='EnviarSiempreWhatsapp' AND Object_ID=OBJECT_ID('Cafe_Clientes'))
+    ALTER TABLE Cafe_Clientes ADD EnviarSiempreWhatsapp BIT NOT NULL DEFAULT 0;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='Cafe_VentasEnvios')
+CREATE TABLE Cafe_VentasEnvios (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    VentaId INT NOT NULL,
+    Canal NVARCHAR(10) NOT NULL,               -- EMAIL | WHATSAPP
+    Estado NVARCHAR(12) NOT NULL,              -- PENDIENTE | ENVIADO | ERROR | CANCELADO
+    Destino NVARCHAR(150) NULL,                -- correo o telefono al que sale/salio
+    LineaPhoneId NVARCHAR(40) NULL,            -- solo WhatsApp: desde que linea sale
+    ProgramadoPara DATETIME2 NULL,             -- UTC. Cuando le toca salir (emision + demora)
+    EnviadoAt DATETIME2 NULL,                  -- UTC. Cuando salio de verdad
+    Error NVARCHAR(400) NULL,                  -- por que no salio (lo muestra el cartelito)
+    Intentos INT NOT NULL DEFAULT 0,
+    Automatico BIT NOT NULL DEFAULT 0,         -- 1 = lo disparo el tilde "siempre" del cliente
+    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    UpdatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+GO
+-- Una sola fila por venta+canal: reenviar PISA el estado anterior (el cartelito muestra el ultimo).
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='Cafe_VentasEnvios')
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_CafeVentasEnvios_VentaCanal')
+    CREATE UNIQUE INDEX UX_CafeVentasEnvios_VentaCanal ON Cafe_VentasEnvios(VentaId, Canal);
+GO
+-- El robot busca por estado + hora: indice para que no escanee la tabla entera cada minuto.
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='Cafe_VentasEnvios')
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_CafeVentasEnvios_Pendientes')
+    CREATE INDEX IX_CafeVentasEnvios_Pendientes ON Cafe_VentasEnvios(Estado, ProgramadoPara);
+GO
