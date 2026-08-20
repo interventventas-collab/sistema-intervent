@@ -878,6 +878,9 @@
         {
             await Vivo.EnsureStartedAsync();
             Vivo.OnNuevoMensaje += AvisoEnVivo;
+            // 2026-08-20: mientras la conexión estuvo cortada NO llegó ningún aviso de esta charla,
+            // así que al recuperarla hay que recargar los mensajes (si no, faltan los del medio).
+            Vivo.OnReconectado += ReconectoEnVivo;
         }
         catch { }
         refreshTimer = new System.Threading.Timer(async _ =>
@@ -909,6 +912,10 @@
         if (convId != $"{Numero}|{LineaPhoneId}") return;
         _ = InvokeAsync(async () => { if (!sending) { await Cargar(); StateHasChanged(); } });
     }
+
+    /// <summary>Se recuperó la conexión en vivo: recargar esta charla por si se perdió algo.</summary>
+    private void ReconectoEnVivo()
+        => _ = InvokeAsync(async () => { if (!sending) { await Cargar(); StateHasChanged(); } });
 
     private async Task Cargar()
     {
@@ -1444,5 +1451,6 @@
         Apariencia.OnChange -= AparienciaCambio;
         refreshTimer?.Dispose();
         try { Vivo.OnNuevoMensaje -= AvisoEnVivo; } catch { }
+        try { Vivo.OnReconectado -= ReconectoEnVivo; } catch { }
     }
 }

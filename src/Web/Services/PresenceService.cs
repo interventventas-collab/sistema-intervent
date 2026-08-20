@@ -22,8 +22,30 @@ public class PresenceService : IAsyncDisposable
 
     private readonly NavigationManager _nav;
     private HubConnection? _hub;
+    private bool _yaArranco;   // para no avisar "reconectado" en el primer arranque
 
     public PresenceService(NavigationManager nav) => _nav = nav;
+
+    /// <summary>
+    /// 2026-08-20: reintenta PARA SIEMPRE. `WithAutomaticReconnect()` sin parámetros prueba 4
+    /// veces (0 s, 2 s, 10 s, 30 s) y después SE RINDE Y NO VUELVE A INTENTAR NUNCA. En un celular
+    /// eso pasa todos los días: bloqueás la pantalla, la conexión se corta, y cuando volvés ya se
+    /// había rendido — los mensajes dejaban de llegar solos y había que esperar la consulta de
+    /// respaldo (hasta 1 minuto) o recargar la pantalla a mano.
+    /// </summary>
+    private sealed class ReintentarSiempre : IRetryPolicy
+    {
+        private static readonly TimeSpan[] Escalera =
+        {
+            TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5),
+            TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(20)
+        };
+
+        public TimeSpan? NextRetryDelay(RetryContext ctx)
+            => ctx.PreviousRetryCount < (long)Escalera.Length
+                ? Escalera[ctx.PreviousRetryCount]
+                : TimeSpan.FromSeconds(30);   // después, uno cada 30 s, sin rendirse
+    }
 
     public bool IsConnected => _hub?.State == HubConnectionState.Connected;
 
@@ -35,23 +57,44 @@ public class PresenceService : IAsyncDisposable
     /// avisa el servidor (webhook de Meta / endpoint de envío). Sirve para refrescar al instante en
     /// vez de preguntar cada 12–15 s, que es lo que hacía sentir lento al celular.</summary>
     public event Action<string, string, DateTime>? OnNuevoMensaje;
+    /// <summary>2026-08-20: se recuperó la conexión después de un corte. Mientras estuvo cortada NO
+    /// llegó ningún aviso, así que la pantalla tiene que ir a buscar lo que se perdió.</summary>
+    public event Action? OnReconectado;
 
+    /// <summary>
+    /// Conecta si no está conectado. Se puede llamar todas las veces que haga falta.
+    /// 2026-08-20: antes salía con `if (_hub != null) return;`, así que si el PRIMER intento fallaba
+    /// (abrir la pantalla con mala señal) el objeto quedaba creado pero muerto y no se reintentaba
+    /// NUNCA en toda la sesión. Ahora lo que manda es el estado, no que el objeto exista.
+    /// </summary>
     public async Task EnsureStartedAsync()
     {
-        if (_hub != null) return;
-        _hub = new HubConnectionBuilder()
-            .WithUrl($"{_nav.BaseUri}api/hubs/presence")
-            .WithAutomaticReconnect()
-            .Build();
+        if (_hub is null)
+        {
+            _hub = new HubConnectionBuilder()
+                .WithUrl($"{_nav.BaseUri}api/hubs/presence")
+                .WithAutomaticReconnect(new ReintentarSiempre())
+                .Build();
 
-        _hub.On<string, List<Viewer>>("Presence", (convId, viewers) => OnPresence?.Invoke(convId, viewers));
-        _hub.On<string, int, string, DateTime>("MessageSent",
-            (convId, uid, uname, at) => OnMessageSent?.Invoke(convId, uid, uname, at));
-        _hub.On<string, string, DateTime>("WaNuevoMensaje",
-            (convId, direccion, at) => OnNuevoMensaje?.Invoke(convId, direccion, at));
+            _hub.On<string, List<Viewer>>("Presence", (convId, viewers) => OnPresence?.Invoke(convId, viewers));
+            _hub.On<string, int, string, DateTime>("MessageSent",
+                (convId, uid, uname, at) => OnMessageSent?.Invoke(convId, uid, uname, at));
+            _hub.On<string, string, DateTime>("WaNuevoMensaje",
+                (convId, direccion, at) => OnNuevoMensaje?.Invoke(convId, direccion, at));
 
-        try { await _hub.StartAsync(); }
-        catch { /* best-effort: sin presencia, la pantalla anda igual */ }
+            // Volvió solo después de un corte: hay que traer lo que entró mientras no había canal.
+            _hub.Reconnected += _ => { OnReconectado?.Invoke(); return Task.CompletedTask; };
+        }
+
+        if (_hub.State != HubConnectionState.Disconnected) return;   // ya está conectado o conectando
+
+        try
+        {
+            await _hub.StartAsync();
+            if (_yaArranco) OnReconectado?.Invoke();   // era un RE-arranque: puede faltar algo
+            _yaArranco = true;
+        }
+        catch { /* best-effort: sin presencia, la pantalla anda igual (queda el sondeo de respaldo) */ }
     }
 
     public Task JoinAsync(string convId) => SafeInvoke("JoinConversation", convId);

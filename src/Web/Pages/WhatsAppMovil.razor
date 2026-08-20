@@ -437,6 +437,9 @@ else
         {
             refCandado ??= DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("waCandado.iniciar", refCandado, MinutosCandado);
+            // 2026-08-20: al volver a la pantalla (o cuando vuelve internet) reconectar y traer lo
+            // nuevo EN EL ACTO, en vez de esperar hasta un minuto al sondeo de respaldo.
+            await JS.InvokeVoidAsync("waVivo.vigilar", refCandado);
         }
         catch { }
         StateHasChanged();
@@ -648,6 +651,9 @@ else
             {
                 await Vivo.EnsureStartedAsync();
                 Vivo.OnNuevoMensaje += AvisoEnVivo;
+                // 2026-08-20: si la conexión se cortó y volvió, mientras estuvo cortada NO llegó
+                // ningún aviso: hay que ir a buscar lo que entró en el medio.
+                Vivo.OnReconectado += AvisoEnVivo0;
             }
             catch { }
             notifTimer ??= new System.Threading.Timer(async _ => await InvokeAsync(RevisarNuevosAsync), null, 60000, 60000);
@@ -761,10 +767,27 @@ else
     private void AvisoEnVivo(string convId, string direccion, DateTime at)
         => _ = InvokeAsync(RevisarNuevosAsync);
 
+    /// <summary>Mismo refresco, pero para el aviso de "se recuperó la conexión" (no trae datos).</summary>
+    private void AvisoEnVivo0() => _ = InvokeAsync(RevisarNuevosAsync);
+
+    /// <summary>
+    /// 2026-08-20: volviste a mirar la pantalla (desbloqueaste el celu, volviste de otra app) o
+    /// volvió internet. El navegador congela la página mientras no la mirás y CORTA la conexión en
+    /// vivo, así que acá se reconecta y se trae lo que haya entrado, sin esperar al sondeo.
+    /// </summary>
+    [JSInvokable]
+    public async Task VolviAlaPantalla()
+    {
+        try { await Vivo.EnsureStartedAsync(); } catch { }
+        await RevisarNuevosAsync();
+    }
+
     public void Dispose()
     {
         notifTimer?.Dispose();
         try { Vivo.OnNuevoMensaje -= AvisoEnVivo; } catch { }
+        try { Vivo.OnReconectado -= AvisoEnVivo0; } catch { }
+        try { _ = JS.InvokeVoidAsync("waVivo.soltar"); } catch { }
         refCandado?.Dispose();
     }
 
