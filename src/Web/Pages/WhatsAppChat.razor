@@ -930,11 +930,51 @@
                     {
                         <div class="wa-nv-muted">Sin contactos para esa búsqueda. Si es un número nuevo, escribilo completo con el 54.</div>
                     }
+                    else
+                    {
+                        @* 2026-08-20: mientras no escribiste nada, las ÚLTIMAS CHARLAS a un toque.
+                           Antes esto era un cuadro vacío y había que tipear el nombre sí o sí, aunque
+                           quisieras reenviarle al cliente con el que acabás de hablar. El buscador de
+                           arriba sigue estando para los que NO tienen charla abierta (clientes del
+                           café, compradores de MercadoLibre, agenda). *@
+                        <div class="wa-fwd-recientes-t">Últimas charlas</div>
+                        <div class="wa-fwd-list">
+                            @foreach (var cv in ReenviarRecientes())
+                            {
+                                var yaR = reenviarDestinos.Any(x => x.Numero == cv.Numero);
+                                var dispR = ReenviarPuedeEscribir(cv);
+                                <button type="button" class="wa-nv-item @(yaR ? "wa-fwd-sel" : "")"
+                                        @onclick="() => ToggleDestinoConv(cv)">
+                                    <div class="wa-nv-avatar">@InicialDe(MostrarNombre(cv))</div>
+                                    <div style="flex:1; min-width:0;">
+                                        <div style="font-weight:600; color:#111; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@MostrarNombre(cv)</div>
+                                        <div style="font-size:0.85rem; color:#6b7280;">@BonitoNumero(cv.Numero)</div>
+                                        @if (dispR)
+                                        {
+                                            <span class="wa-fwd-badge ok">🟢 le podés escribir</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="wa-fwd-badge no">🔒 fuera de 24 hs · necesita plantilla</span>
+                                        }
+                                    </div>
+                                    <span style="color:#16a34a; font-weight:700;">@(yaR ? "✓" : "")</span>
+                                </button>
+                            }
+                            @if (ReenviarRecientes().Count == 0)
+                            {
+                                <div class="wa-nv-muted">Todavía no hay charlas. Buscá el contacto por nombre o número arriba.</div>
+                            }
+                        </div>
+                    }
 
                     <div class="wa-fwd-actions">
                         <button class="btn btn-outline-secondary btn-sm" @onclick="CerrarReenviar">Cancelar</button>
                         <button class="btn btn-success btn-sm" disabled="@(reenviarDestinos.Count == 0 || reenviando)" @onclick="ConfirmarReenviar">
-                            @(reenviando ? "Enviando…" : $"↪ Reenviar a {reenviarDestinos.Count}")
+                            @* 2026-08-20: sin nadie elegido decia "Reenviar a 0", que se lee como un error. *@
+                            @(reenviando ? "Enviando…"
+                                : reenviarDestinos.Count == 0 ? "↪ Elegí a quién"
+                                : $"↪ Reenviar a {reenviarDestinos.Count}")
                         </button>
                     </div>
                 </div>
@@ -2665,6 +2705,9 @@
     .wa-srv-upload-btn.cargando { background: #9ca3af; cursor: wait; }
     .wa-srv-upload-hint { font-size: 0.72rem; color: #6b7280; margin-top: 0.4rem; }
 
+    /* 2026-08-20: titulito "Últimas charlas" arriba del listado del cuadro de reenviar */
+    .wa-fwd-recientes-t { font-size: 0.76rem; font-weight: 800; color: #6b7280; text-transform: uppercase;
+        letter-spacing: .03em; margin: 0.5rem 0 0.25rem; }
     /* 2026-08-04: reenviar mensajes a uno o varios contactos */
     .wa-fwd-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 1090; }
     .wa-fwd-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: white; border-radius: 12px; padding: 1rem 1.1rem; box-shadow: 0 20px 60px rgba(0,0,0,0.25); z-index: 1100; width: 92%; max-width: 460px; max-height: 82vh; display: flex; flex-direction: column; }
@@ -3867,6 +3910,33 @@
     string reenviarQuery = "";
     List<ApiClient.TwDestinatarioDto> reenviarResultados = new();
     List<ApiClient.TwDestinatarioDto> reenviarDestinos = new();
+
+    /// <summary>
+    /// 2026-08-20: las charlas que se ofrecen de una en el cuadro de reenviar. Van TODAS las líneas
+    /// a propósito (no el filtro de la pantalla): si estás mirando solo FRIKAF y le querés reenviar
+    /// algo a alguien de FIJO TRANSRADIO, tiene que aparecer igual. Se saca la charla en la que
+    /// estás parado, que reenviarse a uno mismo no tiene sentido. Vienen ya ordenadas por el
+    /// servidor (fijadas primero y después por hora), así que se respeta ese orden.
+    /// </summary>
+    List<ApiClient.TwConvDto> ReenviarRecientes()
+        => conversaciones
+            .Where(c => !c.Archivado && !(c.Numero == selectedNumero && c.Linea == selectedLinea))
+            .Take(30)
+            .ToList();
+
+    /// <summary>
+    /// ¿Se le puede escribir libre? Meta solo deja mandar un mensaje comun si el cliente escribio
+    /// en las ultimas 24 hs; si no, hay que usar una plantilla. Lo sabemos con UltimoEntranteAt,
+    /// que ahora viene del servidor: adivinarlo por el ultimo mensaje daria falsas alarmas cuando
+    /// el ultimo movimiento fue una respuesta NUESTRA.
+    /// </summary>
+    static bool ReenviarPuedeEscribir(ApiClient.TwConvDto c)
+        => c.UltimoEntranteAt is DateTime u && u.AddHours(24) > DateTime.UtcNow;
+
+    /// <summary>Elegir / sacar una charla de la lista de destinos.</summary>
+    void ToggleDestinoConv(ApiClient.TwConvDto c)
+        => ToggleDestino(new ApiClient.TwDestinatarioDto(
+            MostrarNombre(c), c.Numero, "WhatsApp", ReenviarPuedeEscribir(c)));
 
     void AbrirReenviar()
     {

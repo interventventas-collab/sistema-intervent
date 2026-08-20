@@ -436,3 +436,6 @@
 .wa-dark .wa-busc-btn { background: var(--wad-panel3); border-color: var(--wad-borde2); color: var(--wad-txt); }
 .wa-dark .wa-busc-aviso { background: #3a2f12; border-bottom-color: #5c4a1c; color: #fcd34d; }
 .wa-dark .wa-busc-lupa-btn.activo { background: var(--wad-panel3); }
+
+/* 2026-08-20: titulito "Últimas charlas" del cuadro de reenviar. */
+.wa-dark .wa-fwd-recientes-t { color: var(--wad-txt3); }

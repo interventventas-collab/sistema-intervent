@@ -635,7 +635,12 @@ public class WhatsAppTwilioController : ControllerBase
                 Fijado = est?.FijadoAt != null,
                 FijadoAt = est?.FijadoAt,
                 // 2026-08-19: sonido propio de esta charla (le gana al de la línea). Null = el de la línea.
-                Sonido = est?.Sonido
+                Sonido = est?.Sonido,
+                // 2026-08-20: cuándo escribió el cliente por última vez. El servidor YA lo calculaba
+                // (lo usa para desarchivar solo), pero no lo mandaba. Lo necesita la pantalla para
+                // decir si a este contacto se le puede escribir libre o si ya cerró la ventana de
+                // 24 hs de Meta — sin eso, al reenviar habría que adivinar.
+                UltimoEntranteAt = x.UltimoInboundAt
             };
         })
         // 2026-08-19: primero los FIJADOS (el último que fijaste, más arriba) y después el resto
