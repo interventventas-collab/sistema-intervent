@@ -118,6 +118,9 @@ else
                PinnedWaChat (que es el que tiene los mensajes); acá solo se lo abrimos. *@
             <button type="button" class="wam-hbtn" @onclick="AbrirBuscadorChat"
                     title="Buscar una palabra en esta charla">🔍</button>
+            @* 2026-08-20: tamaño de la letra de ESTA pantalla, guardado en ESTE celular. *@
+            <button type="button" class="wam-hbtn" @onclick="() => panelEscala = true"
+                    title="Tamaño de la letra">Aa</button>
         }
         else
         {
@@ -126,6 +129,8 @@ else
             </svg>
             <span class="wam-title">WhatsApp</span>
             <div class="wam-head-actions">
+                <button type="button" class="wam-bell" @onclick="() => panelEscala = true"
+                        title="Tamaño de la letra">Aa</button>
                 <button type="button" class="wam-bell" @onclick="ToggleAvisos"
                         title="@(avisos ? "Avisos activados (tocá para silenciar)" : "Avisos silenciados (tocá para activar)")">
                     @(avisos ? "🔔" : "🔕")
@@ -235,12 +240,55 @@ else
                           PuedeAbrirEnGrande="false" AccionesCompletas="true" Movil="true" />
         </div>
     }
+
+    @* ═══ 2026-08-20: TAMAÑO DE LA LETRA (pedido del dueño) ═══
+       Panel de abajo, como los de WhatsApp. Se toca un tamaño y la pantalla cambia AL INSTANTE
+       con los chats de verdad atrás, así se ve cómo queda antes de decidir. Lo elegido se guarda
+       en ESTE celular (localStorage), NO en el servidor: si se guardara en el usuario, cambiárselo
+       a uno se lo cambiaría a todos los que entran con la misma cuenta. *@
+    @if (panelEscala)
+    {
+        <div class="wam-esc-fondo" @onclick="CerrarPanelEscala">
+            <div class="wam-esc-panel" @onclick:stopPropagation="true">
+                <div class="wam-esc-titulo">Tamaño de la letra</div>
+                <div class="wam-esc-sub">Solo cambia en este celular. Probá y dejá la que mejor veas.</div>
+                @foreach (var op in EscalasDisponibles)
+                {
+                    var elegida = Math.Abs(escala - op.Valor) < 0.001;
+                    <button type="button" class="wam-esc-op @(elegida ? "on" : "")"
+                            @onclick="() => CambiarEscalaAsync(op.Valor)">
+                        <span style="font-size:@(op.Valor)rem;">@op.Nombre</span>
+                        @if (elegida) { <span class="wam-esc-tilde">✓</span> }
+                    </button>
+                }
+                <button type="button" class="wam-esc-listo" @onclick="CerrarPanelEscala">Listo</button>
+            </div>
+        </div>
+    }
 </div>
 }
 
 <style>
     .wam-root { position: fixed; inset: 0; display: flex; flex-direction: column;
         background: #efeae2; overflow: hidden; }
+    /* ═══ 2026-08-20: panel del tamaño de la letra ═══
+       Los tamaños se escriben en rem A PROPOSITO: el panel se agranda junto con la pantalla, asi
+       lo que ves en el panel es lo que vas a ver despues. */
+    .wam-esc-fondo { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 9000;
+        display: flex; align-items: flex-end; }
+    .wam-esc-panel { width: 100%; background: #fff; border-radius: 18px 18px 0 0; padding: 1rem 1rem 1.2rem;
+        display: flex; flex-direction: column; gap: 0.5rem; max-height: 85vh; overflow-y: auto;
+        padding-bottom: max(1.2rem, env(safe-area-inset-bottom)); }
+    .wam-esc-titulo { font-size: 1.05rem; font-weight: 800; color: #111827; }
+    .wam-esc-sub { font-size: 0.82rem; color: #6b7280; margin-bottom: 0.3rem; }
+    .wam-esc-op { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+        width: 100%; text-align: left; background: #f9fafb; border: 2px solid #e5e7eb; border-radius: 12px;
+        padding: 0.7rem 0.9rem; cursor: pointer; color: #111827; font-family: inherit; }
+    .wam-esc-op.on { background: #f0fdf4; border-color: #16a34a; }
+    .wam-esc-tilde { color: #16a34a; font-weight: 900; font-size: 1.1rem; flex: none; }
+    .wam-esc-listo { margin-top: 0.4rem; background: #25d366; color: #fff; border: none; border-radius: 12px;
+        padding: 0.8rem; font-size: 1rem; font-weight: 800; cursor: pointer; font-family: inherit; }
+
     .wam-header { display: flex; align-items: center; gap: 10px; flex: 0 0 auto;
         background: #075e54; color: #fff; padding: 12px 14px; padding-top: max(12px, env(safe-area-inset-top)); }
     .wam-title { font-weight: 800; font-size: 1.05rem; flex: 1;
@@ -377,6 +425,78 @@ else
     private PinnedWaChat? chatRef;
 
     private void AbrirBuscadorChat() => chatRef?.ToggleBuscador();
+
+    // ═══ 2026-08-20: TAMAÑO DE LA LETRA (pedido del dueño: "ayer se veía espectacular, ahora se ve
+    // pequeño"). Se comprobó que el sistema dibuja igual que ayer, así que lo que cambia es el
+    // celular (el zoom se resetea cuando la app instalada se actualiza). Con esto ya no importa:
+    // el tamaño lo manda ESTA pantalla y queda guardado en ESTE celular.
+    //
+    // Se escala desde la RAÍZ (html { font-size }) y no con zoom ni con font-size en el contenedor.
+    // Medido con Playwright a 360 y 412 px: la raíz es la única que agranda de verdad TODO —lista,
+    // nombres, mensajes, horas— sin que la pantalla deje de cubrir el celular. Con zoom la caja
+    // fija dejaba un borde blanco, y con font-size en el contenedor no pasaba nada, porque las
+    // reglas están en rem (que miran la raíz, no al padre).
+    private const string EscalaKey = "wamovil.escalaLetra";
+    private const double EscalaBase = 16.0;   // px de la raíz cuando la escala es 1
+    private double escala = 1.0;
+    private bool panelEscala;
+
+    private static readonly (string Nombre, double Valor)[] EscalasDisponibles = new[]
+    {
+        ("Chica",       0.9),
+        ("Mediana",     1.0),   // la de siempre: si nadie toca nada, todo queda como está hoy
+        ("Grande",      1.2),
+        ("Muy grande",  1.45),
+    };
+
+    /// <summary>Aplica la escala a la raíz del documento. Se hace por JS porque el tamaño de la
+    /// raíz vive fuera del componente.</summary>
+    private async Task AplicarEscalaAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("document.documentElement.style.setProperty",
+                "font-size", (EscalaBase * escala).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "px");
+        }
+        catch { }
+    }
+
+    /// <summary>Deja la raíz como estaba. IMPORTANTE al salir de la pantalla: si no, el tamaño
+    /// grande se lo lleva puesto el resto del sistema.</summary>
+    private async Task SoltarEscalaAsync()
+    {
+        try { await JS.InvokeVoidAsync("document.documentElement.style.setProperty", "font-size", ""); }
+        catch { }
+    }
+
+    private async Task CargarEscalaAsync()
+    {
+        try
+        {
+            var g = await JS.InvokeAsync<string?>("localStorage.getItem", EscalaKey);
+            if (!string.IsNullOrWhiteSpace(g)
+                && double.TryParse(g, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v)
+                && v >= 0.8 && v <= 1.6)
+                escala = v;
+        }
+        catch { }
+        if (Math.Abs(escala - 1.0) > 0.001) await AplicarEscalaAsync();
+    }
+
+    private async Task CambiarEscalaAsync(double v)
+    {
+        escala = v;
+        await AplicarEscalaAsync();
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", EscalaKey,
+                v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
+        }
+        catch { }
+        StateHasChanged();
+    }
+
+    private void CerrarPanelEscala() => panelEscala = false;
     // Huella (WebAuthn)
     private bool huellaDisponible;
     private bool huellaOcupada;
@@ -401,6 +521,9 @@ else
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
+        // 2026-08-20: aplicar el tamaño de letra guardado en ESTE celular, antes que nada, para
+        // que la pantalla aparezca ya del tamaño elegido y no salte a la vista.
+        await CargarEscalaAsync();
         // 2026-08-18: registrar el service worker para que el celu la pueda instalar y para
         // poder recibir los avisos con la pantalla cerrada.
         try
@@ -793,6 +916,8 @@ else
 
     public void Dispose()
     {
+        // 2026-08-20: devolver la raíz a su tamaño; si no, el resto del sistema queda agrandado.
+        try { _ = SoltarEscalaAsync(); } catch { }
         notifTimer?.Dispose();
         try { Vivo.OnNuevoMensaje -= AvisoEnVivo; } catch { }
         try { Vivo.OnReconectado -= AvisoEnVivo0; } catch { }
