@@ -2898,10 +2898,18 @@
                         @* Mail: casillero simple para el destinatario *@
                         @if (envioEmail)
                         {
-                            <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top:0.35rem;">
+                            <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; align-items:center; margin-top:0.35rem;">
                                 <input type="email" class="form-input" placeholder="📧 email@cliente.com"
                                        style="font-size: 0.78rem; padding: 0.45rem 0.7rem; border-radius: 8px; max-width: 260px;"
                                        @bind="envioEmailTo" />
+                                @* 2026-08-20: si escribís acá un mail que la ficha no tiene, poder dejarlo guardado. *@
+                                @if (MailVentaEsNuevoParaLaFicha())
+                                {
+                                    <label style="display:inline-flex; align-items:center; gap:0.35rem; font-size:0.72rem; color:#15803d; cursor:pointer;">
+                                        <input type="checkbox" @bind="guardarEmailEnFicha" />
+                                        <span>💾 Guardarlo en la ficha del cliente</span>
+                                    </label>
+                                }
                             </div>
                         }
 
@@ -2959,6 +2967,13 @@
                                                @bind="envioWhatsappPhone" @bind:after="RefrescarVentanaWaAsync" />
                                     </div>
                                 </div>
+                                @if (TelefonoVentaEsNuevoParaLaFicha())
+                                {
+                                    <label style="display:flex; align-items:center; gap:0.35rem; font-size:0.72rem; color:#15803d; cursor:pointer; margin-top:0.4rem; margin-left:3.6rem;">
+                                        <input type="checkbox" @bind="guardarTelefonoEnFicha" />
+                                        <span>💾 Guardar este teléfono en la ficha del cliente</span>
+                                    </label>
+                                }
 
                                 @if (formClienteId == 0)
                                 {
@@ -3836,6 +3851,16 @@
                                style="flex: 1; font-size: 0.82rem; padding: 0.3rem 0.5rem;"
                                @bind="reenvioEmailTo" disabled="@(!reenvioEmail)" />
                     </label>
+                    @* 2026-08-20 (pedido del dueño): si escribís un mail a mano que la ficha no
+                       tiene, poder guardarlo ahí mismo. Solo aparece cuando de verdad es distinto
+                       del que tiene el cliente — si no, sería un tilde que no hace nada. *@
+                    @if (MailEsNuevoParaLaFicha())
+                    {
+                        <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.76rem; color:#15803d; margin-left:1.6rem; cursor:pointer;">
+                            <input type="checkbox" @bind="reenvioGuardarEmail" />
+                            <span>💾 Guardar este mail en la ficha de <strong>@(reenvioVenta?.ClienteNombre)</strong></span>
+                        </label>
+                    }
 
                     @* 2026-08-20: se sacó el tilde viejo "WhatsApp Web" (abría wa.me en una pestaña
                        para que mandaras vos). Ya no se usa: tenemos la API oficial, que manda el PDF
@@ -3848,6 +3873,13 @@
                                style="flex: 1; font-size: 0.82rem; padding: 0.3rem 0.5rem;"
                                @bind="reenvioWhatsappPhone" disabled="@(!reenvioWhatsappInterno)" />
                     </label>
+                    @if (TelefonoEsNuevoParaLaFicha())
+                    {
+                        <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.76rem; color:#15803d; margin-left:1.6rem; cursor:pointer;">
+                            <input type="checkbox" @bind="reenvioGuardarTelefono" />
+                            <span>💾 Guardar este teléfono en la ficha de <strong>@(reenvioVenta?.ClienteNombre)</strong></span>
+                        </label>
+                    }
 
                     @* ═══ 2026-08-20 (pedido del dueño): escribirle un texto propio ═══
                        Dos cosas distintas y a propósito separadas:
@@ -3868,7 +3900,7 @@
 
                         <label style="display:flex; align-items:center; gap:0.5rem; font-size:0.82rem; cursor:pointer;">
                             <input type="checkbox" @bind="reenvioMandarAparte" />
-                            <span>📨 Mandarle además un mensaje aparte</span>
+                            <span>📨 Agregarle algo más</span>
                         </label>
                         @if (reenvioMandarAparte)
                         {
@@ -3876,8 +3908,12 @@
                                 <textarea class="form-input" rows="2" @bind="reenvioMensajeAparte"
                                           placeholder="Ej: Te lo dejo el martes a la mañana, avisame si no hay nadie."
                                           style="font-size:0.82rem; padding:0.4rem 0.55rem; resize:vertical; width:100%;"></textarea>
+                                @* 2026-08-20 (2ª vuelta): al dueño le llegaron DOS mails. Por mail
+                                   ahora va todo en el MISMO correo; en WhatsApp sí es un segundo
+                                   globito, que en una charla es lo natural. *@
                                 <div style="font-size:0.7rem; color:#6b7280; margin-top:0.15rem;">
-                                    Le llega como un segundo mensaje, después del comprobante y sin adjunto.
+                                    📧 Por mail va en el <strong>mismo correo</strong>, abajo del texto.
+                                    📱 Por WhatsApp le llega como un segundo mensaje, después del comprobante.
                                 </div>
                             </div>
                         }
@@ -5351,6 +5387,10 @@
     // 2026-08-20: textos propios de este envío. reenvioMensaje reemplaza el texto que acompaña al
     // comprobante; reenvioMensajeAparte sale como un SEGUNDO mensaje, después y sin adjunto.
     private string reenvioMensaje = "";
+    // 2026-08-20: tildes para dejar guardado en la ficha del cliente el mail / teléfono que
+    // escribiste a mano. Si no, cada vez que le vendés hay que volver a escribirlo.
+    private bool reenvioGuardarEmail;
+    private bool reenvioGuardarTelefono;
     private bool reenvioMandarAparte;
     private string reenvioMensajeAparte = "";
 
@@ -7164,6 +7204,7 @@
         reenvioEmail = false;
         reenvioWhatsappInterno = false;
         reenvioMensaje = ""; reenvioMandarAparte = false; reenvioMensajeAparte = "";
+        reenvioGuardarEmail = false; reenvioGuardarTelefono = false;
         reenvioSending = false;
         // Buscar email del cliente en el dict en memoria; si no esta, queda vacio.
         var cli = v.ClienteId.HasValue ? clientes?.FirstOrDefault(x => x.Id == v.ClienteId.Value) : null;
@@ -7238,6 +7279,49 @@
         await Load();
     }
 
+    /// <summary>Solo si hay cliente y lo que escribiste NO es lo que ya tiene la ficha. Comparado
+    /// sin mayúsculas ni espacios (mail) y solo por los dígitos (teléfono), para no ofrecer guardar
+    /// "11 3767-8480" cuando la ficha ya dice "1137678480".</summary>
+    private bool MailEsNuevoParaLaFicha()
+    {
+        if (reenvioVenta?.ClienteId is null || string.IsNullOrWhiteSpace(reenvioEmailTo)) return false;
+        var cli = clientes?.FirstOrDefault(c => c.Id == reenvioVenta.ClienteId!.Value);
+        if (cli is null) return false;
+        return !string.Equals((cli.Email ?? "").Trim(), reenvioEmailTo.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool TelefonoEsNuevoParaLaFicha()
+    {
+        if (reenvioVenta?.ClienteId is null || string.IsNullOrWhiteSpace(reenvioWhatsappPhone)) return false;
+        var cli = clientes?.FirstOrDefault(c => c.Id == reenvioVenta.ClienteId!.Value);
+        if (cli is null) return false;
+        return SoloDigitos(cli.Telefono) != SoloDigitos(reenvioWhatsappPhone);
+    }
+
+    private static string SoloDigitos(string? s) => new string((s ?? "").Where(char.IsDigit).ToArray());
+
+    /// <summary>Guarda en la ficha del cliente el mail y/o el teléfono que se tildaron. Se llama al
+    /// mandar: si el envío se cancela, no se toca la ficha.</summary>
+    private async Task GuardarDatosEnFichaAsync(int clienteId)
+    {
+        if (!reenvioGuardarEmail && !reenvioGuardarTelefono) return;
+        var req = new UpdateCafeClienteRequest();
+        if (reenvioGuardarEmail && !string.IsNullOrWhiteSpace(reenvioEmailTo)) req.Email = reenvioEmailTo.Trim();
+        if (reenvioGuardarTelefono && !string.IsNullOrWhiteSpace(reenvioWhatsappPhone)) req.Telefono = reenvioWhatsappPhone.Trim();
+        var actualizado = await Api.UpdateCafeClienteAsync(clienteId, req);
+        if (actualizado is null) { ToastService.Error("El envío salió, pero no se pudo guardar el dato en la ficha"); return; }
+        // Actualizo la copia en memoria para que el tilde no vuelva a ofrecerse enseguida.
+        var cli = clientes?.FirstOrDefault(c => c.Id == clienteId);
+        if (cli is not null)
+        {
+            if (req.Email is not null) cli.Email = req.Email;
+            if (req.Telefono is not null) cli.Telefono = req.Telefono;
+        }
+        var que = (reenvioGuardarEmail && reenvioGuardarTelefono) ? "el mail y el teléfono"
+                : reenvioGuardarEmail ? "el mail" : "el teléfono";
+        ToastService.Success($"💾 Guardé {que} en la ficha de {actualizado.Nombre}");
+    }
+
     /// <summary>Muestra en gris el texto que saldría si no escribís nada: así se entiende que el
     /// casillero REEMPLAZA ese texto y no se agrega. Es el mismo que arma el servidor.</summary>
     private string PlaceholderMensajeReenvio()
@@ -7284,6 +7368,10 @@
             var msg = string.IsNullOrWhiteSpace(reenvioMensaje) ? null : reenvioMensaje.Trim();
             var msgAparte = (reenvioMandarAparte && !string.IsNullOrWhiteSpace(reenvioMensajeAparte))
                 ? reenvioMensajeAparte.Trim() : null;
+
+            // Primero la ficha: si tildaste "guardar", que quede guardado aunque después el envío
+            // falle (el dato es del cliente, no del envío).
+            if (v.ClienteId.HasValue) await GuardarDatosEnFichaAsync(v.ClienteId.Value);
 
             var tasks = new List<Task>();
             if (reenvioEmail && !string.IsNullOrWhiteSpace(reenvioEmailTo))
@@ -7334,6 +7422,10 @@
     /// La espera vive en el SERVIDOR: si se cierra la pestaña, el envío sale igual.</summary>
     private async Task DispararCanalesDeEnvioAsync(int ventaId, string ventaNumero)
     {
+        // Si tildaste "guardarlo en la ficha", eso va primero: es un dato del cliente y no
+        // depende de que el envío salga bien.
+        await GuardarDatosVentaEnFichaAsync();
+
         var tasks = new List<Task>();
         var cuando = demoraEnvioMin > 0 ? $"sale en {demoraEnvioMin} min" : "saliendo";
 
@@ -7711,6 +7803,50 @@
         await LoadTopProductsForClient();
         await Cotizar();
         await DetectarWhatsAppChatAsync();
+    }
+
+    // ═══ 2026-08-20: guardar en la ficha el mail / teléfono escrito a mano ═══
+    // Pedido del dueño: "al momento que le añado un telefono o un mail manualmente, me permita
+    // tildarlo y que quede guardado para ese cliente". El tilde solo aparece cuando lo escrito es
+    // DISTINTO de lo que ya tiene la ficha, para que no sea un tilde que no hace nada.
+    private bool guardarEmailEnFicha;
+    private bool guardarTelefonoEnFicha;
+
+    private bool MailVentaEsNuevoParaLaFicha()
+    {
+        if (formClienteId <= 0 || string.IsNullOrWhiteSpace(envioEmailTo)) return false;
+        var cli = clientes?.FirstOrDefault(c => c.Id == formClienteId);
+        if (cli is null) return false;
+        return !string.Equals((cli.Email ?? "").Trim(), envioEmailTo.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool TelefonoVentaEsNuevoParaLaFicha()
+    {
+        if (formClienteId <= 0 || string.IsNullOrWhiteSpace(envioWhatsappPhone)) return false;
+        var cli = clientes?.FirstOrDefault(c => c.Id == formClienteId);
+        if (cli is null) return false;
+        return SoloDigitos(cli.Telefono) != SoloDigitos(envioWhatsappPhone);
+    }
+
+    /// <summary>Guarda en la ficha lo que se tildó al emitir la venta.</summary>
+    private async Task GuardarDatosVentaEnFichaAsync()
+    {
+        if (formClienteId <= 0 || (!guardarEmailEnFicha && !guardarTelefonoEnFicha)) return;
+        var req = new UpdateCafeClienteRequest();
+        if (guardarEmailEnFicha && !string.IsNullOrWhiteSpace(envioEmailTo)) req.Email = envioEmailTo.Trim();
+        if (guardarTelefonoEnFicha && !string.IsNullOrWhiteSpace(envioWhatsappPhone)) req.Telefono = envioWhatsappPhone.Trim();
+        var actualizado = await Api.UpdateCafeClienteAsync(formClienteId, req);
+        if (actualizado is null) { ToastService.Error("La venta se emitió, pero no se pudo guardar el dato en la ficha"); return; }
+        var cli = clientes?.FirstOrDefault(c => c.Id == formClienteId);
+        if (cli is not null)
+        {
+            if (req.Email is not null) cli.Email = req.Email;
+            if (req.Telefono is not null) cli.Telefono = req.Telefono;
+        }
+        var que = (guardarEmailEnFicha && guardarTelefonoEnFicha) ? "el mail y el teléfono"
+                : guardarEmailEnFicha ? "el mail" : "el teléfono";
+        ToastService.Success($"💾 Guardé {que} en la ficha de {actualizado.Nombre}");
+        guardarEmailEnFicha = false; guardarTelefonoEnFicha = false;
     }
 
     // ═══ 2026-08-20: semáforo de la ventana de 24 hs + tildes "mandarle siempre" ═══
@@ -9315,6 +9451,12 @@
                 if (envioEmail || envioWhatsappApi || copiaWaSeleccion.Count > 0)
                 {
                     await DispararCanalesDeEnvioAsync(v.Id, v.Numero);
+                }
+                else
+                {
+                    // 2026-08-20: aunque no se mande nada, si tildaste "guardarlo en la ficha"
+                    // el dato del cliente se guarda igual — es del cliente, no del envío.
+                    await GuardarDatosVentaEnFichaAsync();
                 }
 
                 // 2026-05-28: si "Enviar a IMPRIMIR PEDIDOS DE OSMAR" estaba tildado,

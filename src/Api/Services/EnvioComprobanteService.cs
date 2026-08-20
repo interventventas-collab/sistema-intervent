@@ -166,18 +166,22 @@ public class EnvioComprobanteService
         try
         {
             var (ok, error) = fila.Canal == CafeVentaEnvio.CanalEmail
-                ? await EnviarEmailAsync(v, fila.Destino ?? "", fila.Mensaje)
+                ? await EnviarEmailAsync(v, fila.Destino ?? "", fila.Mensaje, fila.MensajeAparte)
                 : await EnviarWhatsappAsync(v, fila.Destino ?? "", fila.LineaPhoneId, fila.Mensaje);
             if (!ok) return await MarcarErrorAsync(fila, error ?? "No se pudo enviar.");
 
-            // 2026-08-20: el mensaje SUELTO sale DESPUÉS y solo si el comprobante salió bien.
-            // Si este falla NO se marca error: el comprobante — que es lo importante — ya llegó.
-            // Queda avisado en el log y el cartelito sigue en verde.
-            if (!string.IsNullOrWhiteSpace(fila.MensajeAparte))
+            // 2026-08-20 (2ª vuelta, pedido del dueño: "salieron dos mails"): el texto agregado
+            // NO se manda igual en los dos canales.
+            //   · MAIL: va en el MISMO correo, abajo del texto y con el comprobante adjunto.
+            //     Recibir dos mails seguidos del mismo comprobante confunde al cliente. Eso ya se
+            //     resuelve arriba, dentro de EnviarEmailAsync — acá no hay nada que hacer.
+            //   · WHATSAPP: sí sale como un SEGUNDO mensaje, porque en una charla es lo natural
+            //     (un globito con la factura y otro con la aclaración).
+            // Sale solo si el comprobante salió bien, y si el segundo falla NO se marca error: el
+            // comprobante — que es lo importante — ya llegó. Queda el aviso en el log.
+            if (fila.Canal != CafeVentaEnvio.CanalEmail && !string.IsNullOrWhiteSpace(fila.MensajeAparte))
             {
-                var (okAp, errAp) = fila.Canal == CafeVentaEnvio.CanalEmail
-                    ? await EnviarMailSueltoAsync(v, fila.Destino ?? "", fila.MensajeAparte!)
-                    : await EnviarWhatsappSueltoAsync(fila.Destino ?? "", fila.LineaPhoneId, fila.MensajeAparte!);
+                var (okAp, errAp) = await EnviarWhatsappSueltoAsync(fila.Destino ?? "", fila.LineaPhoneId, fila.MensajeAparte!);
                 if (!okAp) _log.LogWarning("El comprobante {N} salió pero el mensaje aparte no: {E}", v.Numero, errAp);
             }
 
@@ -237,7 +241,7 @@ public class EnvioComprobanteService
     // ---- Mail ----
 
     /// <summary>Manda el PDF por mail usando la casilla configurada en Integraciones (email-smtp).</summary>
-    public async Task<(bool ok, string? error)> EnviarEmailAsync(CafeVenta v, string to, string? mensajePropio = null)
+    public async Task<(bool ok, string? error)> EnviarEmailAsync(CafeVenta v, string to, string? mensajePropio = null, string? textoExtra = null)
     {
         if (string.IsNullOrWhiteSpace(to)) return (false, "El cliente no tiene correo cargado.");
 
@@ -276,6 +280,10 @@ public class EnvioComprobanteService
               $"Te adjuntamos el comprobante {v.Numero} por {Plata(MontoCliente(v))}.\n\n" +
               "Cualquier consulta, escribinos.\n\n" +
               $"Saludos,\n{cfg?.NegocioNombre ?? "Frikaf"}";
+        // El texto agregado va ACÁ ABAJO, en el mismo mail. Antes salía como un segundo correo y
+        // al cliente le llegaban dos mails del mismo comprobante.
+        if (!string.IsNullOrWhiteSpace(textoExtra))
+            body += "\n\n----------\n" + textoExtra!.Trim();
 
         using var client = new System.Net.Mail.SmtpClient(smtpHost, smtpPort)
         {
@@ -385,53 +393,6 @@ public class EnvioComprobanteService
             CreatedAt = DateTime.UtcNow
         });
         await _db.SaveChangesAsync();
-        return (true, null);
-    }
-
-    /// <summary>Segundo mail, sin adjunto, con lo que el operador quiso decir aparte.</summary>
-    public async Task<(bool ok, string? error)> EnviarMailSueltoAsync(CafeVenta v, string to, string texto)
-    {
-        if (string.IsNullOrWhiteSpace(texto)) return (true, null);
-        if (string.IsNullOrWhiteSpace(to)) return (false, "Sin destinatario.");
-
-        var integration = await _integrations.GetByProviderAsync("email-smtp");
-        if (integration is null) return (false, "No hay configuración de email.");
-        var secret = await _integrations.GetSecretAsync("email-smtp");
-        if (string.IsNullOrEmpty(secret)) return (false, "No hay contraseña SMTP configurada.");
-
-        string smtpHost = "smtp.gmail.com"; int smtpPort = 587; bool smtpTls = true;
-        string fromAddress = "", fromName = "", username = "";
-        if (!string.IsNullOrEmpty(integration.Settings))
-        {
-            try
-            {
-                var root = System.Text.Json.JsonDocument.Parse(integration.Settings).RootElement;
-                if (root.TryGetProperty("smtpHost", out var h)) smtpHost = h.GetString() ?? smtpHost;
-                if (root.TryGetProperty("smtpPort", out var p)) smtpPort = p.GetInt32();
-                if (root.TryGetProperty("smtpTls", out var t)) smtpTls = t.GetBoolean();
-                if (root.TryGetProperty("fromAddress", out var f)) fromAddress = f.GetString() ?? "";
-                if (root.TryGetProperty("fromName", out var n)) fromName = n.GetString() ?? "";
-                if (root.TryGetProperty("username", out var u)) username = u.GetString() ?? "";
-            }
-            catch { }
-        }
-        if (string.IsNullOrEmpty(fromAddress)) return (false, "No hay email de remitente configurado.");
-
-        using var client = new System.Net.Mail.SmtpClient(smtpHost, smtpPort)
-        {
-            Credentials = new System.Net.NetworkCredential(string.IsNullOrEmpty(username) ? fromAddress : username, secret),
-            EnableSsl = smtpTls,
-            Timeout = 30000
-        };
-        using var message = new System.Net.Mail.MailMessage
-        {
-            From = new System.Net.Mail.MailAddress(fromAddress, string.IsNullOrEmpty(fromName) ? fromAddress : fromName),
-            Subject = $"Sobre el comprobante {v.Numero}",
-            Body = texto.Trim(),
-            IsBodyHtml = false
-        };
-        message.To.Add(to);
-        await client.SendMailAsync(message);
         return (true, null);
     }
 
