@@ -63,7 +63,8 @@ public class EnvioComprobanteService
     /// <summary>Anota (o pisa) el envío de una venta por un canal. Si demoraMinutos es null usa la
     /// configurada. Devuelve la fila para que la pantalla pueda mostrar el "sale en X minutos".</summary>
     public async Task<CafeVentaEnvio> ProgramarAsync(int ventaId, string canal, string destino,
-        string? lineaPhoneId = null, bool automatico = false, int? demoraMinutos = null)
+        string? lineaPhoneId = null, bool automatico = false, int? demoraMinutos = null,
+        string? mensaje = null, string? mensajeAparte = null)
     {
         var demora = demoraMinutos ?? await GetDemoraMinutosAsync();
         var fila = await _db.CafeVentasEnvios.FirstOrDefaultAsync(x => x.VentaId == ventaId && x.Canal == canal);
@@ -80,9 +81,20 @@ public class EnvioComprobanteService
         fila.Error = null;
         fila.Intentos = 0;
         fila.Automatico = automatico;
+        // 2026-08-20: textos propios de ESTE envío. Se recortan por las dudas: la columna aguanta
+        // 1000 y un texto larguísimo haría fallar el guardado justo cuando se está mandando algo.
+        fila.Mensaje = Recortar(mensaje);
+        fila.MensajeAparte = Recortar(mensajeAparte);
         fila.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return fila;
+    }
+
+    private static string? Recortar(string? t)
+    {
+        if (string.IsNullOrWhiteSpace(t)) return null;
+        t = t.Trim();
+        return t.Length > 1000 ? t[..1000] : t;
     }
 
     /// <summary>Cancela un envío que todavía no salió. Devuelve false si ya había salido.</summary>
@@ -154,9 +166,20 @@ public class EnvioComprobanteService
         try
         {
             var (ok, error) = fila.Canal == CafeVentaEnvio.CanalEmail
-                ? await EnviarEmailAsync(v, fila.Destino ?? "")
-                : await EnviarWhatsappAsync(v, fila.Destino ?? "", fila.LineaPhoneId);
+                ? await EnviarEmailAsync(v, fila.Destino ?? "", fila.Mensaje)
+                : await EnviarWhatsappAsync(v, fila.Destino ?? "", fila.LineaPhoneId, fila.Mensaje);
             if (!ok) return await MarcarErrorAsync(fila, error ?? "No se pudo enviar.");
+
+            // 2026-08-20: el mensaje SUELTO sale DESPUÉS y solo si el comprobante salió bien.
+            // Si este falla NO se marca error: el comprobante — que es lo importante — ya llegó.
+            // Queda avisado en el log y el cartelito sigue en verde.
+            if (!string.IsNullOrWhiteSpace(fila.MensajeAparte))
+            {
+                var (okAp, errAp) = fila.Canal == CafeVentaEnvio.CanalEmail
+                    ? await EnviarMailSueltoAsync(v, fila.Destino ?? "", fila.MensajeAparte!)
+                    : await EnviarWhatsappSueltoAsync(fila.Destino ?? "", fila.LineaPhoneId, fila.MensajeAparte!);
+                if (!okAp) _log.LogWarning("El comprobante {N} salió pero el mensaje aparte no: {E}", v.Numero, errAp);
+            }
 
             fila.Estado = CafeVentaEnvio.EstadoEnviado;
             fila.EnviadoAt = DateTime.UtcNow;
@@ -214,7 +237,7 @@ public class EnvioComprobanteService
     // ---- Mail ----
 
     /// <summary>Manda el PDF por mail usando la casilla configurada en Integraciones (email-smtp).</summary>
-    public async Task<(bool ok, string? error)> EnviarEmailAsync(CafeVenta v, string to)
+    public async Task<(bool ok, string? error)> EnviarEmailAsync(CafeVenta v, string to, string? mensajePropio = null)
     {
         if (string.IsNullOrWhiteSpace(to)) return (false, "El cliente no tiene correo cargado.");
 
@@ -245,10 +268,14 @@ public class EnvioComprobanteService
         var pdfBytes = await GenerarPdfAsync(v, cfg);
 
         var subject = $"Comprobante {v.Numero} - {cfg?.NegocioNombre ?? "Frikaf"}";
-        var body = $"Hola{(string.IsNullOrWhiteSpace(v.ClienteNombreSnapshot) ? "" : " " + v.ClienteNombreSnapshot)},\n\n" +
-                   $"Te adjuntamos el comprobante {v.Numero} por {Plata(MontoCliente(v))}.\n\n" +
-                   "Cualquier consulta, escribinos.\n\n" +
-                   $"Saludos,\n{cfg?.NegocioNombre ?? "Frikaf"}";
+        // 2026-08-20: si el operador escribió un texto propio, ESE es el cuerpo (el comprobante va
+        // adjunto igual). Si no, el de siempre.
+        var body = !string.IsNullOrWhiteSpace(mensajePropio)
+            ? mensajePropio!
+            : $"Hola{(string.IsNullOrWhiteSpace(v.ClienteNombreSnapshot) ? "" : " " + v.ClienteNombreSnapshot)},\n\n" +
+              $"Te adjuntamos el comprobante {v.Numero} por {Plata(MontoCliente(v))}.\n\n" +
+              "Cualquier consulta, escribinos.\n\n" +
+              $"Saludos,\n{cfg?.NegocioNombre ?? "Frikaf"}";
 
         using var client = new System.Net.Mail.SmtpClient(smtpHost, smtpPort)
         {
@@ -275,7 +302,7 @@ public class EnvioComprobanteService
     /// <summary>Manda el PDF por la API oficial de Meta, por la línea indicada (null = la de por
     /// defecto). Meta descarga el archivo de una URL nuestra, así que el PDF se deja en disco con
     /// un token temporal, igual que el envío manual de la pantalla de WhatsApp.</summary>
-    public async Task<(bool ok, string? error)> EnviarWhatsappAsync(CafeVenta v, string numero, string? lineaPhoneId)
+    public async Task<(bool ok, string? error)> EnviarWhatsappAsync(CafeVenta v, string numero, string? lineaPhoneId, string? mensajePropio = null)
     {
         if (string.IsNullOrWhiteSpace(numero))
             return (false, "El cliente no tiene teléfono cargado ni un chat de WhatsApp vinculado.");
@@ -308,7 +335,8 @@ public class EnvioComprobanteService
         await _db.SaveChangesAsync();
 
         var mediaUrl = $"{baseUrl}/api/whatsapp/twilio/files/{token}.pdf";
-        var caption = CaptionWhatsApp(v);
+        // 2026-08-20: texto propio del operador si lo escribió; si no, el de siempre.
+        var caption = !string.IsNullOrWhiteSpace(mensajePropio) ? mensajePropio!.Trim() : CaptionWhatsApp(v);
         var (sid, canal, lin) = await _outbound.SendMediaAsync(numeroNorm, mediaUrl, caption, filename, lineaPhoneId);
         if (string.IsNullOrEmpty(sid))
             return (false, "Meta no aceptó el mensaje. Suele pasar si el cliente no te escribió en las últimas 24 hs.");
@@ -329,6 +357,81 @@ public class EnvioComprobanteService
             CreatedAt = DateTime.UtcNow
         });
         await _db.SaveChangesAsync();
+        return (true, null);
+    }
+
+    // ---- Mensaje suelto (2026-08-20) ----
+
+    /// <summary>Manda un mensaje de texto SOLO, después del comprobante, por la misma línea.
+    /// No lleva adjunto ni total: es lo que el operador quiso aclarar aparte.</summary>
+    public async Task<(bool ok, string? error)> EnviarWhatsappSueltoAsync(string numero, string? lineaPhoneId, string texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) return (true, null);
+        if (!_outbound.AnyConfigured) return (false, "WhatsApp no está configurado.");
+        var numeroNorm = MetaWhatsAppService.ToInboxWhatsApp(numero);
+        var (sid, canal, lin) = await _outbound.SendTextAsync(numeroNorm, texto.Trim(), lineaPhoneId);
+        if (string.IsNullOrEmpty(sid)) return (false, "Meta no aceptó el mensaje aparte.");
+        // Que se vea en la charla, como cualquier otro saliente.
+        _db.WhatsAppTwilioMensajes.Add(new WhatsAppTwilioMensaje
+        {
+            Direccion = "OUTGOING",
+            Numero = numeroNorm,
+            Cuerpo = texto.Trim(),
+            NumMedia = 0,
+            TwilioMessageSid = sid,
+            Canal = canal,
+            LineaPhoneId = lin,
+            Procesado = true,
+            CreatedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync();
+        return (true, null);
+    }
+
+    /// <summary>Segundo mail, sin adjunto, con lo que el operador quiso decir aparte.</summary>
+    public async Task<(bool ok, string? error)> EnviarMailSueltoAsync(CafeVenta v, string to, string texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) return (true, null);
+        if (string.IsNullOrWhiteSpace(to)) return (false, "Sin destinatario.");
+
+        var integration = await _integrations.GetByProviderAsync("email-smtp");
+        if (integration is null) return (false, "No hay configuración de email.");
+        var secret = await _integrations.GetSecretAsync("email-smtp");
+        if (string.IsNullOrEmpty(secret)) return (false, "No hay contraseña SMTP configurada.");
+
+        string smtpHost = "smtp.gmail.com"; int smtpPort = 587; bool smtpTls = true;
+        string fromAddress = "", fromName = "", username = "";
+        if (!string.IsNullOrEmpty(integration.Settings))
+        {
+            try
+            {
+                var root = System.Text.Json.JsonDocument.Parse(integration.Settings).RootElement;
+                if (root.TryGetProperty("smtpHost", out var h)) smtpHost = h.GetString() ?? smtpHost;
+                if (root.TryGetProperty("smtpPort", out var p)) smtpPort = p.GetInt32();
+                if (root.TryGetProperty("smtpTls", out var t)) smtpTls = t.GetBoolean();
+                if (root.TryGetProperty("fromAddress", out var f)) fromAddress = f.GetString() ?? "";
+                if (root.TryGetProperty("fromName", out var n)) fromName = n.GetString() ?? "";
+                if (root.TryGetProperty("username", out var u)) username = u.GetString() ?? "";
+            }
+            catch { }
+        }
+        if (string.IsNullOrEmpty(fromAddress)) return (false, "No hay email de remitente configurado.");
+
+        using var client = new System.Net.Mail.SmtpClient(smtpHost, smtpPort)
+        {
+            Credentials = new System.Net.NetworkCredential(string.IsNullOrEmpty(username) ? fromAddress : username, secret),
+            EnableSsl = smtpTls,
+            Timeout = 30000
+        };
+        using var message = new System.Net.Mail.MailMessage
+        {
+            From = new System.Net.Mail.MailAddress(fromAddress, string.IsNullOrEmpty(fromName) ? fromAddress : fromName),
+            Subject = $"Sobre el comprobante {v.Numero}",
+            Body = texto.Trim(),
+            IsBodyHtml = false
+        };
+        message.To.Add(to);
+        await client.SendMailAsync(message);
         return (true, null);
     }
 

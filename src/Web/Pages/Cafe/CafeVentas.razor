@@ -435,8 +435,6 @@
                             <th style="text-align: right; width: 130px;">Total</th>
                             <th style="text-align: right; width: 110px;">Margen</th>
                             <th style="width: 110px;">Estado</th>
-                            @* 2026-08-20: si el comprobante se le mandó al cliente, por dónde y cómo le fue. *@
-                            <th style="width: 110px;" title="Si el comprobante se le mandó al cliente por mail o por WhatsApp">Enviado</th>
                             <th style="width: 210px;">Acciones</th>
                         </tr>
                     </thead>
@@ -728,39 +726,6 @@
                                            style="display:inline-block; padding:0.15rem 0.45rem; background:#dcfce7; color:#166534; border-radius:999px; font-size:0.7rem; font-weight:800; margin-left:0.2rem; text-decoration:none;">🏷️ Térmica</a>
                                     }
                                 </td>
-                                @* ═══ 2026-08-20: cartelitos de envío al cliente ═══
-                                   Cuatro estados, no dos: nunca / esperando / enviado / no salió.
-                                   El "no salió" es el importante: antes era un cartel rojo que se
-                                   iba solo, así que una factura podía no llegar y nadie enterarse.
-                                   Tocando el cartelito se abre el envío por ese canal. *@
-                                @* Sin nowrap a propósito: cuando los DOS canales están esperando salir,
-                                   cada uno suma sus botones ▶/✕ y no entran en el ancho de la columna
-                                   (medido con Playwright: pedían 152 px en 115). Dejándolo envolver, el
-                                   segundo cartelito baja a un renglón y no queda ninguno fuera de la
-                                   celda ni tapado; las filas normales siguen midiendo lo mismo. *@
-                                <td>
-                                    @foreach (var canal in CanalesEnvio)
-                                    {
-                                        var env = v.EnvioDe(canal);
-                                        var chip = ChipEnvio(env, canal);
-                                        <span style="display:inline-flex; align-items:center; gap:0.15rem; margin-right:0.15rem;">
-                                            <button type="button" title="@chip.Tip"
-                                                    @onclick="@(() => OpenReenvioCanal(v, canal))"
-                                                    style="display:inline-block; padding:0.15rem 0.4rem; background:@chip.Bg; color:@chip.Fg; border:1px solid @chip.Borde; border-radius:999px; font-size:0.7rem; font-weight:700; cursor:pointer; line-height:1.4;">
-                                                @chip.Texto
-                                            </button>
-                                            @if (env is not null && env.EsPendiente)
-                                            {
-                                                <button type="button" title="Mandarlo YA, sin esperar"
-                                                        @onclick="@(() => EnviarYaAsync(v, canal))"
-                                                        style="background:none; border:none; cursor:pointer; font-size:0.7rem; color:#15803d; padding:0;">▶</button>
-                                                <button type="button" title="Frenar este envío"
-                                                        @onclick="@(() => CancelarEnvioAsync(v, canal))"
-                                                        style="background:none; border:none; cursor:pointer; font-size:0.7rem; color:#b91c1c; padding:0;">✕</button>
-                                            }
-                                        </span>
-                                    }
-                                </td>
                                 <td class="actions-cell">
                                     @{
                                         var saldoVenta = saldosPorVenta.TryGetValue(v.Id, out var sV) ? sV : v.Total;
@@ -791,13 +756,38 @@
                                         <button class="btn-icon" style="color: #9ca3af; cursor: not-allowed;" disabled title="Sin saldo para cobrar">💰</button>
                                     }
                                     <button class="btn-icon btn-edit" @onclick="() => OpenEditModal(v)" title="Editar comprobante">✎</button>
-                                    @* 2026-08-20: enviar al cliente DESDE el listado. Antes había que abrir
-                                       el comprobante para encontrar este botón; ahora está en la fila. *@
+                                    @* ═══ 2026-08-20: mandarle el comprobante al cliente ═══
+                                       Los dos iconitos (mail arriba, WhatsApp abajo) son a la vez el
+                                       SEMAFORO y el BOTON: el color dice cómo le fue por ese canal y
+                                       tocarlos abre el envío con ese canal ya tildado. Antes esto
+                                       estaba partido en una columna aparte + un botón 📤; el dueño
+                                       pidió unificarlo acá y más grande. Van apilados para no
+                                       ensanchar la fila. *@
                                     @if (!anulada)
                                     {
-                                        <button class="btn-icon" style="color: #16a34a;"
-                                                @onclick="() => OpenReenvio(v)"
-                                                title="Mandarle el comprobante al cliente por mail o WhatsApp">📤</button>
+                                        <span style="display:inline-flex; flex-direction:column; gap:0.15rem; vertical-align:middle; margin:0 0.15rem;">
+                                            @foreach (var canal in CanalesEnvio)
+                                            {
+                                                var env = v.EnvioDe(canal);
+                                                var chip = ChipEnvio(env, canal);
+                                                <span style="display:inline-flex; align-items:center; gap:0.1rem;">
+                                                    <button type="button" title="@chip.Tip"
+                                                            @onclick="@(() => OpenReenvioCanal(v, canal))"
+                                                            style="display:inline-flex; align-items:center; justify-content:center; min-width:34px; padding:0.2rem 0.4rem; background:@chip.Bg; color:@chip.Fg; border:1.5px solid @chip.Borde; border-radius:8px; font-size:0.95rem; font-weight:700; cursor:pointer; line-height:1.2;">
+                                                        @chip.Texto
+                                                    </button>
+                                                    @if (env is not null && env.EsPendiente)
+                                                    {
+                                                        <button type="button" title="Mandarlo YA, sin esperar"
+                                                                @onclick="@(() => EnviarYaAsync(v, canal))"
+                                                                style="background:none; border:none; cursor:pointer; font-size:0.8rem; color:#15803d; padding:0 0.1rem;">▶</button>
+                                                        <button type="button" title="Frenar este envío"
+                                                                @onclick="@(() => CancelarEnvioAsync(v, canal))"
+                                                                style="background:none; border:none; cursor:pointer; font-size:0.8rem; color:#b91c1c; padding:0 0.1rem;">✕</button>
+                                                    }
+                                                </span>
+                                            }
+                                        </span>
                                     }
 
                                     @* Boton subir/re-subir a Drive. Usa el logo OFICIAL de Drive (SVG inline).
@@ -3858,6 +3848,40 @@
                                style="flex: 1; font-size: 0.82rem; padding: 0.3rem 0.5rem;"
                                @bind="reenvioWhatsappPhone" disabled="@(!reenvioWhatsappInterno)" />
                     </label>
+
+                    @* ═══ 2026-08-20 (pedido del dueño): escribirle un texto propio ═══
+                       Dos cosas distintas y a propósito separadas:
+                        · el de arriba REEMPLAZA el texto que acompaña al comprobante (el PDF va igual);
+                        · el de abajo sale COMO OTRO MENSAJE, después, sin adjunto. *@
+                    <div style="border-top:1px dashed #d1d5db; margin-top:0.7rem; padding-top:0.7rem; display:flex; flex-direction:column; gap:0.5rem;">
+                        <div>
+                            <label style="font-size:0.78rem; font-weight:600; color:#374151; display:block; margin-bottom:0.2rem;">
+                                ✏️ Texto que va con el comprobante <span style="font-weight:400; color:#6b7280;">(opcional)</span>
+                            </label>
+                            <textarea class="form-input" rows="2" @bind="reenvioMensaje"
+                                      placeholder="@PlaceholderMensajeReenvio()"
+                                      style="font-size:0.82rem; padding:0.4rem 0.55rem; resize:vertical; width:100%;"></textarea>
+                            <div style="font-size:0.7rem; color:#6b7280; margin-top:0.15rem;">
+                                Si lo dejás vacío sale el de siempre (el del ejemplo gris). El comprobante se adjunta igual.
+                            </div>
+                        </div>
+
+                        <label style="display:flex; align-items:center; gap:0.5rem; font-size:0.82rem; cursor:pointer;">
+                            <input type="checkbox" @bind="reenvioMandarAparte" />
+                            <span>📨 Mandarle además un mensaje aparte</span>
+                        </label>
+                        @if (reenvioMandarAparte)
+                        {
+                            <div>
+                                <textarea class="form-input" rows="2" @bind="reenvioMensajeAparte"
+                                          placeholder="Ej: Te lo dejo el martes a la mañana, avisame si no hay nadie."
+                                          style="font-size:0.82rem; padding:0.4rem 0.55rem; resize:vertical; width:100%;"></textarea>
+                                <div style="font-size:0.7rem; color:#6b7280; margin-top:0.15rem;">
+                                    Le llega como un segundo mensaje, después del comprobante y sin adjunto.
+                                </div>
+                            </div>
+                        }
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -5324,6 +5348,11 @@
     private string reenvioEmailTo = "";
     private string reenvioWhatsappPhone = "";
     private bool reenvioSending;
+    // 2026-08-20: textos propios de este envío. reenvioMensaje reemplaza el texto que acompaña al
+    // comprobante; reenvioMensajeAparte sale como un SEGUNDO mensaje, después y sin adjunto.
+    private string reenvioMensaje = "";
+    private bool reenvioMandarAparte;
+    private string reenvioMensajeAparte = "";
 
     private static readonly string[] AllWeekDays = { "LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM" };
 
@@ -7134,6 +7163,7 @@
         reenvioVenta = v;
         reenvioEmail = false;
         reenvioWhatsappInterno = false;
+        reenvioMensaje = ""; reenvioMandarAparte = false; reenvioMensajeAparte = "";
         reenvioSending = false;
         // Buscar email del cliente en el dict en memoria; si no esta, queda vacio.
         var cli = v.ClienteId.HasValue ? clientes?.FirstOrDefault(x => x.Id == v.ClienteId.Value) : null;
@@ -7208,6 +7238,16 @@
         await Load();
     }
 
+    /// <summary>Muestra en gris el texto que saldría si no escribís nada: así se entiende que el
+    /// casillero REEMPLAZA ese texto y no se agrega. Es el mismo que arma el servidor.</summary>
+    private string PlaceholderMensajeReenvio()
+    {
+        var v = reenvioVenta;
+        if (v is null) return "Hola! Te paso el comprobante.";
+        var hola = string.IsNullOrWhiteSpace(v.ClienteNombre) ? "Hola!" : $"Hola {v.ClienteNombre}!";
+        return $"{hola} Te paso el comprobante {v.Numero}. Total: ${FormatMoney(v.Total)}. Cualquier cosa avisame. Gracias!";
+    }
+
     private void CloseReenvio()
     {
         if (reenvioSending) return; // no cerrar mientras esta enviando
@@ -7239,6 +7279,12 @@
             // (endpoint /envios), pero con inmediato=true: acá ya miraste el comprobante y lo
             // estás mandando a propósito, no hay nada que esperar. Queda anotado igual, así el
             // cartelito del listado muestra que se mandó (y a quién).
+            // Vacío = "no escribí nada" → sale el texto de siempre. Y el mensaje aparte solo va
+            // si además está tildado (si lo escribís y después destildás, no sale).
+            var msg = string.IsNullOrWhiteSpace(reenvioMensaje) ? null : reenvioMensaje.Trim();
+            var msgAparte = (reenvioMandarAparte && !string.IsNullOrWhiteSpace(reenvioMensajeAparte))
+                ? reenvioMensajeAparte.Trim() : null;
+
             var tasks = new List<Task>();
             if (reenvioEmail && !string.IsNullOrWhiteSpace(reenvioEmailTo))
             {
@@ -7246,7 +7292,8 @@
                 {
                     try
                     {
-                        var (ok, err, _) = await Api.ProgramarEnvioVentaAsync(v.Id, "EMAIL", reenvioEmailTo, inmediato: true);
+                        var (ok, err, _) = await Api.ProgramarEnvioVentaAsync(v.Id, "EMAIL", reenvioEmailTo,
+                            inmediato: true, mensaje: msg, mensajeAparte: msgAparte);
                         if (ok) ToastService.Success($"📧 Mail enviado a {reenvioEmailTo}");
                         else ToastService.Error($"📧 El mail no salió: {err}");
                     }
@@ -7259,7 +7306,8 @@
                 {
                     try
                     {
-                        var (ok, err, _) = await Api.ProgramarEnvioVentaAsync(v.Id, "WHATSAPP", reenvioWhatsappPhone, inmediato: true);
+                        var (ok, err, _) = await Api.ProgramarEnvioVentaAsync(v.Id, "WHATSAPP", reenvioWhatsappPhone,
+                            inmediato: true, mensaje: msg, mensajeAparte: msgAparte);
                         if (ok) ToastService.Success($"🟢 WhatsApp enviado a {reenvioWhatsappPhone}");
                         else ToastService.Error($"🟢 El WhatsApp no salió: {err}");
                     }

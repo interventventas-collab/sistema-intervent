@@ -1022,7 +1022,10 @@ public class CafeVentasController : ControllerBase
     // ═══════════════════════════════════════════════════════════════════════
 
     public record ProgramarEnvioRequest(string Canal, string Destino, string? LineaPhoneId,
-        bool Automatico = false, bool Inmediato = false);
+        bool Automatico = false, bool Inmediato = false,
+        // 2026-08-20: textos propios. Mensaje reemplaza el texto que acompaña al comprobante;
+        // MensajeAparte sale como un segundo mensaje, después.
+        string? Mensaje = null, string? MensajeAparte = null);
 
     private static string? NormCanal(string? c) => (c ?? "").Trim().ToUpperInvariant() switch
     {
@@ -1035,7 +1038,8 @@ public class CafeVentasController : ControllerBase
     {
         canal = e.Canal, estado = e.Estado, destino = e.Destino,
         programadoPara = e.ProgramadoPara, enviadoAt = e.EnviadoAt,
-        error = e.Error, automatico = e.Automatico
+        error = e.Error, automatico = e.Automatico,
+        mensaje = e.Mensaje, mensajeAparte = e.MensajeAparte
     };
 
     /// <summary>Anota el envio del comprobante por un canal. Por defecto queda en la cola y sale
@@ -1056,7 +1060,7 @@ public class CafeVentasController : ControllerBase
             return BadRequest(new { error = "La venta esta anulada, no se le puede mandar al cliente." });
 
         var fila = await _envioService.ProgramarAsync(id, canal, req.Destino.Trim(), req.LineaPhoneId,
-            req.Automatico, req.Inmediato ? 0 : null);
+            req.Automatico, req.Inmediato ? 0 : null, req.Mensaje, req.MensajeAparte);
 
         if (req.Inmediato)
         {

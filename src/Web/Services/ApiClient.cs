@@ -2200,11 +2200,13 @@ public class ApiClient
     /// con inmediato=true sale ahora mismo. Devuelve el estado del envío para pintarlo en pantalla.</summary>
     public async Task<(bool ok, string? error, CafeVentaEnvioDto? envio)> ProgramarEnvioVentaAsync(
         int ventaId, string canal, string destino, string? lineaPhoneId = null,
-        bool automatico = false, bool inmediato = false)
+        bool automatico = false, bool inmediato = false,
+        string? mensaje = null, string? mensajeAparte = null)
     {
         await SetAuthHeaderAsync();
         var resp = await _http.PostAsJsonAsync($"/api/cafe/ventas/{ventaId}/envios",
-            new { Canal = canal, Destino = destino, LineaPhoneId = lineaPhoneId, Automatico = automatico, Inmediato = inmediato });
+            new { Canal = canal, Destino = destino, LineaPhoneId = lineaPhoneId, Automatico = automatico,
+                  Inmediato = inmediato, Mensaje = mensaje, MensajeAparte = mensajeAparte });
         if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return (false, "Sesión expirada", null); }
         return await LeerRespuestaEnvioAsync(resp);
     }

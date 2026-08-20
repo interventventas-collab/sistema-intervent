@@ -6887,6 +6887,18 @@ IF EXISTS (SELECT 1 FROM sys.tables WHERE name='Cafe_VentasEnvios')
    AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_CafeVentasEnvios_VentaCanal')
     CREATE UNIQUE INDEX UX_CafeVentasEnvios_VentaCanal ON Cafe_VentasEnvios(VentaId, Canal);
 GO
+-- 2026-08-20 (mismo dia, pedido del dueño): poder escribirle un texto propio al cliente.
+--   Mensaje       = reemplaza el texto que acompaña al comprobante.
+--   MensajeAparte = va como un SEGUNDO mensaje, despues del comprobante.
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='Cafe_VentasEnvios')
+   AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Mensaje' AND Object_ID=OBJECT_ID('Cafe_VentasEnvios'))
+    ALTER TABLE Cafe_VentasEnvios ADD Mensaje NVARCHAR(1000) NULL;
+GO
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='Cafe_VentasEnvios')
+   AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name='MensajeAparte' AND Object_ID=OBJECT_ID('Cafe_VentasEnvios'))
+    ALTER TABLE Cafe_VentasEnvios ADD MensajeAparte NVARCHAR(1000) NULL;
+GO
+
 -- El robot busca por estado + hora: indice para que no escanee la tabla entera cada minuto.
 IF EXISTS (SELECT 1 FROM sys.tables WHERE name='Cafe_VentasEnvios')
    AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_CafeVentasEnvios_Pendientes')

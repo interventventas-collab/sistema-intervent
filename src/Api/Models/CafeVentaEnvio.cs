@@ -41,6 +41,14 @@ public class CafeVentaEnvio
     /// <summary>Por qué no salió, en castellano y para mostrarle al usuario en el cartelito.</summary>
     [MaxLength(400)] public string? Error { get; set; }
 
+    /// <summary>2026-08-20: texto propio que escribió el operador para ESTE envío. Si está, va en
+    /// lugar del texto de siempre ("Hola X! Te paso el comprobante..."). Vacío = sale el de siempre.</summary>
+    public string? Mensaje { get; set; }
+
+    /// <summary>2026-08-20: mensaje SUELTO que sale DESPUÉS del comprobante, como un segundo
+    /// mensaje (o un segundo mail). Sirve para aclarar algo sin ensuciar el envío del comprobante.</summary>
+    public string? MensajeAparte { get; set; }
+
     public int Intentos { get; set; }
 
     /// <summary>true = lo disparó el tilde "mandarle siempre" de la ficha del cliente
