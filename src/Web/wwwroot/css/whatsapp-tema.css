@@ -427,3 +427,12 @@
 .wa-dark .pwa-busc-aviso { background: #3a2f12; border-bottom-color: #5c4a1c; color: #fcd34d; }
 .wa-dark .pwa-head-btn { color: var(--wad-txt); }
 .wa-dark .pwa-head-btn.on { background: var(--wad-panel3); }
+
+/* 2026-08-20: buscador dentro de la charla, en la pantalla grande. */
+.wa-dark .wa-buscador { background: var(--wad-panel2); border-bottom-color: var(--wad-borde); }
+.wa-dark .wa-busc-input { background: var(--wad-panel3); border-color: var(--wad-borde2); color: var(--wad-txt); }
+.wa-dark .wa-busc-input::placeholder { color: var(--wad-txt3); }
+.wa-dark .wa-busc-cont { color: var(--wad-txt3); }
+.wa-dark .wa-busc-btn { background: var(--wad-panel3); border-color: var(--wad-borde2); color: var(--wad-txt); }
+.wa-dark .wa-busc-aviso { background: #3a2f12; border-bottom-color: #5c4a1c; color: #fcd34d; }
+.wa-dark .wa-busc-lupa-btn.activo { background: var(--wad-panel3); }

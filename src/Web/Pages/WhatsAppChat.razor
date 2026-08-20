@@ -491,6 +491,9 @@
                 <div style="flex:1;">
                     <div style="font-weight:600; display:flex; align-items:center; gap:0.45rem; flex-wrap:wrap;">
                         <span>@(MostrarNombre(SelectedConv()))</span>
+                        @* 2026-08-20: lupa para buscar una palabra DENTRO de esta charla. *@
+                        <button class="wa-busc-lupa-btn @(buscadorAbierto ? "activo" : "")" @onclick="ToggleBuscador"
+                                title="Buscar una palabra en esta charla">🔍</button>
                         @* 2026-08-05: ojito para ver la ficha del cliente, al lado del nombre (reemplaza el botón de la barra) *@
                         @if (SelectedConv()?.ClienteId is int)
                         {
@@ -644,6 +647,25 @@
                 </div>
             }
 
+            @* 2026-08-20: buscador DENTRO de la charla (la lupa), igual que en el celular. *@
+            @if (buscadorAbierto)
+            {
+                <div class="wa-buscador">
+                    <span>🔍</span>
+                    <input class="wa-busc-input" placeholder="Buscar una palabra en esta charla…"
+                           value="@busqTexto" @oninput="OnBuscar" @onkeydown="OnBuscarTecla" autocomplete="off" />
+                    <span class="wa-busc-cont">@ContadorBusqueda</span>
+                    <button type="button" class="wa-busc-btn" @onclick="() => SaltarBusqueda(-1)"
+                            disabled="@(busqHits.Count == 0)" title="Anterior (más viejo)">▲</button>
+                    <button type="button" class="wa-busc-btn" @onclick="() => SaltarBusqueda(1)"
+                            disabled="@(busqHits.Count == 0)" title="Siguiente (más nuevo)">▼</button>
+                    <button type="button" class="wa-busc-btn" @onclick="CerrarBuscador" title="Cerrar el buscador">✕</button>
+                </div>
+                @if (!string.IsNullOrEmpty(busqAviso))
+                {
+                    <div class="wa-busc-aviso">@busqAviso</div>
+                }
+            }
             @* 2026-07-23: id para poder bajar el scroll al ultimo mensaje (como WhatsApp de verdad) *@
             <div class="wa-messages" id="wa-messages-scroll" @ref="messagesScroll">
                 @if (loadingMsg)
@@ -669,7 +691,7 @@
                                 <div class="wa-msg-check">✓</div>
                             }
                             <div class="wa-bubble-wrap">
-                                <div class="wa-bubble @(m.Anulado ? "wa-anulado" : "")" id="@($"wamsg-{m.Id}")">
+                                <div class="wa-bubble @(m.Anulado ? "wa-anulado" : "") @(busqHitSet.Contains(m.Id) ? "wa-hit" : "")" id="@($"wamsg-{m.Id}")">
                                     @* 2026-08-05: "responder citando" — burbujita del mensaje al que responde este *@
                                     @if (!string.IsNullOrEmpty(m.ReplyPreview))
                                     {
@@ -2231,6 +2253,22 @@
     .wa-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; text-align: center; }
     /* 2026-08-20: cartelito que parte la charla por dia. Va como fila propia y centrado, para que
        funcione igual este el contenedor en bloque o en columna flex. */
+    /* 2026-08-20: buscador dentro de la charla (la lupa). */
+    .wa-busc-lupa-btn { border: none; background: transparent; cursor: pointer; font-size: 0.95rem;
+        padding: 1px 5px; border-radius: 7px; line-height: 1; }
+    .wa-busc-lupa-btn.activo { background: #d1fae5; }
+    .wa-buscador { display: flex; align-items: center; gap: 6px; padding: 7px 10px;
+        background: #f0f2f5; border-bottom: 1px solid #e5e7eb; flex: none; }
+    .wa-busc-input { flex: 1; min-width: 0; border: 1px solid #d1d5db; border-radius: 999px;
+        padding: 6px 13px; font-size: 0.92rem; font-family: inherit; }
+    .wa-busc-input:focus { outline: none; border-color: #25d366; box-shadow: 0 0 0 2px rgba(37,211,102,0.18); }
+    .wa-busc-cont { font-size: 0.76rem; color: #6b7280; font-weight: 700; white-space: nowrap; flex: none; }
+    .wa-busc-btn { border: 1px solid #d1d5db; background: #fff; color: #374151; border-radius: 8px;
+        width: 32px; height: 32px; font-size: 0.85rem; cursor: pointer; flex: none; padding: 0; }
+    .wa-busc-btn:disabled { opacity: .4; cursor: default; }
+    .wa-busc-aviso { background: #fffbeb; border-bottom: 1px solid #fde68a; color: #92400e;
+        font-size: 0.76rem; padding: 5px 12px; flex: none; }
+    .wa-bubble.wa-hit { box-shadow: 0 0 0 2px #f5c518; }
     .wa-fecha-sep { display: flex; justify-content: center; margin: 0.6rem 0 0.3rem; }
     .wa-fecha-sep span { background: #e7f1e8; color: #4b5563; font-size: 0.78rem; font-weight: 700;
         padding: 3px 14px; border-radius: 999px; box-shadow: 0 1px 0.5px rgba(0,0,0,0.1); white-space: nowrap; }
@@ -2811,6 +2849,97 @@
 
     /// <summary>2026-08-20: mensajes largos que el usuario abrió con "Leer más" (por Id).</summary>
     private readonly HashSet<int> textoAbierto = new();
+
+    // ═══════ 2026-08-20: buscador DENTRO de la charla (la lupa) — igual que en el celular ═══════
+    // Busca en los mensajes que la pantalla ya trajo (los últimos 200 de cada charla). En producción
+    // 189 de 193 charlas tienen menos de 200, así que para casi todas es toda la historia; en las
+    // que se pasan, el cartelito amarillo dice hasta dónde se miró.
+    private const int TopeCargadosBusq = 200;
+
+    private bool buscadorAbierto;
+    private string busqTexto = "";
+    private readonly List<int> busqHits = new();       // Ids, del más VIEJO al más nuevo
+    private readonly HashSet<int> busqHitSet = new();
+    private int busqPos = -1;
+    private string? busqAviso;
+
+    private void ToggleBuscador()
+    {
+        if (buscadorAbierto) CerrarBuscador();
+        else buscadorAbierto = true;
+    }
+
+    private void CerrarBuscador()
+    {
+        buscadorAbierto = false;
+        busqTexto = "";
+        busqHits.Clear();
+        busqHitSet.Clear();
+        busqPos = -1;
+        busqAviso = null;
+    }
+
+    private string ContadorBusqueda
+    {
+        get
+        {
+            if (busqTexto.Trim().Length < 2) return "";
+            if (busqHits.Count == 0) return "sin resultados";
+            return $"{busqPos + 1}/{busqHits.Count}";
+        }
+    }
+
+    private async Task OnBuscar(ChangeEventArgs e)
+    {
+        busqTexto = e.Value?.ToString() ?? "";
+        RecalcularBusqueda();
+        if (busqHits.Count > 0) { busqPos = busqHits.Count - 1; await IrAlHit(); }
+    }
+
+    /// <summary>Enter salta al siguiente y Shift+Enter al anterior, como el buscador del navegador.</summary>
+    private async Task OnBuscarTecla(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter") return;
+        await SaltarBusqueda(e.ShiftKey ? -1 : 1);
+    }
+
+    private void RecalcularBusqueda()
+    {
+        busqHits.Clear();
+        busqHitSet.Clear();
+        busqPos = -1;
+        busqAviso = null;
+
+        var q = busqTexto.ToSearchKeySinTildes();
+        if (q.Length < 2) return;
+
+        foreach (var m in mensajes)   // del más viejo al más nuevo
+        {
+            if (m.Cuerpo.ToSearchKeySinTildes().Contains(q))
+            {
+                busqHits.Add(m.Id);
+                busqHitSet.Add(m.Id);
+            }
+        }
+
+        if (mensajes.Count >= TopeCargadosBusq)
+            busqAviso = $"Busqué en los últimos {mensajes.Count} mensajes de esta charla, que son los que están cargados.";
+        else if (busqHits.Count == 0)
+            busqAviso = "No encontré esa palabra en toda esta charla.";
+    }
+
+    private async Task SaltarBusqueda(int paso)
+    {
+        if (busqHits.Count == 0) return;
+        busqPos = (busqPos + paso + busqHits.Count) % busqHits.Count;
+        await IrAlHit();
+    }
+
+    private async Task IrAlHit()
+    {
+        if (busqPos < 0 || busqPos >= busqHits.Count) return;
+        try { await JS.InvokeVoidAsync("waIrAlMensaje", $"wamsg-{busqHits[busqPos]}"); } catch { }
+    }
 
     private void ToggleTexto(int id)
     {
@@ -4419,6 +4548,10 @@
         mostrarFichaCliente = false; fichaCliente = null; previewFacturaId = null;   // 2026-08-05: cerrar la ficha del cliente al cambiar de chat
         showQuickReplies = false;   // 2026-08-05: cerrar el desplegable de respuestas rápidas al cambiar de chat
         modoElegirVenta = false; mensajesSeleccionadosIds.Clear();   // 2026-08-05: salir del modo "elegir mensajes para venta"
+        // 2026-08-20: cerrar el buscador y olvidar los "Leer más" abiertos: son de la charla anterior.
+        // Acá la pantalla NO se recrea al cambiar de chat (a diferencia del celular), así que si no
+        // se limpia a mano queda el buscador con los resultados del chat de antes.
+        CerrarBuscador(); textoAbierto.Clear();
         asignarNota = SelectedConv()?.AsignadoNota ?? "";   // 2026-08-06: precargar la nota guardada de este chat (editable)
         await LoadMensajes();
         // 2026-08-06: presencia — salgo del chat anterior y entro al nuevo (para que se vea quién mira qué).
