@@ -796,6 +796,12 @@
                                        Antes colgaban del contenedor de afuera, que se estira al 75% del ancho, asi que
                                        en los mensajes largos quedaban flotando hasta 144 px a un costado y nadie los
                                        encontraba. Colgando del globito quedan siempre pegados a el, mida lo que mida. *@
+                                    @* 2026-08-20: los botoncitos pasan de COLUMNA a FILA. Apilados, cada
+                                       uno sumaba 30 px de alto: con cinco la columna medía 146 px, y un
+                                       mensaje de un renglón mide 40, así que los de abajo caían fuera del
+                                       globito y quedaban TAPADOS por el mensaje siguiente. En fila el alto
+                                       es siempre el de UN botón, no importa cuántos haya. *@
+                                    <div class="wa-msg-acciones">
                                     @* Botón reaccionar — visible al hover *@
                                     <button class="wa-react-btn" @onclick="() => TogglePicker(m.Id)" title="Reaccionar">😊</button>
                                     @* 2026-08-05: botón responder citando — visible al hover *@
@@ -820,6 +826,7 @@
                                         <button class="wa-hide-btn" @onclick="() => ToggleOcultarDeposito(m)" @onclick:stopPropagation="true"
                                                 title="@(m.OcultoDeposito ? "Mostrar este mensaje a Depósito" : "Ocultar este mensaje a Depósito")">@(m.OcultoDeposito ? "👁" : "🚫")</button>
                                     }
+                                    </div>
                                     @if (pickerOpenMsgId == m.Id)
                                     {
                                         <div class="wa-emoji-picker">
@@ -2588,32 +2595,31 @@
     .wa-msg-row.in .wa-bubble-wrap { align-items: flex-start; }
     .wa-msg-row.out .wa-bubble-wrap { align-items: flex-end; }
     .wa-bubble-wrap .wa-bubble { max-width: 100%; }
-    .wa-react-btn { position: absolute; top: -10px; right: -28px; background: #fff; border: 1px solid #e5e7eb; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 0.15s; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.85rem; }
-    .wa-msg-row.out .wa-react-btn { right: auto; left: -28px; }
-    .wa-bubble-wrap:hover .wa-react-btn { opacity: 1; }
-    .wa-emoji-picker { position: absolute; top: -42px; background: #fff; border: 1px solid #e5e7eb; border-radius: 24px; padding: 0.25rem 0.4rem; display: flex; gap: 0.15rem; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 50; }
+    /* 2026-08-20: la FILA de botoncitos del mensaje. Va pegada al borde de arriba del globito y
+       del lado de AFUERA (los nuestros a la izquierda, los del cliente a la derecha). Como es una
+       fila, agregar un botón más no la hace más alta — que es lo que rompía antes. */
+    .wa-msg-acciones { position: absolute; top: -14px; display: flex; gap: 4px; z-index: 20;
+        opacity: 0; transition: opacity 0.15s; pointer-events: none; }
+    .wa-msg-row.in .wa-msg-acciones { left: 0; }
+    .wa-msg-row.out .wa-msg-acciones { right: 0; }
+    .wa-bubble-wrap:hover .wa-msg-acciones { opacity: 1; pointer-events: auto; }
+    .wa-react-btn { background: #fff; border: 1px solid #e5e7eb; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.85rem; }
+    /* arriba de la fila de botones, para no pisarla */
+    .wa-emoji-picker { position: absolute; top: -56px; background: #fff; border: 1px solid #e5e7eb; border-radius: 24px; padding: 0.25rem 0.4rem; display: flex; gap: 0.15rem; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 50; }
     .wa-msg-row.in .wa-emoji-picker { left: 0; }
     .wa-msg-row.out .wa-emoji-picker { right: 0; }
     /* 2026-08-05: botón responder citando (↩️), justo debajo del de reaccionar, aparece al hover */
-    .wa-reply-btn { position: absolute; top: 20px; right: -28px; background: #fff; border: 1px solid #e5e7eb; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 0.15s; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.8rem; padding: 0; }
-    .wa-msg-row.out .wa-reply-btn { right: auto; left: -28px; }
-    .wa-bubble-wrap:hover .wa-reply-btn { opacity: 1; }
+    .wa-reply-btn { background: #fff; border: 1px solid #e5e7eb; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.8rem; padding: 0; }
     /* 2026-08-07: botón ocultar a Depósito (hover), debajo del de responder */
     /* 2026-08-19: corregir un mensaje nuestro + cómo se ve uno anulado */
-    .wa-corregir-btn { position: absolute; top: 50px; right: -28px; background: #fff; border: 1px solid #fcd34d; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 0.15s; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.8rem; padding: 0; }
-    .wa-msg-row.out .wa-corregir-btn { right: auto; left: -28px; }
-    .wa-bubble-wrap:hover .wa-corregir-btn { opacity: 1; }
+    .wa-corregir-btn { background: #fff; border: 1px solid #fcd34d; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.8rem; padding: 0; }
     .wa-bubble.wa-anulado .wa-bubble-body { text-decoration: line-through; color: #9ca3af; }
     .wa-bubble.wa-anulado { opacity: 0.75; }
     .wa-anulado-badge { background: #fef3c7; border: 1px solid #fcd34d; color: #92400e; font-size: 0.62rem; font-weight: 800; border-radius: 999px; padding: 0 6px; margin-left: 4px; cursor: pointer; }
     .wa-anulado-badge:hover { background: #fde68a; }
     /* 2026-08-20: reenviar (↪). Va en el 4to escalón; el de ocultar bajó al 5to. */
-    .wa-fwd-btn { position: absolute; top: 80px; right: -28px; background: #fff; border: 1px solid #bfdbfe; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 0.15s; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.8rem; padding: 0; color: #1d4ed8; font-weight: 800; }
-    .wa-msg-row.out .wa-fwd-btn { right: auto; left: -28px; }
-    .wa-bubble-wrap:hover .wa-fwd-btn { opacity: 1; }
-    .wa-hide-btn { position: absolute; top: 110px; right: -28px; background: #fff; border: 1px solid #e5e7eb; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 0.15s; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.8rem; padding: 0; }
-    .wa-msg-row.out .wa-hide-btn { right: auto; left: -28px; }
-    .wa-bubble-wrap:hover .wa-hide-btn { opacity: 1; }
+    .wa-fwd-btn { background: #fff; border: 1px solid #bfdbfe; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.8rem; padding: 0; color: #1d4ed8; font-weight: 800; }
+    .wa-hide-btn { background: #fff; border: 1px solid #e5e7eb; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.8rem; padding: 0; }
     .wa-oculto-badge { margin-left: 6px; font-size: 0.62rem; color: #b45309; font-weight: 800; }
     /* 2026-08-05: burbujita del mensaje CITADO dentro de un mensaje (como WhatsApp) */
     .wa-reply-quote { display: flex; flex-direction: column; gap: 1px; border-left: 3px solid #25d366; background: rgba(0,0,0,0.05); border-radius: 6px; padding: 0.25rem 0.5rem; margin-bottom: 0.35rem; max-width: 100%; }
