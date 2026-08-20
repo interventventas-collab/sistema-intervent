@@ -436,7 +436,7 @@
                             <th style="text-align: right; width: 110px;">Margen</th>
                             <th style="width: 110px;">Estado</th>
                             @* 2026-08-20: si el comprobante se le mandó al cliente, por dónde y cómo le fue. *@
-                            <th style="width: 92px;" title="Si el comprobante se le mandó al cliente por mail o por WhatsApp">Enviado</th>
+                            <th style="width: 110px;" title="Si el comprobante se le mandó al cliente por mail o por WhatsApp">Enviado</th>
                             <th style="width: 210px;">Acciones</th>
                         </tr>
                     </thead>
@@ -733,7 +733,12 @@
                                    El "no salió" es el importante: antes era un cartel rojo que se
                                    iba solo, así que una factura podía no llegar y nadie enterarse.
                                    Tocando el cartelito se abre el envío por ese canal. *@
-                                <td style="white-space:nowrap;">
+                                @* Sin nowrap a propósito: cuando los DOS canales están esperando salir,
+                                   cada uno suma sus botones ▶/✕ y no entran en el ancho de la columna
+                                   (medido con Playwright: pedían 152 px en 115). Dejándolo envolver, el
+                                   segundo cartelito baja a un renglón y no queda ninguno fuera de la
+                                   celda ni tapado; las filas normales siguen midiendo lo mismo. *@
+                                <td>
                                     @foreach (var canal in CanalesEnvio)
                                     {
                                         var env = v.EnvioDe(canal);
@@ -2626,7 +2631,7 @@
 
                 @* ═══════════════ Panel: Enviar al cliente al emitir ═══════════════
                    2026-06-24: restaurado en el panel sticky derecho (se habia perdido del HTML en commit 63a2b27).
-                   En venta NUEVA muestra los 4 canales (Email / WhatsApp Web / WhatsApp Interno / Drive).
+                   En venta NUEVA muestra los canales (Mail / WhatsApp por la API oficial / Drive).
                    En EDIT solo muestra Drive (los otros canales no se re-envian al editar).
                    Los inputs de destinatario solo aparecen cuando el checkbox esta tildado, para ahorrar espacio. *@
                 @* 2026-06-30: panel "Enviar al emitir" se mudo al footer del modal (chips compactos
@@ -3816,7 +3821,7 @@
 
 @* ════════ Modal de reenvio de comprobante ya emitido ════════
    Se abre desde el visor del comprobante (boton "Enviar al cliente"). Muestra
-   los mismos 3 canales del modal de carga (Mail / WhatsApp Web / WhatsApp Interno)
+   los mismos canales del modal de carga (Mail / WhatsApp por la API oficial)
    pero dispara contra una venta YA emitida. 2026-08-20: los dos canales van por la misma
    cañería que el envío al emitir (/envios con inmediato=true), así queda anotado y el
    cartelito del listado lo muestra. z-index alto para quedar arriba del visor. *@
@@ -7217,7 +7222,7 @@
     }
 
     /// <summary>Ejecuta el reenvio segun los checkboxes tildados, contra la venta YA emitida.
-    /// Email + WhatsApp Interno en paralelo (backend); WhatsApp Web abre wa.me en pestaña nueva.</summary>
+    /// Mail + WhatsApp en paralelo, los dos por el servidor y anotados en el historial de envíos.</summary>
     private async Task EjecutarReenvio()
     {
         if (reenvioVenta is null) return;
