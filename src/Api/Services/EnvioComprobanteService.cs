@@ -198,11 +198,16 @@ public class EnvioComprobanteService
 
     /// <summary>Texto que acompaña al PDF en WhatsApp. SIN link (2026-08-20, pedido del dueño):
     /// va el comprobante adjunto y el total escrito, que es lo que el cliente necesita ver de una.</summary>
+    /// <summary>Importe escrito como se escribe acá: $216.000,00 y no $216,000.00. El contenedor
+    /// corre con cultura invariante, así que hay que pedir es-AR a mano — igual que el PDF de ARCA.
+    /// (2026-08-20: el primer WhatsApp que salió a un cliente decía "$216,000.00".)</summary>
+    private static string Plata(decimal v) => "$" + v.ToString("N2", new System.Globalization.CultureInfo("es-AR"));
+
     public static string CaptionWhatsApp(CafeVenta v)
     {
         var hola = string.IsNullOrWhiteSpace(v.ClienteNombreSnapshot) ? "Hola!" : $"Hola {v.ClienteNombreSnapshot}!";
         return $"{hola} Te paso el comprobante {v.Numero}.\n" +
-               $"Total: ${MontoCliente(v):N2}\n\n" +
+               $"Total: {Plata(MontoCliente(v))}\n\n" +
                "Cualquier cosa avisame. Gracias!";
     }
 
@@ -241,7 +246,7 @@ public class EnvioComprobanteService
 
         var subject = $"Comprobante {v.Numero} - {cfg?.NegocioNombre ?? "Frikaf"}";
         var body = $"Hola{(string.IsNullOrWhiteSpace(v.ClienteNombreSnapshot) ? "" : " " + v.ClienteNombreSnapshot)},\n\n" +
-                   $"Te adjuntamos el comprobante {v.Numero} por ${MontoCliente(v):N2}.\n\n" +
+                   $"Te adjuntamos el comprobante {v.Numero} por {Plata(MontoCliente(v))}.\n\n" +
                    "Cualquier consulta, escribinos.\n\n" +
                    $"Saludos,\n{cfg?.NegocioNombre ?? "Frikaf"}";
 
