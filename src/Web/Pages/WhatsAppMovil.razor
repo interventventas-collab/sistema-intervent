@@ -114,6 +114,10 @@ else
         {
             <button type="button" class="wam-hbtn" @onclick="Volver" title="Volver a la lista">←</button>
             <span class="wam-title" title="@NombreDe(chatAbierto)">@NombreDe(chatAbierto)</span>
+            @* 2026-08-20: lupa para buscar una palabra DENTRO de esta charla. El buscador vive en
+               PinnedWaChat (que es el que tiene los mensajes); acá solo se lo abrimos. *@
+            <button type="button" class="wam-hbtn" @onclick="AbrirBuscadorChat"
+                    title="Buscar una palabra en esta charla">🔍</button>
         }
         else
         {
@@ -225,7 +229,7 @@ else
     else
     {
         <div class="wam-chat">
-            <PinnedWaChat Numero="@chatAbierto.Numero" LineaPhoneId="@chatAbierto.Linea"
+            <PinnedWaChat @ref="chatRef" Numero="@chatAbierto.Numero" LineaPhoneId="@chatAbierto.Linea"
                           TituloContacto="@NombreDe(chatAbierto)"
                           NombreLinea="@(chatAbierto.LineaNumero ?? chatAbierto.Linea ?? "WhatsApp")"
                           PuedeAbrirEnGrande="false" AccionesCompletas="true" Movil="true" />
@@ -368,6 +372,11 @@ else
     // 2026-08-18: a los 15 minutos sin tocarla vuelve a pedir código/huella (lo pidió el dueño).
     private const int MinutosCandado = 15;
     private DotNetObjectReference<WhatsAppMovil>? refCandado;
+
+    /// <summary>2026-08-20: el chat abierto, para poder abrirle el buscador desde la lupa.</summary>
+    private PinnedWaChat? chatRef;
+
+    private void AbrirBuscadorChat() => chatRef?.ToggleBuscador();
     // Huella (WebAuthn)
     private bool huellaDisponible;
     private bool huellaOcupada;

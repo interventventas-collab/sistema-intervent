@@ -26,6 +26,9 @@
             </div>
         </div>
         <div class="pwa-head-r">
+            @* 2026-08-20: la lupa para buscar adentro de esta charla. *@
+            <button type="button" class="pwa-head-btn @(buscadorAbierto ? "on" : "")" @onclick="ToggleBuscador"
+                    title="Buscar una palabra en esta charla">🔍</button>
             <span class="pwa-pin" title="Conversación fijada">📌 Fijada</span>
             @if (PuedeAbrirEnGrande)
             {
@@ -35,6 +38,26 @@
     </div>
     }
 
+    @* 2026-08-20: buscador DENTRO de la charla (la lupa), como WhatsApp. Se abre con el botón
+       del encabezado y busca en los mensajes que la pantalla ya trajo. *@
+    @if (buscadorAbierto)
+    {
+        <div class="pwa-buscador">
+            <span class="pwa-busc-lupa">🔍</span>
+            <input class="pwa-busc-input" placeholder="Buscar en esta charla…"
+                   value="@busqTexto" @oninput="OnBuscar" @onkeydown="OnBuscarTecla" autocomplete="off" />
+            <span class="pwa-busc-cont">@ContadorBusqueda</span>
+            <button type="button" class="pwa-busc-btn" @onclick="() => SaltarBusqueda(-1)"
+                    disabled="@(busqHits.Count == 0)" title="Anterior (más viejo)">▲</button>
+            <button type="button" class="pwa-busc-btn" @onclick="() => SaltarBusqueda(1)"
+                    disabled="@(busqHits.Count == 0)" title="Siguiente (más nuevo)">▼</button>
+            <button type="button" class="pwa-busc-btn" @onclick="CerrarBuscador" title="Cerrar el buscador">✕</button>
+        </div>
+        @if (!string.IsNullOrEmpty(busqAviso))
+        {
+            <div class="pwa-busc-aviso">@busqAviso</div>
+        }
+    }
     <div class="pwa-body">
         @if (mensajes is null)
         {
@@ -61,7 +84,7 @@
                 var _cambiaDia = _i == _lista.Count - 1
                     || !DateTimeExt.MismoDiaAr(m.CreatedAt, _lista[_i + 1].CreatedAt);
                 <div class="pwa-row @(mine ? "out" : "in")">
-                    <div id="@($"pwamsg-{m.Id}")" class="pwa-bubble @(mine ? "out" : "in") @(menuMsgId == m.Id ? "sel" : "") @(m.Anulado ? "pwa-anulado" : "")"
+                    <div id="@($"pwamsg-{m.Id}")" class="pwa-bubble @(mine ? "out" : "in") @(menuMsgId == m.Id ? "sel" : "") @(m.Anulado ? "pwa-anulado" : "") @(busqHitSet.Contains(m.Id) ? "pwa-hit" : "")"
                          @onpointerdown="() => PressStart(m.Id)" @onpointerup="PressEnd"
                          @onpointerleave="PressEnd" @onpointercancel="PressEnd"
                          @oncontextmenu:preventDefault="true">
@@ -587,6 +610,24 @@
     .pwa-ocultar-btn { margin-top: 3px; background: transparent; border: none; color: #9ca3af;
         font-size: 0.64rem; cursor: pointer; padding: 0; text-decoration: underline; display: block; }
     .pwa-ocultar-btn:hover { color: #dc2626; }
+    /* 2026-08-20: barra del buscador de la charla. */
+    .pwa-buscador { display: flex; align-items: center; gap: 5px; padding: 6px 8px;
+        background: #f8fafb; border-bottom: 1px solid #eef0f2; flex: none; }
+    .pwa-busc-lupa { font-size: 0.95rem; flex: none; }
+    .pwa-busc-input { flex: 1; min-width: 0; border: 1px solid #d1d5db; border-radius: 999px;
+        padding: 6px 12px; font-size: 16px; font-family: inherit; }
+    .pwa-busc-input:focus { outline: none; border-color: #25d366; box-shadow: 0 0 0 2px rgba(37,211,102,0.18); }
+    .pwa-busc-cont { font-size: 0.72rem; color: #6b7280; font-weight: 700; white-space: nowrap; flex: none; }
+    .pwa-busc-btn { border: 1px solid #d1d5db; background: #fff; color: #374151; border-radius: 8px;
+        width: 32px; height: 32px; font-size: 0.85rem; cursor: pointer; flex: none; padding: 0; }
+    .pwa-busc-btn:disabled { opacity: .4; cursor: default; }
+    .pwa-busc-aviso { background: #fffbeb; border-bottom: 1px solid #fde68a; color: #92400e;
+        font-size: 0.72rem; padding: 5px 10px; flex: none; }
+    /* el mensaje encontrado queda marcado mientras dura la busqueda */
+    .pwa-bubble.pwa-hit { box-shadow: 0 0 0 2px #f5c518; }
+    .pwa-head-btn { border: none; background: transparent; font-size: 1.05rem; cursor: pointer;
+        padding: 2px 5px; border-radius: 8px; line-height: 1; }
+    .pwa-head-btn.on { background: #d1fae5; }
     .pwa-text { white-space: pre-wrap; word-break: break-word; }
     /* 2026-08-20: "Leer más" de los mensajes largos. Verde WhatsApp y en negrita, como el de ellos. */
     .pwa-leermas { display: block; margin-top: 2px; background: none; border: none; padding: 0;
@@ -812,6 +853,105 @@
     /// así que con Enter=enviar era imposible escribir un mensaje de dos renglones.</summary>
     /// <summary>2026-08-20: mensajes largos que el usuario abrió con "Leer más" (por Id).</summary>
     private readonly HashSet<int> textoAbierto = new();
+
+    // ═══════ 2026-08-20: buscador DENTRO de la charla (la lupa de WhatsApp) ═══════
+    // Busca en los mensajes que la pantalla YA trajo. Hoy son los últimos 200 de cada charla,
+    // y en producción 189 de las 193 charlas tienen menos de 200 mensajes: o sea que para casi
+    // todas, "los últimos 200" ES toda la historia. En las pocas que se pasan avisamos abajo de
+    // la barra hasta dónde se miró, para que nadie crea que algo no existe cuando sí existe.
+    private const int TopeCargados = 200;
+
+    private bool buscadorAbierto;
+    private string busqTexto = "";
+    private readonly List<int> busqHits = new();       // Ids, del más VIEJO al más nuevo
+    private readonly HashSet<int> busqHitSet = new();  // el mismo conjunto, para pintar rápido
+    private int busqPos = -1;
+    private string? busqAviso;
+
+    /// <summary>Lo llama el encabezado (o la pantalla del celular) al tocar la lupa.</summary>
+    public void ToggleBuscador()
+    {
+        if (buscadorAbierto) CerrarBuscador();
+        else buscadorAbierto = true;
+        StateHasChanged();
+    }
+
+    private void CerrarBuscador()
+    {
+        buscadorAbierto = false;
+        busqTexto = "";
+        busqHits.Clear();
+        busqHitSet.Clear();
+        busqPos = -1;
+        busqAviso = null;
+    }
+
+    /// <summary>"3/12" mientras hay resultados; "sin resultados" cuando buscaste y no hay nada.</summary>
+    private string ContadorBusqueda
+    {
+        get
+        {
+            if (busqTexto.Trim().Length < 2) return "";
+            if (busqHits.Count == 0) return "sin resultados";
+            return $"{busqPos + 1}/{busqHits.Count}";
+        }
+    }
+
+    private async Task OnBuscar(ChangeEventArgs e)
+    {
+        busqTexto = e.Value?.ToString() ?? "";
+        RecalcularBusqueda();
+        // Arranca parado en el resultado MÁS NUEVO, que es el que casi siempre se busca.
+        if (busqHits.Count > 0) { busqPos = busqHits.Count - 1; await IrAlHit(); }
+    }
+
+    /// <summary>Enter salta al siguiente (y Shift+Enter al anterior), como el buscador del navegador.</summary>
+    private async Task OnBuscarTecla(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter") return;
+        await SaltarBusqueda(e.ShiftKey ? -1 : 1);
+    }
+
+    private void RecalcularBusqueda()
+    {
+        busqHits.Clear();
+        busqHitSet.Clear();
+        busqPos = -1;
+        busqAviso = null;
+
+        var q = busqTexto.ToSearchKeySinTildes();
+        // con una sola letra da media charla: no vale la pena y marea
+        if (q.Length < 2 || mensajes is null) return;
+
+        foreach (var m in mensajes)   // vienen del más viejo al más nuevo
+        {
+            // Depósito no ve el contenido de los mensajes ocultos: tampoco puede buscarlos.
+            if (esDeposito && m.OcultoDeposito) continue;
+            if (m.Cuerpo.ToSearchKeySinTildes().Contains(q))
+            {
+                busqHits.Add(m.Id);
+                busqHitSet.Add(m.Id);
+            }
+        }
+
+        if (mensajes.Count >= TopeCargados)
+            busqAviso = $"Busqué en los últimos {mensajes.Count} mensajes de esta charla, que son los que están cargados.";
+        else if (busqHits.Count == 0)
+            busqAviso = "No encontré esa palabra en toda esta charla.";
+    }
+
+    private async Task SaltarBusqueda(int paso)
+    {
+        if (busqHits.Count == 0) return;
+        busqPos = (busqPos + paso + busqHits.Count) % busqHits.Count;   // da la vuelta
+        await IrAlHit();
+    }
+
+    private async Task IrAlHit()
+    {
+        if (busqPos < 0 || busqPos >= busqHits.Count) return;
+        try { await JS.InvokeVoidAsync("waIrAlMensaje", $"pwamsg-{busqHits[busqPos]}"); } catch { }
+    }
 
     private void ToggleTexto(int id)
     {

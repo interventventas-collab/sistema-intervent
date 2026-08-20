@@ -30,4 +30,37 @@ public static class SearchExtensions
 
     /// <summary>Alias semantico de MatchesSearch.</summary>
     public static bool ContainsSearch(this string? text, string? query) => MatchesSearch(text, query);
+
+    /// <summary>
+    /// 2026-08-20: minusculas Y SIN ACENTOS, para que "martin" encuentre "Martín" y "cafe"
+    /// encuentre "Café".
+    ///
+    /// Esto es lo que arriba se saco a proposito de MatchesSearch: con 9000 clientes habia que
+    /// normalizar ~144.000 textos por cada tecla y la pantalla se trababa. Aca NO pasa: se usa
+    /// para buscar DENTRO de una conversacion, que como mucho tiene los 200 mensajes que la
+    /// pantalla ya trajo. Por eso va como metodo aparte y NO se toca MatchesSearch: si alguien
+    /// lo usa en una lista larga, que sea una decision consciente.
+    /// </summary>
+    public static string ToSearchKeySinTildes(this string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "";
+        var t = s.Trim();
+        var sb = new System.Text.StringBuilder(t.Length);
+        foreach (var ch in t)
+        {
+            var c = char.ToLowerInvariant(ch);
+            sb.Append(c switch
+            {
+                'á' or 'à' or 'ä' or 'â' or 'ã' => 'a',
+                'é' or 'è' or 'ë' or 'ê' => 'e',
+                'í' or 'ì' or 'ï' or 'î' => 'i',
+                'ó' or 'ò' or 'ö' or 'ô' or 'õ' => 'o',
+                'ú' or 'ù' or 'ü' or 'û' => 'u',
+                'ñ' => 'n',
+                'ç' => 'c',
+                _ => c
+            });
+        }
+        return sb.ToString();
+    }
 }
