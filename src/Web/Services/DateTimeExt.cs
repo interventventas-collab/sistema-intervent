@@ -34,4 +34,33 @@ public static class DateTimeExt
         if (!utc.HasValue) return null;
         return utc.Value.ToArTime();
     }
+
+    private static readonly System.Globalization.CultureInfo EsAr = new("es-AR");
+
+    /// <summary>
+    /// 2026-08-20: ¿los dos mensajes son del MISMO día? (en hora argentina, que es lo que se
+    /// muestra). Sirve para saber dónde va el cartelito que separa la charla por día.
+    /// </summary>
+    public static bool MismoDiaAr(DateTime aUtc, DateTime bUtc)
+        => aUtc.ToArTime().Date == bUtc.ToArTime().Date;
+
+    /// <summary>
+    /// 2026-08-20: texto del cartelito que separa la charla por día, como WhatsApp: "Hoy",
+    /// "Ayer", el día de la semana si fue en la última semana, "12 de agosto" dentro del mismo
+    /// año y la fecha completa más atrás. Recibe la fecha en UTC (como viene de la base).
+    /// </summary>
+    public static string EtiquetaDiaAr(DateTime utc)
+    {
+        var dia = utc.ToArTime().Date;
+        var hoy = DateTime.UtcNow.ToArTime().Date;
+        if (dia == hoy) return "Hoy";
+        if (dia == hoy.AddDays(-1)) return "Ayer";
+        if (dia > hoy.AddDays(-7)) return Mayuscula(dia.ToString("dddd", EsAr));
+        if (dia.Year == hoy.Year) return Mayuscula(dia.ToString("d 'de' MMMM", EsAr));
+        return dia.ToString("d/M/yyyy", EsAr);
+    }
+
+    /// <summary>"martes" -> "Martes" (es-AR devuelve los días en minúscula).</summary>
+    private static string Mayuscula(string t)
+        => string.IsNullOrEmpty(t) ? t : char.ToUpper(t[0]) + t.Substring(1);
 }

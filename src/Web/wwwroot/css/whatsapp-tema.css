@@ -407,3 +407,12 @@
 .wa-dark .wa-fwd-x, .wa-dark .wa-saldo-x { color: var(--wad-txt2); }
 .wa-dark .wa-mic-rec-label { color: #fca5a5; }
 .wa-dark .wa-plantilla-chat-empty { color: #fca5a5; }
+
+/* 2026-08-20: cartelito que parte la charla por dia ("Hoy" / "Ayer"). Sin esto queda con el
+   fondo verde claro del tema claro, que al lado del chat oscuro se ve como una mancha. */
+.wa-dark .wa-fecha-sep span,
+.wa-dark .pwa-fecha { background: var(--wad-panel2); color: var(--wad-txt3); box-shadow: none; }
+
+/* 2026-08-20: el "Leer más" de los mensajes largos, en verde claro para que se lea sobre el oscuro. */
+.wa-dark .wa-leermas,
+.wa-dark .pwa-leermas { color: #53bdeb; }

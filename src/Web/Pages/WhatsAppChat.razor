@@ -652,8 +652,17 @@
                 }
                 else
                 {
-                    @foreach (var m in mensajes)
+                    @* 2026-08-20: cartelitos "Hoy" / "Ayer" para partir la charla por dia, como
+                       WhatsApp. Acá los mensajes van del mas viejo al mas nuevo y en orden normal,
+                       asi que el cartelito va ANTES del primer mensaje de cada dia. (En el celular
+                       la lista se dibuja al reves, ahi va en el otro extremo — ver PinnedWaChat.) *@
+                    @for (int _i = 0; _i < mensajes.Count; _i++)
                     {
+                        var m = mensajes[_i];
+                        if (_i == 0 || !DateTimeExt.MismoDiaAr(mensajes[_i - 1].CreatedAt, m.CreatedAt))
+                        {
+                            <div class="wa-fecha-sep"><span>@DateTimeExt.EtiquetaDiaAr(m.CreatedAt)</span></div>
+                        }
                         <div class="wa-msg-row @(m.Direccion == "OUTGOING" ? "out" : "in") @(mensajesSeleccionadosIds.Contains(m.Id) ? "selected" : "")" @onclick="() => ToggleSeleccionMensaje(m.Id)">
                             @if (mensajesSeleccionadosIds.Contains(m.Id))
                             {
@@ -722,7 +731,18 @@
                                     }
                                     else if (!string.IsNullOrEmpty(m.Cuerpo))
                                     {
-                                        <div class="wa-bubble-body">@((MarkupString)EscapeMsg(m.Cuerpo))</div>
+                                        @* 2026-08-20: mensajes largos recortados con "Leer más", como
+                                           WhatsApp. OJO: se recorta el texto CRUDO y recién después se
+                                           escapa, nunca al revés — cortar el HTML ya escapado puede
+                                           partir un "&amp;" al medio y ensuciar la pantalla. *@
+                                        <div class="wa-bubble-body">@((MarkupString)EscapeMsg(TextoMensaje.EsLargo(m.Cuerpo) && !textoAbierto.Contains(m.Id) ? TextoMensaje.Recortado(m.Cuerpo) : m.Cuerpo))</div>
+                                        @if (TextoMensaje.EsLargo(m.Cuerpo))
+                                        {
+                                            <button type="button" class="wa-leermas"
+                                                    @onclick="() => ToggleTexto(m.Id)" @onclick:stopPropagation="true">
+                                                @(textoAbierto.Contains(m.Id) ? "Ver menos" : "Leer más")
+                                            </button>
+                                        }
                                     }
                                     <div class="wa-bubble-meta">
                                         @FormatHoraMsg(m.CreatedAt)
@@ -2209,6 +2229,11 @@
     .wa-num-edit:hover { opacity: 1; }
     .wa-messages { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
     .wa-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; text-align: center; }
+    /* 2026-08-20: cartelito que parte la charla por dia. Va como fila propia y centrado, para que
+       funcione igual este el contenedor en bloque o en columna flex. */
+    .wa-fecha-sep { display: flex; justify-content: center; margin: 0.6rem 0 0.3rem; }
+    .wa-fecha-sep span { background: #e7f1e8; color: #4b5563; font-size: 0.78rem; font-weight: 700;
+        padding: 3px 14px; border-radius: 999px; box-shadow: 0 1px 0.5px rgba(0,0,0,0.1); white-space: nowrap; }
     .wa-msg-row { display: flex; }
     .wa-msg-row.in { justify-content: flex-start; }
     .wa-msg-row.out { justify-content: flex-end; }
@@ -2220,6 +2245,9 @@
     .wa-msg-row.out .wa-bubble { background: #d9fdd3; }
     /* 2026-08-02: letra de los chats un poco más grande y en negrita (pedido Osmar) */
     .wa-bubble-body { font-size: 1.02rem; font-weight: 600; color: #111827; word-wrap: break-word; white-space: pre-wrap; }
+    /* 2026-08-20: "Leer más" de los mensajes largos. */
+    .wa-leermas { display: block; margin-top: 2px; background: none; border: none; padding: 0;
+        color: #0b7a4b; font-weight: 800; font-size: 0.9rem; cursor: pointer; font-family: inherit; }
 
     /* 2026-08-02: tarjeta de contacto compartido (recibido o enviado) */
     .wa-contacto-card { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.6rem; background: rgba(0,0,0,0.04); border-radius: 8px; margin-bottom: 0.3rem; min-width: 200px; }
@@ -2780,6 +2808,15 @@
 @code {
     List<ApiClient.TwConvDto> conversaciones = new();
     List<ApiClient.TwMsgDto> mensajes = new();
+
+    /// <summary>2026-08-20: mensajes largos que el usuario abrió con "Leer más" (por Id).</summary>
+    private readonly HashSet<int> textoAbierto = new();
+
+    private void ToggleTexto(int id)
+    {
+        if (!textoAbierto.Add(id)) textoAbierto.Remove(id);
+    }
+
     string? selectedNumero;
     // 2026-08-01: la línea del chat abierto (junto con selectedNumero identifica la conversación).
     // Así el mismo contacto en 2 líneas nuestras son 2 chats distintos y no se cruzan.

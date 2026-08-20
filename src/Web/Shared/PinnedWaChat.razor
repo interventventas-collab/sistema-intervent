@@ -48,9 +48,18 @@
         {
             @* column-reverse: renderizamos del más nuevo al más viejo; el CSS lo
                muestra con el más nuevo abajo y el scroll pegado al fondo, sin JS. *@
-            @foreach (var m in Enumerable.Reverse(mensajes))
+            @* 2026-08-20: cartelitos "Hoy" / "Ayer" para partir la charla por día, como WhatsApp.
+               OJO con el orden: acá se dibuja del más NUEVO al más viejo y el CSS lo da vuelta,
+               así que el cartelito de un día NO va antes del primer mensaje de ese día (que es lo
+               que uno escribiría), sino DESPUÉS del último que dibujamos de ese día — que es el
+               más viejo, y al darse vuelta queda arriba de todos ellos, que es donde va. *@
+            var _lista = Enumerable.Reverse(mensajes).ToList();
+            @for (int _i = 0; _i < _lista.Count; _i++)
             {
+                var m = _lista[_i];
                 var mine = m.Direccion == "OUTGOING";
+                var _cambiaDia = _i == _lista.Count - 1
+                    || !DateTimeExt.MismoDiaAr(m.CreatedAt, _lista[_i + 1].CreatedAt);
                 <div class="pwa-row @(mine ? "out" : "in")">
                     <div id="@($"pwamsg-{m.Id}")" class="pwa-bubble @(mine ? "out" : "in") @(menuMsgId == m.Id ? "sel" : "") @(m.Anulado ? "pwa-anulado" : "")"
                          @onpointerdown="() => PressStart(m.Id)" @onpointerup="PressEnd"
@@ -92,7 +101,19 @@
                             }
                             @if (!string.IsNullOrWhiteSpace(m.Cuerpo))
                             {
-                                <div class="pwa-text">@m.Cuerpo</div>
+                                @* 2026-08-20: mensajes largos recortados con "Leer más", como WhatsApp.
+                                   Los avisos automáticos (listado de deudores, fichadas del día) traen
+                                   decenas de renglones y UNO solo tapaba la pantalla entera del celu. *@
+                                var _largo = TextoMensaje.EsLargo(m.Cuerpo);
+                                var _abierto = textoAbierto.Contains(m.Id);
+                                <div class="pwa-text">@(_largo && !_abierto ? TextoMensaje.Recortado(m.Cuerpo) : m.Cuerpo)</div>
+                                @if (_largo)
+                                {
+                                    <button type="button" class="pwa-leermas"
+                                            @onclick="() => ToggleTexto(m.Id)" @onclick:stopPropagation="true">
+                                        @(_abierto ? "Ver menos" : "Leer más")
+                                    </button>
+                                }
                             }
                             @if (m.OcultoDeposito)
                             {
@@ -142,6 +163,10 @@
                         }
                     </div>
                 </div>
+                @if (_cambiaDia)
+                {
+                    <div class="pwa-fecha">@DateTimeExt.EtiquetaDiaAr(m.CreatedAt)</div>
+                }
             }
         }
     </div>
@@ -561,6 +586,9 @@
         font-size: 0.64rem; cursor: pointer; padding: 0; text-decoration: underline; display: block; }
     .pwa-ocultar-btn:hover { color: #dc2626; }
     .pwa-text { white-space: pre-wrap; word-break: break-word; }
+    /* 2026-08-20: "Leer más" de los mensajes largos. Verde WhatsApp y en negrita, como el de ellos. */
+    .pwa-leermas { display: block; margin-top: 2px; background: none; border: none; padding: 0;
+        color: #0b7a4b; font-weight: 800; font-size: 0.86rem; cursor: pointer; font-family: inherit; }
     /* 2026-08-19: archivo esperando para salir (vista previa antes de enviar) */
     .pwa-adj-prev { margin: 0 8px 6px; padding: 6px 8px; background: #f0f9ff; border: 1px solid #bae6fd;
         border-radius: 12px; }
@@ -593,6 +621,11 @@
         padding: 0.45rem 0.9rem; font-weight: 700; cursor: pointer; }
     .pwa-confirmar-si:disabled { opacity: 0.6; cursor: wait; }
 
+    /* 2026-08-20: cartelito que parte la charla por dia ("Hoy" / "Ayer" / "Martes" / "12 de agosto").
+       align-self center para que quede centrado dentro de la columna de mensajes. */
+    .pwa-fecha { align-self: center; background: #e7f1e8; color: #4b5563; font-size: 0.72rem;
+        font-weight: 700; padding: 3px 12px; border-radius: 999px; margin: 6px auto 2px;
+        box-shadow: 0 1px 0.5px rgba(0,0,0,0.1); white-space: nowrap; }
     .pwa-time { font-size: 0.72rem; color: #6b7280; text-align: right; margin-top: 2px; }
     /* 2026-08-18: tildes de entrega (mismos colores que la pantalla grande) */
     .pwa-tilde { color: #8a8a8a; font-size: 0.76rem; margin-left: 3px; letter-spacing: -1px; }
@@ -765,6 +798,14 @@
     /// (1) NO repite el encabezado (la pantalla del celu ya muestra el nombre arriba), y
     /// (2) Enter hace renglón nuevo en vez de enviar — en el celu no existe Shift+Enter,
     /// así que con Enter=enviar era imposible escribir un mensaje de dos renglones.</summary>
+    /// <summary>2026-08-20: mensajes largos que el usuario abrió con "Leer más" (por Id).</summary>
+    private readonly HashSet<int> textoAbierto = new();
+
+    private void ToggleTexto(int id)
+    {
+        if (!textoAbierto.Add(id)) textoAbierto.Remove(id);
+    }
+
     [Parameter] public bool Movil { get; set; } = false;
 
     private List<ApiClient.TwMsgDto>? mensajes;
