@@ -109,7 +109,7 @@
                             }
                         </span>
                     </label>
-                    <input class="form-input" placeholder="Ej: C949NEG o cesto negro... (Enter selecciona si hay 1 solo resultado)" @bind="cargaSearch" @bind:event="oninput"
+                    <input id="carga-buscador" class="form-input" placeholder="Ej: C949NEG o cesto negro... (Enter selecciona si hay 1 solo resultado)" @bind="cargaSearch" @bind:event="oninput"
                            @onfocus="() => cargaSearchOpen = true"
                            @onkeydown="OnKeyDownBuscadorCarga" style="width:100%;" />
                         @if (cargaSearchOpen && !string.IsNullOrWhiteSpace(cargaSearch))
@@ -179,14 +179,29 @@
                     </div>
                     <div>
                         <label class="form-label" style="font-size:0.78rem; font-weight:600;">@(cargaModo == "modificar" ? "Cantidad (+/−)" : "Stock final")</label>
-                        <input class="form-input" type="number" step="@(cargaProdSel?.Categoria == "CAFE" ? "0.001" : "1")"
-                               @bind="cargaValor" style="width:130px; text-align:right; font-weight:700;"
+                        @* 2026-08-20: antes era type="number" atado a un decimal, asi que el casillero
+                           arrancaba con un "0" adentro y al tipear 1 quedaba "10". Ahora arranca VACIO
+                           (se guarda como texto) y acepta coma decimal para los kg de cafe, que con
+                           type="number" y cultura es-AR se borraban solos. *@
+                        <input id="carga-cantidad" class="form-input" type="text"
+                               inputmode="@(cargaProdSel?.Categoria == "CAFE" ? "decimal" : "numeric")"
+                               placeholder="@(cargaModo == "modificar" ? "+ suma / − resta" : "cantidad final")"
+                               @bind="cargaValorTxt" @bind:event="oninput"
+                               style="width:130px; text-align:right; font-weight:700;"
+                               onfocus="this.select()"
                                @onkeydown="OnKeyDownCantidad"
                                disabled="@(cargaProdSel is null)" />
                     </div>
-                    <button class="btn btn-primary" @onclick="AgregarAlCarrito" disabled="@(cargaProdSel is null || cargaValor == 0)">
+                    <button class="btn btn-primary" @onclick="AgregarAlCarrito" disabled="@(cargaProdSel is null || CargaValor == 0)">
                         ➕ Agregar a la lista
                     </button>
+                    @if (cargaProdSel is not null && CargaValor != 0)
+                    {
+                        @* Vista previa: que va a quedar si agregas esto, antes de agregarlo. *@
+                        <div style="padding-bottom:0.45rem; font-size:0.85rem; color:#15803d; font-weight:700;">
+                            → queda @CargaPreviewTxt
+                        </div>
+                    }
                 </div>
 
                 @* Carrito acumulado *@
@@ -367,7 +382,7 @@ else if (modoCarga == "lista")
                                     {
                                         var kgNuevo = nuevoStockKg.TryGetValue(r.ProductoId, out var kg) ? kg : Math.Round(r.StockGramos / 1000m, 3);
                                         <input class="form-input" type="number" step="0.001" style="width:120px; text-align:right; display:inline-block; @(edicionHabilitada ? "" : "background:#f9fafb; color:#9ca3af;")"
-                                               value="@kgNuevo"
+                                               value="@kgNuevo.ToString(CultureInfo.InvariantCulture)"
                                                disabled="@(!edicionHabilitada)"
                                                @onchange="@(e => OnStockKgChange(r.ProductoId, e.Value?.ToString()))" /> <span style="font-size:0.78rem;">kg</span>
                                     }
@@ -614,7 +629,29 @@ else if (modoCarga == "minimo")
     private string cargaSearch = "";
     private bool cargaSearchOpen = false;
     private string cargaModo = "modificar"; // "modificar" (sumar/restar) | "reemplazar" (stock final)
-    private decimal cargaValor;
+    // 2026-08-20: el valor se guarda como TEXTO. Antes era un decimal atado con @bind y, como un
+    // decimal siempre vale algo, el casillero mostraba "0" sin que nadie hubiera escrito nada:
+    // si tipeabas 1 al lado del cero quedaba 10. Vacio = todavia no escribio nada.
+    private string cargaValorTxt = "";
+    private decimal CargaValor => MontoInput.TryParse(cargaValorTxt, out var v) ? v : 0m;
+
+    /// <summary>Como queda el stock de ese producto si se agrega lo que hay tipeado ahora.</summary>
+    private string CargaPreviewTxt
+    {
+        get
+        {
+            var p = cargaProdSel;
+            if (p is null) return "";
+            var v = CargaValor;
+            if (p.Categoria == "CAFE")
+            {
+                var kg = cargaModo == "modificar" ? (p.StockGramos / 1000m) + v : v;
+                return $"{Math.Max(0m, kg):N3} kg";
+            }
+            var u = cargaModo == "modificar" ? p.StockUnidades + (int)v : (int)v;
+            return $"{Math.Max(0, u)} u.";
+        }
+    }
     private StockProductoDto? cargaProdSel;
     private string cargaStockActualTxt = "—";
     private List<CarritoItem> carrito = new();
@@ -653,8 +690,11 @@ else if (modoCarga == "minimo")
         cargaStockActualTxt = p.Categoria == "CAFE"
             ? $"{(p.StockGramos/1000m):N3} kg"
             : $"{p.StockUnidades} u.";
-        cargaValor = 0;
+        cargaValorTxt = "";
         cargaReservadoActual = 0;
+        StateHasChanged();
+        // El foco salta solo al casillero de la cantidad: elegis el producto y ya podes tipear.
+        try { await JS.InvokeVoidAsync("focusElementById", "carga-cantidad"); } catch { }
         // 2026-06-15: traer reserva MeLi (ventas con etiqueta no impresa) para mostrar contexto
         try
         {
@@ -679,7 +719,7 @@ else if (modoCarga == "minimo")
             ToastService.Info($"Lista de {carrito.Count} productos vaciada al cambiar de depósito");
             carrito.Clear();
         }
-        cargaProdSel = null; cargaSearch = ""; cargaStockActualTxt = "—"; cargaValor = 0; cargaReservadoActual = 0;
+        cargaProdSel = null; cargaSearch = ""; cargaStockActualTxt = "—"; cargaValorTxt = ""; cargaReservadoActual = 0;
         await CargarStock();
     }
 
@@ -697,13 +737,14 @@ else if (modoCarga == "minimo")
         }
     }
 
-    private void OnKeyDownCantidad(KeyboardEventArgs e)
+    private async Task OnKeyDownCantidad(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter") AgregarAlCarrito();
+        if (e.Key == "Enter") await AgregarAlCarrito();
     }
 
-    private void AgregarAlCarrito()
+    private async Task AgregarAlCarrito()
     {
+        var cargaValor = CargaValor;
         if (cargaProdSel is null || cargaValor == 0) return;
         var p = cargaProdSel;
         decimal nuevoG = p.StockGramos;
@@ -739,7 +780,9 @@ else if (modoCarga == "minimo")
         cargaProdSel = null;
         cargaSearch = "";
         cargaStockActualTxt = "—";
-        cargaValor = 0;
+        cargaValorTxt = "";
+        // Volvemos el foco al buscador para encadenar el proximo producto sin tocar el mouse.
+        try { await JS.InvokeVoidAsync("focusElementById", "carga-buscador"); } catch { }
     }
 
     private async Task GuardarCarrito()
