@@ -2245,7 +2245,10 @@
     /* 2026-08-03: letra al doble y en negrita (pedido Osmar) — ESO NO SE TOCA.
        2026-08-17: lo que se sacó es el alto FIJO de 145 px: ahora arranca en un renglón y
        crece solo al escribir (wa-composer.js), hasta 240 px y de ahí scrollea adentro. */
-    .wa-composer textarea { resize: vertical; border-radius: 14px; flex: 1; min-height: 56px; max-height: 240px; overflow-y: hidden;
+    /* 2026-08-20: arranca en DOS renglones (antes 56 px, que ni siquiera llegaba a uno con esta
+       letra grande). La cuenta va en `em` para que siga la letra de 1.9rem sin numeros magicos.
+       La LETRA no se toca. Sigue creciendo solo hasta 240 px y de ahi scrollea adentro. */
+    .wa-composer textarea { resize: vertical; border-radius: 14px; flex: 1; min-height: calc(2.6em + 1.2rem + 2px); max-height: 240px; overflow-y: hidden;
         border: 1px solid #dfe4ea; padding: 0.6rem 0.9rem; font-size: 1.9rem; font-weight: 700; line-height: 1.3; }
     /* La ayudita gris (placeholder) NO va grande ni en negrita: chiquita y clarita para que se note que el cuadro está vacío. */
     .wa-composer textarea::placeholder { font-size: 1rem; font-weight: 400; color: #9ca3af; }

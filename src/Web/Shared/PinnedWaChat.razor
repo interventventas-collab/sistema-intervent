@@ -526,8 +526,13 @@
     .pwa-row { display: flex; }
     .pwa-row.in { justify-content: flex-start; }
     .pwa-row.out { justify-content: flex-end; }
+    /* 2026-08-20: letra del mensaje al tamaño de WhatsApp. Estaba en 0.86rem = 13,8 px contra los
+       16 px de WhatsApp (16% mas chica) y con los renglones apretados (1.25), asi que al lado del
+       WhatsApp de verdad se veia apiñada y costaba leerla. La pantalla de la computadora ya estaba
+       en 1.02rem desde el 02/08; esta era la unica que habia quedado chica. Se agranda tambien la
+       horita para que no quede desproporcionada. Cuesta ~17% mas de alto por mensaje. */
     .pwa-bubble { max-width: 78%; padding: 0.4rem 0.6rem; border-radius: 10px;
-        box-shadow: 0 1px 0.5px rgba(0,0,0,0.13); font-size: 0.86rem; line-height: 1.25;
+        box-shadow: 0 1px 0.5px rgba(0,0,0,0.13); font-size: 1rem; line-height: 1.38;
         /* el toque sostenido no debe marcar texto ni abrir el menú del navegador */
         -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
     .pwa-bubble.sel { outline: 2px solid #25d366; }
@@ -588,9 +593,9 @@
         padding: 0.45rem 0.9rem; font-weight: 700; cursor: pointer; }
     .pwa-confirmar-si:disabled { opacity: 0.6; cursor: wait; }
 
-    .pwa-time { font-size: 0.62rem; color: #6b7280; text-align: right; margin-top: 2px; }
+    .pwa-time { font-size: 0.72rem; color: #6b7280; text-align: right; margin-top: 2px; }
     /* 2026-08-18: tildes de entrega (mismos colores que la pantalla grande) */
-    .pwa-tilde { color: #8a8a8a; font-size: 0.68rem; margin-left: 3px; letter-spacing: -1px; }
+    .pwa-tilde { color: #8a8a8a; font-size: 0.76rem; margin-left: 3px; letter-spacing: -1px; }
     .pwa-tilde-read { color: #34b7f1; }
     .pwa-tilde-fail { color: #dc2626; letter-spacing: 0; }
 
