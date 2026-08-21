@@ -34,14 +34,39 @@ public class MeliFichaController : ControllerBase
         long OrderId, long? PackId, DateTime? Fecha, string Items, int Cantidad, decimal Total,
         string? Cuenta, string EstadoTexto, string? Seguimiento, string? TipoEnvio,
         DateTime? Entregado, DateTime? EstimadaHasta, string? Thumbnail, string? Permalink,
-        string? ItemId, string RespuestaSugerida);
+        string? ItemId, string RespuestaSugerida,
+        // 2026-08-21: dónde se entrega, quién lo llevó (Flex) y el punto en el mapa.
+        string? DomicilioEntrega, string? ComentarioEntrega, string? MapsLink,
+        string? EntregadoPor, string? RepartidorAsignado);
+
+    /// <summary>Una pregunta que hizo este usuario en alguna de nuestras publicaciones.</summary>
+    public record PreguntaDto(
+        int Id, string ItemId, string? ItemTitulo, string? Thumbnail, string Texto,
+        string? Respuesta, bool Contestada, DateTime Fecha, DateTime? FechaRespuesta,
+        string? Cuenta, string? Permalink, decimal? Precio, int? Stock, string? EstadoPubli);
+
+    /// <summary>La publicación como está AHORA (precio, stock, activa o pausada).</summary>
+    public record PublicacionDto(
+        string ItemId, string Titulo, decimal Precio, int Stock, string EstadoTexto,
+        string? Sku, string? Thumbnail, string? Permalink, string? Cuenta, string? TipoEnvio,
+        int Vendidos, string? RespuestaSugerida);
 
     public record FichaDto(
         long BuyerId, string? Nickname, string? Nombre, string? Telefono, string? Direccion,
         string? Ciudad, string? Provincia, string? CodigoPostal, int Compras, decimal TotalGastado,
         DateTime? PrimeraCompra, DateTime? UltimaCompra,
         int? ClienteVinculadoId, string? ClienteVinculadoNombre,
-        List<CompraDto> UltimasCompras, string? Aviso);
+        List<CompraDto> UltimasCompras, string? Aviso,
+        // 2026-08-21 (parte 2)
+        List<PreguntaDto> Preguntas, string? PerfilUrl);
+
+    /// <summary>Las columnas de la publicación que usamos acá (proyección, no la fila entera).</summary>
+    private record PubliFila(string MeliItemId, string Title, decimal Price, int AvailableQuantity,
+        int SoldQuantity, string Status, string? Sku, string? Thumbnail, string? Permalink,
+        string? LogisticType, int MeliAccountId);
+
+    /// <summary>Un usuario de MeLi ya atado a un teléfono de WhatsApp.</summary>
+    public record UsuarioAtadoDto(long BuyerId, string? Nickname, DateTime CreatedAt, string? CreatedBy);
 
     /// <summary>
     /// Buscador de una sola caja: acepta el usuario de MeLi, el nombre del que recibe, el
@@ -171,6 +196,14 @@ public class MeliFichaController : ControllerBase
             .Select(i => new { i.MeliItemId, i.Thumbnail, i.Permalink })
             .ToListAsync();
 
+        // 2026-08-21: quién llevó el paquete cuando es Flex/ME1 (lo entregamos nosotros).
+        var repIds = envios.SelectMany(e => new[] { e.RepartidorAsignadoId, e.EntregadoPorRepartidorId })
+            .Where(x => x.HasValue).Select(x => x!.Value).Distinct().ToList();
+        var repartidores = repIds.Count == 0
+            ? new Dictionary<int, string>()
+            : await _db.CafeRepartidores.Where(r => repIds.Contains(r.Id))
+                .ToDictionaryAsync(r => r.Id, r => r.Nombre);
+
         var compras = new List<CompraDto>();
         var yaAgrupadas = new HashSet<long>();   // ventas ya mostradas (incluidas las del mismo pack)
         foreach (var g in grupos)
@@ -195,6 +228,23 @@ public class MeliFichaController : ControllerBase
             var entregado = Ar(envio?.DateDelivered);
             var estimada = Ar(envio?.EstimatedDeliveryFinal ?? envio?.EstimatedDeliveryLimit);
 
+            // Domicilio: SIEMPRE el del envío (es el que vale), y si no hay envío el último
+            // que le conocemos al comprador.
+            var domicilio = DomicilioDe(envio) ?? DomicilioDe(cliente);
+            var maps = (envio?.Latitude is decimal la && envio?.Longitude is decimal lo)
+                ? $"https://www.google.com/maps/search/?api=1&query={la.ToString(Inv)},{lo.ToString(Inv)}"
+                : null;
+            string? entregadoPor = null;
+            if (envio?.EntregadoPorRepartidorId is int epr && repartidores.TryGetValue(epr, out var nEpr))
+            {
+                var cuando = Ar(envio.EntregadoPorRepartidorAt ?? envio.DateDelivered);
+                entregadoPor = cuando.HasValue ? $"{nEpr} — {cuando.Value:dd/MM HH:mm}" : nEpr;
+            }
+            string? asignado = null;
+            if (envio?.RepartidorAsignadoId is int rap && repartidores.TryGetValue(rap, out var nRap)
+                && envio.EntregadoPorRepartidorId is null)
+                asignado = nRap;
+
             compras.Add(new CompraDto(
                 head.MeliOrderId, head.PackId, Ar(head.DateCreated), items,
                 g.Sum(o => o.Quantity), total,
@@ -202,7 +252,8 @@ public class MeliFichaController : ControllerBase
                 estadoTexto, envio?.TrackingNumber,
                 TipoEnvio(head.LogisticType ?? envio?.LogisticType, head.ShippingMode),
                 entregado, estimada, publi?.Thumbnail, publi?.Permalink, head.ItemId,
-                RespuestaSugerida(cancelada, estado, subestado, comoNombrarlo, envio?.TrackingNumber, entregado, estimada)));
+                RespuestaSugerida(cancelada, estado, subestado, comoNombrarlo, envio?.TrackingNumber, entregado, estimada),
+                domicilio, envio?.Comment, maps, entregadoPor, asignado));
             foreach (var o in g) yaAgrupadas.Add(o.MeliOrderId);
         }
 
@@ -218,7 +269,8 @@ public class MeliFichaController : ControllerBase
             compras.Add(new CompraDto(
                 v.MeliOrderId, v.PackId, Ar(v.Fecha), v.Items ?? "—", v.Cantidad, v.Total,
                 null, "📄 Compra vieja (sin detalle del envío)", null, v.Canal, null, null, null, null, null,
-                "Hola! Ya tengo tu compra a la vista, contame en qué te ayudo 😊"));
+                "Hola! Ya tengo tu compra a la vista, contame en qué te ayudo 😊",
+                DomicilioDe(cliente), null, null, null, null));
         }
         compras = compras.OrderByDescending(c => c.Fecha ?? DateTime.MinValue).ToList();
 
@@ -226,19 +278,29 @@ public class MeliFichaController : ControllerBase
             .Where(c => c.MeliBuyerId == buyerId)
             .Select(c => new { c.Id, c.Nombre }).FirstOrDefaultAsync();
 
+        // 2026-08-21 (parte 2): las preguntas que hizo este usuario en nuestras publicaciones,
+        // con el precio y el stock de HOY de cada publicación (que es lo que hay que contestarle).
+        var preguntas = await PreguntasDeAsync(buyerId, 8);
+
         string? aviso = null;
-        if (cliente is null && compras.Count == 0)
-            aviso = "No encontré ninguna compra de este usuario en nuestras cuentas.";
+        if (compras.Count == 0 && preguntas.Count > 0)
+            aviso = "Todavía no nos compró: solo preguntó en las publicaciones.";
+        else if (compras.Count == 0)
+            aviso = "No encontré compras ni preguntas de este usuario en nuestras cuentas.";
         else if (string.IsNullOrWhiteSpace(cliente?.Phone))
             aviso = "MercadoLibre no nos da el teléfono de las ventas por correo: solo aparece en las que entregamos nosotros (Flex/ME1).";
 
-        var nickname = cliente?.Nickname ?? filas.FirstOrDefault()?.BuyerNickname;
+        var nickname = cliente?.Nickname ?? filas.FirstOrDefault()?.BuyerNickname
+                       ?? await _db.MeliQuestions.Where(q => q.FromUserId == buyerId)
+                              .OrderByDescending(q => q.DateCreated)
+                              .Select(q => q.FromNickname).FirstOrDefaultAsync();
         var ficha = new FichaDto(
             buyerId, nickname, cliente?.ReceiverName, cliente?.Phone, cliente?.AddressLine,
             cliente?.City, cliente?.State, cliente?.ZipCode,
             cliente?.OrdersCount ?? compras.Count, cliente?.TotalSpent ?? compras.Sum(c => c.Total),
             Ar(cliente?.FirstPurchaseAt), Ar(cliente?.LastPurchaseAt ?? filas.FirstOrDefault()?.DateCreated),
-            vinculado?.Id, vinculado?.Nombre, compras, aviso);
+            vinculado?.Id, vinculado?.Nombre, compras, aviso,
+            preguntas, PerfilUrl(nickname));
 
         return Ok(ficha);
     }
@@ -263,6 +325,173 @@ public class MeliFichaController : ControllerBase
         await _db.SaveChangesAsync();
         return Ok(new { ok = true, clienteId = cli.Id, clienteNombre = cli.Nombre, nickname = cli.MeliNickname });
     }
+
+    /// <summary>Las preguntas que hizo este usuario en nuestras publicaciones, con el precio y
+    /// el stock de HOY (que es lo que hay que contestarle).</summary>
+    private async Task<List<PreguntaDto>> PreguntasDeAsync(long buyerId, int limite)
+    {
+        var qs = await _db.MeliQuestions.Include(q => q.MeliAccount)
+            .Where(q => q.FromUserId == buyerId)
+            .OrderByDescending(q => q.DateCreated)
+            .Take(limite).ToListAsync();
+        if (qs.Count == 0) return new List<PreguntaDto>();
+
+        // OJO: proyección, NO la entidad entera. El modelo tiene columnas (SaleFee*) que en
+        // algunas bases todavía no existen y traer la fila completa revienta con "Invalid column name".
+        var ids = qs.Select(q => q.ItemId).Distinct().ToList();
+        var items = await _db.MeliItems.Where(i => ids.Contains(i.MeliItemId))
+            .Select(i => new PubliFila(i.MeliItemId, i.Title, i.Price, i.AvailableQuantity, i.SoldQuantity,
+                i.Status, i.Sku, i.Thumbnail, i.Permalink, i.LogisticType, i.MeliAccountId))
+            .ToListAsync();
+
+        return qs.Select(q =>
+        {
+            // Una publicación puede tener varias filas (variantes): el stock es la suma.
+            var filas = items.Where(i => i.MeliItemId == q.ItemId).ToList();
+            var first = filas.FirstOrDefault();
+            return new PreguntaDto(
+                q.Id, q.ItemId, first?.Title ?? q.ItemTitle,
+                string.IsNullOrWhiteSpace(first?.Thumbnail) ? q.ItemThumbnail : first!.Thumbnail,
+                q.Text, q.AnswerText,
+                string.Equals(q.Status, "ANSWERED", StringComparison.OrdinalIgnoreCase) || !string.IsNullOrWhiteSpace(q.AnswerText),
+                Ar(q.DateCreated), Ar(q.DateAnswered),
+                q.MeliAccount?.Nickname,
+                first?.Permalink ?? $"https://articulo.mercadolibre.com.ar/{q.ItemId}",
+                first?.Price, filas.Count == 0 ? null : filas.Sum(i => i.AvailableQuantity),
+                first is null ? null : EstadoPublicacion(first.Status));
+        }).ToList();
+    }
+
+    /// <summary>La publicación como está AHORA. Se usa cuando el que escribe pregunta por una
+    /// publicación puntual (pegó el código MLA… o se toca desde una de sus preguntas).</summary>
+    [HttpGet("publicacion/{itemId}")]
+    public async Task<IActionResult> Publicacion(string itemId)
+    {
+        itemId = (itemId ?? "").Trim().ToUpperInvariant();
+        var filas = await _db.MeliItems
+            .Where(i => i.MeliItemId == itemId)
+            .Select(i => new PubliFila(i.MeliItemId, i.Title, i.Price, i.AvailableQuantity, i.SoldQuantity,
+                i.Status, i.Sku, i.Thumbnail, i.Permalink, i.LogisticType, i.MeliAccountId))
+            .ToListAsync();
+        if (filas.Count == 0) return NotFound(new { error = "Esa publicación no está en el sistema." });
+
+        var first = filas[0];
+        var cuenta = await _db.MeliAccounts.Where(a => a.Id == first.MeliAccountId)
+            .Select(a => a.Nickname).FirstOrDefaultAsync();
+        var stock = filas.Sum(i => i.AvailableQuantity);
+        var activa = string.Equals(first.Status, "active", StringComparison.OrdinalIgnoreCase);
+
+        // Respuesta ya escrita para el que pregunta "¿tenés?".
+        string sugerida;
+        if (activa && stock > 0)
+            sugerida = $"Hola! Sí, tenemos {Recortar(first.Title, 55)}. Está publicado a {Plata(first.Price)} y hay stock 😊";
+        else if (activa)
+            sugerida = $"Hola! {Recortar(first.Title, 55)} está publicado pero justo me quedé sin stock. Te aviso apenas entre 😊";
+        else
+            sugerida = $"Hola! Esa publicación está pausada por ahora. Contame qué necesitás y te paso precio y disponibilidad 😊";
+
+        return Ok(new PublicacionDto(
+            first.MeliItemId, first.Title, first.Price, stock, EstadoPublicacion(first.Status),
+            first.Sku, first.Thumbnail, first.Permalink, cuenta,
+            TipoEnvio(first.LogisticType, null), filas.Sum(i => i.SoldQuantity), sugerida));
+    }
+
+    /// <summary>Los usuarios de MercadoLibre ya atados a ESTE teléfono de WhatsApp.</summary>
+    [HttpGet("por-telefono")]
+    public async Task<IActionResult> PorTelefono([FromQuery] string numero)
+    {
+        var num = (numero ?? "").Trim();
+        if (num.Length == 0) return Ok(new List<UsuarioAtadoDto>());
+        var lista = await _db.WhatsAppMeliUsuarios
+            .Where(x => x.Numero == num)
+            .OrderByDescending(x => x.CreatedAt)
+            .Select(x => new UsuarioAtadoDto(x.BuyerId, x.Nickname, x.CreatedAt, x.CreatedBy))
+            .ToListAsync();
+        return Ok(lista);
+    }
+
+    /// <summary>Deja el usuario de MeLi atado a este teléfono: la próxima vez que escriba, la
+    /// ficha se abre sola. Es aparte del vínculo con el cliente del sistema porque el que
+    /// pregunta por una publicación muchas veces todavía no es cliente nuestro.</summary>
+    [HttpPost("{buyerId:long}/asociar-telefono")]
+    public async Task<IActionResult> AsociarTelefono(long buyerId, [FromQuery] string numero,
+        [FromQuery] string? nickname = null, [FromQuery] string? quien = null)
+    {
+        var num = (numero ?? "").Trim();
+        if (num.Length == 0) return BadRequest(new { error = "Falta el número de WhatsApp" });
+
+        var ya = await _db.WhatsAppMeliUsuarios.FirstOrDefaultAsync(x => x.Numero == num && x.BuyerId == buyerId);
+        var nick = string.IsNullOrWhiteSpace(nickname)
+            ? await _db.MeliClientes.Where(c => c.BuyerId == buyerId).Select(c => c.Nickname).FirstOrDefaultAsync()
+            : nickname.Trim();
+        if (ya is not null)
+        {
+            ya.Nickname = nick ?? ya.Nickname;
+            await _db.SaveChangesAsync();
+            return Ok(new { ok = true, yaEstaba = true, buyerId, nickname = ya.Nickname });
+        }
+
+        _db.WhatsAppMeliUsuarios.Add(new Api.Models.WhatsAppMeliUsuario
+        {
+            Numero = num, BuyerId = buyerId, Nickname = nick,
+            CreatedBy = string.IsNullOrWhiteSpace(quien) ? User?.Identity?.Name : quien.Trim()
+        });
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, yaEstaba = false, buyerId, nickname = nick });
+    }
+
+    /// <summary>Suelta el usuario de MeLi de este teléfono (se ató por error o cambió de dueño).</summary>
+    [HttpDelete("{buyerId:long}/asociar-telefono")]
+    public async Task<IActionResult> DesasociarTelefono(long buyerId, [FromQuery] string numero)
+    {
+        var num = (numero ?? "").Trim();
+        var fila = await _db.WhatsAppMeliUsuarios.FirstOrDefaultAsync(x => x.Numero == num && x.BuyerId == buyerId);
+        if (fila is null) return Ok(new { ok = true });
+        _db.WhatsAppMeliUsuarios.Remove(fila);
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    private static readonly System.Globalization.CultureInfo Inv = System.Globalization.CultureInfo.InvariantCulture;
+
+    // OJO: dentro del contenedor la cultura es la invariante, así que la plata se formatea
+    // SIEMPRE pidiendo es-AR a mano (si no sale "$25,570" en vez de "$25.570").
+    private static readonly System.Globalization.CultureInfo EsAr = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
+    private static string Plata(decimal v) => "$" + v.ToString("N0", EsAr);
+
+    /// <summary>El domicilio de entrega del envío, armado en una línea.</summary>
+    private static string? DomicilioDe(Api.Models.MeliShipment? e)
+    {
+        if (e is null) return null;
+        var calle = !string.IsNullOrWhiteSpace(e.AddressLine)
+            ? e.AddressLine
+            : string.Join(" ", new[] { e.StreetName, e.StreetNumber }.Where(x => !string.IsNullOrWhiteSpace(x)));
+        var partes = new[] { calle, e.Neighborhood, e.City, e.State, string.IsNullOrWhiteSpace(e.ZipCode) ? null : $"CP {e.ZipCode}" }
+            .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()).ToList();
+        return partes.Count == 0 ? null : string.Join(", ", partes);
+    }
+
+    /// <summary>El último domicilio conocido del comprador (cuando la venta no tiene envío propio).</summary>
+    private static string? DomicilioDe(Api.Models.MeliCliente? c)
+    {
+        if (c is null) return null;
+        var partes = new[] { c.AddressLine, c.Neighborhood, c.City, c.State, string.IsNullOrWhiteSpace(c.ZipCode) ? null : $"CP {c.ZipCode}" }
+            .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()).ToList();
+        return partes.Count == 0 ? null : string.Join(", ", partes);
+    }
+
+    private static string EstadoPublicacion(string? status) => (status ?? "").ToLowerInvariant() switch
+    {
+        "active" => "✅ Activa",
+        "paused" => "⏸️ Pausada",
+        "closed" => "🚫 Finalizada",
+        "under_review" => "🔍 En revisión",
+        "inactive" => "💤 Inactiva",
+        _ => status ?? "—"
+    };
+
+    private static string? PerfilUrl(string? nickname)
+        => string.IsNullOrWhiteSpace(nickname) ? null : $"https://perfil.mercadolibre.com.ar/{Uri.EscapeDataString(nickname)}";
 
     /// <summary>El estado del envío como lo diría una persona, no como lo dice MercadoLibre.</summary>
     private static string EstadoEnCastellano(string? estado, string? subestado)

@@ -7350,14 +7350,29 @@ public class ApiClient
         long OrderId, long? PackId, DateTime? Fecha, string Items, int Cantidad, decimal Total,
         string? Cuenta, string EstadoTexto, string? Seguimiento, string? TipoEnvio,
         DateTime? Entregado, DateTime? EstimadaHasta, string? Thumbnail, string? Permalink,
-        string? ItemId, string RespuestaSugerida);
+        string? ItemId, string RespuestaSugerida,
+        string? DomicilioEntrega, string? ComentarioEntrega, string? MapsLink,
+        string? EntregadoPor, string? RepartidorAsignado);
+
+    public record MeliPreguntaDto(
+        int Id, string ItemId, string? ItemTitulo, string? Thumbnail, string Texto,
+        string? Respuesta, bool Contestada, DateTime Fecha, DateTime? FechaRespuesta,
+        string? Cuenta, string? Permalink, decimal? Precio, int? Stock, string? EstadoPubli);
+
+    public record MeliPublicacionDto(
+        string ItemId, string Titulo, decimal Precio, int Stock, string EstadoTexto,
+        string? Sku, string? Thumbnail, string? Permalink, string? Cuenta, string? TipoEnvio,
+        int Vendidos, string? RespuestaSugerida);
+
+    public record MeliUsuarioAtadoDto(long BuyerId, string? Nickname, DateTime CreatedAt, string? CreatedBy);
 
     public record MeliFichaDto(
         long BuyerId, string? Nickname, string? Nombre, string? Telefono, string? Direccion,
         string? Ciudad, string? Provincia, string? CodigoPostal, int Compras, decimal TotalGastado,
         DateTime? PrimeraCompra, DateTime? UltimaCompra,
         int? ClienteVinculadoId, string? ClienteVinculadoNombre,
-        List<MeliFichaCompraDto> UltimasCompras, string? Aviso);
+        List<MeliFichaCompraDto> UltimasCompras, string? Aviso,
+        List<MeliPreguntaDto> Preguntas, string? PerfilUrl);
 
     /// <summary>Buscador de una sola caja: usuario de MeLi, nombre, teléfono, número de venta o código MLA.</summary>
     public async Task<List<MeliFichaMatchDto>> BuscarMeliFichaAsync(string q)
@@ -7370,6 +7385,41 @@ public class ApiClient
     {
         try { return await _http.GetFromJsonAsync<MeliFichaDto>($"/api/meli/ficha/{buyerId}"); }
         catch { return null; }
+    }
+
+    /// <summary>La publicación como está hoy: precio, stock y si está activa o pausada.</summary>
+    public async Task<MeliPublicacionDto?> GetMeliPublicacionAsync(string itemId)
+    {
+        try { return await _http.GetFromJsonAsync<MeliPublicacionDto>($"/api/meli/ficha/publicacion/{Uri.EscapeDataString(itemId)}"); }
+        catch { return null; }
+    }
+
+    /// <summary>Los usuarios de MercadoLibre ya atados a este teléfono de WhatsApp.</summary>
+    public async Task<List<MeliUsuarioAtadoDto>> GetMeliUsuariosDelTelefonoAsync(string numero)
+    {
+        try { return await _http.GetFromJsonAsync<List<MeliUsuarioAtadoDto>>($"/api/meli/ficha/por-telefono?numero={Uri.EscapeDataString(numero)}") ?? new(); }
+        catch { return new(); }
+    }
+
+    /// <summary>Deja el usuario de MeLi atado a este teléfono (para que la ficha se abra sola).</summary>
+    public async Task<(bool ok, string? error)> AsociarMeliUsuarioTelefonoAsync(long buyerId, string numero, string? nickname, string? quien)
+    {
+        try
+        {
+            var url = $"/api/meli/ficha/{buyerId}/asociar-telefono?numero={Uri.EscapeDataString(numero)}";
+            if (!string.IsNullOrWhiteSpace(nickname)) url += $"&nickname={Uri.EscapeDataString(nickname)}";
+            if (!string.IsNullOrWhiteSpace(quien)) url += $"&quien={Uri.EscapeDataString(quien)}";
+            var resp = await _http.PostAsync(url, null);
+            return resp.IsSuccessStatusCode ? (true, null) : (false, await ExtraerError(resp));
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
+    /// <summary>Suelta el usuario de MeLi de este teléfono.</summary>
+    public async Task<bool> DesasociarMeliUsuarioTelefonoAsync(long buyerId, string numero)
+    {
+        try { return (await _http.DeleteAsync($"/api/meli/ficha/{buyerId}/asociar-telefono?numero={Uri.EscapeDataString(numero)}")).IsSuccessStatusCode; }
+        catch { return false; }
     }
 
     /// <summary>Deja atado el comprador de MeLi al cliente del sistema (para reconocerlo la próxima vez).</summary>

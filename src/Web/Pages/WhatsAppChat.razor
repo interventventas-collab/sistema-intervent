@@ -1600,6 +1600,40 @@
                         }
                     </div>
 
+                    @* 2026-08-21: la publicación por la que están preguntando: precio y stock de HOY. *@
+                    @if (mmPubli is not null)
+                    {
+                        <div class="wa-mm-publi">
+                            <div class="wa-mm-compra-l1">
+                                @if (!string.IsNullOrWhiteSpace(mmPubli.Thumbnail))
+                                {
+                                    <img class="wa-mm-compra-foto" src="@mmPubli.Thumbnail" alt="" />
+                                }
+                                <div class="wa-mm-compra-tit" title="@mmPubli.Titulo">@mmPubli.Titulo</div>
+                                <button class="wa-ficha-x" @onclick="CerrarPublicacionMeli" title="Cerrar la publicación">×</button>
+                            </div>
+                            <div class="wa-mm-publi-precio">@Plata(mmPubli.Precio)</div>
+                            <div class="wa-mm-chips">
+                                <span class="wa-mm-chip @(mmPubli.Stock > 0 ? "" : "rojo")">@(mmPubli.Stock > 0 ? $"{mmPubli.Stock} en stock" : "sin stock")</span>
+                                <span class="wa-mm-chip">@mmPubli.EstadoTexto</span>
+                                @if (!string.IsNullOrWhiteSpace(mmPubli.Sku)) { <span class="wa-mm-chip">@mmPubli.Sku</span> }
+                                @if (!string.IsNullOrWhiteSpace(mmPubli.Cuenta)) { <span class="wa-mm-chip">@mmPubli.Cuenta</span> }
+                                @if (mmPubli.Vendidos > 0) { <span class="wa-mm-chip">@mmPubli.Vendidos vendidos</span> }
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(mmPubli.TipoEnvio)) { <div class="wa-mm-envio">@mmPubli.TipoEnvio</div> }
+                            <div class="wa-mm-acc">
+                                @if (!string.IsNullOrWhiteSpace(mmPubli.RespuestaSugerida))
+                                {
+                                    <button class="wa-mm-btn ok" @onclick="() => PegarRespuestaMeli(mmPubli.RespuestaSugerida!)" title="Poner esta respuesta en el cuadro de escribir">💬 Pegar respuesta</button>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(mmPubli.Permalink))
+                                {
+                                    <a class="wa-mm-btn" href="@mmPubli.Permalink" target="_blank" title="Abrir la publicación en MercadoLibre">🔗 Abrir</a>
+                                }
+                            </div>
+                        </div>
+                    }
+
                     @if (mmBuscando)
                     {
                         <div class="wa-mm-vacio">⏳ Buscando…</div>
@@ -1668,6 +1702,27 @@
                                     @(mmVinculando ? "⏳ Vinculando…" : $"🔗 Es {SelectedConv()?.ClienteNombre}")
                                 </button>
                             }
+                            @* 2026-08-21: dejar el usuario de MeLi pegado a ESTE teléfono. Va aparte
+                               del vínculo con el cliente: el que pregunta muchas veces todavía no es
+                               cliente nuestro y igual queremos reconocerlo la próxima vez. *@
+                            @if (mmAtados.Any(a => a.BuyerId == mmFicha.BuyerId))
+                            {
+                                <div class="wa-mm-vinc ok" title="Cada vez que escriba este teléfono, la ficha se abre sola">
+                                    📌 Guardado en este teléfono
+                                    <button class="wa-mm-soltar" @onclick="SoltarUsuarioDelTelefono" disabled="@mmAtando" title="Sacar este usuario del teléfono">quitar</button>
+                                </div>
+                            }
+                            else
+                            {
+                                <button class="wa-mm-vinc btn amarillo" @onclick="AtarUsuarioAlTelefono" disabled="@mmAtando"
+                                        title="Dejar este usuario de MercadoLibre pegado al teléfono: la próxima vez que escriba, la ficha se abre sola">
+                                    @(mmAtando ? "⏳ Guardando…" : "📌 Es el usuario de este teléfono")
+                                </button>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(mmFicha.PerfilUrl))
+                            {
+                                <a class="wa-mm-perfil" href="@mmFicha.PerfilUrl" target="_blank" title="Abrir el perfil del comprador en MercadoLibre">👤 Ver perfil en MercadoLibre</a>
+                            }
                             @if (!string.IsNullOrWhiteSpace(mmFicha.Aviso))
                             {
                                 <div class="wa-mm-aviso">ℹ️ @mmFicha.Aviso</div>
@@ -1702,6 +1757,23 @@
                                     {
                                         <div class="wa-mm-envio">Llega estimado el @ee.ToString("dd/MM")</div>
                                     }
+                                    @* 2026-08-21: dónde se entrega y quién lo llevó (Flex). *@
+                                    @if (!string.IsNullOrWhiteSpace(c.EntregadoPor))
+                                    {
+                                        <div class="wa-mm-rep">🛵 Lo entregó @c.EntregadoPor</div>
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(c.RepartidorAsignado))
+                                    {
+                                        <div class="wa-mm-rep">🛵 Lo lleva @c.RepartidorAsignado</div>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(c.DomicilioEntrega))
+                                    {
+                                        <div class="wa-mm-dir" title="Domicilio de entrega">📍 @c.DomicilioEntrega</div>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(c.ComentarioEntrega))
+                                    {
+                                        <div class="wa-mm-envio">🗒️ @c.ComentarioEntrega</div>
+                                    }
                                     <div class="wa-mm-acc">
                                         <button class="wa-mm-btn ok" @onclick="() => PegarRespuestaMeli(c.RespuestaSugerida)"
                                                 title="Poner esta respuesta en el cuadro de escribir (podés retocarla antes de mandarla)">💬 Pegar respuesta</button>
@@ -1710,12 +1782,65 @@
                                             <button class="wa-mm-btn" @onclick="() => CopiarSeguimientoMeli(c.Seguimiento!)"
                                                     title="Copiar el número de seguimiento @c.Seguimiento">📋 @c.Seguimiento</button>
                                         }
+                                        @if (!string.IsNullOrWhiteSpace(c.MapsLink))
+                                        {
+                                            <a class="wa-mm-btn" href="@c.MapsLink" target="_blank" title="Ver en el mapa el punto exacto donde se entrega">🗺️ Mapa</a>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(c.DomicilioEntrega))
+                                        {
+                                            <button class="wa-mm-btn" @onclick="() => CopiarDireccionMeli(c.DomicilioEntrega!)" title="Copiar el domicilio de entrega">📋 Dirección</button>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(c.ItemId))
+                                        {
+                                            <button class="wa-mm-btn" @onclick="() => VerPublicacionMeli(c.ItemId!)" title="Ver precio y stock de hoy de esta publicación">🏷️ Precio y stock</button>
+                                        }
                                         @if (!string.IsNullOrWhiteSpace(c.Permalink))
                                         {
                                             <a class="wa-mm-btn" href="@c.Permalink" target="_blank" title="Abrir la publicación en MercadoLibre">🔗 Publicación</a>
                                         }
                                         <button class="wa-mm-btn" @onclick="() => CopiarVentaMeli(c.OrderId)"
                                                 title="Copiar el número de venta @c.OrderId">#@c.OrderId</button>
+                                    </div>
+                                </div>
+                            }
+                        }
+
+                        @* ── 2026-08-21 (parte 2): sus preguntas en nuestras publicaciones ── *@
+                        @if (mmFicha.Preguntas.Count > 0)
+                        {
+                            <div class="wa-mm-sec-t">Sus preguntas</div>
+                            @foreach (var pg in mmFicha.Preguntas)
+                            {
+                                <div class="wa-mm-preg">
+                                    <div class="wa-mm-compra-l1">
+                                        @if (!string.IsNullOrWhiteSpace(pg.Thumbnail))
+                                        {
+                                            <img class="wa-mm-compra-foto" src="@pg.Thumbnail" alt="" />
+                                        }
+                                        <div class="wa-mm-compra-tit" title="@pg.ItemTitulo">@pg.ItemTitulo</div>
+                                    </div>
+                                    <div class="wa-mm-preg-txt">“@pg.Texto”</div>
+                                    <div class="wa-mm-compra-l2">
+                                        <span>@pg.Fecha.ToString("dd/MM/yy")</span>
+                                        <span class="@(pg.Contestada ? "wa-mm-preg-ok" : "wa-mm-preg-pend")">
+                                            @(pg.Contestada ? "✔ Contestada" : "⏳ Sin contestar")
+                                        </span>
+                                    </div>
+                                    @if (pg.Contestada && !string.IsNullOrWhiteSpace(pg.Respuesta))
+                                    {
+                                        <div class="wa-mm-preg-resp">Le contestamos: @pg.Respuesta</div>
+                                    }
+                                    <div class="wa-mm-chips">
+                                        @if (pg.Precio is decimal pp) { <span class="wa-mm-chip">@Plata(pp)</span> }
+                                        @if (pg.Stock is int st) { <span class="wa-mm-chip @(st > 0 ? "" : "rojo")">@(st > 0 ? $"{st} en stock" : "sin stock")</span> }
+                                        @if (!string.IsNullOrWhiteSpace(pg.EstadoPubli)) { <span class="wa-mm-chip">@pg.EstadoPubli</span> }
+                                    </div>
+                                    <div class="wa-mm-acc">
+                                        <button class="wa-mm-btn ok" @onclick="() => VerPublicacionMeli(pg.ItemId)" title="Ver precio y stock de hoy, con la respuesta ya escrita">🏷️ Precio y stock</button>
+                                        @if (!string.IsNullOrWhiteSpace(pg.Permalink))
+                                        {
+                                            <a class="wa-mm-btn" href="@pg.Permalink" target="_blank" title="Abrir la publicación en MercadoLibre">🔗 Publicación</a>
+                                        }
                                     </div>
                                 </div>
                             }
@@ -2970,6 +3095,25 @@
     .wa-mm-btn:hover { background: #ecebe9; }
     .wa-mm-btn.ok { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
     .wa-mm-btn.ok:hover { background: #d1fae5; }
+    /* 2026-08-21 (parte 2): entrega, preguntas y publicación */
+    .wa-mm-rep { font-size: 0.75rem; color: #1d4ed8; font-weight: 600; margin-top: 0.1rem; }
+    .wa-mm-dir { font-size: 0.74rem; color: #57534e; line-height: 1.3; margin-top: 0.1rem; }
+    .wa-mm-perfil { display: block; text-align: center; font-size: 0.74rem; color: #a16207; text-decoration: none; margin-top: 0.35rem; }
+    .wa-mm-perfil:hover { text-decoration: underline; }
+    .wa-mm-soltar { background: none; border: none; color: #a8a29e; font-size: 0.7rem; text-decoration: underline; cursor: pointer; margin-left: 0.3rem; padding: 0; }
+    .wa-mm-soltar:hover:not(:disabled) { color: #ef4444; }
+    .wa-mm-vinc.btn.amarillo { background: #fefce8; border-color: #fde68a; color: #a16207; }
+    .wa-mm-vinc.btn.amarillo:hover:not(:disabled) { background: #fef9c3; }
+    .wa-mm-preg { background: #fff; border: 1px solid #e7e5e4; border-radius: 10px; padding: 0.45rem 0.5rem; margin: 0 0.7rem 0.4rem; }
+    .wa-mm-preg-txt { font-size: 0.8rem; color: #292524; font-style: italic; margin-top: 0.3rem; line-height: 1.35; }
+    .wa-mm-preg-resp { font-size: 0.75rem; color: #57534e; background: #f5f5f4; border-radius: 7px; padding: 0.25rem 0.4rem; margin-top: 0.25rem; line-height: 1.35; }
+    .wa-mm-preg-ok { margin-left: auto; color: #15803d; font-weight: 700; }
+    .wa-mm-preg-pend { margin-left: auto; color: #b45309; font-weight: 700; }
+    .wa-mm-chips { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.3rem; }
+    .wa-mm-chip { font-size: 0.7rem; font-weight: 600; color: #44403c; background: #f5f5f4; border: 1px solid #e7e5e4; border-radius: 999px; padding: 0.05rem 0.45rem; }
+    .wa-mm-chip.rojo { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+    .wa-mm-publi { background: #fff; border: 1px solid #fde68a; border-radius: 10px; padding: 0.5rem; margin: 0.4rem 0.7rem 0.2rem; box-shadow: 0 2px 8px rgba(234,179,8,0.12); }
+    .wa-mm-publi-precio { font-size: 1.15rem; font-weight: 800; color: #1c1917; margin-top: 0.3rem; }
     .wa-mm-otro { display: block; width: calc(100% - 1.4rem); margin: 0.3rem 0.7rem 0.7rem; background: none; border: none; color: #a8a29e; font-size: 0.76rem; cursor: pointer; padding: 0.3rem; }
     .wa-mm-otro:hover { color: #a16207; }
     .wa-ctx-btn-venta { background: #ecfdf5; border-color: #a7f3d0; color: #047857; font-weight: 700; }
@@ -4396,6 +4540,9 @@
     bool mmVinculando = false;
     List<ApiClient.MeliFichaMatchDto> mmResultados = new();
     ApiClient.MeliFichaDto? mmFicha = null;
+    ApiClient.MeliPublicacionDto? mmPubli = null;              // la publicación por la que preguntan
+    List<ApiClient.MeliUsuarioAtadoDto> mmAtados = new();      // usuarios de MeLi ya pegados a este teléfono
+    bool mmAtando = false;
     CancellationTokenSource? _mmCts;
 
     async Task AbrirModoMeli()
@@ -4403,14 +4550,21 @@
         ctxAbierto = true;
         modoMeli = true;
         modoVenta = false;
-        // Si el teléfono de este chat ya compró alguna vez, lo encontramos solo y la ficha
-        // aparece sin escribir nada. Ojo: MeLi solo nos da el teléfono en Flex/ME1, así que
-        // muchas veces no va a encontrar nada — para eso está el buscador.
-        if (mmFicha is null && mmResultados.Count == 0 && !string.IsNullOrWhiteSpace(selectedNumero))
+        if (mmFicha is not null || mmResultados.Count > 0 || string.IsNullOrWhiteSpace(selectedNumero)) return;
+
+        // 1) ¿Ya guardamos qué usuario de MeLi escribe desde este teléfono? Entonces la ficha
+        //    se abre sola, sin escribir nada.
+        mmAtados = await Api.GetMeliUsuariosDelTelefonoAsync(selectedNumero!);
+        if (mmAtados.Count > 0)
         {
-            mmBusqueda = selectedNumero!;
-            await BuscarMeliAhora(auto: true);
+            await AbrirFichaMeli(mmAtados[0].BuyerId);
+            return;
         }
+
+        // 2) Si no, probamos por el teléfono: solo lo encontramos si compró por Flex/ME1, que son
+        //    las únicas ventas donde MercadoLibre nos da el número. Si no, queda el buscador.
+        mmBusqueda = selectedNumero!;
+        await BuscarMeliAhora(auto: true);
     }
 
     void CerrarModoMeli() => modoMeli = false;
@@ -4454,6 +4608,11 @@
         if (q.Length < 3) return;
         mmBuscando = true; mmFicha = null;
         StateHasChanged();
+        // Si pegaron el código de una publicación, además de los compradores mostramos la
+        // publicación misma: precio y stock de hoy.
+        if (q.StartsWith("ML", StringComparison.OrdinalIgnoreCase) && q.Length >= 6)
+            await VerPublicacionMeli(q.Replace(" ", ""));
+
         var res = await Api.BuscarMeliFichaAsync(q);
         mmBuscando = false;
         mmResultados = res;
@@ -4469,6 +4628,8 @@
         mmBuscando = true;
         StateHasChanged();
         mmFicha = await Api.GetMeliFichaAsync(buyerId);
+        if (!string.IsNullOrWhiteSpace(selectedNumero))
+            mmAtados = await Api.GetMeliUsuariosDelTelefonoAsync(selectedNumero!);
         mmBuscando = false;
         if (mmFicha is null) Toast.Error("No pude traer la ficha de ese comprador.");
         StateHasChanged();
@@ -4478,7 +4639,53 @@
 
     void LimpiarBusquedaMeli()
     {
-        mmBusqueda = ""; mmResultados = new(); mmFicha = null; mmBuscado = false;
+        mmBusqueda = ""; mmResultados = new(); mmFicha = null; mmBuscado = false; mmPubli = null;
+    }
+
+    /// <summary>Al cambiar de chat: todo lo de MercadoLibre era del comprador anterior.</summary>
+    void LimpiarModoMeli()
+    {
+        LimpiarBusquedaMeli();
+        modoMeli = false; mmAtados = new(); mmAtando = false;
+    }
+
+    /// <summary>Precio y stock de HOY de una publicación, con la respuesta ya escrita.</summary>
+    async Task VerPublicacionMeli(string itemId)
+    {
+        if (string.IsNullOrWhiteSpace(itemId)) return;
+        mmPubli = await Api.GetMeliPublicacionAsync(itemId);
+        if (mmPubli is null) Toast.Warning("Esa publicación no está en el sistema.");
+        StateHasChanged();
+    }
+
+    void CerrarPublicacionMeli() => mmPubli = null;
+
+    Task CopiarDireccionMeli(string direccion) => CopiarTextoMeli(direccion, "Dirección copiada ✓");
+
+    /// <summary>Deja este usuario de MeLi pegado al teléfono del chat.</summary>
+    async Task AtarUsuarioAlTelefono()
+    {
+        if (mmFicha is null || string.IsNullOrWhiteSpace(selectedNumero)) return;
+        mmAtando = true;
+        var (ok, err) = await Api.AsociarMeliUsuarioTelefonoAsync(
+            mmFicha.BuyerId, selectedNumero!, mmFicha.Nickname, Web.Services.OperatorService.FirmaCorta(Op.Current));
+        mmAtando = false;
+        if (!ok) { Toast.Error(err ?? "No se pudo guardar"); return; }
+        Toast.Success("Guardado ✓ Cuando escriba este teléfono, la ficha se abre sola");
+        mmAtados = await Api.GetMeliUsuariosDelTelefonoAsync(selectedNumero!);
+        StateHasChanged();
+    }
+
+    async Task SoltarUsuarioDelTelefono()
+    {
+        if (mmFicha is null || string.IsNullOrWhiteSpace(selectedNumero)) return;
+        mmAtando = true;
+        var ok = await Api.DesasociarMeliUsuarioTelefonoAsync(mmFicha.BuyerId, selectedNumero!);
+        mmAtando = false;
+        if (!ok) { Toast.Error("No se pudo quitar"); return; }
+        Toast.Success("Listo, ya no está guardado en este teléfono");
+        mmAtados = await Api.GetMeliUsuariosDelTelefonoAsync(selectedNumero!);
+        StateHasChanged();
     }
 
     /// <summary>Pone la respuesta sugerida en el cuadro de escribir. NO la manda: se retoca y se manda a mano.</summary>
@@ -5755,6 +5962,7 @@
         chatPlantillaName = ""; chatVariables = new();   // 2026-08-05: resetear el selector de plantilla al cambiar de chat
         sugerenciaCliente = null;   // limpiar la del chat anterior mientras carga este
         mostrarFichaCliente = false; fichaCliente = null; facturaAbierta = null;   // 2026-08-05: cerrar la ficha del cliente al cambiar de chat
+        LimpiarModoMeli();          // 2026-08-21: la ficha de MercadoLibre era del comprador del chat anterior
         showQuickReplies = false;   // 2026-08-05: cerrar el desplegable de respuestas rápidas al cambiar de chat
         modoElegirVenta = false; mensajesSeleccionadosIds.Clear();   // 2026-08-05: salir del modo "elegir mensajes para venta"
         // 2026-08-20: cerrar el buscador y olvidar los "Leer más" abiertos: son de la charla anterior.

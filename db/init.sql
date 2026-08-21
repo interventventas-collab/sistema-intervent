@@ -6960,3 +6960,26 @@ IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_ClienteElegido')
    AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_WaClienteElegido_NumQuien')
     CREATE UNIQUE INDEX UX_WaClienteElegido_NumQuien ON WhatsApp_ClienteElegido(Numero, Quien);
 GO
+
+-- ============================================================================
+-- 2026-08-21: MODO MELI en el chat — que usuario de MercadoLibre escribe desde
+-- cada telefono de WhatsApp. Lo ata el operador desde el panel 🟡 del chat y a
+-- partir de ahi la ficha del comprador se abre sola cuando ese numero escribe.
+-- Va aparte del vinculo con el cliente del sistema (Cafe_Clientes.MeliBuyerId):
+-- el que pregunta por una publicacion muchas veces todavia NO es cliente.
+-- ============================================================================
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_MeliUsuarios')
+CREATE TABLE WhatsApp_MeliUsuarios (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    Numero NVARCHAR(30) NOT NULL,              -- "whatsapp:+549..." (igual que WhatsApp_TwilioContactos)
+    BuyerId BIGINT NOT NULL,                   -- id del comprador en MercadoLibre
+    Nickname NVARCHAR(255) NULL,
+    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CreatedBy NVARCHAR(60) NULL                -- firma del operador o 'user:{id}'
+);
+GO
+-- El mismo usuario de MeLi no se cuelga dos veces del mismo telefono.
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_MeliUsuarios')
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_WaMeliUsuarios_NumBuyer')
+    CREATE UNIQUE INDEX UX_WaMeliUsuarios_NumBuyer ON WhatsApp_MeliUsuarios(Numero, BuyerId);
+GO

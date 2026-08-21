@@ -482,3 +482,15 @@
 .wa-dark .wa-mm-btn:hover { background: #374248; }
 .wa-dark .wa-mm-btn.ok { background: #0b3d2e; border-color: #14543f; color: #6ee7b7; }
 .wa-dark .wa-mm-otro { color: var(--wad-txt3); }
+
+/* 2026-08-21 (parte 2 del Modo MeLi): entrega, preguntas y publicación, de noche. */
+.wa-dark .wa-mm-preg, .wa-dark .wa-mm-publi { background: var(--wad-panel2); border-color: var(--wad-borde2); }
+.wa-dark .wa-mm-publi { border-color: #5c4a1c; }
+.wa-dark .wa-mm-preg-txt, .wa-dark .wa-mm-publi-precio { color: var(--wad-txt); }
+.wa-dark .wa-mm-preg-resp { background: var(--wad-panel3); color: var(--wad-txt2); }
+.wa-dark .wa-mm-dir { color: var(--wad-txt2); }
+.wa-dark .wa-mm-rep { color: #93c5fd; }
+.wa-dark .wa-mm-perfil { color: #fcd34d; }
+.wa-dark .wa-mm-chip { background: var(--wad-panel3); border-color: var(--wad-borde2); color: var(--wad-txt); }
+.wa-dark .wa-mm-chip.rojo { background: #450a0a; border-color: #7f1d1d; color: #fca5a5; }
+.wa-dark .wa-mm-vinc.btn.amarillo { background: #3a2f12; border-color: #5c4a1c; color: #fcd34d; }

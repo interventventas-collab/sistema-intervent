@@ -222,6 +222,8 @@ public class AppDbContext : DbContext
     // 2026-08-20: un mismo telefono con VARIAS razones sociales + que tildo cada operador.
     public DbSet<WhatsAppContactoCliente> WhatsAppContactoClientes => Set<WhatsAppContactoCliente>();
     public DbSet<WhatsAppClienteElegido> WhatsAppClientesElegidos => Set<WhatsAppClienteElegido>();
+    // 2026-08-21: qué usuario de MercadoLibre escribe desde cada teléfono (Modo MeLi del chat).
+    public DbSet<WhatsAppMeliUsuario> WhatsAppMeliUsuarios => Set<WhatsAppMeliUsuario>();
     public DbSet<WhatsAppTwilioReaccion> WhatsAppTwilioReacciones => Set<WhatsAppTwilioReaccion>();
     public DbSet<WhatsAppTwilioDatoBancario> WhatsAppTwilioDatosBancarios => Set<WhatsAppTwilioDatoBancario>();
     public DbSet<WhatsAppTwilioUpload> WhatsAppTwilioUploads => Set<WhatsAppTwilioUpload>();
