@@ -227,18 +227,23 @@
                         <input class="form-input" @bind="clienteSearch" @bind:event="oninput" placeholder="Buscar por nombre, código o CUIT..." />
                         @if (!string.IsNullOrWhiteSpace(clienteSearch) && clientes is not null)
                         {
-                            var matches = clientes.Where(c => c.IsActive &&
-                                (c.Nombre.MatchesSearch(clienteSearch) ||
-                                 (c.RazonSocial ?? "").MatchesSearch(clienteSearch) ||
-                                 (c.Cuit ?? "").Contains(clienteSearch, StringComparison.OrdinalIgnoreCase) ||
-                                 (c.CodigoInterno?.ToString() ?? "").Contains(clienteSearch)))
-                                .Take(10).ToList();
+                            @* 2026-08-21: buscador COMPARTIDO (ClienteSearch): ordena por relevancia y entiende
+                               palabras sueltas en cualquier orden. Antes mostraba los 10 primeros alfabeticos
+                               y el cliente buscado podia no aparecer nunca. *@
+                            var matchesTodos = ClienteSearch.Buscar(clientes, clienteSearch);
+                            var matches = ClienteSearch.Recortar(matchesTodos);
                             <div style="max-height:200px; overflow-y:auto; border:1px solid #e5e7eb; border-radius:4px; margin-top:0.3rem;">
                                 @foreach (var c in matches)
                                 {
                                     <div style="padding:0.4rem 0.6rem; cursor:pointer; border-bottom:1px solid #f3f4f6;" @onclick="() => ElegirCliente(new SugerenciaClienteEcheqDto { Id = c.Id, Nombre = c.Nombre, Cuit = c.Cuit, CodigoInterno = c.CodigoInterno, RazonSocial = c.RazonSocial })">
                                         <strong>@(c.CodigoInterno?.ToString() ?? "—") · @c.Nombre</strong>
                                         @if (!string.IsNullOrEmpty(c.Cuit)) { <span style="font-size:0.75rem; color:#6b7280;"> · CUIT @c.Cuit</span> }
+                                    </div>
+                                }
+                                @if (matchesTodos.Count > matches.Count)
+                                {
+                                    <div style="padding:0.45rem 0.7rem; background:#fffbeb; color:#92400e; font-size:0.78rem; border-top:1px solid #fde68a;">
+                                        @ClienteSearch.LeyendaTope(matchesTodos.Count, matches.Count)
                                     </div>
                                 }
                             </div>

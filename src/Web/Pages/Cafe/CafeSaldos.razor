@@ -268,7 +268,9 @@
                     }
                     else
                     {
-                        @foreach (var c in FiltrarClientes().Take(40))
+                        var clienteMatches = FiltrarClientes();
+                        var clienteVisibles = ClienteSearch.Recortar(clienteMatches);
+                        @foreach (var c in clienteVisibles)
                         {
                             var sel = clienteIdElegido == c.Id;
                             <div style="display:flex; gap:0.5rem; padding:0.35rem 0.5rem; border-bottom:1px solid #f3f4f6; align-items:center; cursor:pointer; background:@(sel ? "#dbeafe" : "white");"
@@ -282,9 +284,15 @@
                                 @if (sel) { <span style="color:#15803d; font-weight:700;">✓</span> }
                             </div>
                         }
-                        @if (!FiltrarClientes().Any())
+                        @if (clienteMatches.Count == 0)
                         {
                             <p class="text-muted" style="padding:0.5rem;">No hay clientes que matcheen.</p>
+                        }
+                        else if (clienteMatches.Count > clienteVisibles.Count)
+                        {
+                            <div style="padding:0.45rem 0.7rem; background:#fffbeb; color:#92400e; font-size:0.78rem; border-top:1px solid #fde68a;">
+                                @ClienteSearch.LeyendaTope(clienteMatches.Count, clienteVisibles.Count)
+                            </div>
                         }
                     }
                 </div>
@@ -546,17 +554,16 @@
         clienteNombreElegido = nombre;
     }
 
-    private IEnumerable<CafeClienteDto> FiltrarClientes()
+    // 2026-08-21: cuando hay algo escrito, filtra y ordena con el buscador COMPARTIDO
+    // (ClienteSearch): relevancia primero y palabras sueltas en cualquier orden, para que el
+    // cliente buscado no quede cortado por el tope de la lista. Sin busqueda, el listado sigue
+    // saliendo por codigo interno como siempre.
+    private List<CafeClienteDto> FiltrarClientes()
     {
-        if (clientes is null) return Enumerable.Empty<CafeClienteDto>();
-        if (string.IsNullOrWhiteSpace(clienteSearch)) return clientes.OrderBy(c => c.CodigoInterno ?? int.MaxValue).ThenBy(c => c.Nombre);
-        var t = clienteSearch.Trim();
-        bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
-        return clientes.Where(c =>
-            h(c.Nombre) || h(c.RazonSocial) || h(c.Cuit) || h(c.Telefono) || h(c.Email)
-            || h(c.Direccion) || h(c.Localidad) || h(c.Codigo)
-            || (c.CodigoInterno.HasValue && c.CodigoInterno.Value.ToString().Contains(t))
-        ).OrderBy(c => c.CodigoInterno ?? int.MaxValue).ThenBy(c => c.Nombre);
+        if (clientes is null) return new();
+        if (string.IsNullOrWhiteSpace(clienteSearch))
+            return clientes.OrderBy(c => c.CodigoInterno ?? int.MaxValue).ThenBy(c => c.Nombre).ToList();
+        return ClienteSearch.Buscar(clientes, clienteSearch, soloActivos: false);
     }
 
     private async Task EjecutarAsociar()

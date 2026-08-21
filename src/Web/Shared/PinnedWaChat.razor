@@ -599,7 +599,7 @@
                     {
                         <div class="pwa-mas-info">Sin resultados.</div>
                     }
-                    @foreach (var cli in salResult.Take(15))
+                    @foreach (var cli in salResult)
                     {
                         <button type="button" class="pwa-mas-item" @onclick="() => PonerSaldoTexto(cli.Id)" disabled="@salCargando">
                             <span class="pwa-mas-item-ic">💰</span>

@@ -54,7 +54,8 @@
                                    placeholder="🔍 Buscar cliente o dejar vacío para 'general'" />
                             @if (clienteSearchOpen && !string.IsNullOrWhiteSpace(clienteSearch))
                             {
-                                var matches = ClientesMatching(clienteSearch).Take(15).ToList();
+                                var matchesTodos = ClientesMatching(clienteSearch);
+                                var matches = ClienteSearch.Recortar(matchesTodos);
                                 <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 280px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
                                     @if (matches.Count == 0)
                                     {
@@ -70,6 +71,12 @@
                                                 <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; margin-right: 0.5rem;">@c.Codigo</span>
                                                 <strong>@c.Nombre</strong>
                                                 <span style="color: #6b7280; font-size: 0.78rem;"> · @c.Tipo</span>
+                                            </div>
+                                        }
+                                        @if (matchesTodos.Count > matches.Count)
+                                        {
+                                            <div style="padding: 0.45rem 0.7rem; background: #fffbeb; color: #92400e; font-size: 0.78rem; border-top: 1px solid #fde68a;">
+                                                @ClienteSearch.LeyendaTope(matchesTodos.Count, matches.Count)
                                             </div>
                                         }
                                     }
@@ -274,13 +281,10 @@
         catch { ToastService.Error("Error al cargar catálogos"); clientes = new(); marcas = new(); }
     }
 
-    private IEnumerable<CafeClienteDto> ClientesMatching(string s)
-    {
-        if (clientes is null) return Enumerable.Empty<CafeClienteDto>();
-        var t = s.Trim();
-        bool h(string? str) => !string.IsNullOrEmpty(str) && str.Contains(t, StringComparison.OrdinalIgnoreCase);
-        return clientes.Where(c => h(c.Codigo) || h(c.Nombre) || h(c.Telefono) || h(c.Cuit));
-    }
+    // 2026-08-21: buscador COMPARTIDO (ClienteSearch): ordena por relevancia y entiende palabras
+    // sueltas en cualquier orden, asi el cliente buscado no queda cortado por el tope de la lista.
+    private List<CafeClienteDto> ClientesMatching(string s)
+        => ClienteSearch.Buscar(clientes, s);
 
     private void SelectCliente(int id)
     {

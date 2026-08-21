@@ -38,6 +38,11 @@ public class CafePreventasController : ControllerBase
     // ENDPOINTS PUBLICOS (sin auth, token del vendedor)
     // ============================================================
 
+    /// <summary>Neutraliza los comodines de LIKE (%, _, [) para que un texto tipeado no se tome
+    /// como patron. Solo para armar patrones de ORDEN/busqueda.</summary>
+    internal static string EscaparLike(string s)
+        => s.Replace("[", "[[]").Replace("%", "[%]").Replace("_", "[_]");
+
     private async Task<CafePreventaVendedor?> ResolverVendedorAsync(string token)
     {
         if (string.IsNullOrWhiteSpace(token)) return null;
@@ -62,6 +67,12 @@ public class CafePreventasController : ControllerBase
         if (vend is null) return NotFound();
         if (string.IsNullOrWhiteSpace(q) || q.Trim().Length < 2) return Ok(new List<PubClienteDto>());
         var term = q.Trim();
+        // 2026-08-21 OJO: para ordenar NO se puede usar StartsWith(term) con la MISMA variable que
+        // el Contains(term) del Where — Entity Framework junta los dos LIKE en un solo parametro y
+        // termina filtrando por "empieza con", devolviendo casi nada. Por eso el orden se arma con
+        // EF.Functions.Like y patrones propios.
+        var patronEmpieza = EscaparLike(term) + "%";
+        var patronPalabra = "% " + EscaparLike(term) + "%";
         var clientes = await _db.CafeClientes
             .Where(c => c.IsActive)
             .Where(c => c.Nombre!.Contains(term)
@@ -69,7 +80,11 @@ public class CafePreventasController : ControllerBase
                      || (c.Telefono != null && c.Telefono.Contains(term))
                      || (c.Direccion != null && c.Direccion.Contains(term))
                      || (c.Localidad != null && c.Localidad.Contains(term)))
-            .OrderBy(c => c.CodigoInterno.HasValue ? 0 : 1)
+            // 2026-08-21: primero los que EMPIEZAN con lo tipeado (o alguna palabra del nombre),
+            // asi el tope de 25 no esconde al cliente buscado entre homonimos.
+            .OrderByDescending(c => EF.Functions.Like(c.Nombre!, patronEmpieza))
+            .ThenByDescending(c => EF.Functions.Like(c.Nombre!, patronPalabra))
+            .ThenBy(c => c.CodigoInterno.HasValue ? 0 : 1)
             .ThenBy(c => c.Nombre)
             .Take(25)
             .Select(c => new PubClienteDto(c.Id, c.Nombre ?? "?", c.Tipo, c.Telefono, c.Direccion, c.Localidad))

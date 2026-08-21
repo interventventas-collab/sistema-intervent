@@ -1633,7 +1633,8 @@
                                 </div>
                                 @if (clienteSearchOpen && !string.IsNullOrWhiteSpace(clienteSearch))
                                 {
-                                    var matches = ClientesMatching(clienteSearch).Take(20).ToList();
+                                    var matchesTodos = ClientesMatching(clienteSearch);
+                                    var matches = ClienteSearch.Recortar(matchesTodos);
                                     <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 420px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
                                         @if (matches.Count == 0)
                                         {
@@ -1679,6 +1680,12 @@
                                                             @if (!string.IsNullOrWhiteSpace(locCi)) { <span>@locCi</span> }
                                                         </div>
                                                     }
+                                                </div>
+                                            }
+                                            @if (matchesTodos.Count > matches.Count)
+                                            {
+                                                <div style="padding: 0.45rem 0.7rem; background: #fffbeb; color: #92400e; font-size: 0.78rem; border-top: 1px solid #fde68a;">
+                                                    @ClienteSearch.LeyendaTope(matchesTodos.Count, matches.Count)
                                                 </div>
                                             }
                                         }
@@ -8257,7 +8264,7 @@
 
     private async Task OnKeyDownCliente(KeyboardEventArgs e)
     {
-        var matches = ClientesMatching(clienteSearch).Take(20).ToList();
+        var matches = ClienteSearch.Recortar(ClientesMatching(clienteSearch));
 
         if (e.Key == "ArrowDown")
         {
@@ -8453,34 +8460,14 @@
     }
 
     /// <summary>Filtra clientes por código / nombre / cuit / telefono / email.</summary>
-    private IEnumerable<CafeClienteDto> ClientesMatching(string q)
-    {
-        if (clientes is null) return Enumerable.Empty<CafeClienteDto>();
-        var t = q.Trim();
-        if (string.IsNullOrEmpty(t)) return clientes;
-        bool h(string? s) => s.MatchesSearch(t);
-
-        // 2026-06-30: tambien buscar por CodigoInterno (el numero asignado por el usuario).
-        // Si el input es solo digitos, priorizar match EXACTO de CodigoInterno arriba.
-        bool isPureNumber = int.TryParse(t, out var numQuery);
-
-        var matches = clientes.Where(c => c.IsActive
-            && (h(c.Codigo) || h(c.Nombre) || h(c.RazonSocial) || h(c.Cuit)
-                || h(c.Telefono) || h(c.Email)
-                || h(c.Direccion) || h(c.Localidad) || h(c.Ciudad) || h(c.Cp)
-                || h(c.DomicilioEntrega)
-                || (c.CodigoInterno.HasValue && c.CodigoInterno.Value.ToString().Contains(t))));
-
-        if (isPureNumber)
-        {
-            // Orden: exacto CodigoInterno → empieza con → contiene → resto
-            return matches.OrderByDescending(c => c.CodigoInterno == numQuery ? 3
-                                                  : (c.CodigoInterno.HasValue && c.CodigoInterno.Value.ToString().StartsWith(t) ? 2
-                                                  : (c.CodigoInterno.HasValue && c.CodigoInterno.Value.ToString().Contains(t) ? 1 : 0)))
-                          .ThenBy(c => c.Nombre);
-        }
-        return matches;
-    }
+    // 2026-08-21: el filtro + el orden ahora los hace el buscador COMPARTIDO (ClienteSearch), el
+    // mismo que usan cobranzas, alquileres, listas, etc. Antes esto devolvia las coincidencias en
+    // orden alfabetico y la pantalla mostraba las primeras 20: con 9.000 clientes, tipear un nombre
+    // comun dejaba al cliente buscado fuera de la lista y parecia que no existia. Ahora ordena por
+    // relevancia (empieza con lo tipeado primero) y entiende palabras sueltas en cualquier orden
+    // ("quintana carlos" encuentra "CARLOS QUINTANA"). El match EXACTO de codigo interno sigue arriba.
+    private List<CafeClienteDto> ClientesMatching(string q)
+        => ClienteSearch.Buscar(clientes, q);
 
     private void OnAddProductoChanged()
     {

@@ -1046,8 +1046,22 @@ public class WhatsAppTwilioController : ControllerBase
                     || (c.Notas != null && c.Notas.Contains(q)));   // por si el DNI u otro dato quedó acá
             }
         }
+        // 2026-08-21: ORDEN POR RELEVANCIA (antes era alfabetico puro). Con 9.000 clientes, cortar
+        // alfabeticamente escondia al cliente buscado: tipear "sergio" traia las primeras 15
+        // coincidencias por nombre y "SERGIO FERNANDEZ" quedaba afuera. Ahora primero salen los que
+        // EMPIEZAN con lo tipeado, despues los que lo tienen al principio de alguna palabra.
+        // OJO: el orden NO puede usar StartsWith(q) con la misma variable `q` del Contains del Where:
+        // EF junta los dos LIKE en un solo parametro y el filtro pasa a ser "empieza con" (devuelve
+        // casi nada). Por eso se arma con EF.Functions.Like y patrones propios.
+        var prim = (q.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? q);
+        var patronFrase = CafePreventasController.EscaparLike(q) + "%";
+        var patronPrim = CafePreventasController.EscaparLike(prim) + "%";
+        var patronPrimPalabra = "% " + CafePreventasController.EscaparLike(prim) + "%";
         var list = await query
-            .OrderBy(c => c.Nombre)
+            .OrderByDescending(c => EF.Functions.Like(c.Nombre, patronFrase))
+            .ThenByDescending(c => EF.Functions.Like(c.Nombre, patronPrim))
+            .ThenByDescending(c => EF.Functions.Like(c.Nombre, patronPrimPalabra))
+            .ThenBy(c => c.Nombre)
             .Take(Math.Clamp(top, 1, 50))
             .Select(c => new { c.Id, c.Nombre, CodigoInterno = c.CodigoInterno.HasValue ? c.CodigoInterno.ToString() : null, c.Telefono, c.Direccion, c.Localidad })
             .ToListAsync();
@@ -1071,10 +1085,16 @@ public class WhatsAppTwilioController : ControllerBase
 
         // 1) Clientes del cafe
         int.TryParse(q, out var qNum);
+        var patronDestEmpieza = CafePreventasController.EscaparLike(q) + "%";
+        var patronDestPalabra = "% " + CafePreventasController.EscaparLike(q) + "%";
         acc.AddRange((await _db.CafeClientes.AsNoTracking()
             .Where(c => (c.Nombre.Contains(q) || (qNum > 0 && c.CodigoInterno == qNum) || (c.Telefono != null && c.Telefono.Contains(q)))
                         && c.Telefono != null && c.Telefono != "")
-            .OrderBy(c => c.Nombre).Take(cap)
+            // 2026-08-21: por relevancia, no alfabetico: si no, cortar en `cap` esconde al cliente
+            // buscado cuando hay muchos homonimos (ver clientes-buscar).
+            .OrderByDescending(c => EF.Functions.Like(c.Nombre, patronDestEmpieza))
+            .ThenByDescending(c => EF.Functions.Like(c.Nombre, patronDestPalabra))
+            .ThenBy(c => c.Nombre).Take(cap)
             .Select(c => new { c.Nombre, c.Telefono }).ToListAsync())
             .Select(c => (c.Nombre, (string?)c.Telefono, "Cliente")));
 

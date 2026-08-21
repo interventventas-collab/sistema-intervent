@@ -150,7 +150,8 @@
                                placeholder="🔍 Buscá cliente o dejá vacío para lista general" disabled="@saving" />
                         @if (clienteSearchOpen && !string.IsNullOrWhiteSpace(clienteSearch))
                         {
-                            var matches = ClientesMatching(clienteSearch).Take(15).ToList();
+                            var matchesTodos = ClientesMatching(clienteSearch);
+                            var matches = ClienteSearch.Recortar(matchesTodos);
                             <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 280px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
                                 @if (matches.Count == 0)
                                 {
@@ -166,6 +167,12 @@
                                             <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; margin-right: 0.5rem;">@c.Codigo</span>
                                             <strong>@c.Nombre</strong>
                                             <span style="color: #6b7280; font-size: 0.78rem;"> · @c.Tipo</span>
+                                        </div>
+                                    }
+                                    @if (matchesTodos.Count > matches.Count)
+                                    {
+                                        <div style="padding: 0.45rem 0.7rem; background: #fffbeb; color: #92400e; font-size: 0.78rem; border-top: 1px solid #fde68a;">
+                                            @ClienteSearch.LeyendaTope(matchesTodos.Count, matches.Count)
                                         </div>
                                     }
                                 }
@@ -439,15 +446,10 @@
         clienteSearch = "";
     }
 
-    private IEnumerable<CafeClienteDto> ClientesMatching(string q)
-    {
-        if (clientes is null || string.IsNullOrWhiteSpace(q)) return Enumerable.Empty<CafeClienteDto>();
-        var qq = q.Trim().ToLowerInvariant();
-        return clientes.Where(c =>
-            (c.Nombre ?? "").ToLowerInvariant().Contains(qq) ||
-            (c.Codigo ?? "").ToLowerInvariant().Contains(qq)
-        );
-    }
+    // 2026-08-21: buscador COMPARTIDO (ClienteSearch): ordena por relevancia, busca por mas campos
+    // (CUIT, telefono, direccion...) y entiende palabras sueltas en cualquier orden.
+    private List<CafeClienteDto> ClientesMatching(string q)
+        => string.IsNullOrWhiteSpace(q) ? new() : ClienteSearch.Buscar(clientes, q);
 
     private static string FormatFechaCorta(DateTime d)
     {

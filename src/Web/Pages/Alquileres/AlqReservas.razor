@@ -288,7 +288,8 @@
                                 </div>
                                 @if (!string.IsNullOrWhiteSpace(clienteSearch) && clienteSearch.Trim().Length >= 2)
                                 {
-                                    var res = ClientesFiltrados();
+                                    var todos = ClientesFiltrados();
+                                    var res = ClienteSearch.Recortar(todos);
                                     <div style="border:1px solid #d1d5db; border-radius:8px; max-height:220px; overflow-y:auto; margin-top:0.25rem; background:white; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
                                         @if (res.Count == 0)
                                         {
@@ -302,6 +303,12 @@
                                                 <span style="font-size:0.78rem; color:#6b7280;">
                                                     @(c.CodigoInterno.HasValue ? $" · #{c.CodigoInterno}" : "") @(string.IsNullOrEmpty(c.Cuit) ? "" : $" · {c.Cuit}") @(string.IsNullOrEmpty(c.Telefono) ? "" : $" · {c.Telefono}")
                                                 </span>
+                                            </div>
+                                        }
+                                        @if (todos.Count > res.Count)
+                                        {
+                                            <div style="padding:0.45rem 0.7rem; background:#fffbeb; color:#92400e; font-size:0.78rem; border-top:1px solid #fde68a;">
+                                                @ClienteSearch.LeyendaTope(todos.Count, res.Count)
                                             </div>
                                         }
                                     </div>
@@ -1160,17 +1167,13 @@
     private string clienteSearch = "";
     private CafeClienteDto? ClienteSel() => clientes?.FirstOrDefault(x => x.Id == formClienteId);
 
+    // 2026-08-21: antes esto filtraba con un "contiene" y mostraba los 15 primeros POR ORDEN
+    // ALFABETICO. Con 9.000 clientes eso escondia al que buscabas (tipear "sergio" dejaba afuera a
+    // SERGIO FERNANDEZ porque 15 nombres iban antes). Ahora usa el buscador compartido, que ordena
+    // por relevancia y entiende palabras sueltas en cualquier orden. Devuelve TODOS los que
+    // coinciden: el desplegable corta en ClienteSearch.Tope y avisa cuantos quedaron afuera.
     private List<CafeClienteDto> ClientesFiltrados()
-    {
-        if (clientes is null) return new();
-        var q = clienteSearch.Trim().ToLowerInvariant();
-        return clientes.Where(c =>
-                (c.Nombre?.ToLowerInvariant().Contains(q) ?? false)
-                || (c.Cuit?.ToLowerInvariant().Contains(q) ?? false)
-                || (c.CodigoInterno?.ToString().Contains(q) ?? false)
-                || (c.Telefono?.Contains(q) ?? false))
-            .Take(15).ToList();
-    }
+        => ClienteSearch.Buscar(clientes, clienteSearch);
 
     private void ElegirCliente(int id)
     {

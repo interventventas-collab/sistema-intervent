@@ -7311,8 +7311,10 @@ public class ApiClient
     public async Task<bool> DeleteTwContactoAsync(int id)
         => (await _http.DeleteAsync($"/api/whatsapp/twilio/contactos/{id}")).IsSuccessStatusCode;
 
-    public async Task<List<TwClienteBuscarDto>> BuscarTwClientesAsync(string q)
-        => await _http.GetFromJsonAsync<List<TwClienteBuscarDto>>($"/api/whatsapp/twilio/clientes-buscar?q={Uri.EscapeDataString(q ?? "")}") ?? new();
+    // 2026-08-21: top 30 (antes el server devolvia 15 por default). La API ya ordena por
+    // relevancia, asi que las pantallas muestran todo lo que llega sin recortarlo de nuevo.
+    public async Task<List<TwClienteBuscarDto>> BuscarTwClientesAsync(string q, int top = 30)
+        => await _http.GetFromJsonAsync<List<TwClienteBuscarDto>>($"/api/whatsapp/twilio/clientes-buscar?q={Uri.EscapeDataString(q ?? "")}&top={top}") ?? new();
 
     // 2026-08-03: asociar un chat a un cliente del sistema en UN paso (o desvincular con clienteId=null).
     public record TwVincularResult(bool Ok, int? ClienteId, string? ClienteNombre, string? ClienteCodigo);

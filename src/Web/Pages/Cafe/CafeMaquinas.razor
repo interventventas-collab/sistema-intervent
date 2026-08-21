@@ -200,7 +200,8 @@
                                 @if (clientes is null) { <p class="text-muted" style="padding:0.4rem;">Cargando...</p> }
                                 else
                                 {
-                                    var matches = FiltrarClientes().Take(30).ToList();
+                                    var matchesTodos = FiltrarClientes();
+                                    var matches = ClienteSearch.Recortar(matchesTodos);
                                     @if (matches.Count == 0) { <p class="text-muted" style="padding:0.4rem;">Sin resultados.</p> }
                                     @foreach (var c in matches)
                                     {
@@ -210,6 +211,12 @@
                                             @if (c.CodigoInterno.HasValue) { <span style="font-size:0.7rem; padding:0 0.3rem; background:#e0e7ff; color:#1e40af; border-radius:3px; margin-right:0.3rem;">#@c.CodigoInterno</span> }
                                             <strong>@c.Nombre</strong>
                                             @if (!string.IsNullOrEmpty(c.Cuit)) { <span style="font-family:monospace; font-size:0.72rem; color:#6b7280; margin-left:0.4rem;">@c.Cuit</span> }
+                                        </div>
+                                    }
+                                    @if (matchesTodos.Count > matches.Count)
+                                    {
+                                        <div style="padding:0.45rem 0.7rem; background:#fffbeb; color:#92400e; font-size:0.78rem; border-top:1px solid #fde68a;">
+                                            @ClienteSearch.LeyendaTope(matchesTodos.Count, matches.Count)
                                         </div>
                                     }
                                 }
@@ -605,15 +612,15 @@
         return decimal.TryParse(limpio, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : (decimal?)null;
     }
 
-    private IEnumerable<CafeClienteDto> FiltrarClientes()
+    // 2026-08-21: con busqueda escrita usa el buscador COMPARTIDO (ClienteSearch): ordena por
+    // relevancia y entiende palabras sueltas en cualquier orden. Sin busqueda, sigue saliendo
+    // por codigo interno.
+    private List<CafeClienteDto> FiltrarClientes()
     {
-        if (clientes is null) return Enumerable.Empty<CafeClienteDto>();
-        if (string.IsNullOrWhiteSpace(clienteSearch)) return clientes.OrderBy(c => c.CodigoInterno ?? int.MaxValue).ThenBy(c => c.Nombre);
-        var t = clienteSearch.Trim();
-        bool h(string? s) => s.MatchesSearch(t);
-        return clientes.Where(c => h(c.Nombre) || h(c.RazonSocial) || h(c.Cuit) || h(c.Telefono) || h(c.Email)
-            || (c.CodigoInterno.HasValue && c.CodigoInterno.Value.ToString().Contains(t)))
-            .OrderBy(c => c.CodigoInterno ?? int.MaxValue).ThenBy(c => c.Nombre);
+        if (clientes is null) return new();
+        if (string.IsNullOrWhiteSpace(clienteSearch))
+            return clientes.OrderBy(c => c.CodigoInterno ?? int.MaxValue).ThenBy(c => c.Nombre).ToList();
+        return ClienteSearch.Buscar(clientes, clienteSearch, soloActivos: false);
     }
 
     private void CalcularValorCuota()

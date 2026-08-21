@@ -2042,7 +2042,10 @@
                         else if (!string.IsNullOrWhiteSpace(buscarClienteTxt))
                         {
                             var qc = buscarClienteTxt.Trim();
-                            var matchCli = (clientesMapeados ?? new()).Where(c => FichaClienteMatch(c, qc)).Take(12).ToList();
+                            @* 2026-08-21: ordenado por relevancia con el buscador COMPARTIDO (antes salia
+                               alfabetico y el cliente buscado podia quedar fuera del tope). *@
+                            var matchCliTodos = ClienteSearch.Buscar(clientesMapeados, qc, soloActivos: false);
+                            var matchCli = ClienteSearch.Recortar(matchCliTodos);
                             <div style="position:absolute; top:calc(100% + 5px); left:0; right:0; z-index:620; background:#fff; border:2px solid #15803d; border-radius:10px; box-shadow:0 10px 28px rgba(0,0,0,0.25); overflow:hidden;">
                                 <div style="background:#ecfdf5; padding:0.4rem 0.6rem; display:flex; align-items:center; gap:0.4rem; font-size:0.8rem; font-weight:800; color:#166534;">
                                     <span>🍵 Clientes con ubicación guardada</span>
@@ -2084,6 +2087,12 @@
                                                     }
                                                     <div style="font-size:0.75rem; color:#4b5563;">@(c.DomicilioEntrega ?? c.Direccion ?? "—")</div>
                                                 </div>
+                                            </div>
+                                        }
+                                        @if (matchCliTodos.Count > matchCli.Count)
+                                        {
+                                            <div style="padding:0.45rem 0.6rem; background:#fffbeb; color:#92400e; font-size:0.75rem; border:1px solid #fde68a; border-radius:6px;">
+                                                @ClienteSearch.LeyendaTope(matchCliTodos.Count, matchCli.Count)
                                             </div>
                                         }
                                     }
@@ -2186,7 +2195,7 @@
                                     var q = fichaClienteSearch?.Trim() ?? "";
                                     var matches = string.IsNullOrEmpty(q)
                                         ? new List<CafeClienteDto>()
-                                        : clientesTodos.Where(c => FichaClienteMatch(c, q)).Take(8).ToList();
+                                        : ClienteSearch.Recortar(ClienteSearch.Buscar(clientesTodos, q, soloActivos: false));
                                     @if (string.IsNullOrEmpty(q))
                                     {
                                         <div style="font-size:0.75rem; color:#6b7280; padding:0.25rem;">Escribí para buscar…</div>
@@ -6197,14 +6206,6 @@
             catch { clientesTodos = new(); }
         }
         StateHasChanged();
-    }
-
-    private static bool FichaClienteMatch(CafeClienteDto c, string q)
-    {
-        bool Has(string? s) => !string.IsNullOrEmpty(s) && s.Contains(q, StringComparison.OrdinalIgnoreCase);
-        return Has(c.Nombre) || Has(c.RazonSocial) || Has(c.Direccion) || Has(c.DomicilioEntrega)
-               || Has(c.Localidad) || Has(c.Cuit) || Has(c.Telefono)
-               || (c.CodigoInterno.HasValue && c.CodigoInterno.Value.ToString().Contains(q));
     }
 
     private void ElegirClienteFicha(CafeClienteDto c)

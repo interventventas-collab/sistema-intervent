@@ -45,8 +45,10 @@
                        @bind="filtroCliente" @bind:event="oninput" />
                 @if (!string.IsNullOrWhiteSpace(filtroCliente))
                 {
+                    var clienteMatches = ClientesFiltrados();
+                    var clienteVisibles = ClienteSearch.Recortar(clienteMatches);
                     <div class="vis-cliente-list">
-                        @foreach (var c in ClientesFiltrados())
+                        @foreach (var c in clienteVisibles)
                         {
                             <div class="vis-cliente-item" @onclick="() => SeleccionarCliente(c)">
                                 <strong>@c.Nombre</strong>
@@ -54,9 +56,13 @@
                                 <div class="vis-cliente-dir">@(DireccionDe(c) ?? "sin domicilio")</div>
                             </div>
                         }
-                        @if (!ClientesFiltrados().Any())
+                        @if (clienteMatches.Count == 0)
                         {
                             <div class="vis-cliente-empty">Sin resultados. Podés cargar los datos a mano abajo 👇</div>
+                        }
+                        else if (clienteMatches.Count > clienteVisibles.Count)
+                        {
+                            <div class="vis-cliente-empty">@ClienteSearch.LeyendaTope(clienteMatches.Count, clienteVisibles.Count)</div>
                         }
                     </div>
                 }
@@ -341,16 +347,11 @@
         StateHasChanged();
     }
 
-    private IEnumerable<CafeClienteDto> ClientesFiltrados()
-    {
-        var f = filtroCliente.Trim().ToLowerInvariant();
-        if (string.IsNullOrEmpty(f)) return Enumerable.Empty<CafeClienteDto>();
-        return clientes.Where(c =>
-            (c.Nombre?.ToLowerInvariant().Contains(f) ?? false) ||
-            (c.Codigo?.ToLowerInvariant().Contains(f) ?? false) ||
-            (c.RazonSocial?.ToLowerInvariant().Contains(f) ?? false))
-            .Take(30);
-    }
+    // 2026-08-21: buscador COMPARTIDO (ClienteSearch): ordena por relevancia y entiende palabras
+    // sueltas en cualquier orden. Devuelve todas las coincidencias; la lista corta en el tope y
+    // avisa cuantas quedaron afuera.
+    private List<CafeClienteDto> ClientesFiltrados()
+        => string.IsNullOrWhiteSpace(filtroCliente) ? new() : ClienteSearch.Buscar(clientes, filtroCliente);
 
     private static string? DireccionDe(CafeClienteDto c)
         => !string.IsNullOrWhiteSpace(c.DomicilioEntrega) ? c.DomicilioEntrega

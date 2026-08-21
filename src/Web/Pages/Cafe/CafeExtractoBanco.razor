@@ -358,7 +358,8 @@
                                style="margin-top: 0.2rem;" />
                         @if (clienteSearchOpen && !string.IsNullOrWhiteSpace(clienteSearchAsociar))
                         {
-                            var matches = ClientesMatchingAsociar(clienteSearchAsociar).Take(10).ToList();
+                            var matchesTodos = ClientesMatchingAsociar(clienteSearchAsociar);
+                            var matches = ClienteSearch.Recortar(matchesTodos);
                             <div style="border: 1px solid #d1d5db; border-radius: 6px; max-height: 200px; overflow-y: auto; margin-top: 0.2rem;">
                                 @if (matches.Count == 0)
                                 {
@@ -376,6 +377,12 @@
                                             {
                                                 <span style="font-family: monospace; font-size: 0.72rem; color: #6b7280; margin-left: 0.4rem;">@c.Cuit</span>
                                             }
+                                        </div>
+                                    }
+                                    @if (matchesTodos.Count > matches.Count)
+                                    {
+                                        <div style="padding: 0.45rem 0.7rem; background: #fffbeb; color: #92400e; font-size: 0.78rem; border-top: 1px solid #fde68a;">
+                                            @ClienteSearch.LeyendaTope(matchesTodos.Count, matches.Count)
                                         </div>
                                     }
                                 }
@@ -889,15 +896,10 @@
         }
     }
 
-    private IEnumerable<CafeClienteDto> ClientesMatchingAsociar(string q)
-    {
-        if (clientesCache is null) return Enumerable.Empty<CafeClienteDto>();
-        var t = q.Trim();
-        if (string.IsNullOrEmpty(t)) return clientesCache;
-        bool h(string? s) => s.MatchesSearch(t);
-        return clientesCache.Where(c => c.IsActive
-            && (h(c.Codigo) || h(c.Nombre) || h(c.RazonSocial) || h(c.Cuit) || h(c.Telefono)));
-    }
+    // 2026-08-21: buscador COMPARTIDO (ClienteSearch): ordena por relevancia y entiende palabras
+    // sueltas en cualquier orden, asi el cliente buscado no queda cortado por el tope de la lista.
+    private List<CafeClienteDto> ClientesMatchingAsociar(string q)
+        => ClienteSearch.Buscar(clientesCache, q);
 
     private async Task SelectClienteManual(int clienteId)
     {

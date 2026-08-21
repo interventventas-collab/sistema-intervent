@@ -1149,7 +1149,7 @@
                     {
                         <div class="wa-saldo-info">Sin resultados</div>
                     }
-                    @foreach (var cli in saldoResultados.Take(10))
+                    @foreach (var cli in saldoResultados)
                     {
                         <button class="wa-saldo-cli" @onclick="() => PonerSaldo(cli.Id)" disabled="@saldoCargando">
                             @cli.Nombre @(string.IsNullOrWhiteSpace(cli.CodigoInterno) ? "" : $"(#{cli.CodigoInterno})")
@@ -2174,7 +2174,7 @@
                     @if (clienteResultadosQuick.Count > 0)
                     {
                         <div class="wa-cliente-dropdown" style="position:absolute; top:100%; left:0; right:0; max-height:240px; overflow-y:auto; z-index:20;">
-                            @foreach (var cli in clienteResultadosQuick.Take(12))
+                            @foreach (var cli in clienteResultadosQuick)
                             {
                                 <div class="wa-cliente-opt" @onclick="() => SeleccionarClienteQuick(cli)">
                                     <strong>@cli.Nombre</strong>
@@ -2254,7 +2254,7 @@
                 <div style="padding:0.5rem; color:#9ca3af; font-size:0.85rem;">Sin resultados. Probá con otro dato.</div>
             }
             <div style="margin-top:0.4rem; max-height:220px; overflow-y:auto;">
-                @foreach (var cli in vincularResultados.Take(12))
+                @foreach (var cli in vincularResultados)
                 {
                     <button class="wa-vincular-opt" @onclick="() => VincularAhora(cli)" disabled="@vinculando">
                         <div>
@@ -2561,7 +2561,7 @@
                                         @if (clienteBusquedaActivaId == c.Id && clienteResultados.Count > 0)
                                         {
                                             <div class="wa-cliente-dropdown">
-                                                @foreach (var cli in clienteResultados.Take(8))
+                                                @foreach (var cli in clienteResultados)
                                                 {
                                                     <div class="wa-cliente-opt" @onclick="() => SeleccionarCliente(c.Id, cli)">
                                                         <strong>@cli.Nombre</strong>
