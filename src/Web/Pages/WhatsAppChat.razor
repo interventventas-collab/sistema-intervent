@@ -4275,9 +4275,21 @@
     /// <summary>Uno de "lo que más compra": entra con el MISMO formato que suele llevar.</summary>
     Task SumarTop(CafeTopProductoClienteDto t) => SumarProducto(t.ProductoId, t.Formato);
 
-    void CerrarModoVenta()
+    void CerrarModoVenta() => LimpiarModoVenta();
+
+    /// <summary>2026-08-21 FIX: cierra el modo venta y se olvida de TODO lo del cliente anterior.
+    /// El bug: al cambiar de chat el panel quedaba abierto con los comprobantes, "lo que más
+    /// compra" y el carrito del PRIMER cliente — pero el botón "Crear la venta" ya apuntaba al
+    /// cliente nuevo, así que se le podía facturar a uno lo que compró otro.
+    /// (Esta pantalla NO se recrea al cambiar de chat, hay que limpiar a mano.)
+    /// El catálogo de productos (mvProductos) NO se borra: es el mismo para todos y bajarlo de
+    /// nuevo en cada chat sería al pedo.</summary>
+    void LimpiarModoVenta()
     {
         modoVenta = false;
+        mvAnteriores = new();
+        mvTop = new();
+        mvVerTodasAnteriores = false;
         LimpiarCarrito();
     }
 
@@ -6075,6 +6087,7 @@
         sugerenciaCliente = null;   // limpiar la del chat anterior mientras carga este
         mostrarFichaCliente = false; fichaCliente = null; facturaAbierta = null;   // 2026-08-05: cerrar la ficha del cliente al cambiar de chat
         LimpiarModoMeli();          // 2026-08-21: la ficha de MercadoLibre era del comprador del chat anterior
+        LimpiarModoVenta();         // 2026-08-21: el carrito y las ventas para repetir eran del cliente anterior
         showQuickReplies = false;   // 2026-08-05: cerrar el desplegable de respuestas rápidas al cambiar de chat
         modoElegirVenta = false; mensajesSeleccionadosIds.Clear();   // 2026-08-05: salir del modo "elegir mensajes para venta"
         // 2026-08-20: cerrar el buscador y olvidar los "Leer más" abiertos: son de la charla anterior.
@@ -6105,6 +6118,7 @@
         selectedLinea = null;
         sugerenciaCliente = null;
         mostrarFichaCliente = false; fichaCliente = null; facturaAbierta = null;
+        LimpiarModoVenta();         // 2026-08-21: mismo agujero que al cambiar de chat
         // 2026-08-06: presencia — salir del chat que estaba mirando.
         _ = CambiarPresenciaConv(null);
     }
