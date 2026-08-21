@@ -65,6 +65,10 @@ public class MeliFichaController : ControllerBase
         int SoldQuantity, string Status, string? Sku, string? Thumbnail, string? Permalink,
         string? LogisticType, int MeliAccountId);
 
+    /// <summary>El cartelito de arriba del chat: quién es y qué tiene pendiente.</summary>
+    public record AvisoDto(long BuyerId, string? Nickname, int Compras, DateTime? UltimaCompra,
+        int PedidosEnCurso, int PreguntasSinContestar, bool Guardado, string Texto);
+
     /// <summary>Un usuario de MeLi ya atado a un teléfono de WhatsApp.</summary>
     public record UsuarioAtadoDto(long BuyerId, string? Nickname, DateTime CreatedAt, string? CreatedBy);
 
@@ -394,6 +398,78 @@ public class MeliFichaController : ControllerBase
             first.MeliItemId, first.Title, first.Price, stock, EstadoPublicacion(first.Status),
             first.Sku, first.Thumbnail, first.Permalink, cuenta,
             TipoEnvio(first.LogisticType, null), filas.Sum(i => i.SoldQuantity), sugerida));
+    }
+
+    /// <summary>2026-08-21 (parte 3): el cartelito de arriba del chat. Dice de una si el que
+    /// escribe es un comprador de MercadoLibre — porque ya lo dejamos guardado en el teléfono
+    /// (📌) o porque el teléfono coincide con el de una venta Flex/ME1 — y si tiene algún
+    /// pedido en camino. Se pide en cada chat que se abre, así que es a propósito liviano.</summary>
+    [HttpGet("aviso")]
+    public async Task<IActionResult> Aviso([FromQuery] string numero)
+    {
+        var num = (numero ?? "").Trim();
+        if (num.Length == 0) return Ok(null);
+
+        long? buyerId = null;
+        var guardado = false;
+
+        // 1) ¿Ya lo dejamos guardado en este teléfono? Es lo más confiable.
+        var atado = await _db.WhatsAppMeliUsuarios.Where(x => x.Numero == num)
+            .OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync();
+        if (atado is not null) { buyerId = atado.BuyerId; guardado = true; }
+
+        // 2) Si no, probamos por teléfono (solo lo tenemos en las ventas Flex/ME1).
+        if (buyerId is null)
+        {
+            var digitos = new string(num.Where(char.IsDigit).ToArray());
+            if (digitos.Length >= 8)
+            {
+                var cola = digitos.Substring(digitos.Length - 8);
+                var porTel = await _db.MeliClientes
+                    .Where(c => c.Phone != null && EF.Functions.Like(c.Phone, $"%{cola}%"))
+                    .OrderByDescending(c => c.LastPurchaseAt)
+                    .Select(c => new { c.BuyerId }).FirstOrDefaultAsync();
+                if (porTel is not null) buyerId = porTel.BuyerId;
+            }
+        }
+
+        if (buyerId is null) return Ok(null);
+
+        var cli = await _db.MeliClientes.FirstOrDefaultAsync(c => c.BuyerId == buyerId.Value);
+        var nickname = cli?.Nickname
+            ?? atado?.Nickname
+            ?? await _db.MeliOrders.Where(o => o.BuyerId == buyerId.Value)
+                   .OrderByDescending(o => o.DateCreated).Select(o => o.BuyerNickname).FirstOrDefaultAsync();
+
+        var compras = cli?.OrdersCount ?? 0;
+        if (compras == 0)
+            compras = await _db.MeliOrders.Where(o => o.BuyerId == buyerId.Value)
+                .Select(o => o.PackId ?? o.MeliOrderId).Distinct().CountAsync();
+
+        // Pedidos que todavía están en la calle (o sin despachar): es lo primero que pregunta.
+        var desde = DateTime.UtcNow.AddDays(-60);
+        var enCurso = await _db.MeliOrders
+            .Where(o => o.BuyerId == buyerId.Value && o.DateCreated >= desde
+                        && o.Status != "cancelled"
+                        && o.ShippingStatus != null
+                        && o.ShippingStatus != "delivered" && o.ShippingStatus != "not_delivered"
+                        && o.ShippingStatus != "cancelled")
+            .Select(o => o.PackId ?? o.MeliOrderId).Distinct().CountAsync();
+
+        var preguntasSinContestar = await _db.MeliQuestions
+            .CountAsync(q => q.FromUserId == buyerId.Value && q.Status == "UNANSWERED");
+
+        var quien = string.IsNullOrWhiteSpace(nickname) ? "un comprador de MercadoLibre" : nickname!;
+        string texto;
+        if (compras > 1) texto = $"{quien} — te compró {compras} veces por MercadoLibre";
+        else if (compras == 1) texto = $"{quien} — te compró una vez por MercadoLibre";
+        else texto = $"{quien} — preguntó por MercadoLibre";
+        if (enCurso > 0) texto += enCurso == 1 ? " · 1 pedido en camino" : $" · {enCurso} pedidos en camino";
+        if (preguntasSinContestar > 0)
+            texto += preguntasSinContestar == 1 ? " · 1 pregunta sin contestar" : $" · {preguntasSinContestar} preguntas sin contestar";
+
+        return Ok(new AvisoDto(buyerId.Value, nickname, compras, Ar(cli?.LastPurchaseAt),
+            enCurso, preguntasSinContestar, guardado, texto));
     }
 
     /// <summary>Los usuarios de MercadoLibre ya atados a ESTE teléfono de WhatsApp.</summary>

@@ -7387,6 +7387,17 @@ public class ApiClient
         catch { return null; }
     }
 
+    public record MeliAvisoDto(long BuyerId, string? Nickname, int Compras, DateTime? UltimaCompra,
+        int PedidosEnCurso, int PreguntasSinContestar, bool Guardado, string Texto);
+
+    /// <summary>El cartelito de arriba del chat: si el que escribe es comprador de MercadoLibre.
+    /// Devuelve null cuando no lo reconocemos (que es lo normal en la mayoría de los chats).</summary>
+    public async Task<MeliAvisoDto?> GetMeliAvisoAsync(string numero)
+    {
+        try { return await _http.GetFromJsonAsync<MeliAvisoDto?>($"/api/meli/ficha/aviso?numero={Uri.EscapeDataString(numero)}"); }
+        catch { return null; }
+    }
+
     /// <summary>La publicación como está hoy: precio, stock y si está activa o pausada.</summary>
     public async Task<MeliPublicacionDto?> GetMeliPublicacionAsync(string itemId)
     {

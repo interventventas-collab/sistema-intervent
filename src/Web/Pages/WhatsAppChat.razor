@@ -693,6 +693,35 @@
                 </div>
             }
 
+            @* 2026-08-21 (parte 3): el chat te AVISA solo si el que escribe es un comprador de
+               MercadoLibre, y si pegó el código de una publicación o un número de venta te lo
+               deja a mano para abrirlo. Antes había que sospecharlo y buscarlo a mano. *@
+            @if (mmAviso is not null && !mmAvisoCerrado)
+            {
+                <div class="wa-mm-aviso-chat">
+                    <span class="wa-mm-aviso-punto">🟡</span>
+                    <div class="wa-mm-aviso-txt">
+                        @mmAviso.Texto
+                        @if (mmAviso.Guardado) { <span class="wa-mm-aviso-pin" title="Este usuario está guardado en este teléfono">📌</span> }
+                    </div>
+                    <button class="wa-mm-aviso-ver" @onclick="AbrirFichaDelAviso" title="Ver sus compras, envíos y preguntas acá al lado">Ver</button>
+                    <button class="wa-mm-aviso-x" @onclick="() => mmAvisoCerrado = true" title="Ocultar el aviso en este chat">✕</button>
+                </div>
+            }
+            @if (mmCodigos.Count > 0)
+            {
+                <div class="wa-mm-codigos">
+                    <span class="wa-mm-codigos-lbl">Pegó en el chat:</span>
+                    @foreach (var cod in mmCodigos)
+                    {
+                        <button class="wa-mm-cod" @onclick="() => AbrirCodigoMeli(cod)"
+                                title="@(cod.StartsWith("MLA") ? "Ver precio y stock de esta publicación" : "Buscar esta venta en MercadoLibre")">
+                            @(cod.StartsWith("MLA") ? "🏷️ " : "🧾 ") @cod
+                        </button>
+                    }
+                </div>
+            }
+
             @* 2026-08-20: buscador DENTRO de la charla (la lupa), igual que en el celular. *@
             @if (buscadorAbierto)
             {
@@ -3095,6 +3124,22 @@
     .wa-mm-btn:hover { background: #ecebe9; }
     .wa-mm-btn.ok { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
     .wa-mm-btn.ok:hover { background: #d1fae5; }
+    /* 2026-08-21 (parte 3): el cartelito de MercadoLibre arriba de la charla */
+    .wa-mm-aviso-chat { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.4rem; padding: 0.4rem 0.6rem;
+        background: #fefce8; border: 1px solid #fde68a; border-radius: 10px; font-size: 0.85rem; color: #713f12; }
+    .wa-mm-aviso-punto { font-size: 1rem; }
+    .wa-mm-aviso-txt { flex: 1; min-width: 0; line-height: 1.3; }
+    .wa-mm-aviso-pin { margin-left: 0.25rem; }
+    .wa-mm-aviso-ver { background: #eab308; border: none; color: #422006; font-family: inherit; font-size: 0.8rem; font-weight: 700;
+        border-radius: 8px; padding: 0.25rem 0.7rem; cursor: pointer; white-space: nowrap; }
+    .wa-mm-aviso-ver:hover { background: #ca8a04; color: #fff; }
+    .wa-mm-aviso-x { background: none; border: none; color: #a8a29e; font-size: 0.9rem; cursor: pointer; padding: 0 0.15rem; }
+    .wa-mm-aviso-x:hover { color: #ef4444; }
+    .wa-mm-codigos { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem; margin: 0 0 0.4rem; }
+    .wa-mm-codigos-lbl { font-size: 0.75rem; color: #94a3b8; }
+    .wa-mm-cod { font-family: inherit; font-size: 0.76rem; font-weight: 600; color: #713f12; background: #fefce8;
+        border: 1px solid #fde68a; border-radius: 999px; padding: 0.15rem 0.6rem; cursor: pointer; }
+    .wa-mm-cod:hover { background: #fef9c3; border-color: #eab308; }
     /* 2026-08-21 (parte 2): entrega, preguntas y publicación */
     .wa-mm-rep { font-size: 0.75rem; color: #1d4ed8; font-weight: 600; margin-top: 0.1rem; }
     .wa-mm-dir { font-size: 0.74rem; color: #57534e; line-height: 1.3; margin-top: 0.1rem; }
@@ -4635,6 +4680,72 @@
         StateHasChanged();
     }
 
+    // ── 2026-08-21 (parte 3): el chat avisa solo ──
+    ApiClient.MeliAvisoDto? mmAviso = null;
+    bool mmAvisoCerrado = false;
+    List<string> mmCodigos = new();
+
+    /// <summary>Pregunta si el que escribe es un comprador de MercadoLibre. Se llama al abrir
+    /// cada chat: si no lo reconoce (lo normal) no muestra nada y no molesta.</summary>
+    async Task CargarAvisoMeli()
+    {
+        var num = selectedNumero;
+        if (string.IsNullOrWhiteSpace(num)) { mmAviso = null; return; }
+        var av = await Api.GetMeliAvisoAsync(num);
+        if (selectedNumero != num) return;      // cambiaron de chat mientras cargaba
+        mmAviso = av;
+        StateHasChanged();
+    }
+
+    /// <summary>Abre la ficha del comprador que anuncia el cartelito.</summary>
+    async Task AbrirFichaDelAviso()
+    {
+        if (mmAviso is null) return;
+        ctxAbierto = true; modoMeli = true; modoVenta = false;
+        await AbrirFichaMeli(mmAviso.BuyerId);
+    }
+
+    /// <summary>Códigos de MercadoLibre que el cliente pegó en la charla: el código de una
+    /// publicación (MLA…) o el número de una venta. Se miran los últimos mensajes nomás.</summary>
+    void DetectarCodigosMeli()
+    {
+        var encontrados = new List<string>();
+        foreach (var m in mensajes.Skip(Math.Max(0, mensajes.Count - 25)))
+        {
+            var txt = m.Cuerpo;
+            if (string.IsNullOrWhiteSpace(txt)) continue;
+            foreach (System.Text.RegularExpressions.Match mt in
+                     System.Text.RegularExpressions.Regex.Matches(txt, @"MLA-?\d{6,}", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                var cod = mt.Value.ToUpperInvariant().Replace("-", "");
+                if (!encontrados.Contains(cod)) encontrados.Add(cod);
+            }
+            // Números de venta / pack: son largos (12 dígitos o más). Los teléfonos no llegan.
+            foreach (System.Text.RegularExpressions.Match mt in
+                     System.Text.RegularExpressions.Regex.Matches(txt, @"(?<!\d)\d{12,17}(?!\d)"))
+            {
+                if (!encontrados.Contains(mt.Value)) encontrados.Add(mt.Value);
+            }
+        }
+        // Los últimos primero y unos pocos: es un atajo, no un listado.
+        encontrados.Reverse();
+        mmCodigos = encontrados.Take(4).ToList();
+    }
+
+    /// <summary>Toca un código pegado en el chat: si es una publicación, muestra precio y stock;
+    /// si es un número de venta, busca de quién es.</summary>
+    async Task AbrirCodigoMeli(string codigo)
+    {
+        ctxAbierto = true; modoMeli = true; modoVenta = false;
+        if (codigo.StartsWith("MLA", StringComparison.OrdinalIgnoreCase))
+        {
+            await VerPublicacionMeli(codigo);
+            return;
+        }
+        mmBusqueda = codigo;
+        await BuscarMeliAhora();
+    }
+
     void VolverBuscadorMeli() => mmFicha = null;
 
     void LimpiarBusquedaMeli()
@@ -4647,6 +4758,7 @@
     {
         LimpiarBusquedaMeli();
         modoMeli = false; mmAtados = new(); mmAtando = false;
+        mmAviso = null; mmAvisoCerrado = false; mmCodigos = new();
     }
 
     /// <summary>Precio y stock de HOY de una publicación, con la respuesta ya escrita.</summary>
@@ -5970,6 +6082,7 @@
         // se limpia a mano queda el buscador con los resultados del chat de antes.
         CerrarBuscador(); textoAbierto.Clear(); modoSeleccion = false;
         asignarNota = SelectedConv()?.AsignadoNota ?? "";   // 2026-08-06: precargar la nota guardada de este chat (editable)
+        _ = CargarAvisoMeli();   // 2026-08-21: en paralelo, que el chat no espere por esto
         await LoadMensajes();
         // 2026-08-06: presencia — salgo del chat anterior y entro al nuevo (para que se vea quién mira qué).
         await CambiarPresenciaConv(ConvIdActual());
@@ -6010,6 +6123,8 @@
 
         // Bajar al ultimo mensaje: siempre al abrir/cambiar de chat, y en los refrescos
         // automaticos solo si llego algo nuevo.
+        DetectarCodigosMeli();   // 2026-08-21: códigos de MercadoLibre pegados en la charla
+
         var hayNuevos = mensajes.Count != ultimaCantidadMensajes;
         ultimaCantidadMensajes = mensajes.Count;
         if (!silent || hayNuevos) await ScrollAlUltimoMensaje();

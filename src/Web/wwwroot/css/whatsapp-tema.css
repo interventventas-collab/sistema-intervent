@@ -494,3 +494,10 @@
 .wa-dark .wa-mm-chip { background: var(--wad-panel3); border-color: var(--wad-borde2); color: var(--wad-txt); }
 .wa-dark .wa-mm-chip.rojo { background: #450a0a; border-color: #7f1d1d; color: #fca5a5; }
 .wa-dark .wa-mm-vinc.btn.amarillo { background: #3a2f12; border-color: #5c4a1c; color: #fcd34d; }
+
+/* 2026-08-21 (parte 3 del Modo MeLi): el cartelito de arriba del chat, de noche. */
+.wa-dark .wa-mm-aviso-chat { background: #3a2f12; border-color: #5c4a1c; color: #fcd34d; }
+.wa-dark .wa-mm-aviso-ver { background: #eab308; color: #422006; }
+.wa-dark .wa-mm-codigos-lbl { color: var(--wad-txt3); }
+.wa-dark .wa-mm-cod { background: #3a2f12; border-color: #5c4a1c; color: #fcd34d; }
+.wa-dark .wa-mm-cod:hover { background: #5c4a1c; }
