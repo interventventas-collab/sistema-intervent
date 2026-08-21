@@ -7032,6 +7032,22 @@ public class ApiClient
 
     // 2026-08-01: linea = filtrar el hilo por línea (para no cruzar el mismo contacto en 2 líneas).
     // Pasar "null" (sentinela) para la conversación de la línea sin registrar; null C# = no filtrar.
+    // 2026-08-21: BUSCADOR GLOBAL — una palabra en los mensajes de TODAS las charlas.
+    public record TwHitBusquedaDto(int Id, string Numero, string? Linea, string? LineaNombre,
+        string Nombre, string Direccion, DateTime Fecha, string? Canal, string Extracto);
+    public record TwBusquedaGlobalDto(int Total, List<TwHitBusquedaDto> Hits, bool Tope);
+
+    public async Task<TwBusquedaGlobalDto?> BuscarMensajesGlobalAsync(string q, string? linea = null)
+    {
+        try
+        {
+            var url = $"/api/whatsapp/twilio/buscar-mensajes?q={Uri.EscapeDataString(q)}";
+            if (!string.IsNullOrWhiteSpace(linea)) url += $"&linea={Uri.EscapeDataString(linea)}";
+            return await _http.GetFromJsonAsync<TwBusquedaGlobalDto>(url);
+        }
+        catch { return null; }
+    }
+
     public async Task<List<TwMsgDto>> GetTwMensajesAsync(string numero, string? linea = null)
         => await _http.GetFromJsonAsync<List<TwMsgDto>>(
                $"/api/whatsapp/twilio/mensajes?numero={Uri.EscapeDataString(numero)}"

@@ -501,3 +501,16 @@
 .wa-dark .wa-mm-codigos-lbl { color: var(--wad-txt3); }
 .wa-dark .wa-mm-cod { background: #3a2f12; border-color: #5c4a1c; color: #fcd34d; }
 .wa-dark .wa-mm-cod:hover { background: #5c4a1c; }
+
+/* 2026-08-21: buscador GLOBAL (una palabra en todos los chats), de noche. */
+.wa-dark .wa-bg-btn { background: #1e3a5f; border-color: #1d4ed8; color: #93c5fd; }
+.wa-dark .wa-bg-btn:hover:not(:disabled) { background: #1d4ed8; color: #fff; }
+.wa-dark .wa-bg-volver { color: #93c5fd; }
+.wa-dark .wa-bg-cuenta, .wa-dark .wa-bg-que, .wa-dark .wa-bg-vacio { color: var(--wad-txt3); }
+.wa-dark .wa-bg-aviso { background: #3a2f12; border-color: #5c4a1c; color: #fcd34d; }
+.wa-dark .wa-bg-hit { background: var(--wad-panel2); border-color: var(--wad-borde2); }
+.wa-dark .wa-bg-hit:hover { background: #14543f; border-color: #1c6b50; }
+.wa-dark .wa-bg-hit-nom { color: var(--wad-txt); }
+.wa-dark .wa-bg-hit-txt { color: var(--wad-txt2); }
+.wa-dark .wa-bg-hit-fec, .wa-dark .wa-bg-hit-dir { color: var(--wad-txt3); }
+.wa-dark .wa-bg-hit-linea { background: var(--wad-panel3); color: var(--wad-txt2); }

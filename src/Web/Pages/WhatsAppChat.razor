@@ -108,6 +108,15 @@
                     <button class="wa-search-clear" @onclick="() => filtroTexto = string.Empty" title="Limpiar búsqueda">×</button>
                 }
             </div>
+            @* 2026-08-21: BUSCADOR GLOBAL — la misma palabra, pero adentro de los mensajes de
+               TODAS las charlas. El buscador de arriba solo mira nombres y números. *@
+            @if (filtroTexto.Trim().Length >= 2)
+            {
+                <button class="wa-bg-btn" @onclick="BuscarEnTodosLosMensajes" disabled="@bgBuscando"
+                        title="Buscar esa palabra dentro de los mensajes de todas las conversaciones">
+                    @(bgBuscando ? "⏳ Buscando en todos los chats…" : $"🔎 Buscar «{filtroTexto.Trim()}» en los mensajes")
+                </button>
+            }
             <button class="wa-nueva-btn" @onclick="AbrirNuevaConv" title="Escribirle primero a alguien usando una plantilla aprobada">
                 <span class="wa-nueva-ico">✍️</span> Nueva conversación
             </button>
@@ -173,7 +182,47 @@
             </div>
         }
         <div class="wa-conv-list">
-            @if (loadingConv)
+            @if (bgAbierto)
+            {
+                <div class="wa-bg-head">
+                    <button class="wa-bg-volver" @onclick="CerrarBusquedaGlobal" title="Volver al listado de conversaciones">← Conversaciones</button>
+                    <span class="wa-bg-cuenta">
+                        @if (bgResultado is null) { <span>Buscando…</span> }
+                        else if (bgResultado.Total == 0) { <span>Sin resultados</span> }
+                        else { <span>@bgResultado.Total mensaje@(bgResultado.Total == 1 ? "" : "s")</span> }
+                    </span>
+                </div>
+                <div class="wa-bg-que">Buscaste: <b>@bgTexto</b></div>
+                @if (bgResultado is not null && bgResultado.Tope)
+                {
+                    <div class="wa-bg-aviso">Son muchos: te muestro los @bgResultado.Hits.Count más nuevos. Si no está, agregá otra palabra.</div>
+                }
+                @if (bgResultado is not null && bgResultado.Total == 0)
+                {
+                    <div class="wa-bg-vacio">No encontré esa palabra en ningún mensaje.</div>
+                }
+                else if (bgResultado is not null)
+                {
+                    @foreach (var h in bgResultado.Hits)
+                    {
+                        <button class="wa-bg-hit" @onclick="() => AbrirHitGlobal(h)" title="Abrir esa charla en ese mensaje">
+                            <span class="wa-bg-hit-l1">
+                                <span class="wa-bg-hit-nom">@h.Nombre</span>
+                                <span class="wa-bg-hit-fec">@h.Fecha.ToArTime().ToString("dd/MM/yy HH:mm")</span>
+                            </span>
+                            <span class="wa-bg-hit-txt">
+                                <span class="wa-bg-hit-dir" title="@(h.Direccion == "INCOMING" ? "Lo escribió el cliente" : "Lo escribimos nosotros")">@(h.Direccion == "INCOMING" ? "⬅" : "➡")</span>
+                                @h.Extracto
+                            </span>
+                            @if (!string.IsNullOrWhiteSpace(h.LineaNombre))
+                            {
+                                <span class="wa-bg-hit-linea">@h.LineaNombre</span>
+                            }
+                        </button>
+                    }
+                }
+            }
+            else if (loadingConv)
             {
                 <div style="padding:1rem; color:#9ca3af;">Cargando…</div>
             }
@@ -3124,6 +3173,30 @@
     .wa-mm-btn:hover { background: #ecebe9; }
     .wa-mm-btn.ok { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
     .wa-mm-btn.ok:hover { background: #d1fae5; }
+    /* ===== 2026-08-21: BUSCADOR GLOBAL (una palabra en TODOS los chats) ===== */
+    .wa-bg-btn { display: block; width: 100%; margin-top: 0.4rem; padding: 0.4rem 0.6rem; font-family: inherit; font-size: 0.8rem; font-weight: 600;
+        color: #1d4ed8; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 9px; cursor: pointer; text-align: left;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wa-bg-btn:hover:not(:disabled) { background: #dbeafe; }
+    .wa-bg-btn:disabled { opacity: 0.7; cursor: wait; }
+    .wa-bg-head { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; padding: 0.5rem 0.6rem 0.3rem; }
+    .wa-bg-volver { background: none; border: none; color: #1d4ed8; font-family: inherit; font-size: 0.8rem; font-weight: 700; cursor: pointer; padding: 0; }
+    .wa-bg-volver:hover { text-decoration: underline; }
+    .wa-bg-cuenta { font-size: 0.75rem; color: #94a3b8; white-space: nowrap; }
+    .wa-bg-que { font-size: 0.78rem; color: #64748b; padding: 0 0.6rem 0.35rem; }
+    .wa-bg-aviso { font-size: 0.72rem; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; margin: 0 0.6rem 0.4rem; padding: 0.3rem 0.45rem; line-height: 1.35; }
+    .wa-bg-vacio { font-size: 0.83rem; color: #94a3b8; text-align: center; padding: 1rem 0.6rem; }
+    .wa-bg-hit { display: block; width: calc(100% - 1.2rem); margin: 0 0.6rem 0.35rem; text-align: left; font-family: inherit;
+        background: #fff; border: 1px solid #e6eaf0; border-radius: 10px; padding: 0.45rem 0.55rem; cursor: pointer; transition: all .12s; }
+    .wa-bg-hit:hover { border-color: #25d366; background: #f0fff6; }
+    .wa-bg-hit-l1 { display: flex; align-items: baseline; gap: 0.4rem; }
+    .wa-bg-hit-nom { font-size: 0.85rem; font-weight: 700; color: #1f2937; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wa-bg-hit-fec { margin-left: auto; font-size: 0.72rem; color: #9ca3af; white-space: nowrap; }
+    .wa-bg-hit-txt { display: block; font-size: 0.79rem; color: #4b5563; line-height: 1.35; margin-top: 0.15rem;
+        display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    .wa-bg-hit-dir { color: #9ca3af; margin-right: 0.2rem; }
+    .wa-bg-hit-linea { display: inline-block; margin-top: 0.25rem; font-size: 0.68rem; font-weight: 600; color: #475569;
+        background: #f1f5f9; border-radius: 999px; padding: 0.05rem 0.45rem; }
     /* 2026-08-21 (parte 3): el cartelito de MercadoLibre arriba de la charla */
     .wa-mm-aviso-chat { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.4rem; padding: 0.4rem 0.6rem;
         background: #fefce8; border: 1px solid #fde68a; border-radius: 10px; font-size: 0.85rem; color: #713f12; }
@@ -3662,6 +3735,61 @@
     private readonly HashSet<int> busqHitSet = new();
     private int busqPos = -1;
     private string? busqAviso;
+
+    // ===== 2026-08-21: BUSCADOR GLOBAL — una palabra en los mensajes de TODAS las charlas =====
+    // El buscador de arriba (el de la píldora) filtra por nombre/número. Este va a la base y
+    // mira el TEXTO de todos los mensajes, para cuando te acordás de lo que se dijo pero no de
+    // con quién. Al tocar un resultado se abre esa charla parada en ese mensaje.
+    private bool bgAbierto;
+    private bool bgBuscando;
+    private string bgTexto = "";
+    private ApiClient.TwBusquedaGlobalDto? bgResultado;
+
+    private async Task BuscarEnTodosLosMensajes()
+    {
+        var q = (filtroTexto ?? "").Trim();
+        if (q.Length < 2) { Toast.Warning("Escribí al menos dos letras"); return; }
+        bgTexto = q;
+        bgAbierto = true;
+        bgBuscando = true;
+        bgResultado = null;
+        StateHasChanged();
+        // Si estás mirando una sola línea, la respeta; si no, busca en todas.
+        bgResultado = await Api.BuscarMensajesGlobalAsync(q, string.IsNullOrEmpty(filtroLinea) ? null : filtroLinea);
+        bgBuscando = false;
+        if (bgResultado is null) Toast.Error("No pude buscar en los mensajes");
+        StateHasChanged();
+    }
+
+    private void CerrarBusquedaGlobal()
+    {
+        bgAbierto = false;
+        bgResultado = null;
+        bgTexto = "";
+    }
+
+    /// <summary>Abre la charla del resultado y queda parado en ese mensaje, con la lupa de la
+    /// charla ya cargada con la misma palabra (para saltar entre las demás veces que aparece).</summary>
+    private async Task AbrirHitGlobal(ApiClient.TwHitBusquedaDto h)
+    {
+        var palabra = bgTexto;
+        await SelectConv(h.Numero, h.Linea);
+        buscadorAbierto = true;
+        busqTexto = palabra;
+        RecalcularBusqueda();
+        // Parados justo en el mensaje que encontró (si sigue dentro de los últimos cargados).
+        if (mensajes.Any(m => m.Id == h.Id))
+        {
+            busqPos = busqHits.IndexOf(h.Id);
+            await Task.Delay(120);   // dejar que termine de pintar la charla
+            try { await JS.InvokeVoidAsync("waIrAlMensaje", $"wamsg-{h.Id}"); } catch { }
+        }
+        else
+        {
+            Toast.Info("Ese mensaje es más viejo que los últimos que carga la charla. Te la abrí igual.");
+        }
+        StateHasChanged();
+    }
 
     private void ToggleBuscador()
     {

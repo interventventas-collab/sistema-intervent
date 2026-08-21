@@ -1606,6 +1606,89 @@ public class WhatsAppTwilioController : ControllerBase
     }
 
     /// <summary>GET /api/whatsapp/twilio/mensajes?numero=whatsapp:+34... — devuelve el hilo de un numero con reacciones.</summary>
+    /// <summary>
+    /// 2026-08-21: BUSCADOR GLOBAL — la palabra en los mensajes de TODAS las charlas, no solo
+    /// en la que estás mirando. Pedido del dueño: "quiero buscar una palabra en todos los chats".
+    ///
+    /// Devuelve el mensaje encontrado con un pedacito de texto alrededor, de qué charla es y de
+    /// qué línea, para poder saltar ahí de un toque.
+    /// </summary>
+    [HttpGet("buscar-mensajes")]
+    [Authorize]
+    public async Task<IActionResult> BuscarMensajes([FromQuery] string? q, [FromQuery] string? linea = null,
+        [FromQuery] int limit = 60)
+    {
+        var texto = (q ?? "").Trim();
+        if (texto.Length < 2) return Ok(new { total = 0, hits = new List<object>() });
+
+        // Depósito ve SOLO sus chats: un buscador que mira todas las charlas no es para él.
+        if (await EsDepositoAsync()) return Forbid();
+
+        limit = Math.Clamp(limit, 1, 200);
+
+        // Los comodines de SQL (% _ [) se escapan para que se busquen como texto común.
+        var escapado = texto.Replace("[", "[[]").Replace("%", "[%]").Replace("_", "[_]");
+        var patron = $"%{escapado}%";
+
+        // La base es "case insensitive" pero SÍ distingue tildes, así que forzamos una
+        // comparación sin tildes: buscar "camion" tiene que encontrar "camión".
+        var qy = _db.WhatsAppTwilioMensajes.AsNoTracking()
+            .Where(m => m.Cuerpo != null &&
+                        EF.Functions.Like(EF.Functions.Collate(m.Cuerpo, "SQL_Latin1_General_CP1_CI_AI"), patron));
+
+        if (!string.IsNullOrWhiteSpace(linea))
+        {
+            var lp = linea == "null" ? null : linea;
+            qy = qy.Where(m => m.LineaPhoneId == lp);
+        }
+
+        var total = await qy.CountAsync();
+        var hits = await qy
+            .OrderByDescending(m => m.CreatedAt)
+            .Take(limit)
+            .Select(m => new { m.Id, m.Numero, m.LineaPhoneId, m.NombrePerfil, m.Direccion, m.Cuerpo, m.CreatedAt, m.Canal })
+            .ToListAsync();
+
+        // Nombre de la agenda (si lo tiene) y nombre visible de cada línea.
+        var numeros = hits.Select(h => h.Numero).Distinct().ToList();
+        var contactos = await _db.WhatsAppTwilioContactos.AsNoTracking()
+            .Where(c => numeros.Contains(c.Numero))
+            .ToDictionaryAsync(c => c.Numero, c => c.Nombre);
+        var lineasNombres = await _db.AppSettings.AsNoTracking()
+            .Where(s => s.Key.StartsWith("whatsapp.linea."))
+            .ToDictionaryAsync(s => s.Key.Substring("whatsapp.linea.".Length), s => s.Value);
+
+        var res = hits.Select(h => new
+        {
+            id = h.Id,
+            numero = h.Numero,
+            linea = h.LineaPhoneId,
+            lineaNombre = h.LineaPhoneId != null && lineasNombres.TryGetValue(h.LineaPhoneId, out var ln) ? ln : null,
+            nombre = contactos.TryGetValue(h.Numero, out var nom) && !string.IsNullOrWhiteSpace(nom)
+                ? nom
+                : (string.IsNullOrWhiteSpace(h.NombrePerfil) ? h.Numero.Replace("whatsapp:", "") : h.NombrePerfil),
+            direccion = h.Direccion,
+            fecha = h.CreatedAt,
+            canal = h.Canal,
+            extracto = Extracto(h.Cuerpo, texto)
+        }).ToList();
+
+        return Ok(new { total, hits = res, tope = total > limit });
+    }
+
+    /// <summary>Un pedacito del mensaje alrededor de la palabra buscada, para el listado.</summary>
+    private static string Extracto(string? cuerpo, string palabra)
+    {
+        var t = (cuerpo ?? "").Replace("\n", " ").Replace("\r", " ").Trim();
+        if (t.Length <= 140) return t;
+        var i = t.IndexOf(palabra, StringComparison.OrdinalIgnoreCase);
+        if (i < 0) return t.Substring(0, 140) + "…";
+        var desde = Math.Max(0, i - 50);
+        var largo = Math.Min(140, t.Length - desde);
+        var trozo = t.Substring(desde, largo);
+        return (desde > 0 ? "…" : "") + trozo + (desde + largo < t.Length ? "…" : "");
+    }
+
     [HttpGet("mensajes")]
     [Authorize]
     public async Task<IActionResult> Mensajes([FromQuery] string? numero, [FromQuery] string? linea = null, [FromQuery] int top = 200)
