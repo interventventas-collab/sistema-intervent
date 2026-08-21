@@ -7341,6 +7341,51 @@ public class ApiClient
         catch { return null; }
     }
 
+    // ===== 2026-08-21: MODO MELI — la ficha del comprador de MercadoLibre dentro del chat =====
+    public record MeliFichaMatchDto(
+        long BuyerId, string? Nickname, string? Nombre, string? Telefono, string? Ciudad, string? Provincia,
+        int Compras, decimal TotalGastado, DateTime? UltimaCompra, string? UltimoItem, string PorQue);
+
+    public record MeliFichaCompraDto(
+        long OrderId, long? PackId, DateTime? Fecha, string Items, int Cantidad, decimal Total,
+        string? Cuenta, string EstadoTexto, string? Seguimiento, string? TipoEnvio,
+        DateTime? Entregado, DateTime? EstimadaHasta, string? Thumbnail, string? Permalink,
+        string? ItemId, string RespuestaSugerida);
+
+    public record MeliFichaDto(
+        long BuyerId, string? Nickname, string? Nombre, string? Telefono, string? Direccion,
+        string? Ciudad, string? Provincia, string? CodigoPostal, int Compras, decimal TotalGastado,
+        DateTime? PrimeraCompra, DateTime? UltimaCompra,
+        int? ClienteVinculadoId, string? ClienteVinculadoNombre,
+        List<MeliFichaCompraDto> UltimasCompras, string? Aviso);
+
+    /// <summary>Buscador de una sola caja: usuario de MeLi, nombre, teléfono, número de venta o código MLA.</summary>
+    public async Task<List<MeliFichaMatchDto>> BuscarMeliFichaAsync(string q)
+    {
+        try { return await _http.GetFromJsonAsync<List<MeliFichaMatchDto>>($"/api/meli/ficha/buscar?q={Uri.EscapeDataString(q)}") ?? new(); }
+        catch { return new(); }
+    }
+
+    public async Task<MeliFichaDto?> GetMeliFichaAsync(long buyerId)
+    {
+        try { return await _http.GetFromJsonAsync<MeliFichaDto>($"/api/meli/ficha/{buyerId}"); }
+        catch { return null; }
+    }
+
+    /// <summary>Deja atado el comprador de MeLi al cliente del sistema (para reconocerlo la próxima vez).</summary>
+    public async Task<(bool ok, string? error)> VincularMeliBuyerAsync(long buyerId, int clienteId, string? nickname)
+    {
+        try
+        {
+            var url = $"/api/meli/ficha/{buyerId}/vincular/{clienteId}";
+            if (!string.IsNullOrWhiteSpace(nickname)) url += $"?nickname={Uri.EscapeDataString(nickname)}";
+            var resp = await _http.PostAsync(url, null);
+            if (resp.IsSuccessStatusCode) return (true, null);
+            return (false, await ExtraerError(resp));
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     public record TwReaccionResp(bool Ok, bool Removed, bool EnviadaAlCliente);
     public async Task<TwReaccionResp?> ToggleReaccionAsync(int mensajeId, string emoji)
     {

@@ -454,3 +454,31 @@
 .wa-dark .wa-fwd-linea, .wa-dark .pwa-fwd-linea { color: #6ee7b7; }
 .wa-dark .wa-fwd-linea.otra, .wa-dark .pwa-fwd-linea.otra { color: #fcd34d; }
 .wa-dark .wa-fwd-chip.otra { background: #3a2f12; border-color: #5c4a1c; }
+
+/* ─────────────  2026-08-21: MODO MELI (panel derecho del chat)  ─────────────
+   El panel amarillo de MercadoLibre, de noche: fondo oscuro y tarjetas grises.
+   Sin esto las tarjetas quedan blancas dentro de un panel negro. */
+.wa-dark .wa-mm { background: var(--wad-panel); }
+.wa-dark .wa-mm-top { background: #3a2f12; border-color: #5c4a1c; }
+.wa-dark .wa-mm-tit { color: #fcd34d; }
+.wa-dark .wa-mm-sec-t, .wa-dark .wa-mm-vacio { color: var(--wad-txt3); }
+.wa-dark .wa-mm-busc { background: var(--wad-panel3); border-color: var(--wad-borde2); }
+.wa-dark .wa-mm-busc-inp { color: var(--wad-txt); }
+.wa-dark .wa-mm-busc-inp::placeholder { color: var(--wad-txt3); }
+.wa-dark .wa-mm-match, .wa-dark .wa-mm-cab, .wa-dark .wa-mm-compra { background: var(--wad-panel2); border-color: var(--wad-borde2); }
+.wa-dark .wa-mm-match:hover { background: #3a2f12; border-color: #5c4a1c; }
+.wa-dark .wa-mm-match-nick, .wa-dark .wa-mm-nick, .wa-dark .wa-mm-estado, .wa-dark .wa-mm-compra-tit { color: var(--wad-txt); }
+.wa-dark .wa-mm-match-cnt { background: #3a2f12; color: #fcd34d; }
+.wa-dark .wa-mm-match-l2, .wa-dark .wa-mm-dato, .wa-dark .wa-mm-nums, .wa-dark .wa-mm-envio { color: var(--wad-txt2); }
+.wa-dark .wa-mm-match-por, .wa-dark .wa-mm-match-fec, .wa-dark .wa-mm-compra-l2 { color: var(--wad-txt3); }
+.wa-dark .wa-mm-nums { border-color: var(--wad-borde2); }
+.wa-dark .wa-mm-compra-tot { color: var(--wad-txt); }
+.wa-dark .wa-mm-compra-cta { background: var(--wad-panel3); color: var(--wad-txt3); }
+.wa-dark .wa-mm-compra-foto { border-color: var(--wad-borde2); }
+.wa-dark .wa-mm-vinc.ok { background: #0b3d2e; border-color: #14543f; color: #6ee7b7; }
+.wa-dark .wa-mm-vinc.btn { background: #1e3a5f; border-color: #1d4ed8; color: #93c5fd; }
+.wa-dark .wa-mm-aviso { background: #3a2f12; border-color: #5c4a1c; color: #fcd34d; }
+.wa-dark .wa-mm-btn { background: var(--wad-panel3); border-color: var(--wad-borde2); color: var(--wad-txt); }
+.wa-dark .wa-mm-btn:hover { background: #374248; }
+.wa-dark .wa-mm-btn.ok { background: #0b3d2e; border-color: #14543f; color: #6ee7b7; }
+.wa-dark .wa-mm-otro { color: var(--wad-txt3); }

@@ -1579,6 +1579,152 @@
                     }
                 </aside>
             }
+            @* ══════════ 2026-08-21: MODO MELI — la ficha del comprador de MercadoLibre acá al lado.
+               Pedido del dueño: "si me escribe alguien por una publicación o porque compró, pongo
+               su usuario y me aparece toda su información para resolver". ══════════ *@
+            else if (modoMeli)
+            {
+                <aside class="wa-ctx wa-mm">
+                    <div class="wa-mm-top">
+                        <span class="wa-mm-tit">🟡 Modo MercadoLibre</span>
+                        <button class="wa-ficha-x" @onclick="CerrarModoMeli" title="Salir del modo MercadoLibre">×</button>
+                    </div>
+
+                    <div class="wa-mm-busc">
+                        <span>🔍</span>
+                        <input class="wa-mm-busc-inp" placeholder="Usuario de MeLi, nombre, teléfono, N° de venta o MLA…"
+                               value="@mmBusqueda" @oninput="OnBuscarMeli" @onkeydown="OnEnterBuscarMeli" autocomplete="off" />
+                        @if (!string.IsNullOrWhiteSpace(mmBusqueda))
+                        {
+                            <button class="wa-mm-busc-x" @onclick="LimpiarBusquedaMeli" title="Borrar la búsqueda">✕</button>
+                        }
+                    </div>
+
+                    @if (mmBuscando)
+                    {
+                        <div class="wa-mm-vacio">⏳ Buscando…</div>
+                    }
+                    else if (mmFicha is null)
+                    {
+                        @if (mmResultados.Count > 0)
+                        {
+                            <div class="wa-mm-sec-t">@(mmResultados.Count == 1 ? "1 comprador" : $"{mmResultados.Count} compradores")</div>
+                            @foreach (var m in mmResultados)
+                            {
+                                <button class="wa-mm-match" @onclick="() => AbrirFichaMeli(m.BuyerId)" title="Ver toda la información de este comprador">
+                                    <span class="wa-mm-match-l1">
+                                        <span class="wa-mm-match-nick">@(string.IsNullOrWhiteSpace(m.Nickname) ? $"Comprador {m.BuyerId}" : m.Nickname)</span>
+                                        @if (m.Compras > 0) { <span class="wa-mm-match-cnt">@m.Compras compra@(m.Compras == 1 ? "" : "s")</span> }
+                                    </span>
+                                    <span class="wa-mm-match-l2">
+                                        @(string.IsNullOrWhiteSpace(m.Nombre) ? (m.Ciudad ?? "") : m.Nombre)
+                                        @if (m.UltimaCompra is DateTime uc) { <span class="wa-mm-match-fec">última: @uc.ToString("dd/MM/yy")</span> }
+                                    </span>
+                                    <span class="wa-mm-match-por">@m.PorQue</span>
+                                </button>
+                            }
+                        }
+                        else if (mmBuscado)
+                        {
+                            <div class="wa-mm-vacio">
+                                No encontré a nadie con eso.<br />
+                                Probá con el usuario de MercadoLibre tal cual figura en la pregunta o en la venta.
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="wa-mm-vacio">
+                                Escribí el <b>usuario de MercadoLibre</b> del que te está escribiendo.<br />
+                                También sirve el nombre, el teléfono, el número de venta o el código de la publicación (MLA…).
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        @* ── La ficha del comprador ── *@
+                        <div class="wa-mm-cab">
+                            <div class="wa-mm-nick">@(string.IsNullOrWhiteSpace(mmFicha.Nickname) ? $"Comprador {mmFicha.BuyerId}" : mmFicha.Nickname)</div>
+                            @if (!string.IsNullOrWhiteSpace(mmFicha.Nombre)) { <div class="wa-mm-dato">@mmFicha.Nombre</div> }
+                            @if (!string.IsNullOrWhiteSpace(mmFicha.Telefono)) { <div class="wa-mm-dato">📞 @mmFicha.Telefono</div> }
+                            @if (!string.IsNullOrWhiteSpace(mmFicha.Direccion) || !string.IsNullOrWhiteSpace(mmFicha.Ciudad))
+                            {
+                                <div class="wa-mm-dato">📍 @($"{mmFicha.Direccion} {mmFicha.Ciudad} {mmFicha.Provincia}".Trim())</div>
+                            }
+                            <div class="wa-mm-nums">
+                                <span><b>@mmFicha.Compras</b> compra@(mmFicha.Compras == 1 ? "" : "s")</span>
+                                @if (mmFicha.TotalGastado > 0) { <span><b>@Plata(mmFicha.TotalGastado)</b> en total</span> }
+                                @if (mmFicha.PrimeraCompra is DateTime pc) { <span>cliente desde @pc.ToString("MM/yy")</span> }
+                            </div>
+                            @if (mmFicha.ClienteVinculadoId is not null)
+                            {
+                                <div class="wa-mm-vinc ok" title="Este comprador ya está atado a un cliente del sistema">
+                                    🔗 Es el cliente <b>@mmFicha.ClienteVinculadoNombre</b>
+                                </div>
+                            }
+                            else if (SelectedConv()?.ClienteId is not null)
+                            {
+                                <button class="wa-mm-vinc btn" @onclick="VincularCompradorAlChat" disabled="@mmVinculando"
+                                        title="Dejarlo atado al cliente de este chat: la próxima vez que escriba lo reconocemos solo">
+                                    @(mmVinculando ? "⏳ Vinculando…" : $"🔗 Es {SelectedConv()?.ClienteNombre}")
+                                </button>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(mmFicha.Aviso))
+                            {
+                                <div class="wa-mm-aviso">ℹ️ @mmFicha.Aviso</div>
+                            }
+                        </div>
+
+                        <div class="wa-mm-sec-t">Sus últimas compras</div>
+                        @if (mmFicha.UltimasCompras.Count == 0)
+                        {
+                            <div class="wa-mm-vacio">Todavía no tiene compras nuestras.</div>
+                        }
+                        else
+                        {
+                            @foreach (var c in mmFicha.UltimasCompras)
+                            {
+                                <div class="wa-mm-compra">
+                                    <div class="wa-mm-compra-l1">
+                                        @if (!string.IsNullOrWhiteSpace(c.Thumbnail))
+                                        {
+                                            <img class="wa-mm-compra-foto" src="@c.Thumbnail" alt="" />
+                                        }
+                                        <div class="wa-mm-compra-tit" title="@c.Items">@c.Items</div>
+                                    </div>
+                                    <div class="wa-mm-compra-l2">
+                                        <span>@(c.Fecha?.ToString("dd/MM/yy") ?? "—")</span>
+                                        <span class="wa-mm-compra-tot">@Plata(c.Total)</span>
+                                        @if (!string.IsNullOrWhiteSpace(c.Cuenta)) { <span class="wa-mm-compra-cta">@c.Cuenta</span> }
+                                    </div>
+                                    <div class="wa-mm-estado">@c.EstadoTexto</div>
+                                    @if (!string.IsNullOrWhiteSpace(c.TipoEnvio)) { <div class="wa-mm-envio">@c.TipoEnvio</div> }
+                                    @if (c.EstimadaHasta is DateTime ee && c.Entregado is null)
+                                    {
+                                        <div class="wa-mm-envio">Llega estimado el @ee.ToString("dd/MM")</div>
+                                    }
+                                    <div class="wa-mm-acc">
+                                        <button class="wa-mm-btn ok" @onclick="() => PegarRespuestaMeli(c.RespuestaSugerida)"
+                                                title="Poner esta respuesta en el cuadro de escribir (podés retocarla antes de mandarla)">💬 Pegar respuesta</button>
+                                        @if (!string.IsNullOrWhiteSpace(c.Seguimiento))
+                                        {
+                                            <button class="wa-mm-btn" @onclick="() => CopiarSeguimientoMeli(c.Seguimiento!)"
+                                                    title="Copiar el número de seguimiento @c.Seguimiento">📋 @c.Seguimiento</button>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(c.Permalink))
+                                        {
+                                            <a class="wa-mm-btn" href="@c.Permalink" target="_blank" title="Abrir la publicación en MercadoLibre">🔗 Publicación</a>
+                                        }
+                                        <button class="wa-mm-btn" @onclick="() => CopiarVentaMeli(c.OrderId)"
+                                                title="Copiar el número de venta @c.OrderId">#@c.OrderId</button>
+                                    </div>
+                                </div>
+                            }
+                        }
+
+                        <button class="wa-mm-otro" @onclick="VolverBuscadorMeli">← Buscar otro comprador</button>
+                    }
+                </aside>
+            }
             else
             {
             <aside class="wa-ctx">
@@ -1739,6 +1885,9 @@
             {
                 <button class="wa-ctx-rail-btn @(mostrarFichaCliente ? "on" : "")" @onclick="ToggleFichaCliente" title="Ficha del cliente: saldo, últimas facturas y ubicación">🛍️</button>
             }
+            @* 2026-08-21: MODO MELI — está siempre, aunque el chat no esté vinculado a un cliente:
+               el que pregunta por una publicación muchas veces todavía no es cliente nuestro. *@
+            <button class="wa-ctx-rail-btn @(modoMeli ? "on" : "")" @onclick="AbrirModoMeli" title="Modo MercadoLibre: poné su usuario y mirá sus compras, envíos y seguimientos">🟡</button>
         </div>
     }
 </div> @* fin .wa-thread-wrap *@
@@ -2775,6 +2924,54 @@
     .wa-mv-top-chip:hover:not(:disabled) { background: #f0fdf4; border-color: #16a34a; color: #047857; }
     .wa-mv-top-chip:disabled { opacity: 0.6; cursor: wait; }
     .wa-mv-linea-fmt { font-size: 0.66rem; font-weight: 700; color: #6366f1; background: #eef2ff; border-radius: 4px; padding: 0.02rem 0.28rem; margin-left: 0.25rem; }
+    /* ===== 2026-08-21: MODO MELI — el panel derecho convertido en la ficha del comprador ===== */
+    /* Amarillo/azul de MercadoLibre para que se distinga de un vistazo del modo venta (verde). */
+    .wa-mm { background: #fffdf5; width: 340px; flex: 0 0 340px; }
+    .wa-mm-top { display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 0.7rem; background: #fef9c3; border-bottom: 1px solid #fde68a; border-radius: 10px 10px 0 0; }
+    .wa-mm-tit { font-size: 0.95rem; font-weight: 700; color: #854d0e; }
+    .wa-mm-sec-t { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; color: #a8a29e; font-weight: 700; padding: 0.6rem 0.7rem 0.25rem; }
+    .wa-mm-vacio { font-size: 0.82rem; color: #a8a29e; padding: 0.5rem 0.7rem; line-height: 1.5; }
+    .wa-mm-busc { display: flex; align-items: center; gap: 0.3rem; margin: 0.6rem 0.7rem 0.2rem; background: #fff; border: 1px solid #e7e5e4; border-radius: 9px; padding: 0.3rem 0.5rem; }
+    .wa-mm-busc-inp { flex: 1; min-width: 0; border: none; outline: none; font-family: inherit; font-size: 0.82rem; background: transparent; }
+    .wa-mm-busc-x { background: none; border: none; color: #d6d3d1; cursor: pointer; font-size: 0.8rem; padding: 0 0.15rem; }
+    .wa-mm-busc-x:hover { color: #ef4444; }
+    /* Cada comprador que coincidió con la búsqueda */
+    .wa-mm-match { display: block; width: calc(100% - 1.4rem); text-align: left; font-family: inherit; background: #fff; border: 1px solid #e7e5e4; border-radius: 9px; padding: 0.4rem 0.55rem; margin: 0 0.7rem 0.35rem; cursor: pointer; transition: all .12s; }
+    .wa-mm-match:hover { border-color: #eab308; background: #fefce8; }
+    .wa-mm-match-l1 { display: flex; align-items: baseline; gap: 0.4rem; font-size: 0.85rem; }
+    .wa-mm-match-nick { font-weight: 700; color: #292524; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wa-mm-match-cnt { margin-left: auto; font-size: 0.72rem; font-weight: 700; color: #a16207; background: #fef9c3; border-radius: 999px; padding: 0.05rem 0.4rem; white-space: nowrap; }
+    .wa-mm-match-l2 { display: flex; align-items: baseline; gap: 0.4rem; font-size: 0.76rem; color: #78716c; margin-top: 0.1rem; }
+    .wa-mm-match-fec { margin-left: auto; color: #a8a29e; white-space: nowrap; }
+    .wa-mm-match-por { display: block; font-size: 0.7rem; color: #a8a29e; margin-top: 0.15rem; }
+    /* Cabecera de la ficha */
+    .wa-mm-cab { margin: 0.6rem 0.7rem 0; background: #fff; border: 1px solid #e7e5e4; border-radius: 10px; padding: 0.55rem 0.6rem; }
+    .wa-mm-nick { font-size: 1rem; font-weight: 800; color: #1c1917; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wa-mm-dato { font-size: 0.8rem; color: #57534e; margin-top: 0.12rem; }
+    .wa-mm-nums { display: flex; flex-wrap: wrap; gap: 0.5rem; font-size: 0.76rem; color: #78716c; margin-top: 0.35rem; padding-top: 0.35rem; border-top: 1px solid #f5f5f4; }
+    .wa-mm-vinc { display: block; width: 100%; text-align: center; font-family: inherit; font-size: 0.78rem; border-radius: 8px; padding: 0.3rem 0.45rem; margin-top: 0.4rem; }
+    .wa-mm-vinc.ok { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
+    .wa-mm-vinc.btn { background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; font-weight: 700; cursor: pointer; }
+    .wa-mm-vinc.btn:hover:not(:disabled) { background: #dbeafe; }
+    .wa-mm-vinc.btn:disabled { opacity: 0.6; cursor: wait; }
+    .wa-mm-aviso { font-size: 0.72rem; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 7px; padding: 0.25rem 0.4rem; margin-top: 0.4rem; line-height: 1.35; }
+    /* Cada compra */
+    .wa-mm-compra { background: #fff; border: 1px solid #e7e5e4; border-radius: 10px; padding: 0.45rem 0.5rem; margin: 0 0.7rem 0.4rem; }
+    .wa-mm-compra-l1 { display: flex; align-items: center; gap: 0.4rem; }
+    .wa-mm-compra-foto { width: 34px; height: 34px; object-fit: cover; border-radius: 6px; border: 1px solid #f5f5f4; flex-shrink: 0; }
+    .wa-mm-compra-tit { flex: 1; min-width: 0; font-size: 0.8rem; font-weight: 600; color: #292524; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .wa-mm-compra-l2 { display: flex; align-items: baseline; gap: 0.4rem; font-size: 0.75rem; color: #a8a29e; margin-top: 0.25rem; }
+    .wa-mm-compra-tot { font-weight: 700; color: #44403c; }
+    .wa-mm-compra-cta { margin-left: auto; background: #f5f5f4; border-radius: 999px; padding: 0.02rem 0.35rem; font-size: 0.68rem; }
+    .wa-mm-estado { font-size: 0.82rem; font-weight: 700; color: #1c1917; margin-top: 0.3rem; }
+    .wa-mm-envio { font-size: 0.72rem; color: #78716c; }
+    .wa-mm-acc { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.35rem; }
+    .wa-mm-btn { display: inline-flex; align-items: center; gap: 0.2rem; font-family: inherit; font-size: 0.72rem; font-weight: 600; color: #44403c; background: #f5f5f4; border: 1px solid #e7e5e4; border-radius: 7px; padding: 0.2rem 0.42rem; cursor: pointer; text-decoration: none; }
+    .wa-mm-btn:hover { background: #ecebe9; }
+    .wa-mm-btn.ok { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+    .wa-mm-btn.ok:hover { background: #d1fae5; }
+    .wa-mm-otro { display: block; width: calc(100% - 1.4rem); margin: 0.3rem 0.7rem 0.7rem; background: none; border: none; color: #a8a29e; font-size: 0.76rem; cursor: pointer; padding: 0.3rem; }
+    .wa-mm-otro:hover { color: #a16207; }
     .wa-ctx-btn-venta { background: #ecfdf5; border-color: #a7f3d0; color: #047857; font-weight: 700; }
     .wa-ctx-btn-venta:hover { background: #d1fae5; }
     /* 2026-08-03: opciones del buscador de "Vincular cliente" */
@@ -3795,6 +3992,7 @@
         if (SelectedConv()?.ClienteId is not int cid) { Toast.Warning("Vinculá el chat a un cliente primero."); return; }
         ctxAbierto = true;
         modoVenta = true;
+        modoMeli = false;
         await CargarAnterioresModoVenta(cid);
         await CargarProductosModoVenta(cid);
     }
@@ -4186,6 +4384,133 @@
     bool _fichaAttachPending = false;   // para engancharle el "arrastrar" cuando se renderiza la ventana flotante
 
     /// <summary>Abre/cierra la tarjeta de ficha del cliente. Al abrir, la carga desde la API.</summary>
+    // ===== 2026-08-21: MODO MELI — toda la info del comprador de MercadoLibre, dentro del chat =====
+    // Pedido del dueño: "si me escribe alguien preguntando por una publicación o porque compró,
+    // pongo su usuario y me aparece toda su información para resolver".
+    // No consulta nada nuevo a MercadoLibre: junta lo que ya tenemos guardado (base de clientes,
+    // ventas, envíos y publicaciones) y lo muestra en castellano, con la respuesta ya escrita.
+    bool modoMeli = false;
+    string mmBusqueda = "";
+    bool mmBuscando = false;
+    bool mmBuscado = false;          // ya se buscó al menos una vez (para el cartel de "no encontré")
+    bool mmVinculando = false;
+    List<ApiClient.MeliFichaMatchDto> mmResultados = new();
+    ApiClient.MeliFichaDto? mmFicha = null;
+    CancellationTokenSource? _mmCts;
+
+    async Task AbrirModoMeli()
+    {
+        ctxAbierto = true;
+        modoMeli = true;
+        modoVenta = false;
+        // Si el teléfono de este chat ya compró alguna vez, lo encontramos solo y la ficha
+        // aparece sin escribir nada. Ojo: MeLi solo nos da el teléfono en Flex/ME1, así que
+        // muchas veces no va a encontrar nada — para eso está el buscador.
+        if (mmFicha is null && mmResultados.Count == 0 && !string.IsNullOrWhiteSpace(selectedNumero))
+        {
+            mmBusqueda = selectedNumero!;
+            await BuscarMeliAhora(auto: true);
+        }
+    }
+
+    void CerrarModoMeli() => modoMeli = false;
+
+    void OnBuscarMeli(ChangeEventArgs e)
+    {
+        mmBusqueda = e.Value?.ToString() ?? "";
+        _ = BuscarMeliConEspera();
+    }
+
+    /// <summary>Espera a que deje de tipear antes de ir al servidor.</summary>
+    async Task BuscarMeliConEspera()
+    {
+        _mmCts?.Cancel();
+        var cts = _mmCts = new CancellationTokenSource();
+        if ((mmBusqueda ?? "").Trim().Length < 3)
+        {
+            mmResultados = new(); mmBuscado = false; mmBuscando = false;
+            StateHasChanged();
+            return;
+        }
+        try
+        {
+            await Task.Delay(350, cts.Token);
+            if (cts.Token.IsCancellationRequested) return;
+            await BuscarMeliAhora();
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    async Task OnEnterBuscarMeli(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter") return;
+        _mmCts?.Cancel();
+        await BuscarMeliAhora();
+    }
+
+    async Task BuscarMeliAhora(bool auto = false)
+    {
+        var q = (mmBusqueda ?? "").Trim();
+        if (q.Length < 3) return;
+        mmBuscando = true; mmFicha = null;
+        StateHasChanged();
+        var res = await Api.BuscarMeliFichaAsync(q);
+        mmBuscando = false;
+        mmResultados = res;
+        mmBuscado = !auto;
+        // La búsqueda automática por teléfono no molesta si no encontró nada: deja el buscador limpio.
+        if (res.Count == 0 && auto) mmBusqueda = "";
+        else if (res.Count == 1) await AbrirFichaMeli(res[0].BuyerId);
+        StateHasChanged();
+    }
+
+    async Task AbrirFichaMeli(long buyerId)
+    {
+        mmBuscando = true;
+        StateHasChanged();
+        mmFicha = await Api.GetMeliFichaAsync(buyerId);
+        mmBuscando = false;
+        if (mmFicha is null) Toast.Error("No pude traer la ficha de ese comprador.");
+        StateHasChanged();
+    }
+
+    void VolverBuscadorMeli() => mmFicha = null;
+
+    void LimpiarBusquedaMeli()
+    {
+        mmBusqueda = ""; mmResultados = new(); mmFicha = null; mmBuscado = false;
+    }
+
+    /// <summary>Pone la respuesta sugerida en el cuadro de escribir. NO la manda: se retoca y se manda a mano.</summary>
+    void PegarRespuestaMeli(string texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) return;
+        composerText = string.IsNullOrWhiteSpace(composerText) ? texto : composerText.TrimEnd() + "\n" + texto;
+        Toast.Success("Respuesta puesta abajo — retocala y mandala");
+    }
+
+    Task CopiarSeguimientoMeli(string seguimiento) => CopiarTextoMeli(seguimiento, "Seguimiento copiado ✓");
+    Task CopiarVentaMeli(long orderId) => CopiarTextoMeli(orderId.ToString(), "N° de venta copiado ✓");
+
+    async Task CopiarTextoMeli(string texto, string aviso)
+    {
+        try { await JS.InvokeVoidAsync("copyToClipboard", texto); Toast.Success(aviso); }
+        catch { Toast.Error("No pude copiar"); }
+    }
+
+    /// <summary>Deja atado este comprador de MeLi al cliente del chat, para reconocerlo la próxima vez.</summary>
+    async Task VincularCompradorAlChat()
+    {
+        if (mmFicha is null) return;
+        if (SelectedConv()?.ClienteId is not int cid) { Toast.Warning("Este chat todavía no está vinculado a ningún cliente."); return; }
+        mmVinculando = true;
+        var (ok, err) = await Api.VincularMeliBuyerAsync(mmFicha.BuyerId, cid, mmFicha.Nickname);
+        mmVinculando = false;
+        if (!ok) { Toast.Error(err ?? "No se pudo vincular"); return; }
+        Toast.Success("Vinculado ✓ La próxima vez que escriba lo reconocemos solo");
+        await AbrirFichaMeli(mmFicha.BuyerId);
+    }
+
     async Task ToggleFichaCliente()
     {
         if (mostrarFichaCliente) { mostrarFichaCliente = false; return; }
