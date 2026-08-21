@@ -60,6 +60,26 @@
     /* 2026-08-21: plata a favor del cliente (pagos a cuenta, notas de credito, facturas
        pagadas de mas). Se muestra restando para que se entienda por que el TOTAL DEBE no es
        la simple suma de Cotizacion + Factura. */
+    /* 2026-08-21: barra fija con la suma de los clientes tildados. Pedido del usuario: cuando
+       marca las 3 sucursales de una misma razon social quiere ver el total junto, sin tener que
+       bajarse el Excel. */
+    .barra-seleccion { position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; background: #1f2937; color: #fff;
+        padding: 0.55rem 1rem; display: flex; align-items: center; justify-content: center; gap: 1.2rem; flex-wrap: wrap;
+        box-shadow: 0 -3px 14px rgba(0,0,0,0.28); }
+    .barra-seleccion .cant { font-size: 0.85rem; font-weight: 700; color: #fcd34d; }
+    .barra-seleccion .desglose { font-size: 0.78rem; color: #d1d5db; display: flex; gap: 0.8rem; flex-wrap: wrap; }
+    .barra-seleccion .desglose .favor { color: #86efac; }
+    .barra-seleccion .total { font-size: 1.25rem; font-weight: 800; color: #fff; }
+    .barra-seleccion .total .rot { font-size: 0.72rem; font-weight: 700; color: #9ca3af; display: block; text-transform: uppercase; letter-spacing: 0.4px; }
+    .barra-seleccion button { border: none; border-radius: 6px; padding: 0.4rem 0.7rem; font-size: 0.8rem; font-weight: 700; cursor: pointer; }
+    .barra-seleccion .btn-excel { background: #16a34a; color: #fff; }
+    .barra-seleccion .btn-destildar { background: #4b5563; color: #fff; }
+    @@media (max-width: 640px) {
+        /* deja libre la esquina de abajo a la izquierda: ahi vive el boton flotante del menu */
+        .barra-seleccion { gap: 0.5rem; padding: 0.5rem 0.6rem 0.5rem 4.9rem; justify-content: flex-end; }
+        .barra-seleccion .total { font-size: 1.05rem; }
+        .barra-seleccion .desglose { width: 100%; justify-content: center; }
+    }
     .credito-linea { display: flex; justify-content: space-between; align-items: center; margin-top: 0.4rem; padding: 0.35rem 0.7rem; background: #dcfce7; border-radius: 6px; font-size: 0.82rem; color: #166534; font-weight: 600; }
     .credito-linea strong { font-size: 0.95rem; font-weight: 800; }
     .cliente-total { display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem; padding: 0.45rem 0.7rem; background: #fef9c3; border-radius: 6px; }
@@ -347,6 +367,31 @@
             }
         </div>
     }
+
+    @* ════════ 2026-08-21: barra fija con el total de los clientes tildados ════════ *@
+    @if (saldos is not null && seleccionados.Count > 0)
+    {
+        var sel = saldos.Where(x => seleccionados.Contains(x.ClienteId)).ToList();
+        var selTotal = sel.Sum(x => x.SaldoPendiente);
+        var selCot = sel.Sum(x => x.SaldoCotizacion);
+        var selFac = sel.Sum(x => x.SaldoFactura);
+        var selFavor = sel.Sum(x => x.CreditoAFavor);
+        @* deja lugar abajo para que la barra no tape la ultima tarjeta *@
+        <div style="height: 5.5rem;"></div>
+        <div class="barra-seleccion">
+            <span class="cant">✅ @sel.Count cliente@(sel.Count == 1 ? "" : "s") tildado@(sel.Count == 1 ? "" : "s")</span>
+            <span class="desglose">
+                @if (selCot > 0.5m) { <span>📝 Cotización $@FormatMoney(selCot)</span> }
+                @if (selFac > 0.5m) { <span>📋 Factura $@FormatMoney(selFac)</span> }
+                @if (selFavor > 0.5m) { <span class="favor">💚 A favor − $@FormatMoney(selFavor)</span> }
+            </span>
+            <span class="total"><span class="rot">Total de los tildados</span>$@FormatMoney(selTotal)</span>
+            <button class="btn-excel" @onclick="DescargarExcel" disabled="@exportando">
+                @(exportando ? "⏳..." : "📊 Excel")
+            </button>
+            <button class="btn-destildar" @onclick="DestildarTodos">✖ Destildar</button>
+        </div>
+    }
 </div>
 
 @* ════════ Modal compartir link público ════════ *@
@@ -441,6 +486,9 @@
             foreach (var s in Filtrados()) seleccionados.Remove(s.ClienteId);
         }
     }
+
+    /// <summary>Saca todos los tildes de una (los de la barra de seleccion).</summary>
+    private void DestildarTodos() => seleccionados.Clear();
 
     private string ExcelButtonLabel()
         => seleccionados.Count > 0
