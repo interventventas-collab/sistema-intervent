@@ -543,7 +543,8 @@ public class CafeVentasController : ControllerBase
         if (from.HasValue) q = q.Where(v => v.Fecha >= from.Value.Date);
         if (to.HasValue) q = q.Where(v => v.Fecha <= to.Value.Date);
         // Necesitamos ArcaImpTotal ademas de Total: en facturas A/B/C con IVA, ese es el monto real cobrable.
-        var ventas = await q.Where(v => v.Estado != "anulado").Select(v => new { v.Id, v.Total, v.ArcaImpTotal }).ToListAsync();
+        var ventas = await q.Where(v => v.Estado != "anulado")
+            .Select(v => new { v.Id, v.Total, v.ArcaImpTotal, v.TipoComprobante, v.NotaCreditoVentaId }).ToListAsync();
         var ventaIds = ventas.Select(v => v.Id).ToList();
         var pagados = await _db.CafeCobranzasComprobantes
             .Where(c => c.VentaId != null && ventaIds.Contains(c.VentaId!.Value)
@@ -556,6 +557,12 @@ public class CafeVentasController : ControllerBase
         {
             var totalCobrar = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
             var pagado = dict.TryGetValue(v.Id, out var p) ? p : 0m;
+            // 2026-08-21: una Nota de Credito no es algo "a cobrar" (es una devolucion), y una
+            // factura anulada por NC tampoco: las dos van con saldo 0 para que el listado no las
+            // muestre como deuda.
+            var esNc = v.TipoComprobante is not null && v.TipoComprobante.StartsWith("NC", StringComparison.OrdinalIgnoreCase);
+            if (esNc || v.NotaCreditoVentaId.HasValue)
+                return new VentaSaldoDto(v.Id, totalCobrar, pagado, 0m);
             return new VentaSaldoDto(v.Id, totalCobrar, pagado, totalCobrar - pagado);
         }).ToList();
         return Ok(result);
@@ -575,6 +582,10 @@ public class CafeVentasController : ControllerBase
                      && v.Estado == "emitido"
                      // 2026-07-14: los PRESUPUESTOS (PRO) NO son deuda — son solo un precio. No cuentan como impagos.
                      && v.TipoComprobante != "PRO"
+                     // 2026-08-21: tampoco son deuda las Notas de Credito (son devolucion al cliente)
+                     // ni las facturas que ya fueron anuladas con una NC.
+                     && !v.TipoComprobante.StartsWith("NC")
+                     && v.NotaCreditoVentaId == null
                      && (excludeVentaId == null || v.Id != excludeVentaId.Value))
             .ToListAsync();
         if (ventas.Count == 0) return Ok(new List<CafeVentaDto>());

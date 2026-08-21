@@ -91,44 +91,18 @@ public class CafeClientesController : ControllerBase
         var cliente = await _db.CafeClientes.FindAsync(id);
         if (cliente is null) return null;
 
-        // Ventas vigentes del cliente. Para facturas A/B/C con IVA, el debe es el TOTAL CON IVA
-        // (ArcaImpTotal), no el neto (Total) — sino la cuenta corriente queda corta el IVA.
-        var ventas = await _db.CafeVentas
-            // 2026-07-14: los PRESUPUESTOS (PRO) no son deuda — no entran a la cuenta corriente del cliente.
-            .Where(v => v.ClienteId == id && v.Estado != "anulado" && v.TipoComprobante != "PRO")
-            .Select(v => new { v.Id, v.Fecha, v.Numero, v.Total, v.ArcaImpTotal, v.TipoComprobante })
-            .ToListAsync();
-        // Cobranzas vigentes y sus retenciones
-        var cobranzas = await _db.CafeCobranzas
-            .Where(c => c.ClienteId == id && c.Estado == "VIGENTE")
-            .Select(c => new { c.Id, c.Fecha, c.Numero, c.Total, c.Retenciones })
-            .ToListAsync();
-        // Comprobantes de cobranzas (para saber a que venta se aplicaron, opcional para detalle)
-        // Por simplicidad la cobranza la mostramos como un haber total (Total + Retenciones).
+        // 2026-08-21: el armado de los movimientos vive en CafeSaldosService, la MISMA fórmula
+        // que usa el panel "¿Quién me debe?". Antes acá había una cuenta propia que acreditaba
+        // la cobranza entera al cliente que pagaba, aunque el pago cancelara facturas de una
+        // sucursal hermana — por eso la ficha y el panel no coincidían.
+        var movs = await _saldos.GetMovimientosClienteAsync(id);
 
-        var movs = new List<(DateTime fecha, string tipo, string num, decimal debe, decimal haber, string? det)>();
-        foreach (var v in ventas)
-        {
-            var monto = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
-            // 2026-06-16: las Notas de Credito (NCA/NCB/NCC) son DEVOLUCION al cliente — van al HABER, no al DEBE.
-            // Antes sumaban como deuda y el saldo del cliente quedaba inflado (la NC no descontaba lo que la FA habia agregado).
-            var esNC = v.TipoComprobante is not null && v.TipoComprobante.StartsWith("NC", StringComparison.OrdinalIgnoreCase);
-            if (esNC)
-                movs.Add((v.Fecha, "Nota Crédito", v.Numero ?? $"#{v.Id}", 0m, monto, null));
-            else
-                movs.Add((v.Fecha, "Venta", v.Numero ?? $"#{v.Id}", monto, 0m, null));
-        }
-        foreach (var c in cobranzas)
-            movs.Add((c.Fecha, "Cobranza", c.Numero, 0m, c.Total + c.Retenciones,
-                c.Retenciones > 0 ? $"(incluye ${c.Retenciones:N2} retenciones)" : null));
-
-        movs = movs.OrderBy(x => x.fecha).ToList();
         decimal acum = 0m;
         var result = new List<MovimientoCuentaDto>(movs.Count);
         foreach (var m in movs)
         {
-            acum += m.debe - m.haber;
-            result.Add(new MovimientoCuentaDto(m.fecha, m.tipo, m.num, m.debe, m.haber, acum, m.det));
+            acum += m.Debe - m.Haber;
+            result.Add(new MovimientoCuentaDto(m.Fecha, m.Tipo, m.Numero, m.Debe, m.Haber, acum, m.Detalle));
         }
         return new EstadoCuentaDto(id, cliente.Nombre, acum, result);
     }
@@ -151,49 +125,22 @@ public class CafeClientesController : ControllerBase
         var c = await _db.CafeClientes.FindAsync(id);
         if (c is null) return NotFound(new { error = "Cliente no encontrado" });
 
-        // Todas las ventas vigentes del cliente (sin presupuestos PRO, que no son deuda),
-        // más recientes primero. Sirven para el saldo total y para el listado de facturas.
-        var ventas = await _db.CafeVentas
-            .Where(v => v.ClienteId == id && v.Estado != "anulado" && v.TipoComprobante != "PRO")
-            .Select(v => new { v.Id, v.Fecha, v.Numero, v.Total, v.ArcaImpTotal, v.TipoComprobante, v.Estado })
+        // 2026-08-21: ventas y saldo salen de CafeSaldosService, la misma fórmula del panel
+        // "¿Quién me debe?" y de la ficha del cliente. Ya vienen con lo cobrado de cada venta,
+        // las notas de crédito y los pagos a cuenta contemplados.
+        var ventas = (await _saldos.GetVentasCuentaAsync(id))
             .OrderByDescending(v => v.Fecha).ThenByDescending(v => v.Id)
-            .ToListAsync();
-
-        // Saldo de cuenta corriente = mismo cálculo que EstadoCuenta: ventas (debe) menos
-        // notas de crédito y cobranzas (haber).
-        var cobranzasTotal = await _db.CafeCobranzas
-            .Where(cb => cb.ClienteId == id && cb.Estado == "VIGENTE")
-            .SumAsync(cb => (decimal?)(cb.Total + cb.Retenciones)) ?? 0m;
-        decimal debe = 0m, haberNc = 0m;
-        foreach (var v in ventas)
-        {
-            var monto = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
-            var esNc = v.TipoComprobante is not null && v.TipoComprobante.StartsWith("NC", StringComparison.OrdinalIgnoreCase);
-            if (esNc) haberNc += monto; else debe += monto;
-        }
-        var saldo = debe - haberNc - cobranzasTotal;
-
-        // Cuánto se pagó de cada venta (cobranzas VIGENTES imputadas a esa venta), para mostrar
-        // "Pagada" o "Debe $X" en cada factura del listado.
-        var ventaIds = ventas.Select(v => v.Id).ToList();
-        var pagadosDict = ventaIds.Count == 0
-            ? new Dictionary<int, decimal>()
-            : (await _db.CafeCobranzasComprobantes
-                .Where(cc => cc.VentaId != null && ventaIds.Contains(cc.VentaId!.Value) && cc.Cobranza!.Estado == "VIGENTE")
-                .GroupBy(cc => cc.VentaId!.Value)
-                .Select(g => new { VentaId = g.Key, Pagado = g.Sum(x => x.Importe) })
-                .ToListAsync())
-              .ToDictionary(p => p.VentaId, p => p.Pagado);
+            .ToList();
+        var saldo = await _saldos.GetSaldoClienteAsync(id);
 
         var limite = Math.Clamp(limitVentas, 1, 50);
         var ventasDto = ventas.Take(limite).Select(v =>
         {
-            var totalCobrar = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
-            var pagado = pagadosDict.TryGetValue(v.Id, out var p) ? p : 0m;
-            var esNc = v.TipoComprobante is not null && v.TipoComprobante.StartsWith("NC", StringComparison.OrdinalIgnoreCase);
-            // En una Nota de Crédito no tiene sentido "debe/pagada": es una devolución.
-            var saldoV = esNc ? 0m : totalCobrar - pagado;
-            return new FichaChatVentaDto(v.Id, v.Fecha, v.Numero ?? $"#{v.Id}", v.TipoComprobante, totalCobrar, pagado, saldoV, v.Estado ?? "");
+            // En una Nota de Crédito (o en una factura ya anulada por NC) no tiene sentido
+            // "debe/pagada": no hay nada que cobrar.
+            var saldoV = (v.EsNotaCredito || v.AnuladaPorNc) ? 0m : v.Saldo;
+            return new FichaChatVentaDto(v.Id, v.Fecha, v.Numero, v.TipoComprobante,
+                v.Cobrable, v.Pagado, saldoV, "emitido");
         }).ToList();
 
         return Ok(new FichaChatDto(
@@ -673,50 +620,24 @@ public class CafeClientesController : ControllerBase
     [HttpGet("saldos-ocasionales")]
     public async Task<IActionResult> GetSaldosOcasionales()
     {
-        // Ventas sin cliente del catálogo, no anuladas, con total > 0
-        var ventas = await _db.CafeVentas
-            .Where(v => v.Estado != "anulado"
-                     && v.ClienteId == null
-                     && v.Total > 0
-                     // 2026-07-14: los PRESUPUESTOS (PRO) no son deuda — tampoco como venta ocasional.
-                     && v.TipoComprobante != "PRO")
-            .Select(v => new
-            {
-                v.Id, v.Numero, v.Fecha, v.ClienteNombreSnapshot,
-                v.TipoComprobante, v.Total, v.ArcaImpTotal
-            })
-            .ToListAsync();
+        // 2026-08-21: mismo motor que el resto (CafeSaldosService): ventas sin cliente del
+        // catálogo, no anuladas, sin presupuestos, con lo cobrado ya descontado.
+        var ventas = await _saldos.GetVentasCuentaAsync(soloSinCliente: true);
         if (ventas.Count == 0) return Ok(new List<VentaOcasionalSaldoDto>());
-
-        var ventaIds = ventas.Select(v => v.Id).ToList();
-        var pagados = await _db.CafeCobranzasComprobantes
-            .Where(c => c.VentaId != null && ventaIds.Contains(c.VentaId!.Value)
-                     && c.Cobranza!.Estado == "VIGENTE")
-            .GroupBy(c => c.VentaId!.Value)
-            .Select(g => new { VentaId = g.Key, Pagado = g.Sum(x => x.Importe) })
-            .ToListAsync();
-        var pagadosDict = pagados.ToDictionary(p => p.VentaId, p => p.Pagado);
 
         var hoy = DateTime.UtcNow.AddHours(-3).Date;
         var result = ventas
-            .Select(v =>
-            {
-                // Monto real cobrable: ArcaImpTotal si la venta tiene CAE, sino Total.
-                var totalCobrar = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
-                var pagado = pagadosDict.TryGetValue(v.Id, out var p) ? p : 0m;
-                var saldo = totalCobrar - pagado;
-                return new VentaOcasionalSaldoDto(
-                    v.Id,
-                    v.Numero ?? $"#{v.Id}",
-                    v.Fecha,
-                    string.IsNullOrWhiteSpace(v.ClienteNombreSnapshot) ? "(sin nombre)" : v.ClienteNombreSnapshot,
-                    v.TipoComprobante,
-                    totalCobrar,
-                    pagado,
-                    saldo,
-                    (int)(hoy - v.Fecha.Date).TotalDays);
-            })
-            .Where(x => x.Saldo > 0.50m) // mismo umbral que el panel normal
+            .Where(v => v.Pendiente) // deja afuera NC y facturas anuladas por NC
+            .Select(v => new VentaOcasionalSaldoDto(
+                v.Id,
+                v.Numero,
+                v.Fecha,
+                string.IsNullOrWhiteSpace(v.ClienteNombreSnapshot) ? "(sin nombre)" : v.ClienteNombreSnapshot!,
+                v.TipoComprobante,
+                v.Cobrable,
+                v.Pagado,
+                v.Saldo,
+                (int)(hoy - v.Fecha.Date).TotalDays))
             .OrderBy(x => x.Fecha) // más antigua primero (mayor urgencia)
             .ToList();
         return Ok(result);
@@ -733,47 +654,21 @@ public class CafeClientesController : ControllerBase
     [HttpPost("saldos-pendientes/excel")]
     public async Task<IActionResult> ExportSaldosExcel([FromBody] ExportSaldosRequest req)
     {
-        // Traer ventas con sus saldos
-        var ventas = await _db.CafeVentas
-            .Where(v => v.Estado != "anulado" && v.ClienteId != null && v.Total > 0)
-            .ToListAsync();
-        if (ventas.Count == 0)
-            return BadRequest(new { error = "No hay ventas pendientes para exportar" });
-
-        var ventaIds = ventas.Select(v => v.Id).ToList();
-        var pagados = await _db.CafeCobranzasComprobantes
-            .Where(c => c.VentaId != null && ventaIds.Contains(c.VentaId!.Value)
-                     && c.Cobranza!.Estado == "VIGENTE")
-            .GroupBy(c => c.VentaId!.Value)
-            .Select(g => new { VentaId = g.Key, Pagado = g.Sum(x => x.Importe) })
-            .ToListAsync();
-        var pagadosDict = pagados.ToDictionary(p => p.VentaId, p => p.Pagado);
-
-        // Filtrar ventas con saldo > 0. Monto cobrable = ArcaImpTotal si es factura ARCA, sino Total.
-        var ventasConSaldo = ventas
-            .Select(v =>
-            {
-                var totalCobrar = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
-                var pagado = pagadosDict.TryGetValue(v.Id, out var p) ? p : 0m;
-                return new {
-                    v.Id, v.Numero, ClienteId = v.ClienteId!.Value, Total = totalCobrar, v.Fecha,
-                    v.TipoComprobante,
-                    Pagado = pagado,
-                    Saldo = totalCobrar - pagado
-                };
-            })
-            .Where(v => v.Saldo > 0)
-            .ToList();
-
-        // Filtrar por clienteIds si vinieron
+        // 2026-08-21: los números salen de CafeSaldosService (misma fórmula que el panel
+        // "¿Quién me debe?"): ya vienen con notas de crédito, pagos a cuenta y saldos a favor
+        // descontados. Antes el Excel tenía su propia cuenta y hasta contaba los presupuestos.
+        var deudores = await _saldos.GetSaldosPendientesAsync();
         if (req.ClienteIds is not null && req.ClienteIds.Count > 0)
-            ventasConSaldo = ventasConSaldo.Where(v => req.ClienteIds.Contains(v.ClienteId)).ToList();
-
-        if (ventasConSaldo.Count == 0)
+            deudores = deudores.Where(d => req.ClienteIds.Contains(d.ClienteId)).ToList();
+        if (deudores.Count == 0)
             return BadRequest(new { error = "No hay clientes con saldo pendiente que coincidan" });
 
-        // Traer clientes
-        var clienteIds = ventasConSaldo.Select(v => v.ClienteId).Distinct().ToList();
+        var clienteIds = deudores.Select(d => d.ClienteId).ToList();
+        // Comprobantes que quedan pendientes de cobro, para el detalle de cada hoja.
+        var ventasConSaldo = (await _saldos.GetVentasCuentaAsync())
+            .Where(v => v.Pendiente && v.ClienteId.HasValue && clienteIds.Contains(v.ClienteId.Value))
+            .ToList();
+
         var clientes = await _db.CafeClientes.Where(c => clienteIds.Contains(c.Id)).ToListAsync();
         var clientesDict = clientes.ToDictionary(c => c.Id);
 
@@ -789,11 +684,12 @@ public class CafeClientesController : ControllerBase
         ws.Cell(2, 1).Value = $"Generado: {hoy:dd/MM/yyyy}";
         ws.Range(2, 1, 2, 7).Merge().Style.Font.SetItalic(true).Font.SetFontColor(XLColor.DarkGray);
 
-        // 9 columnas — pedido del usuario 2026-05-19: separar saldo "Cotizacion" (X/PRO) de
-        // saldo "Factura" (FA/FB/FC), ademas del saldo total. Asi se ve de un vistazo cuanto
-        // debe el cliente "en cotizacion" vs "facturado".
+        // 10 columnas — pedido del usuario 2026-05-19: separar saldo "Cotizacion" (X/PRO) de
+        // saldo "Factura" (FA/FB/FC), ademas del saldo total. 2026-08-21: se agrega "A favor"
+        // (pagos a cuenta + notas de credito + facturas pagadas de mas), para que se entienda
+        // por que el total no es la simple suma de cotizacion + factura.
         var headers = new[] { "Cliente", "Tipo", "Teléfono", "N° pendientes", "Días vencido",
-            "Más antigua", "📝 Saldo Cotización (X)", "📋 Saldo Factura (A/B/C)", "Saldo total" };
+            "Más antigua", "📝 Saldo Cotización (X)", "📋 Saldo Factura (A/B/C)", "💚 A favor / a cuenta", "Saldo total" };
         for (int i = 0; i < headers.Length; i++)
         {
             var c = ws.Cell(4, i + 1);
@@ -803,17 +699,16 @@ public class CafeClientesController : ControllerBase
             c.Style.Border.SetBottomBorder(XLBorderStyleValues.Thin);
         }
 
-        var resumen = ventasConSaldo
-            .GroupBy(v => v.ClienteId)
-            .Select(g => new {
-                ClienteId = g.Key,
-                Cliente = clientesDict.TryGetValue(g.Key, out var c) ? c : null,
-                Cantidad = g.Count(),
-                Saldo = g.Sum(x => x.Saldo),
-                // Split por tipo de comprobante
-                SaldoCotizacion = g.Where(x => x.TipoComprobante == "X" || x.TipoComprobante == "PRO").Sum(x => x.Saldo),
-                SaldoFactura = g.Where(x => x.TipoComprobante == "FA" || x.TipoComprobante == "FB" || x.TipoComprobante == "FC").Sum(x => x.Saldo),
-                FechaMasAntigua = g.Min(x => x.Fecha)
+        var resumen = deudores
+            .Select(d => new {
+                d.ClienteId,
+                Cliente = clientesDict.TryGetValue(d.ClienteId, out var c) ? c : null,
+                Cantidad = d.CantidadVentasPendientes,
+                Saldo = d.SaldoPendiente,
+                SaldoCotizacion = d.SaldoCotizacion,
+                SaldoFactura = d.SaldoFactura,
+                Credito = d.CreditoAFavor,
+                FechaMasAntigua = d.FechaMasAntigua
             })
             .OrderBy(x => x.FechaMasAntigua)
             .ToList();
@@ -829,7 +724,8 @@ public class CafeClientesController : ControllerBase
             ws.Cell(row, 6).Value = r.FechaMasAntigua; ws.Cell(row, 6).Style.DateFormat.Format = "dd/MM/yyyy";
             ws.Cell(row, 7).Value = r.SaldoCotizacion; ws.Cell(row, 7).Style.NumberFormat.Format = "#,##0.00";
             ws.Cell(row, 8).Value = r.SaldoFactura; ws.Cell(row, 8).Style.NumberFormat.Format = "#,##0.00";
-            ws.Cell(row, 9).Value = r.Saldo; ws.Cell(row, 9).Style.NumberFormat.Format = "#,##0.00";
+            ws.Cell(row, 9).Value = r.Credito; ws.Cell(row, 9).Style.NumberFormat.Format = "#,##0.00";
+            ws.Cell(row, 10).Value = r.Saldo; ws.Cell(row, 10).Style.NumberFormat.Format = "#,##0.00";
             row++;
         }
         // Fila TOTAL
@@ -842,10 +738,13 @@ public class CafeClientesController : ControllerBase
         ws.Cell(row, 8).Value = resumen.Sum(r => r.SaldoFactura);
         ws.Cell(row, 8).Style.NumberFormat.Format = "#,##0.00";
         ws.Cell(row, 8).Style.Font.SetBold(true);
-        ws.Cell(row, 9).Value = resumen.Sum(r => r.Saldo);
+        ws.Cell(row, 9).Value = resumen.Sum(r => r.Credito);
         ws.Cell(row, 9).Style.NumberFormat.Format = "#,##0.00";
         ws.Cell(row, 9).Style.Font.SetBold(true);
-        ws.Range(row, 1, row, 9).Style.Fill.SetBackgroundColor(XLColor.LightYellow);
+        ws.Cell(row, 10).Value = resumen.Sum(r => r.Saldo);
+        ws.Cell(row, 10).Style.NumberFormat.Format = "#,##0.00";
+        ws.Cell(row, 10).Style.Font.SetBold(true);
+        ws.Range(row, 1, row, 10).Style.Fill.SetBackgroundColor(XLColor.LightYellow);
 
         ws.Columns().AdjustToContents();
         ws.SheetView.FreezeRows(4);
@@ -901,9 +800,20 @@ public class CafeClientesController : ControllerBase
                 ws2.Cell(dRow, 1).Value = v.Numero;
                 ws2.Cell(dRow, 2).Value = v.Fecha; ws2.Cell(dRow, 2).Style.DateFormat.Format = "dd/MM/yyyy";
                 ws2.Cell(dRow, 3).Value = v.TipoComprobante;
-                ws2.Cell(dRow, 4).Value = v.Total; ws2.Cell(dRow, 4).Style.NumberFormat.Format = "#,##0.00";
+                ws2.Cell(dRow, 4).Value = v.Cobrable; ws2.Cell(dRow, 4).Style.NumberFormat.Format = "#,##0.00";
                 ws2.Cell(dRow, 5).Value = v.Pagado; ws2.Cell(dRow, 5).Style.NumberFormat.Format = "#,##0.00";
                 ws2.Cell(dRow, 6).Value = v.Saldo; ws2.Cell(dRow, 6).Style.NumberFormat.Format = "#,##0.00";
+                dRow++;
+            }
+            // 2026-08-21: plata del cliente que no esta aplicada a estos comprobantes (pagos a
+            // cuenta, notas de credito, facturas pagadas de mas). Se resta del total adeudado.
+            if (r.Credito > 0.50m)
+            {
+                ws2.Cell(dRow, 1).Value = "A favor / a cuenta (se descuenta)";
+                ws2.Range(dRow, 1, dRow, 5).Merge().Style.Font.SetItalic(true);
+                ws2.Cell(dRow, 6).Value = -r.Credito;
+                ws2.Cell(dRow, 6).Style.NumberFormat.Format = "#,##0.00";
+                ws2.Cell(dRow, 6).Style.Font.SetFontColor(XLColor.Green);
                 dRow++;
             }
             // Fila TOTAL
