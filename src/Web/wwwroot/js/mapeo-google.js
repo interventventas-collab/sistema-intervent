@@ -1067,29 +1067,26 @@ window.mapeoFlex = (function () {
                 // Tramos (parada→parada) con su propia línea codificada: nos deja tocar cada tramo por separado.
                 const legs = (r.legs || []).filter(l => l && l.encoded);
 
-                // 2026-08-15: cuantos tramos del principio YA se recorrieron (hasta la ultima parada
-                // entregada). Se dibujan finitos y transparentes, sin flechas: es el pasado, el ojo
-                // tiene que irse solo a lo que falta.
-                const legsHechos = r.legsHechos || 0;
+                // 2026-08-21: la LINEA se dibuja SIEMPRE ENTERA, igual de gorda de punta a punta.
+                // Antes (2026-08-15) los tramos ya recorridos se apagaban (finitos, transparentes, sin
+                // flechas) y el dueño lo vio como que "se iba borrando la línea". Lo que se mueve para
+                // mostrar por dónde va el reparto es el 🚗, no la línea. El dato de cuántos tramos ya
+                // hizo (r.legsHechos) sigue llegando pero acá no se usa.
 
                 // Dibuja una línea (casing blanco + color con flechas) y le engancha el click.
-                // yaPaso = tramo ya recorrido -> version apagada.
-                const dibujarLinea = (path, onClick, yaPaso) => {
-                    if (!yaPaso) {
-                        routeLines.push(new google.maps.Polyline({
-                            path: path, map: map,
-                            strokeColor: '#ffffff', strokeOpacity: 0.9, strokeWeight: 9, zIndex: 4
-                        }));
-                    }
+                const dibujarLinea = (path, onClick) => {
+                    routeLines.push(new google.maps.Polyline({
+                        path: path, map: map,
+                        strokeColor: '#ffffff', strokeOpacity: 0.9, strokeWeight: 9, zIndex: 4
+                    }));
                     const line = new google.maps.Polyline({
                         path: path, map: map, clickable: true,
                         strokeColor: color,
-                        strokeOpacity: yaPaso ? 0.32 : 0.95,
-                        strokeWeight: yaPaso ? 3 : 5,
-                        zIndex: yaPaso ? 3 : 5,
+                        strokeOpacity: 0.95,
+                        strokeWeight: 5,
+                        zIndex: 5,
                         // Flechas blancas cada ~110px indicando el sentido de circulación.
-                        // En lo ya recorrido no van: no hay para donde ir, ya paso.
-                        icons: yaPaso ? [] : [{ icon: Object.assign({}, flecha, { fillColor: color }), offset: '0', repeat: '110px' }]
+                        icons: [{ icon: Object.assign({}, flecha, { fillColor: color }), offset: '0', repeat: '110px' }]
                     });
                     if (onClick) line.addListener('click', onClick);
                     routeLines.push(line);
@@ -1100,7 +1097,6 @@ window.mapeoFlex = (function () {
                     // Modo detallado: una línea por tramo, cada una clickeable con su distancia.
                     for (let li = 0; li < legs.length; li++) {
                         const leg = legs[li];
-                        const yaPaso = li < legsHechos;
                         const path = google.maps.geometry.encoding.decodePath(leg.encoded);
                         const titulo = 'Tramo ' + (leg.from || '') + ' → ' + (leg.to || '');
                         const html = '<div style="font-size:13px; line-height:1.45; font-family:system-ui,sans-serif;">' +
@@ -1108,11 +1104,9 @@ window.mapeoFlex = (function () {
                             '<div style="font-size:15px; font-weight:800;">' + fmtKm(leg.meters) + ' km · ' + fmtMin(leg.seconds) + '</div>' +
                             (total ? '<div style="margin-top:5px; padding-top:5px; border-top:1px solid #eee; color:#6b7280;">Ruta completa: <strong>' + total + '</strong></div>' : '') +
                             '</div>';
-                        dibujarLinea(path, (e) => { routeInfo.setContent(html); routeInfo.setPosition(e.latLng); routeInfo.open(map); }, yaPaso);
+                        dibujarLinea(path, (e) => { routeInfo.setContent(html); routeInfo.setPosition(e.latLng); routeInfo.open(map); });
                         // Pinta rojo/amarillo los pedacitos con embotellamiento de este tramo (lo normal queda azul).
-                        // En lo ya recorrido NO: saber que hay un embotellamiento en una calle por la
-                        // que ya pasaste no sirve para nada y ensucia el mapa.
-                        if (!yaPaso) paintTrafficSlices(path, leg.transito, routeLines, 6);
+                        paintTrafficSlices(path, leg.transito, routeLines, 6);
                     }
                 } else {
                     // Respaldo: sin tramos, dibujamos la línea entera (una o varias) y al tocarla mostramos el total.
@@ -1121,7 +1115,7 @@ window.mapeoFlex = (function () {
                     for (const enc of encodeds) {
                         if (!enc) continue;
                         const path = google.maps.geometry.encoding.decodePath(enc);
-                        dibujarLinea(path, htmlTotal ? ((e) => { routeInfo.setContent(htmlTotal); routeInfo.setPosition(e.latLng); routeInfo.open(map); }) : null, false);
+                        dibujarLinea(path, htmlTotal ? ((e) => { routeInfo.setContent(htmlTotal); routeInfo.setPosition(e.latLng); routeInfo.open(map); }) : null);
                     }
                 }
 
