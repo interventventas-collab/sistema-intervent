@@ -551,7 +551,7 @@
             @* 2026-08-05: FICHA DEL CLIENTE — ventana flotante ARRASTRABLE con datos, saldo, ubicación y últimas facturas *@
             @if (mostrarFichaCliente && SelectedConv()?.ClienteId is int fichaCid)
             {
-                <div class="wa-ficha wa-ficha-float" id="wa-ficha-float">
+                <div class="wa-ficha wa-ficha-float @(facturaAbierta != null ? "wa-ficha-float-ancha" : "")" id="wa-ficha-float">
                     @if (cargandoFicha)
                     {
                         <div class="wa-ficha-top" id="wa-ficha-float-head" title="Arrastrá de acá para mover la ventana">
@@ -614,18 +614,25 @@
                                 }
                                 else
                                 {
-                                    <div class="wa-ficha-facswrap" @onmouseleave="@(() => previewFacturaId = null)">
-                                        <div class="wa-ficha-facs">
-                                            @foreach (var v in fichaCliente.Ventas)
-                                            {
-                                                <a href="/api/cafe/ventas/@v.Id/pdf" target="_blank"
-                                                   class="wa-ficha-fac @(previewFacturaId == v.Id ? "hover" : "")"
-                                                   @onmouseenter="@(() => previewFacturaId = v.Id)"
-                                                   title="Pasá el mouse para ver la factura · tocá para abrirla grande">
+                                    @* 2026-08-20: antes la factura se previsualizaba AL PASAR EL MOUSE, en un
+                                       cuadradito de 340 px abajo de la lista. Molestaba: la vista cambiaba sola
+                                       apenas movías el mouse, se apagaba al salir de la lista y ahí no se leía
+                                       nada. Ahora se TOCA una factura y queda abierta, quieta, en un visor
+                                       grande al costado (la ventana se ensancha sola). *@
+                                    <div class="wa-ficha-facs">
+                                        @foreach (var v in fichaCliente.Ventas)
+                                        {
+                                            <button type="button"
+                                                    class="wa-ficha-fac @(facturaAbierta == v.Id ? "abierta" : "")"
+                                                    @onclick="() => AbrirFactura(v.Id)"
+                                                    title="@(facturaAbierta == v.Id ? "Tocá de nuevo para cerrarla" : "Tocá para verla grande acá al lado")">
+                                                <div class="wa-ficha-fac-l1">
                                                     <span class="wa-ficha-fac-tipo">@(string.IsNullOrWhiteSpace(v.Tipo) ? "—" : v.Tipo)</span>
                                                     <span class="wa-ficha-fac-num">@v.Numero</span>
-                                                    <span class="wa-ficha-fac-fecha">@v.Fecha.ToString("dd/MM/yy")</span>
                                                     <span class="wa-ficha-fac-total">$@v.Total.ToString("N2")</span>
+                                                </div>
+                                                <div class="wa-ficha-fac-l2">
+                                                    <span class="wa-ficha-fac-fecha">@v.Fecha.ToString("dd/MM/yy") · @Antiguedad(v.Fecha)</span>
                                                     @if (v.Tipo is not null && v.Tipo.StartsWith("NC"))
                                                     {
                                                         <span class="wa-ficha-fac-estado nc">N. Crédito</span>
@@ -638,20 +645,34 @@
                                                     {
                                                         <span class="wa-ficha-fac-estado pagada">✓ Pagada</span>
                                                     }
-                                                </a>
-                                            }
-                                        </div>
-                                        @* 2026-08-05: mini vista previa del PDF al pasar el mouse por una factura *@
-                                        @if (previewFacturaId is int pvid)
-                                        {
-                                            <div class="wa-ficha-preview">
-                                                <div class="wa-ficha-preview-head">👁️ Vista previa — tocá la factura para abrirla grande</div>
-                                                <iframe class="wa-ficha-preview-frame" src="/api/cafe/ventas/@pvid/pdf?inline=true#toolbar=0&navpanes=0&scrollbar=0&view=FitH" title="Vista previa de la factura"></iframe>
-                                            </div>
+                                                </div>
+                                            </button>
                                         }
                                     </div>
                                 }
                             </div>
+
+                            @* 2026-08-20: VISOR GRANDE — tercera columna, aparece solo cuando tocaste una
+                               factura. La ventana se ensancha sola (clase wa-ficha-float-ancha) y vuelve a
+                               su tamaño al cerrarla. *@
+                            @if (FacturaAbiertaDto() is ApiClient.FichaChatVentaDto fac)
+                            {
+                                <div class="wa-ficha-visor">
+                                    <div class="wa-ficha-visor-top">
+                                        <span class="wa-ficha-visor-tit">@fac.Numero · @fac.Fecha.ToString("dd/MM/yy")</span>
+                                        <a class="wa-ficha-visor-btn" href="/api/cafe/ventas/@fac.Id/pdf" target="_blank"
+                                           title="Abrirla a pantalla completa en otra pestaña">🔍 Grande</a>
+                                        <button type="button" class="wa-ficha-visor-btn wa-verde"
+                                                @onclick="() => MandarFacturaPorWa(fac)" disabled="@(enviandoFacturaId != null)"
+                                                title="Mandarle esta factura al cliente por este mismo chat de WhatsApp">
+                                            @(enviandoFacturaId == fac.Id ? "⏳ Mandando…" : "🟢 Mandar")
+                                        </button>
+                                        <button type="button" class="wa-ficha-visor-x" @onclick="CerrarFactura" title="Cerrar la factura">×</button>
+                                    </div>
+                                    <iframe class="wa-ficha-visor-frame" src="/api/cafe/ventas/@fac.Id/pdf?inline=true#toolbar=0&navpanes=0&view=FitH"
+                                            title="Factura @fac.Numero"></iframe>
+                                </div>
+                            }
                         </div>
                     }
                 </div>
@@ -2484,9 +2505,14 @@
     .wa-ficha-saldo.aldia .wa-ficha-saldo-monto { color: #16a34a; }
     .wa-ficha-facs-titulo { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; color: #9ca3af; font-weight: 700; margin-bottom: 0.35rem; }
     .wa-ficha-vacio { font-size: 0.84rem; color: #9ca3af; padding: 0.3rem 0; }
-    .wa-ficha-facs { display: flex; flex-direction: column; gap: 0.3rem; max-height: 220px; overflow-y: auto; }
-    .wa-ficha-fac { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.55rem; background: #f9fafb; border: 1px solid #eef1f5; border-radius: 8px; text-decoration: none; color: #374151; font-size: 0.82rem; transition: all .12s; }
+    /* 2026-08-20: las facturas ahora son BOTONES de dos renglones (número + total arriba,
+       fecha + estado abajo). Antes iban todas en un solo renglón y como el importe suele
+       repetirse, se confundían entre sí. */
+    .wa-ficha-facs { display: flex; flex-direction: column; gap: 0.3rem; max-height: 300px; overflow-y: auto; }
+    .wa-ficha-fac { display: block; width: 100%; text-align: left; font-family: inherit; padding: 0.4rem 0.55rem; background: #f9fafb; border: 1px solid #eef1f5; border-radius: 8px; color: #374151; font-size: 0.82rem; cursor: pointer; transition: all .12s; }
     .wa-ficha-fac:hover { background: #f1f5f9; border-color: #e2e8f0; }
+    .wa-ficha-fac-l1 { display: flex; align-items: center; gap: 0.4rem; }
+    .wa-ficha-fac-l2 { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; margin-top: 0.15rem; }
     .wa-ficha-fac-tipo { background: #e5e7eb; color: #374151; font-size: 0.68rem; font-weight: 700; padding: 0.05rem 0.35rem; border-radius: 4px; min-width: 2rem; text-align: center; }
     .wa-ficha-fac-num { font-weight: 600; }
     .wa-ficha-fac-fecha { color: #9ca3af; font-size: 0.76rem; }
@@ -2495,12 +2521,24 @@
     .wa-ficha-fac-estado.pagada { background: #dcfce7; color: #15803d; }
     .wa-ficha-fac-estado.debe { background: #fee2e2; color: #b91c1c; }
     .wa-ficha-fac-estado.nc { background: #ede9fe; color: #6d28d9; }
-    .wa-ficha-fac.hover { background: #eef2ff; border-color: #c7d2fe; }
-    /* 2026-08-05: mini vista previa del PDF de la factura al pasar el mouse */
-    .wa-ficha-facswrap { position: relative; }
-    .wa-ficha-preview { margin-top: 0.5rem; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; background: #f9fafb; box-shadow: 0 4px 14px rgba(0,0,0,0.08); animation: waFichaIn .14s ease; }
-    .wa-ficha-preview-head { font-size: 0.72rem; color: #6b7280; padding: 0.3rem 0.55rem; background: #f3f4f6; border-bottom: 1px solid #e5e7eb; }
-    .wa-ficha-preview-frame { width: 100%; height: 340px; border: none; display: block; background: #fff; }
+    /* La que estás mirando queda marcada, para no perderla de vista. */
+    .wa-ficha-fac.abierta { background: #eef2ff; border-color: #6366f1; box-shadow: 0 0 0 1px #6366f1 inset; }
+    /* 2026-08-20: VISOR de la factura — al costado, alto y legible (antes era un cuadradito de 340 px). */
+    .wa-ficha-float-ancha { width: 1160px; }
+    /* Con el visor abierto la lista de facturas se estira igual de alto que la factura: se ven
+       más de una vez y no queda medio panel en blanco al costado. */
+    .wa-ficha-float-ancha .wa-ficha-facs { max-height: 62vh; }
+    .wa-ficha-visor { flex: 2 1 520px; min-width: 360px; min-height: 0; display: flex; flex-direction: column; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; background: #f9fafb; animation: waFichaIn .14s ease; }
+    .wa-ficha-visor-top { display: flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.45rem; background: #f3f4f6; border-bottom: 1px solid #e5e7eb; flex-shrink: 0; }
+    .wa-ficha-visor-tit { flex: 1; font-size: 0.76rem; color: #6b7280; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wa-ficha-visor-btn { display: inline-flex; align-items: center; gap: 0.2rem; background: #fff; border: 1px solid #e5e7eb; color: #374151; border-radius: 7px; padding: 0.2rem 0.45rem; font-size: 0.74rem; font-weight: 600; text-decoration: none; cursor: pointer; white-space: nowrap; }
+    .wa-ficha-visor-btn:hover:not(:disabled) { background: #eef2ff; border-color: #c7d2fe; }
+    .wa-ficha-visor-btn:disabled { opacity: 0.6; cursor: wait; }
+    .wa-ficha-visor-btn.wa-verde { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+    .wa-ficha-visor-btn.wa-verde:hover:not(:disabled) { background: #d1fae5; }
+    .wa-ficha-visor-x { background: none; border: none; font-size: 1.2rem; line-height: 1; color: #9ca3af; cursor: pointer; padding: 0 0.15rem; }
+    .wa-ficha-visor-x:hover { color: #ef4444; }
+    .wa-ficha-visor-frame { width: 100%; height: 62vh; min-height: 300px; border: none; display: block; background: #fff; }
     /* 2026-08-03: opciones del buscador de "Vincular cliente" */
     .wa-vincular-opt { display: block; width: 100%; text-align: left; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.55rem 0.65rem; margin-bottom: 0.35rem; font-size: 0.9rem; cursor: pointer; transition: all .12s; }
     .wa-vincular-opt:hover:not(:disabled) { background: #ecfdf5; border-color: #16a34a; }
@@ -3538,7 +3576,64 @@
     bool mostrarFichaCliente = false;
     bool cargandoFicha = false;
     ApiClient.FichaChatDto? fichaCliente = null;
-    int? previewFacturaId = null;   // factura sobre la que está el mouse (mini vista previa del PDF)
+    // 2026-08-20: factura que estás mirando en el visor grande. Antes esto era "previewFacturaId"
+    // y se prendía SOLO con el mouse por encima: la vista cambiaba sola y se apagaba al salir de
+    // la lista. Ahora se toca la factura y queda abierta hasta que toques otra o la cierres.
+    int? facturaAbierta = null;
+    int? enviandoFacturaId = null;   // mientras sale el WhatsApp con esa factura
+
+    ApiClient.FichaChatVentaDto? FacturaAbiertaDto()
+        => facturaAbierta is int id ? fichaCliente?.Ventas.FirstOrDefault(v => v.Id == id) : null;
+
+    void AbrirFactura(int id)
+    {
+        // Tocar la que ya estaba abierta la cierra (y la ventana vuelve a su tamaño normal).
+        facturaAbierta = (facturaAbierta == id) ? null : id;
+    }
+
+    void CerrarFactura() => facturaAbierta = null;
+
+    /// <summary>Hace cuánto es la factura, en palabras. No tenemos fecha de vencimiento guardada,
+    /// así que lo más útil que le podemos decir al operador es la antigüedad.</summary>
+    static string Antiguedad(DateTime fecha)
+    {
+        var dias = (int)(DateTime.Now.Date - fecha.Date).TotalDays;
+        if (dias <= 0) return "hoy";
+        if (dias == 1) return "ayer";
+        if (dias < 30) return $"hace {dias} días";
+        var meses = dias / 30;
+        return meses == 1 ? "hace 1 mes" : $"hace {meses} meses";
+    }
+
+    /// <summary>Le manda ESTA factura al cliente por este mismo chat, sin salir de la conversación.
+    /// Sale ya (no pasa por la cola de espera: la estás mirando, ya la revisaste).</summary>
+    async Task MandarFacturaPorWa(ApiClient.FichaChatVentaDto fac)
+    {
+        if (selectedNumero == null || enviandoFacturaId != null) return;
+        if (selectedNumero.StartsWith("ig:"))
+        {
+            Toast.Warning("Este chat es de Instagram: el comprobante se manda por WhatsApp, no por acá.");
+            return;
+        }
+        if (!await JS.InvokeAsync<bool>("confirm",
+                $"¿Mandarle la factura {fac.Numero} al cliente por este chat?"))
+            return;
+        enviandoFacturaId = fac.Id;
+        try
+        {
+            var destino = selectedNumero.Replace("whatsapp:", "");
+            var (ok, err, _) = await Api.ProgramarEnvioVentaAsync(
+                fac.Id, "WHATSAPP", destino, selectedLinea, automatico: false, inmediato: true);
+            if (ok)
+            {
+                Toast.Success($"🟢 Le mandé la factura {fac.Numero}");
+                await LoadMensajes(silent: true);   // que aparezca en la charla al toque
+            }
+            else Toast.Error($"No se pudo mandar: {err}");
+        }
+        catch (Exception ex) { Toast.Error($"No se pudo mandar: {ex.Message}"); }
+        finally { enviandoFacturaId = null; }
+    }
     bool _fichaAttachPending = false;   // para engancharle el "arrastrar" cuando se renderiza la ventana flotante
 
     /// <summary>Abre/cierra la tarjeta de ficha del cliente. Al abrir, la carga desde la API.</summary>
@@ -3550,6 +3645,7 @@
         _fichaAttachPending = true;   // al renderizar, la hacemos arrastrable
         // Si ya tenemos la ficha de ESTE mismo cliente cargada, no la volvemos a pedir.
         if (fichaCliente is not null && fichaCliente.ClienteId == cid) return;
+        facturaAbierta = null;
         cargandoFicha = true;
         fichaCliente = null;
         StateHasChanged();
@@ -3562,8 +3658,9 @@
     /// facturas que ves sean las de la empresa correcta.</summary>
     async Task CargarFichaCliente()
     {
-        if (SelectedConv()?.ClienteId is not int cid) { fichaCliente = null; mostrarFichaCliente = false; return; }
+        if (SelectedConv()?.ClienteId is not int cid) { fichaCliente = null; mostrarFichaCliente = false; facturaAbierta = null; return; }
         if (fichaCliente is not null && fichaCliente.ClienteId == cid) return;
+        facturaAbierta = null;   // cambió la razón social: la factura que estabas viendo ya no aplica
         cargandoFicha = true;
         fichaCliente = null;
         StateHasChanged();
@@ -4783,7 +4880,7 @@
         selectedLinea = linea;
         chatPlantillaName = ""; chatVariables = new();   // 2026-08-05: resetear el selector de plantilla al cambiar de chat
         sugerenciaCliente = null;   // limpiar la del chat anterior mientras carga este
-        mostrarFichaCliente = false; fichaCliente = null; previewFacturaId = null;   // 2026-08-05: cerrar la ficha del cliente al cambiar de chat
+        mostrarFichaCliente = false; fichaCliente = null; facturaAbierta = null;   // 2026-08-05: cerrar la ficha del cliente al cambiar de chat
         showQuickReplies = false;   // 2026-08-05: cerrar el desplegable de respuestas rápidas al cambiar de chat
         modoElegirVenta = false; mensajesSeleccionadosIds.Clear();   // 2026-08-05: salir del modo "elegir mensajes para venta"
         // 2026-08-20: cerrar el buscador y olvidar los "Leer más" abiertos: son de la charla anterior.
@@ -4812,7 +4909,7 @@
         selectedNumero = null;
         selectedLinea = null;
         sugerenciaCliente = null;
-        mostrarFichaCliente = false; fichaCliente = null; previewFacturaId = null;
+        mostrarFichaCliente = false; fichaCliente = null; facturaAbierta = null;
         // 2026-08-06: presencia — salir del chat que estaba mirando.
         _ = CambiarPresenciaConv(null);
     }
