@@ -1418,6 +1418,116 @@
     {
         @if (ctxAbierto)
         {
+            @* 2026-08-20: MODO VENTA — el panel de la derecha se transforma en el armado de la
+               venta, SIN salir del chat ni abrir otra pestaña. Pedido del dueño: "que el chat se
+               transforme y me aparezcan las opciones para cargar la venta mientras chateo".
+               La charla se sigue leyendo y contestando normal al lado. *@
+            @if (modoVenta)
+            {
+                <aside class="wa-ctx wa-mv">
+                    <div class="wa-mv-top">
+                        <span class="wa-mv-tit">🛒 Modo venta</span>
+                        <button class="wa-ficha-x" @onclick="CerrarModoVenta" title="Salir del modo venta">×</button>
+                    </div>
+                    <div class="wa-mv-cli" title="La venta sale a nombre de esta razón social — es la que tenés tildada arriba del chat">
+                        @(SelectedConv()?.ClienteNombre ?? "Sin cliente vinculado")
+                    </div>
+
+                    @if (SelectedConv()?.ClienteId is null)
+                    {
+                        <div class="wa-mv-vacio">
+                            Este chat no está vinculado a ningún cliente todavía.<br />
+                            Vinculalo primero (botón <b>🔗 Vincular cliente</b>) y después volvé acá.
+                        </div>
+                    }
+                    else
+                    {
+                        @* ── Repetir una venta anterior ── *@
+                        <div class="wa-mv-sec-t">Repetir una anterior</div>
+                        @if (mvCargandoAnteriores)
+                        {
+                            <div class="wa-mv-vacio">⏳ Buscando las últimas…</div>
+                        }
+                        else if (mvAnteriores.Count == 0)
+                        {
+                            <div class="wa-mv-vacio">Este cliente todavía no tiene comprobantes para repetir.</div>
+                        }
+                        else
+                        {
+                            @foreach (var ant in mvAnteriores.Take(mvVerTodasAnteriores ? 20 : 2))
+                            {
+                                <button class="wa-mv-ant" @onclick="() => RepetirVenta(ant)" disabled="@(mvRepitiendo != null)"
+                                        title="Cargar acá abajo lo mismo que tenía @ant.Numero, con los precios de esa factura">
+                                    <span class="wa-mv-ant-l1">
+                                        <span class="wa-mv-ant-num">@ant.Numero</span>
+                                        <span class="wa-mv-ant-tot">@Plata(ant.Total)</span>
+                                    </span>
+                                    <span class="wa-mv-ant-l2">
+                                        <span>@ant.Fecha.ToString("dd/MM/yy") · @Antiguedad(ant.Fecha)</span>
+                                        <span class="wa-mv-ant-cta">@(mvRepitiendo == ant.Id ? "⏳ cargando…" : "📋 Repetir")</span>
+                                    </span>
+                                </button>
+                            }
+                            @if (mvAnteriores.Count > 2)
+                            {
+                                <button class="wa-mv-mas" @onclick="() => mvVerTodasAnteriores = !mvVerTodasAnteriores">
+                                    @(mvVerTodasAnteriores ? "▲ Ver menos" : $"▼ Ver anteriores ({mvAnteriores.Count - 2} más)")
+                                </button>
+                            }
+                        }
+
+                        @* ── El carrito ── *@
+                        @if (mvItems.Count > 0)
+                        {
+                            <div class="wa-mv-sec-t">
+                                La venta
+                                @if (!string.IsNullOrWhiteSpace(mvOrigenNumero)) { <span class="wa-mv-origen">copia de @mvOrigenNumero</span> }
+                            </div>
+                            <div class="wa-mv-lineas">
+                                @for (int i = 0; i < mvItems.Count; i++)
+                                {
+                                    var idx = i;
+                                    var li = mvItems[idx];
+                                    <div class="wa-mv-linea">
+                                        <div class="wa-mv-linea-nom" title="@li.Nombre">@li.Nombre</div>
+                                        <div class="wa-mv-linea-ctrl">
+                                            <button class="wa-mv-qbtn" @onclick="() => CambiarCantidad(idx, -1)" disabled="@mvCotizando" title="Uno menos">−</button>
+                                            <input class="wa-mv-qinp" type="text" inputmode="numeric" value="@li.CantidadTxt"
+                                                   @onchange="(e) => EscribirCantidad(idx, e.Value?.ToString())"
+                                                   onfocus="this.select()" title="Cantidad" />
+                                            <button class="wa-mv-qbtn" @onclick="() => CambiarCantidad(idx, 1)" disabled="@mvCotizando" title="Uno más">+</button>
+                                            <span class="wa-mv-linea-sub">@Plata(li.Subtotal)</span>
+                                            <button class="wa-mv-quitar" @onclick="() => QuitarLinea(idx)" disabled="@mvCotizando" title="Sacar este renglón">🗑</button>
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(li.Aviso))
+                                        {
+                                            <div class="wa-mv-aviso">⚠️ @li.Aviso</div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="wa-mv-total">
+                                <span>Total</span>
+                                <span class="wa-mv-total-monto">@(mvCotizando ? "⏳" : Plata(mvTotal))</span>
+                            </div>
+
+                            <div class="wa-mv-chips" title="Sale con lo mismo que tenía el comprobante que copiaste. Para cambiarlo, usá la pantalla de ventas.">
+                                <span class="wa-mv-chip">@TipoLabel(mvTipoComprobante)</span>
+                                <span class="wa-mv-chip">@mvCondicionPago</span>
+                                <span class="wa-mv-chip">@(mvRetira ? "Retira" : "Envío")</span>
+                            </div>
+
+                            <button class="wa-mv-crear" @onclick="CrearVentaModoVenta" disabled="@(mvCreando || mvCotizando || mvTotal <= 0)">
+                                @(mvCreando ? "⏳ Creando la venta…" : $"✅ Crear la venta · {Plata(mvTotal)}")
+                            </button>
+                            <button class="wa-mv-limpiar" @onclick="LimpiarCarrito" disabled="@mvCreando">Vaciar y empezar de nuevo</button>
+                        }
+                    }
+                </aside>
+            }
+            else
+            {
             <aside class="wa-ctx">
                 <div class="wa-ctx-sec">
                     <div class="wa-ctx-sec-t">👤 Contacto</div>
@@ -1457,6 +1567,14 @@
                     {
                         <button class="wa-ctx-btn" @onclick="AbrirEditarContacto" title="Editar este contacto">
                             ✏️ Editar contacto
+                        </button>
+                    }
+                    @* 2026-08-20: MODO VENTA — arma la venta acá mismo, sin salir del chat. *@
+                    @if (SelectedConv()?.ClienteId is int)
+                    {
+                        <button class="wa-ctx-btn wa-ctx-btn-venta" @onclick="AbrirModoVenta"
+                                title="Armar la venta acá al lado, sin salir del chat: repetís la anterior mientras seguís hablando con el cliente">
+                            🛒 Modo venta
                         </button>
                     }
                     <button class="wa-ctx-btn @(modoElegirVenta ? "wa-ctx-btn-on" : "")" @onclick="IniciarCrearVenta" title="Crear una venta: elegí uno o varios mensajes del pedido y se abre Nueva Venta en una pestaña nueva">
@@ -1549,6 +1667,7 @@
                     </button>
                 </div>
             </aside>
+            }
         }
 
         @* Tira de iconos del borde: siempre visible, así el panel nunca "desaparece". *@
@@ -1559,6 +1678,10 @@
             </button>
             <button class="wa-ctx-rail-btn" @onclick="AbrirCtx" title="Contacto: vincular cliente, editar contacto, crear venta">👤</button>
             <button class="wa-ctx-rail-btn" @onclick="AbrirCtx" title="Conversación: estado, pasar a, nota">💬</button>
+            @if (SelectedConv()?.ClienteId is int)
+            {
+                <button class="wa-ctx-rail-btn @(modoVenta ? "on" : "")" @onclick="AbrirModoVenta" title="Modo venta: armar la venta acá al lado sin salir del chat">🛒</button>
+            }
             @if (SelectedConv()?.ClienteId is int)
             {
                 <button class="wa-ctx-rail-btn @(mostrarFichaCliente ? "on" : "")" @onclick="ToggleFichaCliente" title="Ficha del cliente: saldo, últimas facturas y ubicación">🛍️</button>
@@ -2539,6 +2662,49 @@
     .wa-ficha-visor-x { background: none; border: none; font-size: 1.2rem; line-height: 1; color: #9ca3af; cursor: pointer; padding: 0 0.15rem; }
     .wa-ficha-visor-x:hover { color: #ef4444; }
     .wa-ficha-visor-frame { width: 100%; height: 62vh; min-height: 300px; border: none; display: block; background: #fff; }
+    /* ===== 2026-08-20: MODO VENTA — el panel derecho convertido en carrito ===== */
+    .wa-mv { background: #f8fafc; }
+    .wa-mv-top { display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 0.7rem; background: #ecfdf5; border-bottom: 1px solid #a7f3d0; border-radius: 10px 10px 0 0; }
+    .wa-mv-tit { font-size: 0.95rem; font-weight: 700; color: #065f46; }
+    .wa-mv-cli { font-size: 0.82rem; font-weight: 700; color: #047857; background: #f0fdf4; padding: 0.3rem 0.7rem; border-bottom: 1px solid #dcfce7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wa-mv-sec-t { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; color: #94a3b8; font-weight: 700; padding: 0.6rem 0.7rem 0.25rem; display: flex; align-items: baseline; gap: 0.4rem; }
+    .wa-mv-origen { text-transform: none; letter-spacing: 0; font-weight: 600; color: #6366f1; font-size: 0.7rem; }
+    .wa-mv-vacio { font-size: 0.82rem; color: #94a3b8; padding: 0.4rem 0.7rem 0.6rem; line-height: 1.45; }
+    /* Comprobante anterior que se puede repetir */
+    .wa-mv-ant { display: block; width: 100%; text-align: left; font-family: inherit; background: #fff; border: 1px solid #e2e8f0; border-radius: 9px; padding: 0.4rem 0.55rem; margin: 0 0.7rem 0.35rem; width: calc(100% - 1.4rem); cursor: pointer; transition: all .12s; }
+    .wa-mv-ant:hover:not(:disabled) { border-color: #16a34a; background: #f0fdf4; }
+    .wa-mv-ant:disabled { opacity: 0.6; cursor: wait; }
+    .wa-mv-ant-l1 { display: flex; align-items: baseline; gap: 0.4rem; font-size: 0.83rem; }
+    .wa-mv-ant-num { font-weight: 700; color: #334155; }
+    .wa-mv-ant-tot { margin-left: auto; font-weight: 700; }
+    .wa-mv-ant-l2 { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; font-size: 0.74rem; color: #94a3b8; margin-top: 0.1rem; }
+    .wa-mv-ant-cta { color: #16a34a; font-weight: 700; }
+    .wa-mv-mas { display: block; width: calc(100% - 1.4rem); margin: 0 0.7rem 0.2rem; background: none; border: none; color: #64748b; font-size: 0.75rem; cursor: pointer; padding: 0.2rem; }
+    .wa-mv-mas:hover { color: #16a34a; }
+    /* Renglones del carrito */
+    .wa-mv-lineas { padding: 0 0.7rem; }
+    .wa-mv-linea { background: #fff; border: 1px solid #e2e8f0; border-radius: 9px; padding: 0.4rem 0.5rem; margin-bottom: 0.35rem; }
+    .wa-mv-linea-nom { font-size: 0.82rem; font-weight: 600; color: #334155; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wa-mv-linea-ctrl { display: flex; align-items: center; gap: 0.25rem; margin-top: 0.25rem; }
+    .wa-mv-qbtn { width: 24px; height: 24px; border-radius: 6px; border: 1px solid #e2e8f0; background: #f8fafc; color: #334155; font-size: 1rem; line-height: 1; cursor: pointer; }
+    .wa-mv-qbtn:hover:not(:disabled) { background: #ecfdf5; border-color: #6ee7b7; }
+    .wa-mv-qbtn:disabled { opacity: 0.5; cursor: wait; }
+    .wa-mv-qinp { width: 42px; height: 24px; text-align: center; font-family: inherit; font-size: 0.82rem; border: 1px solid #e2e8f0; border-radius: 6px; }
+    .wa-mv-linea-sub { margin-left: auto; font-size: 0.84rem; font-weight: 700; color: #334155; }
+    .wa-mv-quitar { background: none; border: none; color: #cbd5e1; font-size: 0.85rem; cursor: pointer; padding: 0 0.1rem; }
+    .wa-mv-quitar:hover:not(:disabled) { color: #ef4444; }
+    .wa-mv-aviso { font-size: 0.72rem; color: #b45309; background: #fffbeb; border-radius: 5px; padding: 0.15rem 0.35rem; margin-top: 0.25rem; }
+    .wa-mv-total { display: flex; align-items: baseline; justify-content: space-between; margin: 0.5rem 0.7rem 0; padding-top: 0.5rem; border-top: 1px solid #e2e8f0; font-size: 0.85rem; color: #64748b; font-weight: 600; }
+    .wa-mv-total-monto { font-size: 1.15rem; font-weight: 800; color: #0f172a; }
+    .wa-mv-chips { display: flex; flex-wrap: wrap; gap: 0.25rem; padding: 0.4rem 0.7rem 0; }
+    .wa-mv-chip { font-size: 0.7rem; font-weight: 600; color: #475569; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 999px; padding: 0.1rem 0.45rem; }
+    .wa-mv-crear { display: block; width: calc(100% - 1.4rem); margin: 0.6rem 0.7rem 0.2rem; background: #16a34a; color: #fff; border: none; border-radius: 9px; padding: 0.6rem; font-family: inherit; font-size: 0.9rem; font-weight: 700; cursor: pointer; }
+    .wa-mv-crear:hover:not(:disabled) { background: #15803d; }
+    .wa-mv-crear:disabled { opacity: 0.55; cursor: not-allowed; }
+    .wa-mv-limpiar { display: block; width: calc(100% - 1.4rem); margin: 0 0.7rem 0.7rem; background: none; border: none; color: #94a3b8; font-size: 0.75rem; cursor: pointer; padding: 0.25rem; }
+    .wa-mv-limpiar:hover:not(:disabled) { color: #ef4444; }
+    .wa-ctx-btn-venta { background: #ecfdf5; border-color: #a7f3d0; color: #047857; font-weight: 700; }
+    .wa-ctx-btn-venta:hover { background: #d1fae5; }
     /* 2026-08-03: opciones del buscador de "Vincular cliente" */
     .wa-vincular-opt { display: block; width: 100%; text-align: left; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.55rem 0.65rem; margin-bottom: 0.35rem; font-size: 0.9rem; cursor: pointer; transition: all .12s; }
     .wa-vincular-opt:hover:not(:disabled) { background: #ecfdf5; border-color: #16a34a; }
@@ -3500,6 +3666,216 @@
             await LoadConversaciones(silent: true);
         }
         else Toast.Error(err ?? "Error al guardar");
+    }
+
+    // ===== 2026-08-20: MODO VENTA — armar la venta DENTRO del chat =====
+    // Pedido del dueño: "que el chat se transforme y me aparezcan las opciones para cargar la
+    // venta mientras chateo". Nada de pestañas nuevas ni ventanitas: el panel de la derecha se
+    // convierte en el carrito y la charla sigue a la izquierda, viva.
+    //
+    // Primera parte (esta): REPETIR un comprobante anterior + retocar cantidades + crear.
+    // Falta (segunda parte): buscador de productos para sumar cosas que no estaban.
+    bool modoVenta = false;
+    bool mvCargandoAnteriores = false;
+    bool mvVerTodasAnteriores = false;
+    int? mvRepitiendo = null;          // id del comprobante que se está copiando
+    bool mvCotizando = false;
+    bool mvCreando = false;
+    List<ApiClient.FichaChatVentaDto> mvAnteriores = new();
+    List<MvLinea> mvItems = new();
+    decimal mvTotal = 0m;
+    string? mvOrigenNumero = null;     // de qué comprobante salió esta copia
+    string mvTipoComprobante = "X";
+    string mvCondicionPago = "EFECTIVO";
+    string? mvCondicionIva = null;
+    bool mvRetira = false;
+    string? mvObservaciones = null;
+
+    /// <summary>Un renglón del carrito. CantidadTxt va como TEXTO a propósito: atado a un número,
+    /// el campo arranca en 0 y al tipear "1" queda "10" (ya nos pasó en Stock).</summary>
+    class MvLinea
+    {
+        public CafeCotizarItemRequest Req { get; set; } = new();
+        public string Nombre { get; set; } = "";
+        public string CantidadTxt { get; set; } = "1";
+        public decimal Subtotal { get; set; }
+        public string? Aviso { get; set; }
+    }
+
+    static string Plata(decimal v) => "$" + v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+
+    static string TipoLabel(string? t) => (t ?? "").ToUpperInvariant() switch
+    {
+        "FA" => "Factura A", "FB" => "Factura B", "FC" => "Factura C",
+        "PRO" => "Presupuesto", "X" => "Comprobante X", _ => t ?? "—"
+    };
+
+    async Task AbrirModoVenta()
+    {
+        if (SelectedConv()?.ClienteId is not int cid) { Toast.Warning("Vinculá el chat a un cliente primero."); return; }
+        ctxAbierto = true;
+        modoVenta = true;
+        await CargarAnterioresModoVenta(cid);
+    }
+
+    void CerrarModoVenta()
+    {
+        modoVenta = false;
+        LimpiarCarrito();
+    }
+
+    void LimpiarCarrito()
+    {
+        mvItems = new();
+        mvTotal = 0m;
+        mvOrigenNumero = null;
+        mvRepitiendo = null;
+    }
+
+    /// <summary>Los últimos comprobantes del cliente, para poder repetirlos. Reusa la misma
+    /// llamada que la ficha 👁️ (ficha-chat), así no agregamos otro endpoint.</summary>
+    async Task CargarAnterioresModoVenta(int clienteId)
+    {
+        mvCargandoAnteriores = true;
+        mvAnteriores = new();
+        try
+        {
+            var ficha = await Api.GetFichaChatAsync(clienteId);
+            // Las notas de crédito no se repiten (son devoluciones).
+            mvAnteriores = ficha?.Ventas
+                .Where(v => v.Tipo == null || !v.Tipo.StartsWith("NC", StringComparison.OrdinalIgnoreCase))
+                .ToList() ?? new();
+        }
+        catch { }
+        finally { mvCargandoAnteriores = false; StateHasChanged(); }
+    }
+
+    /// <summary>Carga en el carrito lo mismo que tenía ese comprobante, con LOS PRECIOS DE ESA
+    /// FACTURA (no los de hoy) — igual que el "Duplicar comprobante" de la pantalla de ventas.</summary>
+    async Task RepetirVenta(ApiClient.FichaChatVentaDto ant)
+    {
+        if (mvRepitiendo != null) return;
+        mvRepitiendo = ant.Id;
+        try
+        {
+            var pay = await Api.DuplicarCafeVentaAsync(ant.Id);
+            if (pay is null || pay.Items.Count == 0) { Toast.Error("No pude copiar ese comprobante."); return; }
+            mvTipoComprobante = pay.TipoComprobante;
+            mvCondicionPago = pay.CondicionPago;
+            mvCondicionIva = pay.CondicionIva;
+            mvRetira = pay.Retira;
+            mvObservaciones = pay.Observaciones;
+            mvOrigenNumero = pay.OrigenNumero;
+            mvItems = pay.Items.Select(it => new MvLinea
+            {
+                Req = it,
+                Nombre = string.IsNullOrWhiteSpace(it.DescripcionLibre) ? $"Producto #{it.ProductoId}" : it.DescripcionLibre!,
+                CantidadTxt = it.Cantidad.ToString()
+            }).ToList();
+            await CotizarModoVenta();   // trae los nombres de verdad y los subtotales
+        }
+        catch (Exception ex) { Toast.Error("No pude copiar ese comprobante: " + ex.Message); }
+        finally { mvRepitiendo = null; }
+    }
+
+    /// <summary>Le pide al servidor los precios y el total. Es la MISMA cotización que usa la
+    /// pantalla de ventas, así que respeta la lista de precios del cliente y avisa si falta stock.</summary>
+    async Task CotizarModoVenta()
+    {
+        if (mvItems.Count == 0) { mvTotal = 0m; return; }
+        if (SelectedConv()?.ClienteId is not int cid) return;
+        mvCotizando = true;
+        StateHasChanged();
+        try
+        {
+            var req = new CafeCotizarRequest
+            {
+                ClienteId = cid,
+                Items = mvItems.Select(l => l.Req).ToList(),
+                TipoComprobante = mvTipoComprobante
+            };
+            var cot = await Api.CotizarCafeAsync(req);
+            if (cot is null) { Toast.Error("No pude calcular los precios."); return; }
+            mvTotal = cot.Total;
+            for (int i = 0; i < mvItems.Count && i < cot.Items.Count; i++)
+            {
+                mvItems[i].Nombre = string.IsNullOrWhiteSpace(cot.Items[i].ProductoNombre)
+                    ? mvItems[i].Nombre : cot.Items[i].ProductoNombre;
+                mvItems[i].Subtotal = cot.Items[i].Subtotal;
+                mvItems[i].Aviso = cot.Items[i].StockOk ? null : cot.Items[i].Aviso;
+            }
+        }
+        catch (Exception ex) { Toast.Error("No pude calcular los precios: " + ex.Message); }
+        finally { mvCotizando = false; StateHasChanged(); }
+    }
+
+    async Task CambiarCantidad(int idx, int delta)
+    {
+        if (idx < 0 || idx >= mvItems.Count) return;
+        var nueva = mvItems[idx].Req.Cantidad + delta;
+        if (nueva < 1) return;
+        mvItems[idx].Req.Cantidad = nueva;
+        mvItems[idx].CantidadTxt = nueva.ToString();
+        await CotizarModoVenta();
+    }
+
+    async Task EscribirCantidad(int idx, string? txt)
+    {
+        if (idx < 0 || idx >= mvItems.Count) return;
+        var limpio = new string((txt ?? "").Where(char.IsDigit).ToArray());
+        if (!int.TryParse(limpio, out var n) || n < 1) n = 1;
+        mvItems[idx].Req.Cantidad = n;
+        mvItems[idx].CantidadTxt = n.ToString();
+        await CotizarModoVenta();
+    }
+
+    async Task QuitarLinea(int idx)
+    {
+        if (idx < 0 || idx >= mvItems.Count) return;
+        mvItems.RemoveAt(idx);
+        if (mvItems.Count == 0) { mvTotal = 0m; mvOrigenNumero = null; StateHasChanged(); return; }
+        await CotizarModoVenta();
+    }
+
+    /// <summary>Crea la venta de verdad, igual que la pantalla de ventas. OJO: si el comprobante
+    /// es Factura A/B/C, el sistema le pide el CAE a ARCA al crearla — no es un borrador. Por eso
+    /// antes va un cartel con el tipo, la razón social y el total.</summary>
+    async Task CrearVentaModoVenta()
+    {
+        if (mvCreando || mvItems.Count == 0) return;
+        if (SelectedConv()?.ClienteId is not int cid) return;
+        var nombreCli = SelectedConv()?.ClienteNombre ?? "este cliente";
+        var esFactura = mvTipoComprobante is "FA" or "FB" or "FC";
+        var aviso = esFactura
+            ? $"Se va a EMITIR {TipoLabel(mvTipoComprobante)} en AFIP (con CAE).\n\n"
+            : "";
+        if (!await JS.InvokeAsync<bool>("confirm",
+                $"{aviso}A nombre de: {nombreCli}\nTotal: {Plata(mvTotal)}\n\n¿Creo la venta?"))
+            return;
+
+        mvCreando = true;
+        try
+        {
+            var req = new CreateCafeVentaRequest
+            {
+                ClienteId = cid,
+                Items = mvItems.Select(l => l.Req).ToList(),
+                TipoComprobante = mvTipoComprobante,
+                CondicionIva = mvCondicionIva,
+                CondicionPago = mvCondicionPago,
+                Retira = mvRetira,
+                Observaciones = mvObservaciones
+            };
+            var venta = await Api.CreateCafeVentaAsync(req);
+            if (venta is null) { Toast.Error("No se pudo crear la venta."); return; }
+            Toast.Success($"✅ Venta creada: {venta.Numero ?? ("#" + venta.Id)} · {Plata(mvTotal)}");
+            LimpiarCarrito();
+            await CargarAnterioresModoVenta(cid);   // que la nueva aparezca para repetir
+            fichaCliente = null;                     // el saldo cambió: que la ficha se recargue
+            if (mostrarFichaCliente) await CargarFichaCliente();
+        }
+        catch (Exception ex) { Toast.Error("No se pudo crear la venta: " + ex.Message); }
+        finally { mvCreando = false; }
     }
 
     // ===== 2026-08-20: VARIAS RAZONES SOCIALES en un mismo teléfono =====
