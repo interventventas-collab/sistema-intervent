@@ -1126,7 +1126,11 @@ window.mapeoFlex = (function () {
                 }
 
                 // Cartelito con el tiempo/km, posado en el medio del recorrido.
-                if (total && allPts.length) {
+                // 2026-08-21: solo se muestra si la pantalla lo pide (mostrarCartel). En Mapeo el
+                // tiempo/km ya sale en la tarjeta de la zona, asi que el cartel sobre el mapa
+                // tapaba calles al pedo. En el mapa flotante y en el celular no hay tarjeta:
+                // ahi sigue apareciendo. Tocar la linea muestra el dato igual en todos lados.
+                if (total && allPts.length && r.mostrarCartel) {
                     const mid = allPts[Math.floor(allPts.length / 2)];
                     const lbl = makeLabel(mid, total, color);
                     lbl.setMap(map);

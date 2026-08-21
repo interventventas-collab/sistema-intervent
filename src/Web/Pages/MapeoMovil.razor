@@ -511,6 +511,8 @@
                         color = ruta.Color,
                         segments = (ruta.Segments?.Count ?? 0) > 0 ? ruta.Segments.ToArray() : new[] { ruta.EncodedPolyline! },
                         label = $"{FormatoDuracion(ruta.DurationSeconds)} · {(ruta.DistanceMeters / 1000.0):0.#} km",
+                        // Esta pantalla no tiene tarjeta con el tiempo/km: el cartelito sobre la linea si va.
+                        mostrarCartel = true,
                         legs = (ruta.Legs ?? new()).Select(l => new {
                             meters = l.Meters, seconds = l.Seconds, encoded = l.Encoded, from = l.From, to = l.To,
                             transito = (l.Transito ?? new()).Select(t => new { start = t.Start, end = t.End, speed = t.Speed }).ToArray()

@@ -195,6 +195,8 @@
                 color = r.Color,
                 segments = r.Segments.Count > 0 ? r.Segments.ToArray() : new[] { r.EncodedPolyline! },
                 label = $"{FormatoDuracion(r.DurationSeconds)} · {(r.DistanceMeters / 1000.0):0.#} km",
+                // Esta pantalla no tiene tarjeta con el tiempo/km: el cartelito sobre la linea si va.
+                mostrarCartel = true,
                 legs = r.Legs.Select(l => new
                 {
                     meters = l.Meters, seconds = l.Seconds, encoded = l.Encoded, from = l.From, to = l.To,
