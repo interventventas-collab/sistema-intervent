@@ -1476,6 +1476,56 @@
                             }
                         }
 
+                        @* ── Sumar productos (2026-08-20, parte 2) ── *@
+                        <div class="wa-mv-sec-t">Sumar productos</div>
+                        <div class="wa-mv-busc">
+                            <span>🔍</span>
+                            <input class="wa-mv-busc-inp" placeholder="Buscar producto por nombre o código…"
+                                   value="@mvBusqueda" @oninput="OnBuscarProducto" autocomplete="off" />
+                            @if (!string.IsNullOrWhiteSpace(mvBusqueda))
+                            {
+                                <button class="wa-mv-busc-x" @onclick="LimpiarBusquedaProducto" title="Borrar la búsqueda">✕</button>
+                            }
+                        </div>
+                        @if (mvCargandoProductos)
+                        {
+                            <div class="wa-mv-vacio">⏳ Cargando el catálogo…</div>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(mvBusqueda))
+                        {
+                            @if (mvResultados.Count == 0)
+                            {
+                                <div class="wa-mv-vacio">No encontré ningún producto con eso.</div>
+                            }
+                            else
+                            {
+                                <div class="wa-mv-res">
+                                    @foreach (var pr in mvResultados)
+                                    {
+                                        <button class="wa-mv-res-item" @onclick="() => SumarProducto(pr.Id)" disabled="@mvCotizando"
+                                                title="Sumar @pr.Nombre a la venta">
+                                            <span class="wa-mv-res-nom">@pr.Nombre</span>
+                                            @if (!string.IsNullOrWhiteSpace(pr.Sku)) { <span class="wa-mv-res-sku">@pr.Sku</span> }
+                                        </button>
+                                    }
+                                </div>
+                            }
+                        }
+                        else if (mvTop.Count > 0)
+                        {
+                            <div class="wa-mv-top-lbl">Lo que más compra:</div>
+                            <div class="wa-mv-tops">
+                                @foreach (var t in mvTop)
+                                {
+                                    <button class="wa-mv-top-chip" @onclick="() => SumarTop(t)" disabled="@mvCotizando"
+                                            title="@($"Lo compró {t.TimesOrdered} veces — la última el {t.LastPurchase:dd/MM/yy}")">
+                                        + @t.Nombre
+                                        @if (FormatoLabelCorto(t.Formato) is string _tf) { <span class="wa-mv-linea-fmt">@_tf</span> }
+                                    </button>
+                                }
+                            </div>
+                        }
+
                         @* ── El carrito ── *@
                         @if (mvItems.Count > 0)
                         {
@@ -1489,7 +1539,10 @@
                                     var idx = i;
                                     var li = mvItems[idx];
                                     <div class="wa-mv-linea">
-                                        <div class="wa-mv-linea-nom" title="@li.Nombre">@li.Nombre</div>
+                                        <div class="wa-mv-linea-nom" title="@li.Nombre">
+                                            @li.Nombre
+                                            @if (!string.IsNullOrWhiteSpace(li.FormatoLabel)) { <span class="wa-mv-linea-fmt">@li.FormatoLabel</span> }
+                                        </div>
                                         <div class="wa-mv-linea-ctrl">
                                             <button class="wa-mv-qbtn" @onclick="() => CambiarCantidad(idx, -1)" disabled="@mvCotizando" title="Uno menos">−</button>
                                             <input class="wa-mv-qinp" type="text" inputmode="numeric" value="@li.CantidadTxt"
@@ -2663,7 +2716,9 @@
     .wa-ficha-visor-x:hover { color: #ef4444; }
     .wa-ficha-visor-frame { width: 100%; height: 62vh; min-height: 300px; border: none; display: block; background: #fff; }
     /* ===== 2026-08-20: MODO VENTA — el panel derecho convertido en carrito ===== */
-    .wa-mv { background: #f8fafc; }
+    /* El panel se ensancha en modo venta: los nombres de producto son largos y con 260 px
+       quedaban todos cortados. La charla igual sigue entera al lado. */
+    .wa-mv { background: #f8fafc; width: 340px; flex: 0 0 340px; }
     .wa-mv-top { display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 0.7rem; background: #ecfdf5; border-bottom: 1px solid #a7f3d0; border-radius: 10px 10px 0 0; }
     .wa-mv-tit { font-size: 0.95rem; font-weight: 700; color: #065f46; }
     .wa-mv-cli { font-size: 0.82rem; font-weight: 700; color: #047857; background: #f0fdf4; padding: 0.3rem 0.7rem; border-bottom: 1px solid #dcfce7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2703,6 +2758,23 @@
     .wa-mv-crear:disabled { opacity: 0.55; cursor: not-allowed; }
     .wa-mv-limpiar { display: block; width: calc(100% - 1.4rem); margin: 0 0.7rem 0.7rem; background: none; border: none; color: #94a3b8; font-size: 0.75rem; cursor: pointer; padding: 0.25rem; }
     .wa-mv-limpiar:hover:not(:disabled) { color: #ef4444; }
+    /* Buscador de productos del modo venta */
+    .wa-mv-busc { display: flex; align-items: center; gap: 0.3rem; margin: 0 0.7rem 0.35rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 9px; padding: 0.25rem 0.5rem; }
+    .wa-mv-busc-inp { flex: 1; min-width: 0; border: none; outline: none; font-family: inherit; font-size: 0.82rem; background: transparent; }
+    .wa-mv-busc-x { background: none; border: none; color: #cbd5e1; cursor: pointer; font-size: 0.8rem; padding: 0 0.15rem; }
+    .wa-mv-busc-x:hover { color: #ef4444; }
+    .wa-mv-res { margin: 0 0.7rem 0.35rem; max-height: 200px; overflow-y: auto; }
+    .wa-mv-res-item { display: flex; align-items: baseline; gap: 0.4rem; width: 100%; text-align: left; font-family: inherit; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.3rem 0.5rem; margin-bottom: 0.25rem; font-size: 0.8rem; color: #334155; cursor: pointer; }
+    .wa-mv-res-item:hover:not(:disabled) { background: #f0fdf4; border-color: #16a34a; }
+    .wa-mv-res-item:disabled { opacity: 0.6; cursor: wait; }
+    .wa-mv-res-nom { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wa-mv-res-sku { font-size: 0.68rem; color: #94a3b8; }
+    .wa-mv-top-lbl { font-size: 0.72rem; color: #94a3b8; padding: 0 0.7rem 0.2rem; }
+    .wa-mv-tops { display: flex; flex-wrap: wrap; gap: 0.25rem; padding: 0 0.7rem 0.2rem; }
+    .wa-mv-top-chip { font-family: inherit; font-size: 0.74rem; color: #334155; background: #fff; border: 1px solid #e2e8f0; border-radius: 999px; padding: 0.15rem 0.5rem; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wa-mv-top-chip:hover:not(:disabled) { background: #f0fdf4; border-color: #16a34a; color: #047857; }
+    .wa-mv-top-chip:disabled { opacity: 0.6; cursor: wait; }
+    .wa-mv-linea-fmt { font-size: 0.66rem; font-weight: 700; color: #6366f1; background: #eef2ff; border-radius: 4px; padding: 0.02rem 0.28rem; margin-left: 0.25rem; }
     .wa-ctx-btn-venta { background: #ecfdf5; border-color: #a7f3d0; color: #047857; font-weight: 700; }
     .wa-ctx-btn-venta:hover { background: #d1fae5; }
     /* 2026-08-03: opciones del buscador de "Vincular cliente" */
@@ -3690,6 +3762,12 @@
     string? mvCondicionIva = null;
     bool mvRetira = false;
     string? mvObservaciones = null;
+    // Parte 2 (buscador): catálogo + "lo que más compra" de ese cliente.
+    bool mvCargandoProductos = false;
+    List<CafeProductoDto> mvProductos = new();
+    List<CafeTopProductoClienteDto> mvTop = new();
+    string mvBusqueda = "";
+    List<CafeProductoDto> mvResultados = new();
 
     /// <summary>Un renglón del carrito. CantidadTxt va como TEXTO a propósito: atado a un número,
     /// el campo arranca en 0 y al tipear "1" queda "10" (ya nos pasó en Stock).</summary>
@@ -3698,6 +3776,8 @@
         public CafeCotizarItemRequest Req { get; set; } = new();
         public string Nombre { get; set; } = "";
         public string CantidadTxt { get; set; } = "1";
+        /// <summary>"Pack x100", "Bulto"… Vacío si va suelto o es café por kilo (lo normal).</summary>
+        public string? FormatoLabel { get; set; }
         public decimal Subtotal { get; set; }
         public string? Aviso { get; set; }
     }
@@ -3716,7 +3796,97 @@
         ctxAbierto = true;
         modoVenta = true;
         await CargarAnterioresModoVenta(cid);
+        await CargarProductosModoVenta(cid);
     }
+
+    /// <summary>El catálogo (para el buscador) y lo que ese cliente compra siempre. Se pide una
+    /// sola vez por cliente, cuando entrás al modo venta.</summary>
+    async Task CargarProductosModoVenta(int clienteId)
+    {
+        if (mvProductos.Count == 0)
+        {
+            mvCargandoProductos = true;
+            try { mvProductos = (await Api.GetCafeProductosAsync())?.Where(x => x.IsActive && x.IsVisibleEnVentas).ToList() ?? new(); }
+            catch { }
+            finally { mvCargandoProductos = false; }
+        }
+        try { mvTop = (await Api.GetCafeTopProductosByClienteAsync(clienteId, 6)) ?? new(); }
+        catch { mvTop = new(); }
+        StateHasChanged();
+    }
+
+    void OnBuscarProducto(ChangeEventArgs e)
+    {
+        mvBusqueda = e.Value?.ToString() ?? "";
+        var q = mvBusqueda.Trim();
+        if (q.Length < 2) { mvResultados = new(); return; }
+        mvResultados = mvProductos
+            .Where(x => (x.Nombre ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)
+                     || (x.Sku ?? "").Contains(q, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => x.Nombre)
+            .Take(8).ToList();
+    }
+
+    void LimpiarBusquedaProducto()
+    {
+        mvBusqueda = "";
+        mvResultados = new();
+    }
+
+    /// <summary>Con qué formato entra un producto a la venta. Misma regla que la pantalla de
+    /// ventas (café siempre 1 kg; el resto, el formato por defecto de la ficha si sigue siendo
+    /// válido). Ver FormatoInicialProducto en CafeVentas.razor.</summary>
+    static string FormatoInicial(CafeProductoDto? p)
+    {
+        if (p is null) return "UNIT";
+        if (p.Categoria == "CAFE") return "1KG";
+        var f = p.FormatoPorDefecto;
+        if (string.IsNullOrWhiteSpace(f) || f == "UNIT") return "UNIT";
+        if (f == "BULTO")
+            return (p.UxB.HasValue && p.UxB.Value > 0 && (p.PrecioBulto.HasValue || p.PrecioBultoOtro.HasValue)) ? "BULTO" : "UNIT";
+        if (f.StartsWith("PACK_") && int.TryParse(f.AsSpan("PACK_".Length), out var n) && n > 0)
+            return (p.Packs?.Any(pk => pk.IsActive && pk.Cantidad == n) ?? false) ? f : "UNIT";
+        return "UNIT";
+    }
+
+    /// <summary>Etiqueta corta del formato para el renglón. Vacía cuando va suelto o es café por
+    /// kilo, que es lo normal y no hace falta aclarar.</summary>
+    static string? FormatoLabelCorto(string? formato)
+    {
+        if (string.IsNullOrWhiteSpace(formato) || formato == "UNIT" || formato == "1KG") return null;
+        if (formato == "BULTO") return "Bulto";
+        if (formato.StartsWith("PACK_") && int.TryParse(formato.AsSpan("PACK_".Length), out var n)) return $"Pack x{n}";
+        return formato;
+    }
+
+    /// <summary>Suma un producto al carrito. Si ya estaba (mismo producto y mismo formato), en vez
+    /// de repetir el renglón le suma uno a la cantidad.</summary>
+    async Task SumarProducto(int productoId, string? formatoForzado = null)
+    {
+        var prod = mvProductos.FirstOrDefault(x => x.Id == productoId);
+        var formato = formatoForzado ?? FormatoInicial(prod);
+        var ya = mvItems.FirstOrDefault(l => l.Req.ProductoId == productoId && l.Req.Formato == formato);
+        if (ya != null)
+        {
+            ya.Req.Cantidad += 1;
+            ya.CantidadTxt = ya.Req.Cantidad.ToString();
+        }
+        else
+        {
+            mvItems.Add(new MvLinea
+            {
+                Req = new CafeCotizarItemRequest { ProductoId = productoId, Formato = formato, Cantidad = 1 },
+                Nombre = prod?.Nombre ?? $"Producto #{productoId}",
+                CantidadTxt = "1",
+                FormatoLabel = FormatoLabelCorto(formato)
+            });
+        }
+        LimpiarBusquedaProducto();
+        await CotizarModoVenta();
+    }
+
+    /// <summary>Uno de "lo que más compra": entra con el MISMO formato que suele llevar.</summary>
+    Task SumarTop(CafeTopProductoClienteDto t) => SumarProducto(t.ProductoId, t.Formato);
 
     void CerrarModoVenta()
     {
@@ -3726,6 +3896,7 @@
 
     void LimpiarCarrito()
     {
+        LimpiarBusquedaProducto();
         mvItems = new();
         mvTotal = 0m;
         mvOrigenNumero = null;
@@ -3770,7 +3941,8 @@
             {
                 Req = it,
                 Nombre = string.IsNullOrWhiteSpace(it.DescripcionLibre) ? $"Producto #{it.ProductoId}" : it.DescripcionLibre!,
-                CantidadTxt = it.Cantidad.ToString()
+                CantidadTxt = it.Cantidad.ToString(),
+                FormatoLabel = FormatoLabelCorto(it.Formato)
             }).ToList();
             await CotizarModoVenta();   // trae los nombres de verdad y los subtotales
         }
@@ -3802,6 +3974,7 @@
                 mvItems[i].Nombre = string.IsNullOrWhiteSpace(cot.Items[i].ProductoNombre)
                     ? mvItems[i].Nombre : cot.Items[i].ProductoNombre;
                 mvItems[i].Subtotal = cot.Items[i].Subtotal;
+                mvItems[i].FormatoLabel = FormatoLabelCorto(cot.Items[i].Formato);
                 mvItems[i].Aviso = cot.Items[i].StockOk ? null : cot.Items[i].Aviso;
             }
         }
