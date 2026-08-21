@@ -205,7 +205,7 @@
                         <div style="flex: 1; min-width: 0;">
                             <p class="cliente-nombre">👤 @s.Nombre</p>
                             <div class="cliente-tipo">
-                                @if (s.Tipo == "BAR") { <span>🍺 BAR</span> } else { <span>🏢 OTRO</span> }
+                                @if (s.Tipo == "BAR") { <span>🍺 BAR</span> } else if (s.Tipo == "ALQUILERES") { <span>🏠 Alquileres</span> } else { <span>🏢 OTRO</span> }
                                 @if (s.CodigoInterno.HasValue) { <span> · #@s.CodigoInterno</span> }
                                 @if (s.TieneSaldoMigracion)
                                 {

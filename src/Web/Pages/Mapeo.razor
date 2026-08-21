@@ -2078,6 +2078,10 @@
                                                     {
                                                         <span style="display:inline-block; padding:0.05rem 0.35rem; background:#dbeafe; color:#1e40af; border-radius:999px; font-size:0.65rem; font-weight:700; margin-left:0.3rem;">🍺 BAR</span>
                                                     }
+                                                    else if (c.Tipo == "ALQUILERES")
+                                                    {
+                                                        <span style="display:inline-block; padding:0.05rem 0.35rem; background:#fae8ff; color:#86198f; border-radius:999px; font-size:0.65rem; font-weight:700; margin-left:0.3rem;">🏠 Alquileres</span>
+                                                    }
                                                     <div style="font-size:0.75rem; color:#4b5563;">@(c.DomicilioEntrega ?? c.Direccion ?? "—")</div>
                                                 </div>
                                             </div>
@@ -2724,6 +2728,8 @@
                                         <strong>@cli.Nombre</strong>
                                         @if (cli.Tipo == "BAR")
                                         { <span style="display:inline-block; padding:0.05rem 0.35rem; background:#dbeafe; color:#1e40af; border-radius:999px; font-size:0.65rem; font-weight:700; margin-left:0.3rem;">🍺 BAR</span> }
+                                        else if (cli.Tipo == "ALQUILERES")
+                                        { <span style="display:inline-block; padding:0.05rem 0.35rem; background:#fae8ff; color:#86198f; border-radius:999px; font-size:0.65rem; font-weight:700; margin-left:0.3rem;">🏠 Alquileres</span> }
                                         <div style="font-size:0.78rem; color:#4b5563;">@(cli.Direccion ?? "—")@(string.IsNullOrEmpty(cli.Localidad) ? "" : ", " + cli.Localidad)</div>
                                         @if (!cli.MapeoLat.HasValue)
                                         {

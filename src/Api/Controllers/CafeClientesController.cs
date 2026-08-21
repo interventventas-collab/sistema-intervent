@@ -17,7 +17,9 @@ public class CafeClientesController : ControllerBase
     private readonly AppDbContext _db;
     private readonly GoogleMapsLinkResolverService _mapsResolver;
     private readonly CafeSaldosService _saldos;
-    private static readonly string[] TiposValidos = { "BAR", "OTRO" };
+    // 2026-08-21: "ALQUILERES" marca a los clientes del negocio de alquileres. Es solo una
+    // etiqueta: para precios de productos el motor lo trata como OTRO (Comercial).
+    private static readonly string[] TiposValidos = { "BAR", "OTRO", "ALQUILERES" };
 
     public CafeClientesController(AppDbContext db, GoogleMapsLinkResolverService mapsResolver, CafeSaldosService saldos)
     {
@@ -356,9 +358,12 @@ public class CafeClientesController : ControllerBase
         // Caso real que motivo el fix: PANADERIA LA MILAGROSA con 2 sucursales — antes
         // era 1 cliente con domicilio editado entre ventas, ahora son 2 clientes
         // separados, pero las ventas viejas se mantienen con su domicilio historico.
+        // El snapshot de la venta guarda SOLO el tipo que entiende el motor de precios
+        // (BAR/OTRO): un cliente "ALQUILERES" cotiza como Comercial.
+        var tipoParaVentas = CafePricingService.ResolverTipo(c.Tipo);
         await _db.CafeVentas.Where(v => v.ClienteId == c.Id).ExecuteUpdateAsync(setters => setters
             .SetProperty(v => v.ClienteNombreSnapshot, c.Nombre)
-            .SetProperty(v => v.ClienteTipoSnapshot, c.Tipo)
+            .SetProperty(v => v.ClienteTipoSnapshot, tipoParaVentas)
             .SetProperty(v => v.ClienteTelefonoSnapshot, c.Telefono)
             .SetProperty(v => v.ClienteRazonSocialSnapshot, c.RazonSocial)
             .SetProperty(v => v.ClienteCuitSnapshot, c.Cuit));

@@ -23,7 +23,7 @@ public class CafeCliente
     public string? RazonSocial { get; set; }
 
     [Required, MaxLength(20)]
-    public string Tipo { get; set; } = "OTRO"; // BAR | OTRO
+    public string Tipo { get; set; } = "OTRO"; // BAR | OTRO | ALQUILERES (etiqueta: cotiza como OTRO)
 
     [MaxLength(20)]
     public string? Cuit { get; set; }
