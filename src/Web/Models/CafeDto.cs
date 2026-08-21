@@ -1985,6 +1985,10 @@ public class ClienteSaldoPendienteDto
     public decimal SaldoCotizacion { get; set; }
     /// <summary>Saldo de comprobantes tipo FA, FB, FC (con CAE, fiscales). Default 0.</summary>
     public decimal SaldoFactura { get; set; }
+    /// <summary>2026-08-21: plata del cliente que NO está aplicada a los comprobantes pendientes:
+    /// pagos a cuenta, notas de crédito y facturas pagadas de más.
+    /// Cotización + Factura − esto = SaldoPendiente.</summary>
+    public decimal CreditoAFavor { get; set; }
 }
 
 /// <summary>Resultado de mandar el resumen de deudas por Telegram (botón "probar aviso ahora").</summary>

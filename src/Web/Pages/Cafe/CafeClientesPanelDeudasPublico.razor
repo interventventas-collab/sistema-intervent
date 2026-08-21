@@ -55,6 +55,11 @@
     .saldo-tipo-box.cotiz .tipo-monto { color: #4b5563; }
     .saldo-tipo-box .tipo-monto.cero { color: #d1d5db; font-weight: 500; font-size: 0.9rem; }
 
+    /* 2026-08-21: plata a favor del cliente (pagos a cuenta, notas de credito, facturas
+       pagadas de mas). Se muestra restando para que se entienda por que el TOTAL DEBE no es
+       la simple suma de Cotizacion + Factura. */
+    .credito-linea { display: flex; justify-content: space-between; align-items: center; margin-top: 0.4rem; padding: 0.35rem 0.7rem; background: #dcfce7; border-radius: 6px; font-size: 0.82rem; color: #166534; font-weight: 600; }
+    .credito-linea strong { font-size: 0.95rem; font-weight: 800; }
     .cliente-total { display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem; padding: 0.45rem 0.7rem; background: #fef9c3; border-radius: 6px; }
     .cliente-total .label { font-weight: 700; color: #713f12; font-size: 0.88rem; }
     .cliente-total .monto { font-weight: 800; font-size: 1.2rem; color: #713f12; }
@@ -110,6 +115,7 @@
         var totalCot = saldos.Sum(s => s.SaldoCotizacion);
         var totalFac = saldos.Sum(s => s.SaldoFactura);
         var totalTodo = saldos.Sum(s => s.SaldoPendiente);
+        var totalCredito = saldos.Sum(s => s.CreditoAFavor);
         var vencidos60 = saldos.Where(s => s.DiasMasAntigua >= 60).ToList();
 
         <div class="panel-resumen">
@@ -128,6 +134,17 @@
                 <p class="valor" style="color: #1d4ed8;">$@FormatMoney(totalFac)</p>
                 <p class="sub">Con CAE de ARCA — fiscal</p>
             </div>
+            @* 2026-08-21: plata ya cobrada que todavia no esta aplicada a un comprobante puntual
+               (pagos a cuenta), notas de credito y facturas pagadas de mas. Ya viene descontada
+               del "Total por cobrar" — se muestra para que los numeros cierren a la vista. *@
+            @if (totalCredito > 0.5m)
+            {
+                <div class="panel-resumen-card" style="background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); border-color: #16a34a;">
+                    <div class="label" style="color: #166534;">💚 A favor / a cuenta</div>
+                    <p class="valor" style="color: #166534;">− $@FormatMoney(totalCredito)</p>
+                    <p class="sub" style="color: #15803d;">Ya descontado del total por cobrar</p>
+                </div>
+            }
             @if (vencidos60.Count > 0)
             {
                 <div class="panel-resumen-card urgente">
@@ -183,6 +200,13 @@
                             else { <div class="tipo-monto cero">—</div> }
                         </div>
                     </div>
+                    @if (s.CreditoAFavor > 0.5m)
+                    {
+                        <div class="credito-linea" title="Plata suya que todavia no esta aplicada a estos comprobantes: pagos a cuenta, notas de credito o facturas pagadas de mas. Ya esta descontada del total.">
+                            <span>💚 A favor / a cuenta</span>
+                            <strong>− $@FormatMoney(s.CreditoAFavor)</strong>
+                        </div>
+                    }
                     <div class="cliente-total">
                         <span class="label">TOTAL DEBE</span>
                         <span class="monto">$@FormatMoney(s.SaldoPendiente)</span>
