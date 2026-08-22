@@ -1195,8 +1195,9 @@
                         </button>
                         @if (!string.IsNullOrWhiteSpace(cb.Alias))
                         {
-                            <button class="wa-saldo-cli wa-cbu-solo-alias" @onclick="() => InsertarCbu(cb, true)" title="Insertar solo el alias">
-                                ↳ Solo alias: <b>@cb.Alias</b>
+                            <button class="wa-saldo-cli wa-cbu-solo-alias" @onclick="() => EnviarSoloAlias(cb)"
+                                    title="Manda DOS mensajes: primero el alias solito (para que el cliente lo copie de un toque) y atrás el titular, para que verifique a quién le transfiere.">
+                                ↳ Solo alias: <b>@cb.Alias</b> <span style="color:#6b7280; font-weight:600;">· se manda solo (2 mensajes)</span>
                             </button>
                         }
                     }
@@ -5748,6 +5749,30 @@
         showCbuPanel = false;
     }
 
+    // 2026-08-22 (pedido del dueño): "Solo alias" MANDA SOLO, y manda DOS mensajes separados:
+    //   1) el alias PELADO  → el cliente lo copia de un toque (mantener apretado = copiar mensaje).
+    //      Si va mezclado con el titular y el banco, tiene que seleccionar a mano y se equivoca.
+    //   2) el titular       → para que verifique a nombre de quién está transfiriendo.
+    // Antes este botón pegaba en el cuadro CASI TODO (título, titular, CUIT, alias y mail): lo único
+    // que sacaba era la línea del CBU, así que "solo alias" no era solo el alias.
+    async Task EnviarSoloAlias(ApiClient.TwCbuDto cb)
+    {
+        showCbuPanel = false;
+        var alias = (cb.Alias ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(alias)) return;
+        if (selectedNumero == null) { Toast.Warning("Abrí primero una conversación."); return; }
+
+        // Si el primero no sale (fuera de las 24 hs, error de Meta…), NO mandamos el segundo:
+        // quedaría un "Titular: …" suelto sin el alias adelante.
+        if (!await EnviarTexto(alias)) return;
+
+        var titular = !string.IsNullOrWhiteSpace(cb.Titular) ? cb.Titular!.Trim()
+                    : !string.IsNullOrWhiteSpace(cb.Nombre) ? cb.Nombre.Trim() : "";
+        if (titular.Length == 0) return;   // sin titular cargado, con el alias alcanza
+        var banco = string.IsNullOrWhiteSpace(cb.Banco) ? "" : $" · {cb.Banco.Trim()}";
+        await EnviarTexto($"Titular: {titular}{banco}");
+    }
+
     async Task LoadDatosBancarios()
     {
         try
@@ -6396,11 +6421,13 @@
     // Envío real + aparición instantánea (como WhatsApp): agrego el mensaje a la lista
     // al toque, y cuando el servidor confirma recargo para traer el mensaje real (con
     // sus tilditos de estado). Si falla, lo saco y devuelvo el texto al cuadro.
-    async Task EnviarTexto(string texto)
+    /// <summary>Devuelve true si el mensaje salió. 2026-08-22: lo necesita "Solo alias", que manda
+    /// dos mensajes seguidos y NO tiene que mandar el segundo si el primero no salió.</summary>
+    async Task<bool> EnviarTexto(string texto)
     {
-        if (selectedNumero == null || sending) return;
+        if (selectedNumero == null || sending) return false;
         texto = texto?.Trim() ?? "";
-        if (string.IsNullOrWhiteSpace(texto)) return;
+        if (string.IsNullOrWhiteSpace(texto)) return false;
 
         // 2026-08-12: en los chats que ve Depósito (ver DepositoChats), el mensaje sale firmado
         // AUTOMÁTICAMENTE con la abreviatura del operador del PIN activo (os/ger/ga). Si no hay
@@ -6420,7 +6447,7 @@
                 Toast.Warning("Elegí quién responde (arriba del cuadro de escribir).");
                 composerText = texto;
                 StateHasChanged();
-                return;
+                return false;
             }
             texto = $"{texto} ({firmante})";
         }
@@ -6466,6 +6493,7 @@
             StateHasChanged();
             Toast.Error($"Error al enviar: {err}");
         }
+        return ok;
     }
 
     /// <summary>2026-08-18: salta al mensaje citado y lo resalta. Si no está entre los cargados, avisa.</summary>
