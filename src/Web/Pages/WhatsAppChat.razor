@@ -1195,9 +1195,9 @@
                         </button>
                         @if (!string.IsNullOrWhiteSpace(cb.Alias))
                         {
-                            <button class="wa-saldo-cli wa-cbu-solo-alias" @onclick="() => EnviarSoloAlias(cb)"
-                                    title="Manda DOS mensajes: primero el alias solito (para que el cliente lo copie de un toque) y atrás el titular, para que verifique a quién le transfiere.">
-                                ↳ Solo alias: <b>@cb.Alias</b> <span style="color:#6b7280; font-weight:600;">· se manda solo (2 mensajes)</span>
+                            <button class="wa-saldo-cli wa-cbu-solo-alias" @onclick="() => EnviarSoloAlias(cb)" disabled="@enviandoAlias"
+                                    title="Manda DOS mensajes: primero los datos de la cuenta en un renglón y atrás el alias solito, para que el cliente lo copie de un toque.">
+                                ↳ Solo alias: <b>@cb.Alias</b> <span style="color:#6b7280; font-weight:600;">@(enviandoAlias ? "· enviando…" : "· se manda solo (2 mensajes)")</span>
                             </button>
                         }
                     }
@@ -5750,27 +5750,61 @@
     }
 
     // 2026-08-22 (pedido del dueño): "Solo alias" MANDA SOLO, y manda DOS mensajes separados:
-    //   1) el alias PELADO  → el cliente lo copia de un toque (mantener apretado = copiar mensaje).
-    //      Si va mezclado con el titular y el banco, tiene que seleccionar a mano y se equivoca.
-    //   2) el titular       → para que verifique a nombre de quién está transfiriendo.
+    //   1) los datos de la cuenta en UN renglón (banco · titular · CUIT) + "te paso el alias 👇"
+    //   2) el alias PELADO, último → el cliente lo copia de un toque (mantener apretado = copiar
+    //      el mensaje entero). Mezclado con el resto tiene que seleccionar a mano y se equivoca.
+    // El alias va ÚLTIMO a propósito: queda al fondo del chat (no lo tiene que ir a buscar) y le
+    // llega DESPUÉS de saber a nombre de quién transfiere, que es cuando le sirve el dato.
     // Antes este botón pegaba en el cuadro CASI TODO (título, titular, CUIT, alias y mail): lo único
     // que sacaba era la línea del CBU, así que "solo alias" no era solo el alias.
     async Task EnviarSoloAlias(ApiClient.TwCbuDto cb)
     {
-        showCbuPanel = false;
         var alias = (cb.Alias ?? "").Trim();
-        if (string.IsNullOrWhiteSpace(alias)) return;
-        if (selectedNumero == null) { Toast.Warning("Abrí primero una conversación."); return; }
+        if (alias.Length == 0) return;
+        var chat = selectedNumero;
+        if (chat == null) { Toast.Warning("Abrí primero una conversación."); return; }
 
-        // Si el primero no sale (fuera de las 24 hs, error de Meta…), NO mandamos el segundo:
-        // quedaría un "Titular: …" suelto sin el alias adelante.
-        if (!await EnviarTexto(alias)) return;
+        // 22/08/2026: al cliente le llegaron DOS veces los datos del titular. Dos candados:
+        // 1) mientras está mandando, los clics de más se descartan (antes cada clic arrancaba su propia tanda).
+        if (enviandoAlias) return;
+        // 2) el mismo alias al mismo chat dos veces seguidas: casi siempre es el dedo, no la intención.
+        if (_ultimoAliasChat == chat && _ultimoAliasTexto == alias
+            && (DateTime.Now - _ultimoAliasCuando).TotalSeconds < 20)
+        {
+            showCbuPanel = false;
+            Toast.Info("Ese alias se lo mandaste recién. Si de verdad lo querés repetir, esperá unos segundos.");
+            return;
+        }
 
-        var titular = !string.IsNullOrWhiteSpace(cb.Titular) ? cb.Titular!.Trim()
-                    : !string.IsNullOrWhiteSpace(cb.Nombre) ? cb.Nombre.Trim() : "";
-        if (titular.Length == 0) return;   // sin titular cargado, con el alias alcanza
-        var banco = string.IsNullOrWhiteSpace(cb.Banco) ? "" : $" · {cb.Banco.Trim()}";
-        await EnviarTexto($"Titular: {titular}{banco}");
+        enviandoAlias = true;
+        showCbuPanel = false;
+        StateHasChanged();
+        try
+        {
+            // Si el primero no sale (fuera de las 24 hs, error de Meta…), NO mandamos el alias:
+            // quedaría un alias suelto sin decir de quién es la cuenta.
+            if (!await EnviarTexto(TextoDatosCuenta(cb))) return;
+            if (!await EnviarTexto(alias)) return;
+            _ultimoAliasChat = chat; _ultimoAliasTexto = alias; _ultimoAliasCuando = DateTime.Now;
+        }
+        finally { enviandoAlias = false; StateHasChanged(); }
+    }
+
+    bool enviandoAlias;
+    string? _ultimoAliasChat, _ultimoAliasTexto;
+    DateTime _ultimoAliasCuando = DateTime.MinValue;
+
+    /// <summary>Renglón corto con los datos de la cuenta, tal como lo pidió el dueño:
+    /// "🏦 Banco Galicia · WALTER IGNACIO CARRIZO · CUIT 20-33262673-9, te paso el alias 👇:".
+    /// Los datos que la cuenta no tenga cargados simplemente no aparecen.</summary>
+    string TextoDatosCuenta(ApiClient.TwCbuDto cb)
+    {
+        var partes = new List<string>();
+        var banco = string.IsNullOrWhiteSpace(cb.Banco) ? cb.Nombre : cb.Banco;
+        if (!string.IsNullOrWhiteSpace(banco)) partes.Add(banco.Trim());
+        if (!string.IsNullOrWhiteSpace(cb.Titular)) partes.Add(cb.Titular!.Trim());
+        if (!string.IsNullOrWhiteSpace(cb.Cuit)) partes.Add($"CUIT {cb.Cuit!.Trim()}");
+        return $"🏦 {string.Join(" · ", partes)}, te paso el alias 👇:";
     }
 
     async Task LoadDatosBancarios()
