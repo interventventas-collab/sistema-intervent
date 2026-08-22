@@ -331,6 +331,25 @@ public class MetaWhatsAppWebhookController : ControllerBase
             if (estado == "failed" || Rank(estado) > Rank(msg.EstadoEntrega))
             {
                 msg.EstadoEntrega = estado;
+                // 2026-08-22: guardamos POR QUE fallo. Meta lo manda en errors[0] (code + title +
+                // error_data.details). Antes se descartaba y en la pantalla quedaba un ⚠ sin explicacion.
+                if (estado == "failed")
+                {
+                    int? codigo = null; string? titulo = null, detalle = null;
+                    if (st.TryGetProperty("errors", out var errs) && errs.ValueKind == JsonValueKind.Array
+                        && errs.GetArrayLength() > 0)
+                    {
+                        var e0 = errs[0];
+                        if (e0.TryGetProperty("code", out var cEl) && cEl.TryGetInt32(out var c)) codigo = c;
+                        if (e0.TryGetProperty("title", out var tEl)) titulo = tEl.GetString();
+                        if (e0.TryGetProperty("message", out var mEl) && string.IsNullOrWhiteSpace(titulo)) titulo = mEl.GetString();
+                        if (e0.TryGetProperty("error_data", out var edEl) && edEl.ValueKind == JsonValueKind.Object
+                            && edEl.TryGetProperty("details", out var dEl)) detalle = dEl.GetString();
+                    }
+                    var motivo = MetaWhatsAppService.MotivoFallaEnCastellano(codigo, titulo, detalle);
+                    msg.EntregaErrorCodigo = codigo;
+                    msg.EntregaError = motivo.Length > 300 ? motivo.Substring(0, 300) : motivo;
+                }
                 await db.SaveChangesAsync();
             }
         }

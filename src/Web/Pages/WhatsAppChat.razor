@@ -439,7 +439,7 @@
                                 <label class="wa-nv-label">¿A quién le escribís? <span style="color:#dc2626;">*</span></label>
                                 <input class="wa-nv-input wa-nv-search" placeholder="🔍 Escribí un nombre o un número…"
                                        @bind="nvClienteQuery" @bind:event="oninput" @onkeyup="BuscarNvClientes" />
-                                <span class="wa-nv-hint">Buscá por nombre (clientes, WhatsApp, MercadoLibre) o pegá un número con el código de país (54).</span>
+                                <span class="wa-nv-hint">Buscá por nombre (clientes, WhatsApp, MercadoLibre) o escribí el número: característica SIN el 0 y número SIN el 15 (ej 1165387009). El 54 y el 9 los pone el sistema. Del exterior, con + y su país (ej +34643013190).</span>
 
                                 @if (nvBuscandoCliente)
                                 {
@@ -451,11 +451,20 @@
                                     <div class="wa-nv-results">
                                         @if (directo != null)
                                         {
-                                            <button type="button" class="wa-nv-item" @onclick="() => UsarNumeroDirecto(directo)">
+                                            @* 2026-08-22: mostramos el número YA CORREGIDO (el que se va a usar de verdad),
+                                               no lo tipeado en crudo: antes escribir "1165387009" mostraba "+1165387009" y
+                                               parecía un número de otro país. *@
+                                            var directoFinal = NumeroWaFinal(nvClienteQuery);
+                                            var avisoNum = AvisoNumero(nvClienteQuery, directoFinal);
+                                            <button type="button" class="wa-nv-item" @onclick="() => UsarNumeroDirecto(directoFinal)">
                                                 <div class="wa-nv-avatar" style="background:#2563eb;">📱</div>
                                                 <div style="flex:1; min-width:0;">
                                                     <div style="font-weight:700; color:#111;">Enviar a este número nuevo</div>
-                                                    <div style="font-size:0.85rem; color:#2563eb;">@BonitoNumero(directo)</div>
+                                                    <div style="font-size:0.85rem; color:#2563eb;">@BonitoNumero(directoFinal)</div>
+                                                    @if (avisoNum != null)
+                                                    {
+                                                        <div class="wa-nv-aviso">@avisoNum</div>
+                                                    }
                                                 </div>
                                             </button>
                                         }
@@ -900,7 +909,7 @@
                                         @* 2026-07-24: tilditos de estado, solo en los mensajes que MANDAMOS *@
                                         @if (m.Direccion == "OUTGOING")
                                         {
-                                            <span class="@TildeCss(m.EstadoEntrega)" title="@TildeTitulo(m.EstadoEntrega)">@TildeTexto(m.EstadoEntrega)</span>
+                                            <span class="@TildeCss(m.EstadoEntrega)" title="@TildeTitulo(m.EstadoEntrega, m.EntregaError)">@TildeTexto(m.EstadoEntrega)</span>
                                         }
                                         @* 2026-08-07: aviso de que este mensaje está oculto para Depósito *@
                                         @if (m.OcultoDeposito && !esDeposito)
@@ -916,6 +925,12 @@
                                             </button>
                                         }
                                     </div>
+                                    @* 2026-08-22: si Meta rechazó la entrega, el motivo se ve SIEMPRE (no solo al pasar
+                                       el mouse: en el celular no hay "pasar el mouse" y el ⚠ quedaba mudo). *@
+                                    @if (m.Direccion == "OUTGOING" && m.EstadoEntrega == "failed")
+                                    {
+                                        <div class="wa-fallo-motivo">⚠️ No llegó: @(string.IsNullOrWhiteSpace(m.EntregaError) ? "WhatsApp lo rechazó y no explicó el motivo." : m.EntregaError)</div>
+                                    }
                                     @* 2026-08-19: los botoncitos y el selector de emojis pasaron ADENTRO del globito.
                                        Antes colgaban del contenedor de afuera, que se estira al 75% del ancho, asi que
                                        en los mensajes largos quedaban flotando hasta 144 px a un costado y nadie los
@@ -3420,7 +3435,12 @@
     /* 2026-08-20: reenviar (↪). Va en el 4to escalón; el de ocultar bajó al 5to. */
     .wa-fwd-btn { background: #fff; border: 1px solid #bfdbfe; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.8rem; padding: 0; color: #1d4ed8; font-weight: 800; }
     .wa-hide-btn { background: #fff; border: 1px solid #e5e7eb; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.8rem; padding: 0; }
+    .wa-nv-aviso { margin-top: 3px; font-size: 0.74rem; color: #b45309; font-weight: 700; white-space: normal; line-height: 1.3; }
     .wa-oculto-badge { margin-left: 6px; font-size: 0.62rem; color: #b45309; font-weight: 800; }
+    /* 2026-08-22: por que NO llego el mensaje. Va debajo del globito y se ve siempre (el tooltip
+       no sirve en el celular). Rojo suave para que se note sin gritar. */
+    .wa-fallo-motivo { margin-top: 4px; padding: 4px 8px; background: #fef2f2; border: 1px solid #fecaca;
+                       border-radius: 6px; color: #b91c1c; font-size: 0.72rem; font-weight: 600; line-height: 1.35; }
     /* 2026-08-05: burbujita del mensaje CITADO dentro de un mensaje (como WhatsApp) */
     .wa-reply-quote { display: flex; flex-direction: column; gap: 1px; border-left: 3px solid #25d366; background: rgba(0,0,0,0.05); border-radius: 6px; padding: 0.25rem 0.5rem; margin-bottom: 0.35rem; max-width: 100%; }
     .wa-msg-row.out .wa-reply-quote { border-left-color: #128c7e; background: rgba(0,0,0,0.06); }
@@ -6027,6 +6047,39 @@
         return digs.Length >= 8 ? digs : null;
     }
 
+    // 2026-08-22: MISMAS reglas que el servidor (MetaWhatsAppService.ToInboxWhatsApp), para que la
+    // pantalla muestre EXACTAMENTE el número al que se va a enviar. Si no, el operador ve un número
+    // raro ("+1165387009"), no lo reconoce y no sabe si mandarlo.
+    static string NumeroWaFinal(string? tipeado)
+    {
+        var raw = (tipeado ?? "").Trim();
+        var d = new string(raw.Where(char.IsDigit).ToArray());
+        if (d.Length == 0) return "";
+        bool internacional = raw.Contains('+');          // trae su propio código de país
+        if (d.StartsWith("549")) return d;
+        if (d.StartsWith("54")) return "549" + d.Substring(2);
+        if (internacional) return "+" + d;                // ej España +34…: el "+" se CONSERVA, si no el
+                                                          // servidor lo toma por argentino y le pega el 549
+        d = d.TrimStart('0');                             // 011… → 11…
+        if (d.StartsWith("9") && d.Length == 11) return "54" + d;   // ya trae el 9 de celular
+        return "549" + d;
+    }
+
+    /// <summary>Avisa los dos errores que el sistema NO puede adivinar: el 15 del celular y un largo
+    /// que no cierra. El 0 de la característica sí lo sacamos solos.</summary>
+    static string? AvisoNumero(string? tipeado, string numeroFinal)
+    {
+        var raw = (tipeado ?? "").Trim();
+        if (raw.Contains('+')) return null;                       // número del exterior: no opinamos
+        if (!numeroFinal.StartsWith("549")) return null;
+        var local = numeroFinal.Substring(3);                     // característica + abonado
+        if (local.Length >= 12 && local.Substring(2, 2) == "15")
+            return "⚠️ Parece que le pusiste el 15. Sacalo: va característica + número (ej 11 6538-7009).";
+        if (local.Length != 10)
+            return $"⚠️ Ojo: los celulares argentinos tienen 10 dígitos (característica sin 0 + número sin 15) y este tiene {local.Length}. Revisalo antes de mandar.";
+        return null;
+    }
+
     void UsarNumeroDirecto(string digitos)
     {
         nvNumero = digitos;
@@ -6777,7 +6830,14 @@
     // 2026-07-24: tilditos de estado tipo WhatsApp (✓ enviado · ✓✓ entregado · ✓✓ azul leído · ⚠ falló)
     static string TildeTexto(string? e) => e switch { "read" => "✓✓", "delivered" => "✓✓", "sent" => "✓", "failed" => "⚠", _ => "✓" };
     static string TildeCss(string? e) => e == "read" ? "wa-tilde wa-tilde-read" : e == "failed" ? "wa-tilde wa-tilde-fail" : "wa-tilde";
-    static string TildeTitulo(string? e) => e switch { "read" => "Leído", "delivered" => "Entregado", "sent" => "Enviado", "failed" => "No se pudo entregar", _ => "Enviando…" };
+    static string TildeTitulo(string? e, string? motivo = null) => e switch
+    {
+        "read" => "Leído",
+        "delivered" => "Entregado",
+        "sent" => "Enviado",
+        "failed" => string.IsNullOrWhiteSpace(motivo) ? "No se pudo entregar" : "No se pudo entregar: " + motivo,
+        _ => "Enviando…"
+    };
 
     string FormatHora(DateTime utc)
     {

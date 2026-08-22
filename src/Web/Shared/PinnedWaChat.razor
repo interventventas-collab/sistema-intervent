@@ -162,7 +162,7 @@
                             @* 2026-08-18: tildes de enviado/entregado/leído, como en la pantalla grande *@
                             @if (mine)
                             {
-                                <span class="@TildeCss(m.EstadoEntrega)" title="@TildeTitulo(m.EstadoEntrega)">@TildeTexto(m.EstadoEntrega)</span>
+                                <span class="@TildeCss(m.EstadoEntrega)" title="@TildeTitulo(m.EstadoEntrega, m.EntregaError)">@TildeTexto(m.EstadoEntrega)</span>
                             }
                         </div>
                         @* 2026-08-07: reacciones (solo se muestran) *@
@@ -1866,7 +1866,16 @@
     // 2026-08-18: mismos tildes que la pantalla grande de WhatsApp.
     private static string TildeTexto(string? e) => e switch { "read" => "✓✓", "delivered" => "✓✓", "sent" => "✓", "failed" => "⚠", "pendiente" => "🕐", _ => "✓" };
     private static string TildeCss(string? e) => e == "read" ? "pwa-tilde pwa-tilde-read" : e == "failed" ? "pwa-tilde pwa-tilde-fail" : "pwa-tilde";
-    private static string TildeTitulo(string? e) => e switch { "read" => "Leído", "delivered" => "Entregado", "sent" => "Enviado", "failed" => "No se pudo entregar", "pendiente" => "Enviando…", _ => "Enviando…" };
+    private static string TildeTitulo(string? e, string? motivo = null) => e switch
+    {
+        "read" => "Leído",
+        "delivered" => "Entregado",
+        "sent" => "Enviado",
+        // 2026-08-22: el ⚠ ahora dice POR QUE no llegó (lo manda Meta y lo guardamos traducido).
+        "failed" => string.IsNullOrWhiteSpace(motivo) ? "No se pudo entregar" : "No se pudo entregar: " + motivo,
+        "pendiente" => "Enviando…",
+        _ => "Enviando…"
+    };
 
     private static string FormatHora(DateTime utc)
     {

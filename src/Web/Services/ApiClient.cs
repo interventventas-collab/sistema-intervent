@@ -6861,7 +6861,9 @@ public class ApiClient
         // 2026-08-18: identificador propio del mensaje. Sirve para ubicar el mensaje citado al tocar la cajita gris.
         string? Sid = null,
         // 2026-08-19: mensaje ANULADO (se mandó una corrección). Se ve tachado SOLO de nuestro lado.
-        bool Anulado = false, string? AnuladoPor = null);
+        bool Anulado = false, string? AnuladoPor = null,
+        // 2026-08-22: cuando EstadoEntrega = "failed", POR QUE no llegó (ya traducido al castellano).
+        string? EntregaError = null);
 
     // 2026-08-07: ocultar/mostrar un mensaje al usuario Depósito. Solo admin/oficina.
     public async Task<bool> OcultarMensajeDepositoAsync(int mensajeId, bool oculto)

@@ -6983,3 +6983,11 @@ IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_MeliUsuarios')
    AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_WaMeliUsuarios_NumBuyer')
     CREATE UNIQUE INDEX UX_WaMeliUsuarios_NumBuyer ON WhatsApp_MeliUsuarios(Numero, BuyerId);
 GO
+
+-- 2026-08-22: POR QUE no se entrego un mensaje. Meta manda el motivo del rechazo en el webhook de
+-- estados (errors[0]) pero lo tirabamos: en la pantalla quedaba un ⚠ mudo y el operador no sabia si
+-- el problema era el numero, la plantilla o la cuenta. Ahora se guarda traducido al castellano.
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_TwilioMensajes')
+   AND NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='EntregaError' AND Object_ID=Object_ID('WhatsApp_TwilioMensajes'))
+    ALTER TABLE WhatsApp_TwilioMensajes ADD EntregaError NVARCHAR(300) NULL, EntregaErrorCodigo INT NULL;
+GO

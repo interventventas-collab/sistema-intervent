@@ -95,6 +95,40 @@ public class MetaWhatsAppService
         return $"whatsapp:+{digits}";
     }
 
+    /// <summary>2026-08-22: traduce el motivo de rechazo que manda Meta (errors[0]) a algo que el
+    /// operador entienda sin buscar en Google. Si el código no está en la lista, devolvemos el texto
+    /// de Meta tal cual, que es mejor que nada. Códigos: developers.facebook.com/docs/whatsapp/cloud-api/support/error-codes
+    /// </summary>
+    public static string MotivoFallaEnCastellano(int? codigo, string? titulo, string? detalle)
+    {
+        var propio = codigo switch
+        {
+            131026 => "Ese número no tiene WhatsApp, o no puede recibir mensajes. Verificá el número con el celular.",
+            131047 => "Pasaron más de 24 hs desde el último mensaje del cliente: hay que escribirle con una plantilla.",
+            131049 => "WhatsApp frenó este envío de marketing para no saturar al cliente. Probá más tarde o con otro tipo de mensaje.",
+            130472 => "El cliente no recibe mensajes de marketing (Meta lo tiene en una prueba). Un mensaje de otro tipo sí llega.",
+            131042 => "Problema con el método de pago de la cuenta de WhatsApp. Hay que revisarlo en Meta Business.",
+            131031 => "La cuenta de WhatsApp está bloqueada o inhabilitada por Meta.",
+            131051 => "Ese tipo de mensaje no está soportado.",
+            131053 => "Meta no pudo bajar el archivo adjunto. Probá mandarlo más chico o en otro formato.",
+            131056 => "Demasiados mensajes seguidos a ese mismo número. Esperá un rato.",
+            132000 => "La plantilla no coincide con los datos enviados (faltan o sobran variables).",
+            132001 => "Esa plantilla no existe o no está aprobada para este idioma.",
+            132005 => "El texto armado no entra en la plantilla aprobada.",
+            132007 => "La plantilla fue rechazada por Meta.",
+            132012 => "Un dato de la plantilla tiene un formato que Meta no acepta.",
+            132015 => "La plantilla está pausada por mala calidad (muchos clientes la reportaron).",
+            132016 => "La plantilla fue deshabilitada por mala calidad.",
+            133010 => "El número de la línea no está registrado en WhatsApp.",
+            135000 => "Meta rechazó el mensaje por un problema genérico. Revisá el número y la plantilla.",
+            _ => null
+        };
+        if (propio != null) return propio;
+        var texto = string.Join(" · ", new[] { titulo, detalle }.Where(x => !string.IsNullOrWhiteSpace(x)));
+        if (string.IsNullOrWhiteSpace(texto)) texto = "WhatsApp no explicó el motivo.";
+        return codigo.HasValue ? $"{texto} (código {codigo})" : texto;
+    }
+
     private HttpClient NewClient()
     {
         var http = _httpFactory.CreateClient();

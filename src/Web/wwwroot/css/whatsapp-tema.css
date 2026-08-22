@@ -164,6 +164,8 @@
 .wa-dark .wa-contacto-btn { background: var(--wad-panel3); border-color: var(--wad-borde2); color: #6ee7b7; }
 .wa-dark .wa-descargar-btn { background: #14543f; border-color: #1c6b50; color: #6ee7b7; }
 .wa-dark .wa-oculto-badge { color: #fbbf24; }
+/* 2026-08-22: motivo de "no se pudo entregar" en tema oscuro */
+.wa-dark .wa-fallo-motivo { background: #3f1d1d; border-color: #7f1d1d; color: #fca5a5; }
 
 /* Barras de abajo: firma, avisos, cajón de escribir */
 .wa-dark .wa-firma-bar, .wa-dark .wa-composer, .wa-dark .wa-quick-replies { background: var(--wad-panel2); }

@@ -1731,6 +1731,8 @@ public class WhatsAppTwilioController : ControllerBase
                 m.Id, m.Direccion, m.Numero, m.NombrePerfil,
                 m.Cuerpo, m.MediaUrl, m.MediaFilename, m.NumMedia,
                 m.Procesado, m.RespuestaEnviada, m.CreatedAt, m.EstadoEntrega,
+                // 2026-08-22: si Meta rechazo la entrega, el motivo en castellano para mostrarlo en el ⚠
+                m.EntregaError,
                 // 2026-08-18: el SID propio va al front para poder saltar al mensaje citado
                 // cuando tocás la cajita gris de "respondiendo a…".
                 m.TwilioMessageSid,
@@ -1785,7 +1787,7 @@ public class WhatsAppTwilioController : ControllerBase
                 MediaFilename = blank ? null : m.MediaFilename,
                 m.NumMedia, m.Procesado,
                 RespuestaEnviada = blank ? null : m.RespuestaEnviada,
-                m.CreatedAt, m.EstadoEntrega,
+                m.CreatedAt, m.EstadoEntrega, m.EntregaError,
                 Reacciones = blank ? new List<object>() : reacs,
                 // 2026-08-18: Sid propio, para que la pantalla pueda saltar del mensaje citado al original.
                 Sid = m.TwilioMessageSid,

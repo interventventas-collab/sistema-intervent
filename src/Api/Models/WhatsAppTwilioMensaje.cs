@@ -22,6 +22,12 @@ public class WhatsAppTwilioMensaje
     /// <summary>2026-07-24: estado de entrega que reporta Meta para los OUTGOING:
     /// sent (1 tilde), delivered (2 tildes grises), read (2 tildes azules), failed. Null = sin dato.</summary>
     [MaxLength(15)] public string? EstadoEntrega { get; set; }
+    /// <summary>2026-08-22: cuando EstadoEntrega = "failed", POR QUE no llegó, explicado en castellano
+    /// (ej "Ese número no tiene WhatsApp"). Antes se tiraba el motivo que manda Meta y en la pantalla
+    /// solo quedaba un ⚠ mudo: el operador no sabía si era el número, la plantilla o la cuenta.</summary>
+    [MaxLength(300)] public string? EntregaError { get; set; }
+    /// <summary>Código de error de Meta (ej 131026). Sirve para buscar el caso raro en su documentación.</summary>
+    public int? EntregaErrorCodigo { get; set; }
     public int? NumMedia { get; set; }
     /// <summary>ID del mensaje del proveedor: SID de Twilio o wamid.* de Meta Cloud API (este último es largo).</summary>
     [MaxLength(200)] public string? TwilioMessageSid { get; set; }
