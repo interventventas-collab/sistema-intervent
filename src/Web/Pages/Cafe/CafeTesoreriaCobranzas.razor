@@ -404,13 +404,46 @@
                                 </label>
                             </div>
                         }
+                        @* 2026-08-22: la plata A FAVOR del cliente (facturas pagadas de más y notas de
+                           crédito) ya NO va mezclada en la lista con el saldo en negativo — mareaba:
+                           una factura no puede deber menos que cero. Va aparte, en verde, y se aplica
+                           con un tilde. Abajo quedan SOLO facturas que deben plata, todas positivas. *@
+                        @if (ComprobantesAFavor.Count > 0)
+                        {
+                            <div style="background:#dcfce7; border:1px solid #16a34a; border-radius:6px; padding:0.6rem 0.8rem; margin-bottom:0.6rem;">
+                                <div style="font-weight:700; color:#166534; font-size:0.9rem;">
+                                    💚 Este cliente tiene $@TotalAFavor.ToString("N2") a favor
+                                </div>
+                                <div style="border-top:1px dashed #16a34a; margin-top:0.4rem; padding-top:0.35rem; font-size:0.8rem;">
+                                    @foreach (var p in ComprobantesAFavor)
+                                    {
+                                        <div style="display:flex; justify-content:space-between; gap:0.5rem; padding:0.12rem 0; color:#166534;">
+                                            <span>
+                                                <b>@p.Numero</b>
+                                                <span style="color:#15803d;">· @(EsNotaCredito(p) ? "nota de crédito" : "pagada de más")</span>
+                                                @if (incluirSucursales && !string.IsNullOrEmpty(p.ClienteNombre))
+                                                {
+                                                    <span style="color:#4d7c0f;">· @p.ClienteNombre</span>
+                                                }
+                                            </span>
+                                            <span style="font-weight:700; font-family:monospace; white-space:nowrap;">$@Math.Abs(p.Saldo).ToString("N2")</span>
+                                        </div>
+                                    }
+                                </div>
+                                <label style="display:flex; align-items:center; gap:0.4rem; margin-top:0.45rem; cursor:pointer; font-size:0.85rem; color:#166534; font-weight:700;">
+                                    <input type="checkbox" checked="@UsandoSaldoAFavor"
+                                           @onchange="@(e => ToggleSaldoAFavor((bool)e.Value!))" />
+                                    <span>Descontar estos $@TotalAFavor.ToString("N2") de esta cobranza</span>
+                                </label>
+                            </div>
+                        }
                         @if (pendientes is null)
                         {
                             <p class="text-muted">Cargando...</p>
                         }
-                        else if (pendientes.Count == 0)
+                        else if (ComprobantesACobrar.Count == 0)
                         {
-                            <p class="text-muted" style="margin:0;">Sin comprobantes pendientes. Podés cargar igual como "A cuenta".</p>
+                            <p class="text-muted" style="margin:0;">Sin facturas pendientes de cobro. Podés cargar igual como "A cuenta".</p>
                         }
                         else
                         {
@@ -419,7 +452,7 @@
                                     <tr><th></th><th>Número</th><th>Fecha</th><th style="text-align:right;">Saldo</th><th style="text-align:right;">A cobrar</th></tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var p in pendientes)
+                                    @foreach (var p in ComprobantesACobrar)
                                     {
                                         <tr>
                                             <td><input type="checkbox" @bind="imputaciones[p.VentaId].Seleccionado" @bind:after="RecalcularTotal" /></td>
@@ -1404,6 +1437,44 @@
         public string ChequeNumero { get; set; } = "";
         public string? ChequeEmisor { get; set; }
         public DateTime? ChequeFechaVencimiento { get; set; }
+    }
+
+    // ─── 2026-08-22: plata A FAVOR del cliente, separada de las facturas que debe ───
+    // Un comprobante con saldo negativo es una de dos cosas: una factura a la que le
+    // imputaron de mas, o una nota de credito. En los dos casos es plata del cliente, no
+    // una deuda. Se muestra aparte (en verde y en positivo) en vez de como un numero
+    // negativo perdido en la lista de facturas a cobrar.
+
+    /// <summary>Facturas pagadas de mas + notas de credito (saldo negativo).</summary>
+    private List<ComprobantePendienteDto> ComprobantesAFavor =>
+        pendientes?.Where(p => p.Saldo < -0.01m).ToList() ?? new();
+
+    /// <summary>Facturas que realmente deben plata (saldo positivo) — las unicas que van al listado.</summary>
+    private List<ComprobantePendienteDto> ComprobantesACobrar =>
+        pendientes?.Where(p => p.Saldo > 0.01m).ToList() ?? new();
+
+    /// <summary>Total a favor, en POSITIVO (para mostrarlo sin signo menos).</summary>
+    private decimal TotalAFavor => -ComprobantesAFavor.Sum(p => p.Saldo);
+
+    private static bool EsNotaCredito(ComprobantePendienteDto p) =>
+        p.TipoComprobante is not null && p.TipoComprobante.StartsWith("NC", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>True si el saldo a favor ya se esta descontando de esta cobranza.</summary>
+    private bool UsandoSaldoAFavor => ComprobantesAFavor.Count > 0
+        && ComprobantesAFavor.All(p => imputaciones.TryGetValue(p.VentaId, out var i) && i.Seleccionado);
+
+    /// <summary>Tilda/destilda de una todos los comprobantes a favor. Por dentro es exactamente
+    /// lo mismo que tildarlos en la lista (van con importe negativo), pero el operador no ve
+    /// numeros en negativo: ve "descontar $X".</summary>
+    private void ToggleSaldoAFavor(bool usar)
+    {
+        foreach (var p in ComprobantesAFavor)
+        {
+            if (!imputaciones.TryGetValue(p.VentaId, out var i)) continue;
+            i.Seleccionado = usar;
+            i.Importe = p.Saldo; // negativo: descuenta
+        }
+        RecalcularTotal();
     }
 
     private decimal TotalImputado => imputaciones.Where(kv => kv.Value.Seleccionado).Sum(kv => kv.Value.Importe) + (aCuentaActivo ? aCuentaImporte : 0);
